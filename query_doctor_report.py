@@ -43,6 +43,7 @@ REQUIRED_REPORT_SECTIONS = [
 ]
 UNSUPPORTED_RECOMMENDATION_RE = (
     "hdfs",
+    "хранилищ",
     "репликац",
     "replication",
     "block size",
@@ -60,6 +61,14 @@ UNSUPPORTED_RECOMMENDATION_RE = (
     "сети",
     "codegen",
     "llvm",
+)
+SPILL_SCRATCH_REWRITE_RE = re.compile(r"\b(spill|scratch|спилл|спай[лл]|спила|спайла)\b", re.IGNORECASE)
+STORAGE_WORDING_RE = re.compile(
+    r"(физическ\w*\s+хранен\w*|проблем\w*\s+с\s+хранилищ\w*|хранилищ\w*)",
+    re.IGNORECASE,
+)
+SPILL_SCRATCH_NEXT_CHECK = (
+    "- Проверить spill/scratch counters в raw profile, чтобы подтвердить или исключить memory pressure со spill."
 )
 
 
@@ -211,9 +220,17 @@ def has_unsupported_recommendation_topic(line: str) -> bool:
     return any(token in lower for token in UNSUPPORTED_RECOMMENDATION_RE)
 
 
+def should_rewrite_spill_storage_line(line: str) -> bool:
+    return bool(SPILL_SCRATCH_REWRITE_RE.search(line) and STORAGE_WORDING_RE.search(line))
+
+
 def strip_unsupported_prose(line: str, current_section: str) -> str | None:
     stripped = line.lstrip()
     is_list_item = stripped.startswith(("-", "*")) or bool(re.match(r"^\d+\.\s+", stripped))
+    if should_rewrite_spill_storage_line(line):
+        if current_section == "## Что проверить следующим запуском":
+            return SPILL_SCRATCH_NEXT_CHECK
+        return None
     if current_section in {"## Практические рекомендации", "## Что проверить следующим запуском"}:
         return None
 
@@ -258,7 +275,11 @@ def normalize_report_file(path: Path) -> None:
             current_section = line.strip()
         is_not_supported = current_section == "## Что НЕ подтверждается фактами"
         is_structure_line = line.startswith("#") or line.startswith(">") or not line.strip()
-        if not is_structure_line and not is_not_supported and has_unsupported_recommendation_topic(line):
+        if (
+            not is_structure_line
+            and not is_not_supported
+            and (has_unsupported_recommendation_topic(line) or should_rewrite_spill_storage_line(line))
+        ):
             stripped = strip_unsupported_prose(line, current_section)
             if stripped is None:
                 continue
