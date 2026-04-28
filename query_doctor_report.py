@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.request
@@ -24,17 +25,39 @@ from typing import Any
 
 DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3-coder:30b")
 DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+DEFAULT_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "0")
 NUM_CTX = int(os.getenv("QD_NUM_CTX", "16384"))
 NUM_PREDICT = int(os.getenv("QD_NUM_PREDICT", "2400"))
 PROGRESS_PREFIX = "[Query Doctor report]"
+MIN_REPORT_CHARS = int(os.getenv("QD_MIN_REPORT_CHARS", "1500"))
+MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "8"))
+REQUIRED_REPORT_SECTIONS = [
+    "# Query Doctor Report",
+    "## Краткий вывод",
+    "## Главная причина замедления",
+    "## Подтверждающие факты",
+    "## Что усиливает проблему",
+    "## Что НЕ подтверждается фактами",
+    "## Практические рекомендации",
+    "## Что проверить следующим запуском",
+]
 UNSUPPORTED_RECOMMENDATION_RE = (
     "hdfs",
     "репликац",
     "replication",
     "block size",
+    "блок",
     "размер блок",
+    "external network",
     "network",
+    "влияние внешней сети",
+    "внешняя сеть",
+    "внешней сети",
+    "сетевая",
+    "сетевых",
     "сетев",
+    "сеть",
+    "сети",
     "codegen",
     "llvm",
 )
@@ -48,10 +71,19 @@ def resolve_case_file(case_dir: Path, value: str) -> Path:
 
 
 def ollama_chat_url(base_url: str) -> str:
+    return ollama_api_url(base_url, "/api/chat")
+
+
+def ollama_base_url(base_url: str) -> str:
     url = base_url.rstrip("/")
-    if url.endswith("/api/chat"):
-        return url
-    return url + "/api/chat"
+    for suffix in ("/api/chat", "/api/generate", "/api/ps"):
+        if url.endswith(suffix):
+            return url[: -len(suffix)]
+    return url
+
+
+def ollama_api_url(base_url: str, endpoint: str) -> str:
+    return ollama_base_url(base_url) + endpoint
 
 
 def read_required_facts(path: Path) -> tuple[str, str]:
@@ -98,6 +130,10 @@ Engineering interpretation rules:
 - If an operator has rows ratio above threshold but mem ratio below 1.0, use it only as cardinality/intermediate-row evidence, not memory-underestimation evidence.
 - The main root cause wording must explicitly mention actual rows in millions vs estimated rows around 10.55K for dominant HASH JOIN / SORT / ANALYTIC operators when those facts are present.
 - Distinguish "large intermediate/exchange traffic" from external network instability.
+- Do not recommend checking external network based only on TotalBytesSent.
+- TotalBytesSent means intermediate/exchange data volume unless facts explicitly say network fault.
+- Do not describe EXCHANGE as a main memory bottleneck when absolute peak memory is small.
+- For memory impact, prefer operators with large absolute peak memory, especially GiB-scale SORT/HASH JOIN.
 - Treat skew and spill only as established causes if the facts explicitly contain skew evidence or non-zero spill/scratch metrics.
 - If skew/spill evidence is absent, mention them only under "Что проверить следующим запуском".
 
@@ -127,6 +163,7 @@ Grounding rules for recommendations:
 - Good: Проверить skew only if facts contain skew evidence; otherwise put it under "Что проверить следующим запуском", not as a cause.
 - Bad: Do not claim HDFS bottleneck.
 - Bad: Do not claim network instability.
+- Bad: Do not recommend checking external network because TotalBytesSent is large.
 - Bad: Do not claim codegen problem.
 - Bad: Do not claim spill unless facts contain non-zero spill metrics.
 
@@ -137,6 +174,7 @@ Report writing guidance:
 - In "Главная причина замедления", name cardinality estimate errors as the primary cause if facts show actual rows in millions versus estimated rows around 10.55K.
 - In "Подтверждающие факты", group facts separately: cardinality mismatch, memory mismatch, expensive operators, intermediate/exchange traffic.
 - In "Что усиливает проблему", discuss SORT/ANALYTIC and memory underestimation only where the facts support them.
+- In "Что усиливает проблему", do not call EXCHANGE a main memory bottleneck if its absolute peak memory is small; describe it as intermediate/exchange data volume only.
 - In "Что НЕ подтверждается фактами", explicitly carry over unsupported conclusions from facts.
 - In "Практические рекомендации", explain why each recommendation is supported by facts.
 - "Практические рекомендации" must include these concrete, fact-tied actions:
@@ -168,6 +206,33 @@ def report_header(facts_path: Path, facts_sha256: str, model: str) -> str:
 """
 
 
+def has_unsupported_recommendation_topic(line: str) -> bool:
+    lower = line.lower()
+    return any(token in lower for token in UNSUPPORTED_RECOMMENDATION_RE)
+
+
+def strip_unsupported_prose(line: str, current_section: str) -> str | None:
+    stripped = line.lstrip()
+    is_list_item = stripped.startswith(("-", "*")) or bool(re.match(r"^\d+\.\s+", stripped))
+    if current_section in {"## Практические рекомендации", "## Что проверить следующим запуском"}:
+        return None
+
+    if is_list_item:
+        total_sent_match = re.search(
+            r"TotalBytesSent\s*[:=]\s*(?P<value>\d[\d.]*\s*(?:KiB|MiB|GiB|TiB|KB|MB|GB|TB|B))",
+            line,
+            flags=re.IGNORECASE,
+        )
+        if total_sent_match:
+            return f"- TotalBytesSent: {total_sent_match.group('value')} — объем intermediate/exchange данных."
+        return None
+
+    sentences = re.split(r"(?<=[.!?])\s+", line)
+    kept = [sentence for sentence in sentences if sentence and not has_unsupported_recommendation_topic(sentence)]
+    result = " ".join(kept).strip()
+    return result or None
+
+
 def normalize_report_file(path: Path) -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = [line for line in text.splitlines() if not line.startswith(PROGRESS_PREFIX)]
@@ -191,17 +256,131 @@ def normalize_report_file(path: Path) -> None:
     for line in lines:
         if line.startswith("## "):
             current_section = line.strip()
-        lower = line.lower()
-        stripped = line.lstrip()
-        is_list_item = stripped.startswith(("-", "*")) or bool(re.match(r"^\d+\.\s+", stripped))
         is_not_supported = current_section == "## Что НЕ подтверждается фактами"
-        if is_list_item and not is_not_supported and any(token in lower for token in UNSUPPORTED_RECOMMENDATION_RE):
-            continue
+        is_structure_line = line.startswith("#") or line.startswith(">") or not line.strip()
+        if not is_structure_line and not is_not_supported and has_unsupported_recommendation_topic(line):
+            stripped = strip_unsupported_prose(line, current_section)
+            if stripped is None:
+                continue
+            line = stripped
         normalized.append(line)
 
     lines = normalized
 
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def validate_report_text(
+    text: str,
+    *,
+    min_chars: int = MIN_REPORT_CHARS,
+    min_sections: int = MIN_MARKDOWN_SECTIONS,
+) -> list[str]:
+    errors: list[str] = []
+    stripped = text.strip()
+    if len(stripped) < min_chars:
+        errors.append(f"report is too short: {len(stripped)} chars, minimum is {min_chars}")
+
+    section_lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.startswith("#")
+    ]
+    if len(section_lines) < min_sections:
+        errors.append(
+            f"report has too few markdown sections: {len(section_lines)}, minimum is {min_sections}"
+        )
+
+    for required in REQUIRED_REPORT_SECTIONS:
+        if required not in section_lines:
+            errors.append(f"missing required section: {required}")
+
+    if section_lines.count("# Query Doctor Report") != 1:
+        errors.append(
+            f"expected exactly one '# Query Doctor Report' heading, found {section_lines.count('# Query Doctor Report')}"
+        )
+
+    return errors
+
+
+def partial_report_path(output_path: Path) -> Path:
+    if output_path.suffix:
+        return output_path.with_name(f"{output_path.stem}.partial{output_path.suffix}")
+    return output_path.with_name(f"{output_path.name}.partial.md")
+
+
+def validate_report_file(output_path: Path) -> list[str]:
+    text = output_path.read_text(encoding="utf-8", errors="replace")
+    return validate_report_text(text)
+
+
+def move_failed_report_to_partial(output_path: Path) -> Path:
+    partial_path = partial_report_path(output_path)
+    if partial_path.exists():
+        partial_path.unlink()
+    output_path.replace(partial_path)
+    return partial_path
+
+
+def parse_ollama_ps_models(output: str) -> list[str] | None:
+    lines = [line.rstrip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return []
+    header = lines[0].split()
+    if not header or header[0].upper() != "NAME":
+        return None
+
+    models: list[str] = []
+    for line in lines[1:]:
+        parts = line.split()
+        if not parts:
+            continue
+        models.append(parts[0])
+    return models
+
+
+def stop_other_ollama_models(
+    *,
+    target_model: str,
+    run_func: Any = subprocess.run,
+) -> list[str]:
+    try:
+        ps = run_func(
+            ["ollama", "ps"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        print(f"{PROGRESS_PREFIX} warning: failed to run ollama ps: {exc}", file=sys.stderr)
+        return []
+
+    if ps.returncode != 0:
+        err = (ps.stderr or ps.stdout or "").strip()
+        print(f"{PROGRESS_PREFIX} warning: ollama ps failed: {err}", file=sys.stderr)
+        return []
+
+    loaded_models = parse_ollama_ps_models(ps.stdout)
+    if loaded_models is None:
+        print(f"{PROGRESS_PREFIX} warning: could not parse ollama ps output; continuing", file=sys.stderr)
+        return []
+
+    stopped: list[str] = []
+    for model_name in loaded_models:
+        if model_name == target_model:
+            continue
+        stop = run_func(
+            ["ollama", "stop", model_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if stop.returncode != 0:
+            err = (stop.stderr or stop.stdout or "").strip()
+            print(f"{PROGRESS_PREFIX} warning: ollama stop {model_name!r} failed: {err}", file=sys.stderr)
+            continue
+        stopped.append(model_name)
+    return stopped
 
 
 def stream_ollama_report(
@@ -211,6 +390,7 @@ def stream_ollama_report(
     output_path: Path,
     ollama_url: str,
     temperature: float,
+    keep_alive: str,
 ) -> None:
     payload: dict[str, Any] = {
         "model": model,
@@ -222,6 +402,9 @@ def stream_ollama_report(
                     "Write in Russian. Do not invent unsupported evidence or recommendations. "
                     "Keep cardinality mismatch separate from memory mismatch. "
                     "Do not treat mem ratio below 1.0 as memory underestimation evidence. "
+                    "Do not recommend external network checks based only on TotalBytesSent. "
+                    "Treat TotalBytesSent as intermediate/exchange data volume unless facts explicitly say network fault. "
+                    "Do not call low-memory EXCHANGE operators memory bottlenecks. "
                     "Do not claim HDFS, external network, codegen, skew, or spill causes unless facts explicitly support them."
                 ),
             },
@@ -234,6 +417,8 @@ def stream_ollama_report(
             "num_predict": NUM_PREDICT,
         },
     }
+    if keep_alive:
+        payload["keep_alive"] = keep_alive
 
     req = urllib.request.Request(
         ollama_chat_url(ollama_url),
@@ -284,11 +469,30 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("case_dir", help="Case directory containing analysis_facts.md")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--facts", default="analysis_facts.md", help="Facts file path, relative to CASE_DIR by default")
-    parser.add_argument("--out", default="diagnosis_report.md", help="Output report path, relative to CASE_DIR by default")
+    parser.add_argument(
+        "--out",
+        default="diagnosis_report.md",
+        help="Output report path. Relative paths are resolved under CASE_DIR; absolute paths are used as-is. Default: %(default)s",
+    )
     parser.add_argument("--language", default="ru", help="Report language. Currently only ru is supported.")
     parser.add_argument("--dry-prompt", action="store_true", help="Print the final prompt and exit without calling Ollama")
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
+    parser.add_argument(
+        "--keep-alive",
+        default=DEFAULT_KEEP_ALIVE,
+        help="Ollama keep_alive value for the report model. Use 0 to unload after generation. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--stop-other-models",
+        action="store_true",
+        help="Before generation, unload other currently loaded Ollama models with `ollama ps` and `ollama stop MODEL`.",
+    )
+    parser.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Debug only: skip post-generation report validation.",
+    )
     return parser.parse_args(argv)
 
 
@@ -332,8 +536,18 @@ def main(argv: list[str]) -> int:
     print(f"{PROGRESS_PREFIX} facts: {facts_path}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} facts sha256: {facts_sha256}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} model: {args.model}", file=sys.stderr)
-    print(f"{PROGRESS_PREFIX} output: {output_path}", file=sys.stderr)
+    print(f"{PROGRESS_PREFIX} resolved output path: {output_path}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
+    print(f"{PROGRESS_PREFIX} keep_alive: {args.keep_alive}", file=sys.stderr)
+
+    if args.stop_other_models:
+        stopped = stop_other_ollama_models(
+            target_model=args.model,
+        )
+        if stopped:
+            print(f"{PROGRESS_PREFIX} stopped other models: {', '.join(stopped)}", file=sys.stderr)
+        else:
+            print(f"{PROGRESS_PREFIX} no other loaded models to stop", file=sys.stderr)
 
     stream_ollama_report(
         prompt=prompt,
@@ -341,9 +555,20 @@ def main(argv: list[str]) -> int:
         output_path=output_path,
         ollama_url=args.ollama_url,
         temperature=args.temperature,
+        keep_alive=args.keep_alive,
     )
 
     normalize_report_file(output_path)
+
+    if not args.no_validate:
+        validation_errors = validate_report_file(output_path)
+        if validation_errors:
+            partial_path = move_failed_report_to_partial(output_path)
+            print(f"\n{PROGRESS_PREFIX} ERROR: generated report failed validation", file=sys.stderr)
+            for error in validation_errors:
+                print(f"{PROGRESS_PREFIX} ERROR: {error}", file=sys.stderr)
+            print(f"{PROGRESS_PREFIX} partial report saved to: {partial_path}", file=sys.stderr)
+            return 4
 
     print(f"\n{PROGRESS_PREFIX} done: {output_path}", file=sys.stderr)
     return 0
