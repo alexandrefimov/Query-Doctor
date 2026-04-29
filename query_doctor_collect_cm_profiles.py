@@ -598,6 +598,10 @@ def validate_local_config_key(key: str) -> None:
 
 def normalize_local_config_value(key: str, value: object) -> object:
     if value is None:
+        if key in {"since_hours", "limit", "max_profile_bytes"}:
+            raise ConfigError(f"Config field {key} must be a positive integer.")
+        if key == "min_duration_sec":
+            raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
         return None
     if key in {
         "ca_bundle",
@@ -662,7 +666,9 @@ def int_setting(
         return cli_value
     if name in config_values:
         return int(config_values[name])
-    if env_value is not None and env_value.strip():
+    if env_value is not None:
+        if not env_value.strip():
+            raise ConfigError(f"Environment value for {name} must be a positive integer.")
         try:
             parsed = int(env_value.strip())
         except ValueError as exc:
