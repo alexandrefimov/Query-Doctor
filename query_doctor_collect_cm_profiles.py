@@ -157,6 +157,7 @@ class CollectorConfig:
     preflight: bool
     redact: bool
     insecure_skip_verify: bool
+    ca_bundle: str | None
     credentials: CredentialSummary
 
 
@@ -166,6 +167,7 @@ class CMHttpConfig:
     username: str | None = None
     password: str | None = field(default=None, repr=False)
     token: str | None = field(default=None, repr=False)
+    ca_bundle: str | None = None
     verify_tls: bool = True
     timeout_sec: int = 30
 
@@ -193,6 +195,7 @@ class CMHttpConfig:
         return {
             "cm_url": sanitize_cm_url_for_display(self.cm_url),
             "auth": auth,
+            "ca_bundle": self.ca_bundle,
             "verify_tls": self.verify_tls,
             "timeout_sec": self.timeout_sec,
         }
@@ -338,6 +341,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Plan for future redaction of sensitive profile content.",
     )
     parser.add_argument(
+        "--ca-bundle",
+        help=(
+            "PEM CA bundle for verified CM TLS connections. "
+            "May also be provided with CM_CA_BUNDLE."
+        ),
+    )
+    parser.add_argument(
         "--insecure-skip-verify",
         action="store_true",
         help="UNSAFE: plan to disable TLS certificate verification when API calls are implemented.",
@@ -374,6 +384,7 @@ def build_config(
     if not cm_url:
         raise ConfigError("Missing --cm-url or CM_URL.")
 
+    ca_bundle = (args.ca_bundle or env.get("CM_CA_BUNDLE") or "").strip() or None
     out = validate_output_path(args.out, cwd=cwd, repo_root=repo_root)
     credentials = CredentialSummary(
         has_username=bool(env.get("CM_USERNAME")),
@@ -398,6 +409,7 @@ def build_config(
         preflight=args.preflight,
         redact=args.redact,
         insecure_skip_verify=args.insecure_skip_verify,
+        ca_bundle=ca_bundle,
         credentials=credentials,
     )
 
@@ -413,6 +425,7 @@ def build_http_config(
         username=env.get("CM_USERNAME"),
         password=env.get("CM_PASSWORD"),
         token=env.get("CM_TOKEN"),
+        ca_bundle=config.ca_bundle,
         verify_tls=not config.insecure_skip_verify,
     )
 
@@ -577,8 +590,8 @@ class CMHttpClient:
 
     def get_text(self, path: str, params: dict[str, object] | None = None) -> str:
         request = self.build_request(path, params)
-        context = None if self.config.verify_tls else ssl._create_unverified_context()
         try:
+            context = self.tls_context()
             with self.opener(
                 request,
                 timeout=self.config.timeout_sec,
@@ -592,6 +605,20 @@ class CMHttpClient:
         except OSError as exc:
             raise self.sanitized_error(f"CM request failed: {exc}") from exc
         return payload.decode("utf-8", errors="replace")
+
+    def tls_context(self) -> ssl.SSLContext:
+        if not self.config.verify_tls:
+            return ssl._create_unverified_context()
+        try:
+            if self.config.ca_bundle:
+                return ssl.create_default_context(cafile=self.config.ca_bundle)
+            return ssl.create_default_context()
+        except OSError as exc:
+            if self.config.ca_bundle:
+                raise self.sanitized_error(
+                    f"Could not load CA bundle {self.config.ca_bundle}: {exc}"
+                ) from exc
+            raise self.sanitized_error(f"Could not create TLS context: {exc}") from exc
 
     def get_json(self, path: str, params: dict[str, object] | None = None) -> dict[str, object]:
         text = self.get_text(path, params)
@@ -1094,6 +1121,8 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
     print(f"Output path: {config.out} (not created)")
     print(f"Query summary endpoint: {CM_QUERY_SUMMARIES_PATH} (verify before collection)")
     print("Summary fetch limit: 1")
+    print(tls_plan_line(config))
+    print(ca_bundle_plan_line(config))
 
     filters = build_preflight_query_filters(config)
     try:
@@ -1159,13 +1188,25 @@ def print_dry_run_plan(config: CollectorConfig) -> None:
     print(f"  query_id: {config.query_id or '<any>'}")
     print(f"  query_type: {config.query_type or '<any>'}")
     print(f"Redaction: {'enabled' if config.redact else 'disabled'}")
-    if config.insecure_skip_verify:
-        print("TLS verification: disabled by --insecure-skip-verify (UNSAFE)")
-    else:
-        print("TLS verification: enabled")
+    print(tls_plan_line(config))
+    print(ca_bundle_plan_line(config))
     print(f"Credentials: {config.credentials.display()}")
     print("No CM API calls are performed by this skeleton implementation.")
     print("No output directories or collected profiles are created in dry-run mode.")
+
+
+def tls_plan_line(config: CollectorConfig) -> str:
+    if config.insecure_skip_verify:
+        return "TLS verification: disabled by --insecure-skip-verify (UNSAFE)"
+    return "TLS verification: enabled"
+
+
+def ca_bundle_plan_line(config: CollectorConfig) -> str:
+    if config.insecure_skip_verify:
+        return "CA bundle: ignored because TLS verification is disabled"
+    if config.ca_bundle:
+        return f"CA bundle: {config.ca_bundle}"
+    return "CA bundle: system default trust store"
 
 
 def main(
