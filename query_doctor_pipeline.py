@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import argparse
 import subprocess
 import sys
@@ -18,7 +20,7 @@ def run_cmd(cmd: list[str], cwd: Path) -> None:
         raise SystemExit(result.returncode)
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run Query Doctor pipeline: deterministic analyzer -> LLM report writer."
     )
@@ -30,6 +32,12 @@ def main() -> int:
         "--model",
         default=DEFAULT_MODEL,
         help=f"Ollama model for report writer. Default: {DEFAULT_MODEL}",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("admin", "user"),
+        default="admin",
+        help="Report audience mode passed to query_doctor_report.py. Default: %(default)s",
     )
     parser.add_argument(
         "--out",
@@ -52,7 +60,11 @@ def main() -> int:
         help="Run only deterministic analyzer.",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     repo_dir = Path(__file__).resolve().parent
     case_dir = Path(args.case_dir).expanduser()
@@ -103,6 +115,8 @@ def main() -> int:
         str(case_dir),
         "--model",
         args.model,
+        "--mode",
+        args.mode,
         "--out",
         args.out,
         "--keep-alive",

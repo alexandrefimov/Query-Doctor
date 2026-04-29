@@ -74,6 +74,19 @@ STORAGE_WORDING_RE = re.compile(
 SPILL_SCRATCH_NEXT_CHECK = (
     "- Проверить spill/scratch counters в raw profile, чтобы подтвердить или исключить memory pressure со spill."
 )
+UNSUPPORTED_STATS_FRESHNESS_CLAIM_RE = re.compile(
+    r"("
+    r"указывает\s+на\s+устарев\w*\s+или\s+отсутств\w*\s+статистик\w*|"
+    r"статистик\w*.*может\s+быть\s+устарев\w*\s+или\s+отсутств\w*|"
+    r"stats\s+(?:are|is)\s+stale|"
+    r"indicates\s+(?:stale|missing)\s+stats"
+    r")",
+    re.IGNORECASE,
+)
+STATS_FRESHNESS_MISSING_EVIDENCE = (
+    "- Свежесть статистики таблиц/столбцов не подтверждена в analysis_facts.md; "
+    "проверяйте ее только через read-only metadata."
+)
 
 
 def resolve_case_file(case_dir: Path, value: str) -> Path:
@@ -178,10 +191,12 @@ You must write only the report body, starting with exactly these headings, in th
 ## Что проверить следующим запуском
 
 Grounding rules for recommendations:
-- Good: Проверить/обновить stats для таблиц/партиций, участвующих в join, потому что parsed facts show actual rows >> estimated rows.
+- Good: Проверить table stats and partition stats for JOIN inputs, because parsed facts show actual rows >> estimated rows.
 - Good: Проверить порядок join / условия join / возможность предварительной фильтрации данных до analytic/sort.
 - Good: Снизить объём intermediate rows перед SORT/ANALYTIC.
 - Good: Проверить skew only if facts contain skew evidence; otherwise put it under "Что проверить следующим запуском", not as a cause.
+- Bad: Do not claim stats are stale or missing unless analysis_facts.md explicitly proves that.
+- Bad: Do not ask whether stats were updated unless analysis_facts.md mentions a prior stats change.
 - Bad: Do not claim HDFS bottleneck.
 - Bad: Do not claim network instability.
 - Bad: Do not recommend checking external network because TotalBytesSent is large.
@@ -199,7 +214,7 @@ Report writing guidance:
 - In "Что НЕ подтверждается фактами", explicitly carry over unsupported conclusions from facts.
 - In "Практические рекомендации", explain why each recommendation is supported by facts.
 - "Практические рекомендации" must include these concrete, fact-tied actions:
-  1. Проверить/обновить table stats and partition stats for JOIN inputs.
+  1. Проверить table stats and partition stats for JOIN inputs; do not say they are stale or missing unless analysis_facts.md proves it.
   2. Найти место, где cardinality grows from estimated ~10.55K to millions before dominant HASH JOIN operators.
   3. Reduce intermediate rows before SORT/ANALYTIC.
   4. Проверить ключи join, фильтры join, CTE, DISTINCT, LEFT OUTER JOIN и LEFT ANTI JOIN.
@@ -224,6 +239,8 @@ Use Action Cards as the main structure when present.
 Emphasize operator IDs/names, actual vs estimated rows, memory estimation gaps, bytes read/sent, spill/scratch/admission checks when mentioned in facts, per-host RowsProduced / PeakMemUsage checks when skew is suspected but not proven, and missing evidence.
 Separate proven facts from suspected issues.
 Mention logs, CM metrics, profile counters, and query profile sections only as next checks when supported by the facts or Action Cards.
+The admin report must include a dedicated next-checks section for admins.
+That admin next-checks section must explicitly mention per-host RowsProduced, per-host PeakMemUsage, spill/scratch counters, admission pool checks, CM metrics/logs, and profile counters, framed as checks rather than proven causes unless analysis_facts.md proves them.
 Do not say skew is proven unless analysis_facts.md contains deterministic per-host skew evidence.
 Do not claim stats are stale unless analysis_facts.md proves it.
 Do not claim exact join keys unless analysis_facts.md contains them.
@@ -238,7 +255,20 @@ Focus on SQL-owner actions: check table stats, check column stats for join/filte
 Mark query rewrites, join order/filtering changes, pre-aggregation, materialization, and stats refresh through the approved operational process as changes requiring validation.
 Explain how to verify improvement by re-running the query and comparing actual vs estimated rows, PeakMemUsage, spills, runtime, and bytes read/sent when those facts are present.
 Say what to send to admins if it still fails: query id if known, profile, analysis_facts.md, exact operator cards, referenced tables, timestamps, and admission pool if known.
+The user report must include a dedicated section named "Read-only checks you can run" or "Safe checks for the SQL owner".
+In that section, explicitly mention SHOW TABLE STATS for referenced tables when referenced tables are present in analysis_facts.md.
+In that section, explicitly mention SHOW COLUMN STATS for join/filter columns once those columns are identified.
+Do not invent table names. If referenced tables are missing from analysis_facts.md, say table names are not present in analysis_facts.md and ask for the profile/context.
+Do not invent join/filter column names. If join/filter columns are not known, say they need to be identified from SQL/EXPLAIN/profile first.
+If referenced tables are missing, the read-only checks section itself must say that referenced table names are not present in analysis_facts.md and that the SQL/profile/context is needed before running table-specific SHOW TABLE STATS.
+If join/filter columns are missing, the read-only checks section itself must say that join/filter columns are not present in analysis_facts.md and must be identified from SQL/EXPLAIN/profile before running column-specific SHOW COLUMN STATS.
+Do not say facts indicate stale or missing stats unless analysis_facts.md explicitly proves that. Say table/column stats should be checked because severe cardinality underestimation was detected.
+The user report must include a dedicated section named "If it still fails, send this to the admin/platform team".
+In that section, explicitly list: query id if available in analysis_facts.md, original profile, analysis_facts.md, Action Cards/operator IDs, referenced tables if present, timestamps if available, admission pool / queue if available, and report generated by Query Doctor.
+Do not invent query id, timestamps, pool names, or table names. If unavailable, say "not present in analysis_facts.md".
+Keep these categories separate in the user report: safe read-only checks, changes requiring validation, how to verify improvement, and what to send to admins.
 Do not tell the user to run state-changing commands directly unless analysis_facts.md explicitly allows it.
+Do not tell users to run COMPUTE STATS, REFRESH, or INVALIDATE METADATA as automatic actions.
 Avoid unsupported low-level claims and vague advice such as "optimize joins" or "reduce skew".
 """.strip()
     raise ValueError(f"unsupported report mode: {mode}")
@@ -266,6 +296,10 @@ def has_unsupported_recommendation_topic(line: str, facts_text: str = "") -> boo
 
 def should_rewrite_spill_storage_line(line: str) -> bool:
     return bool(SPILL_SCRATCH_REWRITE_RE.search(line) and STORAGE_WORDING_RE.search(line))
+
+
+def should_rewrite_stats_freshness_claim(line: str) -> bool:
+    return bool(UNSUPPORTED_STATS_FRESHNESS_CLAIM_RE.search(line))
 
 
 def strip_unsupported_prose(line: str, current_section: str, facts_text: str = "") -> str | None:
@@ -324,6 +358,8 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
     for line in lines:
         if line.startswith("## "):
             current_section = line.strip()
+        if should_rewrite_stats_freshness_claim(line):
+            line = STATS_FRESHNESS_MISSING_EVIDENCE
         is_not_supported = current_section == "## Что НЕ подтверждается фактами"
         is_structure_line = line.startswith("#") or line.startswith(">") or not line.strip()
         if (
@@ -343,9 +379,90 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
     return "\n".join(normalized).rstrip() + "\n"
 
 
-def normalize_report_file(path: Path) -> None:
+def facts_include_referenced_tables(facts_text: str) -> bool:
+    lines = facts_text.splitlines()
+    in_section = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "### Referenced Tables":
+            in_section = True
+            continue
+        if in_section and stripped.startswith("### "):
+            break
+        if in_section and stripped.startswith("- ") and "missing" not in stripped.lower():
+            return True
+    return False
+
+
+def insert_bullets_into_section(text: str, heading: str, bullets: list[str]) -> str:
+    missing = [bullet for bullet in bullets if bullet not in text]
+    if not missing:
+        return text
+    if heading not in text:
+        return text.rstrip() + "\n\n" + heading + "\n\n" + "\n".join(missing) + "\n"
+
+    start = text.index(heading)
+    next_heading = text.find("\n## ", start + len(heading))
+    insertion = "\n" + "\n".join(missing)
+    if next_heading == -1:
+        return text.rstrip() + insertion + "\n"
+    return text[:next_heading].rstrip() + insertion + "\n" + text[next_heading:]
+
+
+def enforce_user_report_requirements(text: str, facts_text: str) -> str:
+    read_only_bullets = []
+    if "SHOW TABLE STATS" not in text:
+        read_only_bullets.append("- Run `SHOW TABLE STATS` only for referenced tables present in analysis_facts.md.")
+    if "SHOW COLUMN STATS" not in text:
+        read_only_bullets.append(
+            "- Run `SHOW COLUMN STATS` only for join/filter columns after they are identified."
+        )
+    if not facts_include_referenced_tables(facts_text):
+        read_only_bullets.append(
+            "- Referenced table names are not present in analysis_facts.md; provide the SQL/profile/context before running table-specific SHOW TABLE STATS."
+        )
+    read_only_bullets.append(
+        "- Join/filter columns are not present in analysis_facts.md; identify them from SQL/EXPLAIN/profile before running column-specific SHOW COLUMN STATS."
+    )
+    text = insert_bullets_into_section(text, "## Read-only checks you can run", read_only_bullets)
+
+    admin_package_bullets = [
+        "- Query ID: use the value from analysis_facts.md; if unavailable, say not present in analysis_facts.md.",
+        "- Original profile.",
+        "- analysis_facts.md.",
+        "- Action Cards/operator IDs.",
+        "- Referenced tables if present; if unavailable, say not present in analysis_facts.md.",
+        "- Timestamps if present; if unavailable, say not present in analysis_facts.md.",
+        "- Admission pool / queue if present; if unavailable, say not present in analysis_facts.md.",
+        "- Query Doctor report.",
+    ]
+    return insert_bullets_into_section(
+        text,
+        "## If it still fails, send this to the admin/platform team",
+        admin_package_bullets,
+    )
+
+
+def enforce_admin_report_requirements(text: str) -> str:
+    admin_bullets = [
+        "- Check per-host RowsProduced for the operators called out in the Action Cards.",
+        "- Check per-host PeakMemUsage for the same operators.",
+        "- Check spill/scratch counters in the query profile.",
+        "- Check admission pool memory limits and queue behavior.",
+        "- Check CM metrics/logs for host-level resource pressure during the query window.",
+        "- Check profile counters for the referenced operators before treating suspected issues as proven causes.",
+    ]
+    return insert_bullets_into_section(text, "## Что проверить следующим запуском", admin_bullets)
+
+
+def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admin") -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
-    path.write_text(sanitize_report_text(text, ""), encoding="utf-8")
+    text = sanitize_report_text(text, facts_text)
+    if mode == "user":
+        text = enforce_user_report_requirements(text, facts_text)
+    if mode == "admin":
+        text = enforce_admin_report_requirements(text)
+    path.write_text(text, encoding="utf-8")
 
 
 def validate_report_text(
@@ -644,7 +761,7 @@ def main(argv: list[str]) -> int:
         keep_alive=args.keep_alive,
     )
 
-    normalize_report_file(output_path)
+    normalize_report_file(output_path, facts_text=facts_text, mode=args.mode)
 
     if not args.no_validate:
         validation_errors = validate_report_file(output_path)
