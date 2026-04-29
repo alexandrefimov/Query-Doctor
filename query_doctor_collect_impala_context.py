@@ -202,6 +202,9 @@ def validate_impala_command(command: str) -> None:
     normalized = " ".join(command.strip().rstrip(";").split())
     upper = normalized.upper()
 
+    if ";" in normalized:
+        raise ValueError(f"Refusing multi-statement Impala command: {command}")
+
     if not any(upper.startswith(prefix) for prefix in ALLOWED_COMMAND_PREFIXES):
         raise ValueError(f"Refusing unsupported Impala command: {command}")
 

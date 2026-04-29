@@ -93,6 +93,8 @@ def test_validate_impala_command_allows_metadata_commands(command):
         "TRUNCATE TABLE db1.table_a",
         "EXPLAIN INSERT INTO db1.table_a SELECT * FROM db1.table_b",
         "EXPLAIN CREATE TABLE db1.new_table AS SELECT * FROM db1.table_a",
+        "EXPLAIN SELECT * FROM db1.table_a; SELECT COUNT(*) FROM db1.table_a",
+        "SHOW TABLE STATS db1.table_a; REFRESH db1.table_a",
     ],
 )
 def test_validate_impala_command_rejects_dangerous_commands(command):
