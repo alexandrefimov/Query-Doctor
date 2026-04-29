@@ -708,6 +708,15 @@ def build_http_config(
     )
 
 
+def cm_env_secrets(env: dict[str, str] | os._Environ[str] | None = None) -> tuple[str, ...]:
+    env = os.environ if env is None else env
+    return tuple(
+        value
+        for value in (env.get("CM_PASSWORD"), env.get("CM_TOKEN"))
+        if value
+    )
+
+
 def build_query_filters(config: CollectorConfig) -> CMQueryFilters:
     return CMQueryFilters(
         cluster=config.cluster,
@@ -1529,6 +1538,59 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
     return 0
 
 
+def run_cm_single_query_collection(
+    config: CollectorConfig,
+    client: object,
+    *,
+    secrets: Iterable[str] = (),
+) -> int:
+    try:
+        filters = build_query_filters(config)
+        profile_text = fetch_cm_profile_text(
+            client,
+            filters,
+            config.query_id or "",
+            max_profile_bytes=config.max_profile_bytes,
+        )
+        summary = CMQuerySummary(query_id=config.query_id or "")
+        warnings = [
+            "collected by Query Doctor CM collector",
+            "source query id preserved",
+            "redaction enabled",
+            "CM API endpoint family: v32 Impala query details",
+            "analyzer/report were not run automatically",
+        ]
+        case_dir = write_collected_case(
+            config.out,
+            summary,
+            profile_digest_text=profile_text,
+            warnings=warnings,
+            secrets=secrets,
+            redact=True,
+            redact_identifiers=config.redact_identifiers,
+        )
+    except (CMClientError, OutputError, OSError) as exc:
+        print(
+            "[CM profile collector] Collection result: FAILED",
+            file=sys.stderr,
+        )
+        print(
+            "Single-query collection failed: "
+            f"{sanitize_adapter_error_message(exc, secrets=secrets)}",
+            file=sys.stderr,
+        )
+        return 4
+
+    print("[CM profile collector] Collection result: OK")
+    print("Collected count: 1")
+    print(f"Output case directory: {case_dir}")
+    print(f"Profile text length: {len(profile_text)}")
+    print("Redaction: enabled")
+    print(f"Max profile bytes: {config.max_profile_bytes}")
+    print("No raw JSON, SQL, profile text, analyzer output, or reports were written.")
+    return 0
+
+
 def print_dry_run_plan(config: CollectorConfig) -> None:
     print("[CM profile collector] Dry-run plan")
     print(f"CM URL: {sanitize_cm_url_for_display(config.cm_url)}")
@@ -1594,12 +1656,27 @@ def main(
             return 2
         return run_cm_preflight(config, client)
 
-    print(
-        "[CM profile collector] ERROR: CM API collection is not implemented yet. "
-        "Use --dry-run to validate configuration.",
-        file=sys.stderr,
+    try:
+        if not config.query_id:
+            raise ConfigError(
+                "Broad CM collection is not enabled yet. "
+                "Provide --query-id for bounded single-query collection."
+            )
+        if args.redact is not True:
+            raise ConfigError("Real CM collection requires --redact.")
+        if config.limit != 1:
+            raise ConfigError("Single-query CM collection requires --limit 1.")
+        http_config = build_http_config(config, env=env)
+        client = (client_factory or CMHttpClient)(http_config)
+    except ConfigError as exc:
+        print(f"[CM profile collector] ERROR: {exc}", file=sys.stderr)
+        return 3
+
+    return run_cm_single_query_collection(
+        config,
+        client,
+        secrets=cm_env_secrets(env),
     )
-    return 3
 
 
 if __name__ == "__main__":
