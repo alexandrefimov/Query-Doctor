@@ -135,6 +135,7 @@ SECRET_METADATA_KEY_PARTS = (
 )
 HOST_METADATA_KEY_PARTS = ("host", "hostname", "coordinator", "impalad", "daemon", "server")
 URL_METADATA_KEY_PARTS = ("url", "uri", "endpoint", "link")
+CM_QUERY_ID_PATH_RE = re.compile(r"^[A-Za-z0-9]+:[A-Za-z0-9]+$")
 
 
 class ConfigError(ValueError):
@@ -955,16 +956,26 @@ def build_cm_profile_text_request(
     filters: CMQueryFilters,
     query_id: str,
 ) -> tuple[str, dict[str, object]]:
-    normalized_query_id = normalize_optional_string(query_id)
-    if not normalized_query_id:
-        raise CMAdapterError("CM profile text request requires a query id.")
+    normalized_query_id = validate_cm_query_id_path_segment(query_id)
 
     path = CM_PROFILE_TEXT_PATH.format(
         clusterName=safe_cm_path_segment(filters.cluster, "cluster"),
         serviceName=safe_cm_path_segment(filters.service, "service"),
-        queryId=safe_cm_path_segment(normalized_query_id, "query id"),
+        queryId=normalized_query_id,
     )
     return path, {"format": "text"}
+
+
+def validate_cm_query_id_path_segment(query_id: str) -> str:
+    normalized_query_id = normalize_optional_string(query_id)
+    if not normalized_query_id:
+        raise CMAdapterError("CM profile text request requires a query id.")
+    if not CM_QUERY_ID_PATH_RE.fullmatch(normalized_query_id):
+        raise CMAdapterError(
+            "CM profile text request requires query id shape "
+            "[A-Za-z0-9]+:[A-Za-z0-9]+ for path usage."
+        )
+    return normalized_query_id
 
 
 def fetch_cm_profile_text(
@@ -1416,9 +1427,9 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
         print("First query id present: no")
 
     if config.query_id:
-        profile_path, _ = build_cm_profile_text_request(filters, config.query_id)
-        print(f"Profile text endpoint: {profile_path}")
         try:
+            profile_path, _ = build_cm_profile_text_request(filters, config.query_id)
+            print(f"Profile text endpoint: {profile_path}")
             profile_text = fetch_cm_profile_text(client, filters, config.query_id)
         except CMClientError as exc:
             print(
