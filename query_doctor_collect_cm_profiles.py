@@ -18,24 +18,26 @@ import ssl
 import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 import urllib.error
 import urllib.request
-from urllib.parse import SplitResult, parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import SplitResult, parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsplit
 
 
 DEFAULT_SINCE_HOURS = 24
 DEFAULT_LIMIT = 20
 DEFAULT_MIN_DURATION_SEC = 60
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
-# TODO: Replace with the verified Cloudera Manager query summary endpoint
-# before enabling CLI collection. Keeping the placeholder isolated prevents
-# endpoint guesses from spreading through the collector.
-CM_QUERY_SUMMARIES_PATH = "/api/vTODO/query-summaries"
-# TODO: Replace with the verified Cloudera Manager profile text endpoint before
-# enabling CLI collection. Query ids stay in params so they cannot alter paths.
-CM_PROFILE_TEXT_PATH = "/api/vTODO/query-profile"
+CM_API_VERSION = "v32"
+CM_QUERY_SUMMARIES_PATH = (
+    f"/api/{CM_API_VERSION}/clusters/{{clusterName}}/services/{{serviceName}}/impalaQueries"
+)
+CM_PROFILE_TEXT_PATH = (
+    f"/api/{CM_API_VERSION}/clusters/{{clusterName}}/services/"
+    "{serviceName}/impalaQueries/{queryId}"
+)
 
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -637,30 +639,57 @@ class CMHttpClient:
 def build_cm_query_summary_page_request(
     filters: CMQueryFilters,
     page_token: str | None = None,
+    *,
+    now: datetime | None = None,
 ) -> tuple[str, dict[str, object]]:
-    params: dict[str, object] = {
-        "cluster": filters.cluster,
-        "service": filters.service,
-        "sinceHours": filters.since_hours,
-        "limit": filters.limit,
-        "minDurationSec": filters.min_duration_sec,
-        "status": filters.status,
-    }
-    optional_params = {
-        "pool": filters.pool,
-        "user": filters.user,
-        "queryId": filters.query_id,
-        "queryType": filters.query_type,
-        "pageToken": page_token,
-    }
-    params.update(
-        {
-            key: value
-            for key, value in optional_params.items()
-            if value is not None
-        }
+    path = CM_QUERY_SUMMARIES_PATH.format(
+        clusterName=safe_cm_path_segment(filters.cluster, "cluster"),
+        serviceName=safe_cm_path_segment(filters.service, "service"),
     )
-    return CM_QUERY_SUMMARIES_PATH, params
+    from_time, to_time = cm_time_window(filters.since_hours, now=now)
+    params: dict[str, object] = {
+        "from": from_time,
+        "to": to_time,
+        "limit": filters.limit,
+    }
+    if page_token:
+        params["offset"] = page_token
+    filter_expression = build_cm_query_filter_expression(filters)
+    if filter_expression:
+        params["filter"] = filter_expression
+    return path, params
+
+
+def safe_cm_path_segment(value: str, field_name: str) -> str:
+    normalized = normalize_optional_string(value)
+    if not normalized:
+        raise CMAdapterError(f"CM {field_name} path segment is required.")
+    return quote(normalized, safe="")
+
+
+def cm_time_window(since_hours: int, *, now: datetime | None = None) -> tuple[str, str]:
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc).replace(microsecond=0)
+    start = current - timedelta(hours=since_hours)
+    return format_cm_timestamp(start), format_cm_timestamp(current)
+
+
+def format_cm_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def build_cm_query_filter_expression(filters: CMQueryFilters) -> str | None:
+    """Build a conservative CM filter expression for documented query params.
+
+    TODO: Verify exact Impala query filter field names for the deployed CM
+    version before mapping pool/user/status/query-type/duration into the API
+    request. The local collector still applies query-id filtering after parsing
+    summaries, so this helper intentionally returns no speculative filter.
+    """
+    _ = filters
+    return None
 
 
 def fetch_cm_query_summary_page(
@@ -691,11 +720,12 @@ def build_cm_profile_text_request(
     if not normalized_query_id:
         raise CMAdapterError("CM profile text request requires a query id.")
 
-    return CM_PROFILE_TEXT_PATH, {
-        "cluster": filters.cluster,
-        "service": filters.service,
-        "queryId": normalized_query_id,
-    }
+    path = CM_PROFILE_TEXT_PATH.format(
+        clusterName=safe_cm_path_segment(filters.cluster, "cluster"),
+        serviceName=safe_cm_path_segment(filters.service, "service"),
+        queryId=safe_cm_path_segment(normalized_query_id, "query id"),
+    )
+    return path, {"format": "text"}
 
 
 def fetch_cm_profile_text(
@@ -705,8 +735,7 @@ def fetch_cm_profile_text(
 ) -> str:
     path, params = build_cm_profile_text_request(filters, query_id)
     try:
-        raw = client.get_json(path, params=params)
-        return extract_profile_text(raw)
+        return client.get_text(path, params=params)
     except CMHttpError as exc:
         config = getattr(client, "config", None)
         if isinstance(config, CMHttpConfig):
@@ -714,8 +743,6 @@ def fetch_cm_profile_text(
         else:
             message = sanitize_adapter_error_message(exc)
         raise CMHttpError(message) from exc
-    except CMAdapterError as exc:
-        raise CMAdapterError(sanitize_adapter_error_message(exc)) from exc
 
 
 # TODO: Bind these adapters to exact CM API endpoints only after validating the
@@ -1119,12 +1146,13 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
     print(f"Cluster: {config.cluster}")
     print(f"Service: {config.service}")
     print(f"Output path: {config.out} (not created)")
-    print(f"Query summary endpoint: {CM_QUERY_SUMMARIES_PATH} (verify before collection)")
+    filters = build_preflight_query_filters(config)
+    summary_path, _ = build_cm_query_summary_page_request(filters)
+    print(f"Query summary endpoint: {summary_path}")
     print("Summary fetch limit: 1")
     print(tls_plan_line(config))
     print(ca_bundle_plan_line(config))
 
-    filters = build_preflight_query_filters(config)
     try:
         page = fetch_cm_query_summary_page(client, filters)
     except CMClientError as exc:
@@ -1149,7 +1177,8 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
         print("First query id present: no")
 
     if config.query_id:
-        print(f"Profile text endpoint: {CM_PROFILE_TEXT_PATH} (verify before collection)")
+        profile_path, _ = build_cm_profile_text_request(filters, config.query_id)
+        print(f"Profile text endpoint: {profile_path}")
         try:
             profile_text = fetch_cm_profile_text(client, filters, config.query_id)
         except CMClientError as exc:
