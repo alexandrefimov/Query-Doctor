@@ -120,11 +120,14 @@ def build_prompt(
     facts_sha256: str,
     model: str,
     language: str,
+    mode: str = "admin",
 ) -> str:
     language_instruction = "Ответ должен быть на русском языке." if language == "ru" else f"Language: {language}."
+    mode_instruction = build_mode_instruction(mode)
 
     return f"""
 You are only a report writer.
+Use only facts from analysis_facts.md.
 Use only facts provided below.
 Do not parse or infer anything from profile_digest.md, profile.txt, raw profiles, SQL text, or external knowledge.
 Do not invent metrics, operator IDs, root causes, timings, row counts, memory values, table names, columns, or SQL rewrites.
@@ -132,8 +135,13 @@ If something is not present in facts, say it is not supported by parsed evidence
 Preserve the "What is NOT supported" conclusions.
 Do not recommend HDFS block size, replication factor, external network fixes, disabling codegen, or spill tuning unless facts explicitly support it.
 Do not output hidden reasoning, chain-of-thought, or <think> blocks.
+Prefer Action Cards when present. If Action Cards are absent, fall back to the other deterministic facts.
+Do not invent table names, join keys, row counts, memory numbers, commands, or remediation steps outside analysis_facts.md.
+If evidence is missing, say it is missing.
 
 {language_instruction}
+
+{mode_instruction}
 
 Engineering interpretation rules:
 - The report must distinguish cardinality mismatch from memory mismatch.
@@ -205,6 +213,35 @@ Model requested: {model}
 {facts_text}
 DETERMINISTIC FACTS END
 """.strip()
+
+
+def build_mode_instruction(mode: str) -> str:
+    if mode == "admin":
+        return """
+Report mode: admin.
+Audience: DBA, platform engineer, Impala admin, or support engineer.
+Use Action Cards as the main structure when present.
+Emphasize operator IDs/names, actual vs estimated rows, memory estimation gaps, bytes read/sent, spill/scratch/admission checks when mentioned in facts, per-host RowsProduced / PeakMemUsage checks when skew is suspected but not proven, and missing evidence.
+Separate proven facts from suspected issues.
+Mention logs, CM metrics, profile counters, and query profile sections only as next checks when supported by the facts or Action Cards.
+Do not say skew is proven unless analysis_facts.md contains deterministic per-host skew evidence.
+Do not claim stats are stale unless analysis_facts.md proves it.
+Do not claim exact join keys unless analysis_facts.md contains them.
+Avoid generic advice such as "optimize the query", "optimize joins", or "reduce skew".
+""".strip()
+    if mode == "user":
+        return """
+Report mode: user.
+Audience: SQL query author, analyst, or data engineer who owns the SQL.
+Use Action Cards as the main structure when present, but explain them in simpler language.
+Focus on SQL-owner actions: check table stats, check column stats for join/filter columns once identified, review whether the query creates many-to-many JOIN amplification before SORT/ANALYTIC/AGGREGATE, and reduce intermediate row explosion only if the SQL structure supports it.
+Mark query rewrites, join order/filtering changes, pre-aggregation, materialization, and stats refresh through the approved operational process as changes requiring validation.
+Explain how to verify improvement by re-running the query and comparing actual vs estimated rows, PeakMemUsage, spills, runtime, and bytes read/sent when those facts are present.
+Say what to send to admins if it still fails: query id if known, profile, analysis_facts.md, exact operator cards, referenced tables, timestamps, and admission pool if known.
+Do not tell the user to run state-changing commands directly unless analysis_facts.md explicitly allows it.
+Avoid unsupported low-level claims and vague advice such as "optimize joins" or "reduce skew".
+""".strip()
+    raise ValueError(f"unsupported report mode: {mode}")
 
 
 def report_header(facts_path: Path, facts_sha256: str, model: str) -> str:
@@ -509,6 +546,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("case_dir", help="Case directory containing analysis_facts.md")
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--mode",
+        choices=("admin", "user"),
+        default="admin",
+        help="Report audience mode. Default: %(default)s",
+    )
     parser.add_argument("--facts", default="analysis_facts.md", help="Facts file path, relative to CASE_DIR by default")
     parser.add_argument(
         "--out",
@@ -564,6 +607,7 @@ def main(argv: list[str]) -> int:
         facts_sha256=facts_sha256,
         model=args.model,
         language=args.language,
+        mode=args.mode,
     )
 
     if args.dry_prompt:
@@ -577,6 +621,7 @@ def main(argv: list[str]) -> int:
     print(f"{PROGRESS_PREFIX} facts: {facts_path}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} facts sha256: {facts_sha256}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} model: {args.model}", file=sys.stderr)
+    print(f"{PROGRESS_PREFIX} mode: {args.mode}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} resolved output path: {output_path}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} keep_alive: {args.keep_alive}", file=sys.stderr)
