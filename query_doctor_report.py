@@ -252,7 +252,7 @@ Report mode: user.
 Audience: SQL query author, analyst, or data engineer who owns the SQL.
 Use Action Cards as the main structure when present, but explain them in simpler language.
 Focus on SQL-owner actions: check table stats, check column stats for join/filter columns once identified, review whether the query creates many-to-many JOIN amplification before SORT/ANALYTIC/AGGREGATE, and reduce intermediate row explosion only if the SQL structure supports it.
-Mark query rewrites, join order/filtering changes, pre-aggregation, materialization, and stats refresh through the approved operational process as changes requiring validation.
+Mark query rewrites, join order/filtering changes, pre-aggregation, materialization, and stats maintenance through the approved operational process as changes requiring validation.
 Explain how to verify improvement by re-running the query and comparing actual vs estimated rows, PeakMemUsage, spills, runtime, and bytes read/sent when those facts are present.
 Say what to send to admins if it still fails: query id if known, profile, analysis_facts.md, exact operator cards, referenced tables, timestamps, and admission pool if known.
 The user report must include a dedicated section named "Read-only checks you can run" or "Safe checks for the SQL owner".
@@ -436,11 +436,23 @@ def enforce_user_report_requirements(text: str, facts_text: str) -> str:
         "- Admission pool / queue if present; if unavailable, say not present in analysis_facts.md.",
         "- Query Doctor report.",
     ]
-    return insert_bullets_into_section(
+    text = insert_bullets_into_section(
         text,
         "## If it still fails, send this to the admin/platform team",
         admin_package_bullets,
     )
+    validation_bullets = [
+        "- Treat query rewrites, join/filter changes, pre-aggregation, materialization, and stats maintenance through the approved operational process as changes requiring validation.",
+        "- Validate each change against the same operator evidence from the Action Cards.",
+    ]
+    text = insert_bullets_into_section(text, "## Changes requiring validation", validation_bullets)
+
+    verify_bullets = [
+        "- Re-run the query after any approved change.",
+        "- Compare actual vs estimated rows for the same Action Cards/operator IDs.",
+        "- Compare PeakMemUsage, spill counters, runtime, and bytes read/sent before and after the change when those facts are present.",
+    ]
+    return insert_bullets_into_section(text, "## How to verify improvement", verify_bullets)
 
 
 def enforce_admin_report_requirements(text: str) -> str:
