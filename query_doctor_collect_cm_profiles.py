@@ -29,6 +29,7 @@ from urllib.parse import SplitResult, parse_qsl, quote, urlencode, urljoin, urls
 DEFAULT_SINCE_HOURS = 24
 DEFAULT_LIMIT = 20
 DEFAULT_MIN_DURATION_SEC = 60
+DEFAULT_MAX_PROFILE_BYTES = 52_428_800
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
 LOCAL_CONFIG_ALLOWED_KEYS = {
     "ca_bundle",
@@ -36,6 +37,7 @@ LOCAL_CONFIG_ALLOWED_KEYS = {
     "cm_url",
     "insecure_skip_verify",
     "limit",
+    "max_profile_bytes",
     "min_duration_sec",
     "out",
     "pool",
@@ -182,6 +184,7 @@ class CollectorConfig:
     out: Path
     since_hours: int
     limit: int
+    max_profile_bytes: int
     min_duration_sec: int
     pool: str | None
     user: str | None
@@ -351,6 +354,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=non_negative_int,
         help=f"Minimum query duration in seconds. Default: {DEFAULT_MIN_DURATION_SEC}.",
     )
+    parser.add_argument(
+        "--max-profile-bytes",
+        type=positive_int,
+        help=(
+            "Maximum profile text bytes to fetch or process. "
+            f"Default: {DEFAULT_MAX_PROFILE_BYTES}."
+        ),
+    )
     parser.add_argument("--pool", help="Optional admission pool filter.")
     parser.add_argument("--user", help="Optional query user filter.")
     parser.add_argument(
@@ -496,6 +507,13 @@ def build_config(
             config_values=config_values,
             default=DEFAULT_LIMIT,
         ),
+        max_profile_bytes=int_setting(
+            "max_profile_bytes",
+            cli_value=args.max_profile_bytes,
+            config_values=config_values,
+            env_value=env.get("CM_MAX_PROFILE_BYTES"),
+            default=DEFAULT_MAX_PROFILE_BYTES,
+        ),
         min_duration_sec=int_setting(
             "min_duration_sec",
             cli_value=args.min_duration_sec,
@@ -600,7 +618,7 @@ def normalize_local_config_value(key: str, value: object) -> object:
                 f"Config field status must be one of: {', '.join(STATUS_CHOICES)}."
             )
         return normalized or None
-    if key in {"since_hours", "limit"}:
+    if key in {"since_hours", "limit", "max_profile_bytes"}:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         return value
@@ -637,10 +655,22 @@ def int_setting(
     *,
     cli_value: int | None,
     config_values: dict[str, object],
+    env_value: str | None = None,
     default: int,
 ) -> int:
-    value = cli_value if cli_value is not None else config_values.get(name, default)
-    return int(value)
+    if cli_value is not None:
+        return cli_value
+    if name in config_values:
+        return int(config_values[name])
+    if env_value is not None and env_value.strip():
+        try:
+            parsed = int(env_value.strip())
+        except ValueError as exc:
+            raise ConfigError(f"Environment value for {name} must be an integer.") from exc
+        if parsed <= 0:
+            raise ConfigError(f"Environment value for {name} must be a positive integer.")
+        return parsed
+    return default
 
 
 def bool_setting(
@@ -830,8 +860,16 @@ class CMHttpClient:
             return f"Basic {encoded}"
         return None
 
-    def get_text(self, path: str, params: dict[str, object] | None = None) -> str:
+    def get_text(
+        self,
+        path: str,
+        params: dict[str, object] | None = None,
+        *,
+        max_response_bytes: int | None = None,
+    ) -> str:
         request = self.build_request(path, params)
+        if max_response_bytes is not None and max_response_bytes <= 0:
+            raise self.sanitized_error("Maximum response bytes must be a positive integer.")
         try:
             context = self.tls_context()
             with self.opener(
@@ -839,7 +877,16 @@ class CMHttpClient:
                 timeout=self.config.timeout_sec,
                 context=context,
             ) as response:
-                payload = response.read()
+                if max_response_bytes is None:
+                    payload = response.read()
+                else:
+                    payload = response.read(max_response_bytes + 1)
+                    if len(payload) > max_response_bytes:
+                        actual_read = len(payload)
+                        raise self.sanitized_error(
+                            "CM response exceeded maximum allowed bytes: "
+                            f"actual at least {actual_read}, limit {max_response_bytes}"
+                        )
         except urllib.error.HTTPError as exc:
             raise self.sanitized_error(f"HTTP {exc.code} from CM: {exc}") from exc
         except urllib.error.URLError as exc:
@@ -982,10 +1029,18 @@ def fetch_cm_profile_text(
     client: CMHttpClient,
     filters: CMQueryFilters,
     query_id: str,
+    *,
+    max_profile_bytes: int = DEFAULT_MAX_PROFILE_BYTES,
 ) -> str:
     path, params = build_cm_profile_text_request(filters, query_id)
     try:
-        return client.get_text(path, params=params)
+        profile_text = client.get_text(
+            path,
+            params=params,
+            max_response_bytes=max_profile_bytes,
+        )
+        enforce_profile_text_size(profile_text, max_profile_bytes=max_profile_bytes)
+        return profile_text
     except CMHttpError as exc:
         config = getattr(client, "config", None)
         if isinstance(config, CMHttpConfig):
@@ -993,6 +1048,17 @@ def fetch_cm_profile_text(
         else:
             message = sanitize_adapter_error_message(exc)
         raise CMHttpError(message) from exc
+
+
+def enforce_profile_text_size(profile_text: str, *, max_profile_bytes: int) -> None:
+    if max_profile_bytes <= 0:
+        raise CMAdapterError("Maximum profile bytes must be a positive integer.")
+    actual_bytes = len(profile_text.encode("utf-8"))
+    if actual_bytes > max_profile_bytes:
+        raise CMAdapterError(
+            "CM profile text exceeded maximum allowed bytes: "
+            f"actual {actual_bytes}, limit {max_profile_bytes}"
+        )
 
 
 # TODO: Bind these adapters to exact CM API endpoints only after validating the
@@ -1400,6 +1466,7 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
     summary_path, _ = build_cm_query_summary_page_request(filters)
     print(f"Query summary endpoint: {summary_path}")
     print("Summary fetch limit: 1")
+    print(f"Max profile bytes: {config.max_profile_bytes}")
     print(tls_plan_line(config))
     print(ca_bundle_plan_line(config))
 
@@ -1430,7 +1497,12 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
         try:
             profile_path, _ = build_cm_profile_text_request(filters, config.query_id)
             print(f"Profile text endpoint: {profile_path}")
-            profile_text = fetch_cm_profile_text(client, filters, config.query_id)
+            profile_text = fetch_cm_profile_text(
+                client,
+                filters,
+                config.query_id,
+                max_profile_bytes=config.max_profile_bytes,
+            )
         except CMClientError as exc:
             print(
                 "Profile text check failed: "
@@ -1459,6 +1531,7 @@ def print_dry_run_plan(config: CollectorConfig) -> None:
     print(f"Output path: {config.out}")
     print(f"Since hours: {config.since_hours}")
     print(f"Limit: {config.limit}")
+    print(f"Max profile bytes: {config.max_profile_bytes}")
     print(f"Minimum duration seconds: {config.min_duration_sec}")
     print("Filters:")
     print(f"  pool: {config.pool or '<any>'}")
