@@ -62,6 +62,10 @@ UNSUPPORTED_RECOMMENDATION_RE = (
     "codegen",
     "llvm",
 )
+UNSUPPORTED_IF_ABSENT_RE = (
+    "packet loss",
+    "restart impala",
+)
 SPILL_SCRATCH_REWRITE_RE = re.compile(r"\b(spill|scratch|спилл|спай[лл]|спила|спайла)\b", re.IGNORECASE)
 STORAGE_WORDING_RE = re.compile(
     r"(физическ\w*\s+хранен\w*|проблем\w*\s+с\s+хранилищ\w*|хранилищ\w*)",
@@ -215,16 +219,19 @@ def report_header(facts_path: Path, facts_sha256: str, model: str) -> str:
 """
 
 
-def has_unsupported_recommendation_topic(line: str) -> bool:
+def has_unsupported_recommendation_topic(line: str, facts_text: str = "") -> bool:
     lower = line.lower()
-    return any(token in lower for token in UNSUPPORTED_RECOMMENDATION_RE)
+    if any(token in lower for token in UNSUPPORTED_RECOMMENDATION_RE):
+        return True
+    facts_lower = facts_text.lower()
+    return any(token in lower and token not in facts_lower for token in UNSUPPORTED_IF_ABSENT_RE)
 
 
 def should_rewrite_spill_storage_line(line: str) -> bool:
     return bool(SPILL_SCRATCH_REWRITE_RE.search(line) and STORAGE_WORDING_RE.search(line))
 
 
-def strip_unsupported_prose(line: str, current_section: str) -> str | None:
+def strip_unsupported_prose(line: str, current_section: str, facts_text: str = "") -> str | None:
     stripped = line.lstrip()
     is_list_item = stripped.startswith(("-", "*")) or bool(re.match(r"^\d+\.\s+", stripped))
     if should_rewrite_spill_storage_line(line):
@@ -245,14 +252,21 @@ def strip_unsupported_prose(line: str, current_section: str) -> str | None:
         return None
 
     sentences = re.split(r"(?<=[.!?])\s+", line)
-    kept = [sentence for sentence in sentences if sentence and not has_unsupported_recommendation_topic(sentence)]
+    kept = [
+        sentence
+        for sentence in sentences
+        if sentence and not has_unsupported_recommendation_topic(sentence, facts_text)
+    ]
     result = " ".join(kept).strip()
     return result or None
 
 
-def normalize_report_file(path: Path) -> None:
-    text = path.read_text(encoding="utf-8", errors="replace")
-    lines = [line for line in text.splitlines() if not line.startswith(PROGRESS_PREFIX)]
+def sanitize_report_text(report_text: str, facts_text: str) -> str:
+    """Return report text with unsupported recommendations removed.
+
+    Pure helper for tests and callers: no file I/O, no network, no Ollama calls.
+    """
+    lines = [line for line in report_text.splitlines() if not line.startswith(PROGRESS_PREFIX)]
 
     # The wrapper owns the top-level title and fingerprint. Some local models
     # still repeat them; strip a repeated model-produced header block while
@@ -278,17 +292,23 @@ def normalize_report_file(path: Path) -> None:
         if (
             not is_structure_line
             and not is_not_supported
-            and (has_unsupported_recommendation_topic(line) or should_rewrite_spill_storage_line(line))
+            and (
+                has_unsupported_recommendation_topic(line, facts_text)
+                or should_rewrite_spill_storage_line(line)
+            )
         ):
-            stripped = strip_unsupported_prose(line, current_section)
+            stripped = strip_unsupported_prose(line, current_section, facts_text)
             if stripped is None:
                 continue
             line = stripped
         normalized.append(line)
 
-    lines = normalized
+    return "\n".join(normalized).rstrip() + "\n"
 
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+def normalize_report_file(path: Path) -> None:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    path.write_text(sanitize_report_text(text, ""), encoding="utf-8")
 
 
 def validate_report_text(
