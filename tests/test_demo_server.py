@@ -173,7 +173,8 @@ def test_demo_run_analysis_uses_subprocess_list_args_and_tmp_outputs(tmp_path):
     settings = module.DemoSettings(
         config=config,
         max_profile_bytes=12345,
-        repo_dir=REPO_DIR,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
         timeout_sec=99,
     )
     calls = []
@@ -189,6 +190,8 @@ def test_demo_run_analysis_uses_subprocess_list_args_and_tmp_outputs(tmp_path):
             assert "--query-id" in cmd
             assert "--redact" in cmd
             assert "--max-profile-bytes" in cmd
+            assert "--out" in cmd
+            assert cmd[cmd.index("--out") + 1] == str(settings.corpus_dir)
             case_dir.mkdir(parents=True)
             return subprocess.CompletedProcess(
                 cmd,
@@ -221,3 +224,29 @@ def test_demo_run_analysis_uses_subprocess_list_args_and_tmp_outputs(tmp_path):
     assert result.memory_anomalies == "2"
     assert result.report_text == "## Safe report\n"
     assert len(calls) == 2
+
+
+def test_demo_rejects_collector_case_dir_outside_demo_corpus(tmp_path):
+    module = load_demo_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    outside_case_dir = tmp_path / "other-output" / "abc_def"
+    settings = module.DemoSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+
+    def fake_runner(cmd, **kwargs):
+        outside_case_dir.mkdir(parents=True)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=f"Output case directory: {outside_case_dir}\n",
+            stderr="",
+        )
+
+    with pytest.raises(module.DemoError) as excinfo:
+        module.run_demo_analysis("abc:def", "admin", False, settings, runner=fake_runner)
+
+    assert "outside the demo corpus directory" in str(excinfo.value)

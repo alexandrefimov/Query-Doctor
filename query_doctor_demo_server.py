@@ -22,6 +22,7 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_TIMEOUT_SEC = 1800
 DEFAULT_MODEL = "qwen3-coder:30b"
+DEFAULT_CORPUS_DIR = Path("cases/cm-corpus")
 LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost"}
 OUTPUT_CASE_RE = re.compile(r"^Output case directory:\s*(?P<path>.+)$", re.MULTILINE)
 
@@ -40,6 +41,7 @@ class DemoSettings:
     model: str = DEFAULT_MODEL
     timeout_sec: int = DEFAULT_TIMEOUT_SEC
     repo_dir: Path = Path(__file__).resolve().parent
+    corpus_dir: Path = DEFAULT_CORPUS_DIR
 
 
 @dataclass(frozen=True)
@@ -172,6 +174,8 @@ def run_demo_analysis(
         "--limit",
         "1",
         "--redact",
+        "--out",
+        str(settings.corpus_dir),
     ]
     if redact_identifiers:
         collector_cmd.append("--redact-identifiers")
@@ -190,6 +194,11 @@ def run_demo_analysis(
     case_dir = parse_output_case_dir(collected.stdout)
     if not case_dir.is_absolute():
         case_dir = (settings.repo_dir / case_dir).resolve()
+    expected_corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
+    try:
+        case_dir.relative_to(expected_corpus_dir)
+    except ValueError as exc:
+        raise DemoError("Collector returned a case directory outside the demo corpus directory.") from exc
     if not case_dir.exists():
         raise DemoError("Collector did not create the expected case directory.")
 
@@ -238,6 +247,12 @@ def parse_output_case_dir(stdout: str) -> Path:
     if not match:
         raise DemoError("Collector output did not include a case directory.")
     return Path(match.group("path").strip())
+
+
+def resolve_under_repo(repo_dir: Path, path: Path) -> Path:
+    if path.is_absolute():
+        return path.resolve()
+    return (repo_dir / path).resolve()
 
 
 def parse_facts_summary(facts_text: str) -> dict[str, str]:
