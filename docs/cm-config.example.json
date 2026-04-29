@@ -1,0 +1,12 @@
+{
+  "ca_bundle": "/path/to/company-ca.pem",
+  "cluster": "CLUSTER_NAME",
+  "cm_url": "https://cm.example.com:7183",
+  "limit": 1,
+  "min_duration_sec": 60,
+  "out": "cases/cm-corpus",
+  "redact": true,
+  "service": "IMPALA_SERVICE_NAME",
+  "since_hours": 1,
+  "status": "all"
+}

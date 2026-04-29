@@ -30,6 +30,38 @@ DEFAULT_SINCE_HOURS = 24
 DEFAULT_LIMIT = 20
 DEFAULT_MIN_DURATION_SEC = 60
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
+LOCAL_CONFIG_ALLOWED_KEYS = {
+    "ca_bundle",
+    "cluster",
+    "cm_url",
+    "insecure_skip_verify",
+    "limit",
+    "min_duration_sec",
+    "out",
+    "pool",
+    "redact",
+    "redact_identifiers",
+    "service",
+    "since_hours",
+    "status",
+    "query_type",
+    "user",
+}
+LOCAL_CONFIG_SECRET_KEY_PARTS = (
+    "access_token",
+    "api_key",
+    "auth",
+    "authorization",
+    "bearer",
+    "client_secret",
+    "credential",
+    "password",
+    "passwd",
+    "pwd",
+    "refresh_token",
+    "secret",
+    "token",
+)
 CM_API_VERSION = "v32"
 CM_QUERY_SUMMARIES_PATH = (
     f"/api/{CM_API_VERSION}/clusters/{{clusterName}}/services/{{serviceName}}/impalaQueries"
@@ -158,6 +190,7 @@ class CollectorConfig:
     dry_run: bool
     preflight: bool
     redact: bool
+    redact_identifiers: bool
     insecure_skip_verify: bool
     ca_bundle: str | None
     credentials: CredentialSummary
@@ -286,41 +319,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument(
+        "--config",
+        help=(
+            "Local JSON config file with non-secret CM collector settings. "
+            "Credentials must still come from environment variables."
+        ),
+    )
+    parser.add_argument(
         "--cm-url",
         help="Cloudera Manager base URL. May also be provided with CM_URL.",
     )
-    parser.add_argument("--cluster", required=True, help="Cloudera Manager cluster name.")
-    parser.add_argument("--service", required=True, help="Impala service name.")
+    parser.add_argument("--cluster", help="Cloudera Manager cluster name.")
+    parser.add_argument("--service", help="Impala service name.")
     parser.add_argument(
         "--out",
-        required=True,
         help="Generated corpus output directory, for example cases/cm-corpus.",
     )
     parser.add_argument(
         "--since-hours",
         type=positive_int,
-        default=DEFAULT_SINCE_HOURS,
-        help="Look back this many hours. Default: %(default)s.",
+        help=f"Look back this many hours. Default: {DEFAULT_SINCE_HOURS}.",
     )
     parser.add_argument(
         "--limit",
         type=positive_int,
-        default=DEFAULT_LIMIT,
-        help="Maximum number of query profiles to collect later. Default: %(default)s.",
+        help=f"Maximum number of query profiles to collect later. Default: {DEFAULT_LIMIT}.",
     )
     parser.add_argument(
         "--min-duration-sec",
         type=non_negative_int,
-        default=DEFAULT_MIN_DURATION_SEC,
-        help="Minimum query duration in seconds. Default: %(default)s.",
+        help=f"Minimum query duration in seconds. Default: {DEFAULT_MIN_DURATION_SEC}.",
     )
     parser.add_argument("--pool", help="Optional admission pool filter.")
     parser.add_argument("--user", help="Optional query user filter.")
     parser.add_argument(
         "--status",
         choices=STATUS_CHOICES,
-        default="all",
-        help="Optional query status filter. Default: %(default)s.",
+        help="Optional query status filter. Default: all.",
     )
     parser.add_argument("--query-id", help="Optional exact query id filter.")
     parser.add_argument("--query-type", help="Optional query type filter.")
@@ -340,7 +375,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--redact",
         action="store_true",
+        default=None,
         help="Plan for future redaction of sensitive profile content.",
+    )
+    parser.add_argument(
+        "--no-redact",
+        action="store_false",
+        dest="redact",
+        help="Disable future redaction when a local config enables it.",
+    )
+    parser.add_argument(
+        "--redact-identifiers",
+        action="store_true",
+        default=None,
+        help="Plan for future redaction of database/table-like identifiers.",
+    )
+    parser.add_argument(
+        "--no-redact-identifiers",
+        action="store_false",
+        dest="redact_identifiers",
+        help="Disable identifier redaction when a local config enables it.",
     )
     parser.add_argument(
         "--ca-bundle",
@@ -352,7 +406,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--insecure-skip-verify",
         action="store_true",
+        default=None,
         help="UNSAFE: plan to disable TLS certificate verification when API calls are implemented.",
+    )
+    parser.add_argument(
+        "--verify-tls",
+        action="store_false",
+        dest="insecure_skip_verify",
+        help="Use TLS certificate verification when a local config disables it.",
     )
     return parser.parse_args(argv)
 
@@ -381,13 +442,36 @@ def build_config(
     env = os.environ if env is None else env
     cwd = Path.cwd() if cwd is None else cwd
     repo_root = Path(__file__).resolve().parent if repo_root is None else repo_root
+    config_values = load_local_config(args.config, cwd=cwd) if args.config else {}
 
-    cm_url = (args.cm_url or env.get("CM_URL") or "").strip()
+    cm_url = string_setting(
+        "cm_url",
+        cli_value=args.cm_url,
+        config_values=config_values,
+        env_value=env.get("CM_URL"),
+    )
     if not cm_url:
         raise ConfigError("Missing --cm-url or CM_URL.")
 
-    ca_bundle = (args.ca_bundle or env.get("CM_CA_BUNDLE") or "").strip() or None
-    out = validate_output_path(args.out, cwd=cwd, repo_root=repo_root)
+    cluster = string_setting("cluster", cli_value=args.cluster, config_values=config_values)
+    if not cluster:
+        raise ConfigError("Missing --cluster or config field cluster.")
+
+    service = string_setting("service", cli_value=args.service, config_values=config_values)
+    if not service:
+        raise ConfigError("Missing --service or config field service.")
+
+    out_value = string_setting("out", cli_value=args.out, config_values=config_values)
+    if not out_value:
+        raise ConfigError("Missing --out or config field out.")
+
+    ca_bundle = string_setting(
+        "ca_bundle",
+        cli_value=args.ca_bundle,
+        config_values=config_values,
+        env_value=env.get("CM_CA_BUNDLE"),
+    )
+    out = validate_output_path(out_value, cwd=cwd, repo_root=repo_root)
     credentials = CredentialSummary(
         has_username=bool(env.get("CM_USERNAME")),
         has_password=bool(env.get("CM_PASSWORD")),
@@ -396,24 +480,179 @@ def build_config(
 
     return CollectorConfig(
         cm_url=cm_url,
-        cluster=args.cluster,
-        service=args.service,
+        cluster=cluster,
+        service=service,
         out=out,
-        since_hours=args.since_hours,
-        limit=args.limit,
-        min_duration_sec=args.min_duration_sec,
-        pool=args.pool,
-        user=args.user,
-        status=args.status,
+        since_hours=int_setting(
+            "since_hours",
+            cli_value=args.since_hours,
+            config_values=config_values,
+            default=DEFAULT_SINCE_HOURS,
+        ),
+        limit=int_setting(
+            "limit",
+            cli_value=args.limit,
+            config_values=config_values,
+            default=DEFAULT_LIMIT,
+        ),
+        min_duration_sec=int_setting(
+            "min_duration_sec",
+            cli_value=args.min_duration_sec,
+            config_values=config_values,
+            default=DEFAULT_MIN_DURATION_SEC,
+        ),
+        pool=string_setting("pool", cli_value=args.pool, config_values=config_values),
+        user=string_setting("user", cli_value=args.user, config_values=config_values),
+        status=string_setting(
+            "status",
+            cli_value=args.status,
+            config_values=config_values,
+            default="all",
+        )
+        or "all",
         query_id=args.query_id,
-        query_type=args.query_type,
+        query_type=string_setting(
+            "query_type",
+            cli_value=args.query_type,
+            config_values=config_values,
+        ),
         dry_run=args.dry_run,
         preflight=args.preflight,
-        redact=args.redact,
-        insecure_skip_verify=args.insecure_skip_verify,
+        redact=bool_setting(
+            "redact",
+            cli_value=args.redact,
+            config_values=config_values,
+            default=False,
+        ),
+        redact_identifiers=bool_setting(
+            "redact_identifiers",
+            cli_value=args.redact_identifiers,
+            config_values=config_values,
+            default=False,
+        ),
+        insecure_skip_verify=bool_setting(
+            "insecure_skip_verify",
+            cli_value=args.insecure_skip_verify,
+            config_values=config_values,
+            default=False,
+        ),
         ca_bundle=ca_bundle,
         credentials=credentials,
     )
+
+
+def load_local_config(config_path: str, *, cwd: Path) -> dict[str, object]:
+    path = Path(config_path).expanduser()
+    if not path.is_absolute():
+        path = cwd / path
+
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"Could not read config file {path}: {exc}") from exc
+
+    try:
+        raw = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"Invalid JSON in config file {path}: {exc.msg}") from exc
+    if not isinstance(raw, dict):
+        raise ConfigError(f"Config file {path} must contain a JSON object.")
+
+    normalized: dict[str, object] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            raise ConfigError("Config file keys must be strings.")
+        validate_local_config_key(key)
+        normalized[key] = normalize_local_config_value(key, value)
+    return normalized
+
+
+def validate_local_config_key(key: str) -> None:
+    key_lower = key.lower()
+    if any(part in key_lower for part in LOCAL_CONFIG_SECRET_KEY_PARTS):
+        raise ConfigError(
+            f"Config field {key} looks secret-bearing; use environment variables for credentials."
+        )
+    if key not in LOCAL_CONFIG_ALLOWED_KEYS:
+        raise ConfigError(f"Unknown config field {key}.")
+
+
+def normalize_local_config_value(key: str, value: object) -> object:
+    if value is None:
+        return None
+    if key in {
+        "ca_bundle",
+        "cluster",
+        "cm_url",
+        "out",
+        "pool",
+        "query_type",
+        "service",
+        "status",
+        "user",
+    }:
+        if not isinstance(value, str):
+            raise ConfigError(f"Config field {key} must be a string.")
+        normalized = value.strip()
+        if key == "status" and normalized not in STATUS_CHOICES:
+            raise ConfigError(
+                f"Config field status must be one of: {', '.join(STATUS_CHOICES)}."
+            )
+        return normalized or None
+    if key in {"since_hours", "limit"}:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ConfigError(f"Config field {key} must be a positive integer.")
+        return value
+    if key == "min_duration_sec":
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
+        return value
+    if key in {"insecure_skip_verify", "redact", "redact_identifiers"}:
+        if not isinstance(value, bool):
+            raise ConfigError(f"Config field {key} must be true or false.")
+        return value
+    raise ConfigError(f"Unknown config field {key}.")
+
+
+def string_setting(
+    name: str,
+    *,
+    cli_value: str | None,
+    config_values: dict[str, object],
+    env_value: str | None = None,
+    default: str | None = None,
+) -> str | None:
+    for value in (cli_value, config_values.get(name), env_value, default):
+        if value is None:
+            continue
+        normalized = str(value).strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def int_setting(
+    name: str,
+    *,
+    cli_value: int | None,
+    config_values: dict[str, object],
+    default: int,
+) -> int:
+    value = cli_value if cli_value is not None else config_values.get(name, default)
+    return int(value)
+
+
+def bool_setting(
+    name: str,
+    *,
+    cli_value: bool | None,
+    config_values: dict[str, object],
+    default: bool,
+) -> bool:
+    if cli_value is not None:
+        return bool(cli_value)
+    value = config_values.get(name, default)
+    return bool(value)
 
 
 def build_http_config(
@@ -1217,6 +1456,7 @@ def print_dry_run_plan(config: CollectorConfig) -> None:
     print(f"  query_id: {config.query_id or '<any>'}")
     print(f"  query_type: {config.query_type or '<any>'}")
     print(f"Redaction: {'enabled' if config.redact else 'disabled'}")
+    print(f"Identifier redaction: {'enabled' if config.redact_identifiers else 'disabled'}")
     print(tls_plan_line(config))
     print(ca_bundle_plan_line(config))
     print(f"Credentials: {config.credentials.display()}")
