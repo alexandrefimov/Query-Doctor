@@ -582,6 +582,99 @@ def md_escape(value: str) -> str:
     return value.replace("|", "\\|")
 
 
+def rel_path(path: Path, base: Path) -> str:
+    try:
+        return path.relative_to(base).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def context_file_status(path: Path, case_dir: Path) -> dict[str, Any]:
+    return {
+        "available": path.exists(),
+        "path": rel_path(path, case_dir),
+    }
+
+
+def context_table_file_status(context_dir: Path, case_dir: Path, table: str) -> dict[str, dict[str, Any]]:
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", table).strip("._") or "table"
+    tables_dir = context_dir / "tables"
+    return {
+        "SHOW CREATE TABLE": context_file_status(tables_dir / f"{safe_name}.show_create.sql", case_dir),
+        "SHOW TABLE STATS": context_file_status(tables_dir / f"{safe_name}.table_stats.txt", case_dir),
+        "SHOW COLUMN STATS": context_file_status(tables_dir / f"{safe_name}.column_stats.txt", case_dir),
+        "DESCRIBE FORMATTED": context_file_status(tables_dir / f"{safe_name}.describe_formatted.txt", case_dir),
+    }
+
+
+def read_referenced_context_tables(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    tables: list[str] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped not in tables:
+            tables.append(stripped)
+    return tables
+
+
+def extract_context_warnings(summary_path: Path) -> list[str]:
+    if not summary_path.exists():
+        return []
+    lines: list[str] = []
+    in_warnings = False
+    for line in summary_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("## "):
+            in_warnings = "warning" in stripped.lower() or "failure" in stripped.lower()
+            continue
+        lower = stripped.lower()
+        if in_warnings or "warning" in lower or "failed" in lower or "failure" in lower:
+            lines.append(compact_line(stripped.lstrip("- ")))
+    return dedupe_lines(lines)
+
+
+def dedupe_lines(lines: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in lines:
+        if line in seen:
+            continue
+        seen.add(line)
+        out.append(line)
+    return out
+
+
+def collect_impala_context(case_dir: Path) -> dict[str, Any] | None:
+    context_dir = case_dir / "impala_context"
+    summary_path = context_dir / "impala_context.md"
+    if not summary_path.exists():
+        return None
+
+    original_query_path = context_dir / "original_query.sql"
+    referenced_tables_path = context_dir / "referenced_tables.txt"
+    explain_path = context_dir / "explain.txt"
+    tables = read_referenced_context_tables(referenced_tables_path)
+
+    return {
+        "context_dir": rel_path(context_dir, case_dir),
+        "summary": context_file_status(summary_path, case_dir),
+        "original_sql": context_file_status(original_query_path, case_dir),
+        "referenced_tables_file": context_file_status(referenced_tables_path, case_dir),
+        "referenced_tables": tables,
+        "explain": context_file_status(explain_path, case_dir),
+        "table_metadata": {
+            table: context_table_file_status(context_dir, case_dir, table)
+            for table in tables
+        },
+        "warnings": extract_context_warnings(summary_path),
+    }
+
+
 def op_label(op: OperatorFact) -> str:
     flags: list[str] = []
     if op.join_kind:
@@ -1013,6 +1106,55 @@ def render_verbose_evidence(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def availability_label(item: dict[str, Any]) -> str:
+    return "available" if item.get("available") else "missing"
+
+
+def render_impala_context(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("impala_context")
+    if not context:
+        return []
+
+    lines = ["## Impala Context", ""]
+    original_sql = context["original_sql"]
+    lines.extend(
+        [
+            "### Original SQL",
+            "",
+            f"- present: {'yes' if original_sql['available'] else 'no'}",
+            f"- path: `{original_sql['path']}`",
+            "",
+            "### Referenced Tables",
+            "",
+        ]
+    )
+
+    tables = context.get("referenced_tables") or []
+    if tables:
+        lines.extend(f"- `{table}`" for table in tables)
+    else:
+        lines.append("- none parsed")
+    lines.append("")
+
+    lines.extend(["### Collected Metadata", ""])
+    explain = context["explain"]
+    lines.append(f"- EXPLAIN: {availability_label(explain)} (`{explain['path']}`)")
+    for table in tables:
+        lines.append(f"- `{table}`:")
+        for command, status in context["table_metadata"].get(table, {}).items():
+            lines.append(f"  - {command}: {availability_label(status)} (`{status['path']}`)")
+    lines.append("")
+
+    lines.extend(["### Collector Warnings / Failures", ""])
+    warnings = context.get("warnings") or []
+    if warnings:
+        lines.extend(f"- {warning}" for warning in warnings)
+    else:
+        lines.append("- none found in collector summary")
+    lines.append("")
+    return lines
+
+
 def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False) -> str:
     totals = analysis["totals"]
     lines: list[str] = []
@@ -1042,6 +1184,8 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_operator_table("Top operators by time", analysis["top_operators_by_time"])
     lines += render_operator_table("Actual rows vs estimated rows anomalies", analysis["cardinality_anomalies"], max_table_rows)
     lines += render_operator_table("Peak memory vs estimated memory anomalies", analysis["memory_anomalies"], max_table_rows)
+
+    lines += render_impala_context(analysis)
 
     lines += render_findings(analysis, verbose)
 
@@ -1116,6 +1260,7 @@ def main(argv: list[str]) -> int:
 
     text = digest_path.read_text(encoding="utf-8", errors="replace")
     analysis = analyze(text, args)
+    analysis["impala_context"] = collect_impala_context(digest_path.parent)
 
     if args.fail_on_empty and not analysis["operators"]:
         print("ERROR: no operators parsed from digest", file=sys.stderr)
