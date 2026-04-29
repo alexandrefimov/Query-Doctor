@@ -87,6 +87,124 @@ STATS_FRESHNESS_MISSING_EVIDENCE = (
     "- Свежесть статистики таблиц/столбцов не подтверждена в analysis_facts.md; "
     "проверяйте ее только через read-only metadata."
 )
+ZERO_CARDINALITY_NOT_SUPPORTED_BULLET = (
+    "- No analyzer-supported cardinality anomaly was found. Do not claim cardinality "
+    "underestimation unless analysis_facts.md contains a cardinality anomaly."
+)
+ZERO_CARDINALITY_UNSUPPORTED_CLAIMS = (
+    (
+        "cardinality underestimation",
+        re.compile(r"\bcardinality\s+underestimation\b", re.IGNORECASE),
+    ),
+    (
+        "underestimation of cardinality",
+        re.compile(r"\bunderestimation\s+of\s+cardinality\b", re.IGNORECASE),
+    ),
+    (
+        "underestimated cardinality",
+        re.compile(r"\bunderestimated\s+cardinality\b", re.IGNORECASE),
+    ),
+    (
+        "actual rows exceed estimates",
+        re.compile(
+            r"\bactual\s+rows\s+(?:exceed|exceeded|are\s+higher\s+than|were\s+higher\s+than)\s+(?:the\s+)?estimat",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "estimated rows too low",
+        re.compile(r"\bestimated\s+rows\s+(?:(?:are|were)\s+)?too\s+low\b", re.IGNORECASE),
+    ),
+    (
+        "estimates too low",
+        re.compile(
+            r"\b(?:estimates|row\s+estimates|optimizer\s+estimates)\s+(?:(?:are|were)\s+)?too\s+low\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "low estimates caused row growth",
+        re.compile(r"\blow\s+estimates?\s+caused\s+row\s+growth\b", re.IGNORECASE),
+    ),
+    (
+        "trace row growth from low estimates",
+        re.compile(r"\btrace\s+row\s+growth\s+from\s+low\s+estimates?\b", re.IGNORECASE),
+    ),
+    (
+        "stats are stale",
+        re.compile(r"\bstats\s+are\s+stale\b", re.IGNORECASE),
+    ),
+    (
+        "stale statistics",
+        re.compile(r"\bstale\s+statistics\b", re.IGNORECASE),
+    ),
+    (
+        "hot keys exist",
+        re.compile(r"\bhot\s+keys\s+exist\b", re.IGNORECASE),
+    ),
+    (
+        "skew is proven",
+        re.compile(r"\bskew\s+is\s+proven\b", re.IGNORECASE),
+    ),
+    (
+        "Russian cardinality underestimation",
+        re.compile(r"недооцен\w+\s+(?:количеств\w+\s+строк|строк|cardinality)", re.IGNORECASE),
+    ),
+    (
+        "Russian actual rows exceed estimates",
+        re.compile(
+            r"(?:фактическ\w+\s+)?(?:количеств\w+\s+)?строк[^\n.]{0,80}(?:превыш|больше|выше)[^\n.]{0,80}оцен",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Russian row estimates too low",
+        re.compile(
+            r"оцен\w+\s+(?:строк|количеств\w+\s+строк)[^\n.]{0,80}(?:слишком\s+низк|занижен)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Russian facts show row underestimation",
+        re.compile(
+            r"факты\s+показывают[^\n.]{0,120}(?:строк[^\n.]{0,80}(?:больше|превыш|выше)[^\n.]{0,80}оцен|недооцен\w+)",
+            re.IGNORECASE,
+        ),
+    ),
+)
+ZERO_CARDINALITY_NEGATION_CONTEXT_RE = re.compile(
+    r"("
+    r"\bdo\s+not\s+claim\b|"
+    r"\bnot\s+supported\b|"
+    r"\bis\s+not\s+supported\b|"
+    r"\bis\s+not\s+established\b|"
+    r"\bnot\s+established\b|"
+    r"\bno\s+analyzer-supported\b|"
+    r"\bno\s+evidence\s+(?:of|that|for)\b|"
+    r"\bno\s+proof\s+(?:of|that|for)\b|"
+    r"\bdid\s+not\s+find\b|"
+    r"\bнет\s+доказ\w*|"
+    r"\bнет\s+данн\w*|"
+    r"\bне\s+подтверж\w*|"
+    r"\bне\s+поддерж\w*|"
+    r"\bне\s+явля\w*\s+подтверж\w*"
+    r")",
+    re.IGNORECASE,
+)
+ZERO_CARDINALITY_CONTRAST_RE = re.compile(
+    r"\b(?:but|however|still|nevertheless|yet|though|although)\b|\b(?:но|однако)\b",
+    re.IGNORECASE,
+)
+ZERO_CARDINALITY_CLAUSE_BREAK_RE = re.compile(r"[,;.!?]\s+")
+ZERO_CARDINALITY_CONTRASTED_CAUSE_RE = re.compile(
+    r"[,;]\s*(?:but|however|still|nevertheless|yet|though|although|но|однако)\b"
+    r"[^.!?\n]{0,120}\b(?:cause|root\s+cause|причин\w*)\b",
+    re.IGNORECASE,
+)
+ZERO_CARDINALITY_RUSSIAN_NEGATION_BRIDGE_RE = re.compile(
+    r"^\s+(?:того|о\s+том),\s+что\b",
+    re.IGNORECASE,
+)
 
 
 def resolve_case_file(case_dir: Path, value: str) -> Path:
@@ -126,6 +244,47 @@ def read_required_facts(path: Path) -> tuple[str, str]:
     return text, hashlib.sha256(data).hexdigest()
 
 
+def facts_cardinality_anomaly_count(facts_text: str) -> int | None:
+    match = re.search(
+        r"^\s*(?:[-*]\s*)?Cardinality anomalies\s*:\s*(?P<count>\d+)\s*$",
+        facts_text,
+        re.MULTILINE,
+    )
+    if not match:
+        return None
+    return int(match.group("count"))
+
+
+def build_cardinality_contract(facts_text: str) -> str:
+    count = facts_cardinality_anomaly_count(facts_text)
+    if count == 0:
+        return """
+Cardinality evidence contract:
+- analysis_facts.md says Cardinality anomalies: 0.
+- No analyzer-supported cardinality anomaly was found.
+- Do not claim cardinality underestimation, row-estimate underestimation, stale stats, hot keys, or proven skew.
+- Do not say actual rows exceed estimates, estimated rows are too low, or low estimates caused row growth.
+- Table and column stats may be mentioned only as read-only validation checks, not as a proven root cause.
+- The report must explicitly say that cardinality underestimation is not supported by extracted facts.
+- Required safe Russian wording: "Анализатор не обнаружил подтверждённой аномалии кардинальности."
+- In Russian, forbidden positive claim wording includes "недооценка кардинальности", "фактические строки превышают оценку", "количество строк превышает оценки", "оценки были слишком низкими", "устаревшая статистика стала причиной", "перекос доказан", and "hot keys доказаны".
+- Do not put the English phrase "cardinality underestimation" in parentheses after a Russian sentence unless that exact matched phrase is itself clearly negated as unsupported.
+- For stats checks, write: "Проверить статистику как read-only диагностику; это не является доказанной причиной по текущему analysis_facts.md."
+""".strip()
+    if count and count > 0:
+        return """
+Cardinality evidence contract:
+- analysis_facts.md contains one or more cardinality anomalies.
+- Cardinality wording must use only the operator IDs, row counts, ratios, and evidence present in analysis_facts.md.
+- Do not invent join keys, table names, hot keys, or stale statistics.
+""".strip()
+    return """
+Cardinality evidence contract:
+- Use cardinality wording only when analysis_facts.md explicitly contains cardinality anomaly evidence.
+- If cardinality evidence is absent or unclear, say it is not supported by extracted facts.
+""".strip()
+
+
 def build_prompt(
     *,
     facts_text: str,
@@ -137,6 +296,7 @@ def build_prompt(
 ) -> str:
     language_instruction = "Ответ должен быть на русском языке." if language == "ru" else f"Language: {language}."
     mode_instruction = build_mode_instruction(mode)
+    cardinality_contract = build_cardinality_contract(facts_text)
 
     return f"""
 You are only a report writer.
@@ -156,13 +316,15 @@ If evidence is missing, say it is missing.
 
 {mode_instruction}
 
+{cardinality_contract}
+
 Engineering interpretation rules:
 - The report must distinguish cardinality mismatch from memory mismatch.
 - Cardinality mismatch means actual rows are much larger than estimated rows.
 - Memory mismatch means peak memory is larger than estimated peak memory.
 - Do not use operators with mem ratio below 1.0 as evidence for memory underestimation.
 - If an operator has rows ratio above threshold but mem ratio below 1.0, use it only as cardinality/intermediate-row evidence, not memory-underestimation evidence.
-- The main root cause wording must explicitly mention actual rows in millions vs estimated rows around 10.55K for dominant HASH JOIN / SORT / ANALYTIC operators when those facts are present.
+- The main root cause wording may mention actual rows in millions vs estimated rows around 10.55K only when analysis_facts.md contains that cardinality anomaly evidence.
 - Distinguish "large intermediate/exchange traffic" from external network instability.
 - Do not recommend checking external network based only on TotalBytesSent.
 - TotalBytesSent means intermediate/exchange data volume unless facts explicitly say network fault.
@@ -191,7 +353,8 @@ You must write only the report body, starting with exactly these headings, in th
 ## Что проверить следующим запуском
 
 Grounding rules for recommendations:
-- Good: Проверить table stats and partition stats for JOIN inputs, because parsed facts show actual rows >> estimated rows.
+- Good when cardinality anomalies are present: Проверить table stats and partition stats for JOIN inputs, because parsed facts show actual rows >> estimated rows.
+- Good when Cardinality anomalies: 0: Проверить table/column stats only as read-only validation checks, not as a claimed cause.
 - Good: Проверить порядок join / условия join / возможность предварительной фильтрации данных до analytic/sort.
 - Good: Снизить объём intermediate rows перед SORT/ANALYTIC.
 - Good: Проверить skew only if facts contain skew evidence; otherwise put it under "Что проверить следующим запуском", not as a cause.
@@ -207,17 +370,17 @@ Report writing guidance:
 - Be concise and engineering-focused.
 - Separate deterministic facts from hypotheses.
 - Quote concrete operators and ratios only when they appear in the facts.
-- In "Главная причина замедления", name cardinality estimate errors as the primary cause if facts show actual rows in millions versus estimated rows around 10.55K.
+- In "Главная причина замедления", name cardinality estimate errors as the primary cause only if facts show actual rows in millions versus estimated rows around 10.55K.
 - In "Подтверждающие факты", group facts separately: cardinality mismatch, memory mismatch, expensive operators, intermediate/exchange traffic.
 - In "Что усиливает проблему", discuss SORT/ANALYTIC and memory underestimation only where the facts support them.
 - In "Что усиливает проблему", do not call EXCHANGE a main memory bottleneck if its absolute peak memory is small; describe it as intermediate/exchange data volume only.
 - In "Что НЕ подтверждается фактами", explicitly carry over unsupported conclusions from facts.
 - In "Практические рекомендации", explain why each recommendation is supported by facts.
-- "Практические рекомендации" must include these concrete, fact-tied actions:
-  1. Проверить table stats and partition stats for JOIN inputs; do not say they are stale or missing unless analysis_facts.md proves it.
-  2. Найти место, где cardinality grows from estimated ~10.55K to millions before dominant HASH JOIN operators.
-  3. Reduce intermediate rows before SORT/ANALYTIC.
-  4. Проверить ключи join, фильтры join, CTE, DISTINCT, LEFT OUTER JOIN и LEFT ANTI JOIN.
+- "Практические рекомендации" must include concrete, fact-tied actions:
+  1. Проверить table stats and partition stats only as checks; do not say they are stale or missing unless analysis_facts.md proves it.
+  2. If cardinality anomalies are present, find where cardinality grows from low estimates to millions before dominant operators. If Cardinality anomalies: 0, do not include this as a finding.
+  3. Reduce intermediate rows before SORT/ANALYTIC only when facts support expensive SORT/ANALYTIC or large intermediate/exchange traffic.
+  4. Проверить ключи join, фильтры join, CTE, DISTINCT, LEFT OUTER JOIN и LEFT ANTI JOIN as validation checks only when join/filter keys are available or can be identified.
   5. Put skew/spill checks under "Что проверить следующим запуском" unless facts explicitly establish them.
 
 DETERMINISTIC FACTS BEGIN
@@ -262,7 +425,7 @@ Do not invent table names. If referenced tables are missing from analysis_facts.
 Do not invent join/filter column names. If join/filter columns are not known, say they need to be identified from SQL/EXPLAIN/profile first.
 If referenced tables are missing, the read-only checks section itself must say that referenced table names are not present in analysis_facts.md and that the SQL/profile/context is needed before running table-specific SHOW TABLE STATS.
 If join/filter columns are missing, the read-only checks section itself must say that join/filter columns are not present in analysis_facts.md and must be identified from SQL/EXPLAIN/profile before running column-specific SHOW COLUMN STATS.
-Do not say facts indicate stale or missing stats unless analysis_facts.md explicitly proves that. Say table/column stats should be checked because severe cardinality underestimation was detected.
+Do not say facts indicate stale or missing stats unless analysis_facts.md explicitly proves that. If Cardinality anomalies: 0, table/column stats are read-only validation checks only, not a proven cardinality-underestimation cause.
 The user report must include a dedicated section named "If it still fails, send this to the admin/platform team".
 In that section, explicitly list: query id if available in analysis_facts.md, original profile, analysis_facts.md, Action Cards/operator IDs, referenced tables if present, timestamps if available, admission pool / queue if available, and report generated by Query Doctor.
 Do not invent query id, timestamps, pool names, or table names. If unavailable, say "not present in analysis_facts.md".
@@ -409,6 +572,69 @@ def insert_bullets_into_section(text: str, heading: str, bullets: list[str]) -> 
     return text[:next_heading].rstrip() + insertion + "\n" + text[next_heading:]
 
 
+def is_negated_zero_cardinality_match(line: str, match_start: int) -> bool:
+    suffix = line[match_start:]
+    next_break = ZERO_CARDINALITY_CLAUSE_BREAK_RE.search(suffix)
+    clause_end = match_start + next_break.start() if next_break else len(line)
+    clause = line[:clause_end]
+
+    match_text_prefix = clause[:match_start]
+    match_text_suffix = clause[match_start:]
+    negation_area = f"{match_text_prefix} {match_text_suffix[:120]}"
+
+    negations = list(ZERO_CARDINALITY_NEGATION_CONTEXT_RE.finditer(negation_area))
+    if not negations:
+        return False
+
+    after_negation = negation_area[negations[-1].end() :]
+    after_negation = ZERO_CARDINALITY_RUSSIAN_NEGATION_BRIDGE_RE.sub("", after_negation, count=1)
+    if ZERO_CARDINALITY_CLAUSE_BREAK_RE.search(after_negation):
+        return False
+    if ZERO_CARDINALITY_CONTRAST_RE.search(after_negation):
+        return False
+    if ZERO_CARDINALITY_CONTRASTED_CAUSE_RE.search(line[match_start:]):
+        return False
+    return True
+
+
+def find_zero_cardinality_unsupported_claims(report_text: str) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for line in report_text.splitlines():
+        for label, rx in ZERO_CARDINALITY_UNSUPPORTED_CLAIMS:
+            for match in rx.finditer(line):
+                if is_negated_zero_cardinality_match(line, match.start()):
+                    continue
+                if label not in seen:
+                    labels.append(label)
+                    seen.add(label)
+                break
+    return labels
+
+
+def validate_report_against_facts(report_text: str, facts_text: str) -> list[str]:
+    errors: list[str] = []
+    cardinality_count = facts_cardinality_anomaly_count(facts_text)
+    if cardinality_count == 0:
+        claims = find_zero_cardinality_unsupported_claims(report_text)
+        if claims:
+            errors.append(
+                "report contains unsupported cardinality/stats/skew claim(s) while "
+                f"analysis_facts.md says Cardinality anomalies: 0: {', '.join(claims)}"
+            )
+    return errors
+
+
+def enforce_report_fact_requirements(text: str, facts_text: str) -> str:
+    if facts_cardinality_anomaly_count(facts_text) == 0:
+        text = insert_bullets_into_section(
+            text,
+            "## Что НЕ подтверждается фактами",
+            [ZERO_CARDINALITY_NOT_SUPPORTED_BULLET],
+        )
+    return text
+
+
 def enforce_user_report_requirements(text: str, facts_text: str) -> str:
     read_only_bullets = []
     if "SHOW TABLE STATS" not in text:
@@ -474,12 +700,14 @@ def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admi
         text = enforce_user_report_requirements(text, facts_text)
     if mode == "admin":
         text = enforce_admin_report_requirements(text)
+    text = enforce_report_fact_requirements(text, facts_text)
     path.write_text(text, encoding="utf-8")
 
 
 def validate_report_text(
     text: str,
     *,
+    facts_text: str = "",
     min_chars: int = MIN_REPORT_CHARS,
     min_sections: int = MIN_MARKDOWN_SECTIONS,
 ) -> list[str]:
@@ -507,6 +735,9 @@ def validate_report_text(
             f"expected exactly one '# Query Doctor Report' heading, found {section_lines.count('# Query Doctor Report')}"
         )
 
+    if facts_text:
+        errors.extend(validate_report_against_facts(text, facts_text))
+
     return errors
 
 
@@ -516,9 +747,9 @@ def partial_report_path(output_path: Path) -> Path:
     return output_path.with_name(f"{output_path.name}.partial.md")
 
 
-def validate_report_file(output_path: Path) -> list[str]:
+def validate_report_file(output_path: Path, *, facts_text: str = "") -> list[str]:
     text = output_path.read_text(encoding="utf-8", errors="replace")
-    return validate_report_text(text)
+    return validate_report_text(text, facts_text=facts_text)
 
 
 def move_failed_report_to_partial(output_path: Path) -> Path:
@@ -776,7 +1007,7 @@ def main(argv: list[str]) -> int:
     normalize_report_file(output_path, facts_text=facts_text, mode=args.mode)
 
     if not args.no_validate:
-        validation_errors = validate_report_file(output_path)
+        validation_errors = validate_report_file(output_path, facts_text=facts_text)
         if validation_errors:
             partial_path = move_failed_report_to_partial(output_path)
             print(f"\n{PROGRESS_PREFIX} ERROR: generated report failed validation", file=sys.stderr)

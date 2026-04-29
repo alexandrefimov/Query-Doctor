@@ -125,6 +125,60 @@ TOTAL_COUNTER_ALIASES = {
     "TotalTime": ["TotalTime", "Total Time"],
 }
 
+CM_PROFILE_TEXT_FIELDS = ("details", "profile", "profileText", "text")
+CM_RUNTIME_PROFILE_MARKERS = (
+    "Runtime Profile",
+    "ExecSummary",
+    "Averaged Fragment",
+    "PLAN",
+    "HDFS_SCAN_NODE",
+    "HASH_JOIN_NODE",
+    "RowsProduced",
+)
+
+ESTIMATED_ROWS_ONLY_RE = re.compile(
+    rf"\bcardinality\s*[:=]\s*(?P<estimated>{ROW_NUMBER})\b",
+    flags=re.IGNORECASE,
+)
+
+RAW_NODE_HEADER_RE = re.compile(
+    r"^\s*(?P<node>[A-Z][A-Z0-9_]+_NODE)\s+\(id=(?P<id>\d{1,3})\)",
+)
+
+RAW_NODE_NAME_MAP = {
+    "ANALYTIC_EVAL_NODE": "ANALYTIC",
+    "AGGREGATE_NODE": "AGGREGATE",
+    "AGGREGATION_NODE": "AGGREGATE",
+    "EXCHANGE_NODE": "EXCHANGE",
+    "HASH_JOIN_NODE": "HASH JOIN",
+    "HBASE_SCAN_NODE": "HBASE SCAN",
+    "HDFS_SCAN_NODE": "HDFS SCAN",
+    "KUDU_SCAN_NODE": "KUDU SCAN",
+    "NESTED_LOOP_JOIN_NODE": "NESTED LOOP JOIN",
+    "SCAN_NODE": "SCAN",
+    "SELECT_NODE": "SELECT",
+    "SORT_NODE": "SORT",
+    "TOPN_NODE": "TOP-N",
+    "UNION_NODE": "UNION",
+}
+
+RAW_ROW_COUNTER_RE = re.compile(
+    r"-\s*(?:RowsProduced|RowsReturned|RowsRead|RowsSent)\s*:\s*(?P<value>[^\n\r]+)",
+    flags=re.IGNORECASE,
+)
+RAW_PEAK_MEMORY_RE = re.compile(
+    rf"-\s*(?:PeakMemoryUsage|PerHostPeakMemUsage|PeakMemUsage)\s*:\s*(?P<value>{SIZE_PATTERN})",
+    flags=re.IGNORECASE,
+)
+RAW_TIME_COUNTER_RE = re.compile(
+    r"-\s*(?:TotalTime|ExecTime|ScannerThreadsTotalWallClockTime)\s*:\s*(?P<value>[^\n\r]+)",
+    flags=re.IGNORECASE,
+)
+RAW_COUNTER_NUMBER_RE = re.compile(
+    r"(?P<display>\d[\d,]*(?:\.\d+)?\s*[KMBT]?)(?:\s*\((?P<exact>\d[\d,]*(?:\.\d+)?)\))?",
+    flags=re.IGNORECASE,
+)
+
 STATS_PATTERNS = [
     re.compile(r"\bmissing\s+(?:table\s+|column\s+)?stats\b", re.IGNORECASE),
     re.compile(r"\bno\s+(?:table\s+|column\s+)?stats\b", re.IGNORECASE),
@@ -306,6 +360,39 @@ def compact_line(line: str, max_len: int = 320) -> str:
     return line
 
 
+def looks_like_cm_runtime_profile(value: str) -> bool:
+    lower = value.lower()
+    return any(marker.lower() in lower for marker in CM_RUNTIME_PROFILE_MARKERS)
+
+
+def normalize_profile_text(text: str) -> str:
+    """Unwrap CM API JSON responses that store runtime profile text in one field."""
+    stripped = text.lstrip()
+    if not stripped.startswith("{"):
+        return text
+
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+    if not isinstance(raw, dict):
+        return text
+
+    for field in CM_PROFILE_TEXT_FIELDS:
+        value = raw.get(field)
+        if isinstance(value, str) and looks_like_cm_runtime_profile(value):
+            return value
+    return text
+
+
+def parse_estimated_rows_only(window: str) -> float | None:
+    m = ESTIMATED_ROWS_ONLY_RE.search(window)
+    if not m:
+        return None
+    return parse_scaled_number(m.group("estimated"))
+
+
 def parse_rows(window: str) -> tuple[float | None, float | None]:
     for rx in ROWS_PATTERNS:
         m = rx.search(window)
@@ -390,6 +477,91 @@ def update_operator(existing: OperatorFact, new: OperatorFact) -> None:
             existing.evidence_lines.append(line)
 
 
+def line_indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def parse_raw_counter_number(value: str) -> float | None:
+    m = RAW_COUNTER_NUMBER_RE.search(value.strip())
+    if not m:
+        return None
+    raw = m.group("exact") or m.group("display")
+    return parse_scaled_number(raw)
+
+
+def raw_node_section(lines: list[str], start: int) -> str:
+    header_indent = line_indent(lines[start])
+    section = [lines[start]]
+    for line in lines[start + 1 :]:
+        stripped = line.strip()
+        if not stripped:
+            section.append(line)
+            continue
+        if line_indent(line) <= header_indent and not stripped.startswith("-"):
+            break
+        section.append(line)
+    return "\n".join(section)
+
+
+def parse_raw_node_section(lines: list[str], start: int) -> OperatorFact | None:
+    header = lines[start]
+    m = RAW_NODE_HEADER_RE.match(header)
+    if not m:
+        return None
+
+    op_name = RAW_NODE_NAME_MAP.get(m.group("node"))
+    if not op_name:
+        return None
+
+    section = raw_node_section(lines, start)
+    evidence = [compact_line(header)]
+
+    actual_rows: float | None = None
+    for row_match in RAW_ROW_COUNTER_RE.finditer(section):
+        value = parse_raw_counter_number(row_match.group("value"))
+        if value is not None and (actual_rows is None or value > actual_rows):
+            actual_rows = value
+            evidence_line = compact_line(row_match.group(0))
+            if evidence_line not in evidence:
+                evidence.append(evidence_line)
+
+    peak_mem: float | None = None
+    for mem_match in RAW_PEAK_MEMORY_RE.finditer(section):
+        value = parse_size_bytes(mem_match.group("value"))
+        if value is not None and (peak_mem is None or value > peak_mem):
+            peak_mem = value
+            evidence_line = compact_line(mem_match.group(0))
+            if evidence_line not in evidence:
+                evidence.append(evidence_line)
+
+    time_ms: float | None = None
+    for time_match in RAW_TIME_COUNTER_RE.finditer(section):
+        value = extract_first_duration_ms(time_match.group("value"))
+        if value is not None and (time_ms is None or value > time_ms):
+            time_ms = value
+            evidence_line = compact_line(time_match.group(0))
+            if evidence_line not in evidence:
+                evidence.append(evidence_line)
+
+    return OperatorFact(
+        operator_id=m.group("id").zfill(2),
+        operator_name=op_name,
+        time_ms=time_ms,
+        actual_rows=actual_rows,
+        peak_mem_bytes=peak_mem,
+        evidence_lines=evidence,
+    )
+
+
+def parse_raw_runtime_nodes(lines: list[str]) -> list[OperatorFact]:
+    facts: list[OperatorFact] = []
+    for i, line in enumerate(lines):
+        fact = parse_raw_node_section(lines, i)
+        if fact:
+            facts.append(fact)
+    return facts
+
+
 def build_operator_windows(lines: list[str], lookahead: int = 3) -> Iterable[tuple[str, str, str]]:
     """Yield (operator_id, operator_name, window_text)."""
     for i, line in enumerate(lines):
@@ -406,7 +578,7 @@ def build_operator_windows(lines: list[str], lookahead: int = 3) -> Iterable[tup
             if not stripped:
                 break
             if stripped.startswith(("-", "*", "|")) or re.match(
-                r"^(Actual|Estimated|Rows|Peak|Exec|Time|Memory|Join|Type)\b",
+                r"^(Actual|Estimated|Rows|Peak|Exec|Time|Memory|Join|Type|Cardinality)\b",
                 stripped,
                 flags=re.IGNORECASE,
             ):
@@ -443,6 +615,8 @@ def parse_operators(text: str) -> list[OperatorFact]:
         after_op = window[op_match.end() :] if op_match else window
 
         actual_rows, estimated_rows = parse_rows(window)
+        if estimated_rows is None:
+            estimated_rows = parse_estimated_rows_only(window)
         peak_mem, est_peak_mem = parse_memory(window)
         join_match = JOIN_KIND_RE.search(window)
 
@@ -459,6 +633,13 @@ def parse_operators(text: str) -> list[OperatorFact]:
             evidence_lines=[compact_line(window)],
         )
 
+        key = (fact.operator_id, fact.operator_name)
+        if key in by_key:
+            update_operator(by_key[key], fact)
+        else:
+            by_key[key] = fact
+
+    for fact in parse_raw_runtime_nodes(lines):
         key = (fact.operator_id, fact.operator_name)
         if key in by_key:
             update_operator(by_key[key], fact)
@@ -898,6 +1079,7 @@ def make_finding(
 
 
 def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
+    text = normalize_profile_text(text)
     operators = parse_operators(text)
     totals = {
         name: extract_total_counter(text, name)
