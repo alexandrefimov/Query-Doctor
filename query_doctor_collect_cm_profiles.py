@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ipaddress
 import json
 import os
 import re
@@ -75,9 +76,11 @@ CM_PROFILE_TEXT_PATH = (
 
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+BRACKETED_IPV6_RE = re.compile(r"\[(?P<ip>[0-9A-Fa-f:]+)\]")
+IPV6_CANDIDATE_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?P<ip>[0-9A-Fa-f:]*:[0-9A-Fa-f:.]+)(?![A-Za-z0-9_.-])")
 URL_CREDENTIAL_RE = re.compile(r"\b(https?://)([^/\s:@]+):([^@\s/]+)@", re.IGNORECASE)
 URL_HOST_RE = re.compile(
-    r"\b(https?://)(<redacted>@)?([^/\s:?#]+)(:\d+)?",
+    r"\b(https?://)(<redacted>@)?([^/\s:?#\\[]+)(:\d+)?",
     re.IGNORECASE,
 )
 AUTH_HEADER_RE = re.compile(
@@ -1238,6 +1241,20 @@ class HostAliasRedactor:
         stripped = value.strip()
         if not stripped:
             return stripped
+        bracketed_ipv6 = re.match(r"^\[(?P<ip>[0-9A-Fa-f:]+)\](?P<port>:\d+)?$", stripped)
+        if bracketed_ipv6:
+            try:
+                ipaddress.ip_address(bracketed_ipv6.group("ip"))
+            except ValueError:
+                pass
+            else:
+                return f"{self.alias_for(bracketed_ipv6.group('ip'))}{bracketed_ipv6.group('port') or ''}"
+        try:
+            ipaddress.ip_address(stripped)
+        except ValueError:
+            pass
+        else:
+            return self.alias_for(stripped)
         match = re.match(r"^(?P<host>.+?)(?P<port>:\d+)?$", stripped)
         if not match:
             return self.alias_for(stripped)
@@ -1246,6 +1263,22 @@ class HostAliasRedactor:
 
 def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None) -> str:
     host_redactor = redactor or HostAliasRedactor()
+
+    def replace_ipv6_candidate(match: re.Match[str]) -> str:
+        value = match.group("ip")
+        try:
+            ipaddress.ip_address(value)
+        except ValueError:
+            return match.group(0)
+        return host_redactor.alias_for(value)
+
+    def replace_bracketed_ipv6(match: re.Match[str]) -> str:
+        value = match.group("ip")
+        try:
+            ipaddress.ip_address(value)
+        except ValueError:
+            return match.group(0)
+        return host_redactor.alias_for(value)
 
     def replace_host_field(match: re.Match[str]) -> str:
         return f"{match.group(1)}{host_redactor.redact_host_value(match.group(2))}"
@@ -1263,6 +1296,8 @@ def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None
     redacted = URL_HOST_RE.sub(replace_url_host, redacted)
     redacted = HOSTLIKE_FQDN_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
     redacted = IPV4_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
+    redacted = BRACKETED_IPV6_RE.sub(replace_bracketed_ipv6, redacted)
+    redacted = IPV6_CANDIDATE_RE.sub(replace_ipv6_candidate, redacted)
     return redacted
 
 
