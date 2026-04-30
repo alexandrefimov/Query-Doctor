@@ -147,6 +147,18 @@ ZERO_CARDINALITY_UNSUPPORTED_CLAIMS = (
         re.compile(r"\btrace\s+row\s+growth\s+from\s+low\s+estimates?\b", re.IGNORECASE),
     ),
     (
+        "optimizer row-estimate failure",
+        re.compile(
+            r"\b(?:optimizer\s+)?row[- ]estimate\s+failure\b|"
+            r"\boptimizer\s+estimat\w+[^.\n]{0,80}\b(?:failed|failure|wrong|bad)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "cardinality skew",
+        re.compile(r"\bcardinality\s+skew\b|перекос\s+кардинальност\w+", re.IGNORECASE),
+    ),
+    (
         "stats are stale",
         re.compile(r"\bstats\s+are\s+stale\b", re.IGNORECASE),
     ),
@@ -198,9 +210,14 @@ ZERO_CARDINALITY_NEGATION_CONTEXT_RE = re.compile(
     r"\bno\s+analyzer-supported\b|"
     r"\bno\s+evidence\s+(?:of|that|for)\b|"
     r"\bno\s+proof\s+(?:of|that|for)\b|"
+    r"\bno\s+single\b|"
+    r"\bnot\s+proven\b|"
     r"\bdid\s+not\s+find\b|"
     r"\bнет\s+доказ\w*|"
     r"\bнет\s+данн\w*|"
+    r"\bнет\s+явн\w*\s+признак\w*|"
+    r"\bнет\s+подтвержд\w*|"
+    r"\bне\s+доказ\w*|"
     r"\bне\s+подтверж\w*|"
     r"\bне\s+поддерж\w*|"
     r"\bне\s+явля\w*\s+подтверж\w*"
@@ -218,7 +235,7 @@ ZERO_CARDINALITY_CONTRASTED_CAUSE_RE = re.compile(
     re.IGNORECASE,
 )
 ZERO_CARDINALITY_RUSSIAN_NEGATION_BRIDGE_RE = re.compile(
-    r"^\s+(?:того|о\s+том),\s+что\b",
+    r"^\s*(?:(?:того|о\s+том),\s+что|,?\s*что)\b",
     re.IGNORECASE,
 )
 FACTS_TABLE_OPERATOR_RE = re.compile(r"^\s*\|\s*(?P<operator>\d{2,}:[^|]+?)\s*\|")
@@ -266,9 +283,56 @@ UNSAFE_OPERATOR_WALL_CLOCK_RE = re.compile(
     r"[^.\n]{0,40}\d+(?:[\.,]\d+)?\s*(?:час|ч\.|hour|hr|minute|min)",
     re.IGNORECASE,
 )
+RUSSIAN_OPERATOR_TIME_AS_WALL_CLOCK_RE = re.compile(
+    r"(?P<prefix>\b(?:Оператор|Операция|Операторы|Операции)\b[^.\n]{0,160}?)"
+    r"\s+выполня(?:ется|ются|лся|лась|лись|л[аио]?|ет\w*|ют)"
+    r"(?P<duration>\s+(?:около\s+|примерно\s+)?\d+(?:[\.,]\d+)?\s*(?:час(?:а|ов)?|ч\.|минут\w*|секунд\w*|hour|hr|minute|min))",
+    re.IGNORECASE,
+)
+ENGLISH_OPERATOR_TIME_AS_WALL_CLOCK_RE = re.compile(
+    r"(?P<prefix>\b(?:operator|\d{2,}:[A-Z][A-Z _]+)\b[^.\n]{0,160}?)"
+    r"\s+(?:ran|running|executed)\s+(?:for\s+)?"
+    r"(?P<duration>\d+(?:[\.,]\d+)?\s*(?:hours?|hrs?|minutes?|mins?))",
+    re.IGNORECASE,
+)
 ROW_DIRECTION_WORD_RE = re.compile(
     r"\b(row|rows|cardinality|estimated\s+rows|row\s+estimates|actual\s+rows)\b|"
     r"строк|кардинальност",
+    re.IGNORECASE,
+)
+BACKEND_SUMMARY_RE = re.compile(r"^\s*[-*]\s*(?P<key>[^:]+):\s*(?P<value>.+?)\s*$")
+BACKEND_PROVEN_SINGLE_TAIL_RE = re.compile(
+    r"("
+    r"\b(?:one|single)\s+(?:slow\s+)?(?:host|backend)\b|"
+    r"\btail\s+(?:host|backend)\b|"
+    r"\b(?:host|backend)[^.\n]{0,80}\b(?:is|was)\s+(?:slow|the\s+tail)\b|"
+    r"\b(?:один|единственн\w*)\s+(?:медленн\w+\s+)?(?:host|backend|уз[её]л)\b|"
+    r"\b(?:хвостов\w+|tail)\s+(?:host|backend|уз[её]л)\b"
+    r")",
+    re.IGNORECASE,
+)
+EXECUTION_SKEW_PROVEN_RE = re.compile(
+    r"\bexecution\s+skew\s+(?:is\s+)?(?:proven|confirmed|supported)\b|"
+    r"\b(?:перекос|skew)\s+выполнен\w+[^.\n]{0,80}(?:доказ|подтвержд)\w*",
+    re.IGNORECASE,
+)
+WRITE_PATH_PROVEN_RE = re.compile(
+    r"\b(?:write[- ]path|HDFS|RPC|network)[^.\n]{0,80}"
+    r"\b(?:is|was|are|were)\s+(?:the\s+)?(?:proven\s+)?(?:cause|root\s+cause)\b|"
+    r"\b(?:write[- ]path|HDFS|RPC|network)[^.\n]{0,80}\b(?:proven|confirmed)\b|"
+    r"\b(?:путь\s+запис\w+|HDFS|RPC|network|сеть)[^.\n]{0,80}"
+    r"(?:доказан\w*|подтвержден\w*|подтверждён\w*|явля\w+ся\s+причин\w*)",
+    re.IGNORECASE,
+)
+PROVEN_BACKEND_CLAIM_CONTEXT_RE = re.compile(
+    r"\b(?:proven|confirmed|root\s+cause|cause)\b|"
+    r"\b(?:is|was|are|were)\s+(?:slow|the\s+tail)\b|"
+    r"\b(?:доказан\w*|доказанн\w*|подтвержден\w*|подтверждён\w*|причин\w*|медленн\w*)\b",
+    re.IGNORECASE,
+)
+BACKEND_DIAGNOSTIC_CHECK_RE = re.compile(
+    r"\b(?:check|checks|diagnostic|next\s+check|hypothesis|not\s+proven)\b|"
+    r"\b(?:проверить|проверк\w*|диагностик\w*|гипотез\w*|не\s+доказ\w*)\b",
     re.IGNORECASE,
 )
 
@@ -649,6 +713,61 @@ def find_unsafe_operator_time_wording(report_text: str, facts_text: str) -> list
     ][:1]
 
 
+def line_has_safe_negation(line: str, match_start: int = 0) -> bool:
+    return is_negated_zero_cardinality_match(line, match_start)
+
+
+def find_backend_tail_claim_errors(report_text: str, facts_text: str) -> list[str]:
+    if not facts_has_backend_tail_evidence(facts_text):
+        return []
+
+    summary = parse_backend_tail_summary(facts_text)
+    errors: list[str] = []
+    seen: set[str] = set()
+    tail_is_proven = backend_has_proven_tail(summary)
+    write_path_is_supported = backend_write_path_is_supported(summary)
+
+    for line in report_text.splitlines():
+        single_tail_match = BACKEND_PROVEN_SINGLE_TAIL_RE.search(line)
+        if (
+            single_tail_match
+            and not tail_is_proven
+            and not line_has_safe_negation(line, single_tail_match.start())
+            and PROVEN_BACKEND_CLAIM_CONTEXT_RE.search(line)
+            and "single_tail" not in seen
+        ):
+            errors.append(
+                "backend tail claim contradicts parsed facts: no single slow backend/tail host is proven"
+            )
+            seen.add("single_tail")
+
+        execution_match = EXECUTION_SKEW_PROVEN_RE.search(line)
+        if (
+            execution_match
+            and str(summary.get("execution skew", "unknown")).lower() != "yes"
+            and not line_has_safe_negation(line, execution_match.start())
+            and "execution_skew" not in seen
+        ):
+            errors.append(
+                "execution skew claim contradicts parsed Backend / Host Tail Evidence"
+            )
+            seen.add("execution_skew")
+
+        write_path_match = WRITE_PATH_PROVEN_RE.search(line)
+        if (
+            write_path_match
+            and not write_path_is_supported
+            and not line_has_safe_negation(line, write_path_match.start())
+            and not BACKEND_DIAGNOSTIC_CHECK_RE.search(line)
+            and "write_path" not in seen
+        ):
+            errors.append(
+                "write/RPC/HDFS path claim contradicts parsed facts: write-path anomaly is not proven"
+            )
+            seen.add("write_path")
+    return errors
+
+
 def build_cardinality_contract(facts_text: str) -> str:
     count = facts_cardinality_anomaly_count(facts_text)
     if count == 0:
@@ -694,24 +813,85 @@ def facts_has_backend_tail_evidence(facts_text: str) -> bool:
     )
 
 
+def parse_backend_tail_summary(facts_text: str) -> dict[str, str | int]:
+    summary: dict[str, str | int] = {}
+    in_backend_section = False
+    for line in facts_text.splitlines():
+        stripped = line.strip()
+        if stripped == "## Backend / Host Tail Evidence":
+            in_backend_section = True
+            continue
+        if in_backend_section and stripped.startswith("## "):
+            break
+        if not in_backend_section:
+            continue
+        match = BACKEND_SUMMARY_RE.match(line)
+        if not match:
+            continue
+        key = match.group("key").strip().lower()
+        value = match.group("value").strip()
+        if key == "host tail candidates":
+            number_match = re.match(r"\d+", value)
+            if number_match:
+                summary[key] = int(number_match.group(0))
+            continue
+        if key in {"data skew", "execution skew", "write-path anomaly"}:
+            summary[key] = value.split()[0].lower()
+    return summary
+
+
+def backend_summary_value(summary: dict[str, str | int], key: str) -> str:
+    value = summary.get(key, "unknown")
+    return str(value)
+
+
+def backend_has_proven_tail(summary: dict[str, str | int]) -> bool:
+    candidates = summary.get("host tail candidates")
+    execution_skew = str(summary.get("execution skew", "unknown")).lower()
+    return isinstance(candidates, int) and candidates > 0 and execution_skew == "yes"
+
+
+def backend_write_path_is_supported(summary: dict[str, str | int]) -> bool:
+    return str(summary.get("write-path anomaly", "unknown")).lower() == "yes"
+
+
 def build_backend_tail_contract(facts_text: str, mode: str) -> str:
     if facts_has_backend_tail_evidence(facts_text):
+        summary = parse_backend_tail_summary(facts_text)
+        summary_lines = f"""
+Parsed Backend / Host Tail Evidence summary:
+- host tail candidates: {backend_summary_value(summary, "host tail candidates")}
+- data skew: {backend_summary_value(summary, "data skew")}
+- execution skew: {backend_summary_value(summary, "execution skew")}
+- write-path anomaly: {backend_summary_value(summary, "write-path anomaly")}
+""".strip()
+        shared_rules = f"""
+{summary_lines}
+- Keep backend data skew separate from cardinality/row-estimate anomaly.
+- Backend data skew means rows/records are distributed unevenly across parsed backends; it does not prove stale stats, cardinality underestimation, optimizer row-estimate failure, or SQL hot keys.
+- If Cardinality anomalies: 0, backend data skew still must not be described as cardinality underestimation or bad/missing stats.
+- If data skew is yes, allowed wording is: "rows/records are distributed unevenly across backends".
+- If execution skew is no or host tail candidates is 0, say no single slow backend/tail host is proven; do not claim one host is proven slow, a tail backend is proven, or execution skew is proven.
+- If write-path anomaly is unknown, write/RPC/HDFS path may be listed only as a next diagnostic check, not as the proven cause.
+""".strip()
         if mode == "user":
-            return """
+            return f"""
 Backend/host-tail evidence contract:
 - analysis_facts.md contains Backend / Host Tail Evidence or host-tail findings.
 - Prioritize passing backend/host evidence to the platform team over SQL rewrite advice unless SQL/cardinality facts also support SQL changes.
 - User-facing wording must say: "передайте платформенной команде backend/host evidence из analysis_facts.md".
 - Host/network/HDFS/RPC/write-path items are checks for admins, not proven root causes.
 - Do not claim network or HDFS is the root cause.
+{shared_rules}
 """.strip()
-        return """
+        return f"""
 Backend/host-tail evidence contract:
 - analysis_facts.md contains Backend / Host Tail Evidence or host-tail findings.
 - Prioritize platform/host-tail evidence and admin checks before generic SQL rewrite advice unless SQL/cardinality facts also support SQL changes.
 - Use conservative wording: "execution tail suspected" and "host-specific write/RPC/HDFS path should be checked".
 - Host/network/HDFS/RPC/write-path items are checks, not proven root causes.
 - Do not claim network or HDFS is the root cause.
+{shared_rules}
 """.strip()
     return """
 Backend/host-tail evidence contract:
@@ -770,8 +950,13 @@ Engineering interpretation rules:
 - Do not call lower actual memory an overload unless absolute memory, spill, or scratch evidence supports it.
 - Do not use operators with mem ratio below 1.0 as evidence for memory underestimation.
 - If an operator has rows ratio above threshold but mem ratio below 1.0, use it only as cardinality/intermediate-row evidence, not memory-underestimation evidence.
-- Do not present Impala operator time as wall-clock duration unless analysis_facts.md explicitly provides wall-clock evidence. Prefer "в профиле накоплено большое operator time" or "оператор выделяется по времени в профиле".
+- Do not present Impala operator/profile counter time as query wall-clock duration unless analysis_facts.md explicitly provides query wall-clock evidence.
+- Prefer "operator/profile time counter", "time counter reported for this operator", "в профиле накоплено большое operator time", or "оператор выделяется по времени в профиле".
+- Avoid "оператор выполняется X часов", "оператор выполнялся X часов", "the operator ran for X hours", and "the query ran for X because this operator took X".
 - Evidence-safe summary wording may mention actual rows in millions vs estimated rows around 10.55K only when analysis_facts.md contains that cardinality anomaly evidence.
+- Keep backend data skew, execution skew, cardinality/row-estimate anomaly, memory estimate anomaly, and write-path anomaly as separate categories.
+- Do not use backend data skew as evidence for cardinality underestimation, stale stats, or optimizer row-estimate failure.
+- Do not claim a single slow backend/tail host unless Backend / Host Tail Evidence has host tail candidates above zero and execution skew is yes.
 - Distinguish "large intermediate/exchange traffic" from external network instability.
 - Do not recommend checking external network based only on TotalBytesSent.
 - TotalBytesSent means intermediate/exchange data volume unless facts explicitly say network fault.
@@ -913,6 +1098,36 @@ def should_rewrite_stats_freshness_claim(line: str) -> bool:
     return bool(UNSUPPORTED_STATS_FRESHNESS_CLAIM_RE.search(line))
 
 
+def normalize_operator_time_wording(line: str, facts_text: str) -> str:
+    if re.search(r"\bwall[- ]clock\b|настенн\w+\s+врем", facts_text, re.IGNORECASE):
+        return line
+    line = RUSSIAN_OPERATOR_TIME_AS_WALL_CLOCK_RE.sub(
+        r"\g<prefix> имеет operator/profile time counter\g<duration>",
+        line,
+    )
+    line = ENGLISH_OPERATOR_TIME_AS_WALL_CLOCK_RE.sub(
+        r"\g<prefix> has operator/profile time counter \g<duration>",
+        line,
+    )
+    return line
+
+
+def normalize_contradicted_estimate_direction(line: str, facts_text: str) -> str | None:
+    if find_contradicted_row_underestimation_claims(line, facts_text):
+        return None
+    if find_contradicted_memory_underestimation_claims(line, facts_text):
+        return MEMORY_UNDERESTIMATION_CLAIM_RE.sub("расхождение оценки памяти", line)
+    if find_contradicted_memory_overestimation_claims(line, facts_text):
+        return MEMORY_OVERESTIMATION_CLAIM_RE.sub("расхождение оценки памяти", line)
+    return line
+
+
+def should_drop_zero_cardinality_positive_claim(line: str, facts_text: str) -> bool:
+    return facts_cardinality_anomaly_count(facts_text) == 0 and bool(
+        find_zero_cardinality_unsupported_claims(line)
+    )
+
+
 def strip_unsupported_prose(line: str, current_section: str, facts_text: str = "") -> str | None:
     stripped = line.lstrip()
     is_list_item = stripped.startswith(("-", "*")) or bool(re.match(r"^\d+\.\s+", stripped))
@@ -972,8 +1187,17 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
             current_section = line.strip()
         if should_rewrite_stats_freshness_claim(line):
             line = STATS_FRESHNESS_MISSING_EVIDENCE
+        line = normalize_operator_time_wording(line, facts_text)
+        direction_normalized = normalize_contradicted_estimate_direction(line, facts_text)
+        if direction_normalized is None:
+            continue
+        line = direction_normalized
         is_not_supported = current_section == "## Что НЕ подтверждается фактами"
         is_structure_line = line.startswith("#") or line.startswith(">") or not line.strip()
+        if not is_structure_line and not is_not_supported and should_drop_zero_cardinality_positive_claim(
+            line, facts_text
+        ):
+            continue
         if (
             not is_structure_line
             and not is_not_supported
@@ -1095,6 +1319,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
     errors.extend(find_contradicted_memory_underestimation_claims(report_text, facts_text))
     errors.extend(find_contradicted_memory_overestimation_claims(report_text, facts_text))
     errors.extend(find_unsafe_operator_time_wording(report_text, facts_text))
+    errors.extend(find_backend_tail_claim_errors(report_text, facts_text))
     return errors
 
 
@@ -1199,10 +1424,25 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
         ),
     ]
     if facts_has_backend_tail_evidence(facts_text):
+        backend_summary = parse_backend_tail_summary(facts_text)
+        if backend_has_proven_tail(backend_summary):
+            backend_tail_bullet = (
+                "- Приоритизировать Backend / Host Tail Evidence: сравнить per-host runtime/profile time, "
+                "RowsProduced, BytesRead/BytesWritten и rates для tail host и соседних hosts."
+            )
+            backend_tail_patterns = (r"Backend\s*/\s*Host\s+Tail\s+Evidence|execution\s+tail|tail\s+host",)
+        else:
+            backend_tail_bullet = (
+                "- Приоритизировать Backend / Host Tail Evidence: сравнить per-host RowsProduced, "
+                "BytesRead/BytesWritten и rates; single tail host не доказан parsed facts."
+            )
+            backend_tail_patterns = (
+                r"Backend\s*/\s*Host\s+Tail\s+Evidence|single\s+tail\s+host\s+не\s+доказан",
+            )
         admin_bullet_rules = [
             (
-                "- Приоритизировать Backend / Host Tail Evidence: сравнить per-host runtime/profile time, RowsProduced, BytesRead/BytesWritten и rates для tail host и соседних hosts.",
-                (r"Backend\s*/\s*Host\s+Tail\s+Evidence|execution\s+tail|tail\s+host",),
+                backend_tail_bullet,
+                backend_tail_patterns,
             ),
             (
                 "- Проверить host-specific write/RPC/HDFS path как гипотезу; это не доказанная причина без внешних host/network/HDFS метрик.",
@@ -1367,7 +1607,10 @@ def stream_ollama_report(
                     "Use memory underestimation only when actual or peak memory is above estimated memory. "
                     "Use memory overestimation when actual or peak memory is below estimated memory. "
                     "Do not treat mem ratio below 1.0 as memory underestimation evidence. "
-                    "Do not present Impala operator time as wall-clock duration unless facts explicitly provide wall-clock evidence. "
+                    "Do not present Impala operator/profile counter time as query wall-clock duration unless facts explicitly provide wall-clock evidence. "
+                    "Use operator/profile time counter wording instead of saying an operator ran for X hours. "
+                    "Keep backend data skew separate from cardinality/row-estimate anomalies and execution skew. "
+                    "Do not claim a single slow backend/tail host unless host-tail facts explicitly support it. "
                     "Do not recommend external network checks based only on TotalBytesSent. "
                     "Treat TotalBytesSent as intermediate/exchange data volume unless facts explicitly say network fault. "
                     "Do not call low-memory EXCHANGE operators memory bottlenecks. "
