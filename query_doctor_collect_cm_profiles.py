@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Safe CLI skeleton for a future Cloudera Manager profile corpus collector.
+Safe CLI for bounded Cloudera Manager profile corpus collection.
 
-This implementation intentionally does not call Cloudera Manager yet. It only
-validates configuration, prints a sanitized dry-run plan, and refuses real
-collection until the read-only CM API layer is implemented and reviewed.
+Dry-run mode validates configuration without CM API calls. Non-dry-run
+collection is limited to one explicit query id and requires redaction.
+Broad recent-query collection remains disabled.
 """
 
 from __future__ import annotations
@@ -173,7 +173,7 @@ class CredentialSummary:
             return "CM_USERNAME/CM_PASSWORD configured (secrets not shown)"
         if self.has_username:
             return "CM_USERNAME configured without CM_PASSWORD or CM_TOKEN"
-        return "not configured; allowed for dry-run skeleton"
+        return "not configured; allowed for dry-run"
 
 
 @dataclass(frozen=True)
@@ -317,9 +317,10 @@ CMHttpClientFactory = Callable[[CMHttpConfig], object]
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Validate configuration for a future read-only Cloudera Manager "
-            "Impala query profile corpus collector. Dry-run performs no CM API calls; "
-            "preflight performs bounded read-only GET checks without writing output."
+            "Read-only Cloudera Manager Impala query profile corpus collector. "
+            "Dry-run performs no CM API calls; preflight performs bounded read-only "
+            "GET checks without writing output; real collection is limited to one "
+            "explicit --query-id with --redact and --limit 1."
         )
     )
     parser.add_argument(
@@ -347,7 +348,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--limit",
         type=positive_int,
-        help=f"Maximum number of query profiles to collect later. Default: {DEFAULT_LIMIT}.",
+        help=f"Maximum query profile count. Non-dry-run query-id mode requires 1. Default: {DEFAULT_LIMIT}.",
     )
     parser.add_argument(
         "--min-duration-sec",
@@ -381,26 +382,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Perform read-only CM API shape checks without writing corpus output. "
-            "Collection remains disabled."
+            "Preflight does not collect profiles."
         ),
     )
     parser.add_argument(
         "--redact",
         action="store_true",
         default=None,
-        help="Plan for future redaction of sensitive profile content.",
+        help="Redact sensitive profile content. Required for real collection.",
     )
     parser.add_argument(
         "--no-redact",
         action="store_false",
         dest="redact",
-        help="Disable future redaction when a local config enables it.",
+        help="Disable redaction when a local config enables it.",
     )
     parser.add_argument(
         "--redact-identifiers",
         action="store_true",
         default=None,
-        help="Plan for future redaction of database/table-like identifiers.",
+        help="Redact database/table-like identifiers.",
     )
     parser.add_argument(
         "--no-redact-identifiers",
@@ -419,7 +420,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--insecure-skip-verify",
         action="store_true",
         default=None,
-        help="UNSAFE: plan to disable TLS certificate verification when API calls are implemented.",
+        help="UNSAFE: disable TLS certificate verification for CM API calls.",
     )
     parser.add_argument(
         "--verify-tls",
@@ -1612,7 +1613,7 @@ def print_dry_run_plan(config: CollectorConfig) -> None:
     print(tls_plan_line(config))
     print(ca_bundle_plan_line(config))
     print(f"Credentials: {config.credentials.display()}")
-    print("No CM API calls are performed by this skeleton implementation.")
+    print("No CM API calls are performed in dry-run mode.")
     print("No output directories or collected profiles are created in dry-run mode.")
 
 

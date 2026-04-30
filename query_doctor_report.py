@@ -34,13 +34,29 @@ MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "8"))
 REQUIRED_REPORT_SECTIONS = [
     "# Query Doctor Report",
     "## Краткий вывод",
-    "## Главная причина замедления",
+    "## Основные подтверждённые проблемы по профилю",
     "## Подтверждающие факты",
     "## Что усиливает проблему",
     "## Что НЕ подтверждается фактами",
     "## Практические рекомендации",
     "## Что проверить следующим запуском",
 ]
+EVIDENCE_SAFE_PROBLEMS_HEADING = "## Основные подтверждённые проблемы по профилю"
+ROOT_CAUSE_HEADING_REWRITE = {
+    "## Главная причина замедления": EVIDENCE_SAFE_PROBLEMS_HEADING,
+    "## Root cause": EVIDENCE_SAFE_PROBLEMS_HEADING,
+}
+USER_READ_ONLY_HEADING = "## Read-only проверки, которые можно выполнить"
+USER_ADMIN_PACKAGE_HEADING = "## Если проблема останется, отправьте админам/платформенной команде"
+USER_VALIDATION_HEADING = "## Изменения, требующие проверки"
+USER_VERIFY_HEADING = "## Как проверить улучшение"
+USER_HEADING_REWRITE = {
+    "## Read-only checks you can run": USER_READ_ONLY_HEADING,
+    "## Safe checks for the SQL owner": USER_READ_ONLY_HEADING,
+    "## If it still fails, send this to the admin/platform team": USER_ADMIN_PACKAGE_HEADING,
+    "## Changes requiring validation": USER_VALIDATION_HEADING,
+    "## How to verify improvement": USER_VERIFY_HEADING,
+}
 UNSUPPORTED_RECOMMENDATION_RE = (
     "hdfs",
     "хранилищ",
@@ -205,6 +221,27 @@ ZERO_CARDINALITY_RUSSIAN_NEGATION_BRIDGE_RE = re.compile(
     r"^\s+(?:того|о\s+том),\s+что\b",
     re.IGNORECASE,
 )
+FACTS_TABLE_OPERATOR_RE = re.compile(r"^\s*\|\s*(?P<operator>\d{2,}:[^|]+?)\s*\|")
+REPORT_OPERATOR_ID_RE = re.compile(r"\b(?P<operator>\d{2,}:[A-Z][A-Z _]+)")
+ROW_UNDERESTIMATION_CLAIM_RE = re.compile(
+    r"("
+    r"\b(?:cardinality|row(?:\s+count)?|rows?|estimated\s+rows?|row\s+estimates?|optimizer\s+estimates?)"
+    r"[^.\n]{0,80}\bunderestimat\w*|"
+    r"\bunderestimat\w+[^.\n]{0,80}\b(?:cardinality|row(?:\s+count)?|rows?)\b|"
+    r"\b(?:actual\s+rows\s+exceed|actual\s+rows\s+exceeded|actual\s+rows\s+(?:are|were)\s+higher\s+than)\s+(?:the\s+)?estimat\w*|"
+    r"\b(?:estimated\s+rows|row\s+estimates|optimizer\s+estimates|estimates)\s+(?:(?:are|were)\s+)?too\s+low\b|"
+    r"недооцен\w+\s+(?:кардинальност\w+|количеств\w+\s+строк|строк)|"
+    r"(?:фактическ\w+\s+)?(?:количеств\w+\s+)?строк[^\n.]{0,80}(?:превыш|больше|выше)[^\n.]{0,80}оцен|"
+    r"оцен\w+\s+(?:строк|количеств\w+\s+строк)[^\n.]{0,80}(?:слишком\s+низк|занижен)"
+    r")",
+    re.IGNORECASE,
+)
+MEMORY_WORD_RE = re.compile(r"\b(memory|mem|peakmemusage|peak\s+memory|памят\w*)\b", re.IGNORECASE)
+ROW_DIRECTION_WORD_RE = re.compile(
+    r"\b(row|rows|cardinality|estimated\s+rows|row\s+estimates|actual\s+rows)\b|"
+    r"строк|кардинальност",
+    re.IGNORECASE,
+)
 
 
 def resolve_case_file(case_dir: Path, value: str) -> Path:
@@ -255,6 +292,135 @@ def facts_cardinality_anomaly_count(facts_text: str) -> int | None:
     return int(match.group("count"))
 
 
+def parse_ratio_value(value: str) -> float | None:
+    cleaned = value.strip().lower().replace(",", "")
+    if cleaned in {"", "n/a", "na", "nan"}:
+        return None
+    if cleaned.endswith("x"):
+        cleaned = cleaned[:-1].strip()
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def normalize_operator_key(operator: str) -> str:
+    return re.sub(r"\s+", " ", operator.strip()).upper()
+
+
+def operator_id_prefix(operator: str) -> str:
+    return operator.split(":", 1)[0]
+
+
+def operator_type_name(operator: str) -> str:
+    _, _, rest = operator.partition(":")
+    return re.sub(r"\s*\(.*?\)", "", rest).strip()
+
+
+def parse_row_estimate_directions(facts_text: str) -> dict[str, str]:
+    directions: dict[str, str] = {}
+    for line in facts_text.splitlines():
+        match = FACTS_TABLE_OPERATOR_RE.match(line)
+        if not match:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 5:
+            continue
+        operator = cells[0]
+        ratio = parse_ratio_value(cells[4])
+        if ratio is None:
+            continue
+        key = normalize_operator_key(operator)
+        if ratio > 1.0:
+            directions[key] = "underestimated"
+        elif ratio < 1.0:
+            directions[key] = "overestimated"
+        else:
+            directions[key] = "matched"
+    return directions
+
+
+def line_has_row_underestimation_claim(line: str) -> bool:
+    if not ROW_UNDERESTIMATION_CLAIM_RE.search(line):
+        return False
+    if MEMORY_WORD_RE.search(line) and not ROW_DIRECTION_WORD_RE.search(line):
+        return False
+    return True
+
+
+def starts_new_top_level_item(line: str) -> bool:
+    return bool(re.match(r"^(?:[-*]\s+|\d+\.\s+)", line))
+
+
+def mentions_contradicted_row_underestimated_operator(
+    line: str,
+    directions: dict[str, str],
+    seen: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    matched_operator_id = False
+    for match in REPORT_OPERATOR_ID_RE.finditer(line):
+        report_operator = normalize_operator_key(match.group("operator"))
+        report_prefix = operator_id_prefix(report_operator)
+        for facts_operator, direction in directions.items():
+            if operator_id_prefix(facts_operator) != report_prefix:
+                continue
+            matched_operator_id = True
+            if direction == "overestimated" and report_prefix not in seen:
+                errors.append(
+                    "row/cardinality underestimation claim contradicts parsed facts "
+                    f"for {facts_operator}: actual/estimated row ratio is below 1"
+                )
+                seen.add(report_prefix)
+            break
+    if matched_operator_id:
+        return errors
+
+    upper_line = line.upper()
+    for operator_type in sorted(
+        {operator_type_name(operator) for operator in directions},
+        key=len,
+        reverse=True,
+    ):
+        if not operator_type or operator_type not in upper_line or operator_type in seen:
+            continue
+        matching_directions = [
+            direction
+            for operator, direction in directions.items()
+            if operator_type_name(operator) == operator_type
+        ]
+        if matching_directions and all(direction == "overestimated" for direction in matching_directions):
+            errors.append(
+                "row/cardinality underestimation claim contradicts parsed facts "
+                f"for {operator_type}: all parsed actual/estimated row ratios are below 1"
+            )
+            seen.add(operator_type)
+    return errors
+
+
+def find_contradicted_row_underestimation_claims(report_text: str, facts_text: str) -> list[str]:
+    directions = parse_row_estimate_directions(facts_text)
+    if not directions:
+        return []
+
+    errors: list[str] = []
+    seen: set[str] = set()
+    row_underestimation_context = False
+    for line in report_text.splitlines():
+        has_claim = line_has_row_underestimation_claim(line)
+        if line.startswith("## "):
+            row_underestimation_context = False
+        elif starts_new_top_level_item(line) and not has_claim:
+            row_underestimation_context = False
+
+        if not has_claim and not row_underestimation_context:
+            continue
+        if has_claim:
+            row_underestimation_context = True
+        errors.extend(mentions_contradicted_row_underestimated_operator(line, directions, seen))
+    return errors
+
+
 def build_cardinality_contract(facts_text: str) -> str:
     count = facts_cardinality_anomaly_count(facts_text)
     if count == 0:
@@ -276,12 +442,18 @@ Cardinality evidence contract:
 Cardinality evidence contract:
 - analysis_facts.md contains one or more cardinality anomalies.
 - Cardinality wording must use only the operator IDs, row counts, ratios, and evidence present in analysis_facts.md.
+- Use row/cardinality underestimation only for operators where actual rows > estimated rows or actual/estimated ratio > 1.
+- Use row/cardinality overestimation only for operators where actual rows < estimated rows or actual/estimated ratio < 1.
+- Use "estimate mismatch" / "estimate gap" when the direction is mixed or unclear.
+- Do not describe an operator as row/cardinality-underestimated if its evidence line shows actual rows < estimated rows or ratio < 1.
+- Memory underestimation is separate from row/cardinality underestimation; do not infer row underestimation from peak-memory evidence.
 - Do not invent join keys, table names, hot keys, or stale statistics.
 """.strip()
     return """
 Cardinality evidence contract:
 - Use cardinality wording only when analysis_facts.md explicitly contains cardinality anomaly evidence.
 - If cardinality evidence is absent or unclear, say it is not supported by extracted facts.
+- Direction rule still applies: underestimation means actual > estimated; overestimation means actual < estimated.
 """.strip()
 
 
@@ -320,11 +492,15 @@ If evidence is missing, say it is missing.
 
 Engineering interpretation rules:
 - The report must distinguish cardinality mismatch from memory mismatch.
-- Cardinality mismatch means actual rows are much larger than estimated rows.
+- Row/cardinality underestimation means actual rows are larger than estimated rows or actual/estimated ratio is above 1.
+- Row/cardinality overestimation means actual rows are smaller than estimated rows or actual/estimated ratio is below 1.
+- Use "estimate mismatch" / "estimate gap" when estimate direction is mixed or unclear.
+- Do not describe an operator as row/cardinality-underestimated when its evidence line shows actual rows < estimated rows or ratio < 1.
+- Memory underestimation is separate from row/cardinality underestimation.
 - Memory mismatch means peak memory is larger than estimated peak memory.
 - Do not use operators with mem ratio below 1.0 as evidence for memory underestimation.
 - If an operator has rows ratio above threshold but mem ratio below 1.0, use it only as cardinality/intermediate-row evidence, not memory-underestimation evidence.
-- The main root cause wording may mention actual rows in millions vs estimated rows around 10.55K only when analysis_facts.md contains that cardinality anomaly evidence.
+- Evidence-safe summary wording may mention actual rows in millions vs estimated rows around 10.55K only when analysis_facts.md contains that cardinality anomaly evidence.
 - Distinguish "large intermediate/exchange traffic" from external network instability.
 - Do not recommend checking external network based only on TotalBytesSent.
 - TotalBytesSent means intermediate/exchange data volume unless facts explicitly say network fault.
@@ -345,7 +521,7 @@ Do not repeat the Source facts / Facts sha256 / Model fingerprint yourself.
 You must write only the report body, starting with exactly these headings, in this order:
 
 ## Краткий вывод
-## Главная причина замедления
+## Основные подтверждённые проблемы по профилю
 ## Подтверждающие факты
 ## Что усиливает проблему
 ## Что НЕ подтверждается фактами
@@ -370,7 +546,8 @@ Report writing guidance:
 - Be concise and engineering-focused.
 - Separate deterministic facts from hypotheses.
 - Quote concrete operators and ratios only when they appear in the facts.
-- In "Главная причина замедления", name cardinality estimate errors as the primary cause only if facts show actual rows in millions versus estimated rows around 10.55K.
+- Use the section title "Основные подтверждённые проблемы по профилю"; do not use stronger root-cause titles such as "Главная причина замедления" or "Root cause" unless analysis_facts.md itself uses causal language.
+- In "Основные подтверждённые проблемы по профилю", name cardinality estimate underestimation only for operators where facts show actual rows > estimated rows or ratio > 1.
 - In "Подтверждающие факты", group facts separately: cardinality mismatch, memory mismatch, expensive operators, intermediate/exchange traffic.
 - In "Что усиливает проблему", discuss SORT/ANALYTIC and memory underestimation only where the facts support them.
 - In "Что усиливает проблему", do not call EXCHANGE a main memory bottleneck if its absolute peak memory is small; describe it as intermediate/exchange data volume only.
@@ -418,7 +595,7 @@ Focus on SQL-owner actions: check table stats, check column stats for join/filte
 Mark query rewrites, join order/filtering changes, pre-aggregation, materialization, and stats maintenance through the approved operational process as changes requiring validation.
 Explain how to verify improvement by re-running the query and comparing actual vs estimated rows, PeakMemUsage, spills, runtime, and bytes read/sent when those facts are present.
 Say what to send to admins if it still fails: query id if known, profile, analysis_facts.md, exact operator cards, referenced tables, timestamps, and admission pool if known.
-The user report must include a dedicated section named "Read-only checks you can run" or "Safe checks for the SQL owner".
+The user report must include a dedicated section named "Read-only проверки, которые можно выполнить".
 In that section, explicitly mention SHOW TABLE STATS for referenced tables when referenced tables are present in analysis_facts.md.
 In that section, explicitly mention SHOW COLUMN STATS for join/filter columns once those columns are identified.
 Do not invent table names. If referenced tables are missing from analysis_facts.md, say table names are not present in analysis_facts.md and ask for the profile/context.
@@ -426,10 +603,10 @@ Do not invent join/filter column names. If join/filter columns are not known, sa
 If referenced tables are missing, the read-only checks section itself must say that referenced table names are not present in analysis_facts.md and that the SQL/profile/context is needed before running table-specific SHOW TABLE STATS.
 If join/filter columns are missing, the read-only checks section itself must say that join/filter columns are not present in analysis_facts.md and must be identified from SQL/EXPLAIN/profile before running column-specific SHOW COLUMN STATS.
 Do not say facts indicate stale or missing stats unless analysis_facts.md explicitly proves that. If Cardinality anomalies: 0, table/column stats are read-only validation checks only, not a proven cardinality-underestimation cause.
-The user report must include a dedicated section named "If it still fails, send this to the admin/platform team".
+The user report must include a dedicated section named "Если проблема останется, отправьте админам/платформенной команде".
 In that section, explicitly list: query id if available in analysis_facts.md, original profile, analysis_facts.md, Action Cards/operator IDs, referenced tables if present, timestamps if available, admission pool / queue if available, and report generated by Query Doctor.
 Do not invent query id, timestamps, pool names, or table names. If unavailable, say "not present in analysis_facts.md".
-Keep these categories separate in the user report: safe read-only checks, changes requiring validation, how to verify improvement, and what to send to admins.
+Keep these categories separate in the user report: "Read-only проверки, которые можно выполнить", "Изменения, требующие проверки", "Как проверить улучшение", and "Если проблема останется, отправьте админам/платформенной команде".
 Do not tell the user to run state-changing commands directly unless analysis_facts.md explicitly allows it.
 Do not tell users to run COMPUTE STATS, REFRESH, or INVALIDATE METADATA as automatic actions.
 Avoid unsupported low-level claims and vague advice such as "optimize joins" or "reduce skew".
@@ -500,6 +677,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
 
     Pure helper for tests and callers: no file I/O, no network, no Ollama calls.
     """
+    report_text = normalize_report_headings(report_text, ROOT_CAUSE_HEADING_REWRITE)
     lines = [line for line in report_text.splitlines() if not line.startswith(PROGRESS_PREFIX)]
 
     # The wrapper owns the top-level title and fingerprint. Some local models
@@ -572,6 +750,13 @@ def insert_bullets_into_section(text: str, heading: str, bullets: list[str]) -> 
     return text[:next_heading].rstrip() + insertion + "\n" + text[next_heading:]
 
 
+def normalize_report_headings(text: str, replacements: dict[str, str]) -> str:
+    lines = []
+    for line in text.splitlines():
+        lines.append(replacements.get(line.strip(), line))
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
 def is_negated_zero_cardinality_match(line: str, match_start: int) -> bool:
     suffix = line[match_start:]
     next_break = ZERO_CARDINALITY_CLAUSE_BREAK_RE.search(suffix)
@@ -622,6 +807,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
                 "report contains unsupported cardinality/stats/skew claim(s) while "
                 f"analysis_facts.md says Cardinality anomalies: 0: {', '.join(claims)}"
             )
+    errors.extend(find_contradicted_row_underestimation_claims(report_text, facts_text))
     return errors
 
 
@@ -636,59 +822,63 @@ def enforce_report_fact_requirements(text: str, facts_text: str) -> str:
 
 
 def enforce_user_report_requirements(text: str, facts_text: str) -> str:
+    text = normalize_report_headings(text, USER_HEADING_REWRITE)
     read_only_bullets = []
     if "SHOW TABLE STATS" not in text:
-        read_only_bullets.append("- Run `SHOW TABLE STATS` only for referenced tables present in analysis_facts.md.")
+        read_only_bullets.append(
+            "- Выполнить `SHOW TABLE STATS` только для таблиц, которые присутствуют в analysis_facts.md."
+        )
     if "SHOW COLUMN STATS" not in text:
         read_only_bullets.append(
-            "- Run `SHOW COLUMN STATS` only for join/filter columns after they are identified."
+            "- Выполнить `SHOW COLUMN STATS` только для join/filter колонок после их идентификации."
         )
     if not facts_include_referenced_tables(facts_text):
         read_only_bullets.append(
-            "- Referenced table names are not present in analysis_facts.md; provide the SQL/profile/context before running table-specific SHOW TABLE STATS."
+            "- Имена таблиц отсутствуют в analysis_facts.md; перед table-specific `SHOW TABLE STATS` нужен SQL/profile/context."
         )
     read_only_bullets.append(
-        "- Join/filter columns are not present in analysis_facts.md; identify them from SQL/EXPLAIN/profile before running column-specific SHOW COLUMN STATS."
+        "- Join/filter колонки отсутствуют в analysis_facts.md; перед column-specific `SHOW COLUMN STATS` определите их из SQL/EXPLAIN/profile."
     )
-    text = insert_bullets_into_section(text, "## Read-only checks you can run", read_only_bullets)
+    text = insert_bullets_into_section(text, USER_READ_ONLY_HEADING, read_only_bullets)
 
     admin_package_bullets = [
-        "- Query ID: use the value from analysis_facts.md; if unavailable, say not present in analysis_facts.md.",
+        "- Query ID: использовать значение из analysis_facts.md; если его нет, написать not present in analysis_facts.md.",
         "- Original profile.",
         "- analysis_facts.md.",
         "- Action Cards/operator IDs.",
-        "- Referenced tables if present; if unavailable, say not present in analysis_facts.md.",
-        "- Timestamps if present; if unavailable, say not present in analysis_facts.md.",
-        "- Admission pool / queue if present; if unavailable, say not present in analysis_facts.md.",
+        "- Таблицы, если они присутствуют; если нет, написать not present in analysis_facts.md.",
+        "- Timestamps, если они присутствуют; если нет, написать not present in analysis_facts.md.",
+        "- Admission pool / queue, если присутствуют; если нет, написать not present in analysis_facts.md.",
         "- Query Doctor report.",
     ]
     text = insert_bullets_into_section(
         text,
-        "## If it still fails, send this to the admin/platform team",
+        USER_ADMIN_PACKAGE_HEADING,
         admin_package_bullets,
     )
     validation_bullets = [
-        "- Treat query rewrites, join/filter changes, pre-aggregation, materialization, and stats maintenance through the approved operational process as changes requiring validation.",
-        "- Validate each change against the same operator evidence from the Action Cards.",
+        "- Query rewrites, join/filter changes, pre-aggregation, materialization и stats maintenance через утверждённый процесс требуют проверки.",
+        "- Проверяйте каждое изменение по тем же operator evidence из Action Cards.",
     ]
-    text = insert_bullets_into_section(text, "## Changes requiring validation", validation_bullets)
+    text = insert_bullets_into_section(text, USER_VALIDATION_HEADING, validation_bullets)
 
     verify_bullets = [
-        "- Re-run the query after any approved change.",
-        "- Compare actual vs estimated rows for the same Action Cards/operator IDs.",
-        "- Compare PeakMemUsage, spill counters, runtime, and bytes read/sent before and after the change when those facts are present.",
+        "- Перезапустить запрос после любого утверждённого изменения.",
+        "- Сравнить actual vs estimated rows для тех же Action Cards/operator IDs.",
+        "- Сравнить PeakMemUsage, spill counters, runtime и bytes read/sent до/после изменения, если эти факты присутствуют.",
     ]
-    return insert_bullets_into_section(text, "## How to verify improvement", verify_bullets)
+    return insert_bullets_into_section(text, USER_VERIFY_HEADING, verify_bullets)
 
 
 def enforce_admin_report_requirements(text: str) -> str:
+    text = normalize_report_headings(text, ROOT_CAUSE_HEADING_REWRITE)
     admin_bullets = [
-        "- Check per-host RowsProduced for the operators called out in the Action Cards.",
-        "- Check per-host PeakMemUsage for the same operators.",
-        "- Check spill/scratch counters in the query profile.",
-        "- Check admission pool memory limits and queue behavior.",
-        "- Check CM metrics/logs for host-level resource pressure during the query window.",
-        "- Check profile counters for the referenced operators before treating suspected issues as proven causes.",
+        "- Проверить per-host RowsProduced для операторов из Action Cards.",
+        "- Проверить per-host PeakMemUsage для тех же операторов.",
+        "- Проверить spill/scratch counters в query profile.",
+        "- Проверить лимиты памяти admission pool и поведение очереди.",
+        "- Проверить CM metrics/logs на host-level resource pressure во время окна запроса.",
+        "- Проверить profile counters по указанным операторам, прежде чем считать предполагаемые проблемы доказанными причинами.",
     ]
     return insert_bullets_into_section(text, "## Что проверить следующим запуском", admin_bullets)
 
@@ -839,6 +1029,8 @@ def stream_ollama_report(
                     "You are only a report writer. Use only supplied deterministic facts. "
                     "Write in Russian. Do not invent unsupported evidence or recommendations. "
                     "Keep cardinality mismatch separate from memory mismatch. "
+                    "Use row underestimation only when actual rows are greater than estimated rows. "
+                    "Use row overestimation when actual rows are lower than estimated rows. "
                     "Do not treat mem ratio below 1.0 as memory underestimation evidence. "
                     "Do not recommend external network checks based only on TotalBytesSent. "
                     "Treat TotalBytesSent as intermediate/exchange data volume unless facts explicitly say network fault. "

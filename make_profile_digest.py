@@ -16,7 +16,7 @@ Usage:
 
 Example:
   cd ~/query-doctor
-  ./make_profile_digest.py cases/cm-e64c9c961cd19841_c81c5ec900000000
+  ./make_profile_digest.py cases/<case_dir>
 """
 
 from __future__ import annotations

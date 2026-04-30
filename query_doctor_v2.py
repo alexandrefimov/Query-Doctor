@@ -13,7 +13,7 @@ The goal is to prevent the LLM from being distracted by low-level per-instance c
 
 Usage:
   cd ~/query-doctor
-  ./query_doctor_v2.py cases/cm-e64c9c961cd19841_c81c5ec900000000 --model qwen3-coder:30b
+  ./query_doctor_v2.py cases/<case_dir> --model qwen3-coder:30b
 
 Env:
   OLLAMA_URL=http://localhost:11434/api/chat
