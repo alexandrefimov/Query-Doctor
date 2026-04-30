@@ -107,6 +107,14 @@ ZERO_CARDINALITY_NOT_SUPPORTED_BULLET = (
     "- В analysis_facts.md нет подтверждённой аномалии кардинальности; не заявляйте "
     "недооценку кардинальности без соответствующего факта."
 )
+BACKEND_DATA_SKEW_SUPPORTED_NOTE = (
+    "- Backend data skew поддержан analysis_facts.md: rows/records неравномерно распределены "
+    "по parsed backends; execution skew / single tail host не доказаны без отдельного факта."
+)
+SPILL_SCRATCH_SUPPORTED_NOTE = (
+    "- В analysis_facts.md есть ненулевые spill/scratch metrics; это подтверждает наличие "
+    "метрик, но не доказывает spill/scratch как причину без дополнительных фактов."
+)
 ZERO_CARDINALITY_UNSUPPORTED_CLAIMS = (
     (
         "cardinality underestimation",
@@ -340,6 +348,27 @@ BACKEND_SAFE_DIAGNOSTIC_NEGATION_RE = re.compile(
     r"\b(?:не\s+доказ\w*|не\s+подтвержд\w*)\b",
     re.IGNORECASE,
 )
+BACKEND_DATA_SKEW_NEGATED_RE = re.compile(
+    r"(?:"
+    r"\b(?:no|not\s+confirmed|not\s+proven)\b[^.\n]{0,80}\b(?:backend\s+)?data\s+skew\b|"
+    r"\b(?:нет|не\s+подтвержд\w*|не\s+доказ\w*)[^.\n]{0,100}"
+    r"(?:перекос\w*\s+данн\w*|data\s+skew)|"
+    r"(?:перекос\w*\s+данн\w*|data\s+skew)[^.\n]{0,100}"
+    r"(?:not\s+confirmed|not\s+proven|не\s+(?:был\w*\s+)?(?:явно\s+)?подтвержд\w*)"
+    r")",
+    re.IGNORECASE,
+)
+SPILL_SCRATCH_ABSENT_RE = re.compile(
+    r"(?:"
+    r"\b(?:no|not\s+confirmed|not\s+proven)\b[^.\n]{0,80}\b(?:spill|scratch)\b|"
+    r"\b(?:нет|не\s+подтвержд\w*|не\s+обнаруж\w*)[^.\n]{0,100}"
+    r"(?:спилл\w*|scratch|скр[еэ]тч\w*)|"
+    r"(?:spill|scratch|спилл\w*|скр[еэ]тч\w*)[^.\n]{0,100}"
+    r"(?:not\s+confirmed|not\s+proven|не\s+(?:был\w*\s+)?(?:явно\s+)?подтвержд\w*)"
+    r")",
+    re.IGNORECASE,
+)
+CAUSE_WORD_RE = re.compile(r"\b(?:cause|root\s+cause|причин\w*)\b", re.IGNORECASE)
 CONTRADICTED_ROW_ESTIMATE_NOTE = (
     "- Направление row/cardinality estimate для одной строки отчёта не поддержано parsed facts; "
     "используйте конкретные actual/estimated ratios из analysis_facts.md."
@@ -745,8 +774,16 @@ def find_backend_tail_claim_errors(report_text: str, facts_text: str) -> list[st
     seen: set[str] = set()
     tail_is_proven = backend_has_proven_tail(summary)
     write_path_is_supported = backend_write_path_is_supported(summary)
+    data_skew_is_supported = backend_data_skew_is_supported(summary)
 
     for line in report_text.splitlines():
+        data_skew_match = BACKEND_DATA_SKEW_NEGATED_RE.search(line)
+        if data_skew_match and data_skew_is_supported and "data_skew" not in seen:
+            errors.append(
+                "backend data skew absence claim contradicts parsed Backend / Host Tail Evidence"
+            )
+            seen.add("data_skew")
+
         single_tail_match = BACKEND_PROVEN_SINGLE_TAIL_RE.search(line)
         if (
             single_tail_match
@@ -873,6 +910,32 @@ def backend_write_path_is_supported(summary: dict[str, str | int]) -> bool:
     return str(summary.get("write-path anomaly", "unknown")).lower() == "yes"
 
 
+def backend_data_skew_is_supported(summary: dict[str, str | int]) -> bool:
+    return str(summary.get("data skew", "unknown")).lower() == "yes"
+
+
+def facts_have_spill_scratch_evidence(facts_text: str) -> bool:
+    return bool(
+        re.search(
+            r"Spill or scratch I/O|non-zero spill/scratch metric evidence",
+            facts_text,
+            re.IGNORECASE,
+        )
+    )
+
+
+def find_spill_scratch_claim_errors(report_text: str, facts_text: str) -> list[str]:
+    if not facts_have_spill_scratch_evidence(facts_text):
+        return []
+    for line in report_text.splitlines():
+        if SPILL_SCRATCH_ABSENT_RE.search(line) and not CAUSE_WORD_RE.search(line):
+            return [
+                "spill/scratch absence claim contradicts parsed facts: "
+                "analysis_facts.md contains spill/scratch metric evidence"
+            ]
+    return []
+
+
 def build_backend_tail_contract(facts_text: str, mode: str) -> str:
     if facts_has_backend_tail_evidence(facts_text):
         summary = parse_backend_tail_summary(facts_text)
@@ -889,6 +952,7 @@ Parsed Backend / Host Tail Evidence summary:
 - Backend data skew means rows/records are distributed unevenly across parsed backends; it does not prove stale stats, cardinality underestimation, optimizer row-estimate failure, or SQL hot keys.
 - If Cardinality anomalies: 0, backend data skew still must not be described as cardinality underestimation or bad/missing stats.
 - If data skew is yes, allowed wording is: "rows/records are distributed unevenly across backends".
+- If data skew is yes, do not say data skew or data distribution skew is absent; only execution skew / single tail host may be absent when the summary says so.
 - If execution skew is no or host tail candidates is 0, say no single slow backend/tail host is proven; do not claim one host is proven slow, a tail backend is proven, or execution skew is proven.
 - If write-path anomaly is unknown, write/RPC/HDFS path may be listed only as a next diagnostic check, not as the proven cause.
 """.strip()
@@ -982,6 +1046,7 @@ Engineering interpretation rules:
 - For memory impact, prefer operators with large absolute peak memory, especially GiB-scale SORT/HASH JOIN.
 - Treat skew and spill only as established causes if the facts explicitly contain skew evidence or non-zero spill/scratch metrics.
 - If skew/spill evidence is absent, mention them only under "Что проверить следующим запуском".
+- If analysis_facts.md contains a Spill or scratch I/O finding, do not say spill/scratch evidence is absent; say non-zero spill/scratch metric evidence exists and keep causal wording separate.
 
 The final markdown file is assembled by the wrapper with:
 # Query Doctor Report
@@ -1140,6 +1205,23 @@ def normalize_contradicted_estimate_direction(line: str, facts_text: str) -> str
     return line
 
 
+def normalize_supported_evidence_contradiction(line: str, facts_text: str) -> str:
+    notes: list[str] = []
+    if facts_has_backend_tail_evidence(facts_text):
+        summary = parse_backend_tail_summary(facts_text)
+        if backend_data_skew_is_supported(summary) and BACKEND_DATA_SKEW_NEGATED_RE.search(line):
+            notes.append(BACKEND_DATA_SKEW_SUPPORTED_NOTE)
+    if (
+        facts_have_spill_scratch_evidence(facts_text)
+        and SPILL_SCRATCH_ABSENT_RE.search(line)
+        and not CAUSE_WORD_RE.search(line)
+    ):
+        notes.append(SPILL_SCRATCH_SUPPORTED_NOTE)
+    if notes:
+        return "\n".join(dict.fromkeys(notes))
+    return line
+
+
 def should_drop_zero_cardinality_positive_claim(line: str, facts_text: str) -> bool:
     return facts_cardinality_anomaly_count(facts_text) == 0 and bool(
         find_zero_cardinality_unsupported_claims(line)
@@ -1206,6 +1288,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
         if should_rewrite_stats_freshness_claim(line):
             line = STATS_FRESHNESS_MISSING_EVIDENCE
         line = normalize_operator_time_wording(line, facts_text)
+        line = normalize_supported_evidence_contradiction(line, facts_text)
         direction_normalized = normalize_contradicted_estimate_direction(line, facts_text)
         if direction_normalized is None:
             continue
@@ -1338,6 +1421,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
     errors.extend(find_contradicted_memory_overestimation_claims(report_text, facts_text))
     errors.extend(find_unsafe_operator_time_wording(report_text, facts_text))
     errors.extend(find_backend_tail_claim_errors(report_text, facts_text))
+    errors.extend(find_spill_scratch_claim_errors(report_text, facts_text))
     return errors
 
 
