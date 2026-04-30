@@ -30,32 +30,60 @@ NUM_CTX = int(os.getenv("QD_NUM_CTX", "16384"))
 NUM_PREDICT = int(os.getenv("QD_NUM_PREDICT", "2400"))
 PROGRESS_PREFIX = "[Query Doctor report]"
 MIN_REPORT_CHARS = int(os.getenv("QD_MIN_REPORT_CHARS", "1500"))
-MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "8"))
+MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "9"))
+REPORT_TITLE_HEADING = "# Query Doctor Report"
+SHORT_SUMMARY_HEADING = "## Короткий вывод"
+DETAILED_REPORT_HEADING = "## Подробный разбор"
+EVIDENCE_SAFE_PROBLEMS_HEADING = "### Основные подтверждённые проблемы по профилю"
+EVIDENCE_HEADING = "### Подтверждающие факты"
+AMPLIFIERS_HEADING = "### Что усиливает проблему"
+NOT_SUPPORTED_HEADING = "### Что НЕ подтверждается фактами"
+RECOMMENDATIONS_HEADING = "### Практические рекомендации"
+NEXT_CHECKS_HEADING = "### Что проверить следующим запуском"
 REQUIRED_REPORT_SECTIONS = [
-    "# Query Doctor Report",
-    "## Краткий вывод",
-    "## Основные подтверждённые проблемы по профилю",
-    "## Подтверждающие факты",
-    "## Что усиливает проблему",
-    "## Что НЕ подтверждается фактами",
-    "## Практические рекомендации",
-    "## Что проверить следующим запуском",
+    REPORT_TITLE_HEADING,
+    SHORT_SUMMARY_HEADING,
+    DETAILED_REPORT_HEADING,
+    EVIDENCE_SAFE_PROBLEMS_HEADING,
+    EVIDENCE_HEADING,
+    AMPLIFIERS_HEADING,
+    NOT_SUPPORTED_HEADING,
+    RECOMMENDATIONS_HEADING,
+    NEXT_CHECKS_HEADING,
 ]
-EVIDENCE_SAFE_PROBLEMS_HEADING = "## Основные подтверждённые проблемы по профилю"
 ROOT_CAUSE_HEADING_REWRITE = {
     "## Главная причина замедления": EVIDENCE_SAFE_PROBLEMS_HEADING,
+    "### Главная причина замедления": EVIDENCE_SAFE_PROBLEMS_HEADING,
     "## Root cause": EVIDENCE_SAFE_PROBLEMS_HEADING,
+    "### Root cause": EVIDENCE_SAFE_PROBLEMS_HEADING,
 }
-USER_READ_ONLY_HEADING = "## Read-only проверки, которые можно выполнить"
-USER_ADMIN_PACKAGE_HEADING = "## Если проблема останется, отправьте админам/платформенной команде"
-USER_VALIDATION_HEADING = "## Изменения, требующие проверки"
-USER_VERIFY_HEADING = "## Как проверить улучшение"
+DETAIL_HEADING_REWRITE = {
+    "## Основные подтверждённые проблемы по профилю": EVIDENCE_SAFE_PROBLEMS_HEADING,
+    "## Подтверждающие факты": EVIDENCE_HEADING,
+    "## Что усиливает проблему": AMPLIFIERS_HEADING,
+    "## Что НЕ подтверждается фактами": NOT_SUPPORTED_HEADING,
+    "## Практические рекомендации": RECOMMENDATIONS_HEADING,
+    "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
+}
+USER_READ_ONLY_HEADING = "### Read-only проверки, которые можно выполнить"
+USER_ADMIN_PACKAGE_HEADING = "### Если проблема останется, отправьте админам/платформенной команде"
+USER_VALIDATION_HEADING = "### Изменения, требующие проверки"
+USER_VERIFY_HEADING = "### Как проверить улучшение"
 USER_HEADING_REWRITE = {
     "## Read-only checks you can run": USER_READ_ONLY_HEADING,
+    "### Read-only checks you can run": USER_READ_ONLY_HEADING,
     "## Safe checks for the SQL owner": USER_READ_ONLY_HEADING,
+    "### Safe checks for the SQL owner": USER_READ_ONLY_HEADING,
+    "## Read-only проверки, которые можно выполнить": USER_READ_ONLY_HEADING,
     "## If it still fails, send this to the admin/platform team": USER_ADMIN_PACKAGE_HEADING,
+    "### If it still fails, send this to the admin/platform team": USER_ADMIN_PACKAGE_HEADING,
+    "## Если проблема останется, отправьте админам/платформенной команде": USER_ADMIN_PACKAGE_HEADING,
     "## Changes requiring validation": USER_VALIDATION_HEADING,
+    "### Changes requiring validation": USER_VALIDATION_HEADING,
+    "## Изменения, требующие проверки": USER_VALIDATION_HEADING,
     "## How to verify improvement": USER_VERIFY_HEADING,
+    "### How to verify improvement": USER_VERIFY_HEADING,
+    "## Как проверить улучшение": USER_VERIFY_HEADING,
 }
 UNSUPPORTED_RECOMMENDATION_RE = (
     "hdfs",
@@ -248,6 +276,7 @@ ZERO_CARDINALITY_RUSSIAN_NEGATION_BRIDGE_RE = re.compile(
 )
 FACTS_TABLE_OPERATOR_RE = re.compile(r"^\s*\|\s*(?P<operator>\d{2,}:[^|]+?)\s*\|")
 REPORT_OPERATOR_ID_RE = re.compile(r"\b(?P<operator>\d{2,}:[A-Z][A-Z _]+)")
+MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+")
 ROW_UNDERESTIMATION_CLAIM_RE = re.compile(
     r"("
     r"\b(?:cardinality|row(?:\s+count)?|rows?|estimated\s+rows?|row\s+estimates?|optimizer\s+estimates?)"
@@ -257,7 +286,8 @@ ROW_UNDERESTIMATION_CLAIM_RE = re.compile(
     r"\b(?:estimated\s+rows|row\s+estimates|optimizer\s+estimates|estimates)\s+(?:(?:are|were)\s+)?too\s+low\b|"
     r"недооцен\w+\s+(?:кардинальност\w+|количеств\w+\s+строк|строк)|"
     r"(?:фактическ\w+\s+)?(?:количеств\w+\s+)?строк[^\n.]{0,80}(?:превыш|больше|выше)[^\n.]{0,80}оцен|"
-    r"оцен\w+\s+(?:строк|количеств\w+\s+строк)[^\n.]{0,80}(?:слишком\s+низк|занижен)"
+    r"оцен\w+\s+(?:строк|количеств\w+\s+строк)[^\n.]{0,80}(?:слишком\s+низк|занижен)|"
+    r"(?:низк\w+|занижен\w+)\s+оцен\w+\s+(?:строк|количеств\w+\s+строк)"
     r")",
     re.IGNORECASE,
 )
@@ -275,7 +305,7 @@ MEMORY_OVERESTIMATION_CLAIM_RE = re.compile(
     r"("
     r"\b(?:memory|mem|peak\s+memory|peakmemusage)[^.\n]{0,80}\boverestimat\w*|"
     r"\boverestimat\w+[^.\n]{0,80}\b(?:memory|mem|peak\s+memory|peakmemusage)\b|"
-    r"переоцен\w+\s+памят\w+|"
+    r"переоцен\w+[^.\n]{0,40}памят\w+|"
     r"памят\w+[^.\n]{0,80}переоцен\w+|"
     r"оценк\w+\s+памят\w+[^.\n]{0,80}(?:завышен|слишком\s+высок)"
     r")",
@@ -288,19 +318,30 @@ MEMORY_RATIO_RE = re.compile(
 UNSAFE_OPERATOR_WALL_CLOCK_RE = re.compile(
     r"(?:оператор|operator|\b\d{2,}:[A-Z][A-Z _]+)[^.\n]{0,120}"
     r"(?:выполнял\w*|выполняет\w*|выполнялся|ran|running|executed)"
-    r"[^.\n]{0,40}\d+(?:[\.,]\d+)?\s*(?:час|ч\.|hour|hr|minute|min)",
+    r"[^.\n]{0,40}\d+(?:[\.,]\d+)?\s*"
+    r"(?:час|ч\.|(?-i:h\b)|hour|hr|minute|min|(?-i:m\b)|second|sec|(?-i:s\b))",
     re.IGNORECASE,
 )
 RUSSIAN_OPERATOR_TIME_AS_WALL_CLOCK_RE = re.compile(
     r"(?P<prefix>\b(?:Оператор|Операция|Операторы|Операции)\b[^.\n]{0,160}?)"
     r"\s+выполня(?:ется|ются|лся|лась|лись|л[аио]?|ет\w*|ют)"
-    r"(?P<duration>\s+(?:около\s+|примерно\s+)?\d+(?:[\.,]\d+)?\s*(?:час(?:а|ов)?|ч\.|минут\w*|секунд\w*|hour|hr|minute|min))",
+    r"(?P<duration>\s+(?:около\s+|примерно\s+)?\d+(?:[\.,]\d+)?\s*(?:час(?:а|ов)?|ч\.|(?-i:h\b)|минут\w*|(?-i:m\b)|секунд\w*|сек\.?|(?-i:s\b)|hour|hr|minute|min|sec))",
+    re.IGNORECASE,
+)
+RUSSIAN_OPERATOR_TIME_NOUN_AS_WALL_CLOCK_RE = re.compile(
+    r"(?P<prefix>\b(?:Оператор|Операция|Операторы|Операции)\b[^.\n]{0,160}?)"
+    r"\s+(?:име(?:ет|ют)\s+)?"
+    r"(?:(?:низк\w+|высок\w+|значительн\w+|больш\w+)\s+)?"
+    r"(?:время|времени)\s+выполнения\s*"
+    r"(?:[:=—-]\s*)?\(?"
+    r"(?P<duration>(?:около\s+|примерно\s+)?\d+(?:[\.,]\d+)?\s*"
+    r"(?:мс|ms|миллисекунд\w*|секунд\w*|сек\.?|(?-i:s\b)|минут\w*|(?-i:m\b)|час(?:а|ов)?|ч\.|(?-i:h\b)|hour|hr|minute|min|sec))\)?",
     re.IGNORECASE,
 )
 ENGLISH_OPERATOR_TIME_AS_WALL_CLOCK_RE = re.compile(
     r"(?P<prefix>\b(?:operator|\d{2,}:[A-Z][A-Z _]+)\b[^.\n]{0,160}?)"
     r"\s+(?:ran|running|executed)\s+(?:for\s+)?"
-    r"(?P<duration>\d+(?:[\.,]\d+)?\s*(?:hours?|hrs?|minutes?|mins?))",
+    r"(?P<duration>\d+(?:[\.,]\d+)?\s*(?:hours?|hrs?|(?-i:h\b)|minutes?|mins?|(?-i:m\b)|seconds?|secs?|(?-i:s\b)))",
     re.IGNORECASE,
 )
 ROW_DIRECTION_WORD_RE = re.compile(
@@ -372,6 +413,11 @@ CAUSE_WORD_RE = re.compile(r"\b(?:cause|root\s+cause|причин\w*)\b", re.IGN
 CONTRADICTED_ROW_ESTIMATE_NOTE = (
     "- Направление row/cardinality estimate для одной строки отчёта не поддержано parsed facts; "
     "используйте конкретные actual/estimated ratios из analysis_facts.md."
+)
+CONTRADICTED_MEMORY_ESTIMATE_NOTE = (
+    "- расхождение оценки памяти: направление memory estimate для одной строки отчёта "
+    "не поддержано parsed facts; используйте конкретные actual/estimated memory ratios "
+    "из analysis_facts.md."
 )
 
 
@@ -568,17 +614,21 @@ def find_contradicted_row_underestimation_claims(report_text: str, facts_text: s
     errors: list[str] = []
     seen: set[str] = set()
     row_underestimation_context = False
+    row_underestimation_context_from_heading = False
     for line in report_text.splitlines():
         has_claim = line_has_row_underestimation_claim(line)
-        if line.startswith("## "):
+        if MARKDOWN_HEADING_RE.match(line):
             row_underestimation_context = False
-        elif starts_new_top_level_item(line) and not has_claim:
+            row_underestimation_context_from_heading = False
+        elif starts_new_top_level_item(line) and not has_claim and not row_underestimation_context_from_heading:
             row_underestimation_context = False
+            row_underestimation_context_from_heading = False
 
         if not has_claim and not row_underestimation_context:
             continue
         if has_claim:
             row_underestimation_context = True
+            row_underestimation_context_from_heading = bool(MARKDOWN_HEADING_RE.match(line))
         errors.extend(mentions_contradicted_row_underestimated_operator(line, directions, seen))
     return errors
 
@@ -748,6 +798,7 @@ def find_unsafe_operator_time_wording(report_text: str, facts_text: str) -> list
         "operator time is presented as wall-clock duration without explicit wall-clock evidence"
         for line in report_text.splitlines()
         if UNSAFE_OPERATOR_WALL_CLOCK_RE.search(line)
+        or RUSSIAN_OPERATOR_TIME_NOUN_AS_WALL_CLOCK_RE.search(line)
     ][:1]
 
 
@@ -1024,6 +1075,8 @@ Engineering interpretation rules:
 - Row/cardinality overestimation means actual rows are smaller than estimated rows or actual/estimated ratio is below 1.
 - Use "estimate mismatch" / "estimate gap" when estimate direction is mixed or unclear.
 - Do not describe an operator as row/cardinality-underestimated when its evidence line shows actual rows < estimated rows or ratio < 1.
+- Do not put ratio-below-1 row facts under a broad "Недооценение количества строк" / "row underestimation" heading. If the section mixes ratio-above-1 and ratio-below-1 operators, title it "Расхождения оценок строк" or "Проблемы с оценками строк".
+- For ratio-below-1 row facts, say "оценка выше факта" or "недооценка по этому оператору не подтверждена"; do not call that operator underestimated.
 - Memory underestimation is separate from row/cardinality underestimation.
 - Memory underestimation means actual/peak memory is larger than estimated memory or actual/estimated memory ratio is above 1.
 - Memory overestimation means actual/peak memory is lower than estimated memory or actual/estimated memory ratio is below 1.
@@ -1034,7 +1087,7 @@ Engineering interpretation rules:
 - If an operator has rows ratio above threshold but mem ratio below 1.0, use it only as cardinality/intermediate-row evidence, not memory-underestimation evidence.
 - Do not present Impala operator/profile counter time as query wall-clock duration unless analysis_facts.md explicitly provides query wall-clock evidence.
 - Prefer "operator/profile time counter", "time counter reported for this operator", "в профиле накоплено большое operator time", or "оператор выделяется по времени в профиле".
-- Avoid "оператор выполняется X часов", "оператор выполнялся X часов", "the operator ran for X hours", and "the query ran for X because this operator took X".
+- Avoid "оператор выполняется X часов", "оператор выполнялся X часов", "время выполнения X", "the operator ran for X hours", and "the query ran for X because this operator took X".
 - Evidence-safe summary wording may mention actual rows in millions vs estimated rows around 10.55K only when analysis_facts.md contains that cardinality anomaly evidence.
 - Keep backend data skew, execution skew, cardinality/row-estimate anomaly, memory estimate anomaly, and write-path anomaly as separate categories.
 - Do not use backend data skew as evidence for cardinality underestimation, stale stats, or optimizer row-estimate failure.
@@ -1059,13 +1112,28 @@ Do not write "# Query Doctor Report" yourself.
 Do not repeat the Source facts / Facts sha256 / Model fingerprint yourself.
 You must write only the report body, starting with exactly these headings, in this order:
 
-## Краткий вывод
-## Основные подтверждённые проблемы по профилю
-## Подтверждающие факты
-## Что усиливает проблему
-## Что НЕ подтверждается фактами
-## Практические рекомендации
-## Что проверить следующим запуском
+## Короткий вывод
+## Подробный разбор
+### Основные подтверждённые проблемы по профилю
+### Подтверждающие факты
+### Что усиливает проблему
+### Что НЕ подтверждается фактами
+### Практические рекомендации
+### Что проверить следующим запуском
+
+"Короткий вывод" requirements:
+- Use exactly 5 concise bullets unless the facts are sparse; 4-7 bullets or short paragraphs are allowed, but never more than 7.
+- Combine repeated operator examples; do not list every operator in the short summary.
+- Base every claim only on analysis_facts.md.
+- Mention the main supported symptom/problem, what is not proven when relevant, and the next safe diagnostic/action.
+- Do not introduce any fact that is absent from "Подробный разбор" and analysis_facts.md.
+- Do not state root cause unless analysis_facts.md directly supports it.
+- Obey all estimate-direction, backend-skew, write-path, spill/scratch, and operator/profile-time rules below.
+
+"Подробный разбор" requirements:
+- Preserve the detailed report structure under "Подробный разбор" using the required ### subsections listed above.
+- Keep practical recommendations and next checks concise and tied to deterministic facts.
+- Do not make the report substantially longer than necessary.
 
 Grounding rules for recommendations:
 - Good when cardinality anomalies are present: Проверить table stats and partition stats for JOIN inputs, because parsed facts show actual rows >> estimated rows.
@@ -1085,9 +1153,10 @@ Report writing guidance:
 - Be concise and engineering-focused.
 - Separate deterministic facts from hypotheses.
 - Quote concrete operators and ratios only when they appear in the facts.
-- Use the section title "Основные подтверждённые проблемы по профилю"; do not use stronger root-cause titles such as "Главная причина замедления" or "Root cause" unless analysis_facts.md itself uses causal language.
+- Use the subsection title "Основные подтверждённые проблемы по профилю"; do not use stronger root-cause titles such as "Главная причина замедления" or "Root cause" unless analysis_facts.md itself uses causal language.
 - In "Основные подтверждённые проблемы по профилю", name cardinality estimate underestimation only for operators where facts show actual rows > estimated rows or ratio > 1.
-- In "Подтверждающие факты", group facts separately: cardinality mismatch, memory mismatch, expensive operators, intermediate/exchange traffic.
+- In "Подтверждающие факты", group facts separately: row estimate mismatch, memory mismatch, expensive operators, intermediate/exchange traffic.
+- Use "Недооценение количества строк" only for operators whose facts show actual rows > estimated rows or ratio > 1. If the section includes mixed estimate directions, use "Расхождения оценок строк" / "Проблемы с оценками строк" instead.
 - In "Что усиливает проблему", discuss SORT/ANALYTIC and memory underestimation only where the facts support them.
 - In "Что усиливает проблему", do not call EXCHANGE a main memory bottleneck if its absolute peak memory is small; describe it as intermediate/exchange data volume only.
 - In "Что НЕ подтверждается фактами", explicitly carry over unsupported conclusions from facts.
@@ -1188,6 +1257,10 @@ def normalize_operator_time_wording(line: str, facts_text: str) -> str:
         r"\g<prefix> имеет operator/profile time counter\g<duration>",
         line,
     )
+    line = RUSSIAN_OPERATOR_TIME_NOUN_AS_WALL_CLOCK_RE.sub(
+        r"\g<prefix> имеет operator/profile time counter \g<duration>",
+        line,
+    )
     line = ENGLISH_OPERATOR_TIME_AS_WALL_CLOCK_RE.sub(
         r"\g<prefix> has operator/profile time counter \g<duration>",
         line,
@@ -1199,9 +1272,9 @@ def normalize_contradicted_estimate_direction(line: str, facts_text: str) -> str
     if find_contradicted_row_underestimation_claims(line, facts_text):
         return CONTRADICTED_ROW_ESTIMATE_NOTE
     if find_contradicted_memory_underestimation_claims(line, facts_text):
-        return MEMORY_UNDERESTIMATION_CLAIM_RE.sub("расхождение оценки памяти", line)
+        return CONTRADICTED_MEMORY_ESTIMATE_NOTE
     if find_contradicted_memory_overestimation_claims(line, facts_text):
-        return MEMORY_OVERESTIMATION_CLAIM_RE.sub("расхождение оценки памяти", line)
+        return CONTRADICTED_MEMORY_ESTIMATE_NOTE
     return line
 
 
@@ -1232,10 +1305,10 @@ def strip_unsupported_prose(line: str, current_section: str, facts_text: str = "
     stripped = line.lstrip()
     is_list_item = stripped.startswith(("-", "*")) or bool(re.match(r"^\d+\.\s+", stripped))
     if should_rewrite_spill_storage_line(line):
-        if current_section == "## Что проверить следующим запуском":
+        if current_section == NEXT_CHECKS_HEADING:
             return SPILL_SCRATCH_NEXT_CHECK
         return None
-    if current_section in {"## Практические рекомендации", "## Что проверить следующим запуском"}:
+    if current_section in {RECOMMENDATIONS_HEADING, NEXT_CHECKS_HEADING}:
         return None
 
     if is_list_item:
@@ -1264,6 +1337,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
     Pure helper for tests and callers: no file I/O, no network, no Ollama calls.
     """
     report_text = normalize_report_headings(report_text, ROOT_CAUSE_HEADING_REWRITE)
+    report_text = normalize_report_headings(report_text, DETAIL_HEADING_REWRITE)
     lines = [line for line in report_text.splitlines() if not line.startswith(PROGRESS_PREFIX)]
 
     # The wrapper owns the top-level title and fingerprint. Some local models
@@ -1283,7 +1357,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
     normalized: list[str] = []
     current_section = ""
     for line in lines:
-        if line.startswith("## "):
+        if line.startswith("## ") or line.startswith("### "):
             current_section = line.strip()
         if should_rewrite_stats_freshness_claim(line):
             line = STATS_FRESHNESS_MISSING_EVIDENCE
@@ -1293,7 +1367,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
         if direction_normalized is None:
             continue
         line = direction_normalized
-        is_not_supported = current_section == "## Что НЕ подтверждается фактами"
+        is_not_supported = current_section == NOT_SUPPORTED_HEADING
         is_structure_line = line.startswith("#") or line.startswith(">") or not line.strip()
         if not is_structure_line and not is_not_supported and should_drop_zero_cardinality_positive_claim(
             line, facts_text
@@ -1339,7 +1413,8 @@ def insert_bullets_into_section(text: str, heading: str, bullets: list[str]) -> 
         return text.rstrip() + "\n\n" + heading + "\n\n" + "\n".join(missing) + "\n"
 
     start = text.index(heading)
-    next_heading = text.find("\n## ", start + len(heading))
+    next_heading_match = re.search(r"\n#{2,3}\s+", text[start + len(heading) :])
+    next_heading = start + len(heading) + next_heading_match.start() if next_heading_match else -1
     insertion = "\n" + "\n".join(missing)
     if next_heading == -1:
         return text.rstrip() + insertion + "\n"
@@ -1429,7 +1504,7 @@ def enforce_report_fact_requirements(text: str, facts_text: str) -> str:
     if facts_cardinality_anomaly_count(facts_text) == 0:
         text = insert_bullets_into_section(
             text,
-            "## Что НЕ подтверждается фактами",
+            NOT_SUPPORTED_HEADING,
             [ZERO_CARDINALITY_NOT_SUPPORTED_BULLET],
         )
     return text
@@ -1494,9 +1569,13 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
     text = normalize_report_headings(
         text,
         {
-            "## Next checks": "## Что проверить следующим запуском",
-            "## What to check next": "## Что проверить следующим запуском",
-            "## Checks for next run": "## Что проверить следующим запуском",
+            "## Next checks": NEXT_CHECKS_HEADING,
+            "## What to check next": NEXT_CHECKS_HEADING,
+            "## Checks for next run": NEXT_CHECKS_HEADING,
+            "### Next checks": NEXT_CHECKS_HEADING,
+            "### What to check next": NEXT_CHECKS_HEADING,
+            "### Checks for next run": NEXT_CHECKS_HEADING,
+            "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
         },
     )
     admin_bullet_rules = [
@@ -1553,7 +1632,7 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
         ] + admin_bullet_rules
     return insert_required_bullets_into_section(
         text,
-        "## Что проверить следующим запуском",
+        NEXT_CHECKS_HEADING,
         admin_bullet_rules,
     )
 
@@ -1567,6 +1646,40 @@ def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admi
         text = enforce_admin_report_requirements(text, facts_text)
     text = enforce_report_fact_requirements(text, facts_text)
     path.write_text(text, encoding="utf-8")
+
+
+def count_report_section_items(text: str, heading: str) -> int | None:
+    lines = text.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == heading)
+    except StopIteration:
+        return None
+
+    section_lines: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.startswith("## "):
+            break
+        section_lines.append(line)
+
+    bullet_count = sum(
+        1
+        for line in section_lines
+        if re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line)
+    )
+    if bullet_count:
+        return bullet_count
+
+    paragraph_count = 0
+    in_paragraph = False
+    for line in section_lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(">"):
+            in_paragraph = False
+            continue
+        if not in_paragraph:
+            paragraph_count += 1
+            in_paragraph = True
+    return paragraph_count
 
 
 def validate_report_text(
@@ -1598,6 +1711,12 @@ def validate_report_text(
     if section_lines.count("# Query Doctor Report") != 1:
         errors.append(
             f"expected exactly one '# Query Doctor Report' heading, found {section_lines.count('# Query Doctor Report')}"
+        )
+
+    short_summary_items = count_report_section_items(text, SHORT_SUMMARY_HEADING)
+    if short_summary_items is not None and not 4 <= short_summary_items <= 7:
+        errors.append(
+            f"short summary must contain 4-7 concise items, found {short_summary_items}"
         )
 
     if facts_text:

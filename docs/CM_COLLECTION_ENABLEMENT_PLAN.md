@@ -10,7 +10,7 @@
 - The max profile size guard defaults to `52428800` bytes.
 - The collector writes generated cases only; it does not run the analyzer or report writer automatically.
 - HTTP GET transport, CM v32 endpoint adapter helpers, output writer, redaction helpers, and mocked tests already exist.
-- Latest known validation status: `259 passed`.
+- Run the full pytest suite before each rollout checkpoint and record the current result in the task/audit output.
 - A real ignored single-query smoke under `cases/cm-corpus/` passed collection, analyzer parsing, admin/user report generation, and deterministic report validation.
 
 ## Goal
