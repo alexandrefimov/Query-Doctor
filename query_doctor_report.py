@@ -34,6 +34,7 @@ MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "9"))
 REPORT_TITLE_HEADING = "# Query Doctor Report"
 SHORT_SUMMARY_HEADING = "## Короткий вывод"
 DETAILED_REPORT_HEADING = "## Подробный разбор"
+ANALYZER_FACTS_HEADING = "## Факты анализатора"
 EVIDENCE_SAFE_PROBLEMS_HEADING = "### Основные подтверждённые проблемы по профилю"
 EVIDENCE_HEADING = "### Подтверждающие факты"
 AMPLIFIERS_HEADING = "### Что усиливает проблему"
@@ -85,6 +86,7 @@ USER_HEADING_REWRITE = {
     "### How to verify improvement": USER_VERIFY_HEADING,
     "## Как проверить улучшение": USER_VERIFY_HEADING,
 }
+FACT_APPENDIX_MAX_ITEMS = 8
 UNSUPPORTED_RECOMMENDATION_RE = (
     "hdfs",
     "хранилищ",
@@ -463,6 +465,50 @@ def read_required_facts(path: Path) -> tuple[str, str]:
     data = path.read_bytes()
     text = data.decode("utf-8", errors="replace")
     return text, hashlib.sha256(data).hexdigest()
+
+
+def extract_markdown_section(text: str, heading: str) -> list[str]:
+    lines = text.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == heading)
+    except StopIteration:
+        return []
+
+    section_lines: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.startswith("## "):
+            break
+        section_lines.append(line)
+    return section_lines
+
+
+def extract_markdown_subsection(lines: list[str], heading: str) -> list[str]:
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == heading)
+    except StopIteration:
+        return []
+
+    subsection_lines: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.startswith("### "):
+            break
+        subsection_lines.append(line)
+    return subsection_lines
+
+
+def strip_markdown_section(text: str, heading: str) -> str:
+    lines = text.splitlines()
+    stripped_lines: list[str] = []
+    skipping = False
+    for line in lines:
+        if line.strip() == heading:
+            skipping = True
+            continue
+        if skipping and line.startswith("## "):
+            skipping = False
+        if not skipping:
+            stripped_lines.append(line)
+    return "\n".join(stripped_lines).strip() + "\n"
 
 
 def facts_cardinality_anomaly_count(facts_text: str) -> int | None:
@@ -1118,6 +1164,7 @@ The final markdown file is assembled by the wrapper with:
 
 Do not write "# Query Doctor Report" yourself.
 Do not repeat the Source facts / Facts sha256 / Model fingerprint yourself.
+Do not write "## Факты анализатора"; Python appends that deterministic section after validation.
 You must write only the report body, starting with exactly these headings, in this order:
 
 ## Короткий вывод
@@ -1350,6 +1397,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
     """
     report_text = normalize_report_headings(report_text, ROOT_CAUSE_HEADING_REWRITE)
     report_text = normalize_report_headings(report_text, DETAIL_HEADING_REWRITE)
+    report_text = strip_markdown_section(report_text, ANALYZER_FACTS_HEADING)
     lines = [line for line in report_text.splitlines() if not line.startswith(PROGRESS_PREFIX)]
 
     # The wrapper owns the top-level title and fingerprint. Some local models
@@ -1451,6 +1499,136 @@ def normalize_report_headings(text: str, replacements: dict[str, str]) -> str:
     for line in text.splitlines():
         lines.append(replacements.get(line.strip(), line))
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
+def first_bullet_value(lines: list[str], label: str) -> str | None:
+    pattern = re.compile(
+        rf"^\s*-\s*{re.escape(label)}\s*:\s*(?P<value>.+?)\s*$",
+        re.IGNORECASE,
+    )
+    for line in lines:
+        match = pattern.match(line)
+        if match:
+            return match.group("value").strip()
+    return None
+
+
+def append_fact_bullet(output: list[str], label: str, value: str | None) -> None:
+    if value:
+        output.append(f"- {label}: {value}")
+
+
+def limited_nonempty_lines(
+    lines: list[str],
+    *,
+    limit: int = FACT_APPENDIX_MAX_ITEMS,
+) -> tuple[list[str], int]:
+    selected = [line.rstrip() for line in lines if line.strip()]
+    return selected[:limit], max(0, len(selected) - limit)
+
+
+def render_analyzer_facts_appendix(facts_text: str) -> str:
+    summary_lines = extract_markdown_section(facts_text, "## Summary")
+    totals_lines = extract_markdown_section(facts_text, "## Totals")
+    backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
+    backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
+    backend_candidates_lines = extract_markdown_subsection(backend_lines, "### Host tail candidates")
+    action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
+    findings_lines = extract_markdown_section(facts_text, "## Findings")
+    limitation_lines = extract_markdown_section(
+        facts_text,
+        "## What is NOT supported by the parsed evidence",
+    )
+
+    lines: list[str] = ["", ANALYZER_FACTS_HEADING, "", "### Сводка"]
+    for label in ("Parsed operators", "Cardinality anomalies", "Memory anomalies"):
+        append_fact_bullet(lines, label, first_bullet_value(summary_lines, label))
+    for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent"):
+        append_fact_bullet(lines, label, first_bullet_value(totals_lines, label))
+
+    if backend_summary_lines:
+        lines.extend(["", "### Backend / Host Tail Evidence"])
+        for label in (
+            "backend rows parsed",
+            "host tail candidates",
+            "data skew",
+            "execution skew",
+            "write-path anomaly",
+        ):
+            append_fact_bullet(lines, label, first_bullet_value(backend_summary_lines, label))
+
+        candidate_excerpt, remaining_candidates = limited_nonempty_lines(
+            [
+                line
+                for line in backend_candidates_lines
+                if not re.match(r"^\s*\|?\s*-{3,}", line)
+            ],
+            limit=6,
+        )
+        if candidate_excerpt and candidate_excerpt != ["- none"]:
+            lines.extend(["", "Host tail candidates excerpt:"])
+            lines.extend(candidate_excerpt)
+            if remaining_candidates:
+                lines.append(
+                    f"- ... {remaining_candidates} more candidate lines omitted from appendix."
+                )
+
+    if action_card_lines:
+        lines.extend(["", "### Action cards"])
+        card_titles = [
+            line[4:].strip()
+            for line in action_card_lines
+            if line.startswith("### Card ")
+        ]
+        if card_titles:
+            for title in card_titles[:FACT_APPENDIX_MAX_ITEMS]:
+                lines.append(f"- {title}")
+            if len(card_titles) > FACT_APPENDIX_MAX_ITEMS:
+                lines.append(
+                    f"- ... {len(card_titles) - FACT_APPENDIX_MAX_ITEMS} more action cards omitted from appendix."
+                )
+        else:
+            excerpt, remaining = limited_nonempty_lines(
+                action_card_lines,
+                limit=FACT_APPENDIX_MAX_ITEMS,
+            )
+            lines.extend(excerpt or ["- No action-card facts present in analysis_facts.md."])
+            if remaining:
+                lines.append(f"- ... {remaining} more action-card lines omitted from appendix.")
+
+    finding_titles = [
+        line[4:].strip()
+        for line in findings_lines
+        if line.startswith("### ")
+    ]
+    if finding_titles:
+        lines.extend(["", "### Findings"])
+        for title in finding_titles[:FACT_APPENDIX_MAX_ITEMS]:
+            lines.append(f"- {title}")
+        if len(finding_titles) > FACT_APPENDIX_MAX_ITEMS:
+            lines.append(
+                f"- ... {len(finding_titles) - FACT_APPENDIX_MAX_ITEMS} more findings omitted from appendix."
+            )
+
+    if limitation_lines:
+        lines.extend(["", "### Важные ограничения"])
+        limitation_excerpt, remaining_limitations = limited_nonempty_lines(
+            [line for line in limitation_lines if line.lstrip().startswith("- ")],
+            limit=FACT_APPENDIX_MAX_ITEMS,
+        )
+        lines.extend(limitation_excerpt)
+        if remaining_limitations:
+            lines.append(
+                f"- ... {remaining_limitations} more limitation lines omitted from appendix."
+            )
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def append_analyzer_facts_appendix(report_text: str, facts_text: str) -> str:
+    without_model_appendix = strip_markdown_section(report_text, ANALYZER_FACTS_HEADING)
+    return without_model_appendix.rstrip() + "\n" + render_analyzer_facts_appendix(facts_text)
 
 
 def is_negated_zero_cardinality_match(line: str, match_start: int) -> bool:
@@ -2018,23 +2196,35 @@ def main(argv: list[str]) -> int:
         keep_alive=args.keep_alive,
     )
 
-    report_text = normalize_report_text(
+    narrative_text = normalize_report_text(
         report_header(facts_path, facts_sha256, args.model) + generated_body,
         facts_text=facts_text,
         mode=args.mode,
     )
 
     if not args.no_validate:
-        validation_errors = validate_report_text(report_text, facts_text=facts_text)
+        validation_errors = validate_report_text(narrative_text, facts_text=facts_text)
         if validation_errors:
-            partial_path = write_failed_report_to_partial(output_path, report_text)
+            partial_path = write_failed_report_to_partial(output_path, narrative_text)
             print(f"{PROGRESS_PREFIX} ERROR: generated report failed validation", file=sys.stderr)
             for error in validation_errors:
                 print(f"{PROGRESS_PREFIX} ERROR: {error}", file=sys.stderr)
             print(f"{PROGRESS_PREFIX} partial report saved to: {partial_path}", file=sys.stderr)
             return 4
 
-    output_path.write_text(report_text, encoding="utf-8")
+    final_report_text = append_analyzer_facts_appendix(narrative_text, facts_text)
+
+    if not args.no_validate:
+        validation_errors = validate_report_text(final_report_text, facts_text=facts_text)
+        if validation_errors:
+            partial_path = write_failed_report_to_partial(output_path, final_report_text)
+            print(f"{PROGRESS_PREFIX} ERROR: final report failed validation", file=sys.stderr)
+            for error in validation_errors:
+                print(f"{PROGRESS_PREFIX} ERROR: {error}", file=sys.stderr)
+            print(f"{PROGRESS_PREFIX} partial report saved to: {partial_path}", file=sys.stderr)
+            return 4
+
+    output_path.write_text(final_report_text, encoding="utf-8")
 
     print(f"{PROGRESS_PREFIX} done: {output_path}", file=sys.stderr)
     return 0
