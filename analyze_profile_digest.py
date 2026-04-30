@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from table_metadata_facts import collect_table_metadata_context
+
 
 KNOWN_OPERATOR_NAMES = [
     "NESTED LOOP JOIN",
@@ -2298,6 +2300,48 @@ def render_referenced_tables(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("table_metadata_context") or {}
+    lines = ["## Table Metadata Context", ""]
+    context_file = context.get("context_file", "not_observed")
+    lines.append(f"- context file: {context_file}")
+    if context.get("context_path"):
+        lines.append(f"- context path: `{context['context_path']}`")
+    lines.append(f"- table metadata facts: {context.get('table_metadata_facts', 'unknown')}")
+    lines.append(f"- tables requested: {context.get('tables_requested', 0)}")
+    read_only = context.get("read_only_statements_only")
+    if read_only is not None:
+        lines.append(f"- read-only statements only: {'yes' if read_only else 'no'}")
+    if context.get("error"):
+        lines.append(f"- error: {context['error']}")
+    lines.append("")
+
+    for table in context.get("tables") or []:
+        lines.extend([f"### Table: {table['table']}", ""])
+        for statement in ("SHOW CREATE TABLE", "SHOW TABLE STATS", "SHOW COLUMN STATS"):
+            lines.append(f"- {statement}: {table.get('statements', {}).get(statement, 'unknown')}")
+        lines.append(f"- table stats rows: {table.get('table_rows', 'unknown')}")
+        lines.append(f"- table stats size: {table.get('table_size', 'unknown')}")
+        lines.append(f"- table stats state: {table.get('table_stats_state', 'unknown')}")
+        lines.append(
+            f"- column stats columns observed: {table.get('column_stats_columns_observed', 'unknown')}"
+        )
+        lines.append(
+            f"- column stats missing/unknown markers: {table.get('column_stats_missing_markers', 'unknown')}"
+        )
+        columns = table.get("column_stats_columns") or []
+        if columns:
+            lines.append("- column stats columns: " + ", ".join(f"`{column}`" for column in columns))
+        lines.append(f"- file format: {table.get('file_format', 'unknown')}")
+        partitions = table.get("partition_columns") or []
+        if partitions:
+            lines.append("- partition columns: " + ", ".join(f"`{column}`" for column in partitions))
+        else:
+            lines.append("- partition columns: unknown")
+        lines.append("")
+    return lines
+
+
 def render_impala_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("impala_context")
     if not context:
@@ -2374,6 +2418,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_operator_table("Peak memory vs estimated memory anomalies", analysis["memory_anomalies"], max_table_rows)
 
     lines += render_referenced_tables(analysis)
+    lines += render_table_metadata_context(analysis)
     lines += render_impala_context(analysis)
     lines += render_backend_tail_evidence(analysis)
     lines += render_action_cards(analysis)
@@ -2452,6 +2497,7 @@ def main(argv: list[str]) -> int:
     text = digest_path.read_text(encoding="utf-8", errors="replace")
     analysis = analyze(text, args)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
+    analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
     analysis["action_cards"] = build_action_cards(analysis)
 

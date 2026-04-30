@@ -1541,6 +1541,7 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
     backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
     backend_candidates_lines = extract_markdown_subsection(backend_lines, "### Host tail candidates")
     referenced_table_lines = extract_markdown_section(facts_text, "## Referenced Tables")
+    table_metadata_lines = extract_markdown_section(facts_text, "## Table Metadata Context")
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     limitation_lines = extract_markdown_section(
@@ -1595,6 +1596,23 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
             lines.extend(table_excerpt)
             if remaining_tables:
                 lines.append(f"- ... {remaining_tables} more table lines omitted from appendix.")
+
+    if table_metadata_lines:
+        metadata_excerpt, remaining_metadata = limited_nonempty_lines(
+            [
+                line
+                for line in table_metadata_lines
+                if line.startswith("### Table:") or line.lstrip().startswith("- ")
+            ],
+            limit=FACT_APPENDIX_MAX_ITEMS * 2,
+        )
+        if metadata_excerpt:
+            lines.extend(["", "### Table Metadata Context"])
+            lines.extend(metadata_excerpt)
+            if remaining_metadata:
+                lines.append(
+                    f"- ... {remaining_metadata} more metadata lines omitted from appendix."
+                )
 
     if action_card_lines:
         lines.extend(["", "### Action cards"])
