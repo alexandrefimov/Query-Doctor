@@ -329,7 +329,7 @@ RUSSIAN_OPERATOR_TIME_AS_WALL_CLOCK_RE = re.compile(
     re.IGNORECASE,
 )
 RUSSIAN_OPERATOR_TIME_NOUN_AS_WALL_CLOCK_RE = re.compile(
-    r"(?P<prefix>\b(?:Оператор|Операция|Операторы|Операции)\b[^.\n]{0,160}?)"
+    r"(?P<prefix>\b(?:(?:Оператор|Операция|Операторы|Операции)\b|(?:[A-Z][A-Z_ ]+\s+оператор\b)|(?:\d{2,}:[A-Z][A-Z _]+\b))[^\n]{0,160}?)"
     r"\s+(?:име(?:ет|ют)\s+)?"
     r"(?:(?:низк\w+|высок\w+|значительн\w+|больш\w+)\s+)?"
     r"(?:время|времени)\s+выполнения\s*"
@@ -342,6 +342,13 @@ ENGLISH_OPERATOR_TIME_AS_WALL_CLOCK_RE = re.compile(
     r"(?P<prefix>\b(?:operator|\d{2,}:[A-Z][A-Z _]+)\b[^.\n]{0,160}?)"
     r"\s+(?:ran|running|executed)\s+(?:for\s+)?"
     r"(?P<duration>\d+(?:[\.,]\d+)?\s*(?:hours?|hrs?|(?-i:h\b)|minutes?|mins?|(?-i:m\b)|seconds?|secs?|(?-i:s\b)))",
+    re.IGNORECASE,
+)
+RUSSIAN_QUERY_TIME_AS_WALL_CLOCK_RE = re.compile(
+    r"(?P<prefix>(?:[-*]\s*)?\bЗапрос\b[^.\n]{0,80}?)"
+    r"\s+(?:бежал|выполня(?:ется|лся|лась|лись|л[аио]?|ет\w*)|работал\w*)"
+    r"\s+(?P<duration>(?:около\s+|примерно\s+)?\d+(?:[\.,]\d+)?\s*"
+    r"(?:мс|ms|миллисекунд\w*|секунд\w*|сек\.?|(?-i:s\b)|минут\w*|(?-i:m\b)|час(?:а|ов)?|ч\.|(?-i:h\b)|hour|hr|minute|min|sec))",
     re.IGNORECASE,
 )
 ROW_DIRECTION_WORD_RE = re.compile(
@@ -799,6 +806,7 @@ def find_unsafe_operator_time_wording(report_text: str, facts_text: str) -> list
         for line in report_text.splitlines()
         if UNSAFE_OPERATOR_WALL_CLOCK_RE.search(line)
         or RUSSIAN_OPERATOR_TIME_NOUN_AS_WALL_CLOCK_RE.search(line)
+        or RUSSIAN_QUERY_TIME_AS_WALL_CLOCK_RE.search(line)
     ][:1]
 
 
@@ -1263,6 +1271,10 @@ def normalize_operator_time_wording(line: str, facts_text: str) -> str:
     )
     line = ENGLISH_OPERATOR_TIME_AS_WALL_CLOCK_RE.sub(
         r"\g<prefix> has operator/profile time counter \g<duration>",
+        line,
+    )
+    line = RUSSIAN_QUERY_TIME_AS_WALL_CLOCK_RE.sub(
+        r"\g<prefix>: в profile/operator time counters указано значение \g<duration>; это не обязательно равно полной wall-clock длительности запроса",
         line,
     )
     return line
@@ -1880,7 +1892,7 @@ def stream_ollama_report(
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
-                print(f"{PROGRESS_PREFIX} bad Ollama JSON line: {line[:200]}", file=sys.stderr)
+                print(f"{PROGRESS_PREFIX} warning: bad Ollama JSON line omitted", file=sys.stderr)
                 continue
 
             if "error" in event:
@@ -1997,8 +2009,6 @@ def main(argv: list[str]) -> int:
             print(f"{PROGRESS_PREFIX} no other loaded models to stop", file=sys.stderr)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_path.exists():
-        output_path.unlink()
 
     generated_body = stream_ollama_report(
         prompt=prompt,
