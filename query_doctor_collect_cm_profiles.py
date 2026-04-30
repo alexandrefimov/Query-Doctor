@@ -103,6 +103,11 @@ HOSTLIKE_FQDN_RE = re.compile(
     r"[A-Za-z0-9.-]*)(?:[A-Za-z0-9-]+\.){2,}[A-Za-z][A-Za-z0-9-]*\b",
     re.IGNORECASE,
 )
+HOST_ASSIGNMENT_RE = re.compile(
+    r"\b(?P<key>host|hostname|executor|backend)(?P<sep>[ \t]*=[ \t]*)(?P<value>[^ \t\r\n,)]+)",
+    re.IGNORECASE,
+)
+HOST_ALIAS_RE = re.compile(r"^host_\d{2,}$", re.IGNORECASE)
 SQL_DB_TABLE_RE = re.compile(
     r"\b(FROM|JOIN|TABLE|DESCRIBE)\s+`?[A-Za-z_][A-Za-z0-9_$]*`?"
     r"\s*\.\s*`?[A-Za-z_][A-Za-z0-9_$]*`?",
@@ -790,6 +795,7 @@ def sanitize_text_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
     for secret in secrets:
         if secret:
             safe = safe.replace(secret, "<secret>")
+    safe = redact_host_identifiers(safe)
     return safe
 
 
@@ -1210,7 +1216,58 @@ def parse_float_field(value: object, field_name: str) -> float:
     raise CMAdapterError(f"CM query summary field {field_name} must be numeric.")
 
 
+class HostAliasRedactor:
+    """Assign stable safe host aliases within one redaction operation."""
+
+    def __init__(self) -> None:
+        self._aliases: dict[str, str] = {}
+
+    def alias_for(self, host: str) -> str:
+        normalized = host.strip().strip("[]").rstrip(".").lower()
+        if not normalized:
+            return "host_00"
+        if HOST_ALIAS_RE.fullmatch(normalized):
+            return normalized
+        alias = self._aliases.get(normalized)
+        if alias is None:
+            alias = f"host_{len(self._aliases) + 1:02d}"
+            self._aliases[normalized] = alias
+        return alias
+
+    def redact_host_value(self, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            return stripped
+        match = re.match(r"^(?P<host>.+?)(?P<port>:\d+)?$", stripped)
+        if not match:
+            return self.alias_for(stripped)
+        return f"{self.alias_for(match.group('host'))}{match.group('port') or ''}"
+
+
+def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None) -> str:
+    host_redactor = redactor or HostAliasRedactor()
+
+    def replace_host_field(match: re.Match[str]) -> str:
+        return f"{match.group(1)}{host_redactor.redact_host_value(match.group(2))}"
+
+    def replace_host_assignment(match: re.Match[str]) -> str:
+        alias = host_redactor.redact_host_value(match.group("value"))
+        return f"{match.group('key')}{match.group('sep')}{alias}"
+
+    def replace_url_host(match: re.Match[str]) -> str:
+        alias = host_redactor.alias_for(match.group(3))
+        return f"{match.group(1)}{match.group(2) or ''}{alias}{match.group(4) or ''}"
+
+    redacted = HOST_FIELD_RE.sub(replace_host_field, text)
+    redacted = HOST_ASSIGNMENT_RE.sub(replace_host_assignment, redacted)
+    redacted = URL_HOST_RE.sub(replace_url_host, redacted)
+    redacted = HOSTLIKE_FQDN_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
+    redacted = IPV4_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
+    return redacted
+
+
 def redact_profile_text(text: str, *, redact_identifiers: bool = False) -> str:
+    host_redactor = HostAliasRedactor()
     redacted = text
     redacted = EMAIL_RE.sub("<email>", redacted)
     redacted = URL_CREDENTIAL_RE.sub(r"\1<redacted>@", redacted)
@@ -1219,10 +1276,7 @@ def redact_profile_text(text: str, *, redact_identifiers: bool = False) -> str:
     redacted = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\4", redacted)
     redacted = USER_FIELD_RE.sub(r"\1<user>", redacted)
     redacted = USER_KV_RE.sub(r"\1\2<user>", redacted)
-    redacted = HOST_FIELD_RE.sub(r"\1<host>", redacted)
-    redacted = URL_HOST_RE.sub(r"\1\2<host>\4", redacted)
-    redacted = HOSTLIKE_FQDN_RE.sub("<host>", redacted)
-    redacted = IPV4_RE.sub("<ip>", redacted)
+    redacted = redact_host_identifiers(redacted, host_redactor)
 
     if redact_identifiers:
         redacted = SQL_DB_TABLE_RE.sub(lambda match: f"{match.group(1)} <db>.<table>", redacted)
@@ -1236,8 +1290,14 @@ def redact_metadata(
     *,
     redact_identifiers: bool = False,
 ) -> dict[str, object]:
+    host_redactor = HostAliasRedactor()
     return {
-        key: redact_metadata_value(key, value, redact_identifiers=redact_identifiers)
+        key: redact_metadata_value(
+            key,
+            value,
+            redact_identifiers=redact_identifiers,
+            host_redactor=host_redactor,
+        )
         for key, value in metadata.items()
     }
 
@@ -1247,6 +1307,7 @@ def redact_metadata_value(
     value: object,
     *,
     redact_identifiers: bool,
+    host_redactor: HostAliasRedactor,
 ) -> object:
     normalized_key = key.lower()
 
@@ -1259,16 +1320,30 @@ def redact_metadata_value(
     if any(part in normalized_key for part in SECRET_METADATA_KEY_PARTS):
         return "<redacted>" if value is not None else None
     if any(part in normalized_key for part in HOST_METADATA_KEY_PARTS):
-        return "<host>" if value is not None else None
+        return host_redactor.redact_host_value(str(value)) if value is not None else None
     if any(part in normalized_key for part in URL_METADATA_KEY_PARTS):
         return "<url>" if value is not None else None
     if isinstance(value, str):
-        return redact_profile_text(value, redact_identifiers=redact_identifiers)
+        redacted = redact_profile_text(value, redact_identifiers=redact_identifiers)
+        return redact_host_identifiers(redacted, host_redactor)
     if isinstance(value, dict):
-        return redact_metadata(value, redact_identifiers=redact_identifiers)
+        return {
+            child_key: redact_metadata_value(
+                child_key,
+                child_value,
+                redact_identifiers=redact_identifiers,
+                host_redactor=host_redactor,
+            )
+            for child_key, child_value in value.items()
+        }
     if isinstance(value, list):
         return [
-            redact_metadata_value(key, item, redact_identifiers=redact_identifiers)
+            redact_metadata_value(
+                key,
+                item,
+                redact_identifiers=redact_identifiers,
+                host_redactor=host_redactor,
+            )
             for item in value
         ]
     return value
