@@ -1639,13 +1639,18 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
 
 def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admin") -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
+    text = normalize_report_text(text, facts_text=facts_text, mode=mode)
+    path.write_text(text, encoding="utf-8")
+
+
+def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin") -> str:
     text = sanitize_report_text(text, facts_text)
     if mode == "user":
         text = enforce_user_report_requirements(text, facts_text)
     if mode == "admin":
         text = enforce_admin_report_requirements(text, facts_text)
     text = enforce_report_fact_requirements(text, facts_text)
-    path.write_text(text, encoding="utf-8")
+    return text
 
 
 def count_report_section_items(text: str, heading: str) -> int | None:
@@ -1731,6 +1736,14 @@ def partial_report_path(output_path: Path) -> Path:
     return output_path.with_name(f"{output_path.name}.partial.md")
 
 
+def write_failed_report_to_partial(output_path: Path, text: str) -> Path:
+    partial_path = partial_report_path(output_path)
+    if partial_path.exists():
+        partial_path.unlink()
+    partial_path.write_text(text, encoding="utf-8")
+    return partial_path
+
+
 def validate_report_file(output_path: Path, *, facts_text: str = "") -> list[str]:
     text = output_path.read_text(encoding="utf-8", errors="replace")
     return validate_report_text(text, facts_text=facts_text)
@@ -1809,11 +1822,10 @@ def stream_ollama_report(
     *,
     prompt: str,
     model: str,
-    output_path: Path,
     ollama_url: str,
     temperature: float,
     keep_alive: str,
-) -> None:
+) -> str:
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
@@ -1859,37 +1871,37 @@ def stream_ollama_report(
 
     started = time.time()
     received = 0
+    chunks: list[str] = []
     with urllib.request.urlopen(req, timeout=1800) as resp:
-        with output_path.open("a", encoding="utf-8") as out:
-            for raw_line in resp:
-                line = raw_line.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    print(f"{PROGRESS_PREFIX} bad Ollama JSON line: {line[:200]}", file=sys.stderr)
-                    continue
+        for raw_line in resp:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                print(f"{PROGRESS_PREFIX} bad Ollama JSON line: {line[:200]}", file=sys.stderr)
+                continue
 
-                if "error" in event:
-                    raise RuntimeError(event["error"])
+            if "error" in event:
+                raise RuntimeError(event["error"])
 
-                content = event.get("message", {}).get("content", "")
-                if content:
-                    out.write(content)
-                    out.flush()
-                    print(content, end="", flush=True)
-                    received += len(content)
-                    if received % 1200 < len(content):
-                        elapsed = int(time.time() - started)
-                        print(
-                            f"\n{PROGRESS_PREFIX} generated chars: {received}, elapsed: {elapsed}s",
-                            file=sys.stderr,
-                            flush=True,
-                        )
+            content = event.get("message", {}).get("content", "")
+            if content:
+                chunks.append(content)
+                received += len(content)
+                if received % 1200 < len(content):
+                    elapsed = int(time.time() - started)
+                    print(
+                        f"{PROGRESS_PREFIX} generated chars: {received}, elapsed: {elapsed}s",
+                        file=sys.stderr,
+                        flush=True,
+                    )
 
-                if event.get("done"):
-                    break
+            if event.get("done"):
+                break
+
+    return "".join(chunks)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -1966,9 +1978,6 @@ def main(argv: list[str]) -> int:
         print(prompt)
         return 0
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(report_header(facts_path, facts_sha256, args.model), encoding="utf-8")
-
     print(f"{PROGRESS_PREFIX} case: {case_dir}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} facts: {facts_path}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} facts sha256: {facts_sha256}", file=sys.stderr)
@@ -1987,28 +1996,37 @@ def main(argv: list[str]) -> int:
         else:
             print(f"{PROGRESS_PREFIX} no other loaded models to stop", file=sys.stderr)
 
-    stream_ollama_report(
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.exists():
+        output_path.unlink()
+
+    generated_body = stream_ollama_report(
         prompt=prompt,
         model=args.model,
-        output_path=output_path,
         ollama_url=args.ollama_url,
         temperature=args.temperature,
         keep_alive=args.keep_alive,
     )
 
-    normalize_report_file(output_path, facts_text=facts_text, mode=args.mode)
+    report_text = normalize_report_text(
+        report_header(facts_path, facts_sha256, args.model) + generated_body,
+        facts_text=facts_text,
+        mode=args.mode,
+    )
 
     if not args.no_validate:
-        validation_errors = validate_report_file(output_path, facts_text=facts_text)
+        validation_errors = validate_report_text(report_text, facts_text=facts_text)
         if validation_errors:
-            partial_path = move_failed_report_to_partial(output_path)
-            print(f"\n{PROGRESS_PREFIX} ERROR: generated report failed validation", file=sys.stderr)
+            partial_path = write_failed_report_to_partial(output_path, report_text)
+            print(f"{PROGRESS_PREFIX} ERROR: generated report failed validation", file=sys.stderr)
             for error in validation_errors:
                 print(f"{PROGRESS_PREFIX} ERROR: {error}", file=sys.stderr)
             print(f"{PROGRESS_PREFIX} partial report saved to: {partial_path}", file=sys.stderr)
             return 4
 
-    print(f"\n{PROGRESS_PREFIX} done: {output_path}", file=sys.stderr)
+    output_path.write_text(report_text, encoding="utf-8")
+
+    print(f"{PROGRESS_PREFIX} done: {output_path}", file=sys.stderr)
     return 0
 
 
