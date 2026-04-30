@@ -11,7 +11,7 @@
 - The collector writes generated cases only; it does not run the analyzer or report writer automatically.
 - HTTP GET transport, CM v32 endpoint adapter helpers, output writer, redaction helpers, and mocked tests already exist.
 - Run the full pytest suite before each rollout checkpoint and record the current result in the task/audit output.
-- A real ignored single-query smoke under `cases/cm-corpus/` passed collection, analyzer parsing, admin/user report generation, and deterministic report validation.
+- A historical first single-query smoke under `cases/cm-corpus/` passed collection, analyzer parsing, admin/user report generation, and deterministic report validation.
 
 ## Goal
 
@@ -120,7 +120,7 @@ Check:
 - The analyzer can read `profile_digest.md`.
 - Action Cards are generated only if evidence exists.
 
-Latest real smoke result:
+Historical first-smoke result:
 
 - Ignored local case: `cases/cm-corpus/494ef9bf2699a3c5_5b65e20400000000`.
 - Analyzer parsed `169` operators.
@@ -129,6 +129,10 @@ Latest real smoke result:
 - Action Cards were present.
 - Admin and user report generation passed deterministic validation.
 - Generated `analysis_facts.md`, `report_admin.md`, and `report_user.md` were removed after inspection.
+
+For current smoke status, run the local validation commands and record the
+current result in the task or audit output rather than treating these historical
+counts as evergreen.
 
 ## Rollback/cleanup
 

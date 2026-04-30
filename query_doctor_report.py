@@ -1455,12 +1455,19 @@ def facts_include_referenced_tables(facts_text: str) -> bool:
     in_section = False
     for line in lines:
         stripped = line.strip()
-        if stripped == "### Referenced Tables":
+        if stripped in {"## Referenced Tables", "### Referenced Tables"}:
             in_section = True
             continue
-        if in_section and stripped.startswith("### "):
+        if in_section and stripped.startswith("#"):
             break
-        if in_section and stripped.startswith("- ") and "missing" not in stripped.lower():
+        if (
+            in_section
+            and stripped.startswith("- ")
+            and "missing" not in stripped.lower()
+            and "not_observed" not in stripped.lower()
+            and "none parsed" not in stripped.lower()
+            and "unknown" not in stripped.lower()
+        ):
             return True
     return False
 
@@ -1533,6 +1540,7 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
     backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
     backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
     backend_candidates_lines = extract_markdown_subsection(backend_lines, "### Host tail candidates")
+    referenced_table_lines = extract_markdown_section(facts_text, "## Referenced Tables")
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     limitation_lines = extract_markdown_section(
@@ -1572,6 +1580,21 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
                 lines.append(
                     f"- ... {remaining_candidates} more candidate lines omitted from appendix."
                 )
+
+    if referenced_table_lines:
+        table_excerpt, remaining_tables = limited_nonempty_lines(
+            [
+                line
+                for line in referenced_table_lines
+                if line.lstrip().startswith("- ")
+            ],
+            limit=FACT_APPENDIX_MAX_ITEMS,
+        )
+        if table_excerpt:
+            lines.extend(["", "### Referenced Tables"])
+            lines.extend(table_excerpt)
+            if remaining_tables:
+                lines.append(f"- ... {remaining_tables} more table lines omitted from appendix.")
 
     if action_card_lines:
         lines.extend(["", "### Action cards"])

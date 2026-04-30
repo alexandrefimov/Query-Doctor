@@ -72,6 +72,24 @@ ROW_NUMBER = r"\d[\d,]*(?:\.\d+)?\s*[KMBT]?"
 SIZE_PATTERN = r"\d[\d,]*(?:\.\d+)?\s*(?:KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)"
 
 TABLE_SEPARATOR_RE = re.compile(r"\s{2,}")
+SQL_IDENTIFIER_RE = re.compile(r"`[^`]+`|[A-Za-z_][A-Za-z0-9_$]*")
+SQL_TOKEN_RE = re.compile(r"`[^`]+`|[A-Za-z_][A-Za-z0-9_$]*|[(),.;]")
+SQL_FROM_STOP_WORDS = {
+    "where",
+    "group",
+    "having",
+    "order",
+    "limit",
+    "union",
+    "except",
+    "intersect",
+    "on",
+    "qualify",
+    "window",
+    "cluster",
+    "distribute",
+    "sort",
+}
 
 ROWS_PATTERNS = [
     re.compile(
@@ -1094,6 +1112,243 @@ def dedupe_lines(lines: list[str]) -> list[str]:
     return out
 
 
+def normalize_sql(sql: str) -> str:
+    return sql.strip().rstrip(";") + "\n"
+
+
+def extract_original_sql(profile_digest_text: str) -> str | None:
+    heading_match = re.search(
+        r"(?ims)^##\s+SQL\s*$\s*```(?:sql)?\s*(?P<sql>.*?)\s*```",
+        profile_digest_text,
+    )
+    if heading_match:
+        return normalize_sql(heading_match.group("sql"))
+
+    labeled_fence_match = re.search(
+        r"(?ims)^\s*(?:#+\s*)?(?:Original\s+)?(?:SQL|Query)\s*:?\s*$"
+        r"\s*```(?:sql)?\s*(?P<sql>.*?)\s*```",
+        profile_digest_text,
+    )
+    if labeled_fence_match:
+        return normalize_sql(labeled_fence_match.group("sql"))
+
+    first_sql_fence_match = re.search(
+        r"(?is)```sql\s*(?P<sql>.*?)\s*```",
+        profile_digest_text,
+    )
+    if first_sql_fence_match:
+        return normalize_sql(first_sql_fence_match.group("sql"))
+
+    inline_match = re.search(
+        r"(?ims)^\s*(?:Original\s+)?(?:SQL|Query)\s*:\s*(?P<sql>SELECT\b.*?)(?:\n\s*\n|$)",
+        profile_digest_text,
+    )
+    if inline_match:
+        return normalize_sql(inline_match.group("sql"))
+
+    return None
+
+
+def strip_sql_comments_and_strings(sql: str) -> str:
+    text = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
+    text = re.sub(r"--[^\n\r]*", " ", text)
+    text = re.sub(r"'(?:''|[^'])*'", "''", text)
+    text = re.sub(r'"(?:""|[^"])*"', '""', text)
+    return text
+
+
+def sql_tokens(sql: str) -> list[str]:
+    return [match.group(0) for match in SQL_TOKEN_RE.finditer(sql)]
+
+
+def is_sql_identifier(token: str) -> bool:
+    return bool(SQL_IDENTIFIER_RE.fullmatch(token))
+
+
+def normalize_sql_identifier_part(token: str) -> str | None:
+    if token.startswith("`") and token.endswith("`"):
+        inner = token[1:-1].strip()
+        return inner if inner and "`" not in inner else None
+    if SQL_IDENTIFIER_RE.fullmatch(token):
+        return token
+    return None
+
+
+def parse_table_identifier(tokens: list[str], index: int) -> tuple[str | None, int]:
+    if index >= len(tokens) or not is_sql_identifier(tokens[index]):
+        return None, index
+
+    parts: list[str] = []
+    part = normalize_sql_identifier_part(tokens[index])
+    if not part:
+        return None, index + 1
+    parts.append(part)
+    index += 1
+
+    if index < len(tokens) and tokens[index] == ".":
+        index += 1
+        if index >= len(tokens) or not is_sql_identifier(tokens[index]):
+            return None, index
+        part = normalize_sql_identifier_part(tokens[index])
+        if not part:
+            return None, index + 1
+        parts.append(part)
+        index += 1
+        # Keep the extractor conservative: Impala table refs are expected as
+        # table or db.table here. Skip catalog.db.table-like references.
+        if index < len(tokens) and tokens[index] == ".":
+            return None, index
+
+    return ".".join(parts), index
+
+
+def skip_balanced_parentheses(tokens: list[str], index: int) -> int:
+    if index >= len(tokens) or tokens[index] != "(":
+        return index
+    depth = 0
+    while index < len(tokens):
+        if tokens[index] == "(":
+            depth += 1
+        elif tokens[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    return index
+
+
+def extract_cte_names_from_tokens(tokens: list[str]) -> set[str]:
+    names: set[str] = set()
+    index = 0
+    while index < len(tokens):
+        if tokens[index].lower() != "with":
+            index += 1
+            continue
+        index += 1
+        while index < len(tokens):
+            cte_name, next_index = parse_table_identifier(tokens, index)
+            if not cte_name or "." in cte_name:
+                break
+            index = next_index
+            if index < len(tokens) and tokens[index] == "(":
+                index = skip_balanced_parentheses(tokens, index)
+            if index >= len(tokens) or tokens[index].lower() != "as":
+                break
+            names.add(cte_name.lower())
+            index += 1
+            if index < len(tokens) and tokens[index] == "(":
+                index = skip_balanced_parentheses(tokens, index)
+            if index < len(tokens) and tokens[index] == ",":
+                index += 1
+                continue
+            break
+    return names
+
+
+def next_significant_token(tokens: list[str], index: int) -> str | None:
+    return tokens[index] if index < len(tokens) else None
+
+
+def is_function_reference(tokens: list[str], start: int, end: int) -> bool:
+    if "." in tokens[start:end]:
+        return False
+    return next_significant_token(tokens, end) == "("
+
+
+def extract_referenced_tables_from_sql(sql: str) -> list[str]:
+    tokens = sql_tokens(strip_sql_comments_and_strings(sql))
+    cte_names = extract_cte_names_from_tokens(tokens)
+    tables: set[str] = set()
+    index = 0
+    in_from_list = False
+    expect_table = False
+
+    while index < len(tokens):
+        token = tokens[index]
+        lower = token.lower()
+
+        if lower in SQL_FROM_STOP_WORDS:
+            in_from_list = False
+            expect_table = False
+        elif lower == "from":
+            in_from_list = True
+            expect_table = True
+            index += 1
+            continue
+        elif lower == "join":
+            expect_table = True
+            index += 1
+            continue
+        elif lower == "into":
+            previous = tokens[index - 1].lower() if index > 0 else ""
+            if previous == "insert":
+                index += 1
+                if index < len(tokens) and tokens[index].lower() == "table":
+                    index += 1
+                expect_table = True
+                continue
+        elif lower == "overwrite":
+            previous = tokens[index - 1].lower() if index > 0 else ""
+            if previous == "insert":
+                index += 1
+                if index < len(tokens) and tokens[index].lower() == "table":
+                    index += 1
+                expect_table = True
+                continue
+        elif in_from_list and token == ",":
+            expect_table = True
+            index += 1
+            continue
+
+        if expect_table:
+            if token == "(":
+                expect_table = False
+                in_from_list = False
+                index += 1
+                continue
+            table, next_index = parse_table_identifier(tokens, index)
+            if table:
+                if table.lower() not in cte_names and not is_function_reference(tokens, index, next_index):
+                    tables.add(table)
+                expect_table = False
+                index = next_index
+                continue
+            expect_table = False
+
+        index += 1
+
+    return sorted(tables, key=lambda value: value.lower())
+
+
+def sql_inputs_for_case(case_dir: Path, profile_text: str) -> list[str]:
+    inputs: list[str] = []
+    for relative in (
+        "sql.sql",
+        "query.sql",
+        "original_query.sql",
+        "impala_context/original_query.sql",
+    ):
+        path = case_dir / relative
+        if path.exists() and path.is_file():
+            sql = normalize_sql(path.read_text(encoding="utf-8", errors="replace"))
+            if sql.strip():
+                inputs.append(sql)
+
+    embedded_sql = extract_original_sql(profile_text)
+    if embedded_sql:
+        inputs.append(embedded_sql)
+
+    return inputs
+
+
+def collect_referenced_tables(case_dir: Path, profile_text: str) -> list[str]:
+    tables: set[str] = set()
+    tables.update(read_referenced_context_tables(case_dir / "impala_context" / "referenced_tables.txt"))
+    for sql in sql_inputs_for_case(case_dir, profile_text):
+        tables.update(extract_referenced_tables_from_sql(sql))
+    return sorted(tables, key=lambda value: value.lower())
+
+
 def collect_impala_context(case_dir: Path) -> dict[str, Any] | None:
     context_dir = case_dir / "impala_context"
     summary_path = context_dir / "impala_context.md"
@@ -2030,6 +2285,19 @@ def availability_label(item: dict[str, Any]) -> str:
     return "available" if item.get("available") else "missing"
 
 
+def render_referenced_tables(analysis: dict[str, Any]) -> list[str]:
+    lines = ["## Referenced Tables", ""]
+    tables = analysis.get("referenced_tables") or []
+    if tables:
+        lines.extend(f"- `{table}`" for table in tables)
+    else:
+        lines.append(
+            "- not_observed: no referenced table names were parsed from SQL inputs or profile digest."
+        )
+    lines.append("")
+    return lines
+
+
 def render_impala_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("impala_context")
     if not context:
@@ -2105,6 +2373,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_operator_table("Actual rows vs estimated rows anomalies", analysis["cardinality_anomalies"], max_table_rows)
     lines += render_operator_table("Peak memory vs estimated memory anomalies", analysis["memory_anomalies"], max_table_rows)
 
+    lines += render_referenced_tables(analysis)
     lines += render_impala_context(analysis)
     lines += render_backend_tail_evidence(analysis)
     lines += render_action_cards(analysis)
@@ -2183,6 +2452,7 @@ def main(argv: list[str]) -> int:
     text = digest_path.read_text(encoding="utf-8", errors="replace")
     analysis = analyze(text, args)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
+    analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
     analysis["action_cards"] = build_action_cards(analysis)
 
     if args.fail_on_empty and not analysis["operators"]:

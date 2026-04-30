@@ -39,6 +39,23 @@ production profile text.
 - Unsafe-rejected and safe-allowed tests should accompany new validator rules.
 - Deterministic normalization must not hide unsupported claims silently.
 - Safe replacements must be explicit, narrow, and tested.
+- Raw LLM output is buffered and must not be streamed to stdout/stderr or user-facing UI.
+- Final report files are written only after normalization, sanitization, validation, deterministic appendix append, and final validation.
+- Validation failure writes sanitized/normalized `.partial` output and preserves any existing final report.
+
+## Report Structure
+
+The LLM writes only:
+
+- `## Короткий вывод`
+- `## Подробный разбор`
+
+Python appends:
+
+- `## Факты анализатора`
+
+The analyzer facts appendix is generated deterministically from `analysis_facts.md`.
+The LLM must not write or reinterpret that section.
 
 ## Claim Discipline
 

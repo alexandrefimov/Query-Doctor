@@ -1,504 +1,407 @@
 #!/usr/bin/env python3
-"""
-Read-only Impala context collector for Query Doctor cases.
-
-Collects metadata for tables referenced by CASE_DIR/profile_digest.md without
-executing the original query or running state-changing/heavy diagnostics.
-"""
+"""Explicit read-only Impala metadata collector for Query Doctor."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, Iterable
+
+from query_doctor_collect_cm_profiles import redact_profile_text
 
 
-DEFAULT_MAX_OUTPUT_CHARS = 200_000
-
-ALLOWED_COMMAND_PREFIXES = (
+DEFAULT_TIMEOUT_SEC = 30
+DEFAULT_MAX_OUTPUT_BYTES = 262_144
+ALLOWED_STATEMENTS = (
     "SHOW CREATE TABLE",
     "SHOW TABLE STATS",
     "SHOW COLUMN STATS",
-    "DESCRIBE FORMATTED",
-    "EXPLAIN",
 )
-
-FORBIDDEN_COMMAND_PATTERNS = (
-    re.compile(r"\bINSERT\b", re.IGNORECASE),
-    re.compile(r"\bCREATE\s+TABLE\b", re.IGNORECASE),
-    re.compile(r"\bDROP\b", re.IGNORECASE),
-    re.compile(r"\bALTER\b", re.IGNORECASE),
-    re.compile(r"\bCOMPUTE\s+(?:INCREMENTAL\s+)?STATS\b", re.IGNORECASE),
-    re.compile(r"\bINVALIDATE\b", re.IGNORECASE),
-    re.compile(r"\bREFRESH\b", re.IGNORECASE),
-    re.compile(r"\bDELETE\b", re.IGNORECASE),
-    re.compile(r"\bUPDATE\b", re.IGNORECASE),
-    re.compile(r"\bTRUNCATE\b", re.IGNORECASE),
-)
-
-IDENTIFIER_PART_RE = re.compile(r"`?([A-Za-z_][A-Za-z0-9_$]*)`?")
-TABLE_REF_RE = re.compile(
-    r"\b(?:FROM|JOIN)\s+"
-    r"(?P<table>"
-    r"`?[A-Za-z_][A-Za-z0-9_$]*`?"
-    r"(?:\s*\.\s*`?[A-Za-z_][A-Za-z0-9_$]*`?)?"
-    r")",
+IDENTIFIER_PART_RE = re.compile(r"(?:`([A-Za-z_][A-Za-z0-9_$]*)`|([A-Za-z_][A-Za-z0-9_$]*))\Z")
+SQL_SECRET_VALUE_RE = re.compile(
+    r"((?:'|\")?(?:password|passwd|pwd|token|secret|cookie|api[_-]?key|access[_-]?token|"
+    r"refresh[_-]?token)(?:'|\")?[ \t]*[=:][ \t]*(?:'|\")?)([^'\"\s,;)]+)((?:'|\")?)",
     re.IGNORECASE,
 )
-CTE_RE = re.compile(
-    r"(?:\bWITH\b|,)\s*"
-    r"(?P<name>`?[A-Za-z_][A-Za-z0-9_$]*`?)"
-    r"(?:\s*\([^)]*\))?\s+AS\s*\(",
+GENERIC_URL_CREDENTIAL_RE = re.compile(
+    r"\b([A-Za-z][A-Za-z0-9+.-]*://)([^/\s:@]+):([^@\s/]+)@",
     re.IGNORECASE,
 )
+USER_PATH_RE = re.compile(r"(?i)(/user/)[^/\s'\"`]+")
+
+
+class CollectorError(Exception):
+    """Raised for validation or collection failures that are safe to print."""
+
+
+@dataclass(frozen=True)
+class StatementPlan:
+    table: str
+    label: str
+    sql: str
 
 
 @dataclass
-class TableExtraction:
-    tables: list[str]
-    warnings: list[str] = field(default_factory=list)
+class StatementResult:
+    table: str
+    label: str
+    sql: str
+    status: str
+    stdout: str = ""
+    stderr: str = ""
+    returncode: int | None = None
+    error: str = ""
 
 
-@dataclass
-class CommandResult:
-    command: str
-    returncode: int
-    stdout: str
-    stderr: str
-    output_path: Path
-
-    @property
-    def succeeded(self) -> bool:
-        return self.returncode == 0
+Runner = Callable[..., subprocess.CompletedProcess[bytes]]
 
 
-def extract_original_sql(profile_digest_text: str) -> str | None:
-    """Extract the original SQL from common profile_digest.md layouts."""
-    heading_match = re.search(
-        r"(?ims)^##\s+SQL\s*$\s*```(?:sql)?\s*(?P<sql>.*?)\s*```",
-        profile_digest_text,
-    )
-    if heading_match:
-        return normalize_sql(heading_match.group("sql"))
-
-    labeled_fence_match = re.search(
-        r"(?ims)^\s*(?:#+\s*)?(?:Original\s+)?(?:SQL|Query)\s*:?\s*$"
-        r"\s*```(?:sql)?\s*(?P<sql>.*?)\s*```",
-        profile_digest_text,
-    )
-    if labeled_fence_match:
-        return normalize_sql(labeled_fence_match.group("sql"))
-
-    first_sql_fence_match = re.search(
-        r"(?is)```sql\s*(?P<sql>.*?)\s*```",
-        profile_digest_text,
-    )
-    if first_sql_fence_match:
-        return normalize_sql(first_sql_fence_match.group("sql"))
-
-    inline_match = re.search(
-        r"(?ims)^\s*(?:Original\s+)?(?:SQL|Query)\s*:\s*(?P<sql>SELECT\b.*?)(?:\n\s*\n|$)",
-        profile_digest_text,
-    )
-    if inline_match:
-        return normalize_sql(inline_match.group("sql"))
-
-    return None
+def redact_impala_context_text(text: object) -> str:
+    redacted = redact_profile_text(str(text))
+    redacted = GENERIC_URL_CREDENTIAL_RE.sub(r"\1<redacted>@", redacted)
+    redacted = SQL_SECRET_VALUE_RE.sub(r"\1<redacted>\3", redacted)
+    redacted = USER_PATH_RE.sub(r"\1<user>", redacted)
+    return redacted
 
 
-def normalize_sql(sql: str) -> str:
-    return sql.strip().rstrip(";") + "\n"
+def normalize_table_identifier(raw_table: str) -> str:
+    table = raw_table.strip()
+    if not table:
+        raise CollectorError("Table identifier must not be empty.")
+    if any(marker in table for marker in (";", "--", "/*", "*/")):
+        raise CollectorError(f"Refusing unsafe table identifier: {raw_table!r}")
+    if any(quote in table for quote in ("'", '"')):
+        raise CollectorError(f"Refusing quoted table identifier: {raw_table!r}")
+    if re.search(r"\s", table):
+        raise CollectorError(f"Refusing table identifier with whitespace: {raw_table!r}")
 
-
-def strip_sql_comments_and_strings(sql: str) -> str:
-    text = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
-    text = re.sub(r"--[^\n\r]*", " ", text)
-    text = re.sub(r"'(?:''|[^'])*'", "''", text)
-    text = re.sub(r'"(?:""|[^"])*"', '""', text)
-    return text
-
-
-def normalize_identifier(identifier: str) -> str | None:
-    parts = [part.strip() for part in identifier.split(".")]
-    if not 1 <= len(parts) <= 2:
-        return None
+    parts = table.split(".")
+    if len(parts) != 2:
+        raise CollectorError(
+            f"Refusing table identifier {raw_table!r}; expected exactly db.table."
+        )
 
     normalized_parts: list[str] = []
     for part in parts:
         match = IDENTIFIER_PART_RE.fullmatch(part)
         if not match:
-            return None
-        normalized_parts.append(match.group(1))
-
+            raise CollectorError(f"Refusing unsupported table identifier: {raw_table!r}")
+        normalized_parts.append(match.group(1) or match.group(2))
     return ".".join(normalized_parts)
 
 
-def extract_cte_names(clean_sql: str) -> set[str]:
-    cte_names: set[str] = set()
-    for match in CTE_RE.finditer(clean_sql):
-        name = normalize_identifier(match.group("name"))
-        if name:
-            cte_names.add(name.lower())
-    return cte_names
-
-
-def extract_referenced_tables(sql: str, default_database: str | None = None) -> TableExtraction:
-    clean_sql = strip_sql_comments_and_strings(sql)
-    cte_names = extract_cte_names(clean_sql)
-    warnings: list[str] = []
-    found: list[str] = []
-
-    if re.search(r"\b(?:FROM|JOIN)\s*\(", clean_sql, flags=re.IGNORECASE):
-        warnings.append("SQL contains FROM/JOIN subqueries; table extraction is best-effort.")
-
-    for match in TABLE_REF_RE.finditer(clean_sql):
-        raw_table = match.group("table")
-        table = normalize_identifier(raw_table)
-        if not table:
-            warnings.append(f"Skipped unsupported table reference: {raw_table!r}")
-            continue
-
-        if table.lower() in cte_names:
-            continue
-
-        if "." not in table:
-            if default_database:
-                table = f"{default_database}.{table}"
-            else:
-                warnings.append(
-                    f"Unqualified table {table!r} found; pass --database to resolve it."
-                )
-
-        if table not in found:
-            found.append(table)
-
-    if cte_names:
-        warnings.append(
-            "CTE names were detected and ignored where possible: "
-            + ", ".join(sorted(cte_names))
-        )
-
-    if not found:
-        warnings.append("No referenced tables were found by the best-effort parser.")
-
-    return TableExtraction(tables=found, warnings=dedupe_preserve_order(warnings))
-
-
-def dedupe_preserve_order(values: list[str]) -> list[str]:
+def dedupe_preserve_order(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
-    deduped: list[str] = []
+    result: list[str] = []
     for value in values:
         if value in seen:
             continue
         seen.add(value)
-        deduped.append(value)
-    return deduped
+        result.append(value)
+    return result
 
 
-def validate_impala_command(command: str) -> None:
-    normalized = " ".join(command.strip().rstrip(";").split())
-    upper = normalized.upper()
-
-    if ";" in normalized:
-        raise ValueError(f"Refusing multi-statement Impala command: {command}")
-
-    if not any(upper.startswith(prefix) for prefix in ALLOWED_COMMAND_PREFIXES):
-        raise ValueError(f"Refusing unsupported Impala command: {command}")
-
-    # SHOW CREATE TABLE is metadata-only and is one of the explicit allowlisted
-    # commands. Keep CREATE TABLE blocked everywhere else, including EXPLAIN.
-    forbidden_subject = normalized
-    if upper.startswith("SHOW CREATE TABLE "):
-        forbidden_subject = normalized[len("SHOW CREATE TABLE ") :]
-
-    for pattern in FORBIDDEN_COMMAND_PATTERNS:
-        if pattern.search(forbidden_subject):
-            raise ValueError(f"Refusing dangerous Impala command: {command}")
-
-
-def validate_table_name(table: str) -> None:
-    if normalize_identifier(table) != table:
-        raise ValueError(f"Refusing unsupported table identifier: {table}")
-
-
-def safe_table_filename(table: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", table).strip("._") or "table"
+def build_statement_plan(tables: Iterable[str]) -> list[StatementPlan]:
+    plans: list[StatementPlan] = []
+    for table in tables:
+        normalized_table = normalize_table_identifier(table)
+        plans.extend(
+            [
+                StatementPlan(
+                    table=normalized_table,
+                    label="SHOW CREATE TABLE",
+                    sql=f"SHOW CREATE TABLE {normalized_table}",
+                ),
+                StatementPlan(
+                    table=normalized_table,
+                    label="SHOW TABLE STATS",
+                    sql=f"SHOW TABLE STATS {normalized_table}",
+                ),
+                StatementPlan(
+                    table=normalized_table,
+                    label="SHOW COLUMN STATS",
+                    sql=f"SHOW COLUMN STATS {normalized_table}",
+                ),
+            ]
+        )
+    return plans
 
 
-def truncate_text(text: str, max_chars: int) -> str:
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars] + f"\n\n[truncated to {max_chars} characters]\n"
+def validate_read_only_statement(sql: str, table: str) -> None:
+    normalized = " ".join(sql.strip().rstrip(";").split())
+    allowed = {f"{prefix} {table}" for prefix in ALLOWED_STATEMENTS}
+    if normalized not in allowed:
+        raise CollectorError(f"Refusing unsupported Impala statement: {sql}")
 
 
-def build_impala_shell_args(args: argparse.Namespace, command: str) -> list[str]:
-    shell_args = [args.impala_shell]
+def build_impala_shell_args(args: argparse.Namespace, sql: str) -> list[str]:
+    command = [args.impala_shell]
     if args.impala_host:
-        shell_args.extend(["-i", args.impala_host])
+        command.extend(["-i", args.impala_host])
     if args.kerberos:
-        shell_args.append("-k")
-    if args.database:
-        shell_args.extend(["-d", args.database])
-    shell_args.extend(["-q", command])
-    return shell_args
+        command.append("-k")
+    command.extend(["-q", sql])
+    return command
 
 
-def run_impala_command(
+def decode_bytes(value: bytes) -> str:
+    return value.decode("utf-8", errors="replace")
+
+
+def run_statement(
     args: argparse.Namespace,
-    command: str,
-    output_path: Path,
-    max_output_chars: int,
-) -> CommandResult:
-    validate_impala_command(command)
+    plan: StatementPlan,
+    *,
+    runner: Runner = subprocess.run,
+) -> StatementResult:
+    validate_read_only_statement(plan.sql, plan.table)
     try:
-        proc = subprocess.run(
-            build_impala_shell_args(args, command),
-            text=True,
+        proc = runner(
+            build_impala_shell_args(args, plan.sql),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            timeout=args.timeout_sec,
+        )
+    except subprocess.TimeoutExpired:
+        return StatementResult(
+            table=plan.table,
+            label=plan.label,
+            sql=plan.sql,
+            status="timeout",
+            error=f"statement timed out after {args.timeout_sec}s",
         )
     except OSError as exc:
-        stderr = truncate_text(str(exc), max_output_chars)
-        write_command_output(output_path, command, 127, "", stderr)
-        return CommandResult(
-            command=command,
-            returncode=127,
-            stdout="",
-            stderr=stderr,
-            output_path=output_path,
+        return StatementResult(
+            table=plan.table,
+            label=plan.label,
+            sql=plan.sql,
+            status="error",
+            error=redact_impala_context_text(exc),
         )
 
-    stdout = truncate_text(proc.stdout, max_output_chars)
-    stderr = truncate_text(proc.stderr, max_output_chars)
-    write_command_output(output_path, command, proc.returncode, stdout, stderr)
-    return CommandResult(
-        command=command,
-        returncode=proc.returncode,
+    stdout_bytes = proc.stdout or b""
+    stderr_bytes = proc.stderr or b""
+    if len(stdout_bytes) + len(stderr_bytes) > args.max_output_bytes:
+        return StatementResult(
+            table=plan.table,
+            label=plan.label,
+            sql=plan.sql,
+            status="too_large",
+            returncode=proc.returncode,
+            error=f"captured output exceeded max-output-bytes ({args.max_output_bytes})",
+        )
+
+    stdout = redact_impala_context_text(decode_bytes(stdout_bytes))
+    stderr = redact_impala_context_text(decode_bytes(stderr_bytes))
+    if proc.returncode != 0:
+        return StatementResult(
+            table=plan.table,
+            label=plan.label,
+            sql=plan.sql,
+            status="error",
+            stdout=stdout,
+            stderr=stderr,
+            returncode=proc.returncode,
+            error=f"impala-shell exited with code {proc.returncode}",
+        )
+
+    return StatementResult(
+        table=plan.table,
+        label=plan.label,
+        sql=plan.sql,
+        status="ok",
         stdout=stdout,
         stderr=stderr,
-        output_path=output_path,
+        returncode=proc.returncode,
     )
 
 
-def write_command_output(
-    path: Path,
-    command: str,
-    returncode: int,
-    stdout: str,
-    stderr: str,
-) -> None:
-    lines = [
-        f"-- Command: {command}",
-        f"-- Return code: {returncode}",
-        "",
-        stdout.rstrip(),
-    ]
-    if stderr.strip():
-        lines.extend(["", "-- STDERR:", stderr.rstrip()])
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+def planned_result(plan: StatementPlan) -> StatementResult:
+    return StatementResult(
+        table=plan.table,
+        label=plan.label,
+        sql=plan.sql,
+        status="planned",
+    )
 
 
-def write_referenced_tables(path: Path, extraction: TableExtraction) -> None:
-    lines: list[str] = []
-    if extraction.tables:
-        lines.extend(extraction.tables)
-    else:
-        lines.append("# No referenced tables found.")
-    if extraction.warnings:
-        lines.append("")
-        lines.append("# Warnings")
-        lines.extend(f"# {warning}" for warning in extraction.warnings)
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+def result_to_json(result: StatementResult) -> dict[str, object]:
+    return {
+        "table": result.table,
+        "statement": result.label,
+        "sql": result.sql,
+        "status": result.status,
+        "returncode": result.returncode,
+        "error": result.error,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
 
 
-def write_summary(
-    path: Path,
+def render_statement_output(result: StatementResult) -> str:
+    output = result.stdout.strip()
+    if result.stderr.strip():
+        output = (output + "\n\nstderr:\n" + result.stderr.strip()).strip()
+    if result.error:
+        output = (output + "\n\nerror: " + result.error).strip()
+    return output or "(no output captured)"
+
+
+def render_markdown(
     *,
-    sql_found: bool,
-    original_query_path: Path,
-    referenced_tables_path: Path,
-    extraction: TableExtraction | None,
-    results: list[CommandResult],
-) -> None:
+    timestamp: str,
+    tables: list[str],
+    results: list[StatementResult],
+    args: argparse.Namespace,
+) -> str:
     lines = [
         "# Impala Context",
         "",
-        f"- SQL found: {'yes' if sql_found else 'no'}",
-        f"- Original query: `{original_query_path}`",
-        f"- Referenced tables: `{referenced_tables_path}`",
-        "- Safety: COMPUTE STATS, COMPUTE INCREMENTAL STATS, REFRESH, "
-        "INVALIDATE METADATA, and data-scanning diagnostics were not executed.",
+        "## Collection Summary",
+        f"- collection timestamp: {timestamp}",
+        f"- tables requested: {len(tables)}",
+        "- read-only statements only: yes",
+        f"- max output bytes: {args.max_output_bytes}",
+        f"- timeout seconds: {args.timeout_sec}",
+        "- redaction: enabled",
+        f"- dry-run: {'yes' if args.dry_run else 'no'}",
+        "",
     ]
 
-    if extraction:
-        lines.append("")
-        lines.append("## Referenced Tables")
-        if extraction.tables:
-            lines.extend(f"- `{table}`" for table in extraction.tables)
-        else:
-            lines.append("- None found")
-
-        if extraction.warnings:
-            lines.append("")
-            lines.append("## Warnings")
-            lines.extend(f"- {warning}" for warning in extraction.warnings)
-
-    if results:
-        lines.append("")
-        lines.append("## Metadata Commands")
-        for result in results:
-            status = "succeeded" if result.succeeded else f"failed rc={result.returncode}"
-            lines.append(f"- `{result.command}`: {status}; `{result.output_path}`")
-
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    for table in tables:
+        lines += [f"## Table: {table}", ""]
+        for result in [item for item in results if item.table == table]:
+            fence = "sql" if result.label == "SHOW CREATE TABLE" else "text"
+            lines += [
+                f"### {result.label}",
+                f"status: {result.status}",
+                "",
+                f"```{fence}",
+                render_statement_output(result),
+                "```",
+                "",
+            ]
+    return "\n".join(lines).rstrip() + "\n"
 
 
-def collect_context(args: argparse.Namespace) -> int:
-    case_dir = Path(args.case_dir)
-    output_dir_arg = Path(args.output_dir)
-    if output_dir_arg.is_absolute() or ".." in output_dir_arg.parts:
-        print("--output-dir must be a directory name inside CASE_DIR", file=sys.stderr)
-        return 2
-    if args.max_output_chars <= 0:
-        print("--max-output-chars must be positive", file=sys.stderr)
-        return 2
-    if args.database and not normalize_identifier(args.database):
-        print("--database must be a simple Impala identifier", file=sys.stderr)
-        return 2
-
-    digest_path = case_dir / "profile_digest.md"
-    output_dir = case_dir / output_dir_arg
-    tables_dir = output_dir / "tables"
-    original_query_path = output_dir / "original_query.sql"
-    referenced_tables_path = output_dir / "referenced_tables.txt"
-    summary_path = output_dir / "impala_context.md"
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    tables_dir.mkdir(parents=True, exist_ok=True)
-
-    if not digest_path.exists():
-        original_query_path.write_text(
-            "-- SQL could not be found because profile_digest.md does not exist.\n",
-            encoding="utf-8",
-        )
-        extraction = TableExtraction(tables=[], warnings=["profile_digest.md does not exist."])
-        write_referenced_tables(referenced_tables_path, extraction)
-        write_summary(
-            summary_path,
-            sql_found=False,
-            original_query_path=original_query_path,
-            referenced_tables_path=referenced_tables_path,
-            extraction=extraction,
-            results=[],
-        )
-        print(f"No profile_digest.md found: {digest_path}", file=sys.stderr)
-        return 0
-
-    profile_text = digest_path.read_text(encoding="utf-8", errors="replace")
-    original_sql = extract_original_sql(profile_text)
-    if not original_sql:
-        original_query_path.write_text(
-            "-- Original SQL could not be found in profile_digest.md.\n",
-            encoding="utf-8",
-        )
-        extraction = TableExtraction(
-            tables=[],
-            warnings=["Original SQL could not be found in profile_digest.md."],
-        )
-        write_referenced_tables(referenced_tables_path, extraction)
-        write_summary(
-            summary_path,
-            sql_found=False,
-            original_query_path=original_query_path,
-            referenced_tables_path=referenced_tables_path,
-            extraction=extraction,
-            results=[],
-        )
-        print(f"Original SQL not found. Wrote placeholder to {original_query_path}")
-        return 0
-
-    original_query_path.write_text(original_sql, encoding="utf-8")
-    extraction = extract_referenced_tables(original_sql, default_database=args.database)
-    write_referenced_tables(referenced_tables_path, extraction)
-
-    results: list[CommandResult] = []
-    for table in extraction.tables:
-        validate_table_name(table)
-        safe_name = safe_table_filename(table)
-        commands = [
-            (f"SHOW CREATE TABLE {table}", tables_dir / f"{safe_name}.show_create.sql"),
-            (f"SHOW TABLE STATS {table}", tables_dir / f"{safe_name}.table_stats.txt"),
-            (f"SHOW COLUMN STATS {table}", tables_dir / f"{safe_name}.column_stats.txt"),
-            (f"DESCRIBE FORMATTED {table}", tables_dir / f"{safe_name}.describe_formatted.txt"),
-        ]
-        for command, output_path in commands:
-            results.append(
-                run_impala_command(args, command, output_path, args.max_output_chars)
-            )
-
-    explain_command = "EXPLAIN " + original_sql.strip()
-    results.append(
-        run_impala_command(
-            args,
-            explain_command,
-            output_dir / "explain.txt",
-            args.max_output_chars,
-        )
+def write_outputs(
+    out_dir: Path,
+    *,
+    timestamp: str,
+    tables: list[str],
+    results: list[StatementResult],
+    args: argparse.Namespace,
+) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    markdown = render_markdown(timestamp=timestamp, tables=tables, results=results, args=args)
+    payload = {
+        "collection_timestamp": timestamp,
+        "tables": tables,
+        "read_only_statements_only": True,
+        "max_output_bytes": args.max_output_bytes,
+        "timeout_seconds": args.timeout_sec,
+        "redaction": "enabled",
+        "dry_run": args.dry_run,
+        "results": [result_to_json(result) for result in results],
+    }
+    (out_dir / "impala_context.md").write_text(markdown, encoding="utf-8")
+    (out_dir / "impala_context.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
 
-    write_summary(
-        summary_path,
-        sql_found=True,
-        original_query_path=original_query_path,
-        referenced_tables_path=referenced_tables_path,
-        extraction=extraction,
-        results=results,
-    )
 
-    failures = sum(1 for result in results if not result.succeeded)
-    print(f"Wrote Impala context to {output_dir}")
-    if failures:
-        print(f"{failures} metadata command(s) failed; see {summary_path}", file=sys.stderr)
-        return 1
-    return 0
+def collect_impala_context(
+    args: argparse.Namespace,
+    *,
+    runner: Runner = subprocess.run,
+) -> int:
+    tables = dedupe_preserve_order(normalize_table_identifier(table) for table in args.table)
+    plans = build_statement_plan(tables)
+
+    if args.dry_run:
+        print("Planned read-only Impala statements:")
+        for plan in plans:
+            print(f"- {plan.sql}")
+        results = [planned_result(plan) for plan in plans]
+    else:
+        print(f"Collecting read-only Impala metadata for {len(tables)} table(s).")
+        results = []
+        for plan in plans:
+            print(f"- {plan.label} {plan.table}")
+            results.append(run_statement(args, plan, runner=runner))
+
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    out_dir = Path(args.out)
+    write_outputs(out_dir, timestamp=timestamp, tables=tables, results=results, args=args)
+    print(f"Wrote Impala context to {out_dir / 'impala_context.md'}")
+
+    failure_statuses = {"error", "timeout", "too_large"}
+    return 1 if any(result.status in failure_statuses for result in results) else 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Collect explicit read-only Impala table metadata for Query Doctor. "
+            "Only SHOW CREATE TABLE, SHOW TABLE STATS, and SHOW COLUMN STATS are planned."
+        )
+    )
+    parser.add_argument(
+        "--table",
+        action="append",
+        required=True,
+        help="Fully qualified table name to inspect, e.g. db.table. May be repeated.",
+    )
+    parser.add_argument("--out", required=True, help="Output directory for impala_context.md/json.")
+    parser.add_argument("--impala-shell", default="impala-shell", help="impala-shell executable.")
+    parser.add_argument("--impala-host", help="Optional impala-shell -i host:port target.")
+    parser.add_argument("--kerberos", action="store_true", help="Pass -k to impala-shell.")
+    parser.add_argument(
+        "--timeout-sec",
+        type=int,
+        default=DEFAULT_TIMEOUT_SEC,
+        help=f"Timeout per statement in seconds (default: {DEFAULT_TIMEOUT_SEC}).",
+    )
+    parser.add_argument(
+        "--max-output-bytes",
+        type=int,
+        default=DEFAULT_MAX_OUTPUT_BYTES,
+        help=f"Maximum captured stdout+stderr bytes per statement (default: {DEFAULT_MAX_OUTPUT_BYTES}).",
+    )
+    parser.add_argument(
+        "--redact",
+        action="store_true",
+        default=True,
+        help="Redact metadata output before writing. Enabled by default.",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Print the plan without connecting.")
+    return parser
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Collect read-only Impala metadata for a Query Doctor case."
-    )
-    parser.add_argument("case_dir", metavar="CASE_DIR", help="Query Doctor case directory")
-    parser.add_argument(
-        "--impala-shell",
-        default="impala-shell",
-        help="impala-shell path or executable name (default: impala-shell)",
-    )
-    parser.add_argument("--impala-host", help="Impala daemon host[:port] passed as -i")
-    parser.add_argument("--kerberos", action="store_true", help="Use Kerberos mode (-k)")
-    parser.add_argument(
-        "--database",
-        help="Default database for impala-shell and unqualified table references",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="impala_context",
-        help="Output directory name inside CASE_DIR (default: impala_context)",
-    )
-    parser.add_argument(
-        "--max-output-chars",
-        type=int,
-        default=DEFAULT_MAX_OUTPUT_CHARS,
-        help=f"Maximum captured stdout/stderr chars per command (default: {DEFAULT_MAX_OUTPUT_CHARS})",
-    )
-    return parser.parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.timeout_sec <= 0:
+        parser.error("--timeout-sec must be positive")
+    if args.max_output_bytes <= 0:
+        parser.error("--max-output-bytes must be positive")
+    return args
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, runner: Runner = subprocess.run) -> int:
     args = parse_args(argv)
-    return collect_context(args)
+    try:
+        return collect_impala_context(args, runner=runner)
+    except CollectorError as exc:
+        print(f"error: {redact_impala_context_text(exc)}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
