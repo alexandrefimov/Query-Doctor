@@ -35,6 +35,7 @@ REPORT_TITLE_HEADING = "# Query Doctor Report"
 SHORT_SUMMARY_HEADING = "## Короткий вывод"
 DETAILED_REPORT_HEADING = "## Подробный разбор"
 ANALYZER_FACTS_HEADING = "## Факты анализатора"
+TABLE_METADATA_CONTEXT_HEADING = "## Table Metadata Context"
 EVIDENCE_SAFE_PROBLEMS_HEADING = "### Основные подтверждённые проблемы по профилю"
 EVIDENCE_HEADING = "### Подтверждающие факты"
 AMPLIFIERS_HEADING = "### Что усиливает проблему"
@@ -509,6 +510,11 @@ def strip_markdown_section(text: str, heading: str) -> str:
         if not skipping:
             stripped_lines.append(line)
     return "\n".join(stripped_lines).strip() + "\n"
+
+
+def facts_text_for_model_prompt(facts_text: str) -> str:
+    """Return deterministic facts that are enabled for LLM-written narrative."""
+    return strip_markdown_section(facts_text, TABLE_METADATA_CONTEXT_HEADING)
 
 
 def facts_cardinality_anomaly_count(facts_text: str) -> int | None:
@@ -1100,6 +1106,7 @@ def build_prompt(
     mode_instruction = build_mode_instruction(mode)
     cardinality_contract = build_cardinality_contract(facts_text)
     backend_tail_contract = build_backend_tail_contract(facts_text, mode)
+    prompt_facts_text = facts_text_for_model_prompt(facts_text)
 
     return f"""
 You are only a report writer.
@@ -1165,6 +1172,7 @@ The final markdown file is assembled by the wrapper with:
 Do not write "# Query Doctor Report" yourself.
 Do not repeat the Source facts / Facts sha256 / Model fingerprint yourself.
 Do not write "## Факты анализатора"; Python appends that deterministic section after validation.
+Do not interpret collected table metadata in the narrative yet. If Table Metadata Context exists, it is intentionally omitted from the LLM prompt and appended later by Python in "## Факты анализатора".
 You must write only the report body, starting with exactly these headings, in this order:
 
 ## Короткий вывод
@@ -1228,7 +1236,7 @@ Source facts filename: {facts_path.name}
 Facts sha256: {facts_sha256}
 Model requested: {model}
 
-{facts_text}
+{prompt_facts_text}
 DETERMINISTIC FACTS END
 """.strip()
 
