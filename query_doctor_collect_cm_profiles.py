@@ -86,10 +86,11 @@ URL_HOST_RE = re.compile(
 AUTH_HEADER_RE = re.compile(
     r"(?im)^([ \t]*(?:Authorization|Proxy-Authorization)[ \t]*:[ \t]*(?:Bearer|Basic)[ \t]+)\S+"
 )
+COOKIE_HEADER_RE = re.compile(r"(?im)^([ \t]*(?:Cookie|Set-Cookie)[ \t]*:[ \t]*).+$")
 BEARER_BASIC_RE = re.compile(r"\b(Bearer|Basic)[ \t]+[A-Za-z0-9._~+/=-]{8,}\b")
 SECRET_VALUE_RE = re.compile(
-    r"\b(password|passwd|pwd|token|secret|api[_-]?key|access[_-]?token|refresh[_-]?token)\b"
-    r"([ \t]*[:=][ \t]*)([\"']?)[^\"'\s,;]+([\"']?)",
+    r"\b(password|passwd|pwd|token|secret|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token)\b"
+    r"([ \t]*[:=][ \t]*)([\"']?)([^\"'\s,;]+)([\"']?)",
     re.IGNORECASE,
 )
 USER_FIELD_RE = re.compile(
@@ -798,16 +799,27 @@ def sanitize_text_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
     for secret in secrets:
         if secret:
             safe = safe.replace(secret, "<secret>")
+    safe = AUTH_HEADER_RE.sub(r"\1<redacted>", safe)
+    safe = COOKIE_HEADER_RE.sub(r"\1<redacted>", safe)
+    safe = BEARER_BASIC_RE.sub(r"\1 <redacted>", safe)
+    safe = URL_CREDENTIAL_RE.sub(r"\1<redacted>@", safe)
+    safe = SECRET_VALUE_RE.sub(redact_secret_value_match_preserving_marker, safe)
     safe = redact_host_identifiers(safe)
     return safe
+
+
+def redact_secret_value_match_preserving_marker(match: re.Match[str]) -> str:
+    marker = "<secret>" if match.group(4) == "<secret>" else "<redacted>"
+    return f"{match.group(1)}{match.group(2)}{match.group(3)}{marker}{match.group(5)}"
 
 
 def sanitize_http_error_message(text: object, config: CMHttpConfig) -> str:
     safe = str(text)
     safe = AUTH_HEADER_RE.sub(r"\1<redacted>", safe)
+    safe = COOKIE_HEADER_RE.sub(r"\1<redacted>", safe)
     safe = BEARER_BASIC_RE.sub(r"\1 <redacted>", safe)
     safe = URL_CREDENTIAL_RE.sub(r"\1<redacted>@", safe)
-    safe = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\4", safe)
+    safe = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\5", safe)
     safe = sanitize_text_for_log(safe, secrets=config.secret_values())
     return safe
 
@@ -815,9 +827,10 @@ def sanitize_http_error_message(text: object, config: CMHttpConfig) -> str:
 def sanitize_adapter_error_message(text: object, *, secrets: Iterable[str] = ()) -> str:
     safe = str(text)
     safe = AUTH_HEADER_RE.sub(r"\1<redacted>", safe)
+    safe = COOKIE_HEADER_RE.sub(r"\1<redacted>", safe)
     safe = BEARER_BASIC_RE.sub(r"\1 <redacted>", safe)
     safe = URL_CREDENTIAL_RE.sub(r"\1<redacted>@", safe)
-    safe = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\4", safe)
+    safe = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\5", safe)
     return sanitize_text_for_log(safe, secrets=secrets)
 
 
@@ -1307,8 +1320,9 @@ def redact_profile_text(text: str, *, redact_identifiers: bool = False) -> str:
     redacted = EMAIL_RE.sub("<email>", redacted)
     redacted = URL_CREDENTIAL_RE.sub(r"\1<redacted>@", redacted)
     redacted = AUTH_HEADER_RE.sub(r"\1<redacted>", redacted)
+    redacted = COOKIE_HEADER_RE.sub(r"\1<redacted>", redacted)
     redacted = BEARER_BASIC_RE.sub(r"\1 <redacted>", redacted)
-    redacted = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\4", redacted)
+    redacted = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\5", redacted)
     redacted = USER_FIELD_RE.sub(r"\1<user>", redacted)
     redacted = USER_KV_RE.sub(r"\1\2<user>", redacted)
     redacted = redact_host_identifiers(redacted, host_redactor)
