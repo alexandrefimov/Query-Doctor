@@ -246,6 +246,16 @@ MEMORY_UNDERESTIMATION_CLAIM_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
+MEMORY_OVERESTIMATION_CLAIM_RE = re.compile(
+    r"("
+    r"\b(?:memory|mem|peak\s+memory|peakmemusage)[^.\n]{0,80}\boverestimat\w*|"
+    r"\boverestimat\w+[^.\n]{0,80}\b(?:memory|mem|peak\s+memory|peakmemusage)\b|"
+    r"переоцен\w+\s+памят\w+|"
+    r"памят\w+[^.\n]{0,80}переоцен\w+|"
+    r"оценк\w+\s+памят\w+[^.\n]{0,80}(?:завышен|слишком\s+высок)"
+    r")",
+    re.IGNORECASE,
+)
 MEMORY_RATIO_RE = re.compile(
     r"(?:mem\s+ratio|memory\s+ratio|соотношен\w+|ratio)\s*[:=]?\s*(?P<ratio>\d+(?:[\.,]\d+)?)\s*x",
     re.IGNORECASE,
@@ -394,6 +404,10 @@ def line_has_memory_underestimation_claim(line: str) -> bool:
     return bool(MEMORY_UNDERESTIMATION_CLAIM_RE.search(line))
 
 
+def line_has_memory_overestimation_claim(line: str) -> bool:
+    return bool(MEMORY_OVERESTIMATION_CLAIM_RE.search(line))
+
+
 def starts_new_top_level_item(line: str) -> bool:
     return bool(re.match(r"^(?:[-*]\s+|\d+\.\s+)", line))
 
@@ -478,6 +492,17 @@ def line_contains_memory_ratio_below_one(line: str) -> bool:
     return False
 
 
+def line_contains_memory_ratio_above_one(line: str) -> bool:
+    for match in MEMORY_RATIO_RE.finditer(line):
+        try:
+            ratio = float(match.group("ratio").replace(",", "."))
+        except ValueError:
+            continue
+        if ratio > 1.0:
+            return True
+    return False
+
+
 def mentions_contradicted_memory_underestimated_operator(
     line: str,
     directions: dict[str, str],
@@ -524,6 +549,52 @@ def mentions_contradicted_memory_underestimated_operator(
     return errors
 
 
+def mentions_contradicted_memory_overestimated_operator(
+    line: str,
+    directions: dict[str, str],
+    seen: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    matched_operator_id = False
+    for match in REPORT_OPERATOR_ID_RE.finditer(line):
+        report_operator = normalize_operator_key(match.group("operator"))
+        report_prefix = operator_id_prefix(report_operator)
+        for facts_operator, direction in directions.items():
+            if operator_id_prefix(facts_operator) != report_prefix:
+                continue
+            matched_operator_id = True
+            if direction == "underestimated" and report_prefix not in seen:
+                errors.append(
+                    "memory overestimation claim contradicts parsed facts "
+                    f"for {facts_operator}: actual/estimated memory ratio is above 1"
+                )
+                seen.add(report_prefix)
+            break
+    if matched_operator_id:
+        return errors
+
+    upper_line = line.upper()
+    for operator_type in sorted(
+        {operator_type_name(operator) for operator in directions},
+        key=len,
+        reverse=True,
+    ):
+        if not operator_type or operator_type not in upper_line or operator_type in seen:
+            continue
+        matching_directions = [
+            direction
+            for operator, direction in directions.items()
+            if operator_type_name(operator) == operator_type
+        ]
+        if matching_directions and all(direction == "underestimated" for direction in matching_directions):
+            errors.append(
+                "memory overestimation claim contradicts parsed facts "
+                f"for {operator_type}: all parsed actual/estimated memory ratios are above 1"
+            )
+            seen.add(operator_type)
+    return errors
+
+
 def find_contradicted_memory_underestimation_claims(report_text: str, facts_text: str) -> list[str]:
     directions = parse_memory_estimate_directions(facts_text)
     errors: list[str] = []
@@ -542,6 +613,28 @@ def find_contradicted_memory_underestimation_claims(report_text: str, facts_text
             if len(errors) == before and all(direction != "underestimated" for direction in directions.values()):
                 errors.append(
                     "memory underestimation claim is unsupported: all parsed actual/estimated memory ratios are at or below 1"
+                )
+    return errors
+
+
+def find_contradicted_memory_overestimation_claims(report_text: str, facts_text: str) -> list[str]:
+    directions = parse_memory_estimate_directions(facts_text)
+    errors: list[str] = []
+    seen: set[str] = set()
+    for line in report_text.splitlines():
+        if not line_has_memory_overestimation_claim(line):
+            continue
+        if line_contains_memory_ratio_above_one(line):
+            errors.append(
+                "memory overestimation claim contradicts an explicit actual/estimated memory ratio above 1"
+            )
+            continue
+        if directions:
+            before = len(errors)
+            errors.extend(mentions_contradicted_memory_overestimated_operator(line, directions, seen))
+            if len(errors) == before and all(direction != "overestimated" for direction in directions.values()):
+                errors.append(
+                    "memory overestimation claim is unsupported: all parsed actual/estimated memory ratios are at or above 1"
                 )
     return errors
 
@@ -1000,6 +1093,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
             )
     errors.extend(find_contradicted_row_underestimation_claims(report_text, facts_text))
     errors.extend(find_contradicted_memory_underestimation_claims(report_text, facts_text))
+    errors.extend(find_contradicted_memory_overestimation_claims(report_text, facts_text))
     errors.extend(find_unsafe_operator_time_wording(report_text, facts_text))
     return errors
 
