@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ from query_doctor_collect_cm_profiles import (
     CMQuerySummary,
     DEFAULT_MAX_PROFILE_BYTES,
     OutputError,
+    build_cm_query_summary_page_request,
     case_dir_for_query,
     cm_env_secrets,
     enforce_profile_text_size,
@@ -29,7 +31,6 @@ from query_doctor_collect_cm_profiles import (
     load_local_config,
     sanitize_adapter_error_message,
     sanitize_cm_url_for_display,
-    sanitize_text_for_log,
     validate_output_path,
     write_collected_case,
 )
@@ -47,6 +48,18 @@ DEFAULT_SLOW_MIN_DURATION_SEC = 300
 REPORT_MODES = ("none", "user", "admin", "both")
 SUCCESS_STATUSES = {"success", "succeeded", "finished", "completed", "ok"}
 QUERY_TYPES = {"query"}
+SECRET_PARAM_KEY_PARTS = ("password", "token", "auth", "authorization", "secret", "credential")
+AUTH_HEADER_DISPLAY_RE = re.compile(r"\bAuthorization\s*:\s*(?:Bearer|Basic)?\s*(?:<redacted>|\S+)", re.IGNORECASE)
+SERIOUS_SUMMARY_WARNING_PATTERNS = (
+    re.compile(r"\bCM query summary fetch failed\b", re.IGNORECASE),
+    re.compile(r"\bHTTP\s+(?:401|403|404)\b", re.IGNORECASE),
+    re.compile(r"\b(?:TLS|SSL|certificate|cert)\b", re.IGNORECASE),
+    re.compile(r"\b(?:network|connection|connect|timed out|timeout|refused|unreachable|DNS)\b", re.IGNORECASE),
+    re.compile(r"\binvalid JSON\b", re.IGNORECASE),
+    re.compile(r"\bJSON that is not an object\b", re.IGNORECASE),
+    re.compile(r"\bresponse shape\b", re.IGNORECASE),
+    re.compile(r"\bendpoint\b", re.IGNORECASE),
+)
 
 
 class SampleSmokeError(ValueError):
@@ -68,9 +81,11 @@ class SampleSmokeConfig:
         max_profile_bytes: int,
         max_duration_sec: int,
         min_duration_sec: int,
+        min_duration_sec_explicit: bool,
         dry_run: bool,
         keep_generated: bool,
         report_mode: str,
+        show_request_plan: bool,
         fail_if_healthy_has_action_cards: bool,
         include_missing_duration: bool,
         ca_bundle: str | None,
@@ -88,9 +103,11 @@ class SampleSmokeConfig:
         self.max_profile_bytes = max_profile_bytes
         self.max_duration_sec = max_duration_sec
         self.min_duration_sec = min_duration_sec
+        self.min_duration_sec_explicit = min_duration_sec_explicit
         self.dry_run = dry_run
         self.keep_generated = keep_generated
         self.report_mode = report_mode
+        self.show_request_plan = show_request_plan
         self.fail_if_healthy_has_action_cards = fail_if_healthy_has_action_cards
         self.include_missing_duration = include_missing_duration
         self.ca_bundle = ca_bundle
@@ -105,6 +122,20 @@ class CollectionSummary:
         self.failed_count = 0
         self.skipped_count = 0
         self.failures: list[str] = []
+
+
+class SelectionDiagnostics:
+    def __init__(self, *, summaries_fetched: int) -> None:
+        self.summaries_fetched = summaries_fetched
+        self.summaries_considered = 0
+        self.selected_candidates = 0
+        self.skipped_missing_query_id = 0
+        self.skipped_missing_duration = 0
+        self.skipped_duration_above_max = 0
+        self.skipped_duration_below_min = 0
+        self.skipped_non_success_status = 0
+        self.skipped_non_query_type = 0
+        self.skipped_other_filter = 0
 
 
 def positive_int(value: str) -> int:
@@ -136,13 +167,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-profile-bytes", type=positive_int, default=DEFAULT_MAX_PROFILE_BYTES)
     parser.add_argument("--out", default=DEFAULT_OUT)
     parser.add_argument("--max-duration-sec", type=non_negative_int, default=DEFAULT_HEALTHY_MAX_DURATION_SEC)
-    parser.add_argument("--min-duration-sec", type=non_negative_int, default=DEFAULT_SLOW_MIN_DURATION_SEC)
+    parser.add_argument("--min-duration-sec", type=non_negative_int)
     parser.add_argument("--include-missing-duration", action="store_true")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Fetch summaries and print selected candidates only.")
     mode.add_argument("--apply", action="store_true", help="Collect selected profiles and run analyzer smoke.")
     parser.add_argument("--keep-generated", action="store_true")
     parser.add_argument("--report-mode", choices=REPORT_MODES, default="none")
+    parser.add_argument(
+        "--show-request-plan",
+        action="store_true",
+        help="Print the sanitized query-summary endpoint path and request params.",
+    )
     parser.add_argument("--fail-if-healthy-has-action-cards", action="store_true")
     parser.add_argument("--ca-bundle", help="PEM CA bundle for verified CM TLS connections.")
     parser.add_argument("--insecure-skip-verify", action="store_true")
@@ -227,10 +263,14 @@ def build_config(
         candidate_scan_limit=args.candidate_scan_limit,
         max_profile_bytes=args.max_profile_bytes,
         max_duration_sec=args.max_duration_sec,
-        min_duration_sec=args.min_duration_sec,
+        min_duration_sec=(
+            args.min_duration_sec if args.min_duration_sec is not None else DEFAULT_SLOW_MIN_DURATION_SEC
+        ),
+        min_duration_sec_explicit=args.min_duration_sec is not None,
         dry_run=not args.apply,
         keep_generated=args.keep_generated,
         report_mode=args.report_mode,
+        show_request_plan=args.show_request_plan,
         fail_if_healthy_has_action_cards=args.fail_if_healthy_has_action_cards,
         include_missing_duration=args.include_missing_duration,
         ca_bundle=ca_bundle,
@@ -256,6 +296,48 @@ def build_summary_filters(config: SampleSmokeConfig) -> CMQueryFilters:
         min_duration_sec=0,
         status="all",
     )
+
+
+def sanitize_request_param(key: str, value: object) -> str:
+    normalized_key = key.strip().lower()
+    if any(part in normalized_key for part in SECRET_PARAM_KEY_PARTS):
+        return "<redacted>"
+    if normalized_key == "filter":
+        return "<redacted-filter>"
+    if "user" in normalized_key:
+        return "<redacted-user>"
+    return str(value)
+
+
+def sanitized_request_params(params: dict[str, object]) -> list[tuple[str, str]]:
+    return [
+        (key, sanitize_request_param(key, params[key]))
+        for key in sorted(params)
+    ]
+
+
+def print_request_plan(config: SampleSmokeConfig, filters: CMQueryFilters) -> None:
+    path, params = build_cm_query_summary_page_request(filters)
+    print("Summary request plan:")
+    print("- Builder: query_doctor_collect_cm_profiles.build_cm_query_summary_page_request")
+    print(f"- Endpoint path: {path}")
+    print(f"- Sample: {config.sample}")
+    print(f"- Since hours: {config.since_hours}")
+    print(f"- Requested limit: {config.limit}")
+    print(f"- Candidate scan limit: {config.candidate_scan_limit}")
+    if config.sample == "healthy" and not config.min_duration_sec_explicit:
+        print("- Min duration seconds: <none>")
+    else:
+        print(f"- Min duration seconds: {config.min_duration_sec}")
+    if config.sample == "healthy":
+        print(f"- Max duration seconds: {config.max_duration_sec}")
+    else:
+        print("- Max duration seconds: <none>")
+    print(f"- Page size: {sanitize_request_param('limit', params.get('limit', '<none>'))}")
+    print(f"- Offset: {sanitize_request_param('offset', params.get('offset', '<none>'))}")
+    print("- Summary params:")
+    for key, value in sanitized_request_params(params):
+        print(f"  - {key}: {value}")
 
 
 def build_http_client(
@@ -291,9 +373,12 @@ def collect_summary_candidates(
         try:
             page = fetch_summary_page(filters, page_token)
         except CMClientError as exc:
-            warnings.append(sanitize_adapter_error_message(exc, secrets=secrets))
+            warnings.append(
+                "CM query summary fetch failed: "
+                f"{sanitize_summary_warning_message(exc, secrets=secrets)}"
+            )
             break
-        warnings.extend(sanitize_text_for_log(warning, secrets=secrets) for warning in page.warnings)
+        warnings.extend(sanitize_summary_warning_message(warning, secrets=secrets) for warning in page.warnings)
         if not page.items and page.next_page_token:
             warnings.append("Stopped pagination because a summary page returned no items.")
             break
@@ -309,6 +394,11 @@ def collect_summary_candidates(
         seen_tokens.add(page.next_page_token)
         page_token = page.next_page_token
     return summaries, warnings
+
+
+def sanitize_summary_warning_message(text: object, *, secrets: tuple[str, ...] = ()) -> str:
+    safe = sanitize_adapter_error_message(text, secrets=secrets)
+    return AUTH_HEADER_DISPLAY_RE.sub("auth header <redacted>", safe)
 
 
 def normalized(value: str | None) -> str | None:
@@ -333,27 +423,75 @@ def summary_duration_sec(summary: CMQuerySummary) -> float | None:
 
 
 def is_eligible_summary(summary: CMQuerySummary, config: SampleSmokeConfig) -> bool:
+    return selection_skip_reason(summary, config) is None
+
+
+def selection_skip_reason(summary: CMQuerySummary, config: SampleSmokeConfig) -> str | None:
     if not summary.query_id:
-        return False
+        return "missing_query_id"
     if not is_query_type(summary.query_type):
-        return False
+        return "non_query_type"
 
     duration = summary_duration_sec(summary)
-    if duration is None and not config.include_missing_duration:
-        return False
+    if duration is None and (config.sample == "slow" or not config.include_missing_duration):
+        return "missing_duration"
 
     if config.sample == "healthy":
         if not is_success_status(summary.status):
-            return False
-        return duration is None or duration <= config.max_duration_sec
+            return "non_success_status"
+        if (
+            config.min_duration_sec_explicit
+            and duration is not None
+            and duration < config.min_duration_sec
+        ):
+            return "duration_below_min"
+        if duration is not None and duration > config.max_duration_sec:
+            return "duration_above_max"
+        return None
 
-    return duration is not None and duration >= config.min_duration_sec
+    if duration is not None and duration < config.min_duration_sec:
+        return "duration_below_min"
+    return None
+
+
+def record_selection_skip(diagnostics: SelectionDiagnostics, reason: str) -> None:
+    if reason == "missing_query_id":
+        diagnostics.skipped_missing_query_id += 1
+    elif reason == "missing_duration":
+        diagnostics.skipped_missing_duration += 1
+    elif reason == "duration_above_max":
+        diagnostics.skipped_duration_above_max += 1
+    elif reason == "duration_below_min":
+        diagnostics.skipped_duration_below_min += 1
+    elif reason == "non_success_status":
+        diagnostics.skipped_non_success_status += 1
+    elif reason == "non_query_type":
+        diagnostics.skipped_non_query_type += 1
+    else:
+        diagnostics.skipped_other_filter += 1
 
 
 def select_sample(summaries: list[CMQuerySummary], config: SampleSmokeConfig) -> list[CMQuerySummary]:
-    eligible = [summary for summary in summaries if is_eligible_summary(summary, config)]
+    selected, _diagnostics = select_sample_with_diagnostics(summaries, config)
+    return selected
+
+
+def select_sample_with_diagnostics(
+    summaries: list[CMQuerySummary],
+    config: SampleSmokeConfig,
+) -> tuple[list[CMQuerySummary], SelectionDiagnostics]:
+    diagnostics = SelectionDiagnostics(summaries_fetched=len(summaries))
+    eligible: list[CMQuerySummary] = []
+    for summary in summaries:
+        diagnostics.summaries_considered += 1
+        reason = selection_skip_reason(summary, config)
+        if reason is None:
+            eligible.append(summary)
+        else:
+            record_selection_skip(diagnostics, reason)
+
     if config.sample == "healthy":
-        return sorted(
+        selected = sorted(
             eligible,
             key=lambda item: (
                 summary_duration_sec(item) is None,
@@ -361,13 +499,16 @@ def select_sample(summaries: list[CMQuerySummary], config: SampleSmokeConfig) ->
                 item.query_id,
             ),
         )[: config.limit]
-    return sorted(
-        eligible,
-        key=lambda item: (
-            -(summary_duration_sec(item) or 0),
-            item.query_id,
-        ),
-    )[: config.limit]
+    else:
+        selected = sorted(
+            eligible,
+            key=lambda item: (
+                -(summary_duration_sec(item) or 0),
+                item.query_id,
+            ),
+        )[: config.limit]
+    diagnostics.selected_candidates = len(selected)
+    return selected, diagnostics
 
 
 def display_duration(summary: CMQuerySummary) -> str:
@@ -401,7 +542,65 @@ def print_candidate_table(candidates: list[CMQuerySummary]) -> None:
         print(" | ".join(row[index].ljust(widths[index]) for index in range(len(headers))))
 
 
-def print_plan(config: SampleSmokeConfig, candidates: list[CMQuerySummary], warnings: list[str]) -> None:
+def print_selection_diagnostics(
+    config: SampleSmokeConfig,
+    diagnostics: SelectionDiagnostics,
+    *,
+    show_zero_hint: bool,
+) -> None:
+    print("Selection diagnostics:")
+    print(f"- Summaries fetched: {diagnostics.summaries_fetched}")
+    print(f"- Considered: {diagnostics.summaries_considered}")
+    print(f"- Selected: {diagnostics.selected_candidates}")
+    skip_lines = [
+        ("Skipped missing query id", diagnostics.skipped_missing_query_id),
+        ("Skipped missing duration", diagnostics.skipped_missing_duration),
+        (f"Skipped duration > {config.max_duration_sec}s", diagnostics.skipped_duration_above_max),
+        (f"Skipped duration < {config.min_duration_sec}s", diagnostics.skipped_duration_below_min),
+        ("Skipped non-success status", diagnostics.skipped_non_success_status),
+        ("Skipped non-QUERY type", diagnostics.skipped_non_query_type),
+        ("Skipped other explicit filter", diagnostics.skipped_other_filter),
+    ]
+    for label, count in skip_lines:
+        if count:
+            print(f"- {label}: {count}")
+    if diagnostics.selected_candidates == 0 and show_zero_hint:
+        print(
+            "No candidates selected. Try increasing --max-duration-sec or --candidate-scan-limit, "
+            "or inspect whether CM summary rows include duration/status/query type fields."
+        )
+
+
+def is_serious_summary_warning(warning: str) -> bool:
+    return any(pattern.search(warning) for pattern in SERIOUS_SUMMARY_WARNING_PATTERNS)
+
+
+def serious_summary_warnings(warnings: list[str]) -> list[str]:
+    return [warning for warning in warnings if is_serious_summary_warning(warning)]
+
+
+def print_summary_warnings(warnings: list[str]) -> None:
+    if not warnings:
+        return
+    print("Summary warnings:")
+    for warning in warnings:
+        print(f"- {warning}")
+
+
+def print_auth_hint(warnings: list[str]) -> None:
+    if any(re.search(r"\bHTTP\s+401\b", warning, re.IGNORECASE) for warning in warnings):
+        print("Hint: Check that CM_USERNAME/CM_PASSWORD or CM_TOKEN are set in the current shell.")
+
+
+def print_plan(
+    config: SampleSmokeConfig,
+    filters: CMQueryFilters,
+    candidates: list[CMQuerySummary],
+    warnings: list[str],
+    diagnostics: SelectionDiagnostics,
+    *,
+    serious_warnings: list[str],
+) -> None:
     print("[CM sample smoke] Dry-run" if config.dry_run else "[CM sample smoke] Apply")
     print(f"CM URL: {sanitize_cm_url_for_display(config.cm_url)}")
     print(f"Sample: {config.sample}")
@@ -413,7 +612,14 @@ def print_plan(config: SampleSmokeConfig, candidates: list[CMQuerySummary], warn
     print(f"Max profile bytes: {config.max_profile_bytes}")
     print(f"Report mode: {config.report_mode}")
     if warnings:
-        print(f"Summary warnings: {len(warnings)}")
+        print(f"Summary warning count: {len(warnings)}")
+        print_summary_warnings(warnings)
+    if serious_warnings:
+        print("Summary fetch failed; candidate selection was not evaluated as a normal zero-candidate result.")
+        print_auth_hint(serious_warnings)
+    if config.show_request_plan:
+        print_request_plan(config, filters)
+    print_selection_diagnostics(config, diagnostics, show_zero_hint=not serious_warnings)
     print_candidate_table(candidates)
     if config.dry_run:
         print("Dry-run only. No profile text was fetched, no cases were written, no analyzer or reports were run.")
@@ -647,12 +853,15 @@ def main(
             summary_fetcher,
             secrets=cm_env_secrets(env),
         )
-        selected = select_sample(summaries, config)
+        selected, diagnostics = select_sample_with_diagnostics(summaries, config)
+        serious_warnings = serious_summary_warnings(warnings)
     except (SampleSmokeError, CMClientError, CMAdapterError, OSError) as exc:
         print(f"[CM sample smoke] ERROR: {sanitize_adapter_error_message(exc, secrets=cm_env_secrets(env))}", file=sys.stderr)
         return 2
 
-    print_plan(config, selected, warnings)
+    print_plan(config, filters, selected, warnings, diagnostics, serious_warnings=serious_warnings)
+    if serious_warnings:
+        return 3
     if config.dry_run:
         return 0
 

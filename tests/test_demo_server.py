@@ -230,8 +230,9 @@ def test_demo_handler_sanitizes_error_secrets(monkeypatch):
     assert "&lt;secret&gt;" in body or "&lt;redacted&gt;" in body
 
 
-def test_demo_subprocess_failures_do_not_render_raw_output(tmp_path):
+def test_demo_subprocess_failures_do_not_render_raw_output(monkeypatch, tmp_path):
     module = load_demo_module()
+    monkeypatch.setenv("CM_TOKEN", "secret-token")
     config = tmp_path / "cm-config.json"
     config.write_text("{}", encoding="utf-8")
     settings = module.DemoSettings(config=config, repo_dir=REPO_DIR)
@@ -252,6 +253,146 @@ def test_demo_subprocess_failures_do_not_render_raw_output(tmp_path):
     assert "SELECT" not in message
     assert "secret_column" not in message
     assert "raw json" not in message
+
+
+def test_demo_missing_cm_credentials_fails_before_collector(monkeypatch, tmp_path):
+    module = load_demo_module()
+    monkeypatch.delenv("CM_TOKEN", raising=False)
+    monkeypatch.delenv("CM_USERNAME", raising=False)
+    monkeypatch.delenv("CM_PASSWORD", raising=False)
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    settings = module.DemoSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        raise AssertionError("collector/analyzer/report subprocess must not run")
+
+    with pytest.raises(module.DemoError) as excinfo:
+        module.run_demo_analysis("abc:def", "admin", False, settings, runner=fake_runner)
+
+    message = str(excinfo.value)
+    assert "Не найдены учётные данные CM в окружении demo server" in message
+    assert "CM_USERNAME/CM_PASSWORD или CM_TOKEN" in message
+    assert calls == []
+
+
+def test_demo_missing_cm_credentials_renders_safe_russian_ui_message(monkeypatch, tmp_path):
+    module = load_demo_module()
+    monkeypatch.delenv("CM_TOKEN", raising=False)
+    monkeypatch.setenv("CM_USERNAME", "alice-secret")
+    monkeypatch.delenv("CM_PASSWORD", raising=False)
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    settings = module.DemoSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+
+    status, body = module.handle_analyze_request(
+        {"query_id": ["abc:def"], "mode": ["admin"]},
+        settings,
+    )
+
+    assert status == 400
+    assert "Не найдены учётные данные CM в окружении demo server" in body
+    assert "CM_USERNAME/CM_PASSWORD или CM_TOKEN" in body
+    assert "alice-secret" not in body
+
+
+def test_demo_cm_token_alone_allows_collector(monkeypatch, tmp_path):
+    module = load_demo_module()
+    monkeypatch.setenv("CM_TOKEN", "secret-token")
+    monkeypatch.delenv("CM_USERNAME", raising=False)
+    monkeypatch.delenv("CM_PASSWORD", raising=False)
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    case_dir = tmp_path / "cm-corpus" / "abc_def"
+    settings = module.DemoSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        case_dir.mkdir(parents=True)
+        return subprocess.CompletedProcess(cmd, 0, stdout=f"Output case directory: {case_dir}\n", stderr="")
+
+    result = module.collect_case("abc:def", case_dir, False, settings, fake_runner)
+
+    assert result == case_dir
+    assert len(calls) == 1
+    assert str(calls[0][1]).endswith("query_doctor_collect_cm_profiles.py")
+
+
+def test_demo_username_password_allows_collector(monkeypatch, tmp_path):
+    module = load_demo_module()
+    monkeypatch.delenv("CM_TOKEN", raising=False)
+    monkeypatch.setenv("CM_USERNAME", "alice")
+    monkeypatch.setenv("CM_PASSWORD", "secret-password")
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    case_dir = tmp_path / "cm-corpus" / "abc_def"
+    settings = module.DemoSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        case_dir.mkdir(parents=True)
+        return subprocess.CompletedProcess(cmd, 0, stdout=f"Output case directory: {case_dir}\n", stderr="")
+
+    result = module.collect_case("abc:def", case_dir, False, settings, fake_runner)
+
+    assert result == case_dir
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("env_name", "env_value"),
+    [
+        ("CM_USERNAME", "alice-secret"),
+        ("CM_PASSWORD", "password-secret"),
+    ],
+)
+def test_demo_partial_cm_credentials_fail_without_rendering_values(monkeypatch, tmp_path, env_name, env_value):
+    module = load_demo_module()
+    monkeypatch.delenv("CM_TOKEN", raising=False)
+    monkeypatch.delenv("CM_USERNAME", raising=False)
+    monkeypatch.delenv("CM_PASSWORD", raising=False)
+    monkeypatch.setenv(env_name, env_value)
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    case_dir = tmp_path / "cm-corpus" / "abc_def"
+    settings = module.DemoSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        raise AssertionError("collector/analyzer/report subprocess must not run")
+
+    with pytest.raises(module.DemoError) as excinfo:
+        module.collect_case("abc:def", case_dir, False, settings, fake_runner)
+
+    message = str(excinfo.value)
+    assert "Не найдены учётные данные CM" in message
+    assert env_value not in message
+    assert calls == []
 
 
 def test_demo_handler_renders_mocked_analysis_result_without_raw_html():
@@ -393,8 +534,9 @@ def test_demo_invalid_report_mode_is_rejected(tmp_path):
     assert "admin or user" in str(excinfo.value)
 
 
-def test_demo_run_analysis_uses_subprocess_list_args_and_tmp_outputs(tmp_path):
+def test_demo_run_analysis_uses_subprocess_list_args_and_tmp_outputs(monkeypatch, tmp_path):
     module = load_demo_module()
+    monkeypatch.setenv("CM_TOKEN", "secret-token")
     config = tmp_path / "cm-config.json"
     config.write_text("{}", encoding="utf-8")
     case_dir = tmp_path / "cm-corpus" / "abc_def"
@@ -463,8 +605,9 @@ def test_demo_run_analysis_uses_subprocess_list_args_and_tmp_outputs(tmp_path):
     assert progress_stages == [0, 1, 2, 3, 4, 5]
 
 
-def test_demo_retries_report_generation_once_after_validation_failure(tmp_path):
+def test_demo_retries_report_generation_once_after_validation_failure(monkeypatch, tmp_path):
     module = load_demo_module()
+    monkeypatch.setenv("CM_TOKEN", "secret-token")
     config = tmp_path / "cm-config.json"
     config.write_text("{}", encoding="utf-8")
     case_dir = tmp_path / "cm-corpus" / "abc_def"
@@ -673,8 +816,9 @@ def test_demo_existing_incomplete_case_fails_closed_without_collector(tmp_path):
     assert "Remove or rebuild that specific case directory manually" in message
 
 
-def test_demo_rejects_collector_case_dir_outside_demo_corpus(tmp_path):
+def test_demo_rejects_collector_case_dir_outside_demo_corpus(monkeypatch, tmp_path):
     module = load_demo_module()
+    monkeypatch.setenv("CM_TOKEN", "secret-token")
     config = tmp_path / "cm-config.json"
     config.write_text("{}", encoding="utf-8")
     outside_case_dir = tmp_path / "other-output" / "abc_def"

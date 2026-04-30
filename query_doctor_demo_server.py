@@ -43,6 +43,10 @@ REPORT_VALIDATION_FAILURE_MESSAGE = (
     "текст отчёта: он противоречил извлечённым фактам. Небезопасный отчёт "
     "не показан. Попробуйте повторить генерацию."
 )
+MISSING_CM_CREDENTIALS_MESSAGE = (
+    "Не найдены учётные данные CM в окружении demo server. Запустите сервер из "
+    "терминала, где заданы CM_USERNAME/CM_PASSWORD или CM_TOKEN."
+)
 
 
 class DemoError(RuntimeError):
@@ -262,6 +266,14 @@ def subprocess_failure_message(stage: str, completed: subprocess.CompletedProces
     )
 
 
+def has_cm_credentials(env: dict[str, str] | os._Environ[str] | None = None) -> bool:
+    env = os.environ if env is None else env
+    token = (env.get("CM_TOKEN") or "").strip()
+    username = (env.get("CM_USERNAME") or "").strip()
+    password = (env.get("CM_PASSWORD") or "").strip()
+    return bool(token) or (bool(username) and bool(password))
+
+
 def run_demo_analysis(
     query_id: str,
     report_mode: str,
@@ -380,6 +392,9 @@ def collect_case(
     settings: DemoSettings,
     runner: Runner,
 ) -> Path:
+    if not has_cm_credentials():
+        raise DemoError(MISSING_CM_CREDENTIALS_MESSAGE)
+
     collector_cmd = [
         sys.executable,
         str(settings.repo_dir / "query_doctor_collect_cm_profiles.py"),

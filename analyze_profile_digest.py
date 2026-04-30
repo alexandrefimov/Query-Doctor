@@ -124,6 +124,12 @@ TOTAL_COUNTER_ALIASES = {
     "TotalBytesSent": ["TotalBytesSent", "Total Bytes Sent", "Bytes Sent"],
     "TotalTime": ["TotalTime", "Total Time"],
 }
+MEDIUM_DATA_MOVEMENT_BYTES = 1024**3
+DEFAULT_LARGE_BYTES_THRESHOLD = 10 * 1024**3
+BACKEND_MIN_HOSTS_FOR_SKEW = 3
+BACKEND_DATA_SKEW_RATIO = 3.0
+BACKEND_WORK_COMPARABLE_RATIO = 1.5
+BACKEND_TAIL_RATIO = 3.0
 
 CM_PROFILE_TEXT_FIELDS = ("details", "profile", "profileText", "text")
 CM_RUNTIME_PROFILE_MARKERS = (
@@ -201,6 +207,43 @@ CODEGEN_TIMING_RE = re.compile(
     r"\b(?:Codegen|CodeGen|LLVM)[A-Za-z]*(?:Time|WallClockTime)\b\s*[:=]\s*(?P<value>[^\n\r]+)",
     re.IGNORECASE,
 )
+BACKEND_HEADER_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:Backend|Executor|Fragment\s+Instance|Instance)\b(?P<header>.*)$",
+    re.IGNORECASE,
+)
+HOST_VALUE_RE = re.compile(
+    r"\b(?:host|hostname|executor|backend)\s*[=:]\s*(?P<host>[A-Za-z0-9_.:-]+)",
+    re.IGNORECASE,
+)
+HOST_LINE_RE = re.compile(r"^\s*-?\s*(?:host|hostname)\s*[:=]\s*(?P<host>[A-Za-z0-9_.:-]+)", re.IGNORECASE)
+FRAGMENT_VALUE_RE = re.compile(
+    r"\b(?:fragment(?:\s+instance)?|instance|fragment_instance)\s*(?:id)?\s*[=:]\s*(?P<fragment>[A-Za-z0-9_.:-]+)",
+    re.IGNORECASE,
+)
+FRAGMENT_LINE_RE = re.compile(
+    r"^\s*-?\s*(?:fragment(?:\s+instance)?|instance|fragment_instance)\s*(?:id)?\s*[:=]\s*(?P<fragment>[A-Za-z0-9_.:-]+)",
+    re.IGNORECASE,
+)
+METRIC_LINE_RE = re.compile(r"^\s*-?\s*(?P<key>[A-Za-z][A-Za-z0-9 _./-]*?)\s*[:=]\s*(?P<value>.+?)\s*$")
+
+BACKEND_ASSIGNED_KEYS = {"scanbytesassigned", "assignedscanbytes", "assignedbytes", "bytesassigned", "scanrangebytes"}
+BACKEND_BYTES_READ_KEYS = {"bytesread", "totalbytesread", "hdfsbytesread"}
+BACKEND_BYTES_WRITTEN_KEYS = {"byteswritten", "hdfsbyteswritten", "hdfswrittenbytes", "writeiobytes"}
+BACKEND_ROWS_KEYS = {"rowsproduced", "rowsread", "rowsreturned"}
+BACKEND_READ_RATE_KEYS = {"readrate", "bytesreadrate", "hdfsreadrate", "scanrate"}
+BACKEND_WRITE_RATE_KEYS = {"writerate", "byteswrittenrate", "hdfswriterate"}
+BACKEND_WRITE_TIME_KEYS = {"hdfswritetime", "hdfswritewallclocktime", "writetime", "writewallclocktime"}
+BACKEND_WRITE_SEC_PER_GIB_KEYS = {
+    "hdfswritesecpergb",
+    "hdfswritesecpergib",
+    "writesecpergb",
+    "writesecpergib",
+}
+BACKEND_SCANNER_WAIT_KEYS = {"scannerwaittime", "scannerwaitwallclocktime", "scannerthreadswaittime"}
+BACKEND_MATERIALIZE_KEYS = {"materializetime", "materializewallclocktime"}
+BACKEND_PARSE_KEYS = {"parsetime", "parsewallclocktime"}
+BACKEND_SCANNER_CONCURRENCY_KEYS = {"peakscannerconcurrency", "numscannerthreads", "scannerthreadspeak"}
+BACKEND_EXECUTION_TIME_KEYS = {"executiontime", "exectime", "totaltime", "backendtime", "donetime", "runtime"}
 
 
 @dataclass
@@ -249,6 +292,46 @@ class OperatorFact:
         return "SCAN" in self.operator_name.upper()
 
 
+@dataclass
+class BackendHostFact:
+    host: str
+    fragment_instance: str | None = None
+    scan_bytes_assigned: float | None = None
+    bytes_read: float | None = None
+    bytes_written: float | None = None
+    rows_produced: float | None = None
+    read_rate_bps: float | None = None
+    write_rate_bps: float | None = None
+    hdfs_write_time_ms: float | None = None
+    hdfs_write_sec_per_gib: float | None = None
+    scanner_wait_time_ms: float | None = None
+    materialize_time_ms: float | None = None
+    parse_time_ms: float | None = None
+    peak_scanner_concurrency: float | None = None
+    execution_time_ms: float | None = None
+    evidence_lines: list[str] = field(default_factory=list)
+
+    def has_metric(self) -> bool:
+        return any(
+            value is not None
+            for value in (
+                self.scan_bytes_assigned,
+                self.bytes_read,
+                self.bytes_written,
+                self.rows_produced,
+                self.read_rate_bps,
+                self.write_rate_bps,
+                self.hdfs_write_time_ms,
+                self.hdfs_write_sec_per_gib,
+                self.scanner_wait_time_ms,
+                self.materialize_time_ms,
+                self.parse_time_ms,
+                self.peak_scanner_concurrency,
+                self.execution_time_ms,
+            )
+        )
+
+
 def parse_scaled_number(value: str) -> float | None:
     s = value.strip().replace(" ", "")
     m = re.fullmatch(r"(?P<num>\d[\d,]*(?:\.\d+)?)(?P<suffix>[KMBT])?", s, flags=re.IGNORECASE)
@@ -278,6 +361,31 @@ def parse_size_bytes(value: str) -> float | None:
         "tib": 1024**4,
     }[unit]
     return num * scale
+
+
+def parse_rate_bytes_per_sec(value: str) -> float | None:
+    size_match = SIZE_RE.search(value)
+    if not size_match:
+        return None
+    bytes_value = parse_size_bytes(size_match.group(0))
+    if bytes_value is None:
+        return None
+    tail = value[size_match.end() :]
+    unit_match = re.search(r"/\s*(?P<unit>ms|msec|s|sec|second|seconds)\b", tail, re.IGNORECASE)
+    if not unit_match:
+        return None
+    unit = unit_match.group("unit").lower()
+    if unit in {"ms", "msec"}:
+        return bytes_value * 1000
+    return bytes_value
+
+
+def parse_seconds_per_gib(value: str) -> float | None:
+    duration_ms = extract_first_duration_ms(value)
+    if duration_ms is not None:
+        return duration_ms / 1000
+    number = parse_scaled_number(value)
+    return number
 
 
 def duration_group_to_ms(matches: list[re.Match[str]]) -> float:
@@ -562,6 +670,156 @@ def parse_raw_runtime_nodes(lines: list[str]) -> list[OperatorFact]:
     return facts
 
 
+def normalize_metric_key(key: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", key.lower())
+
+
+def append_backend_evidence(fact: BackendHostFact, line: str) -> None:
+    evidence = compact_line(line)
+    if evidence not in fact.evidence_lines:
+        fact.evidence_lines.append(evidence)
+
+
+def first_number(value: str) -> float | None:
+    m = re.search(r"\d[\d,]*(?:\.\d+)?", value)
+    if not m:
+        return None
+    return float(m.group(0).replace(",", ""))
+
+
+def set_backend_metric(fact: BackendHostFact, key: str, value: str, line: str) -> None:
+    normalized_key = normalize_metric_key(key)
+    if normalized_key in BACKEND_ASSIGNED_KEYS:
+        parsed = parse_size_bytes(value)
+        if parsed is not None:
+            fact.scan_bytes_assigned = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_BYTES_READ_KEYS:
+        parsed = parse_size_bytes(value)
+        if parsed is not None:
+            fact.bytes_read = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_BYTES_WRITTEN_KEYS:
+        parsed = parse_size_bytes(value)
+        if parsed is not None:
+            fact.bytes_written = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_ROWS_KEYS:
+        parsed = parse_raw_counter_number(value)
+        if parsed is not None:
+            fact.rows_produced = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_READ_RATE_KEYS:
+        parsed = parse_rate_bytes_per_sec(value)
+        if parsed is not None:
+            fact.read_rate_bps = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_WRITE_RATE_KEYS:
+        parsed = parse_rate_bytes_per_sec(value)
+        if parsed is not None:
+            fact.write_rate_bps = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_WRITE_TIME_KEYS:
+        parsed = extract_first_duration_ms(value)
+        if parsed is not None:
+            fact.hdfs_write_time_ms = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_WRITE_SEC_PER_GIB_KEYS:
+        parsed = parse_seconds_per_gib(value)
+        if parsed is not None:
+            fact.hdfs_write_sec_per_gib = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_SCANNER_WAIT_KEYS:
+        parsed = extract_first_duration_ms(value)
+        if parsed is not None:
+            fact.scanner_wait_time_ms = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_MATERIALIZE_KEYS:
+        parsed = extract_first_duration_ms(value)
+        if parsed is not None:
+            fact.materialize_time_ms = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_PARSE_KEYS:
+        parsed = extract_first_duration_ms(value)
+        if parsed is not None:
+            fact.parse_time_ms = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_SCANNER_CONCURRENCY_KEYS:
+        parsed = first_number(value)
+        if parsed is not None:
+            fact.peak_scanner_concurrency = parsed
+            append_backend_evidence(fact, line)
+    elif normalized_key in BACKEND_EXECUTION_TIME_KEYS:
+        parsed = extract_first_duration_ms(value)
+        if parsed is not None:
+            fact.execution_time_ms = parsed
+            append_backend_evidence(fact, line)
+
+
+def extract_host_from_text(text: str) -> str | None:
+    m = HOST_VALUE_RE.search(text)
+    if not m:
+        return None
+    return m.group("host").strip(" ,;")
+
+
+def extract_fragment_from_text(text: str) -> str | None:
+    m = FRAGMENT_VALUE_RE.search(text)
+    if not m:
+        return None
+    return m.group("fragment").strip(" ,;")
+
+
+def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
+    facts: list[BackendHostFact] = []
+    current: BackendHostFact | None = None
+
+    def finish_current() -> None:
+        nonlocal current
+        if current is not None and current.host and current.has_metric():
+            if current.hdfs_write_sec_per_gib is None and current.hdfs_write_time_ms and current.bytes_written:
+                gib = current.bytes_written / (1024**3)
+                if gib > 0:
+                    current.hdfs_write_sec_per_gib = (current.hdfs_write_time_ms / 1000) / gib
+            facts.append(current)
+        current = None
+
+    for line in text.splitlines():
+        header_match = BACKEND_HEADER_RE.match(line)
+        if header_match:
+            finish_current()
+            header = header_match.group("header") or ""
+            host = extract_host_from_text(header)
+            fragment = extract_fragment_from_text(header)
+            if host:
+                current = BackendHostFact(host=host, fragment_instance=fragment, evidence_lines=[compact_line(line)])
+            else:
+                current = None
+            continue
+
+        if current is None:
+            continue
+
+        host_line = HOST_LINE_RE.match(line)
+        if host_line:
+            current.host = host_line.group("host").strip(" ,;")
+            append_backend_evidence(current, line)
+            continue
+
+        fragment_line = FRAGMENT_LINE_RE.match(line)
+        if fragment_line:
+            current.fragment_instance = fragment_line.group("fragment").strip(" ,;")
+            append_backend_evidence(current, line)
+            continue
+
+        metric_match = METRIC_LINE_RE.match(line)
+        if metric_match:
+            set_backend_metric(current, metric_match.group("key"), metric_match.group("value"), line)
+
+    finish_current()
+    return facts
+
+
 def build_operator_windows(lines: list[str], lookahead: int = 3) -> Iterable[tuple[str, str, str]]:
     """Yield (operator_id, operator_name, window_text)."""
     for i, line in enumerate(lines):
@@ -759,6 +1017,12 @@ def fmt_ratio(value: float | None) -> str:
     return f"{value:.2f}x"
 
 
+def fmt_rate(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{fmt_bytes(value)}/s"
+
+
 def md_escape(value: str) -> str:
     return value.replace("|", "\\|")
 
@@ -911,6 +1175,158 @@ def context_missing_metadata(analysis: dict[str, Any], command_names: set[str]) 
     return missing
 
 
+def host_to_json(fact: BackendHostFact) -> dict[str, Any]:
+    return {
+        "host": fact.host,
+        "fragment_instance": fact.fragment_instance,
+        "scan_bytes_assigned": fact.scan_bytes_assigned,
+        "scan_bytes_assigned_human": fmt_bytes(fact.scan_bytes_assigned),
+        "bytes_read": fact.bytes_read,
+        "bytes_read_human": fmt_bytes(fact.bytes_read),
+        "bytes_written": fact.bytes_written,
+        "bytes_written_human": fmt_bytes(fact.bytes_written),
+        "rows_produced": fact.rows_produced,
+        "rows_produced_human": fmt_rows(fact.rows_produced),
+        "read_rate_bps": fact.read_rate_bps,
+        "read_rate_human": fmt_rate(fact.read_rate_bps),
+        "write_rate_bps": fact.write_rate_bps,
+        "write_rate_human": fmt_rate(fact.write_rate_bps),
+        "hdfs_write_time_ms": fact.hdfs_write_time_ms,
+        "hdfs_write_time_human": fmt_duration(fact.hdfs_write_time_ms),
+        "hdfs_write_sec_per_gib": fact.hdfs_write_sec_per_gib,
+        "hdfs_write_sec_per_gib_human": (
+            f"{fact.hdfs_write_sec_per_gib:.2f}s/GiB" if fact.hdfs_write_sec_per_gib is not None else "n/a"
+        ),
+        "scanner_wait_time_ms": fact.scanner_wait_time_ms,
+        "scanner_wait_time_human": fmt_duration(fact.scanner_wait_time_ms),
+        "materialize_time_ms": fact.materialize_time_ms,
+        "materialize_time_human": fmt_duration(fact.materialize_time_ms),
+        "parse_time_ms": fact.parse_time_ms,
+        "parse_time_human": fmt_duration(fact.parse_time_ms),
+        "peak_scanner_concurrency": fact.peak_scanner_concurrency,
+        "execution_time_ms": fact.execution_time_ms,
+        "execution_time_human": fmt_duration(fact.execution_time_ms),
+        "evidence_lines": fact.evidence_lines,
+    }
+
+
+def metric_values(hosts: list[dict[str, Any]], key: str) -> list[tuple[dict[str, Any], float]]:
+    values: list[tuple[dict[str, Any], float]] = []
+    for host in hosts:
+        value = host.get(key)
+        if isinstance(value, (int, float)) and value > 0:
+            values.append((host, float(value)))
+    return values
+
+
+def ratio_for_values(values: list[tuple[dict[str, Any], float]]) -> float | None:
+    if len(values) < BACKEND_MIN_HOSTS_FOR_SKEW:
+        return None
+    raw_values = [value for _host, value in values if value > 0]
+    if len(raw_values) < BACKEND_MIN_HOSTS_FOR_SKEW:
+        return None
+    min_value = min(raw_values)
+    if min_value <= 0:
+        return None
+    return max(raw_values) / min_value
+
+
+def backend_data_skew_status(hosts: list[dict[str, Any]]) -> tuple[str, str, bool]:
+    metric_labels = [
+        ("scan_bytes_assigned", "assigned scan bytes"),
+        ("bytes_read", "bytes read"),
+        ("rows_produced", "rows produced"),
+    ]
+    comparable_seen = False
+    best_comparable = ""
+    for key, label in metric_labels:
+        values = metric_values(hosts, key)
+        ratio = ratio_for_values(values)
+        if ratio is None:
+            continue
+        if ratio >= BACKEND_DATA_SKEW_RATIO:
+            return "yes", f"{label} max/min ratio is {fmt_ratio(ratio)}", False
+        if ratio <= BACKEND_WORK_COMPARABLE_RATIO:
+            comparable_seen = True
+            best_comparable = f"{label} max/min ratio is {fmt_ratio(ratio)}"
+    if comparable_seen:
+        return "no", f"assigned/read work appears comparable ({best_comparable})", True
+    return "unknown", "insufficient comparable per-host assigned/read/row metrics", False
+
+
+def tail_candidate_from_metric(
+    hosts: list[dict[str, Any]],
+    *,
+    key: str,
+    label: str,
+    human_key: str,
+    higher_is_worse: bool,
+) -> dict[str, Any] | None:
+    values = metric_values(hosts, key)
+    ratio = ratio_for_values(values)
+    if ratio is None or ratio < BACKEND_TAIL_RATIO:
+        return None
+    worst_host, worst_value = (max if higher_is_worse else min)(values, key=lambda item: item[1])
+    peer_value = (min if higher_is_worse else max)(value for _host, value in values)
+    evidence = (
+        f"{label}: {worst_host.get(human_key, 'n/a')} vs peer "
+        f"{'min' if higher_is_worse else 'max'} "
+        f"{fmt_duration(peer_value) if key.endswith('_ms') else fmt_rate(peer_value) if key.endswith('_bps') else f'{peer_value:.2f}s/GiB'}"
+    )
+    return {
+        "host": worst_host["host"],
+        "fragment_instance": worst_host.get("fragment_instance"),
+        "evidence": evidence,
+        "metric": label,
+        "ratio": ratio,
+        "ratio_human": fmt_ratio(ratio),
+    }
+
+
+def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, Any]:
+    hosts = [host_to_json(fact) for fact in host_facts]
+    data_skew, data_skew_reason, comparable_work = backend_data_skew_status(hosts)
+    candidates: list[dict[str, Any]] = []
+    write_path_candidates: list[dict[str, Any]] = []
+
+    if comparable_work:
+        metric_specs = [
+            ("execution_time_ms", "execution time", "execution_time_human", True, False),
+            ("read_rate_bps", "read rate", "read_rate_human", False, False),
+            ("write_rate_bps", "write rate", "write_rate_human", False, True),
+            ("hdfs_write_time_ms", "HDFS write time", "hdfs_write_time_human", True, True),
+            ("hdfs_write_sec_per_gib", "HDFS write sec/GiB", "hdfs_write_sec_per_gib_human", True, True),
+        ]
+        for key, label, human_key, higher_is_worse, is_write_path in metric_specs:
+            candidate = tail_candidate_from_metric(
+                hosts,
+                key=key,
+                label=label,
+                human_key=human_key,
+                higher_is_worse=higher_is_worse,
+            )
+            if candidate is None:
+                continue
+            candidates.append(candidate)
+            if is_write_path:
+                write_path_candidates.append(candidate)
+
+    execution_skew = "yes" if candidates else ("unknown" if data_skew == "unknown" else "no")
+    write_path_anomaly = "yes" if write_path_candidates else ("unknown" if not comparable_work else "no")
+    tail_candidate_count = len({candidate["host"] for candidate in candidates})
+    return {
+        "rows_parsed": len(hosts),
+        "hosts": hosts,
+        "tail_candidate_count": tail_candidate_count,
+        "data_skew": data_skew,
+        "data_skew_reason": data_skew_reason,
+        "execution_skew": execution_skew,
+        "write_path_anomaly": write_path_anomaly,
+        "candidates": candidates,
+        "write_path_candidates": write_path_candidates,
+    }
+
+
 def action_card_score(card: dict[str, Any]) -> float:
     op = card["operator"]
     rows_ratio = op.get("rows_actual_to_estimated_ratio") or 0
@@ -923,7 +1339,7 @@ def action_card_score(card: dict[str, Any]) -> float:
 def build_action_cards(analysis: dict[str, Any], max_cards: int = 5) -> list[dict[str, Any]]:
     thresholds = analysis.get("thresholds", {})
     large_rows_threshold = float(thresholds.get("large_rows_threshold") or 1_000_000)
-    large_bytes_threshold = float(thresholds.get("large_bytes_threshold") or 10 * 1024**3)
+    large_bytes_threshold = float(thresholds.get("large_bytes_threshold") or DEFAULT_LARGE_BYTES_THRESHOLD)
     total_read = analysis.get("totals", {}).get("TotalBytesRead") or {}
     total_sent = analysis.get("totals", {}).get("TotalBytesSent") or {}
     memory_by_key = {
@@ -1001,9 +1417,9 @@ def make_action_card(
                 f"peak/estimated memory ratio: {related_memory['mem_ratio_human']}",
             ]
         )
-    if total_read.get("raw"):
+    if total_read.get("raw") and (total_read.get("bytes") or 0) >= MEDIUM_DATA_MOVEMENT_BYTES:
         evidence.append(f"TotalBytesRead: {total_read['raw']} ({fmt_bytes(total_read.get('bytes'))})")
-    if total_sent.get("raw"):
+    if total_sent.get("raw") and (total_sent.get("bytes") or 0) >= MEDIUM_DATA_MOVEMENT_BYTES:
         evidence.append(f"TotalBytesSent: {total_sent['raw']} ({fmt_bytes(total_sent.get('bytes'))})")
 
     admin_actions = [
@@ -1067,6 +1483,8 @@ def make_finding(
     summary: str,
     operators: list[dict[str, Any]] | None = None,
     evidence_lines: list[str] | None = None,
+    admin_actions: list[str] | None = None,
+    missing_evidence: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": finding_id,
@@ -1075,12 +1493,15 @@ def make_finding(
         "summary": summary,
         "operators": operators or [],
         "evidence_lines": evidence_lines or [],
+        "admin_actions": admin_actions or [],
+        "missing_evidence": missing_evidence or [],
     }
 
 
 def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
     text = normalize_profile_text(text)
     operators = parse_operators(text)
+    backend_tail = build_backend_tail_analysis(parse_backend_host_facts(text))
     totals = {
         name: extract_total_counter(text, name)
         for name in ["TotalBytesRead", "TotalBytesSent", "TotalTime"]
@@ -1159,20 +1580,47 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
                     f"{op_label(op)} is among top time operators: {fmt_duration(op.time_ms)}"
                 )
 
+    findings: list[dict[str, Any]] = []
+    not_supported_causes: list[str] = []
+
     network_exchange_evidence: list[str] = []
     total_sent = totals.get("TotalBytesSent")
-    if total_sent and total_sent.get("bytes") and total_sent["bytes"] >= args.large_bytes_threshold:
+    network_exchange_severity = "medium"
+    if (
+        total_sent
+        and total_sent.get("bytes") is not None
+        and total_sent["bytes"] >= MEDIUM_DATA_MOVEMENT_BYTES
+    ):
+        if total_sent["bytes"] >= args.large_bytes_threshold:
+            network_exchange_severity = "high"
         network_exchange_evidence.append(
             f"TotalBytesSent is large: {total_sent['raw']} ({fmt_bytes(total_sent['bytes'])})"
         )
-    for op in top_by_time[: args.top_n]:
-        if "EXCHANGE" in op.operator_name.upper() and op.time_ms is not None:
-            network_exchange_evidence.append(
-                f"{op_label(op)} has notable time: {fmt_duration(op.time_ms)}"
-            )
+    elif total_sent and total_sent.get("bytes") is not None and total_sent["bytes"] < MEDIUM_DATA_MOVEMENT_BYTES:
+        not_supported_causes.append(
+            "TotalBytesSent was parsed below the large data-movement threshold: "
+            f"{total_sent['raw']} ({fmt_bytes(total_sent['bytes'])}); do not treat it as large exchange traffic."
+        )
 
-    findings: list[dict[str, Any]] = []
-    not_supported_causes: list[str] = []
+    if network_exchange_evidence:
+        for op in top_by_time[: args.top_n]:
+            if "EXCHANGE" in op.operator_name.upper() and op.time_ms is not None:
+                network_exchange_evidence.append(
+                    f"{op_label(op)} has notable time: {fmt_duration(op.time_ms)}"
+                )
+
+    total_read = totals.get("TotalBytesRead")
+    if total_read and total_read.get("bytes") is not None and total_read["bytes"] < MEDIUM_DATA_MOVEMENT_BYTES:
+        not_supported_causes.append(
+            "TotalBytesRead was parsed below the large I/O footprint threshold: "
+            f"{total_read['raw']} ({fmt_bytes(total_read['bytes'])}); do not treat it as large scan I/O."
+        )
+
+    if total_sent and total_sent.get("bytes") is not None and total_sent["bytes"] >= args.large_bytes_threshold:
+        network_exchange_evidence.append(
+            "TotalBytesSent meets the high data-movement threshold "
+            f"({fmt_bytes(args.large_bytes_threshold)})."
+        )
 
     if cardinality_anomalies:
         worst = cardinality_anomalies[0]
@@ -1286,7 +1734,7 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
         findings.append(
             make_finding(
                 "large_intermediate_or_exchange_traffic",
-                "medium",
+                network_exchange_severity,
                 "Large intermediate or exchange traffic",
                 "Detected large bytes sent / exchange footprint. Treat as intermediate data movement evidence, not automatically as a network fault.",
                 evidence_lines=network_exchange_evidence,
@@ -1312,6 +1760,36 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
             "No codegen/LLVM bottleneck evidence was parsed."
         )
 
+    if backend_tail["candidates"]:
+        worst_ratio = max(candidate.get("ratio") or 0 for candidate in backend_tail["candidates"])
+        findings.append(
+            make_finding(
+                "host_execution_tail_suspected",
+                "high" if worst_ratio >= 5 else "medium",
+                "Host-specific execution tail suspected",
+                (
+                    "Execution skew is suspected from parsed backend counters. "
+                    "Host-specific HDFS/RPC/write path issue is suspected, not proven."
+                ),
+                evidence_lines=[
+                    f"{candidate['host']}: {candidate['evidence']} ({candidate['ratio_human']})"
+                    for candidate in backend_tail["candidates"][: args.max_evidence_lines]
+                ],
+                admin_actions=[
+                    "Compare per-host RowsProduced / BytesRead / BytesWritten rates.",
+                    "Check HDFS write latency and DataNode pipeline details for the tail host.",
+                    "Check NIC errors, retransmits, drops, MTU, LACP/bond, and switch output discards.",
+                    "Check whether the tail persists after scanner thread cap changes if that evidence is available.",
+                ],
+                missing_evidence=[
+                    "NIC counters.",
+                    "Switch drops.",
+                    "DataNode pipeline details.",
+                    "Per-host OS/network metrics.",
+                ],
+            )
+        )
+
     not_supported_causes.append(
         "No evidence in profile_digest.md supports HDFS block-size or replication-factor changes as a query-level fix unless scan/storage counters from the raw profile prove it."
     )
@@ -1326,9 +1804,11 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
             "slow_operator_ms": args.slow_operator_ms,
             "large_rows_threshold": args.large_rows_threshold,
             "large_bytes_threshold": args.large_bytes_threshold,
+            "medium_data_movement_bytes": MEDIUM_DATA_MOVEMENT_BYTES,
             "report_top_n": args.top_n,
         },
         "totals": totals,
+        "backend_tail": backend_tail,
         "operators": [op_to_json(op) for op in operators],
         "top_operators_by_time": [op_to_json(op) for op in top_by_time],
         "top_operators_by_peak_memory": [op_to_json(op) for op in top_by_memory],
@@ -1449,11 +1929,64 @@ def render_findings(analysis: dict[str, Any], verbose: bool) -> list[str]:
                 )
             if not verbose and len(finding["operators"]) > len(operators):
                 lines.append(f"  - ... {len(finding['operators']) - len(operators)} more in verbose output")
-        if verbose and finding.get("evidence_lines"):
+        if finding.get("evidence_lines") and (verbose or finding.get("id") == "host_execution_tail_suspected"):
             lines.append("- Evidence lines:")
             for ev in finding["evidence_lines"]:
                 lines.append(f"  - `{ev}`")
+        if finding.get("admin_actions"):
+            lines.append("- Admin checks:")
+            for action in finding["admin_actions"]:
+                lines.append(f"  - {action}")
+        if finding.get("missing_evidence"):
+            lines.append("- Missing evidence:")
+            for item in finding["missing_evidence"]:
+                lines.append(f"  - {item}")
         lines.append("")
+    return lines
+
+
+def render_backend_tail_evidence(analysis: dict[str, Any]) -> list[str]:
+    backend = analysis.get("backend_tail") or {}
+    if not backend.get("rows_parsed"):
+        return []
+
+    lines = ["## Backend / Host Tail Evidence", "", "### Summary", ""]
+    lines.extend(
+        [
+            f"- backend rows parsed: {backend['rows_parsed']}",
+            f"- host tail candidates: {backend['tail_candidate_count']}",
+            f"- data skew: {backend['data_skew']} ({backend['data_skew_reason']})",
+            f"- execution skew: {backend['execution_skew']}",
+            f"- write-path anomaly: {backend['write_path_anomaly']}",
+            "",
+            "### Host tail candidates",
+            "",
+        ]
+    )
+    candidates = backend.get("candidates") or []
+    if not candidates:
+        lines.append("- none")
+        lines.append("")
+        return lines
+
+    lines.append("| host | evidence | ratio/metric |")
+    lines.append("|---|---|---:|")
+    for candidate in candidates:
+        host = candidate.get("host") or "unknown"
+        evidence = candidate.get("evidence") or "n/a"
+        ratio = candidate.get("ratio_human") or "n/a"
+        lines.append(f"| {md_escape(host)} | {md_escape(evidence)} | {ratio} |")
+    lines.append("")
+    lines.extend(
+        [
+            "### Interpretation guardrails",
+            "",
+            "- Execution skew is suspected from parsed backend counters.",
+            "- Host-specific HDFS/RPC/write path issue is suspected, not proven.",
+            "- Do not infer NUM_SCANNER_THREADS effects unless the profile or notes explicitly contain that evidence.",
+            "",
+        ]
+    )
     return lines
 
 
@@ -1574,6 +2107,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_operator_table("Peak memory vs estimated memory anomalies", analysis["memory_anomalies"], max_table_rows)
 
     lines += render_impala_context(analysis)
+    lines += render_backend_tail_evidence(analysis)
     lines += render_action_cards(analysis)
 
     lines += render_findings(analysis, verbose)
@@ -1619,7 +2153,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--mem-ratio-threshold", type=float, default=4.0)
     parser.add_argument("--slow-operator-ms", type=float, default=10_000.0)
     parser.add_argument("--large-rows-threshold", type=float, default=1_000_000.0)
-    parser.add_argument("--large-bytes-threshold", type=float, default=10 * 1024**3)
+    parser.add_argument("--large-bytes-threshold", type=float, default=DEFAULT_LARGE_BYTES_THRESHOLD)
     parser.add_argument("--max-evidence-lines", type=int, default=30)
     parser.add_argument("--verbose", action="store_true", help="Include raw evidence lines and parsing details in markdown")
     parser.add_argument("--stdout", action="store_true", help="Also print markdown to stdout")
