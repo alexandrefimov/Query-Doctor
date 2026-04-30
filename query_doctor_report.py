@@ -335,6 +335,15 @@ BACKEND_DIAGNOSTIC_CHECK_RE = re.compile(
     r"\b(?:проверить|проверк\w*|диагностик\w*|гипотез\w*|не\s+доказ\w*)\b",
     re.IGNORECASE,
 )
+BACKEND_SAFE_DIAGNOSTIC_NEGATION_RE = re.compile(
+    r"\b(?:not\s+proven|not\s+a\s+proven|not\s+the\s+proven)\b|"
+    r"\b(?:не\s+доказ\w*|не\s+подтвержд\w*)\b",
+    re.IGNORECASE,
+)
+CONTRADICTED_ROW_ESTIMATE_NOTE = (
+    "- Направление row/cardinality estimate для одной строки отчёта не поддержано parsed facts; "
+    "используйте конкретные actual/estimated ratios из analysis_facts.md."
+)
 
 
 def resolve_case_file(case_dir: Path, value: str) -> Path:
@@ -717,6 +726,16 @@ def line_has_safe_negation(line: str, match_start: int = 0) -> bool:
     return is_negated_zero_cardinality_match(line, match_start)
 
 
+def line_is_safe_backend_diagnostic(line: str, match_start: int = 0) -> bool:
+    if line_has_safe_negation(line, match_start):
+        return True
+    if not BACKEND_DIAGNOSTIC_CHECK_RE.search(line):
+        return False
+    if BACKEND_SAFE_DIAGNOSTIC_NEGATION_RE.search(line):
+        return True
+    return not PROVEN_BACKEND_CLAIM_CONTEXT_RE.search(line)
+
+
 def find_backend_tail_claim_errors(report_text: str, facts_text: str) -> list[str]:
     if not facts_has_backend_tail_evidence(facts_text):
         return []
@@ -757,8 +776,7 @@ def find_backend_tail_claim_errors(report_text: str, facts_text: str) -> list[st
         if (
             write_path_match
             and not write_path_is_supported
-            and not line_has_safe_negation(line, write_path_match.start())
-            and not BACKEND_DIAGNOSTIC_CHECK_RE.search(line)
+            and not line_is_safe_backend_diagnostic(line, write_path_match.start())
             and "write_path" not in seen
         ):
             errors.append(
@@ -1114,7 +1132,7 @@ def normalize_operator_time_wording(line: str, facts_text: str) -> str:
 
 def normalize_contradicted_estimate_direction(line: str, facts_text: str) -> str | None:
     if find_contradicted_row_underestimation_claims(line, facts_text):
-        return None
+        return CONTRADICTED_ROW_ESTIMATE_NOTE
     if find_contradicted_memory_underestimation_claims(line, facts_text):
         return MEMORY_UNDERESTIMATION_CLAIM_RE.sub("расхождение оценки памяти", line)
     if find_contradicted_memory_overestimation_claims(line, facts_text):
@@ -1197,7 +1215,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
         if not is_structure_line and not is_not_supported and should_drop_zero_cardinality_positive_claim(
             line, facts_text
         ):
-            continue
+            line = ZERO_CARDINALITY_NOT_SUPPORTED_BULLET
         if (
             not is_structure_line
             and not is_not_supported
