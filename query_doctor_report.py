@@ -104,8 +104,8 @@ STATS_FRESHNESS_MISSING_EVIDENCE = (
     "проверяйте ее только через read-only metadata."
 )
 ZERO_CARDINALITY_NOT_SUPPORTED_BULLET = (
-    "- No analyzer-supported cardinality anomaly was found. Do not claim cardinality "
-    "underestimation unless analysis_facts.md contains a cardinality anomaly."
+    "- В analysis_facts.md нет подтверждённой аномалии кардинальности; не заявляйте "
+    "недооценку кардинальности без соответствующего факта."
 )
 ZERO_CARDINALITY_UNSUPPORTED_CLAIMS = (
     (
@@ -237,6 +237,25 @@ ROW_UNDERESTIMATION_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 MEMORY_WORD_RE = re.compile(r"\b(memory|mem|peakmemusage|peak\s+memory|памят\w*)\b", re.IGNORECASE)
+MEMORY_UNDERESTIMATION_CLAIM_RE = re.compile(
+    r"("
+    r"\b(?:memory|mem|peak\s+memory|peakmemusage)[^.\n]{0,80}\bunderestimat\w*|"
+    r"\bunderestimat\w+[^.\n]{0,80}\b(?:memory|mem|peak\s+memory|peakmemusage)\b|"
+    r"недооцен\w+\s+памят\w+|"
+    r"памят\w+[^.\n]{0,80}недооцен\w+"
+    r")",
+    re.IGNORECASE,
+)
+MEMORY_RATIO_RE = re.compile(
+    r"(?:mem\s+ratio|memory\s+ratio|соотношен\w+|ratio)\s*[:=]?\s*(?P<ratio>\d+(?:[\.,]\d+)?)\s*x",
+    re.IGNORECASE,
+)
+UNSAFE_OPERATOR_WALL_CLOCK_RE = re.compile(
+    r"(?:оператор|operator|\b\d{2,}:[A-Z][A-Z _]+)[^.\n]{0,120}"
+    r"(?:выполнял\w*|выполняет\w*|выполнялся|ran|running|executed)"
+    r"[^.\n]{0,40}\d+(?:[\.,]\d+)?\s*(?:час|ч\.|hour|hr|minute|min)",
+    re.IGNORECASE,
+)
 ROW_DIRECTION_WORD_RE = re.compile(
     r"\b(row|rows|cardinality|estimated\s+rows|row\s+estimates|actual\s+rows)\b|"
     r"строк|кардинальност",
@@ -340,12 +359,39 @@ def parse_row_estimate_directions(facts_text: str) -> dict[str, str]:
     return directions
 
 
+def parse_memory_estimate_directions(facts_text: str) -> dict[str, str]:
+    directions: dict[str, str] = {}
+    for line in facts_text.splitlines():
+        match = FACTS_TABLE_OPERATOR_RE.match(line)
+        if not match:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 8:
+            continue
+        operator = cells[0]
+        ratio = parse_ratio_value(cells[7])
+        if ratio is None:
+            continue
+        key = normalize_operator_key(operator)
+        if ratio > 1.0:
+            directions[key] = "underestimated"
+        elif ratio < 1.0:
+            directions[key] = "overestimated"
+        else:
+            directions[key] = "matched"
+    return directions
+
+
 def line_has_row_underestimation_claim(line: str) -> bool:
     if not ROW_UNDERESTIMATION_CLAIM_RE.search(line):
         return False
     if MEMORY_WORD_RE.search(line) and not ROW_DIRECTION_WORD_RE.search(line):
         return False
     return True
+
+
+def line_has_memory_underestimation_claim(line: str) -> bool:
+    return bool(MEMORY_UNDERESTIMATION_CLAIM_RE.search(line))
 
 
 def starts_new_top_level_item(line: str) -> bool:
@@ -421,6 +467,95 @@ def find_contradicted_row_underestimation_claims(report_text: str, facts_text: s
     return errors
 
 
+def line_contains_memory_ratio_below_one(line: str) -> bool:
+    for match in MEMORY_RATIO_RE.finditer(line):
+        try:
+            ratio = float(match.group("ratio").replace(",", "."))
+        except ValueError:
+            continue
+        if ratio < 1.0:
+            return True
+    return False
+
+
+def mentions_contradicted_memory_underestimated_operator(
+    line: str,
+    directions: dict[str, str],
+    seen: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    matched_operator_id = False
+    for match in REPORT_OPERATOR_ID_RE.finditer(line):
+        report_operator = normalize_operator_key(match.group("operator"))
+        report_prefix = operator_id_prefix(report_operator)
+        for facts_operator, direction in directions.items():
+            if operator_id_prefix(facts_operator) != report_prefix:
+                continue
+            matched_operator_id = True
+            if direction == "overestimated" and report_prefix not in seen:
+                errors.append(
+                    "memory underestimation claim contradicts parsed facts "
+                    f"for {facts_operator}: actual/estimated memory ratio is below 1"
+                )
+                seen.add(report_prefix)
+            break
+    if matched_operator_id:
+        return errors
+
+    upper_line = line.upper()
+    for operator_type in sorted(
+        {operator_type_name(operator) for operator in directions},
+        key=len,
+        reverse=True,
+    ):
+        if not operator_type or operator_type not in upper_line or operator_type in seen:
+            continue
+        matching_directions = [
+            direction
+            for operator, direction in directions.items()
+            if operator_type_name(operator) == operator_type
+        ]
+        if matching_directions and all(direction == "overestimated" for direction in matching_directions):
+            errors.append(
+                "memory underestimation claim contradicts parsed facts "
+                f"for {operator_type}: all parsed actual/estimated memory ratios are below 1"
+            )
+            seen.add(operator_type)
+    return errors
+
+
+def find_contradicted_memory_underestimation_claims(report_text: str, facts_text: str) -> list[str]:
+    directions = parse_memory_estimate_directions(facts_text)
+    errors: list[str] = []
+    seen: set[str] = set()
+    for line in report_text.splitlines():
+        if not line_has_memory_underestimation_claim(line):
+            continue
+        if line_contains_memory_ratio_below_one(line):
+            errors.append(
+                "memory underestimation claim contradicts an explicit actual/estimated memory ratio below 1"
+            )
+            continue
+        if directions:
+            before = len(errors)
+            errors.extend(mentions_contradicted_memory_underestimated_operator(line, directions, seen))
+            if len(errors) == before and all(direction != "underestimated" for direction in directions.values()):
+                errors.append(
+                    "memory underestimation claim is unsupported: all parsed actual/estimated memory ratios are at or below 1"
+                )
+    return errors
+
+
+def find_unsafe_operator_time_wording(report_text: str, facts_text: str) -> list[str]:
+    if re.search(r"\bwall[- ]clock\b|настенн\w+\s+врем", facts_text, re.IGNORECASE):
+        return []
+    return [
+        "operator time is presented as wall-clock duration without explicit wall-clock evidence"
+        for line in report_text.splitlines()
+        if UNSAFE_OPERATOR_WALL_CLOCK_RE.search(line)
+    ][:1]
+
+
 def build_cardinality_contract(facts_text: str) -> str:
     count = facts_cardinality_anomaly_count(facts_text)
     if count == 0:
@@ -457,6 +592,41 @@ Cardinality evidence contract:
 """.strip()
 
 
+def facts_has_backend_tail_evidence(facts_text: str) -> bool:
+    lower = facts_text.lower()
+    return (
+        "backend / host tail evidence" in lower
+        or "host-specific execution tail suspected" in lower
+        or "execution skew is suspected from parsed backend counters" in lower
+    )
+
+
+def build_backend_tail_contract(facts_text: str, mode: str) -> str:
+    if facts_has_backend_tail_evidence(facts_text):
+        if mode == "user":
+            return """
+Backend/host-tail evidence contract:
+- analysis_facts.md contains Backend / Host Tail Evidence or host-tail findings.
+- Prioritize passing backend/host evidence to the platform team over SQL rewrite advice unless SQL/cardinality facts also support SQL changes.
+- User-facing wording must say: "передайте платформенной команде backend/host evidence из analysis_facts.md".
+- Host/network/HDFS/RPC/write-path items are checks for admins, not proven root causes.
+- Do not claim network or HDFS is the root cause.
+""".strip()
+        return """
+Backend/host-tail evidence contract:
+- analysis_facts.md contains Backend / Host Tail Evidence or host-tail findings.
+- Prioritize platform/host-tail evidence and admin checks before generic SQL rewrite advice unless SQL/cardinality facts also support SQL changes.
+- Use conservative wording: "execution tail suspected" and "host-specific write/RPC/HDFS path should be checked".
+- Host/network/HDFS/RPC/write-path items are checks, not proven root causes.
+- Do not claim network or HDFS is the root cause.
+""".strip()
+    return """
+Backend/host-tail evidence contract:
+- Do not add host-tail, network, HDFS, or RPC-path diagnosis unless analysis_facts.md contains Backend / Host Tail Evidence or host-tail findings.
+- If absent, keep host/network/HDFS checks out of primary findings unless another deterministic fact supports them.
+""".strip()
+
+
 def build_prompt(
     *,
     facts_text: str,
@@ -469,6 +639,7 @@ def build_prompt(
     language_instruction = "Ответ должен быть на русском языке." if language == "ru" else f"Language: {language}."
     mode_instruction = build_mode_instruction(mode)
     cardinality_contract = build_cardinality_contract(facts_text)
+    backend_tail_contract = build_backend_tail_contract(facts_text, mode)
 
     return f"""
 You are only a report writer.
@@ -490,6 +661,8 @@ If evidence is missing, say it is missing.
 
 {cardinality_contract}
 
+{backend_tail_contract}
+
 Engineering interpretation rules:
 - The report must distinguish cardinality mismatch from memory mismatch.
 - Row/cardinality underestimation means actual rows are larger than estimated rows or actual/estimated ratio is above 1.
@@ -497,9 +670,14 @@ Engineering interpretation rules:
 - Use "estimate mismatch" / "estimate gap" when estimate direction is mixed or unclear.
 - Do not describe an operator as row/cardinality-underestimated when its evidence line shows actual rows < estimated rows or ratio < 1.
 - Memory underestimation is separate from row/cardinality underestimation.
-- Memory mismatch means peak memory is larger than estimated peak memory.
+- Memory underestimation means actual/peak memory is larger than estimated memory or actual/estimated memory ratio is above 1.
+- Memory overestimation means actual/peak memory is lower than estimated memory or actual/estimated memory ratio is below 1.
+- Memory estimate mismatch/gap means the direction is mixed or unclear.
+- Do not call actual/estimated memory ratio below 1 memory underestimation.
+- Do not call lower actual memory an overload unless absolute memory, spill, or scratch evidence supports it.
 - Do not use operators with mem ratio below 1.0 as evidence for memory underestimation.
 - If an operator has rows ratio above threshold but mem ratio below 1.0, use it only as cardinality/intermediate-row evidence, not memory-underestimation evidence.
+- Do not present Impala operator time as wall-clock duration unless analysis_facts.md explicitly provides wall-clock evidence. Prefer "в профиле накоплено большое operator time" or "оператор выделяется по времени в профиле".
 - Evidence-safe summary wording may mention actual rows in millions vs estimated rows around 10.55K only when analysis_facts.md contains that cardinality anomaly evidence.
 - Distinguish "large intermediate/exchange traffic" from external network instability.
 - Do not recommend checking external network based only on TotalBytesSent.
@@ -750,6 +928,19 @@ def insert_bullets_into_section(text: str, heading: str, bullets: list[str]) -> 
     return text[:next_heading].rstrip() + insertion + "\n" + text[next_heading:]
 
 
+def insert_required_bullets_into_section(
+    text: str,
+    heading: str,
+    bullet_rules: list[tuple[str, tuple[str, ...]]],
+) -> str:
+    missing = [
+        bullet
+        for bullet, patterns in bullet_rules
+        if bullet not in text and not any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+    ]
+    return insert_bullets_into_section(text, heading, missing)
+
+
 def normalize_report_headings(text: str, replacements: dict[str, str]) -> str:
     lines = []
     for line in text.splitlines():
@@ -808,6 +999,8 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
                 f"analysis_facts.md says Cardinality anomalies: 0: {', '.join(claims)}"
             )
     errors.extend(find_contradicted_row_underestimation_claims(report_text, facts_text))
+    errors.extend(find_contradicted_memory_underestimation_claims(report_text, facts_text))
+    errors.extend(find_unsafe_operator_time_wording(report_text, facts_text))
     return errors
 
 
@@ -851,6 +1044,11 @@ def enforce_user_report_requirements(text: str, facts_text: str) -> str:
         "- Admission pool / queue, если присутствуют; если нет, написать not present in analysis_facts.md.",
         "- Query Doctor report.",
     ]
+    if facts_has_backend_tail_evidence(facts_text):
+        admin_package_bullets.insert(
+            4,
+            "- Передайте платформенной команде backend/host evidence из analysis_facts.md; host/network/HDFS/RPC path — это проверки, не доказанная причина.",
+        )
     text = insert_bullets_into_section(
         text,
         USER_ADMIN_PACKAGE_HEADING,
@@ -870,17 +1068,58 @@ def enforce_user_report_requirements(text: str, facts_text: str) -> str:
     return insert_bullets_into_section(text, USER_VERIFY_HEADING, verify_bullets)
 
 
-def enforce_admin_report_requirements(text: str) -> str:
+def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
     text = normalize_report_headings(text, ROOT_CAUSE_HEADING_REWRITE)
-    admin_bullets = [
-        "- Проверить per-host RowsProduced для операторов из Action Cards.",
-        "- Проверить per-host PeakMemUsage для тех же операторов.",
-        "- Проверить spill/scratch counters в query profile.",
-        "- Проверить лимиты памяти admission pool и поведение очереди.",
-        "- Проверить CM metrics/logs на host-level resource pressure во время окна запроса.",
-        "- Проверить profile counters по указанным операторам, прежде чем считать предполагаемые проблемы доказанными причинами.",
+    text = normalize_report_headings(
+        text,
+        {
+            "## Next checks": "## Что проверить следующим запуском",
+            "## What to check next": "## Что проверить следующим запуском",
+            "## Checks for next run": "## Что проверить следующим запуском",
+        },
+    )
+    admin_bullet_rules = [
+        (
+            "- Проверить per-host RowsProduced для операторов из Action Cards.",
+            (r"per-host\s+RowsProduced",),
+        ),
+        (
+            "- Проверить per-host PeakMemUsage для тех же операторов.",
+            (r"per-host\s+PeakMemUsage",),
+        ),
+        (
+            "- Проверить spill/scratch counters в query profile.",
+            (r"spill/scratch\s+counters|spill.*scratch|scratch.*spill",),
+        ),
+        (
+            "- Проверить лимиты памяти admission pool и поведение очереди.",
+            (r"admission\s+pool|лимит\w*\s+памят\w+.*очеред",),
+        ),
+        (
+            "- Проверить CM metrics/logs на host-level resource pressure во время окна запроса.",
+            (r"CM\s+metrics/logs|CM\s+metrics|CM\s+logs|host-level\s+resource\s+pressure",),
+        ),
+        (
+            "- Проверить profile counters по указанным операторам, прежде чем считать предполагаемые проблемы доказанными причинами.",
+            (r"profile\s+counters|сч[её]тчик\w+\s+profile",),
+        ),
     ]
-    return insert_bullets_into_section(text, "## Что проверить следующим запуском", admin_bullets)
+    if facts_has_backend_tail_evidence(facts_text):
+        admin_bullet_rules = [
+            (
+                "- Приоритизировать Backend / Host Tail Evidence: сравнить per-host runtime/profile time, RowsProduced, BytesRead/BytesWritten и rates для tail host и соседних hosts.",
+                (r"Backend\s*/\s*Host\s+Tail\s+Evidence|execution\s+tail|tail\s+host",),
+            ),
+            (
+                "- Проверить host-specific write/RPC/HDFS path как гипотезу; это не доказанная причина без внешних host/network/HDFS метрик.",
+                (r"write/RPC/HDFS|HDFS/RPC/write|host-specific.*write",),
+            ),
+        ] + admin_bullet_rules
+    return insert_required_bullets_into_section(
+        text,
+        "## Что проверить следующим запуском",
+        admin_bullet_rules,
+    )
 
 
 def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admin") -> None:
@@ -889,7 +1128,7 @@ def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admi
     if mode == "user":
         text = enforce_user_report_requirements(text, facts_text)
     if mode == "admin":
-        text = enforce_admin_report_requirements(text)
+        text = enforce_admin_report_requirements(text, facts_text)
     text = enforce_report_fact_requirements(text, facts_text)
     path.write_text(text, encoding="utf-8")
 
@@ -1031,7 +1270,10 @@ def stream_ollama_report(
                     "Keep cardinality mismatch separate from memory mismatch. "
                     "Use row underestimation only when actual rows are greater than estimated rows. "
                     "Use row overestimation when actual rows are lower than estimated rows. "
+                    "Use memory underestimation only when actual or peak memory is above estimated memory. "
+                    "Use memory overestimation when actual or peak memory is below estimated memory. "
                     "Do not treat mem ratio below 1.0 as memory underestimation evidence. "
+                    "Do not present Impala operator time as wall-clock duration unless facts explicitly provide wall-clock evidence. "
                     "Do not recommend external network checks based only on TotalBytesSent. "
                     "Treat TotalBytesSent as intermediate/exchange data volume unless facts explicitly say network fault. "
                     "Do not call low-memory EXCHANGE operators memory bottlenecks. "

@@ -1983,7 +1983,6 @@ def render_backend_tail_evidence(analysis: dict[str, Any]) -> list[str]:
             "",
             "- Execution skew is suspected from parsed backend counters.",
             "- Host-specific HDFS/RPC/write path issue is suspected, not proven.",
-            "- Do not infer NUM_SCANNER_THREADS effects unless the profile or notes explicitly contain that evidence.",
             "",
         ]
     )
