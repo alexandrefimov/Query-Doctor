@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,6 +90,9 @@ class CaseResult:
     report_generated: bool = False
     report_validation_status: str = "not_run"
     failure_category: str | None = None
+    cm_collect_seconds: float | None = None
+    analysis_seconds: float | None = None
+    report_seconds: float | None = None
 
 
 def positive_int(value: str) -> int:
@@ -178,6 +182,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) -> int:
+    total_started = time.monotonic()
     env = dict(os.environ if env is None else env)
     args = parse_args(argv)
     repo_root = Path(__file__).resolve().parent
@@ -195,8 +200,13 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     case_results: list[CaseResult] = []
     warnings: list[str] = []
     discovery = DiscoveryResult([], [], "none", None)
+    discovery_started: float | None = None
+    discovery_seconds: float | None = None
     try:
+        discovery_started = time.monotonic()
         discovery = discover_candidates(config, env=env)
+        discovery_seconds = elapsed_seconds(discovery_started)
+        print(f"[batch] discovery: {format_seconds(discovery_seconds)}")
         warnings.extend(discovery.warnings)
         selected = [candidate for candidate in discovery.candidates if candidate.selected]
         for index, candidate in enumerate(selected, start=1):
@@ -214,27 +224,58 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
                 )
             )
     except Exception as exc:  # noqa: BLE001 - user-facing sanitized batch failure
+        if discovery_seconds is None:
+            discovery_seconds = elapsed_seconds(discovery_started) if discovery_started is not None else None
+            if discovery_seconds is not None:
+                print(f"[batch] discovery: {format_seconds(discovery_seconds)}")
         warnings.append(cm_profiles.sanitize_text_for_log(exc, secrets=secret_values(env)))
 
     if not config.discover_only:
         for case in case_results:
             collect_case_profile(config, case, env=env, repo_root=repo_root)
+            print(
+                f"[batch] case-{case.index:03d} collection: "
+                f"{format_seconds(case.cm_collect_seconds)} ({case.collection_status})"
+            )
             if case.collection_status != "ok":
                 continue
             run_analysis_pass(config, case, env=env, repo_root=repo_root)
+            print(
+                f"[batch] case-{case.index:03d} analyzer/metadata: "
+                f"{format_seconds(case.analysis_seconds)} ({case.analysis_status})"
+            )
             if case.analysis_status == "ok":
                 score_case(case)
 
         run_top_reports(config, case_results, env=env, repo_root=repo_root)
 
-    summary = build_summary(config, discovery, case_results, warnings)
+    total_seconds = elapsed_seconds(total_started)
+    summary = build_summary(
+        config,
+        discovery,
+        case_results,
+        warnings,
+        discovery_seconds=discovery_seconds,
+        total_seconds=total_seconds,
+    )
     write_batch_outputs(config.out, summary)
     print(f"[batch] summaries inspected: {summary['summaries_inspected']}")
     print(f"[batch] candidates selected: {summary['selected_count']}")
     print(f"[batch] duration filter: {summary['duration_filter']}")
+    print(f"[batch] total: {format_seconds(total_seconds)}")
     print(f"[batch] summary JSON: {config.out / 'batch_summary.json'}")
     print(f"[batch] summary Markdown: {config.out / 'batch_summary.md'}")
     return 0 if not summary.get("discovery_failed") else 1
+
+
+def elapsed_seconds(started: float) -> float:
+    return round(max(0.0, time.monotonic() - started), 3)
+
+
+def format_seconds(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.3f}s"
 
 
 def build_batch_config(
@@ -462,33 +503,37 @@ def collect_case_profile(
     env: dict[str, str],
     repo_root: Path,
 ) -> None:
-    case.wrapper_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        sys.executable,
-        str(repo_root / "query_doctor_collect_cm_profiles.py"),
-        "--query-id",
-        case.query_id,
-        "--out",
-        str(case.wrapper_dir),
-        "--redact",
-        "--limit",
-        "1",
-        "--max-profile-bytes",
-        str(config.max_profile_bytes),
-    ]
-    append_cm_config_args(cmd, config)
-    result = run_subprocess(cmd, cwd=repo_root, env=env)
-    if result.returncode != 0:
-        case.collection_status = "failed"
-        case.failure_category = "profile_collection_failed"
-        return
-    profile_paths = sorted(case.wrapper_dir.rglob("profile_digest.md"))
-    if not profile_paths:
-        case.collection_status = "failed"
-        case.failure_category = "profile_digest_missing"
-        return
-    case.collection_status = "ok"
-    case.actual_case_dir = profile_paths[0].parent
+    started = time.monotonic()
+    try:
+        case.wrapper_dir.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            sys.executable,
+            str(repo_root / "query_doctor_collect_cm_profiles.py"),
+            "--query-id",
+            case.query_id,
+            "--out",
+            str(case.wrapper_dir),
+            "--redact",
+            "--limit",
+            "1",
+            "--max-profile-bytes",
+            str(config.max_profile_bytes),
+        ]
+        append_cm_config_args(cmd, config)
+        result = run_subprocess(cmd, cwd=repo_root, env=env)
+        if result.returncode != 0:
+            case.collection_status = "failed"
+            case.failure_category = "profile_collection_failed"
+            return
+        profile_paths = sorted(case.wrapper_dir.rglob("profile_digest.md"))
+        if not profile_paths:
+            case.collection_status = "failed"
+            case.failure_category = "profile_digest_missing"
+            return
+        case.collection_status = "ok"
+        case.actual_case_dir = profile_paths[0].parent
+    finally:
+        case.cm_collect_seconds = elapsed_seconds(started)
 
 
 def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
@@ -507,22 +552,27 @@ def run_analysis_pass(
     env: dict[str, str],
     repo_root: Path,
 ) -> None:
+    started = time.monotonic()
     if case.actual_case_dir is None:
         case.analysis_status = "failed"
         case.failure_category = "case_dir_missing"
+        case.analysis_seconds = elapsed_seconds(started)
         return
-    cmd = [
-        sys.executable,
-        str(repo_root / "query_doctor_pipeline.py"),
-        str(case.actual_case_dir),
-        "--stop-after-analysis",
-    ]
-    append_metadata_args(cmd, config)
-    result = run_subprocess(cmd, cwd=repo_root, env=env)
-    case.analysis_status = "ok" if result.returncode == 0 else "failed"
-    if result.returncode != 0:
-        case.failure_category = "analysis_or_metadata_failed"
-    inspect_case_outputs(case)
+    try:
+        cmd = [
+            sys.executable,
+            str(repo_root / "query_doctor_pipeline.py"),
+            str(case.actual_case_dir),
+            "--stop-after-analysis",
+        ]
+        append_metadata_args(cmd, config)
+        result = run_subprocess(cmd, cwd=repo_root, env=env)
+        case.analysis_status = "ok" if result.returncode == 0 else "failed"
+        if result.returncode != 0:
+            case.failure_category = "analysis_or_metadata_failed"
+        inspect_case_outputs(case)
+    finally:
+        case.analysis_seconds = elapsed_seconds(started)
 
 
 def append_metadata_args(cmd: list[str], config: BatchConfig) -> None:
@@ -561,24 +611,32 @@ def run_top_reports(
     )
     for case in ranked[: config.top_reports]:
         assert case.actual_case_dir is not None
-        cmd = [
-            sys.executable,
-            str(repo_root / "query_doctor_pipeline.py"),
-            str(case.actual_case_dir),
-        ]
-        append_metadata_args(cmd, config)
-        result = run_subprocess(cmd, cwd=repo_root, env=env)
-        diagnosis = case.actual_case_dir / "diagnosis.md"
-        partial = case.actual_case_dir / "diagnosis.partial.md"
-        case.report_generated = diagnosis.exists()
-        if result.returncode == 0 and diagnosis.exists():
-            case.report_validation_status = "passed"
-        elif partial.exists():
-            case.report_validation_status = "failed_partial_untrusted"
-            case.failure_category = case.failure_category or "report_validation_failed"
-        else:
-            case.report_validation_status = "failed"
-            case.failure_category = case.failure_category or "report_generation_failed"
+        started = time.monotonic()
+        try:
+            cmd = [
+                sys.executable,
+                str(repo_root / "query_doctor_pipeline.py"),
+                str(case.actual_case_dir),
+            ]
+            append_metadata_args(cmd, config)
+            result = run_subprocess(cmd, cwd=repo_root, env=env)
+            diagnosis = case.actual_case_dir / "diagnosis.md"
+            partial = case.actual_case_dir / "diagnosis.partial.md"
+            case.report_generated = diagnosis.exists()
+            if result.returncode == 0 and diagnosis.exists():
+                case.report_validation_status = "passed"
+            elif partial.exists():
+                case.report_validation_status = "failed_partial_untrusted"
+                case.failure_category = case.failure_category or "report_validation_failed"
+            else:
+                case.report_validation_status = "failed"
+                case.failure_category = case.failure_category or "report_generation_failed"
+        finally:
+            case.report_seconds = elapsed_seconds(started)
+            print(
+                f"[batch] case-{case.index:03d} report: "
+                f"{format_seconds(case.report_seconds)} ({case.report_validation_status})"
+            )
 
 
 def run_subprocess(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
@@ -711,6 +769,9 @@ def build_summary(
     discovery: DiscoveryResult,
     cases: list[CaseResult],
     warnings: list[str],
+    *,
+    discovery_seconds: float | None,
+    total_seconds: float,
 ) -> dict[str, object]:
     selected_count = len(cases)
     inspected = len(discovery.candidates)
@@ -723,6 +784,8 @@ def build_summary(
         "min_duration_sec": config.min_duration_sec,
         "order": config.order,
         "duration_filter": discovery.duration_filter_mode,
+        "total_seconds": total_seconds,
+        "discovery_seconds": discovery_seconds,
         "server_filter_expression_present": bool(discovery.server_filter_expression),
         "summaries_inspected": inspected,
         "selected_count": selected_count,
@@ -734,6 +797,11 @@ def build_summary(
 
 
 def case_to_summary(case: CaseResult) -> dict[str, object]:
+    stage_seconds = [
+        value
+        for value in (case.cm_collect_seconds, case.analysis_seconds, case.report_seconds)
+        if value is not None
+    ]
     return {
         "case_index": case.index,
         "query_id": truncate_query_id(case.query_id),
@@ -755,6 +823,10 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "report_generated": case.report_generated,
         "report_validation_status": case.report_validation_status,
         "failure_category": case.failure_category,
+        "cm_collect_seconds": case.cm_collect_seconds,
+        "analysis_seconds": case.analysis_seconds,
+        "report_seconds": case.report_seconds,
+        "total_seconds": round(sum(stage_seconds), 3) if stage_seconds else None,
     }
 
 
@@ -776,17 +848,26 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- selected candidates: {summary['selected_count']}",
         f"- duration filter: {summary['duration_filter']}",
         f"- top reports: {summary['top_reports']}",
+        f"- discovery seconds: {summary['discovery_seconds']}",
+        f"- total seconds: {summary['total_seconds']}",
         "",
-        "| case | query id | duration sec | collection | analysis | metadata | score | report |",
-        "| --- | --- | ---: | --- | --- | --- | ---: | --- |",
+        "| case | query id | duration sec | collection | analysis | metadata | score | report | timings sec |",
+        "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- |",
     ]
     for case in summary["cases"]:
         assert isinstance(case, dict)
+        timings = (
+            f"cm={case['cm_collect_seconds']}, "
+            f"analysis={case['analysis_seconds']}, "
+            f"report={case['report_seconds']}, "
+            f"total={case['total_seconds']}"
+        )
         lines.append(
-            "| {case_index} | {query_id} | {duration_sec} | {collection_status} | "
-            "{analysis_status} | {metadata_status} | {score} | {report_validation_status} |".format(
-                **case
-            )
+            (
+                "| {case_index} | {query_id} | {duration_sec} | {collection_status} | "
+                "{analysis_status} | {metadata_status} | {score} | {report_validation_status} | "
+                f"{timings} |"
+            ).format(**case)
         )
     (out / "batch_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
