@@ -94,6 +94,7 @@ CM_PROFILE_TEXT_PATH = (
     f"/api/{CM_API_VERSION}/clusters/{{clusterName}}/services/"
     "{serviceName}/impalaQueries/{queryId}"
 )
+CM_QUERY_DURATION_FILTER_FIELD = "queryDuration"
 
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -304,6 +305,7 @@ class CMQueryFilters:
     limit: int
     min_duration_sec: float | None
     max_duration_sec: float | None = None
+    server_duration_filter: bool = False
     since_minutes: int | None = None
     pool: str | None = None
     user: str | None = None
@@ -319,6 +321,7 @@ class CMQueryFilters:
             "limit": self.limit,
             "min_duration_sec": self.min_duration_sec,
             "max_duration_sec": self.max_duration_sec,
+            "server_duration_filter": self.server_duration_filter,
             "pool": self.pool,
             "user": self.user,
             "status": self.status,
@@ -1136,6 +1139,7 @@ def build_recent_query_filters(config: CollectorConfig) -> CMQueryFilters:
         limit=config.recent_limit,
         min_duration_sec=config.recent_min_duration_sec,
         max_duration_sec=config.recent_max_duration_sec,
+        server_duration_filter=True,
         pool=config.recent_pool or config.pool,
         user=config.recent_user or config.user,
         status="all",
@@ -1422,22 +1426,30 @@ def build_cm_query_filter_expression(filters: CMQueryFilters) -> str | None:
     """Build a conservative CM filter expression for supported query params.
 
     Duration predicates use the existing CM Impala query list ``filter`` request
-    parameter. Client-side filtering remains a backstop after bounded discovery.
+    parameter. CDH6-era CM docs show queryDuration with duration literals such
+    as ``queryDuration > 5s``. Client-side filtering remains a backstop after
+    bounded discovery.
     """
+    if not filters.server_duration_filter:
+        return None
     predicates: list[str] = []
-    if filters.min_duration_sec is not None:
-        predicates.append(f"durationMillis >= {duration_lower_bound_millis(filters.min_duration_sec)}")
+    if filters.min_duration_sec is not None and filters.min_duration_sec > 0:
+        predicates.append(
+            f"{CM_QUERY_DURATION_FILTER_FIELD} > {duration_lower_bound_literal(filters.min_duration_sec)}"
+        )
     if filters.max_duration_sec is not None:
-        predicates.append(f"durationMillis <= {duration_upper_bound_millis(filters.max_duration_sec)}")
+        predicates.append(
+            f"{CM_QUERY_DURATION_FILTER_FIELD} < {duration_upper_bound_literal(filters.max_duration_sec)}"
+        )
     return " AND ".join(predicates) if predicates else None
 
 
-def duration_lower_bound_millis(seconds: float | int) -> int:
-    return int(math.ceil(float(seconds) * 1000))
+def duration_lower_bound_literal(seconds: float | int) -> str:
+    return f"{max(0, int(math.ceil(float(seconds))))}s"
 
 
-def duration_upper_bound_millis(seconds: float | int) -> int:
-    return int(math.floor(float(seconds) * 1000))
+def duration_upper_bound_literal(seconds: float | int) -> str:
+    return f"{max(0, int(math.floor(float(seconds))))}s"
 
 
 def fetch_cm_query_summary_page(
@@ -2032,6 +2044,33 @@ def collect_query_summaries(
     return collected, warnings
 
 
+def collect_query_summaries_with_duration_fallback(
+    filters: CMQueryFilters,
+    fetch_page: CMQueryPageFetcher,
+    *,
+    secrets: Iterable[str] = (),
+) -> tuple[list[CMQuerySummary], list[str], bool]:
+    summaries, warnings = collect_query_summaries(filters, fetch_page, secrets=secrets)
+    if summaries or not build_cm_query_filter_expression(filters):
+        return summaries, warnings, False
+    if filters.min_duration_sec is None and filters.max_duration_sec is None:
+        return summaries, warnings, False
+
+    fallback_filters = replace(
+        filters,
+        min_duration_sec=None,
+        max_duration_sec=None,
+        server_duration_filter=False,
+    )
+    fallback_summaries, fallback_warnings = collect_query_summaries(
+        fallback_filters,
+        fetch_page,
+        secrets=secrets,
+    )
+    warnings.extend(fallback_warnings)
+    return fallback_summaries, warnings, True
+
+
 def select_recent_query_candidates(
     summaries: Iterable[CMQuerySummary],
     *,
@@ -2243,7 +2282,7 @@ def run_cm_recent_query_listing(
     secrets: Iterable[str] = (),
 ) -> int:
     filters = build_recent_query_filters(config)
-    summaries, warnings = collect_query_summaries(
+    summaries, warnings, used_duration_fallback = collect_query_summaries_with_duration_fallback(
         filters,
         lambda received_filters, page_token: fetch_cm_query_summary_page(
             client,
@@ -2285,6 +2324,8 @@ def run_cm_recent_query_listing(
     print(f"Recent minimum duration seconds: {min_duration_text}")
     print(f"Recent maximum duration seconds: {max_duration_text}")
     print(f"Recent selection order: {config.recent_order}")
+    if used_duration_fallback:
+        print("Recent duration filter mode: server-side-fallback-client-side")
     print(f"Summaries inspected: {len(candidates)}")
     print(f"Candidates selected: {sum(1 for candidate in candidates if candidate.selected)}")
     for warning in warnings:

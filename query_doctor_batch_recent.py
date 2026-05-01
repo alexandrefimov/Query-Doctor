@@ -515,6 +515,7 @@ def build_recent_filters(config: BatchConfig) -> cm_profiles.CMQueryFilters:
         limit=config.cm_inspect_limit,
         min_duration_sec=config.min_duration_sec,
         max_duration_sec=config.max_duration_sec,
+        server_duration_filter=True,
         pool=config.pool,
         user=config.user,
         status="all",
@@ -532,7 +533,7 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
         min_duration_sec=config.min_duration_sec,
         max_duration_sec=config.max_duration_sec,
     )
-    summaries, warnings = cm_profiles.collect_query_summaries(
+    summaries, warnings, used_duration_fallback = cm_profiles.collect_query_summaries_with_duration_fallback(
         filters,
         lambda received_filters, page_token: cm_profiles.fetch_cm_query_summary_page(
             client,
@@ -541,6 +542,8 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
         ),
         secrets=secret_values(env),
     )
+    if used_duration_fallback:
+        duration_filter_mode = "server-side-fallback-client-side"
     candidates = cm_profiles.select_recent_query_candidates(
         summaries,
         select_limit=config.select_limit,
