@@ -36,10 +36,12 @@ DEFAULT_RECENT_SELECT = 5
 DEFAULT_RECENT_WINDOW_MINUTES = 60
 MAX_RECENT_LIMIT = 100
 MAX_RECENT_SELECT = 20
+DEFAULT_LOCAL_CONFIG_NAME = ".query-doctor-cm.local.json"
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
 LOCAL_CONFIG_ALLOWED_KEYS = {
     "ca_bundle",
     "cluster",
+    "cm_user",
     "cm_url",
     "insecure_skip_verify",
     "limit",
@@ -53,7 +55,16 @@ LOCAL_CONFIG_ALLOWED_KEYS = {
     "since_hours",
     "status",
     "query_type",
+    "recent_include_failed",
+    "recent_include_running",
+    "recent_limit",
+    "recent_output_json",
+    "recent_pool",
+    "recent_select",
+    "recent_user",
+    "recent_window_minutes",
     "user",
+    "username",
 }
 LOCAL_CONFIG_SECRET_KEY_PARTS = (
     "access_token",
@@ -213,6 +224,7 @@ class CollectorConfig:
     status: str
     query_id: str | None
     query_type: str | None
+    cm_username: str | None
     dry_run: bool
     preflight: bool
     list_recent_queries: bool
@@ -372,7 +384,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config",
         help=(
             "Local JSON config file with non-secret CM collector settings. "
-            "Credentials must still come from environment variables."
+            f"If omitted, {DEFAULT_LOCAL_CONFIG_NAME} is loaded when present. "
+            "Passwords/tokens must still come from environment variables."
         ),
     )
     parser.add_argument(
@@ -469,11 +482,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--recent-include-failed",
         action="store_true",
+        default=None,
         help="Allow failed queries in recent-query candidate selection.",
     )
     parser.add_argument(
         "--recent-include-running",
         action="store_true",
+        default=None,
         help="Allow running/in-progress queries in recent-query candidate selection.",
     )
     parser.add_argument("--recent-user", help="Optional recent-query user filter.")
@@ -581,7 +596,12 @@ def build_config(
     env = os.environ if env is None else env
     cwd = Path.cwd() if cwd is None else cwd
     repo_root = Path(__file__).resolve().parent if repo_root is None else repo_root
-    config_values = load_local_config(args.config, cwd=cwd) if args.config else {}
+    config_values = load_effective_local_config(
+        args.config,
+        cwd=cwd,
+        repo_root=repo_root,
+        use_repo_default=not any((args.cm_url, args.cluster, args.service, args.out, args.ca_bundle)),
+    )
 
     cm_url = string_setting(
         "cm_url",
@@ -614,10 +634,29 @@ def build_config(
     )
     out = validate_output_path(out_value, cwd=cwd, repo_root=repo_root)
     credentials = CredentialSummary(
-        has_username=bool(env.get("CM_USERNAME")),
+        has_username=bool(
+            string_setting(
+                "username",
+                cli_value=None,
+                config_values=config_values,
+                env_value=env.get("CM_USERNAME"),
+            )
+        ),
         has_password=bool(env.get("CM_PASSWORD")),
         has_token=bool(env.get("CM_TOKEN")),
     )
+    recent_limit = validate_recent_limit(
+        int_setting(
+            "recent_limit",
+            cli_value=args.recent_limit,
+            config_values=config_values,
+            default=DEFAULT_RECENT_LIMIT,
+        )
+    )
+    recent_select_value = args.recent_select
+    if recent_select_value is None and "recent_select" in config_values:
+        recent_select_value = int(config_values["recent_select"])
+    recent_select = validate_recent_select(recent_select_value, recent_limit)
 
     return CollectorConfig(
         cm_url=cm_url,
@@ -664,17 +703,53 @@ def build_config(
             cli_value=args.query_type,
             config_values=config_values,
         ),
+        cm_username=string_setting(
+            "username",
+            cli_value=None,
+            config_values=config_values,
+            env_value=env.get("CM_USERNAME"),
+        ),
         dry_run=args.dry_run,
         preflight=args.preflight,
         list_recent_queries=args.list_recent_queries,
-        recent_limit=validate_recent_limit(args.recent_limit),
-        recent_select=validate_recent_select(args.recent_select, args.recent_limit),
-        recent_window_minutes=args.recent_window_minutes or DEFAULT_RECENT_WINDOW_MINUTES,
-        recent_output_json=resolve_optional_output_json(args.recent_output_json, cwd=cwd),
-        recent_include_failed=args.recent_include_failed,
-        recent_include_running=args.recent_include_running,
-        recent_user=normalize_optional_string(args.recent_user),
-        recent_pool=normalize_optional_string(args.recent_pool),
+        recent_limit=recent_limit,
+        recent_select=recent_select,
+        recent_window_minutes=int_setting(
+            "recent_window_minutes",
+            cli_value=args.recent_window_minutes,
+            config_values=config_values,
+            default=DEFAULT_RECENT_WINDOW_MINUTES,
+        ),
+        recent_output_json=resolve_optional_output_json(
+            string_setting(
+                "recent_output_json",
+                cli_value=args.recent_output_json,
+                config_values=config_values,
+            ),
+            cwd=cwd,
+        ),
+        recent_include_failed=bool_setting(
+            "recent_include_failed",
+            cli_value=args.recent_include_failed,
+            config_values=config_values,
+            default=False,
+        ),
+        recent_include_running=bool_setting(
+            "recent_include_running",
+            cli_value=args.recent_include_running,
+            config_values=config_values,
+            default=False,
+        ),
+        recent_user=string_setting(
+            "recent_user",
+            cli_value=args.recent_user,
+            config_values=config_values,
+        ),
+        recent_pool=string_setting(
+            "recent_pool",
+            cli_value=args.recent_pool,
+            config_values=config_values,
+        ),
         redact=bool_setting(
             "redact",
             cli_value=args.redact,
@@ -696,6 +771,42 @@ def build_config(
         ca_bundle=ca_bundle,
         credentials=credentials,
     )
+
+
+def load_effective_local_config(
+    config_path: str | None,
+    *,
+    cwd: Path,
+    repo_root: Path,
+    use_repo_default: bool = True,
+) -> dict[str, object]:
+    if config_path:
+        return load_local_config(config_path, cwd=cwd)
+
+    default_path = discover_default_local_config(
+        cwd=cwd,
+        repo_root=repo_root,
+        use_repo_default=use_repo_default,
+    )
+    if default_path is None:
+        return {}
+    return load_local_config(str(default_path), cwd=cwd)
+
+
+def discover_default_local_config(
+    *,
+    cwd: Path,
+    repo_root: Path,
+    use_repo_default: bool = True,
+) -> Path | None:
+    candidates = [cwd / DEFAULT_LOCAL_CONFIG_NAME]
+    repo_candidate = repo_root / DEFAULT_LOCAL_CONFIG_NAME
+    if use_repo_default and repo_candidate != candidates[0]:
+        candidates.append(repo_candidate)
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
 
 
 def load_local_config(config_path: str, *, cwd: Path) -> dict[str, object]:
@@ -720,8 +831,19 @@ def load_local_config(config_path: str, *, cwd: Path) -> dict[str, object]:
         if not isinstance(key, str):
             raise ConfigError("Config file keys must be strings.")
         validate_local_config_key(key)
-        normalized[key] = normalize_local_config_value(key, value)
+        normalized_key = normalize_local_config_key(key)
+        if normalized_key in normalized:
+            raise ConfigError(
+                f"Config field {key} duplicates normalized field {normalized_key}."
+            )
+        normalized[normalized_key] = normalize_local_config_value(normalized_key, value)
     return normalized
+
+
+def normalize_local_config_key(key: str) -> str:
+    if key == "cm_user":
+        return "username"
+    return key
 
 
 def validate_local_config_key(key: str) -> None:
@@ -736,7 +858,14 @@ def validate_local_config_key(key: str) -> None:
 
 def normalize_local_config_value(key: str, value: object) -> object:
     if value is None:
-        if key in {"since_hours", "limit", "max_profile_bytes"}:
+        if key in {
+            "since_hours",
+            "limit",
+            "max_profile_bytes",
+            "recent_limit",
+            "recent_select",
+            "recent_window_minutes",
+        }:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         if key == "min_duration_sec":
             raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
@@ -748,9 +877,13 @@ def normalize_local_config_value(key: str, value: object) -> object:
         "out",
         "pool",
         "query_type",
+        "recent_output_json",
+        "recent_pool",
+        "recent_user",
         "service",
         "status",
         "user",
+        "username",
     }:
         if not isinstance(value, str):
             raise ConfigError(f"Config field {key} must be a string.")
@@ -760,7 +893,14 @@ def normalize_local_config_value(key: str, value: object) -> object:
                 f"Config field status must be one of: {', '.join(STATUS_CHOICES)}."
             )
         return normalized or None
-    if key in {"since_hours", "limit", "max_profile_bytes"}:
+    if key in {
+        "since_hours",
+        "limit",
+        "max_profile_bytes",
+        "recent_limit",
+        "recent_select",
+        "recent_window_minutes",
+    }:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         return value
@@ -768,7 +908,13 @@ def normalize_local_config_value(key: str, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
         return value
-    if key in {"insecure_skip_verify", "redact", "redact_identifiers"}:
+    if key in {
+        "insecure_skip_verify",
+        "recent_include_failed",
+        "recent_include_running",
+        "redact",
+        "redact_identifiers",
+    }:
         if not isinstance(value, bool):
             raise ConfigError(f"Config field {key} must be true or false.")
         return value
@@ -783,7 +929,7 @@ def string_setting(
     env_value: str | None = None,
     default: str | None = None,
 ) -> str | None:
-    for value in (cli_value, config_values.get(name), env_value, default):
+    for value in (cli_value, env_value, config_values.get(name), default):
         if value is None:
             continue
         normalized = str(value).strip()
@@ -802,8 +948,6 @@ def int_setting(
 ) -> int:
     if cli_value is not None:
         return cli_value
-    if name in config_values:
-        return int(config_values[name])
     if env_value is not None:
         if not env_value.strip():
             raise ConfigError(f"Environment value for {name} must be a positive integer.")
@@ -814,6 +958,8 @@ def int_setting(
         if parsed <= 0:
             raise ConfigError(f"Environment value for {name} must be a positive integer.")
         return parsed
+    if name in config_values:
+        return int(config_values[name])
     return default
 
 
@@ -838,7 +984,7 @@ def build_http_config(
     env = os.environ if env is None else env
     return CMHttpConfig(
         cm_url=config.cm_url,
-        username=env.get("CM_USERNAME"),
+        username=env.get("CM_USERNAME") or config.cm_username,
         password=env.get("CM_PASSWORD"),
         token=env.get("CM_TOKEN"),
         ca_bundle=config.ca_bundle,
