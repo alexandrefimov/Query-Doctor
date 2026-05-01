@@ -78,6 +78,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Run only deterministic analyzer.",
     )
+    parser.add_argument(
+        "--stop-after-analysis",
+        action="store_true",
+        help=(
+            "Run analyzer and configured metadata collection, rerun analyzer after "
+            "successful metadata collection, then skip report generation."
+        ),
+    )
     add_metadata_arguments(parser)
 
     args = parser.parse_args(argv)
@@ -190,6 +198,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.skip_report:
         print("[pipeline] skip report requested")
+        return 0
+
+    if args.stop_after_analysis:
+        print("[pipeline] stop-after-analysis requested; report generation skipped")
         return 0
 
     report_cmd = [
