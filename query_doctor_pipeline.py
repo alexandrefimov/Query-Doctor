@@ -82,8 +82,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--stop-after-analysis",
         action="store_true",
         help=(
-            "Run analyzer and configured metadata collection, rerun analyzer after "
-            "successful metadata collection, then skip report generation."
+            "Run analyzer and optional metadata collection, then stop before "
+            "report generation; no LLM/Ollama call."
         ),
     )
     add_metadata_arguments(parser)
@@ -108,16 +108,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     analyzer = repo_dir / "analyze_profile_digest.py"
-    reporter = repo_dir / "query_doctor_report.py"
     impala_collector = repo_dir / "query_doctor_collect_impala_context.py"
 
     if not analyzer.exists():
         print(f"[pipeline] ERROR: missing {analyzer}", file=sys.stderr)
         return 2
 
-    if not reporter.exists():
-        print(f"[pipeline] ERROR: missing {reporter}", file=sys.stderr)
-        return 2
     metadata_mode = resolve_metadata_mode(args)
 
     if metadata_mode in {"on", "dry-run"} and not impala_collector.exists():
@@ -203,6 +199,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.stop_after_analysis:
         print("[pipeline] stop-after-analysis requested; report generation skipped")
         return 0
+
+    reporter = repo_dir / "query_doctor_report.py"
+    if not reporter.exists():
+        print(f"[pipeline] ERROR: missing {reporter}", file=sys.stderr)
+        return 2
 
     report_cmd = [
         sys.executable,
