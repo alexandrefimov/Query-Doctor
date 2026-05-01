@@ -1269,7 +1269,7 @@ def extract_referenced_tables_from_sql(sql: str) -> list[str]:
         token = tokens[index]
         lower = token.lower()
 
-        if lower in SQL_FROM_STOP_WORDS:
+        if token in (")", ";") or lower in SQL_FROM_STOP_WORDS:
             in_from_list = False
             expect_table = False
         elif lower == "from":
