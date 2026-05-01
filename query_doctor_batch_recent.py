@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,7 @@ import query_doctor_collect_cm_profiles as cm_profiles
 
 MAX_CM_INSPECT_LIMIT = 1000
 MAX_SELECT_LIMIT = 200
+MAX_JOBS = 4
 ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
 
 
@@ -55,6 +57,7 @@ class BatchConfig:
     metadata_max_output_bytes: int | None
     metadata_redact: bool
     top_reports: int
+    jobs: int
     discover_only: bool
     config_path: str | None
 
@@ -174,6 +177,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Run full LLM reports only for this many top scored cases. Default: 0.",
     )
     parser.add_argument(
+        "--jobs",
+        type=positive_int,
+        default=1,
+        help=f"Parallel case workers for collection and analyzer/metadata. Hard cap: {MAX_JOBS}.",
+    )
+    parser.add_argument(
         "--discover-only",
         action="store_true",
         help="Only discover and summarize candidates; do not collect profiles.",
@@ -231,22 +240,8 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         warnings.append(cm_profiles.sanitize_text_for_log(exc, secrets=secret_values(env)))
 
     if not config.discover_only:
-        for case in case_results:
-            collect_case_profile(config, case, env=env, repo_root=repo_root)
-            print(
-                f"[batch] case-{case.index:03d} collection: "
-                f"{format_seconds(case.cm_collect_seconds)} ({case.collection_status})"
-            )
-            if case.collection_status != "ok":
-                continue
-            run_analysis_pass(config, case, env=env, repo_root=repo_root)
-            print(
-                f"[batch] case-{case.index:03d} analyzer/metadata: "
-                f"{format_seconds(case.analysis_seconds)} ({case.analysis_status})"
-            )
-            if case.analysis_status == "ok":
-                score_case(case)
-
+        print(f"[batch] jobs: {config.jobs}")
+        process_cases(config, case_results, env=env, repo_root=repo_root)
         run_top_reports(config, case_results, env=env, repo_root=repo_root)
 
     total_seconds = elapsed_seconds(total_started)
@@ -262,6 +257,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     print(f"[batch] summaries inspected: {summary['summaries_inspected']}")
     print(f"[batch] candidates selected: {summary['selected_count']}")
     print(f"[batch] duration filter: {summary['duration_filter']}")
+    print(f"[batch] jobs: {summary['jobs']}")
     print(f"[batch] total: {format_seconds(total_seconds)}")
     print(f"[batch] summary JSON: {config.out / 'batch_summary.json'}")
     print(f"[batch] summary Markdown: {config.out / 'batch_summary.md'}")
@@ -291,6 +287,8 @@ def build_batch_config(
         raise ValueError(f"--select-limit must be <= {MAX_SELECT_LIMIT}")
     if args.select_limit > args.cm_inspect_limit:
         raise ValueError("--select-limit must be <= --cm-inspect-limit")
+    if args.jobs > MAX_JOBS:
+        raise ValueError(f"--jobs must be <= {MAX_JOBS}")
     if args.max_duration_sec is not None and args.min_duration_sec is not None:
         if args.max_duration_sec < args.min_duration_sec:
             raise ValueError("--max-duration-sec must be >= --min-duration-sec")
@@ -361,6 +359,7 @@ def build_batch_config(
         metadata_max_output_bytes=args.metadata_max_output_bytes,
         metadata_redact=args.metadata_redact,
         top_reports=args.top_reports,
+        jobs=args.jobs,
         discover_only=args.discover_only,
         config_path=effective_config_path,
     )
@@ -534,6 +533,56 @@ def collect_case_profile(
         case.actual_case_dir = profile_paths[0].parent
     finally:
         case.cm_collect_seconds = elapsed_seconds(started)
+
+
+def process_cases(
+    config: BatchConfig,
+    cases: list[CaseResult],
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+) -> None:
+    if config.jobs == 1:
+        for case in cases:
+            process_case(config, case, env=env, repo_root=repo_root)
+            print_case_progress(case)
+        return
+
+    with ThreadPoolExecutor(max_workers=config.jobs) as executor:
+        futures = [
+            executor.submit(process_case, config, case, env=env, repo_root=repo_root)
+            for case in cases
+        ]
+        for future in as_completed(futures):
+            print_case_progress(future.result())
+
+
+def process_case(
+    config: BatchConfig,
+    case: CaseResult,
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+) -> CaseResult:
+    collect_case_profile(config, case, env=env, repo_root=repo_root)
+    if case.collection_status != "ok":
+        return case
+    run_analysis_pass(config, case, env=env, repo_root=repo_root)
+    if case.analysis_status == "ok":
+        score_case(case)
+    return case
+
+
+def print_case_progress(case: CaseResult) -> None:
+    print(
+        f"[batch] case-{case.index:03d} collection: "
+        f"{format_seconds(case.cm_collect_seconds)} ({case.collection_status})"
+    )
+    if case.analysis_seconds is not None:
+        print(
+            f"[batch] case-{case.index:03d} analyzer/metadata: "
+            f"{format_seconds(case.analysis_seconds)} ({case.analysis_status})"
+        )
 
 
 def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
@@ -790,6 +839,7 @@ def build_summary(
         "summaries_inspected": inspected,
         "selected_count": selected_count,
         "top_reports": config.top_reports,
+        "jobs": config.jobs,
         "warnings": [cm_profiles.sanitize_text_for_log(warning) for warning in warnings],
         "discovery_failed": bool(warnings and not discovery.candidates),
         "cases": [case_to_summary(case) for case in sorted(cases, key=lambda item: (-item.score, item.index))],
@@ -848,6 +898,7 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- selected candidates: {summary['selected_count']}",
         f"- duration filter: {summary['duration_filter']}",
         f"- top reports: {summary['top_reports']}",
+        f"- jobs: {summary['jobs']}",
         f"- discovery seconds: {summary['discovery_seconds']}",
         f"- total seconds: {summary['total_seconds']}",
         "",
