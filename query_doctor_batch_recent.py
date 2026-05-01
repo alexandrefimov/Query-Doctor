@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -22,7 +23,9 @@ import query_doctor_collect_cm_profiles as cm_profiles
 MAX_CM_INSPECT_LIMIT = 1000
 MAX_SELECT_LIMIT = 200
 MAX_JOBS = 4
+MAX_HIGH_JOBS = 100
 ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
+METADATA_MODE_CHOICES = ("auto", "on", "off", "dry-run")
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,7 @@ class BatchConfig:
     pool: str | None
     query_type: str | None
     max_profile_bytes: int
+    metadata_mode: str
     metadata_coordinator: str | None
     metadata_impala_shell: str | None
     metadata_auth: str
@@ -58,7 +62,9 @@ class BatchConfig:
     metadata_redact: bool
     top_reports: int
     jobs: int
+    allow_high_jobs: bool
     discover_only: bool
+    overwrite: bool
     config_path: str | None
 
 
@@ -160,6 +166,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
         default=cm_profiles.DEFAULT_MAX_PROFILE_BYTES,
     )
+    parser.add_argument(
+        "--metadata-mode",
+        choices=METADATA_MODE_CHOICES,
+        default="auto",
+        help="Metadata mode passed to query_doctor_pipeline.py. Default: auto.",
+    )
     parser.add_argument("--metadata-coordinator", help="Impala coordinator HOST:PORT.")
     parser.add_argument("--metadata-impala-shell", help="impala-shell executable.")
     parser.add_argument("--metadata-auth", default="kerberos")
@@ -180,12 +192,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--jobs",
         type=positive_int,
         default=1,
-        help=f"Parallel case workers for collection and analyzer/metadata. Hard cap: {MAX_JOBS}.",
+        help=(
+            f"Parallel case workers for collection and analyzer/metadata. Hard cap: {MAX_JOBS}, "
+            f"or {MAX_HIGH_JOBS} with --allow-high-jobs in metadata-off/no-report mode."
+        ),
+    )
+    parser.add_argument(
+        "--allow-high-jobs",
+        action="store_true",
+        help="Allow up to 100 jobs only with --metadata-mode off and --top-reports 0.",
     )
     parser.add_argument(
         "--discover-only",
         action="store_true",
         help="Only discover and summarize candidates; do not collect profiles.",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Remove and recreate --out before running. Refuses repository or unsafe shallow paths.",
     )
     return parser.parse_args(argv)
 
@@ -198,11 +223,11 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     try:
         config = build_batch_config(args, env=env, cwd=Path.cwd(), repo_root=repo_root)
         preflight(config, env=env, repo_root=repo_root)
+        prepare_batch_output_dir(config.out, repo_root=repo_root, overwrite=config.overwrite)
     except ValueError as exc:
         print(f"[batch] ERROR: {exc}", file=sys.stderr)
         return 2
 
-    config.out.mkdir(parents=True, exist_ok=True)
     cases_root = config.out / "cases"
     cases_root.mkdir(parents=True, exist_ok=True)
 
@@ -287,8 +312,7 @@ def build_batch_config(
         raise ValueError(f"--select-limit must be <= {MAX_SELECT_LIMIT}")
     if args.select_limit > args.cm_inspect_limit:
         raise ValueError("--select-limit must be <= --cm-inspect-limit")
-    if args.jobs > MAX_JOBS:
-        raise ValueError(f"--jobs must be <= {MAX_JOBS}")
+    validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
     if args.max_duration_sec is not None and args.min_duration_sec is not None:
         if args.max_duration_sec < args.min_duration_sec:
             raise ValueError("--max-duration-sec must be >= --min-duration-sec")
@@ -348,6 +372,7 @@ def build_batch_config(
         pool=args.pool,
         query_type=args.query_type,
         max_profile_bytes=args.max_profile_bytes,
+        metadata_mode=args.metadata_mode,
         metadata_coordinator=args.metadata_coordinator,
         metadata_impala_shell=args.metadata_impala_shell,
         metadata_auth=args.metadata_auth,
@@ -360,9 +385,24 @@ def build_batch_config(
         metadata_redact=args.metadata_redact,
         top_reports=args.top_reports,
         jobs=args.jobs,
+        allow_high_jobs=args.allow_high_jobs,
         discover_only=args.discover_only,
+        overwrite=args.overwrite,
         config_path=effective_config_path,
     )
+
+
+def validate_jobs_config(jobs: int, *, allow_high_jobs: bool, metadata_mode: str, top_reports: int) -> None:
+    if jobs > MAX_HIGH_JOBS:
+        raise ValueError(f"--jobs must be <= {MAX_HIGH_JOBS}")
+    if allow_high_jobs:
+        if metadata_mode != "off":
+            raise ValueError("--allow-high-jobs requires --metadata-mode off")
+        if top_reports != 0:
+            raise ValueError("--allow-high-jobs requires --top-reports 0")
+        return
+    if jobs > MAX_JOBS:
+        raise ValueError(f"--jobs must be <= {MAX_JOBS} unless --allow-high-jobs is used with --metadata-mode off and --top-reports 0")
 
 
 def first_string(*values: object) -> str | None:
@@ -387,9 +427,45 @@ def resolve_config_path(config_path: str | None, cwd: Path) -> str | None:
 def validate_batch_output_path(out: Path, repo_root: Path) -> None:
     repo_root = repo_root.resolve()
     out = out.resolve()
-    tracked_cases = repo_root / "cases"
-    if path_is_relative_to(out, tracked_cases):
-        raise ValueError("--out must not point inside tracked cases/")
+    if path_is_relative_to(out, repo_root):
+        raise ValueError("--out must be outside the repository. Use /tmp or another directory outside the repository.")
+    validate_not_dangerous_output_path(out)
+
+
+def validate_not_dangerous_output_path(out: Path) -> None:
+    resolved = out.resolve()
+    root = Path(resolved.anchor or "/").resolve()
+    home = Path.home().resolve()
+    if resolved == root:
+        raise ValueError("--out must point to a dedicated batch directory, not filesystem root")
+    if resolved == Path("/tmp").resolve():
+        raise ValueError("--out must point to a dedicated batch directory under /tmp, not /tmp itself")
+    if resolved == home:
+        raise ValueError("--out must point to a dedicated batch directory, not the home directory")
+    if resolved.parent == root:
+        raise ValueError("--out path is too shallow; use a dedicated /tmp batch directory")
+    if resolved.parent == home:
+        raise ValueError("--out must not be a direct child of the home directory; use /tmp or another dedicated directory")
+
+
+def prepare_batch_output_dir(out: Path, *, repo_root: Path, overwrite: bool) -> None:
+    validate_batch_output_path(out, repo_root)
+    if out.exists() and not out.is_dir():
+        raise ValueError("--out exists and is not a directory")
+    if out.exists() and any(out.iterdir()):
+        if not overwrite:
+            raise ValueError("output directory exists and is not empty; use --overwrite or choose a new /tmp path")
+        validate_safe_overwrite_target(out, repo_root=repo_root)
+        shutil.rmtree(out)
+    out.mkdir(parents=True, exist_ok=True)
+
+
+def validate_safe_overwrite_target(out: Path, *, repo_root: Path) -> None:
+    validate_batch_output_path(out, repo_root)
+    if not out.exists():
+        return
+    if not out.is_dir():
+        raise ValueError("--out exists and is not a directory")
 
 
 def path_is_relative_to(path: Path, parent: Path) -> bool:
@@ -403,7 +479,7 @@ def path_is_relative_to(path: Path, parent: Path) -> bool:
 def preflight(config: BatchConfig, *, env: dict[str, str], repo_root: Path) -> None:
     if not (env.get("CM_PASSWORD") or env.get("CM_TOKEN")):
         raise ValueError("CM auth env is not set in this execution environment.")
-    if config.metadata_coordinator:
+    if config.metadata_mode != "off" and config.metadata_coordinator:
         if not env.get("KRB5CCNAME"):
             raise ValueError("KRB5CCNAME is required when metadata collection is configured.")
         if config.metadata_impala_shell:
@@ -437,7 +513,8 @@ def build_recent_filters(config: BatchConfig) -> cm_profiles.CMQueryFilters:
         since_hours=max(1, (config.recent_window_minutes + 59) // 60),
         since_minutes=config.recent_window_minutes,
         limit=config.cm_inspect_limit,
-        min_duration_sec=int(config.min_duration_sec or 0),
+        min_duration_sec=config.min_duration_sec,
+        max_duration_sec=config.max_duration_sec,
         pool=config.pool,
         user=config.user,
         status="all",
@@ -453,6 +530,7 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
     duration_filter_mode = classify_duration_filter_mode(
         server_filter_expression,
         min_duration_sec=config.min_duration_sec,
+        max_duration_sec=config.max_duration_sec,
     )
     summaries, warnings = cm_profiles.collect_query_summaries(
         filters,
@@ -487,8 +565,9 @@ def classify_duration_filter_mode(
     filter_expression: str | None,
     *,
     min_duration_sec: float | None,
+    max_duration_sec: float | None = None,
 ) -> str:
-    if min_duration_sec is None:
+    if min_duration_sec is None and max_duration_sec is None:
         return "none"
     if filter_expression and "duration" in filter_expression.lower():
         return "server-side"
@@ -625,7 +704,8 @@ def run_analysis_pass(
 
 
 def append_metadata_args(cmd: list[str], config: BatchConfig) -> None:
-    if not config.metadata_coordinator:
+    cmd.extend(["--metadata-mode", config.metadata_mode])
+    if config.metadata_mode == "off" or not config.metadata_coordinator:
         return
     cmd.extend(["--metadata-coordinator", config.metadata_coordinator])
     if config.metadata_impala_shell:

@@ -302,7 +302,8 @@ class CMQueryFilters:
     service: str
     since_hours: int
     limit: int
-    min_duration_sec: int
+    min_duration_sec: float | None
+    max_duration_sec: float | None = None
     since_minutes: int | None = None
     pool: str | None = None
     user: str | None = None
@@ -317,6 +318,7 @@ class CMQueryFilters:
             "since_hours": self.since_hours,
             "limit": self.limit,
             "min_duration_sec": self.min_duration_sec,
+            "max_duration_sec": self.max_duration_sec,
             "pool": self.pool,
             "user": self.user,
             "status": self.status,
@@ -1132,7 +1134,8 @@ def build_recent_query_filters(config: CollectorConfig) -> CMQueryFilters:
         since_hours=max(1, (config.recent_window_minutes + 59) // 60),
         since_minutes=config.recent_window_minutes,
         limit=config.recent_limit,
-        min_duration_sec=config.min_duration_sec,
+        min_duration_sec=config.recent_min_duration_sec,
+        max_duration_sec=config.recent_max_duration_sec,
         pool=config.recent_pool or config.pool,
         user=config.recent_user or config.user,
         status="all",
@@ -1416,15 +1419,25 @@ def format_cm_timestamp(value: datetime) -> str:
 
 
 def build_cm_query_filter_expression(filters: CMQueryFilters) -> str | None:
-    """Build a conservative CM filter expression for documented query params.
+    """Build a conservative CM filter expression for supported query params.
 
-    TODO: Verify exact Impala query filter field names for the deployed CM
-    version before mapping pool/user/status/query-type/duration into the API
-    request. The local collector still applies query-id filtering after parsing
-    summaries, so this helper intentionally returns no speculative filter.
+    Duration predicates use the existing CM Impala query list ``filter`` request
+    parameter. Client-side filtering remains a backstop after bounded discovery.
     """
-    _ = filters
-    return None
+    predicates: list[str] = []
+    if filters.min_duration_sec is not None:
+        predicates.append(f"durationMillis >= {duration_lower_bound_millis(filters.min_duration_sec)}")
+    if filters.max_duration_sec is not None:
+        predicates.append(f"durationMillis <= {duration_upper_bound_millis(filters.max_duration_sec)}")
+    return " AND ".join(predicates) if predicates else None
+
+
+def duration_lower_bound_millis(seconds: float | int) -> int:
+    return int(math.ceil(float(seconds) * 1000))
+
+
+def duration_upper_bound_millis(seconds: float | int) -> int:
+    return int(math.floor(float(seconds) * 1000))
 
 
 def fetch_cm_query_summary_page(

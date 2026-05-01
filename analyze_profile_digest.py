@@ -2360,6 +2360,7 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
 
     for table in context.get("tables") or []:
         lines.extend([f"### Table: {table['table']}", ""])
+        lines.append(f"- object type: {table.get('object_type', 'unknown')}")
         for statement in ("SHOW CREATE TABLE", "SHOW TABLE STATS", "SHOW COLUMN STATS"):
             lines.append(f"- {statement} status: {table.get('statements', {}).get(statement, 'unknown')}")
         lines.append(f"- table stats rows: {table.get('table_rows', 'unknown')}")

@@ -21,6 +21,7 @@ _CONTEXT_KEYS = {
 }
 
 _TABLE_KEYS = {
+    "object type",
     "SHOW CREATE TABLE status",
     "SHOW TABLE STATS status",
     "SHOW COLUMN STATS status",

@@ -114,6 +114,7 @@ def normalized_string_list(value: Any) -> list[str]:
 def empty_table_context(table: str) -> dict[str, Any]:
     return {
         "table": table,
+        "object_type": "unknown",
         "statements": {statement: "not_collected" for statement in STATEMENTS},
         "table_rows": "unknown",
         "table_stats_row_count_completeness": "not_available",
@@ -130,6 +131,9 @@ def empty_table_context(table: str) -> dict[str, Any]:
 def apply_statement_result(table_context: dict[str, Any], statement: str, result: dict[str, Any]) -> None:
     status = safe_status(result.get("status"))
     table_context["statements"][statement] = status
+    if status == "not_applicable":
+        apply_not_applicable_result(table_context, statement)
+        return
     if status != "ok":
         return
 
@@ -144,7 +148,16 @@ def apply_statement_result(table_context: dict[str, Any], statement: str, result
 
 def safe_status(value: Any) -> str:
     status = str(value or "").strip().lower()
-    return status if status in {"ok", "error", "too_large", "timeout", "planned"} else "unknown"
+    return status if status in {"ok", "error", "too_large", "timeout", "planned", "not_applicable"} else "unknown"
+
+
+def apply_not_applicable_result(table_context: dict[str, Any], statement: str) -> None:
+    if statement == "SHOW TABLE STATS":
+        table_context["table_stats_row_count_completeness"] = "not_available"
+    elif statement == "SHOW COLUMN STATS":
+        table_context["column_stats_columns_observed"] = 0
+        table_context["column_stats_missing_markers"] = 0
+        table_context["column_stats_completeness"] = "not_available"
 
 
 def parse_pipe_table(text: str) -> tuple[list[str], list[list[str]]]:
@@ -236,6 +249,11 @@ def parse_column_stats(text: str) -> dict[str, Any]:
 
 def parse_show_create(text: str) -> dict[str, Any]:
     facts: dict[str, Any] = {}
+    if re.search(r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", text, re.I | re.M):
+        facts["object_type"] = "view"
+    elif re.search(r"^\s*CREATE\s+(?:EXTERNAL\s+)?TABLE\b", text, re.I | re.M):
+        facts["object_type"] = "table"
+
     format_match = re.search(r"\bSTORED\s+AS\s+([A-Za-z0-9_]+)", text, re.I)
     if format_match:
         facts["file_format"] = format_match.group(1).upper()

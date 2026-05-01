@@ -32,6 +32,8 @@ ALLOWED_STATEMENTS = (
     "SHOW TABLE STATS",
     "SHOW COLUMN STATS",
 )
+CREATE_VIEW_RE = re.compile(r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", re.IGNORECASE | re.MULTILINE)
+VIEW_NOT_APPLICABLE_RE = re.compile(r"not\s+applicable\s+to\s+a\s+view", re.IGNORECASE)
 IDENTIFIER_PART_RE = re.compile(r"(?:`([A-Za-z_][A-Za-z0-9_$]*)`|([A-Za-z_][A-Za-z0-9_$]*))\Z")
 SQL_SECRET_VALUE_RE = re.compile(
     r"((?:'|\")?(?:password|passwd|pwd|token|secret|cookie|api[_-]?key|access[_-]?token|"
@@ -249,6 +251,16 @@ def run_statement(
     stdout = redact_impala_context_text(stdout_output.text)
     stderr = redact_impala_context_text(stderr_output.text)
     if proc.returncode != 0:
+        if is_view_not_applicable_error(stdout, stderr):
+            return StatementResult(
+                table=plan.table,
+                label=plan.label,
+                sql=plan.sql,
+                status="not_applicable",
+                returncode=proc.returncode,
+                error="object is a view",
+                **size_metadata,
+            )
         return StatementResult(
             table=plan.table,
             label=plan.label,
@@ -273,12 +285,30 @@ def run_statement(
     )
 
 
+def is_create_view_output(text: str) -> bool:
+    return bool(CREATE_VIEW_RE.search(text))
+
+
+def is_view_not_applicable_error(stdout: str, stderr: str) -> bool:
+    return bool(VIEW_NOT_APPLICABLE_RE.search(stdout) or VIEW_NOT_APPLICABLE_RE.search(stderr))
+
+
 def planned_result(plan: StatementPlan) -> StatementResult:
     return StatementResult(
         table=plan.table,
         label=plan.label,
         sql=plan.sql,
         status="planned",
+    )
+
+
+def not_applicable_result(plan: StatementPlan, reason: str) -> StatementResult:
+    return StatementResult(
+        table=plan.table,
+        label=plan.label,
+        sql=plan.sql,
+        status="not_applicable",
+        error=reason,
     )
 
 
@@ -400,11 +430,25 @@ def collect_impala_context(
     else:
         print(f"Collecting read-only Impala metadata for {len(tables)} table(s).")
         results = []
-        for plan in plans:
-            print(f"- {plan.label} {plan.table}")
-            result = run_statement(args, plan, runner=runner)
-            print(f"  status: {result.status}")
-            results.append(result)
+        for table in tables:
+            table_plans = [plan for plan in plans if plan.table == table]
+            create_plan = table_plans[0]
+            print(f"- {create_plan.label} {create_plan.table}")
+            create_result = run_statement(args, create_plan, runner=runner)
+            print(f"  status: {create_result.status}")
+            results.append(create_result)
+            if create_result.status == "ok" and is_create_view_output(create_result.stdout):
+                for plan in table_plans[1:]:
+                    result = not_applicable_result(plan, "object is a view")
+                    print(f"- {plan.label} {plan.table}")
+                    print(f"  status: {result.status}")
+                    results.append(result)
+                continue
+            for plan in table_plans[1:]:
+                print(f"- {plan.label} {plan.table}")
+                result = run_statement(args, plan, runner=runner)
+                print(f"  status: {result.status}")
+                results.append(result)
 
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out_dir = Path(args.out)
