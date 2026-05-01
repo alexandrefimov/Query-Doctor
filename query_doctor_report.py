@@ -136,9 +136,11 @@ UNSUPPORTED_METADATA_ROOT_CAUSE_RE = re.compile(
     r"("
     r"(?:причин\w+|проблем\w+)[^\n.]{0,80}(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)|"
     r"(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)[^\n.]{0,80}(?:причин\w+|вызва\w+|сломал\w+)|"
+    r"(?:из-за|из\s+за)[^\n.]{0,80}(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)|"
     r"статистик\w+\s+таблиц\w*\s+устарел\w*|"
     r"metadata\s+proves\s+(?:the\s+)?root\s+cause|"
     r"metadata[^\n.]{0,80}proves[^\n.]{0,80}(?:cause|root\s+cause)|"
+    r"root\s+cause[^\n.]{0,80}stale\s+stat(?:s|istics)|"
     r"stale\s+stats?[^\n.]{0,80}(?:cause|root\s+cause)|"
     r"stale\s+statistics[^\n.]{0,80}(?:cause|root\s+cause)"
     r")",
@@ -160,8 +162,12 @@ METADATA_CLAIM_NEGATION_RE = re.compile(
     r"\bnot\s+(?:proven|supported|required|the\s+root\s+cause)\b|"
     r"\bno\s+evidence\b|"
     r"\bнет\s+доказ\w*|"
+    r"\bнет\s+подтвержд\w*|"
+    r"\bнет\s+основан\w*\s+утвержд\w*|"
+    r"\bотсутств\w+\s+доказ\w*|"
     r"\bне\s+доказ\w*|"
     r"\bне\s+подтвержд\w*|"
+    r"\bне\s+подтвержда\w*|"
     r"\bне\s+явля\w*\s+причин\w*|"
     r"\bне\s+требу\w*"
     r")",
@@ -171,6 +177,7 @@ METADATA_CLAIM_CONTRAST_RE = re.compile(
     r"\b(?:but|however|still|nevertheless|yet|though|although|но|однако)\b",
     re.IGNORECASE,
 )
+METADATA_CLAIM_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?]")
 STATS_FRESHNESS_MISSING_EVIDENCE = (
     "- Свежесть статистики таблиц/столбцов не подтверждена в analysis_facts.md; "
     "проверяйте ее только через read-only metadata."
@@ -1775,22 +1782,31 @@ def find_unsupported_metadata_claim_errors(report_text: str) -> list[str]:
         stripped = line.strip()
         if not stripped:
             continue
-        compute_match = REQUIRED_COMPUTE_STATS_RE.search(stripped)
-        metadata_match = UNSUPPORTED_METADATA_ROOT_CAUSE_RE.search(stripped)
-        if compute_match and not is_negated_metadata_claim(stripped, compute_match.start()):
+        if has_unnegated_metadata_claim(REQUIRED_COMPUTE_STATS_RE, stripped):
             errors.append("report requires COMPUTE STATS without deterministic support")
-        elif metadata_match and not is_negated_metadata_claim(stripped, metadata_match.start()):
+        elif has_unnegated_metadata_claim(UNSUPPORTED_METADATA_ROOT_CAUSE_RE, stripped):
             errors.append("report makes unsupported metadata/stale-stats root-cause claim")
     return errors
 
 
-def is_negated_metadata_claim(line: str, match_start: int) -> bool:
+def has_unnegated_metadata_claim(pattern: re.Pattern[str], line: str) -> bool:
+    return any(
+        not is_negated_metadata_claim(line, match.start(), match.end())
+        for match in pattern.finditer(line)
+    )
+
+
+def is_negated_metadata_claim(line: str, match_start: int, match_end: int | None = None) -> bool:
     prefix = line[:match_start]
     negation_matches = list(METADATA_CLAIM_NEGATION_RE.finditer(prefix))
     if not negation_matches:
         return False
     latest_negation = negation_matches[-1]
-    return METADATA_CLAIM_CONTRAST_RE.search(prefix[latest_negation.end() :]) is None
+    negation_scope = line[latest_negation.end() : (match_end or match_start)]
+    return (
+        METADATA_CLAIM_SENTENCE_BOUNDARY_RE.search(negation_scope) is None
+        and METADATA_CLAIM_CONTRAST_RE.search(negation_scope) is None
+    )
 
 
 def validate_report_against_facts(report_text: str, facts_text: str) -> list[str]:
