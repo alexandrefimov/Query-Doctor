@@ -888,28 +888,40 @@ def score_case(case: CaseResult) -> None:
 def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
-    cardinality = count_section_bullets(facts, "Cardinality estimate errors")
-    if cardinality:
+    cardinality = fact_int(facts, "Cardinality anomalies") or 0
+    if cardinality > 0:
         score += min(12, cardinality * 3)
         reasons.append(f"cardinality estimate anomalies: {cardinality}")
-    memory = count_section_bullets(facts, "Memory estimate errors")
-    if memory:
+    memory = fact_int(facts, "Memory anomalies") or 0
+    if memory > 0:
         score += min(8, memory * 2)
         reasons.append(f"memory estimate anomalies: {memory}")
     lower = facts.lower()
-    if "spill" in lower or "scratch" in lower:
+    if has_supported_spill_scratch_evidence(facts):
         score += 3
-        reasons.append("spill/scratch evidence mentioned by analyzer")
-    if "backend / host tail evidence" in lower or "host tail" in lower:
+        reasons.append("spill/scratch evidence: non-zero metrics")
+    host_tail_candidates = fact_int(facts, "host tail candidates") or 0
+    if host_tail_candidates > 0:
         score += 2
-        reasons.append("backend/host-tail evidence present")
-    if metadata_status == "failed" or "status: error" in lower:
+        reasons.append(f"host-tail candidates: {host_tail_candidates}")
+    if has_positive_data_skew_evidence(facts):
+        score += 2
+        reasons.append("backend data skew evidence")
+    if metadata_status == "failed" or has_metadata_error_status(facts):
         score += 3
         reasons.append("metadata collection failed for referenced table")
-    if "row-count completeness: missing" in lower or "row-count completeness: unknown" in lower:
+    if has_metadata_completeness_value(
+        facts,
+        "table stats row-count completeness",
+        {"missing", "unknown", "missing/unknown"},
+    ):
         score += 2
         reasons.append("table stats row-count completeness missing/unknown")
-    if "column stats completeness: incomplete/unknown" in lower:
+    if has_metadata_completeness_value(
+        facts,
+        "column stats completeness",
+        {"incomplete", "unknown", "incomplete/unknown"},
+    ):
         score += 1
         reasons.append("column stats completeness incomplete/unknown")
     if "too_large" in lower:
@@ -920,17 +932,56 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
     return score, reasons
 
 
-def count_section_bullets(facts: str, heading_fragment: str) -> int:
-    section = section_text_by_fragment(facts, heading_fragment)
-    return sum(1 for line in section.splitlines() if line.strip().startswith("- "))
+def fact_values(facts: str, label: str) -> list[str]:
+    values: list[str] = []
+    expected = label.lower()
+    for line in facts.splitlines():
+        item = line.strip()
+        if item.startswith("- "):
+            item = item[2:].strip()
+        key, separator, value = item.partition(":")
+        if separator and key.strip().lower() == expected:
+            values.append(value.strip())
+    return values
 
 
-def section_text_by_fragment(text: str, heading_fragment: str) -> str:
-    for line in text.splitlines():
-        if line.startswith("##") or line.startswith("###"):
-            if heading_fragment.lower() in line.lower():
-                return text.split(line, 1)[1].split("\n##", 1)[0].split("\n###", 1)[0]
-    return ""
+def fact_int(facts: str, label: str) -> int | None:
+    for value in fact_values(facts, label):
+        match = re.search(r"\d+", value)
+        if match:
+            return int(match.group(0))
+    return None
+
+
+def has_supported_spill_scratch_evidence(facts: str) -> bool:
+    supported_values = ("supported", "yes", "present", "non-zero")
+    if any(
+        value.lower().startswith(supported_values)
+        for value in fact_values(facts, "spill/scratch evidence")
+    ):
+        return True
+    return "detected non-zero spill/scratch metric evidence" in facts.lower()
+
+
+def has_positive_data_skew_evidence(facts: str) -> bool:
+    return any(value.lower().startswith("yes") for value in fact_values(facts, "data skew"))
+
+
+def has_metadata_error_status(facts: str) -> bool:
+    status_labels = (
+        "SHOW CREATE TABLE status",
+        "SHOW TABLE STATS status",
+        "SHOW COLUMN STATS status",
+    )
+    return any(
+        value.lower().startswith("error")
+        for label in status_labels
+        for value in fact_values(facts, label)
+    )
+
+
+def has_metadata_completeness_value(facts: str, label: str, bad_values: set[str]) -> bool:
+    return any(value.lower() in bad_values for value in fact_values(facts, label))
 
 
 def section_text(text: str, heading: str) -> str:
