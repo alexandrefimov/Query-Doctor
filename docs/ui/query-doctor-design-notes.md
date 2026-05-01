@@ -6,6 +6,8 @@ Query Doctor is a local-first diagnostic tool for Apache Impala query analysis. 
 
 It should not feel like a SaaS landing page, a playful AI demo, or a monitoring dashboard. The product value is trust, evidence, traceability, and fast operational triage.
 
+Current implementation note: the localhost UI may still expose the single Query ID workflow first. The target product roadmap makes batch query triage the primary landing page, then single-query diagnosis, then SQL optimization review.
+
 Core principles:
 
 - Local-first
@@ -185,9 +187,77 @@ Badge color semantics:
 
 Avoid large, colorful status pills.
 
-## Home page structure
+## Target page map
 
-Home page should prioritize the normal workflow:
+### Batch Query Triage
+
+This should become the primary landing page.
+
+Purpose: answer `Что сейчас в кластере подозрительное?`
+
+Target workflow:
+
+```text
+discover recent CM Impala queries
+  -> filter by duration / user / pool / statement type
+  -> collect selected profiles explicitly by query id
+  -> run analyzer and optional metadata for many cases
+  -> rank suspicious cases from analysis_facts.md
+  -> run full LLM reports only for top ranked cases
+```
+
+Primary UI elements:
+
+- bounded discovery controls
+- duration, user, pool and statement-type filters
+- metadata mode and max-table controls
+- analyzer-only first pass by default
+- score table with reasons
+- collection/analysis/metadata status columns
+- links to case artifacts and validated reports
+- explicit top-reports action for the worst cases
+
+Do not imply that LLM runs for all selected queries.
+
+### Single Query Analysis
+
+Purpose: answer `Разбери вот этот конкретный запрос.`
+
+This page starts from one Impala Query ID or saved case path. It can collect CM
+profile/details, run analyzer, optionally collect metadata for referenced
+tables, generate a report and render it only after validation passes.
+
+### SQL Optimization Review
+
+Purpose: review user-submitted SQL before there is a runtime profile.
+
+This is not profile diagnosis. Prefer names like `SQL Review`,
+`SQL Optimization Review` or `Query Rewrite Review`.
+
+Allowed language:
+
+- possible risk
+- likely optimizer challenge
+- candidate rewrite
+- next check
+- metadata suggests
+- cannot confirm runtime impact without a profile
+
+Allowed topics include join shape risks, unclear join predicates, possible
+cartesian joins, partition-pruning blockers, functions/casts on filter columns,
+risky `DISTINCT` / `GROUP BY` / `ORDER BY`, unnecessary nesting, `SELECT *`,
+repeated scans, justified `UNION ALL`, and metadata facts such as stats
+completeness, partitioning, file format and table layout.
+
+Forbidden without a profile: actual spill, actual backend skew, actual memory
+pressure, actual admission wait, actual runtime bottleneck, actual duration
+cause, profile-only root cause claims, required `COMPUTE STATS`, and stale stats
+claims unless deterministically supported.
+
+## Current Single Query Home Page Structure
+
+Until batch triage becomes the primary page, the single-query home page should
+prioritize the normal workflow:
 
 ```text
 query_id or case path → auto-collect evidence → validated report

@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
@@ -26,6 +27,20 @@ MAX_JOBS = 4
 MAX_HIGH_JOBS = 100
 ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
 METADATA_MODE_CHOICES = ("auto", "on", "off", "dry-run")
+SAFE_OUTPUT_PREFIX = "query-doctor-"
+SYSTEM_OUTPUT_ROOTS = (
+    "/etc",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/var",
+    "/opt",
+    "/System",
+    "/Library",
+    "/Applications",
+    "/private/etc",
+    "/private/var",
+)
 
 
 @dataclass(frozen=True)
@@ -139,7 +154,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--service", help="Impala service name.")
     parser.add_argument("--ca-bundle", help="PEM CA bundle for verified CM TLS connections.")
     parser.add_argument("--insecure-skip-verify", action="store_true")
-    parser.add_argument("--out", required=True, help="Output directory outside tracked cases.")
+    parser.add_argument(
+        "--out",
+        required=True,
+        help="Dedicated query-doctor-* output directory under /tmp or the system temp directory.",
+    )
     parser.add_argument("--recent-window-minutes", type=positive_int, default=60)
     parser.add_argument(
         "--cm-inspect-limit",
@@ -436,20 +455,31 @@ def validate_not_dangerous_output_path(out: Path) -> None:
     resolved = out.resolve()
     root = Path(resolved.anchor or "/").resolve()
     home = Path.home().resolve()
+    safe_temp_roots = safe_output_temp_roots()
     if resolved == root:
         raise ValueError("--out must point to a dedicated batch directory, not filesystem root")
-    if resolved == Path("/tmp").resolve():
-        raise ValueError("--out must point to a dedicated batch directory under /tmp, not /tmp itself")
+    if resolved in safe_temp_roots:
+        raise ValueError("--out must point to a dedicated query-doctor-* batch directory, not the temp root itself")
     if resolved == home:
         raise ValueError("--out must point to a dedicated batch directory, not the home directory")
     if resolved.parent == root:
         raise ValueError("--out path is too shallow; use a dedicated /tmp batch directory")
     if resolved.parent == home:
         raise ValueError("--out must not be a direct child of the home directory; use /tmp or another dedicated directory")
+    under_safe_temp = any(path_is_relative_to(resolved, temp_root) for temp_root in safe_temp_roots)
+    if not under_safe_temp:
+        for system_root in system_output_roots():
+            if path_is_relative_to(resolved, system_root):
+                raise ValueError("--out must not point inside a system directory; use /tmp/query-doctor-*")
+        raise ValueError("--out must be a dedicated query-doctor-* directory under /tmp or the system temp directory")
+    if not resolved.name.startswith(SAFE_OUTPUT_PREFIX):
+        raise ValueError("--out directory name must start with query-doctor-")
 
 
 def prepare_batch_output_dir(out: Path, *, repo_root: Path, overwrite: bool) -> None:
     validate_batch_output_path(out, repo_root)
+    if out.exists() and out.is_symlink():
+        raise ValueError("--out must not be a symlink")
     if out.exists() and not out.is_dir():
         raise ValueError("--out exists and is not a directory")
     if out.exists() and any(out.iterdir()):
@@ -464,8 +494,21 @@ def validate_safe_overwrite_target(out: Path, *, repo_root: Path) -> None:
     validate_batch_output_path(out, repo_root)
     if not out.exists():
         return
+    if out.is_symlink():
+        raise ValueError("--out must not be a symlink")
     if not out.is_dir():
         raise ValueError("--out exists and is not a directory")
+
+
+def safe_output_temp_roots() -> set[Path]:
+    return {
+        Path("/tmp").resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    }
+
+
+def system_output_roots() -> tuple[Path, ...]:
+    return tuple(Path(value).resolve() for value in SYSTEM_OUTPUT_ROOTS)
 
 
 def path_is_relative_to(path: Path, parent: Path) -> bool:
