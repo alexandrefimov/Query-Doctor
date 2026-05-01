@@ -114,12 +114,13 @@ def normalized_string_list(value: Any) -> list[str]:
 def empty_table_context(table: str) -> dict[str, Any]:
     return {
         "table": table,
-        "statements": {statement: "not_observed" for statement in STATEMENTS},
-        "table_stats_state": "unknown",
+        "statements": {statement: "not_collected" for statement in STATEMENTS},
         "table_rows": "unknown",
+        "table_stats_row_count_completeness": "not_available",
         "table_size": "unknown",
         "column_stats_columns_observed": "unknown",
         "column_stats_missing_markers": "unknown",
+        "column_stats_completeness": "not_available",
         "column_stats_columns": [],
         "file_format": "unknown",
         "partition_columns": [],
@@ -162,16 +163,15 @@ def normalized_header(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
-def parse_int_token(value: str) -> int | None:
+def parse_row_count_token(value: str) -> tuple[int | str, str]:
     stripped = value.strip().replace(",", "")
-    if not re.fullmatch(r"-?\d+", stripped):
-        return None
-    parsed = int(stripped)
-    return parsed if parsed >= 0 else None
+    if re.fullmatch(r"\d+", stripped):
+        return int(stripped), "available"
+    return "unknown", "missing/unknown"
 
 
 def parse_table_stats(text: str) -> dict[str, Any]:
-    facts: dict[str, Any] = {"table_stats_state": "unknown"}
+    facts: dict[str, Any] = {}
     headers, rows = parse_pipe_table(text)
     if headers and rows:
         header_map = {normalized_header(header): index for index, header in enumerate(headers)}
@@ -179,27 +179,27 @@ def parse_table_stats(text: str) -> dict[str, Any]:
         rows_index = first_present(header_map, ("rows", "numrows"))
         size_index = first_present(header_map, ("size", "totalsize", "bytes"))
         if rows_index is not None and rows_index < len(row):
-            parsed_rows = parse_int_token(row[rows_index])
-            if parsed_rows is not None:
-                facts["table_rows"] = parsed_rows
+            rows_value, completeness = parse_row_count_token(row[rows_index])
+            facts["table_rows"] = rows_value
+            facts["table_stats_row_count_completeness"] = completeness
         if size_index is not None and size_index < len(row):
             size = row[size_index].strip()
             if size and size.lower() not in UNKNOWN_MARKERS:
                 facts["table_size"] = size
 
     if "table_rows" not in facts:
-        rows_match = re.search(r"\b#?Rows\b\s*[:=]\s*(-?[\d,]+)", text, re.I)
+        rows_match = re.search(r"\b#?Rows\b\s*[:=]\s*([^\s|]+)", text, re.I)
         if rows_match:
-            parsed_rows = parse_int_token(rows_match.group(1))
-            if parsed_rows is not None:
-                facts["table_rows"] = parsed_rows
+            rows_value, completeness = parse_row_count_token(rows_match.group(1))
+            facts["table_rows"] = rows_value
+            facts["table_stats_row_count_completeness"] = completeness
     if "table_size" not in facts:
         size_match = re.search(r"\bSize\b\s*[:=]\s*(" + SIZE_VALUE_RE.pattern + r")", text, re.I)
         if size_match:
             facts["table_size"] = size_match.group(1).strip()
 
-    if "table_rows" in facts or "table_size" in facts:
-        facts["table_stats_state"] = "supported"
+    if text.strip() and "table_stats_row_count_completeness" not in facts:
+        facts["table_stats_row_count_completeness"] = "missing/unknown"
     return facts
 
 
@@ -213,7 +213,7 @@ def first_present(mapping: dict[str, int], keys: tuple[str, ...]) -> int | None:
 def parse_column_stats(text: str) -> dict[str, Any]:
     headers, rows = parse_pipe_table(text)
     if not headers or not rows:
-        return {}
+        return {"column_stats_completeness": "incomplete/unknown"} if text.strip() else {}
     header_map = {normalized_header(header): index for index, header in enumerate(headers)}
     name_index = first_present(header_map, ("column", "name", "columnname"))
     columns: list[str] = []
@@ -227,6 +227,9 @@ def parse_column_stats(text: str) -> dict[str, Any]:
     return {
         "column_stats_columns_observed": len(rows),
         "column_stats_missing_markers": missing_markers,
+        "column_stats_completeness": (
+            "complete" if rows and missing_markers == 0 else "incomplete/unknown"
+        ),
         "column_stats_columns": columns[:20],
     }
 

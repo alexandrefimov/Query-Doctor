@@ -97,12 +97,95 @@ def test_demo_render_page_contains_centered_dark_ui_and_watermark():
     assert "max-height:66vh" not in body
     assert "overflow:auto" not in body
     assert "overflow-wrap:anywhere" in body
-    assert "Интеллектуальный анализ Impala-запросов по Query ID" in body
+    assert "Интеллектуальный анализ Impala-запросов по Query ID" not in body
     assert "Режим отчёта" in body
-    assert "Анализировать" in body
+    assert "Редактировать идентификаторы" not in body
+    assert "Анализировать" not in body
+    assert '<button class="primary" type="submit">Run</button>' in body
+    assert '<input type="radio" name="mode" value="user" checked>' in body
+    assert '<input type="radio" name="mode" value="admin" checked>' not in body
+    assert ".segmented label:focus-within" not in body
+    assert body.index('id="query_id"') < body.index('<button class="primary" type="submit">Run</button>')
+    assert body.index('<button class="primary" type="submit">Run</button>') < body.index('class="mode-card"')
     assert "Локальный демо-сервер: только явный Query ID" not in body
     assert "Проверяем Query ID" in body
     assert "Обычно это занимает от нескольких секунд до пары минут." in body
+
+
+def test_demo_render_page_can_select_admin_mode_explicitly():
+    module = load_demo_module()
+    settings = module.DemoSettings(config=Path(".query-doctor-cm.local.json"))
+
+    body = module.render_page(settings, report_mode="admin")
+
+    assert '<input type="radio" name="mode" value="admin" checked>' in body
+    assert '<input type="radio" name="mode" value="user" checked>' not in body
+
+
+def test_demo_home_page_links_brand_and_readme_navigation():
+    module = load_demo_module()
+    settings = module.DemoSettings(config=Path(".query-doctor-cm.local.json"))
+
+    body = module.render_page(settings)
+
+    assert '<a class="brand-home" href="/" aria-label="Query Doctor home">' in body
+    assert '<a class="nav-link nav-link--active" href="/">Home</a>' in body
+    assert '<a class="nav-link" href="/readme">README</a>' in body
+
+
+def test_demo_readme_page_renders_repository_readme_safely(tmp_path):
+    module = load_demo_module()
+    (tmp_path / "README.md").write_text(
+        "# Local README\n\n"
+        "Intro with <script>alert(1)</script>.\n\n"
+        "```sh\n"
+        "echo <safe>\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    settings = module.DemoSettings(config=Path(".query-doctor-cm.local.json"), repo_dir=tmp_path)
+
+    body = module.render_readme_page(settings)
+
+    assert '<a class="brand-home" href="/" aria-label="Query Doctor home">' in body
+    assert '<a class="nav-link" href="/">Home</a>' in body
+    assert '<a class="nav-link nav-link--active" href="/readme">README</a>' in body
+    assert "<summary>README.md</summary>" in body
+    assert "<h1>Local README</h1>" in body
+    assert "<script>alert(1)</script>" not in body
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in body
+    assert "echo &lt;safe&gt;" in body
+
+
+def test_demo_readme_page_handles_missing_readme(tmp_path):
+    module = load_demo_module()
+
+    body = module.render_readme_page(
+        module.DemoSettings(config=Path(".query-doctor-cm.local.json"), repo_dir=tmp_path)
+    )
+
+    assert "README.md не найден в корне репозитория." in body
+
+
+def test_demo_readme_route_serves_readme_without_running_analysis(tmp_path):
+    module = load_demo_module()
+    (tmp_path / "README.md").write_text("# Route README\n", encoding="utf-8")
+    settings = module.DemoSettings(config=Path(".query-doctor-cm.local.json"), repo_dir=tmp_path)
+    handler = module.make_handler(settings, analysis_func=lambda *args, **kwargs: None)
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {}
+
+    def write_html(status, body):
+        captured["status"] = status
+        captured["body"] = body
+
+    request.path = "/readme"
+    request.write_html = write_html
+
+    request.do_GET()
+
+    assert captured["status"] == 200
+    assert "<h1>Route README</h1>" in captured["body"]
 
 
 def test_demo_job_flow_returns_progress_status_and_escaped_result():
@@ -205,6 +288,33 @@ def test_demo_handler_rejects_missing_query_id_without_calling_analysis():
 
     assert status == 400
     assert "Query ID is required." in body
+
+
+def test_demo_handler_defaults_to_user_mode_without_redaction():
+    module = load_demo_module()
+    settings = module.DemoSettings(config=Path(".query-doctor-cm.local.json"))
+
+    def fake_analysis(query_id, report_mode, redact_identifiers, received_settings):
+        assert query_id == "abc:def"
+        assert report_mode == "user"
+        assert redact_identifiers is False
+        assert received_settings is settings
+        return module.DemoResult(
+            query_id=query_id,
+            case_dir=Path("/tmp/query-doctor-demo/abc_def"),
+            case_source="reused existing local case",
+            report_mode=report_mode,
+            parsed_operators="2",
+            cardinality_anomalies="0",
+            memory_anomalies="1",
+            report_text="## Report\n",
+        )
+
+    status, body = module.handle_analyze_request({"query_id": ["abc:def"]}, settings, analysis_func=fake_analysis)
+
+    assert status == 200
+    assert "Report mode" in body
+    assert "<strong>user</strong>" in body
 
 
 def test_demo_handler_sanitizes_error_secrets(monkeypatch):

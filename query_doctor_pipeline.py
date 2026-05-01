@@ -7,6 +7,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+from query_doctor_impala_metadata_workflow import (
+    add_metadata_arguments,
+    build_metadata_collector_cmd,
+    build_metadata_plan,
+    print_metadata_plan,
+    read_referenced_tables_from_facts,
+    validate_metadata_args,
+)
+
 
 DEFAULT_MODEL = "qwen3-coder:30b"
 
@@ -15,6 +24,14 @@ def run_cmd(cmd: list[str], cwd: Path) -> None:
     print()
     print("[pipeline] running:")
     print(" ".join(cmd))
+    result = subprocess.run(cmd, cwd=str(cwd))
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+
+
+def run_metadata_cmd(cmd: list[str], cwd: Path) -> None:
+    print()
+    print("[pipeline] running explicit read-only Impala metadata collector")
     result = subprocess.run(cmd, cwd=str(cwd))
     if result.returncode != 0:
         raise SystemExit(result.returncode)
@@ -59,8 +76,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Run only deterministic analyzer.",
     )
+    add_metadata_arguments(parser)
 
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    validate_metadata_args(parser, args)
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
 
     analyzer = repo_dir / "analyze_profile_digest.py"
     reporter = repo_dir / "query_doctor_report.py"
+    impala_collector = repo_dir / "query_doctor_collect_impala_context.py"
 
     if not analyzer.exists():
         print(f"[pipeline] ERROR: missing {analyzer}", file=sys.stderr)
@@ -86,6 +107,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not reporter.exists():
         print(f"[pipeline] ERROR: missing {reporter}", file=sys.stderr)
+        return 2
+    if args.collect_impala_metadata and not impala_collector.exists():
+        print(f"[pipeline] ERROR: missing {impala_collector}", file=sys.stderr)
         return 2
 
     run_cmd(
@@ -104,6 +128,39 @@ def main(argv: list[str] | None = None) -> int:
 
     print()
     print(f"[pipeline] facts: {facts}")
+
+    if args.collect_impala_metadata:
+        raw_tables = read_referenced_tables_from_facts(facts)
+        metadata_plan = build_metadata_plan(raw_tables, args.metadata_max_tables)
+        print_metadata_plan(metadata_plan, dry_run=args.metadata_dry_run)
+        if args.metadata_dry_run:
+            print("[pipeline] metadata dry-run complete; analyzer/report were not rerun after metadata collection")
+            return 0
+        if metadata_plan.selected_tables:
+            run_metadata_cmd(
+                build_metadata_collector_cmd(
+                    args,
+                    collector=impala_collector,
+                    case_dir=case_dir,
+                    tables=metadata_plan.selected_tables,
+                ),
+                cwd=repo_dir,
+            )
+            run_cmd(
+                [
+                    sys.executable,
+                    str(analyzer),
+                    str(case_dir),
+                ],
+                cwd=repo_dir,
+            )
+            if not facts.exists():
+                print(f"[pipeline] ERROR: analyzer did not create {facts}", file=sys.stderr)
+                return 3
+            print()
+            print(f"[pipeline] facts refreshed with Impala metadata: {facts}")
+        else:
+            print("[pipeline] no valid referenced tables found for metadata collection")
 
     if args.skip_report:
         print("[pipeline] skip report requested")

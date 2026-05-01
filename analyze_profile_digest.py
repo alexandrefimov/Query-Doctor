@@ -2319,15 +2319,21 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
     for table in context.get("tables") or []:
         lines.extend([f"### Table: {table['table']}", ""])
         for statement in ("SHOW CREATE TABLE", "SHOW TABLE STATS", "SHOW COLUMN STATS"):
-            lines.append(f"- {statement}: {table.get('statements', {}).get(statement, 'unknown')}")
+            lines.append(f"- {statement} status: {table.get('statements', {}).get(statement, 'unknown')}")
         lines.append(f"- table stats rows: {table.get('table_rows', 'unknown')}")
+        lines.append(
+            "- table stats row-count completeness: "
+            f"{table.get('table_stats_row_count_completeness', 'unknown')}"
+        )
         lines.append(f"- table stats size: {table.get('table_size', 'unknown')}")
-        lines.append(f"- table stats state: {table.get('table_stats_state', 'unknown')}")
         lines.append(
             f"- column stats columns observed: {table.get('column_stats_columns_observed', 'unknown')}"
         )
         lines.append(
             f"- column stats missing/unknown markers: {table.get('column_stats_missing_markers', 'unknown')}"
+        )
+        lines.append(
+            f"- column stats completeness: {table.get('column_stats_completeness', 'unknown')}"
         )
         columns = table.get("column_stats_columns") or []
         if columns:

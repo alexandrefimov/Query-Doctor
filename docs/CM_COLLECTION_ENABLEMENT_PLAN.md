@@ -1,50 +1,67 @@
-# CM Collection Enablement Plan
+# План включения CM collection
 
-## Current state
+Примечание: этот файл содержит rollout checklists для Codex и ручных проверок;
+commands, flags, paths и точные safety phrases местами намеренно оставлены на
+английском для точности исполнения.
 
-- The CM collector CLI supports real collection only for an explicit `--query-id`.
-- `--dry-run` is plan-only.
-- Broad recent-query collection is still disabled.
-- Real collection requires `--redact`.
-- Query-id mode is limited to `--limit 1`.
-- The max profile size guard defaults to `52428800` bytes.
-- The collector writes generated cases only; it does not run the analyzer or report writer automatically.
-- HTTP GET transport, CM v32 endpoint adapter helpers, output writer, redaction helpers, and mocked tests already exist.
-- Run the full pytest suite before each rollout checkpoint and record the current result in the task/audit output.
-- A historical first single-query smoke under `cases/cm-corpus/` passed collection, analyzer parsing, admin/user report generation, and deterministic report validation.
+## Текущее состояние
 
-## Goal
+- CM collector CLI поддерживает real collection только для explicit
+  `--query-id`.
+- `--dry-run` только строит plan.
+- Broad recent-query collection всё ещё выключен.
+- Real collection требует `--redact`.
+- Query-id mode ограничен `--limit 1`.
+- Max profile size guard default: `52428800` bytes.
+- Collector пишет только generated cases; он не запускает analyzer или report
+  writer автоматически.
+- HTTP GET transport, CM v32 endpoint adapter helpers, output writer, redaction
+  helpers и mocked tests уже есть.
+- Перед каждым rollout checkpoint запускайте full pytest suite и записывайте
+  текущий результат в task/audit output.
+- Historical first single-query smoke под `cases/cm-corpus/` прошёл collection,
+  analyzer parsing, admin/user report generation и deterministic report
+  validation.
 
-Enable read-only collection from Cloudera Manager into local generated corpus directories for Query Doctor regression and smoke testing, expanding cautiously from single-query collection to bounded broad collection.
+## Цель
 
-## Non-goals
+Включить read-only collection из Cloudera Manager в local generated corpus
+directories для Query Doctor regression и smoke testing, расширяясь осторожно:
+от single-query collection к bounded broad collection.
 
-- No Impala query execution.
-- No SQL execution.
-- No `COMPUTE STATS`.
-- No `REFRESH`.
-- No `INVALIDATE METADATA`.
-- No `INSERT`, `CREATE`, `DROP`, `ALTER`, `DELETE`, `UPDATE`, or `TRUNCATE`.
-- No LLM calls.
-- No committing collected production profiles by default.
+## Не цели
+
+- Нет Impala query execution.
+- Нет SQL execution.
+- Нет `COMPUTE STATS`.
+- Нет `REFRESH`.
+- Нет `INVALIDATE METADATA`.
+- Нет `INSERT`, `CREATE`, `DROP`, `ALTER`, `DELETE`, `UPDATE`, `TRUNCATE`.
+- Нет LLM calls.
+- Нет коммита collected production profiles по умолчанию.
 
 ## Required pre-checks before first real smoke
 
-- Confirm exact CM API endpoints for query summaries and profile text in the target CM version.
-- Confirm auth method: basic auth or token.
-- Confirm TLS CA handling with `--ca-bundle /path/to/company-ca.pem` or a temporary environment setting.
-- Confirm target cluster and service names.
-- Confirm the output directory is ignored, for example `cases/cm-corpus/`.
-- Confirm `--redact` is enabled for every real collection.
-- Confirm `--query-id` is explicit for the current supported path.
-- Confirm `--limit 1` is used for query-id mode.
-- Confirm `--max-profile-bytes` is set deliberately or left at the safe default.
-- Confirm `--since-hours` is bounded.
-- Confirm no generated outputs are staged.
+- Подтвердить точные CM API endpoints для query summaries и profile text в
+  целевой CM version.
+- Подтвердить auth method: basic auth или token.
+- Подтвердить TLS CA handling через `--ca-bundle /path/to/company-ca.pem` или
+  временную environment setting.
+- Подтвердить target cluster и service names.
+- Подтвердить, что output directory находится в ignored path, например
+  `cases/cm-corpus/`.
+- Подтвердить `--redact` для каждого real collection.
+- Подтвердить explicit `--query-id` для текущего supported path.
+- Подтвердить `--limit 1` для query-id mode.
+- Подтвердить осознанное значение `--max-profile-bytes` или safe default.
+- Подтвердить bounded `--since-hours`.
+- Подтвердить, что generated outputs не staged.
 
 ## Supported single-query smoke command
 
-Do not put real credentials in docs or commit them to Git. Prefer environment variables from a temporary shell session and avoid pasting secrets into shell history where possible.
+Не помещайте real credentials в docs и не коммитьте их в Git. Предпочитайте
+environment variables из временной shell session и не вставляйте secrets в shell
+history.
 
 ```bash
 CM_USERNAME=... CM_PASSWORD=... \
@@ -66,29 +83,30 @@ python3 query_doctor_collect_cm_profiles.py \
 
 Completed single-query rollout:
 
-1. Verified CM v32 query summary endpoint.
-2. Verified CM v32 profile text endpoint with `format=text`.
-3. Added bounded non-dry-run collection for explicit `--query-id`.
-4. Ran real single-query collection with `--limit 1`, `--redact`, and the profile size guard.
-5. Inspected generated files manually.
-6. Ran the analyzer on the collected case.
-7. Ran admin/user report smoke.
-8. Removed generated `analysis_facts.md` and report files after validation.
-9. Confirmed `cases/cm-corpus/` remains ignored and uncommitted.
+1. Проверен CM v32 query summary endpoint.
+2. Проверен CM v32 profile text endpoint с `format=text`.
+3. Добавлен bounded non-dry-run collection для explicit `--query-id`.
+4. Выполнен real single-query collection с `--limit 1`, `--redact` и profile
+   size guard.
+5. Generated files проверены вручную.
+6. Analyzer запущен на collected case.
+7. Выполнен admin/user report smoke.
+8. Generated `analysis_facts.md` и report files удалены после validation.
+9. Подтверждено, что `cases/cm-corpus/` остаётся ignored and uncommitted.
 
 Next bounded broad-collection rollout:
 
-1. Keep `--redact` required.
-2. Use a very small `--limit`, for example `2` or `3`.
-3. Keep `--since-hours` bounded.
-4. Keep `--max-profile-bytes` enabled.
-5. Do not auto-run analyzer or reports from the collector.
-6. Run analyzer/report smoke manually after collection.
-7. Confirm generated corpus files remain ignored and unstaged.
+1. Оставить `--redact` обязательным.
+2. Использовать очень маленький `--limit`, например `2` или `3`.
+3. Держать `--since-hours` bounded.
+4. Держать `--max-profile-bytes` enabled.
+5. Не запускать analyzer или reports автоматически из collector.
+6. Запускать analyzer/report smoke вручную после collection.
+7. Подтверждать, что generated corpus files остаются ignored and unstaged.
 
 ## Required generated-output checks
 
-Run:
+Запустите:
 
 ```bash
 git status --short
@@ -96,29 +114,30 @@ git diff --name-status
 git diff --stat
 ```
 
-Check:
+Проверьте:
 
-- No `cases/cm-corpus` files are staged.
-- No credentials are present in files.
-- No local config files are staged.
-- Raw profile text, SQL, and raw CM JSON are not printed in review notes.
-- No production `profile_digest.md` is committed unless sanitized and explicitly reviewed.
+- Нет staged files из `cases/cm-corpus`.
+- В files нет credentials.
+- Нет staged local config files.
+- Raw profile text, SQL и raw CM JSON не печатаются в review notes.
+- Production `profile_digest.md` не committed, если он не sanitized и explicitly
+  reviewed.
 
 ## First-smoke quality checks
 
-Generated case should contain:
+Generated case должен содержать:
 
 - `profile_digest.md`
 - `cm_metadata.json`
 - `collection_warnings.txt`
 
-Check:
+Проверьте:
 
-- `profile_digest.md` is redacted if `--redact` was used.
-- `cm_metadata.json` does not contain passwords, tokens, or auth headers.
-- `collection_warnings.txt` does not contain secrets.
-- The analyzer can read `profile_digest.md`.
-- Action Cards are generated only if evidence exists.
+- `profile_digest.md` redacted, если использовался `--redact`.
+- `cm_metadata.json` не содержит passwords, tokens или auth headers.
+- `collection_warnings.txt` не содержит secrets.
+- Analyzer читает `profile_digest.md`.
+- Action Cards появляются только при наличии evidence.
 
 Historical first-smoke result:
 
@@ -126,30 +145,34 @@ Historical first-smoke result:
 - Analyzer parsed `169` operators.
 - Cardinality anomalies: `0`.
 - Memory anomalies: `2`.
-- Action Cards were present.
-- Admin and user report generation passed deterministic validation.
-- Generated `analysis_facts.md`, `report_admin.md`, and `report_user.md` were removed after inspection.
+- Action Cards были present.
+- Admin/user report generation прошёл deterministic validation.
+- Generated `analysis_facts.md`, `report_admin.md`, `report_user.md` удалены
+  после inspection.
 
-For current smoke status, run the local validation commands and record the
-current result in the task or audit output rather than treating these historical
-counts as evergreen.
+Для текущего smoke status запускайте local validation commands и записывайте
+текущий результат в task/audit output, а не считайте historical counts evergreen.
 
 ## Rollback/cleanup
 
-Remove only explicit generated paths after checking them first:
+Удаляйте только explicit generated paths после проверки:
 
 ```bash
 rm -rf cases/cm-corpus/<specific_case_dir>
 ```
 
-Never use broad removal commands without confirming the path. Do not delete existing hand-curated cases. Do not delete `profile_digest.md` from committed test fixtures.
+Никогда не используйте broad removal commands без подтверждения path. Не
+удаляйте existing hand-curated cases. Не удаляйте `profile_digest.md` из
+committed test fixtures.
 
 ## Open questions
 
-- Exact response shape in the installed CM version.
-- Whether raw profile or digest is returned.
-- Whether query profile text already includes original SQL.
-- Whether query IDs should remain preserved in redacted corpus.
-- Whether the first corpus should stay local-only or become a sanitized fixture candidate.
-- How to select the first bounded broad corpus of representative queries.
-- Whether broad collection should require an additional explicit acknowledgement flag.
+- Exact response shape в установленной CM version.
+- Возвращается raw profile или digest.
+- Содержит ли query profile text original SQL.
+- Сохранять ли query IDs в redacted corpus.
+- Должен ли первый corpus оставаться local-only или стать sanitized fixture
+  candidate.
+- Как выбрать первый bounded broad corpus representative queries.
+- Должен ли broad collection требовать дополнительный explicit acknowledgement
+  flag.

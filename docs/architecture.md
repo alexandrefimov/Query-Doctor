@@ -1,7 +1,7 @@
-# Query Doctor Architecture
+# Архитектура Query Doctor
 
-Query Doctor keeps fact extraction deterministic and lets the LLM write only from
-those facts.
+Query Doctor держит fact extraction детерминированным, а LLM использует только
+уже извлечённые факты для русскоязычной формулировки отчёта.
 
 ## Pipeline
 
@@ -12,55 +12,70 @@ Cloudera Manager profile / profile_digest.md
   -> analyze_profile_digest.py
   -> analysis_facts.md
   -> action cards and deterministic evidence
+  -> optional Table Metadata Context from local impala_context.json
   -> query_doctor_report.py
   -> sanitizer and fail-closed validator
   -> deterministic analyzer facts appendix
   -> admin/user reports
-  -> local demo UI
+  -> local UI
 ```
 
-## Components
+## Компоненты
 
 Collector:
-- Performs explicit, bounded, read-only Cloudera Manager profile collection.
-- Requires redaction for real collection.
-- Preserves analyzer-useful counters and stable safe host aliases.
-- Writes generated local cases under ignored corpus paths.
-- Does not run the analyzer or report writer by itself.
+- Выполняет explicit, bounded, read-only сбор профилей из Cloudera Manager.
+- Требует redaction для real collection.
+- Сохраняет analyzer-useful counters и stable safe host aliases.
+- Пишет generated local cases только в ignored corpus paths.
+- Сам не запускает analyzer или report writer.
 
 Analyzer:
-- Reads `profile_digest.md`.
-- Extracts deterministic facts into `analysis_facts.md`.
-- Produces operator summaries, anomaly counts, action cards, and backend/host evidence when parsed.
-- Does not call Cloudera Manager, Ollama, or the report writer.
+- Читает `profile_digest.md`.
+- Извлекает deterministic facts в `analysis_facts.md`.
+- Пишет operator summaries, anomaly counts, action cards, backend/host evidence,
+  referenced tables и optional table metadata facts, если они есть.
+- Читает local `impala_context.json`, если он есть, и добавляет
+  `## Table Metadata Context`.
+- Не вызывает Cloudera Manager, Ollama или report writer.
 
 Report writer:
-- Reads only `analysis_facts.md`.
-- Uses the LLM for narrative wording, not fact discovery.
-- Must not infer from raw profile text, SQL, local config, or external context.
-- Generates admin and user reports with different audiences but the same fact boundary.
-- Requires the LLM narrative sections `## Короткий вывод` and `## Подробный разбор`.
-- Appends `## Факты анализатора` deterministically from `analysis_facts.md`; the LLM must not write this appendix.
-- Buffers raw LLM output internally. It writes the final report only after normalization, sanitization, narrative validation, appendix append, and final validation.
+- Читает только `analysis_facts.md`.
+- Использует LLM для narrative wording, не для fact discovery.
+- Не должен делать inference из raw profile text, SQL, local config или external
+  context.
+- Генерирует admin/user reports для разных аудиторий, но с одной fact boundary.
+- Требует LLM narrative sections `## Короткий вывод` и `## Подробный разбор`.
+- Детерминированно добавляет `## Факты анализатора` из `analysis_facts.md`; LLM
+  не должен писать эту appendix-секцию.
+- Сейчас намеренно исключает `## Table Metadata Context` из prompt LLM.
+- Показывает table metadata facts только в Python-generated
+  `## Факты анализатора`.
+- Буферизует raw LLM output. Финальный report пишется только после
+  normalization, sanitization, narrative validation, appendix append и final
+  validation.
 
-Sanitizer and validator:
-- Normalize a narrow set of unsafe generated wording into explicit safe wording.
-- Reject reports that make unsupported claims.
-- Stay fail-closed: a rejected report is safer than accepting invented evidence.
-- On validation failure, write only sanitized/normalized `.partial` output and preserve any existing final report.
+Sanitizer и validator:
+- Нормализуют узкий набор unsafe generated wording в явную safe wording.
+- Отклоняют reports с unsupported claims.
+- Работают fail-closed: rejected report безопаснее, чем accepted invented
+  evidence.
+- При validation failure пишут только sanitized/normalized `.partial` и
+  сохраняют существующий final report.
 
-Demo UI:
-- Presents the local workflow for one explicit query id.
-- Reuses collected cases when safe.
-- Is not a source of facts.
-- Does not enable broad collection.
+Local UI:
+- Показывает локальный workflow для одного explicit query id.
+- Переиспользует collected cases, когда это безопасно.
+- Не является источником фактов.
+- Не включает broad collection.
 
-## Current Real-Case Coverage
+## Текущее real-case покрытие
 
-The local ignored corpus currently exercises these important classes:
+Локальный ignored corpus покрывает важные классы:
 
-- `e94fbeb93feb2ad1_edd9d52c00000000`: host/backend data-skew evidence with no proven execution-tail host.
-- `fa469f95f6fb7286_ea9f070d00000000`: bad-query case with supported row/cardinality and memory estimate anomalies.
+- `e94fbeb93feb2ad1_edd9d52c00000000`: host/backend data-skew evidence без
+  доказанного execution-tail host.
+- `fa469f95f6fb7286_ea9f070d00000000`: bad-query case с подтверждёнными
+  row/cardinality и memory estimate anomalies.
 
-Do not put raw SQL, raw hostnames, raw IP addresses, raw profiles, local config,
-or credentials in committed documentation.
+Не добавляйте в committed docs raw SQL, raw hostnames, raw IP addresses, raw
+profiles, local config или credentials.

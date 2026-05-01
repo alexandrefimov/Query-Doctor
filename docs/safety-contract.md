@@ -1,23 +1,42 @@
-# Query Doctor Safety Contract
+# Контракт безопасности Query Doctor
 
-## Fact Boundary
+Примечание: этот файл содержит обязательные safety rules; точные phrases вроде
+`Do not weaken validators` и технические термины местами намеренно оставлены на
+английском для точности исполнения.
 
-- Python owns facts.
-- The LLM owns wording only.
-- Every diagnostic claim should map to `supported`, `not_observed`, or `unknown` evidence in `analysis_facts.md`.
-- Do not state root cause unless `analysis_facts.md` directly supports that cause.
-- Do not infer from raw profile text, SQL, CM JSON, local config, or external knowledge in the report writer.
+## Граница фактов
 
-## Collection Boundary
+- Python отвечает за факты.
+- LLM отвечает только за wording.
+- Любой диагностический claim должен соответствовать `supported`,
+  `not_observed` или `unknown` evidence в `analysis_facts.md`.
+- Не заявляйте root cause, если `analysis_facts.md` прямо не поддерживает эту
+  причину.
+- Report writer не должен делать inference из raw profile text, SQL, CM JSON,
+  local config или external knowledge.
 
-- No broad cluster/profile/table scanning by default.
-- External collection must be explicit, bounded, read-only, redacted, and safe by default.
-- Dry-run and preflight paths must not collect profile text.
-- Real profile collection must not print raw profiles, SQL, raw CM JSON, or credentials.
+## Граница collection
 
-## Git Boundary
+- Broad cluster/profile/table scanning по умолчанию запрещён.
+- External collection must be explicit, bounded, read-only, redacted, and safe
+  by default.
+- Dry-run и preflight paths не должны собирать profile text.
+- Real profile collection не должен печатать raw profiles, SQL, raw CM JSON или
+  credentials.
+- Первый поддержанный real Impala metadata connection path - Kerberos плюс
+  `impala-shell` с уже полученным TGT от `kinit`.
+- Metadata collector не вызывает `kinit`, не prompt'ит passwords, не принимает
+  AD/LDAP passwords и не использует impyla/Python DB API.
+- Metadata collector принимает только explicit table names и read-only
+  statements `SHOW CREATE TABLE`, `SHOW TABLE STATS`, `SHOW COLUMN STATS`.
+- Raw `impala-shell` stdout/stderr не печатается в terminal; collected output
+  bounded, redacted и пишется только под explicit `--out`.
+- Generated `impala_context.md` and `impala_context.json` are local outputs and
+  must not be committed.
 
-Generated, sensitive, and local outputs must not be committed:
+## Git boundary
+
+Generated/sensitive/local outputs must not be committed:
 
 - `cases/cm-corpus/`
 - `cases/cm-corpus-hostalias/`
@@ -26,40 +45,48 @@ Generated, sensitive, and local outputs must not be committed:
 - `*.partial`
 - local CM config
 - real CM profile material
+- `impala_context.md` / `impala_context.json`
 
-Never commit raw hostnames, IPs, users, emails, tokens, cookies, passwords,
-Authorization headers, embedded URL credentials, local config contents, or real
-production profile text.
+Никогда не коммитьте raw hostnames, IPs, users, emails, tokens, cookies,
+passwords, Authorization headers, embedded URL credentials, local config
+contents или real production profile text.
 
-## Report Validation
+## Report validation
 
-- Validators are fail-closed.
+- Validators работают fail-closed.
 - Do not weaken validators to make reports pass.
-- If a report is rejected, tighten deterministic facts, prompt wording, sanitizer behavior, or tests.
-- Unsafe-rejected and safe-allowed tests should accompany new validator rules.
-- Deterministic normalization must not hide unsupported claims silently.
-- Safe replacements must be explicit, narrow, and tested.
-- Raw LLM output is buffered and must not be streamed to stdout/stderr or user-facing UI.
-- Final report files are written only after normalization, sanitization, validation, deterministic appendix append, and final validation.
-- Validation failure writes sanitized/normalized `.partial` output and preserves any existing final report.
+- Если report rejected, уточняйте deterministic facts, prompt wording,
+  sanitizer behavior или tests.
+- Новые validator rules должны иметь unsafe-rejected и safe-allowed tests.
+- Deterministic normalization не должна silently hide unsupported claims.
+- Safe replacements должны быть explicit, narrow и tested.
+- Raw LLM output буферизуется и не должен stream'иться в stdout/stderr или
+  user-facing UI.
+- Final report files пишутся только после normalization, sanitization,
+  validation, deterministic appendix append и final validation.
+- Validation failure пишет sanitized/normalized `.partial` и сохраняет
+  существующий final report.
 
-## Report Structure
+## Report structure
 
-The LLM writes only:
+LLM пишет только:
 
 - `## Короткий вывод`
 - `## Подробный разбор`
 
-Python appends:
+Python добавляет:
 
 - `## Факты анализатора`
 
-The analyzer facts appendix is generated deterministically from `analysis_facts.md`.
-The LLM must not write or reinterpret that section.
+Analyzer facts appendix детерминированно строится из `analysis_facts.md`. LLM не
+должен писать или reinterpret эту секцию.
 
-## Claim Discipline
+`## Table Metadata Context` сейчас исключён из prompt LLM и появляется только в
+Python-generated appendix.
 
-Keep these categories separate:
+## Claim discipline
+
+Держите эти категории отдельно:
 
 - backend data skew
 - execution skew
@@ -69,13 +96,19 @@ Keep these categories separate:
 - diagnostic recommendation
 - proven cause
 
-Specific rules:
+Правила:
 
-- Backend data skew means parsed backend rows/records are unevenly distributed. It does not by itself prove stale stats, cardinality underestimation, hot keys, or one slow host.
-- Execution skew requires parsed evidence that a backend or host is slower than peers.
-- A write-path anomaly may be checked when unknown, but it must not be stated as a proven cause.
-- Row/cardinality underestimation requires actual rows greater than estimated rows or ratio above `1`.
-- Memory underestimation requires actual/peak memory greater than estimated memory or ratio above `1`.
-- Operator/profile counter time is not query wall-clock duration unless `analysis_facts.md` explicitly provides wall-clock evidence.
+- Backend data skew означает, что parsed backend rows/records распределены
+  неравномерно. Это само по себе не доказывает stale stats, cardinality
+  underestimation, hot keys или один slow host.
+- Execution skew требует parsed evidence, что backend/host медленнее peers.
+- Write-path anomaly можно проверять, когда он `unknown`, но нельзя заявлять как
+  proven cause.
+- Row/cardinality underestimation требует actual rows больше estimated rows или
+  ratio выше `1`.
+- Memory underestimation требует actual/peak memory больше estimated memory или
+  ratio выше `1`.
+- Operator/profile counter time не равен query wall-clock duration, если
+  `analysis_facts.md` явно не содержит wall-clock evidence.
 
-When in doubt, say the evidence is missing.
+Если сомневаетесь, пишите, что evidence missing.
