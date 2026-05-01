@@ -22,6 +22,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from query_doctor_metadata_digest import build_metadata_facts_digest
+
 
 DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3-coder:30b")
 DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -128,6 +130,45 @@ UNSUPPORTED_STATS_FRESHNESS_CLAIM_RE = re.compile(
     r"stats\s+(?:are|is)\s+stale|"
     r"indicates\s+(?:stale|missing)\s+stats"
     r")",
+    re.IGNORECASE,
+)
+UNSUPPORTED_METADATA_ROOT_CAUSE_RE = re.compile(
+    r"("
+    r"(?:причин\w+|проблем\w+)[^\n.]{0,80}(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)|"
+    r"(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)[^\n.]{0,80}(?:причин\w+|вызва\w+|сломал\w+)|"
+    r"статистик\w+\s+таблиц\w*\s+устарел\w*|"
+    r"metadata\s+proves\s+(?:the\s+)?root\s+cause|"
+    r"metadata[^\n.]{0,80}proves[^\n.]{0,80}(?:cause|root\s+cause)|"
+    r"stale\s+stats?[^\n.]{0,80}(?:cause|root\s+cause)|"
+    r"stale\s+statistics[^\n.]{0,80}(?:cause|root\s+cause)"
+    r")",
+    re.IGNORECASE,
+)
+REQUIRED_COMPUTE_STATS_RE = re.compile(
+    r"("
+    r"(?:нужно|необходимо|требуется|надо|обязательно|следует)\s+[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
+    r"\b(?:run|execute|recompute)\b[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
+    r"\b(?:should|need(?:ed)?|must)\s+[^.\n]{0,80}\b(?:run|execute)\s+COMPUTE\s+STATS\b|"
+    r"\b(?:выполнить|запустить|пересчитать)\b[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
+    r"\bCOMPUTE\s+STATS\b[^.\n]{0,80}(?:required|must|need(?:ed)?|mandatory)"
+    r")",
+    re.IGNORECASE,
+)
+METADATA_CLAIM_NEGATION_RE = re.compile(
+    r"("
+    r"\bdo\s+not\b|"
+    r"\bnot\s+(?:proven|supported|required|the\s+root\s+cause)\b|"
+    r"\bno\s+evidence\b|"
+    r"\bнет\s+доказ\w*|"
+    r"\bне\s+доказ\w*|"
+    r"\bне\s+подтвержд\w*|"
+    r"\bне\s+явля\w*\s+причин\w*|"
+    r"\bне\s+требу\w*"
+    r")",
+    re.IGNORECASE,
+)
+METADATA_CLAIM_CONTRAST_RE = re.compile(
+    r"\b(?:but|however|still|nevertheless|yet|though|although|но|однако)\b",
     re.IGNORECASE,
 )
 STATS_FRESHNESS_MISSING_EVIDENCE = (
@@ -1107,6 +1148,12 @@ def build_prompt(
     cardinality_contract = build_cardinality_contract(facts_text)
     backend_tail_contract = build_backend_tail_contract(facts_text, mode)
     prompt_facts_text = facts_text_for_model_prompt(facts_text)
+    metadata_digest = build_metadata_facts_digest(facts_text)
+    metadata_digest_block = (
+        f"\n\nMETADATA FACTS DIGEST BEGIN\n{metadata_digest}\nMETADATA FACTS DIGEST END"
+        if metadata_digest
+        else ""
+    )
 
     return f"""
 You are only a report writer.
@@ -1172,7 +1219,9 @@ The final markdown file is assembled by the wrapper with:
 Do not write "# Query Doctor Report" yourself.
 Do not repeat the Source facts / Facts sha256 / Model fingerprint yourself.
 Do not write "## Факты анализатора"; Python appends that deterministic section after validation.
-Do not interpret collected table metadata in the narrative yet. If Table Metadata Context exists, it is intentionally omitted from the LLM prompt and appended later by Python in "## Факты анализатора".
+If Metadata Facts Digest is present, it is curated by Python from analysis_facts.md and may be used only as supporting evidence.
+Do not read or infer from raw SHOW output, raw DDL, impala_context.md, or impala_context.json.
+Do not claim metadata proves the root cause, do not claim stats are stale unless explicitly supported, and do not recommend COMPUTE STATS as required.
 You must write only the report body, starting with exactly these headings, in this order:
 
 ## Короткий вывод
@@ -1237,7 +1286,7 @@ Facts sha256: {facts_sha256}
 Model requested: {model}
 
 {prompt_facts_text}
-DETERMINISTIC FACTS END
+DETERMINISTIC FACTS END{metadata_digest_block}
 """.strip()
 
 
@@ -1720,6 +1769,30 @@ def find_zero_cardinality_unsupported_claims(report_text: str) -> list[str]:
     return labels
 
 
+def find_unsupported_metadata_claim_errors(report_text: str) -> list[str]:
+    errors: list[str] = []
+    for line in report_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        compute_match = REQUIRED_COMPUTE_STATS_RE.search(stripped)
+        metadata_match = UNSUPPORTED_METADATA_ROOT_CAUSE_RE.search(stripped)
+        if compute_match and not is_negated_metadata_claim(stripped, compute_match.start()):
+            errors.append("report requires COMPUTE STATS without deterministic support")
+        elif metadata_match and not is_negated_metadata_claim(stripped, metadata_match.start()):
+            errors.append("report makes unsupported metadata/stale-stats root-cause claim")
+    return errors
+
+
+def is_negated_metadata_claim(line: str, match_start: int) -> bool:
+    prefix = line[:match_start]
+    negation_matches = list(METADATA_CLAIM_NEGATION_RE.finditer(prefix))
+    if not negation_matches:
+        return False
+    latest_negation = negation_matches[-1]
+    return METADATA_CLAIM_CONTRAST_RE.search(prefix[latest_negation.end() :]) is None
+
+
 def validate_report_against_facts(report_text: str, facts_text: str) -> list[str]:
     errors: list[str] = []
     cardinality_count = facts_cardinality_anomaly_count(facts_text)
@@ -1736,6 +1809,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
     errors.extend(find_unsafe_operator_time_wording(report_text, facts_text))
     errors.extend(find_backend_tail_claim_errors(report_text, facts_text))
     errors.extend(find_spill_scratch_claim_errors(report_text, facts_text))
+    errors.extend(find_unsupported_metadata_claim_errors(report_text))
     return errors
 
 
