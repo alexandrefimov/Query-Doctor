@@ -11,8 +11,10 @@ from query_doctor_impala_metadata_workflow import (
     add_metadata_arguments,
     build_metadata_collector_cmd,
     build_metadata_plan,
+    metadata_config_status,
     print_metadata_plan,
     read_referenced_tables_from_facts,
+    resolve_metadata_mode,
     validate_metadata_args,
 )
 
@@ -108,7 +110,9 @@ def main(argv: list[str] | None = None) -> int:
     if not reporter.exists():
         print(f"[pipeline] ERROR: missing {reporter}", file=sys.stderr)
         return 2
-    if args.collect_impala_metadata and not impala_collector.exists():
+    metadata_mode = resolve_metadata_mode(args)
+
+    if metadata_mode in {"on", "dry-run"} and not impala_collector.exists():
         print(f"[pipeline] ERROR: missing {impala_collector}", file=sys.stderr)
         return 2
 
@@ -129,11 +133,33 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"[pipeline] facts: {facts}")
 
-    if args.collect_impala_metadata:
+    if metadata_mode == "auto":
+        config_status = metadata_config_status(args)
+        if config_status.configured:
+            print("[pipeline] metadata collection: auto mode configured")
+            metadata_mode = "on"
+            if not impala_collector.exists():
+                print(f"[pipeline] ERROR: missing {impala_collector}", file=sys.stderr)
+                return 2
+        elif config_status.fatal:
+            print(f"[pipeline] ERROR: metadata configuration is invalid: {config_status.reason}", file=sys.stderr)
+            return 2
+        else:
+            print(
+                "[pipeline] metadata collection: not configured; "
+                f"continuing without metadata ({config_status.reason})"
+            )
+
+    if metadata_mode in {"on", "dry-run"}:
+        if metadata_mode == "on":
+            config_status = metadata_config_status(args)
+            if not config_status.configured:
+                print(f"[pipeline] ERROR: metadata collection is not configured: {config_status.reason}", file=sys.stderr)
+                return 2
         raw_tables = read_referenced_tables_from_facts(facts)
         metadata_plan = build_metadata_plan(raw_tables, args.metadata_max_tables)
-        print_metadata_plan(metadata_plan, dry_run=args.metadata_dry_run)
-        if args.metadata_dry_run:
+        print_metadata_plan(metadata_plan, dry_run=metadata_mode == "dry-run")
+        if metadata_mode == "dry-run":
             print("[pipeline] metadata dry-run complete; analyzer/report were not rerun after metadata collection")
             return 0
         if metadata_plan.selected_tables:

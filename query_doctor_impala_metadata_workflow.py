@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +13,7 @@ from impala_shell_runner import (
     ImpalaShellConfigError,
     validate_auth,
     validate_coordinator,
+    validate_protocol,
 )
 from query_doctor_collect_impala_context import CollectorError, normalize_table_identifier
 
@@ -20,6 +23,7 @@ DEFAULT_METADATA_TIMEOUT_SEC = 30
 DEFAULT_METADATA_MAX_OUTPUT_BYTES = 262_144
 DEFAULT_METADATA_AUTH = "kerberos"
 DEFAULT_METADATA_PROTOCOL = "beeswax"
+METADATA_MODES = ("auto", "on", "off", "dry-run")
 
 
 @dataclass(frozen=True)
@@ -30,30 +34,65 @@ class MetadataPlan:
     max_tables: int
 
 
+@dataclass(frozen=True)
+class MetadataConfigStatus:
+    configured: bool
+    reason: str | None = None
+    fatal: bool = False
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
 def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--metadata-mode",
+        choices=METADATA_MODES,
+        default="auto",
+        help=(
+            "Impala metadata collection mode: auto collects only when configured, "
+            "on requires collection, off disables it, dry-run prints the plan and exits. "
+            "Default: %(default)s."
+        ),
+    )
     parser.add_argument(
         "--collect-impala-metadata",
         action="store_true",
-        help="Explicitly collect read-only Impala metadata for analyzer-referenced tables.",
+        help="Legacy alias for --metadata-mode on.",
     )
     parser.add_argument(
         "--metadata-coordinator",
+        default=os.environ.get("QD_METADATA_COORDINATOR"),
         help="Impala coordinator HOST:PORT for metadata collection.",
     )
     parser.add_argument(
         "--metadata-impala-shell",
-        default="impala-shell",
-        help="impala-shell executable for metadata collection.",
+        default=os.environ.get("QD_METADATA_IMPALA_SHELL", "impala-shell"),
+        help="impala-shell executable for metadata collection. Default: %(default)s.",
     )
     parser.add_argument(
         "--metadata-auth",
-        default=DEFAULT_METADATA_AUTH,
+        default=os.environ.get("QD_METADATA_AUTH", DEFAULT_METADATA_AUTH),
         help="Metadata collector auth mode. Only kerberos is supported.",
     )
     parser.add_argument(
         "--metadata-protocol",
         choices=["beeswax", "hs2", "hs2-http"],
-        default=DEFAULT_METADATA_PROTOCOL,
+        default=os.environ.get("QD_METADATA_PROTOCOL", DEFAULT_METADATA_PROTOCOL),
         help="impala-shell protocol for metadata collection. Default: %(default)s.",
     )
     parser.add_argument(
@@ -74,19 +113,19 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--metadata-max-output-bytes",
         type=int,
-        default=DEFAULT_METADATA_MAX_OUTPUT_BYTES,
+        default=_env_int("QD_METADATA_MAX_OUTPUT_BYTES", DEFAULT_METADATA_MAX_OUTPUT_BYTES),
         help=f"Maximum captured metadata output bytes. Default: {DEFAULT_METADATA_MAX_OUTPUT_BYTES}.",
     )
     parser.add_argument(
         "--metadata-max-tables",
         type=int,
-        default=DEFAULT_METADATA_MAX_TABLES,
+        default=_env_int("QD_METADATA_MAX_TABLES", DEFAULT_METADATA_MAX_TABLES),
         help=f"Maximum referenced tables to collect. Default: {DEFAULT_METADATA_MAX_TABLES}.",
     )
     parser.add_argument(
         "--metadata-redact",
         action="store_true",
-        default=True,
+        default=_env_bool("QD_METADATA_REDACT", True),
         help="Redact metadata output before writing. Enabled by default.",
     )
     parser.add_argument(
@@ -105,14 +144,60 @@ def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error("--metadata-max-tables must be positive")
     if args.metadata_ca_cert and not args.metadata_ssl:
         parser.error("--metadata-ca-cert requires --metadata-ssl")
-    if args.collect_impala_metadata and not args.metadata_coordinator:
-        parser.error("--metadata-coordinator is required with --collect-impala-metadata")
-    if args.collect_impala_metadata:
+    effective_mode = resolve_metadata_mode(args)
+    if effective_mode == "on" and not args.metadata_coordinator:
+        parser.error("--metadata-coordinator is required with --metadata-mode on")
+    if effective_mode in {"on", "dry-run"} and args.metadata_coordinator:
         try:
             validate_auth(args.metadata_auth)
+            validate_protocol(args.metadata_protocol)
             args.metadata_coordinator = validate_coordinator(args.metadata_coordinator)
         except ImpalaShellConfigError as exc:
             parser.error(str(exc))
+    elif effective_mode == "on":
+        try:
+            validate_auth(args.metadata_auth)
+            validate_protocol(args.metadata_protocol)
+        except ImpalaShellConfigError as exc:
+            parser.error(str(exc))
+
+
+def resolve_metadata_mode(args: argparse.Namespace) -> str:
+    if args.metadata_dry_run:
+        return "dry-run"
+    if args.collect_impala_metadata:
+        return "on"
+    return args.metadata_mode
+
+
+def metadata_config_status(args: argparse.Namespace) -> MetadataConfigStatus:
+    if not args.metadata_coordinator:
+        return MetadataConfigStatus(False, "metadata coordinator is not configured")
+    try:
+        validate_auth(args.metadata_auth)
+        validate_protocol(args.metadata_protocol)
+    except ImpalaShellConfigError as exc:
+        return MetadataConfigStatus(False, str(exc), fatal=True)
+    try:
+        args.metadata_coordinator = validate_coordinator(args.metadata_coordinator)
+    except ImpalaShellConfigError as exc:
+        return MetadataConfigStatus(False, str(exc), fatal=True)
+    if not _impala_shell_available(args.metadata_impala_shell):
+        return MetadataConfigStatus(
+            False,
+            f"impala-shell executable is not available: {args.metadata_impala_shell}",
+        )
+    return MetadataConfigStatus(True)
+
+
+def _impala_shell_available(impala_shell: str) -> bool:
+    value = impala_shell.strip()
+    if not value:
+        return False
+    if "/" in value or "\\" in value:
+        path = Path(value).expanduser()
+        return path.exists() and path.is_file()
+    return shutil.which(value) is not None
 
 
 def read_referenced_tables_from_facts(facts_path: Path) -> list[str]:
@@ -187,9 +272,10 @@ def build_metadata_collector_cmd(
             str(args.metadata_timeout_sec),
             "--max-output-bytes",
             str(args.metadata_max_output_bytes),
-            "--redact",
         ]
     )
+    if args.metadata_redact:
+        cmd.append("--redact")
     if args.metadata_ssl:
         cmd.append("--ssl")
     if args.metadata_ca_cert:
