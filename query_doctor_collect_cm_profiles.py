@@ -13,12 +13,13 @@ import argparse
 import base64
 import ipaddress
 import json
+import math
 import os
 import re
 import ssl
 import sys
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -36,6 +37,7 @@ DEFAULT_RECENT_SELECT = 5
 DEFAULT_RECENT_WINDOW_MINUTES = 60
 MAX_RECENT_LIMIT = 100
 MAX_RECENT_SELECT = 20
+RECENT_ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
 DEFAULT_LOCAL_CONFIG_NAME = ".query-doctor-cm.local.json"
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
 LOCAL_CONFIG_ALLOWED_KEYS = {
@@ -58,6 +60,9 @@ LOCAL_CONFIG_ALLOWED_KEYS = {
     "recent_include_failed",
     "recent_include_running",
     "recent_limit",
+    "recent_max_duration_sec",
+    "recent_min_duration_sec",
+    "recent_order",
     "recent_output_json",
     "recent_pool",
     "recent_select",
@@ -231,6 +236,9 @@ class CollectorConfig:
     recent_limit: int
     recent_select: int
     recent_window_minutes: int
+    recent_min_duration_sec: float | None
+    recent_max_duration_sec: float | None
+    recent_order: str
     recent_output_json: Path | None
     recent_include_failed: bool
     recent_include_running: bool
@@ -476,6 +484,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--recent-min-duration-sec",
+        type=non_negative_float,
+        help="Minimum duration in seconds for recent-query candidates.",
+    )
+    parser.add_argument(
+        "--recent-max-duration-sec",
+        type=non_negative_float,
+        help="Maximum duration in seconds for recent-query candidates.",
+    )
+    parser.add_argument(
+        "--recent-order",
+        choices=RECENT_ORDER_CHOICES,
+        help="Candidate selection order. Default: recent.",
+    )
+    parser.add_argument(
         "--recent-output-json",
         help="Optional path for sanitized recent-query candidate JSON.",
     )
@@ -553,6 +576,13 @@ def non_negative_int(value: str) -> int:
     return parsed
 
 
+def non_negative_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative number")
+    return parsed
+
+
 def validate_recent_limit(value: int | None) -> int:
     limit = value or DEFAULT_RECENT_LIMIT
     if limit > MAX_RECENT_LIMIT:
@@ -572,6 +602,30 @@ def validate_recent_select(value: int | None, limit_value: int | None) -> int:
     if selected > recent_limit:
         raise ConfigError("--recent-select must be <= --recent-limit.")
     return selected
+
+
+def validate_recent_duration_bounds(
+    min_duration_sec: float | None,
+    max_duration_sec: float | None,
+) -> tuple[float | None, float | None]:
+    if (
+        min_duration_sec is not None
+        and max_duration_sec is not None
+        and max_duration_sec < min_duration_sec
+    ):
+        raise ConfigError(
+            "--recent-max-duration-sec must be >= --recent-min-duration-sec."
+        )
+    return min_duration_sec, max_duration_sec
+
+
+def validate_recent_order(value: str | None) -> str:
+    order = value or "recent"
+    if order not in RECENT_ORDER_CHOICES:
+        raise ConfigError(
+            "recent_order must be one of: " + ", ".join(RECENT_ORDER_CHOICES) + "."
+        )
+    return order
 
 
 def resolve_optional_output_json(value: str | None, *, cwd: Path) -> Path | None:
@@ -657,6 +711,26 @@ def build_config(
     if recent_select_value is None and "recent_select" in config_values:
         recent_select_value = int(config_values["recent_select"])
     recent_select = validate_recent_select(recent_select_value, recent_limit)
+    recent_min_duration_sec, recent_max_duration_sec = validate_recent_duration_bounds(
+        float_setting(
+            "recent_min_duration_sec",
+            cli_value=args.recent_min_duration_sec,
+            config_values=config_values,
+        ),
+        float_setting(
+            "recent_max_duration_sec",
+            cli_value=args.recent_max_duration_sec,
+            config_values=config_values,
+        ),
+    )
+    recent_order = validate_recent_order(
+        string_setting(
+            "recent_order",
+            cli_value=args.recent_order,
+            config_values=config_values,
+            default="recent",
+        )
+    )
 
     return CollectorConfig(
         cm_url=cm_url,
@@ -720,6 +794,9 @@ def build_config(
             config_values=config_values,
             default=DEFAULT_RECENT_WINDOW_MINUTES,
         ),
+        recent_min_duration_sec=recent_min_duration_sec,
+        recent_max_duration_sec=recent_max_duration_sec,
+        recent_order=recent_order,
         recent_output_json=resolve_optional_output_json(
             string_setting(
                 "recent_output_json",
@@ -863,9 +940,13 @@ def normalize_local_config_value(key: str, value: object) -> object:
             "limit",
             "max_profile_bytes",
             "recent_limit",
+            "recent_max_duration_sec",
+            "recent_min_duration_sec",
             "recent_select",
             "recent_window_minutes",
         }:
+            if key in {"recent_max_duration_sec", "recent_min_duration_sec"}:
+                raise ConfigError(f"Config field {key} must be a non-negative number.")
             raise ConfigError(f"Config field {key} must be a positive integer.")
         if key == "min_duration_sec":
             raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
@@ -878,6 +959,7 @@ def normalize_local_config_value(key: str, value: object) -> object:
         "pool",
         "query_type",
         "recent_output_json",
+        "recent_order",
         "recent_pool",
         "recent_user",
         "service",
@@ -892,6 +974,10 @@ def normalize_local_config_value(key: str, value: object) -> object:
             raise ConfigError(
                 f"Config field status must be one of: {', '.join(STATUS_CHOICES)}."
             )
+        if key == "recent_order" and normalized not in RECENT_ORDER_CHOICES:
+            raise ConfigError(
+                f"Config field recent_order must be one of: {', '.join(RECENT_ORDER_CHOICES)}."
+            )
         return normalized or None
     if key in {
         "since_hours",
@@ -904,6 +990,15 @@ def normalize_local_config_value(key: str, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         return value
+    if key in {"recent_max_duration_sec", "recent_min_duration_sec"}:
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or value < 0
+        ):
+            raise ConfigError(f"Config field {key} must be a non-negative number.")
+        return float(value)
     if key == "min_duration_sec":
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
@@ -960,6 +1055,20 @@ def int_setting(
         return parsed
     if name in config_values:
         return int(config_values[name])
+    return default
+
+
+def float_setting(
+    name: str,
+    *,
+    cli_value: float | None,
+    config_values: dict[str, object],
+    default: float | None = None,
+) -> float | None:
+    if cli_value is not None:
+        return cli_value
+    if name in config_values:
+        return float(config_values[name])
     return default
 
 
@@ -1919,9 +2028,11 @@ def select_recent_query_candidates(
     user: str | None = None,
     pool: str | None = None,
     query_type: str | None = None,
+    min_duration_sec: float | None = None,
+    max_duration_sec: float | None = None,
+    order: str = "recent",
 ) -> list[RecentQueryCandidate]:
-    candidates: list[RecentQueryCandidate] = []
-    selected_count = 0
+    classified: list[tuple[RecentQueryCandidate, bool]] = []
     for summary in summaries:
         eligible, reason, sql_verb = classify_recent_query_candidate(
             summary,
@@ -1930,20 +2041,44 @@ def select_recent_query_candidates(
             user=user,
             pool=pool,
             query_type=query_type,
+            min_duration_sec=min_duration_sec,
+            max_duration_sec=max_duration_sec,
         )
-        selected = eligible and selected_count < select_limit
-        if selected:
-            selected_count += 1
-        if eligible and not selected:
-            reason = "eligible but not selected because recent-select limit was reached"
-        candidates.append(
-            RecentQueryCandidate(
-                summary=summary,
-                selected=selected,
-                reason=reason,
-                sql_verb=sql_verb,
+        classified.append(
+            (
+                RecentQueryCandidate(
+                    summary=summary,
+                    selected=False,
+                    reason=reason,
+                    sql_verb=sql_verb,
+                ),
+                eligible,
             )
         )
+
+    eligible_indexes = [index for index, (_, eligible) in enumerate(classified) if eligible]
+    if order == "duration-desc":
+        eligible_indexes.sort(
+            key=lambda index: classified[index][0].summary.duration_sec
+            if classified[index][0].summary.duration_sec is not None
+            else -1.0,
+            reverse=True,
+        )
+    elif order == "duration-asc":
+        eligible_indexes.sort(
+            key=lambda index: classified[index][0].summary.duration_sec
+            if classified[index][0].summary.duration_sec is not None
+            else float("inf")
+        )
+    selected_indexes = set(eligible_indexes[:select_limit])
+
+    candidates: list[RecentQueryCandidate] = []
+    for index, (candidate, eligible) in enumerate(classified):
+        selected = index in selected_indexes
+        reason = candidate.reason
+        if eligible and not selected:
+            reason = "eligible but not selected because recent-select limit was reached"
+        candidates.append(replace(candidate, selected=selected, reason=reason))
     return candidates
 
 
@@ -1955,6 +2090,8 @@ def classify_recent_query_candidate(
     user: str | None = None,
     pool: str | None = None,
     query_type: str | None = None,
+    min_duration_sec: float | None = None,
+    max_duration_sec: float | None = None,
 ) -> tuple[bool, str, str | None]:
     if user and summary.user != user:
         return False, "excluded: user filter mismatch", extract_sql_verb(summary.statement)
@@ -1979,15 +2116,47 @@ def classify_recent_query_candidate(
         if ADMIN_SQL_PREFIX_RE.match(statement):
             return False, "excluded: admin or metadata statement", sql_verb
         if sql_verb in {"SELECT", "WITH"}:
+            duration_ok, duration_reason = classify_recent_query_duration(
+                summary,
+                min_duration_sec=min_duration_sec,
+                max_duration_sec=max_duration_sec,
+            )
+            if not duration_ok:
+                return False, duration_reason, sql_verb
             return True, "selected: SELECT-like user query", sql_verb
         return False, "excluded: not SELECT-like query text", sql_verb
 
     query_type = (summary.query_type or "").strip().upper()
     if query_type in {"QUERY", "SELECT"}:
+        duration_ok, duration_reason = classify_recent_query_duration(
+            summary,
+            min_duration_sec=min_duration_sec,
+            max_duration_sec=max_duration_sec,
+        )
+        if not duration_ok:
+            return False, duration_reason, None
         return True, "selected: query type indicates user query; SQL verb unknown", None
     if query_type:
         return False, "excluded: query type is not user QUERY/SELECT", None
     return False, "excluded: unknown statement type", None
+
+
+def classify_recent_query_duration(
+    summary: CMQuerySummary,
+    *,
+    min_duration_sec: float | None = None,
+    max_duration_sec: float | None = None,
+) -> tuple[bool, str]:
+    if min_duration_sec is None and max_duration_sec is None:
+        return True, ""
+    duration_sec = summary.duration_sec
+    if duration_sec is None:
+        return False, "excluded: duration unknown"
+    if min_duration_sec is not None and duration_sec < min_duration_sec:
+        return False, "excluded: duration below recent-min-duration-sec"
+    if max_duration_sec is not None and duration_sec > max_duration_sec:
+        return False, "excluded: duration above recent-max-duration-sec"
+    return True, ""
 
 
 def extract_sql_verb(statement: str | None) -> str | None:
@@ -2042,6 +2211,9 @@ def write_recent_candidates_json(
         "recent_limit": config.recent_limit,
         "recent_select": config.recent_select,
         "recent_window_minutes": config.recent_window_minutes,
+        "recent_min_duration_sec": config.recent_min_duration_sec,
+        "recent_max_duration_sec": config.recent_max_duration_sec,
+        "recent_order": config.recent_order,
         "inspected_count": len(candidates),
         "selected_count": sum(1 for candidate in candidates if candidate.selected),
         "warnings": [sanitize_text_for_log(warning) for warning in warnings],
@@ -2075,6 +2247,9 @@ def run_cm_recent_query_listing(
         user=config.recent_user or config.user,
         pool=config.recent_pool or config.pool,
         query_type=config.query_type,
+        min_duration_sec=config.recent_min_duration_sec,
+        max_duration_sec=config.recent_max_duration_sec,
+        order=config.recent_order,
     )
 
     print("[CM profile collector] Recent query listing")
@@ -2084,6 +2259,19 @@ def run_cm_recent_query_listing(
     print(f"Recent window minutes: {config.recent_window_minutes}")
     print(f"Recent inspect limit: {config.recent_limit}")
     print(f"Recent select limit: {config.recent_select}")
+    min_duration_text = (
+        str(config.recent_min_duration_sec)
+        if config.recent_min_duration_sec is not None
+        else "<none>"
+    )
+    max_duration_text = (
+        str(config.recent_max_duration_sec)
+        if config.recent_max_duration_sec is not None
+        else "<none>"
+    )
+    print(f"Recent minimum duration seconds: {min_duration_text}")
+    print(f"Recent maximum duration seconds: {max_duration_text}")
+    print(f"Recent selection order: {config.recent_order}")
     print(f"Summaries inspected: {len(candidates)}")
     print(f"Candidates selected: {sum(1 for candidate in candidates if candidate.selected)}")
     for warning in warnings:
