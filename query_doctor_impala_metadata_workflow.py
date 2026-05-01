@@ -41,16 +41,6 @@ class MetadataConfigStatus:
     fatal: bool = False
 
 
-def _env_int(name: str, default: int) -> int:
-    value = os.environ.get(name)
-    if value is None or not value.strip():
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
-
-
 def _env_bool(name: str, default: bool) -> bool:
     value = os.environ.get(name)
     if value is None or not value.strip():
@@ -113,13 +103,13 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--metadata-max-output-bytes",
         type=int,
-        default=_env_int("QD_METADATA_MAX_OUTPUT_BYTES", DEFAULT_METADATA_MAX_OUTPUT_BYTES),
+        default=None,
         help=f"Maximum captured metadata output bytes. Default: {DEFAULT_METADATA_MAX_OUTPUT_BYTES}.",
     )
     parser.add_argument(
         "--metadata-max-tables",
         type=int,
-        default=_env_int("QD_METADATA_MAX_TABLES", DEFAULT_METADATA_MAX_TABLES),
+        default=None,
         help=f"Maximum referenced tables to collect. Default: {DEFAULT_METADATA_MAX_TABLES}.",
     )
     parser.add_argument(
@@ -136,6 +126,23 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    effective_mode = resolve_metadata_mode(args)
+    _resolve_metadata_int_option(
+        parser,
+        args,
+        attr="metadata_max_output_bytes",
+        env_name="QD_METADATA_MAX_OUTPUT_BYTES",
+        default=DEFAULT_METADATA_MAX_OUTPUT_BYTES,
+        use_env=effective_mode != "off",
+    )
+    _resolve_metadata_int_option(
+        parser,
+        args,
+        attr="metadata_max_tables",
+        env_name="QD_METADATA_MAX_TABLES",
+        default=DEFAULT_METADATA_MAX_TABLES,
+        use_env=effective_mode != "off",
+    )
     if args.metadata_timeout_sec <= 0:
         parser.error("--metadata-timeout-sec must be positive")
     if args.metadata_max_output_bytes <= 0:
@@ -144,7 +151,6 @@ def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error("--metadata-max-tables must be positive")
     if args.metadata_ca_cert and not args.metadata_ssl:
         parser.error("--metadata-ca-cert requires --metadata-ssl")
-    effective_mode = resolve_metadata_mode(args)
     if effective_mode == "on" and not args.metadata_coordinator:
         parser.error("--metadata-coordinator is required with --metadata-mode on")
     if effective_mode in {"on", "dry-run"} and args.metadata_coordinator:
@@ -162,6 +168,34 @@ def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Names
             parser.error(str(exc))
 
 
+def _resolve_metadata_int_option(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    *,
+    attr: str,
+    env_name: str,
+    default: int,
+    use_env: bool,
+) -> None:
+    explicit_value = getattr(args, attr)
+    if explicit_value is not None:
+        return
+    if not use_env:
+        setattr(args, attr, default)
+        return
+    raw_env_value = os.environ.get(env_name)
+    if raw_env_value is None or not raw_env_value.strip():
+        setattr(args, attr, default)
+        return
+    try:
+        value = int(raw_env_value)
+    except ValueError:
+        parser.error(f"{env_name} must be a positive integer; got {raw_env_value!r}")
+    if value <= 0:
+        parser.error(f"{env_name} must be a positive integer; got {raw_env_value!r}")
+    setattr(args, attr, value)
+
+
 def resolve_metadata_mode(args: argparse.Namespace) -> str:
     if args.metadata_dry_run:
         return "dry-run"
@@ -170,7 +204,7 @@ def resolve_metadata_mode(args: argparse.Namespace) -> str:
     return args.metadata_mode
 
 
-def metadata_config_status(args: argparse.Namespace) -> MetadataConfigStatus:
+def metadata_config_status(args: argparse.Namespace, *, base_dir: Path | None = None) -> MetadataConfigStatus:
     if not args.metadata_coordinator:
         return MetadataConfigStatus(False, "metadata coordinator is not configured")
     try:
@@ -182,22 +216,33 @@ def metadata_config_status(args: argparse.Namespace) -> MetadataConfigStatus:
         args.metadata_coordinator = validate_coordinator(args.metadata_coordinator)
     except ImpalaShellConfigError as exc:
         return MetadataConfigStatus(False, str(exc), fatal=True)
-    if not _impala_shell_available(args.metadata_impala_shell):
+    resolved_impala_shell = _resolve_impala_shell_path(args.metadata_impala_shell, base_dir=base_dir)
+    if resolved_impala_shell is None:
         return MetadataConfigStatus(
             False,
             f"impala-shell executable is not available: {args.metadata_impala_shell}",
         )
+    args.metadata_impala_shell = resolved_impala_shell
     return MetadataConfigStatus(True)
 
 
-def _impala_shell_available(impala_shell: str) -> bool:
+def _resolve_impala_shell_path(impala_shell: str, *, base_dir: Path | None = None) -> str | None:
     value = impala_shell.strip()
     if not value:
-        return False
+        return None
     if "/" in value or "\\" in value:
         path = Path(value).expanduser()
-        return path.exists() and path.is_file()
-    return shutil.which(value) is not None
+        if path.exists() and path.is_file():
+            return str(path.resolve())
+        if not path.is_absolute():
+            root = base_dir or Path(__file__).resolve().parent
+            repo_relative_path = (root / path).resolve()
+            if repo_relative_path.exists() and repo_relative_path.is_file():
+                return str(repo_relative_path)
+        return None
+    if shutil.which(value) is None:
+        return None
+    return value
 
 
 def read_referenced_tables_from_facts(facts_path: Path) -> list[str]:

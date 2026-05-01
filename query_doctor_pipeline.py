@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[pipeline] facts: {facts}")
 
     if metadata_mode == "auto":
-        config_status = metadata_config_status(args)
+        config_status = metadata_config_status(args, base_dir=repo_dir)
         if config_status.configured:
             print("[pipeline] metadata collection: auto mode configured")
             metadata_mode = "on"
@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if metadata_mode in {"on", "dry-run"}:
         if metadata_mode == "on":
-            config_status = metadata_config_status(args)
+            config_status = metadata_config_status(args, base_dir=repo_dir)
             if not config_status.configured:
                 print(f"[pipeline] ERROR: metadata collection is not configured: {config_status.reason}", file=sys.stderr)
                 return 2
