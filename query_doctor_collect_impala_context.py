@@ -13,6 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
 
+from impala_shell_runner import (
+    ImpalaShellConfigError,
+    build_impala_shell_argv,
+    run_impala_shell,
+    validate_auth,
+    validate_coordinator,
+    validate_protocol,
+)
 from query_doctor_collect_cm_profiles import HostAliasRedactor, redact_profile_text
 
 
@@ -165,13 +173,15 @@ def validate_read_only_statement(sql: str, table: str) -> None:
 
 
 def build_impala_shell_args(args: argparse.Namespace, sql: str) -> list[str]:
-    command = [args.impala_shell]
-    if args.impala_host:
-        command.extend(["-i", args.impala_host])
-    if args.kerberos:
-        command.append("-k")
-    command.extend(["-q", sql])
-    return command
+    return build_impala_shell_argv(
+        impala_shell=args.impala_shell,
+        coordinator=args.coordinator,
+        auth=args.auth,
+        sql=sql,
+        protocol=args.protocol,
+        ssl=args.ssl,
+        ca_cert=args.ca_cert,
+    )
 
 
 def decode_bytes(value: bytes) -> str:
@@ -186,11 +196,10 @@ def run_statement(
 ) -> StatementResult:
     validate_read_only_statement(plan.sql, plan.table)
     try:
-        proc = runner(
+        proc = run_impala_shell(
             build_impala_shell_args(args, plan.sql),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=args.timeout_sec,
+            timeout_sec=args.timeout_sec,
+            runner=runner,
         )
     except subprocess.TimeoutExpired:
         return StatementResult(
@@ -351,6 +360,16 @@ def collect_impala_context(
 
     if args.dry_run:
         print("Planned read-only Impala statements:")
+        print(f"- impala-shell: {args.impala_shell}")
+        coordinator = redact_impala_context_text(args.coordinator) if args.coordinator else "<required for execution>"
+        print(f"- coordinator: {coordinator}")
+        print(f"- auth: {args.auth}")
+        if args.protocol:
+            print(f"- protocol: {args.protocol}")
+        if args.ssl:
+            print("- ssl: yes")
+        if args.ca_cert:
+            print(f"- ca-cert: {redact_impala_context_text(args.ca_cert)}")
         for plan in plans:
             print(f"- {plan.sql}")
         results = [planned_result(plan) for plan in plans]
@@ -359,7 +378,9 @@ def collect_impala_context(
         results = []
         for plan in plans:
             print(f"- {plan.label} {plan.table}")
-            results.append(run_statement(args, plan, runner=runner))
+            result = run_statement(args, plan, runner=runner)
+            print(f"  status: {result.status}")
+            results.append(result)
 
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out_dir = Path(args.out)
@@ -385,8 +406,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--out", required=True, help="Output directory for impala_context.md/json.")
     parser.add_argument("--impala-shell", default="impala-shell", help="impala-shell executable.")
-    parser.add_argument("--impala-host", help="Optional impala-shell -i host:port target.")
-    parser.add_argument("--kerberos", action="store_true", help="Pass -k to impala-shell.")
+    parser.add_argument(
+        "--coordinator",
+        help="Impala coordinator HOST:PORT for real execution. Not required for --dry-run.",
+    )
+    parser.add_argument(
+        "--auth",
+        default="kerberos",
+        help="Authentication mode for impala-shell. Only kerberos is supported.",
+    )
+    parser.add_argument(
+        "--protocol",
+        choices=["beeswax", "hs2", "hs2-http"],
+        help="Optional impala-shell protocol.",
+    )
+    parser.add_argument("--ssl", action="store_true", help="Pass --ssl to impala-shell.")
+    parser.add_argument("--ca-cert", help="CA certificate path for --ssl connections.")
     parser.add_argument(
         "--timeout-sec",
         type=int,
@@ -416,6 +451,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--timeout-sec must be positive")
     if args.max_output_bytes <= 0:
         parser.error("--max-output-bytes must be positive")
+    try:
+        validate_auth(args.auth)
+        validate_protocol(args.protocol)
+        if args.coordinator:
+            args.coordinator = validate_coordinator(args.coordinator)
+        elif not args.dry_run:
+            parser.error("--coordinator is required unless --dry-run is used")
+        if args.ca_cert and not args.ssl:
+            parser.error("--ca-cert requires --ssl")
+    except ImpalaShellConfigError as exc:
+        parser.error(str(exc))
     return args
 
 
@@ -423,7 +469,7 @@ def main(argv: list[str] | None = None, *, runner: Runner = subprocess.run) -> i
     args = parse_args(argv)
     try:
         return collect_impala_context(args, runner=runner)
-    except CollectorError as exc:
+    except (CollectorError, ImpalaShellConfigError) as exc:
         print(f"error: {redact_impala_context_text(exc)}", file=sys.stderr)
         return 2
 
