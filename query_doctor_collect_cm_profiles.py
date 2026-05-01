@@ -4,7 +4,7 @@ Safe CLI for bounded Cloudera Manager profile corpus collection.
 
 Dry-run mode validates configuration without CM API calls. Non-dry-run
 collection is limited to one explicit query id and requires redaction.
-Broad recent-query collection remains disabled.
+Recent-query discovery is available as bounded read-only listing only.
 """
 
 from __future__ import annotations
@@ -31,6 +31,11 @@ DEFAULT_SINCE_HOURS = 24
 DEFAULT_LIMIT = 20
 DEFAULT_MIN_DURATION_SEC = 60
 DEFAULT_MAX_PROFILE_BYTES = 52_428_800
+DEFAULT_RECENT_LIMIT = 20
+DEFAULT_RECENT_SELECT = 5
+DEFAULT_RECENT_WINDOW_MINUTES = 60
+MAX_RECENT_LIMIT = 100
+MAX_RECENT_SELECT = 20
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
 LOCAL_CONFIG_ALLOWED_KEYS = {
     "ca_bundle",
@@ -121,6 +126,14 @@ SQL_TABLE_RE = re.compile(
     r"\b(FROM|JOIN)\s+`?[A-Za-z_][A-Za-z0-9_$]*`?",
     re.IGNORECASE,
 )
+SQL_LEADING_COMMENT_RE = re.compile(r"\A\s*(?:--[^\n]*(?:\n|$)|/\*.*?\*/\s*)+", re.DOTALL)
+ADMIN_SQL_PREFIX_RE = re.compile(
+    r"\A\s*(?:SHOW\s+(?:CREATE\s+TABLE|TABLE\s+STATS|COLUMN\s+STATS)|"
+    r"COMPUTE\s+STATS|REFRESH\b|INVALIDATE\s+METADATA|MSCK\s+REPAIR|"
+    r"DESCRIBE\b|DESC\b|SET\b|USE\b|EXPLAIN\b)",
+    re.IGNORECASE,
+)
+QUERY_DOCTOR_SMOKE_RE = re.compile(r"\bquery_doctor\b", re.IGNORECASE)
 
 PRESERVED_METADATA_KEYS = {
     "query_id",
@@ -202,6 +215,15 @@ class CollectorConfig:
     query_type: str | None
     dry_run: bool
     preflight: bool
+    list_recent_queries: bool
+    recent_limit: int
+    recent_select: int
+    recent_window_minutes: int
+    recent_output_json: Path | None
+    recent_include_failed: bool
+    recent_include_running: bool
+    recent_user: str | None
+    recent_pool: str | None
     redact: bool
     redact_identifiers: bool
     insecure_skip_verify: bool
@@ -261,6 +283,7 @@ class CMQueryFilters:
     since_hours: int
     limit: int
     min_duration_sec: int
+    since_minutes: int | None = None
     pool: str | None = None
     user: str | None = None
     status: str = "all"
@@ -268,7 +291,7 @@ class CMQueryFilters:
     query_type: str | None = None
 
     def as_log_dict(self) -> dict[str, object]:
-        return {
+        values: dict[str, object] = {
             "cluster": self.cluster,
             "service": self.service,
             "since_hours": self.since_hours,
@@ -280,6 +303,9 @@ class CMQueryFilters:
             "query_id": self.query_id,
             "query_type": self.query_type,
         }
+        if self.since_minutes is not None:
+            values["since_minutes"] = self.since_minutes
+        return values
 
 
 @dataclass(frozen=True)
@@ -292,6 +318,7 @@ class CMQuerySummary:
     user: str | None = None
     pool: str | None = None
     query_type: str | None = None
+    statement: str | None = field(default=None, repr=False)
 
     @property
     def duration_sec(self) -> float | None:
@@ -317,6 +344,14 @@ class CMCollectionResult:
     failures: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class RecentQueryCandidate:
+    summary: CMQuerySummary
+    selected: bool
+    reason: str
+    sql_verb: str | None = None
+
+
 CMQueryPageFetcher = Callable[[CMQueryFilters, Optional[str]], CMQueryPage]
 CMProfileTextFetcher = Callable[[CMQuerySummary], str]
 CMUrlOpener = Callable[..., object]
@@ -329,7 +364,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Read-only Cloudera Manager Impala query profile corpus collector. "
             "Dry-run performs no CM API calls; preflight performs bounded read-only "
             "GET checks without writing output; real collection is limited to one "
-            "explicit --query-id with --redact and --limit 1."
+            "explicit --query-id with --redact and --limit 1. "
+            "--list-recent-queries lists bounded sanitized candidates only."
         )
     )
     parser.add_argument(
@@ -395,6 +431,54 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--list-recent-queries",
+        action="store_true",
+        help=(
+            "List a bounded sanitized set of recent Impala query candidates. "
+            "Does not collect profiles or create case directories."
+        ),
+    )
+    parser.add_argument(
+        "--recent-limit",
+        type=positive_int,
+        help=(
+            "Maximum recent CM query summaries to inspect in listing mode. "
+            f"Default: {DEFAULT_RECENT_LIMIT}; hard cap: {MAX_RECENT_LIMIT}."
+        ),
+    )
+    parser.add_argument(
+        "--recent-select",
+        type=positive_int,
+        help=(
+            "Maximum listing candidates to mark selected. "
+            f"Default: {DEFAULT_RECENT_SELECT}; hard cap: {MAX_RECENT_SELECT}."
+        ),
+    )
+    parser.add_argument(
+        "--recent-window-minutes",
+        type=positive_int,
+        help=(
+            "Recent-query listing lookback window in minutes. "
+            f"Default: {DEFAULT_RECENT_WINDOW_MINUTES}."
+        ),
+    )
+    parser.add_argument(
+        "--recent-output-json",
+        help="Optional path for sanitized recent-query candidate JSON.",
+    )
+    parser.add_argument(
+        "--recent-include-failed",
+        action="store_true",
+        help="Allow failed queries in recent-query candidate selection.",
+    )
+    parser.add_argument(
+        "--recent-include-running",
+        action="store_true",
+        help="Allow running/in-progress queries in recent-query candidate selection.",
+    )
+    parser.add_argument("--recent-user", help="Optional recent-query user filter.")
+    parser.add_argument("--recent-pool", help="Optional recent-query pool filter.")
+    parser.add_argument(
         "--redact",
         action="store_true",
         default=None,
@@ -454,6 +538,39 @@ def non_negative_int(value: str) -> int:
     return parsed
 
 
+def validate_recent_limit(value: int | None) -> int:
+    limit = value or DEFAULT_RECENT_LIMIT
+    if limit > MAX_RECENT_LIMIT:
+        raise ConfigError(
+            f"--recent-limit must be <= {MAX_RECENT_LIMIT} for bounded listing."
+        )
+    return limit
+
+
+def validate_recent_select(value: int | None, limit_value: int | None) -> int:
+    recent_limit = validate_recent_limit(limit_value)
+    selected = value or min(DEFAULT_RECENT_SELECT, recent_limit)
+    if selected > MAX_RECENT_SELECT:
+        raise ConfigError(
+            f"--recent-select must be <= {MAX_RECENT_SELECT} for bounded listing."
+        )
+    if selected > recent_limit:
+        raise ConfigError("--recent-select must be <= --recent-limit.")
+    return selected
+
+
+def resolve_optional_output_json(value: str | None, *, cwd: Path) -> Path | None:
+    normalized = normalize_optional_string(value)
+    if not normalized:
+        return None
+    path = Path(normalized).expanduser()
+    if not path.is_absolute():
+        path = cwd / path
+    if path.exists() and path.is_dir():
+        raise ConfigError("--recent-output-json must point to a file, not a directory.")
+    return path
+
+
 def build_config(
     args: argparse.Namespace,
     *,
@@ -484,6 +601,8 @@ def build_config(
         raise ConfigError("Missing --service or config field service.")
 
     out_value = string_setting("out", cli_value=args.out, config_values=config_values)
+    if not out_value and args.list_recent_queries:
+        out_value = str(cwd / "cm-corpus")
     if not out_value:
         raise ConfigError("Missing --out or config field out.")
 
@@ -547,6 +666,15 @@ def build_config(
         ),
         dry_run=args.dry_run,
         preflight=args.preflight,
+        list_recent_queries=args.list_recent_queries,
+        recent_limit=validate_recent_limit(args.recent_limit),
+        recent_select=validate_recent_select(args.recent_select, args.recent_limit),
+        recent_window_minutes=args.recent_window_minutes or DEFAULT_RECENT_WINDOW_MINUTES,
+        recent_output_json=resolve_optional_output_json(args.recent_output_json, cwd=cwd),
+        recent_include_failed=args.recent_include_failed,
+        recent_include_running=args.recent_include_running,
+        recent_user=normalize_optional_string(args.recent_user),
+        recent_pool=normalize_optional_string(args.recent_pool),
         redact=bool_setting(
             "redact",
             cli_value=args.redact,
@@ -738,6 +866,22 @@ def build_query_filters(config: CollectorConfig) -> CMQueryFilters:
         user=config.user,
         status=config.status,
         query_id=config.query_id,
+        query_type=config.query_type,
+    )
+
+
+def build_recent_query_filters(config: CollectorConfig) -> CMQueryFilters:
+    return CMQueryFilters(
+        cluster=config.cluster,
+        service=config.service,
+        since_hours=max(1, (config.recent_window_minutes + 59) // 60),
+        since_minutes=config.recent_window_minutes,
+        limit=config.recent_limit,
+        min_duration_sec=config.min_duration_sec,
+        pool=config.recent_pool or config.pool,
+        user=config.recent_user or config.user,
+        status="all",
+        query_id=None,
         query_type=config.query_type,
     )
 
@@ -971,7 +1115,10 @@ def build_cm_query_summary_page_request(
         clusterName=safe_cm_path_segment(filters.cluster, "cluster"),
         serviceName=safe_cm_path_segment(filters.service, "service"),
     )
-    from_time, to_time = cm_time_window(filters.since_hours, now=now)
+    if filters.since_minutes is not None:
+        from_time, to_time = cm_time_window_minutes(filters.since_minutes, now=now)
+    else:
+        from_time, to_time = cm_time_window(filters.since_hours, now=now)
     params: dict[str, object] = {
         "from": from_time,
         "to": to_time,
@@ -993,11 +1140,19 @@ def safe_cm_path_segment(value: str, field_name: str) -> str:
 
 
 def cm_time_window(since_hours: int, *, now: datetime | None = None) -> tuple[str, str]:
+    return cm_time_window_minutes(since_hours * 60, now=now)
+
+
+def cm_time_window_minutes(
+    since_minutes: int,
+    *,
+    now: datetime | None = None,
+) -> tuple[str, str]:
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
     current = current.astimezone(timezone.utc).replace(microsecond=0)
-    start = current - timedelta(hours=since_hours)
+    start = current - timedelta(minutes=since_minutes)
     return format_cm_timestamp(start), format_cm_timestamp(current)
 
 
@@ -1121,6 +1276,20 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
         pool=normalize_optional_string(first_present(raw, ("pool", "poolName", "admissionPool"))),
         query_type=normalize_optional_string(
             first_present(raw, ("queryType", "query_type", "statementType", "statement_type"))
+        ),
+        statement=normalize_optional_string(
+            first_present(
+                raw,
+                (
+                    "statement",
+                    "statementText",
+                    "statement_text",
+                    "query",
+                    "queryText",
+                    "query_text",
+                    "sql",
+                ),
+            )
         ),
     )
 
@@ -1595,6 +1764,216 @@ def collect_query_summaries(
     return collected, warnings
 
 
+def select_recent_query_candidates(
+    summaries: Iterable[CMQuerySummary],
+    *,
+    select_limit: int,
+    include_failed: bool = False,
+    include_running: bool = False,
+    user: str | None = None,
+    pool: str | None = None,
+    query_type: str | None = None,
+) -> list[RecentQueryCandidate]:
+    candidates: list[RecentQueryCandidate] = []
+    selected_count = 0
+    for summary in summaries:
+        eligible, reason, sql_verb = classify_recent_query_candidate(
+            summary,
+            include_failed=include_failed,
+            include_running=include_running,
+            user=user,
+            pool=pool,
+            query_type=query_type,
+        )
+        selected = eligible and selected_count < select_limit
+        if selected:
+            selected_count += 1
+        if eligible and not selected:
+            reason = "eligible but not selected because recent-select limit was reached"
+        candidates.append(
+            RecentQueryCandidate(
+                summary=summary,
+                selected=selected,
+                reason=reason,
+                sql_verb=sql_verb,
+            )
+        )
+    return candidates
+
+
+def classify_recent_query_candidate(
+    summary: CMQuerySummary,
+    *,
+    include_failed: bool = False,
+    include_running: bool = False,
+    user: str | None = None,
+    pool: str | None = None,
+    query_type: str | None = None,
+) -> tuple[bool, str, str | None]:
+    if user and summary.user != user:
+        return False, "excluded: user filter mismatch", extract_sql_verb(summary.statement)
+    if pool and summary.pool != pool:
+        return False, "excluded: pool filter mismatch", extract_sql_verb(summary.statement)
+    if query_type and (summary.query_type or "").strip().upper() != query_type.strip().upper():
+        return False, "excluded: query type filter mismatch", extract_sql_verb(summary.statement)
+
+    status = (summary.status or "").strip().lower()
+    if status in {"running", "executing", "in_progress", "in-progress"} and not include_running:
+        return False, "excluded: running query", extract_sql_verb(summary.statement)
+    if status in {"failed", "error"} and not include_failed:
+        return False, "excluded: failed query", extract_sql_verb(summary.statement)
+    if status in {"cancelled", "canceled"} and not include_failed:
+        return False, "excluded: cancelled query", extract_sql_verb(summary.statement)
+
+    statement = summary.statement or ""
+    sql_verb = extract_sql_verb(statement)
+    if statement:
+        if QUERY_DOCTOR_SMOKE_RE.search(statement):
+            return False, "excluded: Query Doctor collector smoke statement", sql_verb
+        if ADMIN_SQL_PREFIX_RE.match(statement):
+            return False, "excluded: admin or metadata statement", sql_verb
+        if sql_verb in {"SELECT", "WITH"}:
+            return True, "selected: SELECT-like user query", sql_verb
+        return False, "excluded: not SELECT-like query text", sql_verb
+
+    query_type = (summary.query_type or "").strip().upper()
+    if query_type in {"QUERY", "SELECT"}:
+        return True, "selected: query type indicates user query; SQL verb unknown", None
+    if query_type:
+        return False, "excluded: query type is not user QUERY/SELECT", None
+    return False, "excluded: unknown statement type", None
+
+
+def extract_sql_verb(statement: str | None) -> str | None:
+    normalized = normalize_sql_leading_text(statement)
+    if not normalized:
+        return None
+    match = re.match(r"([A-Za-z]+)", normalized)
+    if not match:
+        return None
+    return match.group(1).upper()
+
+
+def normalize_sql_leading_text(statement: str | None) -> str:
+    text = statement or ""
+    previous = None
+    while previous != text:
+        previous = text
+        text = SQL_LEADING_COMMENT_RE.sub("", text)
+    return text.strip()
+
+
+def sanitized_recent_candidate(candidate: RecentQueryCandidate) -> dict[str, object]:
+    summary = candidate.summary
+    return {
+        "query_id": summary.query_id,
+        "selected": candidate.selected,
+        "reason": candidate.reason,
+        "sql_verb": candidate.sql_verb,
+        "query_type": summary.query_type,
+        "status": summary.status,
+        "start_time": summary.start_time,
+        "end_time": summary.end_time,
+        "duration_ms": summary.duration_ms,
+        "duration_sec": summary.duration_sec,
+        "user": "<user>" if summary.user else None,
+        "pool": sanitize_text_for_log(summary.pool) if summary.pool else None,
+    }
+
+
+def write_recent_candidates_json(
+    path: Path,
+    *,
+    config: CollectorConfig,
+    candidates: list[RecentQueryCandidate],
+    warnings: Iterable[str] = (),
+) -> None:
+    payload = {
+        "mode": "recent-query-listing",
+        "cm_url": sanitize_cm_url_for_display(config.cm_url),
+        "cluster": config.cluster,
+        "service": config.service,
+        "recent_limit": config.recent_limit,
+        "recent_select": config.recent_select,
+        "recent_window_minutes": config.recent_window_minutes,
+        "inspected_count": len(candidates),
+        "selected_count": sum(1 for candidate in candidates if candidate.selected),
+        "warnings": [sanitize_text_for_log(warning) for warning in warnings],
+        "candidates": [sanitized_recent_candidate(candidate) for candidate in candidates],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def run_cm_recent_query_listing(
+    config: CollectorConfig,
+    client: object,
+    *,
+    secrets: Iterable[str] = (),
+) -> int:
+    filters = build_recent_query_filters(config)
+    summaries, warnings = collect_query_summaries(
+        filters,
+        lambda received_filters, page_token: fetch_cm_query_summary_page(
+            client,
+            received_filters,
+            page_token,
+        ),
+        secrets=secrets,
+    )
+    candidates = select_recent_query_candidates(
+        summaries,
+        select_limit=config.recent_select,
+        include_failed=config.recent_include_failed,
+        include_running=config.recent_include_running,
+        user=config.recent_user or config.user,
+        pool=config.recent_pool or config.pool,
+        query_type=config.query_type,
+    )
+
+    print("[CM profile collector] Recent query listing")
+    print(f"CM URL: {sanitize_cm_url_for_display(config.cm_url)}")
+    print(f"Cluster: {config.cluster}")
+    print(f"Service: {config.service}")
+    print(f"Recent window minutes: {config.recent_window_minutes}")
+    print(f"Recent inspect limit: {config.recent_limit}")
+    print(f"Recent select limit: {config.recent_select}")
+    print(f"Summaries inspected: {len(candidates)}")
+    print(f"Candidates selected: {sum(1 for candidate in candidates if candidate.selected)}")
+    for warning in warnings:
+        print(f"Warning: {sanitize_text_for_log(warning, secrets=secrets)}", file=sys.stderr)
+
+    for index, candidate in enumerate(candidates, start=1):
+        safe = sanitized_recent_candidate(candidate)
+        selected = "yes" if candidate.selected else "no"
+        duration = safe["duration_sec"]
+        duration_text = f"{duration:.3f}s" if isinstance(duration, float) else "<unknown>"
+        print(
+            "  "
+            f"{index}. selected={selected} "
+            f"query_id={safe['query_id']} "
+            f"type={safe['query_type'] or '<unknown>'} "
+            f"status={safe['status'] or '<unknown>'} "
+            f"verb={safe['sql_verb'] or '<unknown>'} "
+            f"duration={duration_text} "
+            f"user={safe['user'] or '<unknown>'} "
+            f"pool={safe['pool'] or '<unknown>'} "
+            f"reason={safe['reason']}"
+        )
+
+    if config.recent_output_json:
+        write_recent_candidates_json(
+            config.recent_output_json,
+            config=config,
+            candidates=candidates,
+            warnings=warnings,
+        )
+        print(f"Sanitized JSON written: {config.recent_output_json}")
+
+    print("No profile text, raw SQL, raw JSON, case directories, analyzer output, or reports were written.")
+    return 0
+
+
 def run_cm_preflight(config: CollectorConfig, client: object) -> int:
     """Perform read-only CM endpoint shape checks without writing output."""
     print("[CM profile collector] Preflight")
@@ -1781,10 +2160,23 @@ def main(
             return 2
         return run_cm_preflight(config, client)
 
+    if config.list_recent_queries:
+        try:
+            http_config = build_http_config(config, env=env)
+            client = (client_factory or CMHttpClient)(http_config)
+        except ConfigError as exc:
+            print(f"[CM profile collector] ERROR: {exc}", file=sys.stderr)
+            return 2
+        return run_cm_recent_query_listing(
+            config,
+            client,
+            secrets=cm_env_secrets(env),
+        )
+
     try:
         if not config.query_id:
             raise ConfigError(
-                "Broad CM collection is not enabled yet. "
+                "Broad CM profile collection is not enabled. "
                 "Provide --query-id for bounded single-query collection."
             )
         if args.redact is not True:
