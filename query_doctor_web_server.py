@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local-only Query Doctor demo server for explicit CM query ids."""
+"""Local-only Query Doctor web server for explicit CM query ids."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
 import query_doctor_collect_cm_profiles as cm_collector
-from query_doctor_demo_ui import (
-    DEMO_STAGES,
+from query_doctor_web_ui import (
+    WEB_STAGES,
     render_page,
     render_readme_page,
     render_report_markdown_html,
@@ -42,21 +42,21 @@ REPORT_VALIDATION_FAILURE_MESSAGE = (
     "не показан. Попробуйте повторить генерацию."
 )
 MISSING_CM_CREDENTIALS_MESSAGE = (
-    "Не найдены учётные данные CM в окружении demo server. Запустите сервер из "
+    "Не найдены учётные данные CM в окружении web server. Запустите сервер из "
     "терминала, где заданы CM_USERNAME/CM_PASSWORD или CM_TOKEN."
 )
 
 
-class DemoError(RuntimeError):
-    """User-facing demo error that must not contain secrets or raw profiles."""
+class WebError(RuntimeError):
+    """User-facing web error that must not contain secrets or raw profiles."""
 
 
 @dataclass(frozen=True)
-class DemoSettings:
+class WebSettings:
     config: Path
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
-    allow_nonlocal_demo_bind: bool = False
+    allow_nonlocal_web_bind: bool = False
     max_profile_bytes: int | None = None
     model: str = DEFAULT_MODEL
     timeout_sec: int = DEFAULT_TIMEOUT_SEC
@@ -65,7 +65,7 @@ class DemoSettings:
 
 
 @dataclass(frozen=True)
-class DemoResult:
+class WebResult:
     query_id: str
     case_dir: Path
     case_source: str
@@ -78,7 +78,7 @@ class DemoResult:
 
 
 @dataclass(frozen=True)
-class DemoJobSnapshot:
+class WebJobSnapshot:
     job_id: str
     query_id: str
     report_mode: str
@@ -90,7 +90,7 @@ class DemoJobSnapshot:
 
 
 @dataclass
-class DemoJob:
+class WebJob:
     job_id: str
     query_id: str
     report_mode: str
@@ -100,8 +100,8 @@ class DemoJob:
     result_html: str = ""
     error: str = ""
 
-    def snapshot(self) -> DemoJobSnapshot:
-        return DemoJobSnapshot(
+    def snapshot(self) -> WebJobSnapshot:
+        return WebJobSnapshot(
             job_id=self.job_id,
             query_id=self.query_id,
             report_mode=self.report_mode,
@@ -113,14 +113,14 @@ class DemoJob:
         )
 
 
-class DemoJobStore:
+class WebJobStore:
     def __init__(self) -> None:
-        self._jobs: dict[str, DemoJob] = {}
+        self._jobs: dict[str, WebJob] = {}
         self._lock = threading.Lock()
 
-    def create(self, query_id: str, report_mode: str) -> DemoJobSnapshot:
-        stage = DEMO_STAGES[0]
-        job = DemoJob(
+    def create(self, query_id: str, report_mode: str) -> WebJobSnapshot:
+        stage = WEB_STAGES[0]
+        job = WebJob(
             job_id=uuid.uuid4().hex,
             query_id=query_id,
             report_mode=report_mode,
@@ -132,13 +132,13 @@ class DemoJobStore:
             self._jobs[job.job_id] = job
             return job.snapshot()
 
-    def get(self, job_id: str) -> DemoJobSnapshot | None:
+    def get(self, job_id: str) -> WebJobSnapshot | None:
         with self._lock:
             job = self._jobs.get(job_id)
             return job.snapshot() if job is not None else None
 
     def update_stage(self, job_id: str, stage_index: int) -> None:
-        stage = DEMO_STAGES[stage_index]
+        stage = WEB_STAGES[stage_index]
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None or job.status != "running":
@@ -146,14 +146,14 @@ class DemoJobStore:
             job.stage_label = stage[1]
             job.progress = stage[2]
 
-    def complete(self, job_id: str, result: DemoResult) -> None:
+    def complete(self, job_id: str, result: WebResult) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
                 return
             job.status = "ok"
-            job.stage_label = DEMO_STAGES[-1][1]
-            job.progress = DEMO_STAGES[-1][2]
+            job.stage_label = WEB_STAGES[-1][1]
+            job.progress = WEB_STAGES[-1][2]
             job.result_html = "\n".join(render_result(result))
             job.error = ""
 
@@ -166,14 +166,14 @@ class DemoJobStore:
             job.error = sanitize_for_display(error)
 
 
-AnalysisFunc = Callable[[str, str, bool, DemoSettings], DemoResult]
+AnalysisFunc = Callable[[str, str, bool, WebSettings], WebResult]
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 ProgressFunc = Callable[[int], None]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a localhost-only Query Doctor demo for one explicit CM query id."
+        description="Run a localhost-only Query Doctor local web UI for one explicit CM query id."
     )
     parser.add_argument(
         "--config",
@@ -183,9 +183,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Bind host. Default: {DEFAULT_HOST}.")
     parser.add_argument("--port", type=positive_int, default=DEFAULT_PORT)
     parser.add_argument(
+        "--allow-nonlocal-web-bind",
         "--allow-nonlocal-demo-bind",
+        dest="allow_nonlocal_web_bind",
         action="store_true",
-        help="Allow binding outside localhost. Unsafe for this demo; prints a warning.",
+        help=(
+            "Allow binding outside localhost. Unsafe for this local web UI; prints a warning. "
+            "--allow-nonlocal-demo-bind is accepted as a legacy alias."
+        ),
     )
     parser.add_argument(
         "--max-profile-bytes",
@@ -209,14 +214,14 @@ def positive_int(value: str) -> int:
     return parsed
 
 
-def validate_bind_host(host: str, *, allow_nonlocal_demo_bind: bool) -> None:
+def validate_bind_host(host: str, *, allow_nonlocal_web_bind: bool) -> None:
     if host in LOCAL_BIND_HOSTS:
         return
-    if allow_nonlocal_demo_bind:
+    if allow_nonlocal_web_bind:
         return
-    raise DemoError(
+    raise WebError(
         "Refusing non-local bind. Use --host 127.0.0.1 or pass "
-        "--allow-nonlocal-demo-bind explicitly for a local demo risk review."
+        "--allow-nonlocal-web-bind explicitly for a local web risk review."
     )
 
 
@@ -224,7 +229,7 @@ def validate_query_id(query_id: str) -> str:
     try:
         return cm_collector.validate_cm_query_id_path_segment(query_id)
     except cm_collector.CMAdapterError as exc:
-        raise DemoError(str(exc)) from exc
+        raise WebError(str(exc)) from exc
 
 
 def sanitize_for_display(value: object) -> str:
@@ -272,19 +277,19 @@ def has_cm_credentials(env: dict[str, str] | os._Environ[str] | None = None) -> 
     return bool(token) or (bool(username) and bool(password))
 
 
-def run_demo_analysis(
+def run_web_analysis(
     query_id: str,
     report_mode: str,
     redact_identifiers: bool,
-    settings: DemoSettings,
+    settings: WebSettings,
     *,
     runner: Runner = subprocess.run,
     progress: ProgressFunc | None = None,
-) -> DemoResult:
+) -> WebResult:
     update_progress(progress, 0)
     validated_query_id = validate_query_id(query_id)
     if report_mode not in {"admin", "user"}:
-        raise DemoError("Report mode must be admin or user.")
+        raise WebError("Report mode must be admin or user.")
 
     update_progress(progress, 1)
     expected_case_dir = expected_case_dir_for_query(validated_query_id, settings)
@@ -305,7 +310,7 @@ def run_demo_analysis(
         runner=runner,
     )
     if analyzed.returncode != 0:
-        raise DemoError(subprocess_failure_message("Query Doctor analyzer", analyzed))
+        raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
 
     update_progress(progress, 3)
     reported = run_subprocess(
@@ -324,23 +329,23 @@ def run_demo_analysis(
             runner=runner,
         )
         if retried.returncode == REPORT_VALIDATION_EXIT_CODE:
-            raise DemoError(REPORT_VALIDATION_FAILURE_MESSAGE)
+            raise WebError(REPORT_VALIDATION_FAILURE_MESSAGE)
         if retried.returncode != 0:
-            raise DemoError(subprocess_failure_message("Query Doctor report retry", retried))
+            raise WebError(subprocess_failure_message("Query Doctor report retry", retried))
         report_retry = True
     elif reported.returncode != 0:
-        raise DemoError(subprocess_failure_message("Query Doctor report generation", reported))
+        raise WebError(subprocess_failure_message("Query Doctor report generation", reported))
 
     facts_path = case_dir / "analysis_facts.md"
     report_path = case_dir / report_name
     if not facts_path.exists() or not report_path.exists():
-        raise DemoError("Analyzer/report output was not created.")
+        raise WebError("Analyzer/report output was not created.")
 
     facts_text = facts_path.read_text(encoding="utf-8", errors="replace")
     report_text = report_path.read_text(encoding="utf-8", errors="replace")
     facts = parse_facts_summary(facts_text)
     update_progress(progress, 5)
-    return DemoResult(
+    return WebResult(
         query_id=validated_query_id,
         case_dir=case_dir,
         case_source=case_source,
@@ -358,7 +363,7 @@ def update_progress(progress: ProgressFunc | None, stage_index: int) -> None:
         progress(stage_index)
 
 
-def build_analyzer_command(case_dir: Path, settings: DemoSettings) -> list[str]:
+def build_analyzer_command(case_dir: Path, settings: WebSettings) -> list[str]:
     return [
         sys.executable,
         str(settings.repo_dir / "query_doctor_pipeline.py"),
@@ -367,7 +372,7 @@ def build_analyzer_command(case_dir: Path, settings: DemoSettings) -> list[str]:
     ]
 
 
-def build_report_command(case_dir: Path, report_mode: str, report_name: str, settings: DemoSettings) -> list[str]:
+def build_report_command(case_dir: Path, report_mode: str, report_name: str, settings: WebSettings) -> list[str]:
     return [
         sys.executable,
         str(settings.repo_dir / "query_doctor_report.py"),
@@ -387,11 +392,11 @@ def collect_case(
     validated_query_id: str,
     expected_case_dir: Path,
     redact_identifiers: bool,
-    settings: DemoSettings,
+    settings: WebSettings,
     runner: Runner,
 ) -> Path:
     if not has_cm_credentials():
-        raise DemoError(MISSING_CM_CREDENTIALS_MESSAGE)
+        raise WebError(MISSING_CM_CREDENTIALS_MESSAGE)
 
     collector_cmd = [
         sys.executable,
@@ -418,7 +423,7 @@ def collect_case(
         runner=runner,
     )
     if collected.returncode != 0:
-        raise DemoError(subprocess_failure_message("CM single-query collection", collected))
+        raise WebError(subprocess_failure_message("CM single-query collection", collected))
 
     case_dir = parse_output_case_dir(collected.stdout)
     if not case_dir.is_absolute():
@@ -427,39 +432,39 @@ def collect_case(
     try:
         case_dir.relative_to(expected_corpus_dir)
     except ValueError as exc:
-        raise DemoError("Collector returned a case directory outside the demo corpus directory.") from exc
+        raise WebError("Collector returned a case directory outside the web corpus directory.") from exc
     if case_dir != expected_case_dir:
-        raise DemoError("Collector returned a case directory that does not match the requested query id.")
+        raise WebError("Collector returned a case directory that does not match the requested query id.")
     if not case_dir.exists():
-        raise DemoError("Collector did not create the expected case directory.")
+        raise WebError("Collector did not create the expected case directory.")
     return case_dir
 
 
-def expected_case_dir_for_query(validated_query_id: str, settings: DemoSettings) -> Path:
+def expected_case_dir_for_query(validated_query_id: str, settings: WebSettings) -> Path:
     try:
         slug = cm_collector.safe_case_slug(validated_query_id)
     except cm_collector.OutputError as exc:
-        raise DemoError(str(exc)) from exc
+        raise WebError(str(exc)) from exc
     corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
     case_dir = (corpus_dir / slug).resolve(strict=False)
     try:
         case_dir.relative_to(corpus_dir)
     except ValueError as exc:
-        raise DemoError("Computed demo case directory is outside the demo corpus directory.") from exc
+        raise WebError("Computed web case directory is outside the web corpus directory.") from exc
     return case_dir
 
 
 def ensure_complete_existing_case(case_dir: Path) -> None:
     if not case_dir.is_dir():
-        raise DemoError(
-            f"Existing demo case path is not a directory: {case_dir}. "
+        raise WebError(
+            f"Existing web case path is not a directory: {case_dir}. "
             "Remove that specific path manually if you want to recollect."
         )
     missing = [name for name in COLLECTED_CASE_FILES if not (case_dir / name).is_file()]
     if missing:
         missing_list = ", ".join(missing)
-        raise DemoError(
-            f"Local demo case is incomplete or broken: {case_dir}. "
+        raise WebError(
+            f"Local web case is incomplete or broken: {case_dir}. "
             f"Missing required file(s): {missing_list}. Remove or rebuild that specific case directory "
             "manually before trying to recollect."
         )
@@ -468,7 +473,7 @@ def ensure_complete_existing_case(case_dir: Path) -> None:
 def parse_output_case_dir(stdout: str) -> Path:
     match = OUTPUT_CASE_RE.search(stdout)
     if not match:
-        raise DemoError("Collector output did not include a case directory.")
+        raise WebError("Collector output did not include a case directory.")
     return Path(match.group("path").strip())
 
 
@@ -489,9 +494,9 @@ def parse_facts_summary(facts_text: str) -> dict[str, str]:
 
 def handle_analyze_request(
     form: dict[str, list[str]],
-    settings: DemoSettings,
+    settings: WebSettings,
     *,
-    analysis_func: AnalysisFunc = run_demo_analysis,
+    analysis_func: AnalysisFunc = run_web_analysis,
 ) -> tuple[int, str]:
     query_id = first_form_value(form, "query_id")
     report_mode = first_form_value(form, "mode") or "user"
@@ -500,17 +505,17 @@ def handle_analyze_request(
         return 400, render_page(settings, error="Query ID is required.")
     try:
         result = analysis_func(query_id, report_mode, redact_identifiers, settings)
-    except DemoError as exc:
+    except WebError as exc:
         return 400, render_page(settings, query_id=query_id, report_mode=report_mode, error=sanitize_for_display(exc))
     return 200, render_page(settings, query_id=query_id, report_mode=report_mode, result=result)
 
 
 def start_analyze_job(
     form: dict[str, list[str]],
-    settings: DemoSettings,
-    job_store: DemoJobStore,
+    settings: WebSettings,
+    job_store: WebJobStore,
     *,
-    analysis_func: AnalysisFunc = run_demo_analysis,
+    analysis_func: AnalysisFunc = run_web_analysis,
 ) -> tuple[int, str]:
     query_id = first_form_value(form, "query_id")
     report_mode = first_form_value(form, "mode") or "user"
@@ -533,16 +538,16 @@ def run_analysis_job(
     query_id: str,
     report_mode: str,
     redact_identifiers: bool,
-    settings: DemoSettings,
-    job_store: DemoJobStore,
+    settings: WebSettings,
+    job_store: WebJobStore,
     analysis_func: AnalysisFunc,
 ) -> None:
     def progress(stage_index: int) -> None:
         job_store.update_stage(job_id, stage_index)
 
     try:
-        if analysis_func is run_demo_analysis:
-            result = run_demo_analysis(
+        if analysis_func is run_web_analysis:
+            result = run_web_analysis(
                 query_id,
                 report_mode,
                 redact_identifiers,
@@ -552,13 +557,13 @@ def run_analysis_job(
         else:
             result = analysis_func(query_id, report_mode, redact_identifiers, settings)
         job_store.complete(job_id, result)
-    except DemoError as exc:
+    except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(job_id, "Unexpected demo failure. Details are hidden because they may contain sensitive data.")
+        job_store.fail(job_id, "Unexpected web failure. Details are hidden because they may contain sensitive data.")
 
 
-def render_job_status_json(job: DemoJobSnapshot | None) -> str:
+def render_job_status_json(job: WebJobSnapshot | None) -> str:
     if job is None:
         payload = {
             "status": "failed",
@@ -586,13 +591,13 @@ def first_form_value(form: dict[str, list[str]], name: str) -> str:
 
 
 def make_handler(
-    settings: DemoSettings,
-    analysis_func: AnalysisFunc = run_demo_analysis,
-    job_store: DemoJobStore | None = None,
+    settings: WebSettings,
+    analysis_func: AnalysisFunc = run_web_analysis,
+    job_store: WebJobStore | None = None,
 ) -> type[BaseHTTPRequestHandler]:
-    store = job_store or DemoJobStore()
+    store = job_store or WebJobStore()
 
-    class QueryDoctorDemoHandler(BaseHTTPRequestHandler):
+    class QueryDoctorWebHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             if parsed.path in {"/", "/index.html"}:
@@ -654,41 +659,41 @@ def make_handler(
             self.wfile.write(payload)
 
         def log_message(self, fmt: str, *args: object) -> None:
-            print(f"[Query Doctor demo] {self.address_string()} {fmt % args}", file=sys.stderr)
+            print(f"[Query Doctor web] {self.address_string()} {fmt % args}", file=sys.stderr)
 
-    return QueryDoctorDemoHandler
+    return QueryDoctorWebHandler
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        validate_bind_host(args.host, allow_nonlocal_demo_bind=args.allow_nonlocal_demo_bind)
-    except DemoError as exc:
-        print(f"[Query Doctor demo] ERROR: {exc}", file=sys.stderr)
+        validate_bind_host(args.host, allow_nonlocal_web_bind=args.allow_nonlocal_web_bind)
+    except WebError as exc:
+        print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
         return 2
     if args.host not in LOCAL_BIND_HOSTS:
         print(
-            "[Query Doctor demo] WARNING: non-local bind requested for a local demo server.",
+            "[Query Doctor web] WARNING: non-local bind requested for a local web server.",
             file=sys.stderr,
         )
 
-    settings = DemoSettings(
+    settings = WebSettings(
         config=Path(args.config).expanduser(),
         host=args.host,
         port=args.port,
-        allow_nonlocal_demo_bind=args.allow_nonlocal_demo_bind,
+        allow_nonlocal_web_bind=args.allow_nonlocal_web_bind,
         max_profile_bytes=args.max_profile_bytes,
         model=args.model,
         timeout_sec=args.timeout_sec,
     )
     handler = make_handler(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), handler)
-    print(f"[Query Doctor demo] listening on http://{settings.host}:{settings.port}")
-    print("[Query Doctor demo] credentials and CM config are read only by local subprocesses; they are not shown in the UI.")
+    print(f"[Query Doctor web] listening on http://{settings.host}:{settings.port}")
+    print("[Query Doctor web] credentials and CM config are read only by local subprocesses; they are not shown in the UI.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n[Query Doctor demo] stopped")
+        print("\n[Query Doctor web] stopped")
     finally:
         server.server_close()
     return 0

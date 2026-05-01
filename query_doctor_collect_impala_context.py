@@ -21,6 +21,7 @@ from impala_shell_runner import (
     validate_coordinator,
     validate_protocol,
 )
+from impala_shell_output import normalize_output_bytes
 from query_doctor_collect_cm_profiles import HostAliasRedactor, redact_profile_text
 
 
@@ -71,6 +72,12 @@ class StatementResult:
     stderr: str = ""
     returncode: int | None = None
     error: str = ""
+    stdout_raw_bytes: int = 0
+    stdout_bytes: int = 0
+    stdout_normalized: bool = False
+    stderr_raw_bytes: int = 0
+    stderr_bytes: int = 0
+    stderr_normalized: bool = False
 
 
 Runner = Callable[..., subprocess.CompletedProcess[bytes]]
@@ -184,10 +191,6 @@ def build_impala_shell_args(args: argparse.Namespace, sql: str) -> list[str]:
     )
 
 
-def decode_bytes(value: bytes) -> str:
-    return value.decode("utf-8", errors="replace")
-
-
 def run_statement(
     args: argparse.Namespace,
     plan: StatementPlan,
@@ -220,7 +223,19 @@ def run_statement(
 
     stdout_bytes = proc.stdout or b""
     stderr_bytes = proc.stderr or b""
-    if len(stdout_bytes) + len(stderr_bytes) > args.max_output_bytes:
+    stdout_output = normalize_output_bytes(stdout_bytes)
+    stderr_output = normalize_output_bytes(stderr_bytes)
+
+    size_metadata = {
+        "stdout_raw_bytes": stdout_output.raw_bytes,
+        "stdout_bytes": stdout_output.bytes,
+        "stdout_normalized": stdout_output.normalized,
+        "stderr_raw_bytes": stderr_output.raw_bytes,
+        "stderr_bytes": stderr_output.bytes,
+        "stderr_normalized": stderr_output.normalized,
+    }
+
+    if stdout_output.bytes + stderr_output.bytes > args.max_output_bytes:
         return StatementResult(
             table=plan.table,
             label=plan.label,
@@ -228,10 +243,11 @@ def run_statement(
             status="too_large",
             returncode=proc.returncode,
             error=f"captured output exceeded max-output-bytes ({args.max_output_bytes})",
+            **size_metadata,
         )
 
-    stdout = redact_impala_context_text(decode_bytes(stdout_bytes))
-    stderr = redact_impala_context_text(decode_bytes(stderr_bytes))
+    stdout = redact_impala_context_text(stdout_output.text)
+    stderr = redact_impala_context_text(stderr_output.text)
     if proc.returncode != 0:
         return StatementResult(
             table=plan.table,
@@ -242,6 +258,7 @@ def run_statement(
             stderr=stderr,
             returncode=proc.returncode,
             error=f"impala-shell exited with code {proc.returncode}",
+            **size_metadata,
         )
 
     return StatementResult(
@@ -252,6 +269,7 @@ def run_statement(
         stdout=stdout,
         stderr=stderr,
         returncode=proc.returncode,
+        **size_metadata,
     )
 
 
@@ -274,6 +292,12 @@ def result_to_json(result: StatementResult) -> dict[str, object]:
         "error": result.error,
         "stdout": result.stdout,
         "stderr": result.stderr,
+        "stdout_raw_bytes": result.stdout_raw_bytes,
+        "stdout_bytes": result.stdout_bytes,
+        "stdout_normalized": result.stdout_normalized,
+        "stderr_raw_bytes": result.stderr_raw_bytes,
+        "stderr_bytes": result.stderr_bytes,
+        "stderr_normalized": result.stderr_normalized,
     }
 
 

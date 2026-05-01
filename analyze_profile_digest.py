@@ -1118,35 +1118,74 @@ def normalize_sql(sql: str) -> str:
     return sql.strip().rstrip(";") + "\n"
 
 
+def profile_digest_text_candidates(profile_digest_text: str) -> list[str]:
+    candidates = [profile_digest_text]
+    try:
+        payload = json.loads(profile_digest_text)
+    except json.JSONDecodeError:
+        return candidates
+    if isinstance(payload, dict):
+        details = payload.get("details")
+        if isinstance(details, str) and details and details != profile_digest_text:
+            candidates.append(details)
+    return candidates
+
+
+def extract_labeled_sql_statement(text: str) -> str | None:
+    label_match = re.search(
+        r"(?ims)^\s*(?:Sql|SQL)\s+Statement\s*:\s*"
+        r"(?P<sql>(?:WITH|SELECT|INSERT)\b.*?)(?=\n\s{2,}[A-Z][A-Za-z0-9 /_-]{1,80}:\s|\n\s*$|\Z)",
+        text,
+    )
+    if label_match:
+        return normalize_sql(label_match.group("sql"))
+
+    query_match = re.search(
+        r"(?ims)\bquery\(\)\s*:\s*query\s*=\s*"
+        r"(?P<sql>(?:WITH|SELECT|INSERT)\b.*?)(?=\n\s{2,}[A-Z][A-Za-z0-9 /_-]{1,80}:\s|\n\s*$|\Z)",
+        text,
+    )
+    if query_match:
+        return normalize_sql(query_match.group("sql"))
+
+    return None
+
+
 def extract_original_sql(profile_digest_text: str) -> str | None:
-    heading_match = re.search(
-        r"(?ims)^##\s+SQL\s*$\s*```(?:sql)?\s*(?P<sql>.*?)\s*```",
-        profile_digest_text,
-    )
-    if heading_match:
-        return normalize_sql(heading_match.group("sql"))
+    for candidate_text in profile_digest_text_candidates(profile_digest_text):
+        heading_match = re.search(
+            r"(?ims)^##\s+SQL\s*$\s*```(?:sql)?\s*(?P<sql>.*?)\s*```",
+            candidate_text,
+        )
+        if heading_match:
+            return normalize_sql(heading_match.group("sql"))
 
-    labeled_fence_match = re.search(
-        r"(?ims)^\s*(?:#+\s*)?(?:Original\s+)?(?:SQL|Query)\s*:?\s*$"
-        r"\s*```(?:sql)?\s*(?P<sql>.*?)\s*```",
-        profile_digest_text,
-    )
-    if labeled_fence_match:
-        return normalize_sql(labeled_fence_match.group("sql"))
+        labeled_fence_match = re.search(
+            r"(?ims)^\s*(?:#+\s*)?(?:Original\s+)?(?:SQL|Query)\s*:?\s*$"
+            r"\s*```(?:sql)?\s*(?P<sql>.*?)\s*```",
+            candidate_text,
+        )
+        if labeled_fence_match:
+            return normalize_sql(labeled_fence_match.group("sql"))
 
-    first_sql_fence_match = re.search(
-        r"(?is)```sql\s*(?P<sql>.*?)\s*```",
-        profile_digest_text,
-    )
-    if first_sql_fence_match:
-        return normalize_sql(first_sql_fence_match.group("sql"))
+        first_sql_fence_match = re.search(
+            r"(?is)```sql\s*(?P<sql>.*?)\s*```",
+            candidate_text,
+        )
+        if first_sql_fence_match:
+            return normalize_sql(first_sql_fence_match.group("sql"))
 
-    inline_match = re.search(
-        r"(?ims)^\s*(?:Original\s+)?(?:SQL|Query)\s*:\s*(?P<sql>SELECT\b.*?)(?:\n\s*\n|$)",
-        profile_digest_text,
-    )
-    if inline_match:
-        return normalize_sql(inline_match.group("sql"))
+        inline_match = re.search(
+            r"(?ims)^\s*(?:Original\s+)?(?:SQL|Query)\s*:\s*"
+            r"(?P<sql>(?:WITH|SELECT|INSERT)\b.*?)(?:\n\s*\n|$)",
+            candidate_text,
+        )
+        if inline_match:
+            return normalize_sql(inline_match.group("sql"))
+
+        labeled_sql = extract_labeled_sql_statement(candidate_text)
+        if labeled_sql:
+            return labeled_sql
 
     return None
 
@@ -1335,6 +1374,9 @@ def sql_inputs_for_case(case_dir: Path, profile_text: str) -> list[str]:
             sql = normalize_sql(path.read_text(encoding="utf-8", errors="replace"))
             if sql.strip():
                 inputs.append(sql)
+
+    if inputs:
+        return inputs
 
     embedded_sql = extract_original_sql(profile_text)
     if embedded_sql:

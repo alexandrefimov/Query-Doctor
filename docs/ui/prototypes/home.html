@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Impala Query Doctor — Home Prototype</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg:#f7f8fa; --panel:#fff; --panel-muted:#f8fafc;
+  --border:#dce3eb; --border-strong:#c8d2df;
+  --text:#17202a; --muted:#627184; --muted-2:#7b8794;
+  --accent:#176b87; --accent-strong:#0f5268; --accent-soft:#e7f4f7;
+  --green:#166534; --green-bg:#eaf7ef;
+  --amber:#92400e; --amber-bg:#fff3d8;
+  --red:#991b1b; --red-bg:#fdecec;
+  --gray:#4b5563; --gray-bg:#eef1f5;
+  --shadow:0 1px 2px rgba(15,23,42,.04),0 3px 8px rgba(15,23,42,.03);
+  --radius:7px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  --sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.45}
+a{color:inherit;text-decoration:none}
+.page{max-width:1180px;margin:0 auto;padding:22px 28px 48px}
+.app-header{display:flex;align-items:center;justify-content:space-between;gap:22px;margin-bottom:22px}
+.brand{display:inline-flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--border-strong);border-radius:6px;background:#fff;box-shadow:0 1px 1px rgba(15,23,42,.035);color:var(--accent-strong);flex:0 0 auto}
+.brand-mark svg{width:23px;height:23px}
+.brand-title{display:block;font-weight:720;letter-spacing:-.03em;font-size:17px;line-height:1.1}
+.brand-subtitle{display:block;margin-top:3px;color:var(--muted);font-size:13px}
+.top-nav{display:flex;align-items:center;gap:5px;padding:4px;border:1px solid var(--border);border-radius:7px;background:#fff}
+.nav-link{padding:7px 12px;border-radius:6px;color:var(--muted);font-size:13px;font-weight:600}
+.nav-link.active{color:var(--text);background:var(--panel-muted);box-shadow:inset 0 0 0 1px rgba(200,210,223,.7)}
+.panel{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow)}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-height:22px;padding:2px 7px;border-radius:5px;border:1px solid transparent;font-family:var(--mono);font-size:10.5px;font-weight:750;line-height:1;white-space:nowrap}
+.badge.green{color:var(--green);background:var(--green-bg);border-color:rgba(22,101,52,.16)}
+.badge.amber{color:var(--amber);background:var(--amber-bg);border-color:rgba(146,64,14,.16)}
+.badge.red{color:var(--red);background:var(--red-bg);border-color:rgba(153,27,27,.14)}
+.badge.gray{color:var(--gray);background:var(--gray-bg);border-color:rgba(75,85,99,.14)}
+.badge.blue{color:var(--accent-strong);background:var(--accent-soft);border-color:rgba(23,107,135,.16)}
+.button{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 11px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}
+.button.primary{border-color:var(--accent-strong);background:var(--accent);color:#fff;box-shadow:0 4px 10px rgba(23,107,135,.14)}
+code,.technical{font-family:var(--mono);color:var(--text)}
+@media(max-width:760px){.page{padding:18px 16px 40px}.app-header{align-items:stretch;flex-direction:column}.top-nav{width:fit-content}}
+
+.hero{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:14px}
+.run-panel{padding:18px 20px 20px}
+.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+.section-title{margin:0;font-size:16px;font-weight:720;letter-spacing:-.01em}
+.section-kicker{margin-top:4px;color:var(--muted);font-size:13px}
+.env-line,.scope-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;color:var(--muted);font-size:12px}
+.env-line{margin-bottom:13px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff}
+.env-label,.scope-line strong{color:#303a46;font-weight:700}
+.env-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:var(--panel-muted);font-family:var(--mono);color:var(--muted)}
+.env-badge.ok:before{content:"";width:6px;height:6px;border-radius:999px;background:var(--green)}
+.run-form{display:grid;gap:13px}
+.run-main-row{display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:12px;align-items:start}
+.field{display:grid;gap:7px;min-width:0}
+.field label{color:#303a46;font-size:13px;font-weight:650}
+.input{width:100%;height:40px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;color:var(--text);font-family:var(--mono);font-size:13px;padding:0 12px;outline:none}
+.input:focus{border-color:rgba(23,107,135,.65);box-shadow:0 0 0 3px rgba(23,107,135,.1)}
+.helper{color:var(--muted);font-size:12px}
+.run-button{height:40px;min-width:88px;margin-top:26px;padding:0 17px;border:1px solid var(--accent-strong);border-radius:6px;background:var(--accent);color:#fff;font-weight:720;letter-spacing:-.01em;cursor:pointer;box-shadow:0 4px 10px rgba(23,107,135,.15)}
+.run-secondary-row{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.mode-control{display:grid;gap:6px}
+.segmented{display:inline-grid;grid-template-columns:repeat(2,1fr);gap:2px;height:34px;padding:2px;border:1px solid var(--border-strong);border-radius:6px;background:var(--panel-muted)}
+.segmented input{position:absolute;opacity:0;pointer-events:none}
+.segmented label{min-width:58px;display:grid;place-items:center;border-radius:4px;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:11.5px;font-weight:700}
+.segmented input:checked+label{color:var(--accent-strong);background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.mode-help{display:flex;flex-wrap:wrap;gap:7px;color:var(--muted);font-size:12px}
+.mode-help span{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted)}
+.context-panel{display:grid;gap:10px;padding:11px 12px 12px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted)}
+.context-head{display:flex;justify-content:space-between;gap:12px;color:#303a46;font-size:13px;font-weight:700}
+.context-head span{color:var(--muted);font-weight:500}
+.symptom-chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{position:relative;display:inline-flex;align-items:center;min-height:30px;padding:0 10px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;color:var(--muted);font-size:12px;font-weight:650;cursor:pointer;user-select:none}
+.chip input{position:absolute;opacity:0;pointer-events:none}
+.chip:has(input:checked){border-color:rgba(23,107,135,.38);background:var(--accent-soft);color:var(--accent-strong)}
+.textarea{min-height:42px;height:auto;padding-top:10px;padding-bottom:10px;resize:vertical}
+.pipeline-line{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--muted);font-size:12px}
+.pipeline-line strong{color:#303a46;font-weight:700}
+.scope-line{padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted)}
+.trust-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:14px 0;padding:9px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);font-size:12px;font-weight:650;box-shadow:0 1px 2px rgba(15,23,42,.035)}
+.trust-item{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.trust-icon{width:14px;height:14px;display:inline-grid;place-items:center;border-radius:999px;background:var(--accent-soft);color:var(--accent-strong);font-family:var(--mono);font-size:9px;line-height:1;flex:0 0 auto}
+.table-panel{overflow:hidden}
+.table-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px 12px;border-bottom:1px solid var(--border)}
+.table-title{margin:0;font-size:15px;font-weight:720;letter-spacing:-.01em}
+.table-subtitle{margin-top:4px;color:var(--muted);font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{padding:9px 14px;border-bottom:1px solid var(--border);background:var(--panel-muted);color:var(--muted);text-align:left;font-size:11px;font-weight:720;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:hover{background:#fbfdff}
+tbody tr:last-child td{border-bottom:0}
+.query-cell{display:grid;gap:4px;min-width:230px}
+.query-id{font-family:var(--mono);font-weight:700;font-size:12px}
+.query-source{color:var(--muted);font-size:11px;font-weight:650}
+.query-path{color:var(--muted-2);font-family:var(--mono);font-size:11px}
+.actions{display:flex;gap:8px;align-items:center}
+.link-button{color:var(--accent-strong);font-weight:700;font-size:12px}
+.muted-link{color:var(--muted);font-weight:650;font-size:12px}
+.manual-inputs-hidden{display:none}
+@media(max-width:880px){.run-main-row{grid-template-columns:1fr}.run-secondary-row{align-items:stretch;flex-direction:column}.mode-control,.run-button{width:100%}.segmented{width:100%}table{min-width:860px}.table-scroll{overflow-x:auto}}
+</style>
+</head>
+<body>
+  <main class="page" id="top">
+    <header class="app-header" aria-label="Application header">
+      <a class="brand" href="#top" aria-label="Go to Query Doctor home">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h3l2-5 4 10 2-5h3" />
+            <path d="M12 3v3" />
+            <path d="M12 18v3" />
+            <path d="M3 12h2" />
+            <path d="M19 12h2" />
+            <path d="M7.8 7.8 6.4 6.4" />
+            <path d="m17.6 17.6-1.4-1.4" />
+          </svg></span>
+        <span><span class="brand-title">impala-query-doctor</span><span class="brand-subtitle">Local-first Impala query diagnostics</span></span>
+      </a>
+      <nav class="top-nav" aria-label="Main navigation">
+        <a class="nav-link active" href="#run">Run</a>
+        <a class="nav-link" href="#reports">Reports</a>
+        <a class="nav-link" href="#readme">README</a>
+      </nav>
+    </header>
+
+    <section class="hero" id="run">
+      <div class="panel run-panel">
+        <div class="section-heading">
+          <div>
+            <h1 class="section-title">Run diagnosis</h1>
+            <div class="section-kicker">Start from an Impala query ID or saved case. Query Doctor collects evidence and writes a validated report.</div>
+          </div>
+        </div>
+
+        <div class="env-line" aria-label="Collector readiness">
+          <span class="env-label">Environment</span>
+          <span class="env-badge ok">Target: prod-impala</span>
+          <span class="env-badge ok">Auth: Kerberos active</span>
+          <span class="env-badge ok">CM: connected</span>
+          <span class="env-badge ok">Collector: ready</span>
+        </div>
+
+        <form class="run-form" action="#" method="post">
+          <div class="run-main-row">
+            <div class="field">
+              <label for="query-case">Query ID or case path</label>
+              <input class="input" id="query-case" name="query_or_case" placeholder="query_id or /path/to/case" autocomplete="off" />
+              <div class="helper">Run local diagnosis for a saved case path or Impala query identifier.</div>
+            </div>
+            <button class="run-button" type="submit">Run</button>
+          </div>
+
+          <div class="run-secondary-row">
+            <div class="mode-control" aria-label="Report mode">
+              <label>Mode</label>
+              <div class="segmented">
+                <input id="mode-user" type="radio" name="mode" value="user" checked />
+                <label for="mode-user">user</label>
+                <input id="mode-admin" type="radio" name="mode" value="admin" />
+                <label for="mode-admin">admin</label>
+              </div>
+            </div>
+            <div class="mode-help" aria-label="Mode description">
+              <span><code>user</code> query-facing recommendations</span>
+              <span><code>admin</code> deeper diagnostics and next checks</span>
+            </div>
+          </div>
+
+          <section class="context-panel" aria-label="Issue context">
+            <div class="context-head"><strong>Issue context</strong><span>Optional context for the report</span></div>
+            <div class="symptom-chips" aria-label="Common symptoms">
+              <label class="chip"><input type="checkbox" name="symptom" value="high_runtime" />High runtime</label>
+              <label class="chip"><input type="checkbox" name="symptom" value="failure" />Failure</label>
+              <label class="chip"><input type="checkbox" name="symptom" value="spill_to_disk" />Spill to disk</label>
+              <label class="chip"><input type="checkbox" name="symptom" value="admission_wait" />Admission wait</label>
+              <label class="chip"><input type="checkbox" name="symptom" value="backend_skew_long_tail" />Backend skew / long tail</label>
+              <label class="chip"><input type="checkbox" name="symptom" value="unknown_inspect" />Unknown / inspect</label>
+            </div>
+            <div class="field">
+              <label for="additional-context">Additional context</label>
+              <textarea class="input textarea" id="additional-context" name="additional_context" placeholder="Runs much slower than usual, fails after 10 minutes, started after stats refresh..."></textarea>
+            </div>
+          </section>
+
+          <!-- Kept in markup for future offline/debug workflows, hidden from the normal user flow. -->
+          <details class="manual-inputs-hidden" hidden aria-hidden="true">
+            <summary>Manual inputs / overrides</summary>
+          </details>
+
+          <div class="pipeline-line" aria-label="Diagnostic pipeline">
+            <span><strong>Primary input:</strong> query id or case path</span>
+            <span><strong>Auto-collected evidence:</strong> SQL · profile · EXPLAIN · metadata</span>
+            <span><strong>Output:</strong> validated report · analyzer facts appendix</span>
+          </div>
+          <div class="scope-line" aria-label="Collection scope">
+            <strong>Scope:</strong> current query only · referenced tables only · read-only metadata
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="trust-strip" aria-label="Trust and safety principles">
+      <div class="trust-item"><span class="trust-icon">✓</span>Validated before render</div>
+      <div class="trust-item"><span class="trust-icon">✓</span>Analyzer-owned facts</div>
+      <div class="trust-item"><span class="trust-icon">✓</span>LLM writes wording only</div>
+      <div class="trust-item"><span class="trust-icon">✓</span>Local-first</div>
+      <div class="trust-item"><span class="trust-icon">✓</span>Safe by default</div>
+    </section>
+
+    <section class="panel table-panel" id="reports">
+      <div class="table-head">
+        <div><h2 class="table-title">Recent reports</h2><div class="table-subtitle">Saved validated reports and diagnostic outcomes.</div></div>
+        <a class="button" href="#">Open reports directory</a>
+      </div>
+      <div class="table-scroll">
+        <table aria-label="Recent reports">
+          <thead><tr><th>query/case</th><th>mode</th><th>diagnosis</th><th>findings</th><th>validation</th><th>created</th><th>actions</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><div class="query-cell"><span class="query-id">e94c1b7d0a4f:host-tail-skew</span><span class="query-source">CM query · admin report</span><span class="query-path">cases/cm-e94-host-backend</span></div></td>
+              <td><span class="badge gray">admin</span></td><td><span class="badge amber">WARN</span></td><td>4</td><td><span class="badge green">PASS</span></td><td>2026-05-01 13:42</td>
+              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Artifacts</a><a class="muted-link" href="#">Re-run</a></div></td>
+            </tr>
+            <tr>
+              <td><div class="query-cell"><span class="query-id">fa469_bad_query</span><span class="query-source">Saved case · user report</span><span class="query-path">cases/fa469</span></div></td>
+              <td><span class="badge gray">user</span></td><td><span class="badge red">FAIL</span></td><td>2</td><td><span class="badge green">PASS</span></td><td>2026-05-01 12:18</td>
+              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Artifacts</a><a class="muted-link" href="#">Re-run</a></div></td>
+            </tr>
+            <tr>
+              <td><div class="query-cell"><span class="query-id">1f401_ok_case</span><span class="query-source">Saved case · user report</span><span class="query-path">cases/1f401</span></div></td>
+              <td><span class="badge gray">user</span></td><td><span class="badge green">OK</span></td><td>0</td><td><span class="badge green">PASS</span></td><td>2026-05-01 10:03</td>
+              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Artifacts</a><a class="muted-link" href="#">Re-run</a></div></td>
+            </tr>
+            <tr>
+              <td><div class="query-cell"><span class="query-id">local_case_partial</span><span class="query-source">Offline case · partial output</span><span class="query-path">cases/local/partial-output</span></div></td>
+              <td><span class="badge gray">admin</span></td><td><span class="badge gray">PARTIAL</span></td><td>unknown</td><td><span class="badge red">FAIL</span></td><td>2026-04-30 20:55</td>
+              <td><div class="actions"><a class="link-button" href="#">Inspect</a><a class="muted-link" href="#">Artifacts</a><a class="muted-link" href="#">Re-run</a></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
