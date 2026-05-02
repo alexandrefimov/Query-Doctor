@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -15,7 +16,7 @@ import uuid
 from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 import query_doctor_collect_cm_profiles as cm_collector
@@ -67,6 +68,7 @@ BATCH_ANALYSIS_DEPTH_VALUES = {"full", "fast"}
 DEFAULT_METADATA_AUTH = "kerberos"
 DEFAULT_METADATA_PROTOCOL = "beeswax"
 DEFAULT_METADATA_TIMEOUT_SEC = 30
+MAX_METADATA_FACTS_BYTES = 512 * 1024
 
 
 def batch_output_dir(job_id: str) -> Path:
@@ -323,20 +325,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--metadata-coordinator", help="Impala coordinator HOST:PORT for web batch metadata.")
     parser.add_argument("--metadata-impala-shell", help="impala-shell executable for web batch metadata.")
-    parser.add_argument("--metadata-auth", default=DEFAULT_METADATA_AUTH, help="Metadata auth mode. Default: kerberos.")
+    parser.add_argument(
+        "--metadata-auth",
+        help="Metadata auth mode. Default comes from config or kerberos.",
+    )
     parser.add_argument(
         "--metadata-protocol",
         choices=("beeswax", "hs2", "hs2-http"),
-        default=DEFAULT_METADATA_PROTOCOL,
-        help="impala-shell protocol for web batch metadata. Default: beeswax.",
+        help="impala-shell protocol for web batch metadata. Default comes from config or beeswax.",
     )
     parser.add_argument("--metadata-ssl", action="store_true", help="Pass --ssl to impala-shell metadata collection.")
     parser.add_argument("--metadata-ca-cert", help="CA certificate path for --metadata-ssl metadata connections.")
     parser.add_argument(
         "--metadata-timeout-sec",
         type=positive_int,
-        default=DEFAULT_METADATA_TIMEOUT_SEC,
-        help=f"Timeout per metadata statement. Default: {DEFAULT_METADATA_TIMEOUT_SEC}.",
+        help=f"Timeout per metadata statement. Default comes from config or {DEFAULT_METADATA_TIMEOUT_SEC}.",
     )
     parser.add_argument("--metadata-max-tables", type=positive_int, help="Maximum referenced tables to collect.")
     parser.add_argument("--metadata-max-output-bytes", type=positive_int, help="Maximum metadata output bytes.")
@@ -408,6 +411,47 @@ def effective_subprocess_env(
     if not effective.get("KRB5CCNAME") and settings.krb5ccname:
         effective["KRB5CCNAME"] = settings.krb5ccname
     return effective
+
+
+def resolve_metadata_impala_shell(settings: WebSettings, env: dict[str, str]) -> str | None:
+    executable = settings.metadata_impala_shell or "impala-shell"
+    if "/" in executable:
+        path = Path(executable)
+        if not path.is_absolute():
+            path = settings.repo_dir / path
+        return str(path) if path.is_file() else None
+    return shutil.which(executable, path=env.get("PATH"))
+
+
+def preflight_web_metadata_batch(
+    settings: WebSettings,
+    *,
+    runner: Runner = subprocess.run,
+    base_env: dict[str, str] | os._Environ[str] | None = None,
+) -> None:
+    env = effective_subprocess_env(settings, base_env=base_env)
+    if not metadata_configured(settings):
+        raise WebError("Metadata collection is not configured for this web session. Use Fast triage or restart with metadata options.")
+    if not resolve_metadata_impala_shell(settings, env):
+        raise WebError("Metadata preflight failed: impala-shell executable is not available. Use Fast triage or fix server metadata settings.")
+    krb5ccname = env.get("KRB5CCNAME", "")
+    if krb5ccname and any(ord(ch) < 32 or ord(ch) == 127 for ch in krb5ccname):
+        raise WebError("Metadata preflight failed: Kerberos cache setting is invalid. Use Fast triage or fix server environment.")
+    try:
+        completed = run_subprocess(
+            ["klist"],
+            cwd=settings.repo_dir,
+            timeout_sec=min(settings.timeout_sec, 30),
+            runner=runner,
+            env=env,
+        )
+    except OSError as exc:
+        raise WebError("Metadata preflight failed: klist is not available. Use Fast triage or fix server Kerberos setup.") from exc
+    if completed.returncode != 0:
+        raise WebError(
+            "Metadata preflight failed: Kerberos cache is not available or expired. "
+            "Renew the Kerberos ticket or use Fast triage."
+        )
 
 
 def subprocess_failure_message(stage: str, completed: subprocess.CompletedProcess[str]) -> str:
@@ -708,15 +752,115 @@ def metadata_configured(settings: WebSettings) -> bool:
     return bool(settings.metadata_coordinator)
 
 
-def load_krb5ccname_from_local_config(config_path: Path, *, cwd: Path) -> str | None:
+def load_web_local_config(config_path: Path, *, cwd: Path) -> dict[str, object]:
     path = config_path.expanduser()
     if not path.is_absolute():
         path = cwd / path
     if not path.is_file():
-        return None
-    values = cm_collector.load_local_config(str(path), cwd=cwd)
+        return {}
+    return cm_collector.load_local_config(str(path), cwd=cwd)
+
+
+def load_krb5ccname_from_local_config(config_path: Path, *, cwd: Path) -> str | None:
+    values = load_web_local_config(config_path, cwd=cwd)
     value = values.get("krb5ccname")
     return value if isinstance(value, str) else None
+
+
+def optional_config_string(config_values: dict[str, object], key: str) -> str | None:
+    value = config_values.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def optional_config_int(config_values: dict[str, object], key: str) -> int | None:
+    value = config_values.get(key)
+    return value if isinstance(value, int) else None
+
+
+def optional_config_bool(config_values: dict[str, object], key: str) -> bool | None:
+    value = config_values.get(key)
+    return value if isinstance(value, bool) else None
+
+
+def first_string_value(*values: str | None) -> str | None:
+    for value in values:
+        if value:
+            return value
+    return None
+
+
+def first_int_value(*values: int | None, default: int | None) -> int | None:
+    for value in values:
+        if value is not None:
+            return value
+    return default
+
+
+def merged_bool_setting(cli_value: bool, config_value: bool | None, *, default: bool = False) -> bool:
+    return bool(cli_value) or (config_value if config_value is not None else default)
+
+
+def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
+    config_path = Path(args.config).expanduser()
+    config_values = load_web_local_config(config_path, cwd=cwd)
+    return WebSettings(
+        config=config_path,
+        host=args.host,
+        port=args.port,
+        allow_nonlocal_web_bind=args.allow_nonlocal_web_bind,
+        max_profile_bytes=args.max_profile_bytes,
+        model=args.model,
+        timeout_sec=args.timeout_sec,
+        batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
+        metadata_coordinator=first_string_value(
+            args.metadata_coordinator,
+            optional_config_string(config_values, "metadata_coordinator"),
+        ),
+        metadata_impala_shell=first_string_value(
+            args.metadata_impala_shell,
+            optional_config_string(config_values, "metadata_impala_shell"),
+        ),
+        metadata_auth=first_string_value(
+            args.metadata_auth,
+            optional_config_string(config_values, "metadata_auth"),
+            DEFAULT_METADATA_AUTH,
+        )
+        or DEFAULT_METADATA_AUTH,
+        metadata_protocol=first_string_value(
+            args.metadata_protocol,
+            optional_config_string(config_values, "metadata_protocol"),
+            DEFAULT_METADATA_PROTOCOL,
+        )
+        or DEFAULT_METADATA_PROTOCOL,
+        metadata_ssl=merged_bool_setting(
+            args.metadata_ssl,
+            optional_config_bool(config_values, "metadata_ssl"),
+        ),
+        metadata_ca_cert=first_string_value(
+            args.metadata_ca_cert,
+            optional_config_string(config_values, "metadata_ca_cert"),
+        ),
+        metadata_timeout_sec=first_int_value(
+            args.metadata_timeout_sec,
+            optional_config_int(config_values, "metadata_timeout_sec"),
+            default=DEFAULT_METADATA_TIMEOUT_SEC,
+        ),
+        metadata_max_tables=first_int_value(
+            args.metadata_max_tables,
+            optional_config_int(config_values, "metadata_max_tables"),
+            default=None,
+        ),
+        metadata_max_output_bytes=first_int_value(
+            args.metadata_max_output_bytes,
+            optional_config_int(config_values, "metadata_max_output_bytes"),
+            default=None,
+        ),
+        metadata_redact=merged_bool_setting(
+            args.metadata_redact,
+            optional_config_bool(config_values, "metadata_redact"),
+        ),
+        krb5ccname=optional_config_string(config_values, "krb5ccname"),
+    )
 
 
 def display_float(value: float) -> str:
@@ -889,6 +1033,8 @@ def start_batch_job(
         default_depth = "full" if metadata_configured(settings) else "fast"
         config = parse_batch_run_config(form, default_analysis_depth=default_depth)
         validate_batch_config_for_settings(config, settings)
+        if config.analysis_depth == "full":
+            preflight_web_metadata_batch(settings, runner=runner)
     except WebError as exc:
         return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))
 
@@ -1072,6 +1218,101 @@ def find_batch_case(summary: dict[str, object], case_id: str) -> dict[str, objec
     return None
 
 
+def load_batch_case_metadata_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+    facts_path = resolve_batch_case_analysis_facts_path(settings, case)
+    if facts_path is None:
+        return None
+    try:
+        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
+            return None
+        text = facts_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return parse_table_metadata_context_facts(text)
+
+
+def resolve_batch_case_analysis_facts_path(settings: WebSettings, case: dict[str, object]) -> Path | None:
+    if settings.batch_summary is None:
+        return None
+    raw_case_dir = case.get("case_dir")
+    if not isinstance(raw_case_dir, str) or not raw_case_dir:
+        return None
+    try:
+        summary_root = settings.batch_summary.resolve(strict=True).parent
+    except OSError:
+        return None
+    case_dir = Path(raw_case_dir)
+    if not case_dir.is_absolute():
+        case_dir = summary_root / case_dir
+    try:
+        resolved_case_dir = case_dir.resolve(strict=False)
+        resolved_case_dir.relative_to(summary_root)
+        facts_path = (resolved_case_dir / "analysis_facts.md").resolve(strict=True)
+        facts_path.relative_to(summary_root)
+    except (OSError, ValueError):
+        return None
+    return facts_path
+
+
+def parse_table_metadata_context_facts(text: str) -> dict[str, Any] | None:
+    in_section = False
+    summary: dict[str, str] = {}
+    tables: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            in_section = line == "## Table Metadata Context"
+            current = None
+            continue
+        if not in_section:
+            continue
+        if line.startswith("### "):
+            if line.startswith("### Table:"):
+                current = {"table": line.removeprefix("### Table:").strip(), "statements": {}}
+                tables.append(current)
+            else:
+                current = None
+            continue
+        if not line.startswith("- ") or ": " not in line:
+            continue
+        key, value = line[2:].split(": ", 1)
+        value = clean_metadata_fact_value(value)
+        if current is None:
+            summary[key] = value
+            continue
+        if key.endswith(" status") and key[:-7].startswith("SHOW "):
+            current.setdefault("statements", {})[key[:-7]] = value
+        else:
+            current[key] = value
+    if not summary and not tables:
+        return None
+    return {
+        "summary": summary,
+        "tables": tables,
+        "statement_counts": metadata_statement_counts(tables),
+    }
+
+
+def clean_metadata_fact_value(value: str) -> str:
+    text = value.strip()
+    if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
+        return text[1:-1]
+    return text
+
+
+def metadata_statement_counts(tables: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for table in tables:
+        statements = table.get("statements")
+        if not isinstance(statements, dict):
+            continue
+        for status in statements.values():
+            key = str(status or "unknown")
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def make_handler(
     settings: WebSettings,
     analysis_func: AnalysisFunc = run_web_analysis,
@@ -1095,7 +1336,8 @@ def make_handler(
                 if case is None:
                     self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
                     return
-                self.write_html(200, render_batch_case_detail_page(effective_settings, case_id, case))
+                metadata_facts = load_batch_case_metadata_facts(effective_settings, case)
+                self.write_html(200, render_batch_case_detail_page(effective_settings, case_id, case, metadata_facts))
                 return
             if parsed.path in {"/query", "/run"}:
                 self.write_html(200, render_query_page(settings))
@@ -1175,10 +1417,9 @@ def make_handler(
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    config_path = Path(args.config).expanduser()
     try:
         validate_bind_host(args.host, allow_nonlocal_web_bind=args.allow_nonlocal_web_bind)
-        krb5ccname = load_krb5ccname_from_local_config(config_path, cwd=Path.cwd())
+        settings = build_web_settings(args, cwd=Path.cwd())
     except WebError as exc:
         print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
         return 2
@@ -1191,27 +1432,6 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    settings = WebSettings(
-        config=config_path,
-        host=args.host,
-        port=args.port,
-        allow_nonlocal_web_bind=args.allow_nonlocal_web_bind,
-        max_profile_bytes=args.max_profile_bytes,
-        model=args.model,
-        timeout_sec=args.timeout_sec,
-        batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
-        metadata_coordinator=args.metadata_coordinator,
-        metadata_impala_shell=args.metadata_impala_shell,
-        metadata_auth=args.metadata_auth,
-        metadata_protocol=args.metadata_protocol,
-        metadata_ssl=args.metadata_ssl,
-        metadata_ca_cert=args.metadata_ca_cert,
-        metadata_timeout_sec=args.metadata_timeout_sec,
-        metadata_max_tables=args.metadata_max_tables,
-        metadata_max_output_bytes=args.metadata_max_output_bytes,
-        metadata_redact=args.metadata_redact,
-        krb5ccname=krb5ccname,
-    )
     handler = make_handler(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), handler)
     print(f"[Query Doctor web] listening on http://{settings.host}:{settings.port}")

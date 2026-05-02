@@ -86,10 +86,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "report generation; no LLM/Ollama call."
         ),
     )
+    parser.add_argument(
+        "--metadata-failure-policy",
+        choices=("fail", "continue"),
+        default="fail",
+        help=(
+            "What to do if metadata collection fails. Default: fail. "
+            "continue is only allowed with --stop-after-analysis for analyzer-only batch triage."
+        ),
+    )
     add_metadata_arguments(parser)
 
     args = parser.parse_args(argv)
     validate_metadata_args(parser, args)
+    if args.metadata_failure_policy == "continue" and not args.stop_after_analysis:
+        parser.error("--metadata-failure-policy continue requires --stop-after-analysis")
     return args
 
 
@@ -167,15 +178,25 @@ def main(argv: list[str] | None = None) -> int:
             print("[pipeline] metadata dry-run complete; analyzer/report were not rerun after metadata collection")
             return 0
         if metadata_plan.selected_tables:
-            run_metadata_cmd(
-                build_metadata_collector_cmd(
-                    args,
-                    collector=impala_collector,
-                    case_dir=case_dir,
-                    tables=metadata_plan.selected_tables,
-                ),
-                cwd=repo_dir,
+            metadata_cmd = build_metadata_collector_cmd(
+                args,
+                collector=impala_collector,
+                case_dir=case_dir,
+                tables=metadata_plan.selected_tables,
             )
+            try:
+                run_metadata_cmd(metadata_cmd, cwd=repo_dir)
+            except SystemExit as exc:
+                if args.metadata_failure_policy != "continue" or not args.stop_after_analysis:
+                    raise
+                code = exc.code if isinstance(exc.code, int) else 1
+                print(
+                    "[pipeline] metadata collection failed; continuing analyzer-only "
+                    f"because --metadata-failure-policy continue is set (exit {code})"
+                )
+                print("[pipeline] partial metadata outputs are left on disk but not promoted into analyzer facts")
+                print("[pipeline] stop-after-analysis requested; report generation skipped")
+                return 0
             run_cmd(
                 [
                     sys.executable,

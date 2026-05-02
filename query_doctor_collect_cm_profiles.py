@@ -38,6 +38,8 @@ DEFAULT_RECENT_WINDOW_MINUTES = 60
 MAX_RECENT_LIMIT = 100
 MAX_RECENT_SELECT = 20
 RECENT_ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
+METADATA_AUTH_CHOICES = ("kerberos",)
+METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
 DEFAULT_LOCAL_CONFIG_NAME = ".query-doctor-cm.local.json"
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
 LOCAL_CONFIG_ALLOWED_KEYS = {
@@ -72,6 +74,16 @@ LOCAL_CONFIG_ALLOWED_KEYS = {
     "user",
     "username",
     "metadata_krb5ccname",
+    "metadata_auth",
+    "metadata_ca_cert",
+    "metadata_coordinator",
+    "metadata_impala_shell",
+    "metadata_max_output_bytes",
+    "metadata_max_tables",
+    "metadata_protocol",
+    "metadata_redact",
+    "metadata_ssl",
+    "metadata_timeout_sec",
 }
 LOCAL_CONFIG_SECRET_KEY_PARTS = (
     "access_token",
@@ -934,7 +946,7 @@ def normalize_local_config_key(key: str) -> str:
 
 def validate_local_config_key(key: str) -> None:
     key_lower = key.lower()
-    if any(part in key_lower for part in LOCAL_CONFIG_SECRET_KEY_PARTS):
+    if key != "metadata_auth" and any(part in key_lower for part in LOCAL_CONFIG_SECRET_KEY_PARTS):
         raise ConfigError(
             f"Config field {key} looks secret-bearing; use environment variables for credentials."
         )
@@ -961,6 +973,8 @@ def normalize_local_config_value(key: str, value: object) -> object:
             raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
         if key == "krb5ccname":
             raise ConfigError("Config field krb5ccname must be a non-empty string.")
+        if key == "metadata_timeout_sec":
+            raise ConfigError("Config field metadata_timeout_sec must be a positive integer.")
         return None
     if key == "krb5ccname":
         if not isinstance(value, str):
@@ -986,6 +1000,11 @@ def normalize_local_config_value(key: str, value: object) -> object:
         "status",
         "user",
         "username",
+        "metadata_auth",
+        "metadata_ca_cert",
+        "metadata_coordinator",
+        "metadata_impala_shell",
+        "metadata_protocol",
     }:
         if not isinstance(value, str):
             raise ConfigError(f"Config field {key} must be a string.")
@@ -998,6 +1017,14 @@ def normalize_local_config_value(key: str, value: object) -> object:
             raise ConfigError(
                 f"Config field recent_order must be one of: {', '.join(RECENT_ORDER_CHOICES)}."
             )
+        if key == "metadata_auth" and normalized not in METADATA_AUTH_CHOICES:
+            raise ConfigError(
+                f"Config field metadata_auth must be one of: {', '.join(METADATA_AUTH_CHOICES)}."
+            )
+        if key == "metadata_protocol" and normalized not in METADATA_PROTOCOL_CHOICES:
+            raise ConfigError(
+                f"Config field metadata_protocol must be one of: {', '.join(METADATA_PROTOCOL_CHOICES)}."
+            )
         return normalized or None
     if key in {
         "since_hours",
@@ -1006,6 +1033,9 @@ def normalize_local_config_value(key: str, value: object) -> object:
         "recent_limit",
         "recent_select",
         "recent_window_minutes",
+        "metadata_max_output_bytes",
+        "metadata_max_tables",
+        "metadata_timeout_sec",
     }:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")
@@ -1029,6 +1059,8 @@ def normalize_local_config_value(key: str, value: object) -> object:
         "recent_include_running",
         "redact",
         "redact_identifiers",
+        "metadata_redact",
+        "metadata_ssl",
     }:
         if not isinstance(value, bool):
             raise ConfigError(f"Config field {key} must be true or false.")

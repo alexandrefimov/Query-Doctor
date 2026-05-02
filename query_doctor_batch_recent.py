@@ -861,6 +861,8 @@ def run_analysis_pass(
             str(repo_root / "query_doctor_pipeline.py"),
             str(case.actual_case_dir),
             "--stop-after-analysis",
+            "--metadata-failure-policy",
+            "continue",
         ]
         append_metadata_args(cmd, config)
         result = run_subprocess(cmd, cwd=repo_root, env=env)
@@ -868,6 +870,8 @@ def run_analysis_pass(
         if result.returncode != 0:
             case.failure_category = "analysis_or_metadata_failed"
         inspect_case_outputs(case)
+        if case.analysis_status == "ok" and case.metadata_status == "failed":
+            case.failure_category = "metadata_collection_failed"
     finally:
         case.analysis_seconds = elapsed_seconds(started)
 

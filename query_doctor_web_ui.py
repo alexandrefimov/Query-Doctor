@@ -439,8 +439,13 @@ def batch_case_id(case: dict[str, Any]) -> str | None:
     return f"case-{parsed:03d}"
 
 
-def render_batch_case_detail_page(settings: Any, case_id: str, case: dict[str, Any]) -> str:
-    sections = [render_batch_case_detail(case_id, case)]
+def render_batch_case_detail_page(
+    settings: Any,
+    case_id: str,
+    case: dict[str, Any],
+    metadata_facts: dict[str, Any] | None = None,
+) -> str:
+    sections = [render_batch_case_detail(case_id, case, metadata_facts)]
     return render_page(settings, active_nav="batch", show_run_panel=False, extra_sections=sections)
 
 
@@ -458,7 +463,7 @@ def render_batch_case_not_found_page(settings: Any, case_id: str) -> str:
     return render_page(settings, active_nav="batch", show_run_panel=False, extra_sections=[section])
 
 
-def render_batch_case_detail(case_id: str, case: dict[str, Any]) -> str:
+def render_batch_case_detail(case_id: str, case: dict[str, Any], metadata_facts: dict[str, Any] | None = None) -> str:
     report_status = batch_report_status(case)
     reasons = case.get("score_reasons")
     if isinstance(reasons, list):
@@ -509,12 +514,104 @@ def render_batch_case_detail(case_id: str, case: dict[str, Any]) -> str:
         "<div class=\"batch-note\">"
         f"{html.escape(trust_note)}"
         "</div>"
+        f"{render_metadata_facts_section(case, metadata_facts)}"
         "<section class=\"panel docs-panel\" aria-label=\"Score reasons\">"
         "<h1>Score reasons</h1>"
         f"<div class=\"report-body\"><ul>{reason_items}</ul></div>"
         "</section>"
         "</section>"
     )
+
+
+def render_metadata_facts_section(case: dict[str, Any], metadata_facts: dict[str, Any] | None) -> str:
+    if not metadata_facts:
+        return (
+            "<section class=\"panel docs-panel\" aria-label=\"Metadata facts\">"
+            "<h1>Metadata facts</h1>"
+            "<div class=\"report-body\"><p>metadata facts unavailable</p>"
+            "<p>Only deterministic metadata facts from <code>analysis_facts.md</code> are rendered here.</p></div>"
+            "</section>"
+        )
+    statement_counts = metadata_facts.get("statement_counts")
+    if not isinstance(statement_counts, dict):
+        statement_counts = {}
+    summary_items = [
+        ("metadata status", case.get("metadata_status")),
+        ("referenced tables", case.get("referenced_table_count")),
+        ("collected metadata tables", case.get("collected_metadata_table_count")),
+        ("too large metadata", case.get("too_large_count")),
+        ("statement ok", statement_counts.get("ok", 0)),
+        ("statement error", statement_counts.get("error", 0)),
+        ("statement not_applicable", statement_counts.get("not_applicable", 0)),
+        ("statement too_large", statement_counts.get("too_large", 0)),
+    ]
+    summary_rows = "".join(
+        "<div class=\"meta-row\">"
+        f"<span>{html.escape(label)}</span><strong>{escape_value(value)}</strong>"
+        "</div>"
+        for label, value in summary_items
+    )
+    tables = metadata_facts.get("tables")
+    if not isinstance(tables, list):
+        tables = []
+    rows = "\n".join(render_metadata_fact_table_row(table) for table in tables if isinstance(table, dict))
+    if not rows:
+        rows = "<tr><td colspan=\"12\" class=\"empty-cell\">metadata facts unavailable</td></tr>"
+    return (
+        "<section class=\"panel docs-panel\" aria-label=\"Metadata facts\">"
+        "<h1>Metadata facts</h1>"
+        "<div class=\"report-body\">"
+        "<p>Deterministic table-level metadata facts. Missing or incomplete stats are limitations/checks, not root causes.</p>"
+        f"<div class=\"meta-list\">{summary_rows}</div>"
+        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        "<thead><tr>"
+        "<th>Table</th><th>Object</th><th>SHOW CREATE</th><th>TABLE STATS</th><th>COLUMN STATS</th>"
+        "<th>Row-count stats</th><th>Column stats</th><th>Observed</th><th>Missing</th><th>Partitions</th><th>Format</th><th>Limitations</th>"
+        "</tr></thead>"
+        f"<tbody>{rows}</tbody>"
+        "</table></div>"
+        "</div>"
+        "</section>"
+    )
+
+
+def render_metadata_fact_table_row(table: dict[str, Any]) -> str:
+    statements = table.get("statements")
+    if not isinstance(statements, dict):
+        statements = {}
+    cells = [
+        reason_cell(table.get("table")),
+        compact_cell(table.get("object type")),
+        compact_cell(status_badge(statements.get("SHOW CREATE TABLE"))),
+        compact_cell(status_badge(statements.get("SHOW TABLE STATS"))),
+        compact_cell(status_badge(statements.get("SHOW COLUMN STATS"))),
+        compact_cell(table.get("table stats row-count completeness")),
+        compact_cell(table.get("column stats completeness")),
+        compact_cell(table.get("column stats columns observed")),
+        compact_cell(table.get("column stats missing/unknown markers")),
+        reason_cell(table.get("partition columns")),
+        compact_cell(table.get("file format")),
+        reason_cell(metadata_fact_limitations(table, statements)),
+    ]
+    return f"<tr>{''.join(cells)}</tr>"
+
+
+def metadata_fact_limitations(table: dict[str, Any], statements: dict[Any, Any]) -> str:
+    limitations: list[str] = []
+    object_type = str(table.get("object type") or "unknown")
+    table_stats = str(table.get("table stats row-count completeness") or "unknown")
+    column_stats = str(table.get("column stats completeness") or "unknown")
+    if object_type == "view":
+        limitations.append("view metadata stats not applicable")
+    for statement, status in statements.items():
+        status_text = str(status or "unknown")
+        if status_text in {"error", "too_large", "timeout", "not_applicable"}:
+            limitations.append(f"{statement}: {status_text}")
+    if table_stats not in {"available", "unknown"}:
+        limitations.append(f"row-count stats: {table_stats}")
+    if column_stats not in {"available", "unknown"}:
+        limitations.append(f"column stats: {column_stats}")
+    return "; ".join(limitations) if limitations else "none observed"
 
 
 def compact_cell(value: Any) -> str:
