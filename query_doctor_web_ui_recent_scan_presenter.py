@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
-
-LOCAL_PATH_REPLACEMENT = "[local path hidden]"
-HIDDEN_FIELD_REPLACEMENT = "[hidden field]"
-RAW_PROFILE_REPLACEMENT = "[raw profile hidden]"
-RAW_METADATA_REPLACEMENT = "[metadata statement hidden]"
-RAW_OUTPUT_REPLACEMENT = "[subprocess output hidden]"
-MODEL_REPLACEMENT = "[model setting hidden]"
+from query_doctor_web_display_safety import redact_browser_display_text
 
 STATEMENT_LABELS = {
     "SHOW CREATE TABLE": "create metadata",
@@ -454,18 +447,9 @@ def safe_display_text(value: Any) -> str:
         return "false"
     if value is None:
         return "unknown"
-    text = str(value)
-    text = re.sub(r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+", LOCAL_PATH_REPLACEMENT, text)
-    text = re.sub(r"(?<![\w/])/Users/[^\s<>'\"]+", LOCAL_PATH_REPLACEMENT, text)
-    text = re.sub(r"(?<![\w/])/var/folders/[^\s<>'\"]+", LOCAL_PATH_REPLACEMENT, text)
-    text = re.sub(r"(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+", LOCAL_PATH_REPLACEMENT, text)
-    for token in ("case_dir", "CM_PASSWORD", "CM_TOKEN", "KRB5CCNAME"):
-        text = text.replace(token, HIDDEN_FIELD_REPLACEMENT)
-    for token in ("BEGIN PROFILE", "Query Timeline"):
-        text = text.replace(token, RAW_PROFILE_REPLACEMENT)
-    text = text.replace("SHOW CREATE TABLE", RAW_METADATA_REPLACEMENT)
-    text = text.replace("raw stdout", RAW_OUTPUT_REPLACEMENT)
-    text = text.replace("raw stderr", RAW_OUTPUT_REPLACEMENT)
-    text = re.sub(r"\bqwen[\w:.-]*", MODEL_REPLACEMENT, text, flags=re.IGNORECASE)
-    text = re.sub(r"\bollama\b", MODEL_REPLACEMENT, text, flags=re.IGNORECASE)
-    return text
+    return redact_browser_display_text(
+        value,
+        redact_field_names=True,
+        redact_artifact_markers=True,
+        redact_model_names=True,
+    )

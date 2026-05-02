@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlparse
 
 import query_doctor_collect_cm_profiles as cm_collector
 import table_metadata_facts
+from query_doctor_web_display_safety import redact_browser_display_text
 from query_doctor_web_ui import (
     WEB_STAGES,
     render_batch_card,
@@ -444,24 +445,7 @@ def validate_query_id(query_id: str) -> str:
 
 
 def sanitize_for_display(value: object) -> str:
-    text = str(value)
-    for secret in (os.environ.get("CM_PASSWORD"), os.environ.get("CM_TOKEN")):
-        if secret:
-            text = text.replace(secret, "<secret>")
-    text = cm_collector.AUTH_HEADER_RE.sub(r"\1<redacted>", text)
-    text = cm_collector.BEARER_BASIC_RE.sub(r"\1 <redacted>", text)
-    text = cm_collector.URL_CREDENTIAL_RE.sub(r"\1<redacted>@", text)
-    text = cm_collector.SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\4", text)
-    text = redact_local_paths_for_display(text)
-    return text[:1200]
-
-
-def redact_local_paths_for_display(text: str) -> str:
-    text = re.sub(r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+", "<local path hidden>", text)
-    text = re.sub(r"(?<![\w/])/Users/[^\s<>'\"]+", "<local path hidden>", text)
-    text = re.sub(r"(?<![\w/])/var/folders/[^\s<>'\"]+", "<local path hidden>", text)
-    text = re.sub(r"(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+", "<local path hidden>", text)
-    return text
+    return redact_browser_display_text(value, max_chars=1200)
 
 
 def run_subprocess(

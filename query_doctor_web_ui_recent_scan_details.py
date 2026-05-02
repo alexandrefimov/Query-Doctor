@@ -26,6 +26,11 @@ from query_doctor_web_ui_recent_scan_presenter import (
 )
 
 
+# Public helpers keep dict overloads for the stable rendering facade and older
+# tests. Browser routes enter through render_batch_case_detail(), which builds a
+# RecentScanCaseDetailView before rendering browser-visible fields.
+
+
 def render_batch_case_detail(
     case_id: str,
     case: dict[str, Any],
