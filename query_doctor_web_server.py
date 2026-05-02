@@ -1229,8 +1229,8 @@ def handle_optimizer_request(
     try:
         result = run_optimizer_analysis(sql, settings, runner=runner)
     except WebError as exc:
-        return 400, render_optimizer_page(settings, sql=sql, error=sanitize_for_display(exc))
-    return 200, render_optimizer_page(settings, sql=sql, result=result)
+        return 400, render_optimizer_page(settings, error=sanitize_for_display(exc))
+    return 200, render_optimizer_page(settings, result=result)
 
 
 def run_optimizer_analysis(
