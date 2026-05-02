@@ -1256,13 +1256,48 @@ def load_batch_case_metadata_facts(settings: WebSettings, case: dict[str, object
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
         return None
-    facts = load_batch_case_analysis_metadata_facts(case_dir)
-    if facts and facts.get("tables"):
-        return facts
-    context_facts = load_batch_case_impala_context_facts(case_dir)
-    if context_facts:
-        return context_facts
-    return facts
+    fallback_facts: dict[str, Any] | None = None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_batch_case_analysis_metadata_facts(artifact_dir)
+        if facts and facts.get("tables"):
+            return facts
+        if facts and fallback_facts is None:
+            fallback_facts = facts
+        context_facts = load_batch_case_impala_context_facts(artifact_dir)
+        if context_facts:
+            return context_facts
+    return fallback_facts
+
+
+def batch_case_artifact_dirs(case_dir: Path) -> list[Path]:
+    try:
+        resolved_case_dir = case_dir.resolve(strict=True)
+    except OSError:
+        return []
+    if not resolved_case_dir.is_dir():
+        return []
+
+    dirs = [resolved_case_dir]
+    try:
+        children = sorted(resolved_case_dir.iterdir(), key=lambda path: path.name)
+    except OSError:
+        return dirs
+    for child in children:
+        try:
+            resolved_child = child.resolve(strict=True)
+            resolved_child.relative_to(resolved_case_dir)
+        except (OSError, ValueError):
+            continue
+        if resolved_child.is_dir() and batch_case_artifact_dir_has_safe_facts(resolved_child):
+            dirs.append(resolved_child)
+    return dirs
+
+
+def batch_case_artifact_dir_has_safe_facts(case_dir: Path) -> bool:
+    return any(
+        (case_dir / name).is_file()
+        for name in ("analysis_facts.md", "impala_context.json")
+    ) or (case_dir / "impala_context" / "impala_context.json").is_file()
 
 
 def load_batch_case_analysis_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
