@@ -628,8 +628,8 @@ def parse_facts_summary(facts_text: str) -> dict[str, str]:
     return summary
 
 
-def parse_batch_run_config(form: dict[str, list[str]]) -> BatchRunConfig:
-    analysis_depth = first_form_value(form, "analysis_depth") or "full"
+def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth: str = "full") -> BatchRunConfig:
+    analysis_depth = first_form_value(form, "analysis_depth") or default_analysis_depth
     if analysis_depth not in BATCH_ANALYSIS_DEPTH_VALUES:
         raise WebError("Analysis depth must be full or fast.")
     recent_window_minutes = parse_positive_form_int(form, "recent_window_minutes", default=1440)
@@ -849,7 +849,8 @@ def start_batch_job(
     runner: Runner = subprocess.run,
 ) -> tuple[int, str]:
     try:
-        config = parse_batch_run_config(form)
+        default_depth = "full" if metadata_configured(settings) else "fast"
+        config = parse_batch_run_config(form, default_analysis_depth=default_depth)
         validate_batch_config_for_settings(config, settings)
     except WebError as exc:
         return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))

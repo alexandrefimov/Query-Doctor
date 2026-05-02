@@ -195,8 +195,9 @@ def render_batch_page(
 
 
 def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = None, *, run_disabled: bool = False) -> str:
+    metadata_configured = bool(getattr(settings, "metadata_coordinator", None))
     values = {
-        "analysis_depth": "full",
+        "analysis_depth": "full" if metadata_configured else "fast",
         "recent_window_minutes": "1440",
         "cm_inspect_limit": "1000",
         "select_limit": "200",
@@ -221,13 +222,21 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
 
     order = str(values.get("order") or "duration-desc")
     analysis_depth = str(values.get("analysis_depth") or "full")
+    if not metadata_configured and analysis_depth == "full":
+        analysis_depth = "fast"
+        values["analysis_depth"] = "fast"
     full_checked = " checked" if analysis_depth == "full" else ""
     fast_checked = " checked" if analysis_depth == "fast" else ""
-    metadata_configured = bool(getattr(settings, "metadata_coordinator", None))
+    full_disabled = "" if metadata_configured else " disabled"
+    full_label = (
+        "Full analysis: collect table metadata"
+        if metadata_configured
+        else "Full analysis: collect table metadata (unavailable: metadata not configured)"
+    )
     metadata_note = (
         "Metadata collection is configured for this web session."
         if metadata_configured
-        else "Metadata collection is not configured for this web session. Full mode will fail safely; Fast triage still works."
+        else "Metadata collection is not configured for this web session. Fast triage still works."
     )
     order_options = "".join(
         f"<option value=\"{html.escape(option, quote=True)}\"{' selected' if option == order else ''}>{html.escape(option)}</option>"
@@ -244,8 +253,8 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "</div><span class=\"badge blue\">batch triage</span></div>"
         "<form id=\"batch-form\" class=\"batch-form\" method=\"post\" action=\"/batch/run\">"
         "<div class=\"batch-checkbox-row\" role=\"group\" aria-label=\"Analysis depth\">"
-        f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"full\"{full_checked}> "
-        "Full analysis: collect table metadata</label>"
+        f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"full\"{full_checked}{full_disabled}> "
+        f"{html.escape(full_label)}</label>"
         f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"fast\"{fast_checked}> "
         "Fast triage: analyzer only</label>"
         "</div>"
