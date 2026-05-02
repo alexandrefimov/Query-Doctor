@@ -73,9 +73,9 @@ def render_shared_styles() -> str:
 .run-panel{padding:18px 20px 20px;margin-bottom:14px}.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.section-title{margin:0;font-size:16px;font-weight:720;letter-spacing:-.01em}.section-kicker{margin-top:4px;color:var(--muted);font-size:13px}.readiness-line,.pipeline-line,.scope-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px}.readiness-line{margin-bottom:13px}.readiness-label,.pipeline-line strong,.scope-line strong{color:#303a46;font-weight:700}.status-token{display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:#fff;font-family:var(--mono);color:var(--muted)}
 .run-form{display:grid;gap:13px}.run-main-row{display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:12px;align-items:start}.field{display:grid;gap:7px;min-width:0}.field label,.mode-control>span{color:#303a46;font-size:13px;font-weight:650}.input{width:100%;height:40px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;color:var(--text);font-family:var(--mono);font-size:13px;padding:0 12px;outline:none}.input:focus{border-color:rgba(23,107,135,.65);box-shadow:0 0 0 3px rgba(23,107,135,.1)}.helper{color:var(--muted);font-size:12px}.run-secondary-row{display:block}.mode-control{display:inline-grid;gap:6px}.segmented{display:inline-grid;grid-template-columns:repeat(2,1fr);gap:2px;height:34px;padding:2px;border:1px solid var(--border-strong);border-radius:6px;background:var(--panel-muted)}.segmented input{position:absolute;opacity:0;pointer-events:none}.segmented label{min-width:58px;display:grid;place-items:center;border-radius:4px;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:11.5px;font-weight:700}.segmented input:checked+span,.segmented input:checked+label{color:var(--accent-strong);background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06)}.segmented span{display:grid;place-items:center;min-width:58px;border-radius:4px;padding:0 10px}.mode-help{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px;color:var(--muted);font-size:12px}.mode-help span{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted)}.manual-inputs-hidden{display:none}.batch-run-panel{padding:18px 20px 20px;margin-bottom:14px}.batch-form{display:grid;gap:13px}.batch-form-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:12px}.batch-checkbox-row{display:flex;flex-wrap:wrap;gap:10px 16px;color:#303a46;font-size:13px;font-weight:650}.batch-checkbox-row input{margin-right:6px}.trust-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:14px 0;padding:9px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);font-size:12px;font-weight:650;box-shadow:0 1px 2px rgba(15,23,42,.035)}.trust-item{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.trust-icon{width:14px;height:14px;display:inline-grid;place-items:center;border-radius:999px;background:var(--accent-soft);color:var(--accent-strong);font-family:var(--mono);font-size:9px;line-height:1;flex:0 0 auto}.no-reports-note{padding:13px 14px;margin-bottom:14px;color:var(--muted);font-size:12px}.no-reports-note strong{display:block;margin-bottom:3px;color:var(--text);font-size:13px}
 .error-card{border:1px solid rgba(153,27,27,.18);background:var(--red-bg);padding:12px 14px;color:var(--red);border-radius:7px;margin-bottom:14px}.error-card strong{display:block;margin-bottom:4px;color:var(--red)}.progress-card{padding:13px 14px;margin-bottom:14px}.progress-card--hidden{display:none}.progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.progress-title{font-weight:650}.progress-stage{color:var(--muted);font-size:.84rem}.progress-bar{height:6px;border-radius:999px;background:var(--gray-bg);border:1px solid var(--border);overflow:hidden}.progress-fill{display:block;height:100%;width:4%;background:var(--accent);transition:width .2s ease}.progress-note{margin:8px 0 0;color:var(--muted);font-size:.77rem}.batch-progress{margin-top:12px;display:grid;gap:10px}.batch-progress-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.batch-progress-step{border:1px solid var(--border);border-radius:7px;background:var(--panel-muted);padding:9px 10px;min-width:0}.batch-progress-step strong{display:block;font-size:12px;color:var(--text);overflow-wrap:anywhere}.batch-progress-step span{display:block;margin-top:3px;font-size:11px;color:var(--muted);overflow-wrap:anywhere}.batch-progress-step--done{border-color:rgba(22,101,52,.2);background:var(--green-bg)}.batch-progress-step--running{border-color:rgba(23,107,135,.22);background:var(--accent-soft)}.batch-progress-step--failed{border-color:rgba(153,27,27,.18);background:var(--red-bg)}.batch-progress-metrics{display:flex;flex-wrap:wrap;gap:7px;color:var(--muted);font-size:12px}.batch-progress-metrics span{border:1px solid var(--border);border-radius:999px;background:#fff;padding:4px 8px}
-.batch-panel{padding:18px 20px;overflow:hidden}.batch-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.batch-head h1{margin:0 0 4px;font-size:20px;line-height:1.2;letter-spacing:-.02em}.batch-head p{margin:0;color:var(--muted);font-size:13px}.batch-metrics{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-bottom:12px}.batch-metric{display:grid;gap:4px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);min-width:0}.batch-metric span{color:var(--muted);font-size:11px;font-weight:650;text-transform:uppercase}.batch-metric strong{font-family:var(--mono);font-size:13px;overflow-wrap:anywhere}.batch-note{margin-bottom:12px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px}.batch-table-wrap{max-width:100%;overflow-x:auto;overflow-y:visible;border:1px solid var(--border);border-radius:7px}.batch-table{min-width:1120px;width:100%;border-collapse:collapse;font-size:12px;background:#fff}.batch-table th,.batch-table td{border-bottom:1px solid var(--border);padding:8px 9px;text-align:left;vertical-align:top}.batch-table th{position:sticky;top:0;background:var(--panel-muted);color:#303a46;font-size:11px;text-transform:uppercase;letter-spacing:0;font-weight:720}.batch-cell--compact{font-family:var(--mono);white-space:nowrap;overflow-wrap:normal}.batch-cell--reason{min-width:260px;white-space:normal;overflow-wrap:anywhere}.batch-mini-badge{display:inline-flex;align-items:center;min-height:20px;padding:2px 7px;border-radius:5px;border:1px solid transparent;font-family:var(--mono);font-size:10.5px;font-weight:750;line-height:1;white-space:nowrap}.batch-severity--high,.batch-severity--failed,.batch-status--failed,.batch-report--untrusted{color:var(--red);background:var(--red-bg);border-color:rgba(153,27,27,.14)}.batch-severity--suspicious,.batch-status--warning,.batch-report--generated{color:var(--amber);background:var(--amber-bg);border-color:rgba(146,64,14,.16)}.batch-severity--clean,.batch-status--ok,.batch-report--passed{color:var(--green);background:var(--green-bg);border-color:rgba(22,101,52,.16)}.batch-status--neutral,.batch-report--neutral{color:var(--gray);background:var(--gray-bg);border-color:rgba(75,85,99,.14)}.empty-cell{color:var(--muted);text-align:center}
+.batch-panel{padding:18px 20px;overflow:hidden}.batch-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.batch-head h1{margin:0 0 4px;font-size:20px;line-height:1.2;letter-spacing:-.02em}.batch-head p{margin:0;color:var(--muted);font-size:13px}.batch-metrics{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-bottom:12px}.batch-metric{display:grid;gap:4px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);min-width:0}.batch-metric span{color:var(--muted);font-size:11px;font-weight:650;text-transform:uppercase}.batch-metric strong{font-family:var(--mono);font-size:13px;overflow-wrap:anywhere}.batch-note{margin-bottom:12px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px}.case-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}.case-summary-card{display:grid;gap:4px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);min-width:0}.case-summary-card span{color:var(--muted);font-size:11px;font-weight:650;text-transform:uppercase}.case-summary-card strong{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}.reason-list{display:grid;gap:10px;margin:0;padding:0;list-style:none}.reason-card{border:1px solid var(--border);border-radius:7px;background:#fff;padding:10px 11px}.reason-card strong{display:block;margin-bottom:3px;font-size:13px}.reason-card p{margin:0;color:var(--muted);font-size:12px}.technical-details{margin-top:14px;border:1px solid var(--border);border-radius:7px;background:#fff;overflow:hidden}.technical-details summary{cursor:pointer;padding:12px 14px;background:var(--panel-muted);font-size:13px;font-weight:720}.technical-details .meta-list{padding:12px 14px}.metadata-statement-line{display:inline-flex;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:12px}.batch-table-wrap{max-width:100%;overflow-x:auto;overflow-y:visible;border:1px solid var(--border);border-radius:7px}.batch-table{min-width:1120px;width:100%;border-collapse:collapse;font-size:12px;background:#fff}.batch-table th,.batch-table td{border-bottom:1px solid var(--border);padding:8px 9px;text-align:left;vertical-align:top}.batch-table th{position:sticky;top:0;background:var(--panel-muted);color:#303a46;font-size:11px;text-transform:uppercase;letter-spacing:0;font-weight:720}.batch-cell--compact{font-family:var(--mono);white-space:nowrap;overflow-wrap:normal}.batch-cell--reason{min-width:260px;white-space:normal;overflow-wrap:anywhere}.batch-mini-badge{display:inline-flex;align-items:center;min-height:20px;padding:2px 7px;border-radius:5px;border:1px solid transparent;font-family:var(--mono);font-size:10.5px;font-weight:750;line-height:1;white-space:nowrap}.batch-severity--high,.batch-severity--failed,.batch-status--failed,.batch-report--untrusted{color:var(--red);background:var(--red-bg);border-color:rgba(153,27,27,.14)}.batch-severity--suspicious,.batch-status--warning,.batch-report--generated{color:var(--amber);background:var(--amber-bg);border-color:rgba(146,64,14,.16)}.batch-severity--clean,.batch-status--ok,.batch-report--passed{color:var(--green);background:var(--green-bg);border-color:rgba(22,101,52,.16)}.batch-status--neutral,.batch-report--neutral{color:var(--gray);background:var(--gray-bg);border-color:rgba(75,85,99,.14)}.empty-cell{color:var(--muted);text-align:center}
 .report-header{margin-bottom:14px;padding:18px 20px}.breadcrumb{display:flex;align-items:center;gap:8px;margin-bottom:12px;color:var(--muted);font-size:12px;font-weight:650}.report-title-row{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.report-title-row h1{margin:0 0 8px;font-size:20px;line-height:1.2;letter-spacing:-.03em}.report-subtitle{color:var(--muted);font-size:13px}.query-line{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 10px;color:var(--muted);font-size:12px}.status-strip{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px;font-weight:650}.status-item{display:inline-flex;align-items:center;gap:6px}.dot{width:7px;height:7px;border-radius:999px;background:var(--green)}.dot.amber{background:#d97706}.dot.gray{background:#6b7280}.report-shell{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}.content-main{display:grid;gap:14px}.report-card,.docs-panel{padding:0;overflow:hidden}.report-card summary,.docs-panel h1{padding:16px 18px;margin:0;border-bottom:1px solid var(--border);background:var(--panel-muted);font-size:15px;font-weight:720}.report-body{padding:16px 18px;color:var(--text);font-size:13px}.report-body h1,.report-body h2,.report-body h3,.report-body h4{margin:1.15em 0 .5em;line-height:1.2}.report-body h1:first-child,.report-body h2:first-child,.report-body h3:first-child{margin-top:0}.report-body h1{font-size:20px}.report-body h2{font-size:17px}.report-body h3{font-size:15px}.report-body p{margin:.7em 0}.report-body ul,.report-body ol{margin:.55em 0 .8em;padding-left:1.35rem}.report-body li{margin:.32em 0;overflow-wrap:anywhere}.report-body code{background:var(--panel-muted);border:1px solid var(--border);border-radius:5px;padding:.08rem .28rem;font-family:var(--mono);font-size:.88em;overflow-wrap:anywhere}.report-body pre{margin:.75em 0;padding:12px;background:#0f1720;color:#e5edf5;border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere}.report-body pre code{border:0;background:transparent;padding:0;color:inherit}.report-body blockquote{margin:.75em 0;padding:.35em .8em;border-left:3px solid var(--accent);background:var(--accent-soft);color:#36505c}.report-body table{width:100%;border-collapse:collapse;margin:.8em 0;font-size:.86rem}.report-body th,.report-body td{border:1px solid var(--border);padding:6px 8px;text-align:left;vertical-align:top}.report-body th{background:var(--panel-muted);color:#303a46}.appendix-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px}.side-panel{position:sticky;top:18px;display:grid;gap:14px}.side-card{padding:14px}.side-card h2{margin:0 0 10px;font-size:14px}.meta-list{display:grid;gap:8px}.meta-row{display:flex;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--border);color:var(--muted);font-size:12px}.meta-row:last-child{padding-bottom:0;border-bottom:0}.meta-row strong{color:var(--text);font-family:var(--mono);font-size:11px;text-align:right}.artifact-list,.toc-list,.timeline{display:grid;gap:7px}.artifact-item,.toc-list a{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px;padding:8px 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px;font-weight:650}.artifact-item code{display:block;margin-top:2px;font-family:var(--mono);color:var(--text);font-size:11px}.toc-list a{display:block}.timeline-item{display:grid;grid-template-columns:16px 1fr;gap:8px;color:var(--muted);font-size:12px}.timeline-dot{width:8px;height:8px;margin-top:5px;border-radius:999px;background:var(--green)}.timeline-item strong{display:block;color:var(--text);font-size:12px}
-@media(max-width:980px){.report-shell{grid-template-columns:1fr}.side-panel{position:static}.batch-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.batch-form-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}}@media(max-width:760px){.page{padding:18px 16px 40px}.app-header{align-items:stretch;flex-direction:column}.top-nav{width:fit-content}.run-main-row{grid-template-columns:1fr}.run-secondary-row{align-items:stretch;flex-direction:column}.mode-control,.run-button{width:100%}.segmented{width:100%}.report-title-row{align-items:stretch;flex-direction:column}.batch-metrics,.batch-form-grid{grid-template-columns:1fr}}
+@media(max-width:980px){.report-shell{grid-template-columns:1fr}.side-panel{position:static}.batch-metrics,.case-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.batch-form-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}}@media(max-width:760px){.page{padding:18px 16px 40px}.app-header{align-items:stretch;flex-direction:column}.top-nav{width:fit-content}.run-main-row{grid-template-columns:1fr}.run-secondary-row{align-items:stretch;flex-direction:column}.mode-control,.run-button{width:100%}.segmented{width:100%}.report-title-row{align-items:stretch;flex-direction:column}.batch-metrics,.batch-form-grid,.case-summary-grid{grid-template-columns:1fr}}
 """.strip()
 
 
@@ -446,8 +446,9 @@ def render_batch_case_detail_page(
     case_id: str,
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
+    report_state: dict[str, Any] | None = None,
 ) -> str:
-    sections = [render_batch_case_detail(case_id, case, metadata_facts)]
+    sections = [render_batch_case_detail(case_id, case, metadata_facts, report_state=report_state)]
     return render_page(settings, active_nav="batch", show_run_panel=False, extra_sections=sections)
 
 
@@ -465,13 +466,66 @@ def render_batch_case_not_found_page(settings: Any, case_id: str) -> str:
     return render_page(settings, active_nav="batch", show_run_panel=False, extra_sections=[section])
 
 
-def render_batch_case_detail(case_id: str, case: dict[str, Any], metadata_facts: dict[str, Any] | None = None) -> str:
-    report_status = batch_report_status(case)
-    reasons = case.get("score_reasons")
-    if isinstance(reasons, list):
-        reason_items = "".join(f"<li>{escape_value(item)}</li>" for item in reasons)
-    else:
-        reason_items = "<li>unknown</li>"
+def render_batch_case_report_page(settings: Any, case_id: str, case: dict[str, Any], report_text: str) -> str:
+    query_id = case.get("query_id")
+    section = (
+        "<section class=\"panel report-header\" aria-label=\"Batch case report header\">"
+        "<div class=\"breadcrumb\"><a href=\"/\">Batch</a><span>/</span>"
+        f"<a href=\"/batch/case/{html.escape(case_id, quote=True)}\">{html.escape(case_id)}</a>"
+        "<span>/</span><span>validated report</span></div>"
+        "<div class=\"report-title-row\"><div>"
+        "<h1>Validated batch case report</h1>"
+        "<div class=\"report-subtitle\">Rendered only after the report action completed validation.</div>"
+        "<div class=\"query-line\">"
+        f"<span>Case:</span><code>{html.escape(case_id)}</code>"
+        f"<span>Query:</span><code>{escape_value(query_id)}</code>"
+        "</div></div></div>"
+        "<div class=\"status-strip\" aria-label=\"Report status\">"
+        "<span class=\"status-item\"><span class=\"dot\"></span>Validation: <span class=\"badge green\">PASS</span></span>"
+        "<span class=\"status-item\"><span class=\"dot gray\"></span>Mode: <span class=\"badge gray\">admin</span></span>"
+        "<span class=\"status-item\"><span class=\"dot\"></span>Partial reports remain untrusted and hidden</span>"
+        "</div></section>"
+        "<details class=\"panel report-card\" open aria-label=\"Validated report body\">"
+        "<summary>Validated diagnosis markdown</summary>"
+        f"<div class=\"report-body\">{render_report_markdown_html(report_text, with_heading_ids=True)}</div>"
+        "</details>"
+    )
+    return render_page(settings, active_nav="batch", show_run_panel=False, extra_sections=[section])
+
+
+def render_batch_case_detail(
+    case_id: str,
+    case: dict[str, Any],
+    metadata_facts: dict[str, Any] | None = None,
+    *,
+    report_state: dict[str, Any] | None = None,
+) -> str:
+    report_status = batch_case_display_report_status(case, report_state)
+    trust_note = (
+        "Validated report exists for this batch case."
+        if report_status == "validated report"
+        else "No trusted generated report is rendered here. Partial reports remain untrusted."
+    )
+    return (
+        "<section class=\"panel batch-panel\" aria-label=\"Batch case details\">"
+        "<div class=\"batch-head\"><div><h1>Batch case details</h1>"
+        "<p>Read-only deterministic summary fields from <code>batch_summary.json</code>.</p></div>"
+        f"<span class=\"badge blue\">{html.escape(case_id)}</span></div>"
+        "<div class=\"batch-note\">This page does not render raw SQL, profiles, metadata, or local case paths.</div>"
+        f"{render_case_status_summary(case_id, case, report_status)}"
+        "<div class=\"batch-note\">"
+        f"{html.escape(trust_note)}"
+        "</div>"
+        f"{render_batch_case_report_action(case_id, report_state)}"
+        f"{render_score_reason_explanations(case)}"
+        f"{render_runtime_signals(case)}"
+        f"{render_metadata_facts_section(case, metadata_facts)}"
+        f"{render_technical_details(case)}"
+        "</section>"
+    )
+
+
+def render_case_status_summary(case_id: str, case: dict[str, Any], report_status: str) -> str:
     fields = [
         ("case", case_id),
         ("query id", case.get("query_id")),
@@ -481,10 +535,76 @@ def render_batch_case_detail(case_id: str, case: dict[str, Any], metadata_facts:
         ("analysis", status_badge(case.get("analysis_status"))),
         ("metadata", status_badge(case.get("metadata_status"))),
         ("report", report_badge(report_status)),
+    ]
+    cards = "".join(
+        "<div class=\"case-summary-card\">"
+        f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
+        "</div>"
+        for label, value in fields
+    )
+    return f"<section aria-label=\"Case status summary\"><div class=\"case-summary-grid\">{cards}</div></section>"
+
+
+def render_runtime_signals(case: dict[str, Any]) -> str:
+    fields = [
         ("cardinality anomalies", case.get("cardinality_anomaly_count")),
         ("memory anomalies", case.get("memory_anomaly_count")),
         ("backend data skew", case.get("backend_data_skew")),
         ("host-tail candidates", case.get("host_tail_candidate_count")),
+    ]
+    rows = metadata_rows(fields)
+    return (
+        "<section class=\"panel docs-panel\" aria-label=\"Runtime signals\">"
+        "<h1>Runtime signals</h1>"
+        f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
+        "</section>"
+    )
+
+
+def render_batch_case_report_action(case_id: str, report_state: dict[str, Any] | None) -> str:
+    state = report_state if isinstance(report_state, dict) else {}
+    status = str(state.get("status") or "not_run")
+    escaped_case_id = html.escape(case_id, quote=True)
+    open_link = (
+        f"<a class=\"button\" href=\"/batch/case/{escaped_case_id}/report\">Open validated report</a>"
+        if state.get("trusted")
+        else ""
+    )
+    if state.get("running"):
+        action = "<button class=\"button\" type=\"submit\" disabled>Generating report</button>"
+        note = "Report generation is running for this selected case."
+    else:
+        action = "<button class=\"button\" type=\"submit\">Generate validated report</button>"
+        note = "Runs one validated admin report for this selected case only. No batch-wide report generation is started."
+    partial_note = (
+        "<div class=\"batch-note\">Partial report exists but is untrusted and hidden.</div>"
+        if state.get("partial") and not state.get("trusted")
+        else ""
+    )
+    error = state.get("error")
+    error_note = (
+        f"<div class=\"error-card\"><strong>Report generation failed</strong>{escape_value(error)}</div>"
+        if error
+        else ""
+    )
+    return (
+        "<section class=\"panel docs-panel\" aria-label=\"Validated report action\">"
+        "<h1>Validated report</h1>"
+        "<div class=\"report-body\">"
+        f"<div class=\"batch-note\">Report status: <strong>{escape_value(status)}</strong>. {html.escape(note)}</div>"
+        f"{partial_note}"
+        f"{error_note}"
+        "<form method=\"post\" "
+        f"action=\"/batch/case/{escaped_case_id}/report\">"
+        f"{action}{open_link}"
+        "</form>"
+        "</div>"
+        "</section>"
+    )
+
+
+def render_technical_details(case: dict[str, Any]) -> str:
+    fields = [
         ("referenced tables", case.get("referenced_table_count")),
         ("collected metadata tables", case.get("collected_metadata_table_count")),
         ("too large metadata", case.get("too_large_count")),
@@ -495,33 +615,97 @@ def render_batch_case_detail(case_id: str, case: dict[str, Any], metadata_facts:
         ("total seconds", case.get("total_seconds")),
         ("report generated", case.get("report_generated")),
     ]
-    rows = "".join(
+    rows = metadata_rows(fields)
+    return (
+        "<details class=\"technical-details\">"
+        "<summary>Technical details</summary>"
+        f"<div class=\"meta-list\">{rows}</div>"
+        "</details>"
+    )
+
+
+def metadata_rows(fields: list[tuple[str, Any]]) -> str:
+    return "".join(
         "<div class=\"meta-row\">"
         f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
         "</div>"
         for label, value in fields
     )
-    trust_note = (
-        "Validated report exists according to the batch summary."
-        if case.get("report_generated") is True and str(case.get("report_validation_status") or "") == "passed"
-        else "No trusted generated report is rendered here. Partial reports remain untrusted."
-    )
+
+
+def render_score_reason_explanations(case: dict[str, Any]) -> str:
+    reasons = case.get("score_reasons")
+    if not isinstance(reasons, list) or not reasons:
+        reason_cards = (
+            "<li class=\"reason-card\"><strong>No positive deterministic score reason</strong>"
+            "<p>The batch score did not include a suspicious analyzer signal for this case.</p></li>"
+        )
+    else:
+        reason_cards = "".join(render_score_reason_card(reason) for reason in reasons)
     return (
-        "<section class=\"panel batch-panel\" aria-label=\"Batch case details\">"
-        "<div class=\"batch-head\"><div><h1>Batch case details</h1>"
-        "<p>Read-only deterministic summary fields from <code>batch_summary.json</code>.</p></div>"
-        f"<span class=\"badge blue\">{html.escape(case_id)}</span></div>"
-        "<div class=\"batch-note\">This page does not render raw SQL, profiles, metadata, or local case paths.</div>"
-        f"<div class=\"meta-list\">{rows}</div>"
-        "<div class=\"batch-note\">"
-        f"{html.escape(trust_note)}"
-        "</div>"
-        f"{render_metadata_facts_section(case, metadata_facts)}"
-        "<section class=\"panel docs-panel\" aria-label=\"Score reasons\">"
-        "<h1>Score reasons</h1>"
-        f"<div class=\"report-body\"><ul>{reason_items}</ul></div>"
+        "<section class=\"panel docs-panel\" aria-label=\"Why this query is suspicious\">"
+        "<h1>Why this query is suspicious</h1>"
+        f"<div class=\"report-body\"><ul class=\"reason-list\">{reason_cards}</ul></div>"
         "</section>"
-        "</section>"
+    )
+
+
+def render_score_reason_card(reason: Any) -> str:
+    title, explanation = explain_score_reason(reason)
+    return (
+        "<li class=\"reason-card\">"
+        f"<strong>{html.escape(title)}</strong>"
+        f"<p>{html.escape(explanation)}</p>"
+        "</li>"
+    )
+
+
+def explain_score_reason(reason: Any) -> tuple[str, str]:
+    text = str(reason)
+    lower = text.lower()
+    if "cardinality estimate anomalies" in lower:
+        return (
+            text,
+            "The runtime profile has operators where estimated rows differ strongly from actual rows. "
+            "This can affect planning, memory sizing, and join decisions; it is not a root-cause claim.",
+        )
+    if "memory estimate anomalies" in lower:
+        return (
+            text,
+            "Observed runtime memory signals look inconsistent with estimates. "
+            "This is a deterministic runtime signal, not proof of why the query was slow.",
+        )
+    if "backend data skew" in lower:
+        return (
+            text,
+            "Work distribution across backends appears uneven in the profile. "
+            "This does not identify an exact network, storage, or data-layout cause.",
+        )
+    if "host tail candidates" in lower:
+        return (
+            text,
+            "One or more backends may be tail candidates based on deterministic profile timing signals.",
+        )
+    if "table stats row-count completeness" in lower:
+        return (
+            text,
+            "Table metadata has missing or unknown row-count completeness. "
+            "Treat this as a limitation/check for follow-up, not as a root-cause claim.",
+        )
+    if "column stats completeness" in lower:
+        return (
+            text,
+            "Collected metadata shows incomplete or unknown column stats. "
+            "This is a limitation/check, not a root-cause claim.",
+        )
+    if "metadata collection failed" in lower or "metadata failed" in lower:
+        return (
+            text,
+            "Metadata could not be collected for this case. Runtime profile facts are still shown and ranked deterministically.",
+        )
+    return (
+        "Other deterministic reason",
+        text,
     )
 
 
@@ -573,10 +757,7 @@ def render_metadata_facts_body(
         ("referenced tables", case.get("referenced_table_count")),
         ("collected metadata tables", case.get("collected_metadata_table_count")),
         ("too large metadata", case.get("too_large_count")),
-        ("statement ok", statement_counts.get("ok", 0) if counts_known else None),
-        ("statement error", statement_counts.get("error", 0) if counts_known else None),
-        ("statement not_applicable", statement_counts.get("not_applicable", 0) if counts_known else None),
-        ("statement too_large", statement_counts.get("too_large", 0) if counts_known else None),
+        ("metadata statements", metadata_statement_counts_summary(statement_counts) if counts_known else None),
     ]
     if metadata_reasons:
         summary_items.append(("metadata score reasons", "; ".join(metadata_reasons)))
@@ -613,6 +794,16 @@ def has_metadata_aggregate_facts(case: dict[str, Any]) -> bool:
         if numeric_value(case.get(key)) > 0:
             return True
     return bool(metadata_score_reasons(case))
+
+
+def metadata_statement_counts_summary(statement_counts: dict[Any, Any]) -> str:
+    parts = [
+        ("ok", statement_counts.get("ok", 0)),
+        ("error", statement_counts.get("error", 0)),
+        ("not_applicable", statement_counts.get("not_applicable", 0)),
+        ("too_large", statement_counts.get("too_large", 0)),
+    ]
+    return " / ".join(f"{int(numeric_value(value))} {label}" for label, value in parts)
 
 
 def metadata_score_reasons(case: dict[str, Any]) -> list[str]:
@@ -743,6 +934,20 @@ def batch_report_status(case: dict[str, Any]) -> str:
     if generated:
         return f"generated/{validation}"
     return validation
+
+
+def batch_case_display_report_status(case: dict[str, Any], report_state: dict[str, Any] | None = None) -> str:
+    if isinstance(report_state, dict):
+        status = str(report_state.get("status") or "")
+        if status == "generated" or report_state.get("trusted"):
+            return "validated report"
+        if status == "running":
+            return "running"
+        if status == "failed":
+            return "failed"
+        if status == "partial_untrusted":
+            return "partial untrusted"
+    return batch_report_status(case)
 
 
 def case_has_failure(case: dict[str, Any]) -> bool:
