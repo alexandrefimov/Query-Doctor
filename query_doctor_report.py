@@ -1630,7 +1630,13 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
     )
 
     lines: list[str] = ["", ANALYZER_FACTS_HEADING, "", "### Сводка"]
-    for label in ("Parsed operators", "Cardinality anomalies", "Memory anomalies"):
+    for label in (
+        "Parsed operators",
+        "Cardinality anomalies",
+        "Memory anomalies",
+        "Zero/unknown row estimate gaps",
+        "Zero/unknown memory estimate gaps",
+    ):
         append_fact_bullet(lines, label, first_bullet_value(summary_lines, label))
     for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent"):
         append_fact_bullet(lines, label, first_bullet_value(totals_lines, label))

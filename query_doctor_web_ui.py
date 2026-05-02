@@ -549,6 +549,8 @@ def render_runtime_signals(case: dict[str, Any]) -> str:
     fields = [
         ("cardinality anomalies", case.get("cardinality_anomaly_count")),
         ("memory anomalies", case.get("memory_anomaly_count")),
+        ("zero row estimate gaps", case.get("zero_row_estimate_gap_count")),
+        ("zero memory estimate gaps", case.get("zero_memory_estimate_gap_count")),
         ("backend data skew", case.get("backend_data_skew")),
         ("host-tail candidates", case.get("host_tail_candidate_count")),
     ]
@@ -674,6 +676,18 @@ def explain_score_reason(reason: Any) -> tuple[str, str]:
             text,
             "Observed runtime memory signals look inconsistent with estimates. "
             "This is a deterministic runtime signal, not proof of why the query was slow.",
+        )
+    if "zero/unknown row estimate gaps" in lower:
+        return (
+            text,
+            "Some operators produced rows while the estimate was zero/non-positive or unavailable. "
+            "This is a strong estimate-quality signal, not a root-cause claim.",
+        )
+    if "zero/unknown memory estimate gaps" in lower:
+        return (
+            text,
+            "Some operators used memory while the estimate was zero/non-positive or unavailable. "
+            "This is a planning/estimate signal, not a root-cause claim.",
         )
     if "backend data skew" in lower:
         return (
