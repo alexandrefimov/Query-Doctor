@@ -19,6 +19,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import query_doctor_collect_cm_profiles as cm_profiles
+from query_doctor_engines import get_default_engine_adapter
 
 
 MAX_CM_INSPECT_LIMIT = 10000
@@ -184,9 +185,10 @@ def non_negative_float(value: str) -> float:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    engine = get_default_engine_adapter()
     parser = argparse.ArgumentParser(
         description=(
-            "Bounded recent CM query batch: discover candidates, collect explicit "
+            f"Bounded recent CM query batch for {engine.display_name}: discover candidates, collect explicit "
             "profiles, run analyzer/metadata without LLM, then optionally report "
             "only the top ranked cases."
         )
