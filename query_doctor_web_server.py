@@ -127,7 +127,8 @@ class BatchRunConfig:
     analysis_depth: str = "full"
     recent_window_minutes: int = 1440
     cm_inspect_limit: int = 1000
-    select_limit: int = 200
+    triage_profile_limit: int = 200
+    metadata_top_limit: int = 8
     min_duration_sec: float = 10.0
     max_duration_sec: float | None = None
     order: str = "duration-desc"
@@ -707,7 +708,12 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
     cm_inspect_limit = parse_positive_form_int(
         form, "cm_inspect_limit", default=1000, maximum=BATCH_CM_INSPECT_LIMIT_MAX
     )
-    select_limit = parse_positive_form_int(form, "select_limit", default=200, maximum=BATCH_SELECT_LIMIT_MAX)
+    triage_profile_limit = parse_positive_form_int(
+        form, "triage_profile_limit", default=200, maximum=BATCH_SELECT_LIMIT_MAX
+    )
+    metadata_top_limit = parse_non_negative_form_int(
+        form, "metadata_top_limit", default=8, maximum=BATCH_SELECT_LIMIT_MAX
+    )
     min_duration_sec = parse_non_negative_form_float(form, "min_duration_sec", default=10.0)
     max_duration_text = first_form_value(form, "max_duration_sec")
     max_duration_sec = None
@@ -726,7 +732,8 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
         analysis_depth=analysis_depth,
         recent_window_minutes=recent_window_minutes,
         cm_inspect_limit=cm_inspect_limit,
-        select_limit=select_limit,
+        triage_profile_limit=triage_profile_limit,
+        metadata_top_limit=metadata_top_limit,
         min_duration_sec=min_duration_sec,
         max_duration_sec=max_duration_sec,
         order=order,
@@ -890,6 +897,28 @@ def parse_positive_form_int(
     return value
 
 
+def parse_non_negative_form_int(
+    form: dict[str, list[str]],
+    name: str,
+    *,
+    default: int,
+    maximum: int | None = None,
+) -> int:
+    text = first_form_value(form, name)
+    if not text:
+        value = default
+    else:
+        try:
+            value = int(text)
+        except ValueError as exc:
+            raise WebError(f"{name} must be a non-negative integer.") from exc
+    if value < 0:
+        raise WebError(f"{name} must be a non-negative integer.")
+    if maximum is not None and value > maximum:
+        raise WebError(f"{name} must be <= {maximum}.")
+    return value
+
+
 def parse_non_negative_form_float(form: dict[str, list[str]], name: str, *, default: float) -> float:
     text = first_form_value(form, name)
     if not text:
@@ -922,8 +951,10 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         str(config.recent_window_minutes),
         "--cm-inspect-limit",
         str(config.cm_inspect_limit),
-        "--select-limit",
-        str(config.select_limit),
+        "--triage-profile-limit",
+        str(config.triage_profile_limit),
+        "--metadata-top-limit",
+        str(config.metadata_top_limit if config.analysis_depth == "full" else 0),
         "--min-duration-sec",
         display_float(config.min_duration_sec),
         "--order",
@@ -1055,7 +1086,8 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "analysis_depth",
         "recent_window_minutes",
         "cm_inspect_limit",
-        "select_limit",
+        "triage_profile_limit",
+        "metadata_top_limit",
         "min_duration_sec",
         "max_duration_sec",
         "order",
@@ -1075,7 +1107,8 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "analysis_depth": config.analysis_depth,
         "recent_window_minutes": str(config.recent_window_minutes),
         "cm_inspect_limit": str(config.cm_inspect_limit),
-        "select_limit": str(config.select_limit),
+        "triage_profile_limit": str(config.triage_profile_limit),
+        "metadata_top_limit": str(config.metadata_top_limit),
         "min_duration_sec": display_float(config.min_duration_sec),
         "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),
         "order": config.order,

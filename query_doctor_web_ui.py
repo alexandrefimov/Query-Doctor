@@ -200,7 +200,8 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "analysis_depth": "full" if metadata_configured else "fast",
         "recent_window_minutes": "1440",
         "cm_inspect_limit": "1000",
-        "select_limit": "200",
+        "triage_profile_limit": "200",
+        "metadata_top_limit": "8",
         "min_duration_sec": "10",
         "max_duration_sec": "",
         "order": "duration-desc",
@@ -248,7 +249,7 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<section class=\"panel batch-run-panel\" aria-label=\"Run batch triage\">"
         "<div class=\"section-heading\"><div>"
         "<h1 class=\"section-title\">Batch query triage</h1>"
-        "<div class=\"section-kicker\">Run a bounded batch with metadata by default, or choose fast analyzer-only triage. "
+        "<div class=\"section-kicker\">Collect and score profiles for a bounded triage set, then collect metadata only for the top-ranked cases. "
         "LLM report generation stays disabled from web batch runs.</div>"
         "</div><span class=\"badge blue\">batch triage</span></div>"
         "<form id=\"batch-form\" class=\"batch-form\" method=\"post\" action=\"/batch/run\">"
@@ -262,7 +263,8 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<div class=\"batch-form-grid\">"
         f"{render_batch_number_field('recent_window_minutes', 'Recent window minutes', value('recent_window_minutes'))}"
         f"{render_batch_number_field('cm_inspect_limit', 'CM inspect limit', value('cm_inspect_limit'))}"
-        f"{render_batch_number_field('select_limit', 'Select limit', value('select_limit'))}"
+        f"{render_batch_number_field('triage_profile_limit', 'Triage profile limit', value('triage_profile_limit'))}"
+        f"{render_batch_number_field('metadata_top_limit', 'Metadata top limit', value('metadata_top_limit'))}"
         f"{render_batch_number_field('min_duration_sec', 'Min duration sec', value('min_duration_sec'), step='0.001')}"
         f"{render_batch_number_field('max_duration_sec', 'Max duration sec', value('max_duration_sec'), step='0.001', required=False)}"
         "<div class=\"field\"><label for=\"order\">Order</label>"
@@ -278,7 +280,7 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "</div>"
         "<div class=\"pipeline-line\" aria-label=\"Batch safety scope\">"
         "<span><strong>Full:</strong> <code>--metadata-mode on</code> with server-startup metadata settings</span>"
-        "<span><strong>Fast:</strong> <code>--metadata-mode off</code></span>"
+        "<span><strong>Fast:</strong> <code>--metadata-mode off</code>; metadata top limit is ignored</span>"
         "<span><strong>Always:</strong> <code>--top-reports 0</code>; no LLM report generation</span>"
         "<span><strong>Output:</strong> generated dedicated <code>/tmp/query-doctor-web-batch-*</code> directory</span>"
         "<span><strong>Summary:</strong> rendered summaries are read-only</span>"
@@ -918,11 +920,15 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         "collection_done": 0,
         "analysis_done": 0,
         "failed": 0,
+        "metadata_total": None,
+        "metadata_done": 0,
+        "metadata_skip_reason": None,
     }
     states = {
         "discovery": "pending",
         "collection": "pending",
         "analysis": "pending",
+        "metadata": "pending",
         "summary": "pending",
         "completed": "pending",
     }
@@ -962,15 +968,34 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
             if status == "started":
                 states["collection"] = "done"
                 states["analysis"] = "done"
+                if states["metadata"] == "running":
+                    states["metadata"] = "done"
                 states["summary"] = "running"
             elif status == "done":
                 states["summary"] = "done"
+        elif stage == "metadata_refresh":
+            if status == "started":
+                states["metadata"] = "running"
+                if not event.get("case_id"):
+                    counters["metadata_total"] = numeric_count(event.get("total"))
+            elif status == "done":
+                if event.get("case_id"):
+                    counters["metadata_done"] += 1
+                else:
+                    states["metadata"] = "done"
+            elif status == "failed":
+                counters["failed"] += 1
+            elif status == "skipped":
+                states["metadata"] = "skipped"
+                counters["metadata_skip_reason"] = event.get("reason")
         elif stage == "batch":
             if status == "done":
                 states["completed"] = "done"
                 states["summary"] = "done"
                 states["collection"] = "done"
                 states["analysis"] = "done"
+                if states["metadata"] == "running":
+                    states["metadata"] = "done"
             elif status == "failed":
                 states["completed"] = "failed"
     if job_status == "failed" and states["completed"] != "done":
@@ -996,12 +1021,25 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         "steps": [
             progress_step("CM discovery", states["discovery"], discovery_detail(counters)),
             progress_step("Profile collection", states["collection"], case_detail(counters, "collection_done")),
-            progress_step("Analyzer / metadata pass", states["analysis"], case_detail(counters, "analysis_done")),
+            progress_step("Analyzer-only triage", states["analysis"], case_detail(counters, "analysis_done")),
+            progress_step("Metadata refresh", states["metadata"], metadata_detail(counters)),
             progress_step("Ranking / summary", states["summary"], "summary written" if states["summary"] == "done" else "waiting"),
             progress_step("Completed", states["completed"], "batch done" if states["completed"] == "done" else "waiting"),
         ],
         "metrics": metrics,
     }
+
+
+def metadata_detail(counters: dict[str, Any]) -> str:
+    if counters.get("metadata_skip_reason"):
+        return str(counters["metadata_skip_reason"])
+    total = counters.get("metadata_total")
+    done = counters.get("metadata_done", 0)
+    if total is None:
+        return "not requested yet"
+    if not total:
+        return "not requested"
+    return f"{done}/{total} refreshed"
 
 
 def numeric_count(value: Any) -> int:
@@ -1012,7 +1050,7 @@ def numeric_count(value: Any) -> int:
 
 
 def progress_step(label: str, state: str, detail: str) -> dict[str, str]:
-    icons = {"done": "✓", "running": "…", "failed": "!", "pending": "·"}
+    icons = {"done": "✓", "running": "…", "failed": "!", "pending": "·", "skipped": "−"}
     return {"label": label, "state": state, "icon": icons.get(state, "·"), "detail": detail}
 
 

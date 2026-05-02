@@ -15,14 +15,15 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import query_doctor_collect_cm_profiles as cm_profiles
 
 
 MAX_CM_INSPECT_LIMIT = 1000
-MAX_SELECT_LIMIT = 200
+MAX_TRIAGE_PROFILE_LIMIT = 200
+MAX_METADATA_TOP_LIMIT = 200
 MAX_JOBS = 4
 MAX_HIGH_JOBS = 100
 ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
@@ -54,7 +55,8 @@ class BatchConfig:
     verify_tls: bool
     recent_window_minutes: int
     cm_inspect_limit: int
-    select_limit: int
+    triage_profile_limit: int
+    metadata_top_limit: int
     min_duration_sec: float | None
     max_duration_sec: float | None
     order: str
@@ -120,6 +122,9 @@ class CaseResult:
     report_generated: bool = False
     report_validation_status: str = "not_run"
     failure_category: str | None = None
+    candidate_rank: int | None = None
+    triage_rank: int | None = None
+    metadata_refreshed: bool = False
     cm_collect_seconds: float | None = None
     analysis_seconds: float | None = None
     report_seconds: float | None = None
@@ -203,10 +208,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"Maximum CM query summaries to request/inspect. Hard cap: {MAX_CM_INSPECT_LIMIT}.",
     )
     parser.add_argument(
-        "--select-limit",
+        "--triage-profile-limit",
         type=positive_int,
         default=20,
-        help=f"Maximum selected profiles to collect/analyze. Hard cap: {MAX_SELECT_LIMIT}.",
+        help=(
+            "Maximum candidate profiles to collect/analyze in the analyzer-only triage pass. "
+            f"Hard cap: {MAX_TRIAGE_PROFILE_LIMIT}."
+        ),
+    )
+    parser.add_argument(
+        "--select-limit",
+        type=positive_int,
+        dest="select_limit_alias",
+        help="Deprecated alias for --triage-profile-limit.",
+    )
+    parser.add_argument(
+        "--metadata-top-limit",
+        type=non_negative_int,
+        default=0,
+        help=(
+            "Refresh metadata only for this many top-ranked triage cases. "
+            f"Hard cap: {MAX_METADATA_TOP_LIMIT}. Default: 0."
+        ),
     )
     parser.add_argument("--min-duration-sec", type=non_negative_float, default=60.0)
     parser.add_argument("--max-duration-sec", type=non_negative_float)
@@ -330,6 +353,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
                     query_type=summary.query_type,
                     sql_verb=candidate.sql_verb,
                     wrapper_dir=cases_root / f"case-{index:03d}",
+                    candidate_rank=index,
                 )
             )
     except Exception as exc:  # noqa: BLE001 - user-facing sanitized batch failure
@@ -345,6 +369,8 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             print(f"[batch] jobs: {config.jobs}")
             progress.emit(stage="case_processing", status="started", total=len(case_results), jobs=config.jobs)
             process_cases(config, case_results, env=env, repo_root=repo_root, progress=progress)
+            rank_cases_for_metadata(case_results)
+            refresh_top_metadata(config, case_results, env=env, repo_root=repo_root, progress=progress)
             completed_cases = sum(1 for case in case_results if case.analysis_status == "ok")
             failed_cases = sum(1 for case in case_results if case.failure_category)
             progress.emit(
@@ -407,10 +433,13 @@ def build_batch_config(
 ) -> BatchConfig:
     if args.cm_inspect_limit > MAX_CM_INSPECT_LIMIT:
         raise ValueError(f"--cm-inspect-limit must be <= {MAX_CM_INSPECT_LIMIT}")
-    if args.select_limit > MAX_SELECT_LIMIT:
-        raise ValueError(f"--select-limit must be <= {MAX_SELECT_LIMIT}")
-    if args.select_limit > args.cm_inspect_limit:
-        raise ValueError("--select-limit must be <= --cm-inspect-limit")
+    triage_profile_limit = args.select_limit_alias if args.select_limit_alias is not None else args.triage_profile_limit
+    if triage_profile_limit > MAX_TRIAGE_PROFILE_LIMIT:
+        raise ValueError(f"--triage-profile-limit must be <= {MAX_TRIAGE_PROFILE_LIMIT}")
+    if triage_profile_limit > args.cm_inspect_limit:
+        raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
+    if args.metadata_top_limit > MAX_METADATA_TOP_LIMIT:
+        raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
     validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
     if args.max_duration_sec is not None and args.min_duration_sec is not None:
         if args.max_duration_sec < args.min_duration_sec:
@@ -466,7 +495,8 @@ def build_batch_config(
         verify_tls=not insecure_skip_verify,
         recent_window_minutes=args.recent_window_minutes,
         cm_inspect_limit=args.cm_inspect_limit,
-        select_limit=args.select_limit,
+        triage_profile_limit=triage_profile_limit,
+        metadata_top_limit=args.metadata_top_limit,
         min_duration_sec=args.min_duration_sec,
         max_duration_sec=args.max_duration_sec,
         order=args.order,
@@ -683,7 +713,7 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
         duration_filter_mode = "server-side-fallback-client-side"
     candidates = cm_profiles.select_recent_query_candidates(
         summaries,
-        select_limit=config.select_limit,
+        select_limit=config.triage_profile_limit,
         include_failed=config.include_failed,
         include_running=config.include_running,
         user=config.user,
@@ -799,7 +829,7 @@ def process_case(
         return case
     progress.emit(stage="case", case_id=case_id, status="collection_done", seconds=case.cm_collect_seconds)
     progress.emit(stage="case", case_id=case_id, status="analysis_started")
-    run_analysis_pass(config, case, env=env, repo_root=repo_root)
+    run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode="off")
     if case.analysis_status != "ok":
         progress.emit(
             stage="case",
@@ -828,7 +858,7 @@ def print_case_progress(case: CaseResult) -> None:
     )
     if case.analysis_seconds is not None:
         print(
-            f"[batch] case-{case.index:03d} analyzer/metadata: "
+            f"[batch] case-{case.index:03d} analyzer triage: "
             f"{format_seconds(case.analysis_seconds)} ({case.analysis_status})"
         )
 
@@ -848,6 +878,7 @@ def run_analysis_pass(
     *,
     env: dict[str, str],
     repo_root: Path,
+    metadata_mode: str | None = None,
 ) -> None:
     started = time.monotonic()
     if case.actual_case_dir is None:
@@ -864,7 +895,8 @@ def run_analysis_pass(
             "--metadata-failure-policy",
             "continue",
         ]
-        append_metadata_args(cmd, config)
+        effective_metadata_mode = config.metadata_mode if metadata_mode is None else metadata_mode
+        append_metadata_args(cmd, replace(config, metadata_mode=effective_metadata_mode))
         result = run_subprocess(cmd, cwd=repo_root, env=env)
         case.analysis_status = "ok" if result.returncode == 0 else "failed"
         if result.returncode != 0:
@@ -896,6 +928,87 @@ def append_metadata_args(cmd: list[str], config: BatchConfig) -> None:
         cmd.extend(["--metadata-max-output-bytes", str(config.metadata_max_output_bytes)])
     if config.metadata_redact:
         cmd.append("--metadata-redact")
+
+
+def rank_cases_for_metadata(cases: list[CaseResult]) -> list[CaseResult]:
+    ranked = sorted(
+        [case for case in cases if case.analysis_status == "ok"],
+        key=batch_ranking_key,
+    )
+    for rank, case in enumerate(ranked, start=1):
+        case.triage_rank = rank
+    return ranked
+
+
+def metadata_refresh_candidates(config: BatchConfig, cases: list[CaseResult]) -> list[CaseResult]:
+    ranked = rank_cases_for_metadata(cases)
+    if metadata_refresh_skip_reason(config, ranked) is not None:
+        mark_metadata_not_requested(ranked)
+        return []
+    return ranked[: config.metadata_top_limit]
+
+
+def metadata_refresh_skip_reason(config: BatchConfig, ranked_cases: list[CaseResult]) -> str | None:
+    if config.metadata_mode == "off":
+        return "metadata disabled"
+    if not config.metadata_coordinator:
+        return "metadata not configured"
+    if config.metadata_top_limit <= 0:
+        return "metadata_top_limit=0"
+    if not ranked_cases:
+        return "no eligible cases"
+    return None
+
+
+def mark_metadata_not_requested(cases: list[CaseResult]) -> None:
+    for case in cases:
+        if case.metadata_status in {"skipped", "not_observed"}:
+            case.metadata_status = "not_requested"
+
+
+def refresh_top_metadata(
+    config: BatchConfig,
+    cases: list[CaseResult],
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+) -> None:
+    ranked = rank_cases_for_metadata(cases)
+    skip_reason = metadata_refresh_skip_reason(config, ranked)
+    if skip_reason is not None:
+        mark_metadata_not_requested(ranked)
+        progress.emit(stage="metadata_refresh", status="skipped", reason=skip_reason)
+        return
+    candidates = ranked[: config.metadata_top_limit]
+    if not candidates:
+        progress.emit(stage="metadata_refresh", status="skipped", reason="no eligible cases")
+        return
+    progress.emit(stage="metadata_refresh", status="started", total=len(candidates))
+    for case in candidates:
+        case_id = f"case-{case.index:03d}"
+        progress.emit(stage="metadata_refresh", case_id=case_id, status="started", triage_rank=case.triage_rank)
+        run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode=config.metadata_mode)
+        case.metadata_refreshed = True
+        if case.analysis_status == "ok":
+            score_case(case)
+            progress.emit(
+                stage="metadata_refresh",
+                case_id=case_id,
+                status="done",
+                metadata_status=case.metadata_status,
+                score=case.score,
+            )
+        else:
+            progress.emit(
+                stage="metadata_refresh",
+                case_id=case_id,
+                status="failed",
+                metadata_status=case.metadata_status,
+            )
+    refreshed_ids = {id(case) for case in candidates}
+    mark_metadata_not_requested([case for case in cases if case.analysis_status == "ok" and id(case) not in refreshed_ids])
+    progress.emit(stage="metadata_refresh", status="done", total=len(candidates))
 
 
 def run_top_reports(
@@ -1152,7 +1265,9 @@ def build_summary(
         "mode": "recent-query-batch",
         "out": str(config.out),
         "cm_inspect_limit": config.cm_inspect_limit,
-        "select_limit": config.select_limit,
+        "triage_profile_limit": config.triage_profile_limit,
+        "select_limit": config.triage_profile_limit,
+        "metadata_top_limit": config.metadata_top_limit,
         "recent_window_minutes": config.recent_window_minutes,
         "min_duration_sec": config.min_duration_sec,
         "order": config.order,
@@ -1191,6 +1306,8 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
     ]
     return {
         "case_index": case.index,
+        "candidate_rank": case.candidate_rank,
+        "triage_rank": case.triage_rank,
         "query_id": truncate_query_id(case.query_id),
         "duration_sec": case.duration_sec,
         "user": "<user>" if case.user else None,
@@ -1213,6 +1330,7 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "case_dir": str(case.wrapper_dir),
         "report_generated": case.report_generated,
         "report_validation_status": case.report_validation_status,
+        "metadata_refreshed": case.metadata_refreshed,
         "failure_category": case.failure_category,
         "cm_collect_seconds": case.cm_collect_seconds,
         "analysis_seconds": case.analysis_seconds,
@@ -1237,6 +1355,8 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         "",
         f"- summaries inspected: {summary['summaries_inspected']}",
         f"- selected candidates: {summary['selected_count']}",
+        f"- triage profile limit: {summary['triage_profile_limit']}",
+        f"- metadata top limit: {summary['metadata_top_limit']}",
         f"- duration filter: {summary['duration_filter']}",
         f"- top reports: {summary['top_reports']}",
         f"- jobs: {summary['jobs']}",
