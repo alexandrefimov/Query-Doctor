@@ -452,7 +452,16 @@ def sanitize_for_display(value: object) -> str:
     text = cm_collector.BEARER_BASIC_RE.sub(r"\1 <redacted>", text)
     text = cm_collector.URL_CREDENTIAL_RE.sub(r"\1<redacted>@", text)
     text = cm_collector.SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\4", text)
+    text = redact_local_paths_for_display(text)
     return text[:1200]
+
+
+def redact_local_paths_for_display(text: str) -> str:
+    text = re.sub(r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+", "<local path hidden>", text)
+    text = re.sub(r"(?<![\w/])/Users/[^\s<>'\"]+", "<local path hidden>", text)
+    text = re.sub(r"(?<![\w/])/var/folders/[^\s<>'\"]+", "<local path hidden>", text)
+    text = re.sub(r"(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+", "<local path hidden>", text)
+    return text
 
 
 def run_subprocess(
