@@ -267,6 +267,62 @@ BACKEND_EXECUTION_TIME_KEYS = {"executiontime", "exectime", "totaltime", "backen
 
 
 @dataclass
+class OperatorObservation:
+    time_ms: float | None = None
+    actual_rows: float | None = None
+    estimated_rows: float | None = None
+    peak_mem_bytes: float | None = None
+    estimated_peak_mem_bytes: float | None = None
+    evidence_lines: list[str] = field(default_factory=list)
+
+
+def observation_rows_ratio(observation: OperatorObservation) -> float | None:
+    if (
+        observation.actual_rows is None
+        or observation.estimated_rows is None
+        or observation.estimated_rows <= 0
+    ):
+        return None
+    return observation.actual_rows / observation.estimated_rows
+
+
+def observation_mem_ratio(observation: OperatorObservation) -> float | None:
+    if (
+        observation.peak_mem_bytes is None
+        or observation.estimated_peak_mem_bytes is None
+        or observation.estimated_peak_mem_bytes <= 0
+    ):
+        return None
+    return observation.peak_mem_bytes / observation.estimated_peak_mem_bytes
+
+
+def observation_has_zero_row_estimate_gap(observation: OperatorObservation) -> bool:
+    return (
+        observation.actual_rows is not None
+        and observation.actual_rows > 0
+        and observation.estimated_rows is not None
+        and observation.estimated_rows <= 0
+    )
+
+
+def observation_has_zero_memory_estimate_gap(observation: OperatorObservation) -> bool:
+    return (
+        observation.peak_mem_bytes is not None
+        and observation.peak_mem_bytes > 0
+        and observation.estimated_peak_mem_bytes is not None
+        and observation.estimated_peak_mem_bytes <= 0
+    )
+
+
+def observation_has_row_pair(observation: OperatorObservation) -> bool:
+    return observation.actual_rows is not None and observation.estimated_rows is not None
+
+
+def observation_has_memory_pair(observation: OperatorObservation) -> bool:
+    return observation.peak_mem_bytes is not None and observation.estimated_peak_mem_bytes is not None
+
+
+@dataclass
 class OperatorFact:
     operator_id: str
     operator_name: str
@@ -278,40 +334,126 @@ class OperatorFact:
     join_kind: str | None = None
     is_partitioned: bool = False
     evidence_lines: list[str] = field(default_factory=list)
+    observations: list[OperatorObservation] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.observations:
+            self.observations.append(
+                OperatorObservation(
+                    time_ms=self.time_ms,
+                    actual_rows=self.actual_rows,
+                    estimated_rows=self.estimated_rows,
+                    peak_mem_bytes=self.peak_mem_bytes,
+                    estimated_peak_mem_bytes=self.estimated_peak_mem_bytes,
+                    evidence_lines=list(self.evidence_lines),
+                )
+            )
+
+    def best_rows_observation(self) -> OperatorObservation | None:
+        candidates = [
+            observation
+            for observation in self.observations
+            if observation_rows_ratio(observation) is not None
+        ]
+        if not candidates and not any(observation_has_row_pair(observation) for observation in self.observations):
+            fallback = OperatorObservation(
+                time_ms=self.time_ms,
+                actual_rows=self.actual_rows,
+                estimated_rows=self.estimated_rows,
+                peak_mem_bytes=self.peak_mem_bytes,
+                estimated_peak_mem_bytes=self.estimated_peak_mem_bytes,
+                evidence_lines=list(self.evidence_lines),
+            )
+            if observation_rows_ratio(fallback) is not None:
+                candidates.append(fallback)
+        if not candidates:
+            return None
+        return max(candidates, key=lambda observation: observation_rows_ratio(observation) or 0)
+
+    def best_memory_observation(self) -> OperatorObservation | None:
+        candidates = [
+            observation
+            for observation in self.observations
+            if observation_mem_ratio(observation) is not None
+        ]
+        if not candidates and not any(observation_has_memory_pair(observation) for observation in self.observations):
+            fallback = OperatorObservation(
+                time_ms=self.time_ms,
+                actual_rows=self.actual_rows,
+                estimated_rows=self.estimated_rows,
+                peak_mem_bytes=self.peak_mem_bytes,
+                estimated_peak_mem_bytes=self.estimated_peak_mem_bytes,
+                evidence_lines=list(self.evidence_lines),
+            )
+            if observation_mem_ratio(fallback) is not None:
+                candidates.append(fallback)
+        if not candidates:
+            return None
+        return max(candidates, key=lambda observation: observation_mem_ratio(observation) or 0)
+
+    def best_zero_row_estimate_gap_observation(self) -> OperatorObservation | None:
+        candidates = [
+            observation
+            for observation in self.observations
+            if observation_has_zero_row_estimate_gap(observation)
+        ]
+        if not candidates and not any(observation_has_row_pair(observation) for observation in self.observations):
+            fallback = OperatorObservation(
+                time_ms=self.time_ms,
+                actual_rows=self.actual_rows,
+                estimated_rows=self.estimated_rows,
+                peak_mem_bytes=self.peak_mem_bytes,
+                estimated_peak_mem_bytes=self.estimated_peak_mem_bytes,
+                evidence_lines=list(self.evidence_lines),
+            )
+            if observation_has_zero_row_estimate_gap(fallback):
+                candidates.append(fallback)
+        if not candidates:
+            return None
+        return max(candidates, key=lambda observation: observation.actual_rows or 0)
+
+    def best_zero_memory_estimate_gap_observation(self) -> OperatorObservation | None:
+        candidates = [
+            observation
+            for observation in self.observations
+            if observation_has_zero_memory_estimate_gap(observation)
+        ]
+        if not candidates and not any(observation_has_memory_pair(observation) for observation in self.observations):
+            fallback = OperatorObservation(
+                time_ms=self.time_ms,
+                actual_rows=self.actual_rows,
+                estimated_rows=self.estimated_rows,
+                peak_mem_bytes=self.peak_mem_bytes,
+                estimated_peak_mem_bytes=self.estimated_peak_mem_bytes,
+                evidence_lines=list(self.evidence_lines),
+            )
+            if observation_has_zero_memory_estimate_gap(fallback):
+                candidates.append(fallback)
+        if not candidates:
+            return None
+        return max(candidates, key=lambda observation: observation.peak_mem_bytes or 0)
 
     @property
     def rows_ratio(self) -> float | None:
-        if self.actual_rows is None or self.estimated_rows is None or self.estimated_rows <= 0:
+        observation = self.best_rows_observation()
+        if observation is None:
             return None
-        return self.actual_rows / self.estimated_rows
+        return observation_rows_ratio(observation)
 
     @property
     def mem_ratio(self) -> float | None:
-        if (
-            self.peak_mem_bytes is None
-            or self.estimated_peak_mem_bytes is None
-            or self.estimated_peak_mem_bytes <= 0
-        ):
+        observation = self.best_memory_observation()
+        if observation is None:
             return None
-        return self.peak_mem_bytes / self.estimated_peak_mem_bytes
+        return observation_mem_ratio(observation)
 
     @property
     def has_zero_row_estimate_gap(self) -> bool:
-        return (
-            self.actual_rows is not None
-            and self.actual_rows > 0
-            and self.estimated_rows is not None
-            and self.estimated_rows <= 0
-        )
+        return self.best_zero_row_estimate_gap_observation() is not None
 
     @property
     def has_zero_memory_estimate_gap(self) -> bool:
-        return (
-            self.peak_mem_bytes is not None
-            and self.peak_mem_bytes > 0
-            and self.estimated_peak_mem_bytes is not None
-            and self.estimated_peak_mem_bytes <= 0
-        )
+        return self.best_zero_memory_estimate_gap_observation() is not None
 
     @property
     def is_join(self) -> bool:
@@ -618,6 +760,7 @@ def update_operator(existing: OperatorFact, new: OperatorFact) -> None:
     if not existing.join_kind and new.join_kind:
         existing.join_kind = new.join_kind
     existing.is_partitioned = existing.is_partitioned or new.is_partitioned
+    existing.observations.extend(new.observations)
     for line in new.evidence_lines:
         if line not in existing.evidence_lines:
             existing.evidence_lines.append(line)
@@ -1447,25 +1590,85 @@ def op_label(op: OperatorFact) -> str:
     return f"{op.operator_id}:{op.operator_name}{suffix}"
 
 
+def operator_with_observation(op: OperatorFact, observation: OperatorObservation) -> OperatorFact:
+    return OperatorFact(
+        operator_id=op.operator_id,
+        operator_name=op.operator_name,
+        time_ms=observation.time_ms if observation.time_ms is not None else op.time_ms,
+        actual_rows=observation.actual_rows,
+        estimated_rows=observation.estimated_rows,
+        peak_mem_bytes=observation.peak_mem_bytes,
+        estimated_peak_mem_bytes=observation.estimated_peak_mem_bytes,
+        join_kind=op.join_kind,
+        is_partitioned=op.is_partitioned,
+        evidence_lines=list(observation.evidence_lines or op.evidence_lines),
+        observations=[observation],
+    )
+
+
+def operator_with_best_rows_ratio(op: OperatorFact, threshold: float) -> OperatorFact | None:
+    observation = op.best_rows_observation()
+    if observation is None:
+        return None
+    ratio = observation_rows_ratio(observation)
+    if ratio is None or ratio < threshold:
+        return None
+    return operator_with_observation(op, observation)
+
+
+def operator_with_best_memory_ratio(op: OperatorFact, threshold: float) -> OperatorFact | None:
+    observation = op.best_memory_observation()
+    if observation is None:
+        return None
+    ratio = observation_mem_ratio(observation)
+    if ratio is None or ratio < threshold:
+        return None
+    return operator_with_observation(op, observation)
+
+
+def operator_with_zero_row_estimate_gap(op: OperatorFact) -> OperatorFact | None:
+    observation = op.best_zero_row_estimate_gap_observation()
+    if observation is None:
+        return None
+    return operator_with_observation(op, observation)
+
+
+def operator_with_zero_memory_estimate_gap(op: OperatorFact) -> OperatorFact | None:
+    observation = op.best_zero_memory_estimate_gap_observation()
+    if observation is None:
+        return None
+    return operator_with_observation(op, observation)
+
+
 def op_to_json(op: OperatorFact) -> dict[str, Any]:
+    row_observation = op.best_rows_observation() or op.best_zero_row_estimate_gap_observation()
+    memory_observation = op.best_memory_observation() or op.best_zero_memory_estimate_gap_observation()
+    actual_rows = row_observation.actual_rows if row_observation else op.actual_rows
+    estimated_rows = row_observation.estimated_rows if row_observation else op.estimated_rows
+    rows_ratio = observation_rows_ratio(row_observation) if row_observation else None
+    peak_mem_bytes = memory_observation.peak_mem_bytes if memory_observation else op.peak_mem_bytes
+    estimated_peak_mem_bytes = (
+        memory_observation.estimated_peak_mem_bytes if memory_observation else op.estimated_peak_mem_bytes
+    )
+    mem_ratio = observation_mem_ratio(memory_observation) if memory_observation else None
     return {
         "operator_id": op.operator_id,
         "operator_name": op.operator_name,
         "label": op_label(op),
         "time_ms": op.time_ms,
         "time": fmt_duration(op.time_ms),
-        "actual_rows": op.actual_rows,
-        "actual_rows_human": fmt_rows(op.actual_rows),
-        "estimated_rows": op.estimated_rows,
-        "estimated_rows_human": fmt_rows(op.estimated_rows),
-        "rows_actual_to_estimated_ratio": op.rows_ratio,
-        "rows_ratio_human": fmt_ratio(op.rows_ratio),
-        "peak_mem_bytes": op.peak_mem_bytes,
-        "peak_mem_human": fmt_bytes(op.peak_mem_bytes),
-        "estimated_peak_mem_bytes": op.estimated_peak_mem_bytes,
-        "estimated_peak_mem_human": fmt_bytes(op.estimated_peak_mem_bytes),
-        "mem_actual_to_estimated_ratio": op.mem_ratio,
-        "mem_ratio_human": fmt_ratio(op.mem_ratio),
+        "actual_rows": actual_rows,
+        "actual_rows_human": fmt_rows(actual_rows),
+        "estimated_rows": estimated_rows,
+        "estimated_rows_human": fmt_rows(estimated_rows),
+        "rows_actual_to_estimated_ratio": rows_ratio,
+        "rows_ratio_human": fmt_ratio(rows_ratio),
+        "peak_mem_bytes": peak_mem_bytes,
+        "peak_mem_human": fmt_bytes(peak_mem_bytes),
+        "estimated_peak_mem_bytes": estimated_peak_mem_bytes,
+        "estimated_peak_mem_human": fmt_bytes(estimated_peak_mem_bytes),
+        "mem_actual_to_estimated_ratio": mem_ratio,
+        "mem_ratio_human": fmt_ratio(mem_ratio),
         "join_kind": op.join_kind,
         "is_partitioned": op.is_partitioned,
         "evidence_lines": op.evidence_lines,
@@ -1836,22 +2039,38 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
     )[: args.top_n]
 
     cardinality_anomalies = sorted(
-        [op for op in operators if op.rows_ratio is not None and op.rows_ratio >= args.rows_ratio_threshold],
+        [
+            anomaly
+            for op in operators
+            if (anomaly := operator_with_best_rows_ratio(op, args.rows_ratio_threshold)) is not None
+        ],
         key=lambda x: x.rows_ratio or 0,
         reverse=True,
     )
     memory_anomalies = sorted(
-        [op for op in operators if op.mem_ratio is not None and op.mem_ratio >= args.mem_ratio_threshold],
+        [
+            anomaly
+            for op in operators
+            if (anomaly := operator_with_best_memory_ratio(op, args.mem_ratio_threshold)) is not None
+        ],
         key=lambda x: x.mem_ratio or 0,
         reverse=True,
     )
     zero_row_estimate_gaps = sorted(
-        [op for op in operators if op.has_zero_row_estimate_gap],
+        [
+            gap
+            for op in operators
+            if (gap := operator_with_zero_row_estimate_gap(op)) is not None
+        ],
         key=lambda x: x.actual_rows or 0,
         reverse=True,
     )
     zero_memory_estimate_gaps = sorted(
-        [op for op in operators if op.has_zero_memory_estimate_gap],
+        [
+            gap
+            for op in operators
+            if (gap := operator_with_zero_memory_estimate_gap(op)) is not None
+        ],
         key=lambda x: x.peak_mem_bytes or 0,
         reverse=True,
     )
