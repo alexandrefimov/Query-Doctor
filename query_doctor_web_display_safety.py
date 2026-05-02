@@ -57,7 +57,7 @@ def redact_credentials_for_display(text: str, *, env: Mapping[str, str] | None =
     text = cm_collector.AUTH_HEADER_RE.sub(r"\1<redacted>", text)
     text = cm_collector.BEARER_BASIC_RE.sub(r"\1 <redacted>", text)
     text = cm_collector.URL_CREDENTIAL_RE.sub(r"\1<redacted>@", text)
-    text = cm_collector.SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\4", text)
+    text = cm_collector.SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\5", text)
     return text
 
 
