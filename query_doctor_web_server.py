@@ -530,12 +530,16 @@ def subprocess_failure_message(stage: str, completed: subprocess.CompletedProces
     )
 
 
-def has_cm_credentials(env: dict[str, str] | os._Environ[str] | None = None) -> bool:
+def has_cm_credentials(
+    env: dict[str, str] | os._Environ[str] | None = None,
+    *,
+    username: str | None = None,
+) -> bool:
     env = os.environ if env is None else env
     token = (env.get("CM_TOKEN") or "").strip()
-    username = (env.get("CM_USERNAME") or "").strip()
+    effective_username = (username or env.get("CM_USERNAME") or "").strip()
     password = (env.get("CM_PASSWORD") or "").strip()
-    return bool(token) or (bool(username) and bool(password))
+    return bool(token) or (bool(effective_username) and bool(password))
 
 
 def run_web_analysis(
@@ -686,7 +690,15 @@ def collect_case(
     runner: Runner,
     env: dict[str, str] | None = None,
 ) -> Path:
-    if not has_cm_credentials():
+    config_username = None
+    try:
+        config_username = optional_config_string(
+            load_web_local_config(settings.config, cwd=Path.cwd()),
+            "username",
+        )
+    except cm_collector.ConfigError:
+        config_username = None
+    if not has_cm_credentials(username=config_username):
         raise WebError(MISSING_CM_CREDENTIALS_MESSAGE)
 
     collector_cmd = [
@@ -861,6 +873,50 @@ def load_krb5ccname_from_local_config(config_path: Path, *, cwd: Path) -> str | 
     return value if isinstance(value, str) else None
 
 
+def validate_web_startup_config(
+    config_path: Path,
+    *,
+    cwd: Path,
+    env: dict[str, str] | os._Environ[str] | None = None,
+) -> list[str]:
+    env = os.environ if env is None else env
+    config_values = load_web_local_config(config_path, cwd=cwd)
+    missing: list[str] = []
+    if not first_string_value(optional_config_string(config_values, "cm_url"), env.get("CM_URL")):
+        missing.append("cm_url")
+    if not first_string_value(optional_config_string(config_values, "username"), env.get("CM_USERNAME")):
+        missing.append("username/cm_user")
+    if not optional_config_string(config_values, "cluster"):
+        missing.append("cluster")
+    if not optional_config_string(config_values, "service"):
+        missing.append("service")
+    if not ((env.get("CM_PASSWORD") or "").strip() or (env.get("CM_TOKEN") or "").strip()):
+        missing.append("CM_PASSWORD/CM_TOKEN environment variable")
+    if missing:
+        raise WebError(
+            "Missing required CM startup setting(s): "
+            + ", ".join(missing)
+            + ". Provide non-secret CM settings in local config and CM_PASSWORD or CM_TOKEN via environment variables."
+        )
+
+    warnings: list[str] = []
+    ca_bundle = optional_config_string(config_values, "ca_bundle")
+    insecure_skip_verify = optional_config_bool(config_values, "insecure_skip_verify") is True
+    if ca_bundle:
+        ca_path = Path(ca_bundle).expanduser()
+        if not ca_path.is_absolute():
+            ca_path = cwd / ca_path
+        if not ca_path.is_file() or not os.access(ca_path, os.R_OK):
+            raise WebError(f"Configured ca_bundle is not readable: {ca_bundle}")
+        if insecure_skip_verify:
+            warnings.append(
+                "insecure_skip_verify=true is set; CM TLS verification will be disabled even though ca_bundle is configured."
+            )
+    elif insecure_skip_verify:
+        warnings.append("insecure_skip_verify=true is set; CM TLS verification will be disabled.")
+    return warnings
+
+
 def optional_config_string(config_values: dict[str, object], key: str) -> str | None:
     value = config_values.get(key)
     return value if isinstance(value, str) and value else None
@@ -902,7 +958,11 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
         host=args.host,
         port=args.port,
         allow_nonlocal_web_bind=args.allow_nonlocal_web_bind,
-        max_profile_bytes=args.max_profile_bytes,
+        max_profile_bytes=first_int_value(
+            args.max_profile_bytes,
+            optional_config_int(config_values, "max_profile_bytes"),
+            default=None,
+        ),
         model=args.model,
         timeout_sec=args.timeout_sec,
         batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
@@ -1870,6 +1930,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         validate_bind_host(args.host, allow_nonlocal_web_bind=args.allow_nonlocal_web_bind)
         settings = build_web_settings(args, cwd=Path.cwd())
+        startup_warnings = validate_web_startup_config(settings.config, cwd=Path.cwd())
     except WebError as exc:
         print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
         return 2
@@ -1881,6 +1942,8 @@ def main(argv: list[str] | None = None) -> int:
             "[Query Doctor web] WARNING: non-local bind requested for a local web server.",
             file=sys.stderr,
         )
+    for warning in startup_warnings:
+        print(f"[Query Doctor web] WARNING: {warning}", file=sys.stderr)
 
     handler = make_handler(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), handler)

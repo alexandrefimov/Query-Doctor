@@ -68,6 +68,9 @@ LOCAL_CONFIG_ALLOWED_KEYS = {
     "recent_order",
     "recent_output_json",
     "recent_pool",
+    "recent_cm_summary_limit",
+    "recent_metadata_top_limit",
+    "recent_profile_analysis_limit",
     "recent_select",
     "recent_user",
     "recent_window_minutes",
@@ -109,6 +112,7 @@ CM_PROFILE_TEXT_PATH = (
     "{serviceName}/impalaQueries/{queryId}"
 )
 CM_QUERY_DURATION_FILTER_FIELD = "queryDuration"
+CM_QUERY_SUMMARY_PAGE_SIZE = 1000
 
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -326,6 +330,7 @@ class CMQueryFilters:
     status: str = "all"
     query_id: str | None = None
     query_type: str | None = None
+    page_size: int | None = None
 
     def as_log_dict(self) -> dict[str, object]:
         values: dict[str, object] = {
@@ -344,6 +349,8 @@ class CMQueryFilters:
         }
         if self.since_minutes is not None:
             values["since_minutes"] = self.since_minutes
+        if self.page_size is not None:
+            values["page_size"] = self.page_size
         return values
 
 
@@ -961,6 +968,8 @@ def normalize_local_config_value(key: str, value: object) -> object:
             "limit",
             "max_profile_bytes",
             "recent_limit",
+            "recent_cm_summary_limit",
+            "recent_profile_analysis_limit",
             "recent_max_duration_sec",
             "recent_min_duration_sec",
             "recent_select",
@@ -971,6 +980,8 @@ def normalize_local_config_value(key: str, value: object) -> object:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         if key == "min_duration_sec":
             raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
+        if key == "recent_metadata_top_limit":
+            raise ConfigError("Config field recent_metadata_top_limit must be a non-negative integer.")
         if key == "krb5ccname":
             raise ConfigError("Config field krb5ccname must be a non-empty string.")
         if key == "metadata_timeout_sec":
@@ -1031,6 +1042,8 @@ def normalize_local_config_value(key: str, value: object) -> object:
         "limit",
         "max_profile_bytes",
         "recent_limit",
+        "recent_cm_summary_limit",
+        "recent_profile_analysis_limit",
         "recent_select",
         "recent_window_minutes",
         "metadata_max_output_bytes",
@@ -1039,6 +1052,10 @@ def normalize_local_config_value(key: str, value: object) -> object:
     }:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")
+        return value
+    if key == "recent_metadata_top_limit":
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ConfigError("Config field recent_metadata_top_limit must be a non-negative integer.")
         return value
     if key in {"recent_max_duration_sec", "recent_min_duration_sec"}:
         if (
@@ -1431,7 +1448,7 @@ def build_cm_query_summary_page_request(
     params: dict[str, object] = {
         "from": from_time,
         "to": to_time,
-        "limit": filters.limit,
+        "limit": effective_query_summary_page_size(filters, filters.limit),
     }
     if page_token:
         params["offset"] = page_token
@@ -1439,6 +1456,11 @@ def build_cm_query_summary_page_request(
     if filter_expression:
         params["filter"] = filter_expression
     return path, params
+
+
+def effective_query_summary_page_size(filters: CMQueryFilters, remaining: int) -> int:
+    configured = filters.page_size or filters.limit
+    return max(1, min(int(configured), int(remaining), CM_QUERY_SUMMARY_PAGE_SIZE))
 
 
 def safe_cm_path_segment(value: str, field_name: str) -> str:
@@ -1625,7 +1647,7 @@ def parse_cm_query_summary_page(raw: dict[str, object]) -> CMQueryPage:
     if not isinstance(raw, dict):
         raise CMAdapterError("CM query summary page must be an object.")
 
-    items_raw = first_present(raw, ("items", "queries", "querySummaries"))
+    items_raw = first_present(raw, ("items", "queries", "querySummaries", "impalaQueries"))
     if items_raw is None:
         items_raw = []
     if not isinstance(items_raw, list):
@@ -2061,15 +2083,24 @@ def collect_query_summaries(
     warnings: list[str] = []
     page_token: str | None = None
     seen_tokens: set[str] = set()
+    inspected = 0
 
-    while len(collected) < filters.limit:
+    while inspected < filters.limit and len(collected) < filters.limit:
+        remaining = filters.limit - inspected
+        page_limit = effective_query_summary_page_size(filters, remaining)
+        page_filters = (
+            filters
+            if filters.page_size is None and page_limit == filters.limit
+            else replace(filters, page_size=page_limit)
+        )
         try:
-            page = fetch_page(filters, page_token)
+            page = fetch_page(page_filters, page_token)
         except CMClientError as exc:
             warnings.append(sanitize_text_for_log(exc, secrets=secrets))
             break
 
         warnings.extend(sanitize_text_for_log(warning, secrets=secrets) for warning in page.warnings)
+        inspected += len(page.items)
 
         for item in page.items:
             if filters.query_id and item.query_id != filters.query_id:
@@ -2080,15 +2111,28 @@ def collect_query_summaries(
 
         if len(collected) >= filters.limit:
             break
-        if not page.next_page_token:
+        if len(page.items) < page_limit and not page.next_page_token:
             break
-        if page.next_page_token in seen_tokens:
+        next_page_token = page.next_page_token or next_numeric_offset(page_token, page_limit)
+        if not next_page_token:
+            break
+        if next_page_token in seen_tokens:
             warnings.append("Stopped pagination because a repeated page token was returned.")
             break
-        seen_tokens.add(page.next_page_token)
-        page_token = page.next_page_token
+        seen_tokens.add(next_page_token)
+        page_token = next_page_token
 
     return collected, warnings
+
+
+def next_numeric_offset(page_token: str | None, page_limit: int) -> str:
+    if page_token is None:
+        return str(page_limit)
+    try:
+        current = int(page_token)
+    except ValueError:
+        return ""
+    return str(current + page_limit)
 
 
 def collect_query_summaries_with_duration_fallback(

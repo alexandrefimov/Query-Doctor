@@ -101,11 +101,14 @@ def run_impala_shell(
     *,
     timeout_sec: int,
     runner: Runner = subprocess.run,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    return runner(
-        argv,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=timeout_sec,
-        shell=False,
-    )
+    kwargs = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "timeout": timeout_sec,
+        "shell": False,
+    }
+    if env is not None:
+        kwargs["env"] = env
+    return runner(argv, **kwargs)

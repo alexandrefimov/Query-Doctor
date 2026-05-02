@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from impala_shell_runner import (
 )
 from impala_shell_output import normalize_output_bytes
 from query_doctor_collect_cm_profiles import HostAliasRedactor, redact_profile_text
+from query_doctor_collect_cm_profiles import ConfigError, load_local_config
 
 
 DEFAULT_TIMEOUT_SEC = 30
@@ -205,6 +207,7 @@ def run_statement(
             build_impala_shell_args(args, plan.sql),
             timeout_sec=args.timeout_sec,
             runner=runner,
+            env=effective_impala_env(args),
         )
     except subprocess.TimeoutExpired:
         return StatementResult(
@@ -466,6 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Only SHOW CREATE TABLE, SHOW TABLE STATS, and SHOW COLUMN STATS are planned."
         )
     )
+    parser.add_argument("--config", help="Optional local config with non-secret metadata settings.")
     parser.add_argument(
         "--table",
         action="append",
@@ -473,14 +477,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fully qualified table name to inspect, e.g. db.table. May be repeated.",
     )
     parser.add_argument("--out", required=True, help="Output directory for impala_context.md/json.")
-    parser.add_argument("--impala-shell", default="impala-shell", help="impala-shell executable.")
+    parser.add_argument("--impala-shell", help="impala-shell executable.")
     parser.add_argument(
         "--coordinator",
         help="Impala coordinator HOST:PORT for real execution. Not required for --dry-run.",
     )
     parser.add_argument(
         "--auth",
-        default="kerberos",
         help="Authentication mode for impala-shell. Only kerberos is supported.",
     )
     parser.add_argument(
@@ -488,25 +491,29 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["beeswax", "hs2", "hs2-http"],
         help="Optional impala-shell protocol.",
     )
-    parser.add_argument("--ssl", action="store_true", help="Pass --ssl to impala-shell.")
+    parser.add_argument("--ssl", action="store_true", default=None, help="Pass --ssl to impala-shell.")
     parser.add_argument("--ca-cert", help="CA certificate path for --ssl connections.")
     parser.add_argument(
         "--timeout-sec",
         type=int,
-        default=DEFAULT_TIMEOUT_SEC,
         help=f"Timeout per statement in seconds (default: {DEFAULT_TIMEOUT_SEC}).",
     )
     parser.add_argument(
         "--max-output-bytes",
         type=int,
-        default=DEFAULT_MAX_OUTPUT_BYTES,
         help=f"Maximum captured stdout+stderr bytes per statement (default: {DEFAULT_MAX_OUTPUT_BYTES}).",
     )
     parser.add_argument(
         "--redact",
         action="store_true",
-        default=True,
+        default=None,
         help="Redact metadata output before writing. Enabled by default.",
+    )
+    parser.add_argument(
+        "--no-redact",
+        dest="redact",
+        action="store_false",
+        help="Write metadata output without redaction.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without connecting.")
     return parser
@@ -515,6 +522,10 @@ def build_parser() -> argparse.ArgumentParser:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = build_parser()
     args = parser.parse_args(argv)
+    try:
+        apply_local_config(args, cwd=Path.cwd())
+    except ConfigError as exc:
+        parser.error(str(exc))
     if args.timeout_sec <= 0:
         parser.error("--timeout-sec must be positive")
     if args.max_output_bytes <= 0:
@@ -531,6 +542,69 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     except ImpalaShellConfigError as exc:
         parser.error(str(exc))
     return args
+
+
+def apply_local_config(args: argparse.Namespace, *, cwd: Path) -> None:
+    config_values: dict[str, object] = {}
+    if args.config:
+        config_values = load_local_config(args.config, cwd=cwd)
+
+    args.impala_shell = first_string(args.impala_shell, config_values.get("metadata_impala_shell"), "impala-shell")
+    args.coordinator = first_string(args.coordinator, config_values.get("metadata_coordinator"))
+    args.auth = first_string(args.auth, config_values.get("metadata_auth"), "kerberos")
+    args.protocol = first_string(args.protocol, config_values.get("metadata_protocol"))
+    args.ssl = first_bool(args.ssl, config_values.get("metadata_ssl"), default=False)
+    args.ca_cert = first_string(args.ca_cert, config_values.get("metadata_ca_cert"))
+    args.timeout_sec = first_int(args.timeout_sec, config_values.get("metadata_timeout_sec"), default=DEFAULT_TIMEOUT_SEC)
+    args.max_output_bytes = first_int(
+        args.max_output_bytes,
+        config_values.get("metadata_max_output_bytes"),
+        default=DEFAULT_MAX_OUTPUT_BYTES,
+    )
+    args.redact = first_bool(args.redact, config_values.get("metadata_redact"), default=True)
+    args.krb5ccname = first_string(config_values.get("krb5ccname"))
+    max_tables = first_int(config_values.get("metadata_max_tables"), default=None)
+    if max_tables is not None and len(args.table or []) > max_tables:
+        raise ConfigError(
+            f"Config field metadata_max_tables allows at most {max_tables} tables for this metadata run."
+        )
+
+
+def first_string(*values: object) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        normalized = str(value).strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def first_int(*values: object, default: int | None) -> int | None:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            continue
+        return int(value)
+    return default
+
+
+def first_bool(*values: object, default: bool) -> bool:
+    for value in values:
+        if value is None:
+            continue
+        return bool(value)
+    return default
+
+
+def effective_impala_env(args: argparse.Namespace) -> dict[str, str] | None:
+    krb5ccname = getattr(args, "krb5ccname", None)
+    if not krb5ccname or os.environ.get("KRB5CCNAME"):
+        return None
+    effective = dict(os.environ)
+    effective["KRB5CCNAME"] = krb5ccname
+    return effective
 
 
 def main(argv: list[str] | None = None, *, runner: Runner = subprocess.run) -> int:

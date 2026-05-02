@@ -196,23 +196,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cluster", help="Cloudera Manager cluster name.")
     parser.add_argument("--service", help="Impala service name.")
     parser.add_argument("--ca-bundle", help="PEM CA bundle for verified CM TLS connections.")
-    parser.add_argument("--insecure-skip-verify", action="store_true")
+    parser.add_argument("--insecure-skip-verify", action="store_true", default=None)
     parser.add_argument(
         "--out",
-        required=True,
         help="Dedicated query-doctor-* output directory under /tmp or the system temp directory.",
     )
-    parser.add_argument("--recent-window-minutes", type=positive_int, default=60)
+    parser.add_argument("--recent-window-minutes", type=positive_int)
     parser.add_argument(
         "--cm-inspect-limit",
         type=positive_int,
-        default=100,
         help=f"Maximum CM query summaries to request/inspect. Hard cap: {MAX_CM_INSPECT_LIMIT}.",
     )
     parser.add_argument(
         "--triage-profile-limit",
         type=positive_int,
-        default=20,
         help=(
             "Maximum candidate profiles to collect/analyze in the analyzer-only triage pass. "
             f"Hard cap: {MAX_TRIAGE_PROFILE_LIMIT}."
@@ -227,29 +224,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--metadata-top-limit",
         type=non_negative_int,
-        default=0,
         help=(
             "Refresh metadata only for this many top-ranked triage cases. "
             f"Hard cap: {MAX_METADATA_TOP_LIMIT}. Default: 0."
         ),
     )
-    parser.add_argument("--min-duration-sec", type=non_negative_float, default=60.0)
+    parser.add_argument("--min-duration-sec", type=non_negative_float)
     parser.add_argument(
         "--no-min-duration-filter",
         action="store_true",
         help="Disable the minimum duration filter. Intended for web runs with an empty Min duration field.",
     )
     parser.add_argument("--max-duration-sec", type=non_negative_float)
-    parser.add_argument("--order", choices=ORDER_CHOICES, default="duration-desc")
-    parser.add_argument("--include-failed", action="store_true")
-    parser.add_argument("--include-running", action="store_true")
+    parser.add_argument("--order", choices=ORDER_CHOICES)
+    parser.add_argument("--include-failed", action="store_true", default=None)
+    parser.add_argument("--include-running", action="store_true", default=None)
     parser.add_argument("--user", help="Optional recent-query user filter.")
     parser.add_argument("--pool", help="Optional recent-query pool filter.")
     parser.add_argument("--query-type", help="Optional CM query type filter.")
     parser.add_argument(
         "--max-profile-bytes",
         type=positive_int,
-        default=cm_profiles.DEFAULT_MAX_PROFILE_BYTES,
     )
     parser.add_argument(
         "--metadata-mode",
@@ -259,14 +254,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--metadata-coordinator", help="Impala coordinator HOST:PORT.")
     parser.add_argument("--metadata-impala-shell", help="impala-shell executable.")
-    parser.add_argument("--metadata-auth", default="kerberos")
-    parser.add_argument("--metadata-protocol", choices=("beeswax", "hs2", "hs2-http"), default="beeswax")
-    parser.add_argument("--metadata-ssl", action="store_true")
+    parser.add_argument("--metadata-auth")
+    parser.add_argument("--metadata-protocol", choices=("beeswax", "hs2", "hs2-http"))
+    parser.add_argument("--metadata-ssl", action="store_true", default=None)
     parser.add_argument("--metadata-ca-cert")
-    parser.add_argument("--metadata-timeout-sec", type=positive_int, default=30)
+    parser.add_argument("--metadata-timeout-sec", type=positive_int)
     parser.add_argument("--metadata-max-tables", type=positive_int)
     parser.add_argument("--metadata-max-output-bytes", type=positive_int)
-    parser.add_argument("--metadata-redact", action="store_true")
+    parser.add_argument("--metadata-redact", action="store_true", default=None)
     parser.add_argument(
         "--top-reports",
         type=non_negative_int,
@@ -332,6 +327,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     discovery = DiscoveryResult([], [], "none", None)
     discovery_started: float | None = None
     discovery_seconds: float | None = None
+    discovery_failed = False
     try:
         discovery_started = time.monotonic()
         progress.emit(stage="discovery", status="started")
@@ -364,6 +360,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
                 )
             )
     except Exception as exc:  # noqa: BLE001 - user-facing sanitized batch failure
+        discovery_failed = True
         if discovery_seconds is None:
             discovery_seconds = elapsed_seconds(discovery_started) if discovery_started is not None else None
             if discovery_seconds is not None:
@@ -398,6 +395,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             case_results,
             warnings,
             discovery_seconds=discovery_seconds,
+            discovery_failed=discovery_failed,
             total_seconds=total_seconds,
         )
         write_batch_outputs(config.out, summary)
@@ -455,21 +453,6 @@ def build_batch_config(
     cwd: Path,
     repo_root: Path,
 ) -> BatchConfig:
-    if args.cm_inspect_limit > MAX_CM_INSPECT_LIMIT:
-        raise ValueError(f"--cm-inspect-limit must be <= {MAX_CM_INSPECT_LIMIT}")
-    triage_profile_limit = args.select_limit_alias if args.select_limit_alias is not None else args.triage_profile_limit
-    if triage_profile_limit > MAX_TRIAGE_PROFILE_LIMIT:
-        raise ValueError(f"--triage-profile-limit must be <= {MAX_TRIAGE_PROFILE_LIMIT}")
-    if triage_profile_limit > args.cm_inspect_limit:
-        raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
-    if args.metadata_top_limit > MAX_METADATA_TOP_LIMIT:
-        raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
-    validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
-    min_duration_sec = None if args.no_min_duration_filter else args.min_duration_sec
-    if args.max_duration_sec is not None and min_duration_sec is not None:
-        if args.max_duration_sec < min_duration_sec:
-            raise ValueError("--max-duration-sec must be >= --min-duration-sec")
-
     use_repo_default = not any((args.cm_url, args.cluster, args.service, args.ca_bundle))
     default_config_path = None
     if not args.config:
@@ -505,7 +488,58 @@ def build_batch_config(
     if not service:
         raise ValueError("Missing --service or local config service.")
 
-    out = Path(args.out).expanduser()
+    cm_inspect_limit = first_int(
+        args.cm_inspect_limit,
+        config_values.get("recent_cm_summary_limit"),
+        default=100,
+    )
+    triage_profile_limit = first_int(
+        args.select_limit_alias,
+        args.triage_profile_limit,
+        config_values.get("recent_profile_analysis_limit"),
+        default=20,
+    )
+    metadata_top_limit = first_int(
+        args.metadata_top_limit,
+        config_values.get("recent_metadata_top_limit"),
+        default=0,
+    )
+    recent_window_minutes = first_int(
+        args.recent_window_minutes,
+        config_values.get("recent_window_minutes"),
+        default=60,
+    )
+    if cm_inspect_limit > MAX_CM_INSPECT_LIMIT:
+        raise ValueError(f"--cm-inspect-limit must be <= {MAX_CM_INSPECT_LIMIT}")
+    if triage_profile_limit > MAX_TRIAGE_PROFILE_LIMIT:
+        raise ValueError(f"--triage-profile-limit must be <= {MAX_TRIAGE_PROFILE_LIMIT}")
+    if triage_profile_limit > cm_inspect_limit:
+        raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
+    if metadata_top_limit > MAX_METADATA_TOP_LIMIT:
+        raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
+    validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
+    min_duration_sec = (
+        None
+        if args.no_min_duration_filter
+        else first_float(
+            args.min_duration_sec,
+            config_values.get("recent_min_duration_sec"),
+            default=60.0,
+        )
+    )
+    max_duration_sec = first_float(
+        args.max_duration_sec,
+        config_values.get("recent_max_duration_sec"),
+        default=None,
+    )
+    if max_duration_sec is not None and min_duration_sec is not None:
+        if max_duration_sec < min_duration_sec:
+            raise ValueError("--max-duration-sec must be >= --min-duration-sec")
+
+    out_value = first_string(args.out, config_values.get("out"))
+    if not out_value:
+        raise ValueError("missing required output directory: provide --out or config field out")
+    out = Path(out_value).expanduser()
     if not out.is_absolute():
         out = (cwd / out).resolve()
     validate_batch_output_path(out, repo_root)
@@ -515,8 +549,12 @@ def build_batch_config(
         if not progress_jsonl.is_absolute():
             progress_jsonl = (cwd / progress_jsonl).resolve()
 
-    ca_bundle = first_string(args.ca_bundle, config_values.get("ca_bundle"), env.get("CM_CA_BUNDLE"))
-    insecure_skip_verify = bool(args.insecure_skip_verify or config_values.get("insecure_skip_verify", False))
+    ca_bundle = first_string(args.ca_bundle, env.get("CM_CA_BUNDLE"), config_values.get("ca_bundle"))
+    insecure_skip_verify = first_bool(
+        args.insecure_skip_verify,
+        config_values.get("insecure_skip_verify"),
+        default=False,
+    )
 
     return BatchConfig(
         out=out,
@@ -526,30 +564,42 @@ def build_batch_config(
         cm_username=first_string(env.get("CM_USERNAME"), config_values.get("username")),
         ca_bundle=ca_bundle,
         verify_tls=not insecure_skip_verify,
-        recent_window_minutes=args.recent_window_minutes,
-        cm_inspect_limit=args.cm_inspect_limit,
+        recent_window_minutes=recent_window_minutes,
+        cm_inspect_limit=cm_inspect_limit,
         triage_profile_limit=triage_profile_limit,
-        metadata_top_limit=args.metadata_top_limit,
+        metadata_top_limit=metadata_top_limit,
         min_duration_sec=min_duration_sec,
-        max_duration_sec=args.max_duration_sec,
-        order=args.order,
-        include_failed=args.include_failed,
-        include_running=args.include_running,
-        user=args.user,
-        pool=args.pool,
-        query_type=args.query_type,
-        max_profile_bytes=args.max_profile_bytes,
+        max_duration_sec=max_duration_sec,
+        order=first_string(args.order, config_values.get("recent_order"), "duration-desc") or "duration-desc",
+        include_failed=first_bool(args.include_failed, config_values.get("recent_include_failed"), default=False),
+        include_running=first_bool(args.include_running, config_values.get("recent_include_running"), default=False),
+        user=first_string(args.user, config_values.get("recent_user")),
+        pool=first_string(args.pool, config_values.get("recent_pool")),
+        query_type=first_string(args.query_type, config_values.get("query_type")),
+        max_profile_bytes=first_int(
+            args.max_profile_bytes,
+            config_values.get("max_profile_bytes"),
+            default=cm_profiles.DEFAULT_MAX_PROFILE_BYTES,
+        ),
         metadata_mode=args.metadata_mode,
-        metadata_coordinator=args.metadata_coordinator,
-        metadata_impala_shell=args.metadata_impala_shell,
-        metadata_auth=args.metadata_auth,
-        metadata_protocol=args.metadata_protocol,
-        metadata_ssl=args.metadata_ssl,
-        metadata_ca_cert=args.metadata_ca_cert,
-        metadata_timeout_sec=args.metadata_timeout_sec,
-        metadata_max_tables=args.metadata_max_tables,
-        metadata_max_output_bytes=args.metadata_max_output_bytes,
-        metadata_redact=args.metadata_redact,
+        metadata_coordinator=first_string(args.metadata_coordinator, config_values.get("metadata_coordinator")),
+        metadata_impala_shell=first_string(args.metadata_impala_shell, config_values.get("metadata_impala_shell")),
+        metadata_auth=first_string(args.metadata_auth, config_values.get("metadata_auth"), "kerberos") or "kerberos",
+        metadata_protocol=first_string(args.metadata_protocol, config_values.get("metadata_protocol"), "beeswax") or "beeswax",
+        metadata_ssl=first_bool(args.metadata_ssl, config_values.get("metadata_ssl"), default=False),
+        metadata_ca_cert=first_string(args.metadata_ca_cert, config_values.get("metadata_ca_cert")),
+        metadata_timeout_sec=first_int(
+            args.metadata_timeout_sec,
+            config_values.get("metadata_timeout_sec"),
+            default=30,
+        ),
+        metadata_max_tables=first_int(args.metadata_max_tables, config_values.get("metadata_max_tables"), default=None),
+        metadata_max_output_bytes=first_int(
+            args.metadata_max_output_bytes,
+            config_values.get("metadata_max_output_bytes"),
+            default=None,
+        ),
+        metadata_redact=first_bool(args.metadata_redact, config_values.get("metadata_redact"), default=False),
         top_reports=args.top_reports,
         jobs=args.jobs,
         allow_high_jobs=args.allow_high_jobs,
@@ -582,6 +632,34 @@ def first_string(*values: object) -> str | None:
         if normalized:
             return normalized
     return None
+
+
+def first_int(*values: object, default: int | None) -> int | None:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            continue
+        return int(value)
+    return default
+
+
+def first_float(*values: object, default: float | None) -> float | None:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            continue
+        return float(value)
+    return default
+
+
+def first_bool(*values: object, default: bool) -> bool:
+    for value in values:
+        if value is None:
+            continue
+        return bool(value)
+    return default
 
 
 def resolve_config_path(config_path: str | None, cwd: Path) -> str | None:
@@ -1303,6 +1381,7 @@ def build_summary(
     *,
     discovery_seconds: float | None,
     total_seconds: float,
+    discovery_failed: bool = False,
 ) -> dict[str, object]:
     selected_count = len(cases)
     inspected = len(discovery.candidates)
@@ -1315,6 +1394,11 @@ def build_summary(
         "metadata_top_limit": config.metadata_top_limit,
         "recent_window_minutes": config.recent_window_minutes,
         "min_duration_sec": config.min_duration_sec,
+        "query_type_filter": config.query_type or "all",
+        "include_failed": config.include_failed,
+        "include_running": config.include_running,
+        "user_filter_present": bool(config.user),
+        "pool_filter_present": bool(config.pool),
         "order": config.order,
         "duration_filter": duration_filter_label(config),
         "duration_filter_mode": discovery.duration_filter_mode,
@@ -1323,12 +1407,13 @@ def build_summary(
         "server_filter_expression_present": bool(discovery.server_filter_expression),
         "summaries_inspected": inspected,
         "cm_summary_safety_cap": MAX_CM_INSPECT_LIMIT,
+        "cm_summary_page_size": cm_profiles.CM_QUERY_SUMMARY_PAGE_SIZE,
         "cm_summary_safety_cap_hit": config.cm_inspect_limit == MAX_CM_INSPECT_LIMIT and inspected >= MAX_CM_INSPECT_LIMIT,
         "selected_count": selected_count,
         "top_reports": config.top_reports,
         "jobs": config.jobs,
         "warnings": [cm_profiles.sanitize_text_for_log(warning) for warning in warnings],
-        "discovery_failed": bool(warnings and not discovery.candidates),
+        "discovery_failed": bool(discovery_failed),
         "cases": [case_to_summary(case) for case in sorted(cases, key=batch_ranking_key)],
     }
 
@@ -1407,7 +1492,11 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- selected candidates: {summary['selected_count']}",
         f"- triage profile limit: {summary['triage_profile_limit']}",
         f"- metadata top limit: {summary['metadata_top_limit']}",
+        f"- search depth minutes: {summary['recent_window_minutes']}",
+        f"- query type filter: {summary['query_type_filter']}",
         f"- duration filter: {summary['duration_filter']}",
+        f"- include failed: {summary['include_failed']}",
+        f"- include running: {summary['include_running']}",
         f"- top reports: {summary['top_reports']}",
         f"- jobs: {summary['jobs']}",
         f"- discovery seconds: {summary['discovery_seconds']}",

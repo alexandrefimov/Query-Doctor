@@ -208,9 +208,24 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
             config_key="recent_window_minutes",
             fallback="30",
         ),
-        "cm_inspect_limit": form_or_config_value(form_values, "cm_inspect_limit", config_values=local_config),
-        "triage_profile_limit": form_or_config_value(form_values, "triage_profile_limit", config_values=local_config),
-        "metadata_top_limit": form_or_config_value(form_values, "metadata_top_limit", config_values=local_config),
+        "cm_inspect_limit": form_or_config_value(
+            form_values,
+            "cm_inspect_limit",
+            config_values=local_config,
+            config_key="recent_cm_summary_limit",
+        ),
+        "triage_profile_limit": form_or_config_value(
+            form_values,
+            "triage_profile_limit",
+            config_values=local_config,
+            config_key="recent_profile_analysis_limit",
+        ),
+        "metadata_top_limit": form_or_config_value(
+            form_values,
+            "metadata_top_limit",
+            config_values=local_config,
+            config_key="recent_metadata_top_limit",
+        ),
         "min_duration_sec": form_or_config_value(
             form_values,
             "min_duration_sec",
@@ -218,13 +233,29 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
             config_key="recent_min_duration_sec",
         ),
         "max_duration_sec": "",
-        "order": "duration-desc",
+        "order": form_or_config_value(
+            form_values,
+            "order",
+            config_values=local_config,
+            config_key="recent_order",
+            fallback="duration-desc",
+        ),
         "jobs": "4",
-        "user": "",
-        "pool": "",
+        "user": form_or_config_value(form_values, "user", config_values=local_config, config_key="recent_user"),
+        "pool": form_or_config_value(form_values, "pool", config_values=local_config, config_key="recent_pool"),
         "query_type": "QUERY",
-        "include_failed": False,
-        "include_running": False,
+        "include_failed": form_or_config_bool(
+            form_values,
+            "include_failed",
+            config_values=local_config,
+            config_key="recent_include_failed",
+        ),
+        "include_running": form_or_config_bool(
+            form_values,
+            "include_running",
+            config_values=local_config,
+            config_key="recent_include_running",
+        ),
     }
     if form_values:
         values.update(form_values)
@@ -359,6 +390,22 @@ def form_or_config_value(
     return fallback
 
 
+def form_or_config_bool(
+    form_values: dict[str, Any] | None,
+    form_key: str,
+    *,
+    config_values: dict[str, object],
+    config_key: str | None = None,
+    fallback: bool = False,
+) -> bool:
+    if form_values is not None and form_key in form_values:
+        return bool(form_values.get(form_key))
+    value = config_values.get(config_key or form_key)
+    if isinstance(value, bool):
+        return value
+    return fallback
+
+
 def format_recent_window_label(value: str) -> str:
     try:
         minutes = int(value)
@@ -446,6 +493,7 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
             "<tr><td colspan=\"14\" class=\"empty-cell\">No case summaries were found in the configured batch summary.</td></tr>"
         )
     scope_note = render_batch_scope_note(summary)
+    empty_note = render_batch_empty_note(summary)
     return (
         "<section class=\"panel batch-panel\" aria-label=\"Recent query scan\">"
         "<div class=\"batch-head\">"
@@ -455,6 +503,7 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
         "</div>"
         f"<div class=\"batch-metrics\">{header}</div>"
         f"{scope_note}"
+        f"{empty_note}"
         "<div class=\"batch-note\">Score is deterministic analyzer output. LLM reports exist only where "
         "<code>report_generated</code> is true. Partial reports are untrusted and not rendered here.</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
@@ -480,7 +529,37 @@ def render_batch_scope_note(summary: dict[str, Any]) -> str:
     parts.append(f"Duration filter: {escape_value(summary.get('duration_filter') or 'none')}")
     if summary.get("triage_profile_limit") is not None:
         parts.append(f"Profile analysis limit: {escape_value(summary.get('triage_profile_limit'))}")
+    if summary.get("recent_window_minutes") is not None:
+        parts.append(f"Search depth: {escape_value(summary.get('recent_window_minutes'))} minutes")
+    if summary.get("query_type_filter") is not None:
+        parts.append(f"Query type: {escape_value(summary.get('query_type_filter'))}")
+    if summary.get("include_failed") is not None:
+        parts.append(f"Include failed: {escape_value(summary.get('include_failed'))}")
+    if summary.get("include_running") is not None:
+        parts.append(f"Include running: {escape_value(summary.get('include_running'))}")
+    if summary.get("user_filter_present"):
+        parts.append("User filter: set")
+    if summary.get("pool_filter_present"):
+        parts.append("Pool filter: set")
     return f"<div class=\"batch-note\">{'. '.join(parts)}.</div>" if parts else ""
+
+
+def render_batch_empty_note(summary: dict[str, Any]) -> str:
+    if summary.get("discovery_failed"):
+        return ""
+    selected = numeric_count(summary.get("selected_count"))
+    cases = summary.get("cases")
+    case_count = len(cases) if isinstance(cases, list) else 0
+    if selected or case_count:
+        return ""
+    summaries = summary.get("summaries_inspected")
+    if summaries is not None and numeric_count(summaries) == 0:
+        message = "No matching queries found for this search window. Try increasing Search depth or changing filters."
+    elif summaries is not None:
+        message = "No query candidates matched the current scan criteria. Try increasing Search depth or changing filters."
+    else:
+        return ""
+    return f"<div class=\"batch-note\">{html.escape(message)}</div>"
 
 
 def render_batch_case_row(rank: int, case: dict[str, Any]) -> str:
