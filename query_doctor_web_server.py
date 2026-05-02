@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
 import sys
 import threading
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
@@ -20,7 +21,13 @@ from urllib.parse import parse_qs, urlparse
 import query_doctor_collect_cm_profiles as cm_collector
 from query_doctor_web_ui import (
     WEB_STAGES,
+    render_batch_card,
+    render_batch_case_detail_page,
+    render_batch_case_not_found_page,
+    render_batch_page,
+    render_batch_progress_panel,
     render_page,
+    render_query_page,
     render_readme_page,
     render_report_markdown_html,
     render_result,
@@ -45,6 +52,24 @@ MISSING_CM_CREDENTIALS_MESSAGE = (
     "Не найдены учётные данные CM в окружении web server. Запустите сервер из "
     "терминала, где заданы CM_USERNAME/CM_PASSWORD или CM_TOKEN."
 )
+BATCH_STAGES = (
+    (0, "Проверяем параметры batch triage", 4),
+    (1, "Запускаем analyzer-only batch triage", 24),
+    (2, "Читаем batch_summary.json", 86),
+    (3, "Готово", 100),
+)
+BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc"}
+BATCH_CM_INSPECT_LIMIT_MAX = 1000
+BATCH_SELECT_LIMIT_MAX = 200
+BATCH_JOBS_MAX = 100
+
+
+def batch_output_dir(job_id: str) -> Path:
+    return Path("/tmp") / f"query-doctor-web-batch-{job_id}"
+
+
+def batch_progress_path(job_id: str) -> Path:
+    return batch_output_dir(job_id) / "progress.jsonl"
 
 
 class WebError(RuntimeError):
@@ -62,6 +87,7 @@ class WebSettings:
     timeout_sec: int = DEFAULT_TIMEOUT_SEC
     repo_dir: Path = Path(__file__).resolve().parent
     corpus_dir: Path = DEFAULT_CORPUS_DIR
+    batch_summary: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +104,22 @@ class WebResult:
 
 
 @dataclass(frozen=True)
+class BatchRunConfig:
+    recent_window_minutes: int = 1440
+    cm_inspect_limit: int = 1000
+    select_limit: int = 200
+    min_duration_sec: float = 10.0
+    max_duration_sec: float | None = None
+    order: str = "duration-desc"
+    jobs: int = 20
+    user: str = ""
+    pool: str = ""
+    query_type: str = "QUERY"
+    include_failed: bool = False
+    include_running: bool = False
+
+
+@dataclass(frozen=True)
 class WebJobSnapshot:
     job_id: str
     query_id: str
@@ -85,8 +127,11 @@ class WebJobSnapshot:
     status: str
     stage_label: str
     progress: int
+    kind: str = "query"
     result_html: str = ""
     error: str = ""
+    batch_form_values: dict[str, object] | None = None
+    batch_progress_path: Path | None = None
 
 
 @dataclass
@@ -97,8 +142,11 @@ class WebJob:
     status: str
     stage_label: str
     progress: int
+    kind: str = "query"
     result_html: str = ""
     error: str = ""
+    batch_form_values: dict[str, object] | None = None
+    batch_progress_path: Path | None = None
 
     def snapshot(self) -> WebJobSnapshot:
         return WebJobSnapshot(
@@ -108,14 +156,18 @@ class WebJob:
             status=self.status,
             stage_label=self.stage_label,
             progress=self.progress,
+            kind=self.kind,
             result_html=self.result_html,
             error=self.error,
+            batch_form_values=dict(self.batch_form_values) if self.batch_form_values is not None else None,
+            batch_progress_path=self.batch_progress_path,
         )
 
 
 class WebJobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, WebJob] = {}
+        self._latest_batch_summary: Path | None = None
         self._lock = threading.Lock()
 
     def create(self, query_id: str, report_mode: str) -> WebJobSnapshot:
@@ -132,17 +184,44 @@ class WebJobStore:
             self._jobs[job.job_id] = job
             return job.snapshot()
 
+    def create_batch(self, form_values: dict[str, object] | None = None) -> WebJobSnapshot:
+        stage = BATCH_STAGES[0]
+        job_id = uuid.uuid4().hex
+        job = WebJob(
+            job_id=job_id,
+            query_id="batch triage",
+            report_mode="batch",
+            status="running",
+            stage_label=stage[1],
+            progress=stage[2],
+            kind="batch",
+            batch_form_values=dict(form_values) if form_values is not None else None,
+            batch_progress_path=batch_progress_path(job_id),
+        )
+        with self._lock:
+            self._jobs[job.job_id] = job
+            return job.snapshot()
+
     def get(self, job_id: str) -> WebJobSnapshot | None:
         with self._lock:
             job = self._jobs.get(job_id)
             return job.snapshot() if job is not None else None
 
+    def latest_batch_summary(self) -> Path | None:
+        with self._lock:
+            return self._latest_batch_summary
+
+    def set_latest_batch_summary(self, path: Path) -> None:
+        with self._lock:
+            self._latest_batch_summary = path
+
     def update_stage(self, job_id: str, stage_index: int) -> None:
-        stage = WEB_STAGES[stage_index]
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None or job.status != "running":
                 return
+            stages = BATCH_STAGES if job.kind == "batch" else WEB_STAGES
+            stage = stages[stage_index]
             job.stage_label = stage[1]
             job.progress = stage[2]
 
@@ -157,12 +236,26 @@ class WebJobStore:
             job.result_html = "\n".join(render_result(result))
             job.error = ""
 
+    def complete_html(self, job_id: str, result_html: str) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return
+            stages = BATCH_STAGES if job.kind == "batch" else WEB_STAGES
+            job.status = "ok"
+            job.stage_label = stages[-1][1]
+            job.progress = stages[-1][2]
+            job.result_html = result_html
+            job.error = ""
+
     def fail(self, job_id: str, error: object) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
                 return
             job.status = "failed"
+            job.stage_label = "Ошибка"
+            job.progress = 100
             job.error = sanitize_for_display(error)
 
 
@@ -173,7 +266,7 @@ ProgressFunc = Callable[[int], None]
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a localhost-only Query Doctor local web UI for one explicit CM query id."
+        description="Run the localhost-only Query Doctor web UI for batch triage and explicit CM query ids."
     )
     parser.add_argument(
         "--config",
@@ -203,6 +296,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
         default=DEFAULT_TIMEOUT_SEC,
         help=f"Per-step subprocess timeout. Default: {DEFAULT_TIMEOUT_SEC}.",
+    )
+    parser.add_argument(
+        "--batch-summary",
+        help=(
+            "Optional local batch_summary.json to render read-only at / and /batch. "
+            "The web UI never chooses this path from request parameters."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -492,6 +592,131 @@ def parse_facts_summary(facts_text: str) -> dict[str, str]:
     return summary
 
 
+def parse_batch_run_config(form: dict[str, list[str]]) -> BatchRunConfig:
+    recent_window_minutes = parse_positive_form_int(form, "recent_window_minutes", default=1440)
+    cm_inspect_limit = parse_positive_form_int(
+        form, "cm_inspect_limit", default=1000, maximum=BATCH_CM_INSPECT_LIMIT_MAX
+    )
+    select_limit = parse_positive_form_int(form, "select_limit", default=200, maximum=BATCH_SELECT_LIMIT_MAX)
+    min_duration_sec = parse_non_negative_form_float(form, "min_duration_sec", default=10.0)
+    max_duration_text = first_form_value(form, "max_duration_sec")
+    max_duration_sec = None
+    if max_duration_text:
+        max_duration_sec = parse_non_negative_form_float(form, "max_duration_sec", default=0.0)
+        if max_duration_sec < min_duration_sec:
+            raise WebError("max_duration_sec must be greater than or equal to min_duration_sec.")
+    order = first_form_value(form, "order") or "duration-desc"
+    if order not in BATCH_ORDER_VALUES:
+        raise WebError("Order must be one of: recent, duration-desc, duration-asc.")
+    jobs = parse_positive_form_int(form, "jobs", default=20, maximum=BATCH_JOBS_MAX)
+    user = first_form_value(form, "user")
+    pool = first_form_value(form, "pool")
+    query_type = first_form_value(form, "query_type") or "QUERY"
+    return BatchRunConfig(
+        recent_window_minutes=recent_window_minutes,
+        cm_inspect_limit=cm_inspect_limit,
+        select_limit=select_limit,
+        min_duration_sec=min_duration_sec,
+        max_duration_sec=max_duration_sec,
+        order=order,
+        jobs=jobs,
+        user=user,
+        pool=pool,
+        query_type=query_type,
+        include_failed=first_form_value(form, "include_failed") == "on",
+        include_running=first_form_value(form, "include_running") == "on",
+    )
+
+
+def display_float(value: float) -> str:
+    return str(int(value)) if value == int(value) else str(value)
+
+
+def parse_positive_form_int(
+    form: dict[str, list[str]],
+    name: str,
+    *,
+    default: int,
+    maximum: int | None = None,
+) -> int:
+    text = first_form_value(form, name)
+    if not text:
+        value = default
+    else:
+        try:
+            value = int(text)
+        except ValueError as exc:
+            raise WebError(f"{name} must be a positive integer.") from exc
+    if value <= 0:
+        raise WebError(f"{name} must be a positive integer.")
+    if maximum is not None and value > maximum:
+        raise WebError(f"{name} must be <= {maximum}.")
+    return value
+
+
+def parse_non_negative_form_float(form: dict[str, list[str]], name: str, *, default: float) -> float:
+    text = first_form_value(form, name)
+    if not text:
+        value = default
+    else:
+        try:
+            value = float(text)
+        except ValueError as exc:
+            raise WebError(f"{name} must be a non-negative number.") from exc
+    if value < 0:
+        raise WebError(f"{name} must be a non-negative number.")
+    if not math.isfinite(value):
+        raise WebError(f"{name} must be a finite non-negative number.")
+    return value
+
+
+def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettings) -> tuple[list[str], Path]:
+    out_dir = batch_output_dir(job_id)
+    progress_path = batch_progress_path(job_id)
+    cmd = [
+        sys.executable,
+        str(settings.repo_dir / "query_doctor_batch_recent.py"),
+        "--config",
+        str(settings.config),
+        "--out",
+        str(out_dir),
+        "--recent-window-minutes",
+        str(config.recent_window_minutes),
+        "--cm-inspect-limit",
+        str(config.cm_inspect_limit),
+        "--select-limit",
+        str(config.select_limit),
+        "--min-duration-sec",
+        display_float(config.min_duration_sec),
+        "--order",
+        config.order,
+        "--metadata-mode",
+        "off",
+        "--top-reports",
+        "0",
+        "--jobs",
+        str(config.jobs),
+        "--overwrite",
+        "--progress-jsonl",
+        str(progress_path),
+    ]
+    if config.max_duration_sec is not None:
+        cmd.extend(["--max-duration-sec", display_float(config.max_duration_sec)])
+    if config.user:
+        cmd.extend(["--user", config.user])
+    if config.pool:
+        cmd.extend(["--pool", config.pool])
+    if config.query_type:
+        cmd.extend(["--query-type", config.query_type])
+    if config.include_failed:
+        cmd.append("--include-failed")
+    if config.include_running:
+        cmd.append("--include-running")
+    if config.jobs > 4:
+        cmd.append("--allow-high-jobs")
+    return cmd, out_dir
+
+
 def handle_analyze_request(
     form: dict[str, list[str]],
     settings: WebSettings,
@@ -502,12 +727,17 @@ def handle_analyze_request(
     report_mode = first_form_value(form, "mode") or "user"
     redact_identifiers = first_form_value(form, "redact_identifiers") == "on"
     if not query_id:
-        return 400, render_page(settings, error="Query ID is required.")
+        return 400, render_query_page(settings, error="Query ID is required.")
     try:
         result = analysis_func(query_id, report_mode, redact_identifiers, settings)
     except WebError as exc:
-        return 400, render_page(settings, query_id=query_id, report_mode=report_mode, error=sanitize_for_display(exc))
-    return 200, render_page(settings, query_id=query_id, report_mode=report_mode, result=result)
+        return 400, render_query_page(
+            settings,
+            query_id=query_id,
+            report_mode=report_mode,
+            error=sanitize_for_display(exc),
+        )
+    return 200, render_query_page(settings, query_id=query_id, report_mode=report_mode, result=result)
 
 
 def start_analyze_job(
@@ -521,7 +751,7 @@ def start_analyze_job(
     report_mode = first_form_value(form, "mode") or "user"
     redact_identifiers = first_form_value(form, "redact_identifiers") == "on"
     if not query_id:
-        return 400, render_page(settings, error="Query ID is required.")
+        return 400, render_query_page(settings, error="Query ID is required.")
 
     job = job_store.create(query_id, report_mode)
     thread = threading.Thread(
@@ -531,6 +761,65 @@ def start_analyze_job(
     )
     thread.start()
     return 303, f"/jobs/{job.job_id}"
+
+
+def start_batch_job(
+    form: dict[str, list[str]],
+    settings: WebSettings,
+    job_store: WebJobStore,
+    *,
+    runner: Runner = subprocess.run,
+) -> tuple[int, str]:
+    try:
+        config = parse_batch_run_config(form)
+    except WebError as exc:
+        return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))
+
+    job = job_store.create_batch(form_values_from_config(config))
+    thread = threading.Thread(
+        target=run_batch_job,
+        args=(job.job_id, config, settings, job_store, runner),
+        daemon=True,
+    )
+    thread.start()
+    return 303, f"/jobs/{job.job_id}"
+
+
+def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for name in (
+        "recent_window_minutes",
+        "cm_inspect_limit",
+        "select_limit",
+        "min_duration_sec",
+        "max_duration_sec",
+        "order",
+        "jobs",
+        "user",
+        "pool",
+        "query_type",
+    ):
+        values[name] = first_form_value(form, name)
+    values["include_failed"] = first_form_value(form, "include_failed") == "on"
+    values["include_running"] = first_form_value(form, "include_running") == "on"
+    return values
+
+
+def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
+    return {
+        "recent_window_minutes": str(config.recent_window_minutes),
+        "cm_inspect_limit": str(config.cm_inspect_limit),
+        "select_limit": str(config.select_limit),
+        "min_duration_sec": display_float(config.min_duration_sec),
+        "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),
+        "order": config.order,
+        "jobs": str(config.jobs),
+        "user": config.user,
+        "pool": config.pool,
+        "query_type": config.query_type,
+        "include_failed": config.include_failed,
+        "include_running": config.include_running,
+    }
 
 
 def run_analysis_job(
@@ -563,6 +852,37 @@ def run_analysis_job(
         job_store.fail(job_id, "Unexpected web failure. Details are hidden because they may contain sensitive data.")
 
 
+def run_batch_job(
+    job_id: str,
+    config: BatchRunConfig,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    runner: Runner,
+) -> None:
+    try:
+        job_store.update_stage(job_id, 1)
+        cmd, out_dir = build_batch_command(job_id, config, settings)
+        completed = run_subprocess(
+            cmd,
+            cwd=settings.repo_dir,
+            timeout_sec=settings.timeout_sec,
+            runner=runner,
+        )
+        if completed.returncode != 0:
+            raise WebError(subprocess_failure_message("Query Doctor analyzer-only batch triage", completed))
+        job_store.update_stage(job_id, 2)
+        summary_path = out_dir / "batch_summary.json"
+        if not summary_path.is_file():
+            raise WebError("Batch run completed but batch_summary.json was not created.")
+        job_store.set_latest_batch_summary(summary_path)
+        batch_settings = replace(settings, batch_summary=summary_path)
+        job_store.complete_html(job_id, render_batch_card(batch_settings))
+    except WebError as exc:
+        job_store.fail(job_id, exc)
+    except Exception:  # pragma: no cover - defensive UI sanitization.
+        job_store.fail(job_id, "Unexpected batch triage failure. Details are hidden because they may contain sensitive data.")
+
+
 def render_job_status_json(job: WebJobSnapshot | None) -> str:
     if job is None:
         payload = {
@@ -577,8 +897,12 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             "status": job.status,
             "stage": job.stage_label,
             "progress": job.progress,
+            "kind": job.kind,
             "error": job.error,
             "result_html": job.result_html,
+            "progress_html": render_batch_progress_panel(job.batch_progress_path, job.status)
+            if job.kind == "batch"
+            else "",
         }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -590,18 +914,71 @@ def first_form_value(form: dict[str, list[str]], name: str) -> str:
     return values[0].strip()
 
 
+def batch_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebSettings:
+    if settings.batch_summary is not None:
+        return settings
+    latest = job_store.latest_batch_summary()
+    if latest is None:
+        return settings
+    return replace(settings, batch_summary=latest)
+
+
+def load_batch_summary(settings: WebSettings) -> dict[str, object] | None:
+    summary_path = settings.batch_summary
+    if summary_path is None:
+        return None
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def find_batch_case(summary: dict[str, object], case_id: str) -> dict[str, object] | None:
+    if not re.fullmatch(r"case-[0-9]{3}", case_id):
+        return None
+    cases = summary.get("cases")
+    if not isinstance(cases, list):
+        return None
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        try:
+            index = int(case.get("case_index"))
+        except (TypeError, ValueError):
+            continue
+        if f"case-{index:03d}" == case_id:
+            return case
+    return None
+
+
 def make_handler(
     settings: WebSettings,
     analysis_func: AnalysisFunc = run_web_analysis,
     job_store: WebJobStore | None = None,
+    runner: Runner = subprocess.run,
 ) -> type[BaseHTTPRequestHandler]:
     store = job_store or WebJobStore()
 
     class QueryDoctorWebHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
-            if parsed.path in {"/", "/index.html"}:
-                self.write_html(200, render_page(settings))
+            if parsed.path in {"/", "/index.html", "/batch"}:
+                self.write_html(200, render_batch_page(batch_page_settings(settings, store)))
+                return
+            match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)", parsed.path)
+            if match:
+                case_id = match.group("case_id")
+                effective_settings = batch_page_settings(settings, store)
+                summary = load_batch_summary(effective_settings)
+                case = find_batch_case(summary, case_id) if summary is not None else None
+                if case is None:
+                    self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
+                    return
+                self.write_html(200, render_batch_case_detail_page(effective_settings, case_id, case))
+                return
+            if parsed.path in {"/query", "/run"}:
+                self.write_html(200, render_query_page(settings))
                 return
             if parsed.path == "/readme":
                 self.write_html(200, render_readme_page(settings))
@@ -610,9 +987,18 @@ def make_handler(
             if match:
                 job = store.get(match.group("job_id"))
                 if job is None:
-                    self.write_html(404, render_page(settings, error="Analysis job was not found."))
+                    self.write_html(
+                        404,
+                        render_batch_page(
+                            batch_page_settings(settings, store),
+                            error="Analysis job was not found.",
+                        ),
+                    )
                     return
-                self.write_html(200, render_page(settings, query_id=job.query_id, report_mode=job.report_mode, job=job))
+                if job.kind == "batch":
+                    self.write_html(200, render_batch_page(batch_page_settings(settings, store), job=job))
+                else:
+                    self.write_html(200, render_query_page(settings, query_id=job.query_id, report_mode=job.report_mode, job=job))
                 return
             match = re.fullmatch(r"/jobs/(?P<job_id>[0-9a-f]{32})/status", parsed.path)
             if match:
@@ -625,13 +1011,16 @@ def make_handler(
             self.send_error(404)
 
         def do_POST(self) -> None:
-            if self.path != "/analyze":
+            if self.path not in {"/analyze", "/batch/run"}:
                 self.send_error(404)
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
             raw_body = self.rfile.read(min(length, 65536)).decode("utf-8", errors="replace")
             form = parse_qs(raw_body, keep_blank_values=True)
-            status, body = start_analyze_job(form, settings, store, analysis_func=analysis_func)
+            if self.path == "/batch/run":
+                status, body = start_batch_job(form, settings, store, runner=runner)
+            else:
+                status, body = start_analyze_job(form, settings, store, analysis_func=analysis_func)
             if status == 303:
                 self.send_response(303)
                 self.send_header("Location", body)
@@ -685,6 +1074,7 @@ def main(argv: list[str] | None = None) -> int:
         max_profile_bytes=args.max_profile_bytes,
         model=args.model,
         timeout_sec=args.timeout_sec,
+        batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
     )
     handler = make_handler(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), handler)

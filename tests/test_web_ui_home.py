@@ -80,6 +80,7 @@ def test_web_home_page_links_brand_and_readme_navigation():
     body = module.render_page(settings)
 
     assert '<a class="brand" href="/" aria-label="Query Doctor home">' in body
-    assert '<a class="nav-link nav-link--active" href="/">Run</a>' in body
+    assert '<a class="nav-link nav-link--active" href="/query">Query ID</a>' in body
+    assert '<a class="nav-link" href="/">Batch</a>' in body
     assert '<a class="nav-link" href="/readme">README</a>' in body
     assert "Settings" not in body

@@ -81,6 +81,7 @@ class BatchConfig:
     discover_only: bool
     overwrite: bool
     config_path: str | None
+    progress_jsonl: Path | None
 
 
 @dataclass
@@ -111,12 +112,46 @@ class CaseResult:
     too_large_count: int = 0
     score: int = 0
     score_reasons: list[str] = field(default_factory=list)
+    cardinality_anomaly_count: int | None = None
+    memory_anomaly_count: int | None = None
+    backend_data_skew: bool | str = "unknown"
+    host_tail_candidate_count: int | None = None
     report_generated: bool = False
     report_validation_status: str = "not_run"
     failure_category: str | None = None
     cm_collect_seconds: float | None = None
     analysis_seconds: float | None = None
     report_seconds: float | None = None
+
+
+class ProgressWriter:
+    def __init__(self, path: Path | None) -> None:
+        self.path = path
+        self._handle = None
+        self._lock = None
+        if path is not None:
+            import threading
+
+            self._lock = threading.Lock()
+            self._handle = path.open("a", encoding="utf-8")
+
+    def close(self) -> None:
+        if self._handle is not None:
+            self._handle.close()
+
+    def emit(self, **event: object) -> None:
+        if self._handle is None:
+            return
+        payload = {
+            key: value
+            for key, value in event.items()
+            if value is not None
+        }
+        line = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        assert self._lock is not None
+        with self._lock:
+            self._handle.write(line + "\n")
+            self._handle.flush()
 
 
 def positive_int(value: str) -> int:
@@ -231,6 +266,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Remove and recreate --out before running. Refuses repository or unsafe shallow paths.",
     )
+    parser.add_argument(
+        "--progress-jsonl",
+        help="Optional append-only JSONL progress file. Contains sanitized structured stage events only.",
+    )
     return parser.parse_args(argv)
 
 
@@ -247,6 +286,12 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         print(f"[batch] ERROR: {exc}", file=sys.stderr)
         return 2
 
+    try:
+        progress = ProgressWriter(config.progress_jsonl)
+    except OSError as exc:
+        print(f"[batch] ERROR: cannot write --progress-jsonl: {exc}", file=sys.stderr)
+        return 2
+
     cases_root = config.out / "cases"
     cases_root.mkdir(parents=True, exist_ok=True)
 
@@ -257,11 +302,20 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     discovery_seconds: float | None = None
     try:
         discovery_started = time.monotonic()
+        progress.emit(stage="discovery", status="started")
         discovery = discover_candidates(config, env=env)
         discovery_seconds = elapsed_seconds(discovery_started)
         print(f"[batch] discovery: {format_seconds(discovery_seconds)}")
         warnings.extend(discovery.warnings)
         selected = [candidate for candidate in discovery.candidates if candidate.selected]
+        progress.emit(
+            stage="discovery",
+            status="done",
+            summaries_inspected=len(discovery.candidates),
+            candidates_selected=len(selected),
+            duration_filter=discovery.duration_filter_mode,
+            seconds=discovery_seconds,
+        )
         for index, candidate in enumerate(selected, start=1):
             summary = candidate.summary
             case_results.append(
@@ -282,30 +336,54 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             if discovery_seconds is not None:
                 print(f"[batch] discovery: {format_seconds(discovery_seconds)}")
         warnings.append(cm_profiles.sanitize_text_for_log(exc, secrets=secret_values(env)))
+        progress.emit(stage="discovery", status="failed", phase="discovery", seconds=discovery_seconds)
 
-    if not config.discover_only:
-        print(f"[batch] jobs: {config.jobs}")
-        process_cases(config, case_results, env=env, repo_root=repo_root)
-        run_top_reports(config, case_results, env=env, repo_root=repo_root)
+    try:
+        if not config.discover_only:
+            print(f"[batch] jobs: {config.jobs}")
+            progress.emit(stage="case_processing", status="started", total=len(case_results), jobs=config.jobs)
+            process_cases(config, case_results, env=env, repo_root=repo_root, progress=progress)
+            completed_cases = sum(1 for case in case_results if case.analysis_status == "ok")
+            failed_cases = sum(1 for case in case_results if case.failure_category)
+            progress.emit(
+                stage="case_processing",
+                status="done",
+                total=len(case_results),
+                completed=completed_cases,
+                failed=failed_cases,
+            )
+            run_top_reports(config, case_results, env=env, repo_root=repo_root)
 
-    total_seconds = elapsed_seconds(total_started)
-    summary = build_summary(
-        config,
-        discovery,
-        case_results,
-        warnings,
-        discovery_seconds=discovery_seconds,
-        total_seconds=total_seconds,
-    )
-    write_batch_outputs(config.out, summary)
-    print(f"[batch] summaries inspected: {summary['summaries_inspected']}")
-    print(f"[batch] candidates selected: {summary['selected_count']}")
-    print(f"[batch] duration filter: {summary['duration_filter']}")
-    print(f"[batch] jobs: {summary['jobs']}")
-    print(f"[batch] total: {format_seconds(total_seconds)}")
-    print(f"[batch] summary JSON: {config.out / 'batch_summary.json'}")
-    print(f"[batch] summary Markdown: {config.out / 'batch_summary.md'}")
-    return 0 if not summary.get("discovery_failed") else 1
+        summary_started = time.monotonic()
+        progress.emit(stage="summary", status="started")
+        total_seconds = elapsed_seconds(total_started)
+        summary = build_summary(
+            config,
+            discovery,
+            case_results,
+            warnings,
+            discovery_seconds=discovery_seconds,
+            total_seconds=total_seconds,
+        )
+        write_batch_outputs(config.out, summary)
+        progress.emit(stage="summary", status="done", seconds=elapsed_seconds(summary_started))
+        if summary.get("discovery_failed"):
+            progress.emit(stage="batch", status="failed", phase="discovery", total_seconds=total_seconds)
+        else:
+            progress.emit(stage="batch", status="done", total_seconds=total_seconds)
+        print(f"[batch] summaries inspected: {summary['summaries_inspected']}")
+        print(f"[batch] candidates selected: {summary['selected_count']}")
+        print(f"[batch] duration filter: {summary['duration_filter']}")
+        print(f"[batch] jobs: {summary['jobs']}")
+        print(f"[batch] total: {format_seconds(total_seconds)}")
+        print(f"[batch] summary JSON: {config.out / 'batch_summary.json'}")
+        print(f"[batch] summary Markdown: {config.out / 'batch_summary.md'}")
+        return 0 if not summary.get("discovery_failed") else 1
+    except Exception:
+        progress.emit(stage="batch", status="failed", phase="runtime", total_seconds=elapsed_seconds(total_started))
+        raise
+    finally:
+        progress.close()
 
 
 def elapsed_seconds(started: float) -> float:
@@ -367,6 +445,11 @@ def build_batch_config(
     if not out.is_absolute():
         out = (cwd / out).resolve()
     validate_batch_output_path(out, repo_root)
+    progress_jsonl = None
+    if args.progress_jsonl:
+        progress_jsonl = Path(args.progress_jsonl).expanduser()
+        if not progress_jsonl.is_absolute():
+            progress_jsonl = (cwd / progress_jsonl).resolve()
 
     ca_bundle = first_string(args.ca_bundle, config_values.get("ca_bundle"), env.get("CM_CA_BUNDLE"))
     insecure_skip_verify = bool(args.insecure_skip_verify or config_values.get("insecure_skip_verify", False))
@@ -408,6 +491,7 @@ def build_batch_config(
         discover_only=args.discover_only,
         overwrite=args.overwrite,
         config_path=effective_config_path,
+        progress_jsonl=progress_jsonl,
     )
 
 
@@ -666,16 +750,17 @@ def process_cases(
     *,
     env: dict[str, str],
     repo_root: Path,
+    progress: ProgressWriter,
 ) -> None:
     if config.jobs == 1:
         for case in cases:
-            process_case(config, case, env=env, repo_root=repo_root)
+            process_case(config, case, env=env, repo_root=repo_root, progress=progress)
             print_case_progress(case)
         return
 
     with ThreadPoolExecutor(max_workers=config.jobs) as executor:
         futures = [
-            executor.submit(process_case, config, case, env=env, repo_root=repo_root)
+            executor.submit(process_case, config, case, env=env, repo_root=repo_root, progress=progress)
             for case in cases
         ]
         for future in as_completed(futures):
@@ -688,13 +773,41 @@ def process_case(
     *,
     env: dict[str, str],
     repo_root: Path,
+    progress: ProgressWriter,
 ) -> CaseResult:
+    case_id = f"case-{case.index:03d}"
+    progress.emit(stage="case", case_id=case_id, status="collection_started")
     collect_case_profile(config, case, env=env, repo_root=repo_root)
     if case.collection_status != "ok":
+        progress.emit(
+            stage="case",
+            case_id=case_id,
+            status="failed",
+            phase="collection",
+            seconds=case.cm_collect_seconds,
+        )
         return case
+    progress.emit(stage="case", case_id=case_id, status="collection_done", seconds=case.cm_collect_seconds)
+    progress.emit(stage="case", case_id=case_id, status="analysis_started")
     run_analysis_pass(config, case, env=env, repo_root=repo_root)
+    if case.analysis_status != "ok":
+        progress.emit(
+            stage="case",
+            case_id=case_id,
+            status="failed",
+            phase="analysis",
+            seconds=case.analysis_seconds,
+        )
+        return case
     if case.analysis_status == "ok":
         score_case(case)
+        progress.emit(
+            stage="case",
+            case_id=case_id,
+            status="analysis_done",
+            seconds=case.analysis_seconds,
+            score=case.score,
+        )
     return case
 
 
@@ -782,7 +895,7 @@ def run_top_reports(
         return
     ranked = sorted(
         [case for case in cases if case.analysis_status == "ok" and case.score > 0 and case.actual_case_dir],
-        key=lambda case: (-case.score, -(case.duration_sec or 0), case.index),
+        key=batch_ranking_key,
     )
     for case in ranked[: config.top_reports]:
         assert case.actual_case_dir is not None
@@ -880,6 +993,11 @@ def score_case(case: CaseResult) -> None:
     if not facts_path.exists():
         return
     facts = facts_path.read_text(encoding="utf-8", errors="replace")
+    components = extract_scoring_components(facts)
+    case.cardinality_anomaly_count = components["cardinality_anomaly_count"]
+    case.memory_anomaly_count = components["memory_anomaly_count"]
+    case.backend_data_skew = components["backend_data_skew"]
+    case.host_tail_candidate_count = components["host_tail_candidate_count"]
     score, reasons = score_analysis_facts(facts, metadata_status=case.metadata_status)
     case.score = score
     case.score_reasons = reasons
@@ -888,11 +1006,12 @@ def score_case(case: CaseResult) -> None:
 def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
-    cardinality = fact_int(facts, "Cardinality anomalies") or 0
+    components = extract_scoring_components(facts)
+    cardinality = components["cardinality_anomaly_count"] or 0
     if cardinality > 0:
         score += min(12, cardinality * 3)
         reasons.append(f"cardinality estimate anomalies: {cardinality}")
-    memory = fact_int(facts, "Memory anomalies") or 0
+    memory = components["memory_anomaly_count"] or 0
     if memory > 0:
         score += min(8, memory * 2)
         reasons.append(f"memory estimate anomalies: {memory}")
@@ -900,11 +1019,11 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
     if has_supported_spill_scratch_evidence(facts):
         score += 3
         reasons.append("spill/scratch evidence: non-zero metrics")
-    host_tail_candidates = fact_int(facts, "host tail candidates") or 0
+    host_tail_candidates = components["host_tail_candidate_count"] or 0
     if host_tail_candidates > 0:
         score += 2
         reasons.append(f"host-tail candidates: {host_tail_candidates}")
-    if has_positive_data_skew_evidence(facts):
+    if components["backend_data_skew"] is True:
         score += 2
         reasons.append("backend data skew evidence")
     if metadata_status == "failed" or has_metadata_error_status(facts):
@@ -930,6 +1049,15 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
     if score == 0:
         reasons.append("no analyzer-supported suspicious facts")
     return score, reasons
+
+
+def extract_scoring_components(facts: str) -> dict[str, object]:
+    return {
+        "cardinality_anomaly_count": fact_int(facts, "Cardinality anomalies"),
+        "memory_anomaly_count": fact_int(facts, "Memory anomalies"),
+        "backend_data_skew": backend_data_skew_value(facts),
+        "host_tail_candidate_count": fact_int(facts, "host tail candidates"),
+    }
 
 
 def fact_values(facts: str, label: str) -> list[str]:
@@ -963,8 +1091,13 @@ def has_supported_spill_scratch_evidence(facts: str) -> bool:
     return "detected non-zero spill/scratch metric evidence" in facts.lower()
 
 
-def has_positive_data_skew_evidence(facts: str) -> bool:
-    return any(value.lower().startswith("yes") for value in fact_values(facts, "data skew"))
+def backend_data_skew_value(facts: str) -> bool | str:
+    values = [value.lower() for value in fact_values(facts, "data skew")]
+    if any(value.startswith("yes") for value in values):
+        return True
+    if any(value.startswith(("no", "not_observed")) for value in values):
+        return False
+    return "unknown"
 
 
 def has_metadata_error_status(facts: str) -> bool:
@@ -1019,8 +1152,21 @@ def build_summary(
         "jobs": config.jobs,
         "warnings": [cm_profiles.sanitize_text_for_log(warning) for warning in warnings],
         "discovery_failed": bool(warnings and not discovery.candidates),
-        "cases": [case_to_summary(case) for case in sorted(cases, key=lambda item: (-item.score, item.index))],
+        "cases": [case_to_summary(case) for case in sorted(cases, key=batch_ranking_key)],
     }
+
+
+def batch_ranking_key(case: CaseResult) -> tuple[object, ...]:
+    return (
+        -case.score,
+        -(case.duration_sec or 0),
+        -(case.cardinality_anomaly_count or 0),
+        -(case.memory_anomaly_count or 0),
+        0 if case.backend_data_skew is True else 1,
+        -(case.host_tail_candidate_count or 0),
+        case.query_id,
+        case.index,
+    )
 
 
 def case_to_summary(case: CaseResult) -> dict[str, object]:
@@ -1046,6 +1192,10 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "too_large_count": case.too_large_count,
         "score": case.score,
         "score_reasons": case.score_reasons,
+        "cardinality_anomaly_count": case.cardinality_anomaly_count,
+        "memory_anomaly_count": case.memory_anomaly_count,
+        "backend_data_skew": case.backend_data_skew,
+        "host_tail_candidate_count": case.host_tail_candidate_count,
         "case_dir": str(case.wrapper_dir),
         "report_generated": case.report_generated,
         "report_validation_status": case.report_validation_status,
@@ -1079,8 +1229,8 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- discovery seconds: {summary['discovery_seconds']}",
         f"- total seconds: {summary['total_seconds']}",
         "",
-        "| case | query id | duration sec | collection | analysis | metadata | score | report | timings sec |",
-        "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- |",
+        "| case | query id | duration sec | collection | analysis | metadata | score | facts | report | timings sec |",
+        "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- | --- |",
     ]
     for case in summary["cases"]:
         assert isinstance(case, dict)
@@ -1090,10 +1240,18 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
             f"report={case['report_seconds']}, "
             f"total={case['total_seconds']}"
         )
+        facts = (
+            f"card={case['cardinality_anomaly_count']}, "
+            f"mem={case['memory_anomaly_count']}, "
+            f"skew={case['backend_data_skew']}, "
+            f"tail={case['host_tail_candidate_count']}"
+        )
         lines.append(
             (
                 "| {case_index} | {query_id} | {duration_sec} | {collection_status} | "
-                "{analysis_status} | {metadata_status} | {score} | {report_validation_status} | "
+                "{analysis_status} | {metadata_status} | {score} | "
+                f"{facts} | "
+                "{report_validation_status} | "
                 f"{timings} |"
             ).format(**case)
         )

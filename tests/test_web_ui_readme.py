@@ -18,7 +18,8 @@ def test_web_readme_page_renders_repository_readme_safely(tmp_path):
     body = module.render_readme_page(settings)
 
     assert '<a class="brand" href="/" aria-label="Query Doctor home">' in body
-    assert '<a class="nav-link" href="/">Run</a>' in body
+    assert '<a class="nav-link" href="/">Batch</a>' in body
+    assert '<a class="nav-link" href="/query">Query ID</a>' in body
     assert '<a class="nav-link nav-link--active" href="/readme">README</a>' in body
     assert "<h1>README.md</h1>" in body
     assert "<h1>Local README</h1>" in body
