@@ -54,7 +54,7 @@ MISSING_CM_CREDENTIALS_MESSAGE = (
 )
 BATCH_STAGES = (
     (0, "Проверяем параметры batch triage", 4),
-    (1, "Запускаем analyzer-only batch triage", 24),
+    (1, "Запускаем batch triage", 24),
     (2, "Читаем batch_summary.json", 86),
     (3, "Готово", 100),
 )
@@ -62,6 +62,11 @@ BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc"}
 BATCH_CM_INSPECT_LIMIT_MAX = 1000
 BATCH_SELECT_LIMIT_MAX = 200
 BATCH_JOBS_MAX = 100
+BATCH_FULL_JOBS_MAX = 4
+BATCH_ANALYSIS_DEPTH_VALUES = {"full", "fast"}
+DEFAULT_METADATA_AUTH = "kerberos"
+DEFAULT_METADATA_PROTOCOL = "beeswax"
+DEFAULT_METADATA_TIMEOUT_SEC = 30
 
 
 def batch_output_dir(job_id: str) -> Path:
@@ -88,6 +93,16 @@ class WebSettings:
     repo_dir: Path = Path(__file__).resolve().parent
     corpus_dir: Path = DEFAULT_CORPUS_DIR
     batch_summary: Path | None = None
+    metadata_coordinator: str | None = None
+    metadata_impala_shell: str | None = None
+    metadata_auth: str = DEFAULT_METADATA_AUTH
+    metadata_protocol: str = DEFAULT_METADATA_PROTOCOL
+    metadata_ssl: bool = False
+    metadata_ca_cert: str | None = None
+    metadata_timeout_sec: int = DEFAULT_METADATA_TIMEOUT_SEC
+    metadata_max_tables: int | None = None
+    metadata_max_output_bytes: int | None = None
+    metadata_redact: bool = False
 
 
 @dataclass(frozen=True)
@@ -105,13 +120,14 @@ class WebResult:
 
 @dataclass(frozen=True)
 class BatchRunConfig:
+    analysis_depth: str = "full"
     recent_window_minutes: int = 1440
     cm_inspect_limit: int = 1000
     select_limit: int = 200
     min_duration_sec: float = 10.0
     max_duration_sec: float | None = None
     order: str = "duration-desc"
-    jobs: int = 20
+    jobs: int = 4
     user: str = ""
     pool: str = ""
     query_type: str = "QUERY"
@@ -304,6 +320,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "The web UI never chooses this path from request parameters."
         ),
     )
+    parser.add_argument("--metadata-coordinator", help="Impala coordinator HOST:PORT for web batch metadata.")
+    parser.add_argument("--metadata-impala-shell", help="impala-shell executable for web batch metadata.")
+    parser.add_argument("--metadata-auth", default=DEFAULT_METADATA_AUTH, help="Metadata auth mode. Default: kerberos.")
+    parser.add_argument(
+        "--metadata-protocol",
+        choices=("beeswax", "hs2", "hs2-http"),
+        default=DEFAULT_METADATA_PROTOCOL,
+        help="impala-shell protocol for web batch metadata. Default: beeswax.",
+    )
+    parser.add_argument("--metadata-ssl", action="store_true", help="Pass --ssl to impala-shell metadata collection.")
+    parser.add_argument("--metadata-ca-cert", help="CA certificate path for --metadata-ssl metadata connections.")
+    parser.add_argument(
+        "--metadata-timeout-sec",
+        type=positive_int,
+        default=DEFAULT_METADATA_TIMEOUT_SEC,
+        help=f"Timeout per metadata statement. Default: {DEFAULT_METADATA_TIMEOUT_SEC}.",
+    )
+    parser.add_argument("--metadata-max-tables", type=positive_int, help="Maximum referenced tables to collect.")
+    parser.add_argument("--metadata-max-output-bytes", type=positive_int, help="Maximum metadata output bytes.")
+    parser.add_argument("--metadata-redact", action="store_true", help="Pass --metadata-redact to web batch runs.")
     return parser.parse_args(argv)
 
 
@@ -593,6 +629,9 @@ def parse_facts_summary(facts_text: str) -> dict[str, str]:
 
 
 def parse_batch_run_config(form: dict[str, list[str]]) -> BatchRunConfig:
+    analysis_depth = first_form_value(form, "analysis_depth") or "full"
+    if analysis_depth not in BATCH_ANALYSIS_DEPTH_VALUES:
+        raise WebError("Analysis depth must be full or fast.")
     recent_window_minutes = parse_positive_form_int(form, "recent_window_minutes", default=1440)
     cm_inspect_limit = parse_positive_form_int(
         form, "cm_inspect_limit", default=1000, maximum=BATCH_CM_INSPECT_LIMIT_MAX
@@ -608,11 +647,12 @@ def parse_batch_run_config(form: dict[str, list[str]]) -> BatchRunConfig:
     order = first_form_value(form, "order") or "duration-desc"
     if order not in BATCH_ORDER_VALUES:
         raise WebError("Order must be one of: recent, duration-desc, duration-asc.")
-    jobs = parse_positive_form_int(form, "jobs", default=20, maximum=BATCH_JOBS_MAX)
+    jobs = parse_positive_form_int(form, "jobs", default=BATCH_FULL_JOBS_MAX, maximum=BATCH_JOBS_MAX)
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
     query_type = first_form_value(form, "query_type") or "QUERY"
     return BatchRunConfig(
+        analysis_depth=analysis_depth,
         recent_window_minutes=recent_window_minutes,
         cm_inspect_limit=cm_inspect_limit,
         select_limit=select_limit,
@@ -626,6 +666,20 @@ def parse_batch_run_config(form: dict[str, list[str]]) -> BatchRunConfig:
         include_failed=first_form_value(form, "include_failed") == "on",
         include_running=first_form_value(form, "include_running") == "on",
     )
+
+
+def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
+    if config.analysis_depth == "full":
+        if config.jobs > BATCH_FULL_JOBS_MAX:
+            raise WebError("Full analysis collects Impala metadata and requires jobs <= 4. Use Fast triage for higher jobs.")
+        if not metadata_configured(settings):
+            raise WebError("Metadata collection is not configured for this web session. Use Fast triage or restart with metadata options.")
+        if settings.metadata_ca_cert and not settings.metadata_ssl:
+            raise WebError("--metadata-ca-cert requires --metadata-ssl for web batch metadata.")
+
+
+def metadata_configured(settings: WebSettings) -> bool:
+    return bool(settings.metadata_coordinator)
 
 
 def display_float(value: float) -> str:
@@ -671,8 +725,10 @@ def parse_non_negative_form_float(form: dict[str, list[str]], name: str, *, defa
 
 
 def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettings) -> tuple[list[str], Path]:
+    validate_batch_config_for_settings(config, settings)
     out_dir = batch_output_dir(job_id)
     progress_path = batch_progress_path(job_id)
+    metadata_mode = "on" if config.analysis_depth == "full" else "off"
     cmd = [
         sys.executable,
         str(settings.repo_dir / "query_doctor_batch_recent.py"),
@@ -691,7 +747,7 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         "--order",
         config.order,
         "--metadata-mode",
-        "off",
+        metadata_mode,
         "--top-reports",
         "0",
         "--jobs",
@@ -712,9 +768,31 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         cmd.append("--include-failed")
     if config.include_running:
         cmd.append("--include-running")
-    if config.jobs > 4:
+    if config.analysis_depth == "full":
+        append_web_metadata_args(cmd, settings)
+    elif config.jobs > BATCH_FULL_JOBS_MAX:
         cmd.append("--allow-high-jobs")
     return cmd, out_dir
+
+
+def append_web_metadata_args(cmd: list[str], settings: WebSettings) -> None:
+    if settings.metadata_coordinator:
+        cmd.extend(["--metadata-coordinator", settings.metadata_coordinator])
+    if settings.metadata_impala_shell:
+        cmd.extend(["--metadata-impala-shell", settings.metadata_impala_shell])
+    cmd.extend(["--metadata-auth", settings.metadata_auth])
+    cmd.extend(["--metadata-protocol", settings.metadata_protocol])
+    cmd.extend(["--metadata-timeout-sec", str(settings.metadata_timeout_sec)])
+    if settings.metadata_ssl:
+        cmd.append("--metadata-ssl")
+    if settings.metadata_ca_cert:
+        cmd.extend(["--metadata-ca-cert", settings.metadata_ca_cert])
+    if settings.metadata_max_tables is not None:
+        cmd.extend(["--metadata-max-tables", str(settings.metadata_max_tables)])
+    if settings.metadata_max_output_bytes is not None:
+        cmd.extend(["--metadata-max-output-bytes", str(settings.metadata_max_output_bytes)])
+    if settings.metadata_redact:
+        cmd.append("--metadata-redact")
 
 
 def handle_analyze_request(
@@ -772,6 +850,7 @@ def start_batch_job(
 ) -> tuple[int, str]:
     try:
         config = parse_batch_run_config(form)
+        validate_batch_config_for_settings(config, settings)
     except WebError as exc:
         return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))
 
@@ -788,6 +867,7 @@ def start_batch_job(
 def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for name in (
+        "analysis_depth",
         "recent_window_minutes",
         "cm_inspect_limit",
         "select_limit",
@@ -807,6 +887,7 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
 
 def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
     return {
+        "analysis_depth": config.analysis_depth,
         "recent_window_minutes": str(config.recent_window_minutes),
         "cm_inspect_limit": str(config.cm_inspect_limit),
         "select_limit": str(config.select_limit),
@@ -869,7 +950,7 @@ def run_batch_job(
             runner=runner,
         )
         if completed.returncode != 0:
-            raise WebError(subprocess_failure_message("Query Doctor analyzer-only batch triage", completed))
+            raise WebError(subprocess_failure_message("Query Doctor batch triage", completed))
         job_store.update_stage(job_id, 2)
         summary_path = out_dir / "batch_summary.json"
         if not summary_path.is_file():
@@ -1075,6 +1156,16 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
         timeout_sec=args.timeout_sec,
         batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
+        metadata_coordinator=args.metadata_coordinator,
+        metadata_impala_shell=args.metadata_impala_shell,
+        metadata_auth=args.metadata_auth,
+        metadata_protocol=args.metadata_protocol,
+        metadata_ssl=args.metadata_ssl,
+        metadata_ca_cert=args.metadata_ca_cert,
+        metadata_timeout_sec=args.metadata_timeout_sec,
+        metadata_max_tables=args.metadata_max_tables,
+        metadata_max_output_bytes=args.metadata_max_output_bytes,
+        metadata_redact=args.metadata_redact,
     )
     handler = make_handler(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), handler)

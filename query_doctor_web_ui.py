@@ -178,7 +178,9 @@ def render_batch_page(
     effective_form_values = form_values
     if effective_form_values is None and job is not None:
         effective_form_values = getattr(job, "batch_form_values", None)
-    sections = [render_batch_run_panel(effective_form_values, run_disabled=job is not None and job.status == "running")]
+    sections = [
+        render_batch_run_panel(settings, effective_form_values, run_disabled=job is not None and job.status == "running")
+    ]
     if job is not None:
         sections.append(render_job_panel(job))
     if job is None or job.status != "ok":
@@ -192,15 +194,16 @@ def render_batch_page(
     )
 
 
-def render_batch_run_panel(form_values: dict[str, Any] | None = None, *, run_disabled: bool = False) -> str:
+def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = None, *, run_disabled: bool = False) -> str:
     values = {
+        "analysis_depth": "full",
         "recent_window_minutes": "1440",
         "cm_inspect_limit": "1000",
         "select_limit": "200",
         "min_duration_sec": "10",
         "max_duration_sec": "",
         "order": "duration-desc",
-        "jobs": "20",
+        "jobs": "4",
         "user": "",
         "pool": "",
         "query_type": "QUERY",
@@ -217,6 +220,15 @@ def render_batch_run_panel(form_values: dict[str, Any] | None = None, *, run_dis
         return " checked" if values.get(name) else ""
 
     order = str(values.get("order") or "duration-desc")
+    analysis_depth = str(values.get("analysis_depth") or "full")
+    full_checked = " checked" if analysis_depth == "full" else ""
+    fast_checked = " checked" if analysis_depth == "fast" else ""
+    metadata_configured = bool(getattr(settings, "metadata_coordinator", None))
+    metadata_note = (
+        "Metadata collection is configured for this web session."
+        if metadata_configured
+        else "Metadata collection is not configured for this web session. Full mode will fail safely; Fast triage still works."
+    )
     order_options = "".join(
         f"<option value=\"{html.escape(option, quote=True)}\"{' selected' if option == order else ''}>{html.escape(option)}</option>"
         for option in ("duration-desc", "recent", "duration-asc")
@@ -224,14 +236,20 @@ def render_batch_run_panel(form_values: dict[str, Any] | None = None, *, run_dis
     button_disabled = " disabled" if run_disabled else ""
     button_label = "Running" if run_disabled else "Run"
     return (
-        "<section class=\"panel batch-run-panel\" aria-label=\"Run analyzer-only batch triage\">"
+        "<section class=\"panel batch-run-panel\" aria-label=\"Run batch triage\">"
         "<div class=\"section-heading\"><div>"
         "<h1 class=\"section-title\">Batch query triage</h1>"
-        "<div class=\"section-kicker\">Run a bounded analyzer-only batch, or inspect an existing "
-        "<code>batch_summary.json</code>. Metadata collection and LLM report generation stay disabled "
-        "from web batch runs.</div>"
-        "</div><span class=\"badge blue\">analyzer-only</span></div>"
+        "<div class=\"section-kicker\">Run a bounded batch with metadata by default, or choose fast analyzer-only triage. "
+        "LLM report generation stays disabled from web batch runs.</div>"
+        "</div><span class=\"badge blue\">batch triage</span></div>"
         "<form id=\"batch-form\" class=\"batch-form\" method=\"post\" action=\"/batch/run\">"
+        "<div class=\"batch-checkbox-row\" role=\"group\" aria-label=\"Analysis depth\">"
+        f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"full\"{full_checked}> "
+        "Full analysis: collect table metadata</label>"
+        f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"fast\"{fast_checked}> "
+        "Fast triage: analyzer only</label>"
+        "</div>"
+        f"<div class=\"batch-note\">{html.escape(metadata_note)}</div>"
         "<div class=\"batch-form-grid\">"
         f"{render_batch_number_field('recent_window_minutes', 'Recent window minutes', value('recent_window_minutes'))}"
         f"{render_batch_number_field('cm_inspect_limit', 'CM inspect limit', value('cm_inspect_limit'))}"
@@ -250,7 +268,9 @@ def render_batch_run_panel(form_values: dict[str, Any] | None = None, *, run_dis
         f"<label><input type=\"checkbox\" name=\"include_running\" value=\"on\"{checked('include_running')}> Include running</label>"
         "</div>"
         "<div class=\"pipeline-line\" aria-label=\"Batch safety scope\">"
-        "<span><strong>Hard-coded:</strong> <code>--metadata-mode off</code> · <code>--top-reports 0</code></span>"
+        "<span><strong>Full:</strong> <code>--metadata-mode on</code> with server-startup metadata settings</span>"
+        "<span><strong>Fast:</strong> <code>--metadata-mode off</code></span>"
+        "<span><strong>Always:</strong> <code>--top-reports 0</code>; no LLM report generation</span>"
         "<span><strong>Output:</strong> generated dedicated <code>/tmp/query-doctor-web-batch-*</code> directory</span>"
         "<span><strong>Summary:</strong> rendered summaries are read-only</span>"
         "<span><strong>Credentials:</strong> environment or local config only; never entered here</span>"
@@ -287,8 +307,8 @@ def render_batch_card(settings: Any) -> str:
             "<p>Run a batch from this page, or start the web UI with "
             "<code>--batch-summary PATH</code> to inspect an existing summary.</p></div>"
             "</div>"
-            "<div class=\"batch-note\">Web batch runs use <code>metadata-mode off</code> and "
-            "<code>top-reports 0</code>: no Impala metadata collection and no LLM report generation. "
+            "<div class=\"batch-note\">Web batch runs use <code>top-reports 0</code>: no LLM report generation. "
+            "Full mode collects metadata only when configured at server startup; Fast mode keeps metadata off. "
             "Rendered summaries are read-only.</div>"
             "</section>"
         )
@@ -819,7 +839,7 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         "steps": [
             progress_step("CM discovery", states["discovery"], discovery_detail(counters)),
             progress_step("Profile collection", states["collection"], case_detail(counters, "collection_done")),
-            progress_step("Analyzer-only pass", states["analysis"], case_detail(counters, "analysis_done")),
+            progress_step("Analyzer / metadata pass", states["analysis"], case_detail(counters, "analysis_done")),
             progress_step("Ranking / summary", states["summary"], "summary written" if states["summary"] == "done" else "waiting"),
             progress_step("Completed", states["completed"], "batch done" if states["completed"] == "done" else "waiting"),
         ],
