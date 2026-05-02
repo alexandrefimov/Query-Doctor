@@ -525,6 +525,16 @@ def render_batch_case_detail(case_id: str, case: dict[str, Any], metadata_facts:
 
 def render_metadata_facts_section(case: dict[str, Any], metadata_facts: dict[str, Any] | None) -> str:
     if not metadata_facts:
+        if has_metadata_aggregate_facts(case):
+            return render_metadata_facts_body(
+                case,
+                {},
+                [],
+                (
+                    "<p>Table-level metadata facts are unavailable. Safe aggregate metadata facts "
+                    "from <code>batch_summary.json</code> are shown instead.</p>"
+                ),
+            )
         return (
             "<section class=\"panel docs-panel\" aria-label=\"Metadata facts\">"
             "<h1>Metadata facts</h1>"
@@ -535,6 +545,26 @@ def render_metadata_facts_section(case: dict[str, Any], metadata_facts: dict[str
     statement_counts = metadata_facts.get("statement_counts")
     if not isinstance(statement_counts, dict):
         statement_counts = {}
+    tables = metadata_facts.get("tables")
+    if not isinstance(tables, list):
+        tables = []
+    return render_metadata_facts_body(case, statement_counts, tables)
+
+
+def render_metadata_facts_body(
+    case: dict[str, Any],
+    statement_counts: dict[Any, Any],
+    tables: list[Any],
+    fallback_note: str = "",
+) -> str:
+    metadata_reasons = metadata_score_reasons(case)
+    rows = "\n".join(render_metadata_fact_table_row(table) for table in tables if isinstance(table, dict))
+    if not rows:
+        rows = (
+            "<tr><td colspan=\"12\" class=\"empty-cell\">"
+            "table-level metadata rows are not available; aggregate facts shown above"
+            "</td></tr>"
+        )
     summary_items = [
         ("metadata status", case.get("metadata_status")),
         ("referenced tables", case.get("referenced_table_count")),
@@ -545,23 +575,20 @@ def render_metadata_facts_section(case: dict[str, Any], metadata_facts: dict[str
         ("statement not_applicable", statement_counts.get("not_applicable", 0)),
         ("statement too_large", statement_counts.get("too_large", 0)),
     ]
+    if metadata_reasons:
+        summary_items.append(("metadata score reasons", "; ".join(metadata_reasons)))
     summary_rows = "".join(
         "<div class=\"meta-row\">"
         f"<span>{html.escape(label)}</span><strong>{escape_value(value)}</strong>"
         "</div>"
         for label, value in summary_items
     )
-    tables = metadata_facts.get("tables")
-    if not isinstance(tables, list):
-        tables = []
-    rows = "\n".join(render_metadata_fact_table_row(table) for table in tables if isinstance(table, dict))
-    if not rows:
-        rows = "<tr><td colspan=\"12\" class=\"empty-cell\">metadata facts unavailable</td></tr>"
     return (
         "<section class=\"panel docs-panel\" aria-label=\"Metadata facts\">"
         "<h1>Metadata facts</h1>"
         "<div class=\"report-body\">"
         "<p>Deterministic table-level metadata facts. Missing or incomplete stats are limitations/checks, not root causes.</p>"
+        f"{fallback_note}"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
@@ -573,6 +600,29 @@ def render_metadata_facts_section(case: dict[str, Any], metadata_facts: dict[str
         "</div>"
         "</section>"
     )
+
+
+def has_metadata_aggregate_facts(case: dict[str, Any]) -> bool:
+    metadata_status = str(case.get("metadata_status") or "").lower()
+    if metadata_status in {"collected", "failed", "partial"}:
+        return True
+    for key in ("referenced_table_count", "collected_metadata_table_count", "too_large_count"):
+        if numeric_value(case.get(key)) > 0:
+            return True
+    return bool(metadata_score_reasons(case))
+
+
+def metadata_score_reasons(case: dict[str, Any]) -> list[str]:
+    reasons = case.get("score_reasons")
+    if not isinstance(reasons, list):
+        return []
+    result: list[str] = []
+    for reason in reasons:
+        text = str(reason)
+        lower = text.lower()
+        if any(marker in lower for marker in ("metadata", "stats", "statistic", "статист")):
+            result.append(text)
+    return result
 
 
 def render_metadata_fact_table_row(table: dict[str, Any]) -> str:
