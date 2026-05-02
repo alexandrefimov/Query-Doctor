@@ -103,6 +103,7 @@ class WebSettings:
     metadata_max_tables: int | None = None
     metadata_max_output_bytes: int | None = None
     metadata_redact: bool = False
+    krb5ccname: str | None = None
 
 
 @dataclass(frozen=True)
@@ -386,15 +387,27 @@ def run_subprocess(
     cwd: Path,
     timeout_sec: int,
     runner: Runner,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return runner(
         cmd,
         cwd=str(cwd),
+        env=env,
         capture_output=True,
         text=True,
         timeout=timeout_sec,
         check=False,
     )
+
+
+def effective_subprocess_env(
+    settings: WebSettings,
+    base_env: dict[str, str] | os._Environ[str] | None = None,
+) -> dict[str, str]:
+    effective = dict(os.environ if base_env is None else base_env)
+    if not effective.get("KRB5CCNAME") and settings.krb5ccname:
+        effective["KRB5CCNAME"] = settings.krb5ccname
+    return effective
 
 
 def subprocess_failure_message(stage: str, completed: subprocess.CompletedProcess[str]) -> str:
@@ -426,6 +439,7 @@ def run_web_analysis(
     validated_query_id = validate_query_id(query_id)
     if report_mode not in {"admin", "user"}:
         raise WebError("Report mode must be admin or user.")
+    subprocess_env = effective_subprocess_env(settings)
 
     update_progress(progress, 1)
     expected_case_dir = expected_case_dir_for_query(validated_query_id, settings)
@@ -434,7 +448,14 @@ def run_web_analysis(
         case_dir = expected_case_dir
         case_source = "reused existing local case"
     else:
-        case_dir = collect_case(validated_query_id, expected_case_dir, redact_identifiers, settings, runner)
+        case_dir = collect_case(
+            validated_query_id,
+            expected_case_dir,
+            redact_identifiers,
+            settings,
+            runner,
+            env=subprocess_env,
+        )
         case_source = "collected now"
 
     report_name = f"report_{report_mode}.md"
@@ -444,6 +465,7 @@ def run_web_analysis(
         cwd=settings.repo_dir,
         timeout_sec=settings.timeout_sec,
         runner=runner,
+        env=subprocess_env,
     )
     if analyzed.returncode != 0:
         raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
@@ -454,6 +476,7 @@ def run_web_analysis(
         cwd=settings.repo_dir,
         timeout_sec=settings.timeout_sec,
         runner=runner,
+        env=subprocess_env,
     )
     update_progress(progress, 4)
     report_retry = False
@@ -463,6 +486,7 @@ def run_web_analysis(
             cwd=settings.repo_dir,
             timeout_sec=settings.timeout_sec,
             runner=runner,
+            env=subprocess_env,
         )
         if retried.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(REPORT_VALIDATION_FAILURE_MESSAGE)
@@ -530,6 +554,7 @@ def collect_case(
     redact_identifiers: bool,
     settings: WebSettings,
     runner: Runner,
+    env: dict[str, str] | None = None,
 ) -> Path:
     if not has_cm_credentials():
         raise WebError(MISSING_CM_CREDENTIALS_MESSAGE)
@@ -557,6 +582,7 @@ def collect_case(
         cwd=settings.repo_dir,
         timeout_sec=settings.timeout_sec,
         runner=runner,
+        env=effective_subprocess_env(settings) if env is None else env,
     )
     if collected.returncode != 0:
         raise WebError(subprocess_failure_message("CM single-query collection", collected))
@@ -680,6 +706,17 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
 
 def metadata_configured(settings: WebSettings) -> bool:
     return bool(settings.metadata_coordinator)
+
+
+def load_krb5ccname_from_local_config(config_path: Path, *, cwd: Path) -> str | None:
+    path = config_path.expanduser()
+    if not path.is_absolute():
+        path = cwd / path
+    if not path.is_file():
+        return None
+    values = cm_collector.load_local_config(str(path), cwd=cwd)
+    value = values.get("krb5ccname")
+    return value if isinstance(value, str) else None
 
 
 def display_float(value: float) -> str:
@@ -949,6 +986,7 @@ def run_batch_job(
             cwd=settings.repo_dir,
             timeout_sec=settings.timeout_sec,
             runner=runner,
+            env=effective_subprocess_env(settings),
         )
         if completed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor batch triage", completed))
@@ -1137,9 +1175,14 @@ def make_handler(
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    config_path = Path(args.config).expanduser()
     try:
         validate_bind_host(args.host, allow_nonlocal_web_bind=args.allow_nonlocal_web_bind)
+        krb5ccname = load_krb5ccname_from_local_config(config_path, cwd=Path.cwd())
     except WebError as exc:
+        print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
+        return 2
+    except cm_collector.ConfigError as exc:
         print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
         return 2
     if args.host not in LOCAL_BIND_HOSTS:
@@ -1149,7 +1192,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     settings = WebSettings(
-        config=Path(args.config).expanduser(),
+        config=config_path,
         host=args.host,
         port=args.port,
         allow_nonlocal_web_bind=args.allow_nonlocal_web_bind,
@@ -1167,6 +1210,7 @@ def main(argv: list[str] | None = None) -> int:
         metadata_max_tables=args.metadata_max_tables,
         metadata_max_output_bytes=args.metadata_max_output_bytes,
         metadata_redact=args.metadata_redact,
+        krb5ccname=krb5ccname,
     )
     handler = make_handler(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), handler)

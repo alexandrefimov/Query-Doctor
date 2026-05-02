@@ -46,6 +46,7 @@ LOCAL_CONFIG_ALLOWED_KEYS = {
     "cm_user",
     "cm_url",
     "insecure_skip_verify",
+    "krb5ccname",
     "limit",
     "max_profile_bytes",
     "min_duration_sec",
@@ -70,6 +71,7 @@ LOCAL_CONFIG_ALLOWED_KEYS = {
     "recent_window_minutes",
     "user",
     "username",
+    "metadata_krb5ccname",
 }
 LOCAL_CONFIG_SECRET_KEY_PARTS = (
     "access_token",
@@ -925,6 +927,8 @@ def load_local_config(config_path: str, *, cwd: Path) -> dict[str, object]:
 def normalize_local_config_key(key: str) -> str:
     if key == "cm_user":
         return "username"
+    if key == "metadata_krb5ccname":
+        return "krb5ccname"
     return key
 
 
@@ -955,7 +959,18 @@ def normalize_local_config_value(key: str, value: object) -> object:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         if key == "min_duration_sec":
             raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
+        if key == "krb5ccname":
+            raise ConfigError("Config field krb5ccname must be a non-empty string.")
         return None
+    if key == "krb5ccname":
+        if not isinstance(value, str):
+            raise ConfigError("Config field krb5ccname must be a string.")
+        normalized = value.strip()
+        if not normalized:
+            raise ConfigError("Config field krb5ccname must be a non-empty string.")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in normalized):
+            raise ConfigError("Config field krb5ccname must not contain control characters.")
+        return normalized
     if key in {
         "ca_bundle",
         "cluster",

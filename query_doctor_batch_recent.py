@@ -82,6 +82,7 @@ class BatchConfig:
     overwrite: bool
     config_path: str | None
     progress_jsonl: Path | None
+    krb5ccname: str | None
 
 
 @dataclass
@@ -280,6 +281,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     repo_root = Path(__file__).resolve().parent
     try:
         config = build_batch_config(args, env=env, cwd=Path.cwd(), repo_root=repo_root)
+        env = effective_subprocess_env(env, config.krb5ccname)
         preflight(config, env=env, repo_root=repo_root)
         prepare_batch_output_dir(config.out, repo_root=repo_root, overwrite=config.overwrite)
     except ValueError as exc:
@@ -492,6 +494,7 @@ def build_batch_config(
         overwrite=args.overwrite,
         config_path=effective_config_path,
         progress_jsonl=progress_jsonl,
+        krb5ccname=first_string(config_values.get("krb5ccname")),
     )
 
 
@@ -525,6 +528,13 @@ def resolve_config_path(config_path: str | None, cwd: Path) -> str | None:
     if not path.is_absolute():
         path = cwd / path
     return str(path.resolve())
+
+
+def effective_subprocess_env(env: dict[str, str], krb5ccname: str | None) -> dict[str, str]:
+    effective = dict(env)
+    if not effective.get("KRB5CCNAME") and krb5ccname:
+        effective["KRB5CCNAME"] = krb5ccname
+    return effective
 
 
 def validate_batch_output_path(out: Path, repo_root: Path) -> None:
