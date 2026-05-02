@@ -20,6 +20,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 import query_doctor_collect_cm_profiles as cm_collector
+import table_metadata_facts
 from query_doctor_web_ui import (
     WEB_STAGES,
     render_batch_card,
@@ -1219,19 +1220,51 @@ def find_batch_case(summary: dict[str, object], case_id: str) -> dict[str, objec
 
 
 def load_batch_case_metadata_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
-    facts_path = resolve_batch_case_analysis_facts_path(settings, case)
-    if facts_path is None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
         return None
+    facts = load_batch_case_analysis_metadata_facts(case_dir)
+    if facts and facts.get("tables"):
+        return facts
+    context_facts = load_batch_case_impala_context_facts(case_dir)
+    if context_facts:
+        return context_facts
+    return facts
+
+
+def load_batch_case_analysis_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
     try:
+        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
+        facts_path.relative_to(case_dir)
         if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
             return None
         text = facts_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    except (OSError, ValueError):
         return None
     return parse_table_metadata_context_facts(text)
 
 
-def resolve_batch_case_analysis_facts_path(settings: WebSettings, case: dict[str, object]) -> Path | None:
+def load_batch_case_impala_context_facts(case_dir: Path) -> dict[str, Any] | None:
+    for candidate in (
+        case_dir / "impala_context.json",
+        case_dir / "impala_context" / "impala_context.json",
+    ):
+        try:
+            context_path = candidate.resolve(strict=True)
+            context_path.relative_to(case_dir)
+            if context_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
+                return None
+            payload = json.loads(context_path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        context = table_metadata_facts.context_from_payload(payload, context_path, case_dir)
+        return convert_table_metadata_context_for_web(context)
+    return None
+
+
+def resolve_batch_case_dir(settings: WebSettings, case: dict[str, object]) -> Path | None:
     if settings.batch_summary is None:
         return None
     raw_case_dir = case.get("case_dir")
@@ -1247,11 +1280,42 @@ def resolve_batch_case_analysis_facts_path(settings: WebSettings, case: dict[str
     try:
         resolved_case_dir = case_dir.resolve(strict=False)
         resolved_case_dir.relative_to(summary_root)
-        facts_path = (resolved_case_dir / "analysis_facts.md").resolve(strict=True)
-        facts_path.relative_to(summary_root)
     except (OSError, ValueError):
         return None
-    return facts_path
+    return resolved_case_dir
+
+
+def convert_table_metadata_context_for_web(context: dict[str, Any]) -> dict[str, Any] | None:
+    tables = context.get("tables")
+    if not isinstance(tables, list):
+        return None
+    converted = [convert_table_metadata_table_for_web(table) for table in tables if isinstance(table, dict)]
+    if not converted and not context:
+        return None
+    return {
+        "summary": {
+            "context file": context.get("context_file", "unknown"),
+            "table metadata facts": context.get("table_metadata_facts", "unknown"),
+            "tables requested": str(context.get("tables_requested", "unknown")),
+            "read-only statements only": context.get("read_only_statements_only", "unknown"),
+        },
+        "tables": converted,
+        "statement_counts": metadata_statement_counts(converted),
+    }
+
+
+def convert_table_metadata_table_for_web(table: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "table": table.get("table", "unknown"),
+        "object type": table.get("object_type", "unknown"),
+        "statements": table.get("statements") if isinstance(table.get("statements"), dict) else {},
+        "table stats row-count completeness": table.get("table_stats_row_count_completeness", "unknown"),
+        "column stats columns observed": table.get("column_stats_columns_observed", "unknown"),
+        "column stats missing/unknown markers": table.get("column_stats_missing_markers", "unknown"),
+        "column stats completeness": table.get("column_stats_completeness", "unknown"),
+        "file format": table.get("file_format", "unknown"),
+        "partition columns": ", ".join(str(item) for item in table.get("partition_columns") or []) or "unknown",
+    }
 
 
 def parse_table_metadata_context_facts(text: str) -> dict[str, Any] | None:

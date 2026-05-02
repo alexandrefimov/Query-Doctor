@@ -558,6 +558,7 @@ def render_metadata_facts_body(
     fallback_note: str = "",
 ) -> str:
     metadata_reasons = metadata_score_reasons(case)
+    counts_known = bool(statement_counts)
     rows = "\n".join(render_metadata_fact_table_row(table) for table in tables if isinstance(table, dict))
     if not rows:
         rows = (
@@ -570,10 +571,10 @@ def render_metadata_facts_body(
         ("referenced tables", case.get("referenced_table_count")),
         ("collected metadata tables", case.get("collected_metadata_table_count")),
         ("too large metadata", case.get("too_large_count")),
-        ("statement ok", statement_counts.get("ok", 0)),
-        ("statement error", statement_counts.get("error", 0)),
-        ("statement not_applicable", statement_counts.get("not_applicable", 0)),
-        ("statement too_large", statement_counts.get("too_large", 0)),
+        ("statement ok", statement_counts.get("ok", 0) if counts_known else None),
+        ("statement error", statement_counts.get("error", 0) if counts_known else None),
+        ("statement not_applicable", statement_counts.get("not_applicable", 0) if counts_known else None),
+        ("statement too_large", statement_counts.get("too_large", 0) if counts_known else None),
     ]
     if metadata_reasons:
         summary_items.append(("metadata score reasons", "; ".join(metadata_reasons)))
