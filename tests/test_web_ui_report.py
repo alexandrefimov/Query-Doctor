@@ -47,6 +47,12 @@ def test_web_handler_renders_mocked_analysis_result_without_raw_html():
     assert "<script>not raw html</script>" not in body
     assert "&lt;script&gt;not raw html&lt;/script&gt;" in body
     assert ".query-doctor-cm.local.json" not in body
+    assert "Case path" not in body
+    assert "case_dir" not in body
+    assert "/tmp/query-doctor-web" not in body
+    assert "abc_def" not in body
+    assert "qwen3-coder:30b" not in body
+    assert "Model" not in body
 
 
 def test_web_report_markdown_renders_safe_html():
@@ -99,6 +105,9 @@ def test_web_result_renders_collected_source():
     assert "collected now" in body
     assert "<details" in body
     assert "Validated diagnosis markdown" in body
+    assert "/tmp/query-doctor-web" not in body
+    assert "qwen3-coder:30b" not in body
+    assert "Model" not in body
 
 
 def test_web_result_renders_report_retry_notice():
@@ -121,6 +130,8 @@ def test_web_result_renders_report_retry_notice():
     )
 
     assert "regenerated after validator retry" in body
+    assert "/tmp/query-doctor-web" not in body
+    assert "qwen3-coder:30b" not in body
 
 
 def test_web_report_marks_analyzer_facts_as_deterministic_appendix(tmp_path):
@@ -152,6 +163,9 @@ def test_web_report_marks_analyzer_facts_as_deterministic_appendix(tmp_path):
     assert '<a href="#section-3">Факты анализатора</a>' in body
     assert "analysis_facts.md" in body
     assert "diagnosis.md" in body
+    assert str(case_dir) not in body
+    assert "Case path" not in body
+    assert "qwen3-coder:30b" not in body
 
 
 def test_web_report_sidebar_only_marks_existing_artifacts_available(tmp_path):
@@ -181,3 +195,6 @@ def test_web_report_sidebar_only_marks_existing_artifacts_available(tmp_path):
     assert "<span>Profile</span><span class=\"badge gray\">not collected</span>" in body
     assert "<span>SQL</span><span class=\"badge gray\">not collected</span>" in body
     assert "<span>Host metrics</span><span class=\"badge gray\">not collected</span>" in body
+    assert str(case_dir) not in body
+    assert "case_dir" not in body
+    assert "qwen3-coder:30b" not in body

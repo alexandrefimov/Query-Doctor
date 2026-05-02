@@ -761,16 +761,16 @@ def expected_case_dir_for_query(validated_query_id: str, settings: WebSettings) 
 def ensure_complete_existing_case(case_dir: Path) -> None:
     if not case_dir.is_dir():
         raise WebError(
-            f"Existing web case path is not a directory: {case_dir}. "
-            "Remove that specific path manually if you want to recollect."
+            "Existing Query ID case is incomplete. "
+            "Re-run analysis to regenerate required artifacts."
         )
     missing = [name for name in COLLECTED_CASE_FILES if not (case_dir / name).is_file()]
     if missing:
         missing_list = ", ".join(missing)
         raise WebError(
-            f"Local web case is incomplete or broken: {case_dir}. "
-            f"Missing required file(s): {missing_list}. Remove or rebuild that specific case directory "
-            "manually before trying to recollect."
+            "Existing Query ID case is incomplete. "
+            f"Missing required artifact(s): {missing_list}. "
+            "Re-run analysis to regenerate required artifacts."
         )
 
 
