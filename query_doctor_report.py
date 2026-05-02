@@ -156,6 +156,46 @@ REQUIRED_COMPUTE_STATS_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
+SQL_FENCE_START_RE = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})\s*(?P<lang>[A-Za-z0-9_-]*)\s*$")
+SQL_FENCE_END_RE = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})\s*$")
+SQL_IDENTIFIER_RE = (
+    r'(?:`[^`\n]+`|"[^"\n]+"|[A-Za-z_][\w$-]*)'
+    r'(?:\s*\.\s*(?:`[^`\n]+`|"[^"\n]+"|[A-Za-z_][\w$-]*)){0,2}'
+)
+SQL_IDENTIFIER_STRICT_RE = (
+    r'(?:`[^`\n]+`|"[^"\n]+"|[A-Za-z_][\w$-]*\s*\.\s*[A-Za-z_][\w$-]*'
+    r'(?:\s*\.\s*[A-Za-z_][\w$-]*)?)'
+)
+SQL_STATEMENT_BOUNDARY_RE = r"(?=\s*(?:$|[;.,)]|\n))"
+SQL_TABLE_FOLLOW_RE = (
+    r"(?=\s*(?:$|[;.,)]|\n|\bWHERE\b|\bJOIN\b|\bLEFT\b|\bRIGHT\b|\bINNER\b|\bFULL\b|"
+    r"\bGROUP\b|\bORDER\b|\bLIMIT\b|\bHAVING\b|\bUNION\b))"
+)
+RAW_SELECT_SQL_RE = re.compile(
+    rf"(?is)(?:^|[\n`(>:-])\s*SELECT\b(?=[\s\S]{{0,260}}\bFROM\b)"
+    rf"[\s\S]{{1,260}}\bFROM\s+{SQL_IDENTIFIER_RE}{SQL_TABLE_FOLLOW_RE}"
+)
+RAW_WITH_SQL_RE = re.compile(
+    rf"(?is)(?:^|[\n`(>:-])\s*WITH\s+{SQL_IDENTIFIER_RE}\s+AS\s*\(.{{0,800}}?\)\s*SELECT\s+"
+    rf".{{0,400}}?\bFROM\b\s+{SQL_IDENTIFIER_RE}{SQL_TABLE_FOLLOW_RE}"
+)
+RAW_MUTATING_SQL_RE = re.compile(
+    rf"(?is)(?:^|[\n`(>:-])\s*(?:"
+    rf"INSERT\s+INTO\s+{SQL_IDENTIFIER_RE}|"
+    rf"CREATE\s+TABLE\s+{SQL_IDENTIFIER_RE}|"
+    rf"DROP\s+TABLE\s+{SQL_IDENTIFIER_RE}|"
+    rf"ALTER\s+TABLE\s+{SQL_IDENTIFIER_RE}|"
+    rf"TRUNCATE\s+TABLE\s+{SQL_IDENTIFIER_RE}|"
+    rf"DELETE\s+FROM\s+{SQL_IDENTIFIER_RE}|"
+    rf"UPDATE\s+{SQL_IDENTIFIER_RE}\s+SET\b|"
+    rf"MERGE\s+INTO\s+{SQL_IDENTIFIER_RE}"
+    rf")"
+)
+RAW_SHOW_SQL_RE = re.compile(
+    rf"(?is)(?:^|[\n`(>:-])\s*"
+    rf"(?:SHOW\s+CREATE\s+TABLE|SHOW\s+TABLE\s+STATS|SHOW\s+COLUMN\s+STATS)\s+"
+    rf"{SQL_IDENTIFIER_STRICT_RE}{SQL_STATEMENT_BOUNDARY_RE}"
+)
 METADATA_CLAIM_NEGATION_RE = re.compile(
     r"("
     r"\bdo\s+not\b|"
@@ -2038,6 +2078,58 @@ def count_report_section_items(text: str, heading: str) -> int | None:
     return paragraph_count
 
 
+def contains_raw_sql_like_text(text: str) -> bool:
+    if _contains_raw_sql_statement(text):
+        return True
+
+    lines = text.splitlines()
+    in_fence = False
+    fence_marker = ""
+    fence_lang = ""
+    fence_lines: list[str] = []
+
+    for line in lines:
+        if not in_fence:
+            match = SQL_FENCE_START_RE.match(line)
+            if not match:
+                continue
+            in_fence = True
+            fence_marker = match.group("fence")
+            fence_lang = match.group("lang").lower()
+            fence_lines = []
+            if fence_lang == "sql":
+                return True
+            continue
+
+        end_match = SQL_FENCE_END_RE.match(line)
+        if end_match and end_match.group("fence")[0] == fence_marker[0]:
+            if not fence_lang and _contains_raw_sql_statement("\n".join(fence_lines)):
+                return True
+            in_fence = False
+            fence_marker = ""
+            fence_lang = ""
+            fence_lines = []
+            continue
+
+        fence_lines.append(line)
+
+    if in_fence and not fence_lang and _contains_raw_sql_statement("\n".join(fence_lines)):
+        return True
+    return False
+
+
+def _contains_raw_sql_statement(text: str) -> bool:
+    return any(
+        pattern.search(text)
+        for pattern in (
+            RAW_SELECT_SQL_RE,
+            RAW_WITH_SQL_RE,
+            RAW_MUTATING_SQL_RE,
+            RAW_SHOW_SQL_RE,
+        )
+    )
+
+
 def validate_report_text(
     text: str,
     *,
@@ -2074,6 +2166,9 @@ def validate_report_text(
         errors.append(
             f"short summary must contain 4-7 concise items, found {short_summary_items}"
         )
+
+    if contains_raw_sql_like_text(text):
+        errors.append("report contains SQL-like text that is not allowed in trusted output")
 
     if facts_text:
         errors.extend(validate_report_against_facts(text, facts_text))

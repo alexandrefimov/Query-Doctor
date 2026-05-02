@@ -19,6 +19,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import query_doctor_collect_cm_profiles as cm_profiles
+from query_doctor_config_contract import merge_kerberos_cache_env
 from query_doctor_engines import get_default_engine_adapter
 
 
@@ -680,10 +681,7 @@ def resolve_config_path(config_path: str | None, cwd: Path) -> str | None:
 
 
 def effective_subprocess_env(env: dict[str, str], krb5ccname: str | None) -> dict[str, str]:
-    effective = dict(env)
-    if not effective.get("KRB5CCNAME") and krb5ccname:
-        effective["KRB5CCNAME"] = krb5ccname
-    return effective
+    return merge_kerberos_cache_env(env, {"krb5ccname": krb5ccname})
 
 
 def validate_batch_output_path(out: Path, repo_root: Path) -> None:

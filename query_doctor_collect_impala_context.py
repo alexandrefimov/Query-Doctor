@@ -25,6 +25,7 @@ from impala_shell_runner import (
 from impala_shell_output import normalize_output_bytes
 from query_doctor_collect_cm_profiles import HostAliasRedactor, redact_profile_text
 from query_doctor_collect_cm_profiles import ConfigError, load_effective_local_config
+from query_doctor_config_contract import merge_kerberos_cache_env
 
 
 DEFAULT_TIMEOUT_SEC = 30
@@ -612,9 +613,7 @@ def effective_impala_env(args: argparse.Namespace) -> dict[str, str] | None:
     krb5ccname = getattr(args, "krb5ccname", None)
     if not krb5ccname or os.environ.get("KRB5CCNAME"):
         return None
-    effective = dict(os.environ)
-    effective["KRB5CCNAME"] = krb5ccname
-    return effective
+    return merge_kerberos_cache_env(os.environ, {"krb5ccname": krb5ccname})
 
 
 def main(argv: list[str] | None = None, *, runner: Runner = subprocess.run) -> int:

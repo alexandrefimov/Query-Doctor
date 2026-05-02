@@ -24,6 +24,7 @@ import query_doctor_collect_cm_profiles as cm_collector
 import query_doctor_collect_impala_context as impala_context_collector
 import query_doctor_impala_metadata_workflow as metadata_workflow
 import table_metadata_facts
+from query_doctor_config_contract import load_and_validate_config, merge_kerberos_cache_env
 from query_doctor_web_display_safety import redact_browser_display_text
 from query_doctor_optimizer_sql import ExtractedTable, OptimizerSqlError, extract_referenced_tables
 from query_doctor_query_optimizer import OptimizerAnalysis, analyze_query_optimizer
@@ -477,10 +478,10 @@ def effective_subprocess_env(
     settings: WebSettings,
     base_env: dict[str, str] | os._Environ[str] | None = None,
 ) -> dict[str, str]:
-    effective = dict(os.environ if base_env is None else base_env)
-    if not effective.get("KRB5CCNAME") and settings.krb5ccname:
-        effective["KRB5CCNAME"] = settings.krb5ccname
-    return effective
+    return merge_kerberos_cache_env(
+        os.environ if base_env is None else base_env,
+        {"krb5ccname": settings.krb5ccname},
+    )
 
 
 def resolve_metadata_impala_shell(settings: WebSettings, env: dict[str, str]) -> str | None:
@@ -873,21 +874,18 @@ def resolve_web_config_path(config_path: str | Path | None, *, cwd: Path) -> Pat
 def load_web_local_config(config_path: str | Path | None, *, cwd: Path) -> dict[str, object]:
     if config_path:
         path = Path(config_path).expanduser()
+        if not path.is_absolute():
+            path = cwd / path
+        if not path.is_file():
+            return {}
+        return cm_collector.load_local_config(str(path), cwd=cwd)
     else:
-        default_path = cm_collector.discover_default_local_config(
+        result = load_and_validate_config(
+            None,
             cwd=cwd,
             repo_root=Path(__file__).resolve().parent,
         )
-        if default_path is None:
-            return {}
-        if default_path.name == cm_collector.LEGACY_LOCAL_CONFIG_NAME:
-            print(f"WARNING: {cm_collector.LEGACY_LOCAL_CONFIG_WARNING}", file=sys.stderr)
-        path = default_path
-    if not path.is_absolute():
-        path = cwd / path
-    if not path.is_file():
-        return {}
-    return cm_collector.load_local_config(str(path), cwd=cwd)
+        return result.values
 
 
 def load_krb5ccname_from_local_config(config_path: Path, *, cwd: Path) -> str | None:
