@@ -40,7 +40,12 @@ MAX_RECENT_SELECT = 20
 RECENT_ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
 METADATA_AUTH_CHOICES = ("kerberos",)
 METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
-DEFAULT_LOCAL_CONFIG_NAME = ".query-doctor-cm.local.json"
+DEFAULT_LOCAL_CONFIG_NAME = "query-doctor-config.json"
+LEGACY_LOCAL_CONFIG_NAME = ".query-doctor-cm.local.json"
+LEGACY_LOCAL_CONFIG_WARNING = (
+    "Using legacy config path .query-doctor-cm.local.json; "
+    "please rename it to query-doctor-config.json."
+)
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
 LOCAL_CONFIG_ALLOWED_KEYS = {
     "ca_bundle",
@@ -418,7 +423,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config",
         help=(
             "Local JSON config file with non-secret CM collector settings. "
-            f"If omitted, {DEFAULT_LOCAL_CONFIG_NAME} is loaded when present. "
+            f"If omitted, {DEFAULT_LOCAL_CONFIG_NAME} is loaded when present, "
+            f"falling back to legacy {LEGACY_LOCAL_CONFIG_NAME}. "
             "Passwords/tokens must still come from environment variables."
         ),
     )
@@ -893,6 +899,8 @@ def load_effective_local_config(
     )
     if default_path is None:
         return {}
+    if default_path.name == LEGACY_LOCAL_CONFIG_NAME:
+        print(f"WARNING: {LEGACY_LOCAL_CONFIG_WARNING}", file=sys.stderr)
     return load_local_config(str(default_path), cwd=cwd)
 
 
@@ -906,6 +914,10 @@ def discover_default_local_config(
     repo_candidate = repo_root / DEFAULT_LOCAL_CONFIG_NAME
     if use_repo_default and repo_candidate != candidates[0]:
         candidates.append(repo_candidate)
+    candidates.append(cwd / LEGACY_LOCAL_CONFIG_NAME)
+    repo_legacy_candidate = repo_root / LEGACY_LOCAL_CONFIG_NAME
+    if use_repo_default and repo_legacy_candidate not in candidates:
+        candidates.append(repo_legacy_candidate)
     for path in candidates:
         if path.is_file():
             return path

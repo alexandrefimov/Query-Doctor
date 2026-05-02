@@ -357,8 +357,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        required=True,
-        help="Local ignored CM collector JSON config. Credentials still come from environment.",
+        help=(
+            "Local ignored Query Doctor JSON config. If omitted, "
+            f"{cm_collector.DEFAULT_LOCAL_CONFIG_NAME} is loaded when present, falling back to "
+            f"legacy {cm_collector.LEGACY_LOCAL_CONFIG_NAME}. Credentials still come from environment."
+        ),
     )
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Bind host. Default: {DEFAULT_HOST}.")
     parser.add_argument("--port", type=positive_int, default=DEFAULT_PORT)
@@ -858,8 +861,29 @@ def metadata_configured(settings: WebSettings) -> bool:
     return bool(settings.metadata_coordinator)
 
 
-def load_web_local_config(config_path: Path, *, cwd: Path) -> dict[str, object]:
-    path = config_path.expanduser()
+def resolve_web_config_path(config_path: str | Path | None, *, cwd: Path) -> Path:
+    if config_path:
+        return Path(config_path).expanduser()
+    default_path = cm_collector.discover_default_local_config(
+        cwd=cwd,
+        repo_root=Path(__file__).resolve().parent,
+    )
+    return default_path or (cwd / cm_collector.DEFAULT_LOCAL_CONFIG_NAME)
+
+
+def load_web_local_config(config_path: str | Path | None, *, cwd: Path) -> dict[str, object]:
+    if config_path:
+        path = Path(config_path).expanduser()
+    else:
+        default_path = cm_collector.discover_default_local_config(
+            cwd=cwd,
+            repo_root=Path(__file__).resolve().parent,
+        )
+        if default_path is None:
+            return {}
+        if default_path.name == cm_collector.LEGACY_LOCAL_CONFIG_NAME:
+            print(f"WARNING: {cm_collector.LEGACY_LOCAL_CONFIG_WARNING}", file=sys.stderr)
+        path = default_path
     if not path.is_absolute():
         path = cwd / path
     if not path.is_file():
@@ -951,8 +975,8 @@ def merged_bool_setting(cli_value: bool, config_value: bool | None, *, default: 
 
 
 def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
-    config_path = Path(args.config).expanduser()
-    config_values = load_web_local_config(config_path, cwd=cwd)
+    config_path = resolve_web_config_path(args.config, cwd=cwd)
+    config_values = load_web_local_config(args.config, cwd=cwd)
     return WebSettings(
         config=config_path,
         host=args.host,

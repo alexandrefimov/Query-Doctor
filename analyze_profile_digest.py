@@ -53,8 +53,10 @@ OP_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
+NUMBER_PATTERN = r"\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
+
 SIZE_RE = re.compile(
-    r"(?P<value>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)\b",
+    rf"(?P<value>{NUMBER_PATTERN})\s*(?P<unit>KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)\b",
     flags=re.IGNORECASE,
 )
 
@@ -70,8 +72,8 @@ TABLE_DURATION_TOKEN_RE = re.compile(
     r"(?P<unit>ns|us|µs|ms|msec|milliseconds?|s|sec|seconds?|m|min|minutes?|h|hr|hours?)(?![A-Za-z])"
 )
 
-ROW_NUMBER = r"\d[\d,]*(?:\.\d+)?\s*[KMBT]?"
-SIZE_PATTERN = r"\d[\d,]*(?:\.\d+)?\s*(?:KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)"
+ROW_NUMBER = rf"{NUMBER_PATTERN}\s*[KMBT]?"
+SIZE_PATTERN = rf"{NUMBER_PATTERN}\s*(?:KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)"
 
 TABLE_SEPARATOR_RE = re.compile(r"\s{2,}")
 SQL_IDENTIFIER_RE = re.compile(r"`[^`]+`|[A-Za-z_][A-Za-z0-9_$]*")
@@ -201,7 +203,7 @@ RAW_TIME_COUNTER_RE = re.compile(
     flags=re.IGNORECASE,
 )
 RAW_COUNTER_NUMBER_RE = re.compile(
-    r"(?P<display>\d[\d,]*(?:\.\d+)?\s*[KMBT]?)(?:\s*\((?P<exact>\d[\d,]*(?:\.\d+)?)\))?",
+    rf"(?P<display>{NUMBER_PATTERN}\s*[KMBT]?)(?:\s*\((?P<exact>{NUMBER_PATTERN})\))?",
     flags=re.IGNORECASE,
 )
 
@@ -514,7 +516,7 @@ class BackendHostFact:
 
 def parse_scaled_number(value: str) -> float | None:
     s = value.strip().replace(" ", "")
-    m = re.fullmatch(r"(?P<num>\d[\d,]*(?:\.\d+)?)(?P<suffix>[KMBT])?", s, flags=re.IGNORECASE)
+    m = re.fullmatch(rf"(?P<num>{NUMBER_PATTERN})(?P<suffix>[KMBT])?", s, flags=re.IGNORECASE)
     if not m:
         return None
     num = float(m.group("num").replace(",", ""))

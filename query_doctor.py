@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""
+Legacy Query Doctor prototype.
+
+This script is not the current supported production path. Prefer
+query_doctor_pipeline.py, query_doctor_report.py, query_doctor_batch_recent.py,
+or the current web workflows. This prototype streams an LLM report directly and
+may bypass the current deterministic analyzer/validated report contract. Do not
+use it for trusted reports unless it is explicitly maintained.
+"""
 
 import argparse
 import json
@@ -251,7 +260,12 @@ def stream_ollama_to_file(model: str, prompt: str, output_path: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Local BigData Query Doctor")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Legacy Query Doctor prototype. Prefer query_doctor_pipeline.py or "
+            "the current web workflows for validated reports."
+        )
+    )
     parser.add_argument("case_dir", help="Path to case directory")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--output", default=None)

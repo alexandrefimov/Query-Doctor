@@ -2,6 +2,14 @@
 """
 make_profile_digest.py
 
+Legacy/development digest helper.
+
+This script is not the current supported production path. Prefer
+analyze_profile_digest.py for deterministic analyzer facts and
+query_doctor_pipeline.py for the supported validated report flow. This helper
+can still be useful for local debugging of old profile_summary.txt/profile.txt
+cases, but do not treat it as the trusted analyzer contract.
+
 Builds a compact, LLM-friendly digest from an Impala query profile.
 
 Expected input in case directory:
@@ -260,7 +268,10 @@ Prioritize:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Make compact LLM-friendly digest from an Impala profile."
+        description=(
+            "Legacy/development helper for compact profile digests. Prefer "
+            "analyze_profile_digest.py for supported analyzer facts."
+        )
     )
     parser.add_argument(
         "case_dir",

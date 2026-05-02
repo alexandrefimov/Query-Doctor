@@ -24,7 +24,7 @@ from impala_shell_runner import (
 )
 from impala_shell_output import normalize_output_bytes
 from query_doctor_collect_cm_profiles import HostAliasRedactor, redact_profile_text
-from query_doctor_collect_cm_profiles import ConfigError, load_local_config
+from query_doctor_collect_cm_profiles import ConfigError, load_effective_local_config
 
 
 DEFAULT_TIMEOUT_SEC = 30
@@ -469,7 +469,14 @@ def build_parser() -> argparse.ArgumentParser:
             "Only SHOW CREATE TABLE, SHOW TABLE STATS, and SHOW COLUMN STATS are planned."
         )
     )
-    parser.add_argument("--config", help="Optional local config with non-secret metadata settings.")
+    parser.add_argument(
+        "--config",
+        help=(
+            "Optional local config with non-secret metadata settings. If omitted, "
+            "query-doctor-config.json is loaded when present, falling back to legacy "
+            ".query-doctor-cm.local.json."
+        ),
+    )
     parser.add_argument(
         "--table",
         action="append",
@@ -545,9 +552,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def apply_local_config(args: argparse.Namespace, *, cwd: Path) -> None:
-    config_values: dict[str, object] = {}
-    if args.config:
-        config_values = load_local_config(args.config, cwd=cwd)
+    config_values = load_effective_local_config(
+        args.config,
+        cwd=cwd,
+        repo_root=Path(__file__).resolve().parent,
+        use_repo_default=False,
+    )
 
     args.impala_shell = first_string(args.impala_shell, config_values.get("metadata_impala_shell"), "impala-shell")
     args.coordinator = first_string(args.coordinator, config_values.get("metadata_coordinator"))

@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+Legacy Cloudera Manager case helper.
+
+This script is not the current supported production path. Prefer
+query_doctor_collect_cm_profiles.py for bounded CM profile collection,
+query_doctor_batch_recent.py for Recent query scan, and query_doctor_pipeline.py
+for validated reports. This legacy helper writes raw local case artifacts and
+can invoke the old query_doctor.py prototype, so do not use it for trusted
+reports unless it is explicitly maintained.
+"""
 
 import argparse
 import base64
@@ -316,7 +326,12 @@ def fetch_query(args) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Create Query Doctor cases from Cloudera Manager Impala API")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Legacy CM case helper. Prefer query_doctor_collect_cm_profiles.py, "
+            "query_doctor_batch_recent.py, and query_doctor_pipeline.py."
+        )
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("search", help="Search Impala queries in CM")

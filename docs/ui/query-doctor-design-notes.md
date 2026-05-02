@@ -4,9 +4,9 @@
 
 Query Doctor is a local-first diagnostic tool for Apache Impala query analysis. The UI should feel like a serious engineering instrument for admins, DevOps engineers, data engineers, and data scientists.
 
-It should not feel like a SaaS landing page, a playful AI demo, or a monitoring dashboard. The product value is trust, evidence, traceability, and fast operational triage.
+It should not feel like a SaaS landing page, a playful AI demo, or a monitoring dashboard. The product value is trust, evidence, traceability, and fast operational scanning.
 
-Current implementation note: the localhost UI may still expose the single Query ID workflow first. The target product roadmap makes batch query triage the primary landing page, then single-query diagnosis, then SQL optimization review.
+Current implementation note: the localhost UI now centers Recent query scan, followed by single-query diagnosis and SQL optimization review.
 
 Core principles:
 
@@ -189,9 +189,9 @@ Avoid large, colorful status pills.
 
 ## Target page map
 
-### Batch Query Triage
+### Recent Query Scan
 
-This should become the primary landing page.
+This is the primary scan page.
 
 Purpose: answer `Что сейчас в кластере подозрительное?`
 
@@ -256,8 +256,7 @@ claims unless deterministically supported.
 
 ## Current Single Query Home Page Structure
 
-Until batch triage becomes the primary page, the single-query home page should
-prioritize the normal workflow:
+For the single-query home page, prioritize the normal Query ID workflow:
 
 ```text
 query_id or case path → auto-collect evidence → validated report
@@ -424,7 +423,7 @@ Avoid overclaiming root cause.
 
 This is critical for operational usefulness.
 
-Recommended format: 3 compact triage cards.
+Recommended format: 3 compact next-check cards.
 
 Examples:
 

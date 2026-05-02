@@ -92,7 +92,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="fail",
         help=(
             "What to do if metadata collection fails. Default: fail. "
-            "continue is only allowed with --stop-after-analysis for analyzer-only batch triage."
+            "continue is only allowed with --stop-after-analysis for analyzer-only profile analysis."
         ),
     )
     add_metadata_arguments(parser)

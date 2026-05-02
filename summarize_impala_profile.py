@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""
+Legacy/development profile summarizer.
+
+This script is not the current supported production path. Prefer
+query_doctor_collect_cm_profiles.py for profile collection and
+analyze_profile_digest.py for deterministic analyzer facts. This helper can
+still be useful for local debugging of old raw profile.txt cases, but do not
+treat it as the trusted analyzer/report contract.
+"""
 
 import argparse
 import re
@@ -132,7 +141,12 @@ def extract_top_metric_lines(text: str, limit: int = 300) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Legacy/development profile summarizer. Prefer "
+            "analyze_profile_digest.py for supported analyzer facts."
+        )
+    )
     parser.add_argument("case_dir")
     parser.add_argument("--max-output-chars", type=int, default=180000)
     args = parser.parse_args()

@@ -2,6 +2,14 @@
 """
 query_doctor_v2.py
 
+Legacy Query Doctor prototype.
+
+This script is not the current supported production path. Prefer
+query_doctor_pipeline.py, query_doctor_report.py, query_doctor_batch_recent.py,
+or the current web workflows. This prototype streams an LLM report directly and
+may bypass the current deterministic analyzer/validated report contract. Do not
+use it for trusted reports unless it is explicitly maintained.
+
 Strict local Query Doctor for Impala profile digest.
 
 This version intentionally reads only:
@@ -276,7 +284,12 @@ def stream_ollama(model: str, prompt: str, output_path: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Strict local Impala Query Doctor")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Legacy strict local Impala Query Doctor prototype. Prefer "
+            "query_doctor_pipeline.py for validated reports."
+        )
+    )
     parser.add_argument("case_dir", help="Case directory containing profile_digest.md")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--output", default=None)

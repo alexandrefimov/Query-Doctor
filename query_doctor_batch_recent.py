@@ -191,7 +191,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "only the top ranked cases."
         )
     )
-    parser.add_argument("--config", help="Optional local CM config with non-secret settings.")
+    parser.add_argument(
+        "--config",
+        help=(
+            "Optional local Query Doctor config. Defaults to query-doctor-config.json, "
+            "then legacy .query-doctor-cm.local.json."
+        ),
+    )
     parser.add_argument("--cm-url", help="Cloudera Manager base URL. May also use CM_URL.")
     parser.add_argument("--cluster", help="Cloudera Manager cluster name.")
     parser.add_argument("--service", help="Impala service name.")
@@ -211,7 +217,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--triage-profile-limit",
         type=positive_int,
         help=(
-            "Maximum candidate profiles to collect/analyze in the analyzer-only triage pass. "
+            "Profile analysis limit: maximum candidate profiles to collect/analyze. "
             f"Hard cap: {MAX_TRIAGE_PROFILE_LIMIT}."
         ),
     )
@@ -225,7 +231,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--metadata-top-limit",
         type=non_negative_int,
         help=(
-            "Refresh metadata only for this many top-ranked triage cases. "
+            "Metadata top cases: refresh metadata only for this many top-ranked cases. "
             f"Hard cap: {MAX_METADATA_TOP_LIMIT}. Default: 0."
         ),
     )
