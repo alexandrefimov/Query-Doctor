@@ -47,32 +47,33 @@ LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost"}
 OUTPUT_CASE_RE = re.compile(r"^Output case directory:\s*(?P<path>.+)$", re.MULTILINE)
 COLLECTED_CASE_FILES = ("profile_digest.md", "cm_metadata.json", "collection_warnings.txt")
 REPORT_VALIDATION_FAILURE_MESSAGE = (
-    "Генерация отчёта завершилась, но детерминированный валидатор отклонил "
-    "текст отчёта: он противоречил извлечённым фактам. Небезопасный отчёт "
-    "не показан. Попробуйте повторить генерацию."
+    "Report generation finished, but the deterministic validator rejected the "
+    "report because it contradicted extracted facts. The unsafe report is not "
+    "shown. Try generating the report again."
 )
 MISSING_CM_CREDENTIALS_MESSAGE = (
-    "Не найдены учётные данные CM в окружении web server. Запустите сервер из "
-    "терминала, где заданы CM_USERNAME/CM_PASSWORD или CM_TOKEN."
+    "CM credentials were not found in the web server environment. Start the "
+    "server from a terminal where CM_USERNAME/CM_PASSWORD or CM_TOKEN is set."
 )
 BATCH_STAGES = (
-    (0, "Проверяем параметры batch triage", 4),
-    (1, "Запускаем batch triage", 24),
-    (2, "Читаем batch_summary.json", 86),
-    (3, "Готово", 100),
+    (0, "Checking recent scan parameters", 4),
+    (1, "Running recent scan", 24),
+    (2, "Reading batch_summary.json", 86),
+    (3, "Done", 100),
 )
 BATCH_REPORT_STAGES = (
-    (0, "Проверяем выбранный batch case", 8),
-    (1, "Генерируем валидированный отчёт", 62),
-    (2, "Проверяем результат", 88),
-    (3, "Готово", 100),
+    (0, "Checking selected batch case", 8),
+    (1, "Generating validated report", 62),
+    (2, "Validating result", 88),
+    (3, "Done", 100),
 )
 BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc"}
-BATCH_CM_INSPECT_LIMIT_MAX = 1000
+BATCH_CM_INSPECT_LIMIT_MAX = 10000
 BATCH_SELECT_LIMIT_MAX = 200
 BATCH_JOBS_MAX = 100
 BATCH_FULL_JOBS_MAX = 4
 BATCH_ANALYSIS_DEPTH_VALUES = {"full", "fast"}
+BATCH_QUERY_TYPE_VALUES = {"QUERY"}
 DEFAULT_METADATA_AUTH = "kerberos"
 DEFAULT_METADATA_PROTOCOL = "beeswax"
 DEFAULT_METADATA_TIMEOUT_SEC = 30
@@ -156,11 +157,11 @@ class WebResult:
 @dataclass(frozen=True)
 class BatchRunConfig:
     analysis_depth: str = "full"
-    recent_window_minutes: int = 1440
-    cm_inspect_limit: int = 1000
+    recent_window_minutes: int = 30
+    cm_inspect_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
     triage_profile_limit: int = 200
     metadata_top_limit: int = 8
-    min_duration_sec: float = 10.0
+    min_duration_sec: float | None = None
     max_duration_sec: float | None = None
     order: str = "duration-desc"
     jobs: int = 4
@@ -244,7 +245,7 @@ class WebJobStore:
         job_id = uuid.uuid4().hex
         job = WebJob(
             job_id=job_id,
-            query_id="batch triage",
+            query_id="recent scan",
             report_mode="batch",
             status="running",
             stage_label=stage[1],
@@ -332,7 +333,7 @@ class WebJobStore:
             if job is None:
                 return
             job.status = "failed"
-            job.stage_label = "Ошибка"
+            job.stage_label = "Failed"
             job.progress = 100
             job.error = sanitize_for_display(error)
 
@@ -352,7 +353,7 @@ ProgressFunc = Callable[[int], None]
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the localhost-only Query Doctor web UI for batch triage and explicit CM query ids."
+        description="Run the localhost-only Query Doctor web UI for recent scans and explicit CM query ids."
     )
     parser.add_argument(
         "--config",
@@ -498,12 +499,12 @@ def preflight_web_metadata_batch(
 ) -> None:
     env = effective_subprocess_env(settings, base_env=base_env)
     if not metadata_configured(settings):
-        raise WebError("Metadata collection is not configured for this web session. Use Fast triage or restart with metadata options.")
+        raise WebError("Metadata collection is not configured for this web session. Use Fast scan or restart with metadata options.")
     if not resolve_metadata_impala_shell(settings, env):
-        raise WebError("Metadata preflight failed: impala-shell executable is not available. Use Fast triage or fix server metadata settings.")
+        raise WebError("Metadata preflight failed: impala-shell executable is not available. Use Fast scan or fix server metadata settings.")
     krb5ccname = env.get("KRB5CCNAME", "")
     if krb5ccname and any(ord(ch) < 32 or ord(ch) == 127 for ch in krb5ccname):
-        raise WebError("Metadata preflight failed: Kerberos cache setting is invalid. Use Fast triage or fix server environment.")
+        raise WebError("Metadata preflight failed: Kerberos cache setting is invalid. Use Fast scan or fix server environment.")
     try:
         completed = run_subprocess(
             ["klist"],
@@ -513,11 +514,11 @@ def preflight_web_metadata_batch(
             env=env,
         )
     except OSError as exc:
-        raise WebError("Metadata preflight failed: klist is not available. Use Fast triage or fix server Kerberos setup.") from exc
+        raise WebError("Metadata preflight failed: klist is not available. Use Fast scan or fix server Kerberos setup.") from exc
     if completed.returncode != 0:
         raise WebError(
             "Metadata preflight failed: Kerberos cache is not available or expired. "
-            "Renew the Kerberos ticket or use Fast triage."
+            "Renew the Kerberos ticket or use Fast scan."
         )
 
 
@@ -787,9 +788,9 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
     analysis_depth = first_form_value(form, "analysis_depth") or default_analysis_depth
     if analysis_depth not in BATCH_ANALYSIS_DEPTH_VALUES:
         raise WebError("Analysis depth must be full or fast.")
-    recent_window_minutes = parse_positive_form_int(form, "recent_window_minutes", default=1440)
+    recent_window_minutes = parse_positive_form_int(form, "recent_window_minutes", default=30)
     cm_inspect_limit = parse_positive_form_int(
-        form, "cm_inspect_limit", default=1000, maximum=BATCH_CM_INSPECT_LIMIT_MAX
+        form, "cm_inspect_limit", default=BATCH_CM_INSPECT_LIMIT_MAX, maximum=BATCH_CM_INSPECT_LIMIT_MAX
     )
     triage_profile_limit = parse_positive_form_int(
         form, "triage_profile_limit", default=200, maximum=BATCH_SELECT_LIMIT_MAX
@@ -797,12 +798,12 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
     metadata_top_limit = parse_non_negative_form_int(
         form, "metadata_top_limit", default=8, maximum=BATCH_SELECT_LIMIT_MAX
     )
-    min_duration_sec = parse_non_negative_form_float(form, "min_duration_sec", default=10.0)
+    min_duration_sec = parse_optional_non_negative_form_float(form, "min_duration_sec")
     max_duration_text = first_form_value(form, "max_duration_sec")
     max_duration_sec = None
     if max_duration_text:
         max_duration_sec = parse_non_negative_form_float(form, "max_duration_sec", default=0.0)
-        if max_duration_sec < min_duration_sec:
+        if min_duration_sec is not None and max_duration_sec < min_duration_sec:
             raise WebError("max_duration_sec must be greater than or equal to min_duration_sec.")
     order = first_form_value(form, "order") or "duration-desc"
     if order not in BATCH_ORDER_VALUES:
@@ -811,6 +812,8 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
     query_type = first_form_value(form, "query_type") or "QUERY"
+    if query_type not in BATCH_QUERY_TYPE_VALUES:
+        raise WebError("Query type must be QUERY.")
     return BatchRunConfig(
         analysis_depth=analysis_depth,
         recent_window_minutes=recent_window_minutes,
@@ -832,9 +835,9 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
 def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
     if config.analysis_depth == "full":
         if config.jobs > BATCH_FULL_JOBS_MAX:
-            raise WebError("Full analysis collects Impala metadata and requires jobs <= 4. Use Fast triage for higher jobs.")
+            raise WebError("Full scan collects Impala metadata and requires jobs <= 4. Use Fast scan for higher jobs.")
         if not metadata_configured(settings):
-            raise WebError("Metadata collection is not configured for this web session. Use Fast triage or restart with metadata options.")
+            raise WebError("Metadata collection is not configured for this web session. Use Fast scan or restart with metadata options.")
         if settings.metadata_ca_cert and not settings.metadata_ssl:
             raise WebError("--metadata-ca-cert requires --metadata-ssl for web batch metadata.")
 
@@ -1018,6 +1021,21 @@ def parse_non_negative_form_float(form: dict[str, list[str]], name: str, *, defa
     return value
 
 
+def parse_optional_non_negative_form_float(form: dict[str, list[str]], name: str) -> float | None:
+    text = first_form_value(form, name)
+    if not text:
+        return None
+    try:
+        value = float(text)
+    except ValueError as exc:
+        raise WebError(f"{name} must be a non-negative number.") from exc
+    if value < 0:
+        raise WebError(f"{name} must be a non-negative number.")
+    if not math.isfinite(value):
+        raise WebError(f"{name} must be a finite non-negative number.")
+    return value
+
+
 def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettings) -> tuple[list[str], Path]:
     validate_batch_config_for_settings(config, settings)
     out_dir = batch_output_dir(job_id)
@@ -1038,8 +1056,6 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         str(config.triage_profile_limit),
         "--metadata-top-limit",
         str(config.metadata_top_limit if config.analysis_depth == "full" else 0),
-        "--min-duration-sec",
-        display_float(config.min_duration_sec),
         "--order",
         config.order,
         "--metadata-mode",
@@ -1052,6 +1068,10 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         "--progress-jsonl",
         str(progress_path),
     ]
+    if config.min_duration_sec is None:
+        cmd.append("--no-min-duration-filter")
+    else:
+        cmd.extend(["--min-duration-sec", display_float(config.min_duration_sec)])
     if config.max_duration_sec is not None:
         cmd.extend(["--max-duration-sec", display_float(config.max_duration_sec)])
     if config.user:
@@ -1153,7 +1173,7 @@ def start_batch_job(
     except WebError as exc:
         return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))
 
-    job = job_store.create_batch(form_values_from_config(config))
+    job = job_store.create_batch(form_values_from_form(form))
     thread = threading.Thread(
         target=run_batch_job,
         args=(job.job_id, config, settings, job_store, runner),
@@ -1228,7 +1248,7 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "cm_inspect_limit": str(config.cm_inspect_limit),
         "triage_profile_limit": str(config.triage_profile_limit),
         "metadata_top_limit": str(config.metadata_top_limit),
-        "min_duration_sec": display_float(config.min_duration_sec),
+        "min_duration_sec": "" if config.min_duration_sec is None else display_float(config.min_duration_sec),
         "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),
         "order": config.order,
         "jobs": str(config.jobs),
@@ -1288,7 +1308,7 @@ def run_batch_job(
             env=effective_subprocess_env(settings),
         )
         if completed.returncode != 0:
-            raise WebError(subprocess_failure_message("Query Doctor batch triage", completed))
+            raise WebError(subprocess_failure_message("Query Doctor recent scan", completed))
         job_store.update_stage(job_id, 2)
         summary_path = out_dir / "batch_summary.json"
         if not summary_path.is_file():
@@ -1299,7 +1319,7 @@ def run_batch_job(
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(job_id, "Unexpected batch triage failure. Details are hidden because they may contain sensitive data.")
+        job_store.fail(job_id, "Unexpected recent scan failure. Details are hidden because they may contain sensitive data.")
 
 
 def run_batch_case_report_job(
@@ -1342,7 +1362,7 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
     if job is None:
         payload = {
             "status": "failed",
-            "stage": "Не найдено",
+            "stage": "Not found",
             "progress": 100,
             "error": "Analysis job was not found.",
             "result_html": "",

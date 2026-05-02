@@ -35,7 +35,7 @@ def test_web_readme_page_handles_missing_readme(tmp_path):
         module.WebSettings(config=Path(".query-doctor-cm.local.json"), repo_dir=tmp_path)
     )
 
-    assert "README.md не найден в корне репозитория." in body
+    assert "README.md was not found in the repository root." in body
 
 
 def test_web_readme_route_serves_readme_without_running_analysis(tmp_path):

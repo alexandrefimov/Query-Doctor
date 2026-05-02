@@ -2298,14 +2298,14 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
             make_finding(
                 "hdfs_or_storage_bottleneck",
                 "medium",
-                "HDFS or storage bottleneck",
-                "Detected scan/storage operator evidence among top time operators.",
+                "Storage/HDFS candidate signal",
+                "Detected scan/storage operator evidence among top time operators. Treat this as a candidate signal, not a root-cause claim.",
                 evidence_lines=storage_bottleneck_evidence,
             )
         )
     else:
         not_supported_causes.append(
-            "No direct HDFS/storage bottleneck evidence was parsed. Large TotalBytesRead is an I/O footprint, not proof that HDFS/block size/replication is the root cause."
+            "No direct HDFS/storage candidate signal was parsed. Large TotalBytesRead is an I/O footprint, not proof that HDFS/block size/replication is the root cause."
         )
 
     if network_exchange_evidence:
@@ -2328,14 +2328,14 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
             make_finding(
                 "codegen_bottleneck",
                 "medium",
-                "Codegen bottleneck",
-                "Detected codegen/LLVM timing evidence large enough to be treated as a bottleneck.",
+                "Codegen candidate signal",
+                "Detected notable codegen/LLVM timing evidence. Treat this as a candidate signal, not a root-cause claim.",
                 evidence_lines=codegen_bottleneck_lines[: args.max_evidence_lines],
             )
         )
     else:
         not_supported_causes.append(
-            "No codegen/LLVM bottleneck evidence was parsed."
+            "No codegen/LLVM candidate signal was parsed."
         )
 
     if backend_tail["candidates"]:

@@ -10,12 +10,12 @@ from typing import Any
 
 
 WEB_STAGES = (
-    (0, "Проверяем Query ID", 4),
-    (1, "Собираем или переиспользуем профиль", 24),
-    (2, "Анализируем профиль", 50),
-    (3, "Генерируем отчёт", 74),
-    (4, "Проверяем отчёт", 90),
-    (5, "Готово", 100),
+    (0, "Checking Query ID", 4),
+    (1, "Collecting or reusing profile", 24),
+    (2, "Analyzing profile", 50),
+    (3, "Generating report", 74),
+    (4, "Validating report", 90),
+    (5, "Done", 100),
 )
 
 
@@ -33,7 +33,7 @@ def render_page(
 ) -> str:
     body = [
         "<!doctype html>",
-        "<html lang=\"ru\">",
+        "<html lang=\"en\">",
         "<head>",
         "<meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
@@ -71,11 +71,11 @@ def render_shared_styles() -> str:
 .panel{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow)}.badge{display:inline-flex;align-items:center;justify-content:center;min-height:22px;padding:2px 7px;border-radius:5px;border:1px solid transparent;font-family:var(--mono);font-size:10.5px;font-weight:750;line-height:1;white-space:nowrap}.badge.green{color:var(--green);background:var(--green-bg);border-color:rgba(22,101,52,.16)}.badge.amber{color:var(--amber);background:var(--amber-bg);border-color:rgba(146,64,14,.16)}.badge.red{color:var(--red);background:var(--red-bg);border-color:rgba(153,27,27,.14)}.badge.gray{color:var(--gray);background:var(--gray-bg);border-color:rgba(75,85,99,.14)}.badge.blue{color:var(--accent-strong);background:var(--accent-soft);border-color:rgba(23,107,135,.16)}code,.technical,.mono{font-family:var(--mono);color:var(--text)}
 .button,.run-button{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 11px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}.button.primary,.run-button{border-color:var(--accent-strong);background:var(--accent);color:#fff;box-shadow:0 4px 10px rgba(23,107,135,.14)}.run-button{height:40px;min-width:88px;margin-top:26px;padding:0 17px;font-size:13px}.button[disabled],.run-button[disabled]{opacity:.62;cursor:wait}
 .run-panel{padding:18px 20px 20px;margin-bottom:14px}.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.section-title{margin:0;font-size:16px;font-weight:720;letter-spacing:-.01em}.section-kicker{margin-top:4px;color:var(--muted);font-size:13px}.readiness-line,.pipeline-line,.scope-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px}.readiness-line{margin-bottom:13px}.readiness-label,.pipeline-line strong,.scope-line strong{color:#303a46;font-weight:700}.status-token{display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border:1px solid var(--border);border-radius:5px;background:#fff;font-family:var(--mono);color:var(--muted)}
-.run-form{display:grid;gap:13px}.run-main-row{display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:12px;align-items:start}.field{display:grid;gap:7px;min-width:0}.field label,.mode-control>span{color:#303a46;font-size:13px;font-weight:650}.input{width:100%;height:40px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;color:var(--text);font-family:var(--mono);font-size:13px;padding:0 12px;outline:none}.input:focus{border-color:rgba(23,107,135,.65);box-shadow:0 0 0 3px rgba(23,107,135,.1)}.helper{color:var(--muted);font-size:12px}.run-secondary-row{display:block}.mode-control{display:inline-grid;gap:6px}.segmented{display:inline-grid;grid-template-columns:repeat(2,1fr);gap:2px;height:34px;padding:2px;border:1px solid var(--border-strong);border-radius:6px;background:var(--panel-muted)}.segmented input{position:absolute;opacity:0;pointer-events:none}.segmented label{min-width:58px;display:grid;place-items:center;border-radius:4px;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:11.5px;font-weight:700}.segmented input:checked+span,.segmented input:checked+label{color:var(--accent-strong);background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06)}.segmented span{display:grid;place-items:center;min-width:58px;border-radius:4px;padding:0 10px}.mode-help{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px;color:var(--muted);font-size:12px}.mode-help span{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted)}.manual-inputs-hidden{display:none}.batch-run-panel{padding:18px 20px 20px;margin-bottom:14px}.batch-form{display:grid;gap:13px}.batch-form-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:12px}.batch-checkbox-row{display:flex;flex-wrap:wrap;gap:10px 16px;color:#303a46;font-size:13px;font-weight:650}.batch-checkbox-row input{margin-right:6px}.trust-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:14px 0;padding:9px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);font-size:12px;font-weight:650;box-shadow:0 1px 2px rgba(15,23,42,.035)}.trust-item{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.trust-icon{width:14px;height:14px;display:inline-grid;place-items:center;border-radius:999px;background:var(--accent-soft);color:var(--accent-strong);font-family:var(--mono);font-size:9px;line-height:1;flex:0 0 auto}.no-reports-note{padding:13px 14px;margin-bottom:14px;color:var(--muted);font-size:12px}.no-reports-note strong{display:block;margin-bottom:3px;color:var(--text);font-size:13px}
+.run-form{display:grid;gap:13px}.run-main-row{display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:12px;align-items:start}.field{display:grid;gap:7px;min-width:0}.field label,.mode-control>span{color:#303a46;font-size:13px;font-weight:650}.input{width:100%;height:40px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;color:var(--text);font-family:var(--mono);font-size:13px;padding:0 12px;outline:none}.input:focus{border-color:rgba(23,107,135,.65);box-shadow:0 0 0 3px rgba(23,107,135,.1)}.helper{color:var(--muted);font-size:12px}.run-secondary-row{display:block}.mode-control{display:inline-grid;gap:6px}.segmented{display:inline-grid;grid-template-columns:repeat(2,1fr);gap:2px;height:34px;padding:2px;border:1px solid var(--border-strong);border-radius:6px;background:var(--panel-muted)}.segmented input{position:absolute;opacity:0;pointer-events:none}.segmented label{min-width:58px;display:grid;place-items:center;border-radius:4px;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:11.5px;font-weight:700}.segmented input:checked+span,.segmented input:checked+label{color:var(--accent-strong);background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06)}.segmented span{display:grid;place-items:center;min-width:58px;border-radius:4px;padding:0 10px}.mode-help{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px;color:var(--muted);font-size:12px}.mode-help span{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted)}.manual-inputs-hidden{display:none}.batch-run-panel{padding:18px 20px 20px;margin-bottom:14px}.batch-form{display:grid;gap:13px}.batch-form .input{height:34px;padding:0 10px}.batch-form .run-button{height:34px;width:160px;max-width:100%;justify-self:start;margin-top:0;padding:0 14px;font-size:12.5px}.batch-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.batch-primary-row{display:grid;grid-template-columns:minmax(180px,260px) auto;gap:12px;align-items:end}.batch-advanced{border:1px solid var(--border);border-radius:7px;background:#fff;overflow:hidden}.batch-advanced summary{cursor:pointer;padding:10px 12px;background:var(--panel-muted);color:#303a46;font-size:13px;font-weight:720}.batch-advanced-body{display:grid;gap:12px;padding:12px}.batch-checkbox-row{display:flex;flex-wrap:wrap;gap:10px 16px;color:#303a46;font-size:13px;font-weight:650}.batch-checkbox-row input{margin-right:6px}.trust-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:14px 0;padding:9px 12px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);font-size:12px;font-weight:650;box-shadow:0 1px 2px rgba(15,23,42,.035)}.trust-item{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.trust-icon{width:14px;height:14px;display:inline-grid;place-items:center;border-radius:999px;background:var(--accent-soft);color:var(--accent-strong);font-family:var(--mono);font-size:9px;line-height:1;flex:0 0 auto}.no-reports-note{padding:13px 14px;margin-bottom:14px;color:var(--muted);font-size:12px}.no-reports-note strong{display:block;margin-bottom:3px;color:var(--text);font-size:13px}
 .error-card{border:1px solid rgba(153,27,27,.18);background:var(--red-bg);padding:12px 14px;color:var(--red);border-radius:7px;margin-bottom:14px}.error-card strong{display:block;margin-bottom:4px;color:var(--red)}.progress-card{padding:13px 14px;margin-bottom:14px}.progress-card--hidden{display:none}.progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.progress-title{font-weight:650}.progress-stage{color:var(--muted);font-size:.84rem}.progress-bar{height:6px;border-radius:999px;background:var(--gray-bg);border:1px solid var(--border);overflow:hidden}.progress-fill{display:block;height:100%;width:4%;background:var(--accent);transition:width .2s ease}.progress-note{margin:8px 0 0;color:var(--muted);font-size:.77rem}.batch-progress{margin-top:12px;display:grid;gap:10px}.batch-progress-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.batch-progress-step{border:1px solid var(--border);border-radius:7px;background:var(--panel-muted);padding:9px 10px;min-width:0}.batch-progress-step strong{display:block;font-size:12px;color:var(--text);overflow-wrap:anywhere}.batch-progress-step span{display:block;margin-top:3px;font-size:11px;color:var(--muted);overflow-wrap:anywhere}.batch-progress-step--done{border-color:rgba(22,101,52,.2);background:var(--green-bg)}.batch-progress-step--running{border-color:rgba(23,107,135,.22);background:var(--accent-soft)}.batch-progress-step--failed{border-color:rgba(153,27,27,.18);background:var(--red-bg)}.batch-progress-metrics{display:flex;flex-wrap:wrap;gap:7px;color:var(--muted);font-size:12px}.batch-progress-metrics span{border:1px solid var(--border);border-radius:999px;background:#fff;padding:4px 8px}
 .batch-panel{padding:18px 20px;overflow:hidden}.batch-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.batch-head h1{margin:0 0 4px;font-size:20px;line-height:1.2;letter-spacing:-.02em}.batch-head p{margin:0;color:var(--muted);font-size:13px}.batch-metrics{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-bottom:12px}.batch-metric{display:grid;gap:4px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);min-width:0}.batch-metric span{color:var(--muted);font-size:11px;font-weight:650;text-transform:uppercase}.batch-metric strong{font-family:var(--mono);font-size:13px;overflow-wrap:anywhere}.batch-note{margin-bottom:12px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px}.case-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}.case-summary-card{display:grid;gap:4px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);min-width:0}.case-summary-card span{color:var(--muted);font-size:11px;font-weight:650;text-transform:uppercase}.case-summary-card strong{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}.reason-list{display:grid;gap:10px;margin:0;padding:0;list-style:none}.reason-card{border:1px solid var(--border);border-radius:7px;background:#fff;padding:10px 11px}.reason-card strong{display:block;margin-bottom:3px;font-size:13px}.reason-card p{margin:0;color:var(--muted);font-size:12px}.technical-details{margin-top:14px;border:1px solid var(--border);border-radius:7px;background:#fff;overflow:hidden}.technical-details summary{cursor:pointer;padding:12px 14px;background:var(--panel-muted);font-size:13px;font-weight:720}.technical-details .meta-list{padding:12px 14px}.metadata-statement-line{display:inline-flex;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:12px}.batch-table-wrap{max-width:100%;overflow-x:auto;overflow-y:visible;border:1px solid var(--border);border-radius:7px}.batch-table{min-width:1120px;width:100%;border-collapse:collapse;font-size:12px;background:#fff}.batch-table th,.batch-table td{border-bottom:1px solid var(--border);padding:8px 9px;text-align:left;vertical-align:top}.batch-table th{position:sticky;top:0;background:var(--panel-muted);color:#303a46;font-size:11px;text-transform:uppercase;letter-spacing:0;font-weight:720}.batch-cell--compact{font-family:var(--mono);white-space:nowrap;overflow-wrap:normal}.batch-cell--reason{min-width:260px;white-space:normal;overflow-wrap:anywhere}.batch-mini-badge{display:inline-flex;align-items:center;min-height:20px;padding:2px 7px;border-radius:5px;border:1px solid transparent;font-family:var(--mono);font-size:10.5px;font-weight:750;line-height:1;white-space:nowrap}.batch-severity--high,.batch-severity--failed,.batch-status--failed,.batch-report--untrusted{color:var(--red);background:var(--red-bg);border-color:rgba(153,27,27,.14)}.batch-severity--suspicious,.batch-status--warning,.batch-report--generated{color:var(--amber);background:var(--amber-bg);border-color:rgba(146,64,14,.16)}.batch-severity--clean,.batch-status--ok,.batch-report--passed{color:var(--green);background:var(--green-bg);border-color:rgba(22,101,52,.16)}.batch-status--neutral,.batch-report--neutral{color:var(--gray);background:var(--gray-bg);border-color:rgba(75,85,99,.14)}.empty-cell{color:var(--muted);text-align:center}
 .report-header{margin-bottom:14px;padding:18px 20px}.breadcrumb{display:flex;align-items:center;gap:8px;margin-bottom:12px;color:var(--muted);font-size:12px;font-weight:650}.report-title-row{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.report-title-row h1{margin:0 0 8px;font-size:20px;line-height:1.2;letter-spacing:-.03em}.report-subtitle{color:var(--muted);font-size:13px}.query-line{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 10px;color:var(--muted);font-size:12px}.status-strip{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px;font-weight:650}.status-item{display:inline-flex;align-items:center;gap:6px}.dot{width:7px;height:7px;border-radius:999px;background:var(--green)}.dot.amber{background:#d97706}.dot.gray{background:#6b7280}.report-shell{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}.content-main{display:grid;gap:14px}.report-card,.docs-panel{padding:0;overflow:hidden}.report-card summary,.docs-panel h1{padding:16px 18px;margin:0;border-bottom:1px solid var(--border);background:var(--panel-muted);font-size:15px;font-weight:720}.report-body{padding:16px 18px;color:var(--text);font-size:13px}.report-body h1,.report-body h2,.report-body h3,.report-body h4{margin:1.15em 0 .5em;line-height:1.2}.report-body h1:first-child,.report-body h2:first-child,.report-body h3:first-child{margin-top:0}.report-body h1{font-size:20px}.report-body h2{font-size:17px}.report-body h3{font-size:15px}.report-body p{margin:.7em 0}.report-body ul,.report-body ol{margin:.55em 0 .8em;padding-left:1.35rem}.report-body li{margin:.32em 0;overflow-wrap:anywhere}.report-body code{background:var(--panel-muted);border:1px solid var(--border);border-radius:5px;padding:.08rem .28rem;font-family:var(--mono);font-size:.88em;overflow-wrap:anywhere}.report-body pre{margin:.75em 0;padding:12px;background:#0f1720;color:#e5edf5;border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere}.report-body pre code{border:0;background:transparent;padding:0;color:inherit}.report-body blockquote{margin:.75em 0;padding:.35em .8em;border-left:3px solid var(--accent);background:var(--accent-soft);color:#36505c}.report-body table{width:100%;border-collapse:collapse;margin:.8em 0;font-size:.86rem}.report-body th,.report-body td{border:1px solid var(--border);padding:6px 8px;text-align:left;vertical-align:top}.report-body th{background:var(--panel-muted);color:#303a46}.appendix-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px}.side-panel{position:sticky;top:18px;display:grid;gap:14px}.side-card{padding:14px}.side-card h2{margin:0 0 10px;font-size:14px}.meta-list{display:grid;gap:8px}.meta-row{display:flex;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--border);color:var(--muted);font-size:12px}.meta-row:last-child{padding-bottom:0;border-bottom:0}.meta-row strong{color:var(--text);font-family:var(--mono);font-size:11px;text-align:right}.artifact-list,.toc-list,.timeline{display:grid;gap:7px}.artifact-item,.toc-list a{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 10px;padding:8px 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel-muted);color:var(--muted);font-size:12px;font-weight:650}.artifact-item code{display:block;margin-top:2px;font-family:var(--mono);color:var(--text);font-size:11px}.toc-list a{display:block}.timeline-item{display:grid;grid-template-columns:16px 1fr;gap:8px;color:var(--muted);font-size:12px}.timeline-dot{width:8px;height:8px;margin-top:5px;border-radius:999px;background:var(--green)}.timeline-item strong{display:block;color:var(--text);font-size:12px}
-@media(max-width:980px){.report-shell{grid-template-columns:1fr}.side-panel{position:static}.batch-metrics,.case-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.batch-form-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}}@media(max-width:760px){.page{padding:18px 16px 40px}.app-header{align-items:stretch;flex-direction:column}.top-nav{width:fit-content}.run-main-row{grid-template-columns:1fr}.run-secondary-row{align-items:stretch;flex-direction:column}.mode-control,.run-button{width:100%}.segmented{width:100%}.report-title-row{align-items:stretch;flex-direction:column}.batch-metrics,.batch-form-grid,.case-summary-grid{grid-template-columns:1fr}}
+@media(max-width:980px){.report-shell{grid-template-columns:1fr}.side-panel{position:static}.batch-metrics,.case-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.batch-form-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}}@media(max-width:760px){.page{padding:18px 16px 40px}.app-header{align-items:stretch;flex-direction:column}.top-nav{width:fit-content}.run-main-row,.batch-primary-row{grid-template-columns:1fr}.batch-form .run-button{width:100%}.run-secondary-row{align-items:stretch;flex-direction:column}.mode-control,.run-button{width:100%}.segmented{width:100%}.report-title-row{align-items:stretch;flex-direction:column}.batch-metrics,.batch-form-grid,.case-summary-grid{grid-template-columns:1fr}}
 """.strip()
 
 
@@ -90,7 +90,7 @@ def render_app_header(active: str) -> str:
         "<path d=\"M12 3v3M12 18v3M3 12h2M19 12h2\"/>"
         "</svg></span>"
         "<span><span class=\"brand-title\">impala-query-doctor</span>"
-        "<span class=\"brand-subtitle\">Local-first Impala query diagnostics</span></span>"
+        "<span class=\"brand-subtitle\">Impala query performance diagnostics</span></span>"
         "</a>"
         f"{render_top_nav(active)}"
         "</header>"
@@ -184,7 +184,9 @@ def render_batch_page(
     if job is not None:
         sections.append(render_job_panel(job))
     if job is None or job.status != "ok":
-        sections.append(render_batch_card(settings))
+        batch_card = render_batch_card(settings)
+        if batch_card:
+            sections.append(batch_card)
     return render_page(
         settings,
         active_nav="batch",
@@ -196,13 +198,25 @@ def render_batch_page(
 
 def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = None, *, run_disabled: bool = False) -> str:
     metadata_configured = bool(getattr(settings, "metadata_coordinator", None))
+    local_config = read_local_config_values(settings)
     values = {
         "analysis_depth": "full" if metadata_configured else "fast",
-        "recent_window_minutes": "1440",
-        "cm_inspect_limit": "1000",
-        "triage_profile_limit": "200",
-        "metadata_top_limit": "8",
-        "min_duration_sec": "10",
+        "recent_window_minutes": form_or_config_value(
+            form_values,
+            "recent_window_minutes",
+            config_values=local_config,
+            config_key="recent_window_minutes",
+            fallback="30",
+        ),
+        "cm_inspect_limit": form_or_config_value(form_values, "cm_inspect_limit", config_values=local_config),
+        "triage_profile_limit": form_or_config_value(form_values, "triage_profile_limit", config_values=local_config),
+        "metadata_top_limit": form_or_config_value(form_values, "metadata_top_limit", config_values=local_config),
+        "min_duration_sec": form_or_config_value(
+            form_values,
+            "min_duration_sec",
+            config_values=local_config,
+            config_key="recent_min_duration_sec",
+        ),
         "max_duration_sec": "",
         "order": "duration-desc",
         "jobs": "4",
@@ -230,65 +244,133 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
     fast_checked = " checked" if analysis_depth == "fast" else ""
     full_disabled = "" if metadata_configured else " disabled"
     full_label = (
-        "Full analysis: collect table metadata"
+        "Full scan: include table metadata"
         if metadata_configured
-        else "Full analysis: collect table metadata (unavailable: metadata not configured)"
+        else "Full scan: include table metadata (unavailable: metadata not configured)"
     )
-    metadata_note = (
-        "Metadata collection is configured for this web session."
-        if metadata_configured
-        else "Metadata collection is not configured for this web session. Fast triage still works."
-    )
+    metadata_note = "" if metadata_configured else "Metadata collection is not configured for this web session. Fast scan still works."
+    metadata_note_html = f"<div class=\"batch-note\">{html.escape(metadata_note)}</div>" if metadata_note else ""
     order_options = "".join(
         f"<option value=\"{html.escape(option, quote=True)}\"{' selected' if option == order else ''}>{html.escape(option)}</option>"
         for option in ("duration-desc", "recent", "duration-asc")
     )
     button_disabled = " disabled" if run_disabled else ""
-    button_label = "Running" if run_disabled else "Run"
+    button_label = "Running" if run_disabled else "Run scan"
     return (
-        "<section class=\"panel batch-run-panel\" aria-label=\"Run batch triage\">"
+        "<section class=\"panel batch-run-panel\" aria-label=\"Run recent query scan\">"
         "<div class=\"section-heading\"><div>"
-        "<h1 class=\"section-title\">Batch query triage</h1>"
-        "<div class=\"section-kicker\">Collect and score profiles for a bounded triage set, then collect metadata only for the top-ranked cases. "
-        "LLM report generation stays disabled from web batch runs.</div>"
-        "</div><span class=\"badge blue\">batch triage</span></div>"
+        "<h1 class=\"section-title\">Recent query scan</h1>"
+        "<div class=\"section-kicker\">Collect recent Impala query profiles, rank suspicious cases, "
+        "and prepare the most relevant ones for deeper analysis.<br>"
+        "LLM report generation stays disabled for web batch runs.</div>"
+        "</div></div>"
         "<form id=\"batch-form\" class=\"batch-form\" method=\"post\" action=\"/batch/run\">"
         "<div class=\"batch-checkbox-row\" role=\"group\" aria-label=\"Analysis depth\">"
         f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"full\"{full_checked}{full_disabled}> "
         f"{html.escape(full_label)}</label>"
         f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"fast\"{fast_checked}> "
-        "Fast triage: analyzer only</label>"
+        "Fast scan: profiles only</label>"
         "</div>"
-        f"<div class=\"batch-note\">{html.escape(metadata_note)}</div>"
+        f"{metadata_note_html}"
+        "<div class=\"batch-primary-row\">"
+        f"{render_recent_window_select(value('recent_window_minutes'))}"
+        f"<button class=\"run-button\" type=\"submit\"{button_disabled}>{button_label}</button>"
+        "</div>"
+        "<details class=\"batch-advanced\">"
+        "<summary>Advanced search parameters</summary>"
+        "<div class=\"batch-advanced-body\">"
         "<div class=\"batch-form-grid\">"
-        f"{render_batch_number_field('recent_window_minutes', 'Recent window minutes', value('recent_window_minutes'))}"
-        f"{render_batch_number_field('cm_inspect_limit', 'CM inspect limit', value('cm_inspect_limit'))}"
-        f"{render_batch_number_field('triage_profile_limit', 'Triage profile limit', value('triage_profile_limit'))}"
-        f"{render_batch_number_field('metadata_top_limit', 'Metadata top limit', value('metadata_top_limit'))}"
-        f"{render_batch_number_field('min_duration_sec', 'Min duration sec', value('min_duration_sec'), step='0.001')}"
-        f"{render_batch_number_field('max_duration_sec', 'Max duration sec', value('max_duration_sec'), step='0.001', required=False)}"
+        f"{render_batch_number_field('cm_inspect_limit', 'CM summary limit', value('cm_inspect_limit'), required=False)}"
+        f"{render_batch_number_field('triage_profile_limit', 'Profile analysis limit', value('triage_profile_limit'), required=False)}"
+        f"{render_batch_number_field('metadata_top_limit', 'Metadata top cases', value('metadata_top_limit'), required=False)}"
+        f"{render_batch_number_field('min_duration_sec', 'Min duration sec', value('min_duration_sec'), step='0.001', required=False)}"
         "<div class=\"field\"><label for=\"order\">Order</label>"
         f"<select class=\"input\" id=\"order\" name=\"order\">{order_options}</select></div>"
         f"{render_batch_number_field('jobs', 'Jobs', value('jobs'))}"
         f"{render_batch_text_field('user', 'User filter', value('user'))}"
         f"{render_batch_text_field('pool', 'Pool filter', value('pool'))}"
-        f"{render_batch_text_field('query_type', 'Query type', value('query_type'))}"
         "</div>"
         "<div class=\"batch-checkbox-row\">"
         f"<label><input type=\"checkbox\" name=\"include_failed\" value=\"on\"{checked('include_failed')}> Include failed</label>"
         f"<label><input type=\"checkbox\" name=\"include_running\" value=\"on\"{checked('include_running')}> Include running</label>"
         "</div>"
-        "<div class=\"pipeline-line\" aria-label=\"Batch safety scope\">"
-        "<span><strong>Full:</strong> <code>--metadata-mode on</code> with server-startup metadata settings</span>"
-        "<span><strong>Fast:</strong> <code>--metadata-mode off</code>; metadata top limit is ignored</span>"
-        "<span><strong>Always:</strong> <code>--top-reports 0</code>; no LLM report generation</span>"
-        "<span><strong>Output:</strong> generated dedicated <code>/tmp/query-doctor-web-batch-*</code> directory</span>"
-        "<span><strong>Summary:</strong> rendered summaries are read-only</span>"
-        "<span><strong>Credentials:</strong> environment or local config only; never entered here</span>"
         "</div>"
-        f"<button class=\"run-button\" type=\"submit\"{button_disabled}>{button_label}</button>"
+        "</details>"
         "</form></section>"
     )
+
+
+def render_recent_window_select(selected_value: str) -> str:
+    options = [
+        ("10", "10 minutes"),
+        ("30", "30 minutes"),
+        ("60", "1 hour"),
+        ("120", "2 hours"),
+        ("360", "6 hours"),
+        ("720", "12 hours"),
+        ("1440", "24 hours"),
+    ]
+    selected_raw = html.unescape(str(selected_value))
+    option_values = {value for value, _ in options}
+    if selected_raw and selected_raw not in option_values:
+        options.append((selected_raw, f"{format_recent_window_label(selected_raw)} (configured)"))
+    rendered_options = "".join(
+        f"<option value=\"{html.escape(value, quote=True)}\"{' selected' if value == selected_raw else ''}>"
+        f"{html.escape(label)}</option>"
+        for value, label in options
+    )
+    return (
+        "<div class=\"field\"><label for=\"recent_window_minutes\">Search depth</label>"
+        f"<select class=\"input\" id=\"recent_window_minutes\" name=\"recent_window_minutes\">{rendered_options}</select></div>"
+    )
+
+
+def read_local_config_values(settings: Any) -> dict[str, object]:
+    config_path = getattr(settings, "config", None)
+    if config_path is None:
+        return {}
+    try:
+        path = Path(config_path).expanduser()
+        if not path.is_file():
+            return {}
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def form_or_config_value(
+    form_values: dict[str, Any] | None,
+    form_key: str,
+    *,
+    config_values: dict[str, object],
+    config_key: str | None = None,
+    fallback: str = "",
+) -> str:
+    if form_values is not None and form_key in form_values:
+        value = form_values.get(form_key)
+        if value is not None:
+            return str(value)
+    value = config_values.get(config_key or form_key)
+    if isinstance(value, bool) or value is None:
+        return fallback
+    if isinstance(value, (int, float, str)):
+        return str(value)
+    return fallback
+
+
+def format_recent_window_label(value: str) -> str:
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        return f"{value} minutes"
+    if minutes < 60:
+        return f"{minutes} minutes"
+    if minutes == 60:
+        return "1 hour"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} hours"
+    return f"{minutes} minutes"
 
 
 def render_batch_number_field(name: str, label: str, value: str, *, step: str = "1", required: bool = True) -> str:
@@ -311,32 +393,21 @@ def render_batch_text_field(name: str, label: str, value: str) -> str:
 def render_batch_card(settings: Any) -> str:
     summary_path = getattr(settings, "batch_summary", None)
     if summary_path is None:
-        return (
-            "<section class=\"panel batch-panel\" aria-label=\"Batch triage\">"
-            "<div class=\"batch-head\">"
-            "<div><h1>Batch query triage</h1>"
-            "<p>Run a batch from this page, or start the web UI with "
-            "<code>--batch-summary PATH</code> to inspect an existing summary.</p></div>"
-            "</div>"
-            "<div class=\"batch-note\">Web batch runs use <code>top-reports 0</code>: no LLM report generation. "
-            "Full mode collects metadata only when configured at server startup; Fast mode keeps metadata off. "
-            "Rendered summaries are read-only.</div>"
-            "</section>"
-        )
+        return ""
     try:
         payload = json.loads(Path(summary_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return (
-            "<section class=\"panel batch-panel\" aria-label=\"Batch triage\">"
-            "<div class=\"batch-head\"><div><h1>Batch query triage</h1>"
+            "<section class=\"panel batch-panel\" aria-label=\"Recent query scan\">"
+            "<div class=\"batch-head\"><div><h1>Recent query scan</h1>"
             "<p>Configured batch summary could not be read.</p></div></div>"
             f"<div class=\"batch-note\">{html.escape(type(exc).__name__)}</div>"
             "</section>"
         )
     if not isinstance(payload, dict):
         return (
-            "<section class=\"panel batch-panel\" aria-label=\"Batch triage\">"
-            "<div class=\"batch-head\"><div><h1>Batch query triage</h1>"
+            "<section class=\"panel batch-panel\" aria-label=\"Recent query scan\">"
+            "<div class=\"batch-head\"><div><h1>Recent query scan</h1>"
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
@@ -374,14 +445,16 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
         rows = (
             "<tr><td colspan=\"14\" class=\"empty-cell\">No case summaries were found in the configured batch summary.</td></tr>"
         )
+    scope_note = render_batch_scope_note(summary)
     return (
-        "<section class=\"panel batch-panel\" aria-label=\"Batch triage\">"
+        "<section class=\"panel batch-panel\" aria-label=\"Recent query scan\">"
         "<div class=\"batch-head\">"
-        "<div><h1>Batch query triage</h1>"
+        "<div><h1>Recent query scan</h1>"
         "<p>Read-only deterministic analyzer ranking from <code>batch_summary.json</code>.</p></div>"
         "<span class=\"badge blue\">read-only</span>"
         "</div>"
         f"<div class=\"batch-metrics\">{header}</div>"
+        f"{scope_note}"
         "<div class=\"batch-note\">Score is deterministic analyzer output. LLM reports exist only where "
         "<code>report_generated</code> is true. Partial reports are untrusted and not rendered here.</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
@@ -394,6 +467,20 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
         "</table></div>"
         "</section>"
     )
+
+
+def render_batch_scope_note(summary: dict[str, Any]) -> str:
+    parts: list[str] = []
+    summaries = summary.get("summaries_inspected")
+    if summary.get("cm_summary_safety_cap_hit"):
+        cap = summary.get("cm_summary_safety_cap") or summaries
+        parts.append(f"CM summaries truncated at safety cap: {escape_value(cap)}")
+    elif summaries is not None:
+        parts.append(f"CM summaries inspected: {escape_value(summaries)}")
+    parts.append(f"Duration filter: {escape_value(summary.get('duration_filter') or 'none')}")
+    if summary.get("triage_profile_limit") is not None:
+        parts.append(f"Profile analysis limit: {escape_value(summary.get('triage_profile_limit'))}")
+    return f"<div class=\"batch-note\">{'. '.join(parts)}.</div>" if parts else ""
 
 
 def render_batch_case_row(rank: int, case: dict[str, Any]) -> str:
@@ -993,7 +1080,7 @@ def escape_value(value: Any) -> str:
 def render_readme_card(repo_dir: Path) -> str:
     readme_text = read_repository_readme(repo_dir)
     if readme_text is None:
-        readme_html = "<p>README.md не найден в корне репозитория.</p>"
+        readme_html = "<p>README.md was not found in the repository root.</p>"
     else:
         readme_html = render_report_markdown_html(readme_text)
     return (
@@ -1045,19 +1132,19 @@ document.addEventListener('DOMContentLoaded', function () {
         var runningProgressSlot = document.getElementById('batch-progress-slot');
         if (runningProgressSlot) { runningProgressSlot.innerHTML = data.progress_html || ''; }
         if (data.status === 'ok') {
-          if (title) { title.textContent = 'Анализ завершён'; }
+          if (title) { title.textContent = 'Analysis complete'; }
           if (data.kind === 'batch' && batchRunButton) {
             batchRunButton.disabled = false;
-            batchRunButton.textContent = 'Run';
+            batchRunButton.textContent = 'Run scan';
           }
           if (resultSlot) { resultSlot.innerHTML = data.result_html || ''; }
           return;
         }
         if (data.status === 'failed') {
-          if (title) { title.textContent = 'Анализ завершился с ошибкой'; }
+          if (title) { title.textContent = 'Analysis failed'; }
           if (data.kind === 'batch' && batchRunButton) {
             batchRunButton.disabled = false;
-            batchRunButton.textContent = 'Run';
+            batchRunButton.textContent = 'Run scan';
           }
           if (errorSlot) {
             errorSlot.hidden = false;
@@ -1078,10 +1165,10 @@ def render_pending_progress_panel() -> str:
     stage = WEB_STAGES[0]
     return (
         "<section id=\"pending-panel\" class=\"panel progress-card progress-card--hidden\" aria-live=\"polite\">"
-        "<div class=\"progress-head\"><span class=\"progress-title\">Анализ запущен</span>"
+        "<div class=\"progress-head\"><span class=\"progress-title\">Analysis started</span>"
         f"<span class=\"progress-stage\">{html.escape(stage[1])}</span></div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\"><span class=\"progress-fill\"></span></div>"
-        "<p class=\"progress-note\">Обычно это занимает от нескольких секунд до пары минут.</p>"
+        "<p class=\"progress-note\">This usually takes a few seconds to a couple of minutes.</p>"
         "</section>"
     )
 
@@ -1240,7 +1327,7 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         "steps": [
             progress_step("CM discovery", states["discovery"], discovery_detail(counters)),
             progress_step("Profile collection", states["collection"], case_detail(counters, "collection_done")),
-            progress_step("Analyzer-only triage", states["analysis"], case_detail(counters, "analysis_done")),
+            progress_step("Analyzer scoring", states["analysis"], case_detail(counters, "analysis_done")),
             progress_step("Metadata refresh", states["metadata"], metadata_detail(counters)),
             progress_step("Ranking / summary", states["summary"], "summary written" if states["summary"] == "done" else "waiting"),
             progress_step("Completed", states["completed"], "batch done" if states["completed"] == "done" else "waiting"),
@@ -1299,16 +1386,16 @@ def render_job_panel(job: Any) -> str:
             "</div>"
         )
     progress_note = (
-        "Статус обновляется по структурированным событиям batch progress."
+        "Status updates from structured batch progress events."
         if getattr(job, "kind", "") == "batch"
-        else "Обычно это занимает от нескольких секунд до пары минут."
+        else "This usually takes a few seconds to a couple of minutes."
     )
     if job.status == "ok":
-        title = "Анализ завершён"
+        title = "Analysis complete"
     elif job.status == "failed":
-        title = "Анализ завершился с ошибкой"
+        title = "Analysis failed"
     else:
-        title = "Анализ выполняется"
+        title = "Analysis running"
     return (
         f"<section class=\"panel progress-card\" data-job-status-url=\"/jobs/{html.escape(job.job_id)}"
         "/status\" aria-live=\"polite\">"

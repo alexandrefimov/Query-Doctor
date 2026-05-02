@@ -20,7 +20,7 @@ def test_web_render_page_contains_reference_local_ui_shell():
     body = module.render_page(settings)
 
     assert "impala-query-doctor" in body
-    assert "Local-first Impala query diagnostics" in body
+    assert "Impala query performance diagnostics" in body
     assert "Impala Doctor" not in body
     assert "demo-watermark" not in body
     assert "page-shell" not in body
@@ -59,8 +59,8 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "current query only · referenced tables only · read-only metadata" in body
     assert "The latest validated diagnosis appears here after a run." in body
     assert "This MVP UI does not expose a separate reports list yet." in body
-    assert "Проверяем Query ID" in body
-    assert "Обычно это занимает от нескольких секунд до пары минут." in body
+    assert "Checking Query ID" in body
+    assert "This usually takes a few seconds to a couple of minutes." in body
 
 
 def test_web_render_page_can_select_admin_mode_explicitly():

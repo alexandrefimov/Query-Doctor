@@ -21,7 +21,7 @@ from pathlib import Path
 import query_doctor_collect_cm_profiles as cm_profiles
 
 
-MAX_CM_INSPECT_LIMIT = 1000
+MAX_CM_INSPECT_LIMIT = 10000
 MAX_TRIAGE_PROFILE_LIMIT = 200
 MAX_METADATA_TOP_LIMIT = 200
 MAX_JOBS = 4
@@ -234,6 +234,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--min-duration-sec", type=non_negative_float, default=60.0)
+    parser.add_argument(
+        "--no-min-duration-filter",
+        action="store_true",
+        help="Disable the minimum duration filter. Intended for web runs with an empty Min duration field.",
+    )
     parser.add_argument("--max-duration-sec", type=non_negative_float)
     parser.add_argument("--order", choices=ORDER_CHOICES, default="duration-desc")
     parser.add_argument("--include-failed", action="store_true")
@@ -340,7 +345,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             status="done",
             summaries_inspected=len(discovery.candidates),
             candidates_selected=len(selected),
-            duration_filter=discovery.duration_filter_mode,
+            duration_filter=duration_filter_label(config),
             seconds=discovery_seconds,
         )
         for index, candidate in enumerate(selected, start=1):
@@ -426,6 +431,23 @@ def format_seconds(value: float | None) -> str:
     return f"{value:.3f}s"
 
 
+def duration_filter_label(config: BatchConfig) -> str:
+    lower = config.min_duration_sec
+    upper = config.max_duration_sec
+    if lower is None and upper is None:
+        return "none"
+    parts: list[str] = []
+    if lower is not None:
+        parts.append(f">= {display_float(lower)} sec")
+    if upper is not None:
+        parts.append(f"<= {display_float(upper)} sec")
+    return " and ".join(parts)
+
+
+def display_float(value: float) -> str:
+    return str(int(value)) if value == int(value) else str(value)
+
+
 def build_batch_config(
     args: argparse.Namespace,
     *,
@@ -443,8 +465,9 @@ def build_batch_config(
     if args.metadata_top_limit > MAX_METADATA_TOP_LIMIT:
         raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
     validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
-    if args.max_duration_sec is not None and args.min_duration_sec is not None:
-        if args.max_duration_sec < args.min_duration_sec:
+    min_duration_sec = None if args.no_min_duration_filter else args.min_duration_sec
+    if args.max_duration_sec is not None and min_duration_sec is not None:
+        if args.max_duration_sec < min_duration_sec:
             raise ValueError("--max-duration-sec must be >= --min-duration-sec")
 
     use_repo_default = not any((args.cm_url, args.cluster, args.service, args.ca_bundle))
@@ -458,12 +481,20 @@ def build_batch_config(
     effective_config_path = resolve_config_path(args.config, cwd) or (
         str(default_config_path) if default_config_path else None
     )
-    config_values = cm_profiles.load_effective_local_config(
-        args.config,
-        cwd=cwd,
-        repo_root=repo_root,
-        use_repo_default=use_repo_default,
-    )
+    try:
+        config_values = cm_profiles.load_effective_local_config(
+            args.config,
+            cwd=cwd,
+            repo_root=repo_root,
+            use_repo_default=use_repo_default,
+        )
+    except cm_profiles.ConfigError:
+        if args.config or use_repo_default:
+            raise
+        # Explicit connection flags should not be blocked by an unrelated
+        # implicit local config in the current working directory.
+        config_values = {}
+        effective_config_path = None
     cm_url = first_string(args.cm_url, env.get("CM_URL"), config_values.get("cm_url"))
     cluster = first_string(args.cluster, config_values.get("cluster"))
     service = first_string(args.service, config_values.get("service"))
@@ -499,7 +530,7 @@ def build_batch_config(
         cm_inspect_limit=args.cm_inspect_limit,
         triage_profile_limit=triage_profile_limit,
         metadata_top_limit=args.metadata_top_limit,
-        min_duration_sec=args.min_duration_sec,
+        min_duration_sec=min_duration_sec,
         max_duration_sec=args.max_duration_sec,
         order=args.order,
         include_failed=args.include_failed,
@@ -1285,11 +1316,14 @@ def build_summary(
         "recent_window_minutes": config.recent_window_minutes,
         "min_duration_sec": config.min_duration_sec,
         "order": config.order,
-        "duration_filter": discovery.duration_filter_mode,
+        "duration_filter": duration_filter_label(config),
+        "duration_filter_mode": discovery.duration_filter_mode,
         "total_seconds": total_seconds,
         "discovery_seconds": discovery_seconds,
         "server_filter_expression_present": bool(discovery.server_filter_expression),
         "summaries_inspected": inspected,
+        "cm_summary_safety_cap": MAX_CM_INSPECT_LIMIT,
+        "cm_summary_safety_cap_hit": config.cm_inspect_limit == MAX_CM_INSPECT_LIMIT and inspected >= MAX_CM_INSPECT_LIMIT,
         "selected_count": selected_count,
         "top_reports": config.top_reports,
         "jobs": config.jobs,
