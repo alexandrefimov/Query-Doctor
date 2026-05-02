@@ -296,6 +296,24 @@ class OperatorFact:
         return self.peak_mem_bytes / self.estimated_peak_mem_bytes
 
     @property
+    def has_zero_row_estimate_gap(self) -> bool:
+        return (
+            self.actual_rows is not None
+            and self.actual_rows > 0
+            and self.estimated_rows is not None
+            and self.estimated_rows <= 0
+        )
+
+    @property
+    def has_zero_memory_estimate_gap(self) -> bool:
+        return (
+            self.peak_mem_bytes is not None
+            and self.peak_mem_bytes > 0
+            and self.estimated_peak_mem_bytes is not None
+            and self.estimated_peak_mem_bytes <= 0
+        )
+
+    @property
     def is_join(self) -> bool:
         return "JOIN" in self.operator_name.upper()
 
@@ -1827,6 +1845,16 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
         key=lambda x: x.mem_ratio or 0,
         reverse=True,
     )
+    zero_row_estimate_gaps = sorted(
+        [op for op in operators if op.has_zero_row_estimate_gap],
+        key=lambda x: x.actual_rows or 0,
+        reverse=True,
+    )
+    zero_memory_estimate_gaps = sorted(
+        [op for op in operators if op.has_zero_memory_estimate_gap],
+        key=lambda x: x.peak_mem_bytes or 0,
+        reverse=True,
+    )
 
     join_bottlenecks = [
         op
@@ -1936,9 +1964,25 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
                 operators=[op_to_json(op) for op in cardinality_anomalies],
             )
         )
-    else:
+    elif not zero_row_estimate_gaps:
         not_supported_causes.append(
             "No parsed actual-vs-estimated row count anomaly above threshold; do not claim cardinality estimate errors unless another evidence line supports it."
+        )
+
+    if zero_row_estimate_gaps:
+        worst = zero_row_estimate_gaps[0]
+        findings.append(
+            make_finding(
+                "zero_row_estimate_gaps",
+                "medium",
+                "Zero/unknown row estimate gaps",
+                (
+                    "Detected positive actual rows with an explicit zero/non-positive row estimate. "
+                    f"Worst parsed gap: {op_label(worst)} = {fmt_rows(worst.actual_rows)} "
+                    f"actual rows vs {fmt_rows(worst.estimated_rows)} estimated rows."
+                ),
+                operators=[op_to_json(op) for op in zero_row_estimate_gaps],
+            )
         )
 
     if memory_anomalies:
@@ -1954,6 +1998,22 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
                     f"({fmt_bytes(worst.peak_mem_bytes)} peak vs {fmt_bytes(worst.estimated_peak_mem_bytes)} estimated)."
                 ),
                 operators=[op_to_json(op) for op in memory_anomalies],
+            )
+        )
+
+    if zero_memory_estimate_gaps:
+        worst = zero_memory_estimate_gaps[0]
+        findings.append(
+            make_finding(
+                "zero_memory_estimate_gaps",
+                "medium",
+                "Zero/unknown memory estimate gaps",
+                (
+                    "Detected positive peak memory with an explicit zero/non-positive estimated peak memory. "
+                    f"Worst parsed gap: {op_label(worst)} = {fmt_bytes(worst.peak_mem_bytes)} "
+                    f"peak memory vs {fmt_bytes(worst.estimated_peak_mem_bytes)} estimated peak memory."
+                ),
+                operators=[op_to_json(op) for op in zero_memory_estimate_gaps],
             )
         )
 
@@ -2113,6 +2173,8 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
         "top_operators_by_peak_memory": [op_to_json(op) for op in top_by_memory],
         "cardinality_anomalies": [op_to_json(op) for op in cardinality_anomalies],
         "memory_anomalies": [op_to_json(op) for op in memory_anomalies],
+        "zero_row_estimate_gaps": [op_to_json(op) for op in zero_row_estimate_gaps],
+        "zero_memory_estimate_gaps": [op_to_json(op) for op in zero_memory_estimate_gaps],
         "stats_evidence_lines": stats_lines[: args.max_evidence_lines],
         "spill_evidence_lines": spill_lines[: args.max_evidence_lines],
         "spill_nonzero_evidence_lines": spill_nonzero_lines[: args.max_evidence_lines],
@@ -2163,6 +2225,8 @@ def render_summary(analysis: dict[str, Any]) -> list[str]:
         f"- Parsed operators: {len(analysis['operators'])}",
         f"- Cardinality anomalies: {len(analysis['cardinality_anomalies'])}",
         f"- Memory anomalies: {len(analysis['memory_anomalies'])}",
+        f"- Zero/unknown row estimate gaps: {len(analysis['zero_row_estimate_gaps'])}",
+        f"- Zero/unknown memory estimate gaps: {len(analysis['zero_memory_estimate_gaps'])}",
         "",
     ]
 
@@ -2465,6 +2529,8 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_operator_table("Top operators by time", analysis["top_operators_by_time"])
     lines += render_operator_table("Actual rows vs estimated rows anomalies", analysis["cardinality_anomalies"], max_table_rows)
     lines += render_operator_table("Peak memory vs estimated memory anomalies", analysis["memory_anomalies"], max_table_rows)
+    lines += render_operator_table("Zero/unknown row estimate gaps", analysis["zero_row_estimate_gaps"], max_table_rows)
+    lines += render_operator_table("Zero/unknown memory estimate gaps", analysis["zero_memory_estimate_gaps"], max_table_rows)
 
     lines += render_referenced_tables(analysis)
     lines += render_table_metadata_context(analysis)

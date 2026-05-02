@@ -117,6 +117,8 @@ class CaseResult:
     score_reasons: list[str] = field(default_factory=list)
     cardinality_anomaly_count: int | None = None
     memory_anomaly_count: int | None = None
+    zero_row_estimate_gap_count: int | None = None
+    zero_memory_estimate_gap_count: int | None = None
     backend_data_skew: bool | str = "unknown"
     host_tail_candidate_count: int | None = None
     report_generated: bool = False
@@ -1123,6 +1125,8 @@ def score_case(case: CaseResult) -> None:
     components = extract_scoring_components(facts)
     case.cardinality_anomaly_count = components["cardinality_anomaly_count"]
     case.memory_anomaly_count = components["memory_anomaly_count"]
+    case.zero_row_estimate_gap_count = components["zero_row_estimate_gap_count"]
+    case.zero_memory_estimate_gap_count = components["zero_memory_estimate_gap_count"]
     case.backend_data_skew = components["backend_data_skew"]
     case.host_tail_candidate_count = components["host_tail_candidate_count"]
     score, reasons = score_analysis_facts(facts, metadata_status=case.metadata_status)
@@ -1142,6 +1146,14 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
     if memory > 0:
         score += min(8, memory * 2)
         reasons.append(f"memory estimate anomalies: {memory}")
+    zero_row_gaps = components["zero_row_estimate_gap_count"] or 0
+    if zero_row_gaps > 0:
+        score += min(12, zero_row_gaps * 3)
+        reasons.append(f"zero/unknown row estimate gaps: {zero_row_gaps}")
+    zero_memory_gaps = components["zero_memory_estimate_gap_count"] or 0
+    if zero_memory_gaps > 0:
+        score += min(8, zero_memory_gaps * 2)
+        reasons.append(f"zero/unknown memory estimate gaps: {zero_memory_gaps}")
     lower = facts.lower()
     if has_supported_spill_scratch_evidence(facts):
         score += 3
@@ -1182,6 +1194,8 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
     return {
         "cardinality_anomaly_count": fact_int(facts, "Cardinality anomalies"),
         "memory_anomaly_count": fact_int(facts, "Memory anomalies"),
+        "zero_row_estimate_gap_count": fact_int(facts, "Zero/unknown row estimate gaps"),
+        "zero_memory_estimate_gap_count": fact_int(facts, "Zero/unknown memory estimate gaps"),
         "backend_data_skew": backend_data_skew_value(facts),
         "host_tail_candidate_count": fact_int(facts, "host tail candidates"),
     }
@@ -1325,6 +1339,8 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "score_reasons": case.score_reasons,
         "cardinality_anomaly_count": case.cardinality_anomaly_count,
         "memory_anomaly_count": case.memory_anomaly_count,
+        "zero_row_estimate_gap_count": case.zero_row_estimate_gap_count,
+        "zero_memory_estimate_gap_count": case.zero_memory_estimate_gap_count,
         "backend_data_skew": case.backend_data_skew,
         "host_tail_candidate_count": case.host_tail_candidate_count,
         "case_dir": str(case.wrapper_dir),
