@@ -449,16 +449,21 @@ BACKEND_DIAGNOSTIC_CHECK_RE = re.compile(
     re.IGNORECASE,
 )
 BACKEND_SAFE_DIAGNOSTIC_NEGATION_RE = re.compile(
-    r"\b(?:not\s+proven|not\s+a\s+proven|not\s+the\s+proven)\b|"
+    r"\b(?:not\s+confirmed|not\s+proven|not\s+a\s+proven|not\s+the\s+proven)\b|"
     r"\b(?:не\s+доказ\w*|не\s+подтвержд\w*)\b",
     re.IGNORECASE,
 )
 BACKEND_DATA_SKEW_NEGATED_RE = re.compile(
     r"(?:"
-    r"\b(?:no|not\s+confirmed|not\s+proven)\b[^.\n]{0,80}\b(?:backend\s+)?data\s+skew\b|"
+    r"\b(?:no|not\s+confirmed|not\s+proven)\b[^.\n]{0,80}"
+    r"\b(?:data\s+skew|backend\s+(?:data\s+)?skew(?:\s+evidence)?|"
+    r"backend\s+(?:row|record|rows|records)\s+distribution\s+evidence)\b|"
     r"\b(?:нет|не\s+подтвержд\w*|не\s+доказ\w*)[^.\n]{0,100}"
-    r"(?:перекос\w*\s+данн\w*|data\s+skew)|"
-    r"(?:перекос\w*\s+данн\w*|data\s+skew)[^.\n]{0,100}"
+    r"(?:перекос\w*\s+данн\w*|data\s+skew|данн\w*\s+skew|"
+    r"распределени\w+\s+(?:запис\w+|строк|rows|records)\s+по\s+б[эе]кенд\w*)|"
+    r"(?:перекос\w*\s+данн\w*|data\s+skew|данн\w*\s+skew|"
+    r"распределени\w+\s+(?:запис\w+|строк|rows|records)\s+по\s+б[эе]кенд\w*)"
+    r"(?:(?!(?:tail|host|хост)).){0,100}"
     r"(?:not\s+confirmed|not\s+proven|не\s+(?:был\w*\s+)?(?:явно\s+)?подтвержд\w*)"
     r")",
     re.IGNORECASE,
@@ -954,6 +959,9 @@ def find_backend_tail_claim_errors(report_text: str, facts_text: str) -> list[st
             single_tail_match
             and not tail_is_proven
             and not line_has_safe_negation(line, single_tail_match.start())
+            and not BACKEND_SAFE_DIAGNOSTIC_NEGATION_RE.search(
+                line[single_tail_match.start() : single_tail_match.end() + 80]
+            )
             and PROVEN_BACKEND_CLAIM_CONTEXT_RE.search(line)
             and "single_tail" not in seen
         ):
@@ -1117,7 +1125,9 @@ Parsed Backend / Host Tail Evidence summary:
 - Backend data skew means rows/records are distributed unevenly across parsed backends; it does not prove stale stats, cardinality underestimation, optimizer row-estimate failure, or SQL hot keys.
 - If Cardinality anomalies: 0, backend data skew still must not be described as cardinality underestimation or bad/missing stats.
 - If data skew is yes, allowed wording is: "rows/records are distributed unevenly across backends".
+- If data skew is yes, safe Russian wording is: "Есть подтверждённый data skew по RowsProduced".
 - If data skew is yes, do not say data skew or data distribution skew is absent; only execution skew / single tail host may be absent when the summary says so.
+- If data skew is yes, do not say backend row/record distribution evidence is absent.
 - If execution skew is no or host tail candidates is 0, say no single slow backend/tail host is proven; do not claim one host is proven slow, a tail backend is proven, or execution skew is proven.
 - If write-path anomaly is unknown, write/RPC/HDFS path may be listed only as a next diagnostic check, not as the proven cause.
 """.strip()
