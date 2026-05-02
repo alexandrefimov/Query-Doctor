@@ -289,11 +289,14 @@ def render_metadata_facts_section(
 ) -> str:
     metadata_view = view or present_recent_scan_metadata(case, metadata_facts)
     if metadata_view.unavailable:
+        degraded_note = metadata_degraded_note(metadata_view)
+        degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
         return (
             "<section class=\"panel docs-panel\" aria-label=\"Metadata facts\">"
             "<h1>Metadata facts</h1>"
             "<div class=\"report-body\"><p>metadata facts unavailable</p>"
-            "<p>Only deterministic metadata facts from <code>analysis_facts.md</code> are rendered here.</p></div>"
+            "<p>Only deterministic profile facts from <code>analysis_facts.md</code> are rendered here.</p>"
+            f"{degraded_html}</div>"
             "</section>"
         )
     return render_metadata_facts_body(metadata_view)
@@ -337,12 +340,15 @@ def render_metadata_facts_body(
         if view.fallback_note
         else ""
     )
+    degraded_note = metadata_degraded_note(view)
+    degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
     return (
         "<section class=\"panel docs-panel\" aria-label=\"Metadata facts\">"
         "<h1>Metadata facts</h1>"
         "<div class=\"report-body\">"
         "<p>Deterministic table-level metadata facts. Missing or incomplete stats are limitations/checks, not root causes.</p>"
         f"{fallback_html}"
+        f"{degraded_html}"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
@@ -354,6 +360,19 @@ def render_metadata_facts_body(
         "</div>"
         "</section>"
     )
+
+
+def metadata_degraded_note(view: RecentScanMetadataView) -> str:
+    status_values = {str(label): str(value or "").lower() for label, value in view.summary_items}
+    status = status_values.get("metadata status", "")
+    base = "Profile-based findings are still valid; metadata-based recommendations may be limited."
+    if view.unavailable or status in {"skipped", "not_run", "unknown"}:
+        return base
+    if status == "partial":
+        return f"Metadata collection was partial. {base}"
+    if status == "failed":
+        return f"Metadata collection failed. {base}"
+    return ""
 
 
 def has_metadata_aggregate_facts(case: dict[str, Any]) -> bool:

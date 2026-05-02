@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import uuid
 from dataclasses import dataclass, replace
@@ -20,8 +21,12 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 import query_doctor_collect_cm_profiles as cm_collector
+import query_doctor_collect_impala_context as impala_context_collector
+import query_doctor_impala_metadata_workflow as metadata_workflow
 import table_metadata_facts
 from query_doctor_web_display_safety import redact_browser_display_text
+from query_doctor_optimizer_sql import ExtractedTable, OptimizerSqlError, extract_referenced_tables
+from query_doctor_query_optimizer import OptimizerAnalysis, analyze_query_optimizer
 from query_doctor_web_ui import (
     WEB_STAGES,
     render_batch_card,
@@ -36,6 +41,7 @@ from query_doctor_web_ui import (
     render_report_markdown_html,
     render_result,
 )
+from query_doctor_web_ui_optimizer import render_optimizer_page
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -354,7 +360,7 @@ ProgressFunc = Callable[[int], None]
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the localhost-only Query Doctor web UI for recent scans and explicit CM query ids."
+        description="Run the localhost-only Query Doctor web UI for recent scans, explicit CM query ids, and pasted SQL."
     )
     parser.add_argument(
         "--config",
@@ -395,8 +401,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "The web UI never chooses this path from request parameters."
         ),
     )
-    parser.add_argument("--metadata-coordinator", help="Impala coordinator HOST:PORT for web batch metadata.")
-    parser.add_argument("--metadata-impala-shell", help="impala-shell executable for web batch metadata.")
+    parser.add_argument("--metadata-coordinator", help="Impala coordinator HOST:PORT for web metadata collection.")
+    parser.add_argument("--metadata-impala-shell", help="impala-shell executable for web metadata collection.")
     parser.add_argument(
         "--metadata-auth",
         help="Metadata auth mode. Default comes from config or kerberos.",
@@ -404,7 +410,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--metadata-protocol",
         choices=("beeswax", "hs2", "hs2-http"),
-        help="impala-shell protocol for web batch metadata. Default comes from config or beeswax.",
+        help="impala-shell protocol for web metadata collection. Default comes from config or beeswax.",
     )
     parser.add_argument("--metadata-ssl", action="store_true", help="Pass --ssl to impala-shell metadata collection.")
     parser.add_argument("--metadata-ca-cert", help="CA certificate path for --metadata-ssl metadata connections.")
@@ -415,7 +421,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--metadata-max-tables", type=positive_int, help="Maximum referenced tables to collect.")
     parser.add_argument("--metadata-max-output-bytes", type=positive_int, help="Maximum metadata output bytes.")
-    parser.add_argument("--metadata-redact", action="store_true", help="Pass --metadata-redact to web batch runs.")
+    parser.add_argument("--metadata-redact", action="store_true", help="Pass --metadata-redact to web metadata collection.")
     return parser.parse_args(argv)
 
 
@@ -1211,6 +1217,105 @@ def handle_analyze_request(
     return 200, render_query_page(settings, query_id=query_id, report_mode=report_mode, result=result)
 
 
+def handle_optimizer_request(
+    form: dict[str, list[str]],
+    settings: WebSettings,
+    *,
+    runner: Runner = subprocess.run,
+) -> tuple[int, str]:
+    sql = first_form_value(form, "sql")
+    if not sql:
+        return 400, render_optimizer_page(settings, error="SQL query text is required.")
+    try:
+        result = run_optimizer_analysis(sql, settings, runner=runner)
+    except WebError as exc:
+        return 400, render_optimizer_page(settings, sql=sql, error=sanitize_for_display(exc))
+    return 200, render_optimizer_page(settings, sql=sql, result=result)
+
+
+def run_optimizer_analysis(
+    sql: str,
+    settings: WebSettings,
+    *,
+    runner: Runner = subprocess.run,
+) -> OptimizerAnalysis:
+    try:
+        tables = extract_referenced_tables(sql)
+    except OptimizerSqlError as exc:
+        raise WebError(str(exc)) from exc
+    metadata_context, metadata_status, metadata_message = collect_optimizer_metadata(tables, settings, runner=runner)
+    return analyze_query_optimizer(
+        sql,
+        tables=tables,
+        metadata_context=metadata_context,
+        metadata_status=metadata_status,
+        metadata_message=metadata_message,
+    )
+
+
+def collect_optimizer_metadata(
+    tables: list[ExtractedTable],
+    settings: WebSettings,
+    *,
+    runner: Runner = subprocess.run,
+) -> tuple[dict[str, Any] | None, str, str]:
+    if not tables:
+        return None, "unavailable", "Metadata collection was not attempted because no physical tables were detected."
+    if not metadata_configured(settings):
+        return None, "unavailable", "Metadata is unavailable. Configure local metadata settings to enable table facts."
+
+    max_tables = settings.metadata_max_tables or metadata_workflow.DEFAULT_METADATA_MAX_TABLES
+    plan = metadata_workflow.build_metadata_plan([table.name for table in tables], max_tables)
+    if not plan.selected_tables:
+        return None, "unavailable", "No fully qualified db.table identifiers were available for metadata collection."
+
+    env = effective_subprocess_env(settings)
+    impala_shell = resolve_metadata_impala_shell(settings, env)
+    if not impala_shell:
+        return None, "unavailable", "Metadata is unavailable because the local impala-shell executable is not available."
+
+    with tempfile.TemporaryDirectory(prefix="query-doctor-optimizer-") as tmp:
+        args = argparse.Namespace(
+            table=plan.selected_tables,
+            out=tmp,
+            impala_shell=impala_shell,
+            coordinator=settings.metadata_coordinator,
+            auth=settings.metadata_auth,
+            protocol=settings.metadata_protocol,
+            ssl=settings.metadata_ssl,
+            ca_cert=settings.metadata_ca_cert,
+            timeout_sec=settings.metadata_timeout_sec,
+            max_output_bytes=settings.metadata_max_output_bytes
+            or impala_context_collector.DEFAULT_MAX_OUTPUT_BYTES,
+            redact=True,
+            dry_run=False,
+            config=None,
+            krb5ccname=settings.krb5ccname,
+        )
+        try:
+            exit_code = impala_context_collector.collect_impala_context(args, runner=runner)
+        except Exception:
+            return None, "failed", "Metadata collection failed. Extracted tables are still shown with safe limitations."
+        context = read_optimizer_metadata_context(Path(tmp))
+    if context is None:
+        return None, "failed", "Metadata collection did not produce safe metadata facts."
+    if exit_code != 0:
+        return context, "failed", "Metadata collection was incomplete. Only available safe facts are used."
+    skipped = f" Skipped {len(plan.skipped_tables)} table(s) due to the configured metadata table limit." if plan.skipped_tables else ""
+    return context, "collected", f"Safe metadata facts were collected for {len(plan.selected_tables)} table(s).{skipped}"
+
+
+def read_optimizer_metadata_context(out_dir: Path) -> dict[str, Any] | None:
+    context_path = out_dir / "impala_context.json"
+    try:
+        payload = json.loads(context_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return table_metadata_facts.context_from_payload(payload, context_path, out_dir)
+
+
 def start_analyze_job(
     form: dict[str, list[str]],
     settings: WebSettings,
@@ -1856,6 +1961,9 @@ def make_handler(
             if parsed.path in {"/query", "/run"}:
                 self.write_html(200, render_query_page(settings))
                 return
+            if parsed.path in {"/optimizer", "/query-optimizer"}:
+                self.write_html(200, render_optimizer_page(settings))
+                return
             if parsed.path == "/readme":
                 self.write_html(200, render_readme_page(settings))
                 return
@@ -1898,7 +2006,7 @@ def make_handler(
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
             report_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/report", parsed.path)
-            if parsed.path not in {"/analyze", "/batch/run"} and report_match is None:
+            if parsed.path not in {"/analyze", "/batch/run", "/optimizer", "/query-optimizer"} and report_match is None:
                 self.send_error(404)
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
@@ -1908,6 +2016,8 @@ def make_handler(
                 status, body = start_batch_case_report_job(report_match.group("case_id"), settings, store, runner=runner)
             elif parsed.path == "/batch/run":
                 status, body = start_batch_job(form, settings, store, runner=runner)
+            elif parsed.path in {"/optimizer", "/query-optimizer"}:
+                status, body = handle_optimizer_request(form, settings, runner=runner)
             else:
                 status, body = start_analyze_job(form, settings, store, analysis_func=analysis_func)
             if status == 303:

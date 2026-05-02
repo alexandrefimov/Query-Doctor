@@ -114,24 +114,31 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"fast\"{fast_checked}> "
         "Fast scan: profiles only</label>"
         "</div>"
+        "<div class=\"mode-help\">"
+        "<span>Full scan adds bounded read-only table metadata for top ranked cases after profile analysis.</span>"
+        "<span>Fast scan skips metadata enrichment; profiles are still collected up to the profile limit.</span>"
+        "</div>"
         f"{metadata_note_html}"
         "<div class=\"batch-primary-row\">"
         f"{render_recent_window_select(value('recent_window_minutes'))}"
         f"<button class=\"run-button\" type=\"submit\"{button_disabled}>{button_label}</button>"
         "</div>"
+        "<div class=\"batch-note\">Recent scan first inspects CM query summaries for the selected window, "
+        "then collects bounded profiles for matching queries. Metadata is collected only for top ranked cases, "
+        "and LLM reports are never generated automatically.</div>"
         "<details class=\"batch-advanced\">"
         "<summary>Advanced search parameters</summary>"
         "<div class=\"batch-advanced-body\">"
         "<div class=\"batch-form-grid\">"
-        f"{render_batch_number_field('cm_inspect_limit', 'CM summary limit', value('cm_inspect_limit'), required=False)}"
-        f"{render_batch_number_field('triage_profile_limit', 'Profile analysis limit', value('triage_profile_limit'), required=False)}"
-        f"{render_batch_number_field('metadata_top_limit', 'Metadata top cases', value('metadata_top_limit'), required=False)}"
-        f"{render_batch_number_field('min_duration_sec', 'Min duration sec', value('min_duration_sec'), step='0.001', required=False)}"
+        f"{render_batch_number_field('cm_inspect_limit', 'CM summary limit', value('cm_inspect_limit'), required=False, help_text='Optional cap on CM summaries inspected inside the selected Search depth.')}"
+        f"{render_batch_number_field('triage_profile_limit', 'Profile analysis limit', value('triage_profile_limit'), required=False, help_text='Max matching queries whose profiles are collected and analyzed.')}"
+        f"{render_batch_number_field('metadata_top_limit', 'Metadata top cases', value('metadata_top_limit'), required=False, help_text='Max ranked cases enriched with table metadata after profile analysis.')}"
+        f"{render_batch_number_field('min_duration_sec', 'Min duration sec', value('min_duration_sec'), step='0.001', required=False, help_text='Empty means no duration filter.')}"
         "<div class=\"field\"><label for=\"order\">Order</label>"
-        f"<select class=\"input\" id=\"order\" name=\"order\">{order_options}</select></div>"
-        f"{render_batch_number_field('jobs', 'Jobs', value('jobs'))}"
-        f"{render_batch_text_field('user', 'User filter', value('user'))}"
-        f"{render_batch_text_field('pool', 'Pool filter', value('pool'))}"
+        f"<select class=\"input\" id=\"order\" name=\"order\">{order_options}</select><div class=\"helper\">Controls summary ordering before profile collection.</div></div>"
+        f"{render_batch_number_field('jobs', 'Jobs', value('jobs'), help_text='Parallel profile analysis jobs for this local run.')}"
+        f"{render_batch_text_field('user', 'User filter', value('user'), help_text='Optional exact CM user filter; empty means all users.')}"
+        f"{render_batch_text_field('pool', 'Pool filter', value('pool'), help_text='Optional pool filter; empty means all pools.')}"
         "</div>"
         "<div class=\"batch-checkbox-row\">"
         f"<label><input type=\"checkbox\" name=\"include_failed\" value=\"on\"{checked('include_failed')}> Include failed</label>"
@@ -164,7 +171,8 @@ def render_recent_window_select(selected_value: str) -> str:
     )
     return (
         "<div class=\"field\"><label for=\"recent_window_minutes\">Search depth</label>"
-        f"<select class=\"input\" id=\"recent_window_minutes\" name=\"recent_window_minutes\">{rendered_options}</select></div>"
+        f"<select class=\"input\" id=\"recent_window_minutes\" name=\"recent_window_minutes\">{rendered_options}</select>"
+        "<div class=\"helper\">How many recent CM query summaries to inspect before filtering.</div></div>"
     )
 
 
@@ -232,18 +240,29 @@ def format_recent_window_label(value: str) -> str:
     return f"{minutes} minutes"
 
 
-def render_batch_number_field(name: str, label: str, value: str, *, step: str = "1", required: bool = True) -> str:
+def render_batch_number_field(
+    name: str,
+    label: str,
+    value: str,
+    *,
+    step: str = "1",
+    required: bool = True,
+    help_text: str = "",
+) -> str:
     required_attr = " required" if required else ""
+    helper = f"<div class=\"helper\">{html.escape(help_text)}</div>" if help_text else ""
     return (
         f"<div class=\"field\"><label for=\"{html.escape(name, quote=True)}\">{html.escape(label)}</label>"
         f"<input class=\"input\" id=\"{html.escape(name, quote=True)}\" name=\"{html.escape(name, quote=True)}\" "
-        f"type=\"number\" min=\"0\" step=\"{html.escape(step, quote=True)}\" value=\"{value}\"{required_attr}></div>"
+        f"type=\"number\" min=\"0\" step=\"{html.escape(step, quote=True)}\" value=\"{value}\"{required_attr}>"
+        f"{helper}</div>"
     )
 
 
-def render_batch_text_field(name: str, label: str, value: str) -> str:
+def render_batch_text_field(name: str, label: str, value: str, *, help_text: str = "") -> str:
+    helper = f"<div class=\"helper\">{html.escape(help_text)}</div>" if help_text else ""
     return (
         f"<div class=\"field\"><label for=\"{html.escape(name, quote=True)}\">{html.escape(label)}</label>"
         f"<input class=\"input\" id=\"{html.escape(name, quote=True)}\" name=\"{html.escape(name, quote=True)}\" "
-        f"type=\"text\" value=\"{value}\" autocomplete=\"off\"></div>"
+        f"type=\"text\" value=\"{value}\" autocomplete=\"off\">{helper}</div>"
     )
