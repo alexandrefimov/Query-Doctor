@@ -1,0 +1,471 @@
+"""Safe Recent query scan view models for the web UI."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+
+LOCAL_PATH_REPLACEMENT = "[local path hidden]"
+HIDDEN_FIELD_REPLACEMENT = "[hidden field]"
+RAW_PROFILE_REPLACEMENT = "[raw profile hidden]"
+RAW_METADATA_REPLACEMENT = "[metadata statement hidden]"
+RAW_OUTPUT_REPLACEMENT = "[subprocess output hidden]"
+MODEL_REPLACEMENT = "[model setting hidden]"
+
+STATEMENT_LABELS = {
+    "SHOW CREATE TABLE": "create metadata",
+    "SHOW TABLE STATS": "table stats",
+    "SHOW COLUMN STATS": "column stats",
+}
+
+
+@dataclass(frozen=True)
+class RecentScanCaseRowView:
+    rank: int
+    case_id: str | None
+    query_id: Any
+    score: Any
+    duration_sec: Any
+    cardinality_anomaly_count: Any
+    memory_anomaly_count: Any
+    backend_data_skew: Any
+    host_tail_candidate_count: Any
+    collection_status: Any
+    analysis_status: Any
+    metadata_status: Any
+    report_status: str
+    reason_text: str
+    score_value: float
+    has_failure: bool
+
+
+@dataclass(frozen=True)
+class RecentScanSummaryView:
+    header_items: tuple[tuple[str, Any], ...]
+    rows: tuple[RecentScanCaseRowView, ...]
+    scope_parts: tuple[str, ...]
+    empty_message: str | None
+
+
+@dataclass(frozen=True)
+class ReportActionView:
+    status: str
+    running: bool
+    trusted: bool
+    partial_untrusted: bool
+    error: Any
+    note: str
+    button_label: str
+    button_disabled: bool
+    show_open_link: bool
+
+
+@dataclass(frozen=True)
+class RecentScanMetadataTableView:
+    table: Any
+    object_type: Any
+    statements: dict[str, Any]
+    row_count_stats: Any
+    column_stats: Any
+    observed_columns: Any
+    missing_markers: Any
+    partition_columns: Any
+    file_format: Any
+    limitations: str
+
+
+@dataclass(frozen=True)
+class RecentScanMetadataView:
+    unavailable: bool
+    fallback_note: str
+    summary_items: tuple[tuple[str, Any], ...]
+    tables: tuple[RecentScanMetadataTableView, ...]
+
+
+@dataclass(frozen=True)
+class RecentScanCaseDetailView:
+    case_id: str
+    report_status: str
+    trust_note: str
+    status_fields: tuple[tuple[str, Any], ...]
+    runtime_fields: tuple[tuple[str, Any], ...]
+    technical_fields: tuple[tuple[str, Any], ...]
+    score_reasons: tuple[str, ...]
+    metadata: RecentScanMetadataView
+    report_action: ReportActionView
+
+
+def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryView:
+    cases = summary.get("cases")
+    raw_cases = [case for case in cases if isinstance(case, dict)] if isinstance(cases, list) else []
+    rows = tuple(present_recent_scan_case_row(rank, case) for rank, case in enumerate(raw_cases, start=1))
+    score_positive = sum(1 for row in rows if row.score_value > 0)
+    failed_count = sum(1 for row in rows if row.has_failure)
+    header_items = (
+        ("total cases", len(rows)),
+        ("selected candidates", safe_display_value(summary.get("selected_count"))),
+        ("score > 0", score_positive),
+        ("failed cases", failed_count),
+        ("duration filter", safe_display_value(summary.get("duration_filter"))),
+        ("jobs", safe_display_value(summary.get("jobs"))),
+        ("total seconds", safe_display_value(summary.get("total_seconds"))),
+    )
+    return RecentScanSummaryView(
+        header_items=header_items,
+        rows=rows,
+        scope_parts=recent_scan_scope_parts(summary),
+        empty_message=recent_scan_empty_message(summary, case_count=len(rows)),
+    )
+
+
+def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanCaseRowView:
+    reasons = case.get("score_reasons")
+    reason_text = "; ".join(safe_display_text(item) for item in reasons) if isinstance(reasons, list) else ""
+    return RecentScanCaseRowView(
+        rank=rank,
+        case_id=batch_case_id(case),
+        query_id=safe_display_value(case.get("query_id")),
+        score=safe_display_value(case.get("score")),
+        duration_sec=safe_display_value(case.get("duration_sec")),
+        cardinality_anomaly_count=safe_display_value(case.get("cardinality_anomaly_count")),
+        memory_anomaly_count=safe_display_value(case.get("memory_anomaly_count")),
+        backend_data_skew=safe_display_value(case.get("backend_data_skew")),
+        host_tail_candidate_count=safe_display_value(case.get("host_tail_candidate_count")),
+        collection_status=safe_display_value(case.get("collection_status")),
+        analysis_status=safe_display_value(case.get("analysis_status")),
+        metadata_status=safe_display_value(case.get("metadata_status")),
+        report_status=batch_report_status(case),
+        reason_text=reason_text,
+        score_value=numeric_value(case.get("score")),
+        has_failure=case_has_failure(case),
+    )
+
+
+def present_recent_scan_case_detail(
+    case_id: str,
+    case: dict[str, Any],
+    metadata_facts: dict[str, Any] | None = None,
+    *,
+    report_state: dict[str, Any] | None = None,
+) -> RecentScanCaseDetailView:
+    report_status = batch_case_display_report_status(case, report_state)
+    trust_note = (
+        "Validated report exists for this batch case."
+        if report_status == "validated report"
+        else "No trusted generated report is rendered here. Partial reports remain untrusted."
+    )
+    return RecentScanCaseDetailView(
+        case_id=safe_display_text(case_id),
+        report_status=report_status,
+        trust_note=trust_note,
+        status_fields=(
+            ("case", safe_display_value(case_id)),
+            ("query id", safe_display_value(case.get("query_id"))),
+            ("score", safe_display_value(case.get("score"))),
+            ("duration sec", safe_display_value(case.get("duration_sec"))),
+            ("collection", safe_display_value(case.get("collection_status"))),
+            ("analysis", safe_display_value(case.get("analysis_status"))),
+            ("metadata", safe_display_value(case.get("metadata_status"))),
+            ("report", report_status),
+        ),
+        runtime_fields=(
+            ("cardinality anomalies", safe_display_value(case.get("cardinality_anomaly_count"))),
+            ("memory anomalies", safe_display_value(case.get("memory_anomaly_count"))),
+            ("zero row estimate gaps", safe_display_value(case.get("zero_row_estimate_gap_count"))),
+            ("zero memory estimate gaps", safe_display_value(case.get("zero_memory_estimate_gap_count"))),
+            ("backend data skew", safe_display_value(case.get("backend_data_skew"))),
+            ("host-tail candidates", safe_display_value(case.get("host_tail_candidate_count"))),
+        ),
+        technical_fields=(
+            ("referenced tables", safe_display_value(case.get("referenced_table_count"))),
+            ("collected metadata tables", safe_display_value(case.get("collected_metadata_table_count"))),
+            ("too large metadata", safe_display_value(case.get("too_large_count"))),
+            ("failure category", safe_display_value(case.get("failure_category"))),
+            ("cm collect seconds", safe_display_value(case.get("cm_collect_seconds"))),
+            ("analysis seconds", safe_display_value(case.get("analysis_seconds"))),
+            ("report seconds", safe_display_value(case.get("report_seconds"))),
+            ("total seconds", safe_display_value(case.get("total_seconds"))),
+            ("report generated", safe_display_value(case.get("report_generated"))),
+        ),
+        score_reasons=tuple(safe_display_text(reason) for reason in case.get("score_reasons") or [] if reason is not None),
+        metadata=present_recent_scan_metadata(case, metadata_facts),
+        report_action=present_report_action(report_state),
+    )
+
+
+def present_report_action(report_state: dict[str, Any] | None) -> ReportActionView:
+    state = report_state if isinstance(report_state, dict) else {}
+    status = safe_display_text(state.get("status") or "not_run")
+    running = bool(state.get("running"))
+    trusted = bool(state.get("trusted"))
+    partial_untrusted = bool(state.get("partial") and not trusted)
+    return ReportActionView(
+        status=status,
+        running=running,
+        trusted=trusted,
+        partial_untrusted=partial_untrusted,
+        error=safe_display_value(state.get("error")),
+        note=(
+            "Report generation is running for this selected case."
+            if running
+            else "Runs one validated admin report for this selected case only. No batch-wide report generation is started."
+        ),
+        button_label="Generating report" if running else "Generate validated report",
+        button_disabled=running,
+        show_open_link=trusted,
+    )
+
+
+def present_recent_scan_metadata(case: dict[str, Any], metadata_facts: dict[str, Any] | None) -> RecentScanMetadataView:
+    if not metadata_facts:
+        fallback_note = (
+            "Table-level metadata facts are unavailable. Safe aggregate metadata facts "
+            "from batch_summary.json are shown instead."
+            if has_metadata_aggregate_facts(case)
+            else ""
+        )
+        return RecentScanMetadataView(
+            unavailable=not bool(fallback_note),
+            fallback_note=fallback_note,
+            summary_items=metadata_summary_items(case, {}),
+            tables=(),
+        )
+    statement_counts = metadata_facts.get("statement_counts")
+    if not isinstance(statement_counts, dict):
+        statement_counts = {}
+    tables = metadata_facts.get("tables")
+    raw_tables = [table for table in tables if isinstance(table, dict)] if isinstance(tables, list) else []
+    return RecentScanMetadataView(
+        unavailable=False,
+        fallback_note="",
+        summary_items=metadata_summary_items(case, statement_counts),
+        tables=tuple(present_metadata_table(table) for table in raw_tables),
+    )
+
+
+def present_metadata_table(table: dict[str, Any]) -> RecentScanMetadataTableView:
+    statements = table.get("statements")
+    safe_statements = safe_statement_statuses(statements if isinstance(statements, dict) else {})
+    return RecentScanMetadataTableView(
+        table=safe_display_value(table.get("table")),
+        object_type=safe_display_value(table.get("object type")),
+        statements=safe_statements,
+        row_count_stats=safe_display_value(table.get("table stats row-count completeness")),
+        column_stats=safe_display_value(table.get("column stats completeness")),
+        observed_columns=safe_display_value(table.get("column stats columns observed")),
+        missing_markers=safe_display_value(table.get("column stats missing/unknown markers")),
+        partition_columns=safe_display_value(table.get("partition columns")),
+        file_format=safe_display_value(table.get("file format")),
+        limitations=metadata_fact_limitations(table, safe_statements),
+    )
+
+
+def metadata_summary_items(case: dict[str, Any], statement_counts: dict[Any, Any]) -> tuple[tuple[str, Any], ...]:
+    counts_known = bool(statement_counts)
+    items: list[tuple[str, Any]] = [
+        ("metadata status", safe_display_value(case.get("metadata_status"))),
+        ("referenced tables", safe_display_value(case.get("referenced_table_count"))),
+        ("collected metadata tables", safe_display_value(case.get("collected_metadata_table_count"))),
+        ("too large metadata", safe_display_value(case.get("too_large_count"))),
+        ("metadata statements", metadata_statement_counts_summary(statement_counts) if counts_known else None),
+    ]
+    metadata_reasons = metadata_score_reasons(case)
+    if metadata_reasons:
+        items.append(("metadata score reasons", "; ".join(metadata_reasons)))
+    return tuple(items)
+
+
+def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
+    parts: list[str] = []
+    summaries = summary.get("summaries_inspected")
+    if summary.get("cm_summary_safety_cap_hit"):
+        cap = summary.get("cm_summary_safety_cap") or summaries
+        parts.append(f"CM summaries truncated at safety cap: {safe_display_text(cap)}")
+    elif summaries is not None:
+        parts.append(f"CM summaries inspected: {safe_display_text(summaries)}")
+    parts.append(f"Duration filter: {safe_display_text(summary.get('duration_filter') or 'none')}")
+    if summary.get("triage_profile_limit") is not None:
+        parts.append(f"Profile analysis limit: {safe_display_text(summary.get('triage_profile_limit'))}")
+    if summary.get("recent_window_minutes") is not None:
+        parts.append(f"Search depth: {safe_display_text(summary.get('recent_window_minutes'))} minutes")
+    if summary.get("query_type_filter") is not None:
+        parts.append(f"Query type: {safe_display_text(summary.get('query_type_filter'))}")
+    if summary.get("include_failed") is not None:
+        parts.append(f"Include failed: {safe_display_text(summary.get('include_failed'))}")
+    if summary.get("include_running") is not None:
+        parts.append(f"Include running: {safe_display_text(summary.get('include_running'))}")
+    if summary.get("user_filter_present"):
+        parts.append("User filter: set")
+    if summary.get("pool_filter_present"):
+        parts.append("Pool filter: set")
+    return tuple(parts)
+
+
+def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> str | None:
+    if summary.get("discovery_failed"):
+        return None
+    selected = numeric_count(summary.get("selected_count"))
+    if selected or case_count:
+        return None
+    summaries = summary.get("summaries_inspected")
+    if summaries is not None and numeric_count(summaries) == 0:
+        return "No matching queries found for this search window. Try increasing Search depth or changing filters."
+    if summaries is not None:
+        return "No query candidates matched the current scan criteria. Try increasing Search depth or changing filters."
+    return None
+
+
+def safe_statement_statuses(statements: dict[Any, Any]) -> dict[str, Any]:
+    return {
+        statement_display_label(key): safe_display_value(value)
+        for key, value in statements.items()
+    }
+
+
+def metadata_fact_limitations(table: dict[str, Any], statements: dict[str, Any]) -> str:
+    limitations: list[str] = []
+    object_type = str(table.get("object type") or "unknown")
+    table_stats = str(table.get("table stats row-count completeness") or "unknown")
+    column_stats = str(table.get("column stats completeness") or "unknown")
+    if object_type == "view":
+        limitations.append("view metadata stats not applicable")
+    for statement, status in statements.items():
+        status_text = str(status or "unknown")
+        if status_text in {"error", "too_large", "timeout", "not_applicable"}:
+            limitations.append(f"{statement}: {status_text}")
+    if table_stats not in {"available", "unknown"}:
+        limitations.append(f"row-count stats: {safe_display_text(table_stats)}")
+    if column_stats not in {"available", "unknown"}:
+        limitations.append(f"column stats: {safe_display_text(column_stats)}")
+    return "; ".join(limitations) if limitations else "none observed"
+
+
+def statement_display_label(statement: Any) -> str:
+    return STATEMENT_LABELS.get(str(statement), safe_display_text(statement))
+
+
+def metadata_statement_counts_summary(statement_counts: dict[Any, Any]) -> str:
+    parts = [
+        ("ok", statement_counts.get("ok", 0)),
+        ("error", statement_counts.get("error", 0)),
+        ("not_applicable", statement_counts.get("not_applicable", 0)),
+        ("too_large", statement_counts.get("too_large", 0)),
+    ]
+    return " / ".join(f"{int(numeric_value(value))} {label}" for label, value in parts)
+
+
+def metadata_score_reasons(case: dict[str, Any]) -> list[str]:
+    reasons = case.get("score_reasons")
+    if not isinstance(reasons, list):
+        return []
+    result: list[str] = []
+    for reason in reasons:
+        text = safe_display_text(reason)
+        lower = text.lower()
+        if any(marker in lower for marker in ("metadata", "stats", "statistic", "статист")):
+            result.append(text)
+    return result
+
+
+def has_metadata_aggregate_facts(case: dict[str, Any]) -> bool:
+    metadata_status = str(case.get("metadata_status") or "").lower()
+    if metadata_status in {"collected", "failed", "partial"}:
+        return True
+    for key in ("referenced_table_count", "collected_metadata_table_count", "too_large_count"):
+        if numeric_value(case.get(key)) > 0:
+            return True
+    return bool(metadata_score_reasons(case))
+
+
+def batch_report_status(case: dict[str, Any]) -> str:
+    validation = str(case.get("report_validation_status") or "not_run")
+    generated = case.get("report_generated") is True
+    if validation == "failed_partial_untrusted":
+        return "partial untrusted"
+    if generated and validation == "passed":
+        return "validated report"
+    if generated:
+        return f"generated/{safe_display_text(validation)}"
+    return safe_display_text(validation)
+
+
+def batch_case_display_report_status(case: dict[str, Any], report_state: dict[str, Any] | None = None) -> str:
+    if isinstance(report_state, dict):
+        status = str(report_state.get("status") or "")
+        if status == "generated" or report_state.get("trusted"):
+            return "validated report"
+        if status == "running":
+            return "running"
+        if status == "failed":
+            return "failed"
+        if status == "partial_untrusted":
+            return "partial untrusted"
+    return batch_report_status(case)
+
+
+def case_has_failure(case: dict[str, Any]) -> bool:
+    if case.get("failure_category"):
+        return True
+    return any(
+        case.get(name) == "failed"
+        for name in ("collection_status", "analysis_status", "metadata_status", "report_validation_status")
+    )
+
+
+def batch_case_id(case: dict[str, Any]) -> str | None:
+    value = case.get("case_index")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed <= 0:
+        return None
+    return f"case-{parsed:03d}"
+
+
+def numeric_count(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def numeric_value(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def safe_display_value(value: Any) -> Any:
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    return safe_display_text(value)
+
+
+def safe_display_text(value: Any) -> str:
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if value is None:
+        return "unknown"
+    text = str(value)
+    text = re.sub(r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+", LOCAL_PATH_REPLACEMENT, text)
+    text = re.sub(r"(?<![\w/])/Users/[^\s<>'\"]+", LOCAL_PATH_REPLACEMENT, text)
+    text = re.sub(r"(?<![\w/])/var/folders/[^\s<>'\"]+", LOCAL_PATH_REPLACEMENT, text)
+    text = re.sub(r"(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+", LOCAL_PATH_REPLACEMENT, text)
+    for token in ("case_dir", "CM_PASSWORD", "CM_TOKEN", "KRB5CCNAME"):
+        text = text.replace(token, HIDDEN_FIELD_REPLACEMENT)
+    for token in ("BEGIN PROFILE", "Query Timeline"):
+        text = text.replace(token, RAW_PROFILE_REPLACEMENT)
+    text = text.replace("SHOW CREATE TABLE", RAW_METADATA_REPLACEMENT)
+    text = text.replace("raw stdout", RAW_OUTPUT_REPLACEMENT)
+    text = text.replace("raw stderr", RAW_OUTPUT_REPLACEMENT)
+    text = re.sub(r"\bqwen[\w:.-]*", MODEL_REPLACEMENT, text, flags=re.IGNORECASE)
+    text = re.sub(r"\bollama\b", MODEL_REPLACEMENT, text, flags=re.IGNORECASE)
+    return text

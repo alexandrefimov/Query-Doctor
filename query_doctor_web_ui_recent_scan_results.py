@@ -9,15 +9,19 @@ from typing import Any
 
 from query_doctor_web_ui_recent_scan_details import (
     SafeHtml,
-    batch_report_status,
-    case_has_failure,
     compact_cell,
     escape_value,
-    numeric_value,
     reason_cell,
     report_badge,
     score_badge,
+    score_badge_from_values,
     status_badge,
+)
+from query_doctor_web_ui_recent_scan_presenter import (
+    RecentScanCaseRowView,
+    numeric_count,
+    present_recent_scan_case_row,
+    present_recent_scan_summary,
 )
 
 
@@ -46,32 +50,15 @@ def render_batch_card(settings: Any) -> str:
 
 
 def render_batch_summary(summary: dict[str, Any]) -> str:
-    cases = summary.get("cases")
-    if not isinstance(cases, list):
-        cases = []
-    score_positive = sum(1 for case in cases if isinstance(case, dict) and numeric_value(case.get("score")) > 0)
-    failed_count = sum(1 for case in cases if isinstance(case, dict) and case_has_failure(case))
-    header_items = [
-        ("total cases", len(cases)),
-        ("selected candidates", summary.get("selected_count")),
-        ("score > 0", score_positive),
-        ("failed cases", failed_count),
-        ("duration filter", summary.get("duration_filter")),
-        ("jobs", summary.get("jobs")),
-        ("total seconds", summary.get("total_seconds")),
-    ]
+    view = present_recent_scan_summary(summary)
     header = "".join(
         "<div class=\"batch-metric\">"
         f"<span>{html.escape(label)}</span>"
         f"<strong>{escape_value(value)}</strong>"
         "</div>"
-        for label, value in header_items
+        for label, value in view.header_items
     )
-    rows = "\n".join(
-        render_batch_case_row(rank, case)
-        for rank, case in enumerate(cases, start=1)
-        if isinstance(case, dict)
-    )
+    rows = "\n".join(render_batch_case_row(row.rank, row) for row in view.rows)
     if not rows:
         rows = (
             "<tr><td colspan=\"14\" class=\"empty-cell\">No case summaries were found in the configured batch summary.</td></tr>"
@@ -103,77 +90,40 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
 
 
 def render_batch_scope_note(summary: dict[str, Any]) -> str:
-    parts: list[str] = []
-    summaries = summary.get("summaries_inspected")
-    if summary.get("cm_summary_safety_cap_hit"):
-        cap = summary.get("cm_summary_safety_cap") or summaries
-        parts.append(f"CM summaries truncated at safety cap: {escape_value(cap)}")
-    elif summaries is not None:
-        parts.append(f"CM summaries inspected: {escape_value(summaries)}")
-    parts.append(f"Duration filter: {escape_value(summary.get('duration_filter') or 'none')}")
-    if summary.get("triage_profile_limit") is not None:
-        parts.append(f"Profile analysis limit: {escape_value(summary.get('triage_profile_limit'))}")
-    if summary.get("recent_window_minutes") is not None:
-        parts.append(f"Search depth: {escape_value(summary.get('recent_window_minutes'))} minutes")
-    if summary.get("query_type_filter") is not None:
-        parts.append(f"Query type: {escape_value(summary.get('query_type_filter'))}")
-    if summary.get("include_failed") is not None:
-        parts.append(f"Include failed: {escape_value(summary.get('include_failed'))}")
-    if summary.get("include_running") is not None:
-        parts.append(f"Include running: {escape_value(summary.get('include_running'))}")
-    if summary.get("user_filter_present"):
-        parts.append("User filter: set")
-    if summary.get("pool_filter_present"):
-        parts.append("Pool filter: set")
-    return f"<div class=\"batch-note\">{'. '.join(parts)}.</div>" if parts else ""
+    parts = list(present_recent_scan_summary(summary).scope_parts)
+    return f"<div class=\"batch-note\">{'. '.join(html.escape(part) for part in parts)}.</div>" if parts else ""
 
 
 def render_batch_empty_note(summary: dict[str, Any]) -> str:
-    if summary.get("discovery_failed"):
-        return ""
-    selected = numeric_count(summary.get("selected_count"))
-    cases = summary.get("cases")
-    case_count = len(cases) if isinstance(cases, list) else 0
-    if selected or case_count:
-        return ""
-    summaries = summary.get("summaries_inspected")
-    if summaries is not None and numeric_count(summaries) == 0:
-        message = "No matching queries found for this search window. Try increasing Search depth or changing filters."
-    elif summaries is not None:
-        message = "No query candidates matched the current scan criteria. Try increasing Search depth or changing filters."
-    else:
+    message = present_recent_scan_summary(summary).empty_message
+    if not message:
         return ""
     return f"<div class=\"batch-note\">{html.escape(message)}</div>"
 
 
-def render_batch_case_row(rank: int, case: dict[str, Any]) -> str:
-    report_status = batch_report_status(case)
-    reasons = case.get("score_reasons")
-    if isinstance(reasons, list):
-        reason_text = "; ".join(str(item) for item in reasons)
-    else:
-        reason_text = ""
+def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowView) -> str:
+    view = case if isinstance(case, RecentScanCaseRowView) else present_recent_scan_case_row(rank, case)
     cells = [
-        compact_cell(rank),
-        compact_cell(case.get("query_id")),
-        compact_cell(score_badge(case)),
-        compact_cell(case.get("duration_sec")),
-        compact_cell(case.get("cardinality_anomaly_count")),
-        compact_cell(case.get("memory_anomaly_count")),
-        compact_cell(case.get("backend_data_skew")),
-        compact_cell(case.get("host_tail_candidate_count")),
-        compact_cell(status_badge(case.get("collection_status"))),
-        compact_cell(status_badge(case.get("analysis_status"))),
-        compact_cell(status_badge(case.get("metadata_status"))),
-        compact_cell(report_badge(report_status)),
-        reason_cell(reason_text),
-        compact_cell(batch_case_details_link(case)),
+        compact_cell(view.rank),
+        compact_cell(view.query_id),
+        compact_cell(score_badge_from_values(view.score, view.collection_status, view.analysis_status)),
+        compact_cell(view.duration_sec),
+        compact_cell(view.cardinality_anomaly_count),
+        compact_cell(view.memory_anomaly_count),
+        compact_cell(view.backend_data_skew),
+        compact_cell(view.host_tail_candidate_count),
+        compact_cell(status_badge(view.collection_status)),
+        compact_cell(status_badge(view.analysis_status)),
+        compact_cell(status_badge(view.metadata_status)),
+        compact_cell(report_badge(view.report_status)),
+        reason_cell(view.reason_text),
+        compact_cell(batch_case_details_link(view)),
     ]
     return f"<tr>{''.join(cells)}</tr>"
 
 
-def batch_case_details_link(case: dict[str, Any]) -> SafeHtml:
-    case_id = batch_case_id(case)
+def batch_case_details_link(case: dict[str, Any] | RecentScanCaseRowView) -> SafeHtml:
+    case_id = case.case_id if isinstance(case, RecentScanCaseRowView) else batch_case_id(case)
     if case_id is None:
         return SafeHtml("")
     escaped = html.escape(case_id, quote=True)
@@ -364,13 +314,6 @@ def metadata_detail(counters: dict[str, Any]) -> str:
     if not total:
         return "not requested"
     return f"{done}/{total} refreshed"
-
-
-def numeric_count(value: Any) -> int:
-    try:
-        return max(0, int(value))
-    except (TypeError, ValueError):
-        return 0
 
 
 def progress_step(label: str, state: str, detail: str) -> dict[str, str]:
