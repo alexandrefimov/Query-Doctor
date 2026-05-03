@@ -80,6 +80,9 @@ class ReportActionView:
     trusted: bool
     partial_untrusted: bool
     error: Any
+    job_id: str
+    stage_label: str
+    progress: int
     note: str
     button_label: str
     button_disabled: bool
@@ -204,9 +207,9 @@ def present_recent_scan_case_detail(
     analysis_status = safe_display_value(case.get("analysis_status"))
     metadata_status = safe_display_value(case.get("metadata_status"))
     trust_note = (
-        "Validated report exists for this batch case."
+        "LLM report is available for this case."
         if report_status == "validated report"
-        else "No trusted generated report is rendered here. Partial reports remain untrusted."
+        else "LLM report has not been generated for this case."
     )
     return RecentScanCaseDetailView(
         case_id=safe_display_text(case_id),
@@ -272,15 +275,26 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
         trusted=trusted,
         partial_untrusted=partial_untrusted,
         error=safe_display_value(state.get("error")),
+        job_id=safe_display_text(state.get("job_id") or ""),
+        stage_label=safe_display_text(state.get("stage_label") or ""),
+        progress=clamped_progress(state.get("progress")),
         note=(
-            "Report generation is running for this selected case."
+            "LLM report generation is running for this selected case."
             if running
-            else "Runs one validated admin report for this selected case only. No batch-wide report generation is started."
+            else "Runs one LLM report for this selected case only. No batch-wide report generation is started."
         ),
-        button_label="Generating report" if running else "Generate validated report",
+        button_label="Generating LLM report" if running else "Generate LLM report",
         button_disabled=running,
         show_open_link=trusted,
     )
+
+
+def clamped_progress(value: Any) -> int:
+    try:
+        progress = int(float(value))
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(100, progress))
 
 
 def present_recent_scan_metadata(case: dict[str, Any], metadata_facts: dict[str, Any] | None) -> RecentScanMetadataView:

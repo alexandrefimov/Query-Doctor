@@ -26,6 +26,14 @@ from query_doctor_web_ui_recent_scan_presenter import (
 )
 
 
+REPORT_PROGRESS_STEPS = (
+    ("Checking case", {"Checking selected batch case"}),
+    ("Generating report", {"Generating validated report"}),
+    ("Validating result", {"Validating result"}),
+    ("Done", {"Done"}),
+)
+
+
 # Public helpers keep dict overloads for the stable rendering facade and older
 # tests. Browser routes enter through render_batch_case_detail(), which builds a
 # RecentScanCaseDetailView before rendering browser-visible fields.
@@ -37,6 +45,7 @@ def render_batch_case_detail(
     metadata_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
+    trusted_report_html: SafeHtml | str | None = None,
 ) -> str:
     view = present_recent_scan_case_detail(case_id, case, metadata_facts, report_state=report_state)
     return (
@@ -44,19 +53,12 @@ def render_batch_case_detail(
         "<div class=\"breadcrumb\"><a href=\"/#recent-results\">Finished Queries</a><span>/</span>"
         f"<span>{html.escape(view.case_id)}</span></div>"
         "<div class=\"batch-head\"><div><h1>Finished Queries case details</h1>"
-        "<p>Read-only deterministic facts for one analyzed query.</p></div>"
+        "<p>Deterministic facts for one analyzed query.</p></div>"
         f"<span class=\"badge blue\">{html.escape(view.case_id)}</span></div>"
-        "<div class=\"batch-note\">This page does not render raw SQL, profiles, metadata, or server filesystem details.</div>"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
-        "<div class=\"batch-note\">"
-        f"{html.escape(view.trust_note)}"
-        "</div>"
-        f"{render_batch_case_report_action(view.case_id, view.report_action)}"
-        f"{render_score_reason_explanations(view)}"
-        f"{render_runtime_signals(view)}"
-        f"{render_metadata_facts_section(case, metadata_facts, view=view.metadata)}"
-        f"{render_technical_details(view)}"
+        f"{render_analysis_details(case, metadata_facts, view=view)}"
+        f"{render_batch_case_report_action(view.case_id, view.report_action, report_enabled=view.score_severity != 'clean', trusted_report_html=trusted_report_html)}"
         "</section>"
     )
 
@@ -70,7 +72,6 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
         ("signals", view.signal_summary),
         ("spill", spill_text),
         ("stats", stats_text),
-        ("status", view.status_summary),
     )
     cards = "".join(
         "<div class=\"case-overview-card\">"
@@ -93,23 +94,17 @@ def render_case_status_summary(
     report_status: str | None = None,
 ) -> str:
     if isinstance(case_or_view, RecentScanCaseDetailView):
-        fields = case_or_view.status_fields
-        score = dict(fields).get("score")
-        collection = dict(fields).get("collection")
-        analysis = dict(fields).get("analysis")
+        fields = [
+            item
+            for item in case_or_view.status_fields
+            if item[0] in {"collection", "analysis", "metadata", "report"}
+        ]
         rendered_fields = []
         for label, value in fields:
-            if label == "score":
-                rendered_fields.append(
-                    (
-                        label,
-                        score_badge_from_values(score, collection, analysis, severity=case_or_view.score_severity),
-                    )
-                )
-            elif label in {"collection", "analysis", "metadata"}:
+            if label in {"collection", "analysis", "metadata"}:
                 rendered_fields.append((label, status_badge(value)))
             elif label == "report":
-                rendered_fields.append((label, report_badge(str(value))))
+                rendered_fields.append(("LLM report", report_badge(str(value))))
             else:
                 rendered_fields.append((label, value))
     else:
@@ -130,7 +125,26 @@ def render_case_status_summary(
         "</div>"
         for label, value in rendered_fields
     )
-    return f"<section aria-label=\"Case status summary\"><div class=\"case-summary-grid\">{cards}</div></section>"
+    return f"<section aria-label=\"Pipeline status\"><div class=\"case-summary-grid\">{cards}</div></section>"
+
+
+def render_analysis_details(
+    case: dict[str, Any],
+    metadata_facts: dict[str, Any] | None,
+    *,
+    view: RecentScanCaseDetailView,
+) -> str:
+    return (
+        "<details class=\"panel docs-panel analysis-details\" aria-label=\"Analysis details\">"
+        "<summary>Analysis details</summary>"
+        "<div class=\"report-body analysis-details-body\">"
+        f"{render_score_reason_explanations(view)}"
+        f"{render_runtime_signals(view)}"
+        f"{render_metadata_facts_section(case, metadata_facts, view=view.metadata)}"
+        f"{render_technical_details(view)}"
+        "</div>"
+        "</details>"
+    )
 
 
 def render_runtime_signals(case_or_view: dict[str, Any] | RecentScanCaseDetailView) -> str:
@@ -147,46 +161,138 @@ def render_runtime_signals(case_or_view: dict[str, Any] | RecentScanCaseDetailVi
         ]
     rows = metadata_rows(fields)
     return (
-        "<section class=\"panel docs-panel\" aria-label=\"Runtime signals\">"
-        "<h1>Runtime signals</h1>"
+        "<details class=\"analysis-subdetails\" aria-label=\"Runtime signals\">"
+        "<summary>Runtime signals</summary>"
         f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
-        "</section>"
+        "</details>"
     )
 
 
-def render_batch_case_report_action(case_id: str, report_state: dict[str, Any] | ReportActionView | None) -> str:
+def render_batch_case_report_action(
+    case_id: str,
+    report_state: dict[str, Any] | ReportActionView | None,
+    *,
+    action_url: str | None = None,
+    open_url: str | None = None,
+    report_enabled: bool = True,
+    trusted_report_html: SafeHtml | str | None = None,
+) -> str:
     view = report_state if isinstance(report_state, ReportActionView) else present_report_action(report_state)
     escaped_case_id = html.escape(case_id, quote=True)
-    open_link = (
-        f"<a class=\"button\" href=\"/batch/case/{escaped_case_id}/report\">Open validated report</a>"
-        if view.show_open_link
-        else ""
-    )
-    disabled = " disabled" if view.button_disabled else ""
-    action = f"<button class=\"button\" type=\"submit\"{disabled}>{html.escape(view.button_label)}</button>"
-    partial_note = (
-        "<div class=\"batch-note\">Partial report exists but is untrusted and hidden.</div>"
-        if view.partial_untrusted
-        else ""
-    )
-    error_note = (
-        f"<div class=\"error-card\"><strong>Report generation failed</strong>{escape_value(view.error)}</div>"
-        if view.error
+    disabled = " disabled" if view.button_disabled or not report_enabled else ""
+    form_action = html.escape(action_url or f"/batch/case/{escaped_case_id}/report", quote=True)
+    report_href = html.escape(open_url or f"/batch/case/{escaped_case_id}/report", quote=True)
+    if view.show_open_link:
+        action_html = f"<a class=\"button\" href=\"{report_href}\">Open full report</a>"
+    else:
+        action_html = (
+            "<form method=\"post\" "
+            f"action=\"{form_action}\">"
+            f"<button class=\"button\" type=\"submit\"{disabled}>{html.escape(view.button_label)}</button>"
+            "</form>"
+        )
+    if view.status == "running":
+        status_html = render_llm_report_progress(view)
+    elif view.status == "failed":
+        status_html = render_llm_report_failure(view)
+    else:
+        status_html = ""
+    report_html = (
+        f"<div class=\"inline-report\">{trusted_report_html}</div>"
+        if view.show_open_link and trusted_report_html
         else ""
     )
     return (
-        "<section class=\"panel docs-panel\" aria-label=\"Validated report action\">"
-        "<h1>Validated report</h1>"
+        "<section class=\"panel docs-panel\" aria-label=\"LLM report action\">"
+        "<h1>LLM Report</h1>"
         "<div class=\"report-body\">"
-        f"<div class=\"batch-note\">Report status: <strong>{escape_value(view.status)}</strong>. {html.escape(view.note)}</div>"
-        f"{partial_note}"
-        f"{error_note}"
-        "<form method=\"post\" "
-        f"action=\"/batch/case/{escaped_case_id}/report\">"
-        f"{action}{open_link}"
-        "</form>"
+        f"{status_html}"
+        f"{action_html}"
+        f"{report_html}"
         "</div>"
         "</section>"
+    )
+
+
+def render_llm_report_progress(view: ReportActionView) -> str:
+    current_stage = view.stage_label or "Generating report"
+    current_index = report_progress_step_index(current_stage)
+    progress = report_progress_percent(current_index)
+    status_attrs = ""
+    if view.job_id:
+        escaped_job_id = html.escape(view.job_id, quote=True)
+        status_attrs = (
+            f" data-report-job-status-url=\"/jobs/{escaped_job_id}/status\""
+            f" data-report-job-url=\"/jobs/{escaped_job_id}\""
+        )
+    steps = []
+    for index, (label, _stage_labels) in enumerate(REPORT_PROGRESS_STEPS):
+        if index < current_index:
+            state = "done"
+            icon = "✓"
+            detail = "Done"
+        elif index == current_index:
+            state = "running"
+            icon = "…"
+            detail = current_stage
+        else:
+            state = "neutral"
+            icon = "−"
+            detail = "Pending"
+        steps.append(
+            (
+                state,
+                "<div class=\"batch-progress-step batch-progress-step--{state}\">"
+                "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
+                    state=html.escape(state),
+                    icon=html.escape(icon),
+                    label=html.escape(label),
+                    detail=html.escape(detail),
+                ),
+            )
+        )
+    step_html = "".join(step_html for _state, step_html in steps)
+    return (
+        f"<div class=\"report-progress\" aria-label=\"LLM report progress\"{status_attrs}>"
+        f"<div class=\"progress-head\"><span class=\"progress-title\">Generating LLM report</span>"
+        f"<span class=\"progress-stage\">{html.escape(current_stage)}</span></div>"
+        "<div class=\"progress-bar\" aria-hidden=\"true\">"
+        f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
+        "</div>"
+        f"<div class=\"batch-progress\"><div class=\"batch-progress-steps\">{step_html}</div></div>"
+        "</div>"
+    )
+
+
+def report_progress_step_index(stage_label: str) -> int:
+    normalized = stage_label.strip().lower()
+    for index, (_label, stage_labels) in enumerate(REPORT_PROGRESS_STEPS):
+        if normalized in {label.lower() for label in stage_labels}:
+            return index
+    return 1
+
+
+def report_progress_percent(step_index: int) -> int:
+    step_count = len(REPORT_PROGRESS_STEPS)
+    bounded_index = max(0, min(step_count - 1, step_index))
+    return int(round((bounded_index / step_count) * 100))
+
+
+def render_llm_report_failure(view: ReportActionView) -> str:
+    message = view.error if view.error not in {None, "", "unknown"} else "Report generation failed. Unsafe output is hidden."
+    return (
+        "<div class=\"report-progress\" aria-label=\"LLM report progress\">"
+        "<div class=\"progress-head\"><span class=\"progress-title\">LLM report failed</span>"
+        f"<span class=\"progress-stage\">{html.escape(view.stage_label or 'Failed')}</span></div>"
+        "<div class=\"progress-bar\" aria-hidden=\"true\">"
+        "<span class=\"progress-fill\" style=\"width:100%\"></span>"
+        "</div>"
+        "<div class=\"batch-progress\"><div class=\"batch-progress-steps\">"
+        "<div class=\"batch-progress-step batch-progress-step--failed\">"
+        "<strong>! Failed</strong><span>Unsafe output hidden</span></div>"
+        "</div></div>"
+        f"<div class=\"error-card\" role=\"alert\">{escape_value(message)}</div>"
+        "</div>"
     )
 
 
@@ -207,9 +313,9 @@ def render_technical_details(case_or_view: dict[str, Any] | RecentScanCaseDetail
         ]
     rows = metadata_rows(fields)
     return (
-        "<details class=\"technical-details\">"
+        "<details class=\"analysis-subdetails technical-details\">"
         "<summary>Technical details</summary>"
-        f"<div class=\"meta-list\">{rows}</div>"
+        f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
         "</details>"
     )
 
@@ -237,10 +343,10 @@ def render_score_reason_explanations(case_or_view: dict[str, Any] | RecentScanCa
     else:
         reason_cards = "".join(render_score_reason_card(reason) for reason in reasons)
     return (
-        "<section class=\"panel docs-panel\" aria-label=\"Why this query is suspicious\">"
-        "<h1>Why this query is suspicious</h1>"
+        "<details class=\"analysis-subdetails\" aria-label=\"Why this query is suspicious\">"
+        "<summary>Why this query is suspicious</summary>"
         f"<div class=\"report-body\"><ul class=\"reason-list\">{reason_cards}</ul></div>"
-        "</section>"
+        "</details>"
     )
 
 
@@ -326,12 +432,12 @@ def render_metadata_facts_section(
         degraded_note = metadata_degraded_note(metadata_view)
         degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
         return (
-            "<section class=\"panel docs-panel\" aria-label=\"Metadata facts\">"
-            "<h1>Metadata facts</h1>"
+            "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
+            "<summary>Metadata facts</summary>"
             "<div class=\"report-body\"><p>metadata facts unavailable</p>"
             "<p>Only deterministic analyzer facts are rendered here.</p>"
             f"{degraded_html}</div>"
-            "</section>"
+            "</details>"
         )
     return render_metadata_facts_body(metadata_view)
 
@@ -377,8 +483,8 @@ def render_metadata_facts_body(
     degraded_note = metadata_degraded_note(view)
     degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
     return (
-        "<section class=\"panel docs-panel\" aria-label=\"Metadata facts\">"
-        "<h1>Metadata facts</h1>"
+        "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
+        "<summary>Metadata facts</summary>"
         "<div class=\"report-body\">"
         "<p>Deterministic table-level metadata facts. Missing or incomplete stats are limitations/checks, not root causes.</p>"
         f"{fallback_html}"
@@ -392,7 +498,7 @@ def render_metadata_facts_body(
         f"<tbody>{rows}</tbody>"
         "</table></div>"
         "</div>"
-        "</section>"
+        "</details>"
     )
 
 

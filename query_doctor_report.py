@@ -18,7 +18,6 @@ import subprocess
 import sys
 import time
 import urllib.request
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,13 +27,16 @@ from query_doctor_metadata_digest import build_metadata_facts_digest
 DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3-coder:30b")
 DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DEFAULT_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "0")
+DEFAULT_VALIDATION_MODE = os.getenv("QD_REPORT_VALIDATION_MODE", "strict")
 NUM_CTX = int(os.getenv("QD_NUM_CTX", "16384"))
-NUM_PREDICT = int(os.getenv("QD_NUM_PREDICT", "2400"))
+NUM_PREDICT = int(os.getenv("QD_NUM_PREDICT", "1800"))
 PROGRESS_PREFIX = "[Query Doctor report]"
-MIN_REPORT_CHARS = int(os.getenv("QD_MIN_REPORT_CHARS", "1500"))
-MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "9"))
+MIN_REPORT_CHARS = int(os.getenv("QD_MIN_REPORT_CHARS", "900"))
+MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "8"))
+MAX_RECOMMENDATION_ITEMS = 5
 REPORT_TITLE_HEADING = "# Query Doctor Report"
 SHORT_SUMMARY_HEADING = "## Короткий вывод"
+RECOMMENDATIONS_HEADING = "## Практические рекомендации"
 DETAILED_REPORT_HEADING = "## Подробный разбор"
 ANALYZER_FACTS_HEADING = "## Факты анализатора"
 TABLE_METADATA_CONTEXT_HEADING = "## Table Metadata Context"
@@ -42,17 +44,16 @@ EVIDENCE_SAFE_PROBLEMS_HEADING = "### Основные подтверждённ�
 EVIDENCE_HEADING = "### Подтверждающие факты"
 AMPLIFIERS_HEADING = "### Что усиливает проблему"
 NOT_SUPPORTED_HEADING = "### Что НЕ подтверждается фактами"
-RECOMMENDATIONS_HEADING = "### Практические рекомендации"
-NEXT_CHECKS_HEADING = "### Что проверить следующим запуском"
+NEXT_CHECKS_HEADING = "### Админские проверки"
 REQUIRED_REPORT_SECTIONS = [
     REPORT_TITLE_HEADING,
     SHORT_SUMMARY_HEADING,
+    RECOMMENDATIONS_HEADING,
     DETAILED_REPORT_HEADING,
     EVIDENCE_SAFE_PROBLEMS_HEADING,
     EVIDENCE_HEADING,
     AMPLIFIERS_HEADING,
     NOT_SUPPORTED_HEADING,
-    RECOMMENDATIONS_HEADING,
     NEXT_CHECKS_HEADING,
 ]
 ROOT_CAUSE_HEADING_REWRITE = {
@@ -66,8 +67,10 @@ DETAIL_HEADING_REWRITE = {
     "## Подтверждающие факты": EVIDENCE_HEADING,
     "## Что усиливает проблему": AMPLIFIERS_HEADING,
     "## Что НЕ подтверждается фактами": NOT_SUPPORTED_HEADING,
-    "## Практические рекомендации": RECOMMENDATIONS_HEADING,
+    "### Практические рекомендации": RECOMMENDATIONS_HEADING,
     "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
+    "### Что проверить следующим запуском": NEXT_CHECKS_HEADING,
+    "## Админские проверки": NEXT_CHECKS_HEADING,
 }
 USER_READ_ONLY_HEADING = "### Read-only проверки, которые можно выполнить"
 USER_ADMIN_PACKAGE_HEADING = "### Если проблема останется, отправьте админам/платформенной команде"
@@ -89,6 +92,37 @@ USER_HEADING_REWRITE = {
     "### How to verify improvement": USER_VERIFY_HEADING,
     "## Как проверить улучшение": USER_VERIFY_HEADING,
 }
+REPORT_INTERNAL_FINGERPRINT_RE = re.compile(
+    r"^\s*>\s*(?:Source facts|Facts sha256|Model|Generated)\s*:|"
+    r"\b(?:qwen\d|llama\d|ollama|model requested|facts sha256|source facts filename)\b",
+    re.IGNORECASE,
+)
+RAW_HTML_TAG_RE = re.compile(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)(?:\s+[^>]*)?>")
+ALLOWED_REPORT_HTML_TAGS = {"details", "summary"}
+VAGUE_RECOMMENDATION_RE = re.compile(
+    r"\b("
+    r"провер(?:ить|ьте|ка|ки|ять)|посмотр(?:еть|ите)|проанализ(?:ировать|ируйте)|"
+    r"разобраться|исследовать|check|look\s+at|investigate|analy[sz]e"
+    r")\b",
+    re.IGNORECASE,
+)
+GENERIC_OPTIMIZE_RE = re.compile(
+    r"\b(?:оптимизировать\s+запрос|optimi[sz]e\s+(?:the\s+)?query)\b",
+    re.IGNORECASE,
+)
+ADMIN_ONLY_RECOMMENDATION_RE = re.compile(
+    r"\b("
+    r"show\s+(?:table|column)\s+stats|per-host|(?:spill|scratch)\s+(?:check|checks|counter|counters)|"
+    r"провер\w+\s+(?:spill|scratch)|admission\s+pool|cm\s+metrics|"
+    r"cm\s+logs|profile\s+counters|сч[её]тчик\w+\s+profile"
+    r")\b",
+    re.IGNORECASE,
+)
+ADMIN_CHECK_BULLET_RE = re.compile(
+    r"^\s*[-*]\s+.*(?:per-host|spill|scratch|admission\s+pool|CM\s+metrics|CM\s+logs|"
+    r"profile\s+counters|write/RPC/HDFS|HDFS/RPC/write|host-specific\s+write|сч[её]тчик\w+\s+profile)",
+    re.IGNORECASE,
+)
 FACT_APPENDIX_MAX_ITEMS = 8
 UNSUPPORTED_RECOMMENDATION_RE = (
     "hdfs",
@@ -484,13 +518,13 @@ PROVEN_BACKEND_CLAIM_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 BACKEND_DIAGNOSTIC_CHECK_RE = re.compile(
-    r"\b(?:check|checks|diagnostic|next\s+check|hypothesis|not\s+proven)\b|"
-    r"\b(?:проверить|проверк\w*|диагностик\w*|гипотез\w*|не\s+доказ\w*)\b",
+    r"\b(?:check|checks|diagnostic|next\s+check|hypothesis|not\s+proven|not\s+proof|no\s+evidence)\b|"
+    r"\b(?:проверить|проверк\w*|диагностик\w*|гипотез\w*|не\s+доказ\w*|нет\s+доказ\w*)\b",
     re.IGNORECASE,
 )
 BACKEND_SAFE_DIAGNOSTIC_NEGATION_RE = re.compile(
-    r"\b(?:not\s+confirmed|not\s+proven|not\s+a\s+proven|not\s+the\s+proven)\b|"
-    r"\b(?:не\s+доказ\w*|не\s+подтвержд\w*)\b",
+    r"\b(?:not\s+confirmed|not\s+proven|not\s+a\s+proven|not\s+the\s+proven|not\s+proof|no\s+evidence)\b|"
+    r"\b(?:не\s+доказ\w*|не\s+подтвержд\w*|нет\s+доказ\w*|нет\s+подтвержд\w*)\b",
     re.IGNORECASE,
 )
 BACKEND_DATA_SKEW_NEGATED_RE = re.compile(
@@ -617,8 +651,16 @@ def facts_text_for_model_prompt(facts_text: str) -> str:
 
 
 def facts_cardinality_anomaly_count(facts_text: str) -> int | None:
+    return facts_summary_count(facts_text, "Cardinality anomalies")
+
+
+def facts_memory_anomaly_count(facts_text: str) -> int | None:
+    return facts_summary_count(facts_text, "Memory anomalies")
+
+
+def facts_summary_count(facts_text: str, label: str) -> int | None:
     match = re.search(
-        r"^\s*(?:[-*]\s*)?Cardinality anomalies\s*:\s*(?P<count>\d+)\s*$",
+        rf"^\s*(?:[-*]\s*)?{re.escape(label)}\s*:\s*(?P<count>\d+)\s*$",
         facts_text,
         re.MULTILINE,
     )
@@ -1045,12 +1087,12 @@ Cardinality evidence contract:
 - No analyzer-supported cardinality anomaly was found.
 - Do not claim cardinality underestimation, row-estimate underestimation, stale stats, hot keys, or proven skew.
 - Do not say actual rows exceed estimates, estimated rows are too low, or low estimates caused row growth.
-- Table and column stats may be mentioned only as read-only validation checks, not as a proven root cause.
+- Do not recommend stats maintenance from Cardinality anomalies alone when the count is 0.
 - The report must explicitly say that cardinality underestimation is not supported by extracted facts.
 - Required safe Russian wording: "Анализатор не обнаружил подтверждённой аномалии кардинальности."
 - In Russian, forbidden positive claim wording includes "недооценка кардинальности", "фактические строки превышают оценку", "количество строк превышает оценки", "оценки были слишком низкими", "устаревшая статистика стала причиной", "перекос доказан", and "hot keys доказаны".
 - Do not put the English phrase "cardinality underestimation" in parentheses after a Russian sentence unless that exact matched phrase is itself clearly negated as unsupported.
-- For stats checks, write: "Проверить статистику как read-only диагностику; это не является доказанной причиной по текущему analysis_facts.md."
+- If separate metadata facts support a stats action, frame it as approved stats maintenance, not as a proven root cause from cardinality facts.
 """.strip()
     if count and count > 0:
         return """
@@ -1137,6 +1179,117 @@ def facts_have_spill_scratch_evidence(facts_text: str) -> bool:
     )
 
 
+def facts_have_action_cards(facts_text: str) -> bool:
+    return bool("\n".join(extract_markdown_section(facts_text, "## Action Cards")).strip())
+
+
+def facts_have_metadata_stats_gap(facts_text: str) -> bool:
+    metadata_lines = "\n".join(extract_markdown_section(facts_text, TABLE_METADATA_CONTEXT_HEADING))
+    if not metadata_lines:
+        return False
+    return bool(
+        re.search(
+            r"(?:table stats row-count completeness|column stats completeness)\s*:\s*"
+            r"(?:missing/unknown|incomplete/unknown)",
+            metadata_lines,
+            re.IGNORECASE,
+        )
+    )
+
+
+def facts_have_large_intermediate_or_exchange(facts_text: str) -> bool:
+    return bool(
+        re.search(
+            r"Large intermediate or exchange traffic|TotalBytesSent is large|large data-movement threshold|"
+            r"large intermediate/exchange traffic",
+            facts_text,
+            re.IGNORECASE,
+        )
+    )
+
+
+def recommendation_candidate_lines(facts_text: str) -> list[tuple[str, str]]:
+    """Return Python-owned optimization actions derived only from deterministic facts."""
+    candidates: list[tuple[str, str]] = []
+    cardinality_count = facts_cardinality_anomaly_count(facts_text)
+    memory_count = facts_memory_anomaly_count(facts_text)
+
+    def add(candidate_id: str, text: str) -> None:
+        if all(existing_text != text for _, existing_text in candidates):
+            candidates.append((candidate_id, text))
+
+    if (cardinality_count and cardinality_count > 0) or facts_have_metadata_stats_gap(facts_text):
+        add(
+            "stats_maintenance",
+            "Собрать или обновить table/partition stats через утверждённый operational process "
+            "для referenced tables, по которым facts показывают cardinality anomalies или gaps в metadata stats.",
+        )
+
+    if cardinality_count and cardinality_count > 0:
+        add(
+            "reduce_row_growth",
+            "Сократить рост строк перед доминирующими JOIN/AGGREGATE/EXCHANGE операторами: "
+            "применить раннюю фильтрацию или предварительную агрегацию на входах из Action Cards.",
+        )
+        add(
+            "rewrite_join_filter",
+            "Переписать форму JOIN/фильтра так, чтобы уменьшить intermediate rows перед операторами "
+            "с высокой стоимостью.",
+        )
+
+    if memory_count and memory_count > 0:
+        add(
+            "reduce_memory_input",
+            "Уменьшить объём данных, поступающих в оператор с memory estimate gap, через меньший "
+            "intermediate result до JOIN/AGGREGATE.",
+        )
+
+    if facts_have_large_intermediate_or_exchange(facts_text):
+        add(
+            "reduce_exchange_rows",
+            "Снизить объём intermediate/exchange rows до перераспределения данных: отфильтровать, "
+            "агрегировать или материализовать меньший промежуточный результат раньше.",
+        )
+
+    if facts_have_spill_scratch_evidence(facts_text):
+        add(
+            "reduce_spill_pressure",
+            "Снизить memory pressure, связанный с подтверждённым spill/scratch evidence, за счёт "
+            "уменьшения intermediate data до memory-heavy operators.",
+        )
+
+    if not candidates:
+        add(
+            "baseline",
+            "Использовать этот результат как baseline для сравнения с новым профилем после изменения запроса.",
+        )
+        add(
+            "no_shape_change",
+            "Не менять SQL shape по этому профилю: текущие facts не показывают дорогой оператор "
+            "или рост intermediate rows.",
+        )
+        add(
+            "rerun_after_change",
+            "Запускать дальнейшие изменения только если новый профиль покажет confirmed operator evidence.",
+        )
+
+    return candidates[:MAX_RECOMMENDATION_ITEMS]
+
+
+def format_recommendation_candidates(candidates: list[tuple[str, str]]) -> str:
+    return "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
+
+
+def facts_have_admission_or_pool_evidence(facts_text: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:admission|pool|queue|queued|mem(?:ory)?\s+limit)\b",
+            facts_text,
+            re.IGNORECASE,
+        )
+    )
+
+
 def find_spill_scratch_claim_errors(report_text: str, facts_text: str) -> list[str]:
     if not facts_have_spill_scratch_evidence(facts_text):
         return []
@@ -1212,6 +1365,8 @@ def build_prompt(
     backend_tail_contract = build_backend_tail_contract(facts_text, mode)
     prompt_facts_text = facts_text_for_model_prompt(facts_text)
     metadata_digest = build_metadata_facts_digest(facts_text)
+    recommendation_candidates = recommendation_candidate_lines(facts_text)
+    recommendation_candidate_block = format_recommendation_candidates(recommendation_candidates)
     metadata_digest_block = (
         f"\n\nMETADATA FACTS DIGEST BEGIN\n{metadata_digest}\nMETADATA FACTS DIGEST END"
         if metadata_digest
@@ -1269,60 +1424,78 @@ Engineering interpretation rules:
 - Do not describe EXCHANGE as a main memory bottleneck when absolute peak memory is small.
 - For memory impact, prefer operators with large absolute peak memory, especially GiB-scale SORT/HASH JOIN.
 - Treat skew and spill only as established causes if the facts explicitly contain skew evidence or non-zero spill/scratch metrics.
-- If skew/spill evidence is absent, mention them only under "Что проверить следующим запуском".
+- If skew/spill evidence is absent, mention them only under "Админские проверки".
 - If analysis_facts.md contains a Spill or scratch I/O finding, do not say spill/scratch evidence is absent; say non-zero spill/scratch metric evidence exists and keep causal wording separate.
 
-The final markdown file is assembled by the wrapper with:
+The final markdown file is assembled by the wrapper with only:
 # Query Doctor Report
 
-> Source facts: `{facts_path.name}`
-> Facts sha256: `{facts_sha256}`
-> Model: `{model}`
-
 Do not write "# Query Doctor Report" yourself.
-Do not repeat the Source facts / Facts sha256 / Model fingerprint yourself.
+Do not write source artifact names, facts sha256, model names, runtime details, or generation timestamps in the report.
 Do not write "## Факты анализатора"; Python appends that deterministic section after validation.
 If Metadata Facts Digest is present, it is curated by Python from analysis_facts.md and may be used only as supporting evidence.
 Do not read or infer from raw SHOW output, raw DDL, impala_context.md, or impala_context.json.
 Do not claim metadata proves the root cause, do not claim stats are stale unless explicitly supported, and do not recommend COMPUTE STATS as required.
-You must write only the report body, starting with exactly these headings, in this order:
+You must write only the report body, starting with exactly this compact structure:
 
 ## Короткий вывод
+
+4-6 concise bullets. State only confirmed facts from analysis_facts.md. Do not write that evidence is absent, not proven, missing, or unsupported in this top section. Do not include "нет подтверждений", "не подтверждается", "не доказано", "отсутствует evidence", or similar negative caveats here. If a fact is not confirmed, omit it from the short summary.
+
+## Практические рекомендации
+
+Use only the Python-owned recommendation candidates from PYTHON-OWNED RECOMMENDATION CANDIDATES.
+You may paraphrase them in Russian, merge adjacent candidates, and shorten wording, but you must not add a new action, diagnostic task, command, platform check, or optimization target that is absent from that candidate list.
+Write 2-5 concrete actions that can lead to optimization without asking the reader to perform open-ended investigation.
+Do not write vague recommendations such as "проверить", "посмотреть", "проанализировать", "оптимизировать запрос" without a concrete action.
+Do not put SHOW TABLE STATS, SHOW COLUMN STATS, per-host checks, spill/scratch checks, admission pool checks, CM metrics/logs, profile counters, or evidence packages in "Практические рекомендации"; those belong only under "Админские проверки".
+If metadata stats are missing/incomplete/unknown but Cardinality anomalies is 0, the top-level action may mention approved stats maintenance only when that action appears in the Python-owned candidate list; it must not say stats explain the query problem or optimizer estimates.
+
+"Короткий вывод" requirements:
+- Use 4-6 concise bullets unless the facts are sparse; 2-6 bullets or short paragraphs are allowed, but never more than 6.
+- Combine repeated operator examples; do not list every operator in the short summary.
+- Base every claim only on analysis_facts.md.
+- Mention only the main supported symptom/problem and supported optimization direction.
+- Do not introduce any fact that is absent from "Подробный разбор" and analysis_facts.md.
+- Do not state root cause unless analysis_facts.md directly supports it.
+- Do not write missing/unsupported evidence caveats in this section.
+- Obey all estimate-direction, backend-skew, write-path, spill/scratch, and operator/profile-time rules below.
+
+<details>
+<summary>Подробный разбор</summary>
+
 ## Подробный разбор
 ### Основные подтверждённые проблемы по профилю
 ### Подтверждающие факты
 ### Что усиливает проблему
 ### Что НЕ подтверждается фактами
-### Практические рекомендации
-### Что проверить следующим запуском
 
-"Короткий вывод" requirements:
-- Use exactly 5 concise bullets unless the facts are sparse; 4-7 bullets or short paragraphs are allowed, but never more than 7.
-- Combine repeated operator examples; do not list every operator in the short summary.
-- Base every claim only on analysis_facts.md.
-- Mention the main supported symptom/problem, what is not proven when relevant, and the next safe diagnostic/action.
-- Do not introduce any fact that is absent from "Подробный разбор" and analysis_facts.md.
-- Do not state root cause unless analysis_facts.md directly supports it.
-- Obey all estimate-direction, backend-skew, write-path, spill/scratch, and operator/profile-time rules below.
+</details>
 
-"Подробный разбор" requirements:
+<details>
+<summary>Для администратора / платформенной команды</summary>
+
+### Админские проверки
+
+</details>
+
+Collapsed section requirements:
+- Keep optional details inside the two <details> blocks above.
 - Preserve the detailed report structure under "Подробный разбор" using the required ### subsections listed above.
-- Keep practical recommendations and next checks concise and tied to deterministic facts.
-- Do not make the report substantially longer than necessary.
+- Put absent/missing/unsupported evidence only into "Что НЕ подтверждается фактами", never into "Короткий вывод".
+- Put platform/admin checks only into "Админские проверки".
+- Put read-only SHOW checks, spill/scratch checks, per-host checks, CM metrics/logs, profile counters, admission pool checks, and evidence packages only into "Админские проверки".
+- Keep every optional section short.
 
-Grounding rules for recommendations:
-- Good when cardinality anomalies are present: Проверить table stats and partition stats for JOIN inputs, because parsed facts show actual rows >> estimated rows.
-- Good when Cardinality anomalies: 0: Проверить table/column stats only as read-only validation checks, not as a claimed cause.
-- Good: Проверить порядок join / условия join / возможность предварительной фильтрации данных до analytic/sort.
-- Good: Снизить объём intermediate rows перед SORT/ANALYTIC.
-- Good: Проверить skew only if facts contain skew evidence; otherwise put it under "Что проверить следующим запуском", not as a cause.
-- Bad: Do not claim stats are stale or missing unless analysis_facts.md explicitly proves that.
-- Bad: Do not ask whether stats were updated unless analysis_facts.md mentions a prior stats change.
-- Bad: Do not claim HDFS bottleneck.
-- Bad: Do not claim network instability.
-- Bad: Do not recommend checking external network because TotalBytesSent is large.
-- Bad: Do not claim codegen problem.
-- Bad: Do not claim spill unless facts contain non-zero spill metrics.
+Recommendation ownership rules:
+- Python/analyzer owns recommendation facts and allowed action targets.
+- LLM owns only wording, ordering, and concision.
+- Every item in "Практические рекомендации" must map to one of the Python-owned candidates below.
+- Do not use Action Cards directly as recommendations unless the same action is represented in the Python-owned candidate list.
+- When Cardinality anomalies: 0, omit stats maintenance unless separate metadata facts support it.
+- Do not claim stats are stale or missing unless analysis_facts.md explicitly proves that.
+- Do not ask whether stats were updated unless analysis_facts.md mentions a prior stats change.
+- Do not claim HDFS bottleneck, network instability, external-network action, codegen problem, or spill unless the candidate list explicitly contains that target.
 
 Report writing guidance:
 - Be concise and engineering-focused.
@@ -1335,78 +1508,57 @@ Report writing guidance:
 - In "Что усиливает проблему", discuss SORT/ANALYTIC and memory underestimation only where the facts support them.
 - In "Что усиливает проблему", do not call EXCHANGE a main memory bottleneck if its absolute peak memory is small; describe it as intermediate/exchange data volume only.
 - In "Что НЕ подтверждается фактами", explicitly carry over unsupported conclusions from facts.
-- In "Практические рекомендации", explain why each recommendation is supported by facts.
+- In "Практические рекомендации", give direct optimization actions, not open-ended checks.
+- In "Практические рекомендации", never include SHOW commands, admin/platform checks, or "проверить/посмотреть/проанализировать" wording.
 - "Практические рекомендации" must include concrete, fact-tied actions:
-  1. Проверить table stats and partition stats only as checks; do not say they are stale or missing unless analysis_facts.md proves it.
-  2. If cardinality anomalies are present, find where cardinality grows from low estimates to millions before dominant operators. If Cardinality anomalies: 0, do not include this as a finding.
+  1. Собрать/обновить table and partition stats through the approved operational process only when cardinality anomalies or metadata stats gaps support it; do not say stats are stale unless analysis_facts.md proves it.
+  2. If cardinality anomalies are present, reduce the point where cardinality grows from low estimates to large actual rows before dominant operators.
   3. Reduce intermediate rows before SORT/ANALYTIC only when facts support expensive SORT/ANALYTIC or large intermediate/exchange traffic.
-  4. Проверить ключи join, фильтры join, CTE, DISTINCT, LEFT OUTER JOIN и LEFT ANTI JOIN as validation checks only when join/filter keys are available or can be identified.
-  5. Put skew/spill checks under "Что проверить следующим запуском" unless facts explicitly establish them.
+  4. Rewrite join/filter/CTE/DISTINCT/window shape only when those operators or referenced columns/tables are present in facts.
+  5. Put skew/spill platform checks under "Админские проверки" unless facts explicitly establish them as optimization targets.
 
 DETERMINISTIC FACTS BEGIN
-Source facts filename: {facts_path.name}
-Facts sha256: {facts_sha256}
-Model requested: {model}
-
 {prompt_facts_text}
-DETERMINISTIC FACTS END{metadata_digest_block}
+DETERMINISTIC FACTS END
+
+PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
+{recommendation_candidate_block}
+PYTHON-OWNED RECOMMENDATION CANDIDATES END{metadata_digest_block}
 """.strip()
 
 
 def build_mode_instruction(mode: str) -> str:
     if mode == "admin":
         return """
-Report mode: admin.
-Audience: DBA, platform engineer, Impala admin, or support engineer.
+Report mode: unified.
+Audience: SQL owner first; DBA/platform details go into collapsed admin sections.
 Use Action Cards as the main structure when present.
-Emphasize operator IDs/names, actual vs estimated rows, memory estimation gaps, bytes read/sent, spill/scratch/admission checks when mentioned in facts, per-host RowsProduced / PeakMemUsage checks when skew is suspected but not proven, and missing evidence.
-Separate proven facts from suspected issues.
-Mention logs, CM metrics, profile counters, and query profile sections only as next checks when supported by the facts or Action Cards.
-The admin report must include a dedicated next-checks section for admins.
-That admin next-checks section must explicitly mention per-host RowsProduced, per-host PeakMemUsage, spill/scratch counters, admission pool checks, CM metrics/logs, and profile counters, framed as checks rather than proven causes unless analysis_facts.md proves them.
+Keep the visible top report short and action-oriented.
+Mention operator IDs/names, actual vs estimated rows, memory estimation gaps, bytes read/sent, spill/scratch/admission checks only when mentioned in facts.
+Put per-host RowsProduced / PeakMemUsage, admission pool, CM metrics/logs, and profile counter checks only under "Админские проверки".
 Do not say skew is proven unless analysis_facts.md contains deterministic per-host skew evidence.
 Do not claim stats are stale unless analysis_facts.md proves it.
 Do not claim exact join keys unless analysis_facts.md contains them.
-Avoid generic advice such as "optimize the query", "optimize joins", or "reduce skew".
+Avoid generic advice such as "optimize the query", "optimize joins", "check", "look at", or "reduce skew" unless accompanied by a concrete action.
 """.strip()
     if mode == "user":
         return """
-Report mode: user.
-Audience: SQL query author, analyst, or data engineer who owns the SQL.
+Report mode: unified.
+Audience: SQL query author, analyst, or data engineer first; DBA/platform details go into collapsed admin sections.
 Use Action Cards as the main structure when present, but explain them in simpler language.
-Focus on SQL-owner actions: check table stats, check column stats for join/filter columns once identified, review whether the query creates many-to-many JOIN amplification before SORT/ANALYTIC/AGGREGATE, and reduce intermediate row explosion only if the SQL structure supports it.
-Mark query rewrites, join order/filtering changes, pre-aggregation, materialization, and stats maintenance through the approved operational process as changes requiring validation.
-Explain how to verify improvement by re-running the query and comparing actual vs estimated rows, PeakMemUsage, spills, runtime, and bytes read/sent when those facts are present.
-Say what to send to admins if it still fails: query id if known, profile, analysis_facts.md, exact operator cards, referenced tables, timestamps, and admission pool if known.
-The user report must include a dedicated section named "Read-only проверки, которые можно выполнить".
-In that section, explicitly mention SHOW TABLE STATS for referenced tables when referenced tables are present in analysis_facts.md.
-In that section, explicitly mention SHOW COLUMN STATS for join/filter columns once those columns are identified.
-Do not invent table names. If referenced tables are missing from analysis_facts.md, say table names are not present in analysis_facts.md and ask for the profile/context.
-Do not invent join/filter column names. If join/filter columns are not known, say they need to be identified from SQL/EXPLAIN/profile first.
-If referenced tables are missing, the read-only checks section itself must say that referenced table names are not present in analysis_facts.md and that the SQL/profile/context is needed before running table-specific SHOW TABLE STATS.
-If join/filter columns are missing, the read-only checks section itself must say that join/filter columns are not present in analysis_facts.md and must be identified from SQL/EXPLAIN/profile before running column-specific SHOW COLUMN STATS.
-Do not say facts indicate stale or missing stats unless analysis_facts.md explicitly proves that. If Cardinality anomalies: 0, table/column stats are read-only validation checks only, not a proven cardinality-underestimation cause.
-The user report must include a dedicated section named "Если проблема останется, отправьте админам/платформенной команде".
-In that section, explicitly list: query id if available in analysis_facts.md, original profile, analysis_facts.md, Action Cards/operator IDs, referenced tables if present, timestamps if available, admission pool / queue if available, and report generated by Query Doctor.
-Do not invent query id, timestamps, pool names, or table names. If unavailable, say "not present in analysis_facts.md".
-Keep these categories separate in the user report: "Read-only проверки, которые можно выполнить", "Изменения, требующие проверки", "Как проверить улучшение", and "Если проблема останется, отправьте админам/платформенной команде".
-Do not tell the user to run state-changing commands directly unless analysis_facts.md explicitly allows it.
+Focus on concrete SQL-owner actions: approved stats maintenance, reducing intermediate rows, pre-aggregation/materialization, pushing filters earlier, and rewriting joins/window inputs when facts support those actions.
+Put admin/platform checks and evidence packages only under "Админские проверки".
+Do not invent table names, join/filter column names, query id, timestamps, pool names, or commands.
 Do not tell users to run COMPUTE STATS, REFRESH, or INVALIDATE METADATA as automatic actions.
-Avoid unsupported low-level claims and vague advice such as "optimize joins" or "reduce skew".
+Frame stats maintenance as "через утверждённый operational process".
+Do not say facts indicate stale or missing stats unless analysis_facts.md explicitly proves that.
+Avoid unsupported low-level claims and vague advice such as "optimize joins", "check", "look at", or "reduce skew" unless accompanied by a concrete action.
 """.strip()
     raise ValueError(f"unsupported report mode: {mode}")
 
 
 def report_header(facts_path: Path, facts_sha256: str, model: str) -> str:
-    generated_at = datetime.now().isoformat(timespec="seconds")
-    return f"""# Query Doctor Report
-
-> Source facts: `{facts_path.name}`  
-> Facts sha256: `{facts_sha256}`  
-> Model: `{model}`  
-> Generated: `{generated_at}`
-
-"""
+    return "# Query Doctor Report\n\n"
 
 
 def has_unsupported_recommendation_topic(line: str, facts_text: str = "") -> bool:
@@ -1537,6 +1689,8 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
     normalized: list[str] = []
     current_section = ""
     for line in lines:
+        if REPORT_INTERNAL_FINGERPRINT_RE.search(line):
+            continue
         if line.startswith("## ") or line.startswith("### "):
             current_section = line.strip()
         if should_rewrite_stats_freshness_claim(line):
@@ -1600,7 +1754,10 @@ def insert_bullets_into_section(text: str, heading: str, bullets: list[str]) -> 
         return text.rstrip() + "\n\n" + heading + "\n\n" + "\n".join(missing) + "\n"
 
     start = text.index(heading)
-    next_heading_match = re.search(r"\n#{2,3}\s+", text[start + len(heading) :])
+    next_heading_match = re.search(
+        r"\n(?:#{2,3}\s+|</details>)",
+        text[start + len(heading) :],
+    )
     next_heading = start + len(heading) + next_heading_match.start() if next_heading_match else -1
     insertion = "\n" + "\n".join(missing)
     if next_heading == -1:
@@ -1619,6 +1776,115 @@ def insert_required_bullets_into_section(
         if bullet not in text and not any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
     ]
     return insert_bullets_into_section(text, heading, missing)
+
+
+SHORT_SUMMARY_NEGATIVE_RE = re.compile(
+    r"(не\s+подтвержд|нет\s+подтвержд|не\s+доказан|не\s+обнаружил|not\s+supported|not\s+proven|missing|absent)",
+    re.IGNORECASE,
+)
+
+
+def remove_negative_caveats_from_short_summary(text: str) -> str:
+    lines = text.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == SHORT_SUMMARY_HEADING)
+    except StopIteration:
+        return text
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if lines[index].startswith("## "):
+            end = index
+            break
+    section = lines[start:end]
+    cleaned = [
+        line
+        for line in section
+        if not (line.lstrip().startswith(("-", "*")) and SHORT_SUMMARY_NEGATIVE_RE.search(line))
+    ]
+    if len(cleaned) == len(section):
+        return text
+    return "\n".join(lines[:start] + cleaned + lines[end:])
+
+
+def move_misplaced_admin_bullets_into_admin_section(text: str) -> str:
+    lines = text.splitlines()
+    moved: list[str] = []
+    kept: list[str] = []
+    after_admin_details = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "<summary>Для администратора / платформенной команды</summary>":
+            after_admin_details = False
+        elif stripped == "</details>":
+            after_admin_details = True
+        if after_admin_details and ADMIN_CHECK_BULLET_RE.search(line):
+            moved.append(line.strip())
+            continue
+        kept.append(line)
+    if not moved:
+        return text
+    return insert_bullets_into_section("\n".join(kept), NEXT_CHECKS_HEADING, moved)
+
+
+def move_misplaced_zero_cardinality_note(text: str) -> str:
+    if ZERO_CARDINALITY_NOT_SUPPORTED_BULLET not in text or NOT_SUPPORTED_HEADING not in text:
+        return text
+    lines = text.splitlines()
+    cleaned: list[str] = []
+    removed = False
+    in_not_supported = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == NOT_SUPPORTED_HEADING:
+            in_not_supported = True
+        elif stripped.startswith("## ") or stripped.startswith("### ") or stripped in {"<details>", "</details>"}:
+            in_not_supported = False
+        if stripped == ZERO_CARDINALITY_NOT_SUPPORTED_BULLET and not in_not_supported:
+            removed = True
+            continue
+        cleaned.append(line)
+    if not removed:
+        return text
+    return insert_bullets_into_section("\n".join(cleaned), NOT_SUPPORTED_HEADING, [ZERO_CARDINALITY_NOT_SUPPORTED_BULLET])
+
+
+def recommendation_bullet_body(line: str) -> str | None:
+    match = re.match(r"^\s*(?:[-*]|\d+\.)\s+(?P<body>.+?)\s*$", line)
+    if not match:
+        return None
+    return match.group("body")
+
+
+def canonical_recommendation_bullets(candidates: list[tuple[str, str]]) -> list[str]:
+    return [f"- {text}" for _, text in candidates]
+
+
+def normalize_practical_recommendations(text: str, facts_text: str) -> str:
+    lines = text.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == RECOMMENDATIONS_HEADING)
+    except StopIteration:
+        return text
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if lines[index].startswith("## ") or lines[index].strip() == "<details>":
+            end = index
+            break
+
+    moved_to_admin: list[str] = []
+    for line in lines[start + 1 : end]:
+        stripped = line.strip()
+        is_bullet = bool(re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line))
+        if is_bullet and ADMIN_ONLY_RECOMMENDATION_RE.search(stripped):
+            moved_to_admin.append(stripped)
+
+    normalized_section = [""] + canonical_recommendation_bullets(
+        recommendation_candidate_lines(facts_text)
+    )
+    normalized = "\n".join(lines[: start + 1] + normalized_section + lines[end:])
+    if moved_to_admin:
+        normalized = insert_bullets_into_section(normalized, NEXT_CHECKS_HEADING, moved_to_admin)
+    return normalized
 
 
 def normalize_report_headings(text: str, replacements: dict[str, str]) -> str:
@@ -1888,6 +2154,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
     errors.extend(find_backend_tail_claim_errors(report_text, facts_text))
     errors.extend(find_spill_scratch_claim_errors(report_text, facts_text))
     errors.extend(find_unsupported_metadata_claim_errors(report_text))
+    errors.extend(validate_recommendations_against_candidates(report_text, facts_text))
     return errors
 
 
@@ -1903,56 +2170,24 @@ def enforce_report_fact_requirements(text: str, facts_text: str) -> str:
 
 def enforce_user_report_requirements(text: str, facts_text: str) -> str:
     text = normalize_report_headings(text, USER_HEADING_REWRITE)
-    read_only_bullets = []
-    if "SHOW TABLE STATS" not in text:
-        read_only_bullets.append(
-            "- Выполнить `SHOW TABLE STATS` только для таблиц, которые присутствуют в analysis_facts.md."
-        )
-    if "SHOW COLUMN STATS" not in text:
-        read_only_bullets.append(
-            "- Выполнить `SHOW COLUMN STATS` только для join/filter колонок после их идентификации."
-        )
-    if not facts_include_referenced_tables(facts_text):
-        read_only_bullets.append(
-            "- Имена таблиц отсутствуют в analysis_facts.md; перед table-specific `SHOW TABLE STATS` нужен SQL/profile/context."
-        )
-    read_only_bullets.append(
-        "- Join/filter колонки отсутствуют в analysis_facts.md; перед column-specific `SHOW COLUMN STATS` определите их из SQL/EXPLAIN/profile."
-    )
-    text = insert_bullets_into_section(text, USER_READ_ONLY_HEADING, read_only_bullets)
-
-    admin_package_bullets = [
-        "- Query ID: использовать значение из analysis_facts.md; если его нет, написать not present in analysis_facts.md.",
-        "- Original profile.",
-        "- analysis_facts.md.",
-        "- Action Cards/operator IDs.",
-        "- Таблицы, если они присутствуют; если нет, написать not present in analysis_facts.md.",
-        "- Timestamps, если они присутствуют; если нет, написать not present in analysis_facts.md.",
-        "- Admission pool / queue, если присутствуют; если нет, написать not present in analysis_facts.md.",
-        "- Query Doctor report.",
-    ]
-    if facts_has_backend_tail_evidence(facts_text):
-        admin_package_bullets.insert(
-            4,
-            "- Передайте платформенной команде backend/host evidence из analysis_facts.md; host/network/HDFS/RPC path — это проверки, не доказанная причина.",
-        )
-    text = insert_bullets_into_section(
+    text = normalize_report_headings(
         text,
-        USER_ADMIN_PACKAGE_HEADING,
-        admin_package_bullets,
+        {
+            USER_READ_ONLY_HEADING: NEXT_CHECKS_HEADING,
+            USER_ADMIN_PACKAGE_HEADING: NEXT_CHECKS_HEADING,
+            USER_VALIDATION_HEADING: RECOMMENDATIONS_HEADING,
+            USER_VERIFY_HEADING: NEXT_CHECKS_HEADING,
+        },
     )
-    validation_bullets = [
-        "- Query rewrites, join/filter changes, pre-aggregation, materialization и stats maintenance через утверждённый процесс требуют проверки.",
-        "- Проверяйте каждое изменение по тем же operator evidence из Action Cards.",
-    ]
-    text = insert_bullets_into_section(text, USER_VALIDATION_HEADING, validation_bullets)
-
-    verify_bullets = [
-        "- Перезапустить запрос после любого утверждённого изменения.",
-        "- Сравнить actual vs estimated rows для тех же Action Cards/operator IDs.",
-        "- Сравнить PeakMemUsage, spill counters, runtime и bytes read/sent до/после изменения, если эти факты присутствуют.",
-    ]
-    return insert_bullets_into_section(text, USER_VERIFY_HEADING, verify_bullets)
+    if facts_has_backend_tail_evidence(facts_text):
+        text = insert_bullets_into_section(
+            text,
+            NEXT_CHECKS_HEADING,
+            [
+                "- Передать платформенной команде backend/host evidence из analysis_facts.md; host/network/HDFS/RPC path — это проверки, не доказанная причина."
+            ],
+        )
+    return enforce_admin_report_requirements(text, facts_text)
 
 
 def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
@@ -1969,32 +2204,46 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
             "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
         },
     )
-    admin_bullet_rules = [
-        (
-            "- Проверить per-host RowsProduced для операторов из Action Cards.",
-            (r"per-host\s+RowsProduced",),
-        ),
-        (
-            "- Проверить per-host PeakMemUsage для тех же операторов.",
-            (r"per-host\s+PeakMemUsage",),
-        ),
-        (
-            "- Проверить spill/scratch counters в query profile.",
-            (r"spill/scratch\s+counters|spill.*scratch|scratch.*spill",),
-        ),
-        (
-            "- Проверить лимиты памяти admission pool и поведение очереди.",
-            (r"admission\s+pool|лимит\w*\s+памят\w+.*очеред",),
-        ),
-        (
-            "- Проверить CM metrics/logs на host-level resource pressure во время окна запроса.",
-            (r"CM\s+metrics/logs|CM\s+metrics|CM\s+logs|host-level\s+resource\s+pressure",),
-        ),
-        (
-            "- Проверить profile counters по указанным операторам, прежде чем считать предполагаемые проблемы доказанными причинами.",
-            (r"profile\s+counters|сч[её]тчик\w+\s+profile",),
-        ),
-    ]
+    admin_bullet_rules: list[tuple[str, tuple[str, ...]]] = []
+    if facts_has_backend_tail_evidence(facts_text):
+        admin_bullet_rules.extend(
+            [
+                (
+                    "- Проверить per-host RowsProduced для операторов из Action Cards.",
+                    (r"per-host\s+RowsProduced",),
+                ),
+                (
+                    "- Проверить per-host PeakMemUsage для тех же операторов.",
+                    (r"per-host\s+PeakMemUsage",),
+                ),
+                (
+                    "- Проверить CM metrics/logs на host-level resource pressure во время окна запроса.",
+                    (r"CM\s+metrics/logs|CM\s+metrics|CM\s+logs|host-level\s+resource\s+pressure",),
+                ),
+            ]
+        )
+    if facts_have_spill_scratch_evidence(facts_text):
+        admin_bullet_rules.append(
+            (
+                "- Проверить spill/scratch counters в query profile.",
+                (r"spill/scratch\s+counters|spill.*scratch|scratch.*spill",),
+            )
+        )
+    memory_count = facts_memory_anomaly_count(facts_text)
+    if facts_have_admission_or_pool_evidence(facts_text) or (memory_count is not None and memory_count > 0):
+        admin_bullet_rules.append(
+            (
+                "- Проверить лимиты памяти admission pool и поведение очереди.",
+                (r"admission\s+pool|лимит\w*\s+памят\w+.*очеред",),
+            )
+        )
+    if facts_have_action_cards(facts_text):
+        admin_bullet_rules.append(
+            (
+                "- Проверить profile counters по указанным операторам, прежде чем считать предполагаемые проблемы доказанными причинами.",
+                (r"profile\s+counters|сч[её]тчик\w+\s+profile",),
+            )
+        )
     if facts_has_backend_tail_evidence(facts_text):
         backend_summary = parse_backend_tail_summary(facts_text)
         if backend_has_proven_tail(backend_summary):
@@ -2036,11 +2285,19 @@ def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admi
 
 def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin") -> str:
     text = sanitize_report_text(text, facts_text)
+    text = normalize_report_headings(text, DETAIL_HEADING_REWRITE)
+    text = remove_negative_caveats_from_short_summary(text)
+    text = normalize_practical_recommendations(text, facts_text)
+    text = move_misplaced_admin_bullets_into_admin_section(text)
+    text = move_misplaced_zero_cardinality_note(text)
     if mode == "user":
         text = enforce_user_report_requirements(text, facts_text)
     if mode == "admin":
         text = enforce_admin_report_requirements(text, facts_text)
     text = enforce_report_fact_requirements(text, facts_text)
+    text = normalize_practical_recommendations(text, facts_text)
+    text = move_misplaced_admin_bullets_into_admin_section(text)
+    text = move_misplaced_zero_cardinality_note(text)
     return text
 
 
@@ -2076,6 +2333,112 @@ def count_report_section_items(text: str, heading: str) -> int | None:
             paragraph_count += 1
             in_paragraph = True
     return paragraph_count
+
+
+def extract_report_section_lines(text: str, heading: str) -> list[str]:
+    lines = text.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == heading)
+    except StopIteration:
+        return []
+    section_lines: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.startswith("## ") or line.strip() == "<details>":
+            break
+        section_lines.append(line)
+    return section_lines
+
+
+def validate_collapsed_report_structure(text: str) -> list[str]:
+    errors: list[str] = []
+    lines = [line.strip() for line in text.splitlines()]
+    detail_open_indexes = [index for index, line in enumerate(lines) if line == "<details>"]
+    detail_close_indexes = [index for index, line in enumerate(lines) if line == "</details>"]
+    summaries = [line for line in lines if line.startswith("<summary>") or line.startswith("</summary>")]
+
+    if len(detail_open_indexes) != 2 or len(detail_close_indexes) != 2:
+        errors.append("report must contain exactly two collapsed <details> sections")
+        return errors
+    if not (
+        detail_open_indexes[0] < detail_close_indexes[0] < detail_open_indexes[1] < detail_close_indexes[1]
+    ):
+        errors.append("report collapsed <details> sections must be balanced and not nested")
+        return errors
+    if summaries != [
+        "<summary>Подробный разбор</summary>",
+        "<summary>Для администратора / платформенной команды</summary>",
+    ]:
+        errors.append("report collapsed sections must use the approved summaries")
+
+    first_block = lines[detail_open_indexes[0] : detail_close_indexes[0] + 1]
+    second_block = lines[detail_open_indexes[1] : detail_close_indexes[1] + 1]
+    if DETAILED_REPORT_HEADING not in first_block:
+        errors.append("Подробный разбор must be inside the first collapsed section")
+    if NEXT_CHECKS_HEADING not in second_block:
+        errors.append("Админские проверки must be inside the second collapsed section")
+
+    if DETAILED_REPORT_HEADING in lines and not (
+        detail_open_indexes[0] < lines.index(DETAILED_REPORT_HEADING) < detail_close_indexes[0]
+    ):
+        errors.append("Подробный разбор must not be visible outside its collapsed section")
+    if NEXT_CHECKS_HEADING in lines and not (
+        detail_open_indexes[1] < lines.index(NEXT_CHECKS_HEADING) < detail_close_indexes[1]
+    ):
+        errors.append("Админские проверки must not be visible outside its collapsed section")
+    return errors
+
+
+def validate_report_html_safety(text: str) -> list[str]:
+    errors: list[str] = []
+    for match in RAW_HTML_TAG_RE.finditer(text):
+        tag = match.group(1).lower()
+        if tag not in ALLOWED_REPORT_HTML_TAGS:
+            errors.append(f"report contains unsupported raw HTML tag: {tag}")
+            break
+    return errors
+
+
+def validate_report_internal_fingerprints(text: str) -> list[str]:
+    if any(REPORT_INTERNAL_FINGERPRINT_RE.search(line) for line in text.splitlines()):
+        return ["report contains browser-visible internal artifact/runtime fingerprint"]
+    return []
+
+
+def validate_recommendations_section(text: str) -> list[str]:
+    errors: list[str] = []
+    items = count_report_section_items(text, RECOMMENDATIONS_HEADING)
+    if items is None:
+        return errors
+    if not 2 <= items <= MAX_RECOMMENDATION_ITEMS:
+        errors.append(
+            f"practical recommendations must contain 2-{MAX_RECOMMENDATION_ITEMS} concise items, found {items}"
+        )
+
+    section_lines = extract_report_section_lines(text, RECOMMENDATIONS_HEADING)
+    for line in section_lines:
+        stripped = line.strip()
+        if not re.match(r"^(?:[-*]|\d+\.)\s+\S", stripped):
+            continue
+        if VAGUE_RECOMMENDATION_RE.search(stripped) or GENERIC_OPTIMIZE_RE.search(stripped):
+            errors.append("practical recommendations contain open-ended check/analyze/optimize wording")
+            break
+        if ADMIN_ONLY_RECOMMENDATION_RE.search(stripped):
+            errors.append("practical recommendations contain admin-only checks")
+            break
+    return errors
+
+
+def validate_recommendations_against_candidates(text: str, facts_text: str) -> list[str]:
+    canonical = set(canonical_recommendation_bullets(recommendation_candidate_lines(facts_text)))
+    section_lines = extract_report_section_lines(text, RECOMMENDATIONS_HEADING)
+    for line in section_lines:
+        stripped = line.strip()
+        if not re.match(r"^(?:[-*]|\d+\.)\s+\S", stripped):
+            continue
+        if stripped in canonical:
+            continue
+        return ["practical recommendations include an action outside Python-owned candidates"]
+    return []
 
 
 def contains_raw_sql_like_text(text: str) -> bool:
@@ -2162,10 +2525,14 @@ def validate_report_text(
         )
 
     short_summary_items = count_report_section_items(text, SHORT_SUMMARY_HEADING)
-    if short_summary_items is not None and not 4 <= short_summary_items <= 7:
+    if short_summary_items is not None and not 2 <= short_summary_items <= 6:
         errors.append(
-            f"short summary must contain 4-7 concise items, found {short_summary_items}"
+            f"short summary must contain 2-6 concise items, found {short_summary_items}"
         )
+    errors.extend(validate_collapsed_report_structure(text))
+    errors.extend(validate_report_html_safety(text))
+    errors.extend(validate_report_internal_fingerprints(text))
+    errors.extend(validate_recommendations_section(text))
 
     if contains_raw_sql_like_text(text):
         errors.append("report contains SQL-like text that is not allowed in trusted output")
@@ -2174,6 +2541,25 @@ def validate_report_text(
         errors.extend(validate_report_against_facts(text, facts_text))
 
     return errors
+
+
+def validate_report_safety_text(text: str, *, facts_text: str = "") -> list[str]:
+    errors: list[str] = []
+    errors.extend(validate_report_html_safety(text))
+    errors.extend(validate_report_internal_fingerprints(text))
+    if contains_raw_sql_like_text(text):
+        errors.append("report contains SQL-like text that is not allowed in trusted output")
+    if facts_text:
+        errors.extend(validate_report_against_facts(text, facts_text))
+    return errors
+
+
+def validate_report_for_mode(text: str, *, facts_text: str = "", validation_mode: str = "strict") -> list[str]:
+    if validation_mode == "off":
+        return []
+    if validation_mode == "relaxed":
+        return validate_report_safety_text(text, facts_text=facts_text)
+    return validate_report_text(text, facts_text=facts_text)
 
 
 def partial_report_path(output_path: Path) -> Path:
@@ -2385,7 +2771,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--no-validate",
         action="store_true",
-        help="Debug only: skip post-generation report validation.",
+        help="Debug only: skip all post-generation report validation, including safety checks.",
+    )
+    parser.add_argument(
+        "--validation-mode",
+        choices=("strict", "relaxed", "off"),
+        default=DEFAULT_VALIDATION_MODE,
+        help=(
+            "Report validation mode. strict enforces full report contract; relaxed keeps browser safety and "
+            "fact-consistency checks but ignores report shape; off skips validation. Default: %(default)s"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -2396,6 +2791,7 @@ def main(argv: list[str]) -> int:
     if args.language != "ru":
         print("ERROR: only --language ru is currently supported for the required report structure.", file=sys.stderr)
         return 2
+    validation_mode = "off" if args.no_validate else args.validation_mode
 
     case_dir = Path(args.case_dir).expanduser().resolve()
     if not case_dir.exists() or not case_dir.is_dir():
@@ -2429,6 +2825,7 @@ def main(argv: list[str]) -> int:
     print(f"{PROGRESS_PREFIX} facts sha256: {facts_sha256}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} model: {args.model}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} mode: {args.mode}", file=sys.stderr)
+    print(f"{PROGRESS_PREFIX} validation mode: {validation_mode}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} resolved output path: {output_path}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} keep_alive: {args.keep_alive}", file=sys.stderr)
@@ -2458,8 +2855,12 @@ def main(argv: list[str]) -> int:
         mode=args.mode,
     )
 
-    if not args.no_validate:
-        validation_errors = validate_report_text(narrative_text, facts_text=facts_text)
+    if validation_mode != "off":
+        validation_errors = validate_report_for_mode(
+            narrative_text,
+            facts_text=facts_text,
+            validation_mode=validation_mode,
+        )
         if validation_errors:
             partial_path = write_failed_report_to_partial(output_path, narrative_text)
             print(f"{PROGRESS_PREFIX} ERROR: generated report failed validation", file=sys.stderr)
@@ -2470,8 +2871,12 @@ def main(argv: list[str]) -> int:
 
     final_report_text = append_analyzer_facts_appendix(narrative_text, facts_text)
 
-    if not args.no_validate:
-        validation_errors = validate_report_text(final_report_text, facts_text=facts_text)
+    if validation_mode != "off":
+        validation_errors = validate_report_for_mode(
+            final_report_text,
+            facts_text=facts_text,
+            validation_mode=validation_mode,
+        )
         if validation_errors:
             partial_path = write_failed_report_to_partial(output_path, final_report_text)
             print(f"{PROGRESS_PREFIX} ERROR: final report failed validation", file=sys.stderr)

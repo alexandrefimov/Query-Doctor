@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import html
 import json
 import math
 import os
@@ -19,7 +21,7 @@ from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 from zoneinfo import ZoneInfo
 
 import query_doctor_collect_cm_profiles as cm_collector
@@ -52,6 +54,7 @@ from query_doctor_web_ui import (
 from query_doctor_web_ui_help import render_help_page
 from query_doctor_web_ui_optimizer import render_optimizer_page
 from query_doctor_web_ui_running import render_running_queries_page
+from query_doctor_web_ui_recent_scan_presenter import case_score_severity
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -102,6 +105,7 @@ MAX_METADATA_FACTS_BYTES = 512 * 1024
 BATCH_REPORT_NAME = "diagnosis.md"
 BATCH_REPORT_PARTIAL_NAME = "diagnosis.partial.md"
 BATCH_REPORT_VALIDATION_MARKER = "diagnosis.validated.json"
+WEB_REPORT_VALIDATION_MODE = "strict"
 TABLE_METADATA_SUMMARY_KEYS = {
     "context file": "context file",
     "context path": "context path",
@@ -330,10 +334,32 @@ class WebJobStore:
             self._jobs[job.job_id] = job
             return job.snapshot()
 
+    def create_query_report(self, query_id: str) -> WebJobSnapshot:
+        stage = BATCH_REPORT_STAGES[0]
+        job = WebJob(
+            job_id=uuid.uuid4().hex,
+            query_id=query_id,
+            report_mode="admin",
+            status="running",
+            stage_label=stage[1],
+            progress=stage[2],
+            kind="query_report",
+        )
+        with self._lock:
+            self._jobs[job.job_id] = job
+            return job.snapshot()
+
     def running_batch_report(self, case_id: str) -> WebJobSnapshot | None:
         with self._lock:
             for job in self._jobs.values():
                 if job.kind == "batch_report" and job.batch_case_id == case_id and job.status == "running":
+                    return job.snapshot()
+        return None
+
+    def running_query_report(self, query_id: str) -> WebJobSnapshot | None:
+        with self._lock:
+            for job in self._jobs.values():
+                if job.kind == "query_report" and job.query_id == query_id and job.status == "running":
                     return job.snapshot()
         return None
 
@@ -412,7 +438,7 @@ class WebJobStore:
 def stages_for_job_kind(kind: str) -> tuple[tuple[int, str, int], ...]:
     if kind in {"batch", "running"}:
         return BATCH_STAGES
-    if kind == "batch_report":
+    if kind in {"batch_report", "query_report"}:
         return BATCH_REPORT_STAGES
     return WEB_STAGES
 
@@ -855,6 +881,8 @@ def build_report_command(case_dir: Path, report_mode: str, report_name: str, set
         report_name,
         "--keep-alive",
         "0",
+        "--validation-mode",
+        WEB_REPORT_VALIDATION_MODE,
     ]
 
 
@@ -873,6 +901,8 @@ def build_batch_case_report_command(case_dir: Path, settings: WebSettings) -> li
         "off",
         "--keep-alive",
         "0",
+        "--report-validation-mode",
+        WEB_REPORT_VALIDATION_MODE,
     ]
 
 
@@ -1704,11 +1734,11 @@ def start_batch_case_report_job(
     *,
     runner: Runner = subprocess.run,
 ) -> tuple[int, str]:
-    effective_settings = batch_page_settings(settings, job_store)
-    summary = load_batch_summary(effective_settings)
-    case = find_batch_case(summary, case_id) if summary is not None else None
+    effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
     if case is None:
         return 404, render_batch_case_not_found_page(effective_settings, case_id)
+    if not case_allows_llm_report(case):
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store)
     if job_store.running_batch_report(case_id) is not None:
         return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store)
     case_dir = resolve_batch_case_report_dir(effective_settings, case)
@@ -1727,6 +1757,56 @@ def start_batch_case_report_job(
     thread = threading.Thread(
         target=run_batch_case_report_job,
         args=(job.job_id, case_id, case_dir, settings, job_store, runner),
+        daemon=True,
+    )
+    thread.start()
+    return 303, f"/jobs/{job.job_id}"
+
+
+def start_specific_query_report_job(
+    query_id: str,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    *,
+    runner: Runner = subprocess.run,
+) -> tuple[int, str]:
+    try:
+        validated_query_id = validate_query_id(query_id)
+    except WebError as exc:
+        return 400, render_query_page(settings, query_id=query_id, error=exc)
+    case_dir = expected_case_dir_for_query(validated_query_id, settings)
+    try:
+        ensure_complete_existing_case(case_dir)
+    except WebError:
+        message = WebError("Specific Query details are available after analysis completes.")
+        return 404, render_query_page(settings, query_id=validated_query_id, error=message)
+    if not (case_dir / "analysis_facts.md").is_file():
+        message = WebError("Specific Query details are available after analysis completes.")
+        return 404, render_query_page(settings, query_id=validated_query_id, error=message)
+    case = build_query_id_summary_case(validated_query_id, case_dir)
+    if not case_allows_llm_report(case):
+        metadata_facts = load_specific_query_metadata_facts(case_dir)
+        report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store)
+        return 400, render_page(
+            settings,
+            active_nav="query",
+            show_run_panel=False,
+            extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts, report_state=report_state)],
+        )
+    if job_store.running_query_report(validated_query_id) is not None:
+        metadata_facts = load_specific_query_metadata_facts(case_dir)
+        report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store)
+        return 400, render_page(
+            settings,
+            active_nav="query",
+            show_run_panel=False,
+            extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts, report_state=report_state)],
+        )
+
+    job = job_store.create_query_report(validated_query_id)
+    thread = threading.Thread(
+        target=run_specific_query_report_job,
+        args=(job.job_id, validated_query_id, case_dir, settings, job_store, runner),
         daemon=True,
     )
     thread.start()
@@ -1865,15 +1945,49 @@ def run_batch_case_report_job(
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
                 "Report generation completed but validation rejected the output. "
-                "diagnosis.partial.md is untrusted and hidden."
+                "The partial report is untrusted and hidden."
             )
         if completed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor batch case report generation", completed))
         report_path = case_dir / BATCH_REPORT_NAME
         if not report_path.is_file():
-            raise WebError("Report generation completed but diagnosis.md was not created.")
+            raise WebError("Report generation completed but the validated report was not created.")
         write_batch_case_report_validation_marker(case_dir)
         job_store.complete_html(job_id, f"Validated report generated for {case_id}.")
+    except WebError as exc:
+        job_store.fail(job_id, exc)
+
+
+def run_specific_query_report_job(
+    job_id: str,
+    query_id: str,
+    case_dir: Path,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    runner: Runner,
+) -> None:
+    try:
+        job_store.update_stage(job_id, 1)
+        completed = run_subprocess(
+            build_batch_case_report_command(case_dir, settings),
+            cwd=settings.repo_dir,
+            timeout_sec=settings.timeout_sec,
+            runner=runner,
+            env=effective_subprocess_env(settings),
+        )
+        job_store.update_stage(job_id, 2)
+        if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
+            raise WebError(
+                "Report generation completed but validation rejected the output. "
+                "The partial report is untrusted and hidden."
+            )
+        if completed.returncode != 0:
+            raise WebError(subprocess_failure_message("Query Doctor specific query report generation", completed))
+        report_path = case_dir / BATCH_REPORT_NAME
+        if not report_path.is_file():
+            raise WebError("Report generation completed but the validated report was not created.")
+        write_batch_case_report_validation_marker(case_dir)
+        job_store.complete_html(job_id, f"Validated report generated for {redact_browser_display_text(query_id)}.")
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
@@ -1933,6 +2047,25 @@ def running_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebS
     return replace(settings, batch_summary=latest)
 
 
+def resolve_case_detail_settings(
+    settings: WebSettings,
+    job_store: WebJobStore,
+    case_id: str,
+) -> tuple[WebSettings, dict[str, object] | None]:
+    batch_settings = batch_page_settings(settings, job_store)
+    summary = load_batch_summary(batch_settings)
+    case = find_batch_case(summary, case_id) if summary is not None else None
+    if case is not None:
+        return batch_settings, case
+    running_settings = running_page_settings(settings, job_store)
+    if running_settings.batch_summary != batch_settings.batch_summary:
+        running_summary = load_batch_summary(running_settings)
+        running_case = find_batch_case(running_summary, case_id) if running_summary is not None else None
+        if running_case is not None:
+            return running_settings, running_case
+    return batch_settings, None
+
+
 def load_batch_summary(settings: WebSettings) -> dict[str, object] | None:
     summary_path = settings.batch_summary
     if summary_path is None:
@@ -1954,10 +2087,24 @@ def render_batch_case_detail_for_request(
 ) -> str:
     metadata_facts = load_batch_case_metadata_facts(settings, case)
     report_state = load_batch_case_report_state(settings, case_id, case, job_store, job=job)
-    return render_batch_case_detail_page(settings, case_id, case, metadata_facts, report_state=report_state)
+    trusted_report_text = load_validated_batch_case_report(settings, case) if report_state.get("trusted") else None
+    return render_batch_case_detail_page(
+        settings,
+        case_id,
+        case,
+        metadata_facts,
+        report_state=report_state,
+        trusted_report_text=trusted_report_text,
+    )
 
 
-def render_specific_query_detail_for_request(settings: WebSettings, query_id: str) -> tuple[int, str]:
+def render_specific_query_detail_for_request(
+    settings: WebSettings,
+    query_id: str,
+    job_store: WebJobStore,
+    *,
+    job: WebJobSnapshot | None = None,
+) -> tuple[int, str]:
     try:
         validated_query_id = validate_query_id(query_id)
     except WebError as exc:
@@ -1973,12 +2120,75 @@ def render_specific_query_detail_for_request(settings: WebSettings, query_id: st
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)
     metadata_facts = load_specific_query_metadata_facts(case_dir)
+    report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store, job=job)
+    trusted_report_text = load_validated_specific_query_report(case_dir) if report_state.get("trusted") else None
     return 200, render_page(
         settings,
         active_nav="query",
         show_run_panel=False,
-        extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts)],
+        extra_sections=[
+            render_specific_query_detail(
+                validated_query_id,
+                case,
+                metadata_facts,
+                report_state=report_state,
+                trusted_report_text=trusted_report_text,
+            )
+        ],
     )
+
+
+def render_specific_query_report_for_request(settings: WebSettings, query_id: str) -> tuple[int, str]:
+    try:
+        validated_query_id = validate_query_id(query_id)
+    except WebError as exc:
+        return 400, render_query_page(settings, query_id=query_id, error=exc)
+    case_dir = expected_case_dir_for_query(validated_query_id, settings)
+    try:
+        ensure_complete_existing_case(case_dir)
+    except WebError:
+        message = WebError("Specific Query details are available after analysis completes.")
+        return 404, render_query_page(settings, query_id=validated_query_id, error=message)
+    case = build_query_id_summary_case(validated_query_id, case_dir)
+    report_text = load_validated_specific_query_report(case_dir)
+    if report_text is None:
+        metadata_facts = load_specific_query_metadata_facts(case_dir)
+        return 404, render_page(
+            settings,
+            active_nav="query",
+            show_run_panel=False,
+            extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts)],
+        )
+    return 200, render_specific_query_report_page(settings, validated_query_id, case, report_text)
+
+
+def render_specific_query_report_page(
+    settings: WebSettings,
+    query_id: str,
+    case: dict[str, object],
+    report_text: str,
+) -> str:
+    section = (
+        "<section class=\"panel report-header\" aria-label=\"Specific Query report header\">"
+        "<div class=\"breadcrumb\"><a href=\"/query\">Specific Query</a><span>/</span>"
+        f"<a href=\"/query/details/{quote(query_id, safe='')}\">{html.escape(query_id)}</a>"
+        "<span>/</span><span>validated report</span></div>"
+        "<div class=\"report-title-row\"><div>"
+        "<h1>Validated Specific Query report</h1>"
+        "<div class=\"report-subtitle\">Rendered only after the report action completed validation.</div>"
+        "<div class=\"query-line\">"
+        f"<span>Query:</span><code>{html.escape(query_id)}</code>"
+        "</div></div></div>"
+        "<div class=\"status-strip\" aria-label=\"Report status\">"
+        "<span class=\"status-item\"><span class=\"dot\"></span>Validation: <span class=\"badge green\">PASS</span></span>"
+        "<span class=\"status-item\"><span class=\"dot gray\"></span>Mode: <span class=\"badge gray\">admin</span></span>"
+        "</div></section>"
+        "<details class=\"panel report-card\" open aria-label=\"Validated report body\">"
+        "<summary>Validated diagnosis markdown</summary>"
+        f"<div class=\"report-body\">{render_report_markdown_html(report_text, with_heading_ids=True)}</div>"
+        "</details>"
+    )
+    return render_page(settings, active_nav="query", show_run_panel=False, extra_sections=[section])
 
 
 def load_specific_query_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -2011,6 +2221,17 @@ def load_validated_batch_case_report(settings: WebSettings, case: dict[str, obje
         if path:
             report_text = report_text.replace(path, "[local case path hidden]")
     return report_text
+
+
+def load_validated_specific_query_report(case_dir: Path) -> str | None:
+    if not batch_case_validated_report_exists(case_dir):
+        return None
+    try:
+        report_text = (case_dir / BATCH_REPORT_NAME).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    case_path = str(case_dir)
+    return report_text.replace(case_path, "[local case path hidden]") if case_path else report_text
 
 
 def find_batch_case(summary: dict[str, object], case_id: str) -> dict[str, object] | None:
@@ -2070,13 +2291,52 @@ def load_batch_case_report_state(
         status = "running"
     elif job is not None and job.status == "failed":
         status = "failed"
+    report_job = running_job if running_job is not None else job
     return {
         "status": status,
         "running": running_job is not None,
         "trusted": trusted,
         "partial": partial,
         "error": job.error if job is not None and job.status == "failed" else "",
+        "job_id": report_job.job_id if report_job is not None else "",
+        "stage_label": report_job.stage_label if report_job is not None else "",
+        "progress": report_job.progress if report_job is not None else 0,
     }
+
+
+def load_specific_query_report_state(
+    settings: WebSettings,
+    query_id: str,
+    case_dir: Path,
+    job_store: WebJobStore,
+    *,
+    job: WebJobSnapshot | None = None,
+) -> dict[str, object]:
+    running_job = job if job is not None and job.status == "running" else job_store.running_query_report(query_id)
+    trusted = batch_case_validated_report_exists(case_dir)
+    partial = (case_dir / BATCH_REPORT_PARTIAL_NAME).is_file()
+    status = "generated" if trusted else "not_run"
+    if partial and not trusted:
+        status = "partial_untrusted"
+    if running_job is not None:
+        status = "running"
+    elif job is not None and job.status == "failed":
+        status = "failed"
+    report_job = running_job if running_job is not None else job
+    return {
+        "status": status,
+        "running": running_job is not None,
+        "trusted": trusted,
+        "partial": partial,
+        "error": job.error if job is not None and job.status == "failed" else "",
+        "job_id": report_job.job_id if report_job is not None else "",
+        "stage_label": report_job.stage_label if report_job is not None else "",
+        "progress": report_job.progress if report_job is not None else 0,
+    }
+
+
+def case_allows_llm_report(case: dict[str, object]) -> bool:
+    return case_score_severity(case) != "clean"
 
 
 def resolve_batch_case_report_dir(settings: WebSettings, case: dict[str, object]) -> Path | None:
@@ -2089,20 +2349,49 @@ def resolve_batch_case_report_dir(settings: WebSettings, case: dict[str, object]
     return None
 
 
+def file_sha256(path: Path) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
 def batch_case_validated_report_exists(case_dir: Path, case: dict[str, object] | None = None) -> bool:
-    if not (case_dir / BATCH_REPORT_NAME).is_file():
+    report_path = case_dir / BATCH_REPORT_NAME
+    facts_path = case_dir / "analysis_facts.md"
+    marker_path = case_dir / BATCH_REPORT_VALIDATION_MARKER
+    if not report_path.is_file() or not facts_path.is_file():
         return False
-    if (case_dir / BATCH_REPORT_VALIDATION_MARKER).is_file():
-        return True
-    if case is None:
+    if not marker_path.is_file():
         return False
-    return case.get("report_generated") is True and str(case.get("report_validation_status") or "") == "passed"
+    try:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if marker.get("validated") is not True:
+        return False
+    if marker.get("validation_mode") != WEB_REPORT_VALIDATION_MODE:
+        return False
+    if marker.get("report") != BATCH_REPORT_NAME:
+        return False
+    if marker.get("report_sha256") != file_sha256(report_path):
+        return False
+    if marker.get("facts_sha256") != file_sha256(facts_path):
+        return False
+    return True
 
 
 def write_batch_case_report_validation_marker(case_dir: Path) -> None:
     marker = {
         "report": BATCH_REPORT_NAME,
         "validated": True,
+        "validation_mode": WEB_REPORT_VALIDATION_MODE,
+        "report_sha256": file_sha256(case_dir / BATCH_REPORT_NAME),
+        "facts_sha256": file_sha256(case_dir / "analysis_facts.md"),
         "source": "query_doctor_web_server batch case report action",
     }
     (case_dir / BATCH_REPORT_VALIDATION_MARKER).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
@@ -2334,9 +2623,7 @@ def make_handler(
             match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/report", parsed.path)
             if match:
                 case_id = match.group("case_id")
-                effective_settings = batch_page_settings(settings, store)
-                summary = load_batch_summary(effective_settings)
-                case = find_batch_case(summary, case_id) if summary is not None else None
+                effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
                 if case is None:
                     self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
                     return
@@ -2349,17 +2636,20 @@ def make_handler(
             match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)", parsed.path)
             if match:
                 case_id = match.group("case_id")
-                effective_settings = batch_page_settings(settings, store)
-                summary = load_batch_summary(effective_settings)
-                case = find_batch_case(summary, case_id) if summary is not None else None
+                effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
                 if case is None:
                     self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
                     return
                 self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store))
                 return
+            match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/report", parsed.path)
+            if match:
+                status, body = render_specific_query_report_for_request(settings, unquote(match.group("query_id")))
+                self.write_html(status, body)
+                return
             match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)", parsed.path)
             if match:
-                status, body = render_specific_query_detail_for_request(settings, unquote(match.group("query_id")))
+                status, body = render_specific_query_detail_for_request(settings, unquote(match.group("query_id")), store)
                 self.write_html(status, body)
                 return
             if parsed.path in {"/query", "/run"}:
@@ -2420,14 +2710,15 @@ def make_handler(
                         ),
                     )
                 elif job.kind == "batch_report":
-                    effective_settings = batch_page_settings(settings, store)
                     case_id = job.batch_case_id or job.query_id
-                    summary = load_batch_summary(effective_settings)
-                    case = find_batch_case(summary, case_id) if summary is not None else None
+                    effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
                     if case is None:
                         self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
                         return
                     self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, job=job))
+                elif job.kind == "query_report":
+                    status, body = render_specific_query_detail_for_request(settings, job.query_id, store, job=job)
+                    self.write_html(status, body)
                 else:
                     self.write_html(200, render_query_page(settings, report_mode=job.report_mode, job=job))
                 return
@@ -2444,7 +2735,12 @@ def make_handler(
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
             report_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/report", parsed.path)
-            if parsed.path not in {"/analyze", "/batch/run", "/running/run", "/optimizer", "/query-optimizer"} and report_match is None:
+            query_report_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/report", parsed.path)
+            if (
+                parsed.path not in {"/analyze", "/batch/run", "/running/run", "/optimizer", "/query-optimizer"}
+                and report_match is None
+                and query_report_match is None
+            ):
                 self.send_error(404)
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
@@ -2452,6 +2748,13 @@ def make_handler(
             form = parse_qs(raw_body, keep_blank_values=True)
             if report_match is not None:
                 status, body = start_batch_case_report_job(report_match.group("case_id"), settings, store, runner=runner)
+            elif query_report_match is not None:
+                status, body = start_specific_query_report_job(
+                    unquote(query_report_match.group("query_id")),
+                    settings,
+                    store,
+                    runner=runner,
+                )
             elif parsed.path == "/batch/run":
                 status, body = start_batch_job(form, settings, store, runner=runner)
             elif parsed.path == "/running/run":

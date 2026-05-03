@@ -73,6 +73,12 @@ def test_web_report_markdown_renders_safe_html():
         "| Col | Value |\n"
         "| --- | --- |\n"
         "| A | B |\n\n"
+        "<details>\n"
+        "<summary>Admin <checks></summary>\n"
+        "\n"
+        "- hidden item\n"
+        "\n"
+        "</details>\n\n"
         "```sql\n"
         "SELECT <secret>;\n"
         "```\n"
@@ -85,6 +91,9 @@ def test_web_report_markdown_renders_safe_html():
     assert "<table>" in rendered
     assert "<th>Col</th>" in rendered
     assert "<td>B</td>" in rendered
+    assert "<details>" in rendered
+    assert "<summary>Admin &lt;checks&gt;</summary>" in rendered
+    assert "<li>hidden item</li>" in rendered
     assert "SELECT &lt;secret&gt;;" in rendered
     assert "<b>unsafe</b>" not in rendered
 

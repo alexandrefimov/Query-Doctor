@@ -7,13 +7,12 @@ from typing import Any
 from urllib.parse import quote
 
 from query_doctor_web_ui_recent_scan_details import (
+    SafeHtml,
     compact_cell,
+    render_analysis_details,
+    render_batch_case_report_action,
     render_case_detail_overview,
     render_case_status_summary,
-    render_metadata_facts_section,
-    render_runtime_signals,
-    render_score_reason_explanations,
-    render_technical_details,
 )
 from query_doctor_web_ui_recent_scan_presenter import (
     present_recent_scan_case_detail,
@@ -78,20 +77,31 @@ def specific_query_details_href(query_id: Any) -> str:
     return f"/query/details/{quote(query_id.strip(), safe='')}"
 
 
-def render_specific_query_detail(query_id: str, case: dict[str, Any], metadata_facts: dict[str, Any] | None = None) -> str:
-    view = present_recent_scan_case_detail("specific-query", case, metadata_facts, report_state={"status": "not_run"})
+def render_specific_query_detail(
+    query_id: str,
+    case: dict[str, Any],
+    metadata_facts: dict[str, Any] | None = None,
+    report_state: dict[str, Any] | None = None,
+    trusted_report_html: SafeHtml | str | None = None,
+) -> str:
+    view = present_recent_scan_case_detail("specific-query", case, metadata_facts, report_state=report_state)
     escaped_query_id = html.escape(query_id)
+    report_url = specific_query_report_href(query_id)
     return (
         "<section class=\"panel batch-panel\" aria-label=\"Specific Query details\">"
         "<div class=\"breadcrumb\"><a href=\"/query\">Specific Query</a><span>/</span>"
         f"<span>{escaped_query_id}</span></div>"
         "<div class=\"batch-head\"><div><h1>Specific Query details</h1>"
-        "<p>Read-only deterministic facts for one analyzed query.</p></div></div>"
+        "<p>Deterministic facts for one analyzed query.</p></div></div>"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
-        f"{render_score_reason_explanations(view)}"
-        f"{render_runtime_signals(view)}"
-        f"{render_metadata_facts_section(case, metadata_facts, view=view.metadata)}"
-        f"{render_technical_details(view)}"
+        f"{render_analysis_details(case, metadata_facts, view=view)}"
+        f"{render_batch_case_report_action('specific-query', view.report_action, action_url=report_url, open_url=report_url, report_enabled=view.score_severity != 'clean', trusted_report_html=trusted_report_html)}"
         "</section>"
     )
+
+
+def specific_query_report_href(query_id: Any) -> str:
+    if not isinstance(query_id, str) or not query_id.strip():
+        return ""
+    return f"/query/details/{quote(query_id.strip(), safe='')}/report"

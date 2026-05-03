@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -67,6 +68,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--keep-alive",
         default="0",
         help="Ollama keep_alive value. Default: 0.",
+    )
+    parser.add_argument(
+        "--report-validation-mode",
+        choices=("strict", "relaxed", "off"),
+        default=os.getenv("QD_REPORT_VALIDATION_MODE", "strict"),
+        help=(
+            "Validation mode passed to query_doctor_report.py. strict enforces the full report contract; "
+            "relaxed keeps safety/fact checks but ignores shape; off skips validation. Default: %(default)s"
+        ),
     )
     parser.add_argument(
         "--stop-other-models",
@@ -238,6 +248,8 @@ def main(argv: list[str] | None = None) -> int:
         args.out,
         "--keep-alive",
         args.keep_alive,
+        "--validation-mode",
+        args.report_validation_mode,
     ]
 
     if args.stop_other_models:
