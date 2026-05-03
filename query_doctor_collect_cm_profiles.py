@@ -1372,6 +1372,26 @@ def fetch_cm_profile_text(
         raise CMHttpError(message) from exc
 
 
+def fetch_cm_query_details_summary(
+    client: CMHttpClient,
+    filters: CMQueryFilters,
+    query_id: str,
+) -> CMQuerySummary:
+    path, _ = build_cm_profile_text_request(filters, query_id)
+    try:
+        raw = client.get_json(path, params=None)
+        return parse_cm_query_details_summary(raw, query_id)
+    except CMHttpError as exc:
+        config = getattr(client, "config", None)
+        if isinstance(config, CMHttpConfig):
+            message = sanitize_http_error_message(exc, config)
+        else:
+            message = sanitize_adapter_error_message(exc)
+        raise CMHttpError(message) from exc
+    except CMAdapterError as exc:
+        raise CMAdapterError(sanitize_adapter_error_message(exc)) from exc
+
+
 def enforce_profile_text_size(profile_text: str, *, max_profile_bytes: int) -> None:
     if max_profile_bytes <= 0:
         raise CMAdapterError("Maximum profile bytes must be a positive integer.")
@@ -1421,6 +1441,22 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
             )
         ),
     )
+
+
+def parse_cm_query_details_summary(raw: dict[str, object], query_id: str) -> CMQuerySummary:
+    if not isinstance(raw, dict):
+        raise CMAdapterError("CM query details item must be an object.")
+
+    details_query_id = normalize_optional_string(
+        first_present(raw, ("queryId", "query_id", "id"))
+    ) or query_id
+    if details_query_id != query_id:
+        raise CMAdapterError("CM query details query id did not match the requested query id.")
+
+    summary = parse_cm_query_summary({**raw, "queryId": details_query_id})
+    if summary.query_id != query_id:
+        raise CMAdapterError("CM query details query id did not match the requested query id.")
+    return summary
 
 
 def parse_cm_query_summary_page(raw: dict[str, object]) -> CMQueryPage:
@@ -2370,12 +2406,6 @@ def run_cm_single_query_collection(
 ) -> int:
     try:
         filters = build_query_filters(config)
-        profile_text = fetch_cm_profile_text(
-            client,
-            filters,
-            config.query_id or "",
-            max_profile_bytes=config.max_profile_bytes,
-        )
         summary = CMQuerySummary(query_id=config.query_id or "")
         warnings = [
             "collected by Query Doctor CM collector",
@@ -2384,6 +2414,26 @@ def run_cm_single_query_collection(
             "CM API endpoint family: v32 Impala query details",
             "analyzer/report were not run automatically",
         ]
+        try:
+            summary = fetch_cm_query_details_summary(
+                client,
+                filters,
+                config.query_id or "",
+            )
+            warnings.append("CM query details metadata collected")
+        except AttributeError:
+            warnings.append("CM query details metadata unavailable: JSON details endpoint is not supported.")
+        except CMClientError as exc:
+            warnings.append(
+                "CM query details metadata unavailable: "
+                f"{sanitize_adapter_error_message(exc, secrets=secrets)}"
+            )
+        profile_text = fetch_cm_profile_text(
+            client,
+            filters,
+            config.query_id or "",
+            max_profile_bytes=config.max_profile_bytes,
+        )
         case_dir = write_collected_case(
             config.out,
             summary,

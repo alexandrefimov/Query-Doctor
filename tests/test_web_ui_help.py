@@ -32,14 +32,29 @@ def test_web_help_page_renders_curated_static_help():
     assert "Specific Query" in body
     assert "Running Queries" in body
     assert "Query Optimizer" in body
+    assert "Specific Query analysis" in body
+    assert "LLM Report" in body
+    assert "Query LLM optimizer" in body
+    assert "Analysis details" in body
     assert "Метаданные" in body
     assert "Проверенные отчеты" in body
     assert "FAQ" in body
     assert "Web scan не запускает LLM-отчеты автоматически." in body
+    assert "Сейчас это отдельная заготовка workflow" not in body
+    assert "Metadata top cases" not in body
+    assert "Queries to fetch metadata for" not in body
+    assert "Main reason" not in body
+    assert "Evidence count" not in body
+    assert "Bad queries" in body
+    assert "Suspicious queries" in body
+    assert "Good queries" in body
+    assert "Only queries with spills" in body
+    assert "Query ID, Score, Duration, STATS, META и Summary" in body
     assert "не выполняет вставленный SQL" in body
     assert "не возвращает вставленный SQL обратно в браузер после submit" in body
     assert "не запускает LLM-отчеты автоматически" in body
     assert "Финальный отчет валидируется перед показом" in body
+    assert "partial output скрывается" in body
     assert "Metadata collection явная, ограниченная, read-only и allowlisted." in body
     assert "SHOW CREATE TABLE" in body
     assert "SHOW TABLE STATS" in body

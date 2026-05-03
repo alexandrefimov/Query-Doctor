@@ -25,47 +25,59 @@ def render_help_content() -> str:
 
 <h2>Быстрый старт</h2>
 <ul>
-<li>Начните с <strong>Finished Queries</strong>, если хотите найти подозрительные завершенные запросы в кластере.</li>
-<li>Используйте <strong>Specific Query</strong>, если уже знаете конкретный Query ID.</li>
-<li>Используйте <strong>Running Queries</strong>, если хотите анализировать текущие выполняющиеся запросы. Сейчас это отдельная заготовка workflow.</li>
-<li>Используйте <strong>Query Optimizer</strong>, если автору запроса нужны подсказки по конкретному SQL.</li>
-<li>Report generation запускается явно и только для выбранного кейса.</li>
+<li>Начните с <strong>Finished Queries</strong>, если хотите найти подозрительные завершенные запросы в выбранном часовом окне.</li>
+<li>Используйте <strong>Running Queries</strong>, если нужно проверить запросы, которые выполняются прямо сейчас.</li>
+<li>Используйте <strong>Specific Query</strong>, если уже знаете конкретный Query ID и хотите разобрать только его.</li>
+<li>Используйте <strong>Query Optimizer</strong>, если автору запроса нужна безопасная проверка вставленного SELECT/WITH до runtime-профиля.</li>
+<li><strong>LLM Report</strong> и <strong>Query LLM optimizer</strong> запускаются только вручную из details выбранного запроса.</li>
 </ul>
 
 <details open>
 <summary>Finished Queries</summary>
-<p>Лучший старт для администратора. Finished Queries сначала читает query summaries из Cloudera Manager, затем собирает ограниченное число выбранных профилей завершенных запросов, ранжирует кейсы детерминированно и собирает metadata только для top cases, если это включено. Web scan не запускает LLM-отчеты автоматически.</p>
+<p>Основной workflow для администратора. Finished Queries читает query summaries из Cloudera Manager, применяет фильтры, собирает ограниченные профили завершенных запросов, анализирует их детерминированно и показывает ranked table. Web scan не запускает LLM-отчеты автоматически.</p>
 <ul>
 <li><strong>Scan date</strong> и <strong>Scan Hour</strong> задают один час Cloudera Manager summaries за сегодня или предыдущие два дня.</li>
-<li>Finished Queries анализирует все подходящие query profiles из выбранного часового окна, оставаясь под внутренним safety cap.</li>
-<li><strong>Metadata top cases</strong> ограничивает, сколько top-ranked cases получат metadata enrichment.</li>
-<li><strong>Min duration</strong> отсекает короткие запросы; пустое значение означает отсутствие этого фильтра.</li>
-<li><strong>Parallelism</strong> задает параллелизм CM profile downloads и local analysis, оставаясь под safety caps.</li>
-<li><strong>Queries to fetch metadata for</strong> управляет metadata enrichment: 0 отключает metadata collection, положительное значение включает bounded metadata для top-ranked queries.</li>
+<li><strong>Minimum duration</strong>, <strong>Username</strong> и <strong>Resource pool</strong> сужают набор summaries до запуска анализа.</li>
+<li><strong>Parallelism</strong> управляет параллельной загрузкой профилей и локальным анализом. <strong>Metadata parallelism</strong> отдельно ограничивает read-only metadata collection.</li>
+<li>Если matching analyzable summaries больше внутреннего лимита, scan останавливается и просит сузить поиск.</li>
+<li>Результаты группируются как <strong>Bad queries</strong>, <strong>Suspicious queries</strong> и <strong>Good queries</strong>.</li>
+<li><strong>Only queries with spills</strong> — display-фильтр уже полученных результатов; он не меняет параметры запуска scan.</li>
 </ul>
 </details>
 
 <details open>
 <summary>Как читать результаты</summary>
 <ul>
-<li><strong>Rank</strong> — это приоритет для проверки, а не финальный root-cause verdict.</li>
-<li><strong>Main reason</strong> — candidate signal, который объясняет, почему кейс поднялся выше.</li>
-<li><strong>Evidence count</strong> показывает, сколько deterministic observations поддерживают ranking.</li>
-<li><strong>Metadata status</strong> показывает, доступны ли table metadata: available, partial, skipped или failed.</li>
-<li>Degraded metadata не отменяет profile-based findings, но metadata-based advice может быть ограничен.</li>
-<li>Перед генерацией отчета откройте case detail и проверьте observed, not observed и unknown signals.</li>
+<li><strong>Rank</strong> в Finished Queries — порядок проверки внутри текущей группы; это не root-cause verdict.</li>
+<li><strong>Query ID</strong> открывает details по клику на строку. Из Specific Query details открывается в новой вкладке.</li>
+<li><strong>Score</strong> — deterministic priority score из analyzer facts.</li>
+<li><strong>Duration</strong> показывает длительность из Cloudera Manager summary, если она доступна.</li>
+<li><strong>STATS</strong> показывает доступность table stats: ✓ available, × missing/unknown/not_available, − not checked/not applicable.</li>
+<li><strong>META</strong> показывает статус metadata collection.</li>
+<li><strong>Summary</strong> коротко объясняет главные deterministic signals без raw evidence.</li>
 </ul>
 </details>
 
 <details>
+<summary>Running Queries</summary>
+<p>Running Queries устроен как Finished Queries, но ищет только запросы, которые выполняются в момент scan. У него нет фильтров Scan date и Scan Hour; остальные фильтры и analysis settings остаются теми же. Результаты отображаются той же таблицей и открывают details выбранного запроса.</p>
+</details>
+
+<details>
 <summary>Specific Query</summary>
-<p>Подходит, если уже известен конкретный Query ID. Workflow собирает и анализирует один явно выбранный кейс. Report generation остается явным действием пользователя. Browser UI не показывает SQL text, profile text или локальные пути.</p>
+<p>Подходит, если уже известен конкретный Query ID. На странице есть только поле Query ID и кнопка Run. Запуск собирает и анализирует один запрос без автоматического LLM. После анализа Query ID очищается, а результат добавляется в таблицу <strong>Specific Query analysis</strong> с колонками Query ID, Score, Duration, STATS, META и Summary.</p>
+</details>
+
+<details>
+<summary>Details, LLM Report и Query LLM optimizer</summary>
+<p>Details показывает безопасную сводку по одному запросу. <strong>Analysis details</strong> свернут по умолчанию и содержит deterministic runtime, metadata и technical signals. <strong>LLM Report</strong> доступен для запросов не из Good group и рендерится прямо на странице только после validation. <strong>Query LLM optimizer</strong> — отдельное ручное действие, которое генерирует validated draft для server-owned query source; draft не выполняется и должен быть reviewed перед использованием.</p>
+<p>Если LLM output или optimizer draft не проходит deterministic validation, partial output скрывается и показывается только безопасный статус failure.</p>
 </details>
 
 <details>
 <summary>Query Optimizer</summary>
-<p>Подходит автору SQL-запроса, которому нужны подсказки по оптимизации. Query Optimizer принимает только один безопасный SELECT/WITH, валидирует его до table extraction и metadata collection, не выполняет вставленный SQL и не возвращает вставленный SQL обратно в браузер после submit.</p>
-<p>Он использует deterministic extracted tables, metadata status, findings и limitations. Это не LLM chat и не автоматический SQL rewrite engine. Unsupported SQL отклоняется безопасно и без echo исходного текста.</p>
+<p>Query Optimizer — отдельная страница для pasted SQL review до runtime-профиля. Она принимает только один безопасный SELECT/WITH, валидирует его до table extraction и metadata collection, не выполняет вставленный SQL и не возвращает вставленный SQL обратно в браузер после submit.</p>
+<p>Он показывает deterministic extracted tables, metadata status, findings и limitations. Это не LLM chat и не автоматический rewrite engine. Unsupported SQL отклоняется безопасно и без echo исходного текста.</p>
 </details>
 
 <details>
@@ -82,6 +94,7 @@ def render_help_content() -> str:
 <details>
 <summary>Проверенные отчеты</summary>
 <p>Analyzer facts — источник истины. LLM отвечает только за формулировки. Raw LLM output не считается доверенным. Финальный отчет валидируется перед показом, а trusted report отклоняет unsupported claims и SQL-like raw output. Если validation fails, output нельзя считать trusted report.</p>
+<p>В LLM Report по умолчанию видны краткий вывод и практические рекомендации. Подробный разбор, админские проверки и факты анализатора остаются частью trusted report, но не подменяют deterministic analyzer facts.</p>
 </details>
 
 <details>

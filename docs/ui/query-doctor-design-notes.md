@@ -6,7 +6,9 @@ Query Doctor is a local-first diagnostic tool for Apache Impala query analysis. 
 
 It should not feel like a SaaS landing page, a playful AI demo, or a monitoring dashboard. The product value is trust, evidence, traceability, and fast operational scanning.
 
-Current implementation note: the localhost UI now centers Recent query scan, followed by single-query diagnosis and SQL optimization review.
+Current implementation note: the localhost UI now centers Finished Queries,
+followed by Running Queries, Specific Query, details-page LLM actions and
+pasted-SQL Query Optimizer.
 
 Core principles:
 
@@ -181,59 +183,71 @@ Badge color semantics:
 - Green: OK, PASS, available, supported
 - Amber: WARN, partial, unknown, needs attention
 - Red: FAIL, validation failed
-- Gray: admin/user mode, not collected, not observed, neutral state
+- Gray: not collected, not observed, neutral state
 - Blue/accent: optional informational state
 
 Avoid large, colorful status pills.
 
 ## Target page map
 
-### Recent Query Scan
+### Finished Queries
 
 This is the primary scan page.
 
 Purpose: answer `Что сейчас в кластере подозрительное?`
 
-Target workflow:
+Current workflow:
 
 ```text
-discover recent CM Impala queries
-  -> filter by duration / user / pool / statement type
+discover completed CM Impala query summaries for one selected hour
+  -> filter by duration / user / pool
   -> collect selected profiles explicitly by query id
   -> run analyzer and optional metadata for many cases
   -> rank suspicious cases from analysis_facts.md
-  -> run full LLM reports only for top ranked cases
+  -> show Bad / Suspicious / Good query groups
+  -> run LLM Report or Query LLM optimizer only from details
 ```
 
 Primary UI elements:
 
-- bounded discovery controls
-- duration, user, pool and statement-type filters
-- metadata mode and max-table controls
-- analyzer-only first pass by default
-- score table with reasons
-- collection/analysis/metadata status columns
-- links to case artifacts and validated reports
-- explicit top-reports action for the worst cases
+- Scan date and Scan Hour controls
+- duration, user and pool filters
+- Parallelism and Metadata parallelism controls
+- result groups for Bad, Suspicious and Good queries
+- display-only spill filter over already analyzed results
+- table columns: Rank, Query ID, Score, Duration, STATS, META, Summary
+- row click opens details in a new tab
 
 Do not imply that LLM runs for all selected queries.
 
-### Single Query Analysis
+### Running Queries
+
+Purpose: answer `Что выполняется прямо сейчас?`
+
+Running Queries mirrors Finished Queries result and details behavior, but has no
+Scan date or Scan Hour controls and collects only currently running queries.
+
+### Specific Query
 
 Purpose: answer `Разбери вот этот конкретный запрос.`
 
-This page starts from one Impala Query ID or a server-owned existing case selected
-by the app. It must not expose or accept arbitrary local case paths in the
-browser. It can collect CM profile/details, run analyzer, optionally collect
-metadata for referenced tables, generate a report and render it only after
-validation passes.
+This page has only Query ID and Run. It collects and analyzes one query without
+automatic LLM, clears the input after submit and appends each result to the
+Specific Query analysis table. Row click opens details in a new tab.
 
-### SQL Optimization Review
+### Details
+
+Details pages show safe deterministic case overview, Analysis details collapsed
+by default, explicit LLM Report and explicit Query LLM optimizer. Query LLM
+optimizer drafts are rendered only after deterministic validation and are never
+executed by Query Doctor.
+
+### Query Optimizer
 
 Purpose: review user-submitted SQL before there is a runtime profile.
 
-This is not profile diagnosis. Prefer names like `SQL Review`,
-`SQL Optimization Review` or `Query Rewrite Review`.
+This is not profile diagnosis and not the details-page Query LLM optimizer. It
+is the pasted-SQL deterministic review page.
 
 Allowed language:
 
@@ -255,7 +269,11 @@ pressure, actual admission wait, actual runtime bottleneck, actual duration
 cause, profile-only root cause claims, required `COMPUTE STATS`, and stale stats
 claims unless deterministically supported.
 
-## Current Single Query Home Page Structure
+## Historical Single Query Home Page Notes
+
+The notes below describe an earlier single-query-first prototype and are kept as
+design history. Current implementation is Specific Query with only Query ID and
+Run; it does not show mode selectors and does not auto-generate LLM reports.
 
 For the single-query home page, prioritize the normal Query ID workflow:
 
@@ -361,11 +379,15 @@ For failed validation / partial output:
 
 Under query/case, show source/type hint:
 
-- `CM query · admin report`
-- `Saved case · user report`
+- `CM query · trusted report`
+- `Saved case · trusted report`
 - `Offline case · partial output`
 
-## Report page structure
+## Historical Report Page Structure
+
+The notes below predate the current details page with inline LLM Report and
+Query LLM optimizer. Treat them as legacy layout ideas, not current product
+requirements.
 
 The report page is the main product moment. It should help an engineer decide what to inspect next.
 
@@ -391,22 +413,21 @@ Include:
 - Status strip:
   - Diagnosis: WARN/OK/FAIL/PARTIAL
   - Validation: PASS/FAIL
-  - Mode: user/admin
+  - Report: trusted/untrusted
   - Rendered after validation
 
 ### Main sections
 
 Recommended order:
 
-1. `Короткий вывод`
-2. `Immediate next checks`
+1. `Краткий вывод`
+2. `Практические рекомендации`
 3. `Подробный разбор`
-4. `Query and statistics checks`
-5. `Limitations`
+4. `Админские проверки`
+5. `Факты анализатора` appendix
 6. `Validation details`
-7. `Факты анализатора` appendix
 
-### Короткий вывод
+### Краткий вывод
 
 Purpose: give the core diagnosis in one compact card.
 
@@ -419,11 +440,11 @@ Should include:
 
 Avoid overclaiming root cause.
 
-### Immediate next checks
+### Практические рекомендации
 
 This is critical for operational usefulness.
 
-Recommended format: 3 compact next-check cards.
+Recommended format: 3 compact action cards.
 
 Examples:
 
@@ -431,7 +452,7 @@ Examples:
 2. Compare backend timings
 3. Verify stats and estimates
 
-Each card should say exactly what to inspect next.
+Each card should say the practical action supported by deterministic facts.
 
 ### Findings / Подробный разбор
 
@@ -457,9 +478,9 @@ Evidence states:
 
 The UI should make `unknown` look like a legitimate diagnostic state.
 
-### Query and statistics checks
+### Админские проверки
 
-Prefer this title over `SQL recommendations`.
+Prefer this title for platform/admin-oriented checks.
 
 Reason: the safest advice is often not a rewrite but:
 
@@ -507,7 +528,7 @@ Label clearly:
 - `Generated from analysis_facts.md`
 - `This section is not LLM-written narrative.`
 
-Can be collapsible. For admin reports, open by default is acceptable.
+Can be visually separated from narrative sections.
 
 Example facts:
 
@@ -644,13 +665,12 @@ For home page tests:
 
 For report page tests:
 
-- Report header shows query id, safe case status, mode and validation state.
+- Report header shows query id, safe case status and validation state.
 - Page does not render unless report validation passed.
-- `Короткий вывод` exists.
-- `Immediate next checks` exists.
+- `Краткий вывод` exists.
+- `Практические рекомендации` exists.
 - Findings include Evidence / Why it matters / Next check.
-- `Query and statistics checks` exists.
-- `Limitations` exists.
+- `Админские проверки` exists.
 - `Validation details` exists.
 - `Факты анализатора` is visibly deterministic appendix.
 - Sidebar shows report metadata, query context, evidence completeness, artifacts, and pipeline.

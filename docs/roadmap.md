@@ -15,9 +15,11 @@ workflows already work.
 
 ## Current workflows
 
-- Recent scan from Cloudera Manager query summaries.
-- Explicit Query ID diagnosis.
-- Query Optimizer for pasted SQL.
+- Finished Queries from Cloudera Manager summaries for completed-query triage.
+- Running Queries for currently running query triage.
+- Specific Query deterministic analysis for one known Query ID.
+- Details pages with explicit LLM Report and Query LLM optimizer actions.
+- Query Optimizer for pasted SQL review.
 
 ## Safety baseline
 
@@ -28,43 +30,51 @@ workflows already work.
   secrets, environment secret values and model/Ollama internals must not be
   exposed in browser-visible UI or trusted reports.
 - Metadata collection is explicit, bounded, read-only, redacted and allowlisted.
-- Web batch must not auto-run LLM reports.
+- Web scans must not auto-run LLM reports or optimizer drafts.
 - Trusted reports reject SQL-like output, raw SQL snippets, fenced SQL blocks
   and raw SHOW command snippets.
+- Query LLM optimizer drafts are trusted only after deterministic SQL validation
+  preserves read-only scope and result shape.
 
-## Product modes
+## Product surfaces
 
-### Admin mode
+### Diagnostic scan and details
 
-Admin mode is for operational diagnosis. It should answer:
+Finished Queries, Running Queries and Specific Query are for operational
+diagnosis. They should answer:
 
 - what looks wrong
-- where to look
-- what to check next
+- which query should be reviewed first
+- what practical actions are supported by deterministic facts
 - which signals are `observed`, `not_observed` or `unknown`
 
-Admin mode must not turn incomplete evidence into a definitive root cause.
+Diagnostic pages must not turn incomplete evidence into a definitive root cause.
 
-### User / Data Engineer mode
+### Pasted-SQL Query Optimizer
 
-User mode is for SQL owners and data engineers. It should help them:
+The Query Optimizer page is for SQL owners and data engineers before a runtime
+profile exists. It should help them:
 
-- optimize SQL
+- review candidate SQL risks
 - use deterministic extracted tables and metadata facts
-- review candidate optimizations and rewrites
+- inspect limitations without exposing submitted SQL after submit
 - avoid unsupported root-cause claims
 
-User mode should explain limitations clearly when profile, metadata or runtime
-evidence is missing.
+It does not execute SQL and must not claim runtime spill, skew, wait, memory
+pressure or root cause.
+
+### Details-page Query LLM optimizer
+
+Query LLM optimizer is an explicit action for analyzed server-owned cases. It can
+produce a validated draft, but validation rejects unsafe SQL and result-shape
+changes. It is not the pasted-SQL review page.
 
 ## Planned near-term features
 
-- Query Optimizer UI clarity.
-- Recent scan progress and degraded states.
-- Results table redesign.
-- Case detail page.
-- Validated report trust block.
-- Recent scan presenter cleanup.
+- More real-case validation for Query LLM optimizer.
+- Prompt tuning so optimizer drafts are useful without changing semantics.
+- Remaining historical documentation cleanup.
+- Recent scan presenter cleanup where it improves safety/testability.
 - Gradual web server split.
 
 These are incremental UI and architecture improvements. They should preserve

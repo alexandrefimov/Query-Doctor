@@ -16,7 +16,7 @@ Cloudera Manager profile / profile_digest.md
   -> query_doctor_report.py
   -> sanitizer and fail-closed validator
   -> deterministic analyzer facts appendix
-  -> admin/user reports
+  -> trusted LLM report
   -> local UI
 ```
 
@@ -43,8 +43,10 @@ Report writer:
 - Использует LLM для narrative wording, не для fact discovery.
 - Не должен делать inference из raw profile text, SQL, local config или external
   context.
-- Генерирует admin/user reports для разных аудиторий, но с одной fact boundary.
-- Требует LLM narrative sections `## Короткий вывод` и `## Подробный разбор`.
+- Генерирует trusted LLM report с одной fact boundary.
+- Требует user-facing narrative sections `## Краткий вывод`,
+  `## Практические рекомендации`, `## Подробный разбор` и
+  `## Админские проверки`.
 - Детерминированно добавляет `## Факты анализатора` из `analysis_facts.md`; LLM
   не должен писать эту appendix-секцию.
 - Сейчас намеренно исключает `## Table Metadata Context` из prompt LLM.
@@ -62,11 +64,26 @@ Sanitizer и validator:
 - При validation failure пишут только sanitized/normalized `.partial` и
   сохраняют существующий final report.
 
+Optimizer draft generator:
+- `query_doctor_optimize_query.py` читает только server-owned analyzed case
+  inputs.
+- Использует LLM для wording/SQL draft generation, но Python validator owns
+  trust.
+- Не выполняет SQL.
+- Пишет validated draft только после read-only SQL validation и result-shape
+  checks: физические таблицы, filter scope, projection, DISTINCT, top-level
+  GROUP/ORDER/set operations, CTE names и top-level join shape.
+- Partial drafts untrusted and hidden from browser-visible details.
+
 Local UI:
-- Показывает локальные workflows: Recent query scan, one explicit Query ID
-  analysis and Query Optimizer.
-- Recent scan discovers CM summaries first, collects bounded selected profiles,
-  ranks deterministically and leaves report generation explicit per case.
+- Показывает локальные workflows: Finished Queries, Running Queries, Specific
+  Query, details pages and Query Optimizer.
+- Finished Queries discovers CM summaries first, collects bounded selected
+  profiles, ranks deterministically and leaves report/optimizer generation
+  explicit per case.
+- Running Queries uses the same result shape for currently running queries.
+- Specific Query analyzes one known Query ID without automatic LLM and appends
+  results to its table.
 - Query Optimizer parses one safe SELECT/WITH statement locally, does not execute
   pasted SQL and does not render it back after submit.
 - Не является источником фактов.
