@@ -42,6 +42,7 @@ from query_doctor_web_ui import (
     render_report_markdown_html,
     render_result,
 )
+from query_doctor_web_ui_help import render_help_page
 from query_doctor_web_ui_optimizer import render_optimizer_page
 
 
@@ -1961,6 +1962,9 @@ def make_handler(
                 return
             if parsed.path in {"/optimizer", "/query-optimizer"}:
                 self.write_html(200, render_optimizer_page(settings))
+                return
+            if parsed.path == "/help":
+                self.write_html(200, render_help_page(settings))
                 return
             if parsed.path == "/readme":
                 self.write_html(200, render_readme_page(settings))

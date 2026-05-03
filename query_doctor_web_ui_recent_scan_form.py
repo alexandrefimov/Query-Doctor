@@ -86,11 +86,7 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
     full_checked = " checked" if analysis_depth == "full" else ""
     fast_checked = " checked" if analysis_depth == "fast" else ""
     full_disabled = "" if metadata_configured else " disabled"
-    full_label = (
-        "Full scan: include table metadata"
-        if metadata_configured
-        else "Full scan: include table metadata (unavailable: metadata not configured)"
-    )
+    full_label = "Full scan" if metadata_configured else "Full scan (metadata unavailable)"
     metadata_note = "" if metadata_configured else "Metadata collection is not configured for this web session. Fast scan still works."
     metadata_note_html = f"<div class=\"batch-note\">{html.escape(metadata_note)}</div>" if metadata_note else ""
     order_options = "".join(
@@ -103,29 +99,29 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<section class=\"panel batch-run-panel\" aria-label=\"Run recent query scan\">"
         "<div class=\"section-heading\"><div>"
         "<h1 class=\"section-title\">Recent query scan</h1>"
-        "<div class=\"section-kicker\">Collect recent Impala query profiles, rank suspicious cases, "
-        "and prepare the most relevant ones for deeper analysis.<br>"
-        "LLM report generation stays disabled for web batch runs.</div>"
+        "<div class=\"section-kicker\">Scan recent Impala queries from Cloudera Manager summaries.</div>"
         "</div></div>"
         "<form id=\"batch-form\" class=\"batch-form\" method=\"post\" action=\"/batch/run\">"
         "<div class=\"batch-checkbox-row\" role=\"group\" aria-label=\"Analysis depth\">"
         f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"full\"{full_checked}{full_disabled}> "
         f"{html.escape(full_label)}</label>"
         f"<label><input type=\"radio\" name=\"analysis_depth\" value=\"fast\"{fast_checked}> "
-        "Fast scan: profiles only</label>"
+        "Fast scan</label>"
         "</div>"
         "<div class=\"mode-help\">"
-        "<span>Full scan adds bounded read-only table metadata for top ranked cases after profile analysis.</span>"
-        "<span>Fast scan skips metadata enrichment; profiles are still collected up to the profile limit.</span>"
+        "<span>Full: bounded metadata for top cases · Fast: profiles only</span>"
+        "<details class=\"info-popover info-popover--inline\"><summary aria-label=\"Scan mode help\">i</summary>"
+        "<div class=\"info-body\">Full requires metadata settings and enriches only top-ranked cases. "
+        "Fast keeps the run profile-focused when metadata is unavailable or unnecessary.</div></details>"
         "</div>"
         f"{metadata_note_html}"
         "<div class=\"batch-primary-row\">"
         f"{render_recent_window_select(value('recent_window_minutes'))}"
         f"<button class=\"run-button\" type=\"submit\"{button_disabled}>{button_label}</button>"
         "</div>"
-        "<div class=\"batch-note\">Recent scan first inspects CM query summaries for the selected window, "
-        "then collects bounded profiles for matching queries. Metadata is collected only for top ranked cases, "
-        "and LLM reports are never generated automatically.</div>"
+        "<div class=\"scope-line\" aria-label=\"Recent scan collection scope\">"
+        "<strong>Scope:</strong> CM summaries → bounded profiles → ranked cases → top-case metadata · no auto LLM"
+        "</div>"
         "<details class=\"batch-advanced\">"
         "<summary>Advanced search parameters</summary>"
         "<div class=\"batch-advanced-body\">"
@@ -134,8 +130,9 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         f"{render_batch_number_field('triage_profile_limit', 'Profile analysis limit', value('triage_profile_limit'), required=False, help_text='Max matching queries whose profiles are collected and analyzed.')}"
         f"{render_batch_number_field('metadata_top_limit', 'Metadata top cases', value('metadata_top_limit'), required=False, help_text='Max ranked cases enriched with table metadata after profile analysis.')}"
         f"{render_batch_number_field('min_duration_sec', 'Min duration sec', value('min_duration_sec'), step='0.001', required=False, help_text='Empty means no duration filter.')}"
-        "<div class=\"field\"><label for=\"order\">Order</label>"
-        f"<select class=\"input\" id=\"order\" name=\"order\">{order_options}</select><div class=\"helper\">Controls summary ordering before profile collection.</div></div>"
+        "<div class=\"field\">"
+        f"{render_label_with_info('order', 'Order', 'Controls summary ordering before profile collection.')}"
+        f"<select class=\"input\" id=\"order\" name=\"order\">{order_options}</select></div>"
         f"{render_batch_number_field('jobs', 'Jobs', value('jobs'), help_text='Parallel profile analysis jobs for this local run.')}"
         f"{render_batch_text_field('user', 'User filter', value('user'), help_text='Optional exact CM user filter; empty means all users.')}"
         f"{render_batch_text_field('pool', 'Pool filter', value('pool'), help_text='Optional pool filter; empty means all pools.')}"
@@ -143,6 +140,8 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<div class=\"batch-checkbox-row\">"
         f"<label><input type=\"checkbox\" name=\"include_failed\" value=\"on\"{checked('include_failed')}> Include failed</label>"
         f"<label><input type=\"checkbox\" name=\"include_running\" value=\"on\"{checked('include_running')}> Include running</label>"
+        "<details class=\"info-popover info-popover--inline\"><summary aria-label=\"Status filter help\">i</summary>"
+        "<div class=\"info-body\">Include failed or still-running CM query summaries in the candidate set.</div></details>"
         "</div>"
         "</div>"
         "</details>"
@@ -170,9 +169,10 @@ def render_recent_window_select(selected_value: str) -> str:
         for value, label in options
     )
     return (
-        "<div class=\"field\"><label for=\"recent_window_minutes\">Search depth</label>"
+        "<div class=\"field\">"
+        f"{render_label_with_info('recent_window_minutes', 'Search depth', 'How many recent CM query summaries to inspect before filtering.')}"
         f"<select class=\"input\" id=\"recent_window_minutes\" name=\"recent_window_minutes\">{rendered_options}</select>"
-        "<div class=\"helper\">How many recent CM query summaries to inspect before filtering.</div></div>"
+        "</div>"
     )
 
 
@@ -250,19 +250,32 @@ def render_batch_number_field(
     help_text: str = "",
 ) -> str:
     required_attr = " required" if required else ""
-    helper = f"<div class=\"helper\">{html.escape(help_text)}</div>" if help_text else ""
     return (
-        f"<div class=\"field\"><label for=\"{html.escape(name, quote=True)}\">{html.escape(label)}</label>"
+        f"<div class=\"field\">{render_label_with_info(name, label, help_text)}"
         f"<input class=\"input\" id=\"{html.escape(name, quote=True)}\" name=\"{html.escape(name, quote=True)}\" "
         f"type=\"number\" min=\"0\" step=\"{html.escape(step, quote=True)}\" value=\"{value}\"{required_attr}>"
-        f"{helper}</div>"
+        "</div>"
     )
 
 
 def render_batch_text_field(name: str, label: str, value: str, *, help_text: str = "") -> str:
-    helper = f"<div class=\"helper\">{html.escape(help_text)}</div>" if help_text else ""
     return (
-        f"<div class=\"field\"><label for=\"{html.escape(name, quote=True)}\">{html.escape(label)}</label>"
+        f"<div class=\"field\">{render_label_with_info(name, label, help_text)}"
         f"<input class=\"input\" id=\"{html.escape(name, quote=True)}\" name=\"{html.escape(name, quote=True)}\" "
-        f"type=\"text\" value=\"{value}\" autocomplete=\"off\">{helper}</div>"
+        f"type=\"text\" value=\"{value}\" autocomplete=\"off\"></div>"
+    )
+
+
+def render_label_with_info(field_id: str, label: str, help_text: str = "") -> str:
+    safe_id = html.escape(field_id, quote=True)
+    safe_label = html.escape(label)
+    if not help_text:
+        return f"<label for=\"{safe_id}\">{safe_label}</label>"
+    return (
+        "<div class=\"label-row\">"
+        f"<label for=\"{safe_id}\">{safe_label}</label>"
+        "<details class=\"info-popover\">"
+        f"<summary aria-label=\"{safe_label} help\">i</summary>"
+        f"<div class=\"info-body\">{html.escape(help_text)}</div>"
+        "</details></div>"
     )

@@ -28,8 +28,10 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "Run diagnosis" in body
     assert '<label for="query_id">Query ID</label>' in body
     assert "Query ID or case path" not in body
-    assert "Run local diagnosis for an Impala query identifier." in body
-    assert "Saved case paths are supported by the CLI pipeline for now." in body
+    assert "Use this workflow when you already know the exact Impala Query ID." in body
+    assert "Saved case paths are supported by the CLI pipeline for now." not in body
+    assert "case path" not in body
+    assert '<details class="info-popover"><summary aria-label="Query ID help">i</summary>' in body
     assert "CM: unknown/not checked" in body
     assert "Kerberos: unknown/not checked" in body
     assert "Metadata collector: CLI only" in body
@@ -56,9 +58,10 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "Local-first" in body
     assert "Safe by default" in body
     assert "Scope:" in body
-    assert "current query only · referenced tables only · read-only metadata" in body
-    assert "The latest validated diagnosis appears here after a run." in body
-    assert "This MVP UI does not expose a separate reports list yet." in body
+    assert "validated report · analyzer facts · local-first · safe by default" in body
+    assert "How Query ID diagnosis works" in body
+    assert "Validated reports from this session appear after a run." in body
+    assert "This MVP UI does not expose a separate reports list yet." not in body
     assert "Checking Query ID" in body
     assert "This usually takes a few seconds to a couple of minutes." in body
 
@@ -81,6 +84,7 @@ def test_web_home_page_links_brand_and_readme_navigation():
 
     assert '<a class="brand" href="/" aria-label="Query Doctor home">' in body
     assert '<a class="nav-link nav-link--active" href="/query">Query ID</a>' in body
-    assert '<a class="nav-link" href="/">Batch</a>' in body
-    assert '<a class="nav-link" href="/readme">README</a>' in body
+    assert '<a class="nav-link" href="/">Recent scan</a>' in body
+    assert '<a class="nav-link" href="/help">Справка</a>' in body
+    assert '<a class="nav-link" href="/readme">README</a>' not in body
     assert "Settings" not in body
