@@ -55,6 +55,7 @@ class RecentScanCaseRowView:
     collection_status: Any
     analysis_status: Any
     metadata_status: Any
+    table_stats_status: Any
     report_status: str
     reason_text: str
     score_value: float
@@ -174,6 +175,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         collection_status=collection_status,
         analysis_status=analysis_status,
         metadata_status=metadata_status,
+        table_stats_status=safe_display_value(case.get("table_stats_status")),
         report_status=report_status,
         reason_text=reason_text,
         score_value=numeric_value(case.get("score")),

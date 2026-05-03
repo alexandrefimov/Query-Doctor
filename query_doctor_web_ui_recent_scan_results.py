@@ -79,7 +79,7 @@ def render_batch_summary(
             else
             f"No {QUERY_GROUPS[active_group][0].lower()} were found in the configured batch summary."
         )
-        rows = f"<tr><td colspan=\"6\" class=\"empty-cell\">{html.escape(empty_text)}</td></tr>"
+        rows = f"<tr><td colspan=\"7\" class=\"empty-cell\">{html.escape(empty_text)}</td></tr>"
     scan_details = render_batch_scan_details(summary)
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
@@ -96,7 +96,7 @@ def render_batch_summary(
         f"{switcher}"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
-        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Duration</th><th>META</th><th>Summary</th>"
+        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Duration</th><th>META</th><th>STATS</th><th>Summary</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
@@ -226,6 +226,7 @@ def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowVie
         score_cell(view),
         compact_cell(view.duration_sec),
         metadata_cell(view.metadata_status),
+        stats_cell(view.table_stats_status),
         summary_cell(view),
     ]
     return f"<tr {row_attrs}>{''.join(cells)}</tr>"
@@ -278,6 +279,27 @@ def metadata_cell(status: Any) -> str:
         symbol = "?"
         class_name = "batch-status--warning"
     return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(status)}\">{symbol}</span></td>"
+
+
+def stats_cell(status: Any) -> str:
+    normalized = str(status).lower() if status is not None else "not_checked"
+    if normalized == "available":
+        symbol = "✓"
+        class_name = "batch-status--ok"
+        title = "table stats available"
+    elif normalized in {"missing", "not_available", "unknown"}:
+        symbol = "×"
+        class_name = "batch-status--failed"
+        title = f"table stats {normalized}"
+    elif normalized == "not_applicable":
+        symbol = "−"
+        class_name = "batch-status--neutral"
+        title = "table stats not applicable"
+    else:
+        symbol = "−"
+        class_name = "batch-status--neutral"
+        title = "table stats not checked"
+    return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(title)}\">{symbol}</span></td>"
 
 
 def batch_case_details_link(case: dict[str, Any] | RecentScanCaseRowView) -> SafeHtml:

@@ -124,6 +124,7 @@ class CaseResult:
     collection_status: str = "not_started"
     analysis_status: str = "not_started"
     metadata_status: str = "not_observed"
+    table_stats_status: str = "not_checked"
     referenced_table_count: int = 0
     collected_metadata_table_count: int = 0
     skipped_due_to_max_table_limit: int = 0
@@ -1383,6 +1384,7 @@ def inspect_case_outputs(case: CaseResult) -> None:
     facts_path = case.actual_case_dir / "analysis_facts.md"
     if facts_path.exists():
         facts = facts_path.read_text(encoding="utf-8", errors="replace")
+        case.table_stats_status = table_stats_status_from_facts(facts)
         case.referenced_table_count = count_referenced_tables(facts)
         case.skipped_due_to_max_table_limit = count_max_table_skips(facts)
     context_path = case.actual_case_dir / "impala_context.json"
@@ -1424,6 +1426,19 @@ def count_referenced_tables(facts: str) -> int:
 
 def count_max_table_skips(facts: str) -> int:
     return len(re.findall(r"skipped.*max", facts, flags=re.IGNORECASE))
+
+
+def table_stats_status_from_facts(facts: str) -> str:
+    values = [value.lower() for value in fact_values(facts, "table stats row-count completeness")]
+    if not values:
+        return "not_checked"
+    if any(value in {"missing", "unknown", "missing/unknown", "not_available"} for value in values):
+        return "missing"
+    if any(value in {"not_applicable", "n/a"} for value in values):
+        return "not_applicable"
+    if all(value == "available" for value in values):
+        return "available"
+    return "unknown"
 
 
 def score_case(case: CaseResult) -> None:
@@ -1683,6 +1698,7 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "collection_status": case.collection_status,
         "analysis_status": case.analysis_status,
         "metadata_status": case.metadata_status,
+        "table_stats_status": case.table_stats_status,
         "referenced_table_count": case.referenced_table_count,
         "collected_metadata_table_count": case.collected_metadata_table_count,
         "skipped_due_to_max_table_limit": case.skipped_due_to_max_table_limit,
