@@ -37,7 +37,6 @@ MAX_RECOMMENDATION_ITEMS = 5
 REPORT_TITLE_HEADING = "# Query Doctor Report"
 SHORT_SUMMARY_HEADING = "## Краткий вывод"
 RECOMMENDATIONS_HEADING = "## Практические рекомендации"
-OPTIMIZED_QUERY_HEADING = "## Оптимизированный запрос"
 DETAILED_REPORT_HEADING = "## Подробный разбор"
 ANALYZER_FACTS_HEADING = "## Факты анализатора"
 TABLE_METADATA_CONTEXT_HEADING = "## Table Metadata Context"
@@ -50,7 +49,6 @@ REQUIRED_REPORT_SECTIONS = [
     REPORT_TITLE_HEADING,
     SHORT_SUMMARY_HEADING,
     RECOMMENDATIONS_HEADING,
-    OPTIMIZED_QUERY_HEADING,
     DETAILED_REPORT_HEADING,
     EVIDENCE_SAFE_PROBLEMS_HEADING,
     EVIDENCE_HEADING,
@@ -68,7 +66,6 @@ DETAIL_HEADING_REWRITE = {
     "## Короткий вывод": SHORT_SUMMARY_HEADING,
     "### Короткий вывод": SHORT_SUMMARY_HEADING,
     "### Краткий вывод": SHORT_SUMMARY_HEADING,
-    "### Оптимизированный запрос": OPTIMIZED_QUERY_HEADING,
     "## Основные подтверждённые проблемы по профилю": EVIDENCE_SAFE_PROBLEMS_HEADING,
     "## Подтверждающие факты": EVIDENCE_HEADING,
     "## Что усиливает проблему": AMPLIFIERS_HEADING,
@@ -104,7 +101,7 @@ REPORT_INTERNAL_FINGERPRINT_RE = re.compile(
     re.IGNORECASE,
 )
 RAW_HTML_TAG_RE = re.compile(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)(?:\s+[^>]*)?>")
-ALLOWED_REPORT_HTML_TAGS = {"details", "summary"}
+ALLOWED_REPORT_HTML_TAGS: set[str] = set()
 VAGUE_RECOMMENDATION_RE = re.compile(
     r"\b("
     r"провер(?:ить|ьте|ка|ки|ять)|посмотр(?:еть|ите)|проанализ(?:ировать|ируйте)|"
@@ -1575,7 +1572,7 @@ The final markdown file is assembled by the wrapper with only:
 
 Do not write "# Query Doctor Report" yourself.
 Do not write source artifact names, facts sha256, model names, runtime details, or generation timestamps in the report.
-Do not write "## Факты анализатора"; Python appends that deterministic collapsed section after validation.
+Do not write "## Факты анализатора"; Python appends that deterministic section after validation.
 If Metadata Facts Digest is present, it is curated by Python from analysis_facts.md and may be used only as supporting evidence.
 Do not read or infer from raw SHOW output, raw DDL, impala_context.md, or impala_context.json.
 Do not claim metadata proves the root cause, do not claim stats are stale unless explicitly supported, and do not recommend COMPUTE STATS as required.
@@ -1594,12 +1591,6 @@ Do not write vague recommendations such as "проверить", "посмотр
 Do not put SHOW TABLE STATS, SHOW COLUMN STATS, per-host checks, spill/scratch checks, admission pool checks, CM metrics/logs, profile counters, or evidence packages in "Практические рекомендации"; those belong only under "Админские проверки".
 If metadata stats are missing/incomplete/unknown but Cardinality anomalies is 0, the top-level action may mention approved stats maintenance only when that action appears in the Python-owned candidate list; it must not say stats explain the query problem or optimizer estimates.
 
-## Оптимизированный запрос
-
-1-3 concise bullets. Do not write raw SQL, SQL snippets, SELECT/WITH/SHOW statements, table names, column names, or code fences.
-Describe only the safe target query shape implied by Python-owned recommendation candidates.
-If no safe rewrite target is supported, say that Query Doctor does not form an optimized SQL text for this case and use the baseline/no-shape-change candidate meaning.
-
 "Краткий вывод" requirements:
 - Use 4-6 concise bullets unless the facts are sparse; 2-6 bullets or short paragraphs are allowed, but never more than 6.
 - Combine repeated operator examples; do not list every operator in the short summary.
@@ -1610,26 +1601,15 @@ If no safe rewrite target is supported, say that Query Doctor does not form an o
 - Do not write missing/unsupported evidence caveats in this section.
 - Obey all estimate-direction, backend-skew, write-path, spill/scratch, and operator/profile-time rules below.
 
-<details>
-<summary>Подробный разбор</summary>
-
 ## Подробный разбор
 ### Основные подтверждённые проблемы по профилю
 ### Подтверждающие факты
 ### Что усиливает проблему
 ### Что НЕ подтверждается фактами
 
-</details>
-
-<details>
-<summary>Для администратора / платформенной команды</summary>
-
 ### Админские проверки
 
-</details>
-
-Collapsed section requirements:
-- Keep optional details inside the separate <details> blocks above; Python appends the third collapsed "Факты анализатора" block after validation.
+Section requirements:
 - Preserve the detailed report structure under "Подробный разбор" using the required ### subsections listed above.
 - Put absent/missing/unsupported evidence only into "Что НЕ подтверждается фактами", never into "Краткий вывод".
 - Put platform/admin checks only into "Админские проверки".
@@ -1639,7 +1619,6 @@ Collapsed section requirements:
 Python-owned slot contract:
 - Use "recommendation_candidates" as the complete allowed source for "Практические рекомендации".
 - Use "supported_summary_points" as the allowed meaning space for "Краткий вывод"; do not copy it verbatim unless it already reads naturally.
-- Use "recommendation_candidates" as the allowed meaning space for "Оптимизированный запрос"; do not write SQL text.
 - Use "evidence_groups" to organize "Подробный разбор" into readable narrative. You may explain why a supported signal matters, but do not add new facts or causes.
 - Use "unsupported_conclusions" only under "Что НЕ подтверждается фактами".
 - Use "action_card_titles", "finding_titles", "summary", "totals", and "evidence_flags" to choose what is worth mentioning.
@@ -1647,7 +1626,7 @@ Python-owned slot contract:
 
 Slot freedom levels:
 - Deterministic/canonical: "Практические рекомендации", "Что НЕ подтверждается фактами", and "Админские проверки" must stay close to Python-owned candidates/checks.
-- Controlled narrative: "Краткий вывод", "Оптимизированный запрос", and "Подробный разбор" should be human wording over supported_summary_points, recommendation_candidates, and evidence_groups.
+- Controlled narrative: "Краткий вывод" and "Подробный разбор" should be human wording over supported_summary_points and evidence_groups.
 - Do not merely repeat analyzer lines when a concise explanation is possible; compress and explain supported facts without inventing a cause.
 
 Recommendation ownership rules:
@@ -1691,7 +1670,7 @@ def build_mode_instruction(mode: str) -> str:
     if mode == "admin":
         return """
 Report mode: unified.
-Audience: SQL owner first; DBA/platform details go into collapsed admin sections.
+Audience: SQL owner first; DBA/platform details go into the admin section.
 Use Action Cards as the main structure when present.
 Keep the visible top report short and action-oriented.
 Mention operator IDs/names, actual vs estimated rows, memory estimation gaps, bytes read/sent, spill/scratch/admission checks only when mentioned in facts.
@@ -1704,7 +1683,7 @@ Avoid generic advice such as "optimize the query", "optimize joins", "check", "l
     if mode == "user":
         return """
 Report mode: unified.
-Audience: SQL query author, analyst, or data engineer first; DBA/platform details go into collapsed admin sections.
+Audience: SQL query author, analyst, or data engineer first; DBA/platform details go into the admin section.
 Use Action Cards as the main structure when present, but explain them in simpler language.
 Focus on concrete SQL-owner actions: approved stats maintenance, reducing intermediate rows, pre-aggregation/materialization, pushing filters earlier, and rewriting joins/window inputs when facts support those actions.
 Put admin/platform checks and evidence packages only under "Админские проверки".
@@ -1986,6 +1965,18 @@ def move_misplaced_admin_bullets_into_admin_section(text: str) -> str:
     return insert_bullets_into_section("\n".join(kept), NEXT_CHECKS_HEADING, moved)
 
 
+def remove_report_html_blocks(text: str) -> str:
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped in {"<details>", "</details>"}:
+            continue
+        if stripped.startswith("<summary>") and stripped.endswith("</summary>"):
+            continue
+        lines.append(line)
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
 def move_misplaced_zero_cardinality_note(text: str) -> str:
     if ZERO_CARDINALITY_NOT_SUPPORTED_BULLET not in text or NOT_SUPPORTED_HEADING not in text:
         return text
@@ -2008,15 +1999,6 @@ def move_misplaced_zero_cardinality_note(text: str) -> str:
     return insert_bullets_into_section("\n".join(cleaned), NOT_SUPPORTED_HEADING, [ZERO_CARDINALITY_NOT_SUPPORTED_BULLET])
 
 
-def normalize_collapsed_report_structure(text: str) -> str:
-    lines = text.splitlines()
-    opens = [index for index, line in enumerate(lines) if line.strip() == "<details>"]
-    closes = [index for index, line in enumerate(lines) if line.strip() == "</details>"]
-    if len(opens) == len(closes) + 1 and closes and closes[-1] < opens[-1]:
-        return text.rstrip() + "\n\n</details>\n"
-    return text
-
-
 def recommendation_bullet_body(line: str) -> str | None:
     match = re.match(r"^\s*(?:[-*]|\d+\.)\s+(?P<body>.+?)\s*$", line)
     if not match:
@@ -2026,92 +2008,6 @@ def recommendation_bullet_body(line: str) -> str | None:
 
 def canonical_recommendation_bullets(candidates: list[tuple[str, str]]) -> list[str]:
     return [f"- {text}" for _, text in candidates]
-
-
-OPTIMIZED_QUERY_CANDIDATE_BULLETS = {
-    "stats_maintenance": (
-        "- Перед изменением формы запроса выполнить approved stats maintenance для referenced tables, "
-        "по которым facts показывают cardinality anomalies или metadata stats gaps."
-    ),
-    "reduce_row_growth": (
-        "- Перестроить запрос так, чтобы фильтрация или предварительная агрегация сокращали rows до "
-        "доминирующих JOIN/AGGREGATE/EXCHANGE operators."
-    ),
-    "rewrite_join_filter": (
-        "- Упростить JOIN/filter shape вокруг дорогих operators, чтобы уменьшить intermediate rows до их входа."
-    ),
-    "reduce_memory_input": (
-        "- Сформировать меньший intermediate result перед memory-heavy JOIN/AGGREGATE operators."
-    ),
-    "reduce_exchange_rows": (
-        "- Выполнить фильтрацию, агрегацию или материализацию меньшего intermediate result до EXCHANGE/data movement."
-    ),
-    "reduce_exchange_payload": (
-        "- Передавать через EXCHANGE/data movement только нужные колонки и уже сокращенный intermediate result."
-    ),
-    "reduce_spill_pressure": (
-        "- Уменьшить intermediate data до memory-heavy operators, чтобы снизить pressure, связанный со spill/scratch evidence."
-    ),
-    "baseline": (
-        "- Оптимизированный SQL-текст не формируется: parsed facts не выделили безопасную цель для rewrite."
-    ),
-    "no_shape_change": (
-        "- Сохранить текущую SQL shape до появления confirmed operator evidence в новом профиле."
-    ),
-    "rerun_after_change": (
-        "- Использовать следующий профиль только как сравнение с baseline после отдельного изменения."
-    ),
-}
-
-
-def canonical_optimized_query_bullets(candidates: list[tuple[str, str]]) -> list[str]:
-    bullets: list[str] = []
-    for candidate_id, _ in candidates:
-        bullet = OPTIMIZED_QUERY_CANDIDATE_BULLETS.get(candidate_id)
-        if bullet and bullet not in bullets:
-            bullets.append(bullet)
-        if len(bullets) >= 3:
-            break
-    if bullets:
-        return bullets
-    return [OPTIMIZED_QUERY_CANDIDATE_BULLETS["baseline"]]
-
-
-def normalize_optimized_query_section(text: str, facts_text: str) -> str:
-    lines = text.splitlines()
-    try:
-        recommendations_start = next(i for i, line in enumerate(lines) if line.strip() == RECOMMENDATIONS_HEADING)
-    except StopIteration:
-        return text
-
-    optimized_start = None
-    for index, line in enumerate(lines):
-        if line.strip() == OPTIMIZED_QUERY_HEADING:
-            optimized_start = index
-            break
-
-    end = len(lines)
-    if optimized_start is not None:
-        start = optimized_start
-        for index in range(start + 1, len(lines)):
-            if lines[index].startswith("## ") or lines[index].strip() == "<details>":
-                end = index
-                break
-        before = lines[: start + 1]
-        after = lines[end:]
-    else:
-        insert_at = len(lines)
-        for index in range(recommendations_start + 1, len(lines)):
-            if lines[index].strip() == "<details>" or lines[index].startswith("## "):
-                insert_at = index
-                break
-        before = lines[:insert_at] + ["", OPTIMIZED_QUERY_HEADING]
-        after = lines[insert_at:]
-
-    optimized_section = [""] + canonical_optimized_query_bullets(
-        recommendation_candidate_lines(facts_text)
-    )
-    return "\n".join(before + optimized_section + after)
 
 
 def normalize_practical_recommendations(text: str, facts_text: str) -> str:
@@ -2191,9 +2087,6 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
     )
 
     lines: list[str] = [
-        "",
-        "<details>",
-        "<summary>Факты анализатора</summary>",
         "",
         ANALYZER_FACTS_HEADING,
         "",
@@ -2318,7 +2211,7 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
                 f"- ... {remaining_limitations} more limitation lines omitted from appendix."
             )
 
-    lines.extend(["", "</details>", ""])
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -2550,9 +2443,9 @@ def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admi
 def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin") -> str:
     text = sanitize_report_text(text, facts_text)
     text = normalize_report_headings(text, DETAIL_HEADING_REWRITE)
+    text = remove_report_html_blocks(text)
     text = remove_negative_caveats_from_short_summary(text)
     text = normalize_practical_recommendations(text, facts_text)
-    text = normalize_optimized_query_section(text, facts_text)
     text = move_misplaced_admin_bullets_into_admin_section(text)
     text = move_misplaced_zero_cardinality_note(text)
     if mode == "user":
@@ -2561,10 +2454,9 @@ def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin
         text = enforce_admin_report_requirements(text, facts_text)
     text = enforce_report_fact_requirements(text, facts_text)
     text = normalize_practical_recommendations(text, facts_text)
-    text = normalize_optimized_query_section(text, facts_text)
     text = move_misplaced_admin_bullets_into_admin_section(text)
     text = move_misplaced_zero_cardinality_note(text)
-    text = normalize_collapsed_report_structure(text)
+    text = remove_report_html_blocks(text)
     return text
 
 
@@ -2616,59 +2508,6 @@ def extract_report_section_lines(text: str, heading: str) -> list[str]:
     return section_lines
 
 
-def validate_collapsed_report_structure(text: str) -> list[str]:
-    errors: list[str] = []
-    lines = [line.strip() for line in text.splitlines()]
-    detail_open_indexes = [index for index, line in enumerate(lines) if line == "<details>"]
-    detail_close_indexes = [index for index, line in enumerate(lines) if line == "</details>"]
-    summaries = [line for line in lines if line.startswith("<summary>") or line.startswith("</summary>")]
-    expected_summaries = [
-        "<summary>Подробный разбор</summary>",
-        "<summary>Для администратора / платформенной команды</summary>",
-    ]
-    if ANALYZER_FACTS_HEADING in lines:
-        expected_summaries.append("<summary>Факты анализатора</summary>")
-    expected_count = len(expected_summaries)
-
-    if len(detail_open_indexes) != expected_count or len(detail_close_indexes) != expected_count:
-        errors.append(f"report must contain exactly {expected_count} collapsed <details> sections")
-        return errors
-    if not all(
-        detail_open_indexes[index] < detail_close_indexes[index]
-        and (index == 0 or detail_close_indexes[index - 1] < detail_open_indexes[index])
-        for index in range(expected_count)
-    ):
-        errors.append("report collapsed <details> sections must be balanced and not nested")
-        return errors
-    if summaries != expected_summaries:
-        errors.append("report collapsed sections must use the approved summaries")
-
-    first_block = lines[detail_open_indexes[0] : detail_close_indexes[0] + 1]
-    second_block = lines[detail_open_indexes[1] : detail_close_indexes[1] + 1]
-    if DETAILED_REPORT_HEADING not in first_block:
-        errors.append("Подробный разбор must be inside the first collapsed section")
-    if NEXT_CHECKS_HEADING not in second_block:
-        errors.append("Админские проверки must be inside the second collapsed section")
-    if ANALYZER_FACTS_HEADING in lines:
-        third_block = lines[detail_open_indexes[2] : detail_close_indexes[2] + 1]
-        if ANALYZER_FACTS_HEADING not in third_block:
-            errors.append("Факты анализатора must be inside the third collapsed section")
-
-    if DETAILED_REPORT_HEADING in lines and not (
-        detail_open_indexes[0] < lines.index(DETAILED_REPORT_HEADING) < detail_close_indexes[0]
-    ):
-        errors.append("Подробный разбор must not be visible outside its collapsed section")
-    if NEXT_CHECKS_HEADING in lines and not (
-        detail_open_indexes[1] < lines.index(NEXT_CHECKS_HEADING) < detail_close_indexes[1]
-    ):
-        errors.append("Админские проверки must not be visible outside its collapsed section")
-    if ANALYZER_FACTS_HEADING in lines and not (
-        detail_open_indexes[2] < lines.index(ANALYZER_FACTS_HEADING) < detail_close_indexes[2]
-    ):
-        errors.append("Факты анализатора must not be visible outside its collapsed section")
-    return errors
-
-
 def validate_report_html_safety(text: str) -> list[str]:
     errors: list[str] = []
     for match in RAW_HTML_TAG_RE.finditer(text):
@@ -2706,19 +2545,6 @@ def validate_recommendations_section(text: str) -> list[str]:
         if ADMIN_ONLY_RECOMMENDATION_RE.search(stripped):
             errors.append("practical recommendations contain admin-only checks")
             break
-    return errors
-
-
-def validate_optimized_query_section(text: str) -> list[str]:
-    errors: list[str] = []
-    items = count_report_section_items(text, OPTIMIZED_QUERY_HEADING)
-    if items is None:
-        return errors
-    if not 1 <= items <= 3:
-        errors.append(f"optimized query section must contain 1-3 concise items, found {items}")
-    section_text = "\n".join(extract_report_section_lines(text, OPTIMIZED_QUERY_HEADING))
-    if contains_raw_sql_like_text(section_text):
-        errors.append("optimized query section must not contain SQL text")
     return errors
 
 
@@ -2846,11 +2672,9 @@ def validate_report_text(
         errors.append(
             f"short summary must contain 2-6 concise items, found {short_summary_items}"
         )
-    errors.extend(validate_collapsed_report_structure(text))
     errors.extend(validate_report_html_safety(text))
     errors.extend(validate_report_internal_fingerprints(text))
     errors.extend(validate_recommendations_section(text))
-    errors.extend(validate_optimized_query_section(text))
 
     if contains_raw_sql_like_text(text):
         errors.append("report contains SQL-like text that is not allowed in trusted output")

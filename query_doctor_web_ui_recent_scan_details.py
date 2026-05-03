@@ -230,15 +230,15 @@ def render_optimized_query_action(
     form_action = html.escape(action_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
     open_href = html.escape(open_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
     if status == "generated":
-        action_html = f"<a class=\"button\" href=\"{open_href}\">Open optimized query draft</a>"
+        action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer draft</a>"
     elif status == "unavailable":
-        action_html = "<button class=\"button\" type=\"button\" disabled>Generate optimized query draft</button>"
+        action_html = "<button class=\"button\" type=\"button\" disabled>Generate Query LLM optimizer draft</button>"
     elif status == "running":
-        action_html = "<button class=\"button\" type=\"button\" disabled>Generating optimized query draft</button>"
+        action_html = "<button class=\"button\" type=\"button\" disabled>Generating Query LLM optimizer draft</button>"
     else:
         action_html = (
             f"<form method=\"post\" action=\"{form_action}\">"
-            "<button class=\"button\" type=\"submit\">Generate optimized query draft</button>"
+            "<button class=\"button\" type=\"submit\">Generate Query LLM optimizer draft</button>"
             "</form>"
         )
     if status == "running":
@@ -252,7 +252,7 @@ def render_optimized_query_action(
             )
         status_html = (
             f"<div class=\"report-progress\" aria-label=\"Optimized query progress\"{status_attrs}>"
-            "<div class=\"progress-head\"><span class=\"progress-title\">Generating optimized query draft</span>"
+            "<div class=\"progress-head\"><span class=\"progress-title\">Generating Query LLM optimizer draft</span>"
             f"<span class=\"progress-stage\">{html.escape(str(state.get('stage_label') or 'Generating draft'))}</span></div>"
             "<div class=\"progress-bar\" aria-hidden=\"true\"><span class=\"progress-fill\" style=\"width:62%\"></span></div>"
             "</div>"
@@ -266,15 +266,15 @@ def render_optimized_query_action(
     draft_html = ""
     if status == "generated" and trusted_optimized_query:
         draft_html = (
-            "<details class=\"analysis-subdetails\" open aria-label=\"Optimized query draft\">"
-            "<summary>Optimized query draft</summary>"
+            "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer draft\">"
+            "<summary>Query LLM optimizer draft</summary>"
             "<p class=\"helper\">Draft only. It was not executed and must be reviewed before use.</p>"
             f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
             "</details>"
         )
     return (
-        "<section class=\"panel docs-panel\" aria-label=\"Optimized query action\">"
-        "<h1>Optimized Query Draft</h1>"
+        "<section class=\"panel docs-panel\" aria-label=\"Query LLM optimizer action\">"
+        "<h1>Query LLM optimizer</h1>"
         "<div class=\"report-body\">"
         f"{status_html}"
         f"{action_html}"

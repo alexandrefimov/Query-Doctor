@@ -8,9 +8,15 @@ import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-from query_doctor_optimizer_sql import OptimizerSqlError, extract_referenced_tables
+from query_doctor_optimizer_sql import (
+    OptimizerSqlError,
+    extract_referenced_tables,
+    tokenize_sql,
+    validate_optimizer_sql_tokens,
+)
 from query_doctor_report import (
     DEFAULT_KEEP_ALIVE,
     DEFAULT_MODEL,
@@ -33,6 +39,12 @@ SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.D
 
 class QueryOptimizationError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class ProjectionSignature:
+    count: int
+    output_names: tuple[str, ...]
 
 
 def read_source_sql(case_dir: Path) -> str:
@@ -68,6 +80,105 @@ def enforce_text_size(text: str, max_bytes: int) -> None:
 
 def table_names(sql: str) -> set[str]:
     return {table.name.lower() for table in extract_referenced_tables(sql)}
+
+
+def sql_has_keyword(sql: str, keyword: str) -> bool:
+    return keyword.upper() in {token.upper() for token in tokenize_sql(sql)}
+
+
+def projection_signature(sql: str) -> ProjectionSignature | None:
+    tokens = extract_statement_tokens(sql)
+    select_index = find_top_level_token(tokens, "SELECT")
+    if select_index is None:
+        return None
+    from_index = find_top_level_token(tokens, "FROM", start=select_index + 1)
+    if from_index is None:
+        return None
+    projection_tokens = tokens[select_index + 1 : from_index]
+    if not projection_tokens:
+        return None
+    items = split_top_level_projection_items(projection_tokens)
+    if not items:
+        return None
+    output_names = tuple(name for item in items if (name := projection_output_name(item)))
+    return ProjectionSignature(count=len(items), output_names=output_names)
+
+
+def extract_statement_tokens(sql: str) -> list[str]:
+    tokens = tokenize_sql(sql)
+    return validate_optimizer_sql_tokens(tokens)
+
+
+def find_top_level_token(tokens: list[str], keyword: str, *, start: int = 0) -> int | None:
+    depth = 0
+    target = keyword.upper()
+    for index in range(start, len(tokens)):
+        token = tokens[index]
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and token.upper() == target:
+            return index
+    return None
+
+
+def split_top_level_projection_items(tokens: list[str]) -> list[list[str]]:
+    items: list[list[str]] = []
+    current: list[str] = []
+    depth = 0
+    for token in tokens:
+        if token == "(":
+            depth += 1
+            current.append(token)
+        elif token == ")":
+            depth = max(0, depth - 1)
+            current.append(token)
+        elif token == "," and depth == 0:
+            if current:
+                items.append(current)
+            current = []
+        else:
+            current.append(token)
+    if current:
+        items.append(current)
+    return items
+
+
+def projection_output_name(tokens: list[str]) -> str | None:
+    if not tokens:
+        return None
+    for index, token in enumerate(tokens):
+        if token.upper() == "AS" and index + 1 < len(tokens):
+            return clean_projection_identifier(tokens[index + 1])
+    if is_simple_column_reference(tokens):
+        return clean_projection_identifier(tokens[-1])
+    return None
+
+
+def is_simple_column_reference(tokens: list[str]) -> bool:
+    if not tokens:
+        return False
+    expect_identifier = True
+    saw_identifier = False
+    for token in tokens:
+        if expect_identifier:
+            if not clean_projection_identifier(token):
+                return False
+            saw_identifier = True
+            expect_identifier = False
+        elif token == ".":
+            expect_identifier = True
+        else:
+            return False
+    return saw_identifier and not expect_identifier
+
+
+def clean_projection_identifier(token: str) -> str | None:
+    value = token.strip()
+    if not value or value in {"(", ")", ",", ".", ";"}:
+        return None
+    return value.lower()
 
 
 def build_prompt(*, source_sql: str, facts_text: str) -> str:
@@ -135,6 +246,20 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     added_tables = sorted(draft_tables - source_tables)
     if added_tables:
         errors.append("optimized draft adds physical tables not present in source SQL")
+    for keyword in ("WHERE", "HAVING", "LIMIT"):
+        if sql_has_keyword(source_sql, keyword) and not sql_has_keyword(draft_sql, keyword):
+            errors.append(f"optimized draft removes source {keyword} scope")
+    source_projection = projection_signature(source_sql)
+    draft_projection = projection_signature(draft_sql)
+    if source_projection and draft_projection:
+        if source_projection.count != draft_projection.count:
+            errors.append("optimized draft changes output projection count")
+        elif (
+            len(source_projection.output_names) == source_projection.count
+            and len(draft_projection.output_names) == draft_projection.count
+            and source_projection.output_names != draft_projection.output_names
+        ):
+            errors.append("optimized draft changes output projection names")
     if not draft_sql.rstrip().endswith(";"):
         draft_sql = draft_sql.rstrip() + ";"
     try:

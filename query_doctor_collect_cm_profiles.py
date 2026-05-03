@@ -1710,7 +1710,7 @@ def sanitize_query_summary_for_log(summary: CMQuerySummary) -> dict[str, object]
 
 
 def cm_query_summary_metadata(summary: CMQuerySummary) -> dict[str, object]:
-    return {
+    metadata: dict[str, object] = {
         "duration_ms": summary.duration_ms,
         "duration_sec": summary.duration_sec,
         "end_time": summary.end_time,
@@ -1721,6 +1721,9 @@ def cm_query_summary_metadata(summary: CMQuerySummary) -> dict[str, object]:
         "status": summary.status,
         "user": summary.user,
     }
+    if summary.statement:
+        metadata["statement"] = summary.statement
+    return metadata
 
 
 def safe_case_slug(query_id: str) -> str:
