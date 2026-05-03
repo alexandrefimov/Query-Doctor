@@ -326,7 +326,9 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
     if summary.get("triage_profile_limit") is not None:
         parts.append(f"Profile analysis limit: {safe_display_text(summary.get('triage_profile_limit'))}")
     if summary.get("metadata_top_limit") is not None:
-        parts.append(f"Metadata enrichment: top {safe_display_text(summary.get('metadata_top_limit'))} cases")
+        parts.append(
+            f"Metadata enrichment budget: up to {safe_display_text(summary.get('metadata_top_limit'))} bad/suspicious cases"
+        )
     if summary.get("from_time") or summary.get("to_time"):
         parts.append(
             "CM time window: "

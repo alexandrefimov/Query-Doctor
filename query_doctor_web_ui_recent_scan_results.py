@@ -21,7 +21,15 @@ from query_doctor_web_ui_recent_scan_presenter import (
 )
 
 
-def render_batch_card(settings: Any) -> str:
+QUERY_GROUPS = {
+    "bad": ("Bad queries", {"failed", "high"}),
+    "suspicious": ("Suspicious queries", {"suspicious"}),
+    "good": ("Good queries", {"clean"}),
+}
+DEFAULT_QUERY_GROUP = "bad"
+
+
+def render_batch_card(settings: Any, query_group: str = DEFAULT_QUERY_GROUP) -> str:
     summary_path = getattr(settings, "batch_summary", None)
     if summary_path is None:
         return ""
@@ -42,11 +50,13 @@ def render_batch_card(settings: Any) -> str:
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
-    return render_batch_summary(payload)
+    return render_batch_summary(payload, query_group=query_group)
 
 
-def render_batch_summary(summary: dict[str, Any]) -> str:
+def render_batch_summary(summary: dict[str, Any], query_group: str = DEFAULT_QUERY_GROUP) -> str:
     view = present_recent_scan_summary(summary)
+    active_group = normalize_query_group(query_group)
+    rows_for_group = filter_rows_by_query_group(view.rows, active_group)
     header = "".join(
         "<div class=\"batch-metric\">"
         f"<span>{html.escape(label)}</span>"
@@ -54,14 +64,15 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
         "</div>"
         for label, value in view.header_items
     )
-    rows = "\n".join(render_batch_case_row(row.rank, row) for row in view.rows)
+    rows = "\n".join(render_batch_case_row(row.rank, row) for row in rows_for_group)
     if not rows:
         rows = (
-            "<tr><td colspan=\"6\" class=\"empty-cell\">No case summaries were found in the configured batch summary.</td></tr>"
+            f"<tr><td colspan=\"6\" class=\"empty-cell\">No {html.escape(QUERY_GROUPS[active_group][0].lower())} were found in the configured batch summary.</td></tr>"
         )
     scope_note = render_batch_scope_note(summary)
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
+    switcher = render_query_group_switcher(view.rows, active_group)
     return (
         "<section class=\"panel batch-panel\" aria-label=\"Finished queries\">"
         "<div class=\"batch-head\">"
@@ -71,6 +82,7 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
         f"{scope_note}"
         f"{empty_note}"
         f"{warning_note}"
+        f"{switcher}"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
         "<th>Rank</th><th>Query ID</th><th>Score</th><th>Summary</th><th>Duration</th><th>Metadata</th>"
@@ -79,6 +91,34 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
         "</table></div>"
         "</section>"
     )
+
+
+def normalize_query_group(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in QUERY_GROUPS else DEFAULT_QUERY_GROUP
+
+
+def filter_rows_by_query_group(
+    rows: tuple[RecentScanCaseRowView, ...],
+    query_group: str,
+) -> tuple[RecentScanCaseRowView, ...]:
+    _label, severities = QUERY_GROUPS[normalize_query_group(query_group)]
+    return tuple(row for row in rows if row.score_severity in severities)
+
+
+def render_query_group_switcher(rows: tuple[RecentScanCaseRowView, ...], active_group: str) -> str:
+    counts = {
+        key: sum(1 for row in rows if row.score_severity in severities)
+        for key, (_label, severities) in QUERY_GROUPS.items()
+    }
+    links = []
+    for key, (label, _severities) in QUERY_GROUPS.items():
+        css_class = "batch-filter-link batch-filter-link--active" if key == active_group else "batch-filter-link"
+        links.append(
+            f"<a class=\"{css_class}\" href=\"/?query_group={html.escape(key, quote=True)}\">"
+            f"{html.escape(label)} <span>{counts[key]}</span></a>"
+        )
+    return f"<nav class=\"batch-filter-tabs\" aria-label=\"Query result filter\">{''.join(links)}</nav>"
 
 
 def render_batch_scope_note(summary: dict[str, Any]) -> str:

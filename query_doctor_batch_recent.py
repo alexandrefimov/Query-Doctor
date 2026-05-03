@@ -1179,7 +1179,10 @@ def metadata_refresh_candidates(config: BatchConfig, cases: list[CaseResult]) ->
     if metadata_refresh_skip_reason(config, ranked) is not None:
         mark_metadata_not_requested(ranked)
         return []
-    return ranked[: config.metadata_top_limit]
+    candidates = select_metadata_refresh_candidates(ranked, config.metadata_top_limit)
+    refreshed_ids = {id(case) for case in candidates}
+    mark_metadata_not_requested([case for case in ranked if id(case) not in refreshed_ids])
+    return candidates
 
 
 def metadata_refresh_skip_reason(config: BatchConfig, ranked_cases: list[CaseResult]) -> str | None:
@@ -1214,9 +1217,10 @@ def refresh_top_metadata(
         mark_metadata_not_requested(ranked)
         progress.emit(stage="metadata_refresh", status="skipped", reason=skip_reason)
         return
-    candidates = ranked[: config.metadata_top_limit]
+    candidates = select_metadata_refresh_candidates(ranked, config.metadata_top_limit)
     if not candidates:
-        progress.emit(stage="metadata_refresh", status="skipped", reason="no eligible cases")
+        mark_metadata_not_requested(ranked)
+        progress.emit(stage="metadata_refresh", status="skipped", reason="no bad or suspicious cases")
         return
     progress.emit(stage="metadata_refresh", status="started", total=len(candidates), metadata_jobs=config.metadata_jobs)
     if config.metadata_jobs == 1:
@@ -1233,6 +1237,14 @@ def refresh_top_metadata(
     refreshed_ids = {id(case) for case in candidates}
     mark_metadata_not_requested([case for case in cases if case.analysis_status == "ok" and id(case) not in refreshed_ids])
     progress.emit(stage="metadata_refresh", status="done", total=len(candidates))
+
+
+def select_metadata_refresh_candidates(ranked_cases: list[CaseResult], limit: int) -> list[CaseResult]:
+    if limit <= 0:
+        return []
+    bad = [case for case in ranked_cases if case_score_severity(case) == "high"]
+    suspicious = [case for case in ranked_cases if case_score_severity(case) == "suspicious"]
+    return (bad + suspicious)[:limit]
 
 
 def refresh_case_metadata(

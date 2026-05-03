@@ -11,7 +11,6 @@ from zoneinfo import ZoneInfo
 
 
 WEB_RECENT_SCAN_DEFAULTS = {
-    "metadata_top_limit": "10",
     "parallelism": "50",
     "metadata_jobs": "5",
 }
@@ -25,7 +24,6 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
     if "recent_parallelism" not in local_config and "recent_cm_jobs" in local_config:
         local_config["recent_parallelism"] = local_config["recent_cm_jobs"]
     default_scan_date, default_scan_hour = default_recent_scan_bucket()
-    default_metadata_top_limit = WEB_RECENT_SCAN_DEFAULTS["metadata_top_limit"] if metadata_configured else "0"
     default_parallelism = WEB_RECENT_SCAN_DEFAULTS["parallelism"]
     values = {
         "scan_date": form_or_config_value(
@@ -39,13 +37,6 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
             "scan_hour",
             config_values=local_config,
             fallback=str(default_scan_hour),
-        ),
-        "metadata_top_limit": form_or_config_value(
-            form_values,
-            "metadata_top_limit",
-            config_values=local_config,
-            config_key="recent_metadata_top_limit",
-            fallback=default_metadata_top_limit,
         ),
         "min_duration_sec": form_or_config_value(
             form_values,
@@ -78,7 +69,7 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
     def value(name: str) -> str:
         return html.escape(str(values.get(name, "")), quote=True)
 
-    metadata_note = "" if metadata_configured else "Metadata collection is not configured for this web session. Keep Queries to fetch metadata for at 0."
+    metadata_note = "" if metadata_configured else "Metadata collection is not configured for this web session."
     metadata_note_html = f"<div class=\"batch-note\">{html.escape(metadata_note)}</div>" if metadata_note else ""
     button_disabled = " disabled" if run_disabled else ""
     button_label = "Running" if run_disabled else "Run scan"
@@ -91,7 +82,7 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<form id=\"batch-form\" class=\"batch-form\" method=\"post\" action=\"/batch/run\">"
         f"{metadata_note_html}"
         "<div class=\"scope-line\" aria-label=\"Recent scan collection scope\">"
-        "<strong>Scope:</strong> one selected CM hour → matching summaries → analyzable profiles → ranked cases → top-case metadata · no auto LLM"
+        "<strong>Scope:</strong> one selected CM hour → matching summaries → analyzable profiles → ranked cases → automatic metadata for top bad/suspicious cases · no auto LLM"
         "</div>"
         "<div class=\"batch-form-sections\">"
         "<fieldset class=\"batch-form-section\"><legend>Query filters</legend>"
@@ -106,7 +97,6 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<fieldset class=\"batch-form-section\"><legend>Analysis settings</legend>"
         "<div class=\"batch-form-grid\">"
         f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for CM profile downloads and local analysis. Hard cap: 100.')}"
-        f"{render_batch_number_field('metadata_top_limit', 'Queries to fetch metadata for', value('metadata_top_limit'), required=False, help_text='Maximum top-ranked analyzed queries enriched with bounded read-only table metadata. Set to 0 to skip metadata collection.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
         "</div>"
         "</fieldset>"

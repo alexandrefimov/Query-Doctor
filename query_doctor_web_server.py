@@ -517,12 +517,12 @@ def preflight_web_metadata_batch(
 ) -> None:
     env = effective_subprocess_env(settings, base_env=base_env)
     if not metadata_configured(settings):
-        raise WebError("Metadata collection is not configured for this web session. Set Queries to fetch metadata for to 0 or restart with metadata options.")
+        raise WebError("Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config.")
     if not resolve_metadata_impala_shell(settings, env):
-        raise WebError("Metadata preflight failed: impala-shell executable is not available. Set Queries to fetch metadata for to 0 or fix server metadata settings.")
+        raise WebError("Metadata preflight failed: impala-shell executable is not available. Fix server metadata settings or disable metadata in config.")
     krb5ccname = env.get("KRB5CCNAME", "")
     if krb5ccname and any(ord(ch) < 32 or ord(ch) == 127 for ch in krb5ccname):
-        raise WebError("Metadata preflight failed: Kerberos cache setting is invalid. Set Queries to fetch metadata for to 0 or fix server environment.")
+        raise WebError("Metadata preflight failed: Kerberos cache setting is invalid. Fix server environment or disable metadata in config.")
     try:
         completed = run_subprocess(
             ["klist"],
@@ -532,11 +532,11 @@ def preflight_web_metadata_batch(
             env=env,
         )
     except OSError as exc:
-        raise WebError("Metadata preflight failed: klist is not available. Set Queries to fetch metadata for to 0 or fix server Kerberos setup.") from exc
+        raise WebError("Metadata preflight failed: klist is not available. Fix server Kerberos setup or disable metadata in config.") from exc
     if completed.returncode != 0:
         raise WebError(
             "Metadata preflight failed: Kerberos cache is not available or expired. "
-            "Renew the Kerberos ticket or set Queries to fetch metadata for to 0."
+            "Renew the Kerberos ticket or disable metadata in config."
         )
 
 
@@ -921,7 +921,7 @@ def parse_batch_run_config(
 def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
     if config.metadata_top_limit > 0:
         if not metadata_configured(settings):
-            raise WebError("Metadata collection is not configured for this web session. Set Queries to fetch metadata for to 0 or restart with metadata options.")
+            raise WebError("Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config.")
         if settings.metadata_ca_cert and not settings.metadata_ssl:
             raise WebError("--metadata-ca-cert requires --metadata-ssl for web batch metadata.")
 
@@ -2009,7 +2009,14 @@ def make_handler(
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             if parsed.path in {"/", "/index.html", "/batch"}:
-                self.write_html(200, render_batch_page(batch_page_settings(settings, store)))
+                query = parse_qs(parsed.query, keep_blank_values=True)
+                self.write_html(
+                    200,
+                    render_batch_page(
+                        batch_page_settings(settings, store),
+                        query_group=first_form_value(query, "query_group"),
+                    ),
+                )
                 return
             match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/report", parsed.path)
             if match:
@@ -2065,7 +2072,15 @@ def make_handler(
                     )
                     return
                 if job.kind == "batch":
-                    self.write_html(200, render_batch_page(batch_page_settings(settings, store), job=job))
+                    query = parse_qs(parsed.query, keep_blank_values=True)
+                    self.write_html(
+                        200,
+                        render_batch_page(
+                            batch_page_settings(settings, store),
+                            job=job,
+                            query_group=first_form_value(query, "query_group"),
+                        ),
+                    )
                 elif job.kind == "batch_report":
                     effective_settings = batch_page_settings(settings, store)
                     case_id = job.batch_case_id or job.query_id
