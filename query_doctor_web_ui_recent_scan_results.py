@@ -130,12 +130,11 @@ def query_id_cell(query_id: Any) -> str:
 
 def score_cell(view: RecentScanCaseRowView) -> str:
     score = view.score
-    score_value = view.score_value
-    if row_has_failure(view):
+    if view.score_severity == "failed":
         class_name = "batch-severity--failed"
-    elif score_value >= 20:
+    elif view.score_severity == "high":
         class_name = "batch-severity--high"
-    elif score_value > 0:
+    elif view.score_severity == "suspicious":
         class_name = "batch-severity--suspicious"
     else:
         class_name = "batch-severity--clean"

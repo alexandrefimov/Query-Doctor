@@ -71,7 +71,12 @@ def render_case_status_summary(
         rendered_fields = []
         for label, value in fields:
             if label == "score":
-                rendered_fields.append((label, score_badge_from_values(score, collection, analysis)))
+                rendered_fields.append(
+                    (
+                        label,
+                        score_badge_from_values(score, collection, analysis, severity=case_or_view.score_severity),
+                    )
+                )
             elif label in {"collection", "analysis", "metadata"}:
                 rendered_fields.append((label, status_badge(value)))
             elif label == "report":
@@ -447,18 +452,30 @@ class SafeHtml(str):
 
 
 def score_badge(case: dict[str, Any]) -> SafeHtml:
-    return score_badge_from_values(case.get("score"), case.get("collection_status"), case.get("analysis_status"))
+    return score_badge_from_values(
+        case.get("score"),
+        case.get("collection_status"),
+        case.get("analysis_status"),
+        severity=case.get("score_severity"),
+    )
 
 
-def score_badge_from_values(score_value: Any, collection_status: Any, analysis_status: Any) -> SafeHtml:
+def score_badge_from_values(
+    score_value: Any,
+    collection_status: Any,
+    analysis_status: Any,
+    *,
+    severity: str | None = None,
+) -> SafeHtml:
     score = numeric_value(score_value)
-    if collection_status == "failed" or analysis_status == "failed":
+    severity = (severity or "").strip().lower()
+    if severity == "failed" or collection_status == "failed" or analysis_status == "failed":
         label = f"{display_score(score_value)} failed"
         class_name = "batch-severity--failed"
-    elif score >= 20:
+    elif severity == "high" or (not severity and score >= 20):
         label = f"{display_score(score_value)} high"
         class_name = "batch-severity--high"
-    elif score > 0:
+    elif severity == "suspicious" or (not severity and score > 0):
         label = f"{display_score(score_value)} suspicious"
         class_name = "batch-severity--suspicious"
     else:

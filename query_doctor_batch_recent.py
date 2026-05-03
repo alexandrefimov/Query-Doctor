@@ -1614,6 +1614,7 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "skipped_due_to_max_table_limit": case.skipped_due_to_max_table_limit,
         "too_large_count": case.too_large_count,
         "score": case.score,
+        "score_severity": case_score_severity(case),
         "score_reasons": case.score_reasons,
         "cardinality_anomaly_count": case.cardinality_anomaly_count,
         "memory_anomaly_count": case.memory_anomaly_count,
@@ -1631,6 +1632,30 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "report_seconds": case.report_seconds,
         "total_seconds": round(sum(stage_seconds), 3) if stage_seconds else None,
     }
+
+
+def case_score_severity(case: CaseResult) -> str:
+    if case.collection_status == "failed" or case.analysis_status == "failed":
+        return "failed"
+    if case.score <= 0:
+        return "clean"
+    cardinality = case.cardinality_anomaly_count or 0
+    memory = case.memory_anomaly_count or 0
+    zero_row_gaps = case.zero_row_estimate_gap_count or 0
+    zero_memory_gaps = case.zero_memory_estimate_gap_count or 0
+    host_tail = case.host_tail_candidate_count or 0
+    if (
+        case.score >= 30
+        or cardinality >= 5
+        or memory >= 4
+        or zero_row_gaps >= 4
+        or zero_memory_gaps >= 4
+        or (cardinality >= 3 and memory >= 2)
+        or (zero_row_gaps >= 2 and zero_memory_gaps >= 2)
+        or (case.backend_data_skew is True and host_tail >= 2)
+    ):
+        return "high"
+    return "suspicious"
 
 
 def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:

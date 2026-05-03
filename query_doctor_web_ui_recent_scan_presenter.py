@@ -56,6 +56,7 @@ class RecentScanCaseRowView:
     report_status: str
     reason_text: str
     score_value: float
+    score_severity: str
     has_failure: bool
 
 
@@ -114,6 +115,7 @@ class RecentScanCaseDetailView:
     score_reasons: tuple[str, ...]
     metadata: RecentScanMetadataView
     report_action: ReportActionView
+    score_severity: str
 
 
 def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryView:
@@ -170,6 +172,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         report_status=report_status,
         reason_text=reason_text,
         score_value=numeric_value(case.get("score")),
+        score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
     )
 
@@ -223,6 +226,7 @@ def present_recent_scan_case_detail(
         score_reasons=tuple(safe_display_text(reason) for reason in case.get("score_reasons") or [] if reason is not None),
         metadata=present_recent_scan_metadata(case, metadata_facts),
         report_action=present_report_action(report_state),
+        score_severity=case_score_severity(case),
     )
 
 
@@ -425,6 +429,34 @@ def recent_scan_signal_summary(case: dict[str, Any]) -> str:
     if numeric_value(case.get("score")) <= 0:
         return "no positive analyzer signals"
     return "positive score from detailed analyzer reasons"
+
+
+def case_score_severity(case: dict[str, Any]) -> str:
+    explicit = str(case.get("score_severity") or "").strip().lower()
+    if explicit in {"failed", "high", "suspicious", "clean"}:
+        return explicit
+    if case_has_failure(case):
+        return "failed"
+    score = numeric_value(case.get("score"))
+    if score <= 0:
+        return "clean"
+    cardinality = numeric_count(case.get("cardinality_anomaly_count"))
+    memory = numeric_count(case.get("memory_anomaly_count"))
+    zero_row_gaps = numeric_count(case.get("zero_row_estimate_gap_count"))
+    zero_memory_gaps = numeric_count(case.get("zero_memory_estimate_gap_count"))
+    host_tail = numeric_count(case.get("host_tail_candidate_count"))
+    if (
+        score >= 30
+        or cardinality >= 5
+        or memory >= 4
+        or zero_row_gaps >= 4
+        or zero_memory_gaps >= 4
+        or (cardinality >= 3 and memory >= 2)
+        or (zero_row_gaps >= 2 and zero_memory_gaps >= 2)
+        or (safe_truthy(case.get("backend_data_skew")) and host_tail >= 2)
+    ):
+        return "high"
+    return "suspicious"
 
 
 def safe_truthy(value: Any) -> bool:
