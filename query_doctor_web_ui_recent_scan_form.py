@@ -4,40 +4,39 @@ from __future__ import annotations
 
 import html
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 WEB_RECENT_SCAN_DEFAULTS = {
-    "recent_window_minutes": "30",
-    "cm_inspect_limit": "1000",
     "metadata_top_limit": "8",
-    "order": "duration-desc",
     "cm_jobs": "20",
     "jobs": "4",
     "metadata_jobs": "1",
 }
+RECENT_SCAN_TIMEZONE = ZoneInfo("Europe/Moscow")
+RECENT_SCAN_LOOKBACK_DAYS = 2
 
 
 def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = None, *, run_disabled: bool = False) -> str:
     metadata_configured = bool(getattr(settings, "metadata_coordinator", None))
     local_config = read_local_config_values(settings)
+    default_scan_date, default_scan_hour = default_recent_scan_bucket()
     values = {
         "analysis_depth": "full" if metadata_configured else "fast",
-        "recent_window_minutes": form_or_config_value(
+        "scan_date": form_or_config_value(
             form_values,
-            "recent_window_minutes",
+            "scan_date",
             config_values=local_config,
-            config_key="recent_window_minutes",
-            fallback=WEB_RECENT_SCAN_DEFAULTS["recent_window_minutes"],
+            fallback=default_scan_date,
         ),
-        "cm_inspect_limit": form_or_config_value(
+        "scan_hour": form_or_config_value(
             form_values,
-            "cm_inspect_limit",
+            "scan_hour",
             config_values=local_config,
-            config_key="recent_cm_summary_limit",
-            fallback=WEB_RECENT_SCAN_DEFAULTS["cm_inspect_limit"],
-            maximum=1000,
+            fallback=str(default_scan_hour),
         ),
         "metadata_top_limit": form_or_config_value(
             form_values,
@@ -53,13 +52,6 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
             config_key="recent_min_duration_sec",
         ),
         "max_duration_sec": "",
-        "order": form_or_config_value(
-            form_values,
-            "order",
-            config_values=local_config,
-            config_key="recent_order",
-            fallback=WEB_RECENT_SCAN_DEFAULTS["order"],
-        ),
         "jobs": form_or_config_value(
             form_values,
             "jobs",
@@ -135,15 +127,15 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "</div>"
         f"{metadata_note_html}"
         "<div class=\"batch-primary-row\">"
-        f"{render_recent_window_select(value('recent_window_minutes'))}"
+        f"{render_scan_date_select(value('scan_date'))}"
+        f"{render_scan_hour_select(value('scan_hour'))}"
         f"<button class=\"run-button\" type=\"submit\"{button_disabled}>{button_label}</button>"
         "</div>"
         "<div class=\"scope-line\" aria-label=\"Recent scan collection scope\">"
-        "<strong>Scope:</strong> matching CM summaries → analyzable query profiles → ranked cases → top-case metadata · no auto LLM"
+        "<strong>Scope:</strong> one selected CM hour → matching summaries → analyzable profiles → ranked cases → top-case metadata · no auto LLM"
         "</div>"
         "<div class=\"batch-advanced-body\">"
         "<div class=\"batch-form-grid\">"
-        f"{render_batch_number_field('cm_inspect_limit', 'Queries to scan', value('cm_inspect_limit'), required=False, help_text='Maximum recent matching CM summaries to inspect. Query Doctor collects profiles for analyzable scanned queries. Hard cap: 1000.')}"
         f"{render_batch_number_field('metadata_top_limit', 'Cases with metadata', value('metadata_top_limit'), required=False, help_text='Maximum top-ranked analyzed cases enriched with read-only table metadata in Full scan. Fast scan skips metadata.')}"
         f"{render_batch_number_field('min_duration_sec', 'Minimum duration (sec)', value('min_duration_sec'), step='0.001', required=False, help_text='Only include queries at least this long. Empty means no duration filter.')}"
         f"{render_batch_number_field('cm_jobs', 'CM profile jobs', value('cm_jobs'), help_text='Parallel workers for CM profile downloads. Use higher values to speed the CM collection phase. Hard cap: 100.')}"
@@ -180,20 +172,26 @@ def render_scan_mode_help(analysis_depth: str, *, metadata_configured: bool) -> 
     )
 
 
-def render_recent_window_select(selected_value: str) -> str:
-    options = [
-        ("10", "10 minutes"),
-        ("30", "30 minutes"),
-        ("60", "1 hour"),
-        ("120", "2 hours"),
-        ("360", "6 hours"),
-        ("720", "12 hours"),
-        ("1440", "24 hours"),
+def default_recent_scan_bucket(now: datetime | None = None) -> tuple[str, int]:
+    current = now.astimezone(RECENT_SCAN_TIMEZONE) if now else datetime.now(RECENT_SCAN_TIMEZONE)
+    bucket = current.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+    return bucket.date().isoformat(), bucket.hour
+
+
+def recent_scan_date_options(now: datetime | None = None) -> list[tuple[str, str]]:
+    current = now.astimezone(RECENT_SCAN_TIMEZONE).date() if now else datetime.now(RECENT_SCAN_TIMEZONE).date()
+    return [
+        ((current - timedelta(days=days)).isoformat(), (current - timedelta(days=days)).strftime("%d.%m"))
+        for days in range(RECENT_SCAN_LOOKBACK_DAYS + 1)
     ]
+
+
+def render_scan_date_select(selected_value: str) -> str:
     selected_raw = html.unescape(str(selected_value))
+    options = recent_scan_date_options()
     option_values = {value for value, _ in options}
     if selected_raw and selected_raw not in option_values:
-        options.append((selected_raw, f"{format_recent_window_label(selected_raw)} (configured)"))
+        options.append((selected_raw, f"{selected_raw} (selected)"))
     rendered_options = "".join(
         f"<option value=\"{html.escape(value, quote=True)}\"{' selected' if value == selected_raw else ''}>"
         f"{html.escape(label)}</option>"
@@ -201,8 +199,27 @@ def render_recent_window_select(selected_value: str) -> str:
     )
     return (
         "<div class=\"field\">"
-        f"{render_label_with_info('recent_window_minutes', 'Search depth', 'How many recent CM query summaries to inspect before filtering.')}"
-        f"<select class=\"input\" id=\"recent_window_minutes\" name=\"recent_window_minutes\">{rendered_options}</select>"
+        f"{render_label_with_info('scan_date', 'Scan date', 'Calendar day to inspect. Query Doctor keeps this bounded to today and the previous two days.')}"
+        f"<select class=\"input\" id=\"scan_date\" name=\"scan_date\">{rendered_options}</select>"
+        "</div>"
+    )
+
+
+def render_scan_hour_select(selected_value: str) -> str:
+    selected_raw = html.unescape(str(selected_value))
+    rendered_options = ""
+    for hour in range(24):
+        value = str(hour)
+        end_hour = (hour + 1) % 24
+        label = f"{hour:02d}:00 - {end_hour:02d}:00"
+        rendered_options += (
+            f"<option value=\"{value}\"{' selected' if value == selected_raw else ''}>"
+            f"{html.escape(label)}</option>"
+        )
+    return (
+        "<div class=\"field\">"
+        f"{render_label_with_info('scan_hour', 'Hour bucket', 'One local-hour CM window to inspect. Times are shown in Europe/Moscow time and sent to CM as UTC bounds.')}"
+        f"<select class=\"input\" id=\"scan_hour\" name=\"scan_hour\">{rendered_options}</select>"
         "</div>"
     )
 
@@ -263,20 +280,6 @@ def form_or_config_bool(
     if isinstance(value, bool):
         return value
     return fallback
-
-
-def format_recent_window_label(value: str) -> str:
-    try:
-        minutes = int(value)
-    except (TypeError, ValueError):
-        return f"{value} minutes"
-    if minutes < 60:
-        return f"{minutes} minutes"
-    if minutes == 60:
-        return "1 hour"
-    if minutes % 60 == 0:
-        return f"{minutes // 60} hours"
-    return f"{minutes} minutes"
 
 
 def render_batch_number_field(

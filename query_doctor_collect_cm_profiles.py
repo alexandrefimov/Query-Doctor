@@ -270,6 +270,8 @@ class CMQueryFilters:
     max_duration_sec: float | None = None
     server_duration_filter: bool = False
     since_minutes: int | None = None
+    from_time: str | None = None
+    to_time: str | None = None
     pool: str | None = None
     user: str | None = None
     status: str = "all"
@@ -294,6 +296,10 @@ class CMQueryFilters:
         }
         if self.since_minutes is not None:
             values["since_minutes"] = self.since_minutes
+        if self.from_time is not None:
+            values["from_time"] = self.from_time
+        if self.to_time is not None:
+            values["to_time"] = self.to_time
         if self.page_size is not None:
             values["page_size"] = self.page_size
         return values
@@ -1194,7 +1200,11 @@ def build_cm_query_summary_page_request(
         clusterName=safe_cm_path_segment(filters.cluster, "cluster"),
         serviceName=safe_cm_path_segment(filters.service, "service"),
     )
-    if filters.since_minutes is not None:
+    if filters.from_time is not None or filters.to_time is not None:
+        if not filters.from_time or not filters.to_time:
+            raise CMAdapterError("CM query summary explicit time window requires both from_time and to_time.")
+        from_time, to_time = filters.from_time, filters.to_time
+    elif filters.since_minutes is not None:
         from_time, to_time = cm_time_window_minutes(filters.since_minutes, now=now)
     else:
         from_time, to_time = cm_time_window(filters.since_hours, now=now)

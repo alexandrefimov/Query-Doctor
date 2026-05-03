@@ -36,12 +36,10 @@ from query_doctor_web_ui_recent_scan_details import (
 from query_doctor_web_ui_recent_scan_form import (
     form_or_config_bool,
     form_or_config_value,
-    format_recent_window_label,
     read_local_config_values,
     render_batch_number_field,
     render_batch_run_panel,
     render_batch_text_field,
-    render_recent_window_select,
 )
 from query_doctor_web_ui_recent_scan_results import (
     batch_case_details_link,

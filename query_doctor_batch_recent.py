@@ -16,6 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 
 import query_doctor_collect_cm_profiles as cm_profiles
@@ -91,6 +92,8 @@ class BatchConfig:
     config_path: str | None
     progress_jsonl: Path | None
     krb5ccname: str | None
+    from_time: str | None = None
+    to_time: str | None = None
 
 
 @dataclass
@@ -216,6 +219,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--recent-window-minutes", type=positive_int)
     parser.add_argument(
+        "--from-time",
+        help="Explicit CM query summary window start, formatted as YYYY-MM-DDTHH:MM:SSZ.",
+    )
+    parser.add_argument(
+        "--to-time",
+        help="Explicit CM query summary window end, formatted as YYYY-MM-DDTHH:MM:SSZ.",
+    )
+    parser.add_argument(
         "--cm-inspect-limit",
         type=positive_int,
         help=f"Maximum CM query summaries to request/inspect. Hard cap: {MAX_CM_INSPECT_LIMIT}.",
@@ -320,6 +331,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional append-only JSONL progress file. Contains sanitized structured stage events only.",
     )
     return parser.parse_args(argv)
+
+
+def validate_cm_time_bound(value: str, *, name: str) -> str:
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise ValueError(f"{name} must be formatted as YYYY-MM-DDTHH:MM:SSZ") from exc
+    return value
 
 
 def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) -> int:
@@ -541,6 +560,15 @@ def build_batch_config(
         config_values.get("recent_window_minutes"),
         default=60,
     )
+    from_time = first_string(args.from_time, config_values.get("recent_from_time"))
+    to_time = first_string(args.to_time, config_values.get("recent_to_time"))
+    if bool(from_time) != bool(to_time):
+        raise ValueError("--from-time and --to-time must be provided together")
+    if from_time and to_time:
+        from_time = validate_cm_time_bound(from_time, name="--from-time")
+        to_time = validate_cm_time_bound(to_time, name="--to-time")
+        if from_time >= to_time:
+            raise ValueError("--to-time must be later than --from-time")
     if cm_inspect_limit > MAX_CM_INSPECT_LIMIT:
         raise ValueError(f"--cm-inspect-limit must be <= {MAX_CM_INSPECT_LIMIT}")
     if triage_profile_limit > MAX_TRIAGE_PROFILE_LIMIT:
@@ -601,6 +629,8 @@ def build_batch_config(
         ca_bundle=ca_bundle,
         verify_tls=not insecure_skip_verify,
         recent_window_minutes=recent_window_minutes,
+        from_time=from_time,
+        to_time=to_time,
         cm_inspect_limit=cm_inspect_limit,
         triage_profile_limit=triage_profile_limit,
         metadata_top_limit=metadata_top_limit,
@@ -834,7 +864,9 @@ def build_recent_filters(config: BatchConfig) -> cm_profiles.CMQueryFilters:
         cluster=config.cluster,
         service=config.service,
         since_hours=max(1, (config.recent_window_minutes + 59) // 60),
-        since_minutes=config.recent_window_minutes,
+        since_minutes=None if config.from_time and config.to_time else config.recent_window_minutes,
+        from_time=config.from_time,
+        to_time=config.to_time,
         limit=config.cm_inspect_limit,
         min_duration_sec=config.min_duration_sec,
         max_duration_sec=config.max_duration_sec,
@@ -1508,6 +1540,8 @@ def build_summary(
         "select_limit": config.triage_profile_limit,
         "metadata_top_limit": config.metadata_top_limit,
         "recent_window_minutes": config.recent_window_minutes,
+        "from_time": config.from_time,
+        "to_time": config.to_time,
         "min_duration_sec": config.min_duration_sec,
         "query_type_filter": config.query_type or "all",
         "include_failed": config.include_failed,
@@ -1621,6 +1655,7 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- triage profile limit: {summary['triage_profile_limit']}",
         f"- metadata top limit: {summary['metadata_top_limit']}",
         f"- search depth minutes: {summary['recent_window_minutes']}",
+        f"- explicit time window: {summary.get('from_time') or 'relative'} -> {summary.get('to_time') or 'relative'}",
         f"- query type filter: {summary['query_type_filter']}",
         f"- duration filter: {summary['duration_filter']}",
         f"- include failed: {summary['include_failed']}",

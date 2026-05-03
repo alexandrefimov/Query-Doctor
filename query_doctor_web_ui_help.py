@@ -35,9 +35,8 @@ def render_help_content() -> str:
 <summary>Скан последних запросов / Recent scan</summary>
 <p>Лучший старт для администратора. Recent scan сначала читает query summaries из Cloudera Manager, затем собирает ограниченное число выбранных профилей, ранжирует кейсы детерминированно и собирает metadata только для top cases, если это включено. Web Recent scan не запускает LLM-отчеты автоматически.</p>
 <ul>
-<li><strong>Search depth</strong> задает окно поиска последних query summaries.</li>
-<li><strong>CM summary limit</strong> ограничивает, сколько CM summaries можно inspect.</li>
-<li><strong>Profile analysis limit</strong> ограничивает, сколько candidate profiles можно собрать и проанализировать.</li>
+<li><strong>Scan date</strong> и <strong>Hour bucket</strong> задают один час Cloudera Manager summaries за сегодня или предыдущие два дня.</li>
+<li>Web Recent scan анализирует все подходящие query profiles из выбранного часового окна, оставаясь под внутренним safety cap.</li>
 <li><strong>Metadata top cases</strong> ограничивает, сколько top-ranked cases получат metadata enrichment.</li>
 <li><strong>Min duration</strong> отсекает короткие запросы; пустое значение означает отсутствие этого фильтра.</li>
 <li><strong>Jobs</strong> задает параллелизм и остается ограниченным safety caps.</li>

@@ -15,10 +15,12 @@ import tempfile
 import threading
 import uuid
 from dataclasses import dataclass, replace
+from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo
 
 import query_doctor_collect_cm_profiles as cm_collector
 import query_doctor_collect_impala_context as impala_context_collector
@@ -85,6 +87,9 @@ BATCH_CM_JOBS_MAX = 100
 BATCH_METADATA_JOBS_MAX = 4
 BATCH_ANALYSIS_DEPTH_VALUES = {"full", "fast"}
 BATCH_QUERY_TYPE_VALUES = {"QUERY"}
+RECENT_SCAN_TIMEZONE = ZoneInfo("Europe/Moscow")
+RECENT_SCAN_LOOKBACK_DAYS = 2
+RECENT_SCAN_BUCKET_HOURS = 1
 DEFAULT_METADATA_AUTH = "kerberos"
 DEFAULT_METADATA_PROTOCOL = "beeswax"
 DEFAULT_METADATA_TIMEOUT_SEC = 30
@@ -169,6 +174,10 @@ class WebResult:
 class BatchRunConfig:
     analysis_depth: str = "full"
     recent_window_minutes: int = 30
+    scan_date: str = ""
+    scan_hour: int = 0
+    from_time: str | None = None
+    to_time: str | None = None
     cm_inspect_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
     triage_profile_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
     metadata_top_limit: int = 8
@@ -804,11 +813,46 @@ def parse_facts_summary(facts_text: str) -> dict[str, str]:
     return summary
 
 
+def default_recent_scan_bucket(now: datetime | None = None) -> tuple[str, int]:
+    current = now.astimezone(RECENT_SCAN_TIMEZONE) if now else datetime.now(RECENT_SCAN_TIMEZONE)
+    bucket = current.replace(minute=0, second=0, microsecond=0) - timedelta(hours=RECENT_SCAN_BUCKET_HOURS)
+    return bucket.date().isoformat(), bucket.hour
+
+
+def allowed_recent_scan_dates(now: datetime | None = None) -> set[str]:
+    current = now.astimezone(RECENT_SCAN_TIMEZONE).date() if now else datetime.now(RECENT_SCAN_TIMEZONE).date()
+    return {(current - timedelta(days=days)).isoformat() for days in range(RECENT_SCAN_LOOKBACK_DAYS + 1)}
+
+
+def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str, str]:
+    default_date, default_hour = default_recent_scan_bucket()
+    scan_date = first_form_value(form, "scan_date") or default_date
+    scan_hour_text = first_form_value(form, "scan_hour") or str(default_hour)
+    if scan_date not in allowed_recent_scan_dates():
+        raise WebError("Scan date must be today or one of the previous two days.")
+    try:
+        parsed_date = date.fromisoformat(scan_date)
+    except ValueError as exc:
+        raise WebError("Scan date must be formatted as YYYY-MM-DD.") from exc
+    try:
+        scan_hour = int(scan_hour_text)
+    except ValueError as exc:
+        raise WebError("Scan hour must be an integer from 0 to 23.") from exc
+    if scan_hour < 0 or scan_hour > 23:
+        raise WebError("Scan hour must be an integer from 0 to 23.")
+    start_local = datetime.combine(parsed_date, datetime_time(scan_hour), tzinfo=RECENT_SCAN_TIMEZONE)
+    end_local = start_local + timedelta(hours=RECENT_SCAN_BUCKET_HOURS)
+    from_time = start_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    to_time = end_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return scan_date, scan_hour, from_time, to_time
+
+
 def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth: str = "full") -> BatchRunConfig:
     analysis_depth = first_form_value(form, "analysis_depth") or default_analysis_depth
     if analysis_depth not in BATCH_ANALYSIS_DEPTH_VALUES:
         raise WebError("Analysis depth must be full or fast.")
-    recent_window_minutes = parse_positive_form_int(form, "recent_window_minutes", default=30)
+    scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(form)
+    recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
     cm_inspect_limit = parse_positive_form_int(
         form, "cm_inspect_limit", default=BATCH_CM_INSPECT_LIMIT_MAX, maximum=BATCH_CM_INSPECT_LIMIT_MAX
     )
@@ -837,6 +881,10 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
     return BatchRunConfig(
         analysis_depth=analysis_depth,
         recent_window_minutes=recent_window_minutes,
+        scan_date=scan_date,
+        scan_hour=scan_hour,
+        from_time=from_time,
+        to_time=to_time,
         cm_inspect_limit=cm_inspect_limit,
         triage_profile_limit=triage_profile_limit,
         metadata_top_limit=metadata_top_limit,
@@ -1129,6 +1177,10 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
     out_dir = batch_output_dir(job_id)
     progress_path = batch_progress_path(job_id)
     metadata_mode = "on" if config.analysis_depth == "full" else "off"
+    if config.from_time and config.to_time:
+        from_time, to_time = config.from_time, config.to_time
+    else:
+        _, _, from_time, to_time = parse_recent_scan_window({})
     cmd = [
         sys.executable,
         str(settings.repo_dir / "query_doctor_batch_recent.py"),
@@ -1136,8 +1188,10 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         str(settings.config),
         "--out",
         str(out_dir),
-        "--recent-window-minutes",
-        str(config.recent_window_minutes),
+        "--from-time",
+        str(from_time),
+        "--to-time",
+        str(to_time),
         "--cm-inspect-limit",
         str(config.cm_inspect_limit),
         "--triage-profile-limit",
@@ -1414,8 +1468,8 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for name in (
         "analysis_depth",
-        "recent_window_minutes",
-        "cm_inspect_limit",
+        "scan_date",
+        "scan_hour",
         "metadata_top_limit",
         "min_duration_sec",
         "max_duration_sec",
@@ -1436,8 +1490,8 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
 def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
     return {
         "analysis_depth": config.analysis_depth,
-        "recent_window_minutes": str(config.recent_window_minutes),
-        "cm_inspect_limit": str(config.cm_inspect_limit),
+        "scan_date": config.scan_date,
+        "scan_hour": str(config.scan_hour),
         "metadata_top_limit": str(config.metadata_top_limit),
         "min_duration_sec": "" if config.min_duration_sec is None else display_float(config.min_duration_sec),
         "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),

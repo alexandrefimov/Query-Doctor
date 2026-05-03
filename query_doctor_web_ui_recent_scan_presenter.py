@@ -323,7 +323,13 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
         parts.append(f"Profile analysis limit: {safe_display_text(summary.get('triage_profile_limit'))}")
     if summary.get("metadata_top_limit") is not None:
         parts.append(f"Metadata enrichment: top {safe_display_text(summary.get('metadata_top_limit'))} cases")
-    if summary.get("recent_window_minutes") is not None:
+    if summary.get("from_time") or summary.get("to_time"):
+        parts.append(
+            "CM time window: "
+            f"{safe_display_text(summary.get('from_time') or 'unknown')} -> "
+            f"{safe_display_text(summary.get('to_time') or 'unknown')}"
+        )
+    elif summary.get("recent_window_minutes") is not None:
         parts.append(f"Search depth: {safe_display_text(summary.get('recent_window_minutes'))} minutes")
     if summary.get("query_type_filter") is not None:
         parts.append(f"Query type: {safe_display_text(summary.get('query_type_filter'))}")
@@ -378,9 +384,9 @@ def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> st
         return None
     summaries = summary.get("summaries_inspected")
     if summaries is not None and numeric_count(summaries) == 0:
-        return "No matching queries found for this search window. Try increasing Search depth or changing filters."
+        return "No matching queries found for this hour bucket. Try another hour or changing filters."
     if summaries is not None:
-        return "No query candidates matched the current scan criteria. Try increasing Search depth or changing filters."
+        return "No query candidates matched the current scan criteria. Try another hour or changing filters."
     return None
 
 
