@@ -63,10 +63,17 @@ Sanitizer и validator:
   сохраняют существующий final report.
 
 Local UI:
-- Показывает локальный workflow для одного explicit query id.
-- Переиспользует collected cases, когда это безопасно.
+- Показывает локальные workflows: Recent query scan, one explicit Query ID
+  analysis and Query Optimizer.
+- Recent scan discovers CM summaries first, collects bounded selected profiles,
+  ranks deterministically and leaves report generation explicit per case.
+- Query Optimizer parses one safe SELECT/WITH statement locally, does not execute
+  pasted SQL and does not render it back after submit.
 - Не является источником фактов.
-- Не включает broad collection.
+- Не включает broad unsafe collection or automatic web LLM batch reports.
+
+See [roadmap.md](roadmap.md) for planned UI cleanup and the multi-engine
+architecture direction. The current implementation remains Impala-only.
 
 ## Текущее real-case покрытие
 

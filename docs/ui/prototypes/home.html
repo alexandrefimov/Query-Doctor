@@ -132,7 +132,7 @@ tbody tr:last-child td{border-bottom:0}
         <div class="section-heading">
           <div>
             <h1 class="section-title">Run diagnosis</h1>
-            <div class="section-kicker">Start from an Impala query ID or saved case. Query Doctor collects evidence and writes a validated report.</div>
+            <div class="section-kicker">Archived visual prototype: current browser safety rules do not expose local case paths or raw artifacts. Start from an Impala query ID; Query Doctor collects evidence and writes a validated report.</div>
           </div>
         </div>
 
@@ -147,9 +147,9 @@ tbody tr:last-child td{border-bottom:0}
         <form class="run-form" action="#" method="post">
           <div class="run-main-row">
             <div class="field">
-              <label for="query-case">Query ID or case path</label>
-              <input class="input" id="query-case" name="query_or_case" placeholder="query_id or /path/to/case" autocomplete="off" />
-              <div class="helper">Run local diagnosis for a saved case path or Impala query identifier.</div>
+              <label for="query-case">Query ID</label>
+              <input class="input" id="query-case" name="query_or_case" placeholder="query_id" autocomplete="off" />
+              <div class="helper">Run local diagnosis for an Impala query identifier. Server-owned existing cases are selected by the app, not by browser paths.</div>
             </div>
             <button class="run-button" type="submit">Run</button>
           </div>
@@ -192,8 +192,8 @@ tbody tr:last-child td{border-bottom:0}
           </details>
 
           <div class="pipeline-line" aria-label="Diagnostic pipeline">
-            <span><strong>Primary input:</strong> query id or case path</span>
-            <span><strong>Auto-collected evidence:</strong> SQL · profile · EXPLAIN · metadata</span>
+            <span><strong>Primary input:</strong> query id</span>
+            <span><strong>Auto-collected evidence:</strong> profile facts · safe metadata facts</span>
             <span><strong>Output:</strong> validated report · analyzer facts appendix</span>
           </div>
           <div class="scope-line" aria-label="Collection scope">
@@ -221,24 +221,24 @@ tbody tr:last-child td{border-bottom:0}
           <thead><tr><th>query/case</th><th>mode</th><th>diagnosis</th><th>findings</th><th>validation</th><th>created</th><th>actions</th></tr></thead>
           <tbody>
             <tr>
-              <td><div class="query-cell"><span class="query-id">e94c1b7d0a4f:host-tail-skew</span><span class="query-source">CM query · admin report</span><span class="query-path">cases/cm-e94-host-backend</span></div></td>
+              <td><div class="query-cell"><span class="query-id">e94c1b7d0a4f:host-tail-skew</span><span class="query-source">CM query · admin report</span><span class="query-path">server-owned case</span></div></td>
               <td><span class="badge gray">admin</span></td><td><span class="badge amber">WARN</span></td><td>4</td><td><span class="badge green">PASS</span></td><td>2026-05-01 13:42</td>
-              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Artifacts</a><a class="muted-link" href="#">Re-run</a></div></td>
+              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Evidence</a><a class="muted-link" href="#">Re-run</a></div></td>
             </tr>
             <tr>
-              <td><div class="query-cell"><span class="query-id">fa469_bad_query</span><span class="query-source">Saved case · user report</span><span class="query-path">cases/fa469</span></div></td>
+              <td><div class="query-cell"><span class="query-id">fa469_bad_query</span><span class="query-source">Saved case · user report</span><span class="query-path">server-owned case</span></div></td>
               <td><span class="badge gray">user</span></td><td><span class="badge red">FAIL</span></td><td>2</td><td><span class="badge green">PASS</span></td><td>2026-05-01 12:18</td>
-              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Artifacts</a><a class="muted-link" href="#">Re-run</a></div></td>
+              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Evidence</a><a class="muted-link" href="#">Re-run</a></div></td>
             </tr>
             <tr>
-              <td><div class="query-cell"><span class="query-id">1f401_ok_case</span><span class="query-source">Saved case · user report</span><span class="query-path">cases/1f401</span></div></td>
+              <td><div class="query-cell"><span class="query-id">1f401_ok_case</span><span class="query-source">Saved case · user report</span><span class="query-path">server-owned case</span></div></td>
               <td><span class="badge gray">user</span></td><td><span class="badge green">OK</span></td><td>0</td><td><span class="badge green">PASS</span></td><td>2026-05-01 10:03</td>
-              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Artifacts</a><a class="muted-link" href="#">Re-run</a></div></td>
+              <td><div class="actions"><a class="link-button" href="#">Open</a><a class="muted-link" href="#">Evidence</a><a class="muted-link" href="#">Re-run</a></div></td>
             </tr>
             <tr>
-              <td><div class="query-cell"><span class="query-id">local_case_partial</span><span class="query-source">Offline case · partial output</span><span class="query-path">cases/local/partial-output</span></div></td>
+              <td><div class="query-cell"><span class="query-id">local_case_partial</span><span class="query-source">Offline case · partial output</span><span class="query-path">server-owned case</span></div></td>
               <td><span class="badge gray">admin</span></td><td><span class="badge gray">PARTIAL</span></td><td>unknown</td><td><span class="badge red">FAIL</span></td><td>2026-04-30 20:55</td>
-              <td><div class="actions"><a class="link-button" href="#">Inspect</a><a class="muted-link" href="#">Artifacts</a><a class="muted-link" href="#">Re-run</a></div></td>
+              <td><div class="actions"><a class="link-button" href="#">Inspect</a><a class="muted-link" href="#">Evidence</a><a class="muted-link" href="#">Re-run</a></div></td>
             </tr>
           </tbody>
         </table>

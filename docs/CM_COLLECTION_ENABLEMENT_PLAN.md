@@ -94,15 +94,16 @@ Completed single-query rollout:
 8. Generated `analysis_facts.md` и report files удалены после validation.
 9. Подтверждено, что `cases/cm-corpus/` остаётся ignored and uncommitted.
 
-Next bounded broad-collection rollout:
+Archived historical rollout notes, not current guidance:
 
-1. Оставить `--redact` обязательным.
-2. Использовать очень маленький `--limit`, например `2` или `3`.
-3. Держать `--since-hours` bounded.
-4. Держать `--max-profile-bytes` enabled.
-5. Не запускать analyzer или reports автоматически из collector.
-6. Запускать analyzer/report smoke вручную после collection.
-7. Подтверждать, что generated corpus files остаются ignored and unstaged.
+These notes predate the current Recent scan batch/web workflow. Do not treat
+them as rollout instructions for broad collection. Current supported paths are:
+
+1. standalone collector listing mode for sanitized recent-query candidates, with
+   no profile collection and no case output
+2. explicit `--query-id --limit 1 --redact` collection
+3. bounded Recent scan batch/web workflows that collect selected profiles and do
+   not auto-run web LLM reports
 
 ## Required generated-output checks
 

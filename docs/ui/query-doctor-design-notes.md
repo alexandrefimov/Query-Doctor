@@ -144,14 +144,13 @@ Recommended sizes:
 - Badges: `10.5px`, monospace
 - Metadata values: monospace, `11px–12px`
 
-Technical values should use monospace:
+Technical values should use monospace only after applying the browser display
+safety policy. Do not render local filesystem paths, raw artifact names or
+model/Ollama internals in the browser shell.
 
 - query IDs
-- case paths
-- model names
 - evidence states
 - status values
-- filenames
 - host aliases
 - pool names
 - validation states
@@ -223,9 +222,11 @@ Do not imply that LLM runs for all selected queries.
 
 Purpose: answer `Разбери вот этот конкретный запрос.`
 
-This page starts from one Impala Query ID or saved case path. It can collect CM
-profile/details, run analyzer, optionally collect metadata for referenced
-tables, generate a report and render it only after validation passes.
+This page starts from one Impala Query ID or a server-owned existing case selected
+by the app. It must not expose or accept arbitrary local case paths in the
+browser. It can collect CM profile/details, run analyzer, optionally collect
+metadata for referenced tables, generate a report and render it only after
+validation passes.
 
 ### SQL Optimization Review
 
@@ -259,7 +260,7 @@ claims unless deterministically supported.
 For the single-query home page, prioritize the normal Query ID workflow:
 
 ```text
-query_id or case path → auto-collect evidence → validated report
+query_id or server-owned case → auto-collect evidence → validated report
 ```
 
 ### Run panel
@@ -269,14 +270,14 @@ The run panel is the primary action area.
 Recommended structure:
 
 1. Title: `Run diagnosis`
-2. Subtitle: `Start from an Impala query ID or saved case. Query Doctor collects evidence and writes a validated report.`
+2. Subtitle: `Start from an Impala query ID. Query Doctor collects evidence and writes a validated report.`
 3. Compact Environment line:
    - `Target: prod-impala`
    - `Auth: Kerberos active`
    - `CM: connected`
    - `Collector: ready`
 4. Main action row:
-   - `Query ID or case path` input
+   - `Query ID` input
    - `Run` button aligned with the input
 5. Secondary row:
    - Mode selector: `user / admin`
@@ -292,7 +293,7 @@ Recommended structure:
    - Unknown / inspect
 7. Additional context text field
 8. Pipeline/scope lines:
-   - `Primary input: query id or case path`
+   - `Primary input: query id`
    - `Auto-collected evidence: SQL · profile · EXPLAIN · metadata`
    - `Output: validated report · analyzer facts appendix`
    - `Scope: current query only · referenced tables only · read-only metadata`
@@ -349,13 +350,13 @@ Use `diagnosis` rather than `status` to avoid confusion with validation.
 Actions:
 
 - Open
-- Artifacts
+- Evidence
 - Re-run
 
 For failed validation / partial output:
 
 - Inspect
-- Artifacts
+- Evidence
 - Re-run
 
 Under query/case, show source/type hint:
@@ -381,17 +382,16 @@ Include:
 - Breadcrumb: `Reports / <query-id>`
 - Title: `Impala query diagnosis`
 - Subtitle with concise context
-- Query ID and case path
+- Query ID and safe server-owned case status
 - Actions:
   - Back
   - Copy report
-  - Artifacts
+  - Safe evidence availability
   - Re-run
 - Status strip:
   - Diagnosis: WARN/OK/FAIL/PARTIAL
   - Validation: PASS/FAIL
   - Mode: user/admin
-  - Model name
   - Rendered after validation
 
 ### Main sections
@@ -532,7 +532,7 @@ Recommended cards:
 3. Query context
 4. Evidence completeness
 5. Evidence states
-6. Artifacts
+6. Evidence availability
 7. Pipeline
 
 ### Query context
@@ -562,17 +562,17 @@ Examples:
 
 This is essential for trust. It tells the user how strong the evidence base is.
 
-### Artifacts
+### Evidence availability
 
-Artifact links should include both file/path and status.
+Do not link raw local artifacts or render filesystem paths in the browser shell.
+Show safe availability/status labels instead.
 
 Examples:
 
-- Profile — `profile.txt` — available
-- SQL — `query.sql` — extracted
-- EXPLAIN — `explain.txt` — auto
-- Metadata — `metadata/` — partial
-- Facts — `analysis_facts.md` — generated
+- Profile evidence — available
+- SQL text — redacted / not shown
+- Metadata facts — partial / available
+- Analyzer facts — generated
 
 ### Pipeline
 
@@ -639,12 +639,12 @@ For home page tests:
 - Trust/safety strip contains expected guarantees.
 - Collection scope text is visible.
 - Recent reports table uses `diagnosis` and `validation`.
-- Actions include Open/Artifacts/Re-run or Inspect/Artifacts/Re-run.
+- Actions include Open/Re-run or Inspect/Re-run; do not add raw artifact links.
 - No visible redact identifiers checkbox.
 
 For report page tests:
 
-- Report header shows query/case/mode/validation/model.
+- Report header shows query id, safe case status, mode and validation state.
 - Page does not render unless report validation passed.
 - `Короткий вывод` exists.
 - `Immediate next checks` exists.

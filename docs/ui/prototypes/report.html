@@ -97,18 +97,17 @@ h1,h2,h3,p{margin-top:0} h1{margin-bottom:8px;font-size:20px;line-height:1.2;let
       <div class="report-title-row">
         <div>
           <h1>Impala query diagnosis</h1>
-          <div class="report-subtitle">Admin report for a slow Impala query with backend skew and memory pressure signals.</div>
-          <div class="query-line"><span>Query:</span> <code>e94c1b7d0a4f:host-tail-skew</code><span>Case:</span><code>cases/cm-e94-host-backend</code></div>
+          <div class="report-subtitle">Archived visual prototype: current browser safety rules hide local paths, raw artifacts and model internals.</div>
+          <div class="query-line"><span>Query:</span> <code>e94c1b7d0a4f:host-tail-skew</code><span>Case:</span><code>server-owned</code></div>
         </div>
         <div class="header-actions">
-          <button class="button">Back</button><button class="button">Copy report</button><button class="button">Artifacts</button><button class="button primary">Re-run</button>
+          <button class="button">Back</button><button class="button">Copy report</button><button class="button">Evidence</button><button class="button primary">Re-run</button>
         </div>
       </div>
       <div class="status-strip" aria-label="Report status">
         <span class="status-item"><span class="dot amber"></span>Diagnosis: <span class="badge amber">WARN</span></span>
         <span class="status-item"><span class="dot"></span>Validation: <span class="badge green">PASS</span></span>
         <span class="status-item"><span class="dot"></span>Mode: <span class="badge gray">admin</span></span>
-        <span class="status-item"><span class="dot gray"></span>Model: <span class="badge gray">qwen3-coder:30b</span></span>
         <span class="status-item"><span class="dot"></span>Rendered after validation</span>
       </div>
     </section>
@@ -160,13 +159,12 @@ h1,h2,h3,p{margin-top:0} h1{margin-bottom:8px;font-size:20px;line-height:1.2;let
 
         <section class="panel section-card" aria-labelledby="query-checks">
           <h2 id="query-checks">Query and statistics checks</h2>
-          <div class="warning-box">Query rewrite advice is limited to safe, evidence-aligned suggestions. Statistics and EXPLAIN checks may be more useful than changing SQL blindly.</div>
-          <pre class="code-block"><code>-- Candidate checks, not automatic rewrite:
-SHOW TABLE STATS db.fact_table;
-SHOW COLUMN STATS db.fact_table;
-
--- Re-run EXPLAIN after stats refresh and compare estimates.
-EXPLAIN SELECT ...;</code></pre>
+          <div class="warning-box">Query rewrite advice is limited to safe, evidence-aligned suggestions. Raw SQL and raw metadata commands are not shown in the browser report shell.</div>
+          <div class="artifact-list">
+            <a class="artifact-link" href="#"><span>Table metadata status</span><span class="badge green">available</span></a>
+            <a class="artifact-link" href="#"><span>Column metadata status</span><span class="badge amber">partial</span></a>
+            <a class="artifact-link" href="#"><span>Plan comparison guidance</span><span class="badge gray">manual check</span></a>
+          </div>
         </section>
 
         <section class="panel section-card" aria-labelledby="limitations">
@@ -202,7 +200,7 @@ EXPLAIN SELECT ...;</code></pre>
             <ul class="facts-list">
               <li><span>Host-tail evidence</span><code>supported</code></li>
               <li><span>Unsupported spill root-cause claim</span><code>not_observed</code></li>
-              <li><span>SQL text</span><code>available</code></li>
+              <li><span>SQL text</span><code>redacted/not shown</code></li>
               <li><span>EXPLAIN artifact</span><code>auto-collected</code></li>
               <li><span>Metadata scope</span><code>referenced tables only</code></li>
             </ul>
@@ -212,11 +210,11 @@ EXPLAIN SELECT ...;</code></pre>
 
       <aside class="side-panel" aria-label="Report side panel">
         <section class="panel side-card"><h2>Sections</h2><nav class="toc-list" aria-label="Report sections"><a href="#short-summary">Короткий вывод</a><a href="#triage-actions">Immediate next checks</a><a href="#detailed-findings">Подробный разбор</a><a href="#query-checks">Query and statistics checks</a><a href="#analyzer-facts">Факты анализатора</a></nav></section>
-        <section class="panel side-card"><h2>Report metadata</h2><div class="meta-list"><div class="meta-row"><span>Created</span><strong>2026-05-01 13:42</strong></div><div class="meta-row"><span>Mode</span><strong>admin</strong></div><div class="meta-row"><span>Validation</span><strong>PASS</strong></div><div class="meta-row"><span>Model</span><strong>qwen3-coder:30b</strong></div><div class="meta-row"><span>Source</span><strong>CM query</strong></div></div></section>
+        <section class="panel side-card"><h2>Report metadata</h2><div class="meta-list"><div class="meta-row"><span>Created</span><strong>2026-05-01 13:42</strong></div><div class="meta-row"><span>Mode</span><strong>admin</strong></div><div class="meta-row"><span>Validation</span><strong>PASS</strong></div><div class="meta-row"><span>Source</span><strong>CM query</strong></div></div></section>
         <section class="panel side-card"><h2>Query context</h2><div class="meta-list"><div class="meta-row"><span>Pool</span><strong>root.analytics</strong></div><div class="meta-row"><span>User</span><strong>user_01</strong></div><div class="meta-row"><span>Coordinator</span><strong>host_03</strong></div><div class="meta-row"><span>Duration</span><strong>41m 12s</strong></div><div class="meta-row"><span>Admission wait</span><strong>1m 08s</strong></div><div class="meta-row"><span>Peak memory</span><strong>18.4 GB</strong></div></div></section>
         <section class="panel side-card"><h2>Evidence completeness</h2><div class="meta-list"><div class="meta-row"><span>Profile</span><span class="badge green">available</span></div><div class="meta-row"><span>SQL</span><span class="badge green">extracted</span></div><div class="meta-row"><span>EXPLAIN</span><span class="badge green">auto-collected</span></div><div class="meta-row"><span>Metadata</span><span class="badge amber">partial</span></div><div class="meta-row"><span>Host metrics</span><span class="badge gray">not collected</span></div></div></section>
         <section class="panel side-card"><h2>Evidence states</h2><div class="meta-list"><div class="meta-row"><span>Supported</span><span class="badge green">supported</span></div><div class="meta-row"><span>Not observed</span><span class="badge gray">not_observed</span></div><div class="meta-row"><span>Unknown</span><span class="badge amber">unknown</span></div></div></section>
-        <section class="panel side-card"><h2>Artifacts</h2><div class="artifact-list"><a class="artifact-link" href="#"><span>Profile<code>profile.txt</code></span><span class="badge green">available</span></a><a class="artifact-link" href="#"><span>SQL<code>query.sql</code></span><span class="badge green">extracted</span></a><a class="artifact-link" href="#"><span>EXPLAIN<code>explain.txt</code></span><span class="badge green">auto</span></a><a class="artifact-link" href="#"><span>Metadata<code>metadata/</code></span><span class="badge amber">partial</span></a><a class="artifact-link" href="#"><span>Facts<code>analysis_facts.md</code></span><span class="badge green">generated</span></a></div></section>
+        <section class="panel side-card"><h2>Evidence availability</h2><div class="artifact-list"><a class="artifact-link" href="#"><span>Profile evidence</span><span class="badge green">available</span></a><a class="artifact-link" href="#"><span>SQL text</span><span class="badge gray">redacted</span></a><a class="artifact-link" href="#"><span>Metadata facts</span><span class="badge amber">partial</span></a><a class="artifact-link" href="#"><span>Analyzer facts</span><span class="badge green">generated</span></a></div></section>
         <section class="panel side-card"><h2>Pipeline</h2><div class="timeline"><div class="timeline-item"><span class="timeline-dot"></span><div><strong>Profile collected</strong><span>CM query profile downloaded</span></div></div><div class="timeline-item"><span class="timeline-dot"></span><div><strong>Evidence built</strong><span>SQL, EXPLAIN, metadata collected</span></div></div><div class="timeline-item"><span class="timeline-dot"></span><div><strong>Report validated</strong><span>Safety gate passed before render</span></div></div></div></section>
       </aside>
     </section>

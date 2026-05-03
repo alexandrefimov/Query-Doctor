@@ -66,6 +66,21 @@ contents или real production profile text.
   validation, deterministic appendix append и final validation.
 - Validation failure пишет sanitized/normalized `.partial` и сохраняет
   существующий final report.
+- Trusted final reports must not contain raw SQL-like text, SQL fenced code
+  blocks, pasted query fragments or raw metadata command snippets such as table-
+  specific `SHOW CREATE TABLE` / `SHOW TABLE STATS` / `SHOW COLUMN STATS`.
+- Partial or invalid report output is untrusted and must not be displayed as the
+  final diagnosis.
+
+## Browser display boundary
+
+- Browser-visible UI must not render raw SQL, raw profiles, raw metadata,
+  stdout/stderr, local paths, `case_dir`, credentials, secret values, Kerberos
+  ticket contents, metadata connection details, model names or Ollama internals.
+- Dynamic browser-visible text should use the shared browser display redaction
+  policy before rendering.
+- Web Recent scan must not auto-run LLM reports; validated report generation is
+  explicit for one selected case.
 
 ## Report structure
 
