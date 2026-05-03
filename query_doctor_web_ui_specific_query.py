@@ -31,7 +31,11 @@ from query_doctor_web_ui_recent_scan_results import (
 def render_specific_query_result(result: Any) -> list[str]:
     case = dict(getattr(result, "case", {}) or {})
     case.pop("case_index", None)
-    rows = render_specific_query_row(case)
+    return render_specific_query_results([case])
+
+
+def render_specific_query_results(cases: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> list[str]:
+    rows = "".join(render_specific_query_row(case) for case in cases)
     return [
         "<section class=\"panel batch-panel\" aria-label=\"Specific Query analysis result\">",
         "<div class=\"batch-head\"><div><h1>Specific Query analysis</h1>"

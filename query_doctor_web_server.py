@@ -47,6 +47,7 @@ from query_doctor_web_ui import (
     render_result,
     render_specific_query_detail,
     render_specific_query_result,
+    render_specific_query_results,
 )
 from query_doctor_web_ui_help import render_help_page
 from query_doctor_web_ui_optimizer import render_optimizer_page
@@ -255,20 +256,23 @@ class WebJob:
 class WebJobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, WebJob] = {}
+        self._query_results: list[dict[str, object]] = []
         self._latest_batch_summary: Path | None = None
         self._lock = threading.Lock()
 
     def create(self, query_id: str, report_mode: str) -> WebJobSnapshot:
         stage = WEB_STAGES[0]
-        job = WebJob(
-            job_id=uuid.uuid4().hex,
-            query_id=query_id,
-            report_mode=report_mode,
-            status="running",
-            stage_label=stage[1],
-            progress=stage[2],
-        )
         with self._lock:
+            prior_result_html = "\n".join(render_specific_query_results(tuple(self._query_results))) if self._query_results else ""
+            job = WebJob(
+                job_id=uuid.uuid4().hex,
+                query_id=query_id,
+                report_mode=report_mode,
+                status="running",
+                stage_label=stage[1],
+                progress=stage[2],
+                result_html=prior_result_html,
+            )
             self._jobs[job.job_id] = job
             return job.snapshot()
 
@@ -336,7 +340,7 @@ class WebJobStore:
             job.stage_label = stage[1]
             job.progress = stage[2]
 
-    def complete(self, job_id: str, result: WebResult) -> None:
+    def complete(self, job_id: str, result: WebResult | WebQueryAnalysisResult) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
@@ -344,7 +348,14 @@ class WebJobStore:
             job.status = "ok"
             job.stage_label = WEB_STAGES[-1][1]
             job.progress = WEB_STAGES[-1][2]
-            job.result_html = "\n".join(render_query_analysis_output(result))
+            if isinstance(result, WebQueryAnalysisResult):
+                safe_case = dict(result.case)
+                safe_case.pop("case_index", None)
+                safe_case.pop("case_dir", None)
+                self._query_results.append(safe_case)
+                job.result_html = "\n".join(render_specific_query_results(tuple(self._query_results)))
+            else:
+                job.result_html = "\n".join(render_query_analysis_output(result))
             job.error = ""
 
     def complete_html(self, job_id: str, result_html: str) -> None:
@@ -1424,7 +1435,7 @@ def handle_analyze_request(
             report_mode=report_mode,
             error=sanitize_for_display(exc),
         )
-    return 200, render_query_page(settings, query_id=query_id, report_mode=report_mode, result=result)
+    return 200, render_query_page(settings, report_mode=report_mode, result=result)
 
 
 def handle_optimizer_request(
@@ -2278,7 +2289,7 @@ def make_handler(
                         return
                     self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, job=job))
                 else:
-                    self.write_html(200, render_query_page(settings, query_id=job.query_id, report_mode=job.report_mode, job=job))
+                    self.write_html(200, render_query_page(settings, report_mode=job.report_mode, job=job))
                 return
             match = re.fullmatch(r"/jobs/(?P<job_id>[0-9a-f]{32})/status", parsed.path)
             if match:

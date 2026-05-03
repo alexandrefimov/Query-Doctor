@@ -307,13 +307,19 @@ def render_client_script() -> str:
 document.addEventListener('DOMContentLoaded', function () {
   var form = document.getElementById('analyze-form');
   var pending = document.getElementById('pending-panel');
-  if (form && pending) {
+  if (form) {
     form.addEventListener('submit', function () {
-      pending.classList.remove('progress-card--hidden');
+      if (pending) {
+        pending.classList.remove('progress-card--hidden');
+      }
       var button = form.querySelector('button[type="submit"]');
       if (button) {
         button.disabled = true;
         button.textContent = 'Run';
+      }
+      var queryInput = form.querySelector('input[name="query_id"]');
+      if (queryInput) {
+        window.setTimeout(function () { queryInput.value = ''; }, 0);
       }
     });
   }
@@ -404,7 +410,13 @@ def render_pending_progress_panel() -> str:
 
 
 def render_job_panel(job: Any, *, result_html_override: str | None = None) -> str:
-    result_html = result_html_override if result_html_override is not None else job.result_html if job.status == "ok" else ""
+    result_html = (
+        result_html_override
+        if result_html_override is not None
+        else job.result_html
+        if job.status == "ok" or getattr(job, "kind", "") == "query"
+        else ""
+    )
     error_html = html.escape(job.error) if job.status == "failed" else ""
     error_hidden = "" if job.status == "failed" else " hidden"
     batch_progress_html = ""
@@ -447,6 +459,12 @@ def render_specific_query_result(result: Any) -> list[str]:
     from query_doctor_web_ui_specific_query import render_specific_query_result as _render_specific_query_result
 
     return _render_specific_query_result(result)
+
+
+def render_specific_query_results(cases: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> list[str]:
+    from query_doctor_web_ui_specific_query import render_specific_query_results as _render_specific_query_results
+
+    return _render_specific_query_results(cases)
 
 
 def render_specific_query_detail(query_id: str, case: dict[str, Any], metadata_facts: dict[str, Any] | None = None) -> str:
