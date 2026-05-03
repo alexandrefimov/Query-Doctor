@@ -250,7 +250,14 @@ def render_optimized_query_action(
     if status == "running":
         status_html = render_optimized_query_progress(state)
     elif status == "failed":
-        status_html = f"<div class=\"error\">{html.escape(str(state.get('error') or 'Optimized query generation failed.'))}</div>"
+        status_html = render_optimized_query_failure(state)
+    elif status == "partial_untrusted":
+        status_html = (
+            "<div class=\"error-card\" role=\"alert\">"
+            "Optimized query draft exists but failed deterministic validation. "
+            "The partial draft is untrusted and hidden."
+            "</div>"
+        )
     elif status == "unavailable":
         status_html = "<p class=\"helper\">Source SQL is unavailable or outside the read-only optimizer scope for this case.</p>"
     else:
@@ -330,6 +337,24 @@ def optimized_query_progress_step_index(stage_label: str) -> int:
         if normalized in {label.lower() for label in stage_labels}:
             return index
     return 1
+
+
+def render_optimized_query_failure(state: dict[str, Any]) -> str:
+    message = str(state.get("error") or "Optimized query generation failed. Unsafe output is hidden.")
+    return (
+        "<div class=\"report-progress\" aria-label=\"Optimized query progress\">"
+        "<div class=\"progress-head\"><span class=\"progress-title\">Query LLM optimizer failed</span>"
+        f"<span class=\"progress-stage\">{html.escape(str(state.get('stage_label') or 'Failed'))}</span></div>"
+        "<div class=\"progress-bar\" aria-hidden=\"true\">"
+        "<span class=\"progress-fill\" style=\"width:100%\"></span>"
+        "</div>"
+        "<div class=\"batch-progress\"><div class=\"batch-progress-steps\">"
+        "<div class=\"batch-progress-step batch-progress-step--failed\">"
+        "<strong>! Failed</strong><span>Unsafe output hidden</span></div>"
+        "</div></div>"
+        f"<div class=\"error-card\" role=\"alert\">{html.escape(message)}</div>"
+        "</div>"
+    )
 
 
 def render_llm_report_progress(view: ReportActionView) -> str:
