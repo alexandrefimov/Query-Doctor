@@ -26,53 +26,56 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "page-shell" not in body
     assert "run-panel" in body
     assert "Specific Query" in body
+    assert "Analyze one explicit finished Impala query by Query ID." in body
+    assert (
+        "one Query ID → profile collection or reuse → deterministic analyzer facts → automatic metadata"
+        in body
+    )
     assert '<label for="query_id">Query ID</label>' in body
     assert "Query ID or case path" not in body
-    assert "Use this workflow when you already know the exact Impala Query ID." in body
+    assert "Analyze one explicit Impala query with deterministic profile facts." not in body
     assert "Saved case paths are supported by the CLI pipeline for now." not in body
     assert "case path" not in body
-    assert '<details class="info-popover"><summary aria-label="Query ID help">i</summary>' in body
-    assert "CM: unknown/not checked" in body
-    assert "Kerberos: unknown/not checked" in body
-    assert "Metadata collector: CLI only" in body
+    assert '<details class="info-popover"><summary aria-label="Query ID help">i</summary>' not in body
+    assert "CM: unknown/not checked" not in body
+    assert "Kerberos: unknown/not checked" not in body
+    assert "Metadata collector: CLI only" not in body
     assert ".hero-card:after" not in body
     assert "color-scheme:light" in body
     assert "--bg:#f7f8fa" in body
     assert "max-height:66vh" not in body
     assert "overflow-wrap:anywhere" in body
     assert "Интеллектуальный анализ Impala-запросов по Query ID" not in body
-    assert "Mode" in body
+    assert "Mode" not in body
     assert "Редактировать идентификаторы" not in body
     assert "Анализировать" not in body
     assert '<button class="run-button" type="submit">Run</button>' in body
-    assert '<input type="radio" name="mode" value="user" checked>' in body
+    assert 'name="mode"' not in body
     assert '<input type="radio" name="mode" value="admin" checked>' not in body
     assert ".segmented label:focus-within" not in body
     assert body.index('id="query_id"') < body.index('<button class="run-button" type="submit">Run</button>')
-    assert body.index('<button class="run-button" type="submit">Run</button>') < body.index('class="run-secondary-row"')
-    assert body.index('class="segmented"') < body.index('class="mode-help"')
     assert "Локальный демо-сервер: только явный Query ID" not in body
-    assert "Validated before render" in body
-    assert "Analyzer-owned facts" in body
-    assert "LLM writes wording only" in body
-    assert "Local-first" in body
-    assert "Safe by default" in body
-    assert "Scope:" in body
-    assert "validated report · analyzer facts · local-first · safe by default" in body
-    assert "How Query ID diagnosis works" in body
-    assert "Validated reports from this session appear after a run." in body
+    assert "Validated before render" not in body
+    assert "Analyzer-owned facts" not in body
+    assert "LLM writes wording only" not in body
+    assert "Local-first" not in body
+    assert "Safe by default" not in body
+    assert "validated report · analyzer facts · local-first · safe by default" not in body
+    assert "How Query ID diagnosis works" not in body
+    assert "Validated reports from this session appear after a run." not in body
     assert "This MVP UI does not expose a separate reports list yet." not in body
-    assert "Checking Query ID" in body
-    assert "This usually takes a few seconds to a couple of minutes." in body
+    assert "Checking Query ID" not in body
+    assert "This usually takes a few seconds to a couple of minutes." not in body
 
 
-def test_web_render_page_can_select_admin_mode_explicitly():
+def test_web_render_page_omits_modes_even_when_report_mode_is_passed():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
 
     body = module.render_page(settings, report_mode="admin")
 
-    assert '<input type="radio" name="mode" value="admin" checked>' in body
+    assert 'name="mode"' not in body
+    assert '<input type="radio" name="mode" value="admin" checked>' not in body
     assert '<input type="radio" name="mode" value="user" checked>' not in body
 
 

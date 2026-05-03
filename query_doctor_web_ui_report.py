@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from query_doctor_web_display_safety import redact_browser_display_text
 from query_doctor_web_ui import render_report_markdown_html
 
 
@@ -50,21 +51,46 @@ def render_result(result: Any) -> list[str]:
 
 
 def render_report_header(result: Any) -> str:
+    overview_items = (
+        ("validation", '<span class="badge green">PASS</span>'),
+        ("mode", f'<span class="badge gray">{escape_report_value(result.report_mode)}</span>'),
+        ("parsed operators", escape_report_value(result.parsed_operators)),
+        ("cardinality anomalies", escape_report_value(result.cardinality_anomalies)),
+        ("memory anomalies", escape_report_value(result.memory_anomalies)),
+        ("case source", escape_report_value(result.case_source)),
+    )
+    overview = "".join(
+        "<div class=\"case-overview-card\">"
+        f"<span>{html.escape(label)}</span><strong>{value}</strong>"
+        "</div>"
+        for label, value in overview_items
+    )
+    retry_note = (
+        "<div class=\"batch-note\">Report generation was retried after validator feedback; only the final validated report is rendered.</div>"
+        if result.report_retry
+        else ""
+    )
     return (
         "<section class=\"panel report-header\" aria-label=\"Report header\">"
-        "<div class=\"breadcrumb\"><a href=\"/\">Run</a><span>/</span><span>current diagnosis</span></div>"
+        "<div class=\"breadcrumb\"><a href=\"/query\">Specific Query</a><span>/</span><span>validated diagnosis</span></div>"
         "<div class=\"report-title-row\"><div>"
-        "<h1>Impala query diagnosis</h1>"
-        "<div class=\"report-subtitle\">Saved validated report rendered from server-owned evidence.</div>"
+        "<h1>Specific Query diagnosis</h1>"
+        "<div class=\"report-subtitle\">Validated report for one explicit Impala Query ID.</div>"
         "<div class=\"query-line\">"
-        f"<span>Query ID:</span><code>{html.escape(result.query_id)}</code>"
+        f"<span>Query ID:</span><code>{escape_report_value(result.query_id)}</code>"
         "<span>Report:</span><code>validated</code>"
         "</div></div></div>"
+        "<div class=\"case-overview\" aria-label=\"Specific Query result overview\">"
+        f"<div class=\"case-overview-grid\">{overview}</div>"
+        "</div>"
         "<div class=\"status-strip\" aria-label=\"Report status\">"
         "<span class=\"status-item\"><span class=\"dot\"></span>Validation: <span class=\"badge green\">PASS</span></span>"
-        f"<span class=\"status-item\"><span class=\"dot gray\"></span>Mode: <span class=\"badge gray\">{html.escape(result.report_mode)}</span></span>"
+        "<span class=\"status-item\"><span class=\"dot\"></span>Validated before render</span>"
+        "<span class=\"status-item\"><span class=\"dot gray\"></span>Raw SQL, profiles, metadata and local paths are hidden</span>"
         "<span class=\"status-item\"><span class=\"dot\"></span>Report ready</span>"
-        "</div></section>"
+        "</div>"
+        f"{retry_note}"
+        "</section>"
     )
 
 
@@ -112,14 +138,14 @@ def render_report_metadata_card(result: Any, has_facts: bool) -> str:
     )
     return (
         "<section class=\"panel side-card\"><h2>Report metadata</h2><div class=\"meta-list\">"
-        f"<div class=\"meta-row\"><span>Mode</span><strong>{html.escape(result.report_mode)}</strong></div>"
+        f"<div class=\"meta-row\"><span>Mode</span><strong>{escape_report_value(result.report_mode)}</strong></div>"
         "<div class=\"meta-row\"><span>Validation</span><strong>PASS</strong></div>"
         "<div class=\"meta-row\"><span>Report</span><strong>ready</strong></div>"
         f"<div class=\"meta-row\"><span>Analyzer facts</span><strong>{facts_state}</strong></div>"
-        f"<div class=\"meta-row\"><span>Parsed operators</span><strong>{html.escape(result.parsed_operators)}</strong></div>"
-        f"<div class=\"meta-row\"><span>Cardinality anomalies</span><strong>{html.escape(result.cardinality_anomalies)}</strong></div>"
-        f"<div class=\"meta-row\"><span>Memory anomalies</span><strong>{html.escape(result.memory_anomalies)}</strong></div>"
-        f"<div class=\"meta-row\"><span>Case source</span><strong>{html.escape(result.case_source)}</strong></div>"
+        f"<div class=\"meta-row\"><span>Parsed operators</span><strong>{escape_report_value(result.parsed_operators)}</strong></div>"
+        f"<div class=\"meta-row\"><span>Cardinality anomalies</span><strong>{escape_report_value(result.cardinality_anomalies)}</strong></div>"
+        f"<div class=\"meta-row\"><span>Memory anomalies</span><strong>{escape_report_value(result.memory_anomalies)}</strong></div>"
+        f"<div class=\"meta-row\"><span>Case source</span><strong>{escape_report_value(result.case_source)}</strong></div>"
         f"{retry_row}"
         "</div></section>"
     )
@@ -143,16 +169,16 @@ def render_evidence_card(case_dir: Path) -> str:
 def render_artifacts_card(artifacts: list[tuple[str, str]]) -> str:
     if not artifacts:
         return (
-            "<section class=\"panel side-card\"><h2>Artifacts</h2>"
-            "<p class=\"helper\">No recognized artifacts are present in the case directory.</p></section>"
+            "<section class=\"panel side-card\"><h2>Evidence categories</h2>"
+            "<p class=\"helper\">No recognized safe evidence categories are available.</p></section>"
         )
     items = "".join(
         "<div class=\"artifact-item\"><span>"
-        f"{html.escape(label)}<code>{html.escape(filename)}</code></span>"
+        f"{html.escape(label)}</span>"
         "<span class=\"badge green\">available</span></div>"
-        for label, filename in artifacts
+        for label, _filename in artifacts
     )
-    return f"<section class=\"panel side-card\"><h2>Artifacts</h2><div class=\"artifact-list\">{items}</div></section>"
+    return f"<section class=\"panel side-card\"><h2>Evidence categories</h2><div class=\"artifact-list\">{items}</div></section>"
 
 
 def render_pipeline_card(result: Any, artifacts: list[tuple[str, str]]) -> str:
@@ -171,7 +197,7 @@ def render_pipeline_card(result: Any, artifacts: list[tuple[str, str]]) -> str:
 def render_timeline_item(label: str, value: str) -> str:
     return (
         "<div class=\"timeline-item\"><span class=\"timeline-dot\"></span><div>"
-        f"<strong>{html.escape(label)}</strong><span>{html.escape(value)}</span>"
+        f"<strong>{html.escape(label)}</strong><span>{escape_report_value(value)}</span>"
         "</div></div>"
     )
 
@@ -188,6 +214,17 @@ def render_state_badge(state: str) -> str:
 
 def existing_artifacts(case_dir: Path) -> list[tuple[str, str]]:
     return [(label, filename) for label, filename in ARTIFACT_CANDIDATES if (case_dir / filename).is_file()]
+
+
+def escape_report_value(value: Any) -> str:
+    return html.escape(
+        redact_browser_display_text(
+            value,
+            redact_field_names=True,
+            redact_artifact_markers=True,
+            redact_model_names=True,
+        )
+    )
 
 
 def extract_markdown_headings(markdown_text: str) -> list[tuple[str, str]]:

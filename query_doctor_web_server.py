@@ -19,13 +19,14 @@ from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 from zoneinfo import ZoneInfo
 
 import query_doctor_collect_cm_profiles as cm_collector
 import query_doctor_collect_impala_context as impala_context_collector
 import query_doctor_impala_metadata_workflow as metadata_workflow
 import table_metadata_facts
+import query_doctor_batch_recent as batch_recent
 from query_doctor_config_contract import load_and_validate_config, merge_kerberos_cache_env
 from query_doctor_web_display_safety import redact_browser_display_text
 from query_doctor_optimizer_sql import ExtractedTable, OptimizerSqlError, extract_referenced_tables
@@ -44,6 +45,8 @@ from query_doctor_web_ui import (
     render_readme_page,
     render_report_markdown_html,
     render_result,
+    render_specific_query_detail,
+    render_specific_query_result,
 )
 from query_doctor_web_ui_help import render_help_page
 from query_doctor_web_ui_optimizer import render_optimizer_page
@@ -169,6 +172,12 @@ class WebResult:
     memory_anomalies: str
     report_text: str
     report_retry: bool = False
+
+
+@dataclass(frozen=True)
+class WebQueryAnalysisResult:
+    query_id: str
+    case: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -335,7 +344,7 @@ class WebJobStore:
             job.status = "ok"
             job.stage_label = WEB_STAGES[-1][1]
             job.progress = WEB_STAGES[-1][2]
-            job.result_html = "\n".join(render_result(result))
+            job.result_html = "\n".join(render_query_analysis_output(result))
             job.error = ""
 
     def complete_html(self, job_id: str, result_html: str) -> None:
@@ -369,7 +378,7 @@ def stages_for_job_kind(kind: str) -> tuple[tuple[int, str, int], ...]:
     return WEB_STAGES
 
 
-AnalysisFunc = Callable[[str, str, bool, WebSettings], WebResult]
+AnalysisFunc = Callable[[str, str, bool, WebSettings], object]
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 ProgressFunc = Callable[[int], None]
 
@@ -652,6 +661,117 @@ def run_web_analysis(
     )
 
 
+def run_query_id_analysis(
+    query_id: str,
+    report_mode: str,
+    redact_identifiers: bool,
+    settings: WebSettings,
+    *,
+    runner: Runner = subprocess.run,
+    progress: ProgressFunc | None = None,
+) -> WebQueryAnalysisResult:
+    del report_mode
+    update_progress(progress, 0)
+    validated_query_id = validate_query_id(query_id)
+    subprocess_env = effective_subprocess_env(settings)
+
+    update_progress(progress, 1)
+    expected_case_dir = expected_case_dir_for_query(validated_query_id, settings)
+    if expected_case_dir.exists():
+        ensure_complete_existing_case(expected_case_dir)
+        case_dir = expected_case_dir
+        collection_status = "ok"
+    else:
+        case_dir = collect_case(
+            validated_query_id,
+            expected_case_dir,
+            redact_identifiers,
+            settings,
+            runner,
+            env=subprocess_env,
+        )
+        collection_status = "ok"
+
+    update_progress(progress, 2)
+    analyzed = run_subprocess(
+        build_query_id_analyzer_command(case_dir, settings),
+        cwd=settings.repo_dir,
+        timeout_sec=settings.timeout_sec,
+        runner=runner,
+        env=subprocess_env,
+    )
+    analysis_status = "ok" if analyzed.returncode == 0 else "failed"
+    if analyzed.returncode != 0:
+        raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
+
+    facts_path = case_dir / "analysis_facts.md"
+    if not facts_path.exists():
+        raise WebError("Analyzer output was not created.")
+
+    update_progress(progress, 3)
+    summary_case = build_query_id_summary_case(
+        validated_query_id,
+        case_dir,
+        collection_status=collection_status,
+        analysis_status=analysis_status,
+    )
+    update_progress(progress, 4)
+    return WebQueryAnalysisResult(query_id=validated_query_id, case=summary_case)
+
+
+def build_query_id_summary_case(
+    query_id: str,
+    case_dir: Path,
+    *,
+    collection_status: str = "ok",
+    analysis_status: str = "ok",
+) -> dict[str, object]:
+    case = batch_recent.CaseResult(
+        index=1,
+        query_id=query_id,
+        duration_sec=read_case_duration_sec(case_dir),
+        user=None,
+        pool=None,
+        query_type=None,
+        sql_verb=None,
+        wrapper_dir=case_dir,
+        actual_case_dir=case_dir,
+        collection_status=collection_status,
+        analysis_status=analysis_status,
+        report_generated=False,
+        report_validation_status="not_run",
+    )
+    batch_recent.inspect_case_outputs(case)
+    batch_recent.score_case(case)
+    summary_case = batch_recent.case_to_summary(case)
+    summary_case.pop("case_index", None)
+    summary_case.pop("case_dir", None)
+    return summary_case
+
+
+def read_case_duration_sec(case_dir: Path) -> float | None:
+    metadata_path = case_dir / "cm_metadata.json"
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get("duration_sec")
+    if isinstance(value, (int, float)) and math.isfinite(float(value)):
+        return float(value)
+    duration_ms = payload.get("duration_ms")
+    if isinstance(duration_ms, (int, float)) and math.isfinite(float(duration_ms)):
+        return float(duration_ms) / 1000
+    return None
+
+
+def render_query_analysis_output(result: object) -> list[str]:
+    if isinstance(result, WebQueryAnalysisResult):
+        return render_specific_query_result(result)
+    return render_result(result)
+
+
 def update_progress(progress: ProgressFunc | None, stage_index: int) -> None:
     if progress is not None:
         progress(stage_index)
@@ -664,6 +784,23 @@ def build_analyzer_command(case_dir: Path, settings: WebSettings) -> list[str]:
         str(case_dir),
         "--skip-report",
     ]
+
+
+def build_query_id_analyzer_command(case_dir: Path, settings: WebSettings) -> list[str]:
+    metadata_enabled = metadata_configured(settings)
+    cmd = [
+        sys.executable,
+        str(settings.repo_dir / "query_doctor_pipeline.py"),
+        str(case_dir),
+        "--stop-after-analysis",
+        "--metadata-failure-policy",
+        "continue",
+        "--metadata-mode",
+        "on" if metadata_enabled else "off",
+    ]
+    if metadata_enabled:
+        append_web_metadata_args(cmd, settings)
+    return cmd
 
 
 def build_report_command(case_dir: Path, report_mode: str, report_name: str, settings: WebSettings) -> list[str]:
@@ -1271,11 +1408,11 @@ def handle_analyze_request(
     form: dict[str, list[str]],
     settings: WebSettings,
     *,
-    analysis_func: AnalysisFunc = run_web_analysis,
+    analysis_func: AnalysisFunc = run_query_id_analysis,
 ) -> tuple[int, str]:
     query_id = first_form_value(form, "query_id")
-    report_mode = first_form_value(form, "mode") or "user"
-    redact_identifiers = first_form_value(form, "redact_identifiers") == "on"
+    report_mode = "analysis"
+    redact_identifiers = False
     if not query_id:
         return 400, render_query_page(settings, error="Query ID is required.")
     try:
@@ -1394,11 +1531,11 @@ def start_analyze_job(
     settings: WebSettings,
     job_store: WebJobStore,
     *,
-    analysis_func: AnalysisFunc = run_web_analysis,
+    analysis_func: AnalysisFunc = run_query_id_analysis,
 ) -> tuple[int, str]:
     query_id = first_form_value(form, "query_id")
-    report_mode = first_form_value(form, "mode") or "user"
-    redact_identifiers = first_form_value(form, "redact_identifiers") == "on"
+    report_mode = "analysis"
+    redact_identifiers = False
     if not query_id:
         return 400, render_query_page(settings, error="Query ID is required.")
 
@@ -1525,7 +1662,15 @@ def run_analysis_job(
         job_store.update_stage(job_id, stage_index)
 
     try:
-        if analysis_func is run_web_analysis:
+        if analysis_func is run_query_id_analysis:
+            result = run_query_id_analysis(
+                query_id,
+                report_mode,
+                redact_identifiers,
+                settings,
+                progress=progress,
+            )
+        elif analysis_func is run_web_analysis:
             result = run_web_analysis(
                 query_id,
                 report_mode,
@@ -1678,6 +1823,44 @@ def render_batch_case_detail_for_request(
     metadata_facts = load_batch_case_metadata_facts(settings, case)
     report_state = load_batch_case_report_state(settings, case_id, case, job_store, job=job)
     return render_batch_case_detail_page(settings, case_id, case, metadata_facts, report_state=report_state)
+
+
+def render_specific_query_detail_for_request(settings: WebSettings, query_id: str) -> tuple[int, str]:
+    try:
+        validated_query_id = validate_query_id(query_id)
+    except WebError as exc:
+        return 400, render_query_page(settings, query_id=query_id, error=exc)
+    case_dir = expected_case_dir_for_query(validated_query_id, settings)
+    try:
+        ensure_complete_existing_case(case_dir)
+    except WebError:
+        message = WebError("Specific Query details are available after analysis completes.")
+        return 404, render_query_page(settings, query_id=validated_query_id, error=message)
+    if not (case_dir / "analysis_facts.md").is_file():
+        message = WebError("Specific Query details are available after analysis completes.")
+        return 404, render_query_page(settings, query_id=validated_query_id, error=message)
+    case = build_query_id_summary_case(validated_query_id, case_dir)
+    metadata_facts = load_specific_query_metadata_facts(case_dir)
+    return 200, render_page(
+        settings,
+        active_nav="query",
+        show_run_panel=False,
+        extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts)],
+    )
+
+
+def load_specific_query_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
+    fallback_facts: dict[str, Any] | None = None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_batch_case_analysis_metadata_facts(artifact_dir)
+        if facts and facts.get("tables"):
+            return facts
+        if facts and fallback_facts is None:
+            fallback_facts = facts
+        context_facts = load_batch_case_impala_context_facts(artifact_dir)
+        if context_facts:
+            return context_facts
+    return fallback_facts
 
 
 def load_validated_batch_case_report(settings: WebSettings, case: dict[str, object]) -> str | None:
@@ -1996,7 +2179,7 @@ def metadata_statement_counts(tables: list[dict[str, Any]]) -> dict[str, int]:
 
 def make_handler(
     settings: WebSettings,
-    analysis_func: AnalysisFunc = run_web_analysis,
+    analysis_func: AnalysisFunc = run_query_id_analysis,
     job_store: WebJobStore | None = None,
     runner: Runner = subprocess.run,
 ) -> type[BaseHTTPRequestHandler]:
@@ -2041,6 +2224,11 @@ def make_handler(
                     self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
                     return
                 self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store))
+                return
+            match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)", parsed.path)
+            if match:
+                status, body = render_specific_query_detail_for_request(settings, unquote(match.group("query_id")))
+                self.write_html(status, body)
                 return
             if parsed.path in {"/query", "/run"}:
                 self.write_html(200, render_query_page(settings))

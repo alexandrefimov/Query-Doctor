@@ -111,8 +111,15 @@ class RecentScanMetadataView:
 @dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
+    query_id: Any
     report_status: str
     trust_note: str
+    status_summary: str
+    signal_summary: str
+    has_spill: bool
+    table_stats_status: Any
+    score: Any
+    duration_sec: Any
     status_fields: tuple[tuple[str, Any], ...]
     runtime_fields: tuple[tuple[str, Any], ...]
     technical_fields: tuple[tuple[str, Any], ...]
@@ -193,6 +200,9 @@ def present_recent_scan_case_detail(
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
     report_status = batch_case_display_report_status(case, report_state)
+    collection_status = safe_display_value(case.get("collection_status"))
+    analysis_status = safe_display_value(case.get("analysis_status"))
+    metadata_status = safe_display_value(case.get("metadata_status"))
     trust_note = (
         "Validated report exists for this batch case."
         if report_status == "validated report"
@@ -200,16 +210,28 @@ def present_recent_scan_case_detail(
     )
     return RecentScanCaseDetailView(
         case_id=safe_display_text(case_id),
+        query_id=safe_display_value(case.get("query_id")),
         report_status=report_status,
         trust_note=trust_note,
+        status_summary=recent_scan_status_summary(
+            collection_status,
+            analysis_status,
+            metadata_status,
+            report_status,
+        ),
+        signal_summary=recent_scan_signal_summary(case),
+        has_spill=case_has_spill(case),
+        table_stats_status=safe_display_value(case.get("table_stats_status")),
+        score=safe_display_value(case.get("score")),
+        duration_sec=safe_display_value(case.get("duration_sec")),
         status_fields=(
             ("case", safe_display_value(case_id)),
             ("query id", safe_display_value(case.get("query_id"))),
             ("score", safe_display_value(case.get("score"))),
             ("duration sec", safe_display_value(case.get("duration_sec"))),
-            ("collection", safe_display_value(case.get("collection_status"))),
-            ("analysis", safe_display_value(case.get("analysis_status"))),
-            ("metadata", safe_display_value(case.get("metadata_status"))),
+            ("collection", collection_status),
+            ("analysis", analysis_status),
+            ("metadata", metadata_status),
             ("report", report_status),
         ),
         runtime_fields=(

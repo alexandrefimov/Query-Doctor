@@ -96,7 +96,7 @@ def render_batch_summary(
         f"{switcher}"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
-        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Duration</th><th>META</th><th>STATS</th><th>Summary</th>"
+        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Duration</th><th>STATS</th><th>META</th><th>Summary</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
@@ -225,8 +225,8 @@ def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowVie
         query_id_cell(view.query_id),
         score_cell(view),
         compact_cell(view.duration_sec),
-        metadata_cell(view.metadata_status),
         stats_cell(view.table_stats_status),
+        metadata_cell(view.metadata_status),
         summary_cell(view),
     ]
     return f"<tr {row_attrs}>{''.join(cells)}</tr>"

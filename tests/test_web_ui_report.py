@@ -9,18 +9,24 @@ def test_web_handler_renders_mocked_analysis_result_without_raw_html():
 
     def fake_analysis(query_id, report_mode, redact_identifiers, received_settings):
         assert query_id == "abc:def"
-        assert report_mode == "user"
-        assert redact_identifiers is True
+        assert report_mode == "analysis"
+        assert redact_identifiers is False
         assert received_settings is settings
-        return module.WebResult(
+        return module.WebQueryAnalysisResult(
             query_id=query_id,
-            case_dir=Path("/tmp/query-doctor-web/abc_def"),
-            case_source="reused existing local case",
-            report_mode=report_mode,
-            parsed_operators="2",
-            cardinality_anomalies="0",
-            memory_anomalies="1",
-            report_text="## Report\n<script>not raw html</script>",
+            case={
+                "query_id": "abc<script>:def",
+                "score": 4,
+                "duration_sec": 9.5,
+                "collection_status": "ok",
+                "analysis_status": "ok",
+                "metadata_status": "skipped",
+                "table_stats_status": "not_checked",
+                "score_reasons": ["memory <script>not raw html</script>"],
+                "memory_anomaly_count": 2,
+                "report_generated": False,
+                "report_validation_status": "not_run",
+            },
         )
 
     status, body = module.handle_analyze_request(
@@ -34,15 +40,13 @@ def test_web_handler_renders_mocked_analysis_result_without_raw_html():
     )
 
     assert status == 200
-    assert "Impala query diagnosis" in body
-    assert "Validated diagnosis markdown" in body
-    assert "Case source" in body
-    assert "reused existing local case" in body
-    assert "Parsed operators" in body
-    assert "<strong>2</strong>" in body
-    assert 'class="panel report-card"' in body
-    assert "<summary>Validated diagnosis markdown</summary>" in body
-    assert '<h2 id="section-1">Report</h2>' in body
+    assert "Specific Query analysis" in body
+    assert "Deterministic analyzer result for one explicit Impala Query ID." in body
+    assert "analysis only" not in body
+    assert "This page does not render raw SQL" not in body
+    assert "Validated diagnosis markdown" not in body
+    assert "Case source" not in body
+    assert 'class="panel report-card"' not in body
     assert "<pre>" not in body
     assert "<script>not raw html</script>" not in body
     assert "&lt;script&gt;not raw html&lt;/script&gt;" in body
@@ -51,6 +55,8 @@ def test_web_handler_renders_mocked_analysis_result_without_raw_html():
     assert "case_dir" not in body
     assert "/tmp/query-doctor-web" not in body
     assert "abc_def" not in body
+    assert "analysis_facts.md" not in body
+    assert "diagnosis.md" not in body
     assert "qwen3-coder:30b" not in body
     assert "Model" not in body
 
@@ -161,8 +167,10 @@ def test_web_report_marks_analyzer_facts_as_deterministic_appendix(tmp_path):
     assert '<a href="#section-1">Короткий вывод</a>' in body
     assert '<a href="#section-2">Подробный разбор</a>' in body
     assert '<a href="#section-3">Факты анализатора</a>' in body
-    assert "analysis_facts.md" in body
-    assert "diagnosis.md" in body
+    assert "Analyzer facts" in body
+    assert "Diagnosis" in body
+    assert "analysis_facts.md" not in body
+    assert "diagnosis.md" not in body
     assert str(case_dir) not in body
     assert "Case path" not in body
     assert "qwen3-coder:30b" not in body
@@ -190,7 +198,9 @@ def test_web_report_sidebar_only_marks_existing_artifacts_available(tmp_path):
     )
 
     assert "Evidence completeness" in body
-    assert "Analyzer facts<code>analysis_facts.md</code>" in body
+    assert "Evidence categories" in body
+    assert "Analyzer facts" in body
+    assert "analysis_facts.md" not in body
     assert "Profile text<code>profile.txt</code>" not in body
     assert "<span>Profile</span><span class=\"badge gray\">not collected</span>" in body
     assert "<span>SQL</span><span class=\"badge gray\">not collected</span>" in body

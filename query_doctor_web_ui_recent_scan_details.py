@@ -41,10 +41,13 @@ def render_batch_case_detail(
     view = present_recent_scan_case_detail(case_id, case, metadata_facts, report_state=report_state)
     return (
         "<section class=\"panel batch-panel\" aria-label=\"Finished Queries case details\">"
+        "<div class=\"breadcrumb\"><a href=\"/#recent-results\">Finished Queries</a><span>/</span>"
+        f"<span>{html.escape(view.case_id)}</span></div>"
         "<div class=\"batch-head\"><div><h1>Finished Queries case details</h1>"
-        "<p>Read-only deterministic summary fields from <code>batch_summary.json</code>.</p></div>"
+        "<p>Read-only deterministic facts for one analyzed query.</p></div>"
         f"<span class=\"badge blue\">{html.escape(view.case_id)}</span></div>"
         "<div class=\"batch-note\">This page does not render raw SQL, profiles, metadata, or server filesystem details.</div>"
+        f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
         "<div class=\"batch-note\">"
         f"{html.escape(view.trust_note)}"
@@ -54,6 +57,32 @@ def render_batch_case_detail(
         f"{render_runtime_signals(view)}"
         f"{render_metadata_facts_section(case, metadata_facts, view=view.metadata)}"
         f"{render_technical_details(view)}"
+        "</section>"
+    )
+
+
+def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
+    spill_text = "spill evidence observed" if view.has_spill else "no spill evidence observed"
+    stats_text = f"table stats {view.table_stats_status}" if view.table_stats_status is not None else "table stats not checked"
+    items = (
+        ("score", score_badge_from_values(view.score, None, None, severity=view.score_severity)),
+        ("duration", view.duration_sec),
+        ("signals", view.signal_summary),
+        ("spill", spill_text),
+        ("stats", stats_text),
+        ("status", view.status_summary),
+    )
+    cards = "".join(
+        "<div class=\"case-overview-card\">"
+        f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
+        "</div>"
+        for label, value in items
+    )
+    return (
+        "<section class=\"case-overview\" aria-label=\"Case overview\">"
+        "<div class=\"case-query-line\"><span>Query ID</span>"
+        f"<strong>{escape_value(view.query_id)}</strong></div>"
+        f"<div class=\"case-overview-grid\">{cards}</div>"
         "</section>"
     )
 
