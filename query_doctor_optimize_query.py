@@ -13,6 +13,7 @@ from pathlib import Path
 
 from query_doctor_optimizer_sql import (
     OptimizerSqlError,
+    collect_cte_names,
     extract_referenced_tables,
     tokenize_sql,
     validate_optimizer_sql_tokens,
@@ -37,6 +38,7 @@ MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"
 SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.DOTALL)
 TOP_LEVEL_SHAPE_KEYWORDS = ("GROUP", "ORDER")
 TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")
+JOIN_MODIFIER_KEYWORDS = {"LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS", "SEMI", "ANTI"}
 
 
 class QueryOptimizationError(RuntimeError):
@@ -109,6 +111,30 @@ def top_level_keyword_count(sql: str, keyword: str) -> int:
         elif depth == 0 and token.upper() == target:
             count += 1
     return count
+
+
+def cte_name_signature(sql: str) -> tuple[str, ...]:
+    tokens = extract_statement_tokens(sql)
+    return tuple(sorted(collect_cte_names(tokens)))
+
+
+def top_level_join_signature(sql: str) -> tuple[tuple[str, ...], ...]:
+    tokens = extract_statement_tokens(sql)
+    depth = 0
+    signatures: list[tuple[str, ...]] = []
+    for index, token in enumerate(tokens):
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and token.upper() == "JOIN":
+            modifiers: list[str] = []
+            cursor = index - 1
+            while cursor >= 0 and tokens[cursor].upper() in JOIN_MODIFIER_KEYWORDS:
+                modifiers.append(tokens[cursor].upper())
+                cursor -= 1
+            signatures.append(tuple(reversed(modifiers)) + ("JOIN",))
+    return tuple(signatures)
 
 
 def projection_signature(sql: str) -> ProjectionSignature | None:
@@ -282,6 +308,10 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     for operator in TOP_LEVEL_SET_OPERATORS:
         if top_level_keyword_count(source_sql, operator) != top_level_keyword_count(draft_sql, operator):
             errors.append(f"optimized draft changes top-level {operator} shape")
+    if cte_name_signature(source_sql) != cte_name_signature(draft_sql):
+        errors.append("optimized draft changes CTE shape")
+    if top_level_join_signature(source_sql) != top_level_join_signature(draft_sql):
+        errors.append("optimized draft changes top-level JOIN shape")
     source_projection = projection_signature(source_sql)
     draft_projection = projection_signature(draft_sql)
     if source_projection and draft_projection:
