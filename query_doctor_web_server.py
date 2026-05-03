@@ -87,6 +87,12 @@ BATCH_REPORT_STAGES = (
     (2, "Validating result", 88),
     (3, "Done", 100),
 )
+OPTIMIZED_QUERY_STAGES = (
+    (0, "Checking source SQL", 8),
+    (1, "Generating optimizer draft", 45),
+    (2, "Validating optimizer draft", 88),
+    (3, "Done", 100),
+)
 BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority"}
 BATCH_CM_INSPECT_LIMIT_MAX = 5000
 BATCH_METADATA_TOP_LIMIT_MAX = 200
@@ -353,7 +359,7 @@ class WebJobStore:
             return job.snapshot()
 
     def create_batch_optimized_query(self, case_id: str) -> WebJobSnapshot:
-        stage = BATCH_REPORT_STAGES[0]
+        stage = OPTIMIZED_QUERY_STAGES[0]
         job = WebJob(
             job_id=uuid.uuid4().hex,
             query_id=case_id,
@@ -369,7 +375,7 @@ class WebJobStore:
             return job.snapshot()
 
     def create_query_optimized_query(self, query_id: str) -> WebJobSnapshot:
-        stage = BATCH_REPORT_STAGES[0]
+        stage = OPTIMIZED_QUERY_STAGES[0]
         job = WebJob(
             job_id=uuid.uuid4().hex,
             query_id=query_id,
@@ -486,8 +492,10 @@ class WebJobStore:
 def stages_for_job_kind(kind: str) -> tuple[tuple[int, str, int], ...]:
     if kind in {"batch", "running"}:
         return BATCH_STAGES
-    if kind in {"batch_report", "query_report", "batch_optimized_query", "query_optimized_query"}:
+    if kind in {"batch_report", "query_report"}:
         return BATCH_REPORT_STAGES
+    if kind in {"batch_optimized_query", "query_optimized_query"}:
+        return OPTIMIZED_QUERY_STAGES
     return WEB_STAGES
 
 

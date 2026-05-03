@@ -32,6 +32,12 @@ REPORT_PROGRESS_STEPS = (
     ("Validating result", {"Validating result"}),
     ("Done", {"Done"}),
 )
+OPTIMIZED_QUERY_PROGRESS_STEPS = (
+    ("Checking source SQL", {"Checking source SQL"}),
+    ("Generating draft", {"Generating optimizer draft"}),
+    ("Validating draft", {"Validating optimizer draft"}),
+    ("Done", {"Done"}),
+)
 
 
 # Public helpers keep dict overloads for the stable rendering facade and older
@@ -242,21 +248,7 @@ def render_optimized_query_action(
             "</form>"
         )
     if status == "running":
-        job_id = str(state.get("job_id") or "")
-        status_attrs = ""
-        if job_id:
-            escaped_job_id = html.escape(job_id, quote=True)
-            status_attrs = (
-                f" data-report-job-status-url=\"/jobs/{escaped_job_id}/status\""
-                f" data-report-job-url=\"/jobs/{escaped_job_id}\""
-            )
-        status_html = (
-            f"<div class=\"report-progress\" aria-label=\"Optimized query progress\"{status_attrs}>"
-            "<div class=\"progress-head\"><span class=\"progress-title\">Generating Query LLM optimizer draft</span>"
-            f"<span class=\"progress-stage\">{html.escape(str(state.get('stage_label') or 'Generating draft'))}</span></div>"
-            "<div class=\"progress-bar\" aria-hidden=\"true\"><span class=\"progress-fill\" style=\"width:62%\"></span></div>"
-            "</div>"
-        )
+        status_html = render_optimized_query_progress(state)
     elif status == "failed":
         status_html = f"<div class=\"error\">{html.escape(str(state.get('error') or 'Optimized query generation failed.'))}</div>"
     elif status == "unavailable":
@@ -282,6 +274,62 @@ def render_optimized_query_action(
         "</div>"
         "</section>"
     )
+
+
+def render_optimized_query_progress(state: dict[str, Any]) -> str:
+    current_stage = str(state.get("stage_label") or "Generating optimizer draft")
+    current_index = optimized_query_progress_step_index(current_stage)
+    progress_value = numeric_value(state.get("progress"))
+    progress = int(progress_value) if progress_value > 0 else report_progress_percent(current_index)
+    status_attrs = ""
+    job_id = str(state.get("job_id") or "")
+    if job_id:
+        escaped_job_id = html.escape(job_id, quote=True)
+        status_attrs = (
+            f" data-report-job-status-url=\"/jobs/{escaped_job_id}/status\""
+            f" data-report-job-url=\"/jobs/{escaped_job_id}\""
+        )
+    steps = []
+    for index, (label, _stage_labels) in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS):
+        if index < current_index:
+            state_name = "done"
+            icon = "✓"
+            detail = "Done"
+        elif index == current_index:
+            state_name = "running"
+            icon = "…"
+            detail = current_stage
+        else:
+            state_name = "neutral"
+            icon = "−"
+            detail = "Pending"
+        steps.append(
+            "<div class=\"batch-progress-step batch-progress-step--{state}\">"
+            "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
+                state=html.escape(state_name),
+                icon=html.escape(icon),
+                label=html.escape(label),
+                detail=html.escape(detail),
+            )
+        )
+    return (
+        f"<div class=\"report-progress\" aria-label=\"Optimized query progress\"{status_attrs}>"
+        "<div class=\"progress-head\"><span class=\"progress-title\">Generating Query LLM optimizer draft</span>"
+        f"<span class=\"progress-stage\">{html.escape(current_stage)}</span></div>"
+        "<div class=\"progress-bar\" aria-hidden=\"true\">"
+        f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
+        "</div>"
+        f"<div class=\"batch-progress\"><div class=\"batch-progress-steps\">{''.join(steps)}</div></div>"
+        "</div>"
+    )
+
+
+def optimized_query_progress_step_index(stage_label: str) -> int:
+    normalized = stage_label.strip().lower()
+    for index, (_label, stage_labels) in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS):
+        if normalized in {label.lower() for label in stage_labels}:
+            return index
+    return 1
 
 
 def render_llm_report_progress(view: ReportActionView) -> str:
