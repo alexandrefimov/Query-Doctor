@@ -1250,6 +1250,11 @@ def recommendation_candidate_lines(facts_text: str) -> list[tuple[str, str]]:
             "Снизить объём intermediate/exchange rows до перераспределения данных: отфильтровать, "
             "агрегировать или материализовать меньший промежуточный результат раньше.",
         )
+        add(
+            "reduce_exchange_payload",
+            "Сократить payload до EXCHANGE/data movement: оставить в промежуточном результате только "
+            "нужные колонки и перенести безопасные фильтры или агрегацию раньше.",
+        )
 
     if facts_have_spill_scratch_evidence(facts_text):
         add(
@@ -1278,6 +1283,134 @@ def recommendation_candidate_lines(facts_text: str) -> list[tuple[str, str]]:
 
 def format_recommendation_candidates(candidates: list[tuple[str, str]]) -> str:
     return "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
+
+
+def markdown_bullet_lines(lines: list[str], *, limit: int = FACT_APPENDIX_MAX_ITEMS) -> list[str]:
+    bullets = [line.strip() for line in lines if line.lstrip().startswith("- ")]
+    return bullets[:limit]
+
+
+def markdown_subheading_titles(lines: list[str], *, prefix: str = "### ", limit: int = FACT_APPENDIX_MAX_ITEMS) -> list[str]:
+    titles = [line[len(prefix) :].strip() for line in lines if line.startswith(prefix)]
+    return titles[:limit]
+
+
+def supported_summary_points(facts_text: str) -> list[str]:
+    points: list[str] = []
+    cardinality_count = facts_cardinality_anomaly_count(facts_text)
+    memory_count = facts_memory_anomaly_count(facts_text)
+    if cardinality_count and cardinality_count > 0:
+        points.append(
+            "В parsed facts есть подтверждённые cardinality estimate anomalies; "
+            "описание должно сохранять направление estimate mismatch."
+        )
+    if memory_count and memory_count > 0:
+        points.append(
+            "В parsed facts есть memory estimate anomalies; это отдельный сигнал от cardinality mismatch."
+        )
+    if facts_have_large_intermediate_or_exchange(facts_text):
+        points.append(
+            "В parsed facts есть large intermediate/exchange traffic; описывать как data movement volume, "
+            "не как external network instability."
+        )
+    if facts_has_backend_tail_evidence(facts_text):
+        summary = parse_backend_tail_summary(facts_text)
+        if backend_data_skew_is_supported(summary):
+            points.append(
+                "Backend facts support data skew по RowsProduced; это не доказывает cardinality underestimation."
+            )
+        if backend_has_proven_tail(summary):
+            points.append("Backend facts support execution skew / host-tail evidence.")
+        else:
+            points.append("Backend facts do not prove a single slow tail host unless execution skew is yes.")
+    if facts_have_spill_scratch_evidence(facts_text):
+        points.append(
+            "Parsed findings contain non-zero spill/scratch metric evidence; keep causal wording separate."
+        )
+    if facts_have_metadata_stats_gap(facts_text):
+        points.append(
+            "Metadata digest shows table/column stats gaps; frame stats work as approved maintenance, not proven root cause."
+        )
+    if not points:
+        points.append("Parsed facts do not select a confirmed optimization target; use this report as a baseline.")
+    return points[:FACT_APPENDIX_MAX_ITEMS]
+
+
+def evidence_groups(facts_text: str) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {}
+    action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
+    findings_lines = extract_markdown_section(facts_text, "## Findings")
+    limitation_lines = extract_markdown_section(
+        facts_text,
+        "## What is NOT supported by the parsed evidence",
+    )
+    action_cards = markdown_subheading_titles(action_card_lines)
+    findings = markdown_subheading_titles(findings_lines)
+    unsupported = markdown_bullet_lines(limitation_lines)
+    if action_cards:
+        groups["action_cards"] = action_cards
+    if findings:
+        groups["findings"] = findings
+    if unsupported:
+        groups["unsupported"] = unsupported
+    return groups
+
+
+def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
+    """Return a compact Python-owned contract for LLM report slots."""
+    summary_lines = extract_markdown_section(facts_text, "## Summary")
+    totals_lines = extract_markdown_section(facts_text, "## Totals")
+    action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
+    findings_lines = extract_markdown_section(facts_text, "## Findings")
+    limitation_lines = extract_markdown_section(
+        facts_text,
+        "## What is NOT supported by the parsed evidence",
+    )
+    backend_summary = parse_backend_tail_summary(facts_text)
+    return {
+        "summary": {
+            label: first_bullet_value(summary_lines, label)
+            for label in (
+                "Parsed operators",
+                "Cardinality anomalies",
+                "Memory anomalies",
+                "Zero/unknown row estimate gaps",
+                "Zero/unknown memory estimate gaps",
+            )
+            if first_bullet_value(summary_lines, label) is not None
+        },
+        "totals": {
+            label: first_bullet_value(totals_lines, label)
+            for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent")
+            if first_bullet_value(totals_lines, label) is not None
+        },
+        "evidence_flags": {
+            "has_action_cards": facts_have_action_cards(facts_text),
+            "has_backend_tail_evidence": facts_has_backend_tail_evidence(facts_text),
+            "has_spill_scratch_evidence": facts_have_spill_scratch_evidence(facts_text),
+            "has_metadata_stats_gap": facts_have_metadata_stats_gap(facts_text),
+            "has_large_intermediate_or_exchange": facts_have_large_intermediate_or_exchange(facts_text),
+        },
+        "backend_summary": backend_summary,
+        "supported_summary_points": supported_summary_points(facts_text),
+        "evidence_groups": evidence_groups(facts_text),
+        "recommendation_candidates": [
+            {"id": candidate_id, "text": text}
+            for candidate_id, text in recommendation_candidate_lines(facts_text)
+        ],
+        "action_card_titles": markdown_subheading_titles(action_card_lines),
+        "finding_titles": markdown_subheading_titles(findings_lines),
+        "unsupported_conclusions": markdown_bullet_lines(limitation_lines),
+    }
+
+
+def format_report_contract_digest(facts_text: str) -> str:
+    return json.dumps(
+        build_report_contract_digest(facts_text),
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    )
 
 
 def facts_have_admission_or_pool_evidence(facts_text: str) -> bool:
@@ -1367,6 +1500,7 @@ def build_prompt(
     metadata_digest = build_metadata_facts_digest(facts_text)
     recommendation_candidates = recommendation_candidate_lines(facts_text)
     recommendation_candidate_block = format_recommendation_candidates(recommendation_candidates)
+    report_contract_digest = format_report_contract_digest(facts_text)
     metadata_digest_block = (
         f"\n\nMETADATA FACTS DIGEST BEGIN\n{metadata_digest}\nMETADATA FACTS DIGEST END"
         if metadata_digest
@@ -1377,6 +1511,9 @@ def build_prompt(
 You are only a report writer.
 Use only facts from analysis_facts.md.
 Use only facts provided below.
+The PYTHON-OWNED REPORT CONTRACT DIGEST is the authoritative slot contract for the report.
+Use the longer deterministic facts only for wording details that support that contract.
+When the digest and longer deterministic facts appear to conflict, follow the digest for report slot selection.
 Do not parse or infer anything from profile_digest.md, profile.txt, raw profiles, SQL text, or external knowledge.
 Do not invent metrics, operator IDs, root causes, timings, row counts, memory values, table names, columns, or SQL rewrites.
 If something is not present in facts, say it is not supported by parsed evidence.
@@ -1487,6 +1624,19 @@ Collapsed section requirements:
 - Put read-only SHOW checks, spill/scratch checks, per-host checks, CM metrics/logs, profile counters, admission pool checks, and evidence packages only into "Админские проверки".
 - Keep every optional section short.
 
+Python-owned slot contract:
+- Use "recommendation_candidates" as the complete allowed source for "Практические рекомендации".
+- Use "supported_summary_points" as the allowed meaning space for "Короткий вывод"; do not copy it verbatim unless it already reads naturally.
+- Use "evidence_groups" to organize "Подробный разбор" into readable narrative. You may explain why a supported signal matters, but do not add new facts or causes.
+- Use "unsupported_conclusions" only under "Что НЕ подтверждается фактами".
+- Use "action_card_titles", "finding_titles", "summary", "totals", and "evidence_flags" to choose what is worth mentioning.
+- Do not introduce a user-facing fact, unsupported conclusion, or action target that is absent from the digest or deterministic facts.
+
+Slot freedom levels:
+- Deterministic/canonical: "Практические рекомендации", "Что НЕ подтверждается фактами", and "Админские проверки" must stay close to Python-owned candidates/checks.
+- Controlled narrative: "Короткий вывод" and "Подробный разбор" should be human wording over supported_summary_points and evidence_groups.
+- Do not merely repeat analyzer lines when a concise explanation is possible; compress and explain supported facts without inventing a cause.
+
 Recommendation ownership rules:
 - Python/analyzer owns recommendation facts and allowed action targets.
 - LLM owns only wording, ordering, and concision.
@@ -1508,14 +1658,7 @@ Report writing guidance:
 - In "Что усиливает проблему", discuss SORT/ANALYTIC and memory underestimation only where the facts support them.
 - In "Что усиливает проблему", do not call EXCHANGE a main memory bottleneck if its absolute peak memory is small; describe it as intermediate/exchange data volume only.
 - In "Что НЕ подтверждается фактами", explicitly carry over unsupported conclusions from facts.
-- In "Практические рекомендации", give direct optimization actions, not open-ended checks.
-- In "Практические рекомендации", never include SHOW commands, admin/platform checks, or "проверить/посмотреть/проанализировать" wording.
-- "Практические рекомендации" must include concrete, fact-tied actions:
-  1. Собрать/обновить table and partition stats through the approved operational process only when cardinality anomalies or metadata stats gaps support it; do not say stats are stale unless analysis_facts.md proves it.
-  2. If cardinality anomalies are present, reduce the point where cardinality grows from low estimates to large actual rows before dominant operators.
-  3. Reduce intermediate rows before SORT/ANALYTIC only when facts support expensive SORT/ANALYTIC or large intermediate/exchange traffic.
-  4. Rewrite join/filter/CTE/DISTINCT/window shape only when those operators or referenced columns/tables are present in facts.
-  5. Put skew/spill platform checks under "Админские проверки" unless facts explicitly establish them as optimization targets.
+- In "Практические рекомендации", use only the digest recommendation_candidates.
 
 DETERMINISTIC FACTS BEGIN
 {prompt_facts_text}
@@ -1523,7 +1666,11 @@ DETERMINISTIC FACTS END
 
 PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
 {recommendation_candidate_block}
-PYTHON-OWNED RECOMMENDATION CANDIDATES END{metadata_digest_block}
+PYTHON-OWNED RECOMMENDATION CANDIDATES END
+
+PYTHON-OWNED REPORT CONTRACT DIGEST BEGIN
+{report_contract_digest}
+PYTHON-OWNED REPORT CONTRACT DIGEST END{metadata_digest_block}
 """.strip()
 
 
@@ -1848,6 +1995,15 @@ def move_misplaced_zero_cardinality_note(text: str) -> str:
     return insert_bullets_into_section("\n".join(cleaned), NOT_SUPPORTED_HEADING, [ZERO_CARDINALITY_NOT_SUPPORTED_BULLET])
 
 
+def normalize_collapsed_report_structure(text: str) -> str:
+    lines = text.splitlines()
+    opens = [index for index, line in enumerate(lines) if line.strip() == "<details>"]
+    closes = [index for index, line in enumerate(lines) if line.strip() == "</details>"]
+    if len(opens) == 2 and len(closes) == 1 and closes[0] < opens[1]:
+        return text.rstrip() + "\n\n</details>\n"
+    return text
+
+
 def recommendation_bullet_body(line: str) -> str | None:
     match = re.match(r"^\s*(?:[-*]|\d+\.)\s+(?P<body>.+?)\s*$", line)
     if not match:
@@ -2155,6 +2311,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
     errors.extend(find_spill_scratch_claim_errors(report_text, facts_text))
     errors.extend(find_unsupported_metadata_claim_errors(report_text))
     errors.extend(validate_recommendations_against_candidates(report_text, facts_text))
+    errors.extend(validate_unsupported_conclusions_slot(report_text, facts_text))
     return errors
 
 
@@ -2298,6 +2455,7 @@ def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin
     text = normalize_practical_recommendations(text, facts_text)
     text = move_misplaced_admin_bullets_into_admin_section(text)
     text = move_misplaced_zero_cardinality_note(text)
+    text = normalize_collapsed_report_structure(text)
     return text
 
 
@@ -2429,7 +2587,12 @@ def validate_recommendations_section(text: str) -> list[str]:
 
 
 def validate_recommendations_against_candidates(text: str, facts_text: str) -> list[str]:
-    canonical = set(canonical_recommendation_bullets(recommendation_candidate_lines(facts_text)))
+    digest = build_report_contract_digest(facts_text)
+    canonical = {
+        f"- {candidate['text']}"
+        for candidate in digest["recommendation_candidates"]
+        if isinstance(candidate, dict) and isinstance(candidate.get("text"), str)
+    }
     section_lines = extract_report_section_lines(text, RECOMMENDATIONS_HEADING)
     for line in section_lines:
         stripped = line.strip()
@@ -2438,6 +2601,24 @@ def validate_recommendations_against_candidates(text: str, facts_text: str) -> l
         if stripped in canonical:
             continue
         return ["practical recommendations include an action outside Python-owned candidates"]
+    return []
+
+
+def validate_unsupported_conclusions_slot(text: str, facts_text: str) -> list[str]:
+    digest = build_report_contract_digest(facts_text)
+    unsupported = [
+        line[2:].strip()
+        for line in digest["unsupported_conclusions"]
+        if isinstance(line, str) and line.startswith("- ")
+    ]
+    if not unsupported:
+        return []
+
+    short_summary = "\n".join(extract_report_section_lines(text, SHORT_SUMMARY_HEADING)).lower()
+    for conclusion in unsupported:
+        normalized = conclusion.lower()
+        if normalized and normalized in short_summary:
+            return ["short summary contains unsupported conclusion that belongs in Что НЕ подтверждается фактами"]
     return []
 
 
