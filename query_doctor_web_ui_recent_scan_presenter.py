@@ -16,6 +16,8 @@ STATEMENT_LABELS = {
 CANDIDATE_REASON_LABELS = {
     "selected: SELECT-like user query": "SELECT/WITH query",
     "selected: INSERT query": "INSERT query",
+    "selected: DELETE query": "DELETE query",
+    "selected: UPSERT query": "UPSERT query",
     "selected: CREATE TABLE AS SELECT query": "CREATE TABLE AS SELECT query",
     "selected: query type indicates user query; SQL verb unknown": "QUERY with unknown SQL verb",
     "eligible but not selected because recent-select limit was reached": "analysis cap reached",
@@ -58,6 +60,7 @@ class RecentScanCaseRowView:
     score_value: float
     score_severity: str
     has_failure: bool
+    has_spill: bool
 
 
 @dataclass(frozen=True)
@@ -122,16 +125,18 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
     cases = summary.get("cases")
     raw_cases = [case for case in cases if isinstance(case, dict)] if isinstance(cases, list) else []
     rows = tuple(present_recent_scan_case_row(rank, case) for rank, case in enumerate(raw_cases, start=1))
-    score_positive = sum(1 for row in rows if row.score_value > 0)
-    failed_count = sum(1 for row in rows if row.has_failure)
+    bad_count = sum(1 for row in rows if row.score_severity in {"failed", "high"})
+    suspicious_count = sum(1 for row in rows if row.score_severity == "suspicious")
+    good_count = sum(1 for row in rows if row.score_severity == "clean")
+    metadata_count = sum(1 for row in rows if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"})
     header_items = (
-        ("total cases", len(rows)),
-        ("selected candidates", safe_display_value(summary.get("selected_count"))),
-        ("score > 0", score_positive),
-        ("failed cases", failed_count),
-        ("duration filter", safe_display_value(summary.get("duration_filter"))),
-        ("jobs", safe_display_value(summary.get("jobs"))),
-        ("total seconds", safe_display_value(summary.get("total_seconds"))),
+        ("total", len(rows)),
+        ("bad", bad_count),
+        ("suspicious", suspicious_count),
+        ("good", good_count),
+        ("analyzed", safe_display_value(summary.get("selected_count"))),
+        ("CM inspected", safe_display_value(summary.get("summaries_inspected"))),
+        ("metadata", metadata_count),
     )
     return RecentScanSummaryView(
         header_items=header_items,
@@ -174,6 +179,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         score_value=numeric_value(case.get("score")),
         score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
+        has_spill=case_has_spill(case),
     )
 
 
@@ -317,18 +323,9 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
     summaries = summary.get("summaries_inspected")
     if summary.get("cm_summary_safety_cap_hit"):
         cap = summary.get("cm_summary_safety_cap") or summaries
-        parts.append(f"CM summaries truncated at safety cap: {safe_display_text(cap)}")
+        parts.append(f"CM match limit hit: {safe_display_text(cap)}")
     elif summaries is not None:
         parts.append(f"CM summaries inspected: {safe_display_text(summaries)}")
-    parts.append(f"Duration filter: {safe_display_text(summary.get('duration_filter') or 'none')}")
-    if summary.get("duration_filter_mode") is not None:
-        parts.append(f"Duration filtering: {safe_display_text(summary.get('duration_filter_mode'))}")
-    if summary.get("triage_profile_limit") is not None:
-        parts.append(f"Profile analysis limit: {safe_display_text(summary.get('triage_profile_limit'))}")
-    if summary.get("metadata_top_limit") is not None:
-        parts.append(
-            f"Metadata enrichment budget: up to {safe_display_text(summary.get('metadata_top_limit'))} bad/suspicious cases"
-        )
     if summary.get("from_time") or summary.get("to_time"):
         parts.append(
             "CM time window: "
@@ -337,12 +334,33 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
         )
     elif summary.get("recent_window_minutes") is not None:
         parts.append(f"Search depth: {safe_display_text(summary.get('recent_window_minutes'))} minutes")
+    parts.append(f"Duration filter: {safe_display_text(summary.get('duration_filter') or 'none')}")
+    duration_filter_mode = str(summary.get("duration_filter_mode") or "").strip().lower()
+    if duration_filter_mode and duration_filter_mode != "none":
+        parts.append(f"Duration filtering: {safe_display_text(summary.get('duration_filter_mode'))}")
+    if summary.get("triage_profile_limit") is not None:
+        parts.append(f"Analyzer limit: {safe_display_text(summary.get('triage_profile_limit'))}")
+    if summary.get("metadata_top_limit") is not None:
+        parts.append(
+            f"Metadata budget: up to {safe_display_text(summary.get('metadata_top_limit'))} bad/suspicious cases"
+        )
     if summary.get("query_type_filter") is not None:
-        parts.append(f"Query type: {safe_display_text(summary.get('query_type_filter'))}")
+        parts.append(f"Query type: {query_type_filter_label(summary.get('query_type_filter'))}")
     if summary.get("user_filter_present"):
         parts.append("User filter: set")
+    else:
+        parts.append("User filter: all users")
     if summary.get("pool_filter_present"):
         parts.append("Pool filter: set")
+    else:
+        parts.append("Pool filter: all pools")
+    if summary.get("cm_jobs") is not None or summary.get("jobs") is not None:
+        parts.append(
+            "Parallelism: "
+            f"CM {safe_display_text(summary.get('cm_jobs') or 'n/a')}, "
+            f"analyzer {safe_display_text(summary.get('jobs') or 'n/a')}, "
+            f"metadata {safe_display_text(summary.get('metadata_jobs') or 'n/a')}"
+        )
     parts.extend(candidate_selection_scope_parts(summary))
     return tuple(parts)
 
@@ -359,7 +377,7 @@ def candidate_selection_scope_parts(summary: dict[str, Any]) -> list[str]:
     reason_counts = summary.get("candidate_reason_counts")
     if not isinstance(reason_counts, dict):
         return parts
-    exclusion_reasons: list[tuple[str, int]] = []
+    exclusion_reasons: list[tuple[str, int, str]] = []
     for reason, count in reason_counts.items():
         reason_text = str(reason)
         if reason_text.startswith("selected:"):
@@ -367,18 +385,63 @@ def candidate_selection_scope_parts(summary: dict[str, Any]) -> list[str]:
         parsed_count = numeric_count(count)
         if parsed_count is None or parsed_count <= 0:
             continue
-        exclusion_reasons.append((candidate_reason_label(reason_text), parsed_count))
+        exclusion_reasons.append((reason_text, parsed_count, candidate_reason_label(reason_text)))
     if exclusion_reasons:
-        top = "; ".join(f"{label}: {count}" for label, count in exclusion_reasons[:3])
+        top = "; ".join(
+            f"{label}: {count}{candidate_reason_sql_verb_detail(summary, reason)}"
+            for reason, count, label in exclusion_reasons[:3]
+        )
         parts.append(f"Top exclusions: {safe_display_text(top)}")
     return parts
+
+
+def candidate_reason_sql_verb_detail(summary: dict[str, Any], reason: str) -> str:
+    breakdowns = summary.get("candidate_reason_sql_verb_counts")
+    if not isinstance(breakdowns, dict):
+        return ""
+    counts = breakdowns.get(reason)
+    if not isinstance(counts, dict):
+        return ""
+    items: list[tuple[str, int]] = []
+    for verb, count in counts.items():
+        parsed = numeric_count(count)
+        if parsed is None or parsed <= 0:
+            continue
+        label = "unknown/no SQL verb" if str(verb).lower() == "unknown" else str(verb)
+        items.append((label, parsed))
+    items.sort(key=lambda item: (-item[1], item[0]))
+    if not items:
+        return ""
+    visible = items[:3]
+    hidden_total = sum(count for _label, count in items[3:])
+    parts = [f"{label} {count}" for label, count in visible]
+    if hidden_total:
+        parts.append(f"other {hidden_total}")
+    top = ", ".join(parts)
+    return f" ({top})"
+
+
+def query_type_filter_label(value: Any) -> str:
+    text = safe_display_text(value).strip()
+    if not text or text.lower() == "all":
+        return "all supported"
+    return text
 
 
 def candidate_reason_label(reason: str) -> str:
     return CANDIDATE_REASON_LABELS.get(reason, safe_display_text(reason))
 
 
+def case_has_spill(case: dict[str, Any]) -> bool:
+    reasons = case.get("score_reasons")
+    if not isinstance(reasons, list):
+        return False
+    return any("spill/scratch evidence: non-zero metrics" in str(reason).lower() for reason in reasons)
+
+
 def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> str | None:
+    if summary.get("scan_too_broad"):
+        return "This hour has more matching queries than the scan limit. Narrow the filters or choose a smaller hour slice."
     if summary.get("discovery_failed"):
         return "Recent scan discovery failed before case selection. Check CM connectivity and access settings, then run again."
     selected = numeric_count(summary.get("selected_count"))

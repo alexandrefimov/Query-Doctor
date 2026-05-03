@@ -110,14 +110,29 @@ SQL_TABLE_RE = re.compile(
 )
 SQL_LEADING_COMMENT_RE = re.compile(r"\A\s*(?:--[^\n]*(?:\n|$)|/\*.*?\*/\s*)+", re.DOTALL)
 ADMIN_SQL_PREFIX_RE = re.compile(
-    r"\A\s*(?:SHOW\s+(?:CREATE\s+TABLE|TABLE\s+STATS|COLUMN\s+STATS)|"
-    r"COMPUTE\s+STATS|REFRESH\b|INVALIDATE\s+METADATA|MSCK\s+REPAIR|"
+    r"\A\s*(?:SHOW\b|GET\b|DROP\b|COMPUTE\b|REFRESH\b|"
+    r"INVALIDATE\s+METADATA|MSCK\s+REPAIR|ALTER\b|"
     r"DESCRIBE\b|DESC\b|SET\b|USE\b|EXPLAIN\b)",
     re.IGNORECASE,
 )
+ADMIN_SQL_VERBS = {
+    "ALTER",
+    "COMPUTE",
+    "DESC",
+    "DESCRIBE",
+    "DROP",
+    "EXPLAIN",
+    "GET",
+    "INVALIDATE",
+    "MSCK",
+    "REFRESH",
+    "SET",
+    "SHOW",
+    "USE",
+}
 QUERY_DOCTOR_SMOKE_RE = re.compile(r"\bquery_doctor\b", re.IGNORECASE)
 CTAS_RE = re.compile(r"\A\s*CREATE\s+(?:EXTERNAL\s+)?TABLE\b.*\bAS\s+(?:WITH|SELECT)\b", re.IGNORECASE | re.DOTALL)
-ANALYZABLE_SQL_VERBS = {"SELECT", "WITH", "INSERT"}
+ANALYZABLE_SQL_VERBS = {"SELECT", "WITH", "INSERT", "DELETE", "UPSERT"}
 
 PRESERVED_METADATA_KEYS = {
     "query_id",
@@ -2051,11 +2066,12 @@ def classify_recent_query_candidate(
         return False, "excluded: cancelled query", extract_sql_verb(summary.statement)
 
     statement = summary.statement or ""
+    normalized_statement = normalize_sql_leading_text(statement)
     sql_verb = extract_sql_verb(statement)
     if statement:
         if QUERY_DOCTOR_SMOKE_RE.search(statement):
             return False, "excluded: Query Doctor collector smoke statement", sql_verb
-        if ADMIN_SQL_PREFIX_RE.match(statement):
+        if sql_verb in ADMIN_SQL_VERBS or ADMIN_SQL_PREFIX_RE.match(normalized_statement):
             return False, "excluded: admin or metadata statement", sql_verb
         if sql_verb in ANALYZABLE_SQL_VERBS or is_create_table_as_select(statement):
             duration_ok, duration_reason = classify_recent_query_duration(
@@ -2092,6 +2108,10 @@ def recent_selected_reason(sql_verb: str | None, statement: str) -> str:
         return "selected: CREATE TABLE AS SELECT query"
     if sql_verb == "INSERT":
         return "selected: INSERT query"
+    if sql_verb == "DELETE":
+        return "selected: DELETE query"
+    if sql_verb == "UPSERT":
+        return "selected: UPSERT query"
     return "selected: SELECT-like user query"
 
 

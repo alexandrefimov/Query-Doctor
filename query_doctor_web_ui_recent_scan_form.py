@@ -61,7 +61,6 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         ),
         "user": form_or_config_value(form_values, "user", config_values=local_config, config_key="recent_user"),
         "pool": form_or_config_value(form_values, "pool", config_values=local_config, config_key="recent_pool"),
-        "query_type": "QUERY",
     }
     if form_values:
         values.update(form_values)

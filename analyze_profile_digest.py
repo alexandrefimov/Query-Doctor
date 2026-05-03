@@ -216,7 +216,8 @@ STATS_PATTERNS = [
 
 SPILL_RE = re.compile(r"\b(spill|spilled|scratch)\b", re.IGNORECASE)
 SPILL_METRIC_RE = re.compile(
-    rf"\b(?P<name>SpilledBytes|ScratchBytesWritten|PeakScratch|ScratchBytesRead|WriteIoBytes|BytesWritten|SpilledPartitions)\b"
+    rf"\b(?P<name>SpilledBytes|BytesSpilled|MemorySpilled|MemorySpilledBytes|"
+    rf"ScratchBytesWritten|ScratchBytesRead|PeakScratch|SpilledPartitions)\b"
     rf"\s*[:=]\s*(?P<value>{SIZE_PATTERN}|\d[\d,]*(?:\.\d+)?)",
     re.IGNORECASE,
 )

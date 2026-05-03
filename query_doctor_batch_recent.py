@@ -24,8 +24,9 @@ from query_doctor_config_contract import merge_kerberos_cache_env
 from query_doctor_engines import get_default_engine_adapter
 
 
-MAX_CM_INSPECT_LIMIT = 10000
-MAX_TRIAGE_PROFILE_LIMIT = 1000
+MAX_CM_INSPECT_LIMIT = 5000
+MAX_RAW_CM_SUMMARY_SCAN_LIMIT = 20000
+MAX_TRIAGE_PROFILE_LIMIT = 5000
 MAX_METADATA_TOP_LIMIT = 200
 BAD_METADATA_REFRESH_LIMIT = 50
 SUSPICIOUS_METADATA_REFRESH_LIMIT = 20
@@ -105,6 +106,8 @@ class DiscoveryResult:
     warnings: list[str]
     duration_filter_mode: str
     server_filter_expression: str | None
+    summaries_inspected: int | None = None
+    scan_too_broad: bool = False
 
 
 @dataclass
@@ -384,7 +387,9 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         progress.emit(
             stage="discovery",
             status="done",
-            summaries_inspected=len(discovery.candidates),
+            summaries_inspected=discovery.summaries_inspected
+            if discovery.summaries_inspected is not None
+            else len(discovery.candidates),
             candidates_selected=len(selected),
             duration_filter=duration_filter_label(config),
             seconds=discovery_seconds,
@@ -883,23 +888,25 @@ def build_recent_filters(config: BatchConfig) -> cm_profiles.CMQueryFilters:
 def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> DiscoveryResult:
     client = make_cm_http_client(config, env)
     filters = build_recent_filters(config)
-    server_filter_expression = cm_profiles.build_cm_query_filter_expression(filters)
+    discovery_filters = replace(filters, limit=raw_cm_summary_scan_limit(config.cm_inspect_limit))
+
+    def fetch_page(received_filters: cm_profiles.CMQueryFilters, page_token: str | None) -> cm_profiles.CMQueryPage:
+        return cm_profiles.fetch_cm_query_summary_page(client, received_filters, page_token)
+
+    server_filter_expression = cm_profiles.build_cm_query_filter_expression(discovery_filters)
     duration_filter_mode = classify_duration_filter_mode(
         server_filter_expression,
         min_duration_sec=config.min_duration_sec,
         max_duration_sec=config.max_duration_sec,
     )
     summaries, warnings, used_duration_fallback = cm_profiles.collect_query_summaries_with_duration_fallback(
-        filters,
-        lambda received_filters, page_token: cm_profiles.fetch_cm_query_summary_page(
-            client,
-            received_filters,
-            page_token,
-        ),
+        discovery_filters,
+        fetch_page,
         secrets=secret_values(env),
     )
     if used_duration_fallback:
         duration_filter_mode = "server-side-fallback-client-side"
+        discovery_filters = replace(discovery_filters, min_duration_sec=None, max_duration_sec=None, server_duration_filter=False)
     candidates = cm_profiles.select_recent_query_candidates(
         summaries,
         select_limit=config.triage_profile_limit,
@@ -912,12 +919,34 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
         max_duration_sec=config.max_duration_sec,
         order=config.order,
     )
+    if matching_candidate_limit_hit(candidates):
+        limit = config.triage_profile_limit
+        warnings.append(
+            f"More than {limit} query summaries matched the current filters. Narrow the scan hour or filters and run again."
+        )
+        return DiscoveryResult(
+            candidates=[],
+            warnings=list(warnings),
+            duration_filter_mode=duration_filter_mode,
+            server_filter_expression=server_filter_expression,
+            summaries_inspected=len(summaries),
+            scan_too_broad=True,
+        )
     return DiscoveryResult(
         candidates=candidates,
         warnings=list(warnings),
         duration_filter_mode=duration_filter_mode,
         server_filter_expression=server_filter_expression,
+        summaries_inspected=len(summaries),
     )
+
+
+def raw_cm_summary_scan_limit(candidate_limit: int) -> int:
+    return min(MAX_RAW_CM_SUMMARY_SCAN_LIMIT, max(candidate_limit, candidate_limit * 4))
+
+
+def matching_candidate_limit_hit(candidates: list[cm_profiles.RecentQueryCandidate]) -> bool:
+    return any(candidate.reason == "eligible but not selected because recent-select limit was reached" for candidate in candidates)
 
 
 def classify_duration_filter_mode(
@@ -1371,14 +1400,16 @@ def inspect_case_outputs(case: CaseResult) -> None:
         return
     statuses = Counter(str(item.get("status")) for item in results if isinstance(item, dict))
     case.too_large_count = statuses.get("too_large", 0)
-    if statuses.get("error", 0):
+    if statuses.get("error", 0) and statuses.get("ok", 0):
+        case.metadata_status = "partial"
+    elif statuses.get("error", 0):
         case.metadata_status = "failed"
     elif statuses.get("ok", 0):
         case.metadata_status = "collected"
     else:
         case.metadata_status = "skipped"
     tables = context.get("tables", [])
-    if isinstance(tables, list) and case.metadata_status == "collected":
+    if isinstance(tables, list) and case.metadata_status in {"collected", "partial"}:
         case.collected_metadata_table_count = len(tables)
 
 
@@ -1555,8 +1586,9 @@ def build_summary(
     discovery_failed: bool = False,
 ) -> dict[str, object]:
     selected_count = len(cases)
-    inspected = len(discovery.candidates)
-    reason_counts = candidate_reason_counts(discovery.candidates)
+    inspected = discovery.summaries_inspected if discovery.summaries_inspected is not None else len(discovery.candidates)
+    reason_counts = {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
+    reason_sql_verb_counts = {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
     return {
         "mode": "recent-query-batch",
         "out": str(config.out),
@@ -1581,11 +1613,14 @@ def build_summary(
         "server_filter_expression_present": bool(discovery.server_filter_expression),
         "summaries_inspected": inspected,
         "cm_summary_safety_cap": MAX_CM_INSPECT_LIMIT,
+        "cm_summary_raw_scan_cap": MAX_RAW_CM_SUMMARY_SCAN_LIMIT,
         "cm_summary_page_size": cm_profiles.CM_QUERY_SUMMARY_PAGE_SIZE,
-        "cm_summary_safety_cap_hit": config.cm_inspect_limit == MAX_CM_INSPECT_LIMIT and inspected >= MAX_CM_INSPECT_LIMIT,
+        "cm_summary_safety_cap_hit": bool(discovery.scan_too_broad),
+        "scan_too_broad": bool(discovery.scan_too_broad),
         "selected_count": selected_count,
         "candidate_reason_counts": reason_counts,
-        "candidate_exclusion_count": max(0, inspected - selected_count),
+        "candidate_reason_sql_verb_counts": reason_sql_verb_counts,
+        "candidate_exclusion_count": 0 if discovery.scan_too_broad else max(0, inspected - selected_count),
         "top_reports": config.top_reports,
         "cm_jobs": config.cm_jobs,
         "jobs": config.jobs,
@@ -1615,6 +1650,18 @@ def candidate_reason_counts(candidates: list[cm_profiles.RecentQueryCandidate]) 
         for candidate in candidates
     )
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def candidate_reason_sql_verb_counts(candidates: list[cm_profiles.RecentQueryCandidate]) -> dict[str, dict[str, int]]:
+    grouped: dict[str, Counter[str]] = {}
+    for candidate in candidates:
+        reason = cm_profiles.sanitize_text_for_log(candidate.reason or "unknown")
+        verb = candidate.sql_verb or "unknown"
+        grouped.setdefault(reason, Counter())[cm_profiles.sanitize_text_for_log(verb)] += 1
+    return {
+        reason: dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+        for reason, counts in sorted(grouped.items())
+    }
 
 
 def case_to_summary(case: CaseResult) -> dict[str, object]:

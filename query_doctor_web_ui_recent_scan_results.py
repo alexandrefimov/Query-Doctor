@@ -29,7 +29,7 @@ QUERY_GROUPS = {
 DEFAULT_QUERY_GROUP = "bad"
 
 
-def render_batch_card(settings: Any, query_group: str = DEFAULT_QUERY_GROUP) -> str:
+def render_batch_card(settings: Any, query_group: str = DEFAULT_QUERY_GROUP, *, only_with_spills: bool = False) -> str:
     summary_path = getattr(settings, "batch_summary", None)
     if summary_path is None:
         return ""
@@ -50,13 +50,19 @@ def render_batch_card(settings: Any, query_group: str = DEFAULT_QUERY_GROUP) -> 
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
-    return render_batch_summary(payload, query_group=query_group)
+    return render_batch_summary(payload, query_group=query_group, only_with_spills=only_with_spills)
 
 
-def render_batch_summary(summary: dict[str, Any], query_group: str = DEFAULT_QUERY_GROUP) -> str:
+def render_batch_summary(
+    summary: dict[str, Any],
+    query_group: str = DEFAULT_QUERY_GROUP,
+    *,
+    only_with_spills: bool = False,
+) -> str:
     view = present_recent_scan_summary(summary)
     active_group = normalize_query_group(query_group)
     rows_for_group = filter_rows_by_query_group(view.rows, active_group)
+    rows_for_group = filter_rows_by_spills(rows_for_group, only_with_spills=only_with_spills)
     header = "".join(
         "<div class=\"batch-metric\">"
         f"<span>{html.escape(label)}</span>"
@@ -64,28 +70,33 @@ def render_batch_summary(summary: dict[str, Any], query_group: str = DEFAULT_QUE
         "</div>"
         for label, value in view.header_items
     )
+    broad_scan_message = recent_scan_too_broad_message(summary)
     rows = "\n".join(render_batch_case_row(row.rank, row) for row in rows_for_group)
     if not rows:
-        rows = (
-            f"<tr><td colspan=\"6\" class=\"empty-cell\">No {html.escape(QUERY_GROUPS[active_group][0].lower())} were found in the configured batch summary.</td></tr>"
+        empty_text = broad_scan_message or (
+            f"No {QUERY_GROUPS[active_group][0].lower()} with spills were found in the configured batch summary."
+            if only_with_spills
+            else
+            f"No {QUERY_GROUPS[active_group][0].lower()} were found in the configured batch summary."
         )
-    scope_note = render_batch_scope_note(summary)
+        rows = f"<tr><td colspan=\"6\" class=\"empty-cell\">{html.escape(empty_text)}</td></tr>"
+    scan_details = render_batch_scan_details(summary)
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
-    switcher = render_query_group_switcher(view.rows, active_group)
+    switcher = render_result_filters(view.rows, active_group, only_with_spills=only_with_spills)
     return (
-        "<section class=\"panel batch-panel\" aria-label=\"Finished queries\">"
+        "<section id=\"recent-results\" class=\"panel batch-panel\" aria-label=\"Finished queries\">"
         "<div class=\"batch-head\">"
         "<div><h1>Finished Queries</h1></div>"
         "</div>"
         f"<div class=\"batch-metrics\">{header}</div>"
-        f"{scope_note}"
+        f"{scan_details}"
         f"{empty_note}"
         f"{warning_note}"
         f"{switcher}"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
-        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Summary</th><th>Duration</th><th>Metadata</th>"
+        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Duration</th><th>META</th><th>Summary</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
@@ -106,31 +117,92 @@ def filter_rows_by_query_group(
     return tuple(row for row in rows if row.score_severity in severities)
 
 
-def render_query_group_switcher(rows: tuple[RecentScanCaseRowView, ...], active_group: str) -> str:
+def filter_rows_by_spills(
+    rows: tuple[RecentScanCaseRowView, ...],
+    *,
+    only_with_spills: bool,
+) -> tuple[RecentScanCaseRowView, ...]:
+    if not only_with_spills:
+        return rows
+    return tuple(row for row in rows if row.has_spill)
+
+
+def render_query_group_switcher(
+    rows: tuple[RecentScanCaseRowView, ...],
+    active_group: str,
+    *,
+    only_with_spills: bool = False,
+) -> str:
+    rows_for_counts = filter_rows_by_spills(rows, only_with_spills=only_with_spills)
     counts = {
-        key: sum(1 for row in rows if row.score_severity in severities)
+        key: sum(1 for row in rows_for_counts if row.score_severity in severities)
         for key, (_label, severities) in QUERY_GROUPS.items()
     }
     links = []
     for key, (label, _severities) in QUERY_GROUPS.items():
         css_class = "batch-filter-link batch-filter-link--active" if key == active_group else "batch-filter-link"
+        href = f"?query_group={html.escape(key, quote=True)}"
+        if only_with_spills:
+            href += "&only_with_spills=on"
+        href += "#recent-results"
         links.append(
-            f"<a class=\"{css_class}\" href=\"/?query_group={html.escape(key, quote=True)}\">"
+            f"<a class=\"{css_class}\" href=\"{href}\">"
             f"{html.escape(label)} <span>{counts[key]}</span></a>"
         )
     return f"<nav class=\"batch-filter-tabs\" aria-label=\"Query result filter\">{''.join(links)}</nav>"
 
 
+def render_result_filters(
+    rows: tuple[RecentScanCaseRowView, ...],
+    active_group: str,
+    *,
+    only_with_spills: bool = False,
+) -> str:
+    switcher = render_query_group_switcher(rows, active_group, only_with_spills=only_with_spills)
+    spill_toggle = render_spill_filter_toggle(active_group, only_with_spills=only_with_spills)
+    return f"<div class=\"batch-result-filters\">{switcher}{spill_toggle}</div>"
+
+
+def render_spill_filter_toggle(active_group: str, *, only_with_spills: bool = False) -> str:
+    href = f"?query_group={html.escape(normalize_query_group(active_group), quote=True)}"
+    active_class = " batch-spill-toggle--active" if only_with_spills else ""
+    if not only_with_spills:
+        href += "&only_with_spills=on"
+    href += "#recent-results"
+    return (
+        f"<a class=\"batch-spill-toggle{active_class}\" href=\"{href}\" "
+        f"aria-label=\"Only queries with spills\" aria-pressed=\"{str(only_with_spills).lower()}\">"
+        f"<span class=\"batch-spill-check\" aria-hidden=\"true\">{'✓' if only_with_spills else ''}</span>"
+        "<span>Only queries with spills</span></a>"
+    )
+
+
 def render_batch_scope_note(summary: dict[str, Any]) -> str:
     parts = list(present_recent_scan_summary(summary).scope_parts)
-    return f"<div class=\"batch-note\"><strong>Scan scope:</strong> {'. '.join(html.escape(part) for part in parts)}.</div>" if parts else ""
+    return f"<div class=\"batch-note\"><strong>Scan details:</strong> {'. '.join(html.escape(part) for part in parts)}.</div>" if parts else ""
+
+
+def render_batch_scan_details(summary: dict[str, Any]) -> str:
+    parts = list(present_recent_scan_summary(summary).scope_parts)
+    if not parts:
+        return ""
+    items = "".join(f"<span>{html.escape(part)}</span>" for part in parts)
+    return f"<div class=\"batch-detail-grid\" aria-label=\"Scan details\">{items}</div>"
 
 
 def render_batch_empty_note(summary: dict[str, Any]) -> str:
     message = present_recent_scan_summary(summary).empty_message
     if not message:
         return ""
-    return f"<div class=\"batch-note\"><strong>No cases selected:</strong> {html.escape(message)}</div>"
+    heading = "Scan stopped" if summary.get("scan_too_broad") else "No cases selected"
+    return f"<div class=\"batch-note\"><strong>{heading}:</strong> {html.escape(message)}</div>"
+
+
+def recent_scan_too_broad_message(summary: dict[str, Any]) -> str | None:
+    if not summary.get("scan_too_broad"):
+        return None
+    cap = summary.get("cm_summary_safety_cap") or summary.get("cm_inspect_limit") or summary.get("summaries_inspected")
+    return f"Scan stopped because this hour has more than {cap} matching CM summaries. Narrow the filters or choose another hour."
 
 
 def render_batch_warning_note(summary: dict[str, Any]) -> str:
@@ -147,14 +219,14 @@ def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowVie
     row_attrs = f"class=\"{row_class}\""
     if view.case_id:
         href = f"/batch/case/{html.escape(view.case_id, quote=True)}"
-        row_attrs += f" data-href=\"{href}\" onclick=\"window.location.href=this.dataset.href\" tabindex=\"0\" onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();window.location.href=this.dataset.href}}\""
+        row_attrs += f" data-href=\"{href}\" onclick=\"window.open(this.dataset.href,'_blank','noopener')\" tabindex=\"0\" onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();window.open(this.dataset.href,'_blank','noopener')}}\""
     cells = [
         compact_cell(view.rank),
         query_id_cell(view.query_id),
         score_cell(view),
-        summary_cell(view),
         compact_cell(view.duration_sec),
         metadata_cell(view.metadata_status),
+        summary_cell(view),
     ]
     return f"<tr {row_attrs}>{''.join(cells)}</tr>"
 
@@ -165,7 +237,7 @@ def row_has_failure(view: RecentScanCaseRowView) -> bool:
 
 def query_id_cell(query_id: Any) -> str:
     escaped = escape_value(query_id)
-    return f"<td class=\"batch-cell--query-id\">{escaped.replace(':', ':<br>', 1)}</td>"
+    return f"<td class=\"batch-cell--query-id\">{escaped}</td>"
 
 
 def score_cell(view: RecentScanCaseRowView) -> str:
@@ -269,7 +341,7 @@ def read_batch_progress_events(progress_path: Path | None) -> list[dict[str, Any
         return []
     events: list[dict[str, Any]] = []
     try:
-        for line in progress_path.read_text(encoding="utf-8").splitlines()[-2000:]:
+        for line in progress_path.read_text(encoding="utf-8").splitlines()[-50000:]:
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
@@ -289,7 +361,10 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         "candidates_selected": None,
         "duration_filter": None,
         "collection_done": 0,
+        "collection_failed": 0,
         "analysis_done": 0,
+        "analysis_started": 0,
+        "analysis_failed": 0,
         "failed": 0,
         "metadata_total": None,
         "metadata_done": 0,
@@ -330,11 +405,18 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
             elif status == "collection_done":
                 counters["collection_done"] += 1
             elif status == "analysis_started" and states["analysis"] != "done":
+                counters["analysis_started"] += 1
+                if states["collection"] != "failed":
+                    states["collection"] = "done"
                 states["analysis"] = "running"
             elif status == "analysis_done":
                 counters["analysis_done"] += 1
             elif status == "failed":
                 counters["failed"] += 1
+                if event.get("phase") == "collection":
+                    counters["collection_failed"] += 1
+                elif event.get("phase") == "analysis":
+                    counters["analysis_failed"] += 1
         elif stage == "summary":
             if status == "started":
                 states["collection"] = "done"
@@ -346,6 +428,10 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 states["summary"] = "done"
         elif stage == "metadata_refresh":
             if status == "started":
+                if states["collection"] != "failed":
+                    states["collection"] = "done"
+                if states["analysis"] != "failed":
+                    states["analysis"] = "done"
                 states["metadata"] = "running"
                 if not event.get("case_id"):
                     counters["metadata_total"] = numeric_count(event.get("total"))
@@ -375,7 +461,17 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         states["completed"] = "failed"
     if job_status == "ok":
         states["completed"] = "done"
+        for key in ("discovery", "collection", "analysis", "summary"):
+            if states[key] in {"pending", "running"}:
+                states[key] = "done"
+        if states["metadata"] in {"pending", "running"}:
+            states["metadata"] = "skipped"
     total = numeric_count(counters["total"])
+    if total:
+        if counters["collection_done"] + counters["collection_failed"] >= total and states["collection"] != "failed":
+            states["collection"] = "done"
+        if counters["analysis_done"] + counters["analysis_failed"] >= total and states["analysis"] != "failed":
+            states["analysis"] = "done"
     processed = counters["analysis_done"] + counters["failed"]
     metrics = []
     if counters["summaries_inspected"] is not None:
