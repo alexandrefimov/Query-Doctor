@@ -133,6 +133,8 @@ ADMIN_SQL_VERBS = {
 QUERY_DOCTOR_SMOKE_RE = re.compile(r"\bquery_doctor\b", re.IGNORECASE)
 CTAS_RE = re.compile(r"\A\s*CREATE\s+(?:EXTERNAL\s+)?TABLE\b.*\bAS\s+(?:WITH|SELECT)\b", re.IGNORECASE | re.DOTALL)
 ANALYZABLE_SQL_VERBS = {"SELECT", "WITH", "INSERT", "DELETE", "UPSERT"}
+ANALYZABLE_QUERY_TYPES = {"QUERY", "SELECT", "INSERT", "DML"}
+RUNNING_QUERY_STATUSES = {"running", "executing", "in_progress", "in-progress", "in progress", "active"}
 
 PRESERVED_METADATA_KEYS = {
     "query_id",
@@ -1946,6 +1948,7 @@ def select_recent_query_candidates(
     select_limit: int,
     include_failed: bool = False,
     include_running: bool = False,
+    only_running: bool = False,
     user: str | None = None,
     pool: str | None = None,
     query_type: str | None = None,
@@ -1959,6 +1962,7 @@ def select_recent_query_candidates(
             summary,
             include_failed=include_failed,
             include_running=include_running,
+            only_running=only_running,
             user=user,
             pool=pool,
             query_type=query_type,
@@ -2030,7 +2034,7 @@ def recent_summary_time_key(summary: CMQuerySummary) -> str:
 
 def recent_summary_status_priority(summary: CMQuerySummary) -> int:
     status = (summary.status or "").strip().lower()
-    if status in {"running", "executing", "in_progress", "in-progress"}:
+    if status in RUNNING_QUERY_STATUSES:
         return 0
     if status in {"failed", "error", "cancelled", "canceled"}:
         return 1
@@ -2044,6 +2048,7 @@ def classify_recent_query_candidate(
     *,
     include_failed: bool = False,
     include_running: bool = False,
+    only_running: bool = False,
     user: str | None = None,
     pool: str | None = None,
     query_type: str | None = None,
@@ -2058,7 +2063,9 @@ def classify_recent_query_candidate(
         return False, "excluded: query type filter mismatch", extract_sql_verb(summary.statement)
 
     status = (summary.status or "").strip().lower()
-    if status in {"running", "executing", "in_progress", "in-progress"} and not include_running:
+    if only_running and status not in RUNNING_QUERY_STATUSES:
+        return False, "excluded: not running query", extract_sql_verb(summary.statement)
+    if status in RUNNING_QUERY_STATUSES and not include_running:
         return False, "excluded: running query", extract_sql_verb(summary.statement)
     if status in {"failed", "error"} and not include_failed:
         return False, "excluded: failed query", extract_sql_verb(summary.statement)
@@ -2085,7 +2092,7 @@ def classify_recent_query_candidate(
         return False, "excluded: not analyzable query text", sql_verb
 
     query_type = (summary.query_type or "").strip().upper()
-    if query_type in {"QUERY", "SELECT"}:
+    if query_type in ANALYZABLE_QUERY_TYPES:
         duration_ok, duration_reason = classify_recent_query_duration(
             summary,
             min_duration_sec=min_duration_sec,

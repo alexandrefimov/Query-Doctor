@@ -370,6 +370,8 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
         )
     if summary.get("query_type_filter") is not None:
         parts.append(f"Query type: {query_type_filter_label(summary.get('query_type_filter'))}")
+    if summary.get("only_running"):
+        parts.append("Status: running only")
     if summary.get("user_filter_present"):
         parts.append("User filter: set")
     else:

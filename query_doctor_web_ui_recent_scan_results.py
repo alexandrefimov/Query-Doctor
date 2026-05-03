@@ -29,28 +29,36 @@ QUERY_GROUPS = {
 DEFAULT_QUERY_GROUP = "bad"
 
 
-def render_batch_card(settings: Any, query_group: str = DEFAULT_QUERY_GROUP, *, only_with_spills: bool = False) -> str:
+def render_batch_card(
+    settings: Any,
+    query_group: str = DEFAULT_QUERY_GROUP,
+    *,
+    only_with_spills: bool = False,
+    title: str = "Finished Queries",
+) -> str:
     summary_path = getattr(settings, "batch_summary", None)
+    escaped_title = html.escape(title)
+    aria_label = html.escape(title.lower())
     if summary_path is None:
         return ""
     try:
         payload = json.loads(Path(summary_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return (
-            "<section class=\"panel batch-panel\" aria-label=\"Finished queries\">"
-            "<div class=\"batch-head\"><div><h1>Finished Queries</h1>"
+            f"<section class=\"panel batch-panel\" aria-label=\"{aria_label}\">"
+            f"<div class=\"batch-head\"><div><h1>{escaped_title}</h1>"
             "<p>Configured batch summary could not be read.</p></div></div>"
             f"<div class=\"batch-note\">{html.escape(type(exc).__name__)}</div>"
             "</section>"
         )
     if not isinstance(payload, dict):
         return (
-            "<section class=\"panel batch-panel\" aria-label=\"Finished queries\">"
-            "<div class=\"batch-head\"><div><h1>Finished Queries</h1>"
+            f"<section class=\"panel batch-panel\" aria-label=\"{aria_label}\">"
+            f"<div class=\"batch-head\"><div><h1>{escaped_title}</h1>"
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
-    return render_batch_summary(payload, query_group=query_group, only_with_spills=only_with_spills)
+    return render_batch_summary(payload, query_group=query_group, only_with_spills=only_with_spills, title=title)
 
 
 def render_batch_summary(
@@ -58,6 +66,7 @@ def render_batch_summary(
     query_group: str = DEFAULT_QUERY_GROUP,
     *,
     only_with_spills: bool = False,
+    title: str = "Finished Queries",
 ) -> str:
     view = present_recent_scan_summary(summary)
     active_group = normalize_query_group(query_group)
@@ -84,10 +93,12 @@ def render_batch_summary(
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
     switcher = render_result_filters(view.rows, active_group, only_with_spills=only_with_spills)
+    escaped_title = html.escape(title)
+    aria_label = html.escape(title.lower())
     return (
-        "<section id=\"recent-results\" class=\"panel batch-panel\" aria-label=\"Finished queries\">"
+        f"<section id=\"recent-results\" class=\"panel batch-panel\" aria-label=\"{aria_label}\">"
         "<div class=\"batch-head\">"
-        "<div><h1>Finished Queries</h1></div>"
+        f"<div><h1>{escaped_title}</h1></div>"
         "</div>"
         f"<div class=\"batch-metrics\">{header}</div>"
         f"{scan_details}"

@@ -203,6 +203,7 @@ class BatchRunConfig:
     query_type: str = ""
     include_failed: bool = True
     include_running: bool = False
+    only_running: bool = False
 
 
 @dataclass(frozen=True)
@@ -258,6 +259,7 @@ class WebJobStore:
         self._jobs: dict[str, WebJob] = {}
         self._query_results: list[dict[str, object]] = []
         self._latest_batch_summary: Path | None = None
+        self._latest_running_summary: Path | None = None
         self._lock = threading.Lock()
 
     def create(self, query_id: str, report_mode: str) -> WebJobSnapshot:
@@ -287,6 +289,24 @@ class WebJobStore:
             stage_label=stage[1],
             progress=stage[2],
             kind="batch",
+            batch_form_values=dict(form_values) if form_values is not None else None,
+            batch_progress_path=batch_progress_path(job_id),
+        )
+        with self._lock:
+            self._jobs[job.job_id] = job
+            return job.snapshot()
+
+    def create_running_batch(self, form_values: dict[str, object] | None = None) -> WebJobSnapshot:
+        stage = BATCH_STAGES[0]
+        job_id = uuid.uuid4().hex
+        job = WebJob(
+            job_id=job_id,
+            query_id="running queries",
+            report_mode="running",
+            status="running",
+            stage_label=stage[1],
+            progress=stage[2],
+            kind="running",
             batch_form_values=dict(form_values) if form_values is not None else None,
             batch_progress_path=batch_progress_path(job_id),
         )
@@ -329,6 +349,14 @@ class WebJobStore:
     def set_latest_batch_summary(self, path: Path) -> None:
         with self._lock:
             self._latest_batch_summary = path
+
+    def latest_running_summary(self) -> Path | None:
+        with self._lock:
+            return self._latest_running_summary
+
+    def set_latest_running_summary(self, path: Path) -> None:
+        with self._lock:
+            self._latest_running_summary = path
 
     def update_stage(self, job_id: str, stage_index: int) -> None:
         with self._lock:
@@ -382,7 +410,7 @@ class WebJobStore:
 
 
 def stages_for_job_kind(kind: str) -> tuple[tuple[int, str, int], ...]:
-    if kind == "batch":
+    if kind in {"batch", "running"}:
         return BATCH_STAGES
     if kind == "batch_report":
         return BATCH_REPORT_STAGES
@@ -1061,6 +1089,49 @@ def parse_batch_run_config(
     )
 
 
+def parse_running_run_config(
+    form: dict[str, list[str]],
+    *,
+    default_metadata_top_limit: int = WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
+    default_parallelism: int = 50,
+) -> BatchRunConfig:
+    cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
+    metadata_top_limit = parse_non_negative_form_int(
+        form, "metadata_top_limit", default=default_metadata_top_limit, maximum=BATCH_METADATA_TOP_LIMIT_MAX
+    )
+    min_duration_sec = parse_optional_non_negative_form_float(form, "min_duration_sec")
+    parallelism_text = first_form_value(form, "parallelism")
+    parallelism_form = {"parallelism": [parallelism_text]} if parallelism_text else {}
+    parallelism = parse_positive_form_int(
+        parallelism_form,
+        "parallelism",
+        default=default_parallelism,
+        maximum=min(BATCH_CM_JOBS_MAX, BATCH_JOBS_MAX),
+    )
+    metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
+    return BatchRunConfig(
+        recent_window_minutes=24 * 60,
+        from_time=None,
+        to_time=None,
+        cm_inspect_limit=cm_inspect_limit,
+        triage_profile_limit=cm_inspect_limit,
+        metadata_top_limit=metadata_top_limit,
+        min_duration_sec=min_duration_sec,
+        max_duration_sec=None,
+        order="status-priority",
+        parallelism=parallelism,
+        cm_jobs=parallelism,
+        jobs=parallelism,
+        metadata_jobs=metadata_jobs,
+        user=first_form_value(form, "user"),
+        pool=first_form_value(form, "pool"),
+        query_type="",
+        include_failed=False,
+        include_running=True,
+        only_running=True,
+    )
+
+
 def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
     if config.metadata_top_limit > 0:
         if not metadata_configured(settings):
@@ -1335,7 +1406,9 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
     progress_path = batch_progress_path(job_id)
     metadata_enabled = config.metadata_top_limit > 0
     metadata_mode = "on" if metadata_enabled else "off"
-    if config.from_time and config.to_time:
+    if config.only_running:
+        from_time = to_time = None
+    elif config.from_time and config.to_time:
         from_time, to_time = config.from_time, config.to_time
     else:
         _, _, from_time, to_time = parse_recent_scan_window({})
@@ -1346,10 +1419,6 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         str(settings.config),
         "--out",
         str(out_dir),
-        "--from-time",
-        str(from_time),
-        "--to-time",
-        str(to_time),
         "--cm-inspect-limit",
         str(config.cm_inspect_limit),
         "--triage-profile-limit",
@@ -1372,6 +1441,10 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         "--progress-jsonl",
         str(progress_path),
     ]
+    if config.only_running:
+        cmd.extend(["--recent-window-minutes", str(config.recent_window_minutes)])
+    else:
+        cmd.extend(["--from-time", str(from_time), "--to-time", str(to_time)])
     if config.min_duration_sec is None:
         cmd.append("--no-min-duration-filter")
     else:
@@ -1388,6 +1461,8 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         cmd.append("--include-failed")
     if config.include_running:
         cmd.append("--include-running")
+    if config.only_running:
+        cmd.append("--only-running")
     if metadata_enabled:
         append_web_metadata_args(cmd, settings)
     if config.jobs > BATCH_FULL_JOBS_MAX:
@@ -1589,6 +1664,39 @@ def start_batch_job(
     return 303, f"/jobs/{job.job_id}"
 
 
+def start_running_job(
+    form: dict[str, list[str]],
+    settings: WebSettings,
+    job_store: WebJobStore,
+    *,
+    runner: Runner = subprocess.run,
+) -> tuple[int, str]:
+    try:
+        config = parse_running_run_config(
+            form,
+            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT if metadata_configured(settings) else 0,
+            default_parallelism=50,
+        )
+        validate_batch_config_for_settings(config, settings)
+        if config.metadata_top_limit > 0:
+            preflight_web_metadata_batch(settings, runner=runner)
+    except WebError as exc:
+        return 400, render_running_queries_page(
+            settings,
+            error=sanitize_for_display(exc),
+            form_values=form_values_from_form(form),
+        )
+
+    job = job_store.create_running_batch(form_values_from_config(config))
+    thread = threading.Thread(
+        target=run_batch_job,
+        args=(job.job_id, config, settings, job_store, runner),
+        daemon=True,
+    )
+    thread.start()
+    return 303, f"/jobs/{job.job_id}"
+
+
 def start_batch_case_report_job(
     case_id: str,
     settings: WebSettings,
@@ -1721,9 +1829,15 @@ def run_batch_job(
         summary_path = out_dir / "batch_summary.json"
         if not summary_path.is_file():
             raise WebError("Batch run completed but batch_summary.json was not created.")
-        job_store.set_latest_batch_summary(summary_path)
-        batch_settings = replace(settings, batch_summary=summary_path)
-        job_store.complete_html(job_id, render_batch_card(batch_settings))
+        job = job_store.get(job_id)
+        if job is not None and job.kind == "running":
+            job_store.set_latest_running_summary(summary_path)
+            running_settings = replace(settings, batch_summary=summary_path)
+            job_store.complete_html(job_id, render_batch_card(running_settings, title="Running Queries"))
+        else:
+            job_store.set_latest_batch_summary(summary_path)
+            batch_settings = replace(settings, batch_summary=summary_path)
+            job_store.complete_html(job_id, render_batch_card(batch_settings))
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
@@ -1780,13 +1894,13 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             "status": job.status,
             "stage": job.stage_label,
             "progress": batch_progress_percent(job.batch_progress_path, job.status)
-            if job.kind == "batch"
+            if job.kind in {"batch", "running"}
             else job.progress,
             "kind": job.kind,
             "error": job.error,
             "result_html": job.result_html,
             "progress_html": render_batch_progress_panel(job.batch_progress_path, job.status)
-            if job.kind == "batch"
+            if job.kind in {"batch", "running"}
             else "",
         }
     return json.dumps(payload, ensure_ascii=False)
@@ -1809,6 +1923,13 @@ def batch_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebSet
     latest = job_store.latest_batch_summary()
     if latest is None:
         return settings
+    return replace(settings, batch_summary=latest)
+
+
+def running_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebSettings:
+    latest = job_store.latest_running_summary()
+    if latest is None:
+        return replace(settings, batch_summary=None)
     return replace(settings, batch_summary=latest)
 
 
@@ -2248,7 +2369,15 @@ def make_handler(
                 self.write_html(200, render_optimizer_page(settings))
                 return
             if parsed.path in {"/running", "/running-queries"}:
-                self.write_html(200, render_running_queries_page(settings))
+                query = parse_qs(parsed.query, keep_blank_values=True)
+                self.write_html(
+                    200,
+                    render_running_queries_page(
+                        running_page_settings(settings, store),
+                        query_group=first_form_value(query, "query_group"),
+                        only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                    ),
+                )
                 return
             if parsed.path == "/help":
                 self.write_html(200, render_help_page(settings))
@@ -2279,6 +2408,17 @@ def make_handler(
                             only_with_spills=form_flag_enabled(query, "only_with_spills"),
                         ),
                     )
+                elif job.kind == "running":
+                    query = parse_qs(parsed.query, keep_blank_values=True)
+                    self.write_html(
+                        200,
+                        render_running_queries_page(
+                            running_page_settings(settings, store),
+                            job=job,
+                            query_group=first_form_value(query, "query_group"),
+                            only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                        ),
+                    )
                 elif job.kind == "batch_report":
                     effective_settings = batch_page_settings(settings, store)
                     case_id = job.batch_case_id or job.query_id
@@ -2304,7 +2444,7 @@ def make_handler(
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
             report_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/report", parsed.path)
-            if parsed.path not in {"/analyze", "/batch/run", "/optimizer", "/query-optimizer"} and report_match is None:
+            if parsed.path not in {"/analyze", "/batch/run", "/running/run", "/optimizer", "/query-optimizer"} and report_match is None:
                 self.send_error(404)
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
@@ -2314,6 +2454,8 @@ def make_handler(
                 status, body = start_batch_case_report_job(report_match.group("case_id"), settings, store, runner=runner)
             elif parsed.path == "/batch/run":
                 status, body = start_batch_job(form, settings, store, runner=runner)
+            elif parsed.path == "/running/run":
+                status, body = start_running_job(form, settings, store, runner=runner)
             elif parsed.path in {"/optimizer", "/query-optimizer"}:
                 status, body = handle_optimizer_request(form, settings, runner=runner)
             else:

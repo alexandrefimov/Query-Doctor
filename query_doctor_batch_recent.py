@@ -98,6 +98,7 @@ class BatchConfig:
     krb5ccname: str | None
     from_time: str | None = None
     to_time: str | None = None
+    only_running: bool = False
 
 
 @dataclass
@@ -270,6 +271,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--order", choices=ORDER_CHOICES)
     parser.add_argument("--include-failed", action="store_true", default=None)
     parser.add_argument("--include-running", action="store_true", default=None)
+    parser.add_argument("--only-running", action="store_true", default=None)
     parser.add_argument("--user", help="Optional recent-query user filter.")
     parser.add_argument("--pool", help="Optional recent-query pool filter.")
     parser.add_argument("--query-type", help="Optional CM query type filter.")
@@ -648,6 +650,7 @@ def build_batch_config(
         order=first_string(args.order, config_values.get("recent_order"), "duration-desc") or "duration-desc",
         include_failed=first_bool(args.include_failed, config_values.get("recent_include_failed"), default=False),
         include_running=first_bool(args.include_running, config_values.get("recent_include_running"), default=False),
+        only_running=first_bool(args.only_running, config_values.get("recent_only_running"), default=False),
         user=first_string(args.user, config_values.get("recent_user")),
         pool=first_string(args.pool, config_values.get("recent_pool")),
         query_type=first_string(args.query_type, config_values.get("query_type")),
@@ -912,7 +915,8 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
         summaries,
         select_limit=config.triage_profile_limit,
         include_failed=config.include_failed,
-        include_running=config.include_running,
+        include_running=config.include_running or config.only_running,
+        only_running=config.only_running,
         user=config.user,
         pool=config.pool,
         query_type=config.query_type,
@@ -1618,6 +1622,7 @@ def build_summary(
         "query_type_filter": config.query_type or "all",
         "include_failed": config.include_failed,
         "include_running": config.include_running,
+        "only_running": config.only_running,
         "user_filter_present": bool(config.user),
         "pool_filter_present": bool(config.pool),
         "order": config.order,
@@ -1767,6 +1772,7 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- duration filter: {summary['duration_filter']}",
         f"- include failed: {summary['include_failed']}",
         f"- include running: {summary['include_running']}",
+        f"- only running: {summary.get('only_running', False)}",
         f"- top reports: {summary['top_reports']}",
         f"- CM jobs: {summary['cm_jobs']}",
         f"- analyzer jobs: {summary['jobs']}",

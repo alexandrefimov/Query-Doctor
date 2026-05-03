@@ -357,7 +357,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var resultSlot = document.getElementById('job-result-slot');
   var errorSlot = document.getElementById('job-error-slot');
   var title = jobPanel.querySelector('.progress-title');
-  var batchRunButton = document.querySelector('#batch-form button[type="submit"]');
+  var batchRunButton = document.querySelector('#batch-form button[type="submit"], #running-form button[type="submit"]');
   function poll() {
     fetch(jobPanel.getAttribute('data-job-status-url'), {cache: 'no-store'})
       .then(function (response) { return response.json(); })
@@ -368,7 +368,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (runningProgressSlot) { runningProgressSlot.innerHTML = data.progress_html || ''; }
         if (data.status === 'ok') {
           if (title) { title.textContent = 'Analysis complete'; }
-          if (data.kind === 'batch' && batchRunButton) {
+          if ((data.kind === 'batch' || data.kind === 'running') && batchRunButton) {
             batchRunButton.disabled = false;
             batchRunButton.textContent = 'Run scan';
           }
@@ -379,7 +379,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (data.status === 'failed') {
           if (title) { title.textContent = 'Analysis failed'; }
-          if (data.kind === 'batch' && batchRunButton) {
+          if ((data.kind === 'batch' || data.kind === 'running') && batchRunButton) {
             batchRunButton.disabled = false;
             batchRunButton.textContent = 'Run scan';
           }
@@ -421,7 +421,7 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
     error_hidden = "" if job.status == "failed" else " hidden"
     batch_progress_html = ""
     progress = job.progress
-    if getattr(job, "kind", "") == "batch":
+    if getattr(job, "kind", "") in {"batch", "running"}:
         progress = batch_progress_percent(getattr(job, "batch_progress_path", None), job.status)
         batch_progress_html = (
             "<div id=\"batch-progress-slot\">"
