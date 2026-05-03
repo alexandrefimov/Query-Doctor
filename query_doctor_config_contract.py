@@ -20,7 +20,7 @@ LEGACY_CONFIG_WARNING = (
 )
 
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
-RECENT_ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
+RECENT_ORDER_CHOICES = ("recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority")
 METADATA_AUTH_CHOICES = ("kerberos",)
 METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
 
@@ -50,7 +50,9 @@ ALLOWED_CONFIG_KEYS = {
     "recent_order",
     "recent_output_json",
     "recent_pool",
+    "recent_cm_jobs",
     "recent_cm_summary_limit",
+    "recent_metadata_jobs",
     "recent_metadata_top_limit",
     "recent_profile_analysis_limit",
     "recent_select",
@@ -237,7 +239,9 @@ def normalize_config_value(key: str, value: object) -> object:
             "limit",
             "max_profile_bytes",
             "recent_limit",
+            "recent_cm_jobs",
             "recent_cm_summary_limit",
+            "recent_metadata_jobs",
             "recent_profile_analysis_limit",
             "recent_max_duration_sec",
             "recent_min_duration_sec",
@@ -311,7 +315,9 @@ def normalize_config_value(key: str, value: object) -> object:
         "limit",
         "max_profile_bytes",
         "recent_limit",
+        "recent_cm_jobs",
         "recent_cm_summary_limit",
+        "recent_metadata_jobs",
         "recent_profile_analysis_limit",
         "recent_select",
         "recent_window_minutes",

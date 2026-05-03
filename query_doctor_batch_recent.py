@@ -24,11 +24,13 @@ from query_doctor_engines import get_default_engine_adapter
 
 
 MAX_CM_INSPECT_LIMIT = 10000
-MAX_TRIAGE_PROFILE_LIMIT = 200
+MAX_TRIAGE_PROFILE_LIMIT = 1000
 MAX_METADATA_TOP_LIMIT = 200
 MAX_JOBS = 4
 MAX_HIGH_JOBS = 100
-ORDER_CHOICES = ("recent", "duration-desc", "duration-asc")
+MAX_CM_JOBS = 100
+MAX_METADATA_JOBS = 4
+ORDER_CHOICES = ("recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority")
 METADATA_MODE_CHOICES = ("auto", "on", "off", "dry-run")
 SAFE_OUTPUT_PREFIX = "query-doctor-"
 SYSTEM_OUTPUT_ROOTS = (
@@ -80,7 +82,9 @@ class BatchConfig:
     metadata_max_output_bytes: int | None
     metadata_redact: bool
     top_reports: int
+    cm_jobs: int
     jobs: int
+    metadata_jobs: int
     allow_high_jobs: bool
     discover_only: bool
     overwrite: bool
@@ -282,9 +286,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
         default=1,
         help=(
-            f"Parallel case workers for collection and analyzer/metadata. Hard cap: {MAX_JOBS}, "
+            f"Parallel analyzer workers after CM profile collection. Hard cap: {MAX_JOBS}, "
             f"or {MAX_HIGH_JOBS} with --allow-high-jobs in metadata-off/no-report mode."
         ),
+    )
+    parser.add_argument(
+        "--cm-jobs",
+        type=positive_int,
+        help=f"Parallel CM profile collection workers. Hard cap: {MAX_CM_JOBS}. Default: --jobs.",
+    )
+    parser.add_argument(
+        "--metadata-jobs",
+        type=positive_int,
+        help=f"Parallel metadata refresh workers for top cases. Hard cap: {MAX_METADATA_JOBS}. Default: 1.",
     )
     parser.add_argument(
         "--allow-high-jobs",
@@ -379,8 +393,17 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
 
     try:
         if not config.discover_only:
-            print(f"[batch] jobs: {config.jobs}")
-            progress.emit(stage="case_processing", status="started", total=len(case_results), jobs=config.jobs)
+            print(f"[batch] CM jobs: {config.cm_jobs}")
+            print(f"[batch] analyzer jobs: {config.jobs}")
+            print(f"[batch] metadata jobs: {config.metadata_jobs}")
+            progress.emit(
+                stage="case_processing",
+                status="started",
+                total=len(case_results),
+                jobs=config.jobs,
+                cm_jobs=config.cm_jobs,
+                metadata_jobs=config.metadata_jobs,
+            )
             process_cases(config, case_results, env=env, repo_root=repo_root, progress=progress)
             rank_cases_for_metadata(case_results)
             refresh_top_metadata(config, case_results, env=env, repo_root=repo_root, progress=progress)
@@ -526,7 +549,11 @@ def build_batch_config(
         raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
     if metadata_top_limit > MAX_METADATA_TOP_LIMIT:
         raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
+    cm_jobs = first_int(args.cm_jobs, config_values.get("recent_cm_jobs"), default=args.jobs)
+    metadata_jobs = first_int(args.metadata_jobs, config_values.get("recent_metadata_jobs"), default=1)
     validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
+    validate_cm_jobs_config(cm_jobs)
+    validate_metadata_jobs_config(metadata_jobs)
     min_duration_sec = (
         None
         if args.no_min_duration_filter
@@ -610,7 +637,9 @@ def build_batch_config(
         ),
         metadata_redact=first_bool(args.metadata_redact, config_values.get("metadata_redact"), default=False),
         top_reports=args.top_reports,
+        cm_jobs=cm_jobs,
         jobs=args.jobs,
+        metadata_jobs=metadata_jobs,
         allow_high_jobs=args.allow_high_jobs,
         discover_only=args.discover_only,
         overwrite=args.overwrite,
@@ -631,6 +660,16 @@ def validate_jobs_config(jobs: int, *, allow_high_jobs: bool, metadata_mode: str
         return
     if jobs > MAX_JOBS:
         raise ValueError(f"--jobs must be <= {MAX_JOBS} unless --allow-high-jobs is used with --metadata-mode off and --top-reports 0")
+
+
+def validate_cm_jobs_config(cm_jobs: int) -> None:
+    if cm_jobs > MAX_CM_JOBS:
+        raise ValueError(f"--cm-jobs must be <= {MAX_CM_JOBS}")
+
+
+def validate_metadata_jobs_config(metadata_jobs: int) -> None:
+    if metadata_jobs > MAX_METADATA_JOBS:
+        raise ValueError(f"--metadata-jobs must be <= {MAX_METADATA_JOBS}")
 
 
 def first_string(*values: object) -> str | None:
@@ -909,22 +948,56 @@ def process_cases(
     repo_root: Path,
     progress: ProgressWriter,
 ) -> None:
+    collect_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
+    analyze_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
+
+
+def collect_cases(
+    config: BatchConfig,
+    cases: list[CaseResult],
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+) -> None:
+    if config.cm_jobs == 1:
+        for case in cases:
+            collect_case_for_batch(config, case, env=env, repo_root=repo_root, progress=progress)
+        return
+
+    with ThreadPoolExecutor(max_workers=config.cm_jobs) as executor:
+        futures = [
+            executor.submit(collect_case_for_batch, config, case, env=env, repo_root=repo_root, progress=progress)
+            for case in cases
+        ]
+        for future in as_completed(futures):
+            future.result()
+
+
+def analyze_cases(
+    config: BatchConfig,
+    cases: list[CaseResult],
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+) -> None:
     if config.jobs == 1:
         for case in cases:
-            process_case(config, case, env=env, repo_root=repo_root, progress=progress)
+            analyze_case_for_batch(config, case, env=env, repo_root=repo_root, progress=progress)
             print_case_progress(case)
         return
 
     with ThreadPoolExecutor(max_workers=config.jobs) as executor:
         futures = [
-            executor.submit(process_case, config, case, env=env, repo_root=repo_root, progress=progress)
+            executor.submit(analyze_case_for_batch, config, case, env=env, repo_root=repo_root, progress=progress)
             for case in cases
         ]
         for future in as_completed(futures):
             print_case_progress(future.result())
 
 
-def process_case(
+def collect_case_for_batch(
     config: BatchConfig,
     case: CaseResult,
     *,
@@ -945,6 +1018,20 @@ def process_case(
         )
         return case
     progress.emit(stage="case", case_id=case_id, status="collection_done", seconds=case.cm_collect_seconds)
+    return case
+
+
+def analyze_case_for_batch(
+    config: BatchConfig,
+    case: CaseResult,
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+) -> CaseResult:
+    case_id = f"case-{case.index:03d}"
+    if case.collection_status != "ok":
+        return case
     progress.emit(stage="case", case_id=case_id, status="analysis_started")
     run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode="off")
     if case.analysis_status != "ok":
@@ -1101,31 +1188,52 @@ def refresh_top_metadata(
     if not candidates:
         progress.emit(stage="metadata_refresh", status="skipped", reason="no eligible cases")
         return
-    progress.emit(stage="metadata_refresh", status="started", total=len(candidates))
-    for case in candidates:
-        case_id = f"case-{case.index:03d}"
-        progress.emit(stage="metadata_refresh", case_id=case_id, status="started", triage_rank=case.triage_rank)
-        run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode=config.metadata_mode)
-        case.metadata_refreshed = True
-        if case.analysis_status == "ok":
-            score_case(case)
-            progress.emit(
-                stage="metadata_refresh",
-                case_id=case_id,
-                status="done",
-                metadata_status=case.metadata_status,
-                score=case.score,
-            )
-        else:
-            progress.emit(
-                stage="metadata_refresh",
-                case_id=case_id,
-                status="failed",
-                metadata_status=case.metadata_status,
-            )
+    progress.emit(stage="metadata_refresh", status="started", total=len(candidates), metadata_jobs=config.metadata_jobs)
+    if config.metadata_jobs == 1:
+        for case in candidates:
+            refresh_case_metadata(config, case, env=env, repo_root=repo_root, progress=progress)
+    else:
+        with ThreadPoolExecutor(max_workers=config.metadata_jobs) as executor:
+            futures = [
+                executor.submit(refresh_case_metadata, config, case, env=env, repo_root=repo_root, progress=progress)
+                for case in candidates
+            ]
+            for future in as_completed(futures):
+                future.result()
     refreshed_ids = {id(case) for case in candidates}
     mark_metadata_not_requested([case for case in cases if case.analysis_status == "ok" and id(case) not in refreshed_ids])
     progress.emit(stage="metadata_refresh", status="done", total=len(candidates))
+
+
+def refresh_case_metadata(
+    config: BatchConfig,
+    case: CaseResult,
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+) -> CaseResult:
+    case_id = f"case-{case.index:03d}"
+    progress.emit(stage="metadata_refresh", case_id=case_id, status="started", triage_rank=case.triage_rank)
+    run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode=config.metadata_mode)
+    case.metadata_refreshed = True
+    if case.analysis_status == "ok":
+        score_case(case)
+        progress.emit(
+            stage="metadata_refresh",
+            case_id=case_id,
+            status="done",
+            metadata_status=case.metadata_status,
+            score=case.score,
+        )
+    else:
+        progress.emit(
+            stage="metadata_refresh",
+            case_id=case_id,
+            status="failed",
+            metadata_status=case.metadata_status,
+        )
+    return case
 
 
 def run_top_reports(
@@ -1417,7 +1525,9 @@ def build_summary(
         "cm_summary_safety_cap_hit": config.cm_inspect_limit == MAX_CM_INSPECT_LIMIT and inspected >= MAX_CM_INSPECT_LIMIT,
         "selected_count": selected_count,
         "top_reports": config.top_reports,
+        "cm_jobs": config.cm_jobs,
         "jobs": config.jobs,
+        "metadata_jobs": config.metadata_jobs,
         "warnings": [cm_profiles.sanitize_text_for_log(warning) for warning in warnings],
         "discovery_failed": bool(discovery_failed),
         "cases": [case_to_summary(case) for case in sorted(cases, key=batch_ranking_key)],
@@ -1504,7 +1614,9 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- include failed: {summary['include_failed']}",
         f"- include running: {summary['include_running']}",
         f"- top reports: {summary['top_reports']}",
-        f"- jobs: {summary['jobs']}",
+        f"- CM jobs: {summary['cm_jobs']}",
+        f"- analyzer jobs: {summary['jobs']}",
+        f"- metadata jobs: {summary['metadata_jobs']}",
         f"- discovery seconds: {summary['discovery_seconds']}",
         f"- total seconds: {summary['total_seconds']}",
         "",

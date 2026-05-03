@@ -61,10 +61,11 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
     rows = "\n".join(render_batch_case_row(row.rank, row) for row in view.rows)
     if not rows:
         rows = (
-            "<tr><td colspan=\"14\" class=\"empty-cell\">No case summaries were found in the configured batch summary.</td></tr>"
+            "<tr><td colspan=\"11\" class=\"empty-cell\">No case summaries were found in the configured batch summary.</td></tr>"
         )
     scope_note = render_batch_scope_note(summary)
     empty_note = render_batch_empty_note(summary)
+    warning_note = render_batch_warning_note(summary)
     return (
         "<section class=\"panel batch-panel\" aria-label=\"Recent query scan\">"
         "<div class=\"batch-head\">"
@@ -75,12 +76,12 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
         f"<div class=\"batch-metrics\">{header}</div>"
         f"{scope_note}"
         f"{empty_note}"
+        f"{warning_note}"
         "<div class=\"batch-note\">Score is deterministic analyzer output. LLM reports exist only where "
         "<code>report_generated</code> is true. Partial reports are untrusted and not rendered here.</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
-        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Duration</th>"
-        "<th>Card</th><th>Mem</th><th>Skew</th><th>Tail</th>"
+        "<th>Rank</th><th>Query ID</th><th>Score</th><th>At a glance</th><th>Duration</th>"
         "<th>Collection</th><th>Analysis</th><th>Metadata</th><th>Report</th><th>Reasons</th><th>Details</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
@@ -91,14 +92,22 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
 
 def render_batch_scope_note(summary: dict[str, Any]) -> str:
     parts = list(present_recent_scan_summary(summary).scope_parts)
-    return f"<div class=\"batch-note\">{'. '.join(html.escape(part) for part in parts)}.</div>" if parts else ""
+    return f"<div class=\"batch-note\"><strong>Scan scope:</strong> {'. '.join(html.escape(part) for part in parts)}.</div>" if parts else ""
 
 
 def render_batch_empty_note(summary: dict[str, Any]) -> str:
     message = present_recent_scan_summary(summary).empty_message
     if not message:
         return ""
-    return f"<div class=\"batch-note\">{html.escape(message)}</div>"
+    return f"<div class=\"batch-note\"><strong>No cases selected:</strong> {html.escape(message)}</div>"
+
+
+def render_batch_warning_note(summary: dict[str, Any]) -> str:
+    warnings = present_recent_scan_summary(summary).warning_messages
+    if not warnings:
+        return ""
+    rendered = "; ".join(html.escape(warning) for warning in warnings)
+    return f"<div class=\"batch-note\"><strong>Scan warnings:</strong> {rendered}</div>"
 
 
 def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowView) -> str:
@@ -107,11 +116,8 @@ def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowVie
         compact_cell(view.rank),
         compact_cell(view.query_id),
         compact_cell(score_badge_from_values(view.score, view.collection_status, view.analysis_status)),
+        summary_cell(view),
         compact_cell(view.duration_sec),
-        compact_cell(view.cardinality_anomaly_count),
-        compact_cell(view.memory_anomaly_count),
-        compact_cell(view.backend_data_skew),
-        compact_cell(view.host_tail_candidate_count),
         compact_cell(status_badge(view.collection_status)),
         compact_cell(status_badge(view.analysis_status)),
         compact_cell(status_badge(view.metadata_status)),
@@ -120,6 +126,15 @@ def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowVie
         compact_cell(batch_case_details_link(view)),
     ]
     return f"<tr>{''.join(cells)}</tr>"
+
+
+def summary_cell(view: RecentScanCaseRowView) -> str:
+    return (
+        "<td class=\"batch-cell--summary\">"
+        f"<strong>{escape_value(view.signal_summary)}</strong>"
+        f"<span>{escape_value(view.status_summary)}</span>"
+        "</td>"
+    )
 
 
 def batch_case_details_link(case: dict[str, Any] | RecentScanCaseRowView) -> SafeHtml:

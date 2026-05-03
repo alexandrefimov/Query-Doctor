@@ -1964,6 +1964,27 @@ def select_recent_query_candidates(
             if classified[index][0].summary.duration_sec is not None
             else float("inf")
         )
+    elif order == "recent-duration-desc":
+        eligible_indexes.sort(
+            key=lambda index: (
+                recent_summary_time_key(classified[index][0].summary),
+                classified[index][0].summary.duration_sec
+                if classified[index][0].summary.duration_sec is not None
+                else -1.0,
+            ),
+            reverse=True,
+        )
+    elif order == "status-priority":
+        eligible_indexes.sort(
+            key=lambda index: (
+                recent_summary_status_priority(classified[index][0].summary),
+                -(
+                    classified[index][0].summary.duration_sec
+                    if classified[index][0].summary.duration_sec is not None
+                    else -1.0
+                ),
+            )
+        )
     selected_indexes = set(eligible_indexes[:select_limit])
 
     candidates: list[RecentQueryCandidate] = []
@@ -1974,6 +1995,21 @@ def select_recent_query_candidates(
             reason = "eligible but not selected because recent-select limit was reached"
         candidates.append(replace(candidate, selected=selected, reason=reason))
     return candidates
+
+
+def recent_summary_time_key(summary: CMQuerySummary) -> str:
+    return summary.end_time or summary.start_time or ""
+
+
+def recent_summary_status_priority(summary: CMQuerySummary) -> int:
+    status = (summary.status or "").strip().lower()
+    if status in {"running", "executing", "in_progress", "in-progress"}:
+        return 0
+    if status in {"failed", "error", "cancelled", "canceled"}:
+        return 1
+    if status in {"succeeded", "success", "finished"}:
+        return 2
+    return 3
 
 
 def classify_recent_query_candidate(

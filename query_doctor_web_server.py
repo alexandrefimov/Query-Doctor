@@ -76,11 +76,14 @@ BATCH_REPORT_STAGES = (
     (2, "Validating result", 88),
     (3, "Done", 100),
 )
-BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc"}
+BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority"}
 BATCH_CM_INSPECT_LIMIT_MAX = 10000
-BATCH_SELECT_LIMIT_MAX = 200
+BATCH_PROFILE_ANALYSIS_LIMIT_MAX = 1000
+BATCH_METADATA_TOP_LIMIT_MAX = 200
 BATCH_JOBS_MAX = 100
 BATCH_FULL_JOBS_MAX = 4
+BATCH_CM_JOBS_MAX = 100
+BATCH_METADATA_JOBS_MAX = 4
 BATCH_ANALYSIS_DEPTH_VALUES = {"full", "fast"}
 BATCH_QUERY_TYPE_VALUES = {"QUERY"}
 DEFAULT_METADATA_AUTH = "kerberos"
@@ -173,7 +176,9 @@ class BatchRunConfig:
     min_duration_sec: float | None = None
     max_duration_sec: float | None = None
     order: str = "duration-desc"
+    cm_jobs: int = 20
     jobs: int = 4
+    metadata_jobs: int = 1
     user: str = ""
     pool: str = ""
     query_type: str = "QUERY"
@@ -809,10 +814,10 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
         form, "cm_inspect_limit", default=BATCH_CM_INSPECT_LIMIT_MAX, maximum=BATCH_CM_INSPECT_LIMIT_MAX
     )
     triage_profile_limit = parse_positive_form_int(
-        form, "triage_profile_limit", default=200, maximum=BATCH_SELECT_LIMIT_MAX
+        form, "triage_profile_limit", default=200, maximum=BATCH_PROFILE_ANALYSIS_LIMIT_MAX
     )
     metadata_top_limit = parse_non_negative_form_int(
-        form, "metadata_top_limit", default=8, maximum=BATCH_SELECT_LIMIT_MAX
+        form, "metadata_top_limit", default=8, maximum=BATCH_METADATA_TOP_LIMIT_MAX
     )
     min_duration_sec = parse_optional_non_negative_form_float(form, "min_duration_sec")
     max_duration_text = first_form_value(form, "max_duration_sec")
@@ -823,8 +828,10 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
             raise WebError("max_duration_sec must be greater than or equal to min_duration_sec.")
     order = first_form_value(form, "order") or "duration-desc"
     if order not in BATCH_ORDER_VALUES:
-        raise WebError("Order must be one of: recent, duration-desc, duration-asc.")
+        raise WebError("Order must be one of: recent, duration-desc, duration-asc, recent-duration-desc, status-priority.")
+    cm_jobs = parse_positive_form_int(form, "cm_jobs", default=20, maximum=BATCH_CM_JOBS_MAX)
     jobs = parse_positive_form_int(form, "jobs", default=BATCH_FULL_JOBS_MAX, maximum=BATCH_JOBS_MAX)
+    metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=1, maximum=BATCH_METADATA_JOBS_MAX)
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
     query_type = first_form_value(form, "query_type") or "QUERY"
@@ -839,7 +846,9 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
         min_duration_sec=min_duration_sec,
         max_duration_sec=max_duration_sec,
         order=order,
+        cm_jobs=cm_jobs,
         jobs=jobs,
+        metadata_jobs=metadata_jobs,
         user=user,
         pool=pool,
         query_type=query_type,
@@ -851,7 +860,7 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
 def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
     if config.analysis_depth == "full":
         if config.jobs > BATCH_FULL_JOBS_MAX:
-            raise WebError("Full scan collects Impala metadata and requires jobs <= 4. Use Fast scan for higher jobs.")
+            raise WebError("Full scan collects Impala metadata and requires analyzer jobs <= 4. Use Fast scan for higher analyzer jobs.")
         if not metadata_configured(settings):
             raise WebError("Metadata collection is not configured for this web session. Use Fast scan or restart with metadata options.")
         if settings.metadata_ca_cert and not settings.metadata_ssl:
@@ -1144,8 +1153,12 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         metadata_mode,
         "--top-reports",
         "0",
+        "--cm-jobs",
+        str(config.cm_jobs),
         "--jobs",
         str(config.jobs),
+        "--metadata-jobs",
+        str(config.metadata_jobs if config.analysis_depth == "full" else 1),
         "--overwrite",
         "--progress-jsonl",
         str(progress_path),
@@ -1354,7 +1367,7 @@ def start_batch_job(
     except WebError as exc:
         return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))
 
-    job = job_store.create_batch(form_values_from_form(form))
+    job = job_store.create_batch(form_values_from_config(config))
     thread = threading.Thread(
         target=run_batch_job,
         args=(job.job_id, config, settings, job_store, runner),
@@ -1411,7 +1424,9 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "min_duration_sec",
         "max_duration_sec",
         "order",
+        "cm_jobs",
         "jobs",
+        "metadata_jobs",
         "user",
         "pool",
         "query_type",
@@ -1432,7 +1447,9 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "min_duration_sec": "" if config.min_duration_sec is None else display_float(config.min_duration_sec),
         "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),
         "order": config.order,
+        "cm_jobs": str(config.cm_jobs),
         "jobs": str(config.jobs),
+        "metadata_jobs": str(config.metadata_jobs),
         "user": config.user,
         "pool": config.pool,
         "query_type": config.query_type,

@@ -20,6 +20,8 @@ class RecentScanCaseRowView:
     case_id: str | None
     query_id: Any
     score: Any
+    status_summary: str
+    signal_summary: str
     duration_sec: Any
     cardinality_anomaly_count: Any
     memory_anomaly_count: Any
@@ -40,6 +42,7 @@ class RecentScanSummaryView:
     rows: tuple[RecentScanCaseRowView, ...]
     scope_parts: tuple[str, ...]
     empty_message: str | None
+    warning_messages: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -110,26 +113,38 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
         rows=rows,
         scope_parts=recent_scan_scope_parts(summary),
         empty_message=recent_scan_empty_message(summary, case_count=len(rows)),
+        warning_messages=recent_scan_warning_messages(summary),
     )
 
 
 def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanCaseRowView:
     reasons = case.get("score_reasons")
     reason_text = "; ".join(safe_display_text(item) for item in reasons) if isinstance(reasons, list) else ""
+    collection_status = safe_display_value(case.get("collection_status"))
+    analysis_status = safe_display_value(case.get("analysis_status"))
+    metadata_status = safe_display_value(case.get("metadata_status"))
+    report_status = batch_report_status(case)
     return RecentScanCaseRowView(
         rank=rank,
         case_id=batch_case_id(case),
         query_id=safe_display_value(case.get("query_id")),
         score=safe_display_value(case.get("score")),
+        status_summary=recent_scan_status_summary(
+            collection_status,
+            analysis_status,
+            metadata_status,
+            report_status,
+        ),
+        signal_summary=recent_scan_signal_summary(case),
         duration_sec=safe_display_value(case.get("duration_sec")),
         cardinality_anomaly_count=safe_display_value(case.get("cardinality_anomaly_count")),
         memory_anomaly_count=safe_display_value(case.get("memory_anomaly_count")),
         backend_data_skew=safe_display_value(case.get("backend_data_skew")),
         host_tail_candidate_count=safe_display_value(case.get("host_tail_candidate_count")),
-        collection_status=safe_display_value(case.get("collection_status")),
-        analysis_status=safe_display_value(case.get("analysis_status")),
-        metadata_status=safe_display_value(case.get("metadata_status")),
-        report_status=batch_report_status(case),
+        collection_status=collection_status,
+        analysis_status=analysis_status,
+        metadata_status=metadata_status,
+        report_status=report_status,
         reason_text=reason_text,
         score_value=numeric_value(case.get("score")),
         has_failure=case_has_failure(case),
@@ -279,8 +294,12 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
     elif summaries is not None:
         parts.append(f"CM summaries inspected: {safe_display_text(summaries)}")
     parts.append(f"Duration filter: {safe_display_text(summary.get('duration_filter') or 'none')}")
+    if summary.get("duration_filter_mode") is not None:
+        parts.append(f"Duration filtering: {safe_display_text(summary.get('duration_filter_mode'))}")
     if summary.get("triage_profile_limit") is not None:
         parts.append(f"Profile analysis limit: {safe_display_text(summary.get('triage_profile_limit'))}")
+    if summary.get("metadata_top_limit") is not None:
+        parts.append(f"Metadata enrichment: top {safe_display_text(summary.get('metadata_top_limit'))} cases")
     if summary.get("recent_window_minutes") is not None:
         parts.append(f"Search depth: {safe_display_text(summary.get('recent_window_minutes'))} minutes")
     if summary.get("query_type_filter") is not None:
@@ -298,7 +317,7 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
 
 def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> str | None:
     if summary.get("discovery_failed"):
-        return None
+        return "Recent scan discovery failed before case selection. Check CM connectivity and access settings, then run again."
     selected = numeric_count(summary.get("selected_count"))
     if selected or case_count:
         return None
@@ -308,6 +327,54 @@ def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> st
     if summaries is not None:
         return "No query candidates matched the current scan criteria. Try increasing Search depth or changing filters."
     return None
+
+
+def recent_scan_warning_messages(summary: dict[str, Any]) -> tuple[str, ...]:
+    warnings = summary.get("warnings")
+    if not isinstance(warnings, list):
+        return ()
+    return tuple(safe_display_text(warning) for warning in warnings[:3] if warning is not None)
+
+
+def recent_scan_status_summary(
+    collection_status: Any,
+    analysis_status: Any,
+    metadata_status: Any,
+    report_status: str,
+) -> str:
+    return (
+        f"collection {safe_display_text(collection_status)}; "
+        f"analysis {safe_display_text(analysis_status)}; "
+        f"metadata {safe_display_text(metadata_status)}; "
+        f"report {safe_display_text(report_status)}"
+    )
+
+
+def recent_scan_signal_summary(case: dict[str, Any]) -> str:
+    signals: list[str] = []
+    cardinality = numeric_count(case.get("cardinality_anomaly_count"))
+    memory = numeric_count(case.get("memory_anomaly_count"))
+    tail = numeric_count(case.get("host_tail_candidate_count"))
+    if cardinality > 0:
+        signals.append(f"cardinality {safe_display_text(cardinality)}")
+    if memory > 0:
+        signals.append(f"memory {safe_display_text(memory)}")
+    if safe_truthy(case.get("backend_data_skew")):
+        signals.append("skew observed")
+    if tail > 0:
+        signals.append(f"host-tail {safe_display_text(tail)}")
+    if signals:
+        return "; ".join(signals)
+    if numeric_value(case.get("score")) <= 0:
+        return "no positive analyzer signals"
+    return "positive score from detailed analyzer reasons"
+
+
+def safe_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "y"}
 
 
 def safe_statement_statuses(statements: dict[Any, Any]) -> dict[str, Any]:
