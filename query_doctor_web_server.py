@@ -29,6 +29,7 @@ import query_doctor_collect_impala_context as impala_context_collector
 import query_doctor_impala_metadata_workflow as metadata_workflow
 import table_metadata_facts
 import query_doctor_batch_recent as batch_recent
+from query_doctor_optimize_query import QueryOptimizationError, extract_optimizable_source_sql
 from query_doctor_config_contract import load_and_validate_config, merge_kerberos_cache_env
 from query_doctor_web_display_safety import redact_browser_display_text
 from query_doctor_optimizer_sql import ExtractedTable, OptimizerSqlError, extract_referenced_tables
@@ -2535,9 +2536,12 @@ def case_has_safe_source_sql(case_dir: Path) -> bool:
         path = case_dir / name
         if path.is_file():
             try:
-                extract_referenced_tables(path.read_text(encoding="utf-8", errors="replace"))
+                source = extract_optimizable_source_sql(
+                    path.read_text(encoding="utf-8", errors="replace")
+                )
+                extract_referenced_tables(source.sql)
                 return True
-            except (OSError, OptimizerSqlError):
+            except (OSError, OptimizerSqlError, QueryOptimizationError):
                 return False
     metadata_path = case_dir / "cm_metadata.json"
     if not metadata_path.is_file():
@@ -2550,9 +2554,10 @@ def case_has_safe_source_sql(case_dir: Path) -> bool:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             try:
-                extract_referenced_tables(value)
+                source = extract_optimizable_source_sql(value)
+                extract_referenced_tables(source.sql)
                 return True
-            except OptimizerSqlError:
+            except (OptimizerSqlError, QueryOptimizationError):
                 return False
     return False
 

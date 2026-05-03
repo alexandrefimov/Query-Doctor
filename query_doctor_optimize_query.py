@@ -39,6 +39,9 @@ SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.D
 TOP_LEVEL_SHAPE_KEYWORDS = ("GROUP", "ORDER")
 TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")
 JOIN_MODIFIER_KEYWORDS = {"LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS", "SEMI", "ANTI"}
+CONSERVATIVE_CTE_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_CTE_THRESHOLD", "2"))
+CONSERVATIVE_JOIN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_JOIN_THRESHOLD", "6"))
+CONSERVATIVE_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_TOKEN_THRESHOLD", "1000"))
 
 
 class QueryOptimizationError(RuntimeError):
@@ -49,6 +52,18 @@ class QueryOptimizationError(RuntimeError):
 class ProjectionSignature:
     count: int
     output_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class OptimizableSourceSql:
+    sql: str
+    scope: str
+
+
+@dataclass(frozen=True)
+class OptimizerRiskDecision:
+    mode: str
+    reasons: tuple[str, ...]
 
 
 def read_source_sql(case_dir: Path) -> str:
@@ -82,8 +97,155 @@ def enforce_text_size(text: str, max_bytes: int) -> None:
         raise QueryOptimizationError("SQL text is too large for optimizer draft generation.")
 
 
+def extract_optimizable_source_sql(source_sql: str) -> OptimizableSourceSql:
+    tokens = tokenize_sql(source_sql)
+    statement_tokens = trim_source_statement_tokens(tokens)
+    leading = statement_tokens[0].upper()
+    if leading in {"SELECT", "WITH"}:
+        validate_optimizer_sql_tokens(statement_tokens)
+        return OptimizableSourceSql(sql=source_sql.strip(), scope="read_only_statement")
+    if leading == "INSERT":
+        return OptimizableSourceSql(
+            sql=extract_top_level_payload_sql(source_sql, ("SELECT", "WITH")),
+            scope="insert_select_payload",
+        )
+    if leading == "CREATE":
+        return OptimizableSourceSql(
+            sql=extract_ctas_payload_sql(source_sql),
+            scope="ctas_select_payload",
+        )
+    raise QueryOptimizationError(
+        "Source SQL is outside optimizer scope. Supported sources are SELECT/WITH, "
+        "INSERT ... SELECT, and CREATE TABLE AS SELECT."
+    )
+
+
+def trim_source_statement_tokens(tokens: list[str]) -> list[str]:
+    end = len(tokens) - 1
+    while end >= 0 and tokens[end] == ";":
+        end -= 1
+    if end < 0:
+        raise QueryOptimizationError("Source SQL is empty.")
+    statement_tokens = tokens[: end + 1]
+    if any(token == ";" for token in statement_tokens):
+        raise QueryOptimizationError("Only one source SQL statement is supported by Query LLM optimizer.")
+    return statement_tokens
+
+
+def extract_ctas_payload_sql(source_sql: str) -> str:
+    as_offset = find_top_level_keyword_offset(source_sql, ("AS",))
+    if as_offset is None:
+        raise QueryOptimizationError(
+            "CREATE source SQL is outside optimizer scope. Only CREATE TABLE AS SELECT is supported."
+        )
+    return extract_top_level_payload_sql(source_sql, ("SELECT", "WITH"), start=as_offset + 2)
+
+
+def extract_top_level_payload_sql(source_sql: str, keywords: tuple[str, ...], *, start: int = 0) -> str:
+    offset = find_top_level_keyword_offset(source_sql, keywords, start=start)
+    if offset is None:
+        expected = "/".join(keywords)
+        raise QueryOptimizationError(
+            f"Source SQL does not contain a top-level {expected} payload for optimizer draft generation."
+        )
+    payload = source_sql[offset:].strip()
+    try:
+        validate_optimizer_sql_tokens(tokenize_sql(payload))
+    except OptimizerSqlError as exc:
+        raise QueryOptimizationError(f"Source SQL payload is outside optimizer scope: {exc}") from exc
+    return payload
+
+
+def find_top_level_keyword_offset(sql: str, keywords: tuple[str, ...], *, start: int = 0) -> int | None:
+    targets = {keyword.upper() for keyword in keywords}
+    depth = 0
+    index = max(0, start)
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char == "'":
+            index = skip_quoted_text(sql, index, "'")
+            continue
+        if char in {'"', "`"}:
+            index = skip_quoted_text(sql, index, char)
+            continue
+        if char == "(":
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if depth == 0 and is_sql_identifier_start(char):
+            end = index + 1
+            while end < len(sql) and is_sql_identifier_char(sql[end]):
+                end += 1
+            if sql[index:end].upper() in targets:
+                return index
+            index = end
+            continue
+        index += 1
+    return None
+
+
+def skip_line_comment_text(sql: str, index: int) -> int:
+    newline = sql.find("\n", index)
+    return len(sql) if newline == -1 else newline + 1
+
+
+def skip_block_comment_text(sql: str, index: int) -> int:
+    end = sql.find("*/", index)
+    return len(sql) if end == -1 else end + 2
+
+
+def skip_quoted_text(sql: str, index: int, quote: str) -> int:
+    index += 1
+    while index < len(sql):
+        if sql[index] == quote:
+            if index + 1 < len(sql) and sql[index + 1] == quote:
+                index += 2
+                continue
+            return index + 1
+        index += 1
+    return len(sql)
+
+
+def is_sql_identifier_start(char: str) -> bool:
+    return char.isalpha() or char == "_"
+
+
+def is_sql_identifier_char(char: str) -> bool:
+    return char.isalnum() or char in {"_", "$"}
+
+
 def table_names(sql: str) -> set[str]:
     return {table.name.lower() for table in extract_referenced_tables(sql)}
+
+
+def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
+    tokens = extract_statement_tokens(source_sql)
+    reasons: list[str] = []
+    cte_count = len(collect_cte_names(tokens))
+    join_count = len(top_level_join_signature(source_sql))
+    token_count = len(tokens)
+    set_operator_count = sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS)
+    if cte_count > CONSERVATIVE_CTE_THRESHOLD:
+        reasons.append("many_ctes")
+    if join_count > CONSERVATIVE_JOIN_THRESHOLD:
+        reasons.append("many_top_level_joins")
+    if token_count > CONSERVATIVE_TOKEN_THRESHOLD:
+        reasons.append("long_sql_payload")
+    if set_operator_count:
+        reasons.append("set_operations")
+    if reasons:
+        return OptimizerRiskDecision(mode="conservative_rewrite", reasons=tuple(reasons))
+    return OptimizerRiskDecision(mode="rewrite_allowed", reasons=())
 
 
 def sql_has_keyword(sql: str, keyword: str) -> bool:
@@ -232,10 +394,11 @@ def clean_projection_identifier(token: str) -> str | None:
     return value.lower()
 
 
-def build_prompt(*, source_sql: str, facts_text: str) -> str:
+def build_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
     candidates = recommendation_candidate_lines(facts_text)
     digest = build_report_contract_digest(facts_text)
     candidate_lines = "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
+    mode_contract = optimizer_mode_contract(risk_decision)
     return f"""
 You are a SQL rewrite assistant for Apache Impala.
 Return only one optimized SQL draft. No markdown explanation.
@@ -243,12 +406,17 @@ Return only one optimized SQL draft. No markdown explanation.
 Safety and scope:
 - Input SQL is local sensitive context. Do not echo unrelated text.
 - Output must be exactly one read-only SELECT or WITH statement.
+- If the input came from INSERT or CTAS, optimize only the SELECT/WITH payload shown below.
 - Do not output INSERT, CREATE, DROP, ALTER, REFRESH, INVALIDATE, COMPUTE STATS, SHOW, SET, USE, or multiple statements.
 - Do not add physical tables that are absent from the input SQL.
 - Preserve query intent and output columns unless the Python-owned facts clearly support a narrower projection.
 - Use only Python-owned recommendation candidates and deterministic facts as rewrite guidance.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - If a safe SQL rewrite is not supported, return the original query shape with only harmless formatting.
+
+PYTHON-OWNED OPTIMIZER MODE BEGIN
+{mode_contract}
+PYTHON-OWNED OPTIMIZER MODE END
 
 PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
 {candidate_lines}
@@ -266,6 +434,38 @@ INPUT SQL BEGIN
 {source_sql}
 INPUT SQL END
 """.strip()
+
+
+def optimizer_mode_contract(risk_decision: OptimizerRiskDecision) -> str:
+    if risk_decision.mode == "conservative_rewrite":
+        reasons = ", ".join(risk_decision.reasons) or "risk_noted"
+        return "\n".join(
+            [
+                "mode: conservative_rewrite",
+                f"python_owned_reasons: {reasons}",
+                "rules:",
+                "- Do not perform a structural rewrite.",
+                "- Preserve the CTE list exactly: do not add, remove, rename, reorder, inline, or split CTEs.",
+                "- Preserve top-level JOIN structure exactly: do not add, remove, reorder, or change JOIN types.",
+                "- Preserve projection count, projection names, WHERE, HAVING, GROUP BY, ORDER BY, LIMIT, and set operations.",
+                "- Return the original query with harmless formatting if any improvement would require structural changes.",
+                "- Allowed changes are whitespace, indentation, and clearly equivalent parenthesization only.",
+            ]
+        )
+    return "\n".join(
+        [
+            "mode: rewrite_allowed",
+            "rules:",
+            "- A bounded rewrite is allowed when directly supported by Python-owned facts.",
+            "- Preserve result shape, filter scope, table set, CTE shape, and JOIN shape.",
+        ]
+    )
+
+
+def optimizer_temperature(requested_temperature: float, risk_decision: OptimizerRiskDecision) -> float:
+    if risk_decision.mode == "conservative_rewrite":
+        return 0.0
+    return requested_temperature
 
 
 def extract_draft_sql(generated: str) -> str:
@@ -332,9 +532,18 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     return errors
 
 
-def write_marker(case_dir: Path, output_name: str) -> None:
+def write_marker(
+    case_dir: Path,
+    output_name: str,
+    *,
+    source_scope: str,
+    risk_decision: OptimizerRiskDecision,
+) -> None:
     marker = {
         "draft": output_name,
+        "risk_mode": risk_decision.mode,
+        "risk_reasons": list(risk_decision.reasons),
+        "source_scope": source_scope,
         "validated": True,
         "source": "query_doctor_optimize_query",
     }
@@ -363,21 +572,28 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PROGRESS_PREFIX} ERROR: analysis_facts.md is required", file=sys.stderr)
         return 2
     try:
-        source_sql = read_source_sql(case_dir)
-        extract_referenced_tables(source_sql)
+        source_sql = extract_optimizable_source_sql(read_source_sql(case_dir))
+        extract_referenced_tables(source_sql.sql)
         facts_text = facts_path.read_text(encoding="utf-8", errors="replace")
-        prompt = build_prompt(source_sql=source_sql, facts_text=facts_text)
+        risk_decision = decide_optimizer_risk_mode(source_sql.sql)
+        prompt = build_prompt(
+            source_sql=source_sql.sql,
+            facts_text=facts_text,
+            risk_decision=risk_decision,
+        )
         print(f"{PROGRESS_PREFIX} optimized query source: available", file=sys.stderr)
+        print(f"{PROGRESS_PREFIX} optimized query scope: {source_sql.scope}", file=sys.stderr)
+        print(f"{PROGRESS_PREFIX} optimizer risk mode: {risk_decision.mode}", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
         generated = stream_ollama_report(
             prompt=prompt,
             model=args.model,
             ollama_url=args.ollama_url,
-            temperature=args.temperature,
+            temperature=optimizer_temperature(args.temperature, risk_decision),
             keep_alive=args.keep_alive,
         )
         draft_sql = extract_draft_sql(generated)
-        errors = validate_draft_sql(source_sql, draft_sql)
+        errors = validate_draft_sql(source_sql.sql, draft_sql)
         if errors:
             (case_dir / PARTIAL_NAME).write_text(draft_sql, encoding="utf-8")
             for error in errors:
@@ -388,7 +604,12 @@ def main(argv: list[str] | None = None) -> int:
             raise QueryOptimizationError("Output must be a filename inside the case directory.")
         output_path = case_dir / output_name
         output_path.write_text(draft_sql.rstrip() + "\n", encoding="utf-8")
-        write_marker(case_dir, output_name)
+        write_marker(
+            case_dir,
+            output_name,
+            source_scope=source_sql.scope,
+            risk_decision=risk_decision,
+        )
         print(f"{PROGRESS_PREFIX} optimized query draft done", file=sys.stderr)
         return 0
     except (OSError, OptimizerSqlError, QueryOptimizationError) as exc:

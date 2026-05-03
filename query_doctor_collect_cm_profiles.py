@@ -1372,6 +1372,29 @@ def fetch_cm_profile_text(
         raise CMHttpError(message) from exc
 
 
+PROFILE_SQL_STATEMENT_RE = re.compile(
+    r"(?ims)^\s*Sql\s+Statement\s*:\s*(?P<statement>.+?)(?:^\s*[A-Z][A-Za-z0-9_ /().-]{2,}\s*:|\Z)"
+)
+
+
+def extract_statement_from_profile_text(profile_text: str) -> str | None:
+    text = profile_text
+    try:
+        payload = json.loads(profile_text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        details = payload.get("details")
+        if isinstance(details, str) and details.strip():
+            text = details
+
+    match = PROFILE_SQL_STATEMENT_RE.search(text)
+    if not match:
+        return None
+    statement = match.group("statement").strip()
+    return statement or None
+
+
 def fetch_cm_query_details_summary(
     client: CMHttpClient,
     filters: CMQueryFilters,
@@ -2434,6 +2457,11 @@ def run_cm_single_query_collection(
             config.query_id or "",
             max_profile_bytes=config.max_profile_bytes,
         )
+        if not summary.statement:
+            profile_statement = extract_statement_from_profile_text(profile_text)
+            if profile_statement:
+                summary = replace(summary, statement=profile_statement)
+                warnings.append("CM profile text statement metadata collected")
         case_dir = write_collected_case(
             config.out,
             summary,
