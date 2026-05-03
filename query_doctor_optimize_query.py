@@ -35,6 +35,8 @@ PARTIAL_NAME = "optimized_query.partial.txt"
 MAX_SOURCE_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_SOURCE_SQL_BYTES", "262144"))
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
 SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.DOTALL)
+TOP_LEVEL_SHAPE_KEYWORDS = ("GROUP", "ORDER")
+TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")
 
 
 class QueryOptimizationError(RuntimeError):
@@ -84,6 +86,29 @@ def table_names(sql: str) -> set[str]:
 
 def sql_has_keyword(sql: str, keyword: str) -> bool:
     return keyword.upper() in {token.upper() for token in tokenize_sql(sql)}
+
+
+def main_select_has_distinct(sql: str) -> bool:
+    tokens = extract_statement_tokens(sql)
+    select_index = find_top_level_token(tokens, "SELECT")
+    if select_index is None or select_index + 1 >= len(tokens):
+        return False
+    return tokens[select_index + 1].upper() == "DISTINCT"
+
+
+def top_level_keyword_count(sql: str, keyword: str) -> int:
+    tokens = extract_statement_tokens(sql)
+    depth = 0
+    count = 0
+    target = keyword.upper()
+    for token in tokens:
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and token.upper() == target:
+            count += 1
+    return count
 
 
 def projection_signature(sql: str) -> ProjectionSignature | None:
@@ -249,6 +274,14 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     for keyword in ("WHERE", "HAVING", "LIMIT"):
         if sql_has_keyword(source_sql, keyword) and not sql_has_keyword(draft_sql, keyword):
             errors.append(f"optimized draft removes source {keyword} scope")
+    if main_select_has_distinct(source_sql) != main_select_has_distinct(draft_sql):
+        errors.append("optimized draft changes DISTINCT output shape")
+    for keyword in TOP_LEVEL_SHAPE_KEYWORDS:
+        if top_level_keyword_count(source_sql, keyword) != top_level_keyword_count(draft_sql, keyword):
+            errors.append(f"optimized draft changes top-level {keyword} shape")
+    for operator in TOP_LEVEL_SET_OPERATORS:
+        if top_level_keyword_count(source_sql, operator) != top_level_keyword_count(draft_sql, operator):
+            errors.append(f"optimized draft changes top-level {operator} shape")
     source_projection = projection_signature(source_sql)
     draft_projection = projection_signature(draft_sql)
     if source_projection and draft_projection:
