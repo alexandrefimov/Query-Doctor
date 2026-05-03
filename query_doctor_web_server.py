@@ -83,6 +83,7 @@ BATCH_REPORT_STAGES = (
 BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority"}
 BATCH_CM_INSPECT_LIMIT_MAX = 1000
 BATCH_METADATA_TOP_LIMIT_MAX = 200
+WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT = 70
 BATCH_JOBS_MAX = 100
 BATCH_FULL_JOBS_MAX = 4
 BATCH_CM_JOBS_MAX = 100
@@ -180,7 +181,7 @@ class BatchRunConfig:
     to_time: str | None = None
     cm_inspect_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
     triage_profile_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
-    metadata_top_limit: int = 10
+    metadata_top_limit: int = WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT
     min_duration_sec: float | None = None
     max_duration_sec: float | None = None
     order: str = "duration-desc"
@@ -854,7 +855,7 @@ def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str,
 def parse_batch_run_config(
     form: dict[str, list[str]],
     *,
-    default_metadata_top_limit: int = 10,
+    default_metadata_top_limit: int = WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
     default_parallelism: int = 50,
 ) -> BatchRunConfig:
     scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(form)
@@ -1427,7 +1428,7 @@ def start_batch_job(
     try:
         config = parse_batch_run_config(
             form,
-            default_metadata_top_limit=10 if metadata_configured(settings) else 0,
+            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT if metadata_configured(settings) else 0,
             default_parallelism=50,
         )
         validate_batch_config_for_settings(config, settings)

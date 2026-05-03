@@ -27,6 +27,9 @@ from query_doctor_engines import get_default_engine_adapter
 MAX_CM_INSPECT_LIMIT = 10000
 MAX_TRIAGE_PROFILE_LIMIT = 1000
 MAX_METADATA_TOP_LIMIT = 200
+BAD_METADATA_REFRESH_LIMIT = 50
+SUSPICIOUS_METADATA_REFRESH_LIMIT = 20
+SUSPICIOUS_METADATA_PROMOTION_SCORE_FLOOR = 23
 MAX_JOBS = 4
 MAX_HIGH_JOBS = 100
 MAX_CM_JOBS = 100
@@ -249,7 +252,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--metadata-top-limit",
         type=non_negative_int,
         help=(
-            "Metadata top cases: refresh metadata only for this many top-ranked cases. "
+            "Metadata budget: refresh bad cases first, then suspicious cases that can be promoted. "
             f"Hard cap: {MAX_METADATA_TOP_LIMIT}. Default: 0."
         ),
     )
@@ -1242,9 +1245,21 @@ def refresh_top_metadata(
 def select_metadata_refresh_candidates(ranked_cases: list[CaseResult], limit: int) -> list[CaseResult]:
     if limit <= 0:
         return []
-    bad = [case for case in ranked_cases if case_score_severity(case) == "high"]
-    suspicious = [case for case in ranked_cases if case_score_severity(case) == "suspicious"]
-    return (bad + suspicious)[:limit]
+    remaining = limit
+    bad_limit = min(BAD_METADATA_REFRESH_LIMIT, remaining)
+    bad = [case for case in ranked_cases if case_score_severity(case) == "high"][:bad_limit]
+    remaining -= len(bad)
+    suspicious_limit = min(SUSPICIOUS_METADATA_REFRESH_LIMIT, remaining)
+    suspicious = [
+        case
+        for case in ranked_cases
+        if case_score_severity(case) == "suspicious" and suspicious_can_be_promoted_by_metadata(case)
+    ][:suspicious_limit]
+    return bad + suspicious
+
+
+def suspicious_can_be_promoted_by_metadata(case: CaseResult) -> bool:
+    return case.score >= SUSPICIOUS_METADATA_PROMOTION_SCORE_FLOOR
 
 
 def refresh_case_metadata(
