@@ -13,6 +13,7 @@ from query_doctor_web_ui_recent_scan_details import (
     render_batch_case_report_action,
     render_case_detail_overview,
     render_case_status_summary,
+    render_optimized_query_action,
 )
 from query_doctor_web_ui_recent_scan_presenter import (
     present_recent_scan_case_detail,
@@ -82,7 +83,9 @@ def render_specific_query_detail(
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
     report_state: dict[str, Any] | None = None,
+    optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
+    trusted_optimized_query: str | None = None,
 ) -> str:
     view = present_recent_scan_case_detail("specific-query", case, metadata_facts, report_state=report_state)
     escaped_query_id = html.escape(query_id)
@@ -97,6 +100,7 @@ def render_specific_query_detail(
         f"{render_case_status_summary(view)}"
         f"{render_analysis_details(case, metadata_facts, view=view)}"
         f"{render_batch_case_report_action('specific-query', view.report_action, action_url=report_url, open_url=report_url, report_enabled=view.score_severity != 'clean', trusted_report_html=trusted_report_html)}"
+        f"{render_optimized_query_action('specific-query', optimized_query_state, action_url=specific_query_optimized_query_href(query_id), open_url=specific_query_optimized_query_href(query_id), trusted_optimized_query=trusted_optimized_query)}"
         "</section>"
     )
 
@@ -105,3 +109,9 @@ def specific_query_report_href(query_id: Any) -> str:
     if not isinstance(query_id, str) or not query_id.strip():
         return ""
     return f"/query/details/{quote(query_id.strip(), safe='')}/report"
+
+
+def specific_query_optimized_query_href(query_id: Any) -> str:
+    if not isinstance(query_id, str) or not query_id.strip():
+        return ""
+    return f"/query/details/{quote(query_id.strip(), safe='')}/optimized-query"

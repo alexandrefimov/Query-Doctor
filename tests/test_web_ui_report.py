@@ -166,14 +166,14 @@ def test_web_report_marks_analyzer_facts_as_deterministic_appendix(tmp_path):
                 parsed_operators="1",
                 cardinality_anomalies="0",
                 memory_anomalies="0",
-                report_text="## Короткий вывод\nok\n\n## Подробный разбор\nok\n\n## Факты анализатора\nfacts\n",
+                report_text="## Краткий вывод\nok\n\n## Подробный разбор\nok\n\n## Факты анализатора\nfacts\n",
             )
         )
     )
 
     assert "deterministic appendix" in body
     assert "This section is not LLM-written narrative." in body
-    assert '<a href="#section-1">Короткий вывод</a>' in body
+    assert '<a href="#section-1">Краткий вывод</a>' in body
     assert '<a href="#section-2">Подробный разбор</a>' in body
     assert '<a href="#section-3">Факты анализатора</a>' in body
     assert "Analyzer facts" in body

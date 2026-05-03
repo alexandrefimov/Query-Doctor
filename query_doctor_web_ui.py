@@ -256,7 +256,9 @@ def render_batch_case_detail_page(
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
     report_state: dict[str, Any] | None = None,
+    optimized_query_state: dict[str, Any] | None = None,
     trusted_report_text: str | None = None,
+    trusted_optimized_query: str | None = None,
 ) -> str:
     trusted_report_html = (
         SafeHtml(render_report_markdown_html(trusted_report_text, with_heading_ids=True))
@@ -269,7 +271,9 @@ def render_batch_case_detail_page(
             case,
             metadata_facts,
             report_state=report_state,
+            optimized_query_state=optimized_query_state,
             trusted_report_html=trusted_report_html,
+            trusted_optimized_query=trusted_optimized_query,
         )
     ]
     return render_page(settings, active_nav="batch", show_run_panel=False, extra_sections=sections)
@@ -503,7 +507,9 @@ def render_specific_query_detail(
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
     report_state: dict[str, Any] | None = None,
+    optimized_query_state: dict[str, Any] | None = None,
     trusted_report_text: str | None = None,
+    trusted_optimized_query: str | None = None,
 ) -> str:
     from query_doctor_web_ui_specific_query import render_specific_query_detail as _render_specific_query_detail
 
@@ -517,7 +523,9 @@ def render_specific_query_detail(
         case,
         metadata_facts,
         report_state=report_state,
+        optimized_query_state=optimized_query_state,
         trusted_report_html=trusted_report_html,
+        trusted_optimized_query=trusted_optimized_query,
     )
 
 

@@ -45,7 +45,9 @@ def render_batch_case_detail(
     metadata_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
+    optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
+    trusted_optimized_query: str | None = None,
 ) -> str:
     view = present_recent_scan_case_detail(case_id, case, metadata_facts, report_state=report_state)
     return (
@@ -59,6 +61,7 @@ def render_batch_case_detail(
         f"{render_case_status_summary(view)}"
         f"{render_analysis_details(case, metadata_facts, view=view)}"
         f"{render_batch_case_report_action(view.case_id, view.report_action, report_enabled=view.score_severity != 'clean', trusted_report_html=trusted_report_html)}"
+        f"{render_optimized_query_action(view.case_id, optimized_query_state, trusted_optimized_query=trusted_optimized_query)}"
         "</section>"
     )
 
@@ -209,6 +212,73 @@ def render_batch_case_report_action(
         f"{status_html}"
         f"{action_html}"
         f"{report_html}"
+        "</div>"
+        "</section>"
+    )
+
+
+def render_optimized_query_action(
+    case_id: str,
+    state: dict[str, Any] | None,
+    *,
+    action_url: str | None = None,
+    open_url: str | None = None,
+    trusted_optimized_query: str | None = None,
+) -> str:
+    state = state or {"status": "not_run"}
+    status = str(state.get("status") or "not_run")
+    form_action = html.escape(action_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
+    open_href = html.escape(open_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
+    if status == "generated":
+        action_html = f"<a class=\"button\" href=\"{open_href}\">Open optimized query draft</a>"
+    elif status == "unavailable":
+        action_html = "<button class=\"button\" type=\"button\" disabled>Generate optimized query draft</button>"
+    elif status == "running":
+        action_html = "<button class=\"button\" type=\"button\" disabled>Generating optimized query draft</button>"
+    else:
+        action_html = (
+            f"<form method=\"post\" action=\"{form_action}\">"
+            "<button class=\"button\" type=\"submit\">Generate optimized query draft</button>"
+            "</form>"
+        )
+    if status == "running":
+        job_id = str(state.get("job_id") or "")
+        status_attrs = ""
+        if job_id:
+            escaped_job_id = html.escape(job_id, quote=True)
+            status_attrs = (
+                f" data-report-job-status-url=\"/jobs/{escaped_job_id}/status\""
+                f" data-report-job-url=\"/jobs/{escaped_job_id}\""
+            )
+        status_html = (
+            f"<div class=\"report-progress\" aria-label=\"Optimized query progress\"{status_attrs}>"
+            "<div class=\"progress-head\"><span class=\"progress-title\">Generating optimized query draft</span>"
+            f"<span class=\"progress-stage\">{html.escape(str(state.get('stage_label') or 'Generating draft'))}</span></div>"
+            "<div class=\"progress-bar\" aria-hidden=\"true\"><span class=\"progress-fill\" style=\"width:62%\"></span></div>"
+            "</div>"
+        )
+    elif status == "failed":
+        status_html = f"<div class=\"error\">{html.escape(str(state.get('error') or 'Optimized query generation failed.'))}</div>"
+    elif status == "unavailable":
+        status_html = "<p class=\"helper\">Source SQL is unavailable or outside the read-only optimizer scope for this case.</p>"
+    else:
+        status_html = ""
+    draft_html = ""
+    if status == "generated" and trusted_optimized_query:
+        draft_html = (
+            "<details class=\"analysis-subdetails\" open aria-label=\"Optimized query draft\">"
+            "<summary>Optimized query draft</summary>"
+            "<p class=\"helper\">Draft only. It was not executed and must be reviewed before use.</p>"
+            f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
+            "</details>"
+        )
+    return (
+        "<section class=\"panel docs-panel\" aria-label=\"Optimized query action\">"
+        "<h1>Optimized Query Draft</h1>"
+        "<div class=\"report-body\">"
+        f"{status_html}"
+        f"{action_html}"
+        f"{draft_html}"
         "</div>"
         "</section>"
     )
