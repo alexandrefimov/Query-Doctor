@@ -30,7 +30,7 @@ MAX_METADATA_TOP_LIMIT = 200
 MAX_JOBS = 4
 MAX_HIGH_JOBS = 100
 MAX_CM_JOBS = 100
-MAX_METADATA_JOBS = 4
+MAX_METADATA_JOBS = 5
 ORDER_CHOICES = ("recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority")
 METADATA_MODE_CHOICES = ("auto", "on", "off", "dry-run")
 SAFE_OUTPUT_PREFIX = "query-doctor-"
@@ -298,7 +298,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=1,
         help=(
             f"Parallel analyzer workers after CM profile collection. Hard cap: {MAX_JOBS}, "
-            f"or {MAX_HIGH_JOBS} with --allow-high-jobs in metadata-off/no-report mode."
+            f"or {MAX_HIGH_JOBS} with --allow-high-jobs in no-report mode."
         ),
     )
     parser.add_argument(
@@ -309,12 +309,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--metadata-jobs",
         type=positive_int,
-        help=f"Parallel metadata refresh workers for top cases. Hard cap: {MAX_METADATA_JOBS}. Default: 1.",
+        help=f"Parallel metadata refresh workers for top cases. Hard cap: {MAX_METADATA_JOBS}. Default: 5.",
     )
     parser.add_argument(
         "--allow-high-jobs",
         action="store_true",
-        help="Allow up to 100 jobs only with --metadata-mode off and --top-reports 0.",
+        help="Allow up to 100 jobs only with --top-reports 0.",
     )
     parser.add_argument(
         "--discover-only",
@@ -578,7 +578,7 @@ def build_batch_config(
     if metadata_top_limit > MAX_METADATA_TOP_LIMIT:
         raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
     cm_jobs = first_int(args.cm_jobs, config_values.get("recent_cm_jobs"), default=args.jobs)
-    metadata_jobs = first_int(args.metadata_jobs, config_values.get("recent_metadata_jobs"), default=1)
+    metadata_jobs = first_int(args.metadata_jobs, config_values.get("recent_metadata_jobs"), default=5)
     validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
     validate_cm_jobs_config(cm_jobs)
     validate_metadata_jobs_config(metadata_jobs)
@@ -683,13 +683,11 @@ def validate_jobs_config(jobs: int, *, allow_high_jobs: bool, metadata_mode: str
     if jobs > MAX_HIGH_JOBS:
         raise ValueError(f"--jobs must be <= {MAX_HIGH_JOBS}")
     if allow_high_jobs:
-        if metadata_mode != "off":
-            raise ValueError("--allow-high-jobs requires --metadata-mode off")
         if top_reports != 0:
             raise ValueError("--allow-high-jobs requires --top-reports 0")
         return
     if jobs > MAX_JOBS:
-        raise ValueError(f"--jobs must be <= {MAX_JOBS} unless --allow-high-jobs is used with --metadata-mode off and --top-reports 0")
+        raise ValueError(f"--jobs must be <= {MAX_JOBS} unless --allow-high-jobs is used with --top-reports 0")
 
 
 def validate_cm_jobs_config(cm_jobs: int) -> None:
@@ -1602,7 +1600,7 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "case_index": case.index,
         "candidate_rank": case.candidate_rank,
         "triage_rank": case.triage_rank,
-        "query_id": truncate_query_id(case.query_id),
+        "query_id": case.query_id,
         "duration_sec": case.duration_sec,
         "user": "<user>" if case.user else None,
         "pool": cm_profiles.sanitize_text_for_log(case.pool) if case.pool else None,
@@ -1633,12 +1631,6 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "report_seconds": case.report_seconds,
         "total_seconds": round(sum(stage_seconds), 3) if stage_seconds else None,
     }
-
-
-def truncate_query_id(query_id: str) -> str:
-    if len(query_id) <= 18:
-        return query_id
-    return f"{query_id[:8]}...{query_id[-6:]}"
 
 
 def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:

@@ -10,9 +10,9 @@ def render_run_panel(*, query_id: str, report_mode: str) -> str:
     admin_checked = "checked" if report_mode == "admin" else ""
     user_checked = "checked" if report_mode == "user" else ""
     return (
-        "<section class=\"panel run-panel\" id=\"run\" aria-label=\"Run diagnosis\">"
+        "<section class=\"panel run-panel\" id=\"run\" aria-label=\"Specific Query diagnosis\">"
         "<div class=\"section-heading\"><div>"
-        "<h1 class=\"section-title\">Run diagnosis</h1>"
+        "<h1 class=\"section-title\">Specific Query</h1>"
         "<div class=\"section-kicker\">Analyze one explicit Impala query and generate a validated report only after you run it.</div>"
         "</div></div>"
         "<div class=\"readiness-line\" aria-label=\"Readiness state\">"

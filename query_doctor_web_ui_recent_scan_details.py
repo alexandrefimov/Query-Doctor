@@ -40,8 +40,8 @@ def render_batch_case_detail(
 ) -> str:
     view = present_recent_scan_case_detail(case_id, case, metadata_facts, report_state=report_state)
     return (
-        "<section class=\"panel batch-panel\" aria-label=\"Recent scan case details\">"
-        "<div class=\"batch-head\"><div><h1>Recent scan case details</h1>"
+        "<section class=\"panel batch-panel\" aria-label=\"Finished Queries case details\">"
+        "<div class=\"batch-head\"><div><h1>Finished Queries case details</h1>"
         "<p>Read-only deterministic summary fields from <code>batch_summary.json</code>.</p></div>"
         f"<span class=\"badge blue\">{html.escape(view.case_id)}</span></div>"
         "<div class=\"batch-note\">This page does not render raw SQL, profiles, metadata, or server filesystem details.</div>"

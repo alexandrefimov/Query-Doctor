@@ -32,6 +32,7 @@ from query_doctor_optimizer_sql import ExtractedTable, OptimizerSqlError, extrac
 from query_doctor_query_optimizer import OptimizerAnalysis, analyze_query_optimizer
 from query_doctor_web_ui import (
     WEB_STAGES,
+    batch_progress_percent,
     render_batch_card,
     render_batch_case_detail_page,
     render_batch_case_not_found_page,
@@ -46,6 +47,7 @@ from query_doctor_web_ui import (
 )
 from query_doctor_web_ui_help import render_help_page
 from query_doctor_web_ui_optimizer import render_optimizer_page
+from query_doctor_web_ui_running import render_running_queries_page
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -84,8 +86,7 @@ BATCH_METADATA_TOP_LIMIT_MAX = 200
 BATCH_JOBS_MAX = 100
 BATCH_FULL_JOBS_MAX = 4
 BATCH_CM_JOBS_MAX = 100
-BATCH_METADATA_JOBS_MAX = 4
-BATCH_ANALYSIS_DEPTH_VALUES = {"full", "fast"}
+BATCH_METADATA_JOBS_MAX = 5
 BATCH_QUERY_TYPE_VALUES = {"QUERY"}
 RECENT_SCAN_TIMEZONE = ZoneInfo("Europe/Moscow")
 RECENT_SCAN_LOOKBACK_DAYS = 2
@@ -172,7 +173,6 @@ class WebResult:
 
 @dataclass(frozen=True)
 class BatchRunConfig:
-    analysis_depth: str = "full"
     recent_window_minutes: int = 30
     scan_date: str = ""
     scan_hour: int = 0
@@ -180,17 +180,18 @@ class BatchRunConfig:
     to_time: str | None = None
     cm_inspect_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
     triage_profile_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
-    metadata_top_limit: int = 8
+    metadata_top_limit: int = 10
     min_duration_sec: float | None = None
     max_duration_sec: float | None = None
     order: str = "duration-desc"
-    cm_jobs: int = 20
-    jobs: int = 4
-    metadata_jobs: int = 1
+    parallelism: int = 50
+    cm_jobs: int = 50
+    jobs: int = 50
+    metadata_jobs: int = 5
     user: str = ""
     pool: str = ""
     query_type: str = "QUERY"
-    include_failed: bool = False
+    include_failed: bool = True
     include_running: bool = False
 
 
@@ -516,12 +517,12 @@ def preflight_web_metadata_batch(
 ) -> None:
     env = effective_subprocess_env(settings, base_env=base_env)
     if not metadata_configured(settings):
-        raise WebError("Metadata collection is not configured for this web session. Use Fast scan or restart with metadata options.")
+        raise WebError("Metadata collection is not configured for this web session. Set Queries to fetch metadata for to 0 or restart with metadata options.")
     if not resolve_metadata_impala_shell(settings, env):
-        raise WebError("Metadata preflight failed: impala-shell executable is not available. Use Fast scan or fix server metadata settings.")
+        raise WebError("Metadata preflight failed: impala-shell executable is not available. Set Queries to fetch metadata for to 0 or fix server metadata settings.")
     krb5ccname = env.get("KRB5CCNAME", "")
     if krb5ccname and any(ord(ch) < 32 or ord(ch) == 127 for ch in krb5ccname):
-        raise WebError("Metadata preflight failed: Kerberos cache setting is invalid. Use Fast scan or fix server environment.")
+        raise WebError("Metadata preflight failed: Kerberos cache setting is invalid. Set Queries to fetch metadata for to 0 or fix server environment.")
     try:
         completed = run_subprocess(
             ["klist"],
@@ -531,11 +532,11 @@ def preflight_web_metadata_batch(
             env=env,
         )
     except OSError as exc:
-        raise WebError("Metadata preflight failed: klist is not available. Use Fast scan or fix server Kerberos setup.") from exc
+        raise WebError("Metadata preflight failed: klist is not available. Set Queries to fetch metadata for to 0 or fix server Kerberos setup.") from exc
     if completed.returncode != 0:
         raise WebError(
             "Metadata preflight failed: Kerberos cache is not available or expired. "
-            "Renew the Kerberos ticket or use Fast scan."
+            "Renew the Kerberos ticket or set Queries to fetch metadata for to 0."
         )
 
 
@@ -815,7 +816,7 @@ def parse_facts_summary(facts_text: str) -> dict[str, str]:
 
 def default_recent_scan_bucket(now: datetime | None = None) -> tuple[str, int]:
     current = now.astimezone(RECENT_SCAN_TIMEZONE) if now else datetime.now(RECENT_SCAN_TIMEZONE)
-    bucket = current.replace(minute=0, second=0, microsecond=0) - timedelta(hours=RECENT_SCAN_BUCKET_HOURS)
+    bucket = current.replace(minute=0, second=0, microsecond=0)
     return bucket.date().isoformat(), bucket.hour
 
 
@@ -840,6 +841,9 @@ def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str,
         raise WebError("Scan hour must be an integer from 0 to 23.") from exc
     if scan_hour < 0 or scan_hour > 23:
         raise WebError("Scan hour must be an integer from 0 to 23.")
+    latest_date, latest_hour = default_recent_scan_bucket()
+    if scan_date > latest_date or (scan_date == latest_date and scan_hour > latest_hour):
+        raise WebError("Scan hour must not be in the future.")
     start_local = datetime.combine(parsed_date, datetime_time(scan_hour), tzinfo=RECENT_SCAN_TIMEZONE)
     end_local = start_local + timedelta(hours=RECENT_SCAN_BUCKET_HOURS)
     from_time = start_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -847,10 +851,12 @@ def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str,
     return scan_date, scan_hour, from_time, to_time
 
 
-def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth: str = "full") -> BatchRunConfig:
-    analysis_depth = first_form_value(form, "analysis_depth") or default_analysis_depth
-    if analysis_depth not in BATCH_ANALYSIS_DEPTH_VALUES:
-        raise WebError("Analysis depth must be full or fast.")
+def parse_batch_run_config(
+    form: dict[str, list[str]],
+    *,
+    default_metadata_top_limit: int = 10,
+    default_parallelism: int = 50,
+) -> BatchRunConfig:
     scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(form)
     recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
     cm_inspect_limit = parse_positive_form_int(
@@ -858,7 +864,7 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
     )
     triage_profile_limit = cm_inspect_limit
     metadata_top_limit = parse_non_negative_form_int(
-        form, "metadata_top_limit", default=8, maximum=BATCH_METADATA_TOP_LIMIT_MAX
+        form, "metadata_top_limit", default=default_metadata_top_limit, maximum=BATCH_METADATA_TOP_LIMIT_MAX
     )
     min_duration_sec = parse_optional_non_negative_form_float(form, "min_duration_sec")
     max_duration_text = first_form_value(form, "max_duration_sec")
@@ -870,16 +876,25 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
     order = first_form_value(form, "order") or "duration-desc"
     if order not in BATCH_ORDER_VALUES:
         raise WebError("Order must be one of: recent, duration-desc, duration-asc, recent-duration-desc, status-priority.")
-    cm_jobs = parse_positive_form_int(form, "cm_jobs", default=20, maximum=BATCH_CM_JOBS_MAX)
-    jobs = parse_positive_form_int(form, "jobs", default=BATCH_FULL_JOBS_MAX, maximum=BATCH_JOBS_MAX)
-    metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=1, maximum=BATCH_METADATA_JOBS_MAX)
+    parallelism_text = first_form_value(form, "parallelism")
+    if not parallelism_text and first_form_value(form, "jobs"):
+        parallelism_text = first_form_value(form, "jobs")
+    if not parallelism_text and first_form_value(form, "cm_jobs"):
+        parallelism_text = first_form_value(form, "cm_jobs")
+    parallelism_form = {"parallelism": [parallelism_text]} if parallelism_text else {}
+    parallelism = parse_positive_form_int(
+        parallelism_form,
+        "parallelism",
+        default=default_parallelism,
+        maximum=min(BATCH_CM_JOBS_MAX, BATCH_JOBS_MAX),
+    )
+    metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
     query_type = first_form_value(form, "query_type") or "QUERY"
     if query_type not in BATCH_QUERY_TYPE_VALUES:
         raise WebError("Query type must be QUERY.")
     return BatchRunConfig(
-        analysis_depth=analysis_depth,
         recent_window_minutes=recent_window_minutes,
         scan_date=scan_date,
         scan_hour=scan_hour,
@@ -891,23 +906,22 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
         min_duration_sec=min_duration_sec,
         max_duration_sec=max_duration_sec,
         order=order,
-        cm_jobs=cm_jobs,
-        jobs=jobs,
+        parallelism=parallelism,
+        cm_jobs=parallelism,
+        jobs=parallelism,
         metadata_jobs=metadata_jobs,
         user=user,
         pool=pool,
         query_type=query_type,
-        include_failed=first_form_value(form, "include_failed") == "on",
-        include_running=first_form_value(form, "include_running") == "on",
+        include_failed=True,
+        include_running=False,
     )
 
 
 def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
-    if config.analysis_depth == "full":
-        if config.jobs > BATCH_FULL_JOBS_MAX:
-            raise WebError("Full scan collects Impala metadata and requires analyzer jobs <= 4. Use Fast scan for higher analyzer jobs.")
+    if config.metadata_top_limit > 0:
         if not metadata_configured(settings):
-            raise WebError("Metadata collection is not configured for this web session. Use Fast scan or restart with metadata options.")
+            raise WebError("Metadata collection is not configured for this web session. Set Queries to fetch metadata for to 0 or restart with metadata options.")
         if settings.metadata_ca_cert and not settings.metadata_ssl:
             raise WebError("--metadata-ca-cert requires --metadata-ssl for web batch metadata.")
 
@@ -1176,7 +1190,8 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
     validate_batch_config_for_settings(config, settings)
     out_dir = batch_output_dir(job_id)
     progress_path = batch_progress_path(job_id)
-    metadata_mode = "on" if config.analysis_depth == "full" else "off"
+    metadata_enabled = config.metadata_top_limit > 0
+    metadata_mode = "on" if metadata_enabled else "off"
     if config.from_time and config.to_time:
         from_time, to_time = config.from_time, config.to_time
     else:
@@ -1197,7 +1212,7 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         "--triage-profile-limit",
         str(config.triage_profile_limit),
         "--metadata-top-limit",
-        str(config.metadata_top_limit if config.analysis_depth == "full" else 0),
+        str(config.metadata_top_limit if metadata_enabled else 0),
         "--order",
         config.order,
         "--metadata-mode",
@@ -1209,7 +1224,7 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         "--jobs",
         str(config.jobs),
         "--metadata-jobs",
-        str(config.metadata_jobs if config.analysis_depth == "full" else 1),
+        str(config.metadata_jobs if metadata_enabled else 1),
         "--overwrite",
         "--progress-jsonl",
         str(progress_path),
@@ -1230,9 +1245,9 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         cmd.append("--include-failed")
     if config.include_running:
         cmd.append("--include-running")
-    if config.analysis_depth == "full":
+    if metadata_enabled:
         append_web_metadata_args(cmd, settings)
-    elif config.jobs > BATCH_FULL_JOBS_MAX:
+    if config.jobs > BATCH_FULL_JOBS_MAX:
         cmd.append("--allow-high-jobs")
     return cmd, out_dir
 
@@ -1410,10 +1425,13 @@ def start_batch_job(
     runner: Runner = subprocess.run,
 ) -> tuple[int, str]:
     try:
-        default_depth = "full" if metadata_configured(settings) else "fast"
-        config = parse_batch_run_config(form, default_analysis_depth=default_depth)
+        config = parse_batch_run_config(
+            form,
+            default_metadata_top_limit=10 if metadata_configured(settings) else 0,
+            default_parallelism=50,
+        )
         validate_batch_config_for_settings(config, settings)
-        if config.analysis_depth == "full":
+        if config.metadata_top_limit > 0:
             preflight_web_metadata_batch(settings, runner=runner)
     except WebError as exc:
         return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))
@@ -1467,43 +1485,37 @@ def start_batch_case_report_job(
 def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for name in (
-        "analysis_depth",
         "scan_date",
         "scan_hour",
         "metadata_top_limit",
         "min_duration_sec",
         "max_duration_sec",
         "order",
-        "cm_jobs",
-        "jobs",
+        "parallelism",
         "metadata_jobs",
         "user",
         "pool",
         "query_type",
     ):
         values[name] = first_form_value(form, name)
-    values["include_failed"] = first_form_value(form, "include_failed") == "on"
-    values["include_running"] = first_form_value(form, "include_running") == "on"
+    if not values.get("parallelism"):
+        values["parallelism"] = first_form_value(form, "jobs") or first_form_value(form, "cm_jobs")
     return values
 
 
 def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
     return {
-        "analysis_depth": config.analysis_depth,
         "scan_date": config.scan_date,
         "scan_hour": str(config.scan_hour),
         "metadata_top_limit": str(config.metadata_top_limit),
         "min_duration_sec": "" if config.min_duration_sec is None else display_float(config.min_duration_sec),
         "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),
         "order": config.order,
-        "cm_jobs": str(config.cm_jobs),
-        "jobs": str(config.jobs),
+        "parallelism": str(config.parallelism),
         "metadata_jobs": str(config.metadata_jobs),
         "user": config.user,
         "pool": config.pool,
         "query_type": config.query_type,
-        "include_failed": config.include_failed,
-        "include_running": config.include_running,
     }
 
 
@@ -1618,7 +1630,9 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
         payload = {
             "status": job.status,
             "stage": job.stage_label,
-            "progress": job.progress,
+            "progress": batch_progress_percent(job.batch_progress_path, job.status)
+            if job.kind == "batch"
+            else job.progress,
             "kind": job.kind,
             "error": job.error,
             "result_html": job.result_html,
@@ -2028,6 +2042,9 @@ def make_handler(
                 return
             if parsed.path in {"/optimizer", "/query-optimizer"}:
                 self.write_html(200, render_optimizer_page(settings))
+                return
+            if parsed.path in {"/running", "/running-queries"}:
+                self.write_html(200, render_running_queries_page(settings))
                 return
             if parsed.path == "/help":
                 self.write_html(200, render_help_page(settings))

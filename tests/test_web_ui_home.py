@@ -25,7 +25,7 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "demo-watermark" not in body
     assert "page-shell" not in body
     assert "run-panel" in body
-    assert "Run diagnosis" in body
+    assert "Specific Query" in body
     assert '<label for="query_id">Query ID</label>' in body
     assert "Query ID or case path" not in body
     assert "Use this workflow when you already know the exact Impala Query ID." in body
@@ -83,8 +83,12 @@ def test_web_home_page_links_brand_and_readme_navigation():
     body = module.render_page(settings)
 
     assert '<a class="brand" href="/" aria-label="Query Doctor home">' in body
-    assert '<a class="nav-link nav-link--active" href="/query">Query ID</a>' in body
-    assert '<a class="nav-link" href="/">Recent scan</a>' in body
-    assert '<a class="nav-link" href="/help">Справка</a>' in body
+    assert '<a class="nav-link nav-link--active" href="/query">Specific Query</a>' in body
+    assert '<a class="nav-link" href="/">Finished Queries</a>' in body
+    assert '<a class="nav-link" href="/running">Running Queries</a>' in body
+    assert '<a class="nav-link" href="/help">Help</a>' in body
+    assert body.index('href="/">Finished Queries</a>') < body.index('href="/running">Running Queries</a>')
+    assert body.index('href="/running">Running Queries</a>') < body.index('href="/query">Specific Query</a>')
+    assert body.index('href="/query">Specific Query</a>') < body.index('href="/help">Help</a>')
     assert '<a class="nav-link" href="/readme">README</a>' not in body
     assert "Settings" not in body

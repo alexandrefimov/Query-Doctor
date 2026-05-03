@@ -42,6 +42,7 @@ from query_doctor_web_ui_recent_scan_form import (
     render_batch_text_field,
 )
 from query_doctor_web_ui_recent_scan_results import (
+    batch_progress_percent,
     batch_case_details_link,
     batch_case_id,
     case_detail,

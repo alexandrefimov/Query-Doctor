@@ -23,17 +23,19 @@ def test_web_help_page_renders_curated_static_help():
 
     body = module.render_help_page(settings)
 
-    assert '<a class="nav-link nav-link--active" href="/help">Справка</a>' in body
+    assert '<a class="nav-link nav-link--active" href="/help">Help</a>' in body
+    assert "<h1>Help</h1>" in body
     assert "Быстрый старт" in body
     assert "Query Doctor помогает разбирать поведение запросов Apache Impala." in body
     assert "Сейчас реализован только Apache Impala" in body
-    assert "Recent scan" in body
-    assert "Query ID" in body
+    assert "Finished Queries" in body
+    assert "Specific Query" in body
+    assert "Running Queries" in body
     assert "Query Optimizer" in body
     assert "Метаданные" in body
     assert "Проверенные отчеты" in body
     assert "FAQ" in body
-    assert "Web Recent scan не запускает LLM-отчеты автоматически." in body
+    assert "Web scan не запускает LLM-отчеты автоматически." in body
     assert "не выполняет вставленный SQL" in body
     assert "не возвращает вставленный SQL обратно в браузер после submit" in body
     assert "не запускает LLM-отчеты автоматически" in body
@@ -53,7 +55,7 @@ def test_web_navigation_includes_help_link():
 
     body = module.render_page(settings)
 
-    assert '<a class="nav-link" href="/help">Справка</a>' in body
+    assert '<a class="nav-link" href="/help">Help</a>' in body
 
 
 def test_web_help_route_serves_help_without_running_analysis():

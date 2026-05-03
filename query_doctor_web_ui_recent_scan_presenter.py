@@ -333,10 +333,6 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
         parts.append(f"Search depth: {safe_display_text(summary.get('recent_window_minutes'))} minutes")
     if summary.get("query_type_filter") is not None:
         parts.append(f"Query type: {safe_display_text(summary.get('query_type_filter'))}")
-    if summary.get("include_failed") is not None:
-        parts.append(f"Include failed: {safe_display_text(summary.get('include_failed'))}")
-    if summary.get("include_running") is not None:
-        parts.append(f"Include running: {safe_display_text(summary.get('include_running'))}")
     if summary.get("user_filter_present"):
         parts.append("User filter: set")
     if summary.get("pool_filter_present"):

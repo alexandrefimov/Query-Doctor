@@ -18,9 +18,9 @@ def test_web_readme_page_uses_curated_help_instead_of_repository_readme(tmp_path
     body = module.render_readme_page(settings)
 
     assert '<a class="brand" href="/" aria-label="Query Doctor home">' in body
-    assert '<a class="nav-link" href="/">Recent scan</a>' in body
-    assert '<a class="nav-link" href="/query">Query ID</a>' in body
-    assert '<a class="nav-link nav-link--active" href="/help">Справка</a>' in body
+    assert '<a class="nav-link" href="/">Finished Queries</a>' in body
+    assert '<a class="nav-link" href="/query">Specific Query</a>' in body
+    assert '<a class="nav-link nav-link--active" href="/help">Help</a>' in body
     assert "<h1>README.md</h1>" not in body
     assert "<h1>Local README</h1>" not in body
     assert "Быстрый старт" in body

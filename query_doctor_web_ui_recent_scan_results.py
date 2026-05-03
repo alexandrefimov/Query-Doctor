@@ -10,12 +10,8 @@ from typing import Any
 from query_doctor_web_ui_recent_scan_details import (
     SafeHtml,
     compact_cell,
+    display_score,
     escape_value,
-    reason_cell,
-    report_badge,
-    score_badge,
-    score_badge_from_values,
-    status_badge,
 )
 from query_doctor_web_ui_recent_scan_presenter import (
     RecentScanCaseRowView,
@@ -33,16 +29,16 @@ def render_batch_card(settings: Any) -> str:
         payload = json.loads(Path(summary_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return (
-            "<section class=\"panel batch-panel\" aria-label=\"Recent query scan\">"
-            "<div class=\"batch-head\"><div><h1>Recent query scan</h1>"
+            "<section class=\"panel batch-panel\" aria-label=\"Finished queries\">"
+            "<div class=\"batch-head\"><div><h1>Finished Queries</h1>"
             "<p>Configured batch summary could not be read.</p></div></div>"
             f"<div class=\"batch-note\">{html.escape(type(exc).__name__)}</div>"
             "</section>"
         )
     if not isinstance(payload, dict):
         return (
-            "<section class=\"panel batch-panel\" aria-label=\"Recent query scan\">"
-            "<div class=\"batch-head\"><div><h1>Recent query scan</h1>"
+            "<section class=\"panel batch-panel\" aria-label=\"Finished queries\">"
+            "<div class=\"batch-head\"><div><h1>Finished Queries</h1>"
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
@@ -61,28 +57,23 @@ def render_batch_summary(summary: dict[str, Any]) -> str:
     rows = "\n".join(render_batch_case_row(row.rank, row) for row in view.rows)
     if not rows:
         rows = (
-            "<tr><td colspan=\"11\" class=\"empty-cell\">No case summaries were found in the configured batch summary.</td></tr>"
+            "<tr><td colspan=\"6\" class=\"empty-cell\">No case summaries were found in the configured batch summary.</td></tr>"
         )
     scope_note = render_batch_scope_note(summary)
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
     return (
-        "<section class=\"panel batch-panel\" aria-label=\"Recent query scan\">"
+        "<section class=\"panel batch-panel\" aria-label=\"Finished queries\">"
         "<div class=\"batch-head\">"
-        "<div><h1>Recent query scan</h1>"
-        "<p>Read-only deterministic analyzer ranking from <code>batch_summary.json</code>.</p></div>"
-        "<span class=\"badge blue\">read-only</span>"
+        "<div><h1>Finished Queries</h1></div>"
         "</div>"
         f"<div class=\"batch-metrics\">{header}</div>"
         f"{scope_note}"
         f"{empty_note}"
         f"{warning_note}"
-        "<div class=\"batch-note\">Score is deterministic analyzer output. LLM reports exist only where "
-        "<code>report_generated</code> is true. Partial reports are untrusted and not rendered here.</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
-        "<th>Rank</th><th>Query ID</th><th>Score</th><th>At a glance</th><th>Duration</th>"
-        "<th>Collection</th><th>Analysis</th><th>Metadata</th><th>Report</th><th>Reasons</th><th>Details</th>"
+        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Summary</th><th>Duration</th><th>Metadata</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
@@ -112,29 +103,70 @@ def render_batch_warning_note(summary: dict[str, Any]) -> str:
 
 def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowView) -> str:
     view = case if isinstance(case, RecentScanCaseRowView) else present_recent_scan_case_row(rank, case)
+    row_class = "batch-row batch-row--failed" if row_has_failure(view) else "batch-row"
+    row_attrs = f"class=\"{row_class}\""
+    if view.case_id:
+        href = f"/batch/case/{html.escape(view.case_id, quote=True)}"
+        row_attrs += f" data-href=\"{href}\" onclick=\"window.location.href=this.dataset.href\" tabindex=\"0\" onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();window.location.href=this.dataset.href}}\""
     cells = [
         compact_cell(view.rank),
-        compact_cell(view.query_id),
-        compact_cell(score_badge_from_values(view.score, view.collection_status, view.analysis_status)),
+        query_id_cell(view.query_id),
+        score_cell(view),
         summary_cell(view),
         compact_cell(view.duration_sec),
-        compact_cell(status_badge(view.collection_status)),
-        compact_cell(status_badge(view.analysis_status)),
-        compact_cell(status_badge(view.metadata_status)),
-        compact_cell(report_badge(view.report_status)),
-        reason_cell(view.reason_text),
-        compact_cell(batch_case_details_link(view)),
+        metadata_cell(view.metadata_status),
     ]
-    return f"<tr>{''.join(cells)}</tr>"
+    return f"<tr {row_attrs}>{''.join(cells)}</tr>"
+
+
+def row_has_failure(view: RecentScanCaseRowView) -> bool:
+    return any(str(value).lower() == "failed" for value in (view.collection_status, view.analysis_status))
+
+
+def query_id_cell(query_id: Any) -> str:
+    escaped = escape_value(query_id)
+    return f"<td class=\"batch-cell--query-id\">{escaped.replace(':', ':<br>', 1)}</td>"
+
+
+def score_cell(view: RecentScanCaseRowView) -> str:
+    score = view.score
+    score_value = view.score_value
+    if row_has_failure(view):
+        class_name = "batch-severity--failed"
+    elif score_value >= 20:
+        class_name = "batch-severity--high"
+    elif score_value > 0:
+        class_name = "batch-severity--suspicious"
+    else:
+        class_name = "batch-severity--clean"
+    return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\">{escape_value(display_score(score))}</span></td>"
 
 
 def summary_cell(view: RecentScanCaseRowView) -> str:
+    reason_html = f"<span>{escape_value(view.reason_text)}</span>" if view.reason_text else ""
     return (
         "<td class=\"batch-cell--summary\">"
         f"<strong>{escape_value(view.signal_summary)}</strong>"
-        f"<span>{escape_value(view.status_summary)}</span>"
+        f"{reason_html}"
         "</td>"
     )
+
+
+def metadata_cell(status: Any) -> str:
+    normalized = str(status).lower() if status is not None else "unknown"
+    if normalized in {"ok", "available", "done", "collected"}:
+        symbol = "✓"
+        class_name = "batch-status--ok"
+    elif normalized == "failed":
+        symbol = "!"
+        class_name = "batch-status--failed"
+    elif normalized in {"skipped", "not_run", "none"}:
+        symbol = "−"
+        class_name = "batch-status--neutral"
+    else:
+        symbol = "?"
+        class_name = "batch-status--warning"
+    return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(status)}\">{symbol}</span></td>"
 
 
 def batch_case_details_link(case: dict[str, Any] | RecentScanCaseRowView) -> SafeHtml:
@@ -180,6 +212,17 @@ def render_batch_progress_panel(progress_path: Path | None, job_status: str = "r
         f"{metrics_html}"
         "</div>"
     )
+
+
+def batch_progress_percent(progress_path: Path | None, job_status: str = "running") -> int:
+    events = read_batch_progress_events(progress_path)
+    summary = summarize_batch_progress(events, job_status=job_status)
+    steps = summary["steps"]
+    if not steps:
+        return 0
+    complete_states = {"done", "skipped"}
+    completed = sum(1 for step in steps if step.get("state") in complete_states)
+    return round(completed * 100 / len(steps))
 
 
 def read_batch_progress_events(progress_path: Path | None) -> list[dict[str, Any]]:
@@ -285,6 +328,8 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 states["analysis"] = "done"
                 if states["metadata"] == "running":
                     states["metadata"] = "done"
+                elif states["metadata"] == "pending":
+                    states["metadata"] = "skipped"
             elif status == "failed":
                 states["completed"] = "failed"
     if job_status == "failed" and states["completed"] != "done":

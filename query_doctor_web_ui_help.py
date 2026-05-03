@@ -19,28 +19,29 @@ def render_help_page(settings: Any) -> str:
 def render_help_content() -> str:
     return """
 <section class="panel docs-panel" aria-label="Query Doctor help">
-<h1>Справка</h1>
+<h1>Help</h1>
 <div class="report-body">
 <p>Query Doctor помогает разбирать поведение запросов Apache Impala. Он объединяет детерминированный анализ профиля, ограниченные проверки metadata и генерацию проверенного отчета. Сейчас реализован только Apache Impala; другие SQL-движки остаются roadmap, а не готовой поддержкой.</p>
 
 <h2>Быстрый старт</h2>
 <ul>
-<li>Начните с <strong>Recent scan</strong>, если хотите найти подозрительные запросы в кластере.</li>
-<li>Используйте <strong>Query ID</strong>, если уже знаете конкретный запрос.</li>
+<li>Начните с <strong>Finished Queries</strong>, если хотите найти подозрительные завершенные запросы в кластере.</li>
+<li>Используйте <strong>Specific Query</strong>, если уже знаете конкретный Query ID.</li>
+<li>Используйте <strong>Running Queries</strong>, если хотите анализировать текущие выполняющиеся запросы. Сейчас это отдельная заготовка workflow.</li>
 <li>Используйте <strong>Query Optimizer</strong>, если автору запроса нужны подсказки по конкретному SQL.</li>
 <li>Report generation запускается явно и только для выбранного кейса.</li>
 </ul>
 
 <details open>
-<summary>Скан последних запросов / Recent scan</summary>
-<p>Лучший старт для администратора. Recent scan сначала читает query summaries из Cloudera Manager, затем собирает ограниченное число выбранных профилей, ранжирует кейсы детерминированно и собирает metadata только для top cases, если это включено. Web Recent scan не запускает LLM-отчеты автоматически.</p>
+<summary>Finished Queries</summary>
+<p>Лучший старт для администратора. Finished Queries сначала читает query summaries из Cloudera Manager, затем собирает ограниченное число выбранных профилей завершенных запросов, ранжирует кейсы детерминированно и собирает metadata только для top cases, если это включено. Web scan не запускает LLM-отчеты автоматически.</p>
 <ul>
-<li><strong>Scan date</strong> и <strong>Hour bucket</strong> задают один час Cloudera Manager summaries за сегодня или предыдущие два дня.</li>
-<li>Web Recent scan анализирует все подходящие query profiles из выбранного часового окна, оставаясь под внутренним safety cap.</li>
+<li><strong>Scan date</strong> и <strong>Scan Hour</strong> задают один час Cloudera Manager summaries за сегодня или предыдущие два дня.</li>
+<li>Finished Queries анализирует все подходящие query profiles из выбранного часового окна, оставаясь под внутренним safety cap.</li>
 <li><strong>Metadata top cases</strong> ограничивает, сколько top-ranked cases получат metadata enrichment.</li>
 <li><strong>Min duration</strong> отсекает короткие запросы; пустое значение означает отсутствие этого фильтра.</li>
-<li><strong>Jobs</strong> задает параллелизм и остается ограниченным safety caps.</li>
-<li><strong>Fast scan</strong> быстрее и опирается на summary-level сигналы; <strong>Full scan</strong> добавляет bounded profile analysis и, если включено, metadata для top cases.</li>
+<li><strong>Parallelism</strong> задает параллелизм CM profile downloads и local analysis, оставаясь под safety caps.</li>
+<li><strong>Queries to fetch metadata for</strong> управляет metadata enrichment: 0 отключает metadata collection, положительное значение включает bounded metadata для top-ranked queries.</li>
 </ul>
 </details>
 
@@ -57,7 +58,7 @@ def render_help_content() -> str:
 </details>
 
 <details>
-<summary>Диагностика по Query ID</summary>
+<summary>Specific Query</summary>
 <p>Подходит, если уже известен конкретный Query ID. Workflow собирает и анализирует один явно выбранный кейс. Report generation остается явным действием пользователя. Browser UI не показывает SQL text, profile text или локальные пути.</p>
 </details>
 
@@ -96,7 +97,7 @@ def render_help_content() -> str:
 <p>Полный profile может быть большим и чувствительным. UI показывает безопасные факты и статусы, полученные analyzer.</p>
 <h3>Почему metadata partial или skipped?</h3>
 <p>Metadata collection bounded. Она может быть отключена, недоступна, ограничена top cases или остановлена safety limits. Profile-based findings при этом остаются применимыми.</p>
-<h3>Почему web Recent scan не генерирует отчеты автоматически?</h3>
+<h3>Почему Finished Queries не генерирует отчеты автоматически?</h3>
 <p>Чтобы не запускать LLM массово и не создавать trusted-looking output без выбора конкретного кейса. Report generation остается явным действием.</p>
 <h3>Почему Query Optimizer очищает поле после submit?</h3>
 <p>Чтобы не возвращать pasted SQL обратно в браузер. Результаты строятся из безопасных extracted facts и limitations.</p>
