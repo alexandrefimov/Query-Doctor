@@ -10,8 +10,7 @@ from typing import Any
 
 WEB_RECENT_SCAN_DEFAULTS = {
     "recent_window_minutes": "30",
-    "cm_inspect_limit": "10000",
-    "triage_profile_limit": "200",
+    "cm_inspect_limit": "1000",
     "metadata_top_limit": "8",
     "order": "duration-desc",
     "cm_jobs": "20",
@@ -38,13 +37,7 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
             config_values=local_config,
             config_key="recent_cm_summary_limit",
             fallback=WEB_RECENT_SCAN_DEFAULTS["cm_inspect_limit"],
-        ),
-        "triage_profile_limit": form_or_config_value(
-            form_values,
-            "triage_profile_limit",
-            config_values=local_config,
-            config_key="recent_profile_analysis_limit",
-            fallback=WEB_RECENT_SCAN_DEFAULTS["triage_profile_limit"],
+            maximum=1000,
         ),
         "metadata_top_limit": form_or_config_value(
             form_values,
@@ -112,7 +105,6 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
     def checked(name: str) -> str:
         return " checked" if values.get(name) else ""
 
-    order = str(values.get("order") or WEB_RECENT_SCAN_DEFAULTS["order"])
     analysis_depth = str(values.get("analysis_depth") or "full")
     if not metadata_configured and analysis_depth == "full":
         analysis_depth = "fast"
@@ -124,16 +116,6 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
     scan_mode_help = render_scan_mode_help(analysis_depth, metadata_configured=metadata_configured)
     metadata_note = "" if metadata_configured else "Metadata collection is not configured for this web session. Fast scan still works."
     metadata_note_html = f"<div class=\"batch-note\">{html.escape(metadata_note)}</div>" if metadata_note else ""
-    order_options = "".join(
-        f"<option value=\"{html.escape(value, quote=True)}\"{' selected' if value == order else ''}>{html.escape(label)}</option>"
-        for value, label in (
-            ("duration-desc", "Longest duration first"),
-            ("recent", "Most recent first"),
-            ("recent-duration-desc", "Recent long queries first"),
-            ("status-priority", "Running or failed first"),
-            ("duration-asc", "Shortest duration first"),
-        )
-    )
     button_disabled = " disabled" if run_disabled else ""
     button_label = "Running" if run_disabled else "Run scan"
     return (
@@ -157,19 +139,13 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         f"<button class=\"run-button\" type=\"submit\"{button_disabled}>{button_label}</button>"
         "</div>"
         "<div class=\"scope-line\" aria-label=\"Recent scan collection scope\">"
-        "<strong>Scope:</strong> CM summaries → bounded profiles → ranked cases → top-case metadata · no auto LLM"
+        "<strong>Scope:</strong> matching CM summaries → analyzable query profiles → ranked cases → top-case metadata · no auto LLM"
         "</div>"
-        "<details class=\"batch-advanced\">"
-        "<summary>Advanced scan parameters</summary>"
         "<div class=\"batch-advanced-body\">"
         "<div class=\"batch-form-grid\">"
-        f"{render_batch_number_field('cm_inspect_limit', 'CM summaries to inspect', value('cm_inspect_limit'), required=False, help_text='Maximum recent CM query summaries to request and inspect within Search depth. Hard cap: 10000.')}"
-        f"{render_queries_to_analyze_field(value('triage_profile_limit'), value('cm_inspect_limit'))}"
+        f"{render_batch_number_field('cm_inspect_limit', 'Queries to scan', value('cm_inspect_limit'), required=False, help_text='Maximum recent matching CM summaries to inspect. Query Doctor collects profiles for analyzable scanned queries. Hard cap: 1000.')}"
         f"{render_batch_number_field('metadata_top_limit', 'Cases with metadata', value('metadata_top_limit'), required=False, help_text='Maximum top-ranked analyzed cases enriched with read-only table metadata in Full scan. Fast scan skips metadata.')}"
         f"{render_batch_number_field('min_duration_sec', 'Minimum duration (sec)', value('min_duration_sec'), step='0.001', required=False, help_text='Only include queries at least this long. Empty means no duration filter.')}"
-        "<div class=\"field\">"
-        f"{render_label_with_info('order', 'Candidate order', 'Controls which matching CM summaries get profile collection first. Final ranking still uses analyzer facts.')}"
-        f"<select class=\"input\" id=\"order\" name=\"order\">{order_options}</select></div>"
         f"{render_batch_number_field('cm_jobs', 'CM profile jobs', value('cm_jobs'), help_text='Parallel workers for CM profile downloads. Use higher values to speed the CM collection phase. Hard cap: 100.')}"
         f"{render_batch_number_field('jobs', 'Analyzer jobs', value('jobs'), help_text='Parallel local analyzer workers after profiles are collected. Full scan keeps this capped at 4.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata refresh jobs', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top cases. Keep this low to protect Impala and the metastore. Hard cap: 4.')}"
@@ -183,7 +159,6 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<div class=\"info-body\">Include failed or still-running CM query summaries in the candidate set.</div></details>"
         "</div>"
         "</div>"
-        "</details>"
         "</form></section>"
     )
 
@@ -253,6 +228,7 @@ def form_or_config_value(
     config_values: dict[str, object],
     config_key: str | None = None,
     fallback: str = "",
+    maximum: int | None = None,
 ) -> str:
     if form_values is not None and form_key in form_values:
         value = form_values.get(form_key)
@@ -262,7 +238,14 @@ def form_or_config_value(
     if isinstance(value, bool) or value is None:
         return fallback
     if isinstance(value, (int, float, str)):
-        return str(value)
+        text = str(value)
+        if maximum is not None:
+            try:
+                if int(float(text)) > maximum:
+                    return str(maximum)
+            except (TypeError, ValueError):
+                pass
+        return text
     return fallback
 
 
@@ -304,49 +287,14 @@ def render_batch_number_field(
     step: str = "1",
     required: bool = True,
     help_text: str = "",
-    note_text: str = "",
 ) -> str:
     required_attr = " required" if required else ""
-    note_html = f"<div class=\"field-note\">{html.escape(note_text)}</div>" if note_text else ""
     return (
         f"<div class=\"field\">{render_label_with_info(name, label, help_text)}"
         f"<input class=\"input\" id=\"{html.escape(name, quote=True)}\" name=\"{html.escape(name, quote=True)}\" "
         f"type=\"number\" min=\"0\" step=\"{html.escape(step, quote=True)}\" value=\"{value}\"{required_attr}>"
-        f"{note_html}</div>"
+        "</div>"
     )
-
-
-def render_queries_to_analyze_field(value: str, cm_inspect_limit: str) -> str:
-    return render_batch_number_field(
-        "triage_profile_limit",
-        "Queries to analyze",
-        value,
-        required=False,
-        help_text="Maximum matching queries whose CM profiles are collected and analyzed. Hard cap: 1000.",
-        note_text=queries_to_analyze_scope_hint(value, cm_inspect_limit),
-    )
-
-
-def queries_to_analyze_scope_hint(value: str, cm_inspect_limit: str) -> str:
-    try:
-        queries = int(str(value).strip())
-        summaries = int(str(cm_inspect_limit).strip())
-    except (TypeError, ValueError):
-        return ""
-    if queries <= 0 or summaries <= 0:
-        return ""
-    percent = min(100.0, (queries / summaries) * 100)
-    return f"Current scope: up to {queries} profiles from {summaries} summaries ({format_scope_percent(percent)})."
-
-
-def format_scope_percent(percent: float) -> str:
-    if percent >= 10:
-        return f"{percent:.0f}%"
-    if percent >= 1:
-        text = f"{percent:.1f}".rstrip("0").rstrip(".")
-        return f"{text}%"
-    text = f"{percent:.2f}".rstrip("0").rstrip(".")
-    return f"{text}%"
 
 
 def render_batch_text_field(name: str, label: str, value: str, *, help_text: str = "") -> str:

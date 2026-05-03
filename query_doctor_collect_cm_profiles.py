@@ -116,6 +116,8 @@ ADMIN_SQL_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 QUERY_DOCTOR_SMOKE_RE = re.compile(r"\bquery_doctor\b", re.IGNORECASE)
+CTAS_RE = re.compile(r"\A\s*CREATE\s+(?:EXTERNAL\s+)?TABLE\b.*\bAS\s+(?:WITH|SELECT)\b", re.IGNORECASE | re.DOTALL)
+ANALYZABLE_SQL_VERBS = {"SELECT", "WITH", "INSERT"}
 
 PRESERVED_METADATA_KEYS = {
     "query_id",
@@ -2045,7 +2047,7 @@ def classify_recent_query_candidate(
             return False, "excluded: Query Doctor collector smoke statement", sql_verb
         if ADMIN_SQL_PREFIX_RE.match(statement):
             return False, "excluded: admin or metadata statement", sql_verb
-        if sql_verb in {"SELECT", "WITH"}:
+        if sql_verb in ANALYZABLE_SQL_VERBS or is_create_table_as_select(statement):
             duration_ok, duration_reason = classify_recent_query_duration(
                 summary,
                 min_duration_sec=min_duration_sec,
@@ -2053,8 +2055,8 @@ def classify_recent_query_candidate(
             )
             if not duration_ok:
                 return False, duration_reason, sql_verb
-            return True, "selected: SELECT-like user query", sql_verb
-        return False, "excluded: not SELECT-like query text", sql_verb
+            return True, recent_selected_reason(sql_verb, statement), sql_verb
+        return False, "excluded: not analyzable query text", sql_verb
 
     query_type = (summary.query_type or "").strip().upper()
     if query_type in {"QUERY", "SELECT"}:
@@ -2069,6 +2071,18 @@ def classify_recent_query_candidate(
     if query_type:
         return False, "excluded: query type is not user QUERY/SELECT", None
     return False, "excluded: unknown statement type", None
+
+
+def is_create_table_as_select(statement: str) -> bool:
+    return bool(CTAS_RE.match(normalize_sql_leading_text(statement)))
+
+
+def recent_selected_reason(sql_verb: str | None, statement: str) -> str:
+    if is_create_table_as_select(statement):
+        return "selected: CREATE TABLE AS SELECT query"
+    if sql_verb == "INSERT":
+        return "selected: INSERT query"
+    return "selected: SELECT-like user query"
 
 
 def classify_recent_query_duration(

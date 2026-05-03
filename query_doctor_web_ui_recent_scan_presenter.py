@@ -13,6 +13,29 @@ STATEMENT_LABELS = {
     "SHOW COLUMN STATS": "column stats",
 }
 
+CANDIDATE_REASON_LABELS = {
+    "selected: SELECT-like user query": "SELECT/WITH query",
+    "selected: INSERT query": "INSERT query",
+    "selected: CREATE TABLE AS SELECT query": "CREATE TABLE AS SELECT query",
+    "selected: query type indicates user query; SQL verb unknown": "QUERY with unknown SQL verb",
+    "eligible but not selected because recent-select limit was reached": "analysis cap reached",
+    "excluded: user filter mismatch": "user filter mismatch",
+    "excluded: pool filter mismatch": "pool filter mismatch",
+    "excluded: query type filter mismatch": "query type mismatch",
+    "excluded: running query": "running query",
+    "excluded: failed query": "failed query",
+    "excluded: cancelled query": "cancelled query",
+    "excluded: Query Doctor collector smoke statement": "Query Doctor smoke statement",
+    "excluded: admin or metadata statement": "admin or metadata statement",
+    "excluded: not SELECT-like query text": "not SELECT/WITH query text",
+    "excluded: not analyzable query text": "not analyzable query text",
+    "excluded: query type is not user QUERY/SELECT": "not user QUERY/SELECT type",
+    "excluded: unknown statement type": "unknown statement type",
+    "excluded: duration unknown": "duration unknown",
+    "excluded: duration below recent-min-duration-sec": "below minimum duration",
+    "excluded: duration above recent-max-duration-sec": "above maximum duration",
+}
+
 
 @dataclass(frozen=True)
 class RecentScanCaseRowView:
@@ -312,7 +335,39 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
         parts.append("User filter: set")
     if summary.get("pool_filter_present"):
         parts.append("Pool filter: set")
+    parts.extend(candidate_selection_scope_parts(summary))
     return tuple(parts)
+
+
+def candidate_selection_scope_parts(summary: dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    if "selected_count" in summary:
+        selected = numeric_count(summary.get("selected_count"))
+        parts.append(f"Analyzed queries: {safe_display_text(selected)}")
+    if "candidate_exclusion_count" in summary:
+        excluded = numeric_count(summary.get("candidate_exclusion_count"))
+        parts.append(f"Excluded before analysis: {safe_display_text(excluded)}")
+
+    reason_counts = summary.get("candidate_reason_counts")
+    if not isinstance(reason_counts, dict):
+        return parts
+    exclusion_reasons: list[tuple[str, int]] = []
+    for reason, count in reason_counts.items():
+        reason_text = str(reason)
+        if reason_text.startswith("selected:"):
+            continue
+        parsed_count = numeric_count(count)
+        if parsed_count is None or parsed_count <= 0:
+            continue
+        exclusion_reasons.append((candidate_reason_label(reason_text), parsed_count))
+    if exclusion_reasons:
+        top = "; ".join(f"{label}: {count}" for label, count in exclusion_reasons[:3])
+        parts.append(f"Top exclusions: {safe_display_text(top)}")
+    return parts
+
+
+def candidate_reason_label(reason: str) -> str:
+    return CANDIDATE_REASON_LABELS.get(reason, safe_display_text(reason))
 
 
 def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> str | None:

@@ -1499,6 +1499,7 @@ def build_summary(
 ) -> dict[str, object]:
     selected_count = len(cases)
     inspected = len(discovery.candidates)
+    reason_counts = candidate_reason_counts(discovery.candidates)
     return {
         "mode": "recent-query-batch",
         "out": str(config.out),
@@ -1524,6 +1525,8 @@ def build_summary(
         "cm_summary_page_size": cm_profiles.CM_QUERY_SUMMARY_PAGE_SIZE,
         "cm_summary_safety_cap_hit": config.cm_inspect_limit == MAX_CM_INSPECT_LIMIT and inspected >= MAX_CM_INSPECT_LIMIT,
         "selected_count": selected_count,
+        "candidate_reason_counts": reason_counts,
+        "candidate_exclusion_count": max(0, inspected - selected_count),
         "top_reports": config.top_reports,
         "cm_jobs": config.cm_jobs,
         "jobs": config.jobs,
@@ -1545,6 +1548,14 @@ def batch_ranking_key(case: CaseResult) -> tuple[object, ...]:
         case.query_id,
         case.index,
     )
+
+
+def candidate_reason_counts(candidates: list[cm_profiles.RecentQueryCandidate]) -> dict[str, int]:
+    counts = Counter(
+        cm_profiles.sanitize_text_for_log(candidate.reason or "unknown")
+        for candidate in candidates
+    )
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
 
 def case_to_summary(case: CaseResult) -> dict[str, object]:
@@ -1606,6 +1617,7 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         "",
         f"- summaries inspected: {summary['summaries_inspected']}",
         f"- selected candidates: {summary['selected_count']}",
+        f"- excluded candidates: {summary.get('candidate_exclusion_count', 0)}",
         f"- triage profile limit: {summary['triage_profile_limit']}",
         f"- metadata top limit: {summary['metadata_top_limit']}",
         f"- search depth minutes: {summary['recent_window_minutes']}",
@@ -1620,9 +1632,19 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- discovery seconds: {summary['discovery_seconds']}",
         f"- total seconds: {summary['total_seconds']}",
         "",
-        "| case | query id | duration sec | collection | analysis | metadata | score | facts | report | timings sec |",
-        "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- | --- |",
     ]
+    reason_counts = summary.get("candidate_reason_counts")
+    if isinstance(reason_counts, dict) and reason_counts:
+        lines.extend(["## Candidate Selection Breakdown", ""])
+        for reason, count in reason_counts.items():
+            lines.append(f"- {reason}: {count}")
+        lines.append("")
+    lines.extend(
+        [
+            "| case | query id | duration sec | collection | analysis | metadata | score | facts | report | timings sec |",
+            "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- | --- |",
+        ]
+    )
     for case in summary["cases"]:
         assert isinstance(case, dict)
         timings = (

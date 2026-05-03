@@ -77,8 +77,7 @@ BATCH_REPORT_STAGES = (
     (3, "Done", 100),
 )
 BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority"}
-BATCH_CM_INSPECT_LIMIT_MAX = 10000
-BATCH_PROFILE_ANALYSIS_LIMIT_MAX = 1000
+BATCH_CM_INSPECT_LIMIT_MAX = 1000
 BATCH_METADATA_TOP_LIMIT_MAX = 200
 BATCH_JOBS_MAX = 100
 BATCH_FULL_JOBS_MAX = 4
@@ -171,7 +170,7 @@ class BatchRunConfig:
     analysis_depth: str = "full"
     recent_window_minutes: int = 30
     cm_inspect_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
-    triage_profile_limit: int = 200
+    triage_profile_limit: int = BATCH_CM_INSPECT_LIMIT_MAX
     metadata_top_limit: int = 8
     min_duration_sec: float | None = None
     max_duration_sec: float | None = None
@@ -813,9 +812,7 @@ def parse_batch_run_config(form: dict[str, list[str]], *, default_analysis_depth
     cm_inspect_limit = parse_positive_form_int(
         form, "cm_inspect_limit", default=BATCH_CM_INSPECT_LIMIT_MAX, maximum=BATCH_CM_INSPECT_LIMIT_MAX
     )
-    triage_profile_limit = parse_positive_form_int(
-        form, "triage_profile_limit", default=200, maximum=BATCH_PROFILE_ANALYSIS_LIMIT_MAX
-    )
+    triage_profile_limit = cm_inspect_limit
     metadata_top_limit = parse_non_negative_form_int(
         form, "metadata_top_limit", default=8, maximum=BATCH_METADATA_TOP_LIMIT_MAX
     )
@@ -1419,7 +1416,6 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "analysis_depth",
         "recent_window_minutes",
         "cm_inspect_limit",
-        "triage_profile_limit",
         "metadata_top_limit",
         "min_duration_sec",
         "max_duration_sec",
@@ -1442,7 +1438,6 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "analysis_depth": config.analysis_depth,
         "recent_window_minutes": str(config.recent_window_minutes),
         "cm_inspect_limit": str(config.cm_inspect_limit),
-        "triage_profile_limit": str(config.triage_profile_limit),
         "metadata_top_limit": str(config.metadata_top_limit),
         "min_duration_sec": "" if config.min_duration_sec is None else display_float(config.min_duration_sec),
         "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),
