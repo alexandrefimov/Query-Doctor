@@ -1583,6 +1583,59 @@ def collect_impala_context(case_dir: Path) -> dict[str, Any] | None:
     }
 
 
+CM_QUERY_CONTEXT_FIELDS = (
+    "query_id",
+    "status",
+    "query_state",
+    "query_type",
+    "pool",
+    "start_time",
+    "end_time",
+    "duration_ms",
+    "admission_result",
+    "admission_wait_ms",
+    "rows_produced",
+    "bytes_read",
+    "bytes_sent",
+    "memory_aggregate_peak",
+    "memory_per_node_peak",
+)
+
+
+def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
+    metadata_path = case_dir / "cm_metadata.json"
+    if not metadata_path.exists():
+        return None
+    try:
+        raw = json.loads(metadata_path.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return {"available": False, "error": "failed to parse CM metadata"}
+    if not isinstance(raw, dict):
+        return {"available": False, "error": "CM metadata is not an object"}
+
+    context = {
+        field: raw.get(field)
+        for field in CM_QUERY_CONTEXT_FIELDS
+        if raw.get(field) is not None
+    }
+    context["available"] = bool(context)
+    return context
+
+
+def numeric_context_value(context: dict[str, Any], field: str) -> float | None:
+    value = context.get(field)
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def op_label(op: OperatorFact) -> str:
     flags: list[str] = []
     if op.join_kind:
@@ -2677,6 +2730,48 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_cm_query_context(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("cm_query_context")
+    if not context:
+        return []
+
+    lines = ["## CM Query Context", ""]
+    if not context.get("available"):
+        lines.append(f"- available: no")
+        if context.get("error"):
+            lines.append(f"- error: {context['error']}")
+        lines.append("")
+        return lines
+
+    lines.append("- available: yes")
+    for field in ("query_id", "status", "query_state", "query_type", "pool", "start_time", "end_time"):
+        value = context.get(field)
+        if value is not None:
+            lines.append(f"- {field}: {value}")
+    duration_ms = numeric_context_value(context, "duration_ms")
+    if duration_ms is not None:
+        lines.append(f"- duration: {fmt_duration(duration_ms)}")
+    if context.get("admission_result") is not None:
+        lines.append(f"- admission_result: {context['admission_result']}")
+    admission_wait_ms = numeric_context_value(context, "admission_wait_ms")
+    if admission_wait_ms is not None:
+        lines.append(f"- admission_wait: {fmt_duration(admission_wait_ms)}")
+    rows_produced = numeric_context_value(context, "rows_produced")
+    if rows_produced is not None:
+        lines.append(f"- rows_produced: {fmt_rows(rows_produced)}")
+    for field, label in (
+        ("bytes_read", "bytes_read"),
+        ("bytes_sent", "bytes_sent"),
+        ("memory_aggregate_peak", "memory_aggregate_peak"),
+        ("memory_per_node_peak", "memory_per_node_peak"),
+    ):
+        value = numeric_context_value(context, field)
+        if value is not None:
+            lines.append(f"- {label}: {fmt_bytes(value)}")
+    lines.append("")
+    return lines
+
+
 def render_impala_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("impala_context")
     if not context:
@@ -2755,6 +2850,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_operator_table("Zero/unknown memory estimate gaps", analysis["zero_memory_estimate_gaps"], max_table_rows)
 
     lines += render_referenced_tables(analysis)
+    lines += render_cm_query_context(analysis)
     lines += render_table_metadata_context(analysis)
     lines += render_impala_context(analysis)
     lines += render_backend_tail_evidence(analysis)
@@ -2833,6 +2929,7 @@ def main(argv: list[str]) -> int:
 
     text = digest_path.read_text(encoding="utf-8", errors="replace")
     analysis = analyze(text, args)
+    analysis["cm_query_context"] = collect_cm_query_context(digest_path.parent)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)

@@ -77,6 +77,10 @@ a recommendations-only fallback instead of forcing an unsafe draft.
 
 ## Planned near-term features
 
+- CM time-series context for the query execution window: admission/pool
+  pressure, Impala daemon CPU/memory pressure, host IO/network/load, and
+  bounded role health signals.
+- Safe admission/pool facts in deterministic analysis and LLM Report wording.
 - Query LLM optimizer recommendations-only fallback for high-risk cases.
 - More real-case validation for Query LLM optimizer.
 - Safe UI status for optimizer mode and validation outcome.

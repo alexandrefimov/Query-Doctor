@@ -333,6 +333,14 @@ class CMQuerySummary:
     pool: str | None = None
     query_type: str | None = None
     statement: str | None = field(default=None, repr=False)
+    query_state: str | None = None
+    admission_result: str | None = None
+    admission_wait_ms: int | None = None
+    rows_produced: int | None = None
+    bytes_read: int | None = None
+    bytes_sent: int | None = None
+    memory_aggregate_peak: int | None = None
+    memory_per_node_peak: int | None = None
 
     @property
     def duration_sec(self) -> float | None:
@@ -1463,6 +1471,40 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
                 ),
             )
         ),
+        query_state=normalize_optional_string(first_present(raw, ("queryState", "query_state", "state"))),
+        admission_result=normalize_optional_string(
+            first_present(raw, ("admissionResult", "admission_result", "admissionStatus", "admission_status"))
+        ),
+        admission_wait_ms=parse_optional_int_field(
+            raw,
+            ("admissionWaitMillis", "admissionWaitMs", "admission_wait_ms", "queuedTimeMillis", "queuedTimeMs"),
+            "admission_wait_ms",
+        ),
+        rows_produced=parse_optional_int_field(
+            raw,
+            ("rowsProduced", "rows_produced", "numRowsProduced", "num_rows_produced"),
+            "rows_produced",
+        ),
+        bytes_read=parse_optional_int_field(
+            raw,
+            ("bytesRead", "bytes_read", "hdfsBytesRead", "hdfs_bytes_read"),
+            "bytes_read",
+        ),
+        bytes_sent=parse_optional_int_field(
+            raw,
+            ("bytesSent", "bytes_sent", "totalBytesSent", "total_bytes_sent"),
+            "bytes_sent",
+        ),
+        memory_aggregate_peak=parse_optional_int_field(
+            raw,
+            ("memoryAggregatePeak", "memory_aggregate_peak", "peakMemoryBytes", "peak_memory_bytes"),
+            "memory_aggregate_peak",
+        ),
+        memory_per_node_peak=parse_optional_int_field(
+            raw,
+            ("memoryPerNodePeak", "memory_per_node_peak", "perNodePeakMemoryBytes", "per_node_peak_memory_bytes"),
+            "memory_per_node_peak",
+        ),
     )
 
 
@@ -1572,6 +1614,17 @@ def parse_int_field(value: object, field_name: str) -> int:
                 f"CM query summary field {field_name} must be numeric."
             ) from exc
     raise CMAdapterError(f"CM query summary field {field_name} must be numeric.")
+
+
+def parse_optional_int_field(
+    raw: dict[str, object],
+    names: tuple[str, ...],
+    field_name: str,
+) -> int | None:
+    value = first_present(raw, names)
+    if value is None:
+        return None
+    return parse_int_field(value, field_name)
 
 
 def parse_float_field(value: object, field_name: str) -> float:
@@ -1770,19 +1823,31 @@ def sanitize_query_summary_for_log(summary: CMQuerySummary) -> dict[str, object]
 
 def cm_query_summary_metadata(summary: CMQuerySummary) -> dict[str, object]:
     metadata: dict[str, object] = {
+        "admission_result": summary.admission_result,
+        "admission_wait_ms": summary.admission_wait_ms,
+        "bytes_read": summary.bytes_read,
+        "bytes_sent": summary.bytes_sent,
         "duration_ms": summary.duration_ms,
         "duration_sec": summary.duration_sec,
         "end_time": summary.end_time,
+        "memory_aggregate_peak": summary.memory_aggregate_peak,
+        "memory_per_node_peak": summary.memory_per_node_peak,
         "pool": summary.pool,
         "query_id": summary.query_id,
+        "query_state": summary.query_state,
         "query_type": summary.query_type,
+        "rows_produced": summary.rows_produced,
         "start_time": summary.start_time,
         "status": summary.status,
         "user": summary.user,
     }
     if summary.statement:
         metadata["statement"] = summary.statement
-    return metadata
+    return {
+        key: value
+        for key, value in metadata.items()
+        if value is not None
+    }
 
 
 def safe_case_slug(query_id: str) -> str:
