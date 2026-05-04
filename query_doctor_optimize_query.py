@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -33,6 +34,8 @@ from query_doctor_report import (
 OUTPUT_NAME = "optimized_query.sql"
 MARKER_NAME = "optimized_query.validated.json"
 PARTIAL_NAME = "optimized_query.partial.txt"
+MARKER_SCHEMA_VERSION = 1
+VALIDATION_MODE = "strict"
 MAX_SOURCE_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_SOURCE_SQL_BYTES", "262144"))
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
 SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.DOTALL)
@@ -532,19 +535,35 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     return errors
 
 
+def text_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def write_marker(
     case_dir: Path,
     output_name: str,
     *,
+    source_sql: str,
+    facts_text: str,
     source_scope: str,
     risk_decision: OptimizerRiskDecision,
 ) -> None:
+    draft_path = case_dir / output_name
     marker = {
+        "schema_version": MARKER_SCHEMA_VERSION,
         "draft": output_name,
+        "draft_sha256": file_sha256(draft_path),
+        "facts_sha256": text_sha256(facts_text),
+        "source_sql_sha256": text_sha256(source_sql),
         "risk_mode": risk_decision.mode,
         "risk_reasons": list(risk_decision.reasons),
         "source_scope": source_scope,
         "validated": True,
+        "validation_mode": VALIDATION_MODE,
         "source": "query_doctor_optimize_query",
     }
     (case_dir / MARKER_NAME).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
@@ -607,6 +626,8 @@ def main(argv: list[str] | None = None) -> int:
         write_marker(
             case_dir,
             output_name,
+            source_sql=source_sql.sql,
+            facts_text=facts_text,
             source_scope=source_sql.scope,
             risk_decision=risk_decision,
         )

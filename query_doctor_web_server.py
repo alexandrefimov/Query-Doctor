@@ -29,7 +29,7 @@ import query_doctor_collect_impala_context as impala_context_collector
 import query_doctor_impala_metadata_workflow as metadata_workflow
 import table_metadata_facts
 import query_doctor_batch_recent as batch_recent
-from query_doctor_optimize_query import QueryOptimizationError, extract_optimizable_source_sql
+from query_doctor_optimize_query import QueryOptimizationError, extract_optimizable_source_sql, read_source_sql
 from query_doctor_config_contract import load_and_validate_config, merge_kerberos_cache_env
 from query_doctor_web_display_safety import redact_browser_display_text
 from query_doctor_optimizer_sql import ExtractedTable, OptimizerSqlError, extract_referenced_tables
@@ -116,6 +116,8 @@ OPTIMIZED_QUERY_NAME = "optimized_query.sql"
 OPTIMIZED_QUERY_PARTIAL_NAME = "optimized_query.partial.txt"
 OPTIMIZED_QUERY_VALIDATION_MARKER = "optimized_query.validated.json"
 WEB_REPORT_VALIDATION_MODE = "strict"
+OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION = 1
+OPTIMIZED_QUERY_VALIDATION_MODE = "strict"
 TABLE_METADATA_SUMMARY_KEYS = {
     "context file": "context file",
     "context path": "context path",
@@ -2629,6 +2631,10 @@ def file_sha256(path: Path) -> str | None:
         return None
 
 
+def text_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def batch_case_validated_report_exists(case_dir: Path, case: dict[str, object] | None = None) -> bool:
     report_path = case_dir / BATCH_REPORT_NAME
     facts_path = case_dir / "analysis_facts.md"
@@ -2656,8 +2662,9 @@ def batch_case_validated_report_exists(case_dir: Path, case: dict[str, object] |
 
 def optimized_query_validated_exists(case_dir: Path) -> bool:
     draft_path = case_dir / OPTIMIZED_QUERY_NAME
+    facts_path = case_dir / "analysis_facts.md"
     marker_path = case_dir / OPTIMIZED_QUERY_VALIDATION_MARKER
-    if not draft_path.is_file() or not marker_path.is_file():
+    if not draft_path.is_file() or not facts_path.is_file() or not marker_path.is_file():
         return False
     try:
         marker = json.loads(marker_path.read_text(encoding="utf-8"))
@@ -2665,11 +2672,24 @@ def optimized_query_validated_exists(case_dir: Path) -> bool:
         return False
     if marker.get("validated") is not True:
         return False
+    if marker.get("schema_version") != OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION:
+        return False
+    if marker.get("validation_mode") != OPTIMIZED_QUERY_VALIDATION_MODE:
+        return False
     if marker.get("draft") != OPTIMIZED_QUERY_NAME:
         return False
+    if marker.get("draft_sha256") != file_sha256(draft_path):
+        return False
+    if marker.get("facts_sha256") != file_sha256(facts_path):
+        return False
     try:
+        source_sql = extract_optimizable_source_sql(read_source_sql(case_dir))
+        if marker.get("source_scope") != source_sql.scope:
+            return False
+        if marker.get("source_sql_sha256") != text_sha256(source_sql.sql):
+            return False
         extract_referenced_tables(draft_path.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, OptimizerSqlError):
+    except (OSError, OptimizerSqlError, QueryOptimizationError):
         return False
     return True
 
