@@ -216,6 +216,14 @@ RAW_COUNTER_NUMBER_RE = re.compile(
     rf"(?P<display>{NUMBER_PATTERN}\s*[KMBT]?)(?:\s*\((?P<exact>{NUMBER_PATTERN})\))?",
     flags=re.IGNORECASE,
 )
+QUERY_TIMELINE_HEADER_RE = re.compile(
+    r"^\s*Query\s+Timeline\s*:?\s*(?P<value>[^\n\r]*)$",
+    flags=re.IGNORECASE,
+)
+QUERY_TIMELINE_EVENT_RE = re.compile(
+    r"^\s*-\s*[^:\n\r]{1,160}:\s*(?P<value>[^\n\r]+)$",
+    flags=re.IGNORECASE,
+)
 
 STATS_PATTERNS = [
     re.compile(r"\bmissing\s+(?:table\s+|column\s+)?stats\b", re.IGNORECASE),
@@ -656,6 +664,41 @@ def extract_total_counter(text: str, canonical_name: str) -> dict[str, Any] | No
         return {"raw": raw, "bytes": b}
     ms = extract_first_duration_ms(raw)
     return {"raw": raw, "ms": ms}
+
+
+def extract_query_timeline_duration_ms(text: str) -> float | None:
+    best_ms: float | None = None
+    in_timeline = False
+    timeline_indent = 0
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        header_match = QUERY_TIMELINE_HEADER_RE.match(line)
+        if header_match:
+            in_timeline = True
+            timeline_indent = line_indent(line)
+            header_ms = extract_first_duration_ms(header_match.group("value"))
+            if header_ms is not None and header_ms > 0:
+                best_ms = max(best_ms or 0, header_ms)
+            continue
+
+        if not in_timeline:
+            continue
+        if not stripped:
+            in_timeline = False
+            continue
+        if line_indent(line) <= timeline_indent and not stripped.startswith("-"):
+            in_timeline = False
+            continue
+
+        event_match = QUERY_TIMELINE_EVENT_RE.match(line)
+        if not event_match:
+            continue
+        event_ms = extract_first_duration_ms(event_match.group("value"))
+        if event_ms is not None and event_ms > 0:
+            best_ms = max(best_ms or 0, event_ms)
+
+    return best_ms
 
 
 def compact_line(line: str, max_len: int = 320) -> str:
@@ -1220,6 +1263,7 @@ def find_codegen_bottleneck_lines(text: str, total_time_ms: float | None, min_sh
 def build_query_wall_clock(
     totals: dict[str, dict[str, Any] | None],
     cm_query_context: dict[str, Any] | None = None,
+    query_timeline_ms: float | None = None,
 ) -> dict[str, Any]:
     cm_duration_ms = numeric_context_value(cm_query_context or {}, "duration_ms")
     if cm_duration_ms is not None and cm_duration_ms > 0:
@@ -1228,6 +1272,14 @@ def build_query_wall_clock(
             "duration_human": fmt_duration(cm_duration_ms),
             "source": "CM Query Context",
             "confidence": "high",
+        }
+
+    if isinstance(query_timeline_ms, (int, float)) and query_timeline_ms > 0:
+        return {
+            "duration_ms": float(query_timeline_ms),
+            "duration_human": fmt_duration(float(query_timeline_ms)),
+            "source": "profile Query Timeline",
+            "confidence": "medium",
         }
 
     profile_total = totals.get("TotalTime") or {}
@@ -2748,7 +2800,7 @@ def analyze(
         name: extract_total_counter(text, name)
         for name in ["TotalBytesRead", "TotalBytesSent", "TotalTime"]
     }
-    query_wall_clock = build_query_wall_clock(totals, cm_query_context)
+    query_wall_clock = build_query_wall_clock(totals, cm_query_context, extract_query_timeline_duration_ms(text))
 
     top_by_time = sorted(
         [op for op in operators if op.time_ms is not None],
