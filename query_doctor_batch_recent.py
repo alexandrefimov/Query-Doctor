@@ -1512,8 +1512,12 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
         reasons.append("spill/scratch evidence: non-zero metrics")
     host_tail_candidates = components["host_tail_candidate_count"] or 0
     if host_tail_candidates > 0:
-        score += 2
+        score += min(12, host_tail_candidates * 8)
         reasons.append(f"host-tail candidates: {host_tail_candidates}")
+    duration_sec = components["duration_sec"]
+    if isinstance(duration_sec, (int, float)) and duration_sec >= 1800 and host_tail_candidates > 0:
+        score += 4
+        reasons.append(f"long-running query with host tail: {duration_sec / 60:.1f}m")
     if components["backend_data_skew"] is True:
         score += 2
         reasons.append("backend data skew evidence")
@@ -1559,6 +1563,7 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
         "backend_data_skew": backend_data_skew_value(facts),
         "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(facts),
         "host_tail_candidate_count": fact_int(facts, "host tail candidates"),
+        "duration_sec": duration_seconds_value(facts),
         "cm_metrics_correlated_signals": fact_int(facts, "correlated_signals"),
     }
 
@@ -1581,6 +1586,24 @@ def fact_int(facts: str, label: str) -> int | None:
         match = re.search(r"\d+", value)
         if match:
             return int(match.group(0))
+    return None
+
+
+def duration_seconds_value(facts: str) -> float | None:
+    for value in fact_values(facts, "duration"):
+        match = re.search(r"(\d+(?:\.\d+)?)(ms|s|m|h)\b", value, re.IGNORECASE)
+        if not match:
+            continue
+        number = float(match.group(1))
+        unit = match.group(2).lower()
+        if unit == "ms":
+            return number / 1000
+        if unit == "s":
+            return number
+        if unit == "m":
+            return number * 60
+        if unit == "h":
+            return number * 3600
     return None
 
 
@@ -1793,6 +1816,7 @@ def case_score_severity(case: CaseResult) -> str:
         or (cardinality >= 3 and memory >= 2)
         or (zero_row_gaps >= 2 and zero_memory_gaps >= 2)
         or (case.backend_data_skew is True and host_tail >= 2)
+        or (host_tail >= 1 and (case.duration_sec or 0) >= 1800)
     ):
         return "high"
     return "suspicious"

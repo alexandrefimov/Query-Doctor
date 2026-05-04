@@ -810,36 +810,17 @@ def run_query_id_analysis(
 
     update_progress(progress, 1)
     expected_case_dir = expected_case_dir_for_query(validated_query_id, settings)
-    if expected_case_dir.exists():
-        ensure_complete_existing_case(expected_case_dir)
-        case_dir = expected_case_dir
-        collection_status = "ok"
-    else:
-        case_dir = collect_case(
-            validated_query_id,
-            expected_case_dir,
-            redact_identifiers,
-            settings,
-            runner,
-            env=subprocess_env,
-        )
-        collection_status = "ok"
-
-    update_progress(progress, 2)
-    analyzed = run_subprocess(
-        build_query_id_analyzer_command(case_dir, settings),
-        cwd=settings.repo_dir,
-        timeout_sec=settings.timeout_sec,
-        runner=runner,
-        env=subprocess_env,
+    case_dir = collect_analyze_and_replace_query_case(
+        validated_query_id,
+        expected_case_dir,
+        redact_identifiers,
+        settings,
+        runner,
+        subprocess_env,
+        progress=progress,
     )
-    analysis_status = "ok" if analyzed.returncode == 0 else "failed"
-    if analyzed.returncode != 0:
-        raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
-
-    facts_path = case_dir / "analysis_facts.md"
-    if not facts_path.exists():
-        raise WebError("Analyzer output was not created.")
+    collection_status = "ok"
+    analysis_status = "ok"
 
     update_progress(progress, 3)
     summary_case = build_query_id_summary_case(
@@ -995,6 +976,7 @@ def collect_case(
     settings: WebSettings,
     runner: Runner,
     env: dict[str, str] | None = None,
+    out_dir: Path | None = None,
 ) -> Path:
     config_username = None
     try:
@@ -1007,6 +989,7 @@ def collect_case(
     if not has_cm_credentials(username=config_username):
         raise WebError(MISSING_CM_CREDENTIALS_MESSAGE)
 
+    collection_out_dir = out_dir if out_dir is not None else settings.corpus_dir
     collector_cmd = [
         sys.executable,
         str(settings.repo_dir / "query_doctor_collect_cm_profiles.py"),
@@ -1018,7 +1001,7 @@ def collect_case(
         "1",
         "--redact",
         "--out",
-        str(settings.corpus_dir),
+        str(collection_out_dir),
     ]
     if redact_identifiers:
         collector_cmd.append("--redact-identifiers")
@@ -1038,7 +1021,7 @@ def collect_case(
     case_dir = parse_output_case_dir(collected.stdout)
     if not case_dir.is_absolute():
         case_dir = (settings.repo_dir / case_dir).resolve()
-    expected_corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
+    expected_corpus_dir = resolve_under_repo(settings.repo_dir, collection_out_dir)
     try:
         case_dir.relative_to(expected_corpus_dir)
     except ValueError as exc:
@@ -1048,6 +1031,74 @@ def collect_case(
     if not case_dir.exists():
         raise WebError("Collector did not create the expected case directory.")
     return case_dir
+
+
+def remove_path(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    elif path.exists() or path.is_symlink():
+        path.unlink()
+
+
+def replace_case_dir_after_success(staged_case_dir: Path, expected_case_dir: Path) -> Path:
+    ensure_complete_existing_case(staged_case_dir)
+    if not (staged_case_dir / "analysis_facts.md").is_file():
+        raise WebError("Analyzer output was not created.")
+
+    expected_case_dir.parent.mkdir(parents=True, exist_ok=True)
+    backup_path: Path | None = None
+    if expected_case_dir.exists() or expected_case_dir.is_symlink():
+        backup_path = expected_case_dir.with_name(
+            f".replace-{expected_case_dir.name}-{uuid.uuid4().hex}"
+        )
+        expected_case_dir.rename(backup_path)
+    try:
+        staged_case_dir.rename(expected_case_dir)
+    except Exception:
+        if backup_path is not None and backup_path.exists() and not expected_case_dir.exists():
+            backup_path.rename(expected_case_dir)
+        raise
+    if backup_path is not None:
+        remove_path(backup_path)
+    return expected_case_dir
+
+
+def collect_analyze_and_replace_query_case(
+    validated_query_id: str,
+    expected_case_dir: Path,
+    redact_identifiers: bool,
+    settings: WebSettings,
+    runner: Runner,
+    subprocess_env: dict[str, str],
+    progress: ProgressFunc | None = None,
+) -> Path:
+    corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
+    staging_root = corpus_dir / f".query-refresh-{uuid.uuid4().hex}"
+    staging_case_dir = staging_root / expected_case_dir.name
+    try:
+        case_dir = collect_case(
+            validated_query_id,
+            staging_case_dir,
+            redact_identifiers,
+            settings,
+            runner,
+            env=subprocess_env,
+            out_dir=staging_root,
+        )
+        update_progress(progress, 2)
+        analyzed = run_subprocess(
+            build_query_id_analyzer_command(case_dir, settings),
+            cwd=settings.repo_dir,
+            timeout_sec=settings.timeout_sec,
+            runner=runner,
+            env=subprocess_env,
+        )
+        if analyzed.returncode != 0:
+            raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
+        return replace_case_dir_after_success(case_dir, expected_case_dir)
+    finally:
+        if staging_root.exists():
+            remove_path(staging_root)
 
 
 def expected_case_dir_for_query(validated_query_id: str, settings: WebSettings) -> Path:

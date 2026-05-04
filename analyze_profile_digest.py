@@ -152,6 +152,9 @@ BACKEND_MIN_HOSTS_FOR_SKEW = 3
 BACKEND_DATA_SKEW_RATIO = 3.0
 BACKEND_WORK_COMPARABLE_RATIO = 1.5
 BACKEND_TAIL_RATIO = 3.0
+BACKEND_EXECUTION_TAIL_RATIO = 1.8
+BACKEND_EXECUTION_TAIL_MIN_MS = 10 * 60 * 1000
+BACKEND_EXECUTION_TAIL_MIN_GAP_MS = 10 * 60 * 1000
 
 CM_PROFILE_TEXT_FIELDS = ("details", "profile", "profileText", "text")
 CM_RUNTIME_PROFILE_MARKERS = (
@@ -199,7 +202,7 @@ RAW_PEAK_MEMORY_RE = re.compile(
     flags=re.IGNORECASE,
 )
 RAW_TIME_COUNTER_RE = re.compile(
-    r"-\s*(?:TotalTime|ExecTime|ScannerThreadsTotalWallClockTime)\s*:\s*(?P<value>[^\n\r]+)",
+    r"-\s*(?:TotalTime|ExecTime)\s*:\s*(?P<value>[^\n\r]+)",
     flags=re.IGNORECASE,
 )
 RAW_COUNTER_NUMBER_RE = re.compile(
@@ -243,6 +246,9 @@ FRAGMENT_VALUE_RE = re.compile(
     r"\b(?:fragment(?:\s+instance)?|instance|fragment_instance)\s*(?:id)?\s*[=:]\s*(?P<fragment>[A-Za-z0-9_.:-]+)",
     re.IGNORECASE,
 )
+INSTANCE_HEADER_ID_RE = re.compile(r"^\s*(?P<fragment>[A-Za-z0-9_.:-]+)")
+AVERAGED_FRAGMENT_RE = re.compile(r"^\s*Averaged\s+Fragment\s+(?P<fragment>F\d+)\b", re.IGNORECASE)
+FRAGMENT_HEADER_RE = re.compile(r"^\s*Fragment\s+(?P<fragment>F\d+)\b", re.IGNORECASE)
 FRAGMENT_LINE_RE = re.compile(
     r"^\s*-?\s*(?:fragment(?:\s+instance)?|instance|fragment_instance)\s*(?:id)?\s*[:=]\s*(?P<fragment>[A-Za-z0-9_.:-]+)",
     re.IGNORECASE,
@@ -479,6 +485,7 @@ class OperatorFact:
 class BackendHostFact:
     host: str
     fragment_instance: str | None = None
+    fragment_group: str | None = None
     scan_bytes_assigned: float | None = None
     bytes_read: float | None = None
     bytes_written: float | None = None
@@ -789,6 +796,8 @@ def raw_node_section(lines: list[str], start: int) -> str:
         if not stripped:
             section.append(line)
             continue
+        if RAW_NODE_HEADER_RE.match(line):
+            break
         if line_indent(line) <= header_indent and not stripped.startswith("-"):
             break
         section.append(line)
@@ -949,6 +958,9 @@ def extract_host_from_text(text: str) -> str | None:
 
 def extract_fragment_from_text(text: str) -> str | None:
     m = FRAGMENT_VALUE_RE.search(text)
+    if m:
+        return m.group("fragment").strip(" ,;")
+    m = INSTANCE_HEADER_ID_RE.search(text)
     if not m:
         return None
     return m.group("fragment").strip(" ,;")
@@ -957,6 +969,7 @@ def extract_fragment_from_text(text: str) -> str | None:
 def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
     facts: list[BackendHostFact] = []
     current: BackendHostFact | None = None
+    current_fragment_group: str | None = None
 
     def finish_current() -> None:
         nonlocal current
@@ -969,6 +982,10 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
         current = None
 
     for line in text.splitlines():
+        fragment_match = AVERAGED_FRAGMENT_RE.match(line) or FRAGMENT_HEADER_RE.match(line)
+        if fragment_match:
+            current_fragment_group = fragment_match.group("fragment").upper()
+
         header_match = BACKEND_HEADER_RE.match(line)
         if header_match:
             finish_current()
@@ -976,7 +993,12 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
             host = extract_host_from_text(header)
             fragment = extract_fragment_from_text(header)
             if host:
-                current = BackendHostFact(host=host, fragment_instance=fragment, evidence_lines=[compact_line(line)])
+                current = BackendHostFact(
+                    host=host,
+                    fragment_instance=fragment,
+                    fragment_group=current_fragment_group,
+                    evidence_lines=[compact_line(line)],
+                )
             else:
                 current = None
             continue
@@ -2105,6 +2127,7 @@ def host_to_json(fact: BackendHostFact) -> dict[str, Any]:
     return {
         "host": fact.host,
         "fragment_instance": fact.fragment_instance,
+        "fragment_group": fact.fragment_group,
         "scan_bytes_assigned": fact.scan_bytes_assigned,
         "scan_bytes_assigned_human": fmt_bytes(fact.scan_bytes_assigned),
         "bytes_read": fact.bytes_read,
@@ -2187,13 +2210,20 @@ def tail_candidate_from_metric(
     label: str,
     human_key: str,
     higher_is_worse: bool,
+    min_ratio: float = BACKEND_TAIL_RATIO,
+    min_worst_value: float | None = None,
+    min_gap: float | None = None,
 ) -> dict[str, Any] | None:
     values = metric_values(hosts, key)
     ratio = ratio_for_values(values)
-    if ratio is None or ratio < BACKEND_TAIL_RATIO:
+    if ratio is None or ratio < min_ratio:
         return None
     worst_host, worst_value = (max if higher_is_worse else min)(values, key=lambda item: item[1])
     peer_value = (min if higher_is_worse else max)(value for _host, value in values)
+    if min_worst_value is not None and worst_value < min_worst_value:
+        return None
+    if min_gap is not None and abs(worst_value - peer_value) < min_gap:
+        return None
     evidence = (
         f"{label}: {worst_host.get(human_key, 'n/a')} vs peer "
         f"{'min' if higher_is_worse else 'max'} "
@@ -2211,25 +2241,69 @@ def tail_candidate_from_metric(
 
 def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, Any]:
     hosts = [host_to_json(fact) for fact in host_facts]
-    data_skew, data_skew_reason, comparable_work = backend_data_skew_status(hosts)
+    grouped_hosts: dict[str, list[dict[str, Any]]] = {}
+    for host in hosts:
+        group = str(host.get("fragment_group") or "unknown")
+        grouped_hosts.setdefault(group, []).append(host)
+
+    group_statuses: list[tuple[str, str, str, bool, list[dict[str, Any]]]] = []
+    for group, group_hosts in grouped_hosts.items():
+        group_data_skew, group_reason, comparable_work = backend_data_skew_status(group_hosts)
+        group_statuses.append((group, group_data_skew, group_reason, comparable_work, group_hosts))
+
+    yes_statuses = [status for status in group_statuses if status[1] == "yes"]
+    comparable_statuses = [status for status in group_statuses if status[3]]
+    if yes_statuses:
+        group, data_skew, reason, _comparable, _group_hosts = yes_statuses[0]
+    elif comparable_statuses:
+        group, data_skew, reason, _comparable, _group_hosts = comparable_statuses[0]
+    elif group_statuses:
+        group, data_skew, reason, _comparable, _group_hosts = group_statuses[0]
+    else:
+        group, data_skew, reason = "unknown", "unknown", "insufficient comparable per-host assigned/read/row metrics"
+    data_skew_reason = f"{group}: {reason}" if group != "unknown" else reason
+
     candidates: list[dict[str, Any]] = []
     write_path_candidates: list[dict[str, Any]] = []
 
-    if comparable_work:
+    for group, _group_data_skew, _group_reason, comparable_work, group_hosts in group_statuses:
+        if not comparable_work:
+            continue
         metric_specs = [
-            ("execution_time_ms", "execution time", "execution_time_human", True, False),
-            ("read_rate_bps", "read rate", "read_rate_human", False, False),
-            ("write_rate_bps", "write rate", "write_rate_human", False, True),
-            ("hdfs_write_time_ms", "HDFS write time", "hdfs_write_time_human", True, True),
-            ("hdfs_write_sec_per_gib", "HDFS write sec/GiB", "hdfs_write_sec_per_gib_human", True, True),
+            (
+                "execution_time_ms",
+                "execution time",
+                "execution_time_human",
+                True,
+                False,
+                BACKEND_EXECUTION_TAIL_RATIO,
+                BACKEND_EXECUTION_TAIL_MIN_MS,
+                BACKEND_EXECUTION_TAIL_MIN_GAP_MS,
+            ),
+            ("read_rate_bps", "read rate", "read_rate_human", False, False, BACKEND_TAIL_RATIO, None, None),
+            ("write_rate_bps", "write rate", "write_rate_human", False, True, BACKEND_TAIL_RATIO, None, None),
+            ("hdfs_write_time_ms", "HDFS write time", "hdfs_write_time_human", True, True, BACKEND_TAIL_RATIO, None, None),
+            (
+                "hdfs_write_sec_per_gib",
+                "HDFS write sec/GiB",
+                "hdfs_write_sec_per_gib_human",
+                True,
+                True,
+                BACKEND_TAIL_RATIO,
+                None,
+                None,
+            ),
         ]
-        for key, label, human_key, higher_is_worse, is_write_path in metric_specs:
+        for key, label, human_key, higher_is_worse, is_write_path, min_ratio, min_worst_value, min_gap in metric_specs:
             candidate = tail_candidate_from_metric(
-                hosts,
+                group_hosts,
                 key=key,
-                label=label,
+                label=f"{group} {label}" if group != "unknown" else label,
                 human_key=human_key,
                 higher_is_worse=higher_is_worse,
+                min_ratio=min_ratio,
+                min_worst_value=min_worst_value,
+                min_gap=min_gap,
             )
             if candidate is None:
                 continue
@@ -2238,11 +2312,21 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
                 write_path_candidates.append(candidate)
 
     execution_skew = "yes" if candidates else ("unknown" if data_skew == "unknown" else "no")
-    write_path_anomaly = "yes" if write_path_candidates else ("unknown" if not comparable_work else "no")
+    write_path_anomaly = "yes" if write_path_candidates else ("unknown" if not comparable_statuses else "no")
     tail_candidate_count = len({candidate["host"] for candidate in candidates})
     return {
         "rows_parsed": len(hosts),
         "hosts": hosts,
+        "groups": [
+            {
+                "fragment_group": group,
+                "host_count": len(group_hosts),
+                "data_skew": group_data_skew,
+                "data_skew_reason": group_reason,
+                "comparable_work": comparable_work,
+            }
+            for group, group_data_skew, group_reason, comparable_work, group_hosts in group_statuses
+        ],
         "tail_candidate_count": tail_candidate_count,
         "data_skew": data_skew,
         "data_skew_reason": data_skew_reason,

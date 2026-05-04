@@ -231,6 +231,7 @@ class CollectorConfig:
     recent_pool: str | None
     redact: bool
     redact_identifiers: bool
+    redact_hosts: bool
     collect_cm_timeseries: bool
     cm_timeseries_padding_sec: int
     max_timeseries_bytes: int
@@ -588,6 +589,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable identifier redaction when a local config enables it.",
     )
     parser.add_argument(
+        "--redact-hosts",
+        action="store_true",
+        default=None,
+        help="Replace infrastructure hostnames/IPs with stable host_NN aliases. Default: enabled.",
+    )
+    parser.add_argument(
+        "--no-redact-hosts",
+        action="store_false",
+        dest="redact_hosts",
+        help=(
+            "Keep real infrastructure hostnames/IPs in local collected artifacts. "
+            "Use only for private node-level diagnostics; do not share these artifacts."
+        ),
+    )
+    parser.add_argument(
         "--collect-cm-timeseries",
         action="store_true",
         default=None,
@@ -916,6 +932,12 @@ def build_config(
             cli_value=args.redact_identifiers,
             config_values=config_values,
             default=False,
+        ),
+        redact_hosts=bool_setting(
+            "redact_hosts",
+            cli_value=args.redact_hosts,
+            config_values=config_values,
+            default=True,
         ),
         collect_cm_timeseries=bool(args.collect_cm_timeseries)
         if args.collect_cm_timeseries is not None
@@ -2090,7 +2112,12 @@ def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None
     return redacted
 
 
-def redact_profile_text(text: str, *, redact_identifiers: bool = False) -> str:
+def redact_profile_text(
+    text: str,
+    *,
+    redact_identifiers: bool = False,
+    redact_hosts: bool = True,
+) -> str:
     host_redactor = HostAliasRedactor()
     redacted = text
     redacted = EMAIL_RE.sub("<email>", redacted)
@@ -2101,7 +2128,8 @@ def redact_profile_text(text: str, *, redact_identifiers: bool = False) -> str:
     redacted = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\5", redacted)
     redacted = USER_FIELD_RE.sub(r"\1<user>", redacted)
     redacted = USER_KV_RE.sub(r"\1\2<user>", redacted)
-    redacted = redact_host_identifiers(redacted, host_redactor)
+    if redact_hosts:
+        redacted = redact_host_identifiers(redacted, host_redactor)
 
     if redact_identifiers:
         redacted = SQL_DB_TABLE_RE.sub(lambda match: f"{match.group(1)} <db>.<table>", redacted)
@@ -2114,6 +2142,7 @@ def redact_metadata(
     metadata: dict[str, object],
     *,
     redact_identifiers: bool = False,
+    redact_hosts: bool = True,
 ) -> dict[str, object]:
     host_redactor = HostAliasRedactor()
     return {
@@ -2121,6 +2150,7 @@ def redact_metadata(
             key,
             value,
             redact_identifiers=redact_identifiers,
+            redact_hosts=redact_hosts,
             host_redactor=host_redactor,
         )
         for key, value in metadata.items()
@@ -2132,6 +2162,7 @@ def redact_metadata_value(
     value: object,
     *,
     redact_identifiers: bool,
+    redact_hosts: bool,
     host_redactor: HostAliasRedactor,
 ) -> object:
     normalized_key = key.lower()
@@ -2144,19 +2175,24 @@ def redact_metadata_value(
         return "<pool>" if value is not None else None
     if any(part in normalized_key for part in SECRET_METADATA_KEY_PARTS):
         return "<redacted>" if value is not None else None
-    if any(part in normalized_key for part in HOST_METADATA_KEY_PARTS):
+    if redact_hosts and any(part in normalized_key for part in HOST_METADATA_KEY_PARTS):
         return host_redactor.redact_host_value(str(value)) if value is not None else None
     if any(part in normalized_key for part in URL_METADATA_KEY_PARTS):
         return "<url>" if value is not None else None
     if isinstance(value, str):
-        redacted = redact_profile_text(value, redact_identifiers=redact_identifiers)
-        return redact_host_identifiers(redacted, host_redactor)
+        redacted = redact_profile_text(
+            value,
+            redact_identifiers=redact_identifiers,
+            redact_hosts=redact_hosts,
+        )
+        return redact_host_identifiers(redacted, host_redactor) if redact_hosts else redacted
     if isinstance(value, dict):
         return {
             child_key: redact_metadata_value(
                 child_key,
                 child_value,
                 redact_identifiers=redact_identifiers,
+                redact_hosts=redact_hosts,
                 host_redactor=host_redactor,
             )
             for child_key, child_value in value.items()
@@ -2167,6 +2203,7 @@ def redact_metadata_value(
                 key,
                 item,
                 redact_identifiers=redact_identifiers,
+                redact_hosts=redact_hosts,
                 host_redactor=host_redactor,
             )
             for item in value
@@ -2252,6 +2289,7 @@ def write_collected_case(
     secrets: Iterable[str] = (),
     redact: bool = False,
     redact_identifiers: bool = False,
+    redact_hosts: bool = True,
 ) -> Path:
     """Write one already-collected synthetic CM case under out_dir.
 
@@ -2265,10 +2303,15 @@ def write_collected_case(
     metadata = cm_query_summary_metadata(summary)
     digest_text = profile_digest_text
     if redact:
-        metadata = redact_metadata(metadata, redact_identifiers=redact_identifiers)
+        metadata = redact_metadata(
+            metadata,
+            redact_identifiers=redact_identifiers,
+            redact_hosts=redact_hosts,
+        )
         digest_text = redact_profile_text(
             profile_digest_text,
             redact_identifiers=redact_identifiers,
+            redact_hosts=redact_hosts,
         )
 
     metadata_text = json.dumps(metadata, indent=2, sort_keys=True) + "\n"
@@ -2876,6 +2919,7 @@ def run_cm_single_query_collection(
             "collected by Query Doctor CM collector",
             "source query id preserved",
             "redaction enabled",
+            "host redaction enabled" if config.redact_hosts else "host redaction disabled for private node diagnostics",
             "CM API endpoint family: v32 Impala query details",
             "analyzer/report were not run automatically",
         ]
@@ -2928,6 +2972,7 @@ def run_cm_single_query_collection(
             secrets=secrets,
             redact=True,
             redact_identifiers=config.redact_identifiers,
+            redact_hosts=config.redact_hosts,
         )
     except (CMClientError, OutputError, OSError) as exc:
         print(
@@ -2946,6 +2991,7 @@ def run_cm_single_query_collection(
     print(f"Output case directory: {case_dir}")
     print(f"Profile text length: {len(profile_text)}")
     print("Redaction: enabled")
+    print(f"Host redaction: {'enabled' if config.redact_hosts else 'disabled'}")
     print(f"Max profile bytes: {config.max_profile_bytes}")
     if config.collect_cm_timeseries:
         print("CM time-series context: enabled")
@@ -2971,6 +3017,7 @@ def print_dry_run_plan(config: CollectorConfig) -> None:
     print(f"  query_type: {config.query_type or '<any>'}")
     print(f"Redaction: {'enabled' if config.redact else 'disabled'}")
     print(f"Identifier redaction: {'enabled' if config.redact_identifiers else 'disabled'}")
+    print(f"Host redaction: {'enabled' if config.redact_hosts else 'disabled'}")
     print(f"CM time-series context: {'enabled' if config.collect_cm_timeseries else 'disabled'}")
     print(tls_plan_line(config))
     print(ca_bundle_plan_line(config))
