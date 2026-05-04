@@ -87,6 +87,7 @@ def render_specific_query_detail(
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
 ) -> str:
     view = present_recent_scan_case_detail(
         "specific-query",
@@ -107,7 +108,7 @@ def render_specific_query_detail(
         f"{render_case_status_summary(view)}"
         f"{render_analysis_details(case, metadata_facts, view=view)}"
         f"{render_batch_case_report_action('specific-query', view.report_action, action_url=report_url, open_url=report_url, report_enabled=view.score_severity != 'clean', trusted_report_html=trusted_report_html)}"
-        f"{render_optimized_query_action('specific-query', optimized_query_state, action_url=specific_query_optimized_query_href(query_id), open_url=specific_query_optimized_query_href(query_id), trusted_optimized_query=trusted_optimized_query)}"
+        f"{render_optimized_query_action('specific-query', optimized_query_state, action_url=specific_query_optimized_query_href(query_id), open_url=specific_query_optimized_query_href(query_id), trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations)}"
         "</section>"
     )
 

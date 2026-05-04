@@ -56,6 +56,7 @@ def render_batch_case_detail(
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
     workflow_title: str = "Finished Queries",
     list_href: str = "/#recent-results",
     detail_base_path: str = "/batch/case",
@@ -83,7 +84,7 @@ def render_batch_case_detail(
         f"{render_case_status_summary(view)}"
         f"{render_analysis_details(case, metadata_facts, view=view)}"
         f"{render_batch_case_report_action(view.case_id, view.report_action, report_enabled=view.score_severity != 'clean', action_url=report_url, open_url=report_url, trusted_report_html=trusted_report_html)}"
-        f"{render_optimized_query_action(view.case_id, optimized_query_state, action_url=optimized_query_url, open_url=optimized_query_url, trusted_optimized_query=trusted_optimized_query)}"
+        f"{render_optimized_query_action(view.case_id, optimized_query_state, action_url=optimized_query_url, open_url=optimized_query_url, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations)}"
         "</section>"
     )
 
@@ -289,12 +290,16 @@ def render_optimized_query_action(
     action_url: str | None = None,
     open_url: str | None = None,
     trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
 ) -> str:
     state = state or {"status": "not_run"}
     status = str(state.get("status") or "not_run")
     form_action = html.escape(action_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
     open_href = html.escape(open_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
-    if status == "generated":
+    output_kind = str(state.get("output_kind") or "sql_draft")
+    if status == "generated" and output_kind == "recommendations_only":
+        action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer recommendations</a>"
+    elif status == "generated":
         action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer draft</a>"
     elif status == "unavailable":
         action_html = "<button class=\"button\" type=\"button\" disabled>Generate Query LLM optimizer draft</button>"
@@ -319,6 +324,8 @@ def render_optimized_query_action(
         )
     elif status == "unavailable":
         status_html = "<p class=\"helper\">Source SQL is unavailable or outside the read-only optimizer scope for this case.</p>"
+    elif status == "generated":
+        status_html = render_optimized_query_outcome(state)
     else:
         status_html = ""
     draft_html = ""
@@ -328,6 +335,14 @@ def render_optimized_query_action(
             "<summary>Query LLM optimizer draft</summary>"
             "<p class=\"helper\">Draft only. It was not executed and must be reviewed before use.</p>"
             f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
+            "</details>"
+        )
+    elif status == "generated" and trusted_optimizer_recommendations:
+        draft_html = (
+            "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer recommendations\">"
+            "<summary>Query LLM optimizer recommendations</summary>"
+            "<p class=\"helper\">SQL rewrite was skipped because Python marked this query shape as too risky for a trusted draft.</p>"
+            f"<div>{render_safe_markdown_paragraphs(trusted_optimizer_recommendations)}</div>"
             "</details>"
         )
     return (
@@ -388,6 +403,32 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
         f"<div class=\"batch-progress\"><div class=\"batch-progress-steps\">{''.join(steps)}</div></div>"
         "</div>"
     )
+
+
+def render_optimized_query_outcome(state: dict[str, Any]) -> str:
+    items = []
+    for label, key in (
+        ("Source scope", "source_scope"),
+        ("Risk mode", "risk_mode"),
+        ("Output", "output_kind"),
+    ):
+        value = str(state.get(key) or "").strip()
+        if value:
+            items.append(f"<span>{html.escape(label)}: {html.escape(value)}</span>")
+    return f"<div class=\"batch-progress-metrics\">{''.join(items)}</div>" if items else ""
+
+
+def render_safe_markdown_paragraphs(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    rendered = []
+    for line in lines:
+        if line.startswith(("- ", "* ")):
+            rendered.append(f"<p>{html.escape(line[2:])}</p>")
+        else:
+            rendered.append(f"<p>{html.escape(line)}</p>")
+    return "".join(rendered)
 
 
 def optimized_query_progress_step_index(stage_label: str) -> int:

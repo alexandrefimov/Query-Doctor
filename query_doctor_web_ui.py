@@ -260,6 +260,7 @@ def render_batch_case_detail_page(
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_text: str | None = None,
     trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
     workflow_title: str = "Finished Queries",
     list_href: str = "/#recent-results",
     detail_base_path: str = "/batch/case",
@@ -280,6 +281,7 @@ def render_batch_case_detail_page(
             optimized_query_state=optimized_query_state,
             trusted_report_html=trusted_report_html,
             trusted_optimized_query=trusted_optimized_query,
+            trusted_optimizer_recommendations=trusted_optimizer_recommendations,
             workflow_title=workflow_title,
             list_href=list_href,
             detail_base_path=detail_base_path,
@@ -532,6 +534,7 @@ def render_specific_query_detail(
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_text: str | None = None,
     trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
 ) -> str:
     from query_doctor_web_ui_specific_query import render_specific_query_detail as _render_specific_query_detail
 
@@ -549,6 +552,7 @@ def render_specific_query_detail(
         optimized_query_state=optimized_query_state,
         trusted_report_html=trusted_report_html,
         trusted_optimized_query=trusted_optimized_query,
+        trusted_optimizer_recommendations=trusted_optimizer_recommendations,
     )
 
 

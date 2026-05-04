@@ -115,6 +115,7 @@ BATCH_REPORT_NAME = "diagnosis.md"
 BATCH_REPORT_PARTIAL_NAME = "diagnosis.partial.md"
 BATCH_REPORT_VALIDATION_MARKER = "diagnosis.validated.json"
 OPTIMIZED_QUERY_NAME = "optimized_query.sql"
+OPTIMIZED_QUERY_RECOMMENDATIONS_NAME = "optimized_query_recommendations.md"
 OPTIMIZED_QUERY_PARTIAL_NAME = "optimized_query.partial.txt"
 OPTIMIZED_QUERY_VALIDATION_MARKER = "optimized_query.validated.json"
 WEB_REPORT_VALIDATION_MODE = "strict"
@@ -2353,6 +2354,11 @@ def render_batch_case_detail_for_request(
     optimized_query_state = load_optimized_query_state(artifact_dir, job_store, batch_case_id=case_id, job=job)
     trusted_report_text = load_validated_batch_case_report(settings, case) if report_state.get("trusted") else None
     trusted_optimized_query = load_validated_optimized_query(artifact_dir) if artifact_dir is not None and optimized_query_state.get("trusted") else None
+    trusted_optimizer_recommendations = (
+        load_validated_optimizer_recommendations(artifact_dir)
+        if artifact_dir is not None and optimized_query_state.get("trusted")
+        else None
+    )
     return render_batch_case_detail_page(
         settings,
         case_id,
@@ -2363,6 +2369,7 @@ def render_batch_case_detail_for_request(
         optimized_query_state=optimized_query_state,
         trusted_report_text=trusted_report_text,
         trusted_optimized_query=trusted_optimized_query,
+        trusted_optimizer_recommendations=trusted_optimizer_recommendations,
         workflow_title=workflow_title,
         list_href=list_href,
         detail_base_path=detail_base_path,
@@ -2397,6 +2404,9 @@ def render_specific_query_detail_for_request(
     optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=validated_query_id, job=job)
     trusted_report_text = load_validated_specific_query_report(case_dir) if report_state.get("trusted") else None
     trusted_optimized_query = load_validated_optimized_query(case_dir) if optimized_query_state.get("trusted") else None
+    trusted_optimizer_recommendations = (
+        load_validated_optimizer_recommendations(case_dir) if optimized_query_state.get("trusted") else None
+    )
     return 200, render_page(
         settings,
         active_nav="query",
@@ -2411,6 +2421,7 @@ def render_specific_query_detail_for_request(
                 optimized_query_state=optimized_query_state,
                 trusted_report_text=trusted_report_text,
                 trusted_optimized_query=trusted_optimized_query,
+                trusted_optimizer_recommendations=trusted_optimizer_recommendations,
             )
         ],
     )
@@ -2524,8 +2535,23 @@ def load_validated_specific_query_report(case_dir: Path) -> str | None:
 def load_validated_optimized_query(case_dir: Path) -> str | None:
     if not optimized_query_validated_exists(case_dir):
         return None
+    marker = read_optimized_query_marker(case_dir)
+    if marker.get("output_kind") == "recommendations_only":
+        return None
     try:
         return (case_dir / OPTIMIZED_QUERY_NAME).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def load_validated_optimizer_recommendations(case_dir: Path) -> str | None:
+    if not optimized_query_validated_exists(case_dir):
+        return None
+    marker = read_optimized_query_marker(case_dir)
+    if marker.get("output_kind") != "recommendations_only":
+        return None
+    try:
+        return (case_dir / OPTIMIZED_QUERY_RECOMMENDATIONS_NAME).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
 
@@ -2696,6 +2722,7 @@ def load_optimized_query_state(
         running_job = job_store.running_query_optimized_query(query_id)
 
     trusted = case_dir is not None and optimized_query_validated_exists(case_dir)
+    marker = read_optimized_query_marker(case_dir) if case_dir is not None and trusted else {}
     partial = case_dir is not None and (case_dir / OPTIMIZED_QUERY_PARTIAL_NAME).is_file()
     source_available = case_dir is not None and case_has_safe_source_sql(case_dir)
     status = "generated" if trusted else "not_run"
@@ -2714,6 +2741,9 @@ def load_optimized_query_state(
         "trusted": trusted,
         "partial": partial,
         "source_available": source_available,
+        "output_kind": marker.get("output_kind") or "sql_draft",
+        "risk_mode": marker.get("risk_mode") or "",
+        "source_scope": marker.get("source_scope") or "",
         "error": job.error if job is not None and job.status == "failed" else "",
         "job_id": state_job.job_id if state_job is not None else "",
         "stage_label": state_job.stage_label if state_job is not None else "",
@@ -2750,6 +2780,14 @@ def text_sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def read_optimized_query_marker(case_dir: Path) -> dict[str, object]:
+    try:
+        marker = json.loads((case_dir / OPTIMIZED_QUERY_VALIDATION_MARKER).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return marker if isinstance(marker, dict) else {}
+
+
 def batch_case_validated_report_exists(case_dir: Path, case: dict[str, object] | None = None) -> bool:
     report_path = case_dir / BATCH_REPORT_NAME
     facts_path = case_dir / "analysis_facts.md"
@@ -2777,13 +2815,13 @@ def batch_case_validated_report_exists(case_dir: Path, case: dict[str, object] |
 
 def optimized_query_validated_exists(case_dir: Path) -> bool:
     draft_path = case_dir / OPTIMIZED_QUERY_NAME
+    recommendations_path = case_dir / OPTIMIZED_QUERY_RECOMMENDATIONS_NAME
     facts_path = case_dir / "analysis_facts.md"
     marker_path = case_dir / OPTIMIZED_QUERY_VALIDATION_MARKER
-    if not draft_path.is_file() or not facts_path.is_file() or not marker_path.is_file():
+    if not facts_path.is_file() or not marker_path.is_file():
         return False
-    try:
-        marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    marker = read_optimized_query_marker(case_dir)
+    if not marker:
         return False
     if marker.get("validated") is not True:
         return False
@@ -2791,10 +2829,21 @@ def optimized_query_validated_exists(case_dir: Path) -> bool:
         return False
     if marker.get("validation_mode") != OPTIMIZED_QUERY_VALIDATION_MODE:
         return False
-    if marker.get("draft") != OPTIMIZED_QUERY_NAME:
-        return False
-    if marker.get("draft_sha256") != file_sha256(draft_path):
-        return False
+    output_kind = marker.get("output_kind") or "sql_draft"
+    if output_kind == "recommendations_only":
+        if marker.get("recommendations") != OPTIMIZED_QUERY_RECOMMENDATIONS_NAME:
+            return False
+        if not recommendations_path.is_file():
+            return False
+        if marker.get("recommendations_sha256") != file_sha256(recommendations_path):
+            return False
+    else:
+        if marker.get("draft") != OPTIMIZED_QUERY_NAME:
+            return False
+        if not draft_path.is_file():
+            return False
+        if marker.get("draft_sha256") != file_sha256(draft_path):
+            return False
     if marker.get("facts_sha256") != file_sha256(facts_path):
         return False
     try:
@@ -2803,7 +2852,8 @@ def optimized_query_validated_exists(case_dir: Path) -> bool:
             return False
         if marker.get("source_sql_sha256") != text_sha256(source_sql.sql):
             return False
-        extract_referenced_tables(draft_path.read_text(encoding="utf-8", errors="replace"))
+        if output_kind != "recommendations_only":
+            extract_referenced_tables(draft_path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, OptimizerSqlError, QueryOptimizationError):
         return False
     return True

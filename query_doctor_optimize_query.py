@@ -32,12 +32,14 @@ from query_doctor_report import (
 
 
 OUTPUT_NAME = "optimized_query.sql"
+RECOMMENDATIONS_NAME = "optimized_query_recommendations.md"
 MARKER_NAME = "optimized_query.validated.json"
 PARTIAL_NAME = "optimized_query.partial.txt"
 MARKER_SCHEMA_VERSION = 1
 VALIDATION_MODE = "strict"
 MAX_SOURCE_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_SOURCE_SQL_BYTES", "262144"))
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
+MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTES", "65536"))
 SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.DOTALL)
 TOP_LEVEL_SHAPE_KEYWORDS = ("GROUP", "ORDER")
 TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")
@@ -45,6 +47,9 @@ JOIN_MODIFIER_KEYWORDS = {"LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS", "S
 CONSERVATIVE_CTE_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_CTE_THRESHOLD", "2"))
 CONSERVATIVE_JOIN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_JOIN_THRESHOLD", "6"))
 CONSERVATIVE_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_TOKEN_THRESHOLD", "1000"))
+RECOMMENDATIONS_ONLY_CTE_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_CTE_THRESHOLD", "5"))
+RECOMMENDATIONS_ONLY_JOIN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_JOIN_THRESHOLD", "10"))
+RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD", "2000"))
 
 
 class QueryOptimizationError(RuntimeError):
@@ -256,6 +261,15 @@ def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
     join_count = len(top_level_join_signature(source_sql))
     token_count = len(tokens)
     set_operator_count = sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS)
+    if cte_count > RECOMMENDATIONS_ONLY_CTE_THRESHOLD:
+        reasons.append("too_many_ctes_for_safe_rewrite")
+    if join_count > RECOMMENDATIONS_ONLY_JOIN_THRESHOLD:
+        reasons.append("too_many_top_level_joins_for_safe_rewrite")
+    if token_count > RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD:
+        reasons.append("sql_payload_too_large_for_safe_rewrite")
+    if reasons:
+        return OptimizerRiskDecision(mode="recommendations_only", reasons=tuple(reasons))
+    reasons = []
     if cte_count > CONSERVATIVE_CTE_THRESHOLD:
         reasons.append("many_ctes")
     if join_count > CONSERVATIVE_JOIN_THRESHOLD:
@@ -457,7 +471,59 @@ INPUT SQL END
 """.strip()
 
 
+def build_recommendations_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
+    candidates = recommendation_candidate_lines(facts_text)
+    digest = build_report_contract_digest(facts_text)
+    candidate_lines = "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
+    reasons = ", ".join(risk_decision.reasons) or "rewrite_too_risky"
+    return f"""
+You are a concise Apache Impala query optimization advisor.
+Return only practical recommendations in Markdown. Do not return SQL.
+
+Safety and scope:
+- Python decided SQL rewrite is too risky for this case.
+- Do not output SELECT, WITH, INSERT, CREATE, DROP, ALTER, REFRESH, INVALIDATE, COMPUTE STATS, SHOW, SET, USE, or code blocks.
+- Do not echo source SQL, local paths, raw profile text, raw metadata, artifacts, credentials, or runtime internals.
+- Use only Python-owned recommendation candidates and deterministic facts.
+- Do not invent table names, column names, join keys, filters, partitions, or business rules.
+- Prefer concrete actions such as collecting stats, reducing projected columns, narrowing filters, splitting a risky query, or reviewing join shape only when supported by facts.
+- Keep the answer under 8 bullets.
+
+PYTHON-OWNED OPTIMIZER MODE BEGIN
+mode: recommendations_only
+python_owned_reasons: {reasons}
+PYTHON-OWNED OPTIMIZER MODE END
+
+PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
+{candidate_lines}
+PYTHON-OWNED RECOMMENDATION CANDIDATES END
+
+PYTHON-OWNED REPORT CONTRACT DIGEST BEGIN
+{json.dumps(digest, ensure_ascii=False, indent=2, sort_keys=True)}
+PYTHON-OWNED REPORT CONTRACT DIGEST END
+
+DETERMINISTIC FACTS BEGIN
+{facts_text}
+DETERMINISTIC FACTS END
+
+INPUT SQL SHAPE CONTEXT BEGIN
+{source_sql}
+INPUT SQL SHAPE CONTEXT END
+""".strip()
+
+
 def optimizer_mode_contract(risk_decision: OptimizerRiskDecision) -> str:
+    if risk_decision.mode == "recommendations_only":
+        reasons = ", ".join(risk_decision.reasons) or "rewrite_too_risky"
+        return "\n".join(
+            [
+                "mode: recommendations_only",
+                f"python_owned_reasons: {reasons}",
+                "rules:",
+                "- Do not produce a SQL draft.",
+                "- Return concise practical optimization recommendations only.",
+            ]
+        )
     if risk_decision.mode == "conservative_rewrite":
         reasons = ", ".join(risk_decision.reasons) or "risk_noted"
         return "\n".join(
@@ -484,7 +550,7 @@ def optimizer_mode_contract(risk_decision: OptimizerRiskDecision) -> str:
 
 
 def optimizer_temperature(requested_temperature: float, risk_decision: OptimizerRiskDecision) -> float:
-    if risk_decision.mode == "conservative_rewrite":
+    if risk_decision.mode in {"conservative_rewrite", "recommendations_only"}:
         return 0.0
     return requested_temperature
 
@@ -503,6 +569,18 @@ def extract_draft_sql(generated: str) -> str:
         raise QueryOptimizationError("Optimized query draft is empty.")
     enforce_text_size(draft, MAX_DRAFT_SQL_BYTES)
     return draft
+
+
+def extract_recommendations(generated: str) -> str:
+    text = generated.strip()
+    if not text:
+        raise QueryOptimizationError("Optimizer recommendations are empty.")
+    enforce_text_size(text, MAX_RECOMMENDATIONS_BYTES)
+    lowered = text.lower()
+    forbidden = ("```", "select ", "insert ", "create ", "drop ", "alter ", "refresh ", "invalidate ", "compute stats", "show ", "set ", "use ")
+    if any(token in lowered for token in forbidden):
+        raise QueryOptimizationError("Optimizer recommendations contain SQL-like or unsafe output.")
+    return text
 
 
 def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
@@ -573,8 +651,36 @@ def write_marker(
     draft_path = case_dir / output_name
     marker = {
         "schema_version": MARKER_SCHEMA_VERSION,
+        "output_kind": "sql_draft",
         "draft": output_name,
         "draft_sha256": file_sha256(draft_path),
+        "facts_sha256": text_sha256(facts_text),
+        "source_sql_sha256": text_sha256(source_sql),
+        "risk_mode": risk_decision.mode,
+        "risk_reasons": list(risk_decision.reasons),
+        "source_scope": source_scope,
+        "validated": True,
+        "validation_mode": VALIDATION_MODE,
+        "source": "query_doctor_optimize_query",
+    }
+    (case_dir / MARKER_NAME).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
+
+
+def write_recommendations_marker(
+    case_dir: Path,
+    recommendations_name: str,
+    *,
+    source_sql: str,
+    facts_text: str,
+    source_scope: str,
+    risk_decision: OptimizerRiskDecision,
+) -> None:
+    recommendations_path = case_dir / recommendations_name
+    marker = {
+        "schema_version": MARKER_SCHEMA_VERSION,
+        "output_kind": "recommendations_only",
+        "recommendations": recommendations_name,
+        "recommendations_sha256": file_sha256(recommendations_path),
         "facts_sha256": text_sha256(facts_text),
         "source_sql_sha256": text_sha256(source_sql),
         "risk_mode": risk_decision.mode,
@@ -622,6 +728,32 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PROGRESS_PREFIX} optimized query scope: {source_sql.scope}", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimizer risk mode: {risk_decision.mode}", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
+        if risk_decision.mode == "recommendations_only":
+            recommendations_prompt = build_recommendations_prompt(
+                source_sql=source_sql.sql,
+                facts_text=facts_text,
+                risk_decision=risk_decision,
+            )
+            generated = stream_ollama_report(
+                prompt=recommendations_prompt,
+                model=args.model,
+                ollama_url=args.ollama_url,
+                temperature=optimizer_temperature(args.temperature, risk_decision),
+                keep_alive=args.keep_alive,
+            )
+            recommendations = extract_recommendations(generated)
+            recommendations_path = case_dir / RECOMMENDATIONS_NAME
+            recommendations_path.write_text(recommendations.rstrip() + "\n", encoding="utf-8")
+            write_recommendations_marker(
+                case_dir,
+                RECOMMENDATIONS_NAME,
+                source_sql=source_sql.sql,
+                facts_text=facts_text,
+                source_scope=source_sql.scope,
+                risk_decision=risk_decision,
+            )
+            print(f"{PROGRESS_PREFIX} optimizer recommendations done", file=sys.stderr)
+            return 0
         generated = stream_ollama_report(
             prompt=prompt,
             model=args.model,
