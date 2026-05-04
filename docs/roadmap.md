@@ -140,6 +140,9 @@ Goal: evolve from query-profile diagnostics into a broader diagnostic framework
 that can combine profiles, metrics, logs and metadata without weakening the
 fact boundary.
 
+The current cluster-metrics audit and phased implementation plan live in
+`docs/cluster-metrics-roadmap-audit.md`.
+
 Current signal families:
 
 - Profile facts: implemented for Apache Impala runtime profiles.
@@ -184,6 +187,8 @@ Non-goals until contracts exist:
 
 Goal: improve diagnostic precision, prioritization quality and recommendation
 usefulness with measurable Python-owned signals.
+
+The current deterministic analyzer audit lives in `docs/analyzer-audit.md`.
 
 Highest priority:
 
@@ -284,10 +289,91 @@ Adding any engine requires:
 - no raw SQL/profile/metadata exposure
 - no speculative root-cause claims
 
+## Repository structure roadmap
+
+Goal: move from the current prototype-like repo root layout toward a
+production-like package structure without changing behavior or weakening safety
+boundaries.
+
+Current problem:
+
+- too many runtime modules live directly in the repository root;
+- large files such as the web server, report writer, analyzer, and CM collector
+  are harder to review safely;
+- route orchestration, subprocess command construction, trust checks, parsing,
+  rendering, and source-provider logic are sometimes too close together;
+- large files slow down human review and make Codex/code-assistant context less
+  effective.
+
+Planned direction:
+
+- introduce a package layout such as `query_doctor/` while keeping existing CLI
+  entry-point filenames as thin compatibility wrappers during migration;
+- prefer a split-first approach when a feature naturally touches a large file:
+  if extracting a small focused module is low-risk and makes the feature easier
+  to review, do that before adding more logic to the large file;
+- split by product responsibility: collectors, analyzers, metrics, metadata,
+  reporting, validation, optimizer, web routes, web jobs, UI presenters, and
+  safety/redaction;
+- keep safety-critical boundaries explicit: raw collection, normalized facts,
+  LLM prompt/report writing, deterministic validation, and browser rendering
+  should remain separate modules;
+- reduce large files incrementally to reviewable modules, aiming for files that
+  fit comfortably in one focused read and have a single reason to change;
+- use rough size targets, not hard limits: ordinary modules should usually stay
+  around 300-600 lines, complex parser/analyzer modules around 800-1000 lines,
+  and larger files should have an explicit reason plus a split plan;
+- move tests alongside the new module boundaries or keep focused test files that
+  mirror those boundaries;
+- keep root-level CLI wrappers thin as package modules take ownership of real
+  implementation code;
+- do mechanical moves separately from behavior changes so diffs remain
+  auditable.
+
+Priority split candidates:
+
+- `query_doctor_web_server.py`: split routes, job orchestration, command
+  builders, trusted artifact loading, and case resolution;
+- `query_doctor_report.py`: split prompt contract, report sanitizer,
+  validation, recommendation candidates, and streaming client code;
+- `analyze_profile_digest.py`: split profile parsing, findings, backend-tail
+  analysis, metrics correlation, and facts rendering;
+- `query_doctor_collect_cm_profiles.py`: split CM HTTP/provider code, query
+  discovery, profile collection, time-series collection, redaction, and writing;
+- optimizer modules: keep SQL parsing, risk classification, validation,
+  fallback recommendations, and web presentation independently testable.
+
+Engineering guidance:
+
+- define signal contracts before adding new providers, metrics, logs, or
+  cluster-wide diagnostic claims;
+- maintain a Root-Cause Claim Registry with allowed claim types, required facts,
+  and rejected/unknown states;
+- maintain a small anonymized golden-case corpus for analyzer, report,
+  optimizer, metrics, and browser-safety regression checks;
+- treat active docs as part of safety-sensitive completion: roadmap, handoff,
+  safety contract, changelog, and Help should be updated when their behavior or
+  guidance changes;
+- keep one behavior surface per commit where practical: metrics catalog,
+  analyzer facts, UI rendering, report prompt/validator, and source collection
+  should normally land separately;
+- every new browser-visible block needs a trust checklist: no raw SQL, raw
+  profile, raw metadata, raw metrics, local paths, model/runtime internals, or
+  raw artifact filenames;
+- maintain explicit bounds and timing visibility for Recent scan, metrics
+  collection, metadata collection, and LLM report generation.
+
+Non-goals for this track:
+
+- no broad package reorganization mixed with feature work;
+- no route, CLI flag, config, trusted-report, or browser-safety behavior changes
+  during mechanical moves;
+- no runtime engine selector or fake multi-engine support as part of cleanup.
+
 ## Non-goals for now
 
 - plugin framework
-- broad package reorganization
+- broad unscoped package reorganization mixed with feature work
 - runtime engine selector
 - claiming support for engines without tests
 - executing user SQL

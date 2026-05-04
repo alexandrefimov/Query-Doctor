@@ -672,7 +672,13 @@ def strip_markdown_section(text: str, heading: str) -> str:
 
 def facts_text_for_model_prompt(facts_text: str) -> str:
     """Return deterministic facts that are enabled for LLM-written narrative."""
-    prompt_facts = strip_markdown_section(facts_text, TABLE_METADATA_CONTEXT_HEADING)
+    safe_lines = [
+        line
+        for line in facts_text.splitlines()
+        if not line.strip().lower().startswith("source digest:")
+    ]
+    prompt_facts = "\n".join(safe_lines)
+    prompt_facts = strip_markdown_section(prompt_facts, TABLE_METADATA_CONTEXT_HEADING)
     return strip_markdown_section(prompt_facts, CM_TIMESERIES_CONTEXT_HEADING)
 
 

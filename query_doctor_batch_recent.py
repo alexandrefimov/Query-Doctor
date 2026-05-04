@@ -1516,7 +1516,7 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
         reasons.append(f"host-tail candidates: {host_tail_candidates}")
     duration_sec = components["duration_sec"]
     if isinstance(duration_sec, (int, float)) and duration_sec >= 1800 and host_tail_candidates > 0:
-        score += 4
+        score += 8
         reasons.append(f"long-running query with host tail: {duration_sec / 60:.1f}m")
     if components["backend_data_skew"] is True:
         score += 2
@@ -1555,16 +1555,20 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
 
 
 def extract_scoring_components(facts: str) -> dict[str, object]:
+    summary_facts = scoring_section_text(facts, "## Summary")
+    backend_facts = scoring_section_text(facts, "## Backend / Host Tail Evidence")
+    cm_query_facts = scoring_section_text(facts, "## CM Query Context")
+    cm_correlation_facts = scoring_section_text(facts, "## CM Metrics Correlation")
     return {
-        "cardinality_anomaly_count": fact_int(facts, "Cardinality anomalies"),
-        "memory_anomaly_count": fact_int(facts, "Memory anomalies"),
-        "zero_row_estimate_gap_count": fact_int(facts, "Zero/unknown row estimate gaps"),
-        "zero_memory_estimate_gap_count": fact_int(facts, "Zero/unknown memory estimate gaps"),
-        "backend_data_skew": backend_data_skew_value(facts),
-        "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(facts),
-        "host_tail_candidate_count": fact_int(facts, "host tail candidates"),
-        "duration_sec": duration_seconds_value(facts),
-        "cm_metrics_correlated_signals": fact_int(facts, "correlated_signals"),
+        "cardinality_anomaly_count": fact_int(summary_facts, "Cardinality anomalies"),
+        "memory_anomaly_count": fact_int(summary_facts, "Memory anomalies"),
+        "zero_row_estimate_gap_count": fact_int(summary_facts, "Zero/unknown row estimate gaps"),
+        "zero_memory_estimate_gap_count": fact_int(summary_facts, "Zero/unknown memory estimate gaps"),
+        "backend_data_skew": backend_data_skew_value(backend_facts),
+        "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(backend_facts),
+        "host_tail_candidate_count": fact_int(backend_facts, "host tail candidates"),
+        "duration_sec": duration_seconds_value(cm_query_facts),
+        "cm_metrics_correlated_signals": fact_int(cm_correlation_facts, "correlated_signals"),
     }
 
 
@@ -1660,6 +1664,15 @@ def section_text(text: str, heading: str) -> str:
     if heading not in text:
         return ""
     return text.split(heading, 1)[1].split("\n## ", 1)[0]
+
+
+def scoring_section_text(text: str, heading: str) -> str:
+    section = section_text(text, heading)
+    if section:
+        return section
+    if text.lstrip().startswith("## ") or "\n## " in text:
+        return ""
+    return text
 
 
 def build_summary(

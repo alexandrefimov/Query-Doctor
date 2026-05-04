@@ -39,6 +39,7 @@ from query_doctor_config_contract import (
     load_local_config,
     normalize_config_key as normalize_local_config_key,
 )
+from query_doctor_metrics_catalog import CM_TIMESERIES_MAPPINGS
 
 DEFAULT_SINCE_HOURS = 24
 DEFAULT_LIMIT = 20
@@ -248,32 +249,13 @@ class CMTimeSeriesQuery:
     tsquery: str
 
 
-CM_TIMESERIES_QUERY_ALLOWLIST = (
+CM_TIMESERIES_QUERY_ALLOWLIST = tuple(
     CMTimeSeriesQuery(
-        query_id="impala_daemon_memory",
-        label="Impala daemon memory pressure",
-        tsquery="select mem_rss where roleType=IMPALAD",
-    ),
-    CMTimeSeriesQuery(
-        query_id="host_cpu_user",
-        label="Host CPU user rate",
-        tsquery="select cpu_user_rate",
-    ),
-    CMTimeSeriesQuery(
-        query_id="host_cpu_system",
-        label="Host CPU system rate",
-        tsquery="select cpu_system_rate",
-    ),
-    CMTimeSeriesQuery(
-        query_id="host_memory_used",
-        label="Host memory used",
-        tsquery="select physical_memory_used",
-    ),
-    CMTimeSeriesQuery(
-        query_id="host_network_io",
-        label="Host network IO pressure",
-        tsquery="select bytes_receive_rate, bytes_transmit_rate",
-    ),
+        query_id=mapping.query_id,
+        label=mapping.label,
+        tsquery=mapping.tsquery,
+    )
+    for mapping in CM_TIMESERIES_MAPPINGS
 )
 
 
