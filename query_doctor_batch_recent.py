@@ -1004,6 +1004,8 @@ def collect_case_profile(
         ]
         if config.collect_cm_timeseries:
             cmd.append("--collect-cm-timeseries")
+        else:
+            cmd.append("--no-collect-cm-timeseries")
         append_cm_config_args(cmd, config)
         result = run_subprocess(cmd, cwd=repo_root, env=env)
         if result.returncode != 0:

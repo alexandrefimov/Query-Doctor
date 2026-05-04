@@ -588,8 +588,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Collect bounded allowlisted CM time-series summaries for one explicit query. "
+            "This is enabled by default for explicit single-query collection. "
             "Raw time-series responses are not written."
         ),
+    )
+    parser.add_argument(
+        "--no-collect-cm-timeseries",
+        action="store_false",
+        dest="collect_cm_timeseries",
+        help="Disable CM time-series summaries for this explicit query collection.",
     )
     parser.add_argument(
         "--cm-timeseries-padding-sec",
@@ -905,12 +912,9 @@ def build_config(
             config_values=config_values,
             default=False,
         ),
-        collect_cm_timeseries=bool_setting(
-            "collect_cm_timeseries",
-            cli_value=args.collect_cm_timeseries,
-            config_values=config_values,
-            default=False,
-        ),
+        collect_cm_timeseries=bool(args.collect_cm_timeseries)
+        if args.collect_cm_timeseries is not None
+        else True,
         cm_timeseries_padding_sec=int_setting(
             "cm_timeseries_padding_sec",
             cli_value=args.cm_timeseries_padding_sec,
