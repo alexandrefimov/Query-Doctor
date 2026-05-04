@@ -112,6 +112,21 @@ class RecentScanMetadataView:
 
 
 @dataclass(frozen=True)
+class RecentScanCmMetricSignalView:
+    label: str
+    status: Any
+    basis: Any
+
+
+@dataclass(frozen=True)
+class RecentScanCmMetricsView:
+    unavailable: bool
+    summary_items: tuple[tuple[str, Any], ...]
+    signals: tuple[RecentScanCmMetricSignalView, ...]
+    limitations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any
@@ -128,6 +143,7 @@ class RecentScanCaseDetailView:
     technical_fields: tuple[tuple[str, Any], ...]
     score_reasons: tuple[str, ...]
     metadata: RecentScanMetadataView
+    cm_metrics: RecentScanCmMetricsView
     report_action: ReportActionView
     score_severity: str
 
@@ -199,6 +215,7 @@ def present_recent_scan_case_detail(
     case_id: str,
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
+    cm_metrics_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
@@ -258,6 +275,7 @@ def present_recent_scan_case_detail(
         ),
         score_reasons=tuple(safe_display_text(reason) for reason in case.get("score_reasons") or [] if reason is not None),
         metadata=present_recent_scan_metadata(case, metadata_facts),
+        cm_metrics=present_recent_scan_cm_metrics(cm_metrics_facts),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )
@@ -338,6 +356,38 @@ def present_metadata_table(table: dict[str, Any]) -> RecentScanMetadataTableView
         partition_columns=safe_display_value(table.get("partition columns")),
         file_format=safe_display_value(table.get("file format")),
         limitations=metadata_fact_limitations(table, safe_statements),
+    )
+
+
+def present_recent_scan_cm_metrics(cm_metrics_facts: dict[str, Any] | None) -> RecentScanCmMetricsView:
+    if not cm_metrics_facts:
+        return RecentScanCmMetricsView(unavailable=True, summary_items=(), signals=(), limitations=())
+    summary = cm_metrics_facts.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    raw_signals = cm_metrics_facts.get("signals")
+    signals = [signal for signal in raw_signals if isinstance(signal, dict)] if isinstance(raw_signals, list) else []
+    raw_limitations = cm_metrics_facts.get("limitations")
+    limitations = raw_limitations if isinstance(raw_limitations, list) else []
+    summary_items = (
+        ("status", safe_display_value(summary.get("status"))),
+        ("coverage", safe_display_value(summary.get("coverage"))),
+    )
+    signal_views = tuple(
+        RecentScanCmMetricSignalView(
+            label=safe_display_text(signal.get("label")),
+            status=safe_display_value(signal.get("status")),
+            basis=safe_display_value(signal.get("basis")),
+        )
+        for signal in signals
+    )
+    limitation_views = tuple(safe_display_text(item) for item in limitations if item is not None)
+    unavailable = not signal_views and all(value in {None, "", "unknown"} for _, value in summary_items)
+    return RecentScanCmMetricsView(
+        unavailable=unavailable,
+        summary_items=summary_items,
+        signals=signal_views,
+        limitations=limitation_views,
     )
 
 

@@ -1867,21 +1867,39 @@ def start_specific_query_report_job(
     case = build_query_id_summary_case(validated_query_id, case_dir)
     if not case_allows_llm_report(case):
         metadata_facts = load_specific_query_metadata_facts(case_dir)
+        cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store)
         return 400, render_page(
             settings,
             active_nav="query",
             show_run_panel=False,
-            extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts, report_state=report_state)],
+            extra_sections=[
+                render_specific_query_detail(
+                    validated_query_id,
+                    case,
+                    metadata_facts,
+                    cm_metrics_facts,
+                    report_state=report_state,
+                )
+            ],
         )
     if job_store.running_query_report(validated_query_id) is not None:
         metadata_facts = load_specific_query_metadata_facts(case_dir)
+        cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store)
         return 400, render_page(
             settings,
             active_nav="query",
             show_run_panel=False,
-            extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts, report_state=report_state)],
+            extra_sections=[
+                render_specific_query_detail(
+                    validated_query_id,
+                    case,
+                    metadata_facts,
+                    cm_metrics_facts,
+                    report_state=report_state,
+                )
+            ],
         )
 
     job = job_store.create_query_report(validated_query_id)
@@ -1941,6 +1959,7 @@ def start_specific_query_optimized_query_job(
     if not case_has_safe_source_sql(case_dir):
         case = build_query_id_summary_case(validated_query_id, case_dir)
         metadata_facts = load_specific_query_metadata_facts(case_dir)
+        cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=validated_query_id)
         return 400, render_page(
             settings,
@@ -1951,6 +1970,7 @@ def start_specific_query_optimized_query_job(
                     validated_query_id,
                     case,
                     metadata_facts,
+                    cm_metrics_facts,
                     optimized_query_state=optimized_query_state,
                 )
             ],
@@ -2274,6 +2294,7 @@ def render_batch_case_detail_for_request(
     job: WebJobSnapshot | None = None,
 ) -> str:
     metadata_facts = load_batch_case_metadata_facts(settings, case)
+    cm_metrics_facts = load_batch_case_cm_metrics_facts(settings, case)
     report_state = load_batch_case_report_state(settings, case_id, case, job_store, job=job)
     artifact_dir = resolve_batch_case_report_dir(settings, case)
     optimized_query_state = load_optimized_query_state(artifact_dir, job_store, batch_case_id=case_id, job=job)
@@ -2284,6 +2305,7 @@ def render_batch_case_detail_for_request(
         case_id,
         case,
         metadata_facts,
+        cm_metrics_facts,
         report_state=report_state,
         optimized_query_state=optimized_query_state,
         trusted_report_text=trusted_report_text,
@@ -2313,6 +2335,7 @@ def render_specific_query_detail_for_request(
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)
     metadata_facts = load_specific_query_metadata_facts(case_dir)
+    cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
     report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store, job=job)
     optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=validated_query_id, job=job)
     trusted_report_text = load_validated_specific_query_report(case_dir) if report_state.get("trusted") else None
@@ -2326,6 +2349,7 @@ def render_specific_query_detail_for_request(
                 validated_query_id,
                 case,
                 metadata_facts,
+                cm_metrics_facts,
                 report_state=report_state,
                 optimized_query_state=optimized_query_state,
                 trusted_report_text=trusted_report_text,
@@ -2350,11 +2374,12 @@ def render_specific_query_report_for_request(settings: WebSettings, query_id: st
     report_text = load_validated_specific_query_report(case_dir)
     if report_text is None:
         metadata_facts = load_specific_query_metadata_facts(case_dir)
+        cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         return 404, render_page(
             settings,
             active_nav="query",
             show_run_panel=False,
-            extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts)],
+            extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts, cm_metrics_facts)],
         )
     return 200, render_specific_query_report_page(settings, validated_query_id, case, report_text)
 
@@ -2400,6 +2425,14 @@ def load_specific_query_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
         if context_facts:
             return context_facts
     return fallback_facts
+
+
+def load_specific_query_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_cm_metrics_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
 
 
 def load_validated_batch_case_report(settings: WebSettings, case: dict[str, object]) -> str | None:
@@ -2473,6 +2506,17 @@ def load_batch_case_metadata_facts(settings: WebSettings, case: dict[str, object
         if context_facts:
             return context_facts
     return fallback_facts
+
+
+def load_batch_case_cm_metrics_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
+        return None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_cm_metrics_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
 
 
 def load_batch_case_report_state(
@@ -2763,6 +2807,18 @@ def load_batch_case_analysis_metadata_facts(case_dir: Path) -> dict[str, Any] | 
     return parse_table_metadata_context_facts(text)
 
 
+def load_case_analysis_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
+    try:
+        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
+        facts_path.relative_to(case_dir)
+        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
+            return None
+        text = facts_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return None
+    return parse_cm_metrics_facts(text)
+
+
 def load_batch_case_impala_context_facts(case_dir: Path) -> dict[str, Any] | None:
     for candidate in (
         case_dir / "impala_context.json",
@@ -2884,6 +2940,70 @@ def parse_table_metadata_context_facts(text: str) -> dict[str, Any] | None:
         "summary": summary,
         "tables": tables,
         "statement_counts": metadata_statement_counts(tables),
+    }
+
+
+CM_METRIC_SIGNAL_LABELS = {
+    "host_cpu_pressure": "Host CPU pressure",
+    "daemon_memory_growth": "Daemon memory growth",
+    "daemon_memory_pressure": "Daemon memory pressure",
+    "network_io_spike": "Network I/O spike",
+}
+
+
+def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
+    in_section = False
+    in_limitations = False
+    summary: dict[str, str] = {}
+    signal_values: dict[str, dict[str, str]] = {
+        key: {"label": label}
+        for key, label in CM_METRIC_SIGNAL_LABELS.items()
+    }
+    limitations: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            in_section = line == "## CM Metrics Facts"
+            in_limitations = False
+            continue
+        if not in_section:
+            continue
+        if line.startswith("### "):
+            in_limitations = line == "### CM metrics limitations"
+            continue
+        if not line.startswith("- "):
+            continue
+        bullet = line[2:].strip()
+        if in_limitations:
+            if bullet:
+                limitations.append(clean_metadata_fact_value(bullet))
+            continue
+        if ": " not in bullet:
+            continue
+        key, value = bullet.split(": ", 1)
+        key = key.strip()
+        value = clean_metadata_fact_value(value)
+        if key in {"status", "coverage"}:
+            summary[key] = value
+            continue
+        if key.endswith("_basis"):
+            signal_key = key.removesuffix("_basis")
+            if signal_key in signal_values:
+                signal_values[signal_key]["basis"] = value
+            continue
+        if key in signal_values:
+            signal_values[key]["status"] = value
+    signals = [
+        signal
+        for signal in signal_values.values()
+        if signal.get("status") or signal.get("basis")
+    ]
+    if not summary and not signals and not limitations:
+        return None
+    return {
+        "summary": summary,
+        "signals": signals,
+        "limitations": limitations[:5],
     }
 
 

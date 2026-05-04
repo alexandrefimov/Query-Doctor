@@ -82,7 +82,7 @@ def render_help_content() -> str:
 </ul>
 
 <h2 id="details-actions">Details, LLM Report и Query LLM optimizer</h2>
-<p>Details показывает безопасную сводку по одному запросу. <strong>Analysis details</strong> свернут по умолчанию и содержит deterministic runtime, metadata и technical signals. <strong>LLM Report</strong> доступен для запросов не из Good group и рендерится прямо на странице только после validation. <strong>Query LLM optimizer</strong> — отдельное ручное действие для исходника, который уже собран Query Doctor: он может использовать SELECT/WITH или извлеченный SELECT/WITH payload из поддержанного INSERT/CTAS, но trusted draft всегда должен быть безопасным SELECT/WITH без выполнения SQL.</p>
+<p>Details показывает безопасную сводку по одному запросу. <strong>Analysis details</strong> свернут по умолчанию и содержит deterministic runtime, CM metrics, metadata и technical signals. <strong>LLM Report</strong> доступен для запросов не из Good group и рендерится прямо на странице только после validation. <strong>Query LLM optimizer</strong> — отдельное ручное действие для исходника, который уже собран Query Doctor: он может использовать SELECT/WITH или извлеченный SELECT/WITH payload из поддержанного INSERT/CTAS, но trusted draft всегда должен быть безопасным SELECT/WITH без выполнения SQL.</p>
 <p>Если LLM output или optimizer draft не проходит deterministic validation, partial output скрывается и показывается только безопасный статус failure.</p>
 
 <details>

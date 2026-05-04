@@ -6,6 +6,7 @@ import html
 from typing import Any
 
 from query_doctor_web_ui_recent_scan_presenter import (
+    RecentScanCmMetricsView,
     RecentScanCaseDetailView,
     RecentScanMetadataTableView,
     RecentScanMetadataView,
@@ -49,13 +50,20 @@ def render_batch_case_detail(
     case_id: str,
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
+    cm_metrics_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
 ) -> str:
-    view = present_recent_scan_case_detail(case_id, case, metadata_facts, report_state=report_state)
+    view = present_recent_scan_case_detail(
+        case_id,
+        case,
+        metadata_facts,
+        cm_metrics_facts,
+        report_state=report_state,
+    )
     return (
         "<section class=\"panel batch-panel\" aria-label=\"Finished Queries case details\">"
         "<div class=\"breadcrumb\"><a href=\"/#recent-results\">Finished Queries</a><span>/</span>"
@@ -149,6 +157,7 @@ def render_analysis_details(
         "<div class=\"report-body analysis-details-body\">"
         f"{render_score_reason_explanations(view)}"
         f"{render_runtime_signals(view)}"
+        f"{render_cm_metrics_section(view.cm_metrics)}"
         f"{render_metadata_facts_section(case, metadata_facts, view=view.metadata)}"
         f"{render_technical_details(view)}"
         "</div>"
@@ -173,6 +182,48 @@ def render_runtime_signals(case_or_view: dict[str, Any] | RecentScanCaseDetailVi
         "<details class=\"analysis-subdetails\" aria-label=\"Runtime signals\">"
         "<summary>Runtime signals</summary>"
         f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
+        "</details>"
+    )
+
+
+def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
+    if view.unavailable:
+        return ""
+    summary_rows = metadata_rows(list(view.summary_items))
+    signal_rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(signal.label)}</td>"
+        f"<td>{cm_metric_status_badge(signal.status)}</td>"
+        f"<td>{escape_value(signal.basis)}</td>"
+        "</tr>"
+        for signal in view.signals
+    )
+    if not signal_rows:
+        signal_rows = "<tr><td colspan=\"3\" class=\"empty-cell\">metric signals are not available</td></tr>"
+    limitations_html = ""
+    if view.limitations:
+        limitations_html = (
+            "<ul class=\"reason-list\">"
+            + "".join(
+                "<li class=\"reason-card\"><p>"
+                f"{html.escape(limitation)}"
+                "</p></li>"
+                for limitation in view.limitations
+            )
+            + "</ul>"
+        )
+    return (
+        "<details class=\"analysis-subdetails\" aria-label=\"CM metrics\">"
+        "<summary>CM metrics</summary>"
+        "<div class=\"report-body\">"
+        "<p>Deterministic CM metric facts for the query window. Observed signals are runtime context, not standalone root causes.</p>"
+        f"<div class=\"meta-list\">{summary_rows}</div>"
+        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        "<thead><tr><th>Metric</th><th>Status</th><th>Basis</th></tr></thead>"
+        f"<tbody>{signal_rows}</tbody>"
+        "</table></div>"
+        f"{limitations_html}"
+        "</div>"
         "</details>"
     )
 
@@ -770,6 +821,20 @@ def status_badge(value: Any) -> SafeHtml:
     elif normalized == "failed":
         class_name = "batch-status--failed"
     elif normalized in {"skipped", "not_run", "not_observed", "unknown"}:
+        class_name = "batch-status--neutral"
+    else:
+        class_name = "batch-status--warning"
+    return badge_html(text, class_name)
+
+
+def cm_metric_status_badge(value: Any) -> SafeHtml:
+    text = "unknown" if value is None else str(value)
+    normalized = text.lower()
+    if normalized in {"available", "ok"}:
+        class_name = "batch-status--ok"
+    elif normalized == "observed":
+        class_name = "batch-status--warning"
+    elif normalized in {"not_observed", "unknown", "unavailable"}:
         class_name = "batch-status--neutral"
     else:
         class_name = "batch-status--warning"

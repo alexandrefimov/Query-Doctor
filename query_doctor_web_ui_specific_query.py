@@ -82,12 +82,19 @@ def render_specific_query_detail(
     query_id: str,
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
+    cm_metrics_facts: dict[str, Any] | None = None,
     report_state: dict[str, Any] | None = None,
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
 ) -> str:
-    view = present_recent_scan_case_detail("specific-query", case, metadata_facts, report_state=report_state)
+    view = present_recent_scan_case_detail(
+        "specific-query",
+        case,
+        metadata_facts,
+        cm_metrics_facts,
+        report_state=report_state,
+    )
     escaped_query_id = html.escape(query_id)
     report_url = specific_query_report_href(query_id)
     return (
