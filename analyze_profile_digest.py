@@ -1809,6 +1809,183 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def finding_ids(analysis: dict[str, Any]) -> set[str]:
+    return {str(finding.get("id")) for finding in analysis.get("findings") or [] if isinstance(finding, dict)}
+
+
+def has_memory_profile_evidence(analysis: dict[str, Any]) -> bool:
+    thresholds = analysis.get("thresholds", {})
+    large_bytes_threshold = float(thresholds.get("large_bytes_threshold") or DEFAULT_LARGE_BYTES_THRESHOLD)
+    if analysis.get("memory_anomalies") or analysis.get("zero_memory_estimate_gaps"):
+        return True
+    if analysis.get("spill_nonzero_evidence_lines"):
+        return True
+    for op in analysis.get("top_operators_by_peak_memory") or []:
+        if (op.get("peak_mem_bytes") or 0) >= large_bytes_threshold:
+            return True
+    return False
+
+
+def has_network_profile_evidence(analysis: dict[str, Any]) -> bool:
+    return "large_intermediate_or_exchange_traffic" in finding_ids(analysis)
+
+
+def has_cpu_profile_evidence(analysis: dict[str, Any]) -> bool:
+    ids = finding_ids(analysis)
+    if ids.intersection(
+        {
+            "cardinality_estimate_errors",
+            "zero_row_estimate_gaps",
+            "join_bottleneck",
+            "sort_bottleneck",
+            "analytic_bottleneck",
+        }
+    ):
+        return True
+    thresholds = analysis.get("thresholds", {})
+    slow_operator_ms = float(thresholds.get("slow_operator_ms") or 0)
+    return any((op.get("time_ms") or 0) >= slow_operator_ms for op in analysis.get("top_operators_by_time") or [])
+
+
+def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
+    context = analysis.get("cm_timeseries_context")
+    if not context:
+        return {
+            "status": "unavailable",
+            "signals": [],
+            "guardrail": "CM metrics context was not collected for this case.",
+        }
+
+    facts = build_cm_metrics_facts(context)
+    if facts["status"] not in {"available", "partial"}:
+        return {
+            "status": facts["status"],
+            "signals": [],
+            "guardrail": "CM metrics are unavailable and do not affect analysis scoring or actions.",
+        }
+
+    memory_support = has_memory_profile_evidence(analysis)
+    network_support = has_network_profile_evidence(analysis)
+    cpu_support = has_cpu_profile_evidence(analysis)
+
+    def signal_row(
+        key: str,
+        *,
+        title: str,
+        profile_support: bool,
+        correlated_reason: str,
+        context_reason: str,
+    ) -> dict[str, str]:
+        signal = facts[key]
+        metric_status = signal["status"]
+        if metric_status == "observed" and profile_support:
+            return {
+                "key": key,
+                "title": title,
+                "metric_status": metric_status,
+                "correlation_status": "correlated",
+                "strength": "moderate",
+                "basis": signal["basis"],
+                "interpretation": correlated_reason,
+            }
+        if metric_status == "observed":
+            return {
+                "key": key,
+                "title": title,
+                "metric_status": metric_status,
+                "correlation_status": "context_only",
+                "strength": "weak",
+                "basis": signal["basis"],
+                "interpretation": context_reason,
+            }
+        return {
+            "key": key,
+            "title": title,
+            "metric_status": metric_status,
+            "correlation_status": metric_status,
+            "strength": "none",
+            "basis": signal["basis"],
+            "interpretation": "No deterministic optimizer or report action is derived from this metric status.",
+        }
+
+    signals = [
+        signal_row(
+            "host_cpu_pressure",
+            title="Host CPU pressure",
+            profile_support=cpu_support,
+            correlated_reason=(
+                "CPU pressure is correlated with parsed profile work; use it only to prioritize reducing "
+                "row growth, expensive operators, or intermediate payload already shown by profile facts."
+            ),
+            context_reason=(
+                "CPU pressure was observed, but parsed profile facts did not identify a matching SQL/operator target."
+            ),
+        ),
+        signal_row(
+            "daemon_memory_growth",
+            title="Daemon memory growth",
+            profile_support=memory_support,
+            correlated_reason=(
+                "Daemon memory growth is correlated with parsed memory, spill, or high-memory operator evidence; "
+                "prioritize reducing intermediate memory footprint."
+            ),
+            context_reason=(
+                "Daemon memory growth was observed, but parsed profile facts did not identify memory-heavy SQL evidence."
+            ),
+        ),
+        signal_row(
+            "daemon_memory_pressure",
+            title="Daemon memory pressure",
+            profile_support=memory_support,
+            correlated_reason=(
+                "Daemon memory pressure is correlated with parsed memory evidence; treat it as runtime context, "
+                "not standalone proof."
+            ),
+            context_reason="Daemon memory pressure is observed only as runtime context without matching profile evidence.",
+        ),
+        signal_row(
+            "network_io_spike",
+            title="Network I/O spike",
+            profile_support=network_support,
+            correlated_reason=(
+                "Network I/O spike is correlated with parsed large exchange/data movement evidence; "
+                "prioritize reducing exchange rows or payload."
+            ),
+            context_reason=(
+                "Network I/O spike was observed, but parsed profile facts did not show large exchange/data movement."
+            ),
+        ),
+    ]
+    correlated = sum(1 for signal in signals if signal["correlation_status"] == "correlated")
+    context_only = sum(1 for signal in signals if signal["correlation_status"] == "context_only")
+    return {
+        "status": facts["status"],
+        "coverage": f"{facts['ok_metrics']}/{facts['total_metrics']} metrics ok, {facts['total_points']} points",
+        "signals": signals,
+        "correlated_signals": correlated,
+        "context_only_signals": context_only,
+        "guardrail": "CM metrics can strengthen profile-supported evidence, but they are not standalone root-cause proof.",
+    }
+
+
+def cm_metric_correlation_signal(analysis: dict[str, Any], key: str) -> dict[str, Any] | None:
+    correlation = analysis.get("cm_metrics_correlation") or {}
+    for signal in correlation.get("signals") or []:
+        if isinstance(signal, dict) and signal.get("key") == key:
+            return signal
+    return None
+
+
+def correlated_cm_metric_line(analysis: dict[str, Any], key: str) -> str | None:
+    signal = cm_metric_correlation_signal(analysis, key)
+    if not signal or signal.get("correlation_status") != "correlated":
+        return None
+    return (
+        f"CM metrics correlation: {signal['title']} is correlated "
+        f"({signal['strength']}); {signal['interpretation']}"
+    )
+
+
 def op_label(op: OperatorFact) -> str:
     flags: list[str] = []
     if op.join_kind:
@@ -2170,6 +2347,17 @@ def make_action_card(
         evidence.append(f"TotalBytesRead: {total_read['raw']} ({fmt_bytes(total_read.get('bytes'))})")
     if total_sent.get("raw") and (total_sent.get("bytes") or 0) >= MEDIUM_DATA_MOVEMENT_BYTES:
         evidence.append(f"TotalBytesSent: {total_sent['raw']} ({fmt_bytes(total_sent.get('bytes'))})")
+    metric_evidence_keys: list[str] = []
+    if related_memory:
+        metric_evidence_keys.extend(["daemon_memory_growth", "daemon_memory_pressure"])
+    if total_sent.get("bytes") and total_sent["bytes"] >= MEDIUM_DATA_MOVEMENT_BYTES:
+        metric_evidence_keys.append("network_io_spike")
+    if op.get("rows_actual_to_estimated_ratio") or op.get("time_ms"):
+        metric_evidence_keys.append("host_cpu_pressure")
+    for key in metric_evidence_keys:
+        line = correlated_cm_metric_line(analysis, key)
+        if line and line not in evidence:
+            evidence.append(line)
 
     admin_actions = [
         "Check per-host RowsProduced for this operator.",
@@ -2180,6 +2368,8 @@ def make_action_card(
         admin_actions.append("Check whether admission pool memory limits were hit.")
     if total_sent.get("bytes") and total_sent["bytes"] >= large_bytes_threshold:
         admin_actions.append("Check whether exchange volume matches TotalBytesSent.")
+    if any(item.startswith("CM metrics correlation:") for item in evidence):
+        admin_actions.append("Use CM metrics only as correlated runtime context, not as standalone root-cause proof.")
 
     tables = context_referenced_tables(analysis)
     user_actions: list[str] = []
@@ -3014,6 +3204,37 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_cm_metrics_correlation(analysis: dict[str, Any]) -> list[str]:
+    correlation = analysis.get("cm_metrics_correlation")
+    if not correlation:
+        return []
+
+    lines = ["## CM Metrics Correlation", ""]
+    lines.append(f"- status: {correlation.get('status', 'unknown')}")
+    if correlation.get("coverage"):
+        lines.append(f"- coverage: {correlation['coverage']}")
+    lines.append(f"- correlated_signals: {correlation.get('correlated_signals', 0)}")
+    lines.append(f"- context_only_signals: {correlation.get('context_only_signals', 0)}")
+    lines.append(f"- guardrail: {correlation.get('guardrail', 'CM metrics are context only.')}")
+    lines.append("")
+
+    signals = correlation.get("signals") or []
+    if not signals:
+        lines.append("- No CM metric signals were available for correlation.")
+        lines.append("")
+        return lines
+
+    for signal in signals:
+        lines.append(
+            f"- {signal['key']}: {signal['correlation_status']} "
+            f"(metric={signal['metric_status']}, strength={signal['strength']})"
+        )
+        lines.append(f"  - basis: {signal['basis']}")
+        lines.append(f"  - interpretation: {signal['interpretation']}")
+    lines.append("")
+    return lines
+
+
 def render_impala_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("impala_context")
     if not context:
@@ -3095,6 +3316,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_cm_query_context(analysis)
     lines += render_cm_timeseries_context(analysis)
     lines += render_cm_metrics_facts(analysis)
+    lines += render_cm_metrics_correlation(analysis)
     lines += render_table_metadata_context(analysis)
     lines += render_impala_context(analysis)
     lines += render_backend_tail_evidence(analysis)
@@ -3178,6 +3400,7 @@ def main(argv: list[str]) -> int:
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
+    analysis["cm_metrics_correlation"] = build_cm_metrics_correlation(analysis)
     analysis["action_cards"] = build_action_cards(analysis)
 
     if args.fail_on_empty and not analysis["operators"]:

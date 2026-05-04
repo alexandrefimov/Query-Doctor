@@ -42,6 +42,7 @@ ANALYZER_FACTS_HEADING = "## Факты анализатора"
 TABLE_METADATA_CONTEXT_HEADING = "## Table Metadata Context"
 CM_TIMESERIES_CONTEXT_HEADING = "## CM Time-Series Context"
 CM_METRICS_FACTS_HEADING = "## CM Metrics Facts"
+CM_METRICS_CORRELATION_HEADING = "## CM Metrics Correlation"
 EVIDENCE_SAFE_PROBLEMS_HEADING = "### Основные подтверждённые проблемы по профилю"
 EVIDENCE_HEADING = "### Подтверждающие факты"
 AMPLIFIERS_HEADING = "### Что усиливает проблему"
@@ -1256,6 +1257,30 @@ def cm_metrics_observed_points(facts_text: str) -> list[str]:
     return points[:FACT_APPENDIX_MAX_ITEMS]
 
 
+def cm_metrics_signal_observed(facts_text: str, key: str) -> bool:
+    summary = cm_metrics_facts_summary(facts_text)
+    return summary.get("status") == "available" and summary.get(key) == "observed"
+
+
+def cm_metrics_correlation_status(facts_text: str, key: str) -> str | None:
+    lines = extract_markdown_section(facts_text, CM_METRICS_CORRELATION_HEADING)
+    if not lines:
+        return None
+    pattern = re.compile(rf"^\s*-\s*{re.escape(key)}\s*:\s*(?P<status>[a-z_]+)\b", re.IGNORECASE)
+    for line in lines:
+        match = pattern.match(line)
+        if match:
+            return match.group("status").lower()
+    return None
+
+
+def cm_metrics_profile_supported(facts_text: str, key: str) -> bool:
+    status = cm_metrics_correlation_status(facts_text, key)
+    if status is not None:
+        return status == "correlated"
+    return cm_metrics_signal_observed(facts_text, key)
+
+
 def recommendation_candidate_lines(facts_text: str) -> list[tuple[str, str]]:
     """Return Python-owned optimization actions derived only from deterministic facts."""
     candidates: list[tuple[str, str]] = []
@@ -1303,12 +1328,37 @@ def recommendation_candidate_lines(facts_text: str) -> list[tuple[str, str]]:
             "Сократить payload до EXCHANGE/data movement: оставить в промежуточном результате только "
             "нужные колонки и перенести безопасные фильтры или агрегацию раньше.",
         )
+        if cm_metrics_profile_supported(facts_text, "network_io_spike"):
+            add(
+                "align_exchange_with_network_context",
+                "Учитывать observed CM network I/O spike как runtime context и приоритизировать "
+                "сокращение exchange payload только там, где профиль уже показывает large data movement.",
+            )
 
     if facts_have_spill_scratch_evidence(facts_text):
         add(
             "reduce_spill_pressure",
             "Снизить memory pressure, связанный с подтверждённым spill/scratch evidence, за счёт "
             "уменьшения intermediate data до memory-heavy operators.",
+        )
+
+    if cm_metrics_profile_supported(facts_text, "daemon_memory_growth") or cm_metrics_profile_supported(
+        facts_text,
+        "daemon_memory_pressure",
+    ):
+        add(
+            "reduce_runtime_memory_footprint",
+            "Снизить runtime memory footprint запроса: убрать лишние intermediate columns, сузить "
+            "partition/filter scope и уменьшить входы JOIN/AGGREGATE/SORT без изменения результата.",
+        )
+
+    if cm_metrics_profile_supported(facts_text, "host_cpu_pressure") and (
+        cardinality_count and cardinality_count > 0 or facts_have_large_intermediate_or_exchange(facts_text)
+    ):
+        add(
+            "reduce_cpu_work_with_profile_evidence",
+            "Снизить CPU work только в местах, где profile facts уже показывают row growth или "
+            "large intermediate/exchange traffic: фильтровать, агрегировать или сокращать payload раньше.",
         )
 
     if not candidates:
