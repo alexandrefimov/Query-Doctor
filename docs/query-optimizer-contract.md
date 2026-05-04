@@ -132,3 +132,156 @@ Optimizer changes should include focused tests for:
 - changed output expression semantics with unchanged aliases;
 - no browser echo of pasted SQL after Query Optimizer POST;
 - hidden partial drafts and safe failure messages.
+
+## Implementation roadmap
+
+### Phase 1. Marker trust chain
+
+Status: done.
+
+Outcome:
+
+- optimizer validation marker is bound to the validated draft hash;
+- marker is bound to deterministic facts hash;
+- marker is bound to extracted source SQL hash and source scope;
+- marker carries schema version and strict validation mode;
+- web trust check rejects legacy/minimal markers;
+- web trust check invalidates stale draft, changed facts, and changed source SQL.
+
+### Phase 2. Semantic validator hardening
+
+Status: next.
+
+Goal:
+
+- make validator reject dangerous semantic changes inside otherwise preserved
+  SQL shape.
+
+Tests first:
+
+- changed `WHERE` literal is rejected;
+- removed conjunct from `WHERE` is rejected even when `WHERE` remains;
+- changed `HAVING` expression or literal is rejected;
+- changed `LIMIT` value is rejected;
+- changed top-level `JOIN ... ON` condition is rejected;
+- changed projection expression is rejected even when output alias stays the
+  same.
+
+Implementation target:
+
+- add normalized clause signatures for top-level `WHERE`, `HAVING`, and `LIMIT`;
+- add normalized top-level JOIN signature that includes `ON` expression text;
+- add conservative projection expression signatures;
+- for now, require exact normalized signatures unless Python owns a specific
+  safe transform.
+
+### Phase 3. Recommendations-only fallback
+
+Status: planned.
+
+Goal:
+
+- make optimizer useful when a trusted SQL draft is unsafe or too risky.
+
+Target behavior:
+
+- low-risk source and validator passed: show trusted optimized draft;
+- conservative mode, high-risk source, or validator rejection: do not show SQL
+  draft;
+- show deterministic optimizer recommendations derived from analyzer facts and
+  metadata facts;
+- keep partial draft and raw LLM output hidden;
+- use safe browser status text without raw artifact names, paths, model/runtime
+  internals, or raw source SQL.
+
+Implementation target:
+
+- represent optimizer outcome as `draft_validated`, `recommendations_only`, or
+  `failed`;
+- persist enough safe metadata for UI status: source scope, risk mode, validation
+  outcome, and recommendation count;
+- keep recommendations Python-owned; LLM may phrase only after deterministic
+  candidate selection.
+
+### Phase 4. Details UI status
+
+Status: planned.
+
+Goal:
+
+- make the details-page Query LLM optimizer block explain what happened without
+  exposing unsafe internals.
+
+Visible safe fields:
+
+- source scope: read-only statement, insert payload, or CTAS payload;
+- optimizer mode: rewrite allowed or conservative;
+- validation outcome: passed, rejected, recommendations-only, or failed;
+- trusted output state: draft available or recommendations only.
+
+Forbidden fields:
+
+- source SQL;
+- partial draft;
+- raw LLM text;
+- local paths;
+- generated artifact filenames;
+- model/runtime internals;
+- subprocess output.
+
+### Phase 5. Optimizer benchmark fixtures
+
+Status: planned.
+
+Goal:
+
+- create a small fixture set that makes future optimizer changes cheap to test.
+
+Fixture set:
+
+- simple SELECT;
+- SELECT with WHERE and LIMIT;
+- JOIN with ON;
+- INSERT OVERWRITE SELECT payload;
+- CTAS payload;
+- CTE-heavy high-risk query;
+- join-heavy high-risk query;
+- query where optimizer must refuse a SQL draft and use recommendations only.
+
+Each fixture should define:
+
+- expected source scope;
+- expected risk mode;
+- expected validator result;
+- expected fallback behavior;
+- browser safety expectations where applicable.
+
+### Phase 6. Prompt tuning after validators
+
+Status: planned.
+
+Goal:
+
+- improve LLM usefulness only after Python validation and fallback behavior are
+  strong enough.
+
+Rules:
+
+- prompts may improve wording and formatting;
+- prompts must not become the trust boundary;
+- Python-owned facts and deterministic recommendation candidates remain the
+  source of truth;
+- if a requested SQL rewrite cannot be validated deterministically, use
+  recommendations-only fallback.
+
+### Phase 7. Broader cleanup
+
+Status: planned.
+
+After optimizer safety stabilizes:
+
+- close browser artifact filename redaction gaps;
+- remove or sanitize legacy details-rendering dict overloads;
+- consolidate report and optimizer trusted-artifact checks;
+- split `query_doctor_web_server.py` into smaller route, job, command, case
+  resolution, and trusted-artifact modules.

@@ -2475,7 +2475,10 @@ def load_batch_case_report_state(
     *,
     job: WebJobSnapshot | None = None,
 ) -> dict[str, object]:
-    running_job = job if job is not None and job.status == "running" else job_store.running_batch_report(case_id)
+    if job is not None and job.status == "running" and job.kind == "batch_report":
+        running_job = job
+    else:
+        running_job = job_store.running_batch_report(case_id)
     artifact_dir = resolve_batch_case_report_dir(settings, case)
     trusted = False
     partial = False
@@ -2487,7 +2490,7 @@ def load_batch_case_report_state(
         status = "partial_untrusted"
     if running_job is not None:
         status = "running"
-    elif job is not None and job.status == "failed":
+    elif job is not None and job.status == "failed" and job.kind == "batch_report":
         status = "failed"
     report_job = running_job if running_job is not None else job
     return {
@@ -2510,7 +2513,10 @@ def load_specific_query_report_state(
     *,
     job: WebJobSnapshot | None = None,
 ) -> dict[str, object]:
-    running_job = job if job is not None and job.status == "running" else job_store.running_query_report(query_id)
+    if job is not None and job.status == "running" and job.kind == "query_report":
+        running_job = job
+    else:
+        running_job = job_store.running_query_report(query_id)
     trusted = batch_case_validated_report_exists(case_dir)
     partial = (case_dir / BATCH_REPORT_PARTIAL_NAME).is_file()
     status = "generated" if trusted else "not_run"
@@ -2518,7 +2524,7 @@ def load_specific_query_report_state(
         status = "partial_untrusted"
     if running_job is not None:
         status = "running"
-    elif job is not None and job.status == "failed":
+    elif job is not None and job.status == "failed" and job.kind == "query_report":
         status = "failed"
     report_job = running_job if running_job is not None else job
     return {

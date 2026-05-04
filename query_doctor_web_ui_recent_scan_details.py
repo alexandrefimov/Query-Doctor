@@ -293,8 +293,8 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
     if job_id:
         escaped_job_id = html.escape(job_id, quote=True)
         status_attrs = (
-            f" data-report-job-status-url=\"/jobs/{escaped_job_id}/status\""
-            f" data-report-job-url=\"/jobs/{escaped_job_id}\""
+            f" data-optimizer-job-status-url=\"/jobs/{escaped_job_id}/status\""
+            f" data-optimizer-job-url=\"/jobs/{escaped_job_id}\""
         )
     steps = []
     for index, (label, _stage_labels) in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS):

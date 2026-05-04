@@ -151,6 +151,7 @@ UNSUPPORTED_RECOMMENDATION_RE = (
 UNSUPPORTED_IF_ABSENT_RE = (
     "packet loss",
     "restart impala",
+    "distributed cache",
 )
 SPILL_SCRATCH_REWRITE_RE = re.compile(r"\b(spill|scratch|спилл|спай[лл]|спила|спайла)\b", re.IGNORECASE)
 STORAGE_WORDING_RE = re.compile(
@@ -1339,6 +1340,85 @@ def supported_summary_points(facts_text: str) -> list[str]:
     return points[:FACT_APPENDIX_MAX_ITEMS]
 
 
+def action_card_differentiators(action_card_lines: list[str], *, limit: int = 3) -> list[str]:
+    differentiators: list[str] = []
+    current_title: str | None = None
+    current_values: dict[str, str] = {}
+
+    def flush() -> None:
+        if len(differentiators) >= limit or not current_title:
+            return
+        operator = current_values.get("operator")
+        if not operator:
+            return
+        details = [f"Action Card operator: {operator}", current_title]
+        for label in (
+            "actual rows",
+            "estimated rows",
+            "actual/estimated ratio",
+            "peak memory",
+            "estimated peak memory",
+            "peak/estimated memory ratio",
+        ):
+            value = current_values.get(label)
+            if value:
+                details.append(f"{label}: {value}")
+        differentiators.append("; ".join(details))
+
+    for line in action_card_lines:
+        stripped = line.strip()
+        if stripped.startswith("### Card "):
+            flush()
+            current_title = stripped[4:].strip()
+            current_values = {}
+            continue
+        match = re.match(r"^-\s*(?P<label>[A-Za-z/ ]+):\s*(?P<value>.+?)\s*$", stripped)
+        if match and current_title:
+            current_values[match.group("label").strip()] = match.group("value").strip()
+    flush()
+    return differentiators
+
+
+def case_summary_differentiators(facts_text: str) -> list[str]:
+    """Return safe case-specific facts that help the LLM avoid generic summaries."""
+    summary_lines = extract_markdown_section(facts_text, "## Summary")
+    totals_lines = extract_markdown_section(facts_text, "## Totals")
+    action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
+    findings_lines = extract_markdown_section(facts_text, "## Findings")
+    backend_summary = parse_backend_tail_summary(facts_text)
+
+    differentiators: list[str] = []
+    for label in (
+        "Parsed operators",
+        "Cardinality anomalies",
+        "Memory anomalies",
+        "Zero/unknown row estimate gaps",
+        "Zero/unknown memory estimate gaps",
+    ):
+        value = first_bullet_value(summary_lines, label)
+        if value:
+            differentiators.append(f"{label}: {value}")
+    for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent"):
+        value = first_bullet_value(totals_lines, label)
+        if value:
+            differentiators.append(f"{label}: {value}")
+
+    differentiators.extend(action_card_differentiators(action_card_lines))
+    for title in markdown_subheading_titles(action_card_lines, limit=3):
+        if len(differentiators) >= FACT_APPENDIX_MAX_ITEMS:
+            break
+        differentiators.append(f"Action Card: {title}")
+    for title in markdown_subheading_titles(findings_lines, limit=3):
+        differentiators.append(f"Finding: {title}")
+
+    for label in ("host tail candidates", "data skew", "execution skew", "write-path anomaly"):
+        value = backend_summary_value(backend_summary, label)
+        if value != "unknown":
+            differentiators.append(f"Backend {label}: {value}")
+
+    return differentiators[:FACT_APPENDIX_MAX_ITEMS]
+
+
 def evidence_groups(facts_text: str) -> dict[str, list[str]]:
     groups: dict[str, list[str]] = {}
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
@@ -1396,6 +1476,7 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
         },
         "backend_summary": backend_summary,
         "supported_summary_points": supported_summary_points(facts_text),
+        "case_differentiators": case_summary_differentiators(facts_text),
         "evidence_groups": evidence_groups(facts_text),
         "recommendation_candidates": [
             {"id": candidate_id, "text": text}
@@ -1581,11 +1662,12 @@ You must write only the report body, starting with exactly this compact structur
 ## Краткий вывод
 
 4-6 concise bullets. State only confirmed facts from analysis_facts.md. Do not write that evidence is absent, not proven, missing, or unsupported in this top section. Do not include "нет подтверждений", "не подтверждается", "не доказано", "отсутствует evidence", or similar negative caveats here. If a fact is not confirmed, omit it from the short summary.
+When case_differentiators contains concrete operator IDs, ratios, memory values, or totals, include at least two of those concrete differentiators in this section instead of generic wording.
 
 ## Практические рекомендации
 
 Use only the Python-owned recommendation candidates from PYTHON-OWNED RECOMMENDATION CANDIDATES.
-You may paraphrase them in Russian, merge adjacent candidates, and shorten wording, but you must not add a new action, diagnostic task, command, platform check, or optimization target that is absent from that candidate list.
+Paraphrase them in Russian, merge adjacent candidates, and shorten wording; do not copy candidate text verbatim unless no natural shorter wording is possible. You must not add a new action, diagnostic task, command, platform check, or optimization target that is absent from that candidate list.
 Write 2-5 concrete actions that can lead to optimization without asking the reader to perform open-ended investigation.
 Do not write vague recommendations such as "проверить", "посмотреть", "проанализировать", "оптимизировать запрос" without a concrete action.
 Do not put SHOW TABLE STATS, SHOW COLUMN STATS, per-host checks, spill/scratch checks, admission pool checks, CM metrics/logs, profile counters, or evidence packages in "Практические рекомендации"; those belong only under "Админские проверки".
@@ -1619,13 +1701,15 @@ Section requirements:
 Python-owned slot contract:
 - Use "recommendation_candidates" as the complete allowed source for "Практические рекомендации".
 - Use "supported_summary_points" as the allowed meaning space for "Краткий вывод"; do not copy it verbatim unless it already reads naturally.
+- Use "case_differentiators" to make "Краткий вывод" specific to this query: prefer concrete operator IDs, ratios, memory values, top Action Card/Finding titles, and safe totals/counts that distinguish this case from other reports.
 - Use "evidence_groups" to organize "Подробный разбор" into readable narrative. You may explain why a supported signal matters, but do not add new facts or causes.
 - Use "unsupported_conclusions" only under "Что НЕ подтверждается фактами".
 - Use "action_card_titles", "finding_titles", "summary", "totals", and "evidence_flags" to choose what is worth mentioning.
 - Do not introduce a user-facing fact, unsupported conclusion, or action target that is absent from the digest or deterministic facts.
 
 Slot freedom levels:
-- Deterministic/canonical: "Практические рекомендации", "Что НЕ подтверждается фактами", and "Админские проверки" must stay close to Python-owned candidates/checks.
+- Python-owned targets with LLM wording: "Практические рекомендации" must stay mapped to recommendation_candidates, but wording should be natural and case-specific.
+- Deterministic/canonical: "Что НЕ подтверждается фактами" and "Админские проверки" must stay close to Python-owned candidates/checks.
 - Controlled narrative: "Краткий вывод" and "Подробный разбор" should be human wording over supported_summary_points and evidence_groups.
 - Do not merely repeat analyzer lines when a concise explanation is possible; compress and explain supported facts without inventing a cause.
 
@@ -2006,6 +2090,73 @@ def recommendation_bullet_body(line: str) -> str | None:
     return match.group("body")
 
 
+RECOMMENDATION_CANDIDATE_MATCHERS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "stats_maintenance": (
+        re.compile(r"\b(?:stats|statistic|статистик)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:собра|обнов|maintenance|актуализ)\w*\b", re.IGNORECASE),
+    ),
+    "reduce_row_growth": (
+        re.compile(r"\b(?:сократ|уменьш|reduce)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:рост\w*\s+строк|intermediate\s+rows|JOIN|AGGREGATE|EXCHANGE|ранн\w*\s+фильтр|предварительн\w*\s+агрегац)\b", re.IGNORECASE),
+    ),
+    "rewrite_join_filter": (
+        re.compile(r"\b(?:перепис|rewrite)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:JOIN|фильтр|filter|intermediate\s+rows|оператор\w*\s+с\s+высок\w*\s+стоимост)\b", re.IGNORECASE),
+    ),
+    "reduce_memory_input": (
+        re.compile(r"\b(?:памят|memory|mem)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:уменьш|сократ|reduce)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:данн|intermediate|result|JOIN|AGGREGATE)\w*\b", re.IGNORECASE),
+    ),
+    "reduce_exchange_rows": (
+        re.compile(r"\b(?:сниз|сократ|уменьш|отфильтр|агрегир|reduce)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:exchange|intermediate|перераспредел|data\s+movement)\w*\b", re.IGNORECASE),
+    ),
+    "reduce_exchange_payload": (
+        re.compile(r"\b(?:payload|колонк|column)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:exchange|intermediate|перераспредел|data\s+movement)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:сократ|остав|перенест|reduce|project)\w*\b", re.IGNORECASE),
+    ),
+    "reduce_spill_pressure": (
+        re.compile(r"\b(?:spill|scratch|memory\s+pressure|давлен\w*\s+на\s+памят)\b", re.IGNORECASE),
+        re.compile(r"\b(?:сниз|уменьш|сократ|reduce)\w*\b", re.IGNORECASE),
+    ),
+    "baseline": (
+        re.compile(r"\bbaseline\b", re.IGNORECASE),
+        re.compile(r"\b(?:сравнен|compare|нов\w*\s+профил)\w*\b", re.IGNORECASE),
+    ),
+    "no_shape_change": (
+        re.compile(r"\b(?:не\s+меня|не\s+изменя|do\s+not\s+change|no\s+shape\s+change)\b", re.IGNORECASE),
+        re.compile(r"\b(?:SQL\s+shape|shape|форм\w*\s+SQL|дорог\w*\s+оператор|intermediate\s+rows)\b", re.IGNORECASE),
+    ),
+    "rerun_after_change": (
+        re.compile(r"\b(?:нов\w*\s+профил|после\s+изменен|rerun|next\s+profile)\b", re.IGNORECASE),
+        re.compile(r"\b(?:confirmed\s+operator\s+evidence|operator\s+evidence|подтвержд\w*\s+operator)\b", re.IGNORECASE),
+    ),
+}
+
+
+def recommendation_candidate_id_for_bullet(
+    line: str,
+    candidates: list[tuple[str, str]],
+) -> str | None:
+    body = recommendation_bullet_body(line)
+    if not body:
+        return None
+    stripped = f"- {body.strip()}"
+    for candidate_id, text in candidates:
+        if stripped == f"- {text}":
+            return candidate_id
+
+    candidate_ids = {candidate_id for candidate_id, _ in candidates}
+    for candidate_id, patterns in RECOMMENDATION_CANDIDATE_MATCHERS.items():
+        if candidate_id not in candidate_ids:
+            continue
+        if all(pattern.search(body) for pattern in patterns):
+            return candidate_id
+    return None
+
+
 def canonical_recommendation_bullets(candidates: list[tuple[str, str]]) -> list[str]:
     return [f"- {text}" for _, text in candidates]
 
@@ -2023,15 +2174,46 @@ def normalize_practical_recommendations(text: str, facts_text: str) -> str:
             break
 
     moved_to_admin: list[str] = []
+    candidates = recommendation_candidate_lines(facts_text)
+    preserved: list[str] = []
+    preserved_candidate_ids: set[str] = set()
     for line in lines[start + 1 : end]:
         stripped = line.strip()
         is_bullet = bool(re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line))
-        if is_bullet and ADMIN_ONLY_RECOMMENDATION_RE.search(stripped):
+        if not is_bullet:
+            continue
+        if ADMIN_ONLY_RECOMMENDATION_RE.search(stripped):
             moved_to_admin.append(stripped)
+            continue
+        if (
+            VAGUE_RECOMMENDATION_RE.search(stripped)
+            or GENERIC_OPTIMIZE_RE.search(stripped)
+            or has_unsupported_recommendation_topic(stripped, facts_text)
+        ):
+            continue
+        candidate_id = recommendation_candidate_id_for_bullet(stripped, candidates)
+        if candidate_id is None:
+            continue
+        body = recommendation_bullet_body(stripped)
+        if body is None:
+            continue
+        bullet = f"- {body}"
+        if bullet not in preserved:
+            preserved.append(bullet)
+            preserved_candidate_ids.add(candidate_id)
 
-    normalized_section = [""] + canonical_recommendation_bullets(
-        recommendation_candidate_lines(facts_text)
-    )
+    target_minimum = min(2, len(candidates))
+    if not preserved:
+        preserved = canonical_recommendation_bullets(candidates)
+    elif len(preserved) < target_minimum:
+        for candidate_id, candidate_text in candidates:
+            if candidate_id in preserved_candidate_ids:
+                continue
+            preserved.append(f"- {candidate_text}")
+            if len(preserved) >= target_minimum:
+                break
+
+    normalized_section = [""] + preserved[:MAX_RECOMMENDATION_ITEMS]
     normalized = "\n".join(lines[: start + 1] + normalized_section + lines[end:])
     if moved_to_admin:
         normalized = insert_bullets_into_section(normalized, NEXT_CHECKS_HEADING, moved_to_admin)
@@ -2549,18 +2731,15 @@ def validate_recommendations_section(text: str) -> list[str]:
 
 
 def validate_recommendations_against_candidates(text: str, facts_text: str) -> list[str]:
-    digest = build_report_contract_digest(facts_text)
-    canonical = {
-        f"- {candidate['text']}"
-        for candidate in digest["recommendation_candidates"]
-        if isinstance(candidate, dict) and isinstance(candidate.get("text"), str)
-    }
+    candidates = recommendation_candidate_lines(facts_text)
     section_lines = extract_report_section_lines(text, RECOMMENDATIONS_HEADING)
     for line in section_lines:
         stripped = line.strip()
         if not re.match(r"^(?:[-*]|\d+\.)\s+\S", stripped):
             continue
-        if stripped in canonical:
+        if has_unsupported_recommendation_topic(stripped, facts_text):
+            return ["practical recommendations include an action outside Python-owned candidates"]
+        if recommendation_candidate_id_for_bullet(stripped, candidates) is not None:
             continue
         return ["practical recommendations include an action outside Python-owned candidates"]
     return []

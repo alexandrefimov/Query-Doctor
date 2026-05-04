@@ -366,25 +366,37 @@ document.addEventListener('DOMContentLoaded', function () {
       closeInfoPopovers(null);
     }
   });
-  var reportProgress = document.querySelector('[data-report-job-status-url]');
-  function pollReportProgress() {
-    if (!reportProgress) {
+  function detailJobProgressElements() {
+    return Array.prototype.slice.call(document.querySelectorAll('[data-report-job-status-url], [data-optimizer-job-status-url]'));
+  }
+  function detailJobStatusUrl(progressElement) {
+    return progressElement.getAttribute('data-report-job-status-url') || progressElement.getAttribute('data-optimizer-job-status-url');
+  }
+  function detailJobRedirectUrl(progressElement) {
+    return progressElement.getAttribute('data-report-job-url') || progressElement.getAttribute('data-optimizer-job-url');
+  }
+  function pollDetailJobProgress(progressElement) {
+    var statusUrl = detailJobStatusUrl(progressElement);
+    if (!statusUrl) {
       return;
     }
-    fetch(reportProgress.getAttribute('data-report-job-status-url'), {cache: 'no-store'})
+    fetch(statusUrl, {cache: 'no-store'})
       .then(function (response) { return response.json(); })
       .then(function (data) {
         if (data.status === 'ok' || data.status === 'failed') {
-          window.location.href = reportProgress.getAttribute('data-report-job-url') || window.location.href;
+          window.location.href = detailJobRedirectUrl(progressElement) || window.location.href;
           return;
         }
-        window.setTimeout(pollReportProgress, 1200);
+        window.setTimeout(function () { pollDetailJobProgress(progressElement); }, 1200);
       })
-      .catch(function () { window.setTimeout(pollReportProgress, 1800); });
+      .catch(function () { window.setTimeout(function () { pollDetailJobProgress(progressElement); }, 1800); });
+  }
+  function pollDetailJobProgressElements() {
+    detailJobProgressElements().forEach(pollDetailJobProgress);
   }
   var jobPanel = document.querySelector('[data-job-status-url]');
   if (!jobPanel) {
-    pollReportProgress();
+    pollDetailJobProgressElements();
     return;
   }
   var stage = document.getElementById('job-stage');
