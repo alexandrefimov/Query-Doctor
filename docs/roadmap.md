@@ -226,6 +226,10 @@ Important follow-ups:
 - Workload-Level View: summarize recurring problem classes by fingerprint,
   pool, user, table set and time window. This should help distinguish one
   expensive outlier from a repeated workload pattern.
+- Evidence Quality UI Grouping: use analyzer quality level as a confidence
+  dimension in Finished, Running and Specific query views. It should help
+  separate high-severity/high-confidence cases from high-severity/weak-evidence
+  cases without replacing the existing severity score.
 - Change Events Context: correlate query regressions with safe external events
   such as stats refreshes, partition changes, deployments, config changes or
   admission policy changes when those events are available as normalized facts.

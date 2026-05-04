@@ -204,7 +204,12 @@ RAW_PEAK_MEMORY_RE = re.compile(
     flags=re.IGNORECASE,
 )
 RAW_TIME_COUNTER_RE = re.compile(
-    r"-\s*(?:TotalTime|ExecTime)\s*:\s*(?P<value>[^\n\r]+)",
+    r"^\s*-\s*(?P<name>TotalTime|ExecTime)\s*:\s*(?P<value>[^\n\r]+)",
+    flags=re.IGNORECASE,
+)
+RAW_NODE_DIRECT_COUNTER_RE = re.compile(
+    r"^\s*-\s*(?:RowsProduced|RowsReturned|RowsRead|RowsSent|"
+    r"PeakMemoryUsage|PerHostPeakMemUsage|PeakMemUsage|TotalTime|ExecTime)\s*:",
     flags=re.IGNORECASE,
 )
 RAW_COUNTER_NUMBER_RE = re.compile(
@@ -806,6 +811,42 @@ def raw_node_section(lines: list[str], start: int) -> str:
     return "\n".join(section)
 
 
+def raw_node_direct_counter_indent(section_lines: list[str], header_indent: int) -> int | None:
+    indents: list[int] = []
+    child_indent: int | None = None
+    for line in section_lines[1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        indent = line_indent(line)
+        if indent <= header_indent:
+            child_indent = None
+            continue
+
+        if not stripped.startswith("-"):
+            child_indent = indent
+            continue
+
+        if child_indent is not None:
+            if indent > child_indent:
+                continue
+            child_indent = None
+
+        if RAW_NODE_DIRECT_COUNTER_RE.match(line):
+            indents.append(indent)
+    return min(indents) if indents else None
+
+
+def classify_raw_time_counter(line: str, direct_counter_indent: int | None) -> tuple[str, float | None]:
+    m = RAW_TIME_COUNTER_RE.match(line)
+    if not m:
+        return "not_time", None
+    if direct_counter_indent is None or line_indent(line) != direct_counter_indent:
+        return "nested_or_cumulative", None
+    return "elapsed_operator", extract_first_duration_ms(m.group("value"))
+
+
 def parse_raw_node_section(lines: list[str], start: int) -> OperatorFact | None:
     header = lines[start]
     m = RAW_NODE_HEADER_RE.match(header)
@@ -817,6 +858,8 @@ def parse_raw_node_section(lines: list[str], start: int) -> OperatorFact | None:
         return None
 
     section = raw_node_section(lines, start)
+    section_lines = section.splitlines()
+    direct_counter_indent = raw_node_direct_counter_indent(section_lines, line_indent(header))
     evidence = [compact_line(header)]
 
     actual_rows: float | None = None
@@ -838,11 +881,13 @@ def parse_raw_node_section(lines: list[str], start: int) -> OperatorFact | None:
                 evidence.append(evidence_line)
 
     time_ms: float | None = None
-    for time_match in RAW_TIME_COUNTER_RE.finditer(section):
-        value = extract_first_duration_ms(time_match.group("value"))
+    for line in section_lines[1:]:
+        kind, value = classify_raw_time_counter(line, direct_counter_indent)
+        if kind != "elapsed_operator":
+            continue
         if value is not None and (time_ms is None or value > time_ms):
             time_ms = value
-            evidence_line = compact_line(time_match.group(0))
+            evidence_line = compact_line(line)
             if evidence_line not in evidence:
                 evidence.append(evidence_line)
 
