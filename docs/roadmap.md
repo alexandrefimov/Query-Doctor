@@ -88,6 +88,9 @@ a recommendations-only fallback instead of forcing an unsafe draft.
 - Query LLM optimizer recommendations-only fallback for high-risk cases.
 - More real-case validation for Query LLM optimizer.
 - Safe UI status for optimizer mode and validation outcome.
+- Details page UX audit: review which blocks are still useful, which are
+  redundant, what should be added or promoted, and whether the page is efficient
+  for Finished, Running and Specific Query workflows.
 - Small anonymized optimizer benchmark set.
 - Prompt tuning so optimizer drafts are useful without changing semantics.
 - Remaining historical documentation cleanup.

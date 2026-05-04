@@ -245,6 +245,12 @@ deterministic validation, must remain read-only SELECT/WITH, and are never
 executed by Query Doctor. High-risk cases should move toward a
 recommendations-only fallback instead of forcing a SQL draft.
 
+Planned audit: revisit the Details page as a complete workflow surface. Check
+which blocks are redundant or too technical, which facts/actions should be more
+prominent, which sections should stay collapsed, and whether Finished, Running
+and Specific Query users can quickly understand status, evidence, report
+actions and optimizer actions without reading raw technical dumps.
+
 ### Query Optimizer
 
 Purpose: review user-submitted SQL before there is a runtime profile.

@@ -1517,6 +1517,10 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
     if components["backend_data_skew"] is True:
         score += 2
         reasons.append("backend data skew evidence")
+    cm_correlated_signals = components["cm_metrics_correlated_signals"] or 0
+    if cm_correlated_signals > 0:
+        score += min(6, cm_correlated_signals * 2)
+        reasons.append(f"CM metrics correlated signals: {cm_correlated_signals}")
     if metadata_status == "failed" or has_metadata_error_status(facts):
         score += 3
         reasons.append("metadata collection failed for referenced table")
@@ -1550,6 +1554,7 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
         "zero_memory_estimate_gap_count": fact_int(facts, "Zero/unknown memory estimate gaps"),
         "backend_data_skew": backend_data_skew_value(facts),
         "host_tail_candidate_count": fact_int(facts, "host tail candidates"),
+        "cm_metrics_correlated_signals": fact_int(facts, "correlated_signals"),
     }
 
 
