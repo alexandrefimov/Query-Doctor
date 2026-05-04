@@ -224,6 +224,11 @@ QUERY_TIMELINE_EVENT_RE = re.compile(
     r"^\s*-\s*[^:\n\r]{1,160}:\s*(?P<value>[^\n\r]+)$",
     flags=re.IGNORECASE,
 )
+RUNTIME_TIME_COUNTER_RE = re.compile(
+    r"^\s*-\s*(?P<name>[A-Za-z][A-Za-z0-9_./* -]*(?:Time|WallClockTime|CpuTime|CPUTime))"
+    r"\s*[:=]\s*(?P<value>[^\n\r]+)",
+    flags=re.IGNORECASE,
+)
 
 STATS_PATTERNS = [
     re.compile(r"\bmissing\s+(?:table\s+|column\s+)?stats\b", re.IGNORECASE),
@@ -699,6 +704,56 @@ def extract_query_timeline_duration_ms(text: str) -> float | None:
             best_ms = max(best_ms or 0, event_ms)
 
     return best_ms
+
+
+def runtime_counter_family(name: str) -> str | None:
+    normalized = normalize_metric_key(name)
+    if "codegen" in normalized:
+        return "codegen"
+    if "thread" in normalized and ("wallclock" in normalized or normalized.endswith("time")):
+        return "thread_wall_clock"
+    if "wait" in normalized:
+        return "wait"
+    if "cputime" in normalized or normalized.endswith("usertime") or normalized.endswith("systime"):
+        return "cpu"
+    return None
+
+
+def build_runtime_counter_context(text: str) -> dict[str, Any]:
+    families: dict[str, dict[str, Any]] = {}
+    for line in text.splitlines():
+        match = RUNTIME_TIME_COUNTER_RE.match(line)
+        if not match:
+            continue
+        family = runtime_counter_family(match.group("name"))
+        if family is None:
+            continue
+        duration_ms = extract_first_duration_ms(match.group("value"))
+        if duration_ms is None or duration_ms <= 0:
+            continue
+
+        item = families.setdefault(
+            family,
+            {
+                "count": 0,
+                "max_ms": None,
+                "max_human": "unknown",
+                "max_counter": None,
+            },
+        )
+        item["count"] += 1
+        if item["max_ms"] is None or duration_ms > item["max_ms"]:
+            item["max_ms"] = duration_ms
+            item["max_human"] = fmt_duration(duration_ms)
+            item["max_counter"] = match.group("name").strip()
+
+    return {
+        "families": dict(sorted(families.items())),
+        "guardrail": (
+            "Runtime thread/codegen/wait/CPU counters are context only; they are not used "
+            "as operator elapsed time unless a separate deterministic finding says so."
+        ),
+    }
 
 
 def compact_line(line: str, max_len: int = 320) -> str:
@@ -2796,6 +2851,7 @@ def analyze(
     text = normalize_profile_text(text)
     operators = parse_operators(text)
     backend_tail = build_backend_tail_analysis(parse_backend_host_facts(text))
+    runtime_counter_context = build_runtime_counter_context(text)
     totals = {
         name: extract_total_counter(text, name)
         for name in ["TotalBytesRead", "TotalBytesSent", "TotalTime"]
@@ -3170,6 +3226,7 @@ def analyze(
         "totals": totals,
         "query_wall_clock": query_wall_clock,
         "backend_tail": backend_tail,
+        "runtime_counter_context": runtime_counter_context,
         "operators": [op_to_json(op) for op in operators],
         "top_operators_by_time": [op_to_json(op) for op in top_by_time],
         "top_operators_by_peak_memory": [op_to_json(op) for op in top_by_memory],
@@ -3536,6 +3593,33 @@ def render_query_wall_clock(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_runtime_counter_context(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("runtime_counter_context") or {}
+    families = context.get("families") or {}
+    if not families:
+        return []
+
+    labels = {
+        "codegen": "codegen",
+        "cpu": "CPU",
+        "thread_wall_clock": "thread wall-clock",
+        "wait": "wait",
+    }
+    lines = ["## Runtime Counter Context", ""]
+    lines.append(
+        f"- guardrail: {context.get('guardrail') or 'runtime counters are context only'}"
+    )
+    for family, item in families.items():
+        label = labels.get(family, family.replace("_", " "))
+        lines.append(
+            f"- {label}: counters={item.get('count', 0)}, "
+            f"max={item.get('max_human') or 'unknown'}, "
+            f"max_counter={md_escape(str(item.get('max_counter') or 'unknown'))}"
+        )
+    lines.append("")
+    return lines
+
+
 def render_evidence_quality(analysis: dict[str, Any]) -> list[str]:
     quality = analysis.get("evidence_quality") or {}
     if not quality:
@@ -3732,6 +3816,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
 
     lines += render_summary(analysis)
     lines += render_query_wall_clock(analysis)
+    lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)
     report_top_n = int(analysis.get("thresholds", {}).get("report_top_n", 10))
     max_table_rows = None if verbose else report_top_n
