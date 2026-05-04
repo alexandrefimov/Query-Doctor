@@ -239,6 +239,7 @@ class WebJobSnapshot:
     batch_form_values: dict[str, object] | None = None
     batch_progress_path: Path | None = None
     batch_case_id: str | None = None
+    batch_source: str = "batch"
 
 
 @dataclass
@@ -255,6 +256,7 @@ class WebJob:
     batch_form_values: dict[str, object] | None = None
     batch_progress_path: Path | None = None
     batch_case_id: str | None = None
+    batch_source: str = "batch"
 
     def snapshot(self) -> WebJobSnapshot:
         return WebJobSnapshot(
@@ -270,6 +272,7 @@ class WebJob:
             batch_form_values=dict(self.batch_form_values) if self.batch_form_values is not None else None,
             batch_progress_path=self.batch_progress_path,
             batch_case_id=self.batch_case_id,
+            batch_source=self.batch_source,
         )
 
 
@@ -333,7 +336,7 @@ class WebJobStore:
             self._jobs[job.job_id] = job
             return job.snapshot()
 
-    def create_batch_report(self, case_id: str) -> WebJobSnapshot:
+    def create_batch_report(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
         stage = BATCH_REPORT_STAGES[0]
         job = WebJob(
             job_id=uuid.uuid4().hex,
@@ -344,6 +347,7 @@ class WebJobStore:
             progress=stage[2],
             kind="batch_report",
             batch_case_id=case_id,
+            batch_source=source,
         )
         with self._lock:
             self._jobs[job.job_id] = job
@@ -364,7 +368,7 @@ class WebJobStore:
             self._jobs[job.job_id] = job
             return job.snapshot()
 
-    def create_batch_optimized_query(self, case_id: str) -> WebJobSnapshot:
+    def create_batch_optimized_query(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
         stage = OPTIMIZED_QUERY_STAGES[0]
         job = WebJob(
             job_id=uuid.uuid4().hex,
@@ -375,6 +379,7 @@ class WebJobStore:
             progress=stage[2],
             kind="batch_optimized_query",
             batch_case_id=case_id,
+            batch_source=source,
         )
         with self._lock:
             self._jobs[job.job_id] = job
@@ -522,8 +527,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"legacy {cm_collector.LEGACY_LOCAL_CONFIG_NAME}. Credentials still come from environment."
         ),
     )
-    parser.add_argument("--host", default=DEFAULT_HOST, help=f"Bind host. Default: {DEFAULT_HOST}.")
-    parser.add_argument("--port", type=positive_int, default=DEFAULT_PORT)
+    parser.add_argument("--host", help=f"Bind host. Default comes from config or {DEFAULT_HOST}.")
+    parser.add_argument("--port", type=positive_int, help=f"Bind port. Default comes from config or {DEFAULT_PORT}.")
     parser.add_argument(
         "--allow-nonlocal-web-bind",
         "--allow-nonlocal-demo-bind",
@@ -1368,8 +1373,17 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
     config_values = load_web_local_config(args.config, cwd=cwd)
     return WebSettings(
         config=config_path,
-        host=args.host,
-        port=args.port,
+        host=first_string_value(
+            args.host,
+            optional_config_string(config_values, "host"),
+            DEFAULT_HOST,
+        )
+        or DEFAULT_HOST,
+        port=first_int_value(
+            args.port,
+            optional_config_int(config_values, "port"),
+            default=DEFAULT_PORT,
+        ),
         allow_nonlocal_web_bind=args.allow_nonlocal_web_bind,
         max_profile_bytes=first_int_value(
             args.max_profile_bytes,
@@ -1814,14 +1828,20 @@ def start_batch_case_report_job(
     job_store: WebJobStore,
     *,
     runner: Runner = subprocess.run,
+    source: str = "auto",
 ) -> tuple[int, str]:
-    effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
+    if source == "running":
+        effective_settings, case = resolve_running_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = running_detail_kwargs()
+    else:
+        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = {}
     if case is None:
         return 404, render_batch_case_not_found_page(effective_settings, case_id)
     if not case_allows_llm_report(case):
-        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store)
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store, **detail_kwargs)
     if job_store.running_batch_report(case_id) is not None:
-        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store)
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store, **detail_kwargs)
     case_dir = resolve_batch_case_report_dir(effective_settings, case)
     if case_dir is None:
         metadata_facts = load_batch_case_metadata_facts(effective_settings, case)
@@ -1832,9 +1852,9 @@ def start_batch_case_report_job(
             "partial": False,
             "error": "Report generation requires a resolved server-owned case directory with profile_digest.md.",
         }
-        return 400, render_batch_case_detail_page(effective_settings, case_id, case, metadata_facts, report_state=report_state)
+        return 400, render_batch_case_detail_page(effective_settings, case_id, case, metadata_facts, report_state=report_state, **detail_kwargs)
 
-    job = job_store.create_batch_report(case_id)
+    job = job_store.create_batch_report(case_id, source="running" if source == "running" else "batch")
     thread = threading.Thread(
         target=run_batch_case_report_job,
         args=(job.job_id, case_id, case_dir, settings, job_store, runner),
@@ -1918,18 +1938,24 @@ def start_batch_case_optimized_query_job(
     job_store: WebJobStore,
     *,
     runner: Runner = subprocess.run,
+    source: str = "auto",
 ) -> tuple[int, str]:
-    effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
+    if source == "running":
+        effective_settings, case = resolve_running_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = running_detail_kwargs()
+    else:
+        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = {}
     if case is None:
         return 404, render_batch_case_not_found_page(effective_settings, case_id)
     case_dir = resolve_batch_case_report_dir(effective_settings, case)
     if case_dir is None:
-        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store)
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store, **detail_kwargs)
     if not case_has_safe_source_sql(case_dir):
-        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store)
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store, **detail_kwargs)
     if job_store.running_batch_optimized_query(case_id) is not None:
-        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store)
-    job = job_store.create_batch_optimized_query(case_id)
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store, **detail_kwargs)
+    job = job_store.create_batch_optimized_query(case_id, source="running" if source == "running" else "batch")
     thread = threading.Thread(
         target=run_optimized_query_job,
         args=(job.job_id, case_id, case_dir, settings, job_store, runner),
@@ -2087,7 +2113,10 @@ def run_batch_job(
         if job is not None and job.kind == "running":
             job_store.set_latest_running_summary(summary_path)
             running_settings = replace(settings, batch_summary=summary_path)
-            job_store.complete_html(job_id, render_batch_card(running_settings, title="Running Queries"))
+            job_store.complete_html(
+                job_id,
+                render_batch_card(running_settings, title="Running Queries", details_base_path="/running/case"),
+            )
         else:
             job_store.set_latest_batch_summary(summary_path)
             batch_settings = replace(settings, batch_summary=summary_path)
@@ -2255,6 +2284,26 @@ def running_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebS
     return replace(settings, batch_summary=latest)
 
 
+def running_detail_kwargs() -> dict[str, str]:
+    return {
+        "workflow_title": "Running Queries",
+        "list_href": "/running#recent-results",
+        "detail_base_path": "/running/case",
+        "active_nav": "running",
+    }
+
+
+def resolve_running_case_detail_settings(
+    settings: WebSettings,
+    job_store: WebJobStore,
+    case_id: str,
+) -> tuple[WebSettings, dict[str, object] | None]:
+    running_settings = running_page_settings(settings, job_store)
+    running_summary = load_batch_summary(running_settings)
+    running_case = find_batch_case(running_summary, case_id) if running_summary is not None else None
+    return running_settings, running_case
+
+
 def resolve_case_detail_settings(
     settings: WebSettings,
     job_store: WebJobStore,
@@ -2292,6 +2341,10 @@ def render_batch_case_detail_for_request(
     job_store: WebJobStore,
     *,
     job: WebJobSnapshot | None = None,
+    workflow_title: str = "Finished Queries",
+    list_href: str = "/#recent-results",
+    detail_base_path: str = "/batch/case",
+    active_nav: str = "batch",
 ) -> str:
     metadata_facts = load_batch_case_metadata_facts(settings, case)
     cm_metrics_facts = load_batch_case_cm_metrics_facts(settings, case)
@@ -2310,6 +2363,10 @@ def render_batch_case_detail_for_request(
         optimized_query_state=optimized_query_state,
         trusted_report_text=trusted_report_text,
         trusted_optimized_query=trusted_optimized_query,
+        workflow_title=workflow_title,
+        list_href=list_href,
+        detail_base_path=detail_base_path,
+        active_nav=active_nav,
     )
 
 
@@ -3094,6 +3151,37 @@ def make_handler(
                     return
                 self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store))
                 return
+            match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/report", parsed.path)
+            if match:
+                case_id = match.group("case_id")
+                effective_settings, case = resolve_running_case_detail_settings(settings, store, case_id)
+                if case is None:
+                    self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
+                    return
+                report_text = load_validated_batch_case_report(effective_settings, case)
+                if report_text is None:
+                    self.write_html(404, render_batch_case_detail_for_request(effective_settings, case_id, case, store, **running_detail_kwargs()))
+                    return
+                self.write_html(200, render_batch_case_report_page(effective_settings, case_id, case, report_text))
+                return
+            match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/optimized-query", parsed.path)
+            if match:
+                case_id = match.group("case_id")
+                effective_settings, case = resolve_running_case_detail_settings(settings, store, case_id)
+                if case is None:
+                    self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
+                    return
+                self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, **running_detail_kwargs()))
+                return
+            match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)", parsed.path)
+            if match:
+                case_id = match.group("case_id")
+                effective_settings, case = resolve_running_case_detail_settings(settings, store, case_id)
+                if case is None:
+                    self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
+                    return
+                self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, **running_detail_kwargs()))
+                return
             match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/report", parsed.path)
             if match:
                 status, body = render_specific_query_report_for_request(settings, unquote(match.group("query_id")))
@@ -3168,21 +3256,31 @@ def make_handler(
                     )
                 elif job.kind == "batch_report":
                     case_id = job.batch_case_id or job.query_id
-                    effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
+                    if job.batch_source == "running":
+                        effective_settings, case = resolve_running_case_detail_settings(settings, store, case_id)
+                        detail_kwargs = running_detail_kwargs()
+                    else:
+                        effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
+                        detail_kwargs = {}
                     if case is None:
                         self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
                         return
-                    self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, job=job))
+                    self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, job=job, **detail_kwargs))
                 elif job.kind == "query_report":
                     status, body = render_specific_query_detail_for_request(settings, job.query_id, store, job=job)
                     self.write_html(status, body)
                 elif job.kind == "batch_optimized_query":
                     case_id = job.batch_case_id or job.query_id
-                    effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
+                    if job.batch_source == "running":
+                        effective_settings, case = resolve_running_case_detail_settings(settings, store, case_id)
+                        detail_kwargs = running_detail_kwargs()
+                    else:
+                        effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
+                        detail_kwargs = {}
                     if case is None:
                         self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
                         return
-                    self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, job=job))
+                    self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, job=job, **detail_kwargs))
                 elif job.kind == "query_optimized_query":
                     status, body = render_specific_query_detail_for_request(settings, job.query_id, store, job=job)
                     self.write_html(status, body)
@@ -3203,12 +3301,16 @@ def make_handler(
             parsed = urlparse(self.path)
             report_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/report", parsed.path)
             optimized_query_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/optimized-query", parsed.path)
+            running_report_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/report", parsed.path)
+            running_optimized_query_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/optimized-query", parsed.path)
             query_report_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/report", parsed.path)
             query_optimized_query_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/optimized-query", parsed.path)
             if (
                 parsed.path not in {"/analyze", "/batch/run", "/running/run", "/optimizer", "/query-optimizer"}
                 and report_match is None
                 and optimized_query_match is None
+                and running_report_match is None
+                and running_optimized_query_match is None
                 and query_report_match is None
                 and query_optimized_query_match is None
             ):
@@ -3221,6 +3323,22 @@ def make_handler(
                 status, body = start_batch_case_report_job(report_match.group("case_id"), settings, store, runner=runner)
             elif optimized_query_match is not None:
                 status, body = start_batch_case_optimized_query_job(optimized_query_match.group("case_id"), settings, store, runner=runner)
+            elif running_report_match is not None:
+                status, body = start_batch_case_report_job(
+                    running_report_match.group("case_id"),
+                    settings,
+                    store,
+                    runner=runner,
+                    source="running",
+                )
+            elif running_optimized_query_match is not None:
+                status, body = start_batch_case_optimized_query_job(
+                    running_optimized_query_match.group("case_id"),
+                    settings,
+                    store,
+                    runner=runner,
+                    source="running",
+                )
             elif query_report_match is not None:
                 status, body = start_specific_query_report_job(
                     unquote(query_report_match.group("query_id")),
@@ -3278,8 +3396,8 @@ def make_handler(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        validate_bind_host(args.host, allow_nonlocal_web_bind=args.allow_nonlocal_web_bind)
         settings = build_web_settings(args, cwd=Path.cwd())
+        validate_bind_host(settings.host, allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind)
         startup_warnings = validate_web_startup_config(settings.config, cwd=Path.cwd())
     except WebError as exc:
         print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
@@ -3287,7 +3405,7 @@ def main(argv: list[str] | None = None) -> int:
     except cm_collector.ConfigError as exc:
         print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
         return 2
-    if args.host not in LOCAL_BIND_HOSTS:
+    if settings.host not in LOCAL_BIND_HOSTS:
         print(
             "[Query Doctor web] WARNING: non-local bind requested for a local web server.",
             file=sys.stderr,

@@ -43,6 +43,7 @@ def render_running_queries_page(
                 query_group=query_group,
                 only_with_spills=only_with_spills,
                 title="Running Queries",
+                details_base_path="/running/case",
             )
         sections.append(render_job_panel(job, result_html_override=result_html))
     if job is None or job.status != "ok":
@@ -51,6 +52,7 @@ def render_running_queries_page(
             query_group=query_group,
             only_with_spills=only_with_spills,
             title="Running Queries",
+            details_base_path="/running/case",
         )
         if batch_card:
             sections.append(batch_card)

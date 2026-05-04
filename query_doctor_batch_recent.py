@@ -631,7 +631,9 @@ def build_batch_config(
         if not progress_jsonl.is_absolute():
             progress_jsonl = (cwd / progress_jsonl).resolve()
 
-    ca_bundle = first_string(args.ca_bundle, env.get("CM_CA_BUNDLE"), config_values.get("ca_bundle"))
+    ca_bundle = expand_optional_path_string(
+        first_string(args.ca_bundle, env.get("CM_CA_BUNDLE"), config_values.get("ca_bundle"))
+    )
     insecure_skip_verify = first_bool(
         args.insecure_skip_verify,
         config_values.get("insecure_skip_verify"),
@@ -1157,6 +1159,10 @@ def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
     cmd.extend(["--cm-url", config.cm_url, "--cluster", config.cluster, "--service", config.service])
     if config.ca_bundle:
         cmd.extend(["--ca-bundle", config.ca_bundle])
+
+
+def expand_optional_path_string(value: str | None) -> str | None:
+    return str(Path(value).expanduser()) if value else None
 
 
 def run_analysis_pass(

@@ -31,6 +31,7 @@ ALLOWED_CONFIG_KEYS = {
     "cm_url",
     "collect_cm_timeseries",
     "cm_timeseries_padding_sec",
+    "host",
     "insecure_skip_verify",
     "krb5ccname",
     "limit",
@@ -40,6 +41,7 @@ ALLOWED_CONFIG_KEYS = {
     "min_duration_sec",
     "out",
     "pool",
+    "port",
     "redact",
     "redact_identifiers",
     "service",
@@ -279,6 +281,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "ca_bundle",
         "cluster",
         "cm_url",
+        "host",
         "out",
         "pool",
         "query_type",
@@ -333,6 +336,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "metadata_max_output_bytes",
         "metadata_max_tables",
         "metadata_timeout_sec",
+        "port",
     }:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")

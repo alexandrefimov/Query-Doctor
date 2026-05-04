@@ -1,4 +1,6 @@
 {
+  "host": "127.0.0.1",
+  "port": 8765,
   "cm_url": "https://cm.example.com:7183/",
   "cluster": "example_cluster",
   "service": "impala",

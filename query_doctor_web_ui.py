@@ -260,6 +260,10 @@ def render_batch_case_detail_page(
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_text: str | None = None,
     trusted_optimized_query: str | None = None,
+    workflow_title: str = "Finished Queries",
+    list_href: str = "/#recent-results",
+    detail_base_path: str = "/batch/case",
+    active_nav: str = "batch",
 ) -> str:
     trusted_report_html = (
         SafeHtml(render_report_markdown_html(trusted_report_text, with_heading_ids=True))
@@ -276,9 +280,12 @@ def render_batch_case_detail_page(
             optimized_query_state=optimized_query_state,
             trusted_report_html=trusted_report_html,
             trusted_optimized_query=trusted_optimized_query,
+            workflow_title=workflow_title,
+            list_href=list_href,
+            detail_base_path=detail_base_path,
         )
     ]
-    return render_page(settings, active_nav="batch", show_run_panel=False, extra_sections=sections)
+    return render_page(settings, active_nav=active_nav, show_run_panel=False, extra_sections=sections)
 
 
 def render_batch_case_not_found_page(settings: Any, case_id: str) -> str:

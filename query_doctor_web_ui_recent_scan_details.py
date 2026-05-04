@@ -56,6 +56,9 @@ def render_batch_case_detail(
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
+    workflow_title: str = "Finished Queries",
+    list_href: str = "/#recent-results",
+    detail_base_path: str = "/batch/case",
 ) -> str:
     view = present_recent_scan_case_detail(
         case_id,
@@ -64,18 +67,23 @@ def render_batch_case_detail(
         cm_metrics_facts,
         report_state=report_state,
     )
+    safe_workflow_title = html.escape(workflow_title)
+    safe_list_href = html.escape(list_href, quote=True)
+    escaped_case_id_for_url = html.escape(view.case_id, quote=True)
+    report_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/report"
+    optimized_query_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/optimized-query"
     return (
-        "<section class=\"panel batch-panel\" aria-label=\"Finished Queries case details\">"
-        "<div class=\"breadcrumb\"><a href=\"/#recent-results\">Finished Queries</a><span>/</span>"
+        f"<section class=\"panel batch-panel\" aria-label=\"{safe_workflow_title} case details\">"
+        f"<div class=\"breadcrumb\"><a href=\"{safe_list_href}\">{safe_workflow_title}</a><span>/</span>"
         f"<span>{html.escape(view.case_id)}</span></div>"
-        "<div class=\"batch-head\"><div><h1>Finished Queries case details</h1>"
+        f"<div class=\"batch-head\"><div><h1>{safe_workflow_title} case details</h1>"
         "<p>Deterministic facts for one analyzed query.</p></div>"
         f"<span class=\"badge blue\">{html.escape(view.case_id)}</span></div>"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
         f"{render_analysis_details(case, metadata_facts, view=view)}"
-        f"{render_batch_case_report_action(view.case_id, view.report_action, report_enabled=view.score_severity != 'clean', trusted_report_html=trusted_report_html)}"
-        f"{render_optimized_query_action(view.case_id, optimized_query_state, trusted_optimized_query=trusted_optimized_query)}"
+        f"{render_batch_case_report_action(view.case_id, view.report_action, report_enabled=view.score_severity != 'clean', action_url=report_url, open_url=report_url, trusted_report_html=trusted_report_html)}"
+        f"{render_optimized_query_action(view.case_id, optimized_query_state, action_url=optimized_query_url, open_url=optimized_query_url, trusted_optimized_query=trusted_optimized_query)}"
         "</section>"
     )
 

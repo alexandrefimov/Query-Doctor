@@ -105,6 +105,10 @@ def extract_optimizable_source_sql(source_sql: str) -> OptimizableSourceSql:
     statement_tokens = trim_source_statement_tokens(tokens)
     leading = statement_tokens[0].upper()
     if leading in {"SELECT", "WITH"}:
+        if leading == "WITH":
+            with_insert_payload = extract_with_insert_payload_sql(source_sql)
+            if with_insert_payload is not None:
+                return OptimizableSourceSql(sql=with_insert_payload, scope="with_insert_select_payload")
         validate_optimizer_sql_tokens(statement_tokens)
         return OptimizableSourceSql(sql=source_sql.strip(), scope="read_only_statement")
     if leading == "INSERT":
@@ -142,6 +146,20 @@ def extract_ctas_payload_sql(source_sql: str) -> str:
             "CREATE source SQL is outside optimizer scope. Only CREATE TABLE AS SELECT is supported."
         )
     return extract_top_level_payload_sql(source_sql, ("SELECT", "WITH"), start=as_offset + 2)
+
+
+def extract_with_insert_payload_sql(source_sql: str) -> str | None:
+    insert_offset = find_top_level_keyword_offset(source_sql, ("INSERT",))
+    if insert_offset is None:
+        return None
+    with_prefix = source_sql[:insert_offset].rstrip()
+    payload = extract_top_level_payload_sql(source_sql, ("SELECT", "WITH"), start=insert_offset + len("INSERT"))
+    candidate = f"{with_prefix}\n{payload}".strip()
+    try:
+        validate_optimizer_sql_tokens(tokenize_sql(candidate))
+    except OptimizerSqlError as exc:
+        raise QueryOptimizationError(f"Source SQL payload is outside optimizer scope: {exc}") from exc
+    return candidate
 
 
 def extract_top_level_payload_sql(source_sql: str, keywords: tuple[str, ...], *, start: int = 0) -> str:

@@ -35,6 +35,7 @@ def render_batch_card(
     *,
     only_with_spills: bool = False,
     title: str = "Finished Queries",
+    details_base_path: str = "/batch/case",
 ) -> str:
     summary_path = getattr(settings, "batch_summary", None)
     escaped_title = html.escape(title)
@@ -58,7 +59,13 @@ def render_batch_card(
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
-    return render_batch_summary(payload, query_group=query_group, only_with_spills=only_with_spills, title=title)
+    return render_batch_summary(
+        payload,
+        query_group=query_group,
+        only_with_spills=only_with_spills,
+        title=title,
+        details_base_path=details_base_path,
+    )
 
 
 def render_batch_summary(
@@ -67,6 +74,7 @@ def render_batch_summary(
     *,
     only_with_spills: bool = False,
     title: str = "Finished Queries",
+    details_base_path: str = "/batch/case",
 ) -> str:
     view = present_recent_scan_summary(summary)
     active_group = normalize_query_group(query_group)
@@ -80,7 +88,7 @@ def render_batch_summary(
         for label, value in view.header_items
     )
     broad_scan_message = recent_scan_too_broad_message(summary)
-    rows = "\n".join(render_batch_case_row(row.rank, row) for row in rows_for_group)
+    rows = "\n".join(render_batch_case_row(row.rank, row, details_base_path=details_base_path) for row in rows_for_group)
     if not rows:
         empty_text = broad_scan_message or (
             f"No {QUERY_GROUPS[active_group][0].lower()} with spills were found in the configured batch summary."
@@ -224,12 +232,17 @@ def render_batch_warning_note(summary: dict[str, Any]) -> str:
     return f"<div class=\"batch-note\"><strong>Scan warnings:</strong> {rendered}</div>"
 
 
-def render_batch_case_row(rank: int, case: dict[str, Any] | RecentScanCaseRowView) -> str:
+def render_batch_case_row(
+    rank: int,
+    case: dict[str, Any] | RecentScanCaseRowView,
+    *,
+    details_base_path: str = "/batch/case",
+) -> str:
     view = case if isinstance(case, RecentScanCaseRowView) else present_recent_scan_case_row(rank, case)
     row_class = "batch-row batch-row--failed" if row_has_failure(view) else "batch-row"
     row_attrs = f"class=\"{row_class}\""
     if view.case_id:
-        href = f"/batch/case/{html.escape(view.case_id, quote=True)}"
+        href = f"{details_base_path.rstrip('/')}/{html.escape(view.case_id, quote=True)}"
         row_attrs += f" data-href=\"{href}\" onclick=\"window.open(this.dataset.href,'_blank','noopener')\" tabindex=\"0\" onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();window.open(this.dataset.href,'_blank','noopener')}}\""
     cells = [
         compact_cell(view.rank),
