@@ -209,6 +209,18 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
     )
     if not signal_rows:
         signal_rows = "<tr><td colspan=\"3\" class=\"empty-cell\">metric signals are not available</td></tr>"
+    correlation_rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(correlation.label)}</td>"
+        f"<td>{cm_metric_status_badge(correlation.status)}</td>"
+        f"<td>{escape_value(correlation.metric_status)}</td>"
+        f"<td>{escape_value(correlation.strength)}</td>"
+        f"<td>{escape_value(correlation.interpretation)}</td>"
+        "</tr>"
+        for correlation in view.correlations
+    )
+    if not correlation_rows:
+        correlation_rows = "<tr><td colspan=\"5\" class=\"empty-cell\">metric correlations are not available</td></tr>"
     limitations_html = ""
     if view.limitations:
         limitations_html = (
@@ -230,6 +242,10 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr><th>Metric</th><th>Status</th><th>Basis</th></tr></thead>"
         f"<tbody>{signal_rows}</tbody>"
+        "</table></div>"
+        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        "<thead><tr><th>Metric</th><th>Correlation</th><th>Metric status</th><th>Strength</th><th>Interpretation</th></tr></thead>"
+        f"<tbody>{correlation_rows}</tbody>"
         "</table></div>"
         f"{limitations_html}"
         "</div>"
@@ -879,11 +895,11 @@ def status_badge(value: Any) -> SafeHtml:
 def cm_metric_status_badge(value: Any) -> SafeHtml:
     text = "unknown" if value is None else str(value)
     normalized = text.lower()
-    if normalized in {"available", "ok"}:
+    if normalized in {"available", "ok", "correlated"}:
         class_name = "batch-status--ok"
     elif normalized == "observed":
         class_name = "batch-status--warning"
-    elif normalized in {"not_observed", "unknown", "unavailable"}:
+    elif normalized in {"not_observed", "unknown", "unavailable", "context_only"}:
         class_name = "batch-status--neutral"
     else:
         class_name = "batch-status--warning"

@@ -3059,29 +3059,41 @@ CM_METRIC_SIGNAL_LABELS = {
 
 
 def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
-    in_section = False
+    section = ""
     in_limitations = False
     summary: dict[str, str] = {}
+    correlation_summary: dict[str, str] = {}
     signal_values: dict[str, dict[str, str]] = {
         key: {"label": label}
         for key, label in CM_METRIC_SIGNAL_LABELS.items()
     }
+    correlation_values: dict[str, dict[str, str]] = {
+        key: {"label": label}
+        for key, label in CM_METRIC_SIGNAL_LABELS.items()
+    }
+    current_correlation_key = ""
     limitations: list[str] = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if line.startswith("## "):
-            in_section = line == "## CM Metrics Facts"
+            if line == "## CM Metrics Facts":
+                section = "facts"
+            elif line == "## CM Metrics Correlation":
+                section = "correlation"
+            else:
+                section = ""
             in_limitations = False
+            current_correlation_key = ""
             continue
-        if not in_section:
+        if not section:
             continue
         if line.startswith("### "):
-            in_limitations = line == "### CM metrics limitations"
+            in_limitations = section == "facts" and line == "### CM metrics limitations"
             continue
         if not line.startswith("- "):
             continue
         bullet = line[2:].strip()
-        if in_limitations:
+        if section == "facts" and in_limitations:
             if bullet:
                 limitations.append(clean_metadata_fact_value(bullet))
             continue
@@ -3090,26 +3102,51 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
         key, value = bullet.split(": ", 1)
         key = key.strip()
         value = clean_metadata_fact_value(value)
-        if key in {"status", "coverage"}:
+        if section == "facts" and key in {"status", "coverage"}:
             summary[key] = value
             continue
-        if key.endswith("_basis"):
+        if section == "facts" and key.endswith("_basis"):
             signal_key = key.removesuffix("_basis")
             if signal_key in signal_values:
                 signal_values[signal_key]["basis"] = value
             continue
-        if key in signal_values:
+        if section == "facts" and key in signal_values:
             signal_values[key]["status"] = value
+            continue
+        if section == "correlation" and key in {"status", "coverage", "correlated_signals", "context_only_signals", "guardrail"}:
+            correlation_summary[key] = value
+            current_correlation_key = ""
+            continue
+        if section == "correlation" and key in correlation_values:
+            status, _, rest = value.partition(" ")
+            correlation_values[key]["status"] = clean_metadata_fact_value(status)
+            match = re.search(r"metric=([^,\s)]+)", rest)
+            if match:
+                correlation_values[key]["metric_status"] = clean_metadata_fact_value(match.group(1))
+            match = re.search(r"strength=([^,\s)]+)", rest)
+            if match:
+                correlation_values[key]["strength"] = clean_metadata_fact_value(match.group(1))
+            current_correlation_key = key
+            continue
+        if section == "correlation" and current_correlation_key and key in {"basis", "interpretation"}:
+            correlation_values[current_correlation_key][key] = value
     signals = [
         signal
         for signal in signal_values.values()
         if signal.get("status") or signal.get("basis")
     ]
-    if not summary and not signals and not limitations:
+    correlations = [
+        correlation
+        for correlation in correlation_values.values()
+        if correlation.get("status") or correlation.get("interpretation")
+    ]
+    if not summary and not signals and not limitations and not correlation_summary and not correlations:
         return None
     return {
         "summary": summary,
         "signals": signals,
+        "correlation_summary": correlation_summary,
+        "correlations": correlations,
         "limitations": limitations[:5],
     }
 

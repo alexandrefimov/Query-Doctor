@@ -119,10 +119,20 @@ class RecentScanCmMetricSignalView:
 
 
 @dataclass(frozen=True)
+class RecentScanCmMetricCorrelationView:
+    label: str
+    status: Any
+    metric_status: Any
+    strength: Any
+    interpretation: Any
+
+
+@dataclass(frozen=True)
 class RecentScanCmMetricsView:
     unavailable: bool
     summary_items: tuple[tuple[str, Any], ...]
     signals: tuple[RecentScanCmMetricSignalView, ...]
+    correlations: tuple[RecentScanCmMetricCorrelationView, ...]
     limitations: tuple[str, ...]
 
 
@@ -361,18 +371,37 @@ def present_metadata_table(table: dict[str, Any]) -> RecentScanMetadataTableView
 
 def present_recent_scan_cm_metrics(cm_metrics_facts: dict[str, Any] | None) -> RecentScanCmMetricsView:
     if not cm_metrics_facts:
-        return RecentScanCmMetricsView(unavailable=True, summary_items=(), signals=(), limitations=())
+        return RecentScanCmMetricsView(
+            unavailable=True,
+            summary_items=(),
+            signals=(),
+            correlations=(),
+            limitations=(),
+        )
     summary = cm_metrics_facts.get("summary")
     if not isinstance(summary, dict):
         summary = {}
     raw_signals = cm_metrics_facts.get("signals")
     signals = [signal for signal in raw_signals if isinstance(signal, dict)] if isinstance(raw_signals, list) else []
+    correlation_summary = cm_metrics_facts.get("correlation_summary")
+    if not isinstance(correlation_summary, dict):
+        correlation_summary = {}
+    raw_correlations = cm_metrics_facts.get("correlations")
+    correlations = (
+        [correlation for correlation in raw_correlations if isinstance(correlation, dict)]
+        if isinstance(raw_correlations, list)
+        else []
+    )
     raw_limitations = cm_metrics_facts.get("limitations")
     limitations = raw_limitations if isinstance(raw_limitations, list) else []
-    summary_items = (
+    summary_pairs: list[tuple[str, Any]] = [
         ("status", safe_display_value(summary.get("status"))),
         ("coverage", safe_display_value(summary.get("coverage"))),
-    )
+    ]
+    for key in ("correlated_signals", "context_only_signals"):
+        if key in correlation_summary:
+            summary_pairs.append((key, safe_display_value(correlation_summary.get(key))))
+    summary_items = tuple(summary_pairs)
     signal_views = tuple(
         RecentScanCmMetricSignalView(
             label=safe_display_text(signal.get("label")),
@@ -381,12 +410,27 @@ def present_recent_scan_cm_metrics(cm_metrics_facts: dict[str, Any] | None) -> R
         )
         for signal in signals
     )
+    correlation_views = tuple(
+        RecentScanCmMetricCorrelationView(
+            label=safe_display_text(correlation.get("label")),
+            status=safe_display_value(correlation.get("status")),
+            metric_status=safe_display_value(correlation.get("metric_status")),
+            strength=safe_display_value(correlation.get("strength")),
+            interpretation=safe_display_value(correlation.get("interpretation")),
+        )
+        for correlation in correlations
+    )
     limitation_views = tuple(safe_display_text(item) for item in limitations if item is not None)
-    unavailable = not signal_views and all(value in {None, "", "unknown"} for _, value in summary_items)
+    unavailable = (
+        not signal_views
+        and not correlation_views
+        and all(value in {None, "", "unknown"} for _, value in summary_items)
+    )
     return RecentScanCmMetricsView(
         unavailable=unavailable,
         summary_items=summary_items,
         signals=signal_views,
+        correlations=correlation_views,
         limitations=limitation_views,
     )
 
