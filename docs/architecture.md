@@ -95,8 +95,10 @@ Report writer:
   `## Админские проверки`.
 - Детерминированно добавляет `## Факты анализатора` из `analysis_facts.md`; LLM
   не должен писать эту appendix-секцию.
-- Сейчас намеренно исключает `## Table Metadata Context` из prompt LLM.
-- Показывает table metadata facts только в Python-generated
+- Сейчас намеренно исключает `## Table Metadata Context` и
+  `## CM Time-Series Context` из prompt LLM.
+- Передает LLM curated metadata digest и нормализованные `## CM Metrics Facts`;
+  детальные context-секции остаются только в Python-generated
   `## Факты анализатора`.
 - Буферизует raw LLM output. Финальный report пишется только после
   normalization, sanitization, narrative validation, appendix append и final

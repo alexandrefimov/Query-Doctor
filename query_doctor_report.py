@@ -40,6 +40,8 @@ RECOMMENDATIONS_HEADING = "## Практические рекомендации"
 DETAILED_REPORT_HEADING = "## Подробный разбор"
 ANALYZER_FACTS_HEADING = "## Факты анализатора"
 TABLE_METADATA_CONTEXT_HEADING = "## Table Metadata Context"
+CM_TIMESERIES_CONTEXT_HEADING = "## CM Time-Series Context"
+CM_METRICS_FACTS_HEADING = "## CM Metrics Facts"
 EVIDENCE_SAFE_PROBLEMS_HEADING = "### Основные подтверждённые проблемы по профилю"
 EVIDENCE_HEADING = "### Подтверждающие факты"
 AMPLIFIERS_HEADING = "### Что усиливает проблему"
@@ -651,7 +653,8 @@ def strip_markdown_section(text: str, heading: str) -> str:
 
 def facts_text_for_model_prompt(facts_text: str) -> str:
     """Return deterministic facts that are enabled for LLM-written narrative."""
-    return strip_markdown_section(facts_text, TABLE_METADATA_CONTEXT_HEADING)
+    prompt_facts = strip_markdown_section(facts_text, TABLE_METADATA_CONTEXT_HEADING)
+    return strip_markdown_section(prompt_facts, CM_TIMESERIES_CONTEXT_HEADING)
 
 
 def facts_cardinality_anomaly_count(facts_text: str) -> int | None:
@@ -1212,6 +1215,47 @@ def facts_have_large_intermediate_or_exchange(facts_text: str) -> bool:
     )
 
 
+def cm_metrics_facts_summary(facts_text: str) -> dict[str, str]:
+    lines = extract_markdown_section(facts_text, CM_METRICS_FACTS_HEADING)
+    if not lines:
+        return {}
+
+    summary: dict[str, str] = {}
+    for label in (
+        "status",
+        "coverage",
+        "host_cpu_pressure",
+        "host_cpu_pressure_basis",
+        "daemon_memory_growth",
+        "daemon_memory_growth_basis",
+        "daemon_memory_pressure",
+        "daemon_memory_pressure_basis",
+        "network_io_spike",
+        "network_io_spike_basis",
+    ):
+        value = first_bullet_value(lines, label)
+        if value is not None:
+            summary[label] = value
+    return summary
+
+
+def cm_metrics_observed_points(facts_text: str) -> list[str]:
+    summary = cm_metrics_facts_summary(facts_text)
+    points: list[str] = []
+    labels = (
+        ("host_cpu_pressure", "Host CPU pressure"),
+        ("daemon_memory_growth", "Daemon memory growth"),
+        ("daemon_memory_pressure", "Daemon memory pressure"),
+        ("network_io_spike", "Network I/O spike"),
+    )
+    for key, title in labels:
+        if summary.get(key) != "observed":
+            continue
+        basis = summary.get(f"{key}_basis")
+        points.append(f"{title}: observed" + (f"; {basis}" if basis else ""))
+    return points[:FACT_APPENDIX_MAX_ITEMS]
+
+
 def recommendation_candidate_lines(facts_text: str) -> list[tuple[str, str]]:
     """Return Python-owned optimization actions derived only from deterministic facts."""
     candidates: list[tuple[str, str]] = []
@@ -1335,6 +1379,11 @@ def supported_summary_points(facts_text: str) -> list[str]:
         points.append(
             "Metadata digest shows table/column stats gaps; frame stats work as approved maintenance, not proven root cause."
         )
+    for point in cm_metrics_observed_points(facts_text):
+        points.append(
+            f"CM Metrics Facts contain an observed context signal: {point}. "
+            "Use it as bounded runtime context, not as standalone root cause."
+        )
     if not points:
         points.append("Parsed facts do not select a confirmed optimization target; use this report as a baseline.")
     return points[:FACT_APPENDIX_MAX_ITEMS]
@@ -1386,6 +1435,7 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     backend_summary = parse_backend_tail_summary(facts_text)
+    cm_metrics = cm_metrics_facts_summary(facts_text)
 
     differentiators: list[str] = []
     for label in (
@@ -1416,6 +1466,11 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
         if value != "unknown":
             differentiators.append(f"Backend {label}: {value}")
 
+    if cm_metrics.get("coverage"):
+        differentiators.append(f"CM metrics coverage: {cm_metrics['coverage']}")
+    for point in cm_metrics_observed_points(facts_text):
+        differentiators.append(f"CM metric signal: {point}")
+
     return differentiators[:FACT_APPENDIX_MAX_ITEMS]
 
 
@@ -1430,10 +1485,13 @@ def evidence_groups(facts_text: str) -> dict[str, list[str]]:
     action_cards = markdown_subheading_titles(action_card_lines)
     findings = markdown_subheading_titles(findings_lines)
     unsupported = markdown_bullet_lines(limitation_lines)
+    cm_metric_points = cm_metrics_observed_points(facts_text)
     if action_cards:
         groups["action_cards"] = action_cards
     if findings:
         groups["findings"] = findings
+    if cm_metric_points:
+        groups["cm_metrics"] = cm_metric_points
     if unsupported:
         groups["unsupported"] = unsupported
     return groups
@@ -1450,6 +1508,7 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
         "## What is NOT supported by the parsed evidence",
     )
     backend_summary = parse_backend_tail_summary(facts_text)
+    cm_metrics = cm_metrics_facts_summary(facts_text)
     return {
         "summary": {
             label: first_bullet_value(summary_lines, label)
@@ -1475,6 +1534,7 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
             "has_large_intermediate_or_exchange": facts_have_large_intermediate_or_exchange(facts_text),
         },
         "backend_summary": backend_summary,
+        "cm_metrics": cm_metrics,
         "supported_summary_points": supported_summary_points(facts_text),
         "case_differentiators": case_summary_differentiators(facts_text),
         "evidence_groups": evidence_groups(facts_text),
@@ -1647,6 +1707,11 @@ Engineering interpretation rules:
 - Treat skew and spill only as established causes if the facts explicitly contain skew evidence or non-zero spill/scratch metrics.
 - If skew/spill evidence is absent, mention them only under "Админские проверки".
 - If analysis_facts.md contains a Spill or scratch I/O finding, do not say spill/scratch evidence is absent; say non-zero spill/scratch metric evidence exists and keep causal wording separate.
+- Use CM Metrics Facts as the only metrics interpretation source. Do not infer from CM Time-Series Context or raw aggregates.
+- CM Metrics Facts statuses mean exactly: observed = bounded runtime context signal, not_observed = checked below threshold, unknown = unavailable or insufficient facts.
+- Do not state CPU, memory, daemon, network, HDFS, or cluster pressure as a root cause from CM metrics alone.
+- Mention observed CM metrics in "Краткий вывод" only when they are useful confirmed context for this query; keep not_observed and unknown metric statuses out of the short summary.
+- Put unknown/not_observed CM metric limitations under "Что НЕ подтверждается фактами" or "Админские проверки", not in the short summary.
 
 The final markdown file is assembled by the wrapper with only:
 # Query Doctor Report
@@ -1703,6 +1768,7 @@ Python-owned slot contract:
 - Use "supported_summary_points" as the allowed meaning space for "Краткий вывод"; do not copy it verbatim unless it already reads naturally.
 - Use "case_differentiators" to make "Краткий вывод" specific to this query: prefer concrete operator IDs, ratios, memory values, top Action Card/Finding titles, and safe totals/counts that distinguish this case from other reports.
 - Use "evidence_groups" to organize "Подробный разбор" into readable narrative. You may explain why a supported signal matters, but do not add new facts or causes.
+- Use "cm_metrics" only as Python-owned bounded runtime context. Do not derive metrics claims from other sections.
 - Use "unsupported_conclusions" only under "Что НЕ подтверждается фактами".
 - Use "action_card_titles", "finding_titles", "summary", "totals", and "evidence_flags" to choose what is worth mentioning.
 - Do not introduce a user-facing fact, unsupported conclusion, or action target that is absent from the digest or deterministic facts.
