@@ -1537,6 +1537,7 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
     """Return safe case-specific facts that help the LLM avoid generic summaries."""
     summary_lines = extract_markdown_section(facts_text, "## Summary")
     query_wall_clock_lines = extract_markdown_section(facts_text, "## Query Wall Clock")
+    evidence_quality_lines = extract_markdown_section(facts_text, "## Evidence Quality")
     totals_lines = extract_markdown_section(facts_text, "## Totals")
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
     findings_lines = extract_markdown_section(facts_text, "## Findings")
@@ -1556,10 +1557,6 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
         value = first_bullet_value(summary_lines, label)
         if value:
             differentiators.append(f"{label}: {value}")
-    for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent"):
-        value = first_bullet_value(totals_lines, label)
-        if value:
-            differentiators.append(f"{label}: {value}")
     wall_clock = first_bullet_value(query_wall_clock_lines, "duration")
     wall_clock_source = first_bullet_value(query_wall_clock_lines, "source")
     wall_clock_confidence = first_bullet_value(query_wall_clock_lines, "confidence")
@@ -1570,6 +1567,19 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
         if wall_clock_confidence:
             detail_parts.append(f"confidence={wall_clock_confidence}")
         differentiators.append(f"Query wall-clock: {', '.join(detail_parts)}")
+    evidence_quality_score = first_bullet_value(evidence_quality_lines, "score")
+    evidence_quality_level = first_bullet_value(evidence_quality_lines, "level")
+    if evidence_quality_score or evidence_quality_level:
+        parts = []
+        if evidence_quality_score:
+            parts.append(f"score={evidence_quality_score}")
+        if evidence_quality_level:
+            parts.append(f"level={evidence_quality_level}")
+        differentiators.append(f"Evidence quality: {', '.join(parts)}")
+    for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent"):
+        value = first_bullet_value(totals_lines, label)
+        if value:
+            differentiators.append(f"{label}: {value}")
 
     differentiators.extend(action_card_differentiators(action_card_lines))
     for title in markdown_subheading_titles(action_card_lines, limit=3):
@@ -1633,6 +1643,7 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
     """Return a compact Python-owned contract for LLM report slots."""
     summary_lines = extract_markdown_section(facts_text, "## Summary")
     totals_lines = extract_markdown_section(facts_text, "## Totals")
+    evidence_quality_lines = extract_markdown_section(facts_text, "## Evidence Quality")
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     limitation_lines = extract_markdown_section(
@@ -1669,6 +1680,11 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
         "backend_summary": backend_summary,
         "cm_metrics": cm_metrics,
         "cm_metrics_correlation": cm_metrics_correlation,
+        "evidence_quality": {
+            label: first_bullet_value(evidence_quality_lines, label)
+            for label in ("score", "level")
+            if first_bullet_value(evidence_quality_lines, label) is not None
+        },
         "supported_summary_points": supported_summary_points(facts_text),
         "case_differentiators": case_summary_differentiators(facts_text),
         "evidence_groups": evidence_groups(facts_text),
@@ -2456,6 +2472,7 @@ def limited_nonempty_lines(
 def render_analyzer_facts_appendix(facts_text: str) -> str:
     summary_lines = extract_markdown_section(facts_text, "## Summary")
     query_wall_clock_lines = extract_markdown_section(facts_text, "## Query Wall Clock")
+    evidence_quality_lines = extract_markdown_section(facts_text, "## Evidence Quality")
     totals_lines = extract_markdown_section(facts_text, "## Totals")
     backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
     backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
@@ -2488,6 +2505,24 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
         append_fact_bullet(lines, label, first_bullet_value(totals_lines, label))
     for label in ("duration", "source", "confidence"):
         append_fact_bullet(lines, f"query wall-clock {label}", first_bullet_value(query_wall_clock_lines, label))
+    if evidence_quality_lines:
+        lines.extend(["", "### Evidence Quality"])
+        for label in ("score", "level"):
+            append_fact_bullet(lines, label, first_bullet_value(evidence_quality_lines, label))
+        strengths = extract_markdown_subsection(evidence_quality_lines, "### Strengths")
+        limitations = extract_markdown_subsection(evidence_quality_lines, "### Limitations")
+        strength_excerpt, remaining_strengths = limited_nonempty_lines(strengths, limit=FACT_APPENDIX_MAX_ITEMS)
+        if strength_excerpt:
+            lines.extend(["", "#### Strengths"])
+            lines.extend(strength_excerpt)
+            if remaining_strengths:
+                lines.append(f"- ... {remaining_strengths} more evidence-quality strengths omitted")
+        limitation_excerpt, remaining_limitations = limited_nonempty_lines(limitations, limit=FACT_APPENDIX_MAX_ITEMS)
+        if limitation_excerpt:
+            lines.extend(["", "#### Limitations"])
+            lines.extend(limitation_excerpt)
+            if remaining_limitations:
+                lines.append(f"- ... {remaining_limitations} more evidence-quality limitations omitted")
 
     if backend_summary_lines:
         lines.extend(["", "### Backend / Host Tail Evidence"])
