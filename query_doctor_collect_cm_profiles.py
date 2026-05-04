@@ -249,24 +249,29 @@ class CMTimeSeriesQuery:
 
 CM_TIMESERIES_QUERY_ALLOWLIST = (
     CMTimeSeriesQuery(
-        query_id="impala_daemon_cpu",
-        label="Impala daemon CPU pressure",
-        tsquery="select cpu_percent where category=IMPALAD",
-    ),
-    CMTimeSeriesQuery(
         query_id="impala_daemon_memory",
         label="Impala daemon memory pressure",
-        tsquery="select mem_rss where category=IMPALAD",
+        tsquery="select mem_rss where roleType=IMPALAD",
     ),
     CMTimeSeriesQuery(
-        query_id="host_disk_io",
-        label="Host disk IO pressure",
-        tsquery="select read_bytes_rate, write_bytes_rate where category=HOST",
+        query_id="host_cpu_user",
+        label="Host CPU user rate",
+        tsquery="select cpu_user_rate",
+    ),
+    CMTimeSeriesQuery(
+        query_id="host_cpu_system",
+        label="Host CPU system rate",
+        tsquery="select cpu_system_rate",
+    ),
+    CMTimeSeriesQuery(
+        query_id="host_memory_used",
+        label="Host memory used",
+        tsquery="select physical_memory_used",
     ),
     CMTimeSeriesQuery(
         query_id="host_network_io",
         label="Host network IO pressure",
-        tsquery="select bytes_receive_rate, bytes_transmit_rate where category=HOST",
+        tsquery="select bytes_receive_rate, bytes_transmit_rate",
     ),
 )
 
@@ -1474,10 +1479,21 @@ def fetch_cm_profile_text(
 PROFILE_SQL_STATEMENT_RE = re.compile(
     r"(?ims)^\s*Sql\s+Statement\s*:\s*(?P<statement>.+?)(?:^\s*[A-Z][A-Za-z0-9_ /().-]{2,}\s*:|\Z)"
 )
+PROFILE_SUMMARY_FIELD_RE = re.compile(
+    r"(?im)^\s*(?P<name>Start Time|End Time|Query Type|Query State|Query Status)\s*:\s*(?P<value>.+?)\s*$"
+)
 
 
 def extract_statement_from_profile_text(profile_text: str) -> str | None:
-    text = profile_text
+    text = profile_details_text(profile_text)
+    match = PROFILE_SQL_STATEMENT_RE.search(text)
+    if not match:
+        return None
+    statement = match.group("statement").strip()
+    return statement or None
+
+
+def profile_details_text(profile_text: str) -> str:
     try:
         payload = json.loads(profile_text)
     except json.JSONDecodeError:
@@ -1485,13 +1501,77 @@ def extract_statement_from_profile_text(profile_text: str) -> str | None:
     if isinstance(payload, dict):
         details = payload.get("details")
         if isinstance(details, str) and details.strip():
-            text = details
+            return details
+    return profile_text
 
-    match = PROFILE_SQL_STATEMENT_RE.search(text)
+
+def profile_summary_timestamp_to_iso(value: str) -> str | None:
+    raw = value.strip()
+    match = re.match(r"^(?P<prefix>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})(?:\.(?P<fraction>\d+))?$", raw)
     if not match:
         return None
-    statement = match.group("statement").strip()
-    return statement or None
+    fraction = match.group("fraction")
+    normalized = match.group("prefix").replace(" ", "T")
+    if fraction:
+        normalized = f"{normalized}.{fraction[:6].ljust(6, '0')}"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return format_cm_timestamp(parsed)
+
+
+def extract_summary_metadata_from_profile_text(profile_text: str) -> dict[str, str | int]:
+    text = profile_details_text(profile_text)
+    fields: dict[str, str | int] = {}
+    for match in PROFILE_SUMMARY_FIELD_RE.finditer(text):
+        name = match.group("name").strip().lower()
+        value = match.group("value").strip()
+        if name == "start time":
+            normalized = profile_summary_timestamp_to_iso(value)
+            if normalized:
+                fields["start_time"] = normalized
+        elif name == "end time":
+            normalized = profile_summary_timestamp_to_iso(value)
+            if normalized:
+                fields["end_time"] = normalized
+        elif name == "query type" and value:
+            fields["query_type"] = value
+        elif name == "query state" and value:
+            fields["query_state"] = value
+        elif name == "query status" and value:
+            fields["status"] = value
+    start_time = fields.get("start_time")
+    end_time = fields.get("end_time")
+    if isinstance(start_time, str) and isinstance(end_time, str):
+        try:
+            start = parse_cm_timestamp(start_time)
+            end = parse_cm_timestamp(end_time)
+        except ValueError:
+            start = end = None
+        if start is not None and end is not None and end >= start:
+            fields["duration_ms"] = int((end - start).total_seconds() * 1000)
+    return fields
+
+
+def merge_profile_summary_metadata(summary: CMQuerySummary, profile_text: str) -> tuple[CMQuerySummary, list[str]]:
+    fields = extract_summary_metadata_from_profile_text(profile_text)
+    if not fields:
+        return summary, []
+    updates: dict[str, object] = {}
+    for field in ("start_time", "end_time", "duration_ms", "status", "query_state", "query_type"):
+        if getattr(summary, field) is None and field in fields:
+            updates[field] = fields[field]
+    if not updates:
+        return summary, []
+    warnings: list[str] = []
+    if "start_time" in updates or "end_time" in updates or "duration_ms" in updates:
+        warnings.append("CM profile text timing metadata collected")
+    if "status" in updates or "query_state" in updates or "query_type" in updates:
+        warnings.append("CM profile text status metadata collected")
+    return replace(summary, **updates), warnings
 
 
 def fetch_cm_query_details_summary(
@@ -2432,14 +2512,20 @@ def recent_summary_time_key(summary: CMQuerySummary) -> str:
 
 
 def recent_summary_status_priority(summary: CMQuerySummary) -> int:
-    status = (summary.status or "").strip().lower()
-    if status in RUNNING_QUERY_STATUSES:
+    if is_running_query_summary(summary):
         return 0
+    status = (summary.status or "").strip().lower()
     if status in {"failed", "error", "cancelled", "canceled"}:
         return 1
     if status in {"succeeded", "success", "finished"}:
         return 2
     return 3
+
+
+def is_running_query_summary(summary: CMQuerySummary) -> bool:
+    status = (summary.status or "").strip().lower()
+    query_state = (summary.query_state or "").strip().lower()
+    return status in RUNNING_QUERY_STATUSES or query_state in RUNNING_QUERY_STATUSES
 
 
 def classify_recent_query_candidate(
@@ -2462,9 +2548,10 @@ def classify_recent_query_candidate(
         return False, "excluded: query type filter mismatch", extract_sql_verb(summary.statement)
 
     status = (summary.status or "").strip().lower()
-    if only_running and status not in RUNNING_QUERY_STATUSES:
+    is_running = is_running_query_summary(summary)
+    if only_running and not is_running:
         return False, "excluded: not running query", extract_sql_verb(summary.statement)
-    if status in RUNNING_QUERY_STATUSES and not include_running:
+    if is_running and not include_running:
         return False, "excluded: running query", extract_sql_verb(summary.statement)
     if status in {"failed", "error"} and not include_failed:
         return False, "excluded: failed query", extract_sql_verb(summary.statement)
@@ -2794,6 +2881,8 @@ def run_cm_single_query_collection(
             config.query_id or "",
             max_profile_bytes=config.max_profile_bytes,
         )
+        summary, profile_metadata_warnings = merge_profile_summary_metadata(summary, profile_text)
+        warnings.extend(profile_metadata_warnings)
         if not summary.statement:
             profile_statement = extract_statement_from_profile_text(profile_text)
             if profile_statement:

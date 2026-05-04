@@ -59,6 +59,12 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
             config_key="recent_metadata_jobs",
             fallback=WEB_RECENT_SCAN_DEFAULTS["metadata_jobs"],
         ),
+        "collect_cm_timeseries": form_or_config_bool(
+            form_values,
+            "collect_cm_timeseries",
+            config_values=local_config,
+            fallback=False,
+        ),
         "user": form_or_config_value(form_values, "user", config_values=local_config, config_key="recent_user"),
         "pool": form_or_config_value(form_values, "pool", config_values=local_config, config_key="recent_pool"),
     }
@@ -97,6 +103,9 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<div class=\"batch-form-grid\">"
         f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for CM profile downloads and local analysis. Hard cap: 100.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
+        "</div>"
+        "<div class=\"batch-checkbox-row\">"
+        f"{render_batch_checkbox('collect_cm_timeseries', 'Collect CM metrics', bool(values.get('collect_cm_timeseries')), help_text='Collect bounded Cloudera Manager time-series metric summaries for selected cases. Adds several read-only CM requests per analyzed query.')}"
         "</div>"
         "</fieldset>"
         "</div>"
@@ -262,6 +271,18 @@ def render_batch_text_field(name: str, label: str, value: str, *, help_text: str
         f"<div class=\"field\">{render_label_with_info(name, label, help_text)}"
         f"<input class=\"input\" id=\"{html.escape(name, quote=True)}\" name=\"{html.escape(name, quote=True)}\" "
         f"type=\"text\" value=\"{value}\" autocomplete=\"off\"></div>"
+    )
+
+
+def render_batch_checkbox(name: str, label: str, checked: bool, *, help_text: str = "") -> str:
+    safe_name = html.escape(name, quote=True)
+    checked_attr = " checked" if checked else ""
+    return (
+        "<label class=\"batch-checkbox\">"
+        f"<input type=\"checkbox\" id=\"{safe_name}\" name=\"{safe_name}\" value=\"on\"{checked_attr}>"
+        f"{html.escape(label)}"
+        "</label>"
+        + (f"<span class=\"helper\">{html.escape(help_text)}</span>" if help_text else "")
     )
 
 

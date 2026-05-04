@@ -78,11 +78,24 @@ UI, and keep documentation aligned with the safety contract.
 - Multi-engine support is still only an architecture direction. Adding runtime
   selectors before engine-specific collectors, parsers and validators would be
   misleading.
+- Deployment-source support is currently CM-based and validated against local
+  CM 6.2.1 behavior. Newer CM versions, direct Impala daemon profile collection
+  and Prometheus metrics need explicit provider contracts before implementation.
+- Metrics and logs are natural next diagnostic signals, but they need their own
+  source/provider and analyzer contracts. A future complex report should combine
+  normalized facts, not raw logs or raw metric series.
+- The highest-value analytical gaps are evidence confidence, historical
+  baselines, repeated-query clustering, host-tail correlation and outcome
+  tracking. These should be deterministic product signals, not LLM judgments.
 
 ## Planned features
 
 Near term:
 
+- Add Evidence Quality Score so reports can distinguish strong evidence from
+  incomplete evidence.
+- Design Baseline Comparison and Similar Query Clustering around normalized
+  query fingerprints.
 - Add Query LLM optimizer no-rewrite or recommendations-only fallback for
   high-risk cases such as large CTE graphs or complex join shapes.
 - Show optimizer mode and validation outcome safely in the Details UI, without
@@ -98,6 +111,15 @@ Mid term:
 
 - Split `query_doctor_web_server.py` into smaller route/service modules where it
   reduces safety review cost.
+- Add an Impala source-provider seam so CM API collection, future direct Impala
+  daemon profile collection and future Prometheus metrics can evolve without
+  changing analyzer/report/browser safety contracts.
+- Define a multi-signal facts model for profile, metadata, metrics and log
+  analyzers, including confidence/status labels and limitations.
+- Correlate host-tail profile evidence with bounded metrics and repeated-host
+  patterns across cases.
+- Add Recommendation Outcome Tracking so practical actions can be evaluated
+  against before/after runtime, score and failure changes.
 - Expand deterministic optimizer recommendations so the LLM has less room to
   invent and more Python-owned guidance to phrase.
 - Add safer job history/status persistence for local UI sessions.
@@ -110,6 +132,11 @@ Long term:
 
 - Evolve toward an engine-agnostic diagnostic core with engine-specific
   collectors, metadata providers, parsers and recommendation modules.
+- Evolve toward broader operational diagnostics where prepared metrics and logs
+  from Hadoop ecosystem services can be summarized deterministically and used in
+  a single complex report.
+- Maintain an anonymized benchmark corpus for analyzer, report and optimizer
+  quality checks.
 - Add new engines only after their read-only collection contract, metadata
   allowlist, analyzer facts, browser safety tests and validators exist.
 

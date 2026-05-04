@@ -1665,6 +1665,150 @@ def numeric_context_value(context: dict[str, Any], field: str) -> float | None:
     return None
 
 
+CM_METRIC_MIN_POINTS_FOR_SIGNAL = 3
+CM_HOST_CPU_USER_MAX_THRESHOLD = 85.0
+CM_HOST_CPU_USER_AVG_THRESHOLD = 70.0
+CM_HOST_CPU_SYSTEM_MAX_THRESHOLD = 40.0
+CM_DAEMON_MEMORY_GROWTH_DELTA_BYTES = 8 * 1024 * 1024 * 1024
+CM_DAEMON_MEMORY_GROWTH_RATIO_THRESHOLD = 1.25
+CM_NETWORK_SPIKE_BYTES_PER_SEC = 100 * 1024 * 1024
+CM_NETWORK_SPIKE_RATIO_THRESHOLD = 5.0
+
+
+def cm_metric_by_id(context: dict[str, Any], metric_id: str) -> dict[str, Any] | None:
+    for query in context.get("queries") or []:
+        if isinstance(query, dict) and query.get("id") == metric_id:
+            return query
+    return None
+
+
+def cm_metric_point_count(metric: dict[str, Any] | None) -> int:
+    if not metric:
+        return 0
+    value = metric.get("point_count")
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(value, 0)
+    if isinstance(value, float):
+        return max(int(value), 0)
+    return 0
+
+
+def cm_metric_ready(metric: dict[str, Any] | None) -> bool:
+    if not metric:
+        return False
+    if metric.get("status") != "ok":
+        return False
+    if cm_metric_point_count(metric) < CM_METRIC_MIN_POINTS_FOR_SIGNAL:
+        return False
+    return any(numeric_context_value(metric, field) is not None for field in ("min", "max", "avg", "latest"))
+
+
+def cm_signal(status: str, basis: str) -> dict[str, str]:
+    return {"status": status, "basis": basis}
+
+
+def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
+    queries = [query for query in context.get("queries") or [] if isinstance(query, dict)]
+    total_metrics = len(queries)
+    ok_metrics = sum(1 for query in queries if query.get("status") == "ok")
+    total_points = sum(cm_metric_point_count(query) for query in queries)
+    available = bool(context.get("available")) and total_metrics > 0
+    status = "available" if available and ok_metrics == total_metrics else "partial" if ok_metrics else "unavailable"
+
+    host_cpu_user = cm_metric_by_id(context, "host_cpu_user")
+    host_cpu_system = cm_metric_by_id(context, "host_cpu_system")
+    daemon_memory = cm_metric_by_id(context, "impala_daemon_memory")
+    network_io = cm_metric_by_id(context, "host_network_io")
+
+    cpu_user_max = numeric_context_value(host_cpu_user or {}, "max")
+    cpu_user_avg = numeric_context_value(host_cpu_user or {}, "avg")
+    cpu_system_max = numeric_context_value(host_cpu_system or {}, "max")
+    if cm_metric_ready(host_cpu_user) or cm_metric_ready(host_cpu_system):
+        cpu_observed = (
+            (cpu_user_max is not None and cpu_user_max >= CM_HOST_CPU_USER_MAX_THRESHOLD)
+            or (cpu_user_avg is not None and cpu_user_avg >= CM_HOST_CPU_USER_AVG_THRESHOLD)
+            or (cpu_system_max is not None and cpu_system_max >= CM_HOST_CPU_SYSTEM_MAX_THRESHOLD)
+        )
+        host_cpu_pressure = cm_signal(
+            "observed" if cpu_observed else "not_observed",
+            (
+                f"host_cpu_user max={cpu_user_max:.2f} avg={cpu_user_avg:.2f}; "
+                f"host_cpu_system max={cpu_system_max:.2f}"
+            )
+            if cpu_user_max is not None and cpu_user_avg is not None and cpu_system_max is not None
+            else "available CPU metrics did not cross pressure thresholds",
+        )
+    else:
+        host_cpu_pressure = cm_signal("unknown", "host CPU metrics are missing or have insufficient points")
+
+    daemon_mem_min = numeric_context_value(daemon_memory or {}, "min")
+    daemon_mem_max = numeric_context_value(daemon_memory or {}, "max")
+    if cm_metric_ready(daemon_memory) and daemon_mem_min is not None and daemon_mem_max is not None:
+        delta = daemon_mem_max - daemon_mem_min
+        ratio = daemon_mem_max / daemon_mem_min if daemon_mem_min > 0 else None
+        growth_observed = delta >= CM_DAEMON_MEMORY_GROWTH_DELTA_BYTES and (
+            ratio is not None and ratio >= CM_DAEMON_MEMORY_GROWTH_RATIO_THRESHOLD
+        )
+        daemon_memory_growth = cm_signal(
+            "observed" if growth_observed else "not_observed",
+            (
+                f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)} "
+                f"delta={fmt_bytes(delta)} ratio={ratio:.2f}x"
+            )
+            if ratio is not None
+            else f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)}",
+        )
+    else:
+        daemon_memory_growth = cm_signal("unknown", "daemon memory metric is missing or has insufficient points")
+
+    daemon_memory_pressure = cm_signal(
+        "unknown",
+        "daemon memory capacity or limit is not part of the current safe CM metrics contract",
+    )
+
+    network_max = numeric_context_value(network_io or {}, "max")
+    network_avg = numeric_context_value(network_io or {}, "avg")
+    if cm_metric_ready(network_io) and network_max is not None and network_avg is not None:
+        ratio = network_max / network_avg if network_avg > 0 else None
+        spike_observed = network_max >= CM_NETWORK_SPIKE_BYTES_PER_SEC and (
+            ratio is None or ratio >= CM_NETWORK_SPIKE_RATIO_THRESHOLD
+        )
+        network_io_spike = cm_signal(
+            "observed" if spike_observed else "not_observed",
+            (
+                f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s "
+                f"ratio={ratio:.2f}x"
+            )
+            if ratio is not None
+            else f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s",
+        )
+    else:
+        network_io_spike = cm_signal("unknown", "host network I/O metric is missing or has insufficient points")
+
+    limitations = [
+        "CM metrics are bounded query-window context signals, not standalone proof of cause.",
+        "Raw metric points and per-point times are intentionally excluded from trusted analysis facts.",
+        "Memory pressure remains unknown until a safe capacity or limit metric is available.",
+    ]
+    warnings = [warning for warning in context.get("warnings") or [] if isinstance(warning, str)]
+    if warnings:
+        limitations.append(f"Collection warnings present: {len(warnings)}.")
+
+    return {
+        "status": status,
+        "total_metrics": total_metrics,
+        "ok_metrics": ok_metrics,
+        "total_points": total_points,
+        "host_cpu_pressure": host_cpu_pressure,
+        "daemon_memory_growth": daemon_memory_growth,
+        "daemon_memory_pressure": daemon_memory_pressure,
+        "network_io_spike": network_io_spike,
+        "limitations": limitations,
+    }
+
+
 def op_label(op: OperatorFact) -> str:
     flags: list[str] = []
     if op.join_kind:
@@ -2838,6 +2982,38 @@ def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("cm_timeseries_context")
+    if not context:
+        return []
+
+    facts = build_cm_metrics_facts(context)
+    lines = ["## CM Metrics Facts", ""]
+    lines.append(f"- status: {facts['status']}")
+    lines.append(
+        f"- coverage: {facts['ok_metrics']}/{facts['total_metrics']} metrics ok, "
+        f"{facts['total_points']} points"
+    )
+    for key in (
+        "host_cpu_pressure",
+        "daemon_memory_growth",
+        "daemon_memory_pressure",
+        "network_io_spike",
+    ):
+        signal = facts[key]
+        lines.append(f"- {key}: {signal['status']}")
+        lines.append(f"- {key}_basis: {signal['basis']}")
+    lines.append("")
+
+    limitations = facts.get("limitations") or []
+    if limitations:
+        lines.extend(["### CM metrics limitations", ""])
+        for limitation in limitations:
+            lines.append(f"- {limitation}")
+        lines.append("")
+    return lines
+
+
 def render_impala_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("impala_context")
     if not context:
@@ -2918,6 +3094,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_referenced_tables(analysis)
     lines += render_cm_query_context(analysis)
     lines += render_cm_timeseries_context(analysis)
+    lines += render_cm_metrics_facts(analysis)
     lines += render_table_metadata_context(analysis)
     lines += render_impala_context(analysis)
     lines += render_backend_tail_evidence(analysis)

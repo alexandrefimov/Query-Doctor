@@ -102,6 +102,8 @@ BATCH_JOBS_MAX = 100
 BATCH_FULL_JOBS_MAX = 4
 BATCH_CM_JOBS_MAX = 100
 BATCH_METADATA_JOBS_MAX = 5
+WEB_RUNNING_SCAN_WINDOW_MINUTES = 120
+WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT = 500
 RECENT_SCAN_TIMEZONE = ZoneInfo("Europe/Moscow")
 RECENT_SCAN_LOOKBACK_DAYS = 2
 RECENT_SCAN_BUCKET_HOURS = 1
@@ -220,6 +222,7 @@ class BatchRunConfig:
     include_failed: bool = True
     include_running: bool = False
     only_running: bool = False
+    collect_cm_timeseries: bool = False
 
 
 @dataclass(frozen=True)
@@ -1168,6 +1171,7 @@ def parse_batch_run_config(
     metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
+    collect_cm_timeseries = bool(first_form_value(form, "collect_cm_timeseries"))
     return BatchRunConfig(
         recent_window_minutes=recent_window_minutes,
         scan_date=scan_date,
@@ -1189,6 +1193,7 @@ def parse_batch_run_config(
         query_type="",
         include_failed=True,
         include_running=False,
+        collect_cm_timeseries=collect_cm_timeseries,
     )
 
 
@@ -1198,7 +1203,7 @@ def parse_running_run_config(
     default_metadata_top_limit: int = WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
     default_parallelism: int = 50,
 ) -> BatchRunConfig:
-    cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
+    cm_inspect_limit = WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT
     metadata_top_limit = parse_non_negative_form_int(
         form, "metadata_top_limit", default=default_metadata_top_limit, maximum=BATCH_METADATA_TOP_LIMIT_MAX
     )
@@ -1213,7 +1218,7 @@ def parse_running_run_config(
     )
     metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
     return BatchRunConfig(
-        recent_window_minutes=24 * 60,
+        recent_window_minutes=WEB_RUNNING_SCAN_WINDOW_MINUTES,
         from_time=None,
         to_time=None,
         cm_inspect_limit=cm_inspect_limit,
@@ -1232,6 +1237,7 @@ def parse_running_run_config(
         include_failed=False,
         include_running=True,
         only_running=True,
+        collect_cm_timeseries=True,
     )
 
 
@@ -1566,6 +1572,8 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         cmd.append("--include-running")
     if config.only_running:
         cmd.append("--only-running")
+    if config.collect_cm_timeseries:
+        cmd.append("--collect-cm-timeseries")
     if metadata_enabled:
         append_web_metadata_args(cmd, settings)
     if config.jobs > BATCH_FULL_JOBS_MAX:

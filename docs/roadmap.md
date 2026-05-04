@@ -7,9 +7,13 @@ workflows already work.
 ## Current implementation
 
 - Apache Impala is the only implemented SQL engine.
+- Current profile and CM-metrics collection is implemented through Cloudera
+  Manager APIs and has been validated against the local CM 6.2.1 environment.
 - The engine adapter is a minimal architectural seam for describing current
   engine capabilities.
 - No runtime engine selector exists.
+- Direct Impala daemon profile collection and Prometheus metrics collection are
+  not implemented.
 - Trino, Spark SQL, Hive, PostgreSQL, ClickHouse, Snowflake and BigQuery are not
   implemented.
 
@@ -93,6 +97,151 @@ a recommendations-only fallback instead of forcing an unsafe draft.
 These are incremental UI and architecture improvements. They should preserve
 current Impala behavior and safety boundaries.
 
+## Impala source-provider roadmap
+
+Goal: keep Apache Impala as the implemented engine while allowing different
+deployment sources over time.
+
+Current source provider:
+
+- Cloudera Manager API for query summaries, explicit query profile collection,
+  query-details context, and bounded CM time-series metrics.
+- The current implementation is tuned to CM 6.2.1 response behavior.
+
+Planned provider seams:
+
+- CM version adapter: isolate API version, endpoint paths, response-shape
+  parsing, query-state normalization, and metric tsquery allowlists so newer CM
+  versions can be validated with fixtures and real smoke checks.
+- Direct Impala daemon profile provider: fetch one explicit query profile from
+  Impala daemon debug/profile endpoints for clusters without Cloudera Manager.
+  This must be read-only, explicit, bounded by query id, redacted, and tested
+  before any web workflow can use it.
+- Metrics provider adapter: decouple metrics from profile collection. CM
+  time-series remains the current provider; Prometheus is the planned provider
+  for non-CM clusters. Prometheus support requires allowlisted PromQL, fixed
+  query windows derived from query timing, response-size limits, and summarized
+  metrics only.
+
+Non-goals for this seam until the contracts exist:
+
+- auto-detecting deployment type
+- broad daemon scraping
+- arbitrary PromQL from UI/config
+- rendering raw profile text, raw metrics, local paths, daemon URLs, or raw
+  artifact names in browser-visible UI
+
+## Multi-signal diagnostics roadmap
+
+Goal: evolve from query-profile diagnostics into a broader diagnostic framework
+that can combine profiles, metrics, logs and metadata without weakening the
+fact boundary.
+
+Current signal families:
+
+- Profile facts: implemented for Apache Impala runtime profiles.
+- Metadata facts: implemented through a narrow read-only Impala allowlist.
+- Metrics facts: started through bounded CM time-series summaries.
+- Log facts: not implemented.
+
+Planned analyzer seams:
+
+- Metrics analyzer: consume prepared metrics where possible, such as CM
+  time-series or Prometheus, and summarize fixed windows into Python-owned
+  facts: availability, coverage, peaks, trends, pressure indicators and
+  limitations.
+- Log analyzer: consume prepared log indexes or structured log stores where
+  possible, with fallback bounded parsing only after a safety design. It should
+  extract event counts, error categories, affected components, time alignment
+  and limitations, not raw log lines.
+- Correlation layer: combine profile, metrics, logs and metadata facts into
+  explicit supported/unknown/not-observed statements. This layer must avoid
+  claiming root cause unless facts directly support it.
+- Report layer: use LLM wording to produce one coherent report over the
+  normalized facts. The LLM should not see raw logs, raw metric series, raw SQL,
+  raw profiles or local/server paths.
+
+Possible future scopes:
+
+- query-level Impala diagnostics
+- Impala service or daemon diagnostics
+- other Hadoop ecosystem services
+- Hadoop cluster-level incident diagnostics
+- other SQL engines after engine-specific safety contracts exist
+
+Non-goals until contracts exist:
+
+- arbitrary log search from the UI
+- arbitrary PromQL or metric names from users
+- broad log/profile scraping
+- LLM-driven fact discovery
+- cluster-wide root-cause claims without deterministic evidence
+
+## Analytical quality roadmap
+
+Goal: improve diagnostic precision, prioritization quality and recommendation
+usefulness with measurable Python-owned signals.
+
+Highest priority:
+
+- Evidence Quality Score: score the strength of available evidence separately
+  from query severity. Inputs should include profile completeness, metadata
+  status, metrics coverage, future log coverage, and explicit limitations.
+  Reports can then distinguish high-confidence findings from weak evidence.
+- Baseline Comparison: compare a query against its own recent history or query
+  fingerprint family. Track normal duration, memory, rows, bytes read, spills,
+  plan shape and metadata/statistics status to separate chronic bad queries from
+  regressions.
+- Host Tail Diagnostics: connect backend-tail or skew evidence from profiles to
+  host/daemon metrics in the query window. Track whether the same host appears
+  as a repeated tail across multiple queries.
+- Similar Query Clustering: group repeated queries by normalized shape or
+  fingerprint so Finished Queries can show a class of problems instead of many
+  duplicate cases.
+- Recommendation Outcome Tracking: record whether recommended actions were
+  applied and whether runtime/score improved. This can begin as local/manual
+  status and later become a feedback dataset.
+
+Important follow-ups:
+
+- Plan Change Detection: identify plan-shape changes for recurring queries:
+  join order/distribution changes, vanished table statistics, changed
+  cardinality error, new spill evidence, or changed scan/table set.
+- Data Freshness and Partition Health: add deterministic facts for partition
+  freshness, sudden data growth, empty/anomalous partitions and stats coverage
+  for relevant partition ranges.
+- Admission and Queue Context: extract safe facts about queue wait, pool
+  saturation, concurrent load and admission pressure around the query window.
+- Cost and Impact Estimate: attach approximate wasted time, peak resource
+  pressure, repeated-query count, affected pool and user impact to findings so
+  the UI can prioritize work by operational value, not score alone.
+- Workload-Level View: summarize recurring problem classes by fingerprint,
+  pool, user, table set and time window. This should help distinguish one
+  expensive outlier from a repeated workload pattern.
+- Change Events Context: correlate query regressions with safe external events
+  such as stats refreshes, partition changes, deployments, config changes or
+  admission policy changes when those events are available as normalized facts.
+- SLO and SLA Framing: let users define practical thresholds for duration,
+  memory, spills, queue wait and failure rate. Reports should then explain
+  whether a query violates a declared target, not just whether it looks bad.
+- Action Catalog and Runbook Links: map deterministic recommendation types to
+  local runbook entries, owner hints and expected validation signals. This keeps
+  recommendations practical without asking users to invent the next step.
+- Anonymized Benchmark Corpus: create representative safe fixtures for missing
+  stats, skew, spills, admission wait, plan changes, cluster pressure and good
+  queries. Use it to evaluate analyzer/report/optimizer changes.
+- Root-Cause Claim Registry: define allowed claim types and required supporting
+  facts. Claims should be categorized as supported, context-only, unknown or
+  rejected before they reach trusted reports.
+
+Non-goals until the data contracts exist:
+
+- ranking confidence by LLM judgment
+- inferring baseline regressions without historical facts
+- exposing raw query text, raw metrics, raw logs or raw profile fragments in the
+  browser
+- claiming action outcomes without before/after measurements
+
 ## Multi-engine core roadmap
 
 Goal: build an engine-agnostic diagnostic core that can support multiple SQL
@@ -104,9 +253,11 @@ Future architecture should include:
 - common validation/trust pipeline
 - common browser safety/redaction policy
 - common report generation contract
+- common diagnostic signal model for profiles, metrics, logs and metadata
 - engine-specific collectors
 - engine-specific metadata providers
 - engine-specific profile/plan parsers
+- engine-specific metrics/log analyzers where needed
 - engine-specific recommendation modules when needed
 
 Possible future adapters:

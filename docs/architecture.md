@@ -20,6 +20,11 @@ Cloudera Manager profile / profile_digest.md
   -> local UI
 ```
 
+The implemented collection path is currently validated against the local
+Cloudera Manager 6.2.1 environment. Treat newer Cloudera Manager versions and
+non-Cloudera Impala deployments as future source-provider work, not as current
+support.
+
 ## Компоненты
 
 Collector:
@@ -29,6 +34,43 @@ Collector:
 - Пишет generated local cases только в ignored corpus paths.
 - Сам не запускает analyzer или report writer.
 
+Future collector source seam:
+- Keep profile acquisition behind a small source-provider contract: discover
+  query summaries, fetch one explicit profile, fetch safe query context, and
+  fetch bounded runtime metrics if available.
+- Current provider: Cloudera Manager API, tested against CM 6.2.1 behavior.
+- Planned CM-version seam: isolate endpoint paths, response parsing, query
+  state normalization, and time-series tsquery allowlists so newer CM versions
+  can be added with fixtures and safety tests instead of changing analyzer/UI
+  contracts.
+- Planned non-CM Impala seam: collect profiles directly from Impala daemon
+  debug/profile endpoints for clusters without Cloudera Manager. This must stay
+  explicit, bounded, read-only, redacted, and single-query oriented before any
+  batch workflow uses it.
+- Planned metrics seam: keep metrics source separate from profile source.
+  Cloudera Manager time-series is the current implementation; Prometheus is the
+  likely future metrics provider for non-CM clusters. Prometheus integration
+  needs a bounded query allowlist, fixed time windows, response-size limits, and
+  summarized facts only.
+
+Future diagnostic signal seam:
+- Treat profiles, metadata, metrics, and logs as separate diagnostic signal
+  families. Each family can have its own source providers and deterministic
+  analyzer before facts enter the shared report contract.
+- Profile analyzer: implemented today for Impala runtime profiles.
+- Metrics analyzer: partially started through bounded CM time-series summaries;
+  future providers may read pre-aggregated metrics from CM/Prometheus or compute
+  safe aggregates locally from bounded raw responses.
+- Log analyzer: planned only. It should prefer prepared log indexes or
+  structured log stores when available, and fall back to bounded local parsing
+  only with explicit allowlists, time windows, redaction and tests.
+- Cross-signal correlation belongs in Python-owned facts, not in LLM invention.
+  The LLM may phrase a complex report only after the profile, metrics, logs and
+  metadata analyzers publish normalized facts with confidence/status fields.
+- The same seam can later apply beyond Impala: other tools or a Hadoop cluster
+  as a whole may provide profile-like events, metrics, logs and metadata. That
+  is future architecture work, not current support.
+
 Analyzer:
 - Читает `profile_digest.md`.
 - Извлекает deterministic facts в `analysis_facts.md`.
@@ -36,6 +78,8 @@ Analyzer:
   referenced tables и optional table metadata facts, если они есть.
 - Читает local `impala_context.json`, если он есть, и добавляет
   `## Table Metadata Context`.
+- Future analyzers may add safe metrics/log/cluster facts, but only after their
+  source providers have bounded collection contracts and tests.
 - Не вызывает Cloudera Manager, Ollama или report writer.
 
 Report writer:
@@ -43,6 +87,8 @@ Report writer:
 - Использует LLM для narrative wording, не для fact discovery.
 - Не должен делать inference из raw profile text, SQL, local config или external
   context.
+- May eventually render a multi-signal diagnosis, but only from normalized
+  Python-owned facts produced by profile, metadata, metrics and log analyzers.
 - Генерирует trusted LLM report с одной fact boundary.
 - Требует user-facing narrative sections `## Краткий вывод`,
   `## Практические рекомендации`, `## Подробный разбор` и

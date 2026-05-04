@@ -51,12 +51,13 @@ def render_help_content() -> str:
 <li><strong>Parallelism</strong> управляет параллельной загрузкой профилей и локальным анализом. <strong>Metadata parallelism</strong> отдельно ограничивает read-only metadata collection.</li>
 <li>Результаты группируются как <strong>Bad queries</strong>, <strong>Suspicious queries</strong> и <strong>Good queries</strong>.</li>
 <li><strong>Only queries with spills</strong> — display-фильтр уже полученных результатов; он не меняет параметры запуска scan.</li>
+<li><strong>Collect CM metrics</strong> включает ограниченный сбор Cloudera Manager time-series summaries для выбранных запросов. По умолчанию выключен для Finished Queries.</li>
 </ul>
 </details>
 
 <details>
 <summary>Running Queries</summary>
-<p>Running Queries устроен как Finished Queries, но ищет только запросы, которые выполняются в момент scan. У него нет фильтров Scan date и Scan Hour; остальные фильтры и analysis settings остаются теми же. Результаты отображаются той же таблицей и открывают details выбранного запроса.</p>
+<p>Running Queries устроен как Finished Queries, но ищет только запросы, которые выполняются в момент scan. У него нет фильтров Scan date и Scan Hour; остальные фильтры и analysis settings остаются теми же. CM metrics для Running Queries собираются по умолчанию, потому что набор running-запросов обычно небольшой. Результаты отображаются той же таблицей и открывают details выбранного запроса.</p>
 </details>
 
 <details>
