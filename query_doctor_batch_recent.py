@@ -139,6 +139,7 @@ class CaseResult:
     zero_memory_estimate_gap_count: int | None = None
     backend_data_skew: bool | str = "unknown"
     host_tail_candidate_count: int | None = None
+    execution_tail_candidate_count: int | None = None
     report_generated: bool = False
     report_validation_status: str = "not_run"
     failure_category: str | None = None
@@ -1481,6 +1482,7 @@ def score_case(case: CaseResult) -> None:
     case.zero_memory_estimate_gap_count = components["zero_memory_estimate_gap_count"]
     case.backend_data_skew = components["backend_data_skew"]
     case.host_tail_candidate_count = components["host_tail_candidate_count"]
+    case.execution_tail_candidate_count = components["execution_tail_candidate_count"]
     score, reasons = score_analysis_facts(facts, metadata_status=case.metadata_status)
     case.score = score
     case.score_reasons = reasons
@@ -1511,11 +1513,12 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
         score += 3
         reasons.append("spill/scratch evidence: non-zero metrics")
     host_tail_candidates = components["host_tail_candidate_count"] or 0
+    execution_tail_candidates = components["execution_tail_candidate_count"] or 0
     if host_tail_candidates > 0:
         score += min(12, host_tail_candidates * 8)
         reasons.append(f"host-tail candidates: {host_tail_candidates}")
     duration_sec = components["duration_sec"]
-    if isinstance(duration_sec, (int, float)) and duration_sec >= 1800 and host_tail_candidates > 0:
+    if isinstance(duration_sec, (int, float)) and duration_sec >= 1800 and execution_tail_candidates > 0:
         score += 8
         reasons.append(f"long-running query with host tail: {duration_sec / 60:.1f}m")
     if components["backend_data_skew"] is True:
@@ -1559,6 +1562,10 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
     backend_facts = scoring_section_text(facts, "## Backend / Host Tail Evidence")
     cm_query_facts = scoring_section_text(facts, "## CM Query Context")
     cm_correlation_facts = scoring_section_text(facts, "## CM Metrics Correlation")
+    host_tail_candidates = fact_int(backend_facts, "host tail candidates")
+    execution_tail_candidates = fact_int(backend_facts, "execution tail candidates")
+    if execution_tail_candidates is None:
+        execution_tail_candidates = host_tail_candidates
     return {
         "cardinality_anomaly_count": fact_int(summary_facts, "Cardinality anomalies"),
         "memory_anomaly_count": fact_int(summary_facts, "Memory anomalies"),
@@ -1566,7 +1573,8 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
         "zero_memory_estimate_gap_count": fact_int(summary_facts, "Zero/unknown memory estimate gaps"),
         "backend_data_skew": backend_data_skew_value(backend_facts),
         "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(backend_facts),
-        "host_tail_candidate_count": fact_int(backend_facts, "host tail candidates"),
+        "host_tail_candidate_count": host_tail_candidates,
+        "execution_tail_candidate_count": execution_tail_candidates,
         "duration_sec": duration_seconds_value(cm_query_facts),
         "cm_metrics_correlated_signals": fact_int(cm_correlation_facts, "correlated_signals"),
     }
@@ -1798,6 +1806,7 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "zero_memory_estimate_gap_count": case.zero_memory_estimate_gap_count,
         "backend_data_skew": case.backend_data_skew,
         "host_tail_candidate_count": case.host_tail_candidate_count,
+        "execution_tail_candidate_count": case.execution_tail_candidate_count,
         "case_dir": str(case.wrapper_dir),
         "report_generated": case.report_generated,
         "report_validation_status": case.report_validation_status,
@@ -1820,6 +1829,9 @@ def case_score_severity(case: CaseResult) -> str:
     zero_row_gaps = case.zero_row_estimate_gap_count or 0
     zero_memory_gaps = case.zero_memory_estimate_gap_count or 0
     host_tail = case.host_tail_candidate_count or 0
+    execution_tail = case.execution_tail_candidate_count
+    if execution_tail is None:
+        execution_tail = host_tail
     if (
         case.score >= 30
         or cardinality >= 5
@@ -1829,7 +1841,7 @@ def case_score_severity(case: CaseResult) -> str:
         or (cardinality >= 3 and memory >= 2)
         or (zero_row_gaps >= 2 and zero_memory_gaps >= 2)
         or (case.backend_data_skew is True and host_tail >= 2)
-        or (host_tail >= 1 and (case.duration_sec or 0) >= 1800)
+        or (execution_tail >= 1 and (case.duration_sec or 0) >= 1800)
     ):
         return "high"
     return "suspicious"

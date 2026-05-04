@@ -1170,6 +1170,37 @@ def find_codegen_bottleneck_lines(text: str, total_time_ms: float | None, min_sh
     return lines
 
 
+def build_query_wall_clock(
+    totals: dict[str, dict[str, Any] | None],
+    cm_query_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cm_duration_ms = numeric_context_value(cm_query_context or {}, "duration_ms")
+    if cm_duration_ms is not None and cm_duration_ms > 0:
+        return {
+            "duration_ms": cm_duration_ms,
+            "duration_human": fmt_duration(cm_duration_ms),
+            "source": "CM Query Context",
+            "confidence": "high",
+        }
+
+    profile_total = totals.get("TotalTime") or {}
+    profile_total_ms = profile_total.get("ms")
+    if isinstance(profile_total_ms, (int, float)) and profile_total_ms > 0:
+        return {
+            "duration_ms": float(profile_total_ms),
+            "duration_human": fmt_duration(float(profile_total_ms)),
+            "source": "profile TotalTime",
+            "confidence": "medium",
+        }
+
+    return {
+        "duration_ms": None,
+        "duration_human": "unknown",
+        "source": "unknown",
+        "confidence": "unknown",
+    }
+
+
 def fmt_duration(ms: float | None) -> str:
     if ms is None:
         return "n/a"
@@ -2283,6 +2314,8 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
     data_skew_reason = f"{group}: {reason}" if group != "unknown" else reason
 
     candidates: list[dict[str, Any]] = []
+    execution_tail_candidates: list[dict[str, Any]] = []
+    read_rate_tail_candidates: list[dict[str, Any]] = []
     write_path_candidates: list[dict[str, Any]] = []
 
     for group, _group_data_skew, _group_reason, comparable_work, group_hosts in group_statuses:
@@ -2294,26 +2327,28 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
                 "execution time",
                 "execution_time_human",
                 True,
+                "execution",
                 False,
                 BACKEND_EXECUTION_TAIL_RATIO,
                 BACKEND_EXECUTION_TAIL_MIN_MS,
                 BACKEND_EXECUTION_TAIL_MIN_GAP_MS,
             ),
-            ("read_rate_bps", "read rate", "read_rate_human", False, False, BACKEND_TAIL_RATIO, None, None),
-            ("write_rate_bps", "write rate", "write_rate_human", False, True, BACKEND_TAIL_RATIO, None, None),
-            ("hdfs_write_time_ms", "HDFS write time", "hdfs_write_time_human", True, True, BACKEND_TAIL_RATIO, None, None),
+            ("read_rate_bps", "read rate", "read_rate_human", False, "read_rate", False, BACKEND_TAIL_RATIO, None, None),
+            ("write_rate_bps", "write rate", "write_rate_human", False, "write_path", True, BACKEND_TAIL_RATIO, None, None),
+            ("hdfs_write_time_ms", "HDFS write time", "hdfs_write_time_human", True, "write_path", True, BACKEND_TAIL_RATIO, None, None),
             (
                 "hdfs_write_sec_per_gib",
                 "HDFS write sec/GiB",
                 "hdfs_write_sec_per_gib_human",
                 True,
+                "write_path",
                 True,
                 BACKEND_TAIL_RATIO,
                 None,
                 None,
             ),
         ]
-        for key, label, human_key, higher_is_worse, is_write_path, min_ratio, min_worst_value, min_gap in metric_specs:
+        for key, label, human_key, higher_is_worse, family, is_write_path, min_ratio, min_worst_value, min_gap in metric_specs:
             candidate = tail_candidate_from_metric(
                 group_hosts,
                 key=key,
@@ -2327,12 +2362,19 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
             if candidate is None:
                 continue
             candidates.append(candidate)
+            if family == "execution":
+                execution_tail_candidates.append(candidate)
+            elif family == "read_rate":
+                read_rate_tail_candidates.append(candidate)
             if is_write_path:
                 write_path_candidates.append(candidate)
 
-    execution_skew = "yes" if candidates else ("unknown" if data_skew == "unknown" else "no")
+    execution_skew = "yes" if execution_tail_candidates else ("unknown" if not comparable_statuses else "no")
     write_path_anomaly = "yes" if write_path_candidates else ("unknown" if not comparable_statuses else "no")
     tail_candidate_count = len({candidate["host"] for candidate in candidates})
+    execution_tail_candidate_count = len({candidate["host"] for candidate in execution_tail_candidates})
+    read_rate_tail_candidate_count = len({candidate["host"] for candidate in read_rate_tail_candidates})
+    write_path_tail_candidate_count = len({candidate["host"] for candidate in write_path_candidates})
     return {
         "rows_parsed": len(hosts),
         "hosts": hosts,
@@ -2347,11 +2389,16 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
             for group, group_data_skew, group_reason, comparable_work, group_hosts in group_statuses
         ],
         "tail_candidate_count": tail_candidate_count,
+        "execution_tail_candidate_count": execution_tail_candidate_count,
+        "read_rate_tail_candidate_count": read_rate_tail_candidate_count,
+        "write_path_tail_candidate_count": write_path_tail_candidate_count,
         "data_skew": data_skew,
         "data_skew_reason": data_skew_reason,
         "execution_skew": execution_skew,
         "write_path_anomaly": write_path_anomaly,
         "candidates": candidates,
+        "execution_tail_candidates": execution_tail_candidates,
+        "read_rate_tail_candidates": read_rate_tail_candidates,
         "write_path_candidates": write_path_candidates,
     }
 
@@ -2540,7 +2587,11 @@ def make_finding(
     }
 
 
-def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
+def analyze(
+    text: str,
+    args: argparse.Namespace,
+    cm_query_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     text = normalize_profile_text(text)
     operators = parse_operators(text)
     backend_tail = build_backend_tail_analysis(parse_backend_host_facts(text))
@@ -2548,6 +2599,7 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
         name: extract_total_counter(text, name)
         for name in ["TotalBytesRead", "TotalBytesSent", "TotalTime"]
     }
+    query_wall_clock = build_query_wall_clock(totals, cm_query_context)
 
     top_by_time = sorted(
         [op for op in operators if op.time_ms is not None],
@@ -2635,14 +2687,14 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
     codegen_lines = find_matching_lines(text, CODEGEN_RE)
 
     scan_top_ops = [op for op in top_by_time[:3] if op.is_scan]
-    total_time_ms = totals.get("TotalTime", {}).get("ms") if totals.get("TotalTime") else None
-    codegen_bottleneck_lines = find_codegen_bottleneck_lines(text, total_time_ms)
+    query_wall_clock_ms = query_wall_clock.get("duration_ms")
+    codegen_bottleneck_lines = find_codegen_bottleneck_lines(text, query_wall_clock_ms)
     storage_bottleneck_evidence: list[str] = []
     for op in scan_top_ops:
         if op.time_ms is not None and op.time_ms >= args.slow_operator_ms:
             share = None
-            if total_time_ms and total_time_ms > 0:
-                share = op.time_ms / total_time_ms
+            if isinstance(query_wall_clock_ms, (int, float)) and query_wall_clock_ms > 0:
+                share = op.time_ms / query_wall_clock_ms
             if share is None or share >= 0.10:
                 storage_bottleneck_evidence.append(
                     f"{op_label(op)} is among top time operators: {fmt_duration(op.time_ms)}"
@@ -2860,19 +2912,19 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
             "No codegen/LLVM candidate signal was parsed."
         )
 
-    if backend_tail["candidates"]:
+    if backend_tail["execution_tail_candidates"]:
         findings.append(
             make_finding(
                 "host_execution_tail_suspected",
-                backend_tail_finding_severity(backend_tail["candidates"]),
+                backend_tail_finding_severity(backend_tail["execution_tail_candidates"]),
                 "Host-specific execution tail suspected",
                 (
-                    "Execution skew is suspected from parsed backend counters. "
+                    "Execution skew is suspected from parsed backend execution-time counters. "
                     "Host-specific HDFS/RPC/write path issue is suspected, not proven."
                 ),
                 evidence_lines=[
                     f"{candidate['host']}: {candidate['evidence']} ({candidate['ratio_human']})"
-                    for candidate in backend_tail["candidates"][: args.max_evidence_lines]
+                    for candidate in backend_tail["execution_tail_candidates"][: args.max_evidence_lines]
                 ],
                 admin_actions=[
                     "Compare per-host RowsProduced / BytesRead / BytesWritten rates.",
@@ -2907,6 +2959,7 @@ def analyze(text: str, args: argparse.Namespace) -> dict[str, Any]:
             "report_top_n": args.top_n,
         },
         "totals": totals,
+        "query_wall_clock": query_wall_clock,
         "backend_tail": backend_tail,
         "operators": [op_to_json(op) for op in operators],
         "top_operators_by_time": [op_to_json(op) for op in top_by_time],
@@ -3058,6 +3111,9 @@ def render_backend_tail_evidence(analysis: dict[str, Any]) -> list[str]:
         [
             f"- backend rows parsed: {backend['rows_parsed']}",
             f"- host tail candidates: {backend['tail_candidate_count']}",
+            f"- execution tail candidates: {backend['execution_tail_candidate_count']}",
+            f"- read-rate tail candidates: {backend['read_rate_tail_candidate_count']}",
+            f"- write-path tail candidates: {backend['write_path_tail_candidate_count']}",
             f"- data skew: {backend['data_skew']} ({backend['data_skew_reason']})",
             f"- execution skew: {backend['execution_skew']}",
             f"- write-path anomaly: {backend['write_path_anomaly']}",
@@ -3080,15 +3136,16 @@ def render_backend_tail_evidence(analysis: dict[str, Any]) -> list[str]:
         ratio = candidate.get("ratio_human") or "n/a"
         lines.append(f"| {md_escape(host)} | {md_escape(evidence)} | {ratio} |")
     lines.append("")
-    lines.extend(
-        [
-            "### Interpretation guardrails",
-            "",
-            "- Execution skew is suspected from parsed backend counters.",
-            "- Host-specific HDFS/RPC/write path issue is suspected, not proven.",
-            "",
-        ]
-    )
+    lines.extend(["### Interpretation guardrails", ""])
+    if backend.get("execution_tail_candidates"):
+        lines.append("- Execution skew is suspected from parsed backend execution-time counters.")
+    else:
+        lines.append("- Execution skew is not confirmed by backend execution-time tail candidates.")
+    if backend.get("write_path_candidates"):
+        lines.append("- Host-specific HDFS/RPC/write path issue is suspected, not proven.")
+    else:
+        lines.append("- Host-specific HDFS/RPC/write path issue is not confirmed by backend write-path counters.")
+    lines.append("")
     return lines
 
 
@@ -3233,6 +3290,16 @@ def render_cm_query_context(analysis: dict[str, Any]) -> list[str]:
         value = numeric_context_value(context, field)
         if value is not None:
             lines.append(f"- {label}: {fmt_bytes(value)}")
+    lines.append("")
+    return lines
+
+
+def render_query_wall_clock(analysis: dict[str, Any]) -> list[str]:
+    clock = analysis.get("query_wall_clock") or {}
+    lines = ["## Query Wall Clock", ""]
+    lines.append(f"- duration: {clock.get('duration_human') or 'unknown'}")
+    lines.append(f"- source: {clock.get('source') or 'unknown'}")
+    lines.append(f"- confidence: {clock.get('confidence') or 'unknown'}")
     lines.append("")
     return lines
 
@@ -3404,6 +3471,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines.append("")
 
     lines += render_summary(analysis)
+    lines += render_query_wall_clock(analysis)
     report_top_n = int(analysis.get("thresholds", {}).get("report_top_n", 10))
     max_table_rows = None if verbose else report_top_n
     lines += render_operator_table("Top operators by time", analysis["top_operators_by_time"])
@@ -3494,8 +3562,9 @@ def main(argv: list[str]) -> int:
         return 2
 
     text = digest_path.read_text(encoding="utf-8", errors="replace")
-    analysis = analyze(text, args)
-    analysis["cm_query_context"] = collect_cm_query_context(digest_path.parent)
+    cm_query_context = collect_cm_query_context(digest_path.parent)
+    analysis = analyze(text, args, cm_query_context=cm_query_context)
+    analysis["cm_query_context"] = cm_query_context
     analysis["cm_timeseries_context"] = collect_cm_timeseries_context(digest_path.parent)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)

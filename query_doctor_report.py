@@ -1152,6 +1152,7 @@ def facts_has_backend_tail_evidence(facts_text: str) -> bool:
         "backend / host tail evidence" in lower
         or "host-specific execution tail suspected" in lower
         or "execution skew is suspected from parsed backend counters" in lower
+        or "execution skew is suspected from parsed backend execution-time counters" in lower
     )
 
 
@@ -1528,6 +1529,7 @@ def action_card_differentiators(action_card_lines: list[str], *, limit: int = 3)
 def case_summary_differentiators(facts_text: str) -> list[str]:
     """Return safe case-specific facts that help the LLM avoid generic summaries."""
     summary_lines = extract_markdown_section(facts_text, "## Summary")
+    query_wall_clock_lines = extract_markdown_section(facts_text, "## Query Wall Clock")
     totals_lines = extract_markdown_section(facts_text, "## Totals")
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
     findings_lines = extract_markdown_section(facts_text, "## Findings")
@@ -1549,6 +1551,16 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
         value = first_bullet_value(totals_lines, label)
         if value:
             differentiators.append(f"{label}: {value}")
+    wall_clock = first_bullet_value(query_wall_clock_lines, "duration")
+    wall_clock_source = first_bullet_value(query_wall_clock_lines, "source")
+    wall_clock_confidence = first_bullet_value(query_wall_clock_lines, "confidence")
+    if wall_clock:
+        detail_parts = [wall_clock]
+        if wall_clock_source:
+            detail_parts.append(f"source={wall_clock_source}")
+        if wall_clock_confidence:
+            detail_parts.append(f"confidence={wall_clock_confidence}")
+        differentiators.append(f"Query wall-clock: {', '.join(detail_parts)}")
 
     differentiators.extend(action_card_differentiators(action_card_lines))
     for title in markdown_subheading_titles(action_card_lines, limit=3):
@@ -2420,6 +2432,7 @@ def limited_nonempty_lines(
 
 def render_analyzer_facts_appendix(facts_text: str) -> str:
     summary_lines = extract_markdown_section(facts_text, "## Summary")
+    query_wall_clock_lines = extract_markdown_section(facts_text, "## Query Wall Clock")
     totals_lines = extract_markdown_section(facts_text, "## Totals")
     backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
     backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
@@ -2449,6 +2462,8 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
         append_fact_bullet(lines, label, first_bullet_value(summary_lines, label))
     for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent"):
         append_fact_bullet(lines, label, first_bullet_value(totals_lines, label))
+    for label in ("duration", "source", "confidence"):
+        append_fact_bullet(lines, f"query wall-clock {label}", first_bullet_value(query_wall_clock_lines, label))
 
     if backend_summary_lines:
         lines.extend(["", "### Backend / Host Tail Evidence"])
