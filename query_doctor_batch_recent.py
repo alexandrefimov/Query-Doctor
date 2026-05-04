@@ -1517,6 +1517,10 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
     if components["backend_data_skew"] is True:
         score += 2
         reasons.append("backend data skew evidence")
+    severe_backend_skew_ratio = components["severe_backend_data_skew_ratio"]
+    if severe_backend_skew_ratio is not None:
+        score += 8
+        reasons.append(f"severe backend data skew ratio: {severe_backend_skew_ratio:.1f}x")
     cm_correlated_signals = components["cm_metrics_correlated_signals"] or 0
     if cm_correlated_signals > 0:
         score += min(6, cm_correlated_signals * 2)
@@ -1553,6 +1557,7 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
         "zero_row_estimate_gap_count": fact_int(facts, "Zero/unknown row estimate gaps"),
         "zero_memory_estimate_gap_count": fact_int(facts, "Zero/unknown memory estimate gaps"),
         "backend_data_skew": backend_data_skew_value(facts),
+        "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(facts),
         "host_tail_candidate_count": fact_int(facts, "host tail candidates"),
         "cm_metrics_correlated_signals": fact_int(facts, "correlated_signals"),
     }
@@ -1596,6 +1601,19 @@ def backend_data_skew_value(facts: str) -> bool | str:
     if any(value.startswith(("no", "not_observed")) for value in values):
         return False
     return "unknown"
+
+
+def severe_backend_data_skew_ratio(facts: str) -> float | None:
+    if backend_data_skew_value(facts) is not True:
+        return None
+    for value in fact_values(facts, "data skew"):
+        match = re.search(r"(\d+(?:\.\d+)?)x", value, re.IGNORECASE)
+        if not match:
+            continue
+        ratio = float(match.group(1))
+        if ratio >= 10:
+            return ratio
+    return None
 
 
 def has_metadata_error_status(facts: str) -> bool:
