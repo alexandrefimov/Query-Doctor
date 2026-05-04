@@ -69,9 +69,18 @@ Query LLM optimizer is an explicit action for analyzed server-owned cases. It ca
 produce a validated draft, but validation rejects unsafe SQL and result-shape
 changes. It is not the pasted-SQL review page.
 
+The details-page optimizer can start from a server-owned SELECT/WITH statement
+or a SELECT/WITH payload extracted from supported INSERT/CTAS statements. The
+output must still be read-only SELECT/WITH. Current risk modes are
+`rewrite_allowed` and `conservative_rewrite`; high-risk cases should move toward
+a recommendations-only fallback instead of forcing an unsafe draft.
+
 ## Planned near-term features
 
+- Query LLM optimizer recommendations-only fallback for high-risk cases.
 - More real-case validation for Query LLM optimizer.
+- Safe UI status for optimizer mode and validation outcome.
+- Small anonymized optimizer benchmark set.
 - Prompt tuning so optimizer drafts are useful without changing semantics.
 - Remaining historical documentation cleanup.
 - Recent scan presenter cleanup where it improves safety/testability.
@@ -130,4 +139,7 @@ Adding any engine requires:
 
 - Report SQL-like validation may be slightly over-conservative for conceptual
   DDL wording.
+- Query LLM optimizer can still reject useful-looking drafts for complex
+  CTE-heavy cases; this is safer than accepting a semantic change, but needs a
+  useful fallback.
 - Archived prototypes must not be used as current safety guidance.

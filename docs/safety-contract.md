@@ -81,13 +81,17 @@ contents или real production profile text.
   policy before rendering.
 - Web Recent scan must not auto-run LLM reports; validated report generation is
   explicit for one selected case.
+- Details-page Query LLM optimizer must render only a validated read-only draft
+  and safe status fields. Partial drafts and raw source SQL stay hidden.
 
 ## Report structure
 
-LLM пишет только:
+LLM пишет user-facing narrative sections:
 
-- `## Короткий вывод`
+- `## Краткий вывод`
+- `## Практические рекомендации`
 - `## Подробный разбор`
+- `## Админские проверки`
 
 Python добавляет:
 
@@ -98,6 +102,21 @@ Analyzer facts appendix детерминированно строится из `
 
 `## Table Metadata Context` сейчас исключён из prompt LLM и появляется только в
 Python-generated appendix.
+
+## Query LLM optimizer
+
+- Pasted-SQL Query Optimizer accepts only one safe SELECT/WITH statement and
+  must not execute or echo pasted SQL after submit.
+- Details-page Query LLM optimizer may use only server-owned analyzed case
+  sources.
+- Supported details-page source scopes are read-only SELECT/WITH and SELECT/WITH
+  payloads extracted from supported INSERT/CTAS statements.
+- Generated optimizer output must still be a read-only SELECT/WITH statement.
+- Python validation owns trust: physical tables, filters, projection, DISTINCT,
+  top-level GROUP/ORDER/set operations, CTE shape and top-level JOIN shape must
+  remain within validated scope.
+- Prompt constraints are not enough for safety. High-risk cases should fall back
+  to safe recommendations instead of accepting an unsafe SQL draft.
 
 ## Claim discipline
 

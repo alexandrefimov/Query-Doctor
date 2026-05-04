@@ -25,7 +25,8 @@ def test_web_help_page_renders_curated_static_help():
 
     assert '<a class="nav-link nav-link--active" href="/help">Help</a>' in body
     assert "<h1>Help</h1>" in body
-    assert "Быстрый старт" in body
+    assert "On this page" in body
+    assert "Workflows" in body
     assert "Query Doctor помогает разбирать поведение запросов Apache Impala." in body
     assert "Сейчас реализован только Apache Impala" in body
     assert "Finished Queries" in body
@@ -36,6 +37,8 @@ def test_web_help_page_renders_curated_static_help():
     assert "LLM Report" in body
     assert "Query LLM optimizer" in body
     assert "Analysis details" in body
+    assert 'href="#results-table"' in body
+    assert 'id="details-actions"' in body
     assert "Метаданные" in body
     assert "Проверенные отчеты" in body
     assert "FAQ" in body
@@ -55,7 +58,10 @@ def test_web_help_page_renders_curated_static_help():
     assert "не запускает LLM-отчеты автоматически" in body
     assert "Финальный отчет валидируется перед показом" in body
     assert "partial output скрывается" in body
-    assert "Metadata collection явная, ограниченная, read-only и allowlisted." in body
+    assert (
+        "Metadata collection явная, ограниченная, без выполнения пользовательского SQL и allowlisted."
+        in body
+    )
     assert "SHOW CREATE TABLE" in body
     assert "SHOW TABLE STATS" in body
     assert "SHOW COLUMN STATS" in body
@@ -90,5 +96,6 @@ def test_web_help_route_serves_help_without_running_analysis():
     request.do_GET()
 
     assert captured["status"] == 200
-    assert "Быстрый старт" in captured["body"]
+    assert "On this page" in captured["body"]
+    assert "Workflows" in captured["body"]
     assert "Сейчас реализован только Apache Impala" in captured["body"]

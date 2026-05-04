@@ -67,12 +67,19 @@ Sanitizer и validator:
 Optimizer draft generator:
 - `query_doctor_optimize_query.py` читает только server-owned analyzed case
   inputs.
+- Может использовать read-only SELECT/WITH source или SELECT/WITH payload,
+  извлечённый из supported INSERT/CTAS source.
 - Использует LLM для wording/SQL draft generation, но Python validator owns
   trust.
 - Не выполняет SQL.
 - Пишет validated draft только после read-only SQL validation и result-shape
   checks: физические таблицы, filter scope, projection, DISTINCT, top-level
   GROUP/ORDER/set operations, CTE names и top-level join shape.
+- Классифицирует риск rewrite как `rewrite_allowed` или
+  `conservative_rewrite`; conservative mode удерживает CTE/JOIN/projection/filter
+  shape и использует более строгие prompt constraints.
+- Marker содержит safe status fields such as `source_scope`, `risk_mode` and
+  `risk_reasons`; browser UI must not expose raw SQL or artifact filenames.
 - Partial drafts untrusted and hidden from browser-visible details.
 
 Local UI:
@@ -94,12 +101,15 @@ architecture direction. The current implementation remains Impala-only.
 
 ## Текущее real-case покрытие
 
-Локальный ignored corpus покрывает важные классы:
+Локальный ignored corpus и recent real-case checks покрывают важные классы:
 
 - `e94fbeb93feb2ad1_edd9d52c00000000`: host/backend data-skew evidence без
   доказанного execution-tail host.
 - `fa469f95f6fb7286_ea9f070d00000000`: bad-query case с подтверждёнными
   row/cardinality и memory estimate anomalies.
+- Details-page optimizer smoke now covers read-only SELECT/WITH sources,
+  SELECT/WITH payload extraction from supported DML/CTAS, conservative rewrite
+  mode and validation rejection for unsafe result-shape changes.
 
 Не добавляйте в committed docs raw SQL, raw hostnames, raw IP addresses, raw
 profiles, local config или credentials.

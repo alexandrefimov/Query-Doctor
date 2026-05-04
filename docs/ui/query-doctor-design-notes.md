@@ -239,8 +239,11 @@ Specific Query analysis table. Row click opens details in a new tab.
 
 Details pages show safe deterministic case overview, Analysis details collapsed
 by default, explicit LLM Report and explicit Query LLM optimizer. Query LLM
-optimizer drafts are rendered only after deterministic validation and are never
-executed by Query Doctor.
+optimizer can use server-owned SELECT/WITH sources or extracted SELECT/WITH
+payloads from supported INSERT/CTAS statements. Drafts are rendered only after
+deterministic validation, must remain read-only SELECT/WITH, and are never
+executed by Query Doctor. High-risk cases should move toward a
+recommendations-only fallback instead of forcing a SQL draft.
 
 ### Query Optimizer
 
