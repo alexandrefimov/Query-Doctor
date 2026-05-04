@@ -446,6 +446,7 @@ Safety and scope:
 - Do not add physical tables that are absent from the input SQL.
 - Preserve query intent and output columns unless the Python-owned facts clearly support a narrower projection.
 - Use only Python-owned recommendation candidates and deterministic facts as rewrite guidance.
+- Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive SQL changes.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - If a safe SQL rewrite is not supported, return the original query shape with only harmless formatting.
 
@@ -485,6 +486,7 @@ Safety and scope:
 - Do not output SELECT, WITH, INSERT, CREATE, DROP, ALTER, REFRESH, INVALIDATE, COMPUTE STATS, SHOW, SET, USE, or code blocks.
 - Do not echo source SQL, local paths, raw profile text, raw metadata, artifacts, credentials, or runtime internals.
 - Use only Python-owned recommendation candidates and deterministic facts.
+- Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive recommendations.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - Prefer concrete actions such as collecting stats, reducing projected columns, narrowing filters, splitting a risky query, or reviewing join shape only when supported by facts.
 - Keep the answer under 8 bullets.

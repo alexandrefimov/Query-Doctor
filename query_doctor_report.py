@@ -1274,6 +1274,29 @@ def cm_metrics_correlation_status(facts_text: str, key: str) -> str | None:
     return None
 
 
+def cm_metrics_correlation_summary(facts_text: str) -> dict[str, str]:
+    lines = extract_markdown_section(facts_text, CM_METRICS_CORRELATION_HEADING)
+    if not lines:
+        return {}
+
+    summary: dict[str, str] = {}
+    for label in (
+        "status",
+        "coverage",
+        "correlated_signals",
+        "context_only_signals",
+        "guardrail",
+        "host_cpu_pressure",
+        "daemon_memory_growth",
+        "daemon_memory_pressure",
+        "network_io_spike",
+    ):
+        value = first_bullet_value(lines, label)
+        if value is not None:
+            summary[label] = value
+    return summary
+
+
 def cm_metrics_profile_supported(facts_text: str, key: str) -> bool:
     status = cm_metrics_correlation_status(facts_text, key)
     if status is not None:
@@ -1559,6 +1582,7 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
     )
     backend_summary = parse_backend_tail_summary(facts_text)
     cm_metrics = cm_metrics_facts_summary(facts_text)
+    cm_metrics_correlation = cm_metrics_correlation_summary(facts_text)
     return {
         "summary": {
             label: first_bullet_value(summary_lines, label)
@@ -1585,6 +1609,7 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
         },
         "backend_summary": backend_summary,
         "cm_metrics": cm_metrics,
+        "cm_metrics_correlation": cm_metrics_correlation,
         "supported_summary_points": supported_summary_points(facts_text),
         "case_differentiators": case_summary_differentiators(facts_text),
         "evidence_groups": evidence_groups(facts_text),
