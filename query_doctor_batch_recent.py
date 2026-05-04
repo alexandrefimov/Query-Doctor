@@ -75,6 +75,7 @@ class BatchConfig:
     pool: str | None
     query_type: str | None
     max_profile_bytes: int
+    collect_cm_timeseries: bool
     metadata_mode: str
     metadata_coordinator: str | None
     metadata_impala_shell: str | None
@@ -278,6 +279,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--max-profile-bytes",
         type=positive_int,
+    )
+    parser.add_argument(
+        "--collect-cm-timeseries",
+        action="store_true",
+        default=None,
+        help="Collect bounded allowlisted CM time-series summaries for each collected case.",
     )
     parser.add_argument(
         "--metadata-mode",
@@ -659,6 +666,11 @@ def build_batch_config(
             config_values.get("max_profile_bytes"),
             default=cm_profiles.DEFAULT_MAX_PROFILE_BYTES,
         ),
+        collect_cm_timeseries=first_bool(
+            args.collect_cm_timeseries,
+            config_values.get("collect_cm_timeseries"),
+            default=False,
+        ),
         metadata_mode=args.metadata_mode,
         metadata_coordinator=first_string(args.metadata_coordinator, config_values.get("metadata_coordinator")),
         metadata_impala_shell=first_string(args.metadata_impala_shell, config_values.get("metadata_impala_shell")),
@@ -990,6 +1002,8 @@ def collect_case_profile(
             "--max-profile-bytes",
             str(config.max_profile_bytes),
         ]
+        if config.collect_cm_timeseries:
+            cmd.append("--collect-cm-timeseries")
         append_cm_config_args(cmd, config)
         result = run_subprocess(cmd, cwd=repo_root, env=env)
         if result.returncode != 0:

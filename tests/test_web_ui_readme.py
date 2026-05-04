@@ -23,7 +23,8 @@ def test_web_readme_page_uses_curated_help_instead_of_repository_readme(tmp_path
     assert '<a class="nav-link nav-link--active" href="/help">Help</a>' in body
     assert "<h1>README.md</h1>" not in body
     assert "<h1>Local README</h1>" not in body
-    assert "Быстрый старт" in body
+    assert "<h1>Help</h1>" in body
+    assert "Workflows" in body
     assert "<script>alert(1)</script>" not in body
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" not in body
     assert "echo &lt;safe&gt;" not in body
@@ -36,7 +37,8 @@ def test_web_readme_page_handles_missing_readme(tmp_path):
         module.WebSettings(config=Path(".query-doctor-cm.local.json"), repo_dir=tmp_path)
     )
 
-    assert "Быстрый старт" in body
+    assert "<h1>Help</h1>" in body
+    assert "Workflows" in body
     assert "README.md was not found in the repository root." not in body
 
 
@@ -58,5 +60,6 @@ def test_web_readme_route_serves_curated_help_without_running_analysis(tmp_path)
     request.do_GET()
 
     assert captured["status"] == 200
-    assert "Быстрый старт" in captured["body"]
+    assert "<h1>Help</h1>" in captured["body"]
+    assert "Workflows" in captured["body"]
     assert "<h1>Route README</h1>" not in captured["body"]

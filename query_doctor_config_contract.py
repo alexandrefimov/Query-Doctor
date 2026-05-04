@@ -29,10 +29,14 @@ ALLOWED_CONFIG_KEYS = {
     "cluster",
     "cm_user",
     "cm_url",
+    "collect_cm_timeseries",
+    "cm_timeseries_padding_sec",
     "insecure_skip_verify",
     "krb5ccname",
     "limit",
     "max_profile_bytes",
+    "max_timeseries_bytes",
+    "max_timeseries_points",
     "min_duration_sec",
     "out",
     "pool",
@@ -316,6 +320,8 @@ def normalize_config_value(key: str, value: object) -> object:
         "since_hours",
         "limit",
         "max_profile_bytes",
+        "max_timeseries_bytes",
+        "max_timeseries_points",
         "recent_limit",
         "recent_parallelism",
         "recent_cm_jobs",
@@ -335,6 +341,10 @@ def normalize_config_value(key: str, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ConfigError("Config field recent_metadata_top_limit must be a non-negative integer.")
         return value
+    if key == "cm_timeseries_padding_sec":
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ConfigError("Config field cm_timeseries_padding_sec must be a non-negative integer.")
+        return value
     if key in {"recent_max_duration_sec", "recent_min_duration_sec"}:
         if (
             isinstance(value, bool)
@@ -350,6 +360,7 @@ def normalize_config_value(key: str, value: object) -> object:
         return value
     if key in {
         "insecure_skip_verify",
+        "collect_cm_timeseries",
         "recent_include_failed",
         "recent_include_running",
         "redact",

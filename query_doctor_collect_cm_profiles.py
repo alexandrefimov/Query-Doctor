@@ -58,8 +58,12 @@ CM_PROFILE_TEXT_PATH = (
     f"/api/{CM_API_VERSION}/clusters/{{clusterName}}/services/"
     "{serviceName}/impalaQueries/{queryId}"
 )
+CM_TIMESERIES_PATH = f"/api/{CM_API_VERSION}/timeseries"
 CM_QUERY_DURATION_FILTER_FIELD = "queryDuration"
 CM_QUERY_SUMMARY_PAGE_SIZE = 1000
+DEFAULT_CM_TIMESERIES_PADDING_SEC = 120
+DEFAULT_MAX_TIMESERIES_BYTES = 2 * 1024 * 1024
+DEFAULT_MAX_TIMESERIES_POINTS = 2000
 
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -227,9 +231,44 @@ class CollectorConfig:
     recent_pool: str | None
     redact: bool
     redact_identifiers: bool
+    collect_cm_timeseries: bool
+    cm_timeseries_padding_sec: int
+    max_timeseries_bytes: int
+    max_timeseries_points: int
     insecure_skip_verify: bool
     ca_bundle: str | None
     credentials: CredentialSummary
+
+
+@dataclass(frozen=True)
+class CMTimeSeriesQuery:
+    query_id: str
+    label: str
+    tsquery: str
+
+
+CM_TIMESERIES_QUERY_ALLOWLIST = (
+    CMTimeSeriesQuery(
+        query_id="impala_daemon_cpu",
+        label="Impala daemon CPU pressure",
+        tsquery="select cpu_percent where category=IMPALAD",
+    ),
+    CMTimeSeriesQuery(
+        query_id="impala_daemon_memory",
+        label="Impala daemon memory pressure",
+        tsquery="select mem_rss where category=IMPALAD",
+    ),
+    CMTimeSeriesQuery(
+        query_id="host_disk_io",
+        label="Host disk IO pressure",
+        tsquery="select read_bytes_rate, write_bytes_rate where category=HOST",
+    ),
+    CMTimeSeriesQuery(
+        query_id="host_network_io",
+        label="Host network IO pressure",
+        tsquery="select bytes_receive_rate, bytes_transmit_rate where category=HOST",
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -544,6 +583,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable identifier redaction when a local config enables it.",
     )
     parser.add_argument(
+        "--collect-cm-timeseries",
+        action="store_true",
+        default=None,
+        help=(
+            "Collect bounded allowlisted CM time-series summaries for one explicit query. "
+            "Raw time-series responses are not written."
+        ),
+    )
+    parser.add_argument(
+        "--cm-timeseries-padding-sec",
+        type=non_negative_int,
+        help=f"Seconds to pad before query start and after query end. Default: {DEFAULT_CM_TIMESERIES_PADDING_SEC}.",
+    )
+    parser.add_argument(
+        "--max-timeseries-bytes",
+        type=positive_int,
+        help=f"Maximum bytes per CM time-series response. Default: {DEFAULT_MAX_TIMESERIES_BYTES}.",
+    )
+    parser.add_argument(
+        "--max-timeseries-points",
+        type=positive_int,
+        help=f"Maximum numeric data points to summarize per time-series query. Default: {DEFAULT_MAX_TIMESERIES_POINTS}.",
+    )
+    parser.add_argument(
         "--ca-bundle",
         help=(
             "PEM CA bundle for verified CM TLS connections. "
@@ -841,6 +904,30 @@ def build_config(
             cli_value=args.redact_identifiers,
             config_values=config_values,
             default=False,
+        ),
+        collect_cm_timeseries=bool_setting(
+            "collect_cm_timeseries",
+            cli_value=args.collect_cm_timeseries,
+            config_values=config_values,
+            default=False,
+        ),
+        cm_timeseries_padding_sec=int_setting(
+            "cm_timeseries_padding_sec",
+            cli_value=args.cm_timeseries_padding_sec,
+            config_values=config_values,
+            default=DEFAULT_CM_TIMESERIES_PADDING_SEC,
+        ),
+        max_timeseries_bytes=int_setting(
+            "max_timeseries_bytes",
+            cli_value=args.max_timeseries_bytes,
+            config_values=config_values,
+            default=DEFAULT_MAX_TIMESERIES_BYTES,
+        ),
+        max_timeseries_points=int_setting(
+            "max_timeseries_points",
+            cli_value=args.max_timeseries_points,
+            config_values=config_values,
+            default=DEFAULT_MAX_TIMESERIES_POINTS,
         ),
         insecure_skip_verify=bool_setting(
             "insecure_skip_verify",
@@ -1423,6 +1510,183 @@ def fetch_cm_query_details_summary(
         raise CMAdapterError(sanitize_adapter_error_message(exc)) from exc
 
 
+def build_cm_timeseries_request(
+    query: CMTimeSeriesQuery,
+    *,
+    from_time: str,
+    to_time: str,
+) -> tuple[str, dict[str, object]]:
+    return CM_TIMESERIES_PATH, {
+        "query": query.tsquery,
+        "from": from_time,
+        "to": to_time,
+        "contentType": "application/json",
+    }
+
+
+def fetch_cm_timeseries_json(
+    client: CMHttpClient,
+    query: CMTimeSeriesQuery,
+    *,
+    from_time: str,
+    to_time: str,
+    max_response_bytes: int = DEFAULT_MAX_TIMESERIES_BYTES,
+) -> dict[str, object]:
+    path, params = build_cm_timeseries_request(query, from_time=from_time, to_time=to_time)
+    try:
+        text = client.get_text(path, params=params, max_response_bytes=max_response_bytes)
+    except CMHttpError as exc:
+        config = getattr(client, "config", None)
+        if isinstance(config, CMHttpConfig):
+            message = sanitize_http_error_message(exc, config)
+        else:
+            message = sanitize_adapter_error_message(exc)
+        raise CMHttpError(message) from exc
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise CMAdapterError("CM time-series response was not valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise CMAdapterError("CM time-series response must be an object.")
+    return payload
+
+
+def parse_cm_timestamp(value: str) -> datetime:
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def padded_cm_timeseries_window(summary: CMQuerySummary, *, padding_sec: int) -> tuple[str, str] | None:
+    if not summary.start_time or not summary.end_time:
+        return None
+    start = parse_cm_timestamp(summary.start_time) - timedelta(seconds=padding_sec)
+    end = parse_cm_timestamp(summary.end_time) + timedelta(seconds=padding_sec)
+    if end <= start:
+        return None
+    return format_cm_timestamp(start), format_cm_timestamp(end)
+
+
+def iter_timeseries_data_points(raw: dict[str, object]) -> Iterable[float]:
+    containers: list[object] = []
+    for key in ("items", "timeSeries", "timeSeriesList", "series"):
+        value = raw.get(key)
+        if isinstance(value, list):
+            containers.extend(value)
+    if not containers:
+        containers = [raw]
+
+    for item in containers:
+        if not isinstance(item, dict):
+            continue
+        nested = item.get("timeSeries")
+        if isinstance(nested, list):
+            for value in iter_timeseries_data_points({"items": nested}):
+                yield value
+        data = item.get("data")
+        if not isinstance(data, list):
+            continue
+        for point in data:
+            if isinstance(point, dict):
+                value = first_present(point, ("value", "aggregateValue", "mean", "max"))
+            else:
+                value = point
+            if isinstance(value, bool) or value is None:
+                continue
+            try:
+                yield float(value)
+            except (TypeError, ValueError):
+                continue
+
+
+def summarize_timeseries_response(
+    query: CMTimeSeriesQuery,
+    raw: dict[str, object],
+    *,
+    max_points: int,
+) -> dict[str, object]:
+    values: list[float] = []
+    truncated = False
+    for value in iter_timeseries_data_points(raw):
+        if len(values) >= max_points:
+            truncated = True
+            break
+        values.append(value)
+    summary: dict[str, object] = {
+        "id": query.query_id,
+        "label": query.label,
+        "status": "ok" if values else "no_data",
+        "point_count": len(values),
+        "truncated": truncated,
+    }
+    if values:
+        summary.update(
+            {
+                "min": min(values),
+                "max": max(values),
+                "avg": sum(values) / len(values),
+                "latest": values[-1],
+            }
+        )
+    return summary
+
+
+def collect_cm_timeseries_context(
+    client: CMHttpClient,
+    summary: CMQuerySummary,
+    *,
+    padding_sec: int = DEFAULT_CM_TIMESERIES_PADDING_SEC,
+    max_response_bytes: int = DEFAULT_MAX_TIMESERIES_BYTES,
+    max_points: int = DEFAULT_MAX_TIMESERIES_POINTS,
+) -> dict[str, object]:
+    window = padded_cm_timeseries_window(summary, padding_sec=padding_sec)
+    if window is None:
+        return {
+            "available": False,
+            "reason": "query start/end time unavailable",
+            "queries": [],
+        }
+    from_time, to_time = window
+    queries: list[dict[str, object]] = []
+    warnings: list[str] = []
+    for query in CM_TIMESERIES_QUERY_ALLOWLIST:
+        try:
+            raw = fetch_cm_timeseries_json(
+                client,
+                query,
+                from_time=from_time,
+                to_time=to_time,
+                max_response_bytes=max_response_bytes,
+            )
+            queries.append(summarize_timeseries_response(query, raw, max_points=max_points))
+        except (CMClientError, CMAdapterError) as exc:
+            warnings.append(f"{query.query_id}: {sanitize_adapter_error_message(exc)}")
+            queries.append(
+                {
+                    "id": query.query_id,
+                    "label": query.label,
+                    "status": "unavailable",
+                    "point_count": 0,
+                }
+            )
+    return {
+        "available": any(item.get("status") == "ok" for item in queries),
+        "schema_version": 1,
+        "source": "cm_timeseries",
+        "window": {
+            "from": from_time,
+            "to": to_time,
+            "padding_sec": padding_sec,
+        },
+        "queries": queries,
+        "warnings": warnings,
+    }
+
+
 def enforce_profile_text_size(profile_text: str, *, max_profile_bytes: int) -> None:
     if max_profile_bytes <= 0:
         raise CMAdapterError("Maximum profile bytes must be a positive integer.")
@@ -1881,6 +2145,7 @@ def write_collected_case(
     summary: CMQuerySummary,
     *,
     profile_digest_text: str,
+    cm_timeseries_context: dict[str, object] | None = None,
     warnings: Iterable[str] = (),
     secrets: Iterable[str] = (),
     redact: bool = False,
@@ -1916,6 +2181,9 @@ def write_collected_case(
     case_dir.mkdir(parents=True, exist_ok=False)
     (case_dir / "profile_digest.md").write_text(digest_text, encoding="utf-8")
     (case_dir / "cm_metadata.json").write_text(metadata_text, encoding="utf-8")
+    if cm_timeseries_context is not None:
+        timeseries_text = json.dumps(cm_timeseries_context, indent=2, sort_keys=True) + "\n"
+        (case_dir / "cm_timeseries_context.json").write_text(timeseries_text, encoding="utf-8")
     (case_dir / "collection_warnings.txt").write_text(warnings_text, encoding="utf-8")
     return case_dir
 
@@ -2527,10 +2795,24 @@ def run_cm_single_query_collection(
             if profile_statement:
                 summary = replace(summary, statement=profile_statement)
                 warnings.append("CM profile text statement metadata collected")
+        cm_timeseries_context = None
+        if config.collect_cm_timeseries:
+            cm_timeseries_context = collect_cm_timeseries_context(
+                client,
+                summary,
+                padding_sec=config.cm_timeseries_padding_sec,
+                max_response_bytes=config.max_timeseries_bytes,
+                max_points=config.max_timeseries_points,
+            )
+            if cm_timeseries_context.get("available"):
+                warnings.append("CM time-series context collected")
+            else:
+                warnings.append("CM time-series context unavailable")
         case_dir = write_collected_case(
             config.out,
             summary,
             profile_digest_text=profile_text,
+            cm_timeseries_context=cm_timeseries_context,
             warnings=warnings,
             secrets=secrets,
             redact=True,
@@ -2554,6 +2836,8 @@ def run_cm_single_query_collection(
     print(f"Profile text length: {len(profile_text)}")
     print("Redaction: enabled")
     print(f"Max profile bytes: {config.max_profile_bytes}")
+    if config.collect_cm_timeseries:
+        print("CM time-series context: enabled")
     print("No raw JSON, SQL, profile text, analyzer output, or reports were written.")
     return 0
 
@@ -2576,6 +2860,7 @@ def print_dry_run_plan(config: CollectorConfig) -> None:
     print(f"  query_type: {config.query_type or '<any>'}")
     print(f"Redaction: {'enabled' if config.redact else 'disabled'}")
     print(f"Identifier redaction: {'enabled' if config.redact_identifiers else 'disabled'}")
+    print(f"CM time-series context: {'enabled' if config.collect_cm_timeseries else 'disabled'}")
     print(tls_plan_line(config))
     print(ca_bundle_plan_line(config))
     print(f"Credentials: {config.credentials.display()}")

@@ -1622,6 +1622,35 @@ def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
     return context
 
 
+def collect_cm_timeseries_context(case_dir: Path) -> dict[str, Any] | None:
+    context_path = case_dir / "cm_timeseries_context.json"
+    if not context_path.exists():
+        return None
+    try:
+        raw = json.loads(context_path.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return {"available": False, "error": "failed to parse CM time-series context"}
+    if not isinstance(raw, dict):
+        return {"available": False, "error": "CM time-series context is not an object"}
+    queries = raw.get("queries")
+    if not isinstance(queries, list):
+        return {"available": False, "error": "CM time-series context query list is missing"}
+    return {
+        "available": bool(raw.get("available")),
+        "window": raw.get("window") if isinstance(raw.get("window"), dict) else {},
+        "queries": [
+            query
+            for query in queries
+            if isinstance(query, dict)
+        ],
+        "warnings": [
+            warning
+            for warning in raw.get("warnings", [])
+            if isinstance(warning, str)
+        ][:5],
+    }
+
+
 def numeric_context_value(context: dict[str, Any], field: str) -> float | None:
     value = context.get(field)
     if isinstance(value, bool) or value is None:
@@ -2772,6 +2801,43 @@ def render_cm_query_context(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("cm_timeseries_context")
+    if not context:
+        return []
+
+    lines = ["## CM Time-Series Context", ""]
+    lines.append(f"- available: {'yes' if context.get('available') else 'no'}")
+    window = context.get("window") or {}
+    if window.get("from") and window.get("to"):
+        lines.append(f"- window: {window['from']} to {window['to']}")
+    if window.get("padding_sec") is not None:
+        lines.append(f"- window padding seconds: {window['padding_sec']}")
+    lines.append("")
+
+    for query in context.get("queries") or []:
+        label = query.get("label") or query.get("id") or "unknown"
+        lines.append(f"### {label}")
+        lines.append("")
+        lines.append(f"- status: {query.get('status', 'unknown')}")
+        lines.append(f"- point_count: {query.get('point_count', 0)}")
+        if query.get("truncated"):
+            lines.append("- truncated: yes")
+        for field in ("min", "max", "avg", "latest"):
+            value = numeric_context_value(query, field)
+            if value is not None:
+                lines.append(f"- {field}: {value:.2f}")
+        lines.append("")
+
+    warnings = context.get("warnings") or []
+    if warnings:
+        lines.extend(["### Collection warnings", ""])
+        for warning in warnings:
+            lines.append(f"- {warning}")
+        lines.append("")
+    return lines
+
+
 def render_impala_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("impala_context")
     if not context:
@@ -2851,6 +2917,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
 
     lines += render_referenced_tables(analysis)
     lines += render_cm_query_context(analysis)
+    lines += render_cm_timeseries_context(analysis)
     lines += render_table_metadata_context(analysis)
     lines += render_impala_context(analysis)
     lines += render_backend_tail_evidence(analysis)
@@ -2930,6 +2997,7 @@ def main(argv: list[str]) -> int:
     text = digest_path.read_text(encoding="utf-8", errors="replace")
     analysis = analyze(text, args)
     analysis["cm_query_context"] = collect_cm_query_context(digest_path.parent)
+    analysis["cm_timeseries_context"] = collect_cm_timeseries_context(digest_path.parent)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
