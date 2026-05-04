@@ -1,0 +1,13 @@
+# Keep impala-shell isolated from Query Doctor's main runtime. The legacy CDH6
+# smoke path uses this CLI through .venv-impala-shell/bin/impala-shell.
+bitarray==2.3.0
+configparser==4.0.2
+impala_shell==4.3.0
+kerberos==1.3.1
+prettytable==0.7.2
+pure-sasl==0.6.2
+sasl==0.3.1
+six==1.14.0
+sqlparse==0.3.1
+thrift==0.16.0
+thrift-sasl==0.4.3

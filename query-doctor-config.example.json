@@ -3,7 +3,7 @@
   "cluster": "example_cluster",
   "service": "impala",
   "username": "query_doctor_user",
-  "ca_bundle": "/path/to/cm-ca-chain.pem",
+  "ca_bundle": "~/.qdcreds/cm-chain.pem",
   "insecure_skip_verify": false,
   "krb5ccname": "FILE:/tmp/krb5cc_query_doctor",
 
@@ -40,7 +40,7 @@
   "recent_pool": "",
 
   "metadata_coordinator": "impala-coordinator.example.com:21000",
-  "metadata_impala_shell": "impala-shell",
+  "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
   "metadata_auth": "kerberos",
   "metadata_protocol": "beeswax",
   "metadata_ssl": false,

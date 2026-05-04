@@ -758,7 +758,7 @@ def build_config(
     if not out_value:
         raise ConfigError("Missing --out or config field out.")
 
-    ca_bundle = string_setting(
+    ca_bundle = path_string_setting(
         "ca_bundle",
         cli_value=args.ca_bundle,
         config_values=config_values,
@@ -980,6 +980,24 @@ def string_setting(
         if normalized:
             return normalized
     return None
+
+
+def path_string_setting(
+    name: str,
+    *,
+    cli_value: str | None,
+    config_values: dict[str, object],
+    env_value: str | None = None,
+    default: str | None = None,
+) -> str | None:
+    value = string_setting(
+        name,
+        cli_value=cli_value,
+        config_values=config_values,
+        env_value=env_value,
+        default=default,
+    )
+    return str(Path(value).expanduser()) if value else None
 
 
 def int_setting(
