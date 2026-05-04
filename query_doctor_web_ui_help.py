@@ -57,7 +57,7 @@ def render_help_content() -> str:
 
 <details>
 <summary>Running Queries</summary>
-<p>Running Queries устроен как Finished Queries, но ищет только запросы, которые выполняются в момент scan. У него нет фильтров Scan date и Scan Hour; остальные фильтры и analysis settings остаются теми же. CM metrics для Running Queries собираются по умолчанию, потому что набор running-запросов обычно небольшой. Результаты отображаются той же таблицей и открывают details выбранного запроса.</p>
+<p>Running Queries устроен как Finished Queries, но ищет только запросы, которые выполняются в момент scan. У него нет фильтров Scan date и Scan Hour; остальные фильтры и analysis settings остаются теми же. CM metrics для Running Queries включены по умолчанию и сбор выполняется в bounded режиме для ограниченного окна сканирования, чтобы не перегружать кластер. Результаты отображаются той же таблицей и открывают details выбранного запроса.</p>
 </details>
 
 <details>

@@ -10,6 +10,7 @@ from query_doctor_web_ui_recent_scan_details import (
     SafeHtml,
     compact_cell,
     render_analysis_details,
+    render_case_detail_toc,
     render_batch_case_report_action,
     render_case_detail_overview,
     render_case_status_summary,
@@ -104,9 +105,10 @@ def render_specific_query_detail(
         f"<span>{escaped_query_id}</span></div>"
         "<div class=\"batch-head\"><div><h1>Specific Query details</h1>"
         "<p>Deterministic facts for one analyzed query.</p></div></div>"
+        f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
-        f"{render_analysis_details(case, metadata_facts, view=view)}"
+        f"{render_analysis_details(view)}"
         f"{render_batch_case_report_action('specific-query', view.report_action, action_url=report_url, open_url=report_url, report_enabled=view.score_severity != 'clean', trusted_report_html=trusted_report_html)}"
         f"{render_optimized_query_action('specific-query', optimized_query_state, action_url=specific_query_optimized_query_href(query_id), open_url=specific_query_optimized_query_href(query_id), trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations)}"
         "</section>"

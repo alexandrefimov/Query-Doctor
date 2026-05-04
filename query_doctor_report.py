@@ -35,6 +35,24 @@ MIN_REPORT_CHARS = int(os.getenv("QD_MIN_REPORT_CHARS", "900"))
 MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "8"))
 MAX_RECOMMENDATION_ITEMS = 5
 REPORT_TITLE_HEADING = "# Query Doctor Report"
+REPORT_SYSTEM_PROMPT = (
+    "You are only a report writer. Use only supplied deterministic facts. "
+    "Write in Russian. Do not invent unsupported evidence or recommendations. "
+    "Keep cardinality mismatch separate from memory mismatch. "
+    "Use row underestimation only when actual rows are greater than estimated rows. "
+    "Use row overestimation when actual rows are lower than estimated rows. "
+    "Use memory underestimation only when actual or peak memory is above estimated memory. "
+    "Use memory overestimation when actual or peak memory is below estimated memory. "
+    "Do not treat mem ratio below 1.0 as memory underestimation evidence. "
+    "Do not present Impala operator/profile counter time as query wall-clock duration unless facts explicitly provide wall-clock evidence. "
+    "Use operator/profile time counter wording instead of saying an operator ran for X hours. "
+    "Keep backend data skew separate from cardinality/row-estimate anomalies and execution skew. "
+    "Do not claim a single slow backend/tail host unless host-tail facts explicitly support it. "
+    "Do not recommend external network checks based only on TotalBytesSent. "
+    "Treat TotalBytesSent as intermediate/exchange data volume unless facts explicitly say network fault. "
+    "Do not call low-memory EXCHANGE operators memory bottlenecks. "
+    "Do not claim HDFS, external network, codegen, skew, or spill causes unless facts explicitly support them."
+)
 SHORT_SUMMARY_HEADING = "## Краткий вывод"
 RECOMMENDATIONS_HEADING = "## Практические рекомендации"
 DETAILED_REPORT_HEADING = "## Подробный разбор"
@@ -3123,27 +3141,7 @@ def stream_ollama_report(
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are only a report writer. Use only supplied deterministic facts. "
-                    "Write in Russian. Do not invent unsupported evidence or recommendations. "
-                    "Keep cardinality mismatch separate from memory mismatch. "
-                    "Use row underestimation only when actual rows are greater than estimated rows. "
-                    "Use row overestimation when actual rows are lower than estimated rows. "
-                    "Use memory underestimation only when actual or peak memory is above estimated memory. "
-                    "Use memory overestimation when actual or peak memory is below estimated memory. "
-                    "Do not treat mem ratio below 1.0 as memory underestimation evidence. "
-                    "Do not present Impala operator/profile counter time as query wall-clock duration unless facts explicitly provide wall-clock evidence. "
-                    "Use operator/profile time counter wording instead of saying an operator ran for X hours. "
-                    "Keep backend data skew separate from cardinality/row-estimate anomalies and execution skew. "
-                    "Do not claim a single slow backend/tail host unless host-tail facts explicitly support it. "
-                    "Do not recommend external network checks based only on TotalBytesSent. "
-                    "Treat TotalBytesSent as intermediate/exchange data volume unless facts explicitly say network fault. "
-                    "Do not call low-memory EXCHANGE operators memory bottlenecks. "
-                    "Do not claim HDFS, external network, codegen, skew, or spill causes unless facts explicitly support them."
-                ),
-            },
+            {"role": "system", "content": REPORT_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
         "stream": True,

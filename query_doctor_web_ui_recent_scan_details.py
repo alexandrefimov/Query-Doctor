@@ -80,9 +80,10 @@ def render_batch_case_detail(
         f"<div class=\"batch-head\"><div><h1>{safe_workflow_title} case details</h1>"
         "<p>Deterministic facts for one analyzed query.</p></div>"
         f"<span class=\"badge blue\">{html.escape(view.case_id)}</span></div>"
+        f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
-        f"{render_analysis_details(case, metadata_facts, view=view)}"
+        f"{render_analysis_details(view)}"
         f"{render_batch_case_report_action(view.case_id, view.report_action, report_enabled=view.score_severity != 'clean', action_url=report_url, open_url=report_url, trusted_report_html=trusted_report_html)}"
         f"{render_optimized_query_action(view.case_id, optimized_query_state, action_url=optimized_query_url, open_url=optimized_query_url, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations)}"
         "</section>"
@@ -106,7 +107,7 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
         for label, value in items
     )
     return (
-        "<section class=\"case-overview\" aria-label=\"Case overview\">"
+        "<section id=\"case-overview\" class=\"case-overview\" aria-label=\"Case overview\">"
         "<div class=\"case-query-line\"><span>Query ID</span>"
         f"<strong>{escape_value(view.query_id)}</strong></div>"
         f"<div class=\"case-overview-grid\">{cards}</div>"
@@ -114,78 +115,68 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
     )
 
 
-def render_case_status_summary(
-    case_or_view: RecentScanCaseDetailView | str,
-    case: dict[str, Any] | None = None,
-    report_status: str | None = None,
-) -> str:
-    if isinstance(case_or_view, RecentScanCaseDetailView):
-        fields = [
-            item
-            for item in case_or_view.status_fields
-            if item[0] in {"collection", "analysis", "metadata", "report"}
-        ]
-        rendered_fields = []
-        for label, value in fields:
-            if label in {"collection", "analysis", "metadata"}:
-                rendered_fields.append((label, status_badge(value)))
-            elif label == "report":
-                rendered_fields.append(("LLM report", report_badge(str(value))))
-            else:
-                rendered_fields.append((label, value))
-    else:
-        legacy_case = case or {}
-        rendered_fields = [
-            ("case", case_or_view),
-            ("query id", legacy_case.get("query_id")),
-            ("score", score_badge(legacy_case)),
-            ("duration sec", legacy_case.get("duration_sec")),
-            ("collection", status_badge(legacy_case.get("collection_status"))),
-            ("analysis", status_badge(legacy_case.get("analysis_status"))),
-            ("metadata", status_badge(legacy_case.get("metadata_status"))),
-            ("report", report_badge(report_status or batch_report_status(legacy_case))),
-        ]
+def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
+    fields = [
+        item
+        for item in view.status_fields
+        if item[0] in {"collection", "analysis", "metadata", "report"}
+    ]
+    rendered_fields: list[tuple[str, Any]] = []
+    for label, value in fields:
+        if label in {"collection", "analysis", "metadata"}:
+            rendered_fields.append((label, status_badge(value)))
+        elif label == "report":
+            rendered_fields.append(("LLM report", report_badge(str(value))))
+        else:
+            rendered_fields.append((label, value))
     cards = "".join(
         "<div class=\"case-summary-card\">"
         f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
         "</div>"
         for label, value in rendered_fields
     )
-    return f"<section aria-label=\"Pipeline status\"><div class=\"case-summary-grid\">{cards}</div></section>"
-
-
-def render_analysis_details(
-    case: dict[str, Any],
-    metadata_facts: dict[str, Any] | None,
-    *,
-    view: RecentScanCaseDetailView,
-) -> str:
     return (
-        "<details class=\"panel docs-panel analysis-details\" aria-label=\"Analysis details\">"
-        "<summary>Analysis details</summary>"
-        "<div class=\"report-body analysis-details-body\">"
-        f"{render_score_reason_explanations(view)}"
-        f"{render_runtime_signals(view)}"
-        f"{render_cm_metrics_section(view.cm_metrics)}"
-        f"{render_metadata_facts_section(case, metadata_facts, view=view.metadata)}"
-        f"{render_technical_details(view)}"
-        "</div>"
-        "</details>"
+        "<section id=\"pipeline-status\" aria-label=\"Pipeline status\">"
+        f"<div class=\"case-summary-grid\">{cards}</div>"
+        "</section>"
     )
 
 
-def render_runtime_signals(case_or_view: dict[str, Any] | RecentScanCaseDetailView) -> str:
-    if isinstance(case_or_view, RecentScanCaseDetailView):
-        fields = list(case_or_view.runtime_fields)
-    else:
-        fields = [
-            ("cardinality anomalies", case_or_view.get("cardinality_anomaly_count")),
-            ("memory anomalies", case_or_view.get("memory_anomaly_count")),
-            ("zero row estimate gaps", case_or_view.get("zero_row_estimate_gap_count")),
-            ("zero memory estimate gaps", case_or_view.get("zero_memory_estimate_gap_count")),
-            ("backend data skew", case_or_view.get("backend_data_skew")),
-            ("host-tail candidates", case_or_view.get("host_tail_candidate_count")),
-        ]
+def render_analysis_details(view: RecentScanCaseDetailView) -> str:
+    return (
+        "<div id=\"analysis-details\">"
+        "<details class=\"panel docs-panel analysis-details\" aria-label=\"Analysis details\">"
+        "<summary>Analysis details</summary>"
+        "<div class=\"report-body analysis-details-body\">"
+        "<p class=\"helper\">Deterministic evidence only; expand sections for query-level details.</p>"
+        f"{render_score_reason_explanations(view)}"
+        f"{render_runtime_signals(view)}"
+        f"{render_cm_metrics_section(view.cm_metrics)}"
+        f"{render_metadata_facts_section(view.metadata)}"
+        f"{render_technical_details(view)}"
+        "</div>"
+        "</details>"
+        "</div>"
+    )
+
+
+def render_case_detail_toc() -> str:
+    return (
+        "<section class=\"detail-toc\" aria-label=\"Details navigation\">"
+        "<span class=\"detail-toc-title\">Jump to section</span>"
+        "<nav class=\"detail-toc-list\">"
+        "<a href=\"#case-overview\" class=\"detail-toc-link\">Case overview</a>"
+        "<a href=\"#pipeline-status\" class=\"detail-toc-link\">Pipeline status</a>"
+        "<a href=\"#analysis-details\" class=\"detail-toc-link\">Analysis details</a>"
+        "<a href=\"#llm-report\" class=\"detail-toc-link\">LLM Report</a>"
+        "<a href=\"#query-llm-optimizer\" class=\"detail-toc-link\">Query LLM optimizer</a>"
+        "</nav>"
+        "</section>"
+    )
+
+
+def render_runtime_signals(view: RecentScanCaseDetailView) -> str:
+    fields = list(view.runtime_fields)
     rows = metadata_rows(fields)
     return (
         "<details class=\"analysis-subdetails\" aria-label=\"Runtime signals\">"
@@ -282,16 +273,25 @@ def render_batch_case_report_action(
         status_html = render_llm_report_failure(view)
     else:
         status_html = ""
+    notes = []
+    if not report_enabled:
+        notes.append("LLM report is available for suspicious and bad queries only.")
+    elif view.note:
+        notes.append(html.escape(view.note))
+    notes_html = ""
+    if notes:
+        notes_html = f"<p class=\"helper\">{'<br>'.join(notes)}</p>"
     report_html = (
         f"<div class=\"inline-report\">{trusted_report_html}</div>"
         if view.show_open_link and trusted_report_html
         else ""
     )
     return (
-        "<section class=\"panel docs-panel\" aria-label=\"LLM report action\">"
+        "<section id=\"llm-report\" class=\"panel docs-panel\" aria-label=\"LLM report action\">"
         "<h1>LLM Report</h1>"
         "<div class=\"report-body\">"
         f"{status_html}"
+        f"{notes_html}"
         f"{action_html}"
         f"{report_html}"
         "</div>"
@@ -344,6 +344,16 @@ def render_optimized_query_action(
         status_html = render_optimized_query_outcome(state)
     else:
         status_html = ""
+    notes: list[str] = []
+    if status == "unavailable":
+        notes.append("Source SQL is unavailable or outside read-only optimizer scope.")
+    elif status == "partial_untrusted":
+        notes.append("An untrusted optimizer draft was produced and hidden for safety.")
+    elif status == "failed":
+        notes.append("Optimizer execution failed; results are unavailable.")
+    notes_html = ""
+    if notes:
+        notes_html = f"<p class=\"helper\">{'<br>'.join(notes)}</p>"
     draft_html = ""
     if status == "generated" and trusted_optimized_query:
         draft_html = (
@@ -362,10 +372,11 @@ def render_optimized_query_action(
             "</details>"
         )
     return (
-        "<section class=\"panel docs-panel\" aria-label=\"Query LLM optimizer action\">"
+        "<section id=\"query-llm-optimizer\" class=\"panel docs-panel\" aria-label=\"Query LLM optimizer action\">"
         "<h1>Query LLM optimizer</h1>"
         "<div class=\"report-body\">"
         f"{status_html}"
+        f"{notes_html}"
         f"{action_html}"
         f"{draft_html}"
         "</div>"
@@ -375,8 +386,8 @@ def render_optimized_query_action(
 
 def render_optimized_query_progress(state: dict[str, Any]) -> str:
     current_stage = str(state.get("stage_label") or "Generating optimizer draft")
-    current_index = optimized_query_progress_step_index(current_stage)
     progress_value = numeric_value(state.get("progress"))
+    current_index = optimized_query_progress_step_index(current_stage, progress_value)
     progress = int(progress_value) if progress_value > 0 else report_progress_percent(current_index)
     status_attrs = ""
     job_id = str(state.get("job_id") or "")
@@ -447,12 +458,17 @@ def render_safe_markdown_paragraphs(text: str) -> str:
     return "".join(rendered)
 
 
-def optimized_query_progress_step_index(stage_label: str) -> int:
+def optimized_query_progress_step_index(stage_label: str, progress: int) -> int:
     normalized = stage_label.strip().lower()
     for index, (_label, stage_labels) in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS):
         if normalized in {label.lower() for label in stage_labels}:
             return index
-    return 1
+    bounded_progress = max(0, min(100, int(progress)))
+    if bounded_progress <= 0:
+        return 0
+    if bounded_progress >= 100:
+        return len(OPTIMIZED_QUERY_PROGRESS_STEPS) - 1
+    return max(0, min(len(OPTIMIZED_QUERY_PROGRESS_STEPS) - 2, (bounded_progress - 1) // (100 // len(OPTIMIZED_QUERY_PROGRESS_STEPS))))
 
 
 def render_optimized_query_failure(state: dict[str, Any]) -> str:
@@ -475,7 +491,8 @@ def render_optimized_query_failure(state: dict[str, Any]) -> str:
 
 def render_llm_report_progress(view: ReportActionView) -> str:
     current_stage = view.stage_label or "Generating report"
-    current_index = report_progress_step_index(current_stage)
+    progress_value = int(view.progress)
+    current_index = report_progress_step_index(current_stage, progress_value)
     progress = report_progress_percent(current_index)
     status_attrs = ""
     if view.job_id:
@@ -523,17 +540,28 @@ def render_llm_report_progress(view: ReportActionView) -> str:
     )
 
 
-def report_progress_step_index(stage_label: str) -> int:
+def report_progress_step_index(stage_label: str, progress: int | None = None) -> int:
     normalized = stage_label.strip().lower()
     for index, (_label, stage_labels) in enumerate(REPORT_PROGRESS_STEPS):
         if normalized in {label.lower() for label in stage_labels}:
             return index
-    return 1
+    if progress is None or progress <= 0:
+        return 1
+    bounded_progress = max(0, min(100, int(progress)))
+    if bounded_progress >= 100:
+        return len(REPORT_PROGRESS_STEPS) - 1
+    if bounded_progress <= 0:
+        return 1
+    return max(1, min(len(REPORT_PROGRESS_STEPS) - 2, (bounded_progress - 1) // (100 // len(REPORT_PROGRESS_STEPS))))
 
 
 def report_progress_percent(step_index: int) -> int:
     step_count = len(REPORT_PROGRESS_STEPS)
     bounded_index = max(0, min(step_count - 1, step_index))
+    if step_count <= 1:
+        return 0
+    if bounded_index >= step_count - 1:
+        return 100
     return int(round((bounded_index / step_count) * 100))
 
 
@@ -555,21 +583,8 @@ def render_llm_report_failure(view: ReportActionView) -> str:
     )
 
 
-def render_technical_details(case_or_view: dict[str, Any] | RecentScanCaseDetailView) -> str:
-    if isinstance(case_or_view, RecentScanCaseDetailView):
-        fields = list(case_or_view.technical_fields)
-    else:
-        fields = [
-            ("referenced tables", case_or_view.get("referenced_table_count")),
-            ("collected metadata tables", case_or_view.get("collected_metadata_table_count")),
-            ("too large metadata", case_or_view.get("too_large_count")),
-            ("failure category", case_or_view.get("failure_category")),
-            ("cm collect seconds", case_or_view.get("cm_collect_seconds")),
-            ("analysis seconds", case_or_view.get("analysis_seconds")),
-            ("report seconds", case_or_view.get("report_seconds")),
-            ("total seconds", case_or_view.get("total_seconds")),
-            ("report generated", case_or_view.get("report_generated")),
-        ]
+def render_technical_details(view: RecentScanCaseDetailView) -> str:
+    fields = list(view.technical_fields)
     rows = metadata_rows(fields)
     return (
         "<details class=\"analysis-subdetails technical-details\">"
@@ -588,12 +603,8 @@ def metadata_rows(fields: list[tuple[str, Any]]) -> str:
     )
 
 
-def render_score_reason_explanations(case_or_view: dict[str, Any] | RecentScanCaseDetailView) -> str:
-    if isinstance(case_or_view, RecentScanCaseDetailView):
-        reasons = list(case_or_view.score_reasons)
-    else:
-        raw_reasons = case_or_view.get("score_reasons")
-        reasons = raw_reasons if isinstance(raw_reasons, list) else []
+def render_score_reason_explanations(view: RecentScanCaseDetailView) -> str:
+    reasons = list(view.score_reasons)
     if not reasons:
         reason_cards = (
             "<li class=\"reason-card\"><strong>No positive deterministic score reason</strong>"
@@ -680,13 +691,8 @@ def explain_score_reason(reason: Any) -> tuple[str, str]:
     )
 
 
-def render_metadata_facts_section(
-    case: dict[str, Any],
-    metadata_facts: dict[str, Any] | None,
-    *,
-    view: RecentScanMetadataView | None = None,
-) -> str:
-    metadata_view = view or present_recent_scan_metadata(case, metadata_facts)
+def render_metadata_facts_section(view: RecentScanMetadataView) -> str:
+    metadata_view = view
     if metadata_view.unavailable:
         degraded_note = metadata_degraded_note(metadata_view)
         degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
