@@ -1563,9 +1563,16 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
     cm_query_facts = scoring_section_text(facts, "## CM Query Context")
     cm_correlation_facts = scoring_section_text(facts, "## CM Metrics Correlation")
     host_tail_candidates = fact_int(backend_facts, "host tail candidates")
+    if host_tail_candidates is None:
+        host_tail_candidates = normalized_tail_candidate_count(backend_facts)
     execution_tail_candidates = fact_int(backend_facts, "execution tail candidates")
     if execution_tail_candidates is None:
-        execution_tail_candidates = host_tail_candidates
+        normalized_execution_tails = normalized_tail_candidate_count(backend_facts, family="execution")
+        execution_tail_candidates = (
+            normalized_execution_tails
+            if normalized_execution_tails is not None
+            else host_tail_candidates
+        )
     return {
         "cardinality_anomaly_count": fact_int(summary_facts, "Cardinality anomalies"),
         "memory_anomaly_count": fact_int(summary_facts, "Memory anomalies"),
@@ -1591,6 +1598,31 @@ def fact_values(facts: str, label: str) -> list[str]:
         if separator and key.strip().lower() == expected:
             values.append(value.strip())
     return values
+
+
+def normalized_tail_candidate_count(facts: str, *, family: str | None = None) -> int | None:
+    hosts: set[str] = set()
+    saw_normalized_table = False
+    expected_family = family.lower() if family else None
+    for line in facts.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if len(cells) < 8:
+            continue
+        if cells[0].lower() == "host" or set(cells[0]) == {"-"}:
+            saw_normalized_table = True
+            continue
+        saw_normalized_table = True
+        row_family = cells[2].lower()
+        if expected_family and row_family != expected_family:
+            continue
+        if cells[0]:
+            hosts.add(cells[0])
+    if not saw_normalized_table:
+        return None
+    return len(hosts)
 
 
 def fact_int(facts: str, label: str) -> int | None:

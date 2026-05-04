@@ -1173,7 +1173,12 @@ def parse_backend_tail_summary(facts_text: str) -> dict[str, str | int]:
             continue
         key = match.group("key").strip().lower()
         value = match.group("value").strip()
-        if key == "host tail candidates":
+        if key in {
+            "host tail candidates",
+            "execution tail candidates",
+            "read-rate tail candidates",
+            "write-path tail candidates",
+        }:
             number_match = re.match(r"\d+", value)
             if number_match:
                 summary[key] = int(number_match.group(0))
@@ -1189,7 +1194,9 @@ def backend_summary_value(summary: dict[str, str | int], key: str) -> str:
 
 
 def backend_has_proven_tail(summary: dict[str, str | int]) -> bool:
-    candidates = summary.get("host tail candidates")
+    candidates = summary.get("execution tail candidates")
+    if not isinstance(candidates, int):
+        candidates = summary.get("host tail candidates")
     execution_skew = str(summary.get("execution skew", "unknown")).lower()
     return isinstance(candidates, int) and candidates > 0 and execution_skew == "yes"
 
@@ -1534,6 +1541,8 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     backend_summary = parse_backend_tail_summary(facts_text)
+    backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
+    backend_normalized_lines = extract_markdown_subsection(backend_lines, "### Normalized tail candidates")
     cm_metrics = cm_metrics_facts_summary(facts_text)
 
     differentiators: list[str] = []
@@ -1570,10 +1579,24 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
     for title in markdown_subheading_titles(findings_lines, limit=3):
         differentiators.append(f"Finding: {title}")
 
-    for label in ("host tail candidates", "data skew", "execution skew", "write-path anomaly"):
+    for label in (
+        "host tail candidates",
+        "execution tail candidates",
+        "read-rate tail candidates",
+        "write-path tail candidates",
+        "data skew",
+        "execution skew",
+        "write-path anomaly",
+    ):
         value = backend_summary_value(backend_summary, label)
         if value != "unknown":
             differentiators.append(f"Backend {label}: {value}")
+    for line in backend_normalized_lines:
+        stripped = line.strip()
+        if not stripped.startswith("|") or stripped.startswith("|---") or "metric_key" in stripped:
+            continue
+        differentiators.append(f"Backend normalized tail candidate: {stripped}")
+        break
 
     if cm_metrics.get("coverage"):
         differentiators.append(f"CM metrics coverage: {cm_metrics['coverage']}")
@@ -2436,6 +2459,7 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
     totals_lines = extract_markdown_section(facts_text, "## Totals")
     backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
     backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
+    backend_normalized_lines = extract_markdown_subsection(backend_lines, "### Normalized tail candidates")
     backend_candidates_lines = extract_markdown_subsection(backend_lines, "### Host tail candidates")
     referenced_table_lines = extract_markdown_section(facts_text, "## Referenced Tables")
     table_metadata_lines = extract_markdown_section(facts_text, "## Table Metadata Context")
@@ -2470,11 +2494,24 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
         for label in (
             "backend rows parsed",
             "host tail candidates",
+            "execution tail candidates",
+            "read-rate tail candidates",
+            "write-path tail candidates",
             "data skew",
             "execution skew",
             "write-path anomaly",
         ):
             append_fact_bullet(lines, label, first_bullet_value(backend_summary_lines, label))
+
+        normalized_excerpt, remaining_normalized = limited_nonempty_lines(
+            backend_normalized_lines,
+            limit=FACT_APPENDIX_MAX_ITEMS,
+        )
+        if normalized_excerpt:
+            lines.extend(["", "### Normalized tail candidates"])
+            lines.extend(normalized_excerpt)
+            if remaining_normalized:
+                lines.append(f"- ... {remaining_normalized} more normalized tail lines omitted")
 
         candidate_excerpt, remaining_candidates = limited_nonempty_lines(
             [

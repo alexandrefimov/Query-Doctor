@@ -1156,6 +1156,8 @@ def find_nonzero_spill_metric_lines(text: str) -> list[str]:
 
 
 def find_codegen_bottleneck_lines(text: str, total_time_ms: float | None, min_share: float = 0.10) -> list[str]:
+    if not isinstance(total_time_ms, (int, float)) or total_time_ms <= 0:
+        return []
     lines: list[str] = []
     for line in text.splitlines():
         m = CODEGEN_TIMING_RE.search(line)
@@ -1164,7 +1166,7 @@ def find_codegen_bottleneck_lines(text: str, total_time_ms: float | None, min_sh
         codegen_ms = extract_first_duration_ms(m.group("value"))
         if codegen_ms is None or codegen_ms <= 0:
             continue
-        if total_time_ms and total_time_ms > 0 and codegen_ms / total_time_ms < min_share:
+        if codegen_ms / total_time_ms < min_share:
             continue
         lines.append(compact_line(line))
     return lines
@@ -2276,6 +2278,18 @@ def tail_candidate_from_metric(
     }
 
 
+def tail_value_human(metric_key: str, value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    if metric_key.endswith("_ms"):
+        return fmt_duration(value)
+    if metric_key.endswith("_bps"):
+        return fmt_rate(value)
+    if metric_key.endswith("_sec_per_gib"):
+        return f"{value:.2f}s/GiB"
+    return f"{value:.2f}"
+
+
 def backend_tail_finding_severity(candidates: list[dict[str, Any]]) -> str:
     for candidate in candidates:
         if (candidate.get("ratio") or 0) >= 5:
@@ -2361,6 +2375,11 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
             )
             if candidate is None:
                 continue
+            candidate["metric_family"] = family
+            candidate["fragment_group"] = group
+            candidate["worst_human"] = tail_value_human(key, candidate.get("worst_value"))
+            candidate["peer_human"] = tail_value_human(key, candidate.get("peer_value"))
+            candidate["gap_human"] = tail_value_human(key, candidate.get("gap"))
             candidates.append(candidate)
             if family == "execution":
                 execution_tail_candidates.append(candidate)
@@ -2692,10 +2711,10 @@ def analyze(
     storage_bottleneck_evidence: list[str] = []
     for op in scan_top_ops:
         if op.time_ms is not None and op.time_ms >= args.slow_operator_ms:
-            share = None
             if isinstance(query_wall_clock_ms, (int, float)) and query_wall_clock_ms > 0:
                 share = op.time_ms / query_wall_clock_ms
-            if share is None or share >= 0.10:
+                if share < 0.10:
+                    continue
                 storage_bottleneck_evidence.append(
                     f"{op_label(op)} is among top time operators: {fmt_duration(op.time_ms)}"
                 )
@@ -2878,6 +2897,10 @@ def analyze(
             )
         )
     else:
+        if scan_top_ops and not isinstance(query_wall_clock_ms, (int, float)):
+            not_supported_causes.append(
+                "Storage/HDFS share was not evaluated because Query Wall Clock duration is unknown."
+            )
         not_supported_causes.append(
             "No direct HDFS/storage candidate signal was parsed. Large TotalBytesRead is an I/O footprint, not proof that HDFS/block size/replication is the root cause."
         )
@@ -2908,6 +2931,10 @@ def analyze(
             )
         )
     else:
+        if CODEGEN_TIMING_RE.search(text) and not isinstance(query_wall_clock_ms, (int, float)):
+            not_supported_causes.append(
+                "Codegen/LLVM share was not evaluated because Query Wall Clock duration is unknown."
+            )
         not_supported_causes.append(
             "No codegen/LLVM candidate signal was parsed."
         )
@@ -3118,16 +3145,39 @@ def render_backend_tail_evidence(analysis: dict[str, Any]) -> list[str]:
             f"- execution skew: {backend['execution_skew']}",
             f"- write-path anomaly: {backend['write_path_anomaly']}",
             "",
-            "### Host tail candidates",
-            "",
         ]
     )
     candidates = backend.get("candidates") or []
     if not candidates:
+        lines.extend(["### Normalized tail candidates", "", "- none", ""])
+        lines.extend(["### Host tail candidates", ""])
         lines.append("- none")
         lines.append("")
         return lines
 
+    lines.extend(["### Normalized tail candidates", ""])
+    lines.append("| host | fragment | family | metric_key | worst | peer | gap | ratio |")
+    lines.append("|---|---|---|---|---:|---:|---:|---:|")
+    for candidate in candidates:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    md_escape(str(candidate.get("host") or "unknown")),
+                    md_escape(str(candidate.get("fragment_group") or "unknown")),
+                    md_escape(str(candidate.get("metric_family") or "unknown")),
+                    md_escape(str(candidate.get("metric_key") or "unknown")),
+                    md_escape(str(candidate.get("worst_human") or "n/a")),
+                    md_escape(str(candidate.get("peer_human") or "n/a")),
+                    md_escape(str(candidate.get("gap_human") or "n/a")),
+                    md_escape(str(candidate.get("ratio_human") or "n/a")),
+                ]
+            )
+            + " |"
+        )
+    lines.append("")
+
+    lines.extend(["### Host tail candidates", ""])
     lines.append("| host | evidence | ratio/metric |")
     lines.append("|---|---|---:|")
     for candidate in candidates:
