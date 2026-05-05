@@ -157,7 +157,7 @@ class OptimizerRewriteRecipe:
     recipe_id: str
     title: str
     source_cte: str
-    aggregate_cte: str
+    aggregate_cte: str | None
     prompt_bullets: tuple[str, ...]
     safe_bullets: tuple[str, ...]
 
@@ -782,6 +782,86 @@ def non_aggregate_projection_names(sql: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def union_projection_names(sql: str) -> tuple[str, ...]:
+    branches = split_top_level_union_all_fragments(sql)
+    if not branches:
+        return ()
+    names: list[str] = []
+    for item in projection_item_fragments(branches[0]):
+        name = projection_name_for_fragment(item)
+        if name:
+            names.append(name)
+    return tuple(dedupe_preserve_order(names))
+
+
+def aggregate_projection_fragments(sql: str) -> tuple[str, ...]:
+    return tuple(
+        item
+        for item in projection_item_fragments(sql)
+        if re.search(r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE)
+    )
+
+
+def count_distinct_key_names(sql: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for item in aggregate_projection_fragments(sql):
+        lowered = lower_sql_outside_quoted_text(item)
+        for match in re.finditer(r"\bcount\s*\(\s*distinct\s+(?P<expr>[^)]+?)\s*\)", lowered, re.IGNORECASE):
+            expr = match.group("expr").strip()
+            if re.fullmatch(r"(?:[a-z_][\w$]*\.)?[a-z_][\w$]*", expr):
+                names.append(expr.rsplit(".", 1)[-1])
+    return tuple(dedupe_preserve_order(names))
+
+
+def aggregate_fragment_supported_for_final_distinct_rollup(fragment: str) -> bool:
+    lowered = lower_sql_outside_quoted_text(fragment)
+    return bool(
+        re.search(r"\bsum\s*\(", lowered, re.IGNORECASE)
+        or re.search(r"\bcount\s*\(\s*distinct\s+", lowered, re.IGNORECASE)
+    )
+
+
+def identifier_name_referenced(sql: str, identifier: str) -> bool:
+    target = identifier.lower()
+    try:
+        return any(token.lower() == target for token in tokenize_sql(sql))
+    except OptimizerSqlError:
+        return False
+
+
+def aggregate_input_projection_names(
+    aggregate_sql: str,
+    available_names: tuple[str, ...],
+    passthrough_names: set[str],
+) -> tuple[str, ...]:
+    names: list[str] = []
+    for item in aggregate_projection_fragments(aggregate_sql):
+        for name in available_names:
+            if name in passthrough_names:
+                continue
+            if identifier_name_referenced(item, name):
+                names.append(name)
+    return tuple(dedupe_preserve_order(names))
+
+
+def final_distinct_rollup_aggregate_shape_is_supported(
+    aggregate_sql: str,
+    available_names: tuple[str, ...],
+    passthrough_names: set[str],
+) -> bool:
+    for item in aggregate_projection_fragments(aggregate_sql):
+        if not aggregate_fragment_supported_for_final_distinct_rollup(item):
+            return False
+        rollup_inputs = [
+            name
+            for name in available_names
+            if name not in passthrough_names and identifier_name_referenced(item, name)
+        ]
+        if len(rollup_inputs) > 1:
+            return False
+    return True
+
+
 def detect_optimizer_rewrite_recipe(
     source_sql: str,
     facts_text: str,
@@ -806,6 +886,17 @@ def detect_optimizer_rewrite_recipe(
             if not identifier_referenced(parsed.final_sql, aggregate_cte.name):
                 continue
             return build_post_union_aggregate_pushdown_recipe(union_cte, aggregate_cte)
+        if not identifier_referenced(parsed.final_sql, union_cte.name):
+            continue
+        if keyword_count_any_depth(parsed.final_sql, "GROUP") == 0:
+            continue
+        if not aggregate_projection_names(parsed.final_sql):
+            continue
+        if not count_distinct_key_names(parsed.final_sql):
+            continue
+        recipe = build_final_union_distinct_rollup_recipe(union_cte, parsed.final_sql)
+        if recipe:
+            return recipe
     return None
 
 
@@ -815,11 +906,7 @@ def build_post_union_aggregate_pushdown_recipe(
 ) -> OptimizerRewriteRecipe:
     dimensions = non_aggregate_projection_names(aggregate_cte.body)
     measures = aggregate_projection_names(aggregate_cte.body)
-    union_outputs = tuple(
-        name
-        for item in projection_item_fragments(union_cte.body)
-        if (name := projection_name_for_fragment(item))
-    )
+    union_outputs = union_projection_names(union_cte.body)
     downstream_names = set(dimensions) | set(measures)
     unused_detail_names = tuple(
         name
@@ -851,6 +938,54 @@ def build_post_union_aggregate_pushdown_recipe(
         title="Push aggregate below UNION ALL",
         source_cte=union_cte.name,
         aggregate_cte=aggregate_cte.name,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
+
+
+def build_final_union_distinct_rollup_recipe(
+    union_cte: CteDefinition,
+    final_sql: str,
+) -> OptimizerRewriteRecipe | None:
+    union_outputs = union_projection_names(union_cte.body)
+    dimensions = non_aggregate_projection_names(final_sql)
+    distinct_keys = count_distinct_key_names(final_sql)
+    passthrough_names = set(dimensions) | set(distinct_keys)
+    if not final_distinct_rollup_aggregate_shape_is_supported(final_sql, union_outputs, passthrough_names):
+        return None
+    additive_inputs = aggregate_input_projection_names(final_sql, union_outputs, passthrough_names)
+    required_name_set = set(dimensions) | set(distinct_keys) | set(additive_inputs)
+    output_names = tuple(name for name in union_outputs if name in required_name_set)
+    if set(output_names) != required_name_set or not output_names or not distinct_keys:
+        return None
+    unused_detail_names = tuple(name for name in union_outputs if name and name not in set(output_names))
+    output_text = ", ".join(output_names)
+    grain_names = tuple(name for name in output_names if name not in set(additive_inputs))
+    grain_text = ", ".join(grain_names)
+    distinct_text = ", ".join(distinct_keys)
+    additive_text = ", ".join(additive_inputs) if additive_inputs else "no additive measure input columns"
+    unused_text = ", ".join(unused_detail_names) if unused_detail_names else "detail-only columns not used by the final aggregate"
+    prompt_bullets = (
+        "Use recipe final_union_distinct_rollup.",
+        f"In CTE {union_cte.name}, pre-aggregate every UNION ALL branch before the UNION ALL.",
+        f"The output schema of CTE {union_cte.name} must be exactly these columns in this order: {output_text}.",
+        "Every UNION ALL branch must emit values in that same CTE output order; alias branch expressions when their source column name differs from the required output column.",
+        f"Group every branch by the final aggregate grain plus the DISTINCT key, in CTE output order: {grain_text}.",
+        f"Keep DISTINCT key columns such as {distinct_text} in CTE {union_cte.name}; the final SELECT must still compute COUNT(DISTINCT ...).",
+        f"For additive measure inputs ({additive_text}), aggregate the original branch expression with SUM(...) and keep the original output column name.",
+        f"Carry only grouped dimensions, DISTINCT keys, and additive measure inputs; do not project intermediate detail columns such as {unused_text}.",
+        "Keep the final SELECT, final GROUP BY, final aggregate expressions, final output columns, and final HAVING/ORDER/LIMIT clauses unchanged.",
+        "Keep every original physical table, JOIN predicate, WHERE filter, literal mapping, date range, and final SELECT/window expression unchanged.",
+    )
+    safe_bullets = (
+        "- Recipe detected: pre-aggregate UNION ALL branches to the final aggregate grain plus DISTINCT keys, then keep the final aggregate as the trusted rollup.",
+        "- The trusted SQL draft may be shown only if validation proves the same physical tables, filters, join predicates, literals and final SELECT shape are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="final_union_distinct_rollup",
+        title="Pre-aggregate UNION ALL branches before final DISTINCT rollup",
+        source_cte=union_cte.name,
+        aggregate_cte=None,
         prompt_bullets=prompt_bullets,
         safe_bullets=safe_bullets,
     )
@@ -1520,11 +1655,15 @@ def validate_recipe_backed_cte_rewrite(
     draft_sql: str,
     rewrite_recipe: OptimizerRewriteRecipe,
 ) -> list[str]:
+    if rewrite_recipe.recipe_id == "final_union_distinct_rollup":
+        return validate_final_union_distinct_rollup_rewrite(source_sql, draft_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id != "post_union_aggregate_pushdown":
         return ["optimized draft changes CTE query body"]
     errors: list[str] = []
     source_ctes = cte_definition_map(source_sql)
     draft_ctes = cte_definition_map(draft_sql)
+    if rewrite_recipe.aggregate_cte is None:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
     source_union_body = source_ctes.get(rewrite_recipe.source_cte)
     draft_union_body = draft_ctes.get(rewrite_recipe.source_cte)
     source_aggregate_body = source_ctes.get(rewrite_recipe.aggregate_cte)
@@ -1542,6 +1681,44 @@ def validate_recipe_backed_cte_rewrite(
         errors.append("optimized draft violates rewrite recipe: downstream safety aggregate was removed")
     if not aggregate_projection_names(draft_aggregate_body):
         errors.append("optimized draft violates rewrite recipe: downstream aggregate measures were removed")
+    if not counter_is_subset(sql_clause_signature_counter(source_sql, "WHERE"), sql_clause_signature_counter(draft_sql, "WHERE")):
+        errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
+    if not counter_is_subset(sql_clause_signature_counter(source_sql, "ON"), sql_clause_signature_counter(draft_sql, "ON")):
+        errors.append("optimized draft violates rewrite recipe: source JOIN predicates changed")
+    if not counter_is_subset(sql_string_literal_counter(source_sql), sql_string_literal_counter(draft_sql)):
+        errors.append("optimized draft violates rewrite recipe: source string literals changed")
+    if not counter_is_subset(sql_business_numeric_literal_counter(source_sql), sql_business_numeric_literal_counter(draft_sql)):
+        errors.append("optimized draft violates rewrite recipe: source numeric literals changed")
+    return errors
+
+
+def validate_final_union_distinct_rollup_rewrite(
+    source_sql: str,
+    draft_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> list[str]:
+    errors: list[str] = []
+    source_parsed = parse_with_query(source_sql)
+    draft_parsed = parse_with_query(draft_sql)
+    if source_parsed is None or draft_parsed is None:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    source_ctes = cte_definition_map(source_sql)
+    draft_ctes = cte_definition_map(draft_sql)
+    source_union_body = source_ctes.get(rewrite_recipe.source_cte)
+    draft_union_body = draft_ctes.get(rewrite_recipe.source_cte)
+    if not source_union_body or not draft_union_body:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+    if not has_union_all(draft_union_body):
+        errors.append("optimized draft violates rewrite recipe: UNION ALL CTE was not preserved")
+    if not identifier_referenced(draft_parsed.final_sql, rewrite_recipe.source_cte):
+        errors.append("optimized draft violates rewrite recipe: final aggregate no longer reads the source CTE")
+    if keyword_count_any_depth(draft_parsed.final_sql, "GROUP") == 0:
+        errors.append("optimized draft violates rewrite recipe: final safety aggregate was removed")
+    if normalized_statement_signature(source_parsed.final_sql) != normalized_statement_signature(draft_parsed.final_sql):
+        errors.append("optimized draft violates rewrite recipe: final aggregate query changed")
+    errors.extend(validate_final_union_distinct_rollup_branch_shape(source_union_body, draft_union_body, source_parsed.final_sql))
     if not counter_is_subset(sql_clause_signature_counter(source_sql, "WHERE"), sql_clause_signature_counter(draft_sql, "WHERE")):
         errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
     if not counter_is_subset(sql_clause_signature_counter(source_sql, "ON"), sql_clause_signature_counter(draft_sql, "ON")):
@@ -1585,6 +1762,57 @@ def validate_post_union_aggregate_branch_shape(
             errors.append(f"optimized draft violates rewrite recipe: branch {index} is not pre-aggregated")
         if not aggregate_projection_names(branch):
             errors.append(f"optimized draft violates rewrite recipe: branch {index} has no aggregate measures")
+    return dedupe_preserve_order(errors)
+
+
+def validate_final_union_distinct_rollup_branch_shape(
+    source_union_body: str,
+    draft_union_body: str,
+    final_sql: str,
+) -> list[str]:
+    errors: list[str] = []
+    source_branches = split_top_level_union_all_fragments(source_union_body)
+    draft_branches = split_top_level_union_all_fragments(draft_union_body)
+    if len(source_branches) != len(draft_branches):
+        return ["optimized draft violates rewrite recipe: UNION ALL branch count changed"]
+    union_outputs = union_projection_names(source_union_body)
+    dimensions = non_aggregate_projection_names(final_sql)
+    distinct_keys = count_distinct_key_names(final_sql)
+    passthrough_names = set(dimensions) | set(distinct_keys)
+    additive_inputs = aggregate_input_projection_names(final_sql, union_outputs, passthrough_names)
+    required_name_set = set(dimensions) | set(distinct_keys) | set(additive_inputs)
+    required_names = tuple(name for name in union_outputs if name in required_name_set)
+    required_name_set = set(required_names)
+    expected_projection_count = len(required_names)
+    unused_detail_names = tuple(name for name in union_outputs if name and name not in required_name_set)
+    first_branch_projection_names: tuple[str, ...] = ()
+    for index, branch in enumerate(draft_branches, start=1):
+        projection_names = tuple(name for item in projection_item_fragments(branch) if (name := projection_name_for_fragment(item)))
+        if index == 1:
+            first_branch_projection_names = projection_names
+        projection_name_set = set(projection_names)
+        if expected_projection_count and len(projection_names) != expected_projection_count:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} projection shape does not match pushed distinct rollup")
+        missing_required = [name for name in required_names if name not in projection_name_set]
+        if index == 1 and missing_required:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} is missing final aggregate input columns")
+        if index > 1 and first_branch_projection_names and len(projection_names) == len(first_branch_projection_names):
+            misplaced_required = [
+                name
+                for offset, name in enumerate(projection_names)
+                if name in required_name_set and name != first_branch_projection_names[offset]
+            ]
+            if misplaced_required:
+                errors.append(f"optimized draft violates rewrite recipe: branch {index} projection order does not match the CTE output schema")
+        extra_detail_names = [name for name in unused_detail_names if name in projection_name_set]
+        if extra_detail_names:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} still projects detail-only columns")
+        if keyword_count_any_depth(branch, "GROUP") == 0:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} is not pre-aggregated")
+        branch_aggregate_names = set(aggregate_projection_names(branch))
+        missing_additive_inputs = [name for name in additive_inputs if name not in branch_aggregate_names]
+        if missing_additive_inputs:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} is missing aggregate measure inputs")
     return dedupe_preserve_order(errors)
 
 
