@@ -2197,8 +2197,8 @@ def run_batch_case_report_job(
         job_store.update_stage(job_id, 2)
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
-                "Report generation completed but validation rejected the output. "
-                "The partial report is untrusted and hidden."
+                "LLM Report был сгенерирован, но validation отклонила результат. "
+                "Partial report untrusted и скрыт."
             )
         if completed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor batch case report generation", completed))
@@ -2231,8 +2231,8 @@ def run_specific_query_report_job(
         job_store.update_stage(job_id, 2)
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
-                "Report generation completed but validation rejected the output. "
-                "The partial report is untrusted and hidden."
+                "LLM Report был сгенерирован, но validation отклонила результат. "
+                "Partial report untrusted и скрыт."
             )
         if completed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor specific query report generation", completed))
@@ -2267,8 +2267,8 @@ def run_optimized_query_job(
         job_store.update_stage(job_id, 2)
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
-                "Optimized query draft was generated but failed deterministic validation. "
-                "The partial draft is untrusted and hidden."
+                "Draft оптимизированного запроса был сгенерирован, но не прошел deterministic validation. "
+                "Partial draft untrusted и скрыт."
             )
         if completed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor optimized query generation", completed))

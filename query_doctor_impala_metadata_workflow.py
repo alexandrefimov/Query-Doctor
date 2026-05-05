@@ -15,7 +15,11 @@ from impala_shell_runner import (
     validate_coordinator,
     validate_protocol,
 )
-from query_doctor_collect_impala_context import CollectorError, normalize_table_identifier
+from query_doctor_collect_impala_context import (
+    CollectorError,
+    normalize_database_identifier,
+    normalize_table_identifier,
+)
 
 
 DEFAULT_METADATA_MAX_TABLES = 5
@@ -32,6 +36,7 @@ class MetadataPlan:
     skipped_tables: list[str]
     invalid_tables: list[str]
     max_tables: int
+    default_database: str | None = None
 
 
 @dataclass(frozen=True)
@@ -113,6 +118,14 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
         help=f"Maximum referenced tables to collect. Default: {DEFAULT_METADATA_MAX_TABLES}.",
     )
     parser.add_argument(
+        "--metadata-default-db",
+        default=os.environ.get("QD_METADATA_DEFAULT_DB"),
+        help=(
+            "Default database used to qualify unqualified referenced table names "
+            "before metadata collection. When omitted, analyzer facts may provide it."
+        ),
+    )
+    parser.add_argument(
         "--metadata-redact",
         action="store_true",
         default=_env_bool("QD_METADATA_REDACT", True),
@@ -151,6 +164,11 @@ def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error("--metadata-max-tables must be positive")
     if args.metadata_ca_cert and not args.metadata_ssl:
         parser.error("--metadata-ca-cert requires --metadata-ssl")
+    if effective_mode != "off" and args.metadata_default_db:
+        try:
+            args.metadata_default_db = normalize_database_identifier(args.metadata_default_db)
+        except CollectorError as exc:
+            parser.error(str(exc))
     if effective_mode == "on" and not args.metadata_coordinator:
         parser.error("--metadata-coordinator is required with --metadata-mode on")
     if effective_mode in {"on", "dry-run"} and args.metadata_coordinator:
@@ -269,15 +287,55 @@ def read_referenced_tables_from_facts(facts_path: Path) -> list[str]:
     return tables
 
 
-def build_metadata_plan(raw_tables: list[str], max_tables: int) -> MetadataPlan:
+def read_default_database_from_facts(facts_path: Path) -> str | None:
+    if not facts_path.exists():
+        return None
+    in_section = False
+    for line in facts_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped == "## SQL Context":
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            break
+        if not in_section or not stripped.startswith("- default_database:"):
+            continue
+        value = stripped.split(":", 1)[1].strip()
+        if value.startswith("not_observed"):
+            return None
+        if value.startswith("`") and value.endswith("`"):
+            value = value[1:-1]
+        return value or None
+    return None
+
+
+def build_metadata_plan(
+    raw_tables: list[str],
+    max_tables: int,
+    *,
+    default_database: str | None = None,
+) -> MetadataPlan:
+    normalized_default_database: str | None = None
+    if default_database:
+        try:
+            normalized_default_database = normalize_database_identifier(default_database)
+        except CollectorError:
+            normalized_default_database = None
+
     normalized: list[str] = []
     invalid: list[str] = []
     for table in raw_tables:
         try:
             normalized_table = normalize_table_identifier(table)
         except CollectorError:
-            invalid.append(table)
-            continue
+            if not normalized_default_database:
+                invalid.append(table)
+                continue
+            try:
+                normalized_table = normalize_table_identifier(f"{normalized_default_database}.{table}")
+            except CollectorError:
+                invalid.append(table)
+                continue
         if normalized_table not in normalized:
             normalized.append(normalized_table)
     return MetadataPlan(
@@ -285,6 +343,7 @@ def build_metadata_plan(raw_tables: list[str], max_tables: int) -> MetadataPlan:
         skipped_tables=normalized[max_tables:],
         invalid_tables=invalid,
         max_tables=max_tables,
+        default_database=normalized_default_database,
     )
 
 
@@ -333,6 +392,8 @@ def build_metadata_collector_cmd(
 def print_metadata_plan(plan: MetadataPlan, *, dry_run: bool) -> None:
     print()
     print("[pipeline] Impala metadata collection plan:")
+    if plan.default_database:
+        print(f"[pipeline] default database for unqualified tables: {plan.default_database}")
     print(f"[pipeline] selected referenced tables: {len(plan.selected_tables)}")
     for table in plan.selected_tables:
         print(f"[pipeline]   collect: {table}")

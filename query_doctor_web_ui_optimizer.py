@@ -11,13 +11,12 @@ from query_doctor_query_optimizer import OptimizerAnalysis
 def render_optimizer_page(
     settings: Any,
     *,
-    sql: str = "",
     result: OptimizerAnalysis | None = None,
     error: object | None = None,
 ) -> str:
     from query_doctor_web_ui import render_error_panel, render_page
 
-    sections = [render_optimizer_panel(sql)]
+    sections = [render_optimizer_panel()]
     if error is not None:
         sections.append(render_error_panel(error))
     if result is not None:
@@ -30,8 +29,7 @@ def render_optimizer_page(
     )
 
 
-def render_optimizer_panel(sql: str) -> str:
-    sql_value = html.escape(sql, quote=True)
+def render_optimizer_panel() -> str:
     return (
         "<section class=\"panel optimizer-panel\" aria-label=\"Query Optimizer\">"
         "<div class=\"section-heading\"><div>"
@@ -48,7 +46,7 @@ def render_optimizer_panel(sql: str) -> str:
         "<div class=\"info-body\">Paste a single SELECT or WITH query only. Query Doctor validates this text before "
         "table extraction or metadata collection, never executes it, and does not display it back after submit.</div>"
         "</details></div>"
-        f"<textarea class=\"input optimizer-sql\" id=\"optimizer_sql\" name=\"sql\" required>{sql_value}</textarea>"
+        "<textarea class=\"input optimizer-sql\" id=\"optimizer_sql\" name=\"sql\" required></textarea>"
         "<p class=\"helper\">Accepted input: one read-only SELECT or WITH query. Unsafe or multi-statement input is rejected "
         "before referenced-table extraction and before metadata collection.</p>"
         "</div>"

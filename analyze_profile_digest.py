@@ -1609,6 +1609,17 @@ def extract_original_sql(profile_digest_text: str) -> str | None:
     return None
 
 
+def extract_default_database(profile_digest_text: str) -> str | None:
+    for candidate_text in profile_digest_text_candidates(profile_digest_text):
+        match = re.search(
+            r"(?im)^\s*Default\s+Db\s*:\s*(?P<database>[A-Za-z_][A-Za-z0-9_$]*)\s*$",
+            candidate_text,
+        )
+        if match:
+            return match.group("database")
+    return None
+
+
 def strip_sql_comments_and_strings(sql: str) -> str:
     text = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
     text = re.sub(r"--[^\n\r]*", " ", text)
@@ -3669,6 +3680,17 @@ def render_referenced_tables(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_sql_context(analysis: dict[str, Any]) -> list[str]:
+    lines = ["## SQL Context", ""]
+    default_database = analysis.get("default_database")
+    if default_database:
+        lines.append(f"- default_database: `{default_database}`")
+    else:
+        lines.append("- default_database: not_observed")
+    lines.append("")
+    return lines
+
+
 def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("table_metadata_context") or {}
     lines = ["## Table Metadata Context", ""]
@@ -4025,6 +4047,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_operator_table("Zero/unknown row estimate gaps", analysis["zero_row_estimate_gaps"], max_table_rows)
     lines += render_operator_table("Zero/unknown memory estimate gaps", analysis["zero_memory_estimate_gaps"], max_table_rows)
 
+    lines += render_sql_context(analysis)
     lines += render_referenced_tables(analysis)
     lines += render_cm_query_context(analysis)
     lines += render_cm_timeseries_context(analysis)
@@ -4114,6 +4137,7 @@ def main(argv: list[str]) -> int:
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
+    analysis["default_database"] = extract_default_database(text)
     analysis["cm_metrics_correlation"] = build_cm_metrics_correlation(analysis)
     analysis["action_cards"] = build_action_cards(analysis)
     analysis["evidence_quality"] = build_evidence_quality(analysis)

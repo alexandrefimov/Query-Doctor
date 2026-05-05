@@ -14,6 +14,7 @@ from query_doctor_impala_metadata_workflow import (
     build_metadata_plan,
     metadata_config_status,
     print_metadata_plan,
+    read_default_database_from_facts,
     read_referenced_tables_from_facts,
     resolve_metadata_mode,
     validate_metadata_args,
@@ -182,7 +183,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[pipeline] ERROR: metadata collection is not configured: {config_status.reason}", file=sys.stderr)
                 return 2
         raw_tables = read_referenced_tables_from_facts(facts)
-        metadata_plan = build_metadata_plan(raw_tables, args.metadata_max_tables)
+        default_database = args.metadata_default_db or read_default_database_from_facts(facts)
+        metadata_plan = build_metadata_plan(
+            raw_tables,
+            args.metadata_max_tables,
+            default_database=default_database,
+        )
         print_metadata_plan(metadata_plan, dry_run=metadata_mode == "dry-run")
         if metadata_mode == "dry-run":
             print("[pipeline] metadata dry-run complete; analyzer/report were not rerun after metadata collection")

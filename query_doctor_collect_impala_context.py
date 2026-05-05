@@ -140,6 +140,22 @@ def normalize_table_identifier(raw_table: str) -> str:
     return ".".join(normalized_parts)
 
 
+def normalize_database_identifier(raw_database: str) -> str:
+    database = raw_database.strip()
+    if not database:
+        raise CollectorError("Database identifier must not be empty.")
+    if any(marker in database for marker in (";", "--", "/*", "*/")):
+        raise CollectorError(f"Refusing unsafe database identifier: {raw_database!r}")
+    if any(quote in database for quote in ("'", '"')):
+        raise CollectorError(f"Refusing quoted database identifier: {raw_database!r}")
+    if re.search(r"\s", database) or "." in database:
+        raise CollectorError(f"Refusing unsupported database identifier: {raw_database!r}")
+    match = IDENTIFIER_PART_RE.fullmatch(database)
+    if not match:
+        raise CollectorError(f"Refusing unsupported database identifier: {raw_database!r}")
+    return match.group(1) or match.group(2)
+
+
 def dedupe_preserve_order(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
