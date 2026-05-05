@@ -10,6 +10,7 @@ profile_digest.md, profile.txt, or other raw profile files.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -53,6 +54,16 @@ REPORT_SYSTEM_PROMPT = (
     "Do not call low-memory EXCHANGE operators memory bottlenecks. "
     "Do not claim HDFS, external network, codegen, skew, or spill causes unless facts explicitly support them."
 )
+
+
+@dataclass(frozen=True)
+class StreamedLLMResponse:
+    text: str
+    done_reason: str
+    eval_count: int | None
+    prompt_eval_count: int | None
+
+
 SHORT_SUMMARY_HEADING = "## Краткий вывод"
 RECOMMENDATIONS_HEADING = "## Практические рекомендации"
 DETAILED_REPORT_HEADING = "## Подробный разбор"
@@ -3458,7 +3469,32 @@ def stream_ollama_report(
     ollama_url: str,
     temperature: float,
     keep_alive: str,
+    num_ctx: int | None = None,
+    num_predict: int | None = None,
 ) -> str:
+    return stream_ollama_report_with_meta(
+        prompt=prompt,
+        model=model,
+        ollama_url=ollama_url,
+        temperature=temperature,
+        keep_alive=keep_alive,
+        num_ctx=num_ctx,
+        num_predict=num_predict,
+    ).text
+
+
+def stream_ollama_report_with_meta(
+    *,
+    prompt: str,
+    model: str,
+    ollama_url: str,
+    temperature: float,
+    keep_alive: str,
+    num_ctx: int | None = None,
+    num_predict: int | None = None,
+) -> StreamedLLMResponse:
+    requested_num_ctx = NUM_CTX if num_ctx is None else num_ctx
+    requested_num_predict = NUM_PREDICT if num_predict is None else num_predict
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
@@ -3468,8 +3504,8 @@ def stream_ollama_report(
         "stream": True,
         "options": {
             "temperature": temperature,
-            "num_ctx": NUM_CTX,
-            "num_predict": NUM_PREDICT,
+            "num_ctx": requested_num_ctx,
+            "num_predict": requested_num_predict,
         },
     }
     if keep_alive:
@@ -3485,6 +3521,7 @@ def stream_ollama_report(
     started = time.time()
     received = 0
     chunks: list[str] = []
+    final_event: dict[str, Any] = {}
     with urllib.request.urlopen(req, timeout=1800) as resp:
         for raw_line in resp:
             line = raw_line.decode("utf-8", errors="replace").strip()
@@ -3512,9 +3549,18 @@ def stream_ollama_report(
                     )
 
             if event.get("done"):
+                final_event = event
                 break
 
-    return "".join(chunks)
+    done_reason = str(final_event.get("done_reason") or "").strip()
+    eval_count = final_event.get("eval_count")
+    prompt_eval_count = final_event.get("prompt_eval_count")
+    return StreamedLLMResponse(
+        text="".join(chunks),
+        done_reason=done_reason,
+        eval_count=eval_count if isinstance(eval_count, int) else None,
+        prompt_eval_count=prompt_eval_count if isinstance(prompt_eval_count, int) else None,
+    )
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:

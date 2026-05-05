@@ -91,12 +91,15 @@ outcomes honest when a trusted SQL rewrite is unavailable or not useful.
   Manager data, then expand it toward admission/pool pressure, Impala daemon
   CPU/memory pressure, host IO/network/load, and bounded role health signals.
 - Safe admission/pool facts in deterministic analysis and LLM Report wording.
-- More real-case validation for Query LLM optimizer, including no-benefit and
-  recommendations-only outcomes.
-- Safe UI status for optimizer mode, validation outcome and no-benefit outcome.
+- More real-case validation for Query LLM optimizer, including completed
+  validation rejections, no-benefit, output-budget and recommendations-only
+  outcomes.
+- Safe UI status for optimizer mode, validation outcome, no-benefit outcome and
+  output-budget no-rewrite outcome.
   The current trusted path records `no_rewrite` when a valid draft is only a
-  cosmetic/no-material-change rewrite; next work is better deterministic
-  recommendations after validation rejection.
+  cosmetic/no-material-change rewrite or when model generation reaches the
+  optimizer output budget; next work is better deterministic recommendations
+  after completed validation rejection.
 - Details page UX audit: review which blocks are still useful, which are
   redundant, what should be added or promoted, and whether the page is efficient
   for Finished, Running and Specific Query workflows.
@@ -245,11 +248,11 @@ Maintainability and future seams:
 - Host alias consistency: decide whether profile and metadata artifacts need a
   shared host-alias map for cross-artifact diagnostics; if yes, share the
   redactor within one collected case without weakening host redaction defaults.
-- Optimizer semantic validation: strengthen rewrite validation with normalized
-  signatures for filters, HAVING, LIMIT and top-level JOIN conditions before
-  expanding `rewrite_allowed` behavior.
-- Optimizer benchmark corpus: build anonymized predicate/join/projection
-  fixtures for semantic-preservation tests and prompt tuning.
+- Optimizer safe transforms: keep current signature validation strict, then add
+  narrow Python-owned transforms only where SQL equivalence can be proven.
+- Optimizer benchmark corpus: build anonymized long-WITH, CTE-preservation,
+  predicate/join/projection fixtures for semantic-preservation tests, prompt
+  tuning and model bake-offs.
 - Engine adapter contract: keep Impala as the only implemented engine, but
   later make the existing seam describe real engine-specific contracts:
   operator maps, profile parsers, metadata allowlists, validator terminology and
@@ -592,6 +595,12 @@ Non-goals for this track:
 - Report SQL-like validation may be slightly over-conservative for conceptual
   DDL wording.
 - Query LLM optimizer can still reject useful-looking drafts for complex
-  CTE-heavy cases; this is safer than accepting a semantic change, but needs a
-  useful fallback.
+  CTE-heavy cases; this is safer than accepting a semantic change. High-risk,
+  no-benefit and output-budget cases now have trusted non-SQL outcomes, but
+  completed validation rejections still need deterministic no-rewrite or
+  recommendations fallback.
+- Local optimizer model quality is not solved: current q8 gives a low trusted
+  SQL draft rate on `rewrite_allowed` cases, while historical `qwen3-coder:30b`
+  mostly returns no-rewrite. Replacement model selection must use optimizer
+  bake-off metrics, not report-writer pass-rate.
 - Archived prototypes must not be used as current safety guidance.

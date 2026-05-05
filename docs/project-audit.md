@@ -59,10 +59,12 @@ UI, and keep documentation aligned with the safety contract.
 
 - Query LLM optimizer quality is still uneven for CTE-heavy and structurally
   complex cases. Validation correctly rejects unsafe drafts, but the user then
-  gets no useful optimized draft.
+  gets no useful optimized draft unless the case falls into an implemented
+  recommendations/no-rewrite fallback.
 - Conservative prompt mode reduces risk, but prompts alone are not a complete
-  control. High-risk cases need a deterministic no-rewrite or
-  recommendations-only fallback.
+  control. Completed validation rejections still need deterministic no-rewrite
+  or recommendations-only outcomes where Python can explain the rejection
+  safely.
 - The web server still owns too many responsibilities. That raises the cost of
   UI changes and makes safety review slower.
 - Historical docs and prototype notes can drift from current behavior. Current
@@ -96,12 +98,13 @@ Near term:
   incomplete evidence.
 - Design Baseline Comparison and Similar Query Clustering around normalized
   query fingerprints.
-- Add Query LLM optimizer no-rewrite or recommendations-only fallback for
-  high-risk cases such as large CTE graphs or complex join shapes.
-- Show optimizer mode and validation outcome safely in the Details UI, without
-  raw SQL or artifact names.
+- Convert completed Query LLM optimizer validation rejections into deterministic
+  no-rewrite or recommendations-only outcomes when Python can explain the
+  rejection safely.
 - Build a small anonymized optimizer benchmark set from representative query
   shapes and run it in focused tests or local smoke scripts.
+- Run optimizer-specific model bake-offs before changing the optimizer default;
+  report-writer pass-rate is not a reliable proxy for SQL rewrite quality.
 - Continue prompt tuning for practical, low-noise reports and optimizer output,
   but keep validation as the trust boundary.
 - Finish documentation cleanup for remaining historical notes and make current
@@ -170,11 +173,19 @@ Current optimizer risk modes:
 
 - `rewrite_allowed` for simpler cases.
 - `conservative_rewrite` for structurally risky cases.
+- `recommendations_only` for cases where preserving semantics is too risky for
+  an LLM-generated SQL draft.
+- `no_rewrite` for no-benefit drafts and output-budget truncation.
 
-Next expected mode:
+Current optimizer problems:
 
-- recommendations-only/no-rewrite for cases where preserving semantics is too
-  risky for an LLM-generated SQL draft.
+- local SQL rewrite quality is weak: the current q8 route produced only 3
+  trusted SQL drafts on a 10-case `rewrite_allowed` sample;
+- the historical `qwen3-coder:30b` route reduces partial failures but mostly
+  returns no-rewrite outcomes, so it is not a clear replacement;
+- completed validation rejections still become hidden partial-untrusted outcomes
+  instead of deterministic recommendations;
+- there is no committed anonymized optimizer fixture corpus yet.
 
 ## Validation notes
 
@@ -192,8 +203,9 @@ tests.
 
 ## Recommended next actions
 
-1. Implement the high-risk Query LLM optimizer fallback.
-2. Expose optimizer mode and rejection reason as safe UI status.
-3. Add an anonymized optimizer benchmark set.
+1. Add an anonymized optimizer benchmark set.
+2. Run optimizer-specific model bake-offs for replacement candidates.
+3. Convert completed optimizer validation rejections into safe deterministic
+   no-rewrite/recommendations outcomes where possible.
 4. Continue reducing web server responsibility size.
 5. Keep active docs updated as part of each safety-sensitive feature.

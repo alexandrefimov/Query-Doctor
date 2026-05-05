@@ -1,6 +1,6 @@
 # Query Optimizer contract
 
-Date: 2026-05-04
+Date: 2026-05-05
 
 This document defines the current Query Doctor optimizer boundaries. It covers
 both optimizer surfaces:
@@ -102,6 +102,38 @@ Known limitation:
   top-level clauses and projections unless Python owns a specific safe
   transform. It still does not prove general SQL equivalence.
 
+## Current optimizer issues
+
+The current trusted path is safe but still not very useful as an automatic SQL
+rewrite surface. Known current issues:
+
+- SQL rewrite quality is uneven for local models. In a 10-case
+  `rewrite_allowed` sample from current optimization candidates,
+  `qwen3-coder:30b-a3b-q8_0` produced 3 trusted SQL drafts, 4 trusted
+  no-rewrite outcomes, and 3 partial-untrusted drafts. The historical
+  `qwen3-coder:30b` route produced fewer partials, but also fewer trusted SQL
+  drafts and more no-rewrite outcomes.
+- Output length was a real failure mode for long `WITH` queries. This is now
+  mitigated by the optimizer-specific `QD_OPTIMIZER_NUM_PREDICT` budget
+  defaulting to `4096` and by converting Ollama `done_reason=length` into a
+  trusted no-rewrite outcome instead of a hidden partial SQL validation failure.
+- Shorter failed drafts are not primarily a length problem. Current failures are
+  mostly model-discipline failures such as adding CTEs, changing CTE names, or
+  changing top-level `GROUP BY` expressions despite prompt constraints.
+- `rewrite_allowed` is still too broad for some CTE-preservation cases. Until
+  Python-owned transforms exist, validator rejection is the correct trust
+  boundary, but the user-facing outcome should continue moving toward
+  recommendations/no-rewrite rather than partial-untrusted.
+- The validator rejects safe-looking rewrites that are not proven equivalent by
+  normalized signatures. This is intentional for trust, but it limits optimizer
+  usefulness until safe Python-owned transforms are added.
+- There is no committed anonymized optimizer benchmark corpus yet. The current
+  local bake-off uses scratch cases under `/tmp` or `/private/tmp`; it is useful
+  for model choice, but not stable regression coverage.
+- Report-writer model quality does not predict optimizer rewrite quality. Query
+  LLM optimizer needs its own bake-off metrics: trusted SQL draft rate,
+  no-rewrite/recommendations rate, partial-untrusted rate, and latency.
+
 ## Trust marker
 
 The details-page optimized draft is trusted only when all of these are true:
@@ -119,13 +151,18 @@ Legacy/minimal optimizer markers are not trusted.
 
 ## Fallback policy
 
-Near-term target behavior:
+Current behavior:
 
 - low-risk case and validator passes: show validated optimized draft;
-- high-risk case or validation rejection: show no trusted SQL draft and provide
-  deterministic recommendations-only fallback;
+- high-risk case: show no trusted SQL draft and provide deterministic
+  recommendations-only fallback;
 - no-benefit case: show no trusted SQL draft and provide a `no_rewrite` outcome
   explaining that no material SQL change was validated;
+- output-budget truncation: show no trusted SQL draft and provide a trusted
+  `no_rewrite` outcome explaining that generation reached the optimizer output
+  token budget;
+- validation rejection for a completed draft: keep hidden partial-untrusted
+  status for now;
 - always hide partial drafts and raw LLM output.
 
 ## Test obligations
@@ -186,9 +223,11 @@ Current implementation:
 
 ### Phase 3. Recommendations-only fallback
 
-Status: implemented for high-risk shapes and no-benefit drafts. Validation
-rejections still produce hidden partials; converting those into deterministic
-recommendations remains future work.
+Status: partially implemented. High-risk shapes, no-benefit drafts and
+output-budget truncation now produce trusted recommendations/no-rewrite
+outcomes. Validation rejections for completed drafts still produce hidden
+partials; converting those into deterministic recommendations remains future
+work.
 
 Goal:
 
@@ -197,26 +236,28 @@ Goal:
 Target behavior:
 
 - low-risk source and validator passed: show trusted optimized draft;
-- conservative mode, high-risk source, no-benefit output, or validator
-  rejection: do not show SQL draft;
+- conservative mode, high-risk source, no-benefit output, output-budget
+  truncation, or validator rejection: do not show SQL draft;
 - show deterministic optimizer recommendations derived from analyzer facts and
   metadata facts;
 - keep partial draft and raw LLM output hidden;
 - use safe browser status text without raw artifact names, paths, model/runtime
   internals, or raw source SQL.
 
-Implementation target:
+Remaining implementation target:
 
-- represent optimizer outcome as `sql_draft`, `recommendations_only`,
-  `no_rewrite`, or `failed`;
-- persist enough safe metadata for UI status: source scope, risk mode, validation
-  outcome, and recommendation count;
+- convert completed validation rejections into deterministic no-rewrite or
+  recommendations-only outcomes when Python can explain the rejection safely;
+- persist enough safe metadata for UI status to distinguish output-budget
+  no-rewrite from no-benefit no-rewrite;
 - keep recommendations Python-owned; LLM may phrase only after deterministic
   candidate selection.
 
 ### Phase 4. Details UI status
 
-Status: planned.
+Status: partially implemented. Details pages show source scope, risk mode and
+output kind for trusted outcomes; they still do not expose detailed validation
+rejection categories in browser-safe wording.
 
 Goal:
 
@@ -242,11 +283,13 @@ Forbidden fields:
 
 ### Phase 5. Optimizer benchmark fixtures
 
-Status: planned.
+Status: local bake-off tooling exists; committed anonymized fixtures are still
+planned.
 
 Goal:
 
 - create a small fixture set that makes future optimizer changes cheap to test.
+- keep model replacement decisions separate from report-writer bake-offs.
 
 Fixture set:
 

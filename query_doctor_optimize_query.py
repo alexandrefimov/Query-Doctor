@@ -30,7 +30,8 @@ from query_doctor_report import (
     ollama_chat_url,
     recommendation_candidate_id_for_bullet,
     recommendation_candidate_lines,
-    stream_ollama_report,
+    StreamedLLMResponse,
+    stream_ollama_report_with_meta as _stream_ollama_report_with_meta,
 )
 
 
@@ -44,6 +45,7 @@ RECOMMENDATION_OUTPUT_KINDS = {"recommendations_only", "no_rewrite"}
 MAX_SOURCE_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_SOURCE_SQL_BYTES", "262144"))
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
 MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTES", "65536"))
+OPTIMIZER_NUM_PREDICT = int(os.getenv("QD_OPTIMIZER_NUM_PREDICT", "4096"))
 SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.DOTALL)
 TOP_LEVEL_SHAPE_KEYWORDS = ("GROUP", "ORDER")
 TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")
@@ -97,6 +99,17 @@ INCOMPLETE_TRAILING_CHARS = {",", ".", "(", "+", "-", "*", "/", "=", "<", ">"}
 
 class QueryOptimizationError(RuntimeError):
     pass
+
+
+def stream_ollama_report(**kwargs: object) -> StreamedLLMResponse | str:
+    return _stream_ollama_report_with_meta(**kwargs)  # type: ignore[arg-type]
+
+
+def stream_optimizer_response(**kwargs: object) -> StreamedLLMResponse:
+    response = stream_ollama_report(**kwargs)
+    if isinstance(response, StreamedLLMResponse):
+        return response
+    return StreamedLLMResponse(text=str(response), done_reason="", eval_count=None, prompt_eval_count=None)
 
 
 @dataclass(frozen=True)
@@ -788,6 +801,15 @@ def no_rewrite_recommendations(risk_decision: OptimizerRiskDecision) -> str:
     )
 
 
+def output_limit_no_rewrite_recommendations() -> str:
+    return "\n".join(
+        [
+            "- No trusted SQL rewrite is shown because model generation reached the optimizer output-token budget before a complete draft was available.",
+            "- Retry with a larger QD_OPTIMIZER_NUM_PREDICT value or use recommendations-only review for this query shape.",
+        ]
+    )
+
+
 def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     errors: list[str] = []
     errors.extend(sql_completeness_errors(draft_sql))
@@ -1064,13 +1086,15 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text=facts_text,
                 risk_decision=risk_decision,
             )
-            generated = stream_ollama_report(
+            response = stream_optimizer_response(
                 prompt=recommendations_prompt,
                 model=args.model,
                 ollama_url=args.ollama_url,
                 temperature=optimizer_temperature(args.temperature, risk_decision),
                 keep_alive=args.keep_alive,
+                num_predict=OPTIMIZER_NUM_PREDICT,
             )
+            generated = response.text
             recommendations = normalize_optimizer_recommendations(generated, facts_text)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(recommendations.rstrip() + "\n", encoding="utf-8")
@@ -1084,13 +1108,33 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"{PROGRESS_PREFIX} optimizer recommendations done", file=sys.stderr)
             return 0
-        generated = stream_ollama_report(
+        response = stream_optimizer_response(
             prompt=prompt,
             model=args.model,
             ollama_url=args.ollama_url,
             temperature=optimizer_temperature(args.temperature, risk_decision),
             keep_alive=args.keep_alive,
+            num_predict=OPTIMIZER_NUM_PREDICT,
         )
+        generated = response.text
+        if response.done_reason == "length":
+            remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
+            recommendations_path = case_dir / RECOMMENDATIONS_NAME
+            recommendations_path.write_text(output_limit_no_rewrite_recommendations() + "\n", encoding="utf-8")
+            write_recommendations_marker(
+                case_dir,
+                RECOMMENDATIONS_NAME,
+                source_sql=source_sql.sql,
+                facts_text=facts_text,
+                source_scope=source_sql.scope,
+                risk_decision=risk_decision,
+                output_kind="no_rewrite",
+            )
+            print(
+                f"{PROGRESS_PREFIX} optimizer output budget reached before complete trusted draft",
+                file=sys.stderr,
+            )
+            return 0
         draft_sql = extract_draft_sql(generated)
         errors = validate_draft_sql(source_sql.sql, draft_sql)
         if errors:
