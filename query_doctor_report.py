@@ -1238,12 +1238,17 @@ def facts_have_metadata_stats_gap(facts_text: str) -> bool:
 
 
 def facts_have_large_intermediate_or_exchange(facts_text: str) -> bool:
+    findings_lines = extract_markdown_section(facts_text, "## Findings")
+    if not findings_lines:
+        return False
+    findings_text = "\n".join(findings_lines)
     return bool(
         re.search(
-            r"Large intermediate or exchange traffic|TotalBytesSent is large|large data-movement threshold|"
-            r"large intermediate/exchange traffic",
-            facts_text,
-            re.IGNORECASE,
+            r"^###\s+Large intermediate or exchange traffic\b|"
+            r"^-\s+TotalBytesSent is large\b|"
+            r"^-\s+TotalBytesSent meets the high data-movement threshold\b",
+            findings_text,
+            re.IGNORECASE | re.MULTILINE,
         )
     )
 
@@ -1367,8 +1372,8 @@ def recommendation_candidate_lines(facts_text: str) -> list[tuple[str, str]]:
     if (cardinality_count and cardinality_count > 0) or facts_have_metadata_stats_gap(facts_text):
         add(
             "stats_maintenance",
-            "Собрать или обновить table/partition stats через утверждённый operational process "
-            "для referenced tables, по которым facts показывают cardinality anomalies или gaps в metadata stats.",
+            "Собрать или обновить статистику по затронутым таблицам, "
+            "где в фактах отмечены cardinality anomalies или missing/incomplete stats.",
         )
 
     if cardinality_count and cardinality_count > 0:
@@ -1432,6 +1437,13 @@ def recommendation_candidate_lines(facts_text: str) -> list[tuple[str, str]]:
             "reduce_cpu_work_with_profile_evidence",
             "Снизить CPU work только в местах, где profile facts уже показывают row growth или "
             "large intermediate/exchange traffic: фильтровать, агрегировать или сокращать payload раньше.",
+        )
+
+    if candidates and all(candidate_id != "rerun_after_change" for candidate_id, _ in candidates):
+        add(
+            "rerun_after_change",
+            "После изменения снять новый профиль и сравнить подтверждённые факты: "
+            "wall-clock, host-tail evidence, operator rows/memory и runtime metrics context.",
         )
 
     if not candidates:
