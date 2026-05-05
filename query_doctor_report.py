@@ -295,6 +295,10 @@ BACKEND_DATA_SKEW_SUPPORTED_NOTE = (
     "- Backend data skew поддержан analysis_facts.md: rows/records неравномерно распределены "
     "по parsed backends; execution skew / single tail host не доказаны без отдельного факта."
 )
+BACKEND_DATA_SKEW_UNSUPPORTED_NOTE = (
+    "- Backend data skew по RowsProduced не подтверждён: Backend / Host Tail Evidence не показывает "
+    "неравномерное распределение строк по comparable backends."
+)
 SPILL_SCRATCH_SUPPORTED_NOTE = (
     "- В analysis_facts.md есть ненулевые spill/scratch metrics; это подтверждает наличие "
     "метрик, но не доказывает spill/scratch как причину без дополнительных фактов."
@@ -567,6 +571,14 @@ BACKEND_DATA_SKEW_NEGATED_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
+BACKEND_DATA_SKEW_POSITIVE_RE = re.compile(
+    r"\b(?:data\s+skew|backend\s+(?:data\s+)?skew|RowsProduced\s+skew)\b[^.\n]{0,120}"
+    r"\b(?:confirmed|proven|supported|подтвержд\w*|доказан\w*)\b|"
+    r"\b(?:confirmed|proven|supported|подтвержд\w*|доказан\w*)\b[^.\n]{0,120}"
+    r"\b(?:data\s+skew|backend\s+(?:data\s+)?skew|RowsProduced)\b|"
+    r"\b(?:data\s+skew|перекос\w*\s+данн\w*)\s+по\s+RowsProduced\b",
+    re.IGNORECASE,
+)
 SPILL_SCRATCH_ABSENT_RE = re.compile(
     r"(?:"
     r"\b(?:no|not\s+confirmed|not\s+proven)\b[^.\n]{0,80}\b(?:spill|scratch)\b|"
@@ -576,6 +588,16 @@ SPILL_SCRATCH_ABSENT_RE = re.compile(
     r"(?:not\s+confirmed|not\s+proven|не\s+(?:был\w*\s+)?(?:явно\s+)?подтвержд\w*)"
     r")",
     re.IGNORECASE,
+)
+CM_CONTEXT_ONLY_CAUSAL_RE = re.compile(
+    r"\b(?:может\s+указывать|указывает|усиливает|причин\w*|root\s+cause|cause|"
+    r"неправильн\w+\s+оценк\w*|неэффективн\w+\s+использован\w+|bottleneck|узк\w+\s+мест)\b",
+    re.IGNORECASE,
+)
+CM_DAEMON_MEMORY_WORD_RE = re.compile(r"\b(?:daemon\s+memory|памят\w+\s+демон\w+|рост\s+памят\w+)\b", re.IGNORECASE)
+CM_NETWORK_WORD_RE = re.compile(r"\b(?:network\s+I/O|network\s+io|сетев\w+\s+I/O|сеть|сети|сетев\w+)\b", re.IGNORECASE)
+CM_CONTEXT_ONLY_SAFE_NOTE = (
+    "- CM metrics context-only: наблюдаемый runtime signal не считается причиной без matching profile evidence."
 )
 CAUSE_WORD_RE = re.compile(r"\b(?:cause|root\s+cause|причин\w*)\b", re.IGNORECASE)
 CONTRADICTED_ROW_ESTIMATE_NOTE = (
@@ -1067,6 +1089,17 @@ def find_backend_tail_claim_errors(report_text: str, facts_text: str) -> list[st
                 "backend data skew absence claim contradicts parsed Backend / Host Tail Evidence"
             )
             seen.add("data_skew")
+        positive_data_skew_match = BACKEND_DATA_SKEW_POSITIVE_RE.search(line)
+        if (
+            positive_data_skew_match
+            and not data_skew_is_supported
+            and not line_has_safe_negation(line, positive_data_skew_match.start())
+            and "positive_data_skew" not in seen
+        ):
+            errors.append(
+                "backend data skew claim contradicts parsed Backend / Host Tail Evidence"
+            )
+            seen.add("positive_data_skew")
 
         single_tail_match = BACKEND_PROVEN_SINGLE_TAIL_RE.search(line)
         if (
@@ -1312,6 +1345,46 @@ def cm_metrics_correlation_points(facts_text: str) -> list[str]:
     return points[:FACT_APPENDIX_MAX_ITEMS]
 
 
+def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
+    facts_summary = cm_metrics_facts_summary(facts_text)
+    correlation_summary = cm_metrics_correlation_summary(facts_text)
+    if facts_summary.get("status") not in {"available", "partial"}:
+        return None
+    parts = ["CM metrics collected"]
+    coverage = facts_summary.get("coverage")
+    if coverage:
+        parts.append(coverage)
+    correlated = correlation_summary.get("correlated_signals")
+    context_only = correlation_summary.get("context_only_signals")
+    if correlated is not None or context_only is not None:
+        parts.append(f"correlated={correlated or '0'}, context-only={context_only or '0'}")
+    observed = [
+        label
+        for key, label in (
+            ("host_cpu_pressure", "host CPU pressure"),
+            ("daemon_memory_growth", "daemon memory growth"),
+            ("daemon_memory_pressure", "daemon memory pressure"),
+            ("network_io_spike", "network I/O spike"),
+        )
+        if facts_summary.get(key) == "observed"
+    ]
+    if observed:
+        parts.append("observed context signals: " + ", ".join(observed))
+    spread_points: list[str] = []
+    for key, label in (
+        ("daemon_memory_growth", "daemon memory"),
+        ("network_io_spike", "network I/O"),
+        ("host_cpu_pressure", "host CPU"),
+    ):
+        basis = facts_summary.get(f"{key}_basis") or ""
+        match = re.search(r"top series max/peer max=(?P<ratio>\d+(?:\.\d+)?)x", basis)
+        if match:
+            spread_points.append(f"{label} top/peer={match.group('ratio')}x")
+    if spread_points:
+        parts.append("series spread: " + ", ".join(spread_points[:3]))
+    return "- " + "; ".join(parts) + ". Metrics are runtime context unless CM Metrics Correlation marks them as correlated."
+
+
 def cm_metrics_signal_observed(facts_text: str, key: str) -> bool:
     summary = cm_metrics_facts_summary(facts_text)
     return summary.get("status") == "available" and summary.get(key) == "observed"
@@ -1327,6 +1400,36 @@ def cm_metrics_correlation_status(facts_text: str, key: str) -> str | None:
         if match:
             return match.group("status").lower()
     return None
+
+
+def cm_metric_context_only(facts_text: str, key: str) -> bool:
+    return cm_metrics_correlation_status(facts_text, key) == "context_only"
+
+
+def find_cm_context_only_claim_errors(report_text: str, facts_text: str) -> list[str]:
+    errors: list[str] = []
+    daemon_context_only = cm_metric_context_only(facts_text, "daemon_memory_growth")
+    network_context_only = cm_metric_context_only(facts_text, "network_io_spike")
+    for line in report_text.splitlines():
+        if not CM_CONTEXT_ONLY_CAUSAL_RE.search(line):
+            continue
+        if daemon_context_only and CM_DAEMON_MEMORY_WORD_RE.search(line):
+            errors.append("CM daemon memory context-only signal is described as causal")
+            break
+        if network_context_only and CM_NETWORK_WORD_RE.search(line):
+            errors.append("CM network context-only signal is described as causal")
+            break
+    return errors
+
+
+def normalize_cm_context_only_overclaim(line: str, facts_text: str) -> str:
+    if not CM_CONTEXT_ONLY_CAUSAL_RE.search(line):
+        return line
+    if cm_metric_context_only(facts_text, "daemon_memory_growth") and CM_DAEMON_MEMORY_WORD_RE.search(line):
+        return CM_CONTEXT_ONLY_SAFE_NOTE
+    if cm_metric_context_only(facts_text, "network_io_spike") and CM_NETWORK_WORD_RE.search(line):
+        return CM_CONTEXT_ONLY_SAFE_NOTE
+    return line
 
 
 def cm_metrics_correlation_summary(facts_text: str) -> dict[str, str]:
@@ -2105,6 +2208,12 @@ def normalize_supported_evidence_contradiction(line: str, facts_text: str) -> st
         summary = parse_backend_tail_summary(facts_text)
         if backend_data_skew_is_supported(summary) and BACKEND_DATA_SKEW_NEGATED_RE.search(line):
             notes.append(BACKEND_DATA_SKEW_SUPPORTED_NOTE)
+        if (
+            not backend_data_skew_is_supported(summary)
+            and BACKEND_DATA_SKEW_POSITIVE_RE.search(line)
+            and not BACKEND_SAFE_DIAGNOSTIC_NEGATION_RE.search(line)
+        ):
+            notes.append(BACKEND_DATA_SKEW_UNSUPPORTED_NOTE)
     if (
         facts_have_spill_scratch_evidence(facts_text)
         and SPILL_SCRATCH_ABSENT_RE.search(line)
@@ -2185,6 +2294,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
             current_section = line.strip()
         if should_rewrite_stats_freshness_claim(line):
             line = STATS_FRESHNESS_MISSING_EVIDENCE
+        line = normalize_cm_context_only_overclaim(line, facts_text)
         line = normalize_operator_time_wording(line, facts_text)
         line = normalize_supported_evidence_contradiction(line, facts_text)
         direction_normalized = normalize_contradicted_estimate_direction(line, facts_text)
@@ -2794,6 +2904,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
     errors.extend(find_unsafe_operator_time_wording(report_text, facts_text))
     errors.extend(find_backend_tail_claim_errors(report_text, facts_text))
     errors.extend(find_spill_scratch_claim_errors(report_text, facts_text))
+    errors.extend(find_cm_context_only_claim_errors(report_text, facts_text))
     errors.extend(find_unsupported_metadata_claim_errors(report_text))
     errors.extend(validate_recommendations_against_candidates(report_text, facts_text))
     errors.extend(validate_unsupported_conclusions_slot(report_text, facts_text))
@@ -2846,6 +2957,9 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
             "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
         },
     )
+    metrics_evidence_bullet = cm_metrics_report_evidence_bullet(facts_text)
+    if metrics_evidence_bullet:
+        text = insert_bullets_into_section(text, EVIDENCE_HEADING, [metrics_evidence_bullet])
     admin_bullet_rules: list[tuple[str, tuple[str, ...]]] = []
     if facts_has_backend_tail_evidence(facts_text):
         admin_bullet_rules.extend(
@@ -2891,7 +3005,7 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
         admin_bullet_rules.append(
             (
                 "- Сопоставить CM Metrics Correlation с profile evidence: correlated signals использовать только как runtime context, context-only metrics не считать root cause.",
-                (r"CM\s+Metrics\s+Correlation|correlated\s+signals.*runtime\s+context|context-only\s+metrics.*root\s+cause",),
+                (r"correlated\s+signals.*runtime\s+context|context-only\s+metrics.*root\s+cause",),
             )
         )
     if facts_has_backend_tail_evidence(facts_text):

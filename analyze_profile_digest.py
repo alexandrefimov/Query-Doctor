@@ -1964,6 +1964,48 @@ def cm_signal(status: str, basis: str) -> dict[str, str]:
     return {"status": status, "basis": basis}
 
 
+def metric_series_summaries(metric: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not metric:
+        return []
+    raw = metric.get("top_series")
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def metric_series_count(metric: dict[str, Any] | None) -> int | None:
+    if not metric:
+        return None
+    value = metric.get("series_count")
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return max(value, 0)
+    if isinstance(value, float):
+        return max(int(value), 0)
+    return None
+
+
+def metric_series_max_values(metric: dict[str, Any] | None) -> list[float]:
+    values: list[float] = []
+    for series in metric_series_summaries(metric):
+        value = numeric_context_value(series, "max")
+        if value is not None:
+            values.append(value)
+    return values
+
+
+def metric_series_spread_basis(metric: dict[str, Any] | None, *, value_suffix: str = "") -> str | None:
+    series_count = metric_series_count(metric)
+    values = sorted(metric_series_max_values(metric), reverse=True)
+    if not series_count or len(values) < 2:
+        return None
+    peer = values[1]
+    if peer <= 0:
+        return f"series_count={series_count}; top series max={values[0]:.2f}{value_suffix}; peer max unavailable"
+    return f"series_count={series_count}; top series max/peer max={values[0] / peer:.2f}x"
+
+
 def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     queries = [query for query in context.get("queries") or [] if isinstance(query, dict)]
     total_metrics = len(queries)
@@ -1980,40 +2022,46 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     cpu_user_max = numeric_context_value(host_cpu_user or {}, "max")
     cpu_user_avg = numeric_context_value(host_cpu_user or {}, "avg")
     cpu_system_max = numeric_context_value(host_cpu_system or {}, "max")
+    cpu_user_spread = metric_series_spread_basis(host_cpu_user)
     if cm_metric_ready(host_cpu_user) or cm_metric_ready(host_cpu_system):
         cpu_observed = (
             (cpu_user_max is not None and cpu_user_max >= CM_HOST_CPU_USER_MAX_THRESHOLD)
             or (cpu_user_avg is not None and cpu_user_avg >= CM_HOST_CPU_USER_AVG_THRESHOLD)
             or (cpu_system_max is not None and cpu_system_max >= CM_HOST_CPU_SYSTEM_MAX_THRESHOLD)
         )
+        basis = (
+            f"host_cpu_user max={cpu_user_max:.2f} avg={cpu_user_avg:.2f}; "
+            f"host_cpu_system max={cpu_system_max:.2f}"
+        ) if cpu_user_max is not None and cpu_user_avg is not None and cpu_system_max is not None else (
+            "available CPU metrics did not cross pressure thresholds"
+        )
+        if cpu_user_spread:
+            basis = f"{basis}; {cpu_user_spread}"
         host_cpu_pressure = cm_signal(
             "observed" if cpu_observed else "not_observed",
-            (
-                f"host_cpu_user max={cpu_user_max:.2f} avg={cpu_user_avg:.2f}; "
-                f"host_cpu_system max={cpu_system_max:.2f}"
-            )
-            if cpu_user_max is not None and cpu_user_avg is not None and cpu_system_max is not None
-            else "available CPU metrics did not cross pressure thresholds",
+            basis,
         )
     else:
         host_cpu_pressure = cm_signal("unknown", "host CPU metrics are missing or have insufficient points")
 
     daemon_mem_min = numeric_context_value(daemon_memory or {}, "min")
     daemon_mem_max = numeric_context_value(daemon_memory or {}, "max")
+    daemon_memory_spread = metric_series_spread_basis(daemon_memory)
     if cm_metric_ready(daemon_memory) and daemon_mem_min is not None and daemon_mem_max is not None:
         delta = daemon_mem_max - daemon_mem_min
         ratio = daemon_mem_max / daemon_mem_min if daemon_mem_min > 0 else None
         growth_observed = delta >= CM_DAEMON_MEMORY_GROWTH_DELTA_BYTES and (
             ratio is not None and ratio >= CM_DAEMON_MEMORY_GROWTH_RATIO_THRESHOLD
         )
+        basis = (
+            f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)} "
+            f"delta={fmt_bytes(delta)} ratio={ratio:.2f}x"
+        ) if ratio is not None else f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)}"
+        if daemon_memory_spread:
+            basis = f"{basis}; {daemon_memory_spread}"
         daemon_memory_growth = cm_signal(
             "observed" if growth_observed else "not_observed",
-            (
-                f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)} "
-                f"delta={fmt_bytes(delta)} ratio={ratio:.2f}x"
-            )
-            if ratio is not None
-            else f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)}",
+            basis,
         )
     else:
         daemon_memory_growth = cm_signal("unknown", "daemon memory metric is missing or has insufficient points")
@@ -2025,19 +2073,21 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
 
     network_max = numeric_context_value(network_io or {}, "max")
     network_avg = numeric_context_value(network_io or {}, "avg")
+    network_spread = metric_series_spread_basis(network_io)
     if cm_metric_ready(network_io) and network_max is not None and network_avg is not None:
         ratio = network_max / network_avg if network_avg > 0 else None
         spike_observed = network_max >= CM_NETWORK_SPIKE_BYTES_PER_SEC and (
             ratio is None or ratio >= CM_NETWORK_SPIKE_RATIO_THRESHOLD
         )
+        basis = (
+            f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s "
+            f"ratio={ratio:.2f}x"
+        ) if ratio is not None else f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s"
+        if network_spread:
+            basis = f"{basis}; {network_spread}"
         network_io_spike = cm_signal(
             "observed" if spike_observed else "not_observed",
-            (
-                f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s "
-                f"ratio={ratio:.2f}x"
-            )
-            if ratio is not None
-            else f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s",
+            basis,
         )
     else:
         network_io_spike = cm_signal("unknown", "host network I/O metric is missing or has insufficient points")
@@ -3743,10 +3793,25 @@ def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
         lines.append(f"- point_count: {query.get('point_count', 0)}")
         if query.get("truncated"):
             lines.append("- truncated: yes")
+        if query.get("series_count") is not None:
+            lines.append(f"- series_count: {query.get('series_count')}")
         for field in ("min", "max", "avg", "latest"):
             value = numeric_context_value(query, field)
             if value is not None:
                 lines.append(f"- {field}: {value:.2f}")
+        top_series = [item for item in query.get("top_series") or [] if isinstance(item, dict)]
+        if top_series:
+            lines.append("- top_series_by_max:")
+            for series in top_series[:3]:
+                series_name = series.get("series") or "series"
+                point_count = series.get("point_count", 0)
+                max_value = numeric_context_value(series, "max")
+                avg_value = numeric_context_value(series, "avg")
+                if max_value is None or avg_value is None:
+                    continue
+                lines.append(
+                    f"  - {series_name}: points={point_count}, max={max_value:.2f}, avg={avg_value:.2f}"
+                )
         lines.append("")
 
     warnings = context.get("warnings") or []

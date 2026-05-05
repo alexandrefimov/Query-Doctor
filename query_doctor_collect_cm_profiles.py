@@ -1677,7 +1677,7 @@ def padded_cm_timeseries_window(summary: CMQuerySummary, *, padding_sec: int) ->
     return format_cm_timestamp(start), format_cm_timestamp(end)
 
 
-def iter_timeseries_data_points(raw: dict[str, object]) -> Iterable[float]:
+def iter_timeseries_data_series(raw: dict[str, object]) -> Iterable[list[float]]:
     containers: list[object] = []
     for key in ("items", "timeSeries", "timeSeriesList", "series"):
         value = raw.get(key)
@@ -1691,11 +1691,11 @@ def iter_timeseries_data_points(raw: dict[str, object]) -> Iterable[float]:
             continue
         nested = item.get("timeSeries")
         if isinstance(nested, list):
-            for value in iter_timeseries_data_points({"items": nested}):
-                yield value
+            yield from iter_timeseries_data_series({"items": nested})
         data = item.get("data")
         if not isinstance(data, list):
             continue
+        values: list[float] = []
         for point in data:
             if isinstance(point, dict):
                 value = first_present(point, ("value", "aggregateValue", "mean", "max"))
@@ -1704,9 +1704,27 @@ def iter_timeseries_data_points(raw: dict[str, object]) -> Iterable[float]:
             if isinstance(value, bool) or value is None:
                 continue
             try:
-                yield float(value)
+                values.append(float(value))
             except (TypeError, ValueError):
                 continue
+        if values:
+            yield values
+
+
+def iter_timeseries_data_points(raw: dict[str, object]) -> Iterable[float]:
+    for values in iter_timeseries_data_series(raw):
+        yield from values
+
+
+def summarize_timeseries_series(values: list[float], *, index: int) -> dict[str, object]:
+    return {
+        "series": f"series_{index:02d}",
+        "point_count": len(values),
+        "min": min(values),
+        "max": max(values),
+        "avg": sum(values) / len(values),
+        "latest": values[-1],
+    }
 
 
 def summarize_timeseries_response(
@@ -1716,12 +1734,19 @@ def summarize_timeseries_response(
     max_points: int,
 ) -> dict[str, object]:
     values: list[float] = []
+    series_summaries: list[dict[str, object]] = []
     truncated = False
-    for value in iter_timeseries_data_points(raw):
+    for series_index, series_values in enumerate(iter_timeseries_data_series(raw), start=1):
         if len(values) >= max_points:
             truncated = True
             break
-        values.append(value)
+        remaining = max_points - len(values)
+        bounded_values = series_values[:remaining]
+        if len(bounded_values) < len(series_values):
+            truncated = True
+        values.extend(bounded_values)
+        if bounded_values:
+            series_summaries.append(summarize_timeseries_series(bounded_values, index=series_index))
     summary: dict[str, object] = {
         "id": query.query_id,
         "label": query.label,
@@ -1730,12 +1755,19 @@ def summarize_timeseries_response(
         "truncated": truncated,
     }
     if values:
+        top_series = sorted(
+            series_summaries,
+            key=lambda item: float(item.get("max", 0) or 0),
+            reverse=True,
+        )[:5]
         summary.update(
             {
                 "min": min(values),
                 "max": max(values),
                 "avg": sum(values) / len(values),
                 "latest": values[-1],
+                "series_count": len(series_summaries),
+                "top_series": top_series,
             }
         )
     return summary
