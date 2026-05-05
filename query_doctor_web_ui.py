@@ -6,6 +6,7 @@ import html
 import json
 import re
 from typing import Any
+from urllib.parse import quote
 
 from query_doctor_web_ui_recent_scan import (
     SafeHtml,
@@ -62,6 +63,13 @@ from query_doctor_web_ui_recent_scan import (
 )
 from query_doctor_web_display_safety import redact_browser_display_text
 
+BRAND_MARK_SVG = (
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" "
+    "stroke=\"#0f5268\" stroke-width=\"1.8\" stroke-linecap=\"round\" "
+    "stroke-linejoin=\"round\"><path d=\"M5 12h3l2-5 4 10 2-5h3\"/>"
+    "<path d=\"M12 3v3M12 18v3M3 12h2M19 12h2\"/></svg>"
+)
+
 
 WEB_STAGES = (
     (0, "Checking Query ID", 4),
@@ -91,6 +99,7 @@ def render_page(
         "<meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
         "<title>impala-query-doctor</title>",
+        render_favicon_link(),
         render_theme_bootstrap_script(),
         "<style>",
         render_shared_styles(),
@@ -113,6 +122,13 @@ def render_page(
         body.extend(extra_sections)
     body.extend(["</main>", "</body>", "</html>"])
     return "\n".join(body)
+
+
+def render_favicon_link() -> str:
+    return (
+        "<link rel=\"icon\" type=\"image/svg+xml\" "
+        f"href=\"data:image/svg+xml,{quote(BRAND_MARK_SVG, safe='')}\">"
+    )
 
 
 def render_shared_styles() -> str:

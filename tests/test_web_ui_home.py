@@ -70,6 +70,18 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "This usually takes a few seconds to a couple of minutes." not in body
 
 
+def test_web_render_page_sets_brand_favicon():
+    module = load_web_module()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    body = module.render_page(settings)
+
+    assert '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,' in body
+    assert "%3Cpath%20d%3D%22M5%2012h3l2-5%204%2010%202-5h3%22%2F%3E" in body
+    assert body.index("<title>impala-query-doctor</title>") < body.index('rel="icon"')
+    assert body.index('rel="icon"') < body.index("<style>")
+
+
 def test_web_render_page_contains_theme_toggle():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
