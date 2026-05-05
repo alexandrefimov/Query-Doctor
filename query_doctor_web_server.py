@@ -2585,7 +2585,7 @@ def load_validated_optimized_query(case_dir: Path) -> str | None:
     if not optimized_query_validated_exists(case_dir):
         return None
     marker = read_optimized_query_marker(case_dir)
-    if marker.get("output_kind") == "recommendations_only":
+    if marker.get("output_kind") in {"recommendations_only", "no_rewrite"}:
         return None
     try:
         return (case_dir / OPTIMIZED_QUERY_NAME).read_text(encoding="utf-8", errors="replace")
@@ -2597,7 +2597,7 @@ def load_validated_optimizer_recommendations(case_dir: Path) -> str | None:
     if not optimized_query_validated_exists(case_dir):
         return None
     marker = read_optimized_query_marker(case_dir)
-    if marker.get("output_kind") != "recommendations_only":
+    if marker.get("output_kind") not in {"recommendations_only", "no_rewrite"}:
         return None
     try:
         return (case_dir / OPTIMIZED_QUERY_RECOMMENDATIONS_NAME).read_text(encoding="utf-8", errors="replace")
@@ -2879,7 +2879,7 @@ def optimized_query_validated_exists(case_dir: Path) -> bool:
     if marker.get("validation_mode") != OPTIMIZED_QUERY_VALIDATION_MODE:
         return False
     output_kind = marker.get("output_kind") or "sql_draft"
-    if output_kind == "recommendations_only":
+    if output_kind in {"recommendations_only", "no_rewrite"}:
         if marker.get("recommendations") != OPTIMIZED_QUERY_RECOMMENDATIONS_NAME:
             return False
         if not recommendations_path.is_file():
@@ -2901,7 +2901,7 @@ def optimized_query_validated_exists(case_dir: Path) -> bool:
             return False
         if marker.get("source_sql_sha256") != text_sha256(source_sql.sql):
             return False
-        if output_kind != "recommendations_only":
+        if output_kind not in {"recommendations_only", "no_rewrite"}:
             extract_referenced_tables(draft_path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, OptimizerSqlError, QueryOptimizationError):
         return False

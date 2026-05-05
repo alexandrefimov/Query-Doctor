@@ -94,6 +94,9 @@ outcomes honest when a trusted SQL rewrite is unavailable or not useful.
 - More real-case validation for Query LLM optimizer, including no-benefit and
   recommendations-only outcomes.
 - Safe UI status for optimizer mode, validation outcome and no-benefit outcome.
+  The current trusted path records `no_rewrite` when a valid draft is only a
+  cosmetic/no-material-change rewrite; next work is better deterministic
+  recommendations after validation rejection.
 - Details page UX audit: review which blocks are still useful, which are
   redundant, what should be added or promoted, and whether the page is efficient
   for Finished, Running and Specific Query workflows.

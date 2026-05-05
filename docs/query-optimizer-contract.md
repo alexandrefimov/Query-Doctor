@@ -66,6 +66,8 @@ Execution:
 Allowed trusted result:
 
 - one read-only `SELECT` or `WITH` draft;
+- or a recommendations-only / no-rewrite outcome when Python decides a trusted
+  SQL draft is too risky or not materially useful;
 - no markdown explanation in the draft artifact;
 - shown in browser only after deterministic validation and marker verification.
 
@@ -122,6 +124,8 @@ Near-term target behavior:
 - low-risk case and validator passes: show validated optimized draft;
 - high-risk case or validation rejection: show no trusted SQL draft and provide
   deterministic recommendations-only fallback;
+- no-benefit case: show no trusted SQL draft and provide a `no_rewrite` outcome
+  explaining that no material SQL change was validated;
 - always hide partial drafts and raw LLM output.
 
 ## Test obligations
@@ -182,7 +186,9 @@ Current implementation:
 
 ### Phase 3. Recommendations-only fallback
 
-Status: planned.
+Status: implemented for high-risk shapes and no-benefit drafts. Validation
+rejections still produce hidden partials; converting those into deterministic
+recommendations remains future work.
 
 Goal:
 
@@ -191,8 +197,8 @@ Goal:
 Target behavior:
 
 - low-risk source and validator passed: show trusted optimized draft;
-- conservative mode, high-risk source, or validator rejection: do not show SQL
-  draft;
+- conservative mode, high-risk source, no-benefit output, or validator
+  rejection: do not show SQL draft;
 - show deterministic optimizer recommendations derived from analyzer facts and
   metadata facts;
 - keep partial draft and raw LLM output hidden;
@@ -201,8 +207,8 @@ Target behavior:
 
 Implementation target:
 
-- represent optimizer outcome as `draft_validated`, `recommendations_only`, or
-  `failed`;
+- represent optimizer outcome as `sql_draft`, `recommendations_only`,
+  `no_rewrite`, or `failed`;
 - persist enough safe metadata for UI status: source scope, risk mode, validation
   outcome, and recommendation count;
 - keep recommendations Python-owned; LLM may phrase only after deterministic

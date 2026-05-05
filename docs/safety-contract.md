@@ -111,12 +111,15 @@ Python-generated appendix.
   sources.
 - Supported details-page source scopes are read-only SELECT/WITH and SELECT/WITH
   payloads extracted from supported INSERT/CTAS statements.
-- Generated optimizer output must still be a read-only SELECT/WITH statement.
+- Generated optimizer SQL output must still be a read-only SELECT/WITH
+  statement. If no useful rewrite is validated, the trusted optimizer output may
+  be a safe recommendations-only/no-rewrite outcome instead of SQL.
 - Python validation owns trust: physical tables, filters, projection, DISTINCT,
   top-level GROUP/ORDER/set operations, CTE shape and top-level JOIN shape must
   remain within validated scope.
 - Prompt constraints are not enough for safety. High-risk cases should fall back
-  to safe recommendations instead of accepting an unsafe SQL draft.
+  to safe recommendations instead of accepting an unsafe SQL draft, and
+  no-benefit drafts should not be presented as optimized SQL.
 
 ## Claim discipline
 

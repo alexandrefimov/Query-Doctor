@@ -313,7 +313,9 @@ def render_optimized_query_action(
     form_action = html.escape(action_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
     open_href = html.escape(open_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
     output_kind = str(state.get("output_kind") or "sql_draft")
-    if status == "generated" and output_kind == "recommendations_only":
+    if status == "generated" and output_kind == "no_rewrite":
+        action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer outcome</a>"
+    elif status == "generated" and output_kind == "recommendations_only":
         action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer recommendations</a>"
     elif status == "generated":
         action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer draft</a>"
@@ -364,10 +366,16 @@ def render_optimized_query_action(
             "</details>"
         )
     elif status == "generated" and trusted_optimizer_recommendations:
+        if output_kind == "no_rewrite":
+            summary = "Query LLM optimizer outcome"
+            helper = "No trusted SQL rewrite is shown because Python classified the validated draft as no-benefit/no-rewrite."
+        else:
+            summary = "Query LLM optimizer recommendations"
+            helper = "SQL rewrite was skipped because Python marked this query shape as too risky for a trusted draft."
         draft_html = (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer recommendations\">"
-            "<summary>Query LLM optimizer recommendations</summary>"
-            "<p class=\"helper\">SQL rewrite was skipped because Python marked this query shape as too risky for a trusted draft.</p>"
+            f"<summary>{html.escape(summary)}</summary>"
+            f"<p class=\"helper\">{html.escape(helper)}</p>"
             f"<div>{render_safe_markdown_paragraphs(trusted_optimizer_recommendations)}</div>"
             "</details>"
         )

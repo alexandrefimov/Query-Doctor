@@ -37,6 +37,7 @@ MARKER_NAME = "optimized_query.validated.json"
 PARTIAL_NAME = "optimized_query.partial.txt"
 MARKER_SCHEMA_VERSION = 1
 VALIDATION_MODE = "strict"
+RECOMMENDATION_OUTPUT_KINDS = {"recommendations_only", "no_rewrite"}
 MAX_SOURCE_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_SOURCE_SQL_BYTES", "262144"))
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
 MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTES", "65536"))
@@ -455,6 +456,14 @@ def normalize_sql_signature_fragment(fragment: str) -> str:
     return compact.lower()
 
 
+def normalized_statement_signature(sql: str) -> str:
+    return normalize_sql_signature_fragment(sql)
+
+
+def draft_has_material_change(source_sql: str, draft_sql: str) -> bool:
+    return normalized_statement_signature(source_sql) != normalized_statement_signature(draft_sql)
+
+
 def extract_statement_tokens(sql: str) -> list[str]:
     tokens = tokenize_sql(sql)
     return validate_optimizer_sql_tokens(tokens)
@@ -688,6 +697,17 @@ def extract_recommendations(generated: str) -> str:
     return text
 
 
+def no_rewrite_recommendations(risk_decision: OptimizerRiskDecision) -> str:
+    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "no material SQL change"
+    return "\n".join(
+        [
+            "- No trusted SQL rewrite is shown because the validated draft did not materially change the source query.",
+            f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
+            "- Keep the current query shape and use the deterministic analysis facts for any follow-up checks.",
+        ]
+    )
+
+
 def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     errors: list[str] = []
     try:
@@ -792,11 +812,14 @@ def write_recommendations_marker(
     facts_text: str,
     source_scope: str,
     risk_decision: OptimizerRiskDecision,
+    output_kind: str = "recommendations_only",
 ) -> None:
+    if output_kind not in RECOMMENDATION_OUTPUT_KINDS:
+        raise QueryOptimizationError("Unsupported optimizer recommendations output kind.")
     recommendations_path = case_dir / recommendations_name
     marker = {
         "schema_version": MARKER_SCHEMA_VERSION,
-        "output_kind": "recommendations_only",
+        "output_kind": output_kind,
         "recommendations": recommendations_name,
         "recommendations_sha256": file_sha256(recommendations_path),
         "facts_sha256": text_sha256(facts_text),
@@ -886,6 +909,20 @@ def main(argv: list[str] | None = None) -> int:
             for error in errors:
                 print(f"{PROGRESS_PREFIX} ERROR: {error}", file=sys.stderr)
             return 4
+        if not draft_has_material_change(source_sql.sql, draft_sql):
+            recommendations_path = case_dir / RECOMMENDATIONS_NAME
+            recommendations_path.write_text(no_rewrite_recommendations(risk_decision) + "\n", encoding="utf-8")
+            write_recommendations_marker(
+                case_dir,
+                RECOMMENDATIONS_NAME,
+                source_sql=source_sql.sql,
+                facts_text=facts_text,
+                source_scope=source_sql.scope,
+                risk_decision=risk_decision,
+                output_kind="no_rewrite",
+            )
+            print(f"{PROGRESS_PREFIX} optimizer no rewrite recommended", file=sys.stderr)
+            return 0
         output_name = Path(args.out).name
         if output_name != args.out:
             raise QueryOptimizationError("Output must be a filename inside the case directory.")
