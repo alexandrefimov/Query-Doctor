@@ -22,6 +22,11 @@ from pathlib import Path
 import query_doctor_collect_cm_profiles as cm_profiles
 from query_doctor_config_contract import merge_kerberos_cache_env
 from query_doctor_engines import get_default_engine_adapter
+from query_doctor_query_optimization_score import (
+    QueryOptimizationCandidateScore,
+    query_optimization_sort_key,
+    score_query_optimization_candidate,
+)
 
 
 MAX_CM_INSPECT_LIMIT = 5000
@@ -136,6 +141,8 @@ class CaseResult:
     too_large_count: int = 0
     score: int = 0
     score_reasons: list[str] = field(default_factory=list)
+    query_optimization_candidate: QueryOptimizationCandidateScore | None = None
+    query_optimization_rank: int | None = None
     cardinality_anomaly_count: int | None = None
     memory_anomaly_count: int | None = None
     zero_row_estimate_gap_count: int | None = None
@@ -1277,6 +1284,22 @@ def rank_cases_for_metadata(cases: list[CaseResult]) -> list[CaseResult]:
     return ranked
 
 
+def rank_cases_for_query_optimization(cases: list[CaseResult]) -> list[CaseResult]:
+    ranked = sorted(
+        [
+            case
+            for case in cases
+            if case.analysis_status == "ok"
+            and case.query_optimization_candidate is not None
+            and case.query_optimization_candidate.tier != "not_likely"
+        ],
+        key=lambda case: query_optimization_sort_key(case_to_summary(case)),
+    )
+    for rank, case in enumerate(ranked, start=1):
+        case.query_optimization_rank = rank
+    return ranked
+
+
 def metadata_refresh_candidates(config: BatchConfig, cases: list[CaseResult]) -> list[CaseResult]:
     ranked = rank_cases_for_metadata(cases)
     if metadata_refresh_skip_reason(config, ranked) is not None:
@@ -1529,6 +1552,13 @@ def score_case(case: CaseResult) -> None:
     score, reasons = score_analysis_facts(facts, metadata_status=case.metadata_status)
     case.score = score
     case.score_reasons = reasons
+    case.query_optimization_candidate = score_query_optimization_candidate(
+        facts,
+        duration_sec=case.duration_sec,
+        collection_status=case.collection_status,
+        analysis_status=case.analysis_status,
+        failure_category=case.failure_category,
+    )
 
 
 def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -> tuple[int, list[str]]:
@@ -1772,6 +1802,7 @@ def build_summary(
     total_seconds: float,
     discovery_failed: bool = False,
 ) -> dict[str, object]:
+    rank_cases_for_query_optimization(cases)
     selected_count = len(cases)
     inspected = discovery.summaries_inspected if discovery.summaries_inspected is not None else len(discovery.candidates)
     reason_counts = {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
@@ -1879,6 +1910,10 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "score": case.score,
         "score_severity": case_score_severity(case),
         "score_reasons": case.score_reasons,
+        "query_optimization_candidate": case.query_optimization_candidate.to_dict()
+        if case.query_optimization_candidate
+        else None,
+        "query_optimization_rank": case.query_optimization_rank,
         "cardinality_anomaly_count": case.cardinality_anomaly_count,
         "memory_anomaly_count": case.memory_anomaly_count,
         "zero_row_estimate_gap_count": case.zero_row_estimate_gap_count,

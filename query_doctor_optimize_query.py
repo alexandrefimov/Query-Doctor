@@ -455,8 +455,29 @@ def split_top_level_sql_fragments(fragment: str, delimiter: str) -> list[str]:
 
 
 def normalize_sql_signature_fragment(fragment: str) -> str:
-    compact = " ".join(fragment.strip().rstrip(";").split())
-    return compact.lower()
+    compact = " ".join(lower_sql_outside_quoted_text(fragment).strip().rstrip(";").split())
+    return re.sub(r"\s*([(),=+\-*/<>])\s*", r"\1", compact)
+
+
+def lower_sql_outside_quoted_text(sql: str) -> str:
+    chars: list[str] = []
+    index = 0
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            end = skip_quoted_text(sql, index, char)
+            chars.append(sql[index:end])
+            index = end
+            continue
+        chars.append(char.lower())
+        index += 1
+    return "".join(chars)
 
 
 def normalized_statement_signature(sql: str) -> str:

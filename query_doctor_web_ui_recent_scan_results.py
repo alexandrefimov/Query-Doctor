@@ -16,6 +16,7 @@ from query_doctor_web_ui_recent_scan_details import (
 from query_doctor_web_ui_recent_scan_presenter import (
     RecentScanCaseRowView,
     numeric_count,
+    numeric_value,
     present_recent_scan_case_row,
     present_recent_scan_summary,
 )
@@ -24,6 +25,7 @@ from query_doctor_web_ui_recent_scan_presenter import (
 QUERY_GROUPS = {
     "bad": ("Bad queries", {"failed", "high"}),
     "suspicious": ("Suspicious queries", {"suspicious"}),
+    "optimization": ("Optimization candidates", set()),
     "good": ("Good queries", {"clean"}),
 }
 DEFAULT_QUERY_GROUP = "bad"
@@ -79,6 +81,7 @@ def render_batch_summary(
     view = present_recent_scan_summary(summary)
     active_group = normalize_query_group(query_group)
     rows_for_group = filter_rows_by_query_group(view.rows, active_group)
+    rows_for_group = sort_rows_for_query_group(rows_for_group, active_group)
     rows_for_group = filter_rows_by_spills(rows_for_group, only_with_spills=only_with_spills)
     header = "".join(
         "<div class=\"batch-metric\">"
@@ -132,8 +135,33 @@ def filter_rows_by_query_group(
     rows: tuple[RecentScanCaseRowView, ...],
     query_group: str,
 ) -> tuple[RecentScanCaseRowView, ...]:
-    _label, severities = QUERY_GROUPS[normalize_query_group(query_group)]
+    normalized = normalize_query_group(query_group)
+    if normalized == "optimization":
+        return tuple(row for row in rows if row.optimization_tier in {"high", "medium", "low"})
+    _label, severities = QUERY_GROUPS[normalized]
     return tuple(row for row in rows if row.score_severity in severities)
+
+
+def sort_rows_for_query_group(
+    rows: tuple[RecentScanCaseRowView, ...],
+    query_group: str,
+) -> tuple[RecentScanCaseRowView, ...]:
+    if normalize_query_group(query_group) != "optimization":
+        return rows
+    tier_order = {"high": 3, "medium": 2, "low": 1, "not_likely": 0}
+    impact_order = {"high": 2, "medium": 1, "low": 0}
+    return tuple(
+        sorted(
+            rows,
+            key=lambda row: (
+                -tier_order.get(row.optimization_tier, 0),
+                -row.optimization_score,
+                -impact_order.get(row.optimization_impact, 0),
+                -numeric_value(row.duration_sec),
+                row.rank,
+            ),
+        )
+    )
 
 
 def filter_rows_by_spills(
@@ -154,7 +182,11 @@ def render_query_group_switcher(
 ) -> str:
     rows_for_counts = filter_rows_by_spills(rows, only_with_spills=only_with_spills)
     counts = {
-        key: sum(1 for row in rows_for_counts if row.score_severity in severities)
+        key: (
+            sum(1 for row in rows_for_counts if row.optimization_tier in {"high", "medium", "low"})
+            if key == "optimization"
+            else sum(1 for row in rows_for_counts if row.score_severity in severities)
+        )
         for key, (_label, severities) in QUERY_GROUPS.items()
     }
     links = []
@@ -280,9 +312,22 @@ def score_cell(view: RecentScanCaseRowView) -> str:
 
 def summary_cell(view: RecentScanCaseRowView) -> str:
     reason_html = f"<span>{escape_value(view.reason_text)}</span>" if view.reason_text else ""
+    optimization_html = ""
+    if view.optimization_tier in {"high", "medium", "low"}:
+        why = f"Why: {view.optimization_summary}" if view.optimization_summary else "Why: query-shape evidence"
+        review = f" Review first: {view.optimization_review_areas}" if view.optimization_review_areas else ""
+        optimization_html = (
+            "<span>"
+            f"Query optimization candidate: {escape_value(view.optimization_tier.title())}. "
+            f"Impact: {escape_value(view.optimization_impact.title())}. "
+            f"Confidence: {escape_value(view.optimization_confidence.title())}. "
+            f"{escape_value(why)}.{escape_value(review)}"
+            "</span>"
+        )
     return (
         "<td class=\"batch-cell--summary\">"
         f"<strong>{escape_value(view.signal_summary)}</strong>"
+        f"{optimization_html}"
         f"{reason_html}"
         "</td>"
     )

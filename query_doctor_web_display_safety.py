@@ -17,6 +17,7 @@ RAW_METADATA_REPLACEMENT = "[metadata statement hidden]"
 RAW_OUTPUT_REPLACEMENT = "[subprocess output hidden]"
 RAW_ARTIFACT_REPLACEMENT = "[artifact name hidden]"
 MODEL_REPLACEMENT = "[model setting hidden]"
+SQL_SNIPPET_REPLACEMENT = "[SQL hidden]"
 
 FIELD_NAME_TOKENS = (
     "case_dir",
@@ -49,6 +50,7 @@ def redact_browser_display_text(
     redact_field_names: bool = False,
     redact_artifact_markers: bool = False,
     redact_model_names: bool = False,
+    redact_sql_snippets: bool = False,
     max_chars: int | None = None,
 ) -> str:
     text = str(value)
@@ -60,6 +62,8 @@ def redact_browser_display_text(
         text = redact_raw_artifact_markers_for_display(text)
     if redact_model_names:
         text = redact_model_names_for_display(text)
+    if redact_sql_snippets:
+        text = redact_sql_snippets_for_display(text)
     return text[:max_chars] if max_chars is not None else text
 
 
@@ -103,3 +107,13 @@ def redact_raw_artifact_markers_for_display(text: str) -> str:
 def redact_model_names_for_display(text: str) -> str:
     text = re.sub(r"\bqwen[\w:.-]*", MODEL_REPLACEMENT, text, flags=re.IGNORECASE)
     return re.sub(r"\bollama\b", MODEL_REPLACEMENT, text, flags=re.IGNORECASE)
+
+
+def redact_sql_snippets_for_display(text: str) -> str:
+    return re.sub(
+        r"\b(?:SELECT|WITH|INSERT|UPSERT|DELETE|CREATE|DROP|ALTER|COMPUTE\s+STATS|INVALIDATE|REFRESH|SHOW)\b"
+        r"[^.;\n<]{0,160}",
+        SQL_SNIPPET_REPLACEMENT,
+        text,
+        flags=re.IGNORECASE,
+    )

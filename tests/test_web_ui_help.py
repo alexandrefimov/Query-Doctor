@@ -51,6 +51,7 @@ def test_web_help_page_renders_curated_static_help():
     assert "Evidence count" not in body
     assert "Bad queries" in body
     assert "Suspicious queries" in body
+    assert "Optimization candidates" in body
     assert "Good queries" in body
     assert "Only queries with spills" in body
     assert "Query ID, Score, Duration, STATS, META и Summary" in body

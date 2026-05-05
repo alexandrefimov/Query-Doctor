@@ -58,6 +58,12 @@ class RecentScanCaseRowView:
     table_stats_status: Any
     report_status: str
     reason_text: str
+    optimization_tier: str
+    optimization_score: int
+    optimization_impact: str
+    optimization_confidence: str
+    optimization_summary: str
+    optimization_review_areas: str
     score_value: float
     score_severity: str
     has_failure: bool
@@ -165,12 +171,14 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
     bad_count = sum(1 for row in rows if row.score_severity in {"failed", "high"})
     suspicious_count = sum(1 for row in rows if row.score_severity == "suspicious")
     good_count = sum(1 for row in rows if row.score_severity == "clean")
+    optimization_count = sum(1 for row in rows if row.optimization_tier in {"high", "medium", "low"})
     metadata_count = sum(1 for row in rows if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"})
     header_items = (
         ("total", len(rows)),
         ("bad", bad_count),
         ("suspicious", suspicious_count),
         ("good", good_count),
+        ("optimization", optimization_count),
         ("analyzed", safe_display_value(summary.get("selected_count"))),
         ("CM inspected", safe_display_value(summary.get("summaries_inspected"))),
         ("metadata", metadata_count),
@@ -191,6 +199,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
     analysis_status = safe_display_value(case.get("analysis_status"))
     metadata_status = safe_display_value(case.get("metadata_status"))
     report_status = batch_report_status(case)
+    optimization = query_optimization_candidate_view(case)
     return RecentScanCaseRowView(
         rank=rank,
         case_id=batch_case_id(case),
@@ -214,6 +223,12 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         table_stats_status=safe_display_value(case.get("table_stats_status")),
         report_status=report_status,
         reason_text=reason_text,
+        optimization_tier=optimization["tier"],
+        optimization_score=optimization["score"],
+        optimization_impact=optimization["impact"],
+        optimization_confidence=optimization["confidence"],
+        optimization_summary=optimization["summary"],
+        optimization_review_areas=optimization["review_areas"],
         score_value=numeric_value(case.get("score")),
         score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
@@ -630,6 +645,27 @@ def recent_scan_signal_summary(case: dict[str, Any]) -> str:
     return "positive score from detailed analyzer reasons"
 
 
+def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
+    candidate = case.get("query_optimization_candidate")
+    candidate = candidate if isinstance(candidate, dict) else {}
+    tier = safe_display_text(candidate.get("tier") or "not_likely")
+    impact = safe_display_text(candidate.get("impact") or "low")
+    confidence = safe_display_text(candidate.get("confidence") or "low")
+    score = numeric_count(candidate.get("score")) or 0
+    reasons = candidate.get("reasons")
+    safe_reasons = [safe_optimization_display_text(reason) for reason in reasons[:3]] if isinstance(reasons, list) else []
+    review = candidate.get("suggested_review_areas")
+    safe_review = [safe_optimization_display_text(item) for item in review[:3]] if isinstance(review, list) else []
+    return {
+        "tier": tier,
+        "score": score,
+        "impact": impact,
+        "confidence": confidence,
+        "summary": "; ".join(safe_reasons),
+        "review_areas": "; ".join(safe_review),
+    }
+
+
 def case_score_severity(case: dict[str, Any]) -> str:
     explicit = str(case.get("score_severity") or "").strip().lower()
     if explicit in {"failed", "high", "suspicious", "clean"}:
@@ -807,4 +843,14 @@ def safe_display_text(value: Any) -> str:
         redact_field_names=True,
         redact_artifact_markers=True,
         redact_model_names=True,
+    )
+
+
+def safe_optimization_display_text(value: Any) -> str:
+    return redact_browser_display_text(
+        value,
+        redact_field_names=True,
+        redact_artifact_markers=True,
+        redact_model_names=True,
+        redact_sql_snippets=True,
     )
