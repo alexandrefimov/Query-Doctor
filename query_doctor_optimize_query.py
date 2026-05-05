@@ -43,6 +43,21 @@ MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTE
 SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.DOTALL)
 TOP_LEVEL_SHAPE_KEYWORDS = ("GROUP", "ORDER")
 TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")
+CLAUSE_SIGNATURE_KEYWORDS = ("WHERE", "GROUP", "HAVING", "ORDER", "LIMIT")
+CLAUSE_SIGNATURE_BOUNDARIES = (
+    "WHERE",
+    "GROUP",
+    "HAVING",
+    "ORDER",
+    "LIMIT",
+    "UNION",
+    "EXCEPT",
+    "INTERSECT",
+    "QUALIFY",
+    "DISTRIBUTE",
+    "SORT",
+    "CLUSTER",
+)
 JOIN_MODIFIER_KEYWORDS = {"LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS", "SEMI", "ANTI"}
 CONSERVATIVE_CTE_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_CTE_THRESHOLD", "2"))
 CONSERVATIVE_JOIN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_JOIN_THRESHOLD", "6"))
@@ -352,6 +367,94 @@ def projection_signature(sql: str) -> ProjectionSignature | None:
     return ProjectionSignature(count=len(items), output_names=output_names)
 
 
+def projection_expression_signature(sql: str) -> tuple[str, ...] | None:
+    select_offset = find_top_level_keyword_offset(sql, ("SELECT",))
+    if select_offset is None:
+        return None
+    from_offset = find_top_level_keyword_offset(sql, ("FROM",), start=select_offset + len("SELECT"))
+    if from_offset is None:
+        return None
+    projection = sql[select_offset + len("SELECT") : from_offset]
+    items = split_top_level_sql_fragments(projection, ",")
+    if not items:
+        return None
+    return tuple(normalize_sql_signature_fragment(item) for item in items)
+
+
+def clause_signature(sql: str, keyword: str) -> str | None:
+    offset = find_top_level_keyword_offset(sql, (keyword,))
+    if offset is None:
+        return None
+    start = offset + len(keyword)
+    end = next_top_level_clause_offset(sql, start)
+    return normalize_sql_signature_fragment(sql[start:end])
+
+
+def next_top_level_clause_offset(sql: str, start: int) -> int:
+    offsets = [
+        offset
+        for keyword in CLAUSE_SIGNATURE_BOUNDARIES
+        if (offset := find_top_level_keyword_offset(sql, (keyword,), start=start)) is not None
+    ]
+    return min(offsets) if offsets else len(sql)
+
+
+def top_level_join_condition_signature(sql: str) -> tuple[str, ...]:
+    signatures: list[str] = []
+    join_offset = find_top_level_keyword_offset(sql, ("JOIN",))
+    while join_offset is not None:
+        on_offset = find_top_level_keyword_offset(sql, ("ON",), start=join_offset + len("JOIN"))
+        next_join_offset = find_top_level_keyword_offset(sql, ("JOIN",), start=join_offset + len("JOIN"))
+        clause_end = next_top_level_clause_offset(sql, join_offset + len("JOIN"))
+        end = min(offset for offset in (next_join_offset, clause_end) if offset is not None)
+        if on_offset is None or on_offset >= end:
+            signatures.append("")
+        else:
+            signatures.append(normalize_sql_signature_fragment(sql[on_offset + len("ON") : end]))
+        join_offset = next_join_offset
+    return tuple(signatures)
+
+
+def split_top_level_sql_fragments(fragment: str, delimiter: str) -> list[str]:
+    items: list[str] = []
+    start = 0
+    index = 0
+    depth = 0
+    while index < len(fragment):
+        if fragment.startswith("--", index):
+            index = skip_line_comment_text(fragment, index + 2)
+            continue
+        if fragment.startswith("/*", index):
+            index = skip_block_comment_text(fragment, index + 2)
+            continue
+        char = fragment[index]
+        if char == "'":
+            index = skip_quoted_text(fragment, index, "'")
+            continue
+        if char in {'"', "`"}:
+            index = skip_quoted_text(fragment, index, char)
+            continue
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and char == delimiter:
+            item = fragment[start:index].strip()
+            if item:
+                items.append(item)
+            start = index + 1
+        index += 1
+    item = fragment[start:].strip()
+    if item:
+        items.append(item)
+    return items
+
+
+def normalize_sql_signature_fragment(fragment: str) -> str:
+    compact = " ".join(fragment.strip().rstrip(";").split())
+    return compact.lower()
+
+
 def extract_statement_tokens(sql: str) -> list[str]:
     tokens = tokenize_sql(sql)
     return validate_optimizer_sql_tokens(tokens)
@@ -613,6 +716,11 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
         errors.append("optimized draft changes CTE shape")
     if top_level_join_signature(source_sql) != top_level_join_signature(draft_sql):
         errors.append("optimized draft changes top-level JOIN shape")
+    if top_level_join_condition_signature(source_sql) != top_level_join_condition_signature(draft_sql):
+        errors.append("optimized draft changes top-level JOIN ON conditions")
+    for keyword in CLAUSE_SIGNATURE_KEYWORDS:
+        if clause_signature(source_sql, keyword) != clause_signature(draft_sql, keyword):
+            errors.append(f"optimized draft changes top-level {keyword} expression")
     source_projection = projection_signature(source_sql)
     draft_projection = projection_signature(draft_sql)
     if source_projection and draft_projection:
@@ -624,6 +732,14 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
             and source_projection.output_names != draft_projection.output_names
         ):
             errors.append("optimized draft changes output projection names")
+    source_projection_expression = projection_expression_signature(source_sql)
+    draft_projection_expression = projection_expression_signature(draft_sql)
+    if (
+        source_projection_expression
+        and draft_projection_expression
+        and source_projection_expression != draft_projection_expression
+    ):
+        errors.append("optimized draft changes output projection expressions")
     if not draft_sql.rstrip().endswith(";"):
         draft_sql = draft_sql.rstrip() + ";"
     try:

@@ -86,16 +86,19 @@ Current validator must reject:
 - added physical tables;
 - removed `WHERE`, `HAVING`, or `LIMIT` scope;
 - changed `DISTINCT`;
-- changed top-level `GROUP`, `ORDER`, set-operation, CTE, or JOIN shape;
+- changed top-level `WHERE`, `GROUP`, `HAVING`, `ORDER` or `LIMIT` expression
+  signatures;
+- changed top-level `JOIN ... ON` condition signatures;
+- changed top-level set-operation, CTE, or JOIN shape;
 - changed output projection count or known output names;
+- changed output projection expression signatures;
 - SQL outside the supported optimizer parser scope.
 
 Known limitation:
 
-- current validation is still structural. It does not yet prove equivalence of
-  predicate expressions, predicate literal values, join conditions, or output
-  expression semantics when names stay the same. Those checks are the next
-  hardening target before giving the LLM more rewrite freedom.
+- validation is conservative and signature-based. It rejects changes inside
+  top-level clauses and projections unless Python owns a specific safe
+  transform. It still does not prove general SQL equivalence.
 
 ## Trust marker
 
@@ -150,7 +153,8 @@ Outcome:
 
 ### Phase 2. Semantic validator hardening
 
-Status: next.
+Status: implemented for top-level normalized signatures; future work is adding
+specific Python-owned safe transforms instead of broadening prompt permission.
 
 Goal:
 
@@ -167,13 +171,14 @@ Tests first:
 - changed projection expression is rejected even when output alias stays the
   same.
 
-Implementation target:
+Current implementation:
 
-- add normalized clause signatures for top-level `WHERE`, `HAVING`, and `LIMIT`;
-- add normalized top-level JOIN signature that includes `ON` expression text;
-- add conservative projection expression signatures;
-- for now, require exact normalized signatures unless Python owns a specific
-  safe transform.
+- normalized clause signatures for top-level `WHERE`, `GROUP`, `HAVING`,
+  `ORDER`, and `LIMIT`;
+- top-level JOIN signature plus `ON` condition signature;
+- conservative projection expression signatures;
+- exact normalized signature matches unless Python owns a specific safe
+  transform.
 
 ### Phase 3. Recommendations-only fallback
 

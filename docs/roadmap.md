@@ -38,7 +38,8 @@ workflows already work.
 - Trusted reports reject SQL-like output, raw SQL snippets, fenced SQL blocks
   and raw SHOW command snippets.
 - Query LLM optimizer drafts are trusted only after deterministic SQL validation
-  preserves read-only scope and result shape.
+  preserves read-only scope, result shape, top-level clause signatures, JOIN
+  conditions and projection expressions.
 
 ## Product surfaces
 
@@ -79,20 +80,28 @@ output must still be read-only SELECT/WITH. Current risk modes are
 `rewrite_allowed` and `conservative_rewrite`; high-risk cases should move toward
 a recommendations-only fallback instead of forcing an unsafe draft.
 
+Before the 2026-05-06 data-engineer demo, prioritize engineering behavior over
+UI polish: pre-check a small set of representative cases, collect CM metrics for
+selected cases, show deterministic facts before LLM wording, and make optimizer
+outcomes honest when a trusted SQL rewrite is unavailable or not useful.
+
 ## Planned near-term features
 
 - Validate and tune the optional CM time-series allowlist on real Cloudera
   Manager data, then expand it toward admission/pool pressure, Impala daemon
   CPU/memory pressure, host IO/network/load, and bounded role health signals.
 - Safe admission/pool facts in deterministic analysis and LLM Report wording.
-- Query LLM optimizer recommendations-only fallback for high-risk cases.
-- More real-case validation for Query LLM optimizer.
-- Safe UI status for optimizer mode and validation outcome.
+- More real-case validation for Query LLM optimizer, including no-benefit and
+  recommendations-only outcomes.
+- Safe UI status for optimizer mode, validation outcome and no-benefit outcome.
 - Details page UX audit: review which blocks are still useful, which are
   redundant, what should be added or promoted, and whether the page is efficient
   for Finished, Running and Specific Query workflows.
 - Small anonymized optimizer benchmark set.
 - Prompt tuning so optimizer drafts are useful without changing semantics.
+- Demo case pack with one clearly problematic query, one bounded-evidence query
+  and one normal/near-normal query, including expected analyzer/report/optimizer
+  behavior.
 - Remaining historical documentation cleanup.
 - Recent scan presenter cleanup where it improves safety/testability.
 - Gradual web server split.
