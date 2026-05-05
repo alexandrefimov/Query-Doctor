@@ -93,6 +93,7 @@ def render_batch_case_detail(
 def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
     spill_text = "spill evidence observed" if view.has_spill else "no spill evidence observed"
     stats_text = f"table stats {view.table_stats_status}" if view.table_stats_status is not None else "table stats not checked"
+    cm_metrics_text = "not collected" if view.cm_metrics.unavailable else "available"
     items = (
         ("user", view.user),
         ("score", score_badge_from_values(view.score, None, None, severity=view.score_severity)),
@@ -100,6 +101,7 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
         ("signals", view.signal_summary),
         ("query optimization", candidate_overview_value(view.optimization_candidate, view.optimization_rank)),
         ("stats refresh", candidate_overview_value(view.stats_candidate, view.stats_rank)),
+        ("CM metrics", cm_metrics_text),
         ("spill", spill_text),
         ("table stats", stats_text),
     )
@@ -295,7 +297,14 @@ def render_runtime_signals(view: RecentScanCaseDetailView) -> str:
 
 def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
     if view.unavailable:
-        return ""
+        return (
+            "<details class=\"analysis-subdetails\" aria-label=\"CM metrics\">"
+            "<summary>CM metrics</summary>"
+            "<div class=\"report-body\">"
+            "<p>CM metrics facts are not available for this case. Recent batch scans include this context only when bounded CM metrics collection is enabled.</p>"
+            "</div>"
+            "</details>"
+        )
     summary_rows = metadata_rows(list(view.summary_items))
     signal_rows = "".join(
         "<tr>"

@@ -64,6 +64,7 @@ class RecentScanCaseRowView:
     optimization_score: int
     optimization_impact: str
     optimization_confidence: str
+    optimization_artifact_status: str
     optimization_summary: str
     optimization_review_areas: str
     stats_tier: str
@@ -246,6 +247,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         optimization_score=optimization["score"],
         optimization_impact=optimization["impact"],
         optimization_confidence=optimization["confidence"],
+        optimization_artifact_status=safe_display_text(case.get("_optimizer_artifact_status") or "unknown"),
         optimization_summary=optimization["summary"],
         optimization_review_areas=optimization["review_areas"],
         stats_tier=stats_candidate["tier"],

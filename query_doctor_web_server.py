@@ -61,6 +61,7 @@ from query_doctor_web_ui_recent_scan_results import (
     filter_rows_by_query_group,
     sort_rows_for_query_group,
 )
+from query_doctor_web_optimizer_artifacts import decorate_cases_with_optimizer_artifact_status
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -2558,7 +2559,7 @@ def load_batch_summary(settings: WebSettings) -> dict[str, object] | None:
         payload = json.loads(summary_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    return payload if isinstance(payload, dict) else None
+    return decorate_cases_with_optimizer_artifact_status(payload) if isinstance(payload, dict) else None
 
 
 def case_with_detail_ranks(

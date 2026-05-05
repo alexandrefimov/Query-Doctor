@@ -13,6 +13,10 @@ from query_doctor_web_ui_recent_scan_details import (
     display_score,
     escape_value,
 )
+from query_doctor_web_optimizer_artifacts import (
+    OPTIMIZER_STATUS_ORDER,
+    decorate_cases_with_optimizer_artifact_status,
+)
 from query_doctor_web_ui_recent_scan_presenter import (
     RecentScanCaseRowView,
     numeric_count,
@@ -62,7 +66,7 @@ def render_batch_card(
             "</section>"
         )
     return render_batch_summary(
-        payload,
+        decorate_cases_with_optimizer_artifact_status(payload),
         query_group=query_group,
         only_with_spills=only_with_spills,
         title=title,
@@ -135,7 +139,18 @@ def render_batch_summary(
 def batch_table_columns(query_group: str) -> tuple[str, ...]:
     normalized = normalize_query_group(query_group)
     if normalized == "optimization":
-        return ("Rank", "Query ID", "User", "Duration", "Candidate", "Impact", "Confidence", "Review first", "Summary")
+        return (
+            "Rank",
+            "Query ID",
+            "User",
+            "Duration",
+            "Candidate",
+            "Impact",
+            "Confidence",
+            "Optimizer",
+            "Review first",
+            "Summary",
+        )
     if normalized == "stats":
         return ("Rank", "Query ID", "User", "Duration", "Candidate", "Need", "Speed benefit", "Confidence", "Confirm", "Summary")
     return ("Rank", "Query ID", "User", "Score", "Duration", "STATS", "META", "Summary")
@@ -201,6 +216,7 @@ def sort_rows_for_query_group(
                 -tier_order.get(row.optimization_tier, 0),
                 -row.optimization_score,
                 -impact_order.get(row.optimization_impact, 0),
+                -OPTIMIZER_STATUS_ORDER.get(row.optimization_artifact_status, 0),
                 -numeric_value(row.duration_sec),
                 row.rank,
             ),
@@ -333,6 +349,7 @@ def render_batch_case_row(
             candidate_cell(view.optimization_tier),
             compact_cell(view.optimization_impact.title()),
             compact_cell(view.optimization_confidence.title()),
+            optimizer_artifact_status_cell(view.optimization_artifact_status),
             reason_cell(view.optimization_review_areas or "review query shape"),
             summary_cell(view, query_group=normalized),
         ]
@@ -435,6 +452,23 @@ def stats_need_label(value: Any) -> str:
         "not_likely_stats_issue": "not likely a stats issue",
     }
     return labels.get(str(value), str(value))
+
+
+def optimizer_artifact_status_cell(value: Any) -> str:
+    return compact_cell(optimizer_artifact_status_label(value))
+
+
+def optimizer_artifact_status_label(value: Any) -> str:
+    labels = {
+        "trusted_draft": "Trusted draft",
+        "trusted_recommendations": "Trusted recommendations",
+        "trusted_no_rewrite": "No rewrite",
+        "partial_untrusted": "Untrusted draft",
+        "not_run": "Not run",
+        "source_unavailable": "Source unavailable",
+        "unknown": "Unknown",
+    }
+    return labels.get(str(value or "unknown"), "Unknown")
 
 
 def metadata_cell(status: Any) -> str:
