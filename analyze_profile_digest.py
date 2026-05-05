@@ -1025,7 +1025,14 @@ def first_number(value: str) -> float | None:
     return float(m.group(0).replace(",", ""))
 
 
-def set_backend_metric(fact: BackendHostFact, key: str, value: str, line: str) -> None:
+def set_backend_metric(
+    fact: BackendHostFact,
+    key: str,
+    value: str,
+    line: str,
+    *,
+    direct_execution_metric: bool = True,
+) -> None:
     normalized_key = normalize_metric_key(key)
     if normalized_key in BACKEND_ASSIGNED_KEYS:
         parsed = parse_size_bytes(value)
@@ -1087,7 +1094,7 @@ def set_backend_metric(fact: BackendHostFact, key: str, value: str, line: str) -
         if parsed is not None:
             fact.peak_scanner_concurrency = parsed
             append_backend_evidence(fact, line)
-    elif normalized_key in BACKEND_EXECUTION_TIME_KEYS:
+    elif normalized_key in BACKEND_EXECUTION_TIME_KEYS and direct_execution_metric:
         parsed = extract_first_duration_ms(value)
         if parsed is not None:
             fact.execution_time_ms = parsed
@@ -1115,9 +1122,11 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
     facts: list[BackendHostFact] = []
     current: BackendHostFact | None = None
     current_fragment_group: str | None = None
+    current_header_indent: int | None = None
+    current_child_indent: int | None = None
 
     def finish_current() -> None:
-        nonlocal current
+        nonlocal current, current_header_indent, current_child_indent
         if current is not None and current.host and current.has_metric():
             if current.hdfs_write_sec_per_gib is None and current.hdfs_write_time_ms and current.bytes_written:
                 gib = current.bytes_written / (1024**3)
@@ -1125,6 +1134,8 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
                     current.hdfs_write_sec_per_gib = (current.hdfs_write_time_ms / 1000) / gib
             facts.append(current)
         current = None
+        current_header_indent = None
+        current_child_indent = None
 
     for line in text.splitlines():
         fragment_match = AVERAGED_FRAGMENT_RE.match(line) or FRAGMENT_HEADER_RE.match(line)
@@ -1144,11 +1155,20 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
                     fragment_group=current_fragment_group,
                     evidence_lines=[compact_line(line)],
                 )
+                current_header_indent = line_indent(line)
+                current_child_indent = None
             else:
                 current = None
+                current_header_indent = None
+                current_child_indent = None
             continue
 
         if current is None:
+            continue
+
+        stripped = line.strip()
+        if not stripped:
+            current_child_indent = None
             continue
 
         host_line = HOST_LINE_RE.match(line)
@@ -1165,7 +1185,33 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
 
         metric_match = METRIC_LINE_RE.match(line)
         if metric_match:
-            set_backend_metric(current, metric_match.group("key"), metric_match.group("value"), line)
+            indent = line_indent(line)
+            nested_metric = False
+            if current_child_indent is not None:
+                if indent > current_child_indent:
+                    nested_metric = True
+                else:
+                    current_child_indent = None
+            direct_execution_metric = (
+                not nested_metric
+                and current_header_indent is not None
+                and indent > current_header_indent
+            )
+            set_backend_metric(
+                current,
+                metric_match.group("key"),
+                metric_match.group("value"),
+                line,
+                direct_execution_metric=direct_execution_metric,
+            )
+            continue
+
+        if current_header_indent is not None:
+            indent = line_indent(line)
+            if indent <= current_header_indent:
+                current_child_indent = None
+            elif not stripped.startswith("-"):
+                current_child_indent = indent
 
     finish_current()
     return facts

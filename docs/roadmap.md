@@ -100,6 +100,85 @@ a recommendations-only fallback instead of forcing an unsafe draft.
 These are incremental UI and architecture improvements. They should preserve
 current Impala behavior and safety boundaries.
 
+## External audit triage follow-ups
+
+Goal: preserve useful findings from the 2026-05-05 external audit while keeping
+the roadmap scoped to confirmed risks and practical hardening work.
+
+Safety and browser trust:
+
+- Browser artifact-name redaction: extend centralized display redaction to
+  cover generated filenames such as collected profiles, analyzer facts,
+  reports, optimizer drafts, metadata context and collection-warning artifacts.
+  Browser errors should be generic; file-level detail belongs in terminal logs
+  or internal diagnostics.
+- Incomplete-case errors: make existing-case and report-action failures avoid
+  naming required artifact files. Add regression tests for Specific Query,
+  Finished/Running details and job error surfaces.
+- Query Optimizer no-echo contract: remove the post-submit ability to render a
+  submitted SQL value back into the textarea, or split the empty form renderer
+  from result/error renderers. Add error-path tests where parser exceptions
+  contain fragments of submitted SQL.
+- Report raw-output guardrails: keep the report validator rejecting SQL-like
+  output beyond SELECT/WITH/DML/allowed SHOW snippets, including disallowed
+  metadata commands such as DESCRIBE, SHOW PARTITIONS, MSCK and INVALIDATE.
+- Spill/scratch claim validation: reject report narratives that claim spill or
+  scratch pressure when analyzer facts do not contain explicit non-zero
+  spill/scratch evidence.
+
+Batch safety and operability:
+
+- Subprocess timeouts: add explicit timeouts for collection, analyzer,
+  metadata-refresh and report subprocess stages so one hung CM/metadata/report
+  command cannot block a batch indefinitely. Timeout values should be stage
+  specific and visible in failure facts/summaries without leaking raw command
+  output.
+- High-parallelism guardrails: enforce the documented rule that high analyzer
+  parallelism is allowed only with reports disabled and metadata refresh off, or
+  update the documentation and tests if the intended contract changes.
+- Metadata worker default: resolve the current code/docs mismatch for
+  `--metadata-jobs` and add a canary test for the chosen default and hard cap.
+- Batch path robustness: add a regression test that batch case discovery does
+  not follow unexpected symlinks or escape the wrapper/output root.
+- Parallel batch tests: add a focused test with mocked subprocess runners and
+  multiple workers to cover ordering, failure propagation and timeout behavior.
+
+Facts, scoring and validator robustness:
+
+- Backend execution-time classification fixtures: keep backend execution-tail
+  evidence limited to direct backend elapsed/runtime counters, and add real
+  sanitized fixtures for cumulative thread/cpu/wait backend counter shapes when
+  they appear.
+- Scoring facts parser: replace hidden string-split coupling for markdown
+  sections with anchored section parsing, and make numeric fact parsing accept
+  only documented integer labels or structured normalized rows.
+- Score scale canaries: add tests that lock the intended score contribution
+  caps and `Bad` / `Suspicious` / `Good` thresholds before changing scoring
+  weights.
+- Shared facts parser: reduce duplicate `- key: value` parsing helpers across
+  report and batch scoring into one small parser module once behavior is stable.
+- Validation mode visibility: if report validation is explicitly downgraded via
+  environment or CLI, make that downgrade visible in operator-facing logs and
+  avoid silently producing a trusted-looking artifact.
+
+Maintainability and future seams:
+
+- Web server split: after the safety-critical items above, continue the
+  mechanical split of routing, job orchestration, command construction,
+  case-resolution and trusted-artifact loading out of the monolithic web server.
+- Host alias consistency: decide whether profile and metadata artifacts need a
+  shared host-alias map for cross-artifact diagnostics; if yes, share the
+  redactor within one collected case without weakening host redaction defaults.
+- Optimizer semantic validation: strengthen rewrite validation with normalized
+  signatures for filters, HAVING, LIMIT and top-level JOIN conditions before
+  expanding `rewrite_allowed` behavior.
+- Optimizer benchmark corpus: build anonymized predicate/join/projection
+  fixtures for semantic-preservation tests and prompt tuning.
+- Engine adapter contract: keep Impala as the only implemented engine, but
+  later make the existing seam describe real engine-specific contracts:
+  operator maps, profile parsers, metadata allowlists, validator terminology and
+  recommendation modules.
+
 ## Impala source-provider roadmap
 
 Goal: keep Apache Impala as the implemented engine while allowing different
