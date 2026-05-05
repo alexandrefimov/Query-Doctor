@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,10 +24,11 @@ from query_doctor_report import (
     DEFAULT_KEEP_ALIVE,
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
-    MAX_RECOMMENDATION_ITEMS,
     PROGRESS_PREFIX,
     build_report_contract_digest,
     canonical_recommendation_bullets,
+    extract_markdown_section as extract_report_markdown_section,
+    first_bullet_value as first_report_bullet_value,
     ollama_chat_url,
     recommendation_candidate_id_for_bullet,
     recommendation_candidate_lines,
@@ -71,6 +73,7 @@ CONSERVATIVE_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_TOKEN_TH
 RECOMMENDATIONS_ONLY_CTE_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_CTE_THRESHOLD", "5"))
 RECOMMENDATIONS_ONLY_JOIN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_JOIN_THRESHOLD", "10"))
 RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD", "2000"))
+MAX_OPTIMIZER_RECOMMENDATION_ITEMS = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATION_ITEMS", "8"))
 INCOMPLETE_TRAILING_TOKENS = {
     ",",
     ".",
@@ -128,6 +131,35 @@ class OptimizableSourceSql:
 class OptimizerRiskDecision:
     mode: str
     reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class OptimizerActionCard:
+    title: str
+    operator: str
+    evidence: dict[str, str]
+
+
+@dataclass(frozen=True)
+class CteDefinition:
+    name: str
+    body: str
+
+
+@dataclass(frozen=True)
+class CteParseResult:
+    ctes: tuple[CteDefinition, ...]
+    final_sql: str
+
+
+@dataclass(frozen=True)
+class OptimizerRewriteRecipe:
+    recipe_id: str
+    title: str
+    source_cte: str
+    aggregate_cte: str
+    prompt_bullets: tuple[str, ...]
+    safe_bullets: tuple[str, ...]
 
 
 def read_source_sql(case_dir: Path) -> str:
@@ -312,32 +344,35 @@ def table_names(sql: str) -> set[str]:
 
 def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
     tokens = extract_statement_tokens(source_sql)
-    reasons: list[str] = []
+    recommendations_only_reasons: list[str] = []
+    conservative_reasons: list[str] = []
     cte_count = len(collect_cte_names(tokens))
     join_count = len(top_level_join_signature(source_sql))
     token_count = len(tokens)
     set_operator_count = sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS)
     if cte_count:
-        reasons.append("cte_body_validation_not_proven")
+        conservative_reasons.append("cte_body_validation_not_proven")
     if cte_count > RECOMMENDATIONS_ONLY_CTE_THRESHOLD:
-        reasons.append("too_many_ctes_for_safe_rewrite")
+        recommendations_only_reasons.append("too_many_ctes_for_safe_rewrite")
     if join_count > RECOMMENDATIONS_ONLY_JOIN_THRESHOLD:
-        reasons.append("too_many_top_level_joins_for_safe_rewrite")
+        recommendations_only_reasons.append("too_many_top_level_joins_for_safe_rewrite")
     if token_count > RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD:
-        reasons.append("sql_payload_too_large_for_safe_rewrite")
-    if reasons:
-        return OptimizerRiskDecision(mode="recommendations_only", reasons=tuple(reasons))
-    reasons = []
+        recommendations_only_reasons.append("sql_payload_too_large_for_safe_rewrite")
+    if recommendations_only_reasons:
+        return OptimizerRiskDecision(
+            mode="recommendations_only",
+            reasons=tuple(conservative_reasons + recommendations_only_reasons),
+        )
     if cte_count > CONSERVATIVE_CTE_THRESHOLD:
-        reasons.append("many_ctes")
+        conservative_reasons.append("many_ctes")
     if join_count > CONSERVATIVE_JOIN_THRESHOLD:
-        reasons.append("many_top_level_joins")
+        conservative_reasons.append("many_top_level_joins")
     if token_count > CONSERVATIVE_TOKEN_THRESHOLD:
-        reasons.append("long_sql_payload")
+        conservative_reasons.append("long_sql_payload")
     if set_operator_count:
-        reasons.append("set_operations")
-    if reasons:
-        return OptimizerRiskDecision(mode="conservative_rewrite", reasons=tuple(reasons))
+        conservative_reasons.append("set_operations")
+    if conservative_reasons:
+        return OptimizerRiskDecision(mode="conservative_rewrite", reasons=tuple(conservative_reasons))
     return OptimizerRiskDecision(mode="rewrite_allowed", reasons=())
 
 
@@ -371,6 +406,118 @@ def top_level_keyword_count(sql: str, keyword: str) -> int:
 def cte_name_signature(sql: str) -> tuple[str, ...]:
     tokens = extract_statement_tokens(sql)
     return tuple(sorted(collect_cte_names(tokens)))
+
+
+def parse_with_query(sql: str) -> CteParseResult | None:
+    cursor = skip_sql_whitespace_and_comments(sql, 0)
+    if not keyword_at(sql, cursor, "WITH"):
+        return None
+    cursor += len("WITH")
+    ctes: list[CteDefinition] = []
+    while cursor < len(sql):
+        cursor = skip_sql_whitespace_and_comments(sql, cursor)
+        name, cursor = read_sql_identifier(sql, cursor)
+        if not name:
+            return None
+        cursor = skip_sql_whitespace_and_comments(sql, cursor)
+        if cursor < len(sql) and sql[cursor] == "(":
+            close = matching_parenthesis_offset(sql, cursor)
+            if close is None:
+                return None
+            cursor = close + 1
+            cursor = skip_sql_whitespace_and_comments(sql, cursor)
+        if not keyword_at(sql, cursor, "AS"):
+            return None
+        cursor += len("AS")
+        cursor = skip_sql_whitespace_and_comments(sql, cursor)
+        if cursor >= len(sql) or sql[cursor] != "(":
+            return None
+        close = matching_parenthesis_offset(sql, cursor)
+        if close is None:
+            return None
+        ctes.append(CteDefinition(name=name.lower(), body=sql[cursor + 1 : close].strip()))
+        cursor = skip_sql_whitespace_and_comments(sql, close + 1)
+        if cursor < len(sql) and sql[cursor] == ",":
+            cursor += 1
+            continue
+        break
+    final_sql = sql[cursor:].strip().rstrip(";").strip()
+    if not ctes or not final_sql:
+        return None
+    return CteParseResult(ctes=tuple(ctes), final_sql=final_sql)
+
+
+def skip_sql_whitespace_and_comments(sql: str, index: int) -> int:
+    while index < len(sql):
+        if sql[index].isspace():
+            index += 1
+            continue
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        break
+    return index
+
+
+def keyword_at(sql: str, index: int, keyword: str) -> bool:
+    end = index + len(keyword)
+    if sql[index:end].upper() != keyword.upper():
+        return False
+    before = sql[index - 1] if index > 0 else ""
+    after = sql[end] if end < len(sql) else ""
+    return not is_sql_identifier_char(before) and not is_sql_identifier_char(after)
+
+
+def read_sql_identifier(sql: str, index: int) -> tuple[str | None, int]:
+    if index >= len(sql):
+        return None, index
+    if sql[index] in {'"', "`"}:
+        end = skip_quoted_text(sql, index, sql[index])
+        if end <= index + 1:
+            return None, index
+        return sql[index + 1 : end - 1].lower(), end
+    if not is_sql_identifier_start(sql[index]):
+        return None, index
+    end = index + 1
+    while end < len(sql) and is_sql_identifier_char(sql[end]):
+        end += 1
+    return sql[index:end].lower(), end
+
+
+def matching_parenthesis_offset(sql: str, open_offset: int) -> int | None:
+    depth = 0
+    index = open_offset
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(sql, index, char)
+            continue
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+            if depth < 0:
+                return None
+        index += 1
+    return None
+
+
+def cte_definition_map(sql: str) -> dict[str, str]:
+    parsed = parse_with_query(sql)
+    if parsed is None:
+        return {}
+    return {definition.name: definition.body for definition in parsed.ctes}
 
 
 def top_level_join_signature(sql: str) -> tuple[tuple[str, ...], ...]:
@@ -523,6 +670,192 @@ def normalized_statement_signature(sql: str) -> str:
     return normalize_sql_signature_fragment(sql)
 
 
+def has_union_all(sql: str) -> bool:
+    return len(split_top_level_union_all_fragments(sql)) > 1
+
+
+def split_top_level_union_all_fragments(sql: str) -> list[str]:
+    fragments: list[str] = []
+    start = 0
+    index = 0
+    depth = 0
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(sql, index, char)
+            continue
+        if char == "(":
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if depth == 0 and keyword_at(sql, index, "UNION"):
+            after_union = skip_sql_whitespace_and_comments(sql, index + len("UNION"))
+            if keyword_at(sql, after_union, "ALL"):
+                fragment = sql[start:index].strip()
+                if fragment:
+                    fragments.append(unwrap_sql_fragment_parentheses(fragment))
+                start = after_union + len("ALL")
+                index = start
+                continue
+        index += 1
+    fragment = sql[start:].strip()
+    if fragment:
+        fragments.append(unwrap_sql_fragment_parentheses(fragment))
+    return fragments
+
+
+def unwrap_sql_fragment_parentheses(fragment: str) -> str:
+    stripped = fragment.strip()
+    while stripped.startswith("(") and stripped.endswith(")"):
+        close = matching_parenthesis_offset(stripped, 0)
+        if close != len(stripped) - 1:
+            break
+        stripped = stripped[1:-1].strip()
+    return stripped
+
+
+def keyword_count_any_depth(sql: str, keyword: str) -> int:
+    target = keyword.upper()
+    return sum(1 for token in tokenize_sql(sql) if token.upper() == target)
+
+
+def identifier_referenced(sql: str, identifier: str) -> bool:
+    target = identifier.lower()
+    return any(token.lower() == target for token in tokenize_sql(sql))
+
+
+def projection_item_fragments(sql: str) -> list[str]:
+    select_offset = find_top_level_keyword_offset(sql, ("SELECT",))
+    if select_offset is None:
+        return []
+    from_offset = find_top_level_keyword_offset(sql, ("FROM",), start=select_offset + len("SELECT"))
+    if from_offset is None:
+        return []
+    return split_top_level_sql_fragments(sql[select_offset + len("SELECT") : from_offset], ",")
+
+
+def projection_name_for_fragment(fragment: str) -> str | None:
+    try:
+        tokens = tokenize_sql(fragment)
+    except OptimizerSqlError:
+        return None
+    depth = 0
+    top_level_alias: str | None = None
+    for index, token in enumerate(tokens):
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and token.upper() == "AS" and index + 1 < len(tokens):
+            top_level_alias = clean_projection_identifier(tokens[index + 1])
+    return top_level_alias or projection_output_name(tokens)
+
+
+def aggregate_projection_names(sql: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for item in projection_item_fragments(sql):
+        if re.search(r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE):
+            name = projection_name_for_fragment(item)
+            if name:
+                names.append(name)
+    return tuple(names)
+
+
+def non_aggregate_projection_names(sql: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for item in projection_item_fragments(sql):
+        if re.search(r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE):
+            continue
+        name = projection_name_for_fragment(item)
+        if name:
+            names.append(name)
+    return tuple(names)
+
+
+def detect_optimizer_rewrite_recipe(
+    source_sql: str,
+    facts_text: str,
+) -> OptimizerRewriteRecipe | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None:
+        return None
+    if not optimizer_action_cards(facts_text) and not facts_have_finding(facts_text, "Large intermediate"):
+        return None
+    for union_cte in parsed.ctes:
+        if not has_union_all(union_cte.body):
+            continue
+        for aggregate_cte in parsed.ctes:
+            if aggregate_cte.name == union_cte.name:
+                continue
+            if not identifier_referenced(aggregate_cte.body, union_cte.name):
+                continue
+            if keyword_count_any_depth(aggregate_cte.body, "GROUP") == 0:
+                continue
+            if not aggregate_projection_names(aggregate_cte.body):
+                continue
+            if not identifier_referenced(parsed.final_sql, aggregate_cte.name):
+                continue
+            return build_post_union_aggregate_pushdown_recipe(union_cte, aggregate_cte)
+    return None
+
+
+def build_post_union_aggregate_pushdown_recipe(
+    union_cte: CteDefinition,
+    aggregate_cte: CteDefinition,
+) -> OptimizerRewriteRecipe:
+    dimensions = non_aggregate_projection_names(aggregate_cte.body)
+    measures = aggregate_projection_names(aggregate_cte.body)
+    union_outputs = tuple(
+        name
+        for item in projection_item_fragments(union_cte.body)
+        if (name := projection_name_for_fragment(item))
+    )
+    downstream_names = set(dimensions) | set(measures)
+    unused_detail_names = tuple(
+        name
+        for name in union_outputs
+        if name and name not in downstream_names
+    )
+    dimensions_text = ", ".join(dimensions) if dimensions else "the downstream GROUP BY dimensions"
+    measures_text = ", ".join(measures) if measures else "the downstream aggregate measures"
+    output_text = ", ".join(tuple(dimensions) + tuple(measures)) if dimensions or measures else "the grouped dimensions followed by aggregate measures"
+    unused_text = ", ".join(unused_detail_names) if unused_detail_names else "detail-only columns not used downstream"
+    prompt_bullets = (
+        "Use recipe post_union_aggregate_pushdown.",
+        f"In CTE {union_cte.name}, pre-aggregate every UNION ALL branch before the UNION ALL.",
+        f"Every branch in CTE {union_cte.name} must project exactly these columns in this order: {output_text}.",
+        f"Group every branch by the downstream aggregate dimensions from CTE {aggregate_cte.name}: {dimensions_text}.",
+        "Do not group by aggregate measures; branch GROUP BY should cover only grouped dimensions.",
+        f"Carry only grouped dimensions and needed measures; do not project intermediate detail columns such as {unused_text}.",
+        f"Compute branch-level measures for {measures_text}, using the same source expressions and casts as the downstream aggregate.",
+        "Branches with constant transaction rows must still output aggregate measures with SUM expressions.",
+        f"Keep CTE {aggregate_cte.name} as a second-stage GROUP BY over the same dimensions, summing branch-level measures.",
+        "Keep every original physical table, JOIN predicate, WHERE filter, literal mapping, date range, and final SELECT/window expression unchanged.",
+    )
+    safe_bullets = (
+        "- Recipe detected: push aggregation below UNION ALL, then keep the downstream aggregate as a safety rollup.",
+        "- The trusted SQL draft may be shown only if validation proves the same physical tables, filters, join predicates, literals and final output shape are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="post_union_aggregate_pushdown",
+        title="Push aggregate below UNION ALL",
+        source_cte=union_cte.name,
+        aggregate_cte=aggregate_cte.name,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
+
+
 def draft_has_material_change(source_sql: str, draft_sql: str) -> bool:
     return normalized_statement_signature(source_sql) != normalized_statement_signature(draft_sql)
 
@@ -606,10 +939,39 @@ def clean_projection_identifier(token: str) -> str | None:
 
 def build_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
     candidates = recommendation_candidate_lines(facts_text)
-    digest = build_optimizer_fact_digest(facts_text)
-    shape_digest = build_sql_shape_digest(source_sql, risk_decision)
+    rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
+    manual_bullets = optimizer_prompt_rewrite_bullets(facts_text, risk_decision, rewrite_recipe)
+    mode_contract = optimizer_mode_contract(risk_decision, rewrite_recipe)
+    if rewrite_recipe:
+        manual_bullet_lines = "\n".join(f"- {bullet}" for bullet in manual_bullets)
+        return f"""
+You are an Apache Impala SQL optimizer.
+Rewrite the SQL query exactly according to the Python-owned rewrite recipe.
+Return only one complete SQL query. No markdown, no comments, no explanation.
+
+Safety and scope:
+- Output must be exactly one read-only SELECT or WITH statement.
+- Do not output INSERT, CREATE, DROP, ALTER, REFRESH, INVALIDATE, COMPUTE STATS, SHOW, SET, USE, or multiple statements.
+- Do not add physical tables that are absent from the input SQL.
+- Preserve query semantics, final output columns, original filters, JOIN predicates, literal mappings, date ranges, and final window expressions.
+- If the recipe cannot be applied exactly, return the original query with harmless formatting.
+
+PYTHON-OWNED OPTIMIZER MODE BEGIN
+{mode_contract}
+PYTHON-OWNED OPTIMIZER MODE END
+
+PYTHON-OWNED REWRITE RECIPE BEGIN
+{manual_bullet_lines}
+PYTHON-OWNED REWRITE RECIPE END
+
+INPUT SQL BEGIN
+{source_sql}
+INPUT SQL END
+""".strip()
+    digest = build_optimizer_fact_digest(facts_text, risk_decision, rewrite_recipe)
+    shape_digest = build_sql_shape_digest(source_sql, risk_decision, rewrite_recipe)
     candidate_lines = "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
-    mode_contract = optimizer_mode_contract(risk_decision)
+    manual_bullet_lines = "\n".join(f"- {bullet}" for bullet in manual_bullets)
     return f"""
 You are a SQL rewrite assistant for Apache Impala.
 Return only one optimized SQL draft. No markdown explanation.
@@ -622,6 +984,8 @@ Safety and scope:
 - Do not add physical tables that are absent from the input SQL.
 - Preserve query intent and output columns unless the Python-owned facts clearly support a narrower projection.
 - Use only Python-owned recommendation candidates and deterministic facts as rewrite guidance.
+- Prefer concrete operator/action-card guidance from the optimizer fact digest when deciding whether a rewrite is useful.
+- Use PYTHON-OWNED MANUAL REWRITE BULLETS as the concrete rewrite intent; do not invent other optimization goals.
 - Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive SQL changes.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - If a safe SQL rewrite is not supported, return the original query shape with only harmless formatting.
@@ -633,6 +997,10 @@ PYTHON-OWNED OPTIMIZER MODE END
 PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
 {candidate_lines}
 PYTHON-OWNED RECOMMENDATION CANDIDATES END
+
+PYTHON-OWNED MANUAL REWRITE BULLETS BEGIN
+{manual_bullet_lines}
+PYTHON-OWNED MANUAL REWRITE BULLETS END
 
 PYTHON-OWNED SQL SHAPE DIGEST BEGIN
 {json.dumps(shape_digest, ensure_ascii=False, indent=2, sort_keys=True)}
@@ -650,9 +1018,12 @@ INPUT SQL END
 
 def build_recommendations_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
     candidates = recommendation_candidate_lines(facts_text)
-    digest = build_optimizer_fact_digest(facts_text)
-    shape_digest = build_sql_shape_digest(source_sql, risk_decision)
+    rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
+    manual_bullets = optimizer_prompt_rewrite_bullets(facts_text, risk_decision, rewrite_recipe)
+    digest = build_optimizer_fact_digest(facts_text, risk_decision, rewrite_recipe)
+    shape_digest = build_sql_shape_digest(source_sql, risk_decision, rewrite_recipe)
     candidate_lines = "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
+    manual_bullet_lines = "\n".join(f"- {bullet}" for bullet in manual_bullets)
     reasons = ", ".join(risk_decision.reasons) or "rewrite_too_risky"
     return f"""
 You are a concise Apache Impala query optimization advisor.
@@ -663,7 +1034,8 @@ Safety and scope:
 - Do not output SELECT, WITH, INSERT, CREATE, DROP, ALTER, REFRESH, INVALIDATE, COMPUTE STATS, SHOW, SET, USE, or code blocks.
 - Do not echo source SQL, local paths, raw profile text, raw metadata, artifacts, credentials, or runtime internals.
 - Use only Python-owned recommendation candidates and deterministic facts.
-- Every trusted bullet must map to PYTHON-OWNED RECOMMENDATION CANDIDATES; unsupported bullets will be discarded.
+- Every trusted bullet must map to PYTHON-OWNED RECOMMENDATION CANDIDATES or specific Action Card context; unsupported bullets will be discarded.
+- Prefer concrete Action Card operator IDs and safe plan-level advice from the optimizer fact digest.
 - Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive recommendations.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - Prefer concrete actions such as collecting stats, reducing projected columns, narrowing filters, splitting a risky query, or reviewing join shape only when supported by facts.
@@ -678,6 +1050,10 @@ PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
 {candidate_lines}
 PYTHON-OWNED RECOMMENDATION CANDIDATES END
 
+PYTHON-OWNED MANUAL REWRITE BULLETS BEGIN
+{manual_bullet_lines}
+PYTHON-OWNED MANUAL REWRITE BULLETS END
+
 PYTHON-OWNED SQL SHAPE DIGEST BEGIN
 {json.dumps(shape_digest, ensure_ascii=False, indent=2, sort_keys=True)}
 PYTHON-OWNED SQL SHAPE DIGEST END
@@ -688,7 +1064,10 @@ PYTHON-OWNED OPTIMIZER FACT DIGEST END
 """.strip()
 
 
-def optimizer_mode_contract(risk_decision: OptimizerRiskDecision) -> str:
+def optimizer_mode_contract(
+    risk_decision: OptimizerRiskDecision,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> str:
     if risk_decision.mode == "recommendations_only":
         reasons = ", ".join(risk_decision.reasons) or "rewrite_too_risky"
         return "\n".join(
@@ -702,6 +1081,20 @@ def optimizer_mode_contract(risk_decision: OptimizerRiskDecision) -> str:
         )
     if risk_decision.mode == "conservative_rewrite":
         reasons = ", ".join(risk_decision.reasons) or "risk_noted"
+        if rewrite_recipe:
+            return "\n".join(
+                [
+                    "mode: conservative_rewrite",
+                    f"python_owned_reasons: {reasons}",
+                    f"python_owned_rewrite_recipe: {rewrite_recipe.recipe_id}",
+                    "rules:",
+                    "- A bounded structural rewrite is allowed only when it follows PYTHON-OWNED MANUAL REWRITE BULLETS.",
+                    "- Preserve the CTE list exactly: do not add, remove, rename, reorder, inline, or split CTEs.",
+                    "- You may change CTE bodies only for the named rewrite recipe.",
+                    "- Preserve every physical table, JOIN predicate, WHERE filter, literal mapping, final output column, and final SELECT/window expression.",
+                    "- If the recipe cannot be applied exactly, return the original query with harmless formatting.",
+                ]
+            )
         return "\n".join(
             [
                 "mode: conservative_rewrite",
@@ -731,21 +1124,55 @@ def optimizer_temperature(requested_temperature: float, risk_decision: Optimizer
     return requested_temperature
 
 
-def build_optimizer_fact_digest(facts_text: str) -> dict[str, object]:
+def optimizer_prompt_rewrite_bullets(
+    facts_text: str,
+    risk_decision: OptimizerRiskDecision,
+    rewrite_recipe: OptimizerRewriteRecipe | None,
+) -> list[str]:
+    bullets: list[str] = []
+    if rewrite_recipe:
+        bullets.extend(rewrite_recipe.prompt_bullets)
+        return dedupe_preserve_order(bullets)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS + 4]
+    bullets.extend(bullet.lstrip("- ").strip() for bullet in optimizer_specific_recommendation_bullets(facts_text, risk_decision))
+    return dedupe_preserve_order(bullets)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS + 4]
+
+
+def build_optimizer_fact_digest(
+    facts_text: str,
+    risk_decision: OptimizerRiskDecision | None = None,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> dict[str, object]:
     digest = build_report_contract_digest(facts_text)
-    return {
+    result = {
         "summary": digest.get("summary", {}),
         "evidence_flags": digest.get("evidence_flags", {}),
         "cm_metrics_correlation": digest.get("cm_metrics_correlation", {}),
         "recommendation_candidates": digest.get("recommendation_candidates", []),
+        "specific_recommendation_context": optimizer_specific_recommendation_bullets(
+            facts_text,
+            risk_decision,
+            rewrite_recipe,
+        ),
         "action_card_titles": digest.get("action_card_titles", []),
         "finding_titles": digest.get("finding_titles", []),
     }
+    if rewrite_recipe:
+        result["rewrite_recipe"] = {
+            "id": rewrite_recipe.recipe_id,
+            "title": rewrite_recipe.title,
+            "source_cte": rewrite_recipe.source_cte,
+            "aggregate_cte": rewrite_recipe.aggregate_cte,
+        }
+    return result
 
 
-def build_sql_shape_digest(source_sql: str, risk_decision: OptimizerRiskDecision) -> dict[str, object]:
+def build_sql_shape_digest(
+    source_sql: str,
+    risk_decision: OptimizerRiskDecision,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> dict[str, object]:
     tokens = extract_statement_tokens(source_sql)
-    return {
+    result = {
         "cte_count": len(collect_cte_names(tokens)),
         "top_level_join_count": len(top_level_join_signature(source_sql)),
         "set_operator_count": sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS),
@@ -753,6 +1180,135 @@ def build_sql_shape_digest(source_sql: str, risk_decision: OptimizerRiskDecision
         "risk_mode": risk_decision.mode,
         "risk_reasons": list(risk_decision.reasons),
     }
+    if rewrite_recipe:
+        result["rewrite_recipe_id"] = rewrite_recipe.recipe_id
+    return result
+
+
+def optimizer_action_cards(facts_text: str, *, limit: int = 3) -> list[OptimizerActionCard]:
+    lines = extract_report_markdown_section(facts_text, "## Action Cards")
+    cards: list[OptimizerActionCard] = []
+    current_title = ""
+    current_evidence: dict[str, str] = {}
+    in_evidence = False
+
+    def flush() -> None:
+        nonlocal current_title, current_evidence, in_evidence
+        operator = current_evidence.get("operator", "")
+        if current_title and operator and len(cards) < limit:
+            cards.append(OptimizerActionCard(title=current_title, operator=operator, evidence=dict(current_evidence)))
+        current_title = ""
+        current_evidence = {}
+        in_evidence = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("### Card "):
+            flush()
+            current_title = stripped[4:].strip()
+            continue
+        if not current_title:
+            continue
+        if stripped == "Evidence:":
+            in_evidence = True
+            continue
+        if stripped.endswith(":") and stripped != "Evidence:":
+            in_evidence = False
+            continue
+        if not in_evidence:
+            continue
+        match = re.match(r"^-\s*(?P<label>[A-Za-z/ ]+):\s*(?P<value>.+?)\s*$", stripped)
+        if match:
+            current_evidence[match.group("label").strip().lower()] = match.group("value").strip()
+    flush()
+    return cards
+
+
+def optimizer_specific_recommendation_bullets(
+    facts_text: str,
+    risk_decision: OptimizerRiskDecision | None = None,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> list[str]:
+    cards = optimizer_action_cards(facts_text)
+    bullets: list[str] = []
+    if rewrite_recipe:
+        bullets.extend(rewrite_recipe.safe_bullets)
+    for card in cards[:2]:
+        bullets.append(action_card_recommendation_bullet(card))
+    if risk_decision and "cte_body_validation_not_proven" in risk_decision.reasons:
+        bullets.append(
+            "- Для CTE-запроса SQL draft будет принят только если строгая проверка не увидит изменения CTE body: "
+            "безопасный ручной путь - менять один CTE за раз, не переименовывать CTE, не менять JOIN keys/filter scope "
+            "и проверять совпадение выходных колонок после каждого шага."
+        )
+    if any("EXCHANGE" in card.operator.upper() for card in cards) or facts_have_finding(facts_text, "Large intermediate or exchange traffic"):
+        bullets.append(
+            "- Сначала сокращать rows/payload до EXCHANGE или другого data movement: переносить безопасную фильтрацию, "
+            "предварительную агрегацию или отсечение лишних промежуточных колонок раньше, сохраняя итоговые колонки и filter scope."
+        )
+    if any(keyword in card.operator.upper() for card in cards for keyword in ("JOIN", "NESTED LOOP")):
+        bullets.append(
+            "- Для JOIN-участков проверить many-to-many amplification и входные cardinality до дорогого оператора; "
+            "join keys и join type не менять без отдельной проверки плана и результата."
+        )
+    if facts_have_cardinality_or_stats_gap(facts_text):
+        bullets.append(
+            "- Перед ручным rewrite проверить и при необходимости обновить table/column stats по затронутым таблицам и join/filter колонкам; "
+            "после этого сравнить новый профиль, потому что часть cardinality mismatch может уйти без изменения SQL shape."
+        )
+    if not bullets:
+        bullets.extend(canonical_recommendation_bullets(recommendation_candidate_lines(facts_text))[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS])
+    return dedupe_preserve_order(bullets)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS]
+
+
+def action_card_recommendation_bullet(card: OptimizerActionCard) -> str:
+    details: list[str] = []
+    actual_rows = card.evidence.get("actual rows")
+    estimated_rows = card.evidence.get("estimated rows")
+    rows_ratio = card.evidence.get("actual/estimated ratio")
+    peak_memory = card.evidence.get("peak memory")
+    memory_ratio = card.evidence.get("peak/estimated memory ratio")
+    if actual_rows and estimated_rows:
+        ratio_text = f", ratio {rows_ratio}" if rows_ratio else ""
+        details.append(f"rows: фактически {actual_rows} vs оценка {estimated_rows}{ratio_text}")
+    if peak_memory:
+        memory_text = f", ratio {memory_ratio}" if memory_ratio else ""
+        details.append(f"memory: peak {peak_memory}{memory_text}")
+    evidence = f" ({'; '.join(details)})" if details else ""
+    target = rewrite_target_for_operator(card.operator)
+    return (
+        f"- Начать с {card.title} на операторе {card.operator}{evidence}: {target}. "
+        "Не менять результат запроса; проверять тот же набор выходных колонок, тот же filter scope и тот же table set."
+    )
+
+
+def rewrite_target_for_operator(operator: str) -> str:
+    upper = operator.upper()
+    if "EXCHANGE" in upper:
+        return "цель ручной правки - уменьшить rows/payload до перераспределения данных"
+    if "JOIN" in upper:
+        return "цель ручной правки - уменьшить входы JOIN через раннюю фильтрацию или предварительную агрегацию без смены join keys"
+    if "SORT" in upper:
+        return "цель ручной правки - уменьшить количество строк или ширину строк до SORT"
+    if "AGGREGATE" in upper:
+        return "цель ручной правки - уменьшить входные rows до AGGREGATE или проверить возможность более ранней агрегации"
+    if "ANALYTIC" in upper:
+        return "цель ручной правки - уменьшить входные rows/columns до ANALYTIC"
+    return "цель ручной правки - уменьшить входные rows или intermediate payload до этого оператора"
+
+
+def facts_have_finding(facts_text: str, title_fragment: str) -> bool:
+    return title_fragment.lower() in "\n".join(extract_report_markdown_section(facts_text, "## Findings")).lower()
+
+
+def facts_have_cardinality_or_stats_gap(facts_text: str) -> bool:
+    summary_lines = extract_report_markdown_section(facts_text, "## Summary")
+    for label in ("Cardinality anomalies", "Zero/unknown row estimate gaps"):
+        value = first_report_bullet_value(summary_lines, label)
+        if value and value.strip().split(maxsplit=1)[0] not in {"0", "0/0"}:
+            return True
+    lowered = facts_text.lower()
+    return "missing/incomplete stats" in lowered or "table metadata facts: partial" in lowered
 
 
 def extract_draft_sql(generated: str) -> str:
@@ -783,7 +1339,12 @@ def extract_recommendations(generated: str) -> str:
     return text
 
 
-def normalize_optimizer_recommendations(generated: str, facts_text: str) -> str:
+def normalize_optimizer_recommendations(
+    generated: str,
+    facts_text: str,
+    risk_decision: OptimizerRiskDecision | None = None,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> str:
     text = extract_recommendations(generated)
     candidates = recommendation_candidate_lines(facts_text)
     preserved: list[str] = []
@@ -811,43 +1372,83 @@ def normalize_optimizer_recommendations(generated: str, facts_text: str) -> str:
             if len(preserved) >= target_minimum:
                 break
 
-    return "\n".join(preserved[:MAX_RECOMMENDATION_ITEMS])
+    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)
+    return "\n".join(dedupe_preserve_order(specific + preserved)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS])
 
 
-def no_rewrite_recommendations(risk_decision: OptimizerRiskDecision) -> str:
+def no_rewrite_recommendations(
+    risk_decision: OptimizerRiskDecision,
+    facts_text: str,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> str:
     reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "no material SQL change"
+    prefix = [
+        "- The model response passed validation but did not contain a material SQL rewrite, so no trusted optimized query is shown.",
+        f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
+    ]
+    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+    ]
     return "\n".join(
         [
-            "- No trusted SQL rewrite is shown because the validated draft did not materially change the source query.",
-            f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
-            "- Keep the current query shape and use the deterministic analysis facts for any follow-up checks.",
+            *prefix,
+            *specific,
         ]
     )
 
 
-def output_limit_no_rewrite_recommendations() -> str:
+def output_limit_no_rewrite_recommendations(
+    facts_text: str,
+    risk_decision: OptimizerRiskDecision,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> str:
+    prefix = [
+        "- The model did not finish a complete SQL draft within the optimizer output-token budget, so no trusted optimized query is shown.",
+        "- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts.",
+    ]
+    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+    ]
     return "\n".join(
         [
-            "- No trusted SQL rewrite is shown because model generation reached the optimizer output-token budget before a complete draft was available.",
-            "- Retry with a larger QD_OPTIMIZER_NUM_PREDICT value or use recommendations-only review for this query shape.",
+            *prefix,
+            *specific,
         ]
     )
 
 
-def validation_failed_no_rewrite_recommendations(errors: list[str], risk_decision: OptimizerRiskDecision) -> str:
+def validation_failed_no_rewrite_recommendations(
+    errors: list[str],
+    risk_decision: OptimizerRiskDecision,
+    facts_text: str,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> str:
     categories = ", ".join(dedupe_preserve_order(errors)[:3]) or "deterministic validation rejected the draft"
     reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "rewrite validation failed"
+    prefix = [
+        "- The model could not write a SQL draft that passed deterministic validation, so no trusted optimized query is shown.",
+        f"- Validation category: {categories}.",
+        "- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts.",
+    ]
+    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+    ]
+    if reasons:
+        specific = [f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.", *specific]
+        specific = specific[: max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))]
     return "\n".join(
         [
-            "- No trusted SQL rewrite is shown because the generated draft did not pass deterministic SQL safety validation.",
-            f"- Validation category: {categories}.",
-            f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
-            "- Use the deterministic recommendations and rerun validation after any manual SQL rewrite.",
+            *prefix,
+            *specific,
         ]
     )
 
 
-def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
+def validate_draft_sql(
+    source_sql: str,
+    draft_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> list[str]:
     errors: list[str] = []
     errors.extend(sql_completeness_errors(draft_sql))
     try:
@@ -875,7 +1476,10 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     if cte_name_signature(source_sql) != cte_name_signature(draft_sql):
         errors.append("optimized draft changes CTE shape")
     elif cte_name_signature(source_sql) and normalized_statement_signature(source_sql) != normalized_statement_signature(draft_sql):
-        errors.append("optimized draft changes CTE query body")
+        if rewrite_recipe:
+            errors.extend(validate_recipe_backed_cte_rewrite(source_sql, draft_sql, rewrite_recipe))
+        else:
+            errors.append("optimized draft changes CTE query body")
     if top_level_join_signature(source_sql) != top_level_join_signature(draft_sql):
         errors.append("optimized draft changes top-level JOIN shape")
     if top_level_join_condition_signature(source_sql) != top_level_join_condition_signature(draft_sql):
@@ -909,6 +1513,154 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     except OptimizerSqlError as exc:
         errors.append(f"optimized draft failed final SQL safety validation: {exc}")
     return errors
+
+
+def validate_recipe_backed_cte_rewrite(
+    source_sql: str,
+    draft_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> list[str]:
+    if rewrite_recipe.recipe_id != "post_union_aggregate_pushdown":
+        return ["optimized draft changes CTE query body"]
+    errors: list[str] = []
+    source_ctes = cte_definition_map(source_sql)
+    draft_ctes = cte_definition_map(draft_sql)
+    source_union_body = source_ctes.get(rewrite_recipe.source_cte)
+    draft_union_body = draft_ctes.get(rewrite_recipe.source_cte)
+    source_aggregate_body = source_ctes.get(rewrite_recipe.aggregate_cte)
+    draft_aggregate_body = draft_ctes.get(rewrite_recipe.aggregate_cte)
+    if not source_union_body or not draft_union_body or not source_aggregate_body or not draft_aggregate_body:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+    if not has_union_all(draft_union_body):
+        errors.append("optimized draft violates rewrite recipe: UNION ALL CTE was not preserved")
+    errors.extend(validate_post_union_aggregate_branch_shape(source_union_body, draft_union_body, source_aggregate_body))
+    if not identifier_referenced(draft_aggregate_body, rewrite_recipe.source_cte):
+        errors.append("optimized draft violates rewrite recipe: downstream aggregate no longer reads the source CTE")
+    if keyword_count_any_depth(draft_aggregate_body, "GROUP") == 0:
+        errors.append("optimized draft violates rewrite recipe: downstream safety aggregate was removed")
+    if not aggregate_projection_names(draft_aggregate_body):
+        errors.append("optimized draft violates rewrite recipe: downstream aggregate measures were removed")
+    if not counter_is_subset(sql_clause_signature_counter(source_sql, "WHERE"), sql_clause_signature_counter(draft_sql, "WHERE")):
+        errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
+    if not counter_is_subset(sql_clause_signature_counter(source_sql, "ON"), sql_clause_signature_counter(draft_sql, "ON")):
+        errors.append("optimized draft violates rewrite recipe: source JOIN predicates changed")
+    if not counter_is_subset(sql_string_literal_counter(source_sql), sql_string_literal_counter(draft_sql)):
+        errors.append("optimized draft violates rewrite recipe: source string literals changed")
+    if not counter_is_subset(sql_business_numeric_literal_counter(source_sql), sql_business_numeric_literal_counter(draft_sql)):
+        errors.append("optimized draft violates rewrite recipe: source numeric literals changed")
+    return errors
+
+
+def validate_post_union_aggregate_branch_shape(
+    source_union_body: str,
+    draft_union_body: str,
+    source_aggregate_body: str,
+) -> list[str]:
+    errors: list[str] = []
+    source_branches = split_top_level_union_all_fragments(source_union_body)
+    draft_branches = split_top_level_union_all_fragments(draft_union_body)
+    if len(source_branches) != len(draft_branches):
+        return ["optimized draft violates rewrite recipe: UNION ALL branch count changed"]
+    dimensions = non_aggregate_projection_names(source_aggregate_body)
+    measures = aggregate_projection_names(source_aggregate_body)
+    unused_detail_names = post_union_unused_detail_projection_names(source_union_body, source_aggregate_body)
+    expected_projection_count = len(dimensions) + len(measures)
+    for index, branch in enumerate(draft_branches, start=1):
+        projection_names = tuple(name for item in projection_item_fragments(branch) if (name := projection_name_for_fragment(item)))
+        projection_name_set = set(projection_names)
+        if expected_projection_count and len(projection_names) != expected_projection_count:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} projection shape does not match pushed aggregate")
+        missing_dimensions = [name for name in dimensions if name not in projection_name_set]
+        if missing_dimensions:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} is missing grouped dimensions")
+        missing_measures = [name for name in measures if name not in projection_name_set]
+        if missing_measures:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} is missing aggregate measures")
+        extra_detail_names = [name for name in unused_detail_names if name in projection_name_set]
+        if extra_detail_names:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} still projects detail-only columns")
+        if keyword_count_any_depth(branch, "GROUP") == 0:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} is not pre-aggregated")
+        if not aggregate_projection_names(branch):
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} has no aggregate measures")
+    return dedupe_preserve_order(errors)
+
+
+def post_union_unused_detail_projection_names(source_union_body: str, source_aggregate_body: str) -> tuple[str, ...]:
+    downstream_names = set(non_aggregate_projection_names(source_aggregate_body)) | set(aggregate_projection_names(source_aggregate_body))
+    names: list[str] = []
+    for branch in split_top_level_union_all_fragments(source_union_body):
+        for item in projection_item_fragments(branch):
+            name = projection_name_for_fragment(item)
+            if name and name not in downstream_names:
+                names.append(name)
+    return tuple(dedupe_preserve_order(names))
+
+
+def counter_is_subset(expected: Counter[str], actual: Counter[str]) -> bool:
+    return all(actual[item] >= count for item, count in expected.items())
+
+
+def sql_clause_signature_counter(sql: str, keyword: str) -> Counter[str]:
+    return Counter(signature for signature in all_clause_signatures(sql, keyword) if signature)
+
+
+def all_clause_signatures(sql: str, keyword: str) -> list[str]:
+    tokens = tokenize_sql(sql)
+    depth_before = token_depths_before(tokens)
+    target = keyword.upper()
+    boundaries = set(CLAUSE_SIGNATURE_BOUNDARIES) | {"JOIN"}
+    signatures: list[str] = []
+    for index, token in enumerate(tokens):
+        if token.upper() != target:
+            continue
+        clause_depth = depth_before[index]
+        clause_tokens: list[str] = []
+        for cursor in range(index + 1, len(tokens)):
+            cursor_token = tokens[cursor]
+            cursor_depth = depth_before[cursor]
+            if cursor_token == ")" and cursor_depth <= clause_depth:
+                break
+            if cursor_depth < clause_depth:
+                break
+            if cursor_depth == clause_depth and cursor_token.upper() in boundaries:
+                break
+            clause_tokens.append(cursor_token)
+        if clause_tokens:
+            signatures.append(normalize_sql_signature_fragment(" ".join(clause_tokens)))
+    return signatures
+
+
+def token_depths_before(tokens: list[str]) -> list[int]:
+    depth = 0
+    result: list[int] = []
+    for token in tokens:
+        result.append(depth)
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+    return result
+
+
+def sql_string_literal_counter(sql: str) -> Counter[str]:
+    return Counter(token for token in tokenize_sql(sql) if token.startswith(("'", '"')))
+
+
+def sql_business_numeric_literal_counter(sql: str) -> Counter[str]:
+    values: list[str] = []
+    for token in tokenize_sql(sql):
+        if not re.fullmatch(r"\d+(?:\.\d+)?", token):
+            continue
+        try:
+            numeric_value = float(token)
+        except ValueError:
+            continue
+        if numeric_value >= 10:
+            values.append(token)
+    return Counter(values)
 
 
 def sql_completeness_errors(sql: str) -> list[str]:
@@ -1057,6 +1809,7 @@ def write_marker(
     facts_text: str,
     source_scope: str,
     risk_decision: OptimizerRiskDecision,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
     generation_metadata: dict[str, object] | None = None,
 ) -> None:
     draft_path = case_dir / output_name
@@ -1076,6 +1829,8 @@ def write_marker(
     }
     if generation_metadata:
         marker["generation_metadata"] = generation_metadata
+    if rewrite_recipe:
+        marker["rewrite_recipe"] = rewrite_recipe.recipe_id
     (case_dir / MARKER_NAME).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
 
 
@@ -1087,6 +1842,7 @@ def write_recommendations_marker(
     facts_text: str,
     source_scope: str,
     risk_decision: OptimizerRiskDecision,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
     output_kind: str = "recommendations_only",
     fallback_reason: str | None = None,
     validation_errors: list[str] | None = None,
@@ -1115,6 +1871,8 @@ def write_recommendations_marker(
         marker["validation_errors"] = dedupe_preserve_order(validation_errors)
     if generation_metadata:
         marker["generation_metadata"] = generation_metadata
+    if rewrite_recipe:
+        marker["rewrite_recipe"] = rewrite_recipe.recipe_id
     (case_dir / MARKER_NAME).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
 
 
@@ -1144,6 +1902,7 @@ def main(argv: list[str] | None = None) -> int:
         extract_referenced_tables(source_sql.sql)
         facts_text = facts_path.read_text(encoding="utf-8", errors="replace")
         risk_decision = decide_optimizer_risk_mode(source_sql.sql)
+        rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql.sql, facts_text)
         prompt = build_prompt(
             source_sql=source_sql.sql,
             facts_text=facts_text,
@@ -1168,7 +1927,7 @@ def main(argv: list[str] | None = None) -> int:
                 num_predict=OPTIMIZER_NUM_PREDICT,
             )
             generated = response.text
-            recommendations = normalize_optimizer_recommendations(generated, facts_text)
+            recommendations = normalize_optimizer_recommendations(generated, facts_text, risk_decision, rewrite_recipe)
             generation_metadata = llm_generation_metadata(
                 response,
                 prompt=recommendations_prompt,
@@ -1184,6 +1943,7 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text=facts_text,
                 source_scope=source_sql.scope,
                 risk_decision=risk_decision,
+                rewrite_recipe=rewrite_recipe,
                 generation_metadata=generation_metadata,
             )
             print(f"{PROGRESS_PREFIX} optimizer recommendations done", file=sys.stderr)
@@ -1201,7 +1961,10 @@ def main(argv: list[str] | None = None) -> int:
         if response.done_reason == "length":
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
-            recommendations_path.write_text(output_limit_no_rewrite_recommendations() + "\n", encoding="utf-8")
+            recommendations_path.write_text(
+                output_limit_no_rewrite_recommendations(facts_text, risk_decision, rewrite_recipe) + "\n",
+                encoding="utf-8",
+            )
             write_recommendations_marker(
                 case_dir,
                 RECOMMENDATIONS_NAME,
@@ -1209,6 +1972,7 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text=facts_text,
                 source_scope=source_sql.scope,
                 risk_decision=risk_decision,
+                rewrite_recipe=rewrite_recipe,
                 output_kind="no_rewrite",
                 fallback_reason="output_limit",
                 generation_metadata=generation_metadata,
@@ -1219,12 +1983,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         draft_sql = extract_draft_sql(generated)
-        errors = validate_draft_sql(source_sql.sql, draft_sql)
+        errors = validate_draft_sql(source_sql.sql, draft_sql, rewrite_recipe)
         if errors:
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
-                validation_failed_no_rewrite_recommendations(errors, risk_decision) + "\n",
+                validation_failed_no_rewrite_recommendations(errors, risk_decision, facts_text, rewrite_recipe) + "\n",
                 encoding="utf-8",
             )
             write_recommendations_marker(
@@ -1234,6 +1998,7 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text=facts_text,
                 source_scope=source_sql.scope,
                 risk_decision=risk_decision,
+                rewrite_recipe=rewrite_recipe,
                 output_kind="no_rewrite",
                 fallback_reason="validation_failed",
                 validation_errors=errors,
@@ -1245,7 +2010,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if not draft_has_material_change(source_sql.sql, draft_sql):
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
-            recommendations_path.write_text(no_rewrite_recommendations(risk_decision) + "\n", encoding="utf-8")
+            recommendations_path.write_text(
+                no_rewrite_recommendations(risk_decision, facts_text, rewrite_recipe) + "\n",
+                encoding="utf-8",
+            )
             write_recommendations_marker(
                 case_dir,
                 RECOMMENDATIONS_NAME,
@@ -1253,6 +2021,7 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text=facts_text,
                 source_scope=source_sql.scope,
                 risk_decision=risk_decision,
+                rewrite_recipe=rewrite_recipe,
                 output_kind="no_rewrite",
                 fallback_reason="no_material_change",
                 generation_metadata=generation_metadata,
@@ -1271,6 +2040,7 @@ def main(argv: list[str] | None = None) -> int:
             facts_text=facts_text,
             source_scope=source_sql.scope,
             risk_decision=risk_decision,
+            rewrite_recipe=rewrite_recipe,
             generation_metadata=generation_metadata,
         )
         print(f"{PROGRESS_PREFIX} optimized query draft done", file=sys.stderr)
