@@ -73,6 +73,7 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_TIMEOUT_SEC = 1800
 DEFAULT_MODEL = "qwen3-coder:30b-a3b-q8_0"
+DEFAULT_OPTIMIZER_MODEL = os.getenv("QD_OPTIMIZER_MODEL")
 DEFAULT_CORPUS_DIR = Path("cases/cm-corpus")
 REPORT_VALIDATION_EXIT_CODE = 4
 LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost"}
@@ -181,6 +182,7 @@ class WebSettings:
     allow_nonlocal_web_bind: bool = False
     max_profile_bytes: int | None = None
     model: str = DEFAULT_MODEL
+    optimizer_model: str | None = None
     timeout_sec: int = DEFAULT_TIMEOUT_SEC
     repo_dir: Path = Path(__file__).resolve().parent
     corpus_dir: Path = DEFAULT_CORPUS_DIR
@@ -596,7 +598,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
         help=f"Override collector max profile bytes. Default comes from config or {cm_collector.DEFAULT_MAX_PROFILE_BYTES}.",
     )
-    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model. Default: {DEFAULT_MODEL}.")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model for reports. Default: {DEFAULT_MODEL}.")
+    parser.add_argument(
+        "--optimizer-model",
+        help="Ollama model for Query LLM optimizer. Defaults to config/env value, otherwise --model.",
+    )
     parser.add_argument(
         "--timeout-sec",
         type=positive_int,
@@ -1012,12 +1018,16 @@ def build_optimized_query_command(case_dir: Path, settings: WebSettings) -> list
         str(settings.repo_dir / "query_doctor_optimize_query.py"),
         str(case_dir),
         "--model",
-        settings.model,
+        optimizer_model_for_settings(settings),
         "--out",
         OPTIMIZED_QUERY_NAME,
         "--keep-alive",
         "0",
     ]
+
+
+def optimizer_model_for_settings(settings: WebSettings) -> str:
+    return settings.optimizer_model or settings.model
 
 
 def collect_case(
@@ -1492,6 +1502,12 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             default=None,
         ),
         model=args.model,
+        optimizer_model=first_string_value(
+            args.optimizer_model,
+            optional_config_string(config_values, "optimizer_model"),
+            DEFAULT_OPTIMIZER_MODEL,
+            args.model,
+        ),
         timeout_sec=args.timeout_sec,
         batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
         metadata_coordinator=first_string_value(

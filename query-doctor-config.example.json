@@ -13,6 +13,7 @@
   "since_hours": 1,
   "limit": 1,
   "max_profile_bytes": 52428800,
+  "optimizer_model": "",
   "collect_cm_timeseries": false,
   "cm_timeseries_padding_sec": 120,
   "max_timeseries_bytes": 2097152,
