@@ -1553,7 +1553,7 @@ def profile_digest_text_candidates(profile_digest_text: str) -> list[str]:
 def extract_labeled_sql_statement(text: str) -> str | None:
     label_match = re.search(
         r"(?ims)^\s*(?:Sql|SQL)\s+Statement\s*:\s*"
-        r"(?P<sql>(?:WITH|SELECT|INSERT)\b.*?)(?=\n\s{2,}[A-Z][A-Za-z0-9 /_-]{1,80}:\s|\n\s*$|\Z)",
+        r"(?P<sql>(?:WITH|SELECT|INSERT)\b.*?)(?=\n\s{2,}[A-Z][A-Za-z0-9 /_-]{1,80}:\s|\Z)",
         text,
     )
     if label_match:
@@ -1561,7 +1561,7 @@ def extract_labeled_sql_statement(text: str) -> str | None:
 
     query_match = re.search(
         r"(?ims)\bquery\(\)\s*:\s*query\s*=\s*"
-        r"(?P<sql>(?:WITH|SELECT|INSERT)\b.*?)(?=\n\s{2,}[A-Z][A-Za-z0-9 /_-]{1,80}:\s|\n\s*$|\Z)",
+        r"(?P<sql>(?:WITH|SELECT|INSERT)\b.*?)(?=\n\s{2,}[A-Z][A-Za-z0-9 /_-]{1,80}:\s|\Z)",
         text,
     )
     if query_match:
@@ -1621,11 +1621,50 @@ def extract_default_database(profile_digest_text: str) -> str | None:
 
 
 def strip_sql_comments_and_strings(sql: str) -> str:
-    text = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
-    text = re.sub(r"--[^\n\r]*", " ", text)
-    text = re.sub(r"'(?:''|[^'])*'", "''", text)
-    text = re.sub(r'"(?:""|[^"])*"', '""', text)
-    return text
+    out: list[str] = []
+    index = 0
+    while index < len(sql):
+        char = sql[index]
+        next_char = sql[index + 1] if index + 1 < len(sql) else ""
+
+        if char == "-" and next_char == "-":
+            out.append(" ")
+            index += 2
+            while index < len(sql) and sql[index] not in "\r\n":
+                index += 1
+            continue
+
+        if char == "/" and next_char == "*":
+            out.append(" ")
+            index += 2
+            while index + 1 < len(sql) and not (sql[index] == "*" and sql[index + 1] == "/"):
+                index += 1
+            index = min(index + 2, len(sql))
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+            out.append(" ")
+            index += 1
+            while index < len(sql):
+                current = sql[index]
+                if current == "\\" and index + 1 < len(sql):
+                    index += 2
+                    continue
+                if current == quote:
+                    if index + 1 < len(sql) and sql[index + 1] == quote:
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            out.append(" ")
+            continue
+
+        out.append(char)
+        index += 1
+
+    return "".join(out)
 
 
 def sql_tokens(sql: str) -> list[str]:
