@@ -137,8 +137,8 @@ OPTIMIZED_QUERY_RECOMMENDATIONS_NAME = "optimized_query_recommendations.md"
 OPTIMIZED_QUERY_PARTIAL_NAME = "optimized_query.partial.txt"
 OPTIMIZED_QUERY_VALIDATION_MARKER = "optimized_query.validated.json"
 WEB_REPORT_VALIDATION_MODE = "strict"
-OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION = 1
-OPTIMIZED_QUERY_VALIDATION_MODE = "strict"
+OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION = 2
+OPTIMIZED_QUERY_VALIDATION_MODE = "strict_v2"
 TABLE_METADATA_SUMMARY_KEYS = {
     "context file": "context file",
     "context path": "context path",

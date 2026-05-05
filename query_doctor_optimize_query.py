@@ -39,8 +39,8 @@ OUTPUT_NAME = "optimized_query.sql"
 RECOMMENDATIONS_NAME = "optimized_query_recommendations.md"
 MARKER_NAME = "optimized_query.validated.json"
 PARTIAL_NAME = "optimized_query.partial.txt"
-MARKER_SCHEMA_VERSION = 1
-VALIDATION_MODE = "strict"
+MARKER_SCHEMA_VERSION = 2
+VALIDATION_MODE = "strict_v2"
 RECOMMENDATION_OUTPUT_KINDS = {"recommendations_only", "no_rewrite"}
 MAX_SOURCE_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_SOURCE_SQL_BYTES", "262144"))
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
@@ -317,6 +317,8 @@ def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
     join_count = len(top_level_join_signature(source_sql))
     token_count = len(tokens)
     set_operator_count = sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS)
+    if cte_count:
+        reasons.append("cte_body_validation_not_proven")
     if cte_count > RECOMMENDATIONS_ONLY_CTE_THRESHOLD:
         reasons.append("too_many_ctes_for_safe_rewrite")
     if join_count > RECOMMENDATIONS_ONLY_JOIN_THRESHOLD:
@@ -604,7 +606,8 @@ def clean_projection_identifier(token: str) -> str | None:
 
 def build_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
     candidates = recommendation_candidate_lines(facts_text)
-    digest = build_report_contract_digest(facts_text)
+    digest = build_optimizer_fact_digest(facts_text)
+    shape_digest = build_sql_shape_digest(source_sql, risk_decision)
     candidate_lines = "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
     mode_contract = optimizer_mode_contract(risk_decision)
     return f"""
@@ -631,13 +634,13 @@ PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
 {candidate_lines}
 PYTHON-OWNED RECOMMENDATION CANDIDATES END
 
-PYTHON-OWNED REPORT CONTRACT DIGEST BEGIN
-{json.dumps(digest, ensure_ascii=False, indent=2, sort_keys=True)}
-PYTHON-OWNED REPORT CONTRACT DIGEST END
+PYTHON-OWNED SQL SHAPE DIGEST BEGIN
+{json.dumps(shape_digest, ensure_ascii=False, indent=2, sort_keys=True)}
+PYTHON-OWNED SQL SHAPE DIGEST END
 
-DETERMINISTIC FACTS BEGIN
-{facts_text}
-DETERMINISTIC FACTS END
+PYTHON-OWNED OPTIMIZER FACT DIGEST BEGIN
+{json.dumps(digest, ensure_ascii=False, indent=2, sort_keys=True)}
+PYTHON-OWNED OPTIMIZER FACT DIGEST END
 
 INPUT SQL BEGIN
 {source_sql}
@@ -647,7 +650,8 @@ INPUT SQL END
 
 def build_recommendations_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
     candidates = recommendation_candidate_lines(facts_text)
-    digest = build_report_contract_digest(facts_text)
+    digest = build_optimizer_fact_digest(facts_text)
+    shape_digest = build_sql_shape_digest(source_sql, risk_decision)
     candidate_lines = "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
     reasons = ", ".join(risk_decision.reasons) or "rewrite_too_risky"
     return f"""
@@ -674,17 +678,13 @@ PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
 {candidate_lines}
 PYTHON-OWNED RECOMMENDATION CANDIDATES END
 
-PYTHON-OWNED REPORT CONTRACT DIGEST BEGIN
+PYTHON-OWNED SQL SHAPE DIGEST BEGIN
+{json.dumps(shape_digest, ensure_ascii=False, indent=2, sort_keys=True)}
+PYTHON-OWNED SQL SHAPE DIGEST END
+
+PYTHON-OWNED OPTIMIZER FACT DIGEST BEGIN
 {json.dumps(digest, ensure_ascii=False, indent=2, sort_keys=True)}
-PYTHON-OWNED REPORT CONTRACT DIGEST END
-
-DETERMINISTIC FACTS BEGIN
-{facts_text}
-DETERMINISTIC FACTS END
-
-INPUT SQL SHAPE CONTEXT BEGIN
-{source_sql}
-INPUT SQL SHAPE CONTEXT END
+PYTHON-OWNED OPTIMIZER FACT DIGEST END
 """.strip()
 
 
@@ -729,6 +729,30 @@ def optimizer_temperature(requested_temperature: float, risk_decision: Optimizer
     if risk_decision.mode in {"conservative_rewrite", "recommendations_only"}:
         return 0.0
     return requested_temperature
+
+
+def build_optimizer_fact_digest(facts_text: str) -> dict[str, object]:
+    digest = build_report_contract_digest(facts_text)
+    return {
+        "summary": digest.get("summary", {}),
+        "evidence_flags": digest.get("evidence_flags", {}),
+        "cm_metrics_correlation": digest.get("cm_metrics_correlation", {}),
+        "recommendation_candidates": digest.get("recommendation_candidates", []),
+        "action_card_titles": digest.get("action_card_titles", []),
+        "finding_titles": digest.get("finding_titles", []),
+    }
+
+
+def build_sql_shape_digest(source_sql: str, risk_decision: OptimizerRiskDecision) -> dict[str, object]:
+    tokens = extract_statement_tokens(source_sql)
+    return {
+        "cte_count": len(collect_cte_names(tokens)),
+        "top_level_join_count": len(top_level_join_signature(source_sql)),
+        "set_operator_count": sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS),
+        "statement_token_count": len(tokens),
+        "risk_mode": risk_decision.mode,
+        "risk_reasons": list(risk_decision.reasons),
+    }
 
 
 def extract_draft_sql(generated: str) -> str:
@@ -810,6 +834,19 @@ def output_limit_no_rewrite_recommendations() -> str:
     )
 
 
+def validation_failed_no_rewrite_recommendations(errors: list[str], risk_decision: OptimizerRiskDecision) -> str:
+    categories = ", ".join(dedupe_preserve_order(errors)[:3]) or "deterministic validation rejected the draft"
+    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "rewrite validation failed"
+    return "\n".join(
+        [
+            "- No trusted SQL rewrite is shown because the generated draft did not pass deterministic SQL safety validation.",
+            f"- Validation category: {categories}.",
+            f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
+            "- Use the deterministic recommendations and rerun validation after any manual SQL rewrite.",
+        ]
+    )
+
+
 def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     errors: list[str] = []
     errors.extend(sql_completeness_errors(draft_sql))
@@ -837,6 +874,8 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
             errors.append(f"optimized draft changes top-level {operator} shape")
     if cte_name_signature(source_sql) != cte_name_signature(draft_sql):
         errors.append("optimized draft changes CTE shape")
+    elif cte_name_signature(source_sql) and normalized_statement_signature(source_sql) != normalized_statement_signature(draft_sql):
+        errors.append("optimized draft changes CTE query body")
     if top_level_join_signature(source_sql) != top_level_join_signature(draft_sql):
         errors.append("optimized draft changes top-level JOIN shape")
     if top_level_join_condition_signature(source_sql) != top_level_join_condition_signature(draft_sql):
@@ -973,11 +1012,33 @@ def dedupe_preserve_order(items: list[str]) -> list[str]:
 
 
 def remove_stale_trusted_optimizer_outputs(case_dir: Path, output_name: str) -> None:
-    for name in (output_name, MARKER_NAME):
+    for name in (output_name, PARTIAL_NAME, MARKER_NAME):
         try:
             (case_dir / name).unlink()
         except FileNotFoundError:
             continue
+
+
+def llm_generation_metadata(
+    response: StreamedLLMResponse,
+    *,
+    prompt: str,
+    source_sql: str,
+    generated: str,
+) -> dict[str, object]:
+    metadata: dict[str, object] = {
+        "num_predict": OPTIMIZER_NUM_PREDICT,
+        "prompt_chars": len(prompt),
+        "source_sql_chars": len(source_sql),
+        "generated_chars": len(generated),
+    }
+    if response.done_reason:
+        metadata["done_reason"] = response.done_reason
+    if response.eval_count is not None:
+        metadata["eval_count"] = response.eval_count
+    if response.prompt_eval_count is not None:
+        metadata["prompt_eval_count"] = response.prompt_eval_count
+    return metadata
 
 
 def text_sha256(text: str) -> str:
@@ -996,6 +1057,7 @@ def write_marker(
     facts_text: str,
     source_scope: str,
     risk_decision: OptimizerRiskDecision,
+    generation_metadata: dict[str, object] | None = None,
 ) -> None:
     draft_path = case_dir / output_name
     marker = {
@@ -1012,6 +1074,8 @@ def write_marker(
         "validation_mode": VALIDATION_MODE,
         "source": "query_doctor_optimize_query",
     }
+    if generation_metadata:
+        marker["generation_metadata"] = generation_metadata
     (case_dir / MARKER_NAME).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
 
 
@@ -1024,6 +1088,9 @@ def write_recommendations_marker(
     source_scope: str,
     risk_decision: OptimizerRiskDecision,
     output_kind: str = "recommendations_only",
+    fallback_reason: str | None = None,
+    validation_errors: list[str] | None = None,
+    generation_metadata: dict[str, object] | None = None,
 ) -> None:
     if output_kind not in RECOMMENDATION_OUTPUT_KINDS:
         raise QueryOptimizationError("Unsupported optimizer recommendations output kind.")
@@ -1042,6 +1109,12 @@ def write_recommendations_marker(
         "validation_mode": VALIDATION_MODE,
         "source": "query_doctor_optimize_query",
     }
+    if fallback_reason:
+        marker["fallback_reason"] = fallback_reason
+    if validation_errors:
+        marker["validation_errors"] = dedupe_preserve_order(validation_errors)
+    if generation_metadata:
+        marker["generation_metadata"] = generation_metadata
     (case_dir / MARKER_NAME).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
 
 
@@ -1096,6 +1169,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             generated = response.text
             recommendations = normalize_optimizer_recommendations(generated, facts_text)
+            generation_metadata = llm_generation_metadata(
+                response,
+                prompt=recommendations_prompt,
+                source_sql=source_sql.sql,
+                generated=generated,
+            )
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(recommendations.rstrip() + "\n", encoding="utf-8")
             write_recommendations_marker(
@@ -1105,6 +1184,7 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text=facts_text,
                 source_scope=source_sql.scope,
                 risk_decision=risk_decision,
+                generation_metadata=generation_metadata,
             )
             print(f"{PROGRESS_PREFIX} optimizer recommendations done", file=sys.stderr)
             return 0
@@ -1117,6 +1197,7 @@ def main(argv: list[str] | None = None) -> int:
             num_predict=OPTIMIZER_NUM_PREDICT,
         )
         generated = response.text
+        generation_metadata = llm_generation_metadata(response, prompt=prompt, source_sql=source_sql.sql, generated=generated)
         if response.done_reason == "length":
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
@@ -1129,6 +1210,8 @@ def main(argv: list[str] | None = None) -> int:
                 source_scope=source_sql.scope,
                 risk_decision=risk_decision,
                 output_kind="no_rewrite",
+                fallback_reason="output_limit",
+                generation_metadata=generation_metadata,
             )
             print(
                 f"{PROGRESS_PREFIX} optimizer output budget reached before complete trusted draft",
@@ -1139,10 +1222,27 @@ def main(argv: list[str] | None = None) -> int:
         errors = validate_draft_sql(source_sql.sql, draft_sql)
         if errors:
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
-            (case_dir / PARTIAL_NAME).write_text(draft_sql, encoding="utf-8")
+            recommendations_path = case_dir / RECOMMENDATIONS_NAME
+            recommendations_path.write_text(
+                validation_failed_no_rewrite_recommendations(errors, risk_decision) + "\n",
+                encoding="utf-8",
+            )
+            write_recommendations_marker(
+                case_dir,
+                RECOMMENDATIONS_NAME,
+                source_sql=source_sql.sql,
+                facts_text=facts_text,
+                source_scope=source_sql.scope,
+                risk_decision=risk_decision,
+                output_kind="no_rewrite",
+                fallback_reason="validation_failed",
+                validation_errors=errors,
+                generation_metadata=generation_metadata,
+            )
             for error in errors:
                 print(f"{PROGRESS_PREFIX} ERROR: {error}", file=sys.stderr)
-            return 4
+            print(f"{PROGRESS_PREFIX} optimizer no rewrite recommended after validation failure", file=sys.stderr)
+            return 0
         if not draft_has_material_change(source_sql.sql, draft_sql):
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(no_rewrite_recommendations(risk_decision) + "\n", encoding="utf-8")
@@ -1154,6 +1254,8 @@ def main(argv: list[str] | None = None) -> int:
                 source_scope=source_sql.scope,
                 risk_decision=risk_decision,
                 output_kind="no_rewrite",
+                fallback_reason="no_material_change",
+                generation_metadata=generation_metadata,
             )
             print(f"{PROGRESS_PREFIX} optimizer no rewrite recommended", file=sys.stderr)
             return 0
@@ -1169,6 +1271,7 @@ def main(argv: list[str] | None = None) -> int:
             facts_text=facts_text,
             source_scope=source_sql.scope,
             risk_decision=risk_decision,
+            generation_metadata=generation_metadata,
         )
         print(f"{PROGRESS_PREFIX} optimized query draft done", file=sys.stderr)
         return 0

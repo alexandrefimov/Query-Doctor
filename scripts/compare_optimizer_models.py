@@ -159,6 +159,13 @@ def run_case_model(
     elapsed = round(time.time() - started, 2)
     marker = read_marker(run_dir)
     output_kind = str(marker.get("output_kind") or "")
+    fallback_reason = str(marker.get("fallback_reason") or "")
+    generation_metadata = marker.get("generation_metadata")
+    if not isinstance(generation_metadata, dict):
+        generation_metadata = {}
+    validation_errors = marker.get("validation_errors")
+    if not isinstance(validation_errors, list):
+        validation_errors = []
     if completed.returncode == 0 and marker:
         status = "ok"
         validation_status = "passed"
@@ -173,6 +180,9 @@ def run_case_model(
         "status": status,
         "validation_status": validation_status,
         "output_kind": output_kind or ("partial_untrusted" if (run_dir / PARTIAL_NAME).is_file() else ""),
+        "fallback_reason": fallback_reason,
+        "generation_metadata": generation_metadata,
+        "validation_errors": [safe_error_summary(error, max_chars=200) for error in validation_errors],
         "elapsed_sec": elapsed,
         "error_summary": "" if status == "ok" else extract_error_summary(completed.stderr),
     }
@@ -188,12 +198,14 @@ def build_aggregates(results: list[dict[str, Any]]) -> dict[str, Any]:
                 "runs": 0,
                 "status_counts": defaultdict(int),
                 "output_kind_counts": defaultdict(int),
+                "fallback_reason_counts": defaultdict(int),
                 "elapsed_sec": [],
             },
         )
         bucket["runs"] += 1
         bucket["status_counts"][str(result.get("status") or "unknown")] += 1
         bucket["output_kind_counts"][str(result.get("output_kind") or "none")] += 1
+        bucket["fallback_reason_counts"][str(result.get("fallback_reason") or "none")] += 1
         if result.get("status") == "ok" and isinstance(result.get("elapsed_sec"), (int, float)):
             bucket["elapsed_sec"].append(float(result["elapsed_sec"]))
 
@@ -211,6 +223,7 @@ def build_aggregates(results: list[dict[str, Any]]) -> dict[str, Any]:
             "mean_elapsed_sec": sum(elapsed) / len(elapsed) if elapsed else None,
             "status_counts": dict(bucket["status_counts"]),
             "output_kind_counts": dict(bucket["output_kind_counts"]),
+            "fallback_reason_counts": dict(bucket["fallback_reason_counts"]),
         }
     return {"by_model": rendered}
 
