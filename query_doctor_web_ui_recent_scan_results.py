@@ -26,6 +26,7 @@ QUERY_GROUPS = {
     "bad": ("Bad queries", {"failed", "high"}),
     "suspicious": ("Suspicious queries", {"suspicious"}),
     "optimization": ("Optimization candidates", set()),
+    "stats": ("Stats refresh candidates", set()),
     "good": ("Good queries", {"clean"}),
 }
 DEFAULT_QUERY_GROUP = "bad"
@@ -138,6 +139,8 @@ def filter_rows_by_query_group(
     normalized = normalize_query_group(query_group)
     if normalized == "optimization":
         return tuple(row for row in rows if row.optimization_tier in {"high", "medium", "low"})
+    if normalized == "stats":
+        return tuple(row for row in rows if row.stats_tier in {"high", "medium", "low", "unknown"})
     _label, severities = QUERY_GROUPS[normalized]
     return tuple(row for row in rows if row.score_severity in severities)
 
@@ -146,8 +149,26 @@ def sort_rows_for_query_group(
     rows: tuple[RecentScanCaseRowView, ...],
     query_group: str,
 ) -> tuple[RecentScanCaseRowView, ...]:
-    if normalize_query_group(query_group) != "optimization":
+    normalized = normalize_query_group(query_group)
+    if normalized not in {"optimization", "stats"}:
         return rows
+    if normalized == "stats":
+        stats_tier_order = {"high": 4, "medium": 3, "low": 2, "unknown": 1, "not_likely": 0}
+        confidence_order = {"high": 2, "medium": 1, "low": 0}
+        impact_order = {"high": 2, "medium": 1, "low": 0}
+        return tuple(
+            sorted(
+                rows,
+                key=lambda row: (
+                    -stats_tier_order.get(row.stats_tier, 0),
+                    -row.stats_score,
+                    -confidence_order.get(row.stats_confidence, 0),
+                    -impact_order.get(row.stats_impact, 0),
+                    -numeric_value(row.duration_sec),
+                    row.rank,
+                ),
+            )
+        )
     tier_order = {"high": 3, "medium": 2, "low": 1, "not_likely": 0}
     impact_order = {"high": 2, "medium": 1, "low": 0}
     return tuple(
@@ -185,6 +206,8 @@ def render_query_group_switcher(
         key: (
             sum(1 for row in rows_for_counts if row.optimization_tier in {"high", "medium", "low"})
             if key == "optimization"
+            else sum(1 for row in rows_for_counts if row.stats_tier in {"high", "medium", "low", "unknown"})
+            if key == "stats"
             else sum(1 for row in rows_for_counts if row.score_severity in severities)
         )
         for key, (_label, severities) in QUERY_GROUPS.items()
@@ -324,13 +347,40 @@ def summary_cell(view: RecentScanCaseRowView) -> str:
             f"{escape_value(why)}.{escape_value(review)}"
             "</span>"
         )
+    stats_html = ""
+    if view.stats_tier in {"high", "medium", "low", "unknown"}:
+        why = f"Why: {view.stats_summary}" if view.stats_summary else "Why: stats-planning evidence"
+        review = f" Review first: {view.stats_review_areas}" if view.stats_review_areas else ""
+        confirm = f" Confirm: {view.stats_required_confirmation}" if view.stats_required_confirmation else ""
+        stats_html = (
+            "<span>"
+            f"Stats refresh candidate: {escape_value(view.stats_tier.title())}. "
+            f"Speed benefit: {escape_value(view.stats_speed_benefit.title())}. "
+            f"Need: {escape_value(stats_need_label(view.stats_need_type))}. "
+            f"Confidence: {escape_value(view.stats_confidence.title())}. "
+            f"{escape_value(why)}.{escape_value(review)}{escape_value(confirm)}"
+            "</span>"
+        )
     return (
         "<td class=\"batch-cell--summary\">"
         f"<strong>{escape_value(view.signal_summary)}</strong>"
         f"{optimization_html}"
+        f"{stats_html}"
         f"{reason_html}"
         "</td>"
     )
+
+
+def stats_need_label(value: Any) -> str:
+    labels = {
+        "table_stats": "table/partition stats",
+        "column_stats": "column stats",
+        "table_and_column_stats": "table/partition stats first, then column stats",
+        "stats_possibly_stale": "possibly stale stats",
+        "insufficient_metadata": "insufficient metadata",
+        "not_likely_stats_issue": "not likely a stats issue",
+    }
+    return labels.get(str(value), str(value))
 
 
 def metadata_cell(status: Any) -> str:

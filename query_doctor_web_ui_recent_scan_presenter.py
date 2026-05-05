@@ -64,6 +64,15 @@ class RecentScanCaseRowView:
     optimization_confidence: str
     optimization_summary: str
     optimization_review_areas: str
+    stats_tier: str
+    stats_score: int
+    stats_impact: str
+    stats_confidence: str
+    stats_need_type: str
+    stats_speed_benefit: str
+    stats_summary: str
+    stats_review_areas: str
+    stats_required_confirmation: str
     score_value: float
     score_severity: str
     has_failure: bool
@@ -172,6 +181,7 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
     suspicious_count = sum(1 for row in rows if row.score_severity == "suspicious")
     good_count = sum(1 for row in rows if row.score_severity == "clean")
     optimization_count = sum(1 for row in rows if row.optimization_tier in {"high", "medium", "low"})
+    stats_count = sum(1 for row in rows if row.stats_tier in {"high", "medium", "low", "unknown"})
     metadata_count = sum(1 for row in rows if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"})
     header_items = (
         ("total", len(rows)),
@@ -179,6 +189,7 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
         ("suspicious", suspicious_count),
         ("good", good_count),
         ("optimization", optimization_count),
+        ("stats", stats_count),
         ("analyzed", safe_display_value(summary.get("selected_count"))),
         ("CM inspected", safe_display_value(summary.get("summaries_inspected"))),
         ("metadata", metadata_count),
@@ -200,6 +211,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
     metadata_status = safe_display_value(case.get("metadata_status"))
     report_status = batch_report_status(case)
     optimization = query_optimization_candidate_view(case)
+    stats_candidate = stats_optimization_candidate_view(case)
     return RecentScanCaseRowView(
         rank=rank,
         case_id=batch_case_id(case),
@@ -229,6 +241,15 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         optimization_confidence=optimization["confidence"],
         optimization_summary=optimization["summary"],
         optimization_review_areas=optimization["review_areas"],
+        stats_tier=stats_candidate["tier"],
+        stats_score=stats_candidate["score"],
+        stats_impact=stats_candidate["impact"],
+        stats_confidence=stats_candidate["confidence"],
+        stats_need_type=stats_candidate["need_type"],
+        stats_speed_benefit=stats_candidate["speed_benefit"],
+        stats_summary=stats_candidate["summary"],
+        stats_review_areas=stats_candidate["review_areas"],
+        stats_required_confirmation=stats_candidate["required_confirmation"],
         score_value=numeric_value(case.get("score")),
         score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
@@ -663,6 +684,38 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         "confidence": confidence,
         "summary": "; ".join(safe_reasons),
         "review_areas": "; ".join(safe_review),
+    }
+
+
+def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
+    candidate = case.get("stats_optimization_candidate")
+    candidate = candidate if isinstance(candidate, dict) else {}
+    tier = safe_display_text(candidate.get("tier") or "not_likely")
+    impact = safe_display_text(candidate.get("impact") or "low")
+    confidence = safe_display_text(candidate.get("confidence") or "low")
+    need_type = safe_display_text(candidate.get("need_type") or "not_likely_stats_issue")
+    speed_benefit = safe_display_text(candidate.get("speed_benefit") or "unknown")
+    score = numeric_count(candidate.get("score")) or 0
+    reasons = candidate.get("reasons")
+    safe_reasons = [safe_optimization_display_text(reason) for reason in reasons[:3]] if isinstance(reasons, list) else []
+    review = candidate.get("suggested_review_areas")
+    safe_review = [safe_optimization_display_text(item) for item in review[:3]] if isinstance(review, list) else []
+    confirmation = candidate.get("required_confirmation")
+    safe_confirmation = (
+        [safe_optimization_display_text(item) for item in confirmation[:2]]
+        if isinstance(confirmation, list)
+        else []
+    )
+    return {
+        "tier": tier,
+        "score": score,
+        "impact": impact,
+        "confidence": confidence,
+        "need_type": need_type,
+        "speed_benefit": speed_benefit,
+        "summary": "; ".join(safe_reasons),
+        "review_areas": "; ".join(safe_review),
+        "required_confirmation": "; ".join(safe_confirmation),
     }
 
 

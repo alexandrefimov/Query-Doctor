@@ -49,8 +49,9 @@ def render_help_content() -> str:
 <li><strong>Scan date</strong> и <strong>Scan Hour</strong> задают один час Cloudera Manager summaries за сегодня или предыдущие два дня.</li>
 <li><strong>Minimum duration</strong>, <strong>Username</strong> и <strong>Resource pool</strong> сужают набор summaries до запуска анализа.</li>
 <li><strong>Parallelism</strong> управляет параллельной загрузкой профилей и локальным анализом. <strong>Metadata parallelism</strong> отдельно ограничивает read-only metadata collection.</li>
-<li>Результаты группируются как <strong>Bad queries</strong>, <strong>Suspicious queries</strong>, <strong>Optimization candidates</strong> и <strong>Good queries</strong>.</li>
+<li>Результаты группируются как <strong>Bad queries</strong>, <strong>Suspicious queries</strong>, <strong>Optimization candidates</strong>, <strong>Stats refresh candidates</strong> и <strong>Good queries</strong>.</li>
 <li><strong>Optimization candidates</strong> — deterministic список запросов, где profile facts показывают query-shape review opportunity. Он не обещает ускорение и не запускает LLM или SQL.</li>
+<li><strong>Stats refresh candidates</strong> — deterministic список запросов, где metadata facts, estimate mismatch и planning-sensitive runtime symptoms вместе указывают, что stats refresh may improve speed. Это prediction, а не гарантия: нужен EXPLAIN comparison и rerun under comparable load.</li>
 <li><strong>Only queries with spills</strong> — display-фильтр уже полученных результатов; он не меняет параметры запуска scan.</li>
 <li><strong>Collect CM metrics</strong> включает ограниченный сбор Cloudera Manager time-series summaries для выбранных запросов. По умолчанию выключен для Finished Queries.</li>
 </ul>
