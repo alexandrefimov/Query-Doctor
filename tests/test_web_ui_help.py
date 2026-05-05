@@ -36,7 +36,8 @@ def test_web_help_page_renders_curated_static_help():
     assert "Specific Query analysis" in body
     assert "LLM Report" in body
     assert "Query LLM optimizer" in body
-    assert "Analysis details" in body
+    assert "Findings" in body
+    assert "Evidence details" in body
     assert 'href="#results-table"' in body
     assert 'id="details-actions"' in body
     assert "Метаданные" in body

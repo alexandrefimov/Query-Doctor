@@ -65,7 +65,7 @@ EVIDENCE_SAFE_PROBLEMS_HEADING = "### Основные подтверждённ�
 EVIDENCE_HEADING = "### Подтверждающие факты"
 AMPLIFIERS_HEADING = "### Что усиливает проблему"
 NOT_SUPPORTED_HEADING = "### Что НЕ подтверждается фактами"
-NEXT_CHECKS_HEADING = "### Админские проверки"
+NEXT_CHECKS_HEADING = "### Follow-up checks"
 REQUIRED_REPORT_SECTIONS = [
     REPORT_TITLE_HEADING,
     SHORT_SUMMARY_HEADING,
@@ -95,6 +95,8 @@ DETAIL_HEADING_REWRITE = {
     "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
     "### Что проверить следующим запуском": NEXT_CHECKS_HEADING,
     "## Админские проверки": NEXT_CHECKS_HEADING,
+    "### Админские проверки": NEXT_CHECKS_HEADING,
+    "## Follow-up checks": NEXT_CHECKS_HEADING,
 }
 USER_READ_ONLY_HEADING = "### Read-only проверки, которые можно выполнить"
 USER_ADMIN_PACKAGE_HEADING = "### Если проблема останется, отправьте админам/платформенной команде"
@@ -2017,13 +2019,13 @@ Engineering interpretation rules:
 - Do not describe EXCHANGE as a main memory bottleneck when absolute peak memory is small.
 - For memory impact, prefer operators with large absolute peak memory, especially GiB-scale SORT/HASH JOIN.
 - Treat skew and spill only as established causes if the facts explicitly contain skew evidence or non-zero spill/scratch metrics.
-- If skew/spill evidence is absent, mention them only under "Админские проверки".
+- If skew/spill evidence is absent, mention them only under "Follow-up checks".
 - If analysis_facts.md contains a Spill or scratch I/O finding, do not say spill/scratch evidence is absent; say non-zero spill/scratch metric evidence exists and keep causal wording separate.
 - Use CM Metrics Facts as the only metrics interpretation source. Do not infer from CM Time-Series Context or raw aggregates.
 - CM Metrics Facts statuses mean exactly: observed = bounded runtime context signal, not_observed = checked below threshold, unknown = unavailable or insufficient facts.
 - Do not state CPU, memory, daemon, network, HDFS, or cluster pressure as a root cause from CM metrics alone.
 - Mention observed CM metrics in "Краткий вывод" only when they are useful confirmed context for this query; keep not_observed and unknown metric statuses out of the short summary.
-- Put unknown/not_observed CM metric limitations under "Что НЕ подтверждается фактами" or "Админские проверки", not in the short summary.
+- Put unknown/not_observed CM metric limitations under "Что НЕ подтверждается фактами" or "Follow-up checks", not in the short summary.
 
 The final markdown file is assembled by the wrapper with only:
 # Query Doctor Report
@@ -2047,7 +2049,7 @@ Use only the Python-owned recommendation candidates from PYTHON-OWNED RECOMMENDA
 Paraphrase them in Russian, merge adjacent candidates, and shorten wording; do not copy candidate text verbatim unless no natural shorter wording is possible. You must not add a new action, diagnostic task, command, platform check, or optimization target that is absent from that candidate list.
 Write 2-5 concrete actions that can lead to optimization without asking the reader to perform open-ended investigation.
 Do not write vague recommendations such as "проверить", "посмотреть", "проанализировать", "оптимизировать запрос" without a concrete action.
-Do not put SHOW TABLE STATS, SHOW COLUMN STATS, per-host checks, spill/scratch checks, admission pool checks, CM metrics/logs, profile counters, or evidence packages in "Практические рекомендации"; those belong only under "Админские проверки".
+Do not put SHOW TABLE STATS, SHOW COLUMN STATS, per-host checks, spill/scratch checks, admission pool checks, CM metrics/logs, profile counters, or evidence packages in "Практические рекомендации"; those belong only under "Follow-up checks".
 If metadata stats are missing/incomplete/unknown but Cardinality anomalies is 0, the top-level action may mention approved stats maintenance only when that action appears in the Python-owned candidate list; it must not say stats explain the query problem or optimizer estimates.
 
 "Краткий вывод" requirements:
@@ -2066,13 +2068,13 @@ If metadata stats are missing/incomplete/unknown but Cardinality anomalies is 0,
 ### Что усиливает проблему
 ### Что НЕ подтверждается фактами
 
-### Админские проверки
+### Follow-up checks
 
 Section requirements:
 - Preserve the detailed report structure under "Подробный разбор" using the required ### subsections listed above.
 - Put absent/missing/unsupported evidence only into "Что НЕ подтверждается фактами", never into "Краткий вывод".
-- Put platform/admin checks only into "Админские проверки".
-- Put read-only SHOW checks, spill/scratch checks, per-host checks, CM metrics/logs, profile counters, admission pool checks, and evidence packages only into "Админские проверки".
+- Put platform/admin checks only into "Follow-up checks".
+- Put read-only SHOW checks, spill/scratch checks, per-host checks, CM metrics/logs, profile counters, admission pool checks, and evidence packages only into "Follow-up checks".
 - Keep every optional section short.
 
 Python-owned slot contract:
@@ -2087,7 +2089,7 @@ Python-owned slot contract:
 
 Slot freedom levels:
 - Python-owned targets with LLM wording: "Практические рекомендации" must stay mapped to recommendation_candidates, but wording should be natural and case-specific.
-- Deterministic/canonical: "Что НЕ подтверждается фактами" and "Админские проверки" must stay close to Python-owned candidates/checks.
+- Deterministic/canonical: "Что НЕ подтверждается фактами" and "Follow-up checks" must stay close to Python-owned candidates/checks.
 - Controlled narrative: "Краткий вывод" and "Подробный разбор" should be human wording over supported_summary_points and evidence_groups.
 - Do not merely repeat analyzer lines when a concise explanation is possible; compress and explain supported facts without inventing a cause.
 
@@ -2136,7 +2138,7 @@ Audience: SQL owner first; DBA/platform details go into the admin section.
 Use Action Cards as the main structure when present.
 Keep the visible top report short and action-oriented.
 Mention operator IDs/names, actual vs estimated rows, memory estimation gaps, bytes read/sent, spill/scratch/admission checks only when mentioned in facts.
-Put per-host RowsProduced / PeakMemUsage, admission pool, CM metrics/logs, and profile counter checks only under "Админские проверки".
+Put per-host RowsProduced / PeakMemUsage, admission pool, CM metrics/logs, and profile counter checks only under "Follow-up checks".
 Do not say skew is proven unless analysis_facts.md contains deterministic per-host skew evidence.
 Do not claim stats are stale unless analysis_facts.md proves it.
 Do not claim exact join keys unless analysis_facts.md contains them.
@@ -2148,7 +2150,7 @@ Report mode: unified.
 Audience: SQL query author, analyst, or data engineer first; DBA/platform details go into the admin section.
 Use Action Cards as the main structure when present, but explain them in simpler language.
 Focus on concrete SQL-owner actions: approved stats maintenance, reducing intermediate rows, pre-aggregation/materialization, pushing filters earlier, and rewriting joins/window inputs when facts support those actions.
-Put admin/platform checks and evidence packages only under "Админские проверки".
+Put admin/platform checks and evidence packages only under "Follow-up checks".
 Do not invent table names, join/filter column names, query id, timestamps, pool names, or commands.
 Do not tell users to run COMPUTE STATS, REFRESH, or INVALIDATE METADATA as automatic actions.
 Frame stats maintenance as "через утверждённый operational process".
@@ -2963,6 +2965,8 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
             "### What to check next": NEXT_CHECKS_HEADING,
             "### Checks for next run": NEXT_CHECKS_HEADING,
             "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
+            "## Админские проверки": NEXT_CHECKS_HEADING,
+            "### Админские проверки": NEXT_CHECKS_HEADING,
         },
     )
     metrics_evidence_bullet = cm_metrics_report_evidence_bullet(facts_text)

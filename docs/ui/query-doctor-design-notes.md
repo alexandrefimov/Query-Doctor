@@ -237,9 +237,10 @@ Specific Query analysis table. Row click opens details in a new tab.
 
 ### Details
 
-Details pages show safe deterministic case overview, Analysis details collapsed
-by default, explicit LLM Report and explicit Query LLM optimizer. Query LLM
-optimizer can use server-owned SELECT/WITH sources or extracted SELECT/WITH
+Details pages show safe deterministic case overview, Findings open by default,
+Evidence details collapsed by default, explicit LLM Report and explicit Query
+LLM optimizer. Query LLM optimizer can use server-owned SELECT/WITH
+sources or extracted SELECT/WITH
 payloads from supported INSERT/CTAS statements. Drafts are rendered only after
 deterministic validation, must remain read-only SELECT/WITH, and are never
 executed by Query Doctor. High-risk cases should move toward a
@@ -432,7 +433,7 @@ Recommended order:
 1. `Краткий вывод`
 2. `Практические рекомендации`
 3. `Подробный разбор`
-4. `Админские проверки`
+4. `Follow-up checks`
 5. `Факты анализатора` appendix
 6. `Validation details`
 
@@ -487,7 +488,7 @@ Evidence states:
 
 The UI should make `unknown` look like a legitimate diagnostic state.
 
-### Админские проверки
+### Follow-up checks
 
 Prefer this title for platform/admin-oriented checks.
 
@@ -679,7 +680,7 @@ For report page tests:
 - `Краткий вывод` exists.
 - `Практические рекомендации` exists.
 - Findings include Evidence / Why it matters / Next check.
-- `Админские проверки` exists.
+- `Follow-up checks` exists.
 - `Validation details` exists.
 - `Факты анализатора` is visibly deterministic appendix.
 - Sidebar shows report metadata, query context, evidence completeness, artifacts, and pipeline.

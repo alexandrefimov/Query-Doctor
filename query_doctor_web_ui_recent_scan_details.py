@@ -28,16 +28,16 @@ from query_doctor_web_ui_recent_scan_presenter import (
 
 
 REPORT_PROGRESS_STEPS = (
-    ("Проверяем кейс", {"Checking selected batch case"}),
-    ("Генерируем отчет", {"Generating validated report"}),
-    ("Валидируем результат", {"Validating result"}),
-    ("Готово", {"Done"}),
+    ("Checking case", {"Checking selected batch case"}),
+    ("Generating report", {"Generating validated report"}),
+    ("Validating result", {"Validating result"}),
+    ("Done", {"Done"}),
 )
 OPTIMIZED_QUERY_PROGRESS_STEPS = (
-    ("Проверяем source SQL", {"Checking source SQL"}),
-    ("Генерируем draft", {"Generating optimizer draft"}),
-    ("Валидируем draft", {"Validating optimizer draft"}),
-    ("Готово", {"Done"}),
+    ("Checking source SQL", {"Checking source SQL"}),
+    ("Generating draft", {"Generating optimizer draft"}),
+    ("Validating draft", {"Validating optimizer draft"}),
+    ("Done", {"Done"}),
 )
 
 
@@ -77,7 +77,7 @@ def render_batch_case_detail(
         f"<section class=\"panel batch-panel\" aria-label=\"{safe_workflow_title} case details\">"
         f"<div class=\"breadcrumb\"><a href=\"{safe_list_href}\">{safe_workflow_title}</a><span>/</span>"
         f"<span>{html.escape(view.case_id)}</span></div>"
-        f"<div class=\"batch-head\"><div><h1>{safe_workflow_title}: детали кейса</h1>"
+        f"<div class=\"batch-head\"><div><h1>{safe_workflow_title} case details</h1>"
         "<p>Детерминированные facts по одному проанализированному запросу.</p></div>"
         f"<span class=\"badge blue\">{html.escape(view.case_id)}</span></div>"
         f"{render_case_detail_toc()}"
@@ -91,11 +91,11 @@ def render_batch_case_detail(
 
 
 def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
-    spill_text = "spill evidence найден" if view.has_spill else "spill evidence не найден"
-    stats_text = f"table stats: {view.table_stats_status}" if view.table_stats_status is not None else "table stats не проверялись"
+    spill_text = "spill evidence observed" if view.has_spill else "no spill evidence observed"
+    stats_text = f"table stats {view.table_stats_status}" if view.table_stats_status is not None else "table stats not checked"
     items = (
         ("score", score_badge_from_values(view.score, None, None, severity=view.score_severity)),
-        ("длительность", view.duration_sec),
+        ("duration", view.duration_sec),
         ("signals", view.signal_summary),
         ("spill", spill_text),
         ("stats", stats_text),
@@ -124,7 +124,7 @@ def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
     rendered_fields: list[tuple[str, Any]] = []
     for label, value in fields:
         if label in {"collection", "analysis", "metadata"}:
-            rendered_fields.append((pipeline_status_label(label), status_badge(value)))
+            rendered_fields.append((label, status_badge(value)))
         elif label == "report":
             rendered_fields.append(("LLM report", report_badge(str(value))))
         else:
@@ -142,24 +142,20 @@ def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
     )
 
 
-def pipeline_status_label(label: str) -> str:
-    if label == "collection":
-        return "сбор"
-    if label == "analysis":
-        return "анализ"
-    if label == "metadata":
-        return "metadata"
-    return label
-
-
 def render_analysis_details(view: RecentScanCaseDetailView) -> str:
     return (
-        "<div id=\"analysis-details\">"
-        "<details class=\"panel docs-panel analysis-details\" aria-label=\"Analysis details\">"
-        "<summary>Детали анализа (Analysis details)</summary>"
-        "<div class=\"report-body analysis-details-body\">"
-        "<p class=\"helper\">Только детерминированные evidence/facts; раскройте секции для деталей по запросу.</p>"
+        "<section id=\"findings\" class=\"panel docs-panel findings-panel\" aria-label=\"Findings\">"
+        "<h1>Findings</h1>"
+        "<div class=\"report-body\">"
+        "<p class=\"helper\">Основные deterministic findings раскрыты сразу. Они опираются только на analyzer facts и не являются root-cause claim без прямого evidence.</p>"
         f"{render_score_reason_explanations(view)}"
+        "</div>"
+        "</section>"
+        "<div id=\"evidence-details\">"
+        "<details class=\"panel docs-panel analysis-details\" aria-label=\"Evidence details\">"
+        "<summary>Evidence details</summary>"
+        "<div class=\"report-body analysis-details-body\">"
+        "<p class=\"helper\">Подробные deterministic facts для проверки findings. Эти данные свернуты, чтобы первый экран оставался диагностическим.</p>"
         f"{render_runtime_signals(view)}"
         f"{render_cm_metrics_section(view.cm_metrics)}"
         f"{render_metadata_facts_section(view.metadata)}"
@@ -173,13 +169,14 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
 def render_case_detail_toc() -> str:
     return (
         "<section class=\"detail-toc\" aria-label=\"Details navigation\">"
-        "<span class=\"detail-toc-title\">Перейти к разделу</span>"
+        "<span class=\"detail-toc-title\">Jump to section</span>"
         "<nav class=\"detail-toc-list\">"
-        "<a href=\"#case-overview\" class=\"detail-toc-link\">Обзор кейса</a>"
-        "<a href=\"#pipeline-status\" class=\"detail-toc-link\">Статусы pipeline</a>"
-        "<a href=\"#analysis-details\" class=\"detail-toc-link\">Детали анализа</a>"
+        "<a href=\"#case-overview\" class=\"detail-toc-link\">Case overview</a>"
+        "<a href=\"#pipeline-status\" class=\"detail-toc-link\">Pipeline status</a>"
+        "<a href=\"#findings\" class=\"detail-toc-link\">Findings</a>"
+        "<a href=\"#evidence-details\" class=\"detail-toc-link\">Evidence details</a>"
         "<a href=\"#llm-report\" class=\"detail-toc-link\">LLM Report</a>"
-        "<a href=\"#query-llm-optimizer\" class=\"detail-toc-link\">Query LLM Optimizer</a>"
+        "<a href=\"#query-llm-optimizer\" class=\"detail-toc-link\">Query LLM optimizer</a>"
         "</nav>"
         "</section>"
     )
@@ -190,7 +187,7 @@ def render_runtime_signals(view: RecentScanCaseDetailView) -> str:
     rows = metadata_rows(fields)
     return (
         "<details class=\"analysis-subdetails\" aria-label=\"Runtime signals\">"
-        "<summary>Runtime signals (сигналы выполнения)</summary>"
+        "<summary>Runtime signals</summary>"
         f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
         "</details>"
     )
@@ -209,19 +206,19 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         for signal in view.signals
     )
     if not signal_rows:
-        signal_rows = "<tr><td colspan=\"3\" class=\"empty-cell\">metric signals недоступны</td></tr>"
+        signal_rows = "<tr><td colspan=\"3\" class=\"empty-cell\">metric signals are not available</td></tr>"
     correlation_rows = "".join(
         "<tr>"
         f"<td>{html.escape(correlation.label)}</td>"
         f"<td>{cm_metric_status_badge(correlation.status)}</td>"
         f"<td>{escape_value(correlation.metric_status)}</td>"
         f"<td>{escape_value(correlation.strength)}</td>"
-        f"<td>{escape_value(correlation.interpretation)}</td>"
+        f"<td>{escape_value(cm_metric_interpretation(correlation.interpretation))}</td>"
         "</tr>"
         for correlation in view.correlations
     )
     if not correlation_rows:
-        correlation_rows = "<tr><td colspan=\"5\" class=\"empty-cell\">metric correlations недоступны</td></tr>"
+        correlation_rows = "<tr><td colspan=\"5\" class=\"empty-cell\">metric correlations are not available</td></tr>"
     limitations_html = ""
     if view.limitations:
         limitations_html = (
@@ -236,16 +233,16 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         )
     return (
         "<details class=\"analysis-subdetails\" aria-label=\"CM metrics\">"
-        "<summary>CM metrics (метрики кластера)</summary>"
+        "<summary>CM metrics</summary>"
         "<div class=\"report-body\">"
         "<p>Детерминированные CM metric facts за окно выполнения запроса. Наблюдаемые сигналы дают runtime context, но сами по себе не доказывают root cause.</p>"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
-        "<thead><tr><th>Metric</th><th>Статус</th><th>Основание</th></tr></thead>"
+        "<thead><tr><th>Metric</th><th>Status</th><th>Basis</th></tr></thead>"
         f"<tbody>{signal_rows}</tbody>"
         "</table></div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
-        "<thead><tr><th>Metric</th><th>Корреляция</th><th>Metric status</th><th>Сила</th><th>Интерпретация</th></tr></thead>"
+        "<thead><tr><th>Metric</th><th>Correlation</th><th>Metric status</th><th>Strength</th><th>Интерпретация</th></tr></thead>"
         f"<tbody>{correlation_rows}</tbody>"
         "</table></div>"
         f"{limitations_html}"
@@ -269,13 +266,12 @@ def render_batch_case_report_action(
     form_action = html.escape(action_url or f"/batch/case/{escaped_case_id}/report", quote=True)
     report_href = html.escape(open_url or f"/batch/case/{escaped_case_id}/report", quote=True)
     if view.show_open_link:
-        action_html = f"<a class=\"button\" href=\"{report_href}\">Открыть полный LLM Report</a>"
+        action_html = f"<a class=\"button\" href=\"{report_href}\">Open full report</a>"
     else:
-        button_label = "Генерируется LLM Report" if view.status == "running" else "Сгенерировать LLM Report"
         action_html = (
             "<form method=\"post\" "
             f"action=\"{form_action}\">"
-            f"<button class=\"button\" type=\"submit\"{disabled}>{button_label}</button>"
+            f"<button class=\"button\" type=\"submit\"{disabled}>{html.escape(view.button_label)}</button>"
             "</form>"
         )
     if view.status == "running":
@@ -325,19 +321,19 @@ def render_optimized_query_action(
     open_href = html.escape(open_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query", quote=True)
     output_kind = str(state.get("output_kind") or "sql_draft")
     if status == "generated" and output_kind == "no_rewrite":
-        action_html = f"<a class=\"button\" href=\"{open_href}\">Открыть outcome Query LLM Optimizer</a>"
+        action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer outcome</a>"
     elif status == "generated" and output_kind == "recommendations_only":
-        action_html = f"<a class=\"button\" href=\"{open_href}\">Открыть рекомендации Query LLM Optimizer</a>"
+        action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer recommendations</a>"
     elif status == "generated":
-        action_html = f"<a class=\"button\" href=\"{open_href}\">Открыть draft Query LLM Optimizer</a>"
+        action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer draft</a>"
     elif status == "unavailable":
-        action_html = "<button class=\"button\" type=\"button\" disabled>Сгенерировать draft Query LLM Optimizer</button>"
+        action_html = "<button class=\"button\" type=\"button\" disabled>Generate Query LLM optimizer draft</button>"
     elif status == "running":
-        action_html = "<button class=\"button\" type=\"button\" disabled>Генерируется draft Query LLM Optimizer</button>"
+        action_html = "<button class=\"button\" type=\"button\" disabled>Generating Query LLM optimizer draft</button>"
     else:
         action_html = (
             f"<form method=\"post\" action=\"{form_action}\">"
-            "<button class=\"button\" type=\"submit\">Сгенерировать draft Query LLM Optimizer</button>"
+            "<button class=\"button\" type=\"submit\">Generate Query LLM optimizer draft</button>"
             "</form>"
         )
     if status == "running":
@@ -347,8 +343,8 @@ def render_optimized_query_action(
     elif status == "partial_untrusted":
         status_html = (
             "<div class=\"error-card\" role=\"alert\">"
-            "Draft оптимизированного запроса есть, но не прошел детерминированную валидацию. "
-            "Partial draft untrusted и скрыт."
+            "Optimized query draft есть, но не прошел deterministic validation. "
+            "Partial draft остается untrusted и скрыт."
             "</div>"
         )
     elif status == "unavailable":
@@ -371,17 +367,17 @@ def render_optimized_query_action(
     if status == "generated" and trusted_optimized_query:
         draft_html = (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer draft\">"
-            "<summary>Query LLM Optimizer draft</summary>"
+            "<summary>Query LLM optimizer draft</summary>"
             "<p class=\"helper\">Только draft. Запрос не выполнялся и требует ревью перед использованием.</p>"
             f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
             "</details>"
         )
     elif status == "generated" and trusted_optimizer_recommendations:
         if output_kind == "no_rewrite":
-            summary = "Query LLM Optimizer outcome"
+            summary = "Query LLM optimizer outcome"
             helper = "Trusted SQL rewrite не показывается: Python классифицировал validated draft как no-benefit/no-rewrite."
         else:
-            summary = "Query LLM Optimizer recommendations"
+            summary = "Query LLM optimizer recommendations"
             helper = "SQL rewrite пропущен: Python пометил форму запроса как слишком рискованную для trusted draft."
         draft_html = (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer recommendations\">"
@@ -392,7 +388,7 @@ def render_optimized_query_action(
         )
     return (
         "<section id=\"query-llm-optimizer\" class=\"panel docs-panel\" aria-label=\"Query LLM optimizer action\">"
-        "<h1>Query LLM Optimizer</h1>"
+        "<h1>Query LLM optimizer</h1>"
         "<div class=\"report-body\">"
         f"{status_html}"
         f"{notes_html}"
@@ -421,7 +417,7 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
         if index < current_index:
             state_name = "done"
             icon = "✓"
-            detail = "Готово"
+            detail = "Done"
         elif index == current_index:
             state_name = "running"
             icon = "…"
@@ -429,7 +425,7 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
         else:
             state_name = "neutral"
             icon = "−"
-            detail = "Ожидает"
+            detail = "Pending"
         steps.append(
             "<div class=\"batch-progress-step batch-progress-step--{state}\">"
             "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
@@ -441,7 +437,7 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
         )
     return (
         f"<div class=\"report-progress\" aria-label=\"Optimized query progress\"{status_attrs}>"
-        "<div class=\"progress-head\"><span class=\"progress-title\">Генерируется draft Query LLM Optimizer</span>"
+        "<div class=\"progress-head\"><span class=\"progress-title\">Generating Query LLM optimizer draft</span>"
         f"<span class=\"progress-stage\">{html.escape(current_stage)}</span></div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
@@ -494,14 +490,14 @@ def render_optimized_query_failure(state: dict[str, Any]) -> str:
     message = str(state.get("error") or "Optimized query generation failed. Unsafe output is hidden.")
     return (
         "<div class=\"report-progress\" aria-label=\"Optimized query progress\">"
-        "<div class=\"progress-head\"><span class=\"progress-title\">Query LLM Optimizer завершился ошибкой</span>"
+        "<div class=\"progress-head\"><span class=\"progress-title\">Query LLM optimizer failed</span>"
         f"<span class=\"progress-stage\">{html.escape(str(state.get('stage_label') or 'Failed'))}</span></div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         "<span class=\"progress-fill\" style=\"width:100%\"></span>"
         "</div>"
         "<div class=\"batch-progress\"><div class=\"batch-progress-steps\">"
         "<div class=\"batch-progress-step batch-progress-step--failed\">"
-        "<strong>! Ошибка</strong><span>Unsafe output скрыт</span></div>"
+        "<strong>! Error</strong><span>Unsafe output is hidden</span></div>"
         "</div></div>"
         f"<div class=\"error-card\" role=\"alert\">{html.escape(message)}</div>"
         "</div>"
@@ -525,7 +521,7 @@ def render_llm_report_progress(view: ReportActionView) -> str:
         if index < current_index:
             state = "done"
             icon = "✓"
-            detail = "Готово"
+            detail = "Done"
         elif index == current_index:
             state = "running"
             icon = "…"
@@ -533,7 +529,7 @@ def render_llm_report_progress(view: ReportActionView) -> str:
         else:
             state = "neutral"
             icon = "−"
-            detail = "Ожидает"
+            detail = "Pending"
         steps.append(
             (
                 state,
@@ -549,7 +545,7 @@ def render_llm_report_progress(view: ReportActionView) -> str:
     step_html = "".join(step_html for _state, step_html in steps)
     return (
         f"<div class=\"report-progress\" aria-label=\"LLM report progress\"{status_attrs}>"
-        f"<div class=\"progress-head\"><span class=\"progress-title\">Генерируется LLM Report</span>"
+        f"<div class=\"progress-head\"><span class=\"progress-title\">Generating LLM report</span>"
         f"<span class=\"progress-stage\">{html.escape(current_stage)}</span></div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
@@ -585,17 +581,17 @@ def report_progress_percent(step_index: int) -> int:
 
 
 def render_llm_report_failure(view: ReportActionView) -> str:
-    message = view.error if view.error not in {None, "", "unknown"} else "Генерация LLM Report завершилась ошибкой. Unsafe output скрыт."
+    message = view.error if view.error not in {None, "", "unknown"} else "LLM report generation failed. Unsafe output is hidden."
     return (
         "<div class=\"report-progress\" aria-label=\"LLM report progress\">"
-        "<div class=\"progress-head\"><span class=\"progress-title\">LLM Report завершился ошибкой</span>"
+        "<div class=\"progress-head\"><span class=\"progress-title\">LLM report failed</span>"
         f"<span class=\"progress-stage\">{html.escape(view.stage_label or 'Failed')}</span></div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         "<span class=\"progress-fill\" style=\"width:100%\"></span>"
         "</div>"
         "<div class=\"batch-progress\"><div class=\"batch-progress-steps\">"
         "<div class=\"batch-progress-step batch-progress-step--failed\">"
-        "<strong>! Ошибка</strong><span>Unsafe output скрыт</span></div>"
+        "<strong>! Error</strong><span>Unsafe output is hidden</span></div>"
         "</div></div>"
         f"<div class=\"error-card\" role=\"alert\">{escape_value(message)}</div>"
         "</div>"
@@ -603,11 +599,13 @@ def render_llm_report_failure(view: ReportActionView) -> str:
 
 
 def render_technical_details(view: RecentScanCaseDetailView) -> str:
-    fields = list(view.technical_fields)
+    fields = [(label, value) for label, value in view.technical_fields if is_meaningful_detail_value(value)]
+    if not fields:
+        return ""
     rows = metadata_rows(fields)
     return (
         "<details class=\"analysis-subdetails technical-details\">"
-        "<summary>Technical details (технические поля)</summary>"
+        "<summary>Technical details</summary>"
         f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
         "</details>"
     )
@@ -626,17 +624,12 @@ def render_score_reason_explanations(view: RecentScanCaseDetailView) -> str:
     reasons = list(view.score_reasons)
     if not reasons:
         reason_cards = (
-            "<li class=\"reason-card\"><strong>Нет положительных deterministic score reasons</strong>"
+            "<li class=\"reason-card\"><strong>No positive deterministic score reasons</strong>"
             "<p>Batch score не содержит suspicious analyzer signal для этого кейса.</p></li>"
         )
     else:
         reason_cards = "".join(render_score_reason_card(reason) for reason in reasons)
-    return (
-        "<details class=\"analysis-subdetails\" aria-label=\"Why this query is suspicious\">"
-        "<summary>Почему запрос выглядит suspicious</summary>"
-        f"<div class=\"report-body\"><ul class=\"reason-list\">{reason_cards}</ul></div>"
-        "</details>"
-    )
+    return f"<ul class=\"reason-list findings-list\" aria-label=\"Why this query is suspicious\">{reason_cards}</ul>"
 
 
 def render_score_reason_card(reason: Any) -> str:
@@ -705,7 +698,7 @@ def explain_score_reason(reason: Any) -> tuple[str, str]:
             "Metadata не удалось собрать для этого кейса. Runtime profile facts все равно показаны и ранжируются детерминированно.",
         )
     return (
-        "Другой deterministic reason",
+        "Other deterministic reason",
         text,
     )
 
@@ -717,8 +710,8 @@ def render_metadata_facts_section(view: RecentScanMetadataView) -> str:
         degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
         return (
             "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
-            "<summary>Metadata facts (табличные факты)</summary>"
-            "<div class=\"report-body\"><p>metadata facts недоступны</p>"
+            "<summary>Metadata facts</summary>"
+            "<div class=\"report-body\"><p>metadata facts are not available</p>"
             "<p>Здесь показаны только deterministic analyzer facts.</p>"
             f"{degraded_html}</div>"
             "</details>"
@@ -750,7 +743,7 @@ def render_metadata_facts_body(
     if not rows:
         rows = (
             "<tr><td colspan=\"12\" class=\"empty-cell\">"
-            "table-level metadata rows недоступны; выше показаны aggregate facts"
+            "table-level metadata rows are not available; aggregate facts are shown above"
             "</td></tr>"
         )
     summary_rows = "".join(
@@ -768,7 +761,7 @@ def render_metadata_facts_body(
     degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
     return (
         "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
-        "<summary>Metadata facts (табличные факты)</summary>"
+        "<summary>Metadata facts</summary>"
         "<div class=\"report-body\">"
         "<p>Детерминированные table-level metadata facts. Missing/incomplete stats — это limitations/checks, а не root causes.</p>"
         f"{fallback_html}"
@@ -789,7 +782,7 @@ def render_metadata_facts_body(
 def metadata_degraded_note(view: RecentScanMetadataView) -> str:
     status_values = {str(label): str(value or "").lower() for label, value in view.summary_items}
     status = status_values.get("metadata status", "")
-    base = "Profile-based findings остаются валидными; metadata-based recommendations могут быть ограничены."
+    base = "Profile-based findings остаются валидными; metadata evidence для follow-up может быть ограничен."
     if view.unavailable or status in {"skipped", "not_run", "unknown"}:
         return base
     if status == "partial":
@@ -797,6 +790,35 @@ def metadata_degraded_note(view: RecentScanMetadataView) -> str:
     if status == "failed":
         return f"Metadata collection завершилась ошибкой. {base}"
     return ""
+
+
+def is_meaningful_detail_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if value is False:
+        return False
+    text = str(value).strip().lower()
+    return text not in {"", "unknown", "none", "not_run", "false"}
+
+
+def cm_metric_interpretation(value: Any) -> Any:
+    if value is None:
+        return value
+    text = str(value)
+    translations = {
+        "No deterministic optimizer or report action is derived from this metric status.": (
+            "По этому metric status нет deterministic optimizer/report action."
+        ),
+        "Daemon memory growth is correlated with parsed memory, spill, or high-memory operator evidence; prioritize reducing intermediate memory footprint.": (
+            "Daemon memory growth коррелирует с parsed memory, spill или high-memory operator evidence; "
+            "для follow-up приоритизируйте снижение intermediate memory footprint."
+        ),
+        "Network I/O spike is correlated with parsed large exchange/data movement evidence; prioritize reducing exchange rows or payload.": (
+            "Network I/O spike коррелирует с parsed large exchange/data movement evidence; "
+            "для follow-up приоритизируйте снижение exchange rows или payload."
+        ),
+    }
+    return translations.get(text, value)
 
 
 def has_metadata_aggregate_facts(case: dict[str, Any]) -> bool:

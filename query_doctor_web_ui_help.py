@@ -82,13 +82,13 @@ def render_help_content() -> str:
 </ul>
 
 <h2 id="details-actions">Details, LLM Report и Query LLM optimizer</h2>
-<p>Details показывает безопасную сводку по одному запросу. <strong>Analysis details</strong> свернут по умолчанию и содержит deterministic runtime, CM metrics, metadata и technical signals. <strong>LLM Report</strong> доступен для запросов не из Good group и рендерится прямо на странице только после validation. <strong>Query LLM optimizer</strong> — отдельное ручное действие для исходника, который уже собран Query Doctor: он может использовать SELECT/WITH или извлеченный SELECT/WITH payload из поддержанного INSERT/CTAS, но trusted draft всегда должен быть безопасным SELECT/WITH без выполнения SQL.</p>
+<p>Details показывает безопасную сводку по одному запросу. <strong>Findings</strong> раскрыт по умолчанию и содержит основные deterministic выводы; <strong>Evidence details</strong> свернут и содержит runtime, CM metrics, metadata и technical signals для проверки. <strong>LLM Report</strong> доступен для запросов не из Good group и рендерится прямо на странице только после validation. <strong>Query LLM optimizer</strong> — отдельное ручное действие для исходника, который уже собран Query Doctor: он может использовать SELECT/WITH или извлеченный SELECT/WITH payload из поддержанного INSERT/CTAS, но trusted draft всегда должен быть безопасным SELECT/WITH без выполнения SQL.</p>
 <p>Если LLM output или optimizer draft не проходит deterministic validation, partial output скрывается и показывается только безопасный статус failure.</p>
 
 <details>
 <summary>Проверенные отчеты</summary>
 <p>Analyzer facts — источник истины. LLM отвечает только за формулировки. Raw LLM output не считается доверенным. Финальный отчет валидируется перед показом, а trusted report отклоняет unsupported claims и SQL-like raw output.</p>
-<p>В LLM Report по умолчанию видны краткий вывод и практические рекомендации. Подробный разбор, админские проверки и факты анализатора остаются частью trusted report, но не подменяют deterministic analyzer facts.</p>
+<p>В LLM Report по умолчанию видны краткий вывод и практические рекомендации. Подробный разбор, Follow-up checks и факты анализатора остаются частью trusted report, но не подменяют deterministic analyzer facts.</p>
 </details>
 
 <details>

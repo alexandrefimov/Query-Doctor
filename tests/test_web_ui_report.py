@@ -98,6 +98,30 @@ def test_web_report_markdown_renders_safe_html():
     assert "<b>unsafe</b>" not in rendered
 
 
+def test_details_inline_report_keeps_summary_open_and_appendix_collapsed():
+    module = load_web_module()
+
+    rendered = module.render_details_inline_report_html(
+        "## Краткий вывод\n\n"
+        "Safe summary.\n\n"
+        "## Практические рекомендации\n\n"
+        "- Safe action.\n\n"
+        "## Подробный разбор\n\n"
+        "Detailed evidence.\n\n"
+        "### Follow-up checks\n\n"
+        "- Follow-up check.\n"
+    )
+
+    summary_index = rendered.index("Safe summary.")
+    recommendation_index = rendered.index("Safe action.")
+    appendix_index = rendered.index("Detailed report and follow-up checks")
+    assert summary_index < appendix_index
+    assert recommendation_index < appendix_index
+    assert '<details class="analysis-subdetails report-appendix" aria-label="LLM report details">' in rendered
+    assert "Detailed evidence." in rendered[appendix_index:]
+    assert "Follow-up check." in rendered[appendix_index:]
+
+
 def test_web_result_renders_collected_source():
     module = load_web_module()
 
