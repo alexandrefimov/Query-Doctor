@@ -69,6 +69,30 @@ CONSERVATIVE_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_TOKEN_TH
 RECOMMENDATIONS_ONLY_CTE_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_CTE_THRESHOLD", "5"))
 RECOMMENDATIONS_ONLY_JOIN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_JOIN_THRESHOLD", "10"))
 RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD", "2000"))
+INCOMPLETE_TRAILING_TOKENS = {
+    ",",
+    ".",
+    "(",
+    "AS",
+    "BY",
+    "FROM",
+    "JOIN",
+    "ON",
+    "USING",
+    "WHERE",
+    "AND",
+    "OR",
+    "GROUP",
+    "ORDER",
+    "HAVING",
+    "LIMIT",
+    "UNION",
+    "EXCEPT",
+    "INTERSECT",
+    "WITH",
+    "SELECT",
+}
+INCOMPLETE_TRAILING_CHARS = {",", ".", "(", "+", "-", "*", "/", "=", "<", ">"}
 
 
 class QueryOptimizationError(RuntimeError):
@@ -766,6 +790,7 @@ def no_rewrite_recommendations(risk_decision: OptimizerRiskDecision) -> str:
 
 def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     errors: list[str] = []
+    errors.extend(sql_completeness_errors(draft_sql))
     try:
         source_tables = table_names(source_sql)
     except OptimizerSqlError as exc:
@@ -823,6 +848,114 @@ def validate_draft_sql(source_sql: str, draft_sql: str) -> list[str]:
     except OptimizerSqlError as exc:
         errors.append(f"optimized draft failed final SQL safety validation: {exc}")
     return errors
+
+
+def sql_completeness_errors(sql: str) -> list[str]:
+    stripped = sql.strip()
+    if not stripped:
+        return ["optimized draft is empty"]
+    errors: list[str] = []
+    lexical_errors, last_significant_char = lexical_sql_completeness(stripped)
+    errors.extend(lexical_errors)
+    if last_significant_char in INCOMPLETE_TRAILING_CHARS:
+        errors.append("optimized draft appears incomplete")
+    tokens = tokenize_sql(stripped)
+    if tokens:
+        statement_tokens = trim_statement_tokens_for_completeness(tokens)
+        if statement_tokens:
+            trailing = statement_tokens[-1].upper()
+            if trailing in INCOMPLETE_TRAILING_TOKENS:
+                errors.append("optimized draft appears incomplete")
+            if statement_tokens[0].upper() == "WITH" and find_top_level_token(statement_tokens, "SELECT", start=1) is None:
+                errors.append("optimized draft WITH query is missing its final SELECT")
+    return dedupe_preserve_order(errors)
+
+
+def trim_statement_tokens_for_completeness(tokens: list[str]) -> list[str]:
+    end = len(tokens) - 1
+    while end >= 0 and tokens[end] == ";":
+        end -= 1
+    return tokens[: end + 1]
+
+
+def lexical_sql_completeness(sql: str) -> tuple[list[str], str]:
+    errors: list[str] = []
+    depth = 0
+    index = 0
+    last_significant_char = ""
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            end = sql.find("*/", index + 2)
+            if end == -1:
+                errors.append("optimized draft has an unterminated block comment")
+                return errors, last_significant_char
+            index = end + 2
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            end = complete_quoted_text_end(sql, index, char)
+            if end is None:
+                errors.append("optimized draft has an unterminated quoted string or identifier")
+                return errors, last_significant_char
+            last_significant_char = char
+            index = end
+            continue
+        if char == "(":
+            depth += 1
+            last_significant_char = char
+        elif char == ")":
+            depth -= 1
+            last_significant_char = char
+            if depth < 0:
+                errors.append("optimized draft has unbalanced parentheses")
+                depth = 0
+        elif not char.isspace() and char != ";":
+            last_significant_char = char
+        index += 1
+    if depth != 0:
+        errors.append("optimized draft has unbalanced parentheses")
+    return errors, last_significant_char
+
+
+def complete_quoted_text_end(sql: str, index: int, quote: str) -> int | None:
+    index += 1
+    while index < len(sql):
+        if sql[index] == quote:
+            if index + 1 < len(sql) and sql[index + 1] == quote:
+                index += 2
+                continue
+            return index + 1
+        index += 1
+    return None
+
+
+def normalized_trusted_draft_sql(draft_sql: str) -> str:
+    stripped = draft_sql.rstrip()
+    if not stripped.endswith(";"):
+        stripped += ";"
+    return stripped + "\n"
+
+
+def dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def remove_stale_trusted_optimizer_outputs(case_dir: Path, output_name: str) -> None:
+    for name in (output_name, MARKER_NAME):
+        try:
+            (case_dir / name).unlink()
+        except FileNotFoundError:
+            continue
 
 
 def text_sha256(text: str) -> str:
@@ -961,6 +1094,7 @@ def main(argv: list[str] | None = None) -> int:
         draft_sql = extract_draft_sql(generated)
         errors = validate_draft_sql(source_sql.sql, draft_sql)
         if errors:
+            remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             (case_dir / PARTIAL_NAME).write_text(draft_sql, encoding="utf-8")
             for error in errors:
                 print(f"{PROGRESS_PREFIX} ERROR: {error}", file=sys.stderr)
@@ -983,7 +1117,7 @@ def main(argv: list[str] | None = None) -> int:
         if output_name != args.out:
             raise QueryOptimizationError("Output must be a filename inside the case directory.")
         output_path = case_dir / output_name
-        output_path.write_text(draft_sql.rstrip() + "\n", encoding="utf-8")
+        output_path.write_text(normalized_trusted_draft_sql(draft_sql), encoding="utf-8")
         write_marker(
             case_dir,
             output_name,

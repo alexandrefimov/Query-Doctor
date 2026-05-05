@@ -6,7 +6,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from query_doctor_optimize_query import QueryOptimizationError, file_sha256, read_source_sql, text_sha256
+from query_doctor_optimize_query import (
+    QueryOptimizationError,
+    extract_optimizable_source_sql,
+    file_sha256,
+    read_source_sql,
+    sql_completeness_errors,
+    text_sha256,
+)
 
 
 OPTIMIZED_QUERY_NAME = "optimized_query.sql"
@@ -84,7 +91,7 @@ def optimizer_artifact_status_for_dir(case_dir: Path) -> str:
         if output_kind == "no_rewrite":
             return "trusted_no_rewrite"
         return "trusted_draft"
-    if (case_dir / OPTIMIZED_QUERY_PARTIAL_NAME).is_file():
+    if (case_dir / OPTIMIZED_QUERY_PARTIAL_NAME).is_file() or (case_dir / OPTIMIZED_QUERY_NAME).is_file():
         return "partial_untrusted"
     try:
         read_source_sql(case_dir)
@@ -125,11 +132,18 @@ def optimizer_marker_is_valid(case_dir: Path, marker: dict[str, Any]) -> bool:
             return False
         if not draft_path.is_file() or marker.get("draft_sha256") != file_sha256(draft_path):
             return False
+    if output_kind not in {"recommendations_only", "no_rewrite"}:
+        draft_path = case_dir / OPTIMIZED_QUERY_NAME
+        try:
+            if sql_completeness_errors(draft_path.read_text(encoding="utf-8", errors="replace")):
+                return False
+        except OSError:
+            return False
     try:
-        source_sql = read_source_sql(case_dir)
+        source_sql = extract_optimizable_source_sql(read_source_sql(case_dir))
     except QueryOptimizationError:
         return False
-    return marker.get("source_sql_sha256") == text_sha256(source_sql)
+    return marker.get("source_sql_sha256") == text_sha256(source_sql.sql)
 
 
 def decorate_cases_with_optimizer_artifact_status(summary: dict[str, Any]) -> dict[str, Any]:

@@ -29,7 +29,12 @@ import query_doctor_collect_impala_context as impala_context_collector
 import query_doctor_impala_metadata_workflow as metadata_workflow
 import table_metadata_facts
 import query_doctor_batch_recent as batch_recent
-from query_doctor_optimize_query import QueryOptimizationError, extract_optimizable_source_sql, read_source_sql
+from query_doctor_optimize_query import (
+    QueryOptimizationError,
+    extract_optimizable_source_sql,
+    read_source_sql,
+    sql_completeness_errors,
+)
 from query_doctor_config_contract import load_and_validate_config, merge_kerberos_cache_env
 from query_doctor_web_display_safety import redact_browser_display_text
 from query_doctor_optimizer_sql import ExtractedTable, OptimizerSqlError, extract_referenced_tables
@@ -2988,7 +2993,10 @@ def load_optimized_query_state(
 
     trusted = case_dir is not None and optimized_query_validated_exists(case_dir)
     marker = read_optimized_query_marker(case_dir) if case_dir is not None and trusted else {}
-    partial = case_dir is not None and (case_dir / OPTIMIZED_QUERY_PARTIAL_NAME).is_file()
+    partial = case_dir is not None and (
+        (case_dir / OPTIMIZED_QUERY_PARTIAL_NAME).is_file()
+        or ((case_dir / OPTIMIZED_QUERY_NAME).is_file() and not trusted)
+    )
     source_available = case_dir is not None and case_has_safe_source_sql(case_dir)
     status = "generated" if trusted else "not_run"
     if not source_available and not trusted:
@@ -3127,7 +3135,10 @@ def optimized_query_validated_exists(case_dir: Path) -> bool:
         if marker.get("source_sql_sha256") != text_sha256(source_sql.sql):
             return False
         if output_kind not in {"recommendations_only", "no_rewrite"}:
-            extract_referenced_tables(draft_path.read_text(encoding="utf-8", errors="replace"))
+            draft_text = draft_path.read_text(encoding="utf-8", errors="replace")
+            if sql_completeness_errors(draft_text):
+                return False
+            extract_referenced_tables(draft_text)
     except (OSError, OptimizerSqlError, QueryOptimizationError):
         return False
     return True
