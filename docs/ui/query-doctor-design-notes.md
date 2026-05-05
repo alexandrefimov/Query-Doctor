@@ -238,9 +238,9 @@ Specific Query analysis table. Row click opens details in a new tab.
 ### Details
 
 Details pages show safe deterministic case overview, Findings open by default,
-Evidence details collapsed by default, explicit LLM Report and explicit Query
-LLM optimizer. Query LLM optimizer can use server-owned SELECT/WITH
-sources or extracted SELECT/WITH
+Evidence details collapsed by default, and one explicit LLM actions block for
+LLM Report, Query LLM optimizer, or combined report + optimizer generation.
+Query LLM optimizer can use server-owned SELECT/WITH sources or extracted SELECT/WITH
 payloads from supported INSERT/CTAS statements. Drafts are rendered only after
 deterministic validation, must remain read-only SELECT/WITH, and are never
 executed by Query Doctor. High-risk cases should move toward a

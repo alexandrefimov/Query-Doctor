@@ -602,6 +602,27 @@ CM_CONTEXT_ONLY_SAFE_NOTE = (
     "- CM metrics context-only: наблюдаемый runtime signal не считается причиной без matching profile evidence."
 )
 CAUSE_WORD_RE = re.compile(r"\b(?:cause|root\s+cause|причин\w*)\b", re.IGNORECASE)
+PRIMARY_BOTTLENECK_OVERCLAIM_RE = re.compile(
+    r"("
+    r"\b(?:main|primary|key|root)\s+(?:bottleneck|source)\b|"
+    r"\b(?:bottleneck|source)\s+(?:is|was)\s+(?:main|primary|key|root)\b|"
+    r"\b(?:основн\w+|главн\w+|ключев\w+)\s+"
+    r"(?:источник\w+|узк\w+\s+мест\w+|bottleneck)\b|"
+    r"\b(?:может\s+быть|явля\w+ся|служ\w+)\s+"
+    r"(?:основн\w+|главн\w+|ключев\w+)[^.\n]{0,80}"
+    r"(?:источник\w+|узк\w+\s+мест\w+|bottleneck)\b"
+    r")",
+    re.IGNORECASE,
+)
+PRIMARY_BOTTLENECK_NEGATION_RE = re.compile(
+    r"\b(?:not\s+(?:proof|proven|supported|confirmed|the\s+main|the\s+primary)|no\s+evidence)\b|"
+    r"\b(?:не\s+(?:доказ\w*|подтвержд\w*|явля\w+ся|заявл\w*|счита\w*)|нет\s+(?:доказ\w*|подтвержд\w*))\b",
+    re.IGNORECASE,
+)
+PRIMARY_BOTTLENECK_SAFE_NOTE = (
+    "- В analysis_facts.md нет прямого causal evidence для такого вывода; "
+    "описывайте только подтверждённые profile signals."
+)
 CONTRADICTED_ROW_ESTIMATE_NOTE = (
     "- Направление row/cardinality estimate для одной строки отчёта не поддержано parsed facts; "
     "используйте конкретные actual/estimated ratios из analysis_facts.md."
@@ -1432,6 +1453,25 @@ def find_cm_context_only_claim_errors(report_text: str, facts_text: str) -> list
     return errors
 
 
+def line_has_primary_bottleneck_overclaim(line: str) -> bool:
+    return bool(PRIMARY_BOTTLENECK_OVERCLAIM_RE.search(line)) and not bool(
+        PRIMARY_BOTTLENECK_NEGATION_RE.search(line)
+    )
+
+
+def find_primary_bottleneck_overclaim_errors(report_text: str) -> list[str]:
+    for line in report_text.splitlines():
+        if line_has_primary_bottleneck_overclaim(line):
+            return ["report states a primary/root bottleneck or source without direct causal evidence"]
+    return []
+
+
+def normalize_primary_bottleneck_overclaim(line: str) -> str:
+    if line_has_primary_bottleneck_overclaim(line):
+        return PRIMARY_BOTTLENECK_SAFE_NOTE
+    return line
+
+
 def normalize_cm_context_only_overclaim(line: str, facts_text: str) -> str:
     if not CM_CONTEXT_ONLY_CAUSAL_RE.search(line):
         return line
@@ -1978,6 +2018,7 @@ If something is not present in facts, say it is not supported by parsed evidence
 Preserve the "What is NOT supported" conclusions.
 Do not recommend HDFS block size, replication factor, external network fixes, disabling codegen, or spill tuning unless facts explicitly support it.
 Do not output hidden reasoning, chain-of-thought, or <think> blocks.
+Do not call any operator, JOIN, EXCHANGE, table, metric, or estimate gap the main/root/primary bottleneck, source, or cause unless analysis_facts.md explicitly uses causal wording for that exact item.
 Prefer Action Cards when present. If Action Cards are absent, fall back to the other deterministic facts.
 Do not invent table names, join keys, row counts, memory numbers, commands, or remediation steps outside analysis_facts.md.
 If evidence is missing, say it is missing.
@@ -2304,6 +2345,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
             current_section = line.strip()
         if should_rewrite_stats_freshness_claim(line):
             line = STATS_FRESHNESS_MISSING_EVIDENCE
+        line = normalize_primary_bottleneck_overclaim(line)
         line = normalize_cm_context_only_overclaim(line, facts_text)
         line = normalize_operator_time_wording(line, facts_text)
         line = normalize_supported_evidence_contradiction(line, facts_text)
@@ -2480,7 +2522,7 @@ def recommendation_bullet_body(line: str) -> str | None:
 RECOMMENDATION_CANDIDATE_MATCHERS: dict[str, tuple[re.Pattern[str], ...]] = {
     "stats_maintenance": (
         re.compile(r"\b(?:stats|statistic|статистик)\w*\b", re.IGNORECASE),
-        re.compile(r"\b(?:собра|обнов|maintenance|актуализ)\w*\b", re.IGNORECASE),
+        re.compile(r"\b(?:собра|обнов|maintenance|актуализ|collect)\w*\b", re.IGNORECASE),
     ),
     "reduce_row_growth": (
         re.compile(r"\b(?:сократ|уменьш|reduce)\w*\b", re.IGNORECASE),
@@ -2915,6 +2957,7 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
     errors.extend(find_backend_tail_claim_errors(report_text, facts_text))
     errors.extend(find_spill_scratch_claim_errors(report_text, facts_text))
     errors.extend(find_cm_context_only_claim_errors(report_text, facts_text))
+    errors.extend(find_primary_bottleneck_overclaim_errors(report_text))
     errors.extend(find_unsupported_metadata_claim_errors(report_text))
     errors.extend(validate_recommendations_against_candidates(report_text, facts_text))
     errors.extend(validate_unsupported_conclusions_slot(report_text, facts_text))

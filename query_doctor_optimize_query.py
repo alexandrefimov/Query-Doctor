@@ -23,9 +23,12 @@ from query_doctor_report import (
     DEFAULT_KEEP_ALIVE,
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
+    MAX_RECOMMENDATION_ITEMS,
     PROGRESS_PREFIX,
     build_report_contract_digest,
+    canonical_recommendation_bullets,
     ollama_chat_url,
+    recommendation_candidate_id_for_bullet,
     recommendation_candidate_lines,
     stream_ollama_report,
 )
@@ -598,6 +601,7 @@ Safety and scope:
 - Do not output SELECT, WITH, INSERT, CREATE, DROP, ALTER, REFRESH, INVALIDATE, COMPUTE STATS, SHOW, SET, USE, or code blocks.
 - Do not echo source SQL, local paths, raw profile text, raw metadata, artifacts, credentials, or runtime internals.
 - Use only Python-owned recommendation candidates and deterministic facts.
+- Every trusted bullet must map to PYTHON-OWNED RECOMMENDATION CANDIDATES; unsupported bullets will be discarded.
 - Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive recommendations.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - Prefer concrete actions such as collecting stats, reducing projected columns, narrowing filters, splitting a risky query, or reviewing join shape only when supported by facts.
@@ -695,6 +699,37 @@ def extract_recommendations(generated: str) -> str:
     if any(token in lowered for token in forbidden):
         raise QueryOptimizationError("Optimizer recommendations contain SQL-like or unsafe output.")
     return text
+
+
+def normalize_optimizer_recommendations(generated: str, facts_text: str) -> str:
+    text = extract_recommendations(generated)
+    candidates = recommendation_candidate_lines(facts_text)
+    preserved: list[str] = []
+    seen_candidate_ids: set[str] = set()
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", stripped):
+            continue
+        candidate_id = recommendation_candidate_id_for_bullet(stripped, candidates)
+        if candidate_id is None or candidate_id in seen_candidate_ids:
+            continue
+        body = re.sub(r"^\s*(?:[-*]|\d+\.)\s+", "", stripped).strip()
+        preserved.append(f"- {body}")
+        seen_candidate_ids.add(candidate_id)
+
+    target_minimum = min(2, len(candidates))
+    if not preserved:
+        preserved = canonical_recommendation_bullets(candidates)
+    elif len(preserved) < target_minimum:
+        for candidate_id, candidate_text in candidates:
+            if candidate_id in seen_candidate_ids:
+                continue
+            preserved.append(f"- {candidate_text}")
+            seen_candidate_ids.add(candidate_id)
+            if len(preserved) >= target_minimum:
+                break
+
+    return "\n".join(preserved[:MAX_RECOMMENDATION_ITEMS])
 
 
 def no_rewrite_recommendations(risk_decision: OptimizerRiskDecision) -> str:
@@ -882,7 +917,7 @@ def main(argv: list[str] | None = None) -> int:
                 temperature=optimizer_temperature(args.temperature, risk_decision),
                 keep_alive=args.keep_alive,
             )
-            recommendations = extract_recommendations(generated)
+            recommendations = normalize_optimizer_recommendations(generated, facts_text)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(recommendations.rstrip() + "\n", encoding="utf-8")
             write_recommendations_marker(

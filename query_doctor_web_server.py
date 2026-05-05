@@ -95,6 +95,12 @@ OPTIMIZED_QUERY_STAGES = (
     (2, "Validating optimizer draft", 88),
     (3, "Done", 100),
 )
+LLM_ACTIONS_STAGES = (
+    (0, "Checking selected case", 6),
+    (1, "Generating validated report", 38),
+    (2, "Generating optimizer draft", 72),
+    (3, "Done", 100),
+)
 BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority"}
 BATCH_CM_INSPECT_LIMIT_MAX = 5000
 BATCH_METADATA_TOP_LIMIT_MAX = 200
@@ -402,31 +408,63 @@ class WebJobStore:
             self._jobs[job.job_id] = job
             return job.snapshot()
 
+    def create_batch_llm_actions(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
+        stage = LLM_ACTIONS_STAGES[0]
+        job = WebJob(
+            job_id=uuid.uuid4().hex,
+            query_id=case_id,
+            report_mode="llm_actions",
+            status="running",
+            stage_label=stage[1],
+            progress=stage[2],
+            kind="batch_llm_actions",
+            batch_case_id=case_id,
+            batch_source=source,
+        )
+        with self._lock:
+            self._jobs[job.job_id] = job
+            return job.snapshot()
+
+    def create_query_llm_actions(self, query_id: str) -> WebJobSnapshot:
+        stage = LLM_ACTIONS_STAGES[0]
+        job = WebJob(
+            job_id=uuid.uuid4().hex,
+            query_id=query_id,
+            report_mode="llm_actions",
+            status="running",
+            stage_label=stage[1],
+            progress=stage[2],
+            kind="query_llm_actions",
+        )
+        with self._lock:
+            self._jobs[job.job_id] = job
+            return job.snapshot()
+
     def running_batch_report(self, case_id: str) -> WebJobSnapshot | None:
         with self._lock:
             for job in self._jobs.values():
-                if job.kind == "batch_report" and job.batch_case_id == case_id and job.status == "running":
+                if job.kind in {"batch_report", "batch_llm_actions"} and job.batch_case_id == case_id and job.status == "running":
                     return job.snapshot()
         return None
 
     def running_query_report(self, query_id: str) -> WebJobSnapshot | None:
         with self._lock:
             for job in self._jobs.values():
-                if job.kind == "query_report" and job.query_id == query_id and job.status == "running":
+                if job.kind in {"query_report", "query_llm_actions"} and job.query_id == query_id and job.status == "running":
                     return job.snapshot()
         return None
 
     def running_batch_optimized_query(self, case_id: str) -> WebJobSnapshot | None:
         with self._lock:
             for job in self._jobs.values():
-                if job.kind == "batch_optimized_query" and job.batch_case_id == case_id and job.status == "running":
+                if job.kind in {"batch_optimized_query", "batch_llm_actions"} and job.batch_case_id == case_id and job.status == "running":
                     return job.snapshot()
         return None
 
     def running_query_optimized_query(self, query_id: str) -> WebJobSnapshot | None:
         with self._lock:
             for job in self._jobs.values():
-                if job.kind == "query_optimized_query" and job.query_id == query_id and job.status == "running":
+                if job.kind in {"query_optimized_query", "query_llm_actions"} and job.query_id == query_id and job.status == "running":
                     return job.snapshot()
         return None
 
@@ -509,6 +547,8 @@ def stages_for_job_kind(kind: str) -> tuple[tuple[int, str, int], ...]:
         return BATCH_REPORT_STAGES
     if kind in {"batch_optimized_query", "query_optimized_query"}:
         return OPTIMIZED_QUERY_STAGES
+    if kind in {"batch_llm_actions", "query_llm_actions"}:
+        return LLM_ACTIONS_STAGES
     return WEB_STAGES
 
 
@@ -2064,6 +2104,71 @@ def start_specific_query_optimized_query_job(
     return 303, f"/jobs/{job.job_id}"
 
 
+def start_batch_case_llm_actions_job(
+    case_id: str,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    *,
+    runner: Runner = subprocess.run,
+    source: str = "auto",
+) -> tuple[int, str]:
+    if source == "running":
+        effective_settings, case = resolve_running_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = running_detail_kwargs()
+    else:
+        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = {}
+    if case is None:
+        return 404, render_batch_case_not_found_page(effective_settings, case_id)
+    if not case_allows_llm_report(case):
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store, **detail_kwargs)
+    case_dir = resolve_batch_case_report_dir(effective_settings, case)
+    if case_dir is None or not case_has_safe_source_sql(case_dir):
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store, **detail_kwargs)
+    if job_store.running_batch_report(case_id) is not None or job_store.running_batch_optimized_query(case_id) is not None:
+        return 400, render_batch_case_detail_for_request(effective_settings, case_id, case, job_store, **detail_kwargs)
+    job = job_store.create_batch_llm_actions(case_id, source="running" if source == "running" else "batch")
+    thread = threading.Thread(
+        target=run_llm_actions_job,
+        args=(job.job_id, case_id, case_dir, settings, job_store, runner),
+        daemon=True,
+    )
+    thread.start()
+    return 303, f"/jobs/{job.job_id}"
+
+
+def start_specific_query_llm_actions_job(
+    query_id: str,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    *,
+    runner: Runner = subprocess.run,
+) -> tuple[int, str]:
+    try:
+        validated_query_id = validate_query_id(query_id)
+    except WebError as exc:
+        return 400, render_query_page(settings, query_id=query_id, error=exc)
+    case_dir = expected_case_dir_for_query(validated_query_id, settings)
+    try:
+        ensure_complete_existing_case(case_dir)
+    except WebError:
+        message = WebError("Specific Query details are available after analysis completes.")
+        return 404, render_query_page(settings, query_id=validated_query_id, error=message)
+    case = build_query_id_summary_case(validated_query_id, case_dir)
+    if not case_allows_llm_report(case) or not case_has_safe_source_sql(case_dir):
+        return render_specific_query_detail_for_request(settings, validated_query_id, job_store)
+    if job_store.running_query_report(validated_query_id) is not None or job_store.running_query_optimized_query(validated_query_id) is not None:
+        return render_specific_query_detail_for_request(settings, validated_query_id, job_store)
+    job = job_store.create_query_llm_actions(validated_query_id)
+    thread = threading.Thread(
+        target=run_llm_actions_job,
+        args=(job.job_id, validated_query_id, case_dir, settings, job_store, runner),
+        daemon=True,
+    )
+    thread.start()
+    return 303, f"/jobs/{job.job_id}"
+
+
 def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for name in (
@@ -2246,6 +2351,71 @@ def run_specific_query_report_job(
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
         job_store.fail(job_id, "Unexpected report generation failure. Details are hidden because they may contain sensitive data.")
+
+
+def generate_validated_report_artifact(case_dir: Path, settings: WebSettings, runner: Runner, *, label: str) -> None:
+    completed = run_subprocess(
+        build_batch_case_report_command(case_dir, settings),
+        cwd=settings.repo_dir,
+        timeout_sec=settings.timeout_sec,
+        runner=runner,
+        env=effective_subprocess_env(settings),
+    )
+    if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
+        raise WebError(
+            "Report generation completed but validation rejected the output. "
+            "The partial report is untrusted and hidden."
+        )
+    if completed.returncode != 0:
+        raise WebError(subprocess_failure_message(label, completed))
+    report_path = case_dir / BATCH_REPORT_NAME
+    if not report_path.is_file():
+        raise WebError("Report generation completed but the validated report was not created.")
+    write_batch_case_report_validation_marker(case_dir)
+
+
+def generate_validated_optimizer_artifact(case_dir: Path, settings: WebSettings, runner: Runner) -> None:
+    completed = run_subprocess(
+        build_optimized_query_command(case_dir, settings),
+        cwd=settings.repo_dir,
+        timeout_sec=settings.timeout_sec,
+        runner=runner,
+        env=effective_subprocess_env(settings),
+    )
+    if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
+        raise WebError(
+            "Optimized query draft was generated but failed deterministic validation. "
+            "The partial draft is untrusted and hidden."
+        )
+    if completed.returncode != 0:
+        raise WebError(subprocess_failure_message("Query Doctor optimized query generation", completed))
+    if not optimized_query_validated_exists(case_dir):
+        raise WebError("Optimized query generation completed but the validated draft was not created.")
+
+
+def run_llm_actions_job(
+    job_id: str,
+    label: str,
+    case_dir: Path,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    runner: Runner,
+) -> None:
+    try:
+        job_store.update_stage(job_id, 1)
+        generate_validated_report_artifact(
+            case_dir,
+            settings,
+            runner,
+            label="Query Doctor selected case report generation",
+        )
+        job_store.update_stage(job_id, 2)
+        generate_validated_optimizer_artifact(case_dir, settings, runner)
+        job_store.complete_html(job_id, f"LLM report and optimizer generated for {redact_browser_display_text(label)}.")
+    except WebError as exc:
+        job_store.fail(job_id, exc)
+    except Exception:  # pragma: no cover - defensive UI sanitization.
+        job_store.fail(job_id, "Unexpected LLM action failure. Details are hidden because they may contain sensitive data.")
 
 
 def run_optimized_query_job(
@@ -2660,7 +2830,7 @@ def load_batch_case_report_state(
     *,
     job: WebJobSnapshot | None = None,
 ) -> dict[str, object]:
-    if job is not None and job.status == "running" and job.kind == "batch_report":
+    if job is not None and job.status == "running" and job.kind in {"batch_report", "batch_llm_actions"}:
         running_job = job
     else:
         running_job = job_store.running_batch_report(case_id)
@@ -2676,6 +2846,8 @@ def load_batch_case_report_state(
     if running_job is not None:
         status = "running"
     elif job is not None and job.status == "failed" and job.kind == "batch_report":
+        status = "failed"
+    elif job is not None and job.status == "failed" and job.kind == "batch_llm_actions" and not trusted:
         status = "failed"
     report_job = running_job if running_job is not None else job
     return {
@@ -2698,7 +2870,7 @@ def load_specific_query_report_state(
     *,
     job: WebJobSnapshot | None = None,
 ) -> dict[str, object]:
-    if job is not None and job.status == "running" and job.kind == "query_report":
+    if job is not None and job.status == "running" and job.kind in {"query_report", "query_llm_actions"}:
         running_job = job
     else:
         running_job = job_store.running_query_report(query_id)
@@ -2710,6 +2882,8 @@ def load_specific_query_report_state(
     if running_job is not None:
         status = "running"
     elif job is not None and job.status == "failed" and job.kind == "query_report":
+        status = "failed"
+    elif job is not None and job.status == "failed" and job.kind == "query_llm_actions" and not trusted:
         status = "failed"
     report_job = running_job if running_job is not None else job
     return {
@@ -2764,7 +2938,7 @@ def load_optimized_query_state(
     job: WebJobSnapshot | None = None,
 ) -> dict[str, object]:
     running_job: WebJobSnapshot | None = None
-    if job is not None and job.status == "running" and job.kind in {"batch_optimized_query", "query_optimized_query"}:
+    if job is not None and job.status == "running" and job.kind in {"batch_optimized_query", "query_optimized_query", "batch_llm_actions", "query_llm_actions"}:
         running_job = job
     elif batch_case_id is not None:
         running_job = job_store.running_batch_optimized_query(batch_case_id)
@@ -2783,6 +2957,15 @@ def load_optimized_query_state(
     if running_job is not None:
         status = "running"
     elif job is not None and job.status == "failed" and job.kind in {"batch_optimized_query", "query_optimized_query"}:
+        status = "failed"
+    elif (
+        job is not None
+        and job.status == "failed"
+        and job.kind in {"batch_llm_actions", "query_llm_actions"}
+        and not trusted
+        and case_dir is not None
+        and batch_case_validated_report_exists(case_dir)
+    ):
         status = "failed"
     state_job = running_job if running_job is not None else job
     return {
@@ -3391,7 +3574,7 @@ def make_handler(
                             only_with_spills=form_flag_enabled(query, "only_with_spills"),
                         ),
                     )
-                elif job.kind == "batch_report":
+                elif job.kind in {"batch_report", "batch_llm_actions"}:
                     case_id = job.batch_case_id or job.query_id
                     if job.batch_source == "running":
                         effective_settings, case = resolve_running_case_detail_settings(settings, store, case_id)
@@ -3403,7 +3586,7 @@ def make_handler(
                         self.write_html(404, render_batch_case_not_found_page(effective_settings, case_id))
                         return
                     self.write_html(200, render_batch_case_detail_for_request(effective_settings, case_id, case, store, job=job, **detail_kwargs))
-                elif job.kind == "query_report":
+                elif job.kind in {"query_report", "query_llm_actions"}:
                     status, body = render_specific_query_detail_for_request(settings, job.query_id, store, job=job)
                     self.write_html(status, body)
                 elif job.kind == "batch_optimized_query":
@@ -3438,18 +3621,24 @@ def make_handler(
             parsed = urlparse(self.path)
             report_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/report", parsed.path)
             optimized_query_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/optimized-query", parsed.path)
+            llm_actions_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/llm-actions", parsed.path)
             running_report_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/report", parsed.path)
             running_optimized_query_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/optimized-query", parsed.path)
+            running_llm_actions_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/llm-actions", parsed.path)
             query_report_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/report", parsed.path)
             query_optimized_query_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/optimized-query", parsed.path)
+            query_llm_actions_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/llm-actions", parsed.path)
             if (
                 parsed.path not in {"/analyze", "/batch/run", "/running/run", "/optimizer", "/query-optimizer"}
                 and report_match is None
                 and optimized_query_match is None
+                and llm_actions_match is None
                 and running_report_match is None
                 and running_optimized_query_match is None
+                and running_llm_actions_match is None
                 and query_report_match is None
                 and query_optimized_query_match is None
+                and query_llm_actions_match is None
             ):
                 self.send_error(404)
                 return
@@ -3460,6 +3649,8 @@ def make_handler(
                 status, body = start_batch_case_report_job(report_match.group("case_id"), settings, store, runner=runner)
             elif optimized_query_match is not None:
                 status, body = start_batch_case_optimized_query_job(optimized_query_match.group("case_id"), settings, store, runner=runner)
+            elif llm_actions_match is not None:
+                status, body = start_batch_case_llm_actions_job(llm_actions_match.group("case_id"), settings, store, runner=runner)
             elif running_report_match is not None:
                 status, body = start_batch_case_report_job(
                     running_report_match.group("case_id"),
@@ -3476,6 +3667,14 @@ def make_handler(
                     runner=runner,
                     source="running",
                 )
+            elif running_llm_actions_match is not None:
+                status, body = start_batch_case_llm_actions_job(
+                    running_llm_actions_match.group("case_id"),
+                    settings,
+                    store,
+                    runner=runner,
+                    source="running",
+                )
             elif query_report_match is not None:
                 status, body = start_specific_query_report_job(
                     unquote(query_report_match.group("query_id")),
@@ -3486,6 +3685,13 @@ def make_handler(
             elif query_optimized_query_match is not None:
                 status, body = start_specific_query_optimized_query_job(
                     unquote(query_optimized_query_match.group("query_id")),
+                    settings,
+                    store,
+                    runner=runner,
+                )
+            elif query_llm_actions_match is not None:
+                status, body = start_specific_query_llm_actions_job(
+                    unquote(query_llm_actions_match.group("query_id")),
                     settings,
                     store,
                     runner=runner,

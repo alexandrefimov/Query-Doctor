@@ -73,6 +73,7 @@ def render_batch_case_detail(
     escaped_case_id_for_url = html.escape(view.case_id, quote=True)
     report_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/report"
     optimized_query_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/optimized-query"
+    llm_actions_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/llm-actions"
     return (
         f"<section class=\"panel batch-panel\" aria-label=\"{safe_workflow_title} case details\">"
         f"<div class=\"breadcrumb\"><a href=\"{safe_list_href}\">{safe_workflow_title}</a><span>/</span>"
@@ -84,8 +85,7 @@ def render_batch_case_detail(
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
         f"{render_analysis_details(view)}"
-        f"{render_batch_case_report_action(view.case_id, view.report_action, report_enabled=view.score_severity != 'clean', action_url=report_url, open_url=report_url, trusted_report_html=trusted_report_html)}"
-        f"{render_optimized_query_action(view.case_id, optimized_query_state, action_url=optimized_query_url, open_url=optimized_query_url, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations)}"
+        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations)}"
         "</section>"
     )
 
@@ -175,8 +175,7 @@ def render_case_detail_toc() -> str:
         "<a href=\"#pipeline-status\" class=\"detail-toc-link\">Pipeline status</a>"
         "<a href=\"#findings\" class=\"detail-toc-link\">Findings</a>"
         "<a href=\"#evidence-details\" class=\"detail-toc-link\">Evidence details</a>"
-        "<a href=\"#llm-report\" class=\"detail-toc-link\">LLM Report</a>"
-        "<a href=\"#query-llm-optimizer\" class=\"detail-toc-link\">Query LLM optimizer</a>"
+        "<a href=\"#llm-actions\" class=\"detail-toc-link\">LLM actions</a>"
         "</nav>"
         "</section>"
     )
@@ -304,6 +303,210 @@ def render_batch_case_report_action(
         "</div>"
         "</section>"
     )
+
+
+def render_llm_actions_block(
+    case_id: str,
+    report_state: dict[str, Any] | ReportActionView | None,
+    optimized_query_state: dict[str, Any] | None,
+    *,
+    report_enabled: bool = True,
+    report_action_url: str | None = None,
+    report_open_url: str | None = None,
+    optimizer_action_url: str | None = None,
+    optimizer_open_url: str | None = None,
+    combined_action_url: str | None = None,
+    trusted_report_html: SafeHtml | str | None = None,
+    trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
+) -> str:
+    report_view = report_state if isinstance(report_state, ReportActionView) else present_report_action(report_state)
+    optimizer_state = optimized_query_state or {"status": "not_run"}
+    escaped_case_id = html.escape(case_id, quote=True)
+    report_action = html.escape(report_action_url or f"/batch/case/{escaped_case_id}/report", quote=True)
+    report_open = html.escape(report_open_url or f"/batch/case/{escaped_case_id}/report", quote=True)
+    optimizer_action = html.escape(
+        optimizer_action_url or f"/batch/case/{escaped_case_id}/optimized-query",
+        quote=True,
+    )
+    optimizer_open = html.escape(
+        optimizer_open_url or f"/batch/case/{escaped_case_id}/optimized-query",
+        quote=True,
+    )
+    combined_action = html.escape(combined_action_url or f"/batch/case/{escaped_case_id}/llm-actions", quote=True)
+    report_status = str(report_view.status or "not_run")
+    optimizer_status = str(optimizer_state.get("status") or "not_run")
+    report_button_disabled = report_view.button_disabled or not report_enabled or report_status == "running"
+    optimizer_button_disabled = optimizer_status in {"running", "unavailable"}
+    combined_disabled = (
+        report_button_disabled
+        or optimizer_button_disabled
+        or (report_view.show_open_link and optimizer_status == "generated")
+    )
+    report_action_html = (
+        f"<a class=\"button\" href=\"{report_open}\">Open full report</a>"
+        if report_view.show_open_link
+        else render_post_button(report_action, report_view.button_label, disabled=report_button_disabled)
+    )
+    optimizer_action_html = render_optimizer_action_button(optimizer_status, optimizer_state, optimizer_action, optimizer_open)
+    combined_html = render_post_button(
+        combined_action,
+        "Generate report + optimizer",
+        disabled=combined_disabled,
+        primary=not combined_disabled,
+    )
+    notes: list[str] = []
+    if not report_enabled:
+        notes.append("LLM Report доступен только для suspicious/bad запросов.")
+    elif report_view.note:
+        notes.append(html.escape(report_view.note))
+    if optimizer_status == "unavailable":
+        notes.append("Source SQL недоступен или выходит за read-only scope оптимизатора для этого кейса.")
+    notes_html = f"<p class=\"helper\">{'<br>'.join(notes)}</p>" if notes else ""
+    report_status_html = render_llm_report_status(report_view, trusted_report_html)
+    optimizer_status_html = render_optimizer_status(
+        optimizer_state,
+        trusted_optimized_query=trusted_optimized_query,
+        trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+    )
+    return (
+        "<section id=\"llm-actions\" class=\"panel docs-panel\" aria-label=\"LLM actions\">"
+        "<h1>LLM actions</h1>"
+        "<div class=\"report-body\">"
+        "<div class=\"llm-action-grid\">"
+        f"<div class=\"llm-action-card\"><strong>LLM Report</strong>{report_action_html}</div>"
+        f"<div class=\"llm-action-card\"><strong>Query LLM optimizer</strong>{optimizer_action_html}</div>"
+        f"<div class=\"llm-action-card llm-action-card--primary\"><strong>Full LLM pass</strong>{combined_html}</div>"
+        "</div>"
+        f"{notes_html}"
+        f"{report_status_html}"
+        f"{optimizer_status_html}"
+        "</div>"
+        "</section>"
+    )
+
+
+def render_post_button(action_url: str, label: str, *, disabled: bool = False, primary: bool = False) -> str:
+    disabled_attr = " disabled" if disabled else ""
+    class_name = "button primary" if primary else "button"
+    return (
+        f"<form method=\"post\" action=\"{action_url}\">"
+        f"<button class=\"{class_name}\" type=\"submit\"{disabled_attr}>{html.escape(label)}</button>"
+        "</form>"
+    )
+
+
+def render_optimizer_action_button(
+    status: str,
+    state: dict[str, Any],
+    action_url: str,
+    open_url: str,
+) -> str:
+    output_kind = str(state.get("output_kind") or "sql_draft")
+    if status == "generated" and output_kind == "no_rewrite":
+        return f"<a class=\"button\" href=\"{open_url}\">Open Query LLM optimizer outcome</a>"
+    if status == "generated" and output_kind == "recommendations_only":
+        return f"<a class=\"button\" href=\"{open_url}\">Open Query LLM optimizer recommendations</a>"
+    if status == "generated":
+        return f"<a class=\"button\" href=\"{open_url}\">Open Query LLM optimizer draft</a>"
+    if status == "unavailable":
+        return "<button class=\"button\" type=\"button\" disabled>Generate Query LLM optimizer draft</button>"
+    if status == "running":
+        return "<button class=\"button\" type=\"button\" disabled>Generating Query LLM optimizer draft</button>"
+    return render_post_button(action_url, "Generate Query LLM optimizer draft")
+
+
+def render_llm_report_status(view: ReportActionView, trusted_report_html: SafeHtml | str | None) -> str:
+    if view.status == "running":
+        status_html = render_llm_report_progress(view)
+    elif view.status == "failed":
+        status_html = render_llm_report_failure(view)
+    else:
+        status_html = ""
+    report_html = (
+        f"<div class=\"inline-report\">{trusted_report_html}</div>"
+        if view.show_open_link and trusted_report_html
+        else ""
+    )
+    if not status_html and not report_html:
+        return ""
+    return (
+        "<div class=\"llm-result-block\" aria-label=\"LLM report result\">"
+        "<h2>LLM Report</h2>"
+        f"{status_html}{report_html}"
+        "</div>"
+    )
+
+
+def render_optimizer_status(
+    state: dict[str, Any],
+    *,
+    trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
+) -> str:
+    status = str(state.get("status") or "not_run")
+    output_kind = str(state.get("output_kind") or "sql_draft")
+    if status == "running":
+        status_html = render_optimized_query_progress(state)
+    elif status == "failed":
+        status_html = render_optimized_query_failure(state)
+    elif status == "partial_untrusted":
+        status_html = (
+            "<div class=\"error-card\" role=\"alert\">"
+            "Optimized query draft есть, но не прошел deterministic validation. "
+            "Partial draft остается untrusted и скрыт."
+            "</div>"
+        )
+    elif status == "generated":
+        status_html = render_optimized_query_outcome(state)
+    else:
+        status_html = ""
+    draft_html = render_optimizer_trusted_output(
+        status,
+        output_kind,
+        trusted_optimized_query=trusted_optimized_query,
+        trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+    )
+    if not status_html and not draft_html:
+        return ""
+    return (
+        "<div class=\"llm-result-block\" aria-label=\"Query LLM optimizer result\">"
+        "<h2>Query LLM optimizer</h2>"
+        f"{status_html}{draft_html}"
+        "</div>"
+    )
+
+
+def render_optimizer_trusted_output(
+    status: str,
+    output_kind: str,
+    *,
+    trusted_optimized_query: str | None = None,
+    trusted_optimizer_recommendations: str | None = None,
+) -> str:
+    if status == "generated" and trusted_optimized_query:
+        return (
+            "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer draft\">"
+            "<summary>Query LLM optimizer draft</summary>"
+            "<p class=\"helper\">Только draft. Запрос не выполнялся и требует ревью перед использованием.</p>"
+            f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
+            "</details>"
+        )
+    if status == "generated" and trusted_optimizer_recommendations:
+        if output_kind == "no_rewrite":
+            summary = "Query LLM optimizer outcome"
+            helper = "Trusted SQL rewrite не показывается: Python классифицировал validated draft как no-benefit/no-rewrite."
+        else:
+            summary = "Query LLM optimizer recommendations"
+            helper = "SQL rewrite пропущен: Python пометил форму запроса как слишком рискованную для trusted draft."
+        return (
+            "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer recommendations\">"
+            f"<summary>{html.escape(summary)}</summary>"
+            f"<p class=\"helper\">{html.escape(helper)}</p>"
+            f"<div>{render_safe_markdown_paragraphs(trusted_optimizer_recommendations)}</div>"
+            "</details>"
+        )
+    return ""
 
 
 def render_optimized_query_action(
