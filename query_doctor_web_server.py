@@ -61,7 +61,7 @@ from query_doctor_web_ui_recent_scan_presenter import case_score_severity
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_TIMEOUT_SEC = 1800
-DEFAULT_MODEL = "qwen3-coder:30b"
+DEFAULT_MODEL = "qwen3-coder:30b-a3b-q8_0"
 DEFAULT_CORPUS_DIR = Path("cases/cm-corpus")
 REPORT_VALIDATION_EXIT_CODE = 4
 LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost"}

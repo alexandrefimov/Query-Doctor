@@ -1893,6 +1893,7 @@ def collect_cm_timeseries_context(case_dir: Path) -> dict[str, Any] | None:
     return {
         "available": bool(raw.get("available")),
         "window": raw.get("window") if isinstance(raw.get("window"), dict) else {},
+        "limits": raw.get("limits") if isinstance(raw.get("limits"), dict) else {},
         "queries": [
             query
             for query in queries
@@ -1935,6 +1936,15 @@ def cm_metric_by_id(context: dict[str, Any], metric_id: str) -> dict[str, Any] |
         if isinstance(query, dict) and query.get("id") == metric_id:
             return query
     return None
+
+
+def cm_metrics_by_ids(context: dict[str, Any], metric_ids: tuple[str, ...]) -> list[dict[str, Any]]:
+    metrics: list[dict[str, Any]] = []
+    wanted = set(metric_ids)
+    for query in context.get("queries") or []:
+        if isinstance(query, dict) and query.get("id") in wanted:
+            metrics.append(query)
+    return metrics
 
 
 def cm_metric_point_count(metric: dict[str, Any] | None) -> int:
@@ -2006,6 +2016,22 @@ def metric_series_spread_basis(metric: dict[str, Any] | None, *, value_suffix: s
     return f"series_count={series_count}; top series max/peer max={values[0] / peer:.2f}x"
 
 
+def metric_value(metric: dict[str, Any] | None, field: str) -> float | None:
+    return numeric_context_value(metric or {}, field)
+
+
+def max_metric_value(metrics: list[dict[str, Any]], field: str) -> float | None:
+    values = [value for metric in metrics for value in [metric_value(metric, field)] if value is not None]
+    return max(values) if values else None
+
+
+def metric_spread_basis(metrics: list[dict[str, Any]]) -> str | None:
+    spreads = [spread for metric in metrics for spread in [metric_series_spread_basis(metric)] if spread]
+    if not spreads:
+        return None
+    return spreads[0] if len(spreads) == 1 else "component spreads: " + "; ".join(spreads[:3])
+
+
 def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     queries = [query for query in context.get("queries") or [] if isinstance(query, dict)]
     total_metrics = len(queries)
@@ -2017,7 +2043,10 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     host_cpu_user = cm_metric_by_id(context, "host_cpu_user")
     host_cpu_system = cm_metric_by_id(context, "host_cpu_system")
     daemon_memory = cm_metric_by_id(context, "impala_daemon_memory")
-    network_io = cm_metric_by_id(context, "host_network_io")
+    network_metrics = cm_metrics_by_ids(
+        context,
+        ("host_network_io", "host_network_receive_rate", "host_network_transmit_rate"),
+    )
 
     cpu_user_max = numeric_context_value(host_cpu_user or {}, "max")
     cpu_user_avg = numeric_context_value(host_cpu_user or {}, "avg")
@@ -2071,10 +2100,11 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         "daemon memory capacity or limit is not part of the current safe CM metrics contract",
     )
 
-    network_max = numeric_context_value(network_io or {}, "max")
-    network_avg = numeric_context_value(network_io or {}, "avg")
-    network_spread = metric_series_spread_basis(network_io)
-    if cm_metric_ready(network_io) and network_max is not None and network_avg is not None:
+    network_max = max_metric_value(network_metrics, "max")
+    network_avg = max_metric_value(network_metrics, "avg")
+    network_spread = metric_spread_basis(network_metrics)
+    network_ready = any(cm_metric_ready(metric) for metric in network_metrics)
+    if network_ready and network_max is not None and network_avg is not None:
         ratio = network_max / network_avg if network_avg > 0 else None
         spike_observed = network_max >= CM_NETWORK_SPIKE_BYTES_PER_SEC and (
             ratio is None or ratio >= CM_NETWORK_SPIKE_RATIO_THRESHOLD
@@ -2092,11 +2122,35 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     else:
         network_io_spike = cm_signal("unknown", "host network I/O metric is missing or has insufficient points")
 
+    truncated_metrics = [
+        str(query.get("id"))
+        for query in queries
+        if query.get("truncated")
+    ][:5]
+    unavailable_metrics = [
+        str(query.get("id"))
+        for query in queries
+        if query.get("status") not in {"ok", "no_data"}
+    ][:5]
     limitations = [
         "CM metrics are bounded query-window context signals, not standalone proof of cause.",
         "Raw metric points and per-point times are intentionally excluded from trusted analysis facts.",
         "Memory pressure remains unknown until a safe capacity or limit metric is available.",
     ]
+    limits = context.get("limits") if isinstance(context.get("limits"), dict) else {}
+    max_points = limits.get("max_points_per_query")
+    max_bytes = limits.get("max_response_bytes")
+    if max_points is not None or max_bytes is not None:
+        parts = []
+        if max_points is not None:
+            parts.append(f"max_points_per_query={max_points}")
+        if max_bytes is not None:
+            parts.append(f"max_response_bytes={max_bytes}")
+        limitations.append("CM metrics collection limits: " + ", ".join(parts) + ".")
+    if truncated_metrics:
+        limitations.append("CM metrics were truncated for: " + ", ".join(truncated_metrics) + ".")
+    if unavailable_metrics:
+        limitations.append("CM metrics unavailable for: " + ", ".join(unavailable_metrics) + ".")
     warnings = [warning for warning in context.get("warnings") or [] if isinstance(warning, str)]
     if warnings:
         limitations.append(f"Collection warnings present: {len(warnings)}.")
@@ -3783,6 +3837,11 @@ def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
         lines.append(f"- window: {window['from']} to {window['to']}")
     if window.get("padding_sec") is not None:
         lines.append(f"- window padding seconds: {window['padding_sec']}")
+    limits = context.get("limits") if isinstance(context.get("limits"), dict) else {}
+    if limits.get("max_response_bytes") is not None:
+        lines.append(f"- max_response_bytes: {limits['max_response_bytes']}")
+    if limits.get("max_points_per_query") is not None:
+        lines.append(f"- max_points_per_query: {limits['max_points_per_query']}")
     lines.append("")
 
     for query in context.get("queries") or []:
@@ -3791,6 +3850,8 @@ def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
         lines.append("")
         lines.append(f"- status: {query.get('status', 'unknown')}")
         lines.append(f"- point_count: {query.get('point_count', 0)}")
+        if query.get("reason"):
+            lines.append(f"- reason: {query.get('reason')}")
         if query.get("truncated"):
             lines.append("- truncated: yes")
         if query.get("series_count") is not None:

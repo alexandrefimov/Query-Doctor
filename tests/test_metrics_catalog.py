@@ -59,6 +59,10 @@ def test_cm_mappings_reference_known_signal_ids():
     by_id = metric_signal_by_id()
 
     assert CM_TIMESERIES_MAPPINGS
+    assert "host_network_io" not in {mapping.query_id for mapping in CM_TIMESERIES_MAPPINGS}
+    assert {"host_network_receive_rate", "host_network_transmit_rate"}.issubset(
+        {mapping.query_id for mapping in CM_TIMESERIES_MAPPINGS}
+    )
     assert all(mapping.signal_id in by_id for mapping in CM_TIMESERIES_MAPPINGS)
     assert {mapping.signal_id for mapping in CM_TIMESERIES_MAPPINGS} == {
         "impala_daemon_memory_growth",

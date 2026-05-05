@@ -258,9 +258,15 @@ CM_TIMESERIES_MAPPINGS: tuple[CMTimeSeriesMapping, ...] = (
     ),
     CMTimeSeriesMapping(
         signal_id="host_network_io_spike",
-        query_id="host_network_io",
-        label="Host network IO pressure",
-        tsquery="select bytes_receive_rate, bytes_transmit_rate",
+        query_id="host_network_receive_rate",
+        label="Host network receive rate",
+        tsquery="select bytes_receive_rate",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="host_network_io_spike",
+        query_id="host_network_transmit_rate",
+        label="Host network transmit rate",
+        tsquery="select bytes_transmit_rate",
     ),
 )
 

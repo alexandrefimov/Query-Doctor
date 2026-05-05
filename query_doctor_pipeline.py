@@ -20,7 +20,7 @@ from query_doctor_impala_metadata_workflow import (
 )
 
 
-DEFAULT_MODEL = "qwen3-coder:30b"
+DEFAULT_MODEL = "qwen3-coder:30b-a3b-q8_0"
 
 
 def run_cmd(cmd: list[str], cwd: Path) -> None:

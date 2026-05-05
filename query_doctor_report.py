@@ -24,7 +24,7 @@ from typing import Any
 from query_doctor_metadata_digest import build_metadata_facts_digest
 
 
-DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3-coder:30b")
+DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3-coder:30b-a3b-q8_0")
 DEFAULT_OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DEFAULT_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "0")
 DEFAULT_VALIDATION_MODE = os.getenv("QD_REPORT_VALIDATION_MODE", "strict")
@@ -1382,6 +1382,14 @@ def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
             spread_points.append(f"{label} top/peer={match.group('ratio')}x")
     if spread_points:
         parts.append("series spread: " + ", ".join(spread_points[:3]))
+    facts_lines = "\n".join(extract_markdown_section(facts_text, CM_METRICS_FACTS_HEADING))
+    limit_points: list[str] = []
+    if "CM metrics were truncated for:" in facts_lines:
+        limit_points.append("some metric summaries were truncated by collection limits")
+    if "CM metrics unavailable for:" in facts_lines:
+        limit_points.append("some allowlisted metrics were unavailable")
+    if limit_points:
+        parts.append("limitations: " + "; ".join(limit_points))
     return "- " + "; ".join(parts) + ". Metrics are runtime context unless CM Metrics Correlation marks them as correlated."
 
 

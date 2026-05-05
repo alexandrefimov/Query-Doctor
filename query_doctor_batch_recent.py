@@ -76,6 +76,9 @@ class BatchConfig:
     query_type: str | None
     max_profile_bytes: int
     collect_cm_timeseries: bool
+    cm_timeseries_padding_sec: int
+    max_timeseries_bytes: int
+    max_timeseries_points: int
     metadata_mode: str
     metadata_coordinator: str | None
     metadata_impala_shell: str | None
@@ -286,6 +289,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         default=None,
         help="Collect bounded allowlisted CM time-series summaries for each collected case.",
+    )
+    parser.add_argument(
+        "--cm-timeseries-padding-sec",
+        type=non_negative_int,
+        help=f"Seconds to pad before query start and after query end for CM metrics. Default: {cm_profiles.DEFAULT_CM_TIMESERIES_PADDING_SEC}.",
+    )
+    parser.add_argument(
+        "--max-timeseries-bytes",
+        type=positive_int,
+        help=f"Maximum bytes per CM time-series response. Default: {cm_profiles.DEFAULT_MAX_TIMESERIES_BYTES}.",
+    )
+    parser.add_argument(
+        "--max-timeseries-points",
+        type=positive_int,
+        help=f"Maximum numeric data points to summarize per CM time-series query. Default: {cm_profiles.DEFAULT_MAX_TIMESERIES_POINTS}.",
     )
     parser.add_argument(
         "--metadata-mode",
@@ -674,6 +692,21 @@ def build_batch_config(
             config_values.get("collect_cm_timeseries"),
             default=False,
         ),
+        cm_timeseries_padding_sec=first_int(
+            args.cm_timeseries_padding_sec,
+            config_values.get("cm_timeseries_padding_sec"),
+            default=cm_profiles.DEFAULT_CM_TIMESERIES_PADDING_SEC,
+        ),
+        max_timeseries_bytes=first_int(
+            args.max_timeseries_bytes,
+            config_values.get("max_timeseries_bytes"),
+            default=cm_profiles.DEFAULT_MAX_TIMESERIES_BYTES,
+        ),
+        max_timeseries_points=first_int(
+            args.max_timeseries_points,
+            config_values.get("max_timeseries_points"),
+            default=cm_profiles.DEFAULT_MAX_TIMESERIES_POINTS,
+        ),
         metadata_mode=args.metadata_mode,
         metadata_coordinator=first_string(args.metadata_coordinator, config_values.get("metadata_coordinator")),
         metadata_impala_shell=first_string(args.metadata_impala_shell, config_values.get("metadata_impala_shell")),
@@ -1006,7 +1039,17 @@ def collect_case_profile(
             str(config.max_profile_bytes),
         ]
         if config.collect_cm_timeseries:
-            cmd.append("--collect-cm-timeseries")
+            cmd.extend(
+                [
+                    "--collect-cm-timeseries",
+                    "--cm-timeseries-padding-sec",
+                    str(config.cm_timeseries_padding_sec),
+                    "--max-timeseries-bytes",
+                    str(config.max_timeseries_bytes),
+                    "--max-timeseries-points",
+                    str(config.max_timeseries_points),
+                ]
+            )
         else:
             cmd.append("--no-collect-cm-timeseries")
         append_cm_config_args(cmd, config)

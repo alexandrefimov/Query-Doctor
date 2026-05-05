@@ -1786,6 +1786,10 @@ def collect_cm_timeseries_context(
         return {
             "available": False,
             "reason": "query start/end time unavailable",
+            "limits": {
+                "max_response_bytes": max_response_bytes,
+                "max_points_per_query": max_points,
+            },
             "queries": [],
         }
     from_time, to_time = window
@@ -1809,12 +1813,17 @@ def collect_cm_timeseries_context(
                     "label": query.label,
                     "status": "unavailable",
                     "point_count": 0,
+                    "reason": sanitize_adapter_error_message(exc),
                 }
             )
     return {
         "available": any(item.get("status") == "ok" for item in queries),
         "schema_version": 1,
         "source": "cm_timeseries",
+        "limits": {
+            "max_response_bytes": max_response_bytes,
+            "max_points_per_query": max_points,
+        },
         "window": {
             "from": from_time,
             "to": to_time,
