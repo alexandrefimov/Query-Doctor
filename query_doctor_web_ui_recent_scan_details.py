@@ -599,7 +599,7 @@ def render_optimizer_trusted_output(
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer draft\">"
             "<summary>Query LLM optimizer draft</summary>"
             "<p class=\"helper\">Только draft. Запрос не выполнялся и требует ревью перед использованием.</p>"
-            f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
+            f"{render_trusted_optimized_query_draft(trusted_optimized_query)}"
             "</details>"
         )
     if status == "generated" and trusted_optimizer_recommendations:
@@ -617,6 +617,17 @@ def render_optimizer_trusted_output(
             "</details>"
         )
     return ""
+
+
+def render_trusted_optimized_query_draft(trusted_optimized_query: str) -> str:
+    return (
+        "<div class=\"optimized-query-copy\" data-optimized-query-block>"
+        "<div class=\"optimized-query-tools\">"
+        "<button class=\"button copy-query-button\" type=\"button\" data-copy-optimized-query>Copy query</button>"
+        "</div>"
+        f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
+        "</div>"
+    )
 
 
 def render_optimized_query_action(
@@ -682,7 +693,7 @@ def render_optimized_query_action(
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer draft\">"
             "<summary>Query LLM optimizer draft</summary>"
             "<p class=\"helper\">Только draft. Запрос не выполнялся и требует ревью перед использованием.</p>"
-            f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
+            f"{render_trusted_optimized_query_draft(trusted_optimized_query)}"
             "</details>"
         )
     elif status == "generated" and trusted_optimizer_recommendations:
@@ -716,7 +727,7 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
     current_stage = str(state.get("stage_label") or "Generating optimizer draft")
     progress_value = numeric_value(state.get("progress"))
     current_index = optimized_query_progress_step_index(current_stage, progress_value)
-    progress = int(progress_value) if progress_value > 0 else report_progress_percent(current_index)
+    progress = optimized_query_progress_percent(current_index)
     status_attrs = ""
     job_id = str(state.get("job_id") or "")
     if job_id:
@@ -797,6 +808,16 @@ def optimized_query_progress_step_index(stage_label: str, progress: int) -> int:
     if bounded_progress >= 100:
         return len(OPTIMIZED_QUERY_PROGRESS_STEPS) - 1
     return max(0, min(len(OPTIMIZED_QUERY_PROGRESS_STEPS) - 2, (bounded_progress - 1) // (100 // len(OPTIMIZED_QUERY_PROGRESS_STEPS))))
+
+
+def optimized_query_progress_percent(step_index: int) -> int:
+    step_count = len(OPTIMIZED_QUERY_PROGRESS_STEPS)
+    bounded_index = max(0, min(step_count - 1, step_index))
+    if step_count <= 1:
+        return 0
+    if bounded_index >= step_count - 1:
+        return 100
+    return int(round((bounded_index / step_count) * 100))
 
 
 def render_optimized_query_failure(state: dict[str, Any]) -> str:

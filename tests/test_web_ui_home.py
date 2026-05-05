@@ -42,7 +42,9 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "Metadata collector: CLI only" not in body
     assert ".hero-card:after" not in body
     assert "color-scheme:light" in body
+    assert "html[data-theme=dark]" in body
     assert "--bg:#f7f8fa" in body
+    assert "--bg:#101418" in body
     assert "max-height:66vh" not in body
     assert "overflow-wrap:anywhere" in body
     assert "Интеллектуальный анализ Impala-запросов по Query ID" not in body
@@ -66,6 +68,38 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "This MVP UI does not expose a separate reports list yet." not in body
     assert "Checking Query ID" not in body
     assert "This usually takes a few seconds to a couple of minutes." not in body
+
+
+def test_web_render_page_contains_theme_toggle():
+    module = load_web_module()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    body = module.render_page(settings)
+
+    assert 'id="theme-toggle"' in body
+    assert 'aria-label="Switch to dark theme"' in body
+    assert "query-doctor-theme" in body
+    assert "prefers-color-scheme: dark" in body
+    assert "Switch to light theme" in body
+    assert ".theme-toggle{display:inline-grid;place-items:center;width:36px;height:36px;border:1px solid #455260" in body
+    assert "background:#12181e;color:#8cd4e6" in body
+    assert "html[data-theme=dark] .theme-toggle{border-color:#c8d2df;background:#fff;color:#0f5268" in body
+    assert ".theme-icon-light{display:none}.theme-icon-dark{display:block}" in body
+    assert "html[data-theme=dark] .theme-icon-light{display:block}" in body
+    assert "html[data-theme=dark] .theme-icon-dark{display:none}" in body
+
+
+def test_web_render_page_contains_optimizer_copy_handler():
+    module = load_web_module()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    body = module.render_page(settings)
+
+    assert "data-copy-optimized-query" in body
+    assert "data-optimized-query-block" in body
+    assert "navigator.clipboard.writeText" in body
+    assert "fallbackCopyCode" in body
+    assert "Copy query" in body
 
 
 def test_web_render_page_omits_modes_even_when_report_mode_is_passed():
