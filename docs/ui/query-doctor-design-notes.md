@@ -213,7 +213,7 @@ Primary UI elements:
 - Scan date and Scan Hour controls
 - duration, user and pool filters
 - Parallelism and Metadata parallelism controls
-- result groups for Bad, Suspicious and Good queries
+- result groups for Bad, Suspicious, Optimization candidates and Stats refresh candidates
 - display-only spill filter over already analyzed results
 - table columns: Rank, Query ID, Score, Duration, STATS, META, Summary
 - row click opens details in a new tab

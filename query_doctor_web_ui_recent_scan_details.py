@@ -94,11 +94,14 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
     spill_text = "spill evidence observed" if view.has_spill else "no spill evidence observed"
     stats_text = f"table stats {view.table_stats_status}" if view.table_stats_status is not None else "table stats not checked"
     items = (
+        ("user", view.user),
         ("score", score_badge_from_values(view.score, None, None, severity=view.score_severity)),
         ("duration", view.duration_sec),
         ("signals", view.signal_summary),
+        ("query optimization", candidate_overview_value(view.optimization_candidate, view.optimization_rank)),
+        ("stats refresh", candidate_overview_value(view.stats_candidate, view.stats_rank)),
         ("spill", spill_text),
-        ("stats", stats_text),
+        ("table stats", stats_text),
     )
     cards = "".join(
         "<div class=\"case-overview-card\">"
@@ -148,6 +151,7 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<h1>Findings</h1>"
         "<div class=\"report-body\">"
         "<p class=\"helper\">Основные deterministic findings раскрыты сразу. Они опираются только на analyzer facts и не являются root-cause claim без прямого evidence.</p>"
+        f"{render_action_candidate_findings(view)}"
         f"{render_score_reason_explanations(view)}"
         "</div>"
         "</section>"
@@ -164,6 +168,103 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "</details>"
         "</div>"
     )
+
+
+def render_action_candidate_findings(view: RecentScanCaseDetailView) -> str:
+    cards: list[str] = []
+    optimization = view.optimization_candidate
+    if candidate_is_visible(optimization):
+        rank_text = candidate_rank_text(view.optimization_rank)
+        counter_text = candidate_counter_signal_text(optimization)
+        cards.append(
+            action_candidate_card(
+                f"Query optimization candidate: {candidate_title(optimization.get('tier'))}",
+                (
+                    f"Score: {escape_value(optimization.get('score'))}/100. "
+                    f"{rank_text}"
+                    f"Impact: {candidate_title(optimization.get('impact'))}. "
+                    f"Confidence: {candidate_title(optimization.get('confidence'))}. "
+                    f"Why: {optimization.get('summary') or 'query-shape evidence'}. "
+                    f"Review first: {optimization.get('review_areas') or 'query shape'}."
+                    f"{counter_text}"
+                ),
+            )
+        )
+    stats = view.stats_candidate
+    if candidate_is_visible(stats):
+        rank_text = candidate_rank_text(view.stats_rank)
+        counter_text = candidate_counter_signal_text(stats)
+        cards.append(
+            action_candidate_card(
+                f"Stats refresh candidate: {candidate_title(stats.get('tier'))}",
+                (
+                    f"Score: {escape_value(stats.get('score'))}/100. "
+                    f"{rank_text}"
+                    f"Need: {detail_stats_need_label(stats.get('need_type'))}. "
+                    f"Speed benefit: {candidate_title(stats.get('speed_benefit'))}. "
+                    f"Confidence: {candidate_title(stats.get('confidence'))}. "
+                    f"Why: {stats.get('summary') or 'stats-planning evidence'}. "
+                    f"Review first: {stats.get('review_areas') or 'stats evidence'}. "
+                    f"Confirm: {stats.get('required_confirmation') or 'compare EXPLAIN and rerun under comparable load'}."
+                    f"{counter_text}"
+                ),
+            )
+        )
+    if not cards:
+        return ""
+    return "<ul class=\"reason-list action-candidate-list\">" + "".join(cards) + "</ul>"
+
+
+def candidate_is_visible(candidate: dict[str, Any]) -> bool:
+    return str(candidate.get("tier") or "").lower() in {"high", "medium"}
+
+
+def candidate_overview_value(candidate: dict[str, Any], rank: Any) -> str:
+    tier = str(candidate.get("tier") or "not_likely").strip().lower()
+    score = candidate.get("score")
+    if tier not in {"high", "medium"}:
+        return "not Medium/High"
+    rank_text = f"#{rank} " if is_meaningful_detail_value(rank) else ""
+    return f"{rank_text}{candidate_title(tier)} / {escape_value(score)}"
+
+
+def candidate_rank_text(rank: Any) -> str:
+    if not is_meaningful_detail_value(rank):
+        return ""
+    return f"Rank: #{escape_value(rank)}. "
+
+
+def candidate_counter_signal_text(candidate: dict[str, Any]) -> str:
+    counter_signals = candidate.get("counter_signals")
+    if not counter_signals:
+        return ""
+    return f" Counter-signals: {escape_value(counter_signals)}."
+
+
+def candidate_title(value: Any) -> str:
+    text = str(value or "unknown").replace("_", " ").strip()
+    return text.title() if text else "Unknown"
+
+
+def action_candidate_card(title: str, body: str) -> str:
+    return (
+        "<li class=\"reason-card\">"
+        f"<strong>{html.escape(title)}</strong>"
+        f"<p>{escape_value(body)}</p>"
+        "</li>"
+    )
+
+
+def detail_stats_need_label(value: Any) -> str:
+    labels = {
+        "table_stats": "table/partition stats",
+        "column_stats": "column stats",
+        "table_and_column_stats": "table/partition stats first, then column stats",
+        "stats_possibly_stale": "possibly stale stats",
+        "insufficient_metadata": "insufficient metadata",
+        "not_likely_stats_issue": "not likely a stats issue",
+    }
+    return labels.get(str(value), str(value or "unknown"))
 
 
 def render_case_detail_toc() -> str:
@@ -967,12 +1068,14 @@ def render_metadata_facts_body(
         "<summary>Metadata facts</summary>"
         "<div class=\"report-body\">"
         "<p>Детерминированные table-level metadata facts. Missing/incomplete stats — это limitations/checks, а не root causes.</p>"
+        "<p><code>ok</code> у SHOW-команд означает, что metadata command успешно выполнилась; "
+        "stats coverage оценивается отдельно в Row-count stats и Column stats.</p>"
         f"{fallback_html}"
         f"{degraded_html}"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr>"
-        "<th>Table</th><th>Object</th><th>SHOW CREATE</th><th>TABLE STATS</th><th>COLUMN STATS</th>"
+        "<th>Table</th><th>Object</th><th>SHOW CREATE command</th><th>TABLE STATS command</th><th>COLUMN STATS command</th>"
         "<th>Row-count stats</th><th>Column stats</th><th>Observed</th><th>Missing</th><th>Partitions</th><th>Format</th><th>Limitations</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"

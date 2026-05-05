@@ -110,10 +110,13 @@ def redact_model_names_for_display(text: str) -> str:
 
 
 def redact_sql_snippets_for_display(text: str) -> str:
-    return re.sub(
-        r"\b(?:SELECT|WITH|INSERT|UPSERT|DELETE|CREATE|DROP|ALTER|COMPUTE\s+STATS|INVALIDATE|REFRESH|SHOW)\b"
-        r"[^.;\n<]{0,160}",
-        SQL_SNIPPET_REPLACEMENT,
-        text,
-        flags=re.IGNORECASE,
+    statement_pattern = (
+        r"\b(?:SELECT|INSERT|UPSERT|DELETE|CREATE|DROP|ALTER|COMPUTE\s+STATS|INVALIDATE|REFRESH|SHOW)\b"
+        r"[^.;\n<]{0,160}"
     )
+    cte_pattern = (
+        r"\bWITH\s+(?:[A-Za-z_][\w$]*|\"[^\"]+\"|`[^`]+`)\s+AS\b"
+        r"[^.;\n<]{0,160}"
+    )
+    text = re.sub(statement_pattern, SQL_SNIPPET_REPLACEMENT, text, flags=re.IGNORECASE)
+    return re.sub(cte_pattern, SQL_SNIPPET_REPLACEMENT, text, flags=re.IGNORECASE)

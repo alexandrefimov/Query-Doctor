@@ -23,6 +23,9 @@ from query_doctor_query_optimization_score import (
 
 STATS_TIER_ORDER = {"high": 4, "medium": 3, "low": 2, "unknown": 1, "not_likely": 0}
 STATS_CONFIDENCE_ORDER = {"high": 2, "medium": 1, "low": 0}
+FULL_METADATA_STATUSES = {"collected", "ok", "available", "done"}
+PARTIAL_METADATA_STATUSES = {"partial"}
+USABLE_METADATA_STATUSES = FULL_METADATA_STATUSES | PARTIAL_METADATA_STATUSES
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,7 @@ def score_stats_optimization_candidate(
     duration = duration_sec if duration_sec is not None else duration_seconds_value(facts)
     impact_score, impact_reasons = stats_impact_signals(facts, duration)
     metadata_score, metadata_reasons, metadata_kind = stats_metadata_evidence(facts, metadata_status=metadata_status)
+    important_column_evidence = important_column_stats_evidence(facts)
     mismatch_score, mismatch_reasons = estimate_mismatch_evidence(facts)
     planning_score, planning_reasons, review_areas = planning_dependent_evidence(facts)
     counter_signals, penalty = stats_counter_signals(
@@ -102,6 +106,9 @@ def score_stats_optimization_candidate(
     elif not has_planning_symptom:
         raw_score = min(raw_score, 35)
         counter_signals.append("stats gap without expensive planning-dependent symptom")
+    elif is_generic_column_only_stats_evidence(metadata_kind, important_column_evidence=important_column_evidence):
+        raw_score = min(raw_score, 65)
+        counter_signals.append("column stats gap is not tied to specific join/filter columns")
 
     score = max(0, min(100, raw_score))
     need_type, table_need, column_need = classify_stats_need(
@@ -109,6 +116,7 @@ def score_stats_optimization_candidate(
         metadata_status=metadata_status,
         has_mismatch=has_mismatch,
         has_planning_symptom=has_planning_symptom,
+        important_column_evidence=important_column_evidence,
     )
     tier = stats_candidate_tier(
         score,
@@ -229,7 +237,7 @@ def stats_metadata_evidence(
         score += 15
         reasons.append("supported stale or incomplete stats evidence")
         kinds.add("stale")
-    if str(metadata_status).lower() not in {"collected", "ok", "available", "done"} and not kinds:
+    if str(metadata_status).lower() not in USABLE_METADATA_STATUSES and not kinds:
         kinds.add("insufficient")
     return min(100, score), reasons, kinds
 
@@ -329,9 +337,12 @@ def stats_counter_signals(
     if duration_sec is not None and duration_sec < 5:
         signals.append("very short query")
         penalty *= 0.6
-    if str(metadata_status).lower() not in {"collected", "ok", "available", "done"}:
+    if str(metadata_status).lower() not in USABLE_METADATA_STATUSES:
         signals.append("metadata was not collected or is insufficient")
         penalty *= 0.85
+    elif str(metadata_status).lower() in PARTIAL_METADATA_STATUSES:
+        signals.append("metadata collection was partial")
+        penalty *= 0.95
     if "backend data skew" in lower and not has_planning_symptom:
         signals.append("backend symptoms dominate without stats-planning evidence")
         penalty *= 0.6
@@ -355,8 +366,9 @@ def classify_stats_need(
     metadata_status: str,
     has_mismatch: bool,
     has_planning_symptom: bool,
+    important_column_evidence: bool = False,
 ) -> tuple[str, str, str]:
-    if "insufficient" in metadata_kind or str(metadata_status).lower() not in {"collected", "ok", "available", "done"}:
+    if "insufficient" in metadata_kind or str(metadata_status).lower() not in USABLE_METADATA_STATUSES:
         return "insufficient_metadata", "unknown", "unknown"
     if not has_mismatch or not has_planning_symptom:
         if not metadata_kind:
@@ -365,7 +377,13 @@ def classify_stats_need(
     column = "column" in metadata_kind
     stale = "stale" in metadata_kind
     table_need = "critical" if table and has_mismatch and has_planning_symptom else "high" if table else "low"
-    column_need = "critical" if column and has_mismatch and has_planning_symptom else "high" if column else "low"
+    column_need = (
+        "critical"
+        if column and important_column_evidence and has_mismatch and has_planning_symptom
+        else "high"
+        if column
+        else "low"
+    )
     if table and column:
         return "table_and_column_stats", table_need, column_need
     if table:
@@ -390,8 +408,11 @@ def stats_candidate_tier(
     )
     if severe_counter and score < 35:
         return "not_likely"
-    if str(metadata_status).lower() not in {"collected", "ok", "available", "done"} and score >= 20:
+    normalized_metadata_status = str(metadata_status).lower()
+    if normalized_metadata_status not in USABLE_METADATA_STATUSES and score >= 20:
         return "unknown"
+    if normalized_metadata_status in PARTIAL_METADATA_STATUSES and score >= 40:
+        return "medium"
     if chain_complete and score >= 70:
         return "high"
     if score >= 40:
@@ -410,8 +431,11 @@ def stats_confidence(
     planning_score: int,
     counter_signals: list[str],
 ) -> str:
-    if str(metadata_status).lower() not in {"collected", "ok", "available", "done"}:
+    normalized_metadata_status = str(metadata_status).lower()
+    if normalized_metadata_status not in USABLE_METADATA_STATUSES:
         return "medium" if mismatch_score and planning_score else "low"
+    if normalized_metadata_status in PARTIAL_METADATA_STATUSES:
+        return "medium" if metadata_score and mismatch_score and planning_score else "low"
     if chain_complete and metadata_score >= 30 and mismatch_score >= 30 and planning_score >= 30 and not counter_signals:
         return "high"
     if metadata_score and mismatch_score and planning_score:
@@ -438,6 +462,29 @@ def supported_stale_stats_evidence(facts: str) -> bool:
         or "stats possibly stale" in lower
         or "supported stale" in lower
     )
+
+
+def important_column_stats_evidence(facts: str) -> bool:
+    lower = facts.lower()
+    return any(
+        marker in lower
+        for marker in (
+            "missing column statistics on important",
+            "missing column stats on important",
+            "missing important column statistics",
+            "join/filter column stats",
+            "join key column statistics missing",
+            "filter column statistics missing",
+        )
+    )
+
+
+def is_generic_column_only_stats_evidence(
+    metadata_kind: set[str],
+    *,
+    important_column_evidence: bool,
+) -> bool:
+    return metadata_kind == {"column"} and not important_column_evidence
 
 
 def cardinality_mismatch_count(facts: str) -> int:

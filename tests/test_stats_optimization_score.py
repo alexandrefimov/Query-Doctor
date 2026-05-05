@@ -85,10 +85,11 @@ def test_missing_column_stats_with_selectivity_mismatch_is_column_candidate():
         metadata_status="collected",
     )
 
-    assert result.tier in {"high", "medium"}
+    assert result.tier == "medium"
     assert result.need_type == "column_stats"
-    assert result.column_stats_need in {"critical", "high"}
+    assert result.column_stats_need == "high"
     assert "missing or incomplete column statistics" in result.reasons
+    assert "column stats gap is not tied to specific join/filter columns" in result.counter_signals
 
 
 def test_missing_table_and_column_stats_classifies_stats_order():
@@ -101,8 +102,21 @@ def test_missing_table_and_column_stats_classifies_stats_order():
     assert result.tier == "high"
     assert result.need_type == "table_and_column_stats"
     assert result.table_stats_need == "critical"
-    assert result.column_stats_need == "critical"
+    assert result.column_stats_need == "high"
     assert "table/partition row counts" in result.suggested_review_areas
+
+
+def test_partial_metadata_can_still_rank_stats_candidate_with_capped_confidence():
+    result = score_stats_optimization_candidate(
+        stats_facts(),
+        duration_sec=120,
+        metadata_status="partial",
+    )
+
+    assert result.tier == "medium"
+    assert result.confidence == "medium"
+    assert result.need_type == "table_and_column_stats"
+    assert "metadata collection was partial" in result.counter_signals
 
 
 def test_missing_stats_without_mismatch_or_planning_symptom_is_not_high():

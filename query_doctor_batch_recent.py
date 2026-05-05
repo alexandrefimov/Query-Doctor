@@ -1298,7 +1298,7 @@ def rank_cases_for_query_optimization(cases: list[CaseResult]) -> list[CaseResul
             for case in cases
             if case.analysis_status == "ok"
             and case.query_optimization_candidate is not None
-            and case.query_optimization_candidate.tier != "not_likely"
+            and case.query_optimization_candidate.tier in {"high", "medium"}
         ],
         key=lambda case: query_optimization_sort_key(case_to_summary(case)),
     )
@@ -1315,7 +1315,7 @@ def rank_cases_for_stats_optimization(cases: list[CaseResult]) -> list[CaseResul
             case
             for case in cases
             if case.stats_optimization_candidate
-            and case.stats_optimization_candidate.tier in {"high", "medium", "low", "unknown"}
+            and case.stats_optimization_candidate.tier in {"high", "medium"}
         ],
         key=lambda case: stats_optimization_sort_key(case_to_summary(case)),
     )
@@ -1928,7 +1928,7 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "triage_rank": case.triage_rank,
         "query_id": case.query_id,
         "duration_sec": case.duration_sec,
-        "user": "<user>" if case.user else None,
+        "user": cm_profiles.sanitize_text_for_log(case.user) if case.user else None,
         "pool": cm_profiles.sanitize_text_for_log(case.pool) if case.pool else None,
         "query_type": case.query_type,
         "sql_verb": case.sql_verb,

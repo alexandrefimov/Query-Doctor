@@ -49,7 +49,7 @@ def render_help_content() -> str:
 <li><strong>Scan date</strong> и <strong>Scan Hour</strong> задают один час Cloudera Manager summaries за сегодня или предыдущие два дня.</li>
 <li><strong>Minimum duration</strong>, <strong>Username</strong> и <strong>Resource pool</strong> сужают набор summaries до запуска анализа.</li>
 <li><strong>Parallelism</strong> управляет параллельной загрузкой профилей и локальным анализом. <strong>Metadata parallelism</strong> отдельно ограничивает read-only metadata collection.</li>
-<li>Результаты группируются как <strong>Bad queries</strong>, <strong>Suspicious queries</strong>, <strong>Optimization candidates</strong>, <strong>Stats refresh candidates</strong> и <strong>Good queries</strong>.</li>
+<li>Результаты группируются как <strong>Bad queries</strong>, <strong>Suspicious queries</strong>, <strong>Optimization candidates</strong> и <strong>Stats refresh candidates</strong>.</li>
 <li><strong>Optimization candidates</strong> — deterministic список запросов, где profile facts показывают query-shape review opportunity. Он не обещает ускорение и не запускает LLM или SQL.</li>
 <li><strong>Stats refresh candidates</strong> — deterministic список запросов, где metadata facts, estimate mismatch и planning-sensitive runtime symptoms вместе указывают, что stats refresh may improve speed. Это prediction, а не гарантия: нужен EXPLAIN comparison и rerun under comparable load.</li>
 <li><strong>Only queries with spills</strong> — display-фильтр уже полученных результатов; он не меняет параметры запуска scan.</li>
@@ -76,10 +76,14 @@ def render_help_content() -> str:
 <ul>
 <li><strong>Rank</strong> в Finished Queries — порядок проверки внутри текущей группы; это не root-cause verdict.</li>
 <li><strong>Query ID</strong> открывает details по клику на строку. Из Specific Query details открывается в новой вкладке.</li>
-<li><strong>Score</strong> — deterministic priority score из analyzer facts.</li>
+<li><strong>User</strong> показывает sanitized CM query user, чтобы быстрее понять владельца запроса.</li>
+<li><strong>Score</strong> — deterministic priority score из analyzer facts; он остается в triage groups, но не используется как главный сигнал в action-oriented groups.</li>
 <li><strong>Duration</strong> показывает длительность из Cloudera Manager summary, если она доступна.</li>
 <li><strong>STATS</strong> показывает доступность table stats: ✓ available, × missing/unknown/not_available, − not checked/not applicable.</li>
 <li><strong>META</strong> показывает статус metadata collection.</li>
+<li><strong>Optimization candidates</strong> использует колонки Candidate, Impact, Confidence и Review first вместо общего Score/STATS/META набора.</li>
+<li><strong>Stats refresh candidates</strong> использует колонки Candidate, Need, Speed benefit, Confidence и Confirm.</li>
+<li>Кейсы без triage severity и без Medium/High optimization или stats-refresh candidate не выводятся отдельной вкладкой, чтобы results table оставалась action-oriented.</li>
 <li><strong>Summary</strong> коротко объясняет главные deterministic signals без raw evidence.</li>
 </ul>
 

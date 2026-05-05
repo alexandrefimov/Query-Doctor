@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -44,6 +45,7 @@ class RecentScanCaseRowView:
     rank: int
     case_id: str | None
     query_id: Any
+    user: Any
     score: Any
     status_summary: str
     signal_summary: str
@@ -155,6 +157,7 @@ class RecentScanCmMetricsView:
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any
+    user: Any
     report_status: str
     trust_note: str
     status_summary: str
@@ -163,10 +166,15 @@ class RecentScanCaseDetailView:
     table_stats_status: Any
     score: Any
     duration_sec: Any
+    overall_rank: Any
+    optimization_rank: Any
+    stats_rank: Any
     status_fields: tuple[tuple[str, Any], ...]
     runtime_fields: tuple[tuple[str, Any], ...]
     technical_fields: tuple[tuple[str, Any], ...]
     score_reasons: tuple[str, ...]
+    optimization_candidate: dict[str, Any]
+    stats_candidate: dict[str, Any]
     metadata: RecentScanMetadataView
     cm_metrics: RecentScanCmMetricsView
     report_action: ReportActionView
@@ -179,15 +187,13 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
     rows = tuple(present_recent_scan_case_row(rank, case) for rank, case in enumerate(raw_cases, start=1))
     bad_count = sum(1 for row in rows if row.score_severity in {"failed", "high"})
     suspicious_count = sum(1 for row in rows if row.score_severity == "suspicious")
-    good_count = sum(1 for row in rows if row.score_severity == "clean")
-    optimization_count = sum(1 for row in rows if row.optimization_tier in {"high", "medium", "low"})
-    stats_count = sum(1 for row in rows if row.stats_tier in {"high", "medium", "low", "unknown"})
+    optimization_count = sum(1 for row in rows if row.optimization_tier in {"high", "medium"})
+    stats_count = sum(1 for row in rows if row.stats_tier in {"high", "medium"})
     metadata_count = sum(1 for row in rows if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"})
     header_items = (
         ("total", len(rows)),
         ("bad", bad_count),
         ("suspicious", suspicious_count),
-        ("good", good_count),
         ("optimization", optimization_count),
         ("stats", stats_count),
         ("analyzed", safe_display_value(summary.get("selected_count"))),
@@ -216,6 +222,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         rank=rank,
         case_id=batch_case_id(case),
         query_id=safe_display_value(case.get("query_id")),
+        user=safe_display_value(case.get("user")),
         score=safe_display_value(case.get("score")),
         status_summary=recent_scan_status_summary(
             collection_status,
@@ -274,9 +281,12 @@ def present_recent_scan_case_detail(
         if report_status == "validated report"
         else "LLM report has not been generated for this case."
     )
+    optimization = query_optimization_candidate_view(case)
+    stats_candidate = stats_optimization_candidate_view(case)
     return RecentScanCaseDetailView(
         case_id=safe_display_text(case_id),
         query_id=safe_display_value(case.get("query_id")),
+        user=safe_display_value(case.get("user")),
         report_status=report_status,
         trust_note=trust_note,
         status_summary=recent_scan_status_summary(
@@ -290,9 +300,13 @@ def present_recent_scan_case_detail(
         table_stats_status=safe_display_value(case.get("table_stats_status")),
         score=safe_display_value(case.get("score")),
         duration_sec=safe_display_value(case.get("duration_sec")),
+        overall_rank=safe_display_value(case.get("_detail_overall_rank")),
+        optimization_rank=safe_display_value(case.get("_detail_optimization_rank")),
+        stats_rank=safe_display_value(case.get("_detail_stats_rank")),
         status_fields=(
             ("case", safe_display_value(case_id)),
             ("query id", safe_display_value(case.get("query_id"))),
+            ("user", safe_display_value(case.get("user"))),
             ("score", safe_display_value(case.get("score"))),
             ("duration sec", safe_display_value(case.get("duration_sec"))),
             ("collection", collection_status),
@@ -309,17 +323,15 @@ def present_recent_scan_case_detail(
             ("host-tail candidates", safe_display_value(case.get("host_tail_candidate_count"))),
         ),
         technical_fields=(
-            ("referenced tables", safe_display_value(case.get("referenced_table_count"))),
-            ("collected metadata tables", safe_display_value(case.get("collected_metadata_table_count"))),
-            ("too large metadata", safe_display_value(case.get("too_large_count"))),
             ("failure category", safe_display_value(case.get("failure_category"))),
             ("cm collect seconds", safe_display_value(case.get("cm_collect_seconds"))),
             ("analysis seconds", safe_display_value(case.get("analysis_seconds"))),
             ("report seconds", safe_display_value(case.get("report_seconds"))),
             ("total seconds", safe_display_value(case.get("total_seconds"))),
-            ("report generated", safe_display_value(case.get("report_generated"))),
         ),
         score_reasons=tuple(safe_display_text(reason) for reason in case.get("score_reasons") or [] if reason is not None),
+        optimization_candidate=optimization,
+        stats_candidate=stats_candidate,
         metadata=present_recent_scan_metadata(case, metadata_facts),
         cm_metrics=present_recent_scan_cm_metrics(cm_metrics_facts),
         report_action=present_report_action(report_state),
@@ -478,11 +490,11 @@ def metadata_summary_items(case: dict[str, Any], statement_counts: dict[Any, Any
         ("referenced tables", safe_display_value(case.get("referenced_table_count"))),
         ("collected metadata tables", safe_display_value(case.get("collected_metadata_table_count"))),
         ("too large metadata", safe_display_value(case.get("too_large_count"))),
-        ("metadata statements", metadata_statement_counts_summary(statement_counts) if counts_known else None),
+        ("metadata command status", metadata_statement_counts_summary(statement_counts) if counts_known else None),
     ]
     metadata_reasons = metadata_score_reasons(case)
     if metadata_reasons:
-        items.append(("metadata score reasons", "; ".join(metadata_reasons)))
+        items.append(("stats coverage", "; ".join(metadata_reasons)))
     return tuple(items)
 
 
@@ -677,6 +689,12 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
     safe_reasons = [safe_optimization_display_text(reason) for reason in reasons[:3]] if isinstance(reasons, list) else []
     review = candidate.get("suggested_review_areas")
     safe_review = [safe_optimization_display_text(item) for item in review[:3]] if isinstance(review, list) else []
+    counter_signals = candidate.get("counter_signals")
+    safe_counter_signals = (
+        [safe_optimization_display_text(item) for item in counter_signals[:2]]
+        if isinstance(counter_signals, list)
+        else []
+    )
     return {
         "tier": tier,
         "score": score,
@@ -684,6 +702,7 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         "confidence": confidence,
         "summary": "; ".join(safe_reasons),
         "review_areas": "; ".join(safe_review),
+        "counter_signals": "; ".join(safe_counter_signals),
     }
 
 
@@ -706,6 +725,12 @@ def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         if isinstance(confirmation, list)
         else []
     )
+    counter_signals = candidate.get("counter_signals")
+    safe_counter_signals = (
+        [safe_optimization_display_text(item) for item in counter_signals[:2]]
+        if isinstance(counter_signals, list)
+        else []
+    )
     return {
         "tier": tier,
         "score": score,
@@ -716,6 +741,7 @@ def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         "summary": "; ".join(safe_reasons),
         "review_areas": "; ".join(safe_review),
         "required_confirmation": "; ".join(safe_confirmation),
+        "counter_signals": "; ".join(safe_counter_signals),
     }
 
 
@@ -900,8 +926,10 @@ def safe_display_text(value: Any) -> str:
 
 
 def safe_optimization_display_text(value: Any) -> str:
+    text = str(value if value is not None else "unknown")
+    text = re.sub(r"\b(statistics|stats)\s+refresh\b", r"\1 update", text, flags=re.IGNORECASE)
     return redact_browser_display_text(
-        value,
+        text,
         redact_field_names=True,
         redact_artifact_markers=True,
         redact_model_names=True,

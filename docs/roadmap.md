@@ -100,6 +100,10 @@ outcomes honest when a trusted SQL rewrite is unavailable or not useful.
 - Details page UX audit: review which blocks are still useful, which are
   redundant, what should be added or promoted, and whether the page is efficient
   for Finished, Running and Specific Query workflows.
+- Recent scan metadata collection policy: make it explicit which queries get
+  metadata by default, because `Stats refresh candidates` and some
+  `Optimization candidates` need metadata to distinguish SQL-shape work from
+  stats maintenance.
 - Small anonymized optimizer benchmark set.
 - Prompt tuning so optimizer drafts are useful without changing semantics.
 - Demo case pack with one clearly problematic query, one bounded-evidence query
@@ -116,6 +120,66 @@ current Impala behavior and safety boundaries.
 
 Goal: preserve useful findings from the 2026-05-05 external audit while keeping
 the roadmap scoped to confirmed risks and practical hardening work.
+
+Triage summary from the 2026-05-05 Claude audit:
+
+Important:
+
+- Query Optimizer raw SQL lifetime: the current page renderer no longer accepts
+  a `sql` prefill parameter and has no-echo tests, but `OptimizerAnalysis` still
+  carries the submitted SQL even though browser rendering does not need it.
+  Remove or isolate that raw field so future result renderers cannot accidentally
+  echo pasted SQL.
+- Browser error-path SQL redaction: keep submitted SQL out of successful
+  optimizer responses, and also standardize dynamic browser error/job messages
+  so SQL-like snippets are redacted by default on error paths.
+- Metadata coverage honesty: promote `skipped` / `not_attempted`, `partial`,
+  `failed`, `not_applicable`, and empty collected metadata states as separate
+  UI signals instead of letting summary counts imply that uncollected metadata
+  means no missing stats.
+- Stats recommendation wording: distinguish table row-count stats from column
+  stats in deterministic recommendations. Keep the action wording as candidate
+  maintenance that requires EXPLAIN comparison and a comparable rerun, not as a
+  proven fix or root cause.
+- Report claim guardrails: `REQUIRED_COMPUTE_STATS_RE` is already enforced by
+  strict validation and covered by tests; remaining work is broader canary
+  coverage for unsupported stale-statistics/root-cause wording in Russian and
+  English, plus the planned Root-Cause Claim Registry.
+- Documentation drift cleanup: align README, Help, architecture and historical
+  MVP wording around current workflow names. `Admin/user` report modes and
+  `Админские проверки` should remain documented only as legacy/historical terms,
+  not current product surfaces.
+
+Can wait:
+
+- Mechanical web server split after the safety items above: routes, job
+  orchestration, command construction, case resolution and trusted-artifact
+  loading should move out of `query_doctor_web_server.py` in behavior-preserving
+  steps.
+- Mechanical report split after validator wording stabilizes: extract report
+  sanitizer/validator and claim normalizers into a focused module without
+  changing trusted-report semantics.
+- Help UX polish: add a compact workflow comparison for Finished/Running or
+  Specific Query, Query Optimizer and LLM Report so users see which surfaces use
+  collected runtime facts and which do not.
+- Shared web UI helpers: move common HTML escaping/safe-display helpers out of
+  details-specific modules when a touched feature naturally needs them.
+
+Rejected or stale audit items:
+
+- Do not add a new task to remove a Query Optimizer `sql=` renderer parameter:
+  the current `render_optimizer_page()` signature has no such parameter and the
+  no-prefill/no-echo path is already tested.
+- Do not add a new task to "connect" `REQUIRED_COMPUTE_STATS_RE` to validation:
+  it already feeds `validate_report_against_facts()`. Keep future work focused
+  on coverage and allowed-claim design instead.
+- Do not expand the engine adapter or runtime engine selection from this audit.
+  The current adapter remains a placeholder seam, not multi-engine support.
+- Do not split the profile analyzer now just because it is large. Any analyzer
+  split needs a separate parser/facts preservation plan and fixture coverage.
+- Do not add broad "last reviewed" stamps to every active document as a
+  mandatory process. Prefer substantive status notes where drift actually
+  creates product or safety ambiguity.
 
 Safety and browser trust:
 
@@ -216,12 +280,24 @@ Planned provider seams:
   for non-CM clusters. Prometheus support requires allowlisted PromQL, fixed
   query windows derived from query timing, response-size limits, and summarized
   metrics only.
+- HMS metadata provider adapter: evaluate a read-only Hive Metastore backing DB
+  provider, preferably against a MySQL replica, for table/partition/column stats
+  facts used by Recent scan and Stats refresh candidates. This must be a
+  separate metadata backend, not an implicit replacement for the current Impala
+  `SHOW CREATE TABLE` / `SHOW TABLE STATS` / `SHOW COLUMN STATS` path. It needs
+  allowlisted parameterized SELECTs over specific HMS schema tables/columns,
+  strict timeouts and row/partition/output limits, replica-lag reporting,
+  versioned HMS schema fixtures, and the same browser/report rule: no raw HMS
+  rows, raw metadata dumps, local paths, credentials, or arbitrary SQL.
 
 Non-goals for this seam until the contracts exist:
 
 - auto-detecting deployment type
 - broad daemon scraping
 - arbitrary PromQL from UI/config
+- arbitrary SQL against the metastore backing database
+- replacing Impala catalog-visible metadata without documenting freshness and
+  catalog-cache differences
 - rendering raw profile text, raw metrics, local paths, daemon URLs, or raw
   artifact names in browser-visible UI
 
@@ -296,13 +372,36 @@ Highest priority:
   as a repeated tail across multiple queries.
 - Similar Query Clustering: group repeated queries by normalized shape or
   fingerprint so Finished Queries can show a class of problems instead of many
-  duplicate cases.
+  duplicate cases. The backend should compute the fingerprint locally from
+  server-owned SQL/profile artifacts, normalize literals and formatting, hash
+  the normalized shape, and expose only the hash/family summary in browser-safe
+  output. This should help distinguish a single heavy outlier from many fast
+  repeated queries whose aggregate cluster cost is high.
 - Recommendation Outcome Tracking: record whether recommended actions were
   applied and whether runtime/score improved. This can begin as local/manual
   status and later become a feedback dataset.
 
 Important follow-ups:
 
+- Default Metadata Selection Policy: document and tune the deterministic queue
+  for metadata collection. Current behavior is opt-in through a bounded
+  `recent_metadata_top_limit`: after profile analysis, Query Doctor ranks
+  analyzed cases and collects metadata for high-severity cases first, then for
+  suspicious cases above the promotion score floor, with hard caps and
+  `not_requested` for the rest. The target policy should keep the same bounded,
+  read-only, allowlisted collection contract, but prioritize:
+  high-severity analyzed cases; suspicious cases with cardinality/memory
+  estimate anomalies; expensive High/Medium query-optimization candidates where
+  stats may be a counter-signal or companion action; profile-only stats
+  candidates with estimate mismatch plus planning-sensitive runtime symptoms;
+  and, once fingerprinting exists, repeated query families with high aggregate
+  duration, scan volume, exchange, spill or memory pressure. It should avoid
+  default metadata collection for clean/short queries, failed/cancelled queries
+  without useful execution evidence, admission/client/catalog/network-dominated
+  cases without query/plan evidence, admin/metadata statements, and cases that
+  exceed table/output/time bounds. UI wording must show `not_requested`,
+  `partial`, `failed` and `insufficient_metadata` distinctly so users know when
+  stats conclusions are unknown rather than negative.
 - Plan Change Detection: identify plan-shape changes for recurring queries:
   join order/distribution changes, vanished table statistics, changed
   cardinality error, new spill evidence, or changed scan/table set.
@@ -314,9 +413,23 @@ Important follow-ups:
 - Cost and Impact Estimate: attach approximate wasted time, peak resource
   pressure, repeated-query count, affected pool and user impact to findings so
   the UI can prioritize work by operational value, not score alone.
+- Memory Pressure / Reclaim Opportunity: add deterministic prioritization
+  signals for memory pressure that optimization or stats refresh may reduce.
+  Inputs should include observed peak memory, spill/scratch bytes, memory
+  estimate mismatch, join/aggregate/sort/analytic spill, large exchange and
+  query-family aggregate memory pressure. Wording must stay cautious:
+  `Memory pressure: high` or `memory reduction opportunity`, not guaranteed
+  freed GiB. Any approximate reclaimable-memory label should remain unknown
+  until plan comparison and comparable rerun confirm a change.
 - Workload-Level View: summarize recurring problem classes by fingerprint,
   pool, user, table set and time window. This should help distinguish one
   expensive outlier from a repeated workload pattern.
+- Aggregate Optimization / Stats Impact: feed query-family recurrence into
+  `Optimization candidates` and `Stats refresh candidates`. A short individual
+  query should be allowed to become a Medium/High action candidate when its
+  fingerprint family has high total runtime, scan volume, spill/memory pressure,
+  or execution count, while still keeping the query-level scorer deterministic
+  and not exposing raw SQL.
 - Evidence Quality UI Grouping: use analyzer quality level as a confidence
   dimension in Finished, Running and Specific query views. It should help
   separate high-severity/high-confidence cases from high-severity/weak-evidence

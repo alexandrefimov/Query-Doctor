@@ -56,7 +56,11 @@ from query_doctor_web_ui import (
 from query_doctor_web_ui_help import render_help_page
 from query_doctor_web_ui_optimizer import render_optimizer_page
 from query_doctor_web_ui_running import render_running_queries_page
-from query_doctor_web_ui_recent_scan_presenter import case_score_severity
+from query_doctor_web_ui_recent_scan_presenter import case_score_severity, present_recent_scan_summary
+from query_doctor_web_ui_recent_scan_results import (
+    filter_rows_by_query_group,
+    sort_rows_for_query_group,
+)
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -2522,6 +2526,8 @@ def resolve_running_case_detail_settings(
     running_settings = running_page_settings(settings, job_store)
     running_summary = load_batch_summary(running_settings)
     running_case = find_batch_case(running_summary, case_id) if running_summary is not None else None
+    if running_case is not None:
+        running_case = case_with_detail_ranks(running_summary, case_id, running_case)
     return running_settings, running_case
 
 
@@ -2534,13 +2540,13 @@ def resolve_case_detail_settings(
     summary = load_batch_summary(batch_settings)
     case = find_batch_case(summary, case_id) if summary is not None else None
     if case is not None:
-        return batch_settings, case
+        return batch_settings, case_with_detail_ranks(summary, case_id, case)
     running_settings = running_page_settings(settings, job_store)
     if running_settings.batch_summary != batch_settings.batch_summary:
         running_summary = load_batch_summary(running_settings)
         running_case = find_batch_case(running_summary, case_id) if running_summary is not None else None
         if running_case is not None:
-            return running_settings, running_case
+            return running_settings, case_with_detail_ranks(running_summary, case_id, running_case)
     return batch_settings, None
 
 
@@ -2553,6 +2559,40 @@ def load_batch_summary(settings: WebSettings) -> dict[str, object] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def case_with_detail_ranks(
+    summary: dict[str, object] | None,
+    case_id: str,
+    case: dict[str, object],
+) -> dict[str, object]:
+    rank_fields = batch_case_detail_rank_fields(summary, case_id)
+    if not rank_fields:
+        return case
+    decorated = dict(case)
+    decorated.update(rank_fields)
+    return decorated
+
+
+def batch_case_detail_rank_fields(summary: dict[str, object] | None, case_id: str) -> dict[str, int]:
+    if not isinstance(summary, dict):
+        return {}
+    view = present_recent_scan_summary(summary)
+    result: dict[str, int] = {}
+    for row in view.rows:
+        if row.case_id == case_id:
+            result["_detail_overall_rank"] = row.rank
+            break
+    for group, key in (
+        ("optimization", "_detail_optimization_rank"),
+        ("stats", "_detail_stats_rank"),
+    ):
+        rows = sort_rows_for_query_group(filter_rows_by_query_group(view.rows, group), group)
+        for display_rank, row in enumerate(rows, start=1):
+            if row.case_id == case_id:
+                result[key] = display_rank
+                break
+    return result
 
 
 def render_batch_case_detail_for_request(

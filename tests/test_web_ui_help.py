@@ -53,9 +53,9 @@ def test_web_help_page_renders_curated_static_help():
     assert "Suspicious queries" in body
     assert "Optimization candidates" in body
     assert "Stats refresh candidates" in body
-    assert "Good queries" in body
+    assert "Good queries" not in body
     assert "Only queries with spills" in body
-    assert "Query ID, Score, Duration, STATS, META и Summary" in body
+    assert "Кейсы без triage severity" in body
     assert "не выполняет вставленный SQL" in body
     assert "не возвращает вставленный SQL обратно в браузер после submit" in body
     assert "не запускает LLM-отчеты автоматически" in body

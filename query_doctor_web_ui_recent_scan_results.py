@@ -27,7 +27,6 @@ QUERY_GROUPS = {
     "suspicious": ("Suspicious queries", {"suspicious"}),
     "optimization": ("Optimization candidates", set()),
     "stats": ("Stats refresh candidates", set()),
-    "good": ("Good queries", {"clean"}),
 }
 DEFAULT_QUERY_GROUP = "bad"
 
@@ -92,7 +91,15 @@ def render_batch_summary(
         for label, value in view.header_items
     )
     broad_scan_message = recent_scan_too_broad_message(summary)
-    rows = "\n".join(render_batch_case_row(row.rank, row, details_base_path=details_base_path) for row in rows_for_group)
+    rows = "\n".join(
+        render_batch_case_row(
+            display_rank,
+            row,
+            details_base_path=details_base_path,
+            query_group=active_group,
+        )
+        for display_rank, row in enumerate(rows_for_group, start=1)
+    )
     if not rows:
         empty_text = broad_scan_message or (
             f"No {QUERY_GROUPS[active_group][0].lower()} with spills were found in the configured batch summary."
@@ -100,7 +107,7 @@ def render_batch_summary(
             else
             f"No {QUERY_GROUPS[active_group][0].lower()} were found in the configured batch summary."
         )
-        rows = f"<tr><td colspan=\"7\" class=\"empty-cell\">{html.escape(empty_text)}</td></tr>"
+        rows = f"<tr><td colspan=\"{batch_table_column_count(active_group)}\" class=\"empty-cell\">{html.escape(empty_text)}</td></tr>"
     scan_details = render_batch_scan_details(summary)
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
@@ -118,13 +125,29 @@ def render_batch_summary(
         f"{warning_note}"
         f"{switcher}"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
-        "<thead><tr>"
-        "<th>Rank</th><th>Query ID</th><th>Score</th><th>Duration</th><th>STATS</th><th>META</th><th>Summary</th>"
-        "</tr></thead>"
+        f"{batch_table_head(active_group)}"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
         "</section>"
     )
+
+
+def batch_table_columns(query_group: str) -> tuple[str, ...]:
+    normalized = normalize_query_group(query_group)
+    if normalized == "optimization":
+        return ("Rank", "Query ID", "User", "Duration", "Candidate", "Impact", "Confidence", "Review first", "Summary")
+    if normalized == "stats":
+        return ("Rank", "Query ID", "User", "Duration", "Candidate", "Need", "Speed benefit", "Confidence", "Confirm", "Summary")
+    return ("Rank", "Query ID", "User", "Score", "Duration", "STATS", "META", "Summary")
+
+
+def batch_table_column_count(query_group: str) -> int:
+    return len(batch_table_columns(query_group))
+
+
+def batch_table_head(query_group: str) -> str:
+    headers = "".join(f"<th>{html.escape(label)}</th>" for label in batch_table_columns(query_group))
+    return f"<thead><tr>{headers}</tr></thead>"
 
 
 def normalize_query_group(value: Any) -> str:
@@ -138,9 +161,9 @@ def filter_rows_by_query_group(
 ) -> tuple[RecentScanCaseRowView, ...]:
     normalized = normalize_query_group(query_group)
     if normalized == "optimization":
-        return tuple(row for row in rows if row.optimization_tier in {"high", "medium", "low"})
+        return tuple(row for row in rows if row.optimization_tier in {"high", "medium"})
     if normalized == "stats":
-        return tuple(row for row in rows if row.stats_tier in {"high", "medium", "low", "unknown"})
+        return tuple(row for row in rows if row.stats_tier in {"high", "medium"})
     _label, severities = QUERY_GROUPS[normalized]
     return tuple(row for row in rows if row.score_severity in severities)
 
@@ -204,9 +227,9 @@ def render_query_group_switcher(
     rows_for_counts = filter_rows_by_spills(rows, only_with_spills=only_with_spills)
     counts = {
         key: (
-            sum(1 for row in rows_for_counts if row.optimization_tier in {"high", "medium", "low"})
+            sum(1 for row in rows_for_counts if row.optimization_tier in {"high", "medium"})
             if key == "optimization"
-            else sum(1 for row in rows_for_counts if row.stats_tier in {"high", "medium", "low", "unknown"})
+            else sum(1 for row in rows_for_counts if row.stats_tier in {"high", "medium"})
             if key == "stats"
             else sum(1 for row in rows_for_counts if row.score_severity in severities)
         )
@@ -292,6 +315,7 @@ def render_batch_case_row(
     case: dict[str, Any] | RecentScanCaseRowView,
     *,
     details_base_path: str = "/batch/case",
+    query_group: str = DEFAULT_QUERY_GROUP,
 ) -> str:
     view = case if isinstance(case, RecentScanCaseRowView) else present_recent_scan_case_row(rank, case)
     row_class = "batch-row batch-row--failed" if row_has_failure(view) else "batch-row"
@@ -299,15 +323,43 @@ def render_batch_case_row(
     if view.case_id:
         href = f"{details_base_path.rstrip('/')}/{html.escape(view.case_id, quote=True)}"
         row_attrs += f" data-href=\"{href}\" onclick=\"window.open(this.dataset.href,'_blank','noopener')\" tabindex=\"0\" onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();window.open(this.dataset.href,'_blank','noopener')}}\""
-    cells = [
-        compact_cell(view.rank),
-        query_id_cell(view.query_id),
-        score_cell(view),
-        compact_cell(view.duration_sec),
-        stats_cell(view.table_stats_status),
-        metadata_cell(view.metadata_status),
-        summary_cell(view),
-    ]
+    normalized = normalize_query_group(query_group)
+    if normalized == "optimization":
+        cells = [
+            compact_cell(rank),
+            query_id_cell(view.query_id),
+            user_cell(view.user),
+            compact_cell(view.duration_sec),
+            candidate_cell(view.optimization_tier),
+            compact_cell(view.optimization_impact.title()),
+            compact_cell(view.optimization_confidence.title()),
+            reason_cell(view.optimization_review_areas or "review query shape"),
+            summary_cell(view, query_group=normalized),
+        ]
+    elif normalized == "stats":
+        cells = [
+            compact_cell(rank),
+            query_id_cell(view.query_id),
+            user_cell(view.user),
+            compact_cell(view.duration_sec),
+            candidate_cell(view.stats_tier),
+            reason_cell(stats_need_label(view.stats_need_type)),
+            compact_cell(view.stats_speed_benefit.title()),
+            compact_cell(view.stats_confidence.title()),
+            reason_cell(view.stats_required_confirmation or "compare EXPLAIN and rerun comparable load"),
+            summary_cell(view, query_group=normalized),
+        ]
+    else:
+        cells = [
+            compact_cell(rank),
+            query_id_cell(view.query_id),
+            user_cell(view.user),
+            score_cell(view),
+            compact_cell(view.duration_sec),
+            stats_cell(view.table_stats_status),
+            metadata_cell(view.metadata_status),
+            summary_cell(view, query_group=normalized),
+        ]
     return f"<tr {row_attrs}>{''.join(cells)}</tr>"
 
 
@@ -318,6 +370,14 @@ def row_has_failure(view: RecentScanCaseRowView) -> bool:
 def query_id_cell(query_id: Any) -> str:
     escaped = escape_value(query_id)
     return f"<td class=\"batch-cell--query-id\">{escaped}</td>"
+
+
+def user_cell(user: Any) -> str:
+    return f"<td class=\"batch-cell--user\">{escape_value(user)}</td>"
+
+
+def reason_cell(value: Any) -> str:
+    return f"<td class=\"batch-cell--reason\">{escape_value(value)}</td>"
 
 
 def score_cell(view: RecentScanCaseRowView) -> str:
@@ -333,39 +393,33 @@ def score_cell(view: RecentScanCaseRowView) -> str:
     return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\">{escape_value(display_score(score))}</span></td>"
 
 
-def summary_cell(view: RecentScanCaseRowView) -> str:
+def candidate_cell(tier: Any) -> str:
+    normalized = str(tier or "not_likely").lower()
+    class_name = {
+        "high": "batch-severity--high",
+        "medium": "batch-severity--suspicious",
+        "low": "batch-status--neutral",
+        "unknown": "batch-status--warning",
+    }.get(normalized, "batch-status--neutral")
+    label = str(tier or "not_likely").replace("_", " ").title()
+    return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\">{escape_value(label)}</span></td>"
+
+
+def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUERY_GROUP) -> str:
     reason_html = f"<span>{escape_value(view.reason_text)}</span>" if view.reason_text else ""
-    optimization_html = ""
-    if view.optimization_tier in {"high", "medium", "low"}:
+    normalized = normalize_query_group(query_group)
+    detail_html = ""
+    if normalized == "optimization":
         why = f"Why: {view.optimization_summary}" if view.optimization_summary else "Why: query-shape evidence"
-        review = f" Review first: {view.optimization_review_areas}" if view.optimization_review_areas else ""
-        optimization_html = (
-            "<span>"
-            f"Query optimization candidate: {escape_value(view.optimization_tier.title())}. "
-            f"Impact: {escape_value(view.optimization_impact.title())}. "
-            f"Confidence: {escape_value(view.optimization_confidence.title())}. "
-            f"{escape_value(why)}.{escape_value(review)}"
-            "</span>"
-        )
-    stats_html = ""
-    if view.stats_tier in {"high", "medium", "low", "unknown"}:
+        detail_html = f"<span>{escape_value(why)}.</span>"
+    elif normalized == "stats":
         why = f"Why: {view.stats_summary}" if view.stats_summary else "Why: stats-planning evidence"
-        review = f" Review first: {view.stats_review_areas}" if view.stats_review_areas else ""
-        confirm = f" Confirm: {view.stats_required_confirmation}" if view.stats_required_confirmation else ""
-        stats_html = (
-            "<span>"
-            f"Stats refresh candidate: {escape_value(view.stats_tier.title())}. "
-            f"Speed benefit: {escape_value(view.stats_speed_benefit.title())}. "
-            f"Need: {escape_value(stats_need_label(view.stats_need_type))}. "
-            f"Confidence: {escape_value(view.stats_confidence.title())}. "
-            f"{escape_value(why)}.{escape_value(review)}{escape_value(confirm)}"
-            "</span>"
-        )
+        review = f" Review: {view.stats_review_areas}" if view.stats_review_areas else ""
+        detail_html = f"<span>{escape_value(why)}.{escape_value(review)}</span>"
     return (
         "<td class=\"batch-cell--summary\">"
         f"<strong>{escape_value(view.signal_summary)}</strong>"
-        f"{optimization_html}"
-        f"{stats_html}"
+        f"{detail_html}"
         f"{reason_html}"
         "</td>"
     )
