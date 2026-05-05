@@ -79,6 +79,7 @@ REPORT_VALIDATION_EXIT_CODE = 4
 LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost"}
 OUTPUT_CASE_RE = re.compile(r"^Output case directory:\s*(?P<path>.+)$", re.MULTILINE)
 COLLECTED_CASE_FILES = ("profile_digest.md", "cm_metadata.json", "collection_warnings.txt")
+PROFILE_SUMMARY_READ_CHARS = 65536
 REPORT_VALIDATION_FAILURE_MESSAGE = (
     "Report generation finished, but the deterministic validator rejected the "
     "report because it contradicted extracted facts. The unsafe report is not "
@@ -897,13 +898,15 @@ def build_query_id_summary_case(
     collection_status: str = "ok",
     analysis_status: str = "ok",
 ) -> dict[str, object]:
+    metadata = read_case_metadata(case_dir)
+    profile_summary = read_profile_summary_fields(case_dir)
     case = batch_recent.CaseResult(
         index=1,
         query_id=query_id,
-        duration_sec=read_case_duration_sec(case_dir),
-        user=None,
-        pool=None,
-        query_type=None,
+        duration_sec=case_duration_sec(metadata),
+        user=profile_summary.get("user") or case_metadata_string(metadata, "user"),
+        pool=profile_summary.get("pool") or case_metadata_string(metadata, "pool"),
+        query_type=case_metadata_string(metadata, "query_type"),
         sql_verb=None,
         wrapper_dir=case_dir,
         actual_case_dir=case_dir,
@@ -920,13 +923,53 @@ def build_query_id_summary_case(
     return summary_case
 
 
-def read_case_duration_sec(case_dir: Path) -> float | None:
+def read_case_metadata(case_dir: Path) -> dict[str, object]:
     metadata_path = case_dir / "cm_metadata.json"
     try:
         payload = json.loads(metadata_path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def case_metadata_string(metadata: dict[str, object], key: str) -> str | None:
+    value = metadata.get(key)
+    if not isinstance(value, str):
         return None
-    if not isinstance(payload, dict):
+    text = value.strip()
+    return text or None
+
+
+def read_profile_summary_fields(case_dir: Path) -> dict[str, str]:
+    profile_path = case_dir / "profile_digest.md"
+    try:
+        with profile_path.open(encoding="utf-8", errors="replace") as handle:
+            text = handle.read(PROFILE_SUMMARY_READ_CHARS)
+    except OSError:
+        return {}
+    fields: dict[str, str] = {}
+    for match in re.finditer(
+        r"(?:^|\\n|\n)\s*(User|Pool|Request Pool|Resource Pool|Admission Pool)\s*:\s*([^\\\n\r\"]+)",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        name = match.group(1).strip().lower()
+        value = match.group(2).strip()
+        if not value:
+            continue
+        if name == "user":
+            fields["user"] = value
+        elif "pool" in name:
+            fields["pool"] = value
+    return fields
+
+
+def read_case_duration_sec(case_dir: Path) -> float | None:
+    return case_duration_sec(read_case_metadata(case_dir))
+
+
+def case_duration_sec(payload: dict[str, object]) -> float | None:
+    if not payload:
         return None
     value = payload.get("duration_sec")
     if isinstance(value, (int, float)) and math.isfinite(float(value)):

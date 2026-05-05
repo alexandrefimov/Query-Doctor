@@ -1502,7 +1502,7 @@ PROFILE_SQL_STATEMENT_RE = re.compile(
     r"(?ims)^\s*Sql\s+Statement\s*:\s*(?P<statement>.+?)(?:^\s*[A-Z][A-Za-z0-9_ /().-]{2,}\s*:|\Z)"
 )
 PROFILE_SUMMARY_FIELD_RE = re.compile(
-    r"(?im)^\s*(?P<name>Start Time|End Time|Query Type|Query State|Query Status)\s*:\s*(?P<value>.+?)\s*$"
+    r"(?im)^\s*(?P<name>Start Time|End Time|Query Type|Query State|Query Status|User|Pool|Request Pool|Resource Pool|Admission Pool)\s*:\s*(?P<value>.+?)\s*$"
 )
 
 
@@ -1565,6 +1565,10 @@ def extract_summary_metadata_from_profile_text(profile_text: str) -> dict[str, s
             fields["query_state"] = value
         elif name == "query status" and value:
             fields["status"] = value
+        elif name == "user" and value:
+            fields["user"] = value
+        elif name in {"pool", "request pool", "resource pool", "admission pool"} and value:
+            fields["pool"] = value
     start_time = fields.get("start_time")
     end_time = fields.get("end_time")
     if isinstance(start_time, str) and isinstance(end_time, str):
@@ -1586,6 +1590,9 @@ def merge_profile_summary_metadata(summary: CMQuerySummary, profile_text: str) -
     for field in ("start_time", "end_time", "duration_ms", "status", "query_state", "query_type"):
         if getattr(summary, field) is None and field in fields:
             updates[field] = fields[field]
+    for field in ("user", "pool"):
+        if field in fields:
+            updates[field] = fields[field]
     if not updates:
         return summary, []
     warnings: list[str] = []
@@ -1593,6 +1600,10 @@ def merge_profile_summary_metadata(summary: CMQuerySummary, profile_text: str) -
         warnings.append("CM profile text timing metadata collected")
     if "status" in updates or "query_state" in updates or "query_type" in updates:
         warnings.append("CM profile text status metadata collected")
+    if "user" in updates:
+        warnings.append("CM profile text user metadata collected")
+    if "pool" in updates:
+        warnings.append("CM profile text pool metadata collected")
     return replace(summary, **updates), warnings
 
 
