@@ -1289,6 +1289,24 @@ def cm_metrics_observed_points(facts_text: str) -> list[str]:
     return points[:FACT_APPENDIX_MAX_ITEMS]
 
 
+def cm_metrics_correlation_points(facts_text: str) -> list[str]:
+    summary = cm_metrics_correlation_summary(facts_text)
+    points: list[str] = []
+    labels = (
+        ("host_cpu_pressure", "Host CPU pressure"),
+        ("daemon_memory_growth", "Daemon memory growth"),
+        ("daemon_memory_pressure", "Daemon memory pressure"),
+        ("network_io_spike", "Network I/O spike"),
+    )
+    for key, title in labels:
+        value = summary.get(key)
+        if not value:
+            continue
+        if value.startswith("correlated"):
+            points.append(f"{title}: {value}")
+    return points[:FACT_APPENDIX_MAX_ITEMS]
+
+
 def cm_metrics_signal_observed(facts_text: str, key: str) -> bool:
     summary = cm_metrics_facts_summary(facts_text)
     return summary.get("status") == "available" and summary.get(key) == "observed"
@@ -1489,6 +1507,19 @@ def supported_summary_points(facts_text: str) -> list[str]:
             f"CM Metrics Facts contain an observed context signal: {point}. "
             "Use it as bounded runtime context, not as standalone root cause."
         )
+    cm_correlation = cm_metrics_correlation_summary(facts_text)
+    correlated_signals = cm_correlation.get("correlated_signals")
+    context_only_signals = cm_correlation.get("context_only_signals")
+    if correlated_signals and correlated_signals != "0":
+        points.append(
+            f"CM Metrics Correlation contains {correlated_signals} correlated runtime context signal(s); "
+            "these may strengthen profile-supported evidence, not standalone root-cause claims."
+        )
+    elif context_only_signals and context_only_signals != "0":
+        points.append(
+            f"CM Metrics Correlation contains {context_only_signals} context-only signal(s); "
+            "keep them out of root-cause wording and SQL optimizer actions."
+        )
     if not points:
         points.append("Parsed facts do not select a confirmed optimization target; use this report as a baseline.")
     return points[:FACT_APPENDIX_MAX_ITEMS]
@@ -1612,6 +1643,11 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
         differentiators.append(f"CM metrics coverage: {cm_metrics['coverage']}")
     for point in cm_metrics_observed_points(facts_text):
         differentiators.append(f"CM metric signal: {point}")
+    cm_correlation = cm_metrics_correlation_summary(facts_text)
+    if cm_correlation.get("correlated_signals"):
+        differentiators.append(f"CM metrics correlated signals: {cm_correlation['correlated_signals']}")
+    for point in cm_metrics_correlation_points(facts_text):
+        differentiators.append(f"CM metric correlation: {point}")
 
     return differentiators[:FACT_APPENDIX_MAX_ITEMS]
 
@@ -1628,12 +1664,15 @@ def evidence_groups(facts_text: str) -> dict[str, list[str]]:
     findings = markdown_subheading_titles(findings_lines)
     unsupported = markdown_bullet_lines(limitation_lines)
     cm_metric_points = cm_metrics_observed_points(facts_text)
+    cm_metric_correlation_points = cm_metrics_correlation_points(facts_text)
     if action_cards:
         groups["action_cards"] = action_cards
     if findings:
         groups["findings"] = findings
     if cm_metric_points:
         groups["cm_metrics"] = cm_metric_points
+    if cm_metric_correlation_points:
+        groups["cm_metrics_correlation"] = cm_metric_correlation_points
     if unsupported:
         groups["unsupported"] = unsupported
     return groups
@@ -2833,6 +2872,14 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
             (
                 "- Проверить profile counters по указанным операторам, прежде чем считать предполагаемые проблемы доказанными причинами.",
                 (r"profile\s+counters|сч[её]тчик\w+\s+profile",),
+            )
+        )
+    cm_correlation = cm_metrics_correlation_summary(facts_text)
+    if cm_correlation.get("status") == "available":
+        admin_bullet_rules.append(
+            (
+                "- Сопоставить CM Metrics Correlation с profile evidence: correlated signals использовать только как runtime context, context-only metrics не считать root cause.",
+                (r"CM\s+Metrics\s+Correlation|correlated\s+signals.*runtime\s+context|context-only\s+metrics.*root\s+cause",),
             )
         )
     if facts_has_backend_tail_evidence(facts_text):

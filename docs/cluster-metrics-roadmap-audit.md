@@ -32,6 +32,9 @@ The current implementation already has the first safe version of this feature:
 - The report prompt tells the LLM to use only `CM Metrics Facts` for metrics
   interpretation and to treat metrics as runtime context, not standalone proof
   of cause.
+- The report contract digest and normalization keep `CM Metrics Correlation`
+  visible in trusted reports: correlated signals can be mentioned as runtime
+  context, while context-only metrics remain non-causal.
 - Batch scoring already adds only a small score contribution for correlated CM
   metric signals, not for context-only metrics.
 
@@ -328,6 +331,9 @@ class:
 
 ### Phase 1: Make Current Metrics Auditable
 
+Status: implemented for current CM Metrics Facts and CM Metrics Correlation;
+future work is a dedicated `Cluster Runtime Context` analyzer section.
+
 Goal: make the current CM metrics feature easier to trust and evaluate.
 
 Deliverables:
@@ -343,8 +349,9 @@ Deliverables:
   - context-only signals;
   - limitations;
   - safe scoring contribution.
-- Add tests that the report mentions correlated cluster context when present and
-  omits/limits unknown or context-only metrics appropriately.
+- Keep tests that the report contract and normalization mention correlated
+  cluster context when present and omit/limit unknown or context-only metrics
+  appropriately.
 - Add a small real-case smoke checklist for Specific Query and Running Queries
   with CM metrics enabled.
 
