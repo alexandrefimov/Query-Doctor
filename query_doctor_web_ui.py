@@ -60,6 +60,7 @@ from query_doctor_web_ui_recent_scan import (
     status_badge,
     summarize_batch_progress,
 )
+from query_doctor_web_display_safety import redact_browser_display_text
 
 
 WEB_STAGES = (
@@ -181,10 +182,11 @@ def render_no_reports_note() -> str:
 
 
 def render_error_panel(error: object) -> str:
+    safe_error = redact_browser_display_text(error, redact_artifact_markers=True)
     return (
         "<section class=\"error-card\" role=\"alert\">"
         "<strong>Safe inspection state</strong>"
-        f"{html.escape(str(error))}<br>"
+        f"{html.escape(safe_error)}<br>"
         "Unvalidated or partial report output is hidden."
         "</section>"
     )

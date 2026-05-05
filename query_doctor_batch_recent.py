@@ -1701,9 +1701,13 @@ def has_metadata_completeness_value(facts: str, label: str, bad_values: set[str]
 
 
 def section_text(text: str, heading: str) -> str:
-    if heading not in text:
+    match = re.search(rf"(?m)^{re.escape(heading)}\s*$", text)
+    if not match:
         return ""
-    return text.split(heading, 1)[1].split("\n## ", 1)[0]
+    start = match.end()
+    next_heading = re.search(r"(?m)^##\s+", text[start:])
+    end = start + next_heading.start() if next_heading else len(text)
+    return text[start:end]
 
 
 def scoring_section_text(text: str, heading: str) -> str:

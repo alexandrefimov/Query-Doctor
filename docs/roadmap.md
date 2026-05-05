@@ -107,14 +107,14 @@ the roadmap scoped to confirmed risks and practical hardening work.
 
 Safety and browser trust:
 
-- Browser artifact-name redaction: extend centralized display redaction to
-  cover generated filenames such as collected profiles, analyzer facts,
-  reports, optimizer drafts, metadata context and collection-warning artifacts.
-  Browser errors should be generic; file-level detail belongs in terminal logs
-  or internal diagnostics.
-- Incomplete-case errors: make existing-case and report-action failures avoid
-  naming required artifact files. Add regression tests for Specific Query,
-  Finished/Running details and job error surfaces.
+- Browser artifact-name redaction: keep the centralized display redactor as the
+  source of truth for generated filenames such as collected profiles, analyzer
+  facts, reports, optimizer drafts, metadata context and collection-warning
+  artifacts. Browser errors should stay generic; file-level detail belongs in
+  terminal logs or internal diagnostics.
+- Incomplete-case errors: existing-case and report-action failures should avoid
+  naming required artifact files. Add regression tests for any new Specific
+  Query, Finished/Running details and job error surfaces.
 - Query Optimizer no-echo contract: remove the post-submit ability to render a
   submitted SQL value back into the textarea, or split the empty form renderer
   from result/error renderers. Add error-path tests where parser exceptions
@@ -149,9 +149,9 @@ Facts, scoring and validator robustness:
   evidence limited to direct backend elapsed/runtime counters, and add real
   sanitized fixtures for cumulative thread/cpu/wait backend counter shapes when
   they appear.
-- Scoring facts parser: replace hidden string-split coupling for markdown
-  sections with anchored section parsing, and make numeric fact parsing accept
-  only documented integer labels or structured normalized rows.
+- Scoring facts parser: section extraction now uses exact markdown heading
+  matches. Remaining work: make numeric fact parsing accept only documented
+  integer labels or structured normalized rows.
 - Score scale canaries: add tests that lock the intended score contribution
   caps and `Bad` / `Suspicious` / `Good` thresholds before changing scoring
   weights.

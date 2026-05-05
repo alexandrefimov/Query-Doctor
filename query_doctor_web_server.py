@@ -609,7 +609,7 @@ def validate_query_id(query_id: str) -> str:
 
 
 def sanitize_for_display(value: object) -> str:
-    return redact_browser_display_text(value, max_chars=1200)
+    return redact_browser_display_text(value, redact_artifact_markers=True, max_chars=1200)
 
 
 def run_subprocess(
@@ -1123,10 +1123,8 @@ def ensure_complete_existing_case(case_dir: Path) -> None:
         )
     missing = [name for name in COLLECTED_CASE_FILES if not (case_dir / name).is_file()]
     if missing:
-        missing_list = ", ".join(missing)
         raise WebError(
             "Existing Query ID case is incomplete. "
-            f"Missing required artifact(s): {missing_list}. "
             "Re-run analysis to regenerate required artifacts."
         )
 
@@ -1902,7 +1900,7 @@ def start_batch_case_report_job(
             "running": False,
             "trusted": False,
             "partial": False,
-            "error": "Report generation requires a resolved server-owned case directory with profile_digest.md.",
+            "error": "Report generation requires a complete server-owned case. Re-run analysis first.",
         }
         return 400, render_batch_case_detail_page(effective_settings, case_id, case, metadata_facts, report_state=report_state, **detail_kwargs)
 

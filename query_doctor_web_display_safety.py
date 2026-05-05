@@ -15,6 +15,7 @@ HIDDEN_FIELD_REPLACEMENT = "[hidden field]"
 RAW_PROFILE_REPLACEMENT = "[raw profile hidden]"
 RAW_METADATA_REPLACEMENT = "[metadata statement hidden]"
 RAW_OUTPUT_REPLACEMENT = "[subprocess output hidden]"
+RAW_ARTIFACT_REPLACEMENT = "[artifact name hidden]"
 MODEL_REPLACEMENT = "[model setting hidden]"
 
 FIELD_NAME_TOKENS = (
@@ -25,6 +26,19 @@ FIELD_NAME_TOKENS = (
     "metadata_coordinator",
     "metadata_auth",
     "metadata_path",
+)
+
+RAW_ARTIFACT_FILENAME_TOKENS = (
+    "profile_digest.md",
+    "cm_metadata.json",
+    "collection_warnings.txt",
+    "analysis_facts.md",
+    "diagnosis.md",
+    "diagnosis.partial.md",
+    "optimized_query.sql",
+    "optimized_query.validated.json",
+    "impala_context.md",
+    "impala_context.json",
 )
 
 
@@ -78,6 +92,8 @@ def redact_field_names_for_display(text: str) -> str:
 def redact_raw_artifact_markers_for_display(text: str) -> str:
     for token in ("BEGIN PROFILE", "Query Timeline"):
         text = text.replace(token, RAW_PROFILE_REPLACEMENT)
+    for token in RAW_ARTIFACT_FILENAME_TOKENS:
+        text = text.replace(token, RAW_ARTIFACT_REPLACEMENT)
     text = text.replace("SHOW CREATE TABLE", RAW_METADATA_REPLACEMENT)
     text = text.replace("raw stdout", RAW_OUTPUT_REPLACEMENT)
     text = text.replace("raw stderr", RAW_OUTPUT_REPLACEMENT)

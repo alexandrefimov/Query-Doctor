@@ -3252,6 +3252,33 @@ def analyze(
             )
         )
 
+    if backend_tail["write_path_candidates"]:
+        findings.append(
+            make_finding(
+                "backend_write_path_anomaly",
+                backend_tail_finding_severity(backend_tail["write_path_candidates"]),
+                "Backend write-path anomaly",
+                (
+                    "Backend write-rate or HDFS-write counters show a host-specific write-path tail. "
+                    "Treat this as write-path evidence, not execution skew and not scan-storage proof."
+                ),
+                evidence_lines=[
+                    f"{candidate['host']}: {candidate['evidence']} ({candidate['ratio_human']})"
+                    for candidate in backend_tail["write_path_candidates"][: args.max_evidence_lines]
+                ],
+                admin_actions=[
+                    "Check HDFS write latency and DataNode pipeline details for the write-path tail host.",
+                    "Compare per-host BytesWritten, write rate and HDFS write time.",
+                    "Check impalad/DataNode RPC latency, NIC errors and disk write latency around the query window.",
+                ],
+                missing_evidence=[
+                    "DataNode pipeline details.",
+                    "Per-host disk write latency.",
+                    "Per-host network/RPC metrics.",
+                ],
+            )
+        )
+
     not_supported_causes.append(
         "No evidence in the profile digest supports HDFS block-size or replication-factor changes as a query-level fix unless scan/storage counters prove it."
     )
