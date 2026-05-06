@@ -1,0 +1,304 @@
+"""Package facade for the local Query Doctor web server."""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any, Callable
+from urllib.parse import parse_qs, unquote, urlparse
+
+from query_doctor.cli import collect_cm_profiles as cm_collector
+from query_doctor.cli.optimize_query import (
+    QueryOptimizationError,
+    extract_optimizable_source_sql,
+    read_source_sql,
+    sql_completeness_errors,
+    validate_optimizer_recommendations_text,
+)
+from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
+from query_doctor.web.ui.markdown import (
+    render_details_inline_report_html,
+    render_report_markdown_html,
+)
+from query_doctor.web.ui.pages import (
+    render_batch_case_detail_page,
+    render_batch_case_not_found_page,
+    render_batch_case_report_page,
+    render_batch_page,
+    render_page,
+    render_query_page,
+    render_readme_page,
+)
+from query_doctor.web.ui.recent_scan_results import (
+    render_batch_card,
+)
+from query_doctor.web.ui.report import render_result
+from query_doctor.web.ui.specific_query import (
+    render_specific_query_detail,
+    render_specific_query_result,
+    render_specific_query_results,
+)
+from query_doctor.web.jobs import (
+    BATCH_REPORT_STAGES,
+    BATCH_STAGES,
+    LLM_ACTIONS_STAGES,
+    OPTIMIZED_QUERY_STAGES,
+    WEB_STAGES,
+    WebJobStore,
+    batch_progress_percent,
+    render_job_status_json,
+    render_batch_progress_panel,
+    render_query_analysis_output,
+    stages_for_job_kind,
+)
+from query_doctor.web.ui.help import render_demo_guide_page, render_help_page
+from query_doctor.web.ui.optimizer import render_optimizer_page
+from query_doctor.web.ui.running import render_running_queries_page
+from query_doctor.web.trusted_artifacts import (
+    batch_case_artifact_dir_has_safe_facts,
+    batch_case_artifact_dirs,
+    batch_case_validated_report_exists,
+    case_has_safe_source_sql,
+    decorate_cases_with_optimizer_artifact_status,
+    file_sha256,
+    load_batch_case_report_state,
+    load_optimized_query_state,
+    load_specific_query_report_state,
+    load_validated_batch_case_report,
+    load_validated_optimized_query,
+    load_validated_optimizer_recommendations,
+    load_validated_specific_query_report,
+    optimized_query_validated_exists,
+    read_optimized_query_marker,
+    resolve_batch_case_dir,
+    resolve_batch_case_report_dir,
+    text_sha256,
+    write_batch_case_report_validation_marker,
+)
+from query_doctor.web.models import (
+    BATCH_CM_INSPECT_LIMIT_MAX,
+    DEFAULT_CORPUS_DIR,
+    DEFAULT_HOST,
+    DEFAULT_METADATA_AUTH,
+    DEFAULT_METADATA_PROTOCOL,
+    DEFAULT_METADATA_TIMEOUT_SEC,
+    DEFAULT_MODEL,
+    DEFAULT_OPTIMIZER_MODEL,
+    DEFAULT_PORT,
+    DEFAULT_TIMEOUT_SEC,
+    WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
+    BatchRunConfig,
+    WebError,
+    WebJob,
+    WebJobSnapshot,
+    WebQueryAnalysisResult,
+    WebResult,
+    WebSettings,
+    batch_output_dir,
+    batch_progress_path,
+)
+from query_doctor.web.config import (
+    LOCAL_BIND_HOSTS,
+    build_web_settings,
+    first_int_value,
+    first_string_value,
+    load_krb5ccname_from_local_config,
+    load_web_local_config,
+    metadata_configured,
+    merged_bool_setting,
+    optional_config_bool,
+    optional_config_int,
+    optional_config_string,
+    positive_int,
+    resolve_web_config_path,
+    validate_bind_host,
+    validate_web_startup_config,
+)
+from query_doctor.web.case_files import (
+    COLLECTED_CASE_FILES,
+    OUTPUT_CASE_RE,
+    PROFILE_SUMMARY_READ_CHARS,
+    build_query_id_summary_case,
+    case_duration_sec,
+    case_metadata_string,
+    ensure_complete_existing_case,
+    expected_case_dir_for_query,
+    parse_facts_summary,
+    parse_output_case_dir,
+    read_case_duration_sec,
+    read_case_metadata,
+    read_profile_summary_fields,
+    remove_path,
+    replace_case_dir_after_success,
+    resolve_under_repo,
+)
+from query_doctor.web.command_builders import (
+    BATCH_REPORT_NAME,
+    BATCH_REPORT_PARTIAL_NAME,
+    BATCH_REPORT_VALIDATION_MARKER,
+    OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION,
+    OPTIMIZED_QUERY_NAME,
+    OPTIMIZED_QUERY_PARTIAL_NAME,
+    OPTIMIZED_QUERY_RECOMMENDATIONS_NAME,
+    OPTIMIZED_QUERY_VALIDATION_MARKER,
+    OPTIMIZED_QUERY_VALIDATION_MODE,
+    WEB_REPORT_VALIDATION_MODE,
+    append_web_metadata_args,
+    build_analyzer_command,
+    build_batch_case_report_command,
+    build_optimized_query_command,
+    build_query_id_analyzer_command,
+    build_report_command,
+    display_float,
+    optimizer_model_for_settings,
+)
+from query_doctor.web.form_helpers import (
+    first_form_value,
+    form_flag_enabled,
+    parse_cm_metrics_profile,
+    parse_non_negative_form_float,
+    parse_non_negative_form_int,
+    parse_optional_non_negative_form_float,
+    parse_positive_form_int,
+)
+from query_doctor.web.subprocesses import (
+    Runner,
+    effective_subprocess_env,
+    has_cm_credentials,
+    preflight_web_metadata_batch,
+    resolve_metadata_impala_shell,
+    run_subprocess,
+    subprocess_failure_message,
+)
+from query_doctor.web.batch_scan import (
+    BATCH_CM_JOBS_MAX,
+    BATCH_FULL_JOBS_MAX,
+    BATCH_JOBS_MAX,
+    BATCH_METADATA_JOBS_MAX,
+    BATCH_METADATA_TOP_LIMIT_MAX,
+    BATCH_ORDER_VALUES,
+    RECENT_SCAN_BUCKET_HOURS,
+    RECENT_SCAN_LOOKBACK_DAYS,
+    RECENT_SCAN_TIMEZONE,
+    WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT,
+    WEB_RUNNING_SCAN_WINDOW_MINUTES,
+    allowed_recent_scan_dates,
+    build_batch_command,
+    default_recent_scan_bucket,
+    form_values_from_config,
+    form_values_from_form,
+    parse_batch_run_config,
+    parse_recent_scan_window,
+    parse_running_run_config,
+    validate_batch_config_for_settings,
+)
+from query_doctor.web.optimizer_workflow import (
+    collect_optimizer_metadata,
+    read_optimizer_metadata_context,
+    run_optimizer_analysis,
+)
+from query_doctor.web.case_detail_context import (
+    batch_case_detail_rank_fields,
+    batch_page_settings,
+    case_allows_llm_report,
+    case_with_detail_ranks,
+    find_batch_case,
+    load_batch_summary,
+    resolve_case_detail_settings,
+    resolve_running_case_detail_settings,
+    running_detail_kwargs,
+    running_page_settings,
+)
+from query_doctor.web.batch_case_pages import render_batch_case_detail_for_request
+from query_doctor.web.batch_case_actions import (
+    handle_batch_case_external_rewrite_validation,
+    start_batch_case_llm_actions_job,
+    start_batch_case_optimized_query_job,
+    start_batch_case_report_job,
+)
+from query_doctor.web.server_args import parse_args
+from query_doctor.web.case_detail_state import build_batch_case_detail_render_context
+from query_doctor.web.specific_query_state import build_specific_query_detail_render_context
+from query_doctor.web.specific_query_pages import (
+    render_specific_query_detail_for_request,
+    render_specific_query_report_for_request,
+    render_specific_query_report_page,
+)
+from query_doctor.web.request_handlers import (
+    handle_analyze_request,
+    handle_optimizer_request,
+    run_analysis_job,
+    sanitize_for_display,
+    start_analyze_job,
+)
+from query_doctor.web.specific_query_actions import (
+    handle_specific_query_external_rewrite_validation,
+    start_specific_query_llm_actions_job,
+    start_specific_query_optimized_query_job,
+    start_specific_query_report_job,
+)
+from query_doctor.web.job_workers import (
+    REPORT_VALIDATION_EXIT_CODE,
+    REPORT_VALIDATION_FAILURE_MESSAGE,
+    generate_validated_optimizer_artifact,
+    generate_validated_report_artifact,
+    run_batch_case_report_job,
+    run_llm_actions_job,
+    run_optimized_query_job,
+    run_specific_query_report_job,
+)
+from query_doctor.web.query_analysis import (
+    MISSING_CM_CREDENTIALS_MESSAGE,
+    collect_analyze_and_replace_query_case,
+    collect_case,
+    run_query_id_analysis,
+    run_web_analysis,
+    update_progress,
+    validate_query_id,
+)
+from query_doctor.web.batch_jobs import run_batch_job, start_batch_job, start_running_job
+from query_doctor.web.optimizer_validation import (
+    EXTERNAL_REWRITE_SQL_FIELD,
+    MAX_EXTERNAL_REWRITE_SQL_BYTES,
+    optimizer_manual_guidance,
+    optimizer_manual_rewrite_allowed,
+    read_analysis_facts_text,
+    safe_optimizer_validation_categories,
+    validate_external_optimizer_rewrite,
+)
+from query_doctor.web.details_facts import (
+    CM_METRIC_SIGNAL_LABELS,
+    MAX_METADATA_FACTS_BYTES,
+    TABLE_METADATA_SUMMARY_KEYS,
+    TABLE_METADATA_TABLE_KEYS,
+    TABLE_METADATA_TABLE_KEYS_START,
+    clean_metadata_fact_value,
+    convert_table_metadata_context_for_web,
+    convert_table_metadata_table_for_web,
+    load_batch_case_analysis_metadata_facts,
+    load_batch_case_cm_metrics_facts,
+    load_batch_case_impala_context_facts,
+    load_batch_case_metadata_facts,
+    load_batch_case_runtime_diagnosis_facts,
+    load_case_analysis_cm_metrics_facts,
+    load_case_analysis_runtime_diagnosis_facts,
+    load_specific_query_cm_metrics_facts,
+    load_specific_query_metadata_facts,
+    load_specific_query_runtime_diagnosis_facts,
+    metadata_statement_counts,
+    parse_cm_metrics_facts,
+    parse_runtime_diagnosis_facts,
+    parse_table_metadata_context_facts,
+    parse_table_metadata_heading,
+    parse_table_metadata_statement_status_key,
+)
+from query_doctor.web.app import AnalysisFunc, MAX_WEB_POST_BODY_BYTES, make_handler
+from query_doctor.cli.web import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

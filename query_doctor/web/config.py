@@ -1,0 +1,237 @@
+"""Web startup config loading and settings assembly."""
+
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+
+from query_doctor.cli import collect_cm_profiles as cm_collector
+from query_doctor.config.contract import load_and_validate_config
+from query_doctor.web.models import (
+    DEFAULT_HOST,
+    DEFAULT_METADATA_AUTH,
+    DEFAULT_METADATA_PROTOCOL,
+    DEFAULT_METADATA_TIMEOUT_SEC,
+    DEFAULT_OPTIMIZER_MODEL,
+    DEFAULT_PORT,
+    WebError,
+    WebSettings,
+)
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost"}
+
+
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def validate_bind_host(host: str, *, allow_nonlocal_web_bind: bool) -> None:
+    if host in LOCAL_BIND_HOSTS:
+        return
+    if allow_nonlocal_web_bind:
+        return
+    raise WebError(
+        "Refusing non-local bind. Use --host 127.0.0.1 or pass "
+        "--allow-nonlocal-web-bind explicitly for a local web risk review."
+    )
+
+
+def metadata_configured(settings: WebSettings) -> bool:
+    return bool(settings.metadata_coordinator)
+
+
+def resolve_web_config_path(config_path: str | Path | None, *, cwd: Path) -> Path:
+    if config_path:
+        return Path(config_path).expanduser()
+    default_path = cm_collector.discover_default_local_config(
+        cwd=cwd,
+        repo_root=_REPO_ROOT,
+    )
+    return default_path or (cwd / cm_collector.DEFAULT_LOCAL_CONFIG_NAME)
+
+
+def load_web_local_config(config_path: str | Path | None, *, cwd: Path) -> dict[str, object]:
+    if config_path:
+        path = Path(config_path).expanduser()
+        if not path.is_absolute():
+            path = cwd / path
+        if not path.is_file():
+            return {}
+        return cm_collector.load_local_config(str(path), cwd=cwd)
+    result = load_and_validate_config(
+        None,
+        cwd=cwd,
+        repo_root=_REPO_ROOT,
+    )
+    return result.values
+
+
+def load_krb5ccname_from_local_config(config_path: Path, *, cwd: Path) -> str | None:
+    values = load_web_local_config(config_path, cwd=cwd)
+    value = values.get("krb5ccname")
+    return value if isinstance(value, str) else None
+
+
+def validate_web_startup_config(
+    config_path: Path,
+    *,
+    cwd: Path,
+    env: dict[str, str] | os._Environ[str] | None = None,
+) -> list[str]:
+    env = os.environ if env is None else env
+    config_values = load_web_local_config(config_path, cwd=cwd)
+    missing: list[str] = []
+    if not first_string_value(optional_config_string(config_values, "cm_url"), env.get("CM_URL")):
+        missing.append("cm_url")
+    if not first_string_value(optional_config_string(config_values, "username"), env.get("CM_USERNAME")):
+        missing.append("username/cm_user")
+    if not optional_config_string(config_values, "cluster"):
+        missing.append("cluster")
+    if not optional_config_string(config_values, "service"):
+        missing.append("service")
+    if not ((env.get("CM_PASSWORD") or "").strip() or (env.get("CM_TOKEN") or "").strip()):
+        missing.append("CM_PASSWORD/CM_TOKEN environment variable")
+    if missing:
+        raise WebError(
+            "Missing required CM startup setting(s): "
+            + ", ".join(missing)
+            + ". Provide non-secret CM settings in local config and CM_PASSWORD or CM_TOKEN via environment variables."
+        )
+
+    warnings: list[str] = []
+    ca_bundle = optional_config_string(config_values, "ca_bundle")
+    insecure_skip_verify = optional_config_bool(config_values, "insecure_skip_verify") is True
+    if ca_bundle:
+        ca_path = Path(ca_bundle).expanduser()
+        if not ca_path.is_absolute():
+            ca_path = cwd / ca_path
+        if not ca_path.is_file() or not os.access(ca_path, os.R_OK):
+            raise WebError(f"Configured ca_bundle is not readable: {ca_bundle}")
+        if insecure_skip_verify:
+            warnings.append(
+                "insecure_skip_verify=true is set; CM TLS verification will be disabled even though ca_bundle is configured."
+            )
+    elif insecure_skip_verify:
+        warnings.append("insecure_skip_verify=true is set; CM TLS verification will be disabled.")
+    return warnings
+
+
+def optional_config_string(config_values: dict[str, object], key: str) -> str | None:
+    value = config_values.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def optional_config_int(config_values: dict[str, object], key: str) -> int | None:
+    value = config_values.get(key)
+    return value if isinstance(value, int) else None
+
+
+def optional_config_bool(config_values: dict[str, object], key: str) -> bool | None:
+    value = config_values.get(key)
+    return value if isinstance(value, bool) else None
+
+
+def first_string_value(*values: str | None) -> str | None:
+    for value in values:
+        if value:
+            return value
+    return None
+
+
+def first_int_value(*values: int | None, default: int | None) -> int | None:
+    for value in values:
+        if value is not None:
+            return value
+    return default
+
+
+def merged_bool_setting(cli_value: bool, config_value: bool | None, *, default: bool = False) -> bool:
+    return bool(cli_value) or (config_value if config_value is not None else default)
+
+
+def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
+    config_path = resolve_web_config_path(args.config, cwd=cwd)
+    config_values = load_web_local_config(args.config, cwd=cwd)
+    return WebSettings(
+        config=config_path,
+        host=first_string_value(
+            args.host,
+            optional_config_string(config_values, "host"),
+            DEFAULT_HOST,
+        )
+        or DEFAULT_HOST,
+        port=first_int_value(
+            args.port,
+            optional_config_int(config_values, "port"),
+            default=DEFAULT_PORT,
+        ),
+        allow_nonlocal_web_bind=args.allow_nonlocal_web_bind,
+        max_profile_bytes=first_int_value(
+            args.max_profile_bytes,
+            optional_config_int(config_values, "max_profile_bytes"),
+            default=None,
+        ),
+        model=args.model,
+        optimizer_model=first_string_value(
+            args.optimizer_model,
+            optional_config_string(config_values, "optimizer_model"),
+            DEFAULT_OPTIMIZER_MODEL,
+            args.model,
+        ),
+        timeout_sec=args.timeout_sec,
+        batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
+        metadata_coordinator=first_string_value(
+            args.metadata_coordinator,
+            optional_config_string(config_values, "metadata_coordinator"),
+        ),
+        metadata_impala_shell=first_string_value(
+            args.metadata_impala_shell,
+            optional_config_string(config_values, "metadata_impala_shell"),
+        ),
+        metadata_auth=first_string_value(
+            args.metadata_auth,
+            optional_config_string(config_values, "metadata_auth"),
+            DEFAULT_METADATA_AUTH,
+        )
+        or DEFAULT_METADATA_AUTH,
+        metadata_protocol=first_string_value(
+            args.metadata_protocol,
+            optional_config_string(config_values, "metadata_protocol"),
+            DEFAULT_METADATA_PROTOCOL,
+        )
+        or DEFAULT_METADATA_PROTOCOL,
+        metadata_ssl=merged_bool_setting(
+            args.metadata_ssl,
+            optional_config_bool(config_values, "metadata_ssl"),
+        ),
+        metadata_ca_cert=first_string_value(
+            args.metadata_ca_cert,
+            optional_config_string(config_values, "metadata_ca_cert"),
+        ),
+        metadata_timeout_sec=first_int_value(
+            args.metadata_timeout_sec,
+            optional_config_int(config_values, "metadata_timeout_sec"),
+            default=DEFAULT_METADATA_TIMEOUT_SEC,
+        ),
+        metadata_max_tables=first_int_value(
+            args.metadata_max_tables,
+            optional_config_int(config_values, "metadata_max_tables"),
+            default=None,
+        ),
+        metadata_max_output_bytes=first_int_value(
+            args.metadata_max_output_bytes,
+            optional_config_int(config_values, "metadata_max_output_bytes"),
+            default=None,
+        ),
+        metadata_redact=merged_bool_setting(
+            args.metadata_redact,
+            optional_config_bool(config_values, "metadata_redact"),
+        ),
+        krb5ccname=optional_config_string(config_values, "krb5ccname"),
+    )

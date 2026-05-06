@@ -1,0 +1,117 @@
+"""Command builders for the local web UI workflows."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from query_doctor.cli.commands import command_prefix
+from query_doctor.web.config import metadata_configured
+from query_doctor.web.models import WebSettings
+
+
+BATCH_REPORT_NAME = "diagnosis.md"
+BATCH_REPORT_PARTIAL_NAME = "diagnosis.partial.md"
+BATCH_REPORT_VALIDATION_MARKER = "diagnosis.validated.json"
+OPTIMIZED_QUERY_NAME = "optimized_query.sql"
+OPTIMIZED_QUERY_RECOMMENDATIONS_NAME = "optimized_query_recommendations.md"
+OPTIMIZED_QUERY_PARTIAL_NAME = "optimized_query.partial.txt"
+OPTIMIZED_QUERY_VALIDATION_MARKER = "optimized_query.validated.json"
+WEB_REPORT_VALIDATION_MODE = "strict"
+OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION = 2
+OPTIMIZED_QUERY_VALIDATION_MODE = "strict_v2"
+
+
+def display_float(value: float) -> str:
+    return str(int(value)) if value == int(value) else str(value)
+
+
+def append_web_metadata_args(cmd: list[str], settings: WebSettings) -> None:
+    if settings.metadata_coordinator:
+        cmd.extend(["--metadata-coordinator", settings.metadata_coordinator])
+    if settings.metadata_impala_shell:
+        cmd.extend(["--metadata-impala-shell", settings.metadata_impala_shell])
+    cmd.extend(["--metadata-auth", settings.metadata_auth])
+    cmd.extend(["--metadata-protocol", settings.metadata_protocol])
+    cmd.extend(["--metadata-timeout-sec", str(settings.metadata_timeout_sec)])
+    if settings.metadata_ssl:
+        cmd.append("--metadata-ssl")
+    if settings.metadata_ca_cert:
+        cmd.extend(["--metadata-ca-cert", settings.metadata_ca_cert])
+    if settings.metadata_max_tables is not None:
+        cmd.extend(["--metadata-max-tables", str(settings.metadata_max_tables)])
+    if settings.metadata_max_output_bytes is not None:
+        cmd.extend(["--metadata-max-output-bytes", str(settings.metadata_max_output_bytes)])
+    if settings.metadata_redact:
+        cmd.append("--metadata-redact")
+
+
+def build_analyzer_command(case_dir: Path, settings: WebSettings) -> list[str]:
+    return command_prefix(settings.repo_dir, "pipeline") + [
+        str(case_dir),
+        "--skip-report",
+    ]
+
+
+def build_query_id_analyzer_command(case_dir: Path, settings: WebSettings) -> list[str]:
+    metadata_enabled = metadata_configured(settings)
+    cmd = command_prefix(settings.repo_dir, "pipeline") + [
+        str(case_dir),
+        "--stop-after-analysis",
+        "--metadata-failure-policy",
+        "continue",
+        "--metadata-mode",
+        "on" if metadata_enabled else "off",
+    ]
+    if metadata_enabled:
+        append_web_metadata_args(cmd, settings)
+    return cmd
+
+
+def build_report_command(case_dir: Path, report_mode: str, report_name: str, settings: WebSettings) -> list[str]:
+    return command_prefix(settings.repo_dir, "report") + [
+        str(case_dir),
+        "--model",
+        settings.model,
+        "--mode",
+        report_mode,
+        "--out",
+        report_name,
+        "--keep-alive",
+        "0",
+        "--validation-mode",
+        WEB_REPORT_VALIDATION_MODE,
+    ]
+
+
+def build_batch_case_report_command(case_dir: Path, settings: WebSettings) -> list[str]:
+    return command_prefix(settings.repo_dir, "pipeline") + [
+        str(case_dir),
+        "--mode",
+        "admin",
+        "--model",
+        settings.model,
+        "--out",
+        BATCH_REPORT_NAME,
+        "--metadata-mode",
+        "off",
+        "--keep-alive",
+        "0",
+        "--report-validation-mode",
+        WEB_REPORT_VALIDATION_MODE,
+    ]
+
+
+def build_optimized_query_command(case_dir: Path, settings: WebSettings) -> list[str]:
+    return command_prefix(settings.repo_dir, "optimize_query") + [
+        str(case_dir),
+        "--model",
+        optimizer_model_for_settings(settings),
+        "--out",
+        OPTIMIZED_QUERY_NAME,
+        "--keep-alive",
+        "0",
+    ]
+
+
+def optimizer_model_for_settings(settings: WebSettings) -> str:
+    return settings.optimizer_model or settings.model

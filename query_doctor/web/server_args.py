@@ -1,0 +1,86 @@
+"""Command-line argument parsing for the local web server."""
+
+from __future__ import annotations
+
+import argparse
+
+from query_doctor.cli import collect_cm_profiles as cm_collector
+from query_doctor.web.config import positive_int
+from query_doctor.web.models import (
+    DEFAULT_HOST,
+    DEFAULT_METADATA_TIMEOUT_SEC,
+    DEFAULT_MODEL,
+    DEFAULT_PORT,
+    DEFAULT_TIMEOUT_SEC,
+)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run the localhost-only Query Doctor web UI for recent scans, explicit CM query ids, and pasted SQL."
+    )
+    parser.add_argument(
+        "--config",
+        help=(
+            "Local ignored Query Doctor JSON config. If omitted, "
+            f"{cm_collector.DEFAULT_LOCAL_CONFIG_NAME} is loaded when present, falling back to "
+            f"legacy {cm_collector.LEGACY_LOCAL_CONFIG_NAME}. Credentials still come from environment."
+        ),
+    )
+    parser.add_argument("--host", help=f"Bind host. Default comes from config or {DEFAULT_HOST}.")
+    parser.add_argument("--port", type=positive_int, help=f"Bind port. Default comes from config or {DEFAULT_PORT}.")
+    parser.add_argument(
+        "--allow-nonlocal-web-bind",
+        "--allow-nonlocal-demo-bind",
+        dest="allow_nonlocal_web_bind",
+        action="store_true",
+        help=(
+            "Allow binding outside localhost. Unsafe for this local web UI; prints a warning. "
+            "--allow-nonlocal-demo-bind is accepted as a legacy alias."
+        ),
+    )
+    parser.add_argument(
+        "--max-profile-bytes",
+        type=positive_int,
+        help=f"Override collector max profile bytes. Default comes from config or {cm_collector.DEFAULT_MAX_PROFILE_BYTES}.",
+    )
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model for reports. Default: {DEFAULT_MODEL}.")
+    parser.add_argument(
+        "--optimizer-model",
+        help="Ollama model for Query LLM optimizer. Defaults to config/env value, otherwise --model.",
+    )
+    parser.add_argument(
+        "--timeout-sec",
+        type=positive_int,
+        default=DEFAULT_TIMEOUT_SEC,
+        help=f"Per-step subprocess timeout. Default: {DEFAULT_TIMEOUT_SEC}.",
+    )
+    parser.add_argument(
+        "--batch-summary",
+        help=(
+            "Optional local batch_summary.json to render read-only at / and /batch. "
+            "The web UI never chooses this path from request parameters."
+        ),
+    )
+    parser.add_argument("--metadata-coordinator", help="Impala coordinator HOST:PORT for web metadata collection.")
+    parser.add_argument("--metadata-impala-shell", help="impala-shell executable for web metadata collection.")
+    parser.add_argument(
+        "--metadata-auth",
+        help="Metadata auth mode. Default comes from config or kerberos.",
+    )
+    parser.add_argument(
+        "--metadata-protocol",
+        choices=("beeswax", "hs2", "hs2-http"),
+        help="impala-shell protocol for web metadata collection. Default comes from config or beeswax.",
+    )
+    parser.add_argument("--metadata-ssl", action="store_true", help="Pass --ssl to impala-shell metadata collection.")
+    parser.add_argument("--metadata-ca-cert", help="CA certificate path for --metadata-ssl metadata connections.")
+    parser.add_argument(
+        "--metadata-timeout-sec",
+        type=positive_int,
+        help=f"Timeout per metadata statement. Default comes from config or {DEFAULT_METADATA_TIMEOUT_SEC}.",
+    )
+    parser.add_argument("--metadata-max-tables", type=positive_int, help="Maximum referenced tables to collect.")
+    parser.add_argument("--metadata-max-output-bytes", type=positive_int, help="Maximum metadata output bytes.")
+    parser.add_argument("--metadata-redact", action="store_true", help="Pass --metadata-redact to web metadata collection.")
+    return parser.parse_args(argv)
