@@ -19,8 +19,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from query_doctor_optimize_query import MARKER_NAME, OUTPUT_NAME, PARTIAL_NAME, RECOMMENDATIONS_NAME
-from query_doctor_report import DEFAULT_KEEP_ALIVE, DEFAULT_OLLAMA_URL
+from query_doctor.cli.optimize_query import MARKER_NAME, OUTPUT_NAME, PARTIAL_NAME, RECOMMENDATIONS_NAME
+from query_doctor.report.llm_client import DEFAULT_KEEP_ALIVE, DEFAULT_OLLAMA_URL
 
 
 PROGRESS_PREFIX = "[Query Doctor optimizer compare]"
@@ -138,7 +138,8 @@ def run_case_model(
     completed = subprocess.run(
         [
             sys.executable,
-            str(PROJECT_ROOT / "query_doctor_optimize_query.py"),
+            "-m",
+            "query_doctor.cli.optimize_query",
             str(run_dir),
             "--model",
             model,
