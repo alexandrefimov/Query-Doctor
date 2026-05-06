@@ -123,9 +123,13 @@ Optimizer draft generator:
 - Пишет validated draft только после read-only SQL validation и result-shape
   checks: физические таблицы, filter scope, projection, DISTINCT, top-level
   GROUP/ORDER/set operations, CTE names и top-level join shape.
-- Классифицирует риск rewrite как `rewrite_allowed` или
-  `conservative_rewrite`; conservative mode удерживает CTE/JOIN/projection/filter
-  shape и использует более строгие prompt constraints.
+- Классифицирует риск rewrite как `rewrite_allowed`,
+  `conservative_rewrite` или `recommendations_only`; conservative mode
+  удерживает CTE/JOIN/projection/filter shape и использует более строгие prompt
+  constraints.
+- Может выдавать trusted non-SQL outcomes: deterministic recommendations-only
+  или `no_rewrite`, если Python не может доверенно принять SQL draft или draft
+  не меняет запрос materially.
 - Marker содержит safe status fields such as `source_scope`, `risk_mode` and
   `risk_reasons`; browser UI must not expose raw SQL or artifact filenames.
 - Partial drafts untrusted and hidden from browser-visible details.

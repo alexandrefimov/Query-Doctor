@@ -174,12 +174,14 @@ def render_top_nav(active: str) -> str:
     batch_class = "nav-link nav-link--active" if active == "batch" else "nav-link"
     query_class = "nav-link nav-link--active" if active == "query" else "nav-link"
     running_class = "nav-link nav-link--active" if active == "running" else "nav-link"
+    demo_class = "nav-link nav-link--active" if active == "demo" else "nav-link"
     help_class = "nav-link nav-link--active" if active == "help" else "nav-link"
     return (
         "<nav class=\"top-nav\" aria-label=\"Main navigation\">"
         f"<a class=\"{batch_class}\" href=\"/\">Finished Queries</a>"
         f"<a class=\"{running_class}\" href=\"/running\">Running Queries</a>"
         f"<a class=\"{query_class}\" href=\"/query\">Specific Query</a>"
+        f"<a class=\"{demo_class}\" href=\"/demo\">Demo guide</a>"
         f"<a class=\"{help_class}\" href=\"/help\">Help</a>"
         "</nav>"
     )

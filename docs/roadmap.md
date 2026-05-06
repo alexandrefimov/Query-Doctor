@@ -76,14 +76,16 @@ changes. It is not the pasted-SQL review page.
 
 The details-page optimizer can start from a server-owned SELECT/WITH statement
 or a SELECT/WITH payload extracted from supported INSERT/CTAS statements. The
-output must still be read-only SELECT/WITH. Current risk modes are
-`rewrite_allowed` and `conservative_rewrite`; high-risk cases should move toward
-a recommendations-only fallback instead of forcing an unsafe draft.
+output must still be read-only SELECT/WITH. Current risk modes include
+`rewrite_allowed`, `conservative_rewrite`, and `recommendations_only`; trusted
+outcomes can be a validated SQL draft, deterministic recommendations-only
+output, or a no-rewrite outcome when no safe material rewrite is available.
 
-Before the 2026-05-06 data-engineer demo, prioritize engineering behavior over
-UI polish: pre-check a small set of representative cases, collect CM metrics for
-selected cases, show deterministic facts before LLM wording, and make optimizer
-outcomes honest when a trusted SQL rewrite is unavailable or not useful.
+For the May 2026 data-engineer demo baseline, prioritize engineering behavior
+over UI polish: pre-check a small set of representative cases, collect CM
+metrics for selected cases, show deterministic facts before LLM wording, and
+make optimizer outcomes honest when a trusted SQL rewrite is unavailable or not
+useful.
 
 ## Planned near-term features
 
@@ -91,15 +93,15 @@ outcomes honest when a trusted SQL rewrite is unavailable or not useful.
   Manager data, then expand it toward admission/pool pressure, Impala daemon
   CPU/memory pressure, host IO/network/load, and bounded role health signals.
 - Safe admission/pool facts in deterministic analysis and LLM Report wording.
-- More real-case validation for Query LLM optimizer, including completed
-  validation rejections, no-benefit, output-budget and recommendations-only
-  outcomes.
+- More real-case validation for Query LLM optimizer, including recipe-backed
+  drafts, completed validation rejections, no-benefit, output-budget,
+  no-rewrite and recommendations-only outcomes.
 - Safe UI status for optimizer mode, validation outcome, no-benefit outcome and
   output-budget no-rewrite outcome.
   The current trusted path records `no_rewrite` when a valid draft is only a
   cosmetic/no-material-change rewrite or when model generation reaches the
-  optimizer output budget; next work is better deterministic recommendations
-  after completed validation rejection.
+  optimizer output budget; next work is broader recipe coverage, web-load
+  recommendation validation and stale-artifact cleanup.
 - Details page UX audit: review which blocks are still useful, which are
   redundant, what should be added or promoted, and whether the page is efficient
   for Finished, Running and Specific Query workflows.
@@ -596,11 +598,16 @@ Non-goals for this track:
   DDL wording.
 - Query LLM optimizer can still reject useful-looking drafts for complex
   CTE-heavy cases; this is safer than accepting a semantic change. High-risk,
-  no-benefit and output-budget cases now have trusted non-SQL outcomes, but
-  completed validation rejections still need deterministic no-rewrite or
-  recommendations fallback.
-- Local optimizer model quality is not solved: current q8 gives a low trusted
-  SQL draft rate on `rewrite_allowed` cases, while historical `qwen3-coder:30b`
-  mostly returns no-rewrite. Replacement model selection must use optimizer
+  no-benefit, output-budget and completed-validation-rejection cases now have
+  trusted non-SQL outcomes when Python can explain them, but unsupported shapes
+  still need more Python-owned recipes.
+- Local optimizer model quality is not solved by model choice alone: after
+  recipe updates, local models can produce trusted outcomes, but trusted SQL
+  draft coverage remains narrow. Replacement model selection must use optimizer
   bake-off metrics, not report-writer pass-rate.
+- Legacy executable prototypes still need to be removed from the active root or
+  guarded behind explicit unsafe acknowledgement.
+- Browser model-name redaction should be broadened for the current local
+  optimizer bake-off set.
+- Batch and pipeline subprocess stages need explicit timeouts.
 - Archived prototypes must not be used as current safety guidance.

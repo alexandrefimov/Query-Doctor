@@ -79,7 +79,49 @@ def test_web_navigation_includes_help_link():
 
     body = module.render_page(settings)
 
+    assert '<a class="nav-link" href="/demo">Demo guide</a>' in body
     assert '<a class="nav-link" href="/help">Help</a>' in body
+
+
+def test_web_demo_guide_renders_curated_russian_demo_page():
+    module = load_web_module()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    body = module.render_demo_guide_page(settings)
+
+    assert '<a class="nav-link nav-link--active" href="/demo">Demo guide</a>' in body
+    assert "<h1>Demo guide</h1>" in body
+    assert "дата-инженерам" in body
+    assert "deterministic scoring" in body
+    assert "Specific Query path" in body
+    assert "staged case" in body
+    assert "bounded CM time-series summaries включены по умолчанию" in body
+    assert "Analyzer and metadata" in body
+    assert "CM Metrics Correlation" in body
+    assert "Details generation" in body
+    assert "LLM Report prompt and validation" in body
+    assert "Python-owned report contract digest" in body
+    assert "Query LLM optimizer bullets and prompt" in body
+    assert "rewrite_allowed" in body
+    assert "recommendations_only" in body
+    assert "Optimizer response validation and fallback" in body
+    assert "trusted <code>no_rewrite</code> outcome with Python-owned bullets" in body
+    assert "переписать запрос manually" in body
+    assert "Profile signals" in body
+    assert "Triage score" in body
+    assert "Optimization candidates" in body
+    assert "Stats refresh candidates" in body
+    assert "LLM boundaries" in body
+    assert "Query LLM optimizer" in body
+    assert "Trusted SQL draft" in body
+    assert "Rejected unsafe draft" in body
+    assert "Recommendations-only" in body
+    assert "score = 55% impact + 45% query-shape opportunity" in body
+    assert "Stats gap значит, что stats были root cause?" in body
+    assert "Browser UI показывает safe summaries" in body
+    assert "Это curated UI text, а не рендер документации из репозитория." in body
+    for forbidden in FORBIDDEN_HELP_STRINGS:
+        assert forbidden not in body
 
 
 def test_web_help_route_serves_help_without_running_analysis():
@@ -102,3 +144,25 @@ def test_web_help_route_serves_help_without_running_analysis():
     assert "On this page" in captured["body"]
     assert "Workflows" in captured["body"]
     assert "Сейчас реализован только Apache Impala" in captured["body"]
+
+
+def test_web_demo_route_serves_demo_guide_without_running_analysis():
+    module = load_web_module()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+    handler = module.make_handler(settings, analysis_func=lambda *args, **kwargs: None)
+    request = handler.__new__(handler)
+    captured: dict[str, object] = {}
+
+    def write_html(status, body):
+        captured["status"] = status
+        captured["body"] = body
+
+    request.path = "/demo"
+    request.write_html = write_html
+
+    request.do_GET()
+
+    assert captured["status"] == 200
+    assert "Demo guide" in captured["body"]
+    assert "deterministic scoring" in captured["body"]
+    assert "Query LLM optimizer" in captured["body"]

@@ -96,34 +96,53 @@ Current validator must reject:
 - changed output projection expression signatures;
 - SQL outside the supported optimizer parser scope.
 
-Known limitation:
+Recipe-backed exceptions:
+
+- `post_union_aggregate_pushdown`: accepts CTE body changes only for a detected
+  `UNION ALL` detail CTE followed by a downstream aggregate CTE. Validation
+  preserves the physical table set, source filters, join predicates, literals,
+  final output shape, CTE names, branch count and aggregate rollup shape.
+- `final_union_distinct_rollup`: accepts CTE body changes only for a detected
+  `UNION ALL` detail CTE feeding a final `COUNT(DISTINCT ...)` aggregate.
+  Validation preserves the final aggregate query and pre-aggregates branches to
+  the CTE output grain plus distinct keys.
+- `post_union_aggregate_pushdown` accepts two equivalent branch shapes: direct
+  branch-level downstream measures, or a conservative branch-input rollup where
+  additive inputs are aggregated in each branch and the downstream aggregate CTE
+  remains unchanged.
+- Recipe WHERE validation compares `UNION ALL` branches independently and allows
+  only added transitive `BETWEEN` filters that are proven from inner-join equality
+  predicates in the same branch.
+
+Known limitations:
 
 - validation is conservative and signature-based. It rejects changes inside
   top-level clauses and projections unless Python owns a specific safe
   transform. It still does not prove general SQL equivalence.
+- recipe coverage is intentionally narrow. Unsupported shapes should produce a
+  trusted recommendations-only or no-rewrite outcome rather than a speculative
+  SQL draft.
 
 ## Current optimizer issues
 
-The current trusted path is safe but still not very useful as an automatic SQL
-rewrite surface. Known current issues:
+The current trusted path is useful for two validated recipe classes, but it is
+not a general SQL equivalence engine. Known current issues:
 
-- SQL rewrite quality is uneven for local models. In a 10-case
-  `rewrite_allowed` sample from current optimization candidates,
-  `qwen3-coder:30b-a3b-q8_0` produced 3 trusted SQL drafts, 4 trusted
-  no-rewrite outcomes, and 3 partial-untrusted drafts. The historical
-  `qwen3-coder:30b` route produced fewer partials, but also fewer trusted SQL
-  drafts and more no-rewrite outcomes.
+- SQL rewrite quality is uneven without recipe guidance. In the current
+  recipe-backed top-candidate sample, `qwen3-coder:30b` produced trusted SQL
+  drafts for the two supported recipe shapes, while other top cases still fell
+  back to trusted recommendations-only or no-rewrite outcomes.
 - Output length was a real failure mode for long `WITH` queries. This is now
   mitigated by the optimizer-specific `QD_OPTIMIZER_NUM_PREDICT` budget
   defaulting to `4096` and by converting Ollama `done_reason=length` into a
   trusted no-rewrite outcome instead of a hidden partial SQL validation failure.
-- Shorter failed drafts are not primarily a length problem. Current failures are
-  mostly model-discipline failures such as adding CTEs, changing CTE names, or
-  changing top-level `GROUP BY` expressions despite prompt constraints.
-- `rewrite_allowed` is still too broad for some CTE-preservation cases. Until
-  Python-owned transforms exist, validator rejection is the correct trust
-  boundary, but the user-facing outcome should continue moving toward
-  recommendations/no-rewrite rather than partial-untrusted.
+- Shorter failed drafts are not primarily a length problem. Remaining failures
+  are usually unsupported rewrite shapes or model-discipline failures such as
+  adding CTEs, changing CTE names, or changing top-level `GROUP BY` expressions
+  despite prompt constraints.
+- `rewrite_allowed` remains too broad for some CTE-preservation cases. Until a
+  Python-owned recipe exists, validator rejection or recommendations-only is the
+  correct trust boundary.
 - The validator rejects safe-looking rewrites that are not proven equivalent by
   normalized signatures. This is intentional for trust, but it limits optimizer
   usefulness until safe Python-owned transforms are added.
@@ -161,8 +180,9 @@ Current behavior:
 - output-budget truncation: show no trusted SQL draft and provide a trusted
   `no_rewrite` outcome explaining that generation reached the optimizer output
   token budget;
-- validation rejection for a completed draft: keep hidden partial-untrusted
-  status for now;
+- validation rejection for a completed draft: show no trusted SQL draft and
+  provide a trusted no-rewrite/recommendations outcome when Python can explain
+  the rejection safely;
 - always hide partial drafts and raw LLM output.
 
 ## Test obligations
@@ -223,11 +243,10 @@ Current implementation:
 
 ### Phase 3. Recommendations-only fallback
 
-Status: partially implemented. High-risk shapes, no-benefit drafts and
-output-budget truncation now produce trusted recommendations/no-rewrite
-outcomes. Validation rejections for completed drafts still produce hidden
-partials; converting those into deterministic recommendations remains future
-work.
+Status: implemented for high-risk shapes, no-benefit drafts, output-budget
+truncation and completed validation failures. These paths produce trusted
+recommendations-only or no-rewrite outcomes instead of browser-visible partial
+SQL drafts.
 
 Goal:
 
@@ -246,12 +265,10 @@ Target behavior:
 
 Remaining implementation target:
 
-- convert completed validation rejections into deterministic no-rewrite or
-  recommendations-only outcomes when Python can explain the rejection safely;
-- persist enough safe metadata for UI status to distinguish output-budget
-  no-rewrite from no-benefit no-rewrite;
 - keep recommendations Python-owned; LLM may phrase only after deterministic
-  candidate selection.
+  candidate selection;
+- add more recipe-specific safe recommendation categories as additional rewrite
+  patterns are discovered.
 
 ### Phase 4. Details UI status
 
@@ -312,7 +329,9 @@ Each fixture should define:
 
 ### Phase 6. Prompt tuning after validators
 
-Status: planned.
+Status: active. Recipe-backed prompts are intentionally minimal: instruction,
+Python-owned rewrite bullets and source SQL. Broader prompts still use compact
+fact/shape digests and deterministic manual bullets.
 
 Goal:
 

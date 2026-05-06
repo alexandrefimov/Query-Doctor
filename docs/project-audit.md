@@ -1,6 +1,7 @@
 # Query Doctor project audit
 
 Date: 2026-05-04
+Last updated: 2026-05-06
 
 This document records the current engineering audit for Query Doctor. It is a
 planning and status document, not a support matrix. The implemented engine is
@@ -15,9 +16,10 @@ features are explicit actions whose output is trusted only after validation.
 
 The largest current risk is not basic diagnosis coverage; it is keeping LLM
 features useful without letting them invent facts or rewrite SQL beyond the
-validated scope. The next most valuable work is to finish Query LLM optimizer
-fallback behavior for high-risk cases, improve optimizer observability in the
-UI, and keep documentation aligned with the safety contract.
+validated scope. Query LLM optimizer fallback behavior now exists for high-risk,
+no-benefit, output-budget and explainable validation-rejection cases; the next
+most valuable work is broader Python-owned rewrite recipes, optimizer web-load
+hardening, stale-artifact cleanup, and documentation alignment.
 
 ## Current product
 
@@ -58,13 +60,12 @@ UI, and keep documentation aligned with the safety contract.
 ## Weaknesses and risks
 
 - Query LLM optimizer quality is still uneven for CTE-heavy and structurally
-  complex cases. Validation correctly rejects unsafe drafts, but the user then
-  gets no useful optimized draft unless the case falls into an implemented
-  recommendations/no-rewrite fallback.
+  complex cases. Validation correctly rejects unsafe drafts, and the user now
+  gets trusted no-rewrite/recommendations fallback when Python can explain the
+  outcome, but useful SQL draft coverage remains narrow.
 - Conservative prompt mode reduces risk, but prompts alone are not a complete
-  control. Completed validation rejections still need deterministic no-rewrite
-  or recommendations-only outcomes where Python can explain the rejection
-  safely.
+  control. Meaningful SQL rewrites should keep moving toward Python-owned
+  recipes with extra validation instead of broad prompt-only permission.
 - The web server still owns too many responsibilities. That raises the cost of
   UI changes and makes safety review slower.
 - Historical docs and prototype notes can drift from current behavior. Current
@@ -179,12 +180,14 @@ Current optimizer risk modes:
 
 Current optimizer problems:
 
-- local SQL rewrite quality is weak: the current q8 route produced only 3
-  trusted SQL drafts on a 10-case `rewrite_allowed` sample;
-- the historical `qwen3-coder:30b` route reduces partial failures but mostly
-  returns no-rewrite outcomes, so it is not a clear replacement;
-- completed validation rejections still become hidden partial-untrusted outcomes
-  instead of deterministic recommendations;
+- local SQL rewrite coverage is still narrow: after recipe updates,
+  `qwen3-coder:30b` produced trusted outcomes on the top-10 local sample, but
+  only 2 of those outcomes were trusted SQL drafts;
+- `qwen3-coder:30b-a3b-q8_0` passed the two recipe-backed local smoke cases but
+  is slower, so replacement/default choice still needs optimizer-specific
+  bake-off data;
+- completed validation rejections can now become deterministic no-rewrite /
+  recommendations outcomes when Python can explain them safely;
 - there is no committed anonymized optimizer fixture corpus yet.
 
 ## Validation notes

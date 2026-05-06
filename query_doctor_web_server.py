@@ -58,7 +58,7 @@ from query_doctor_web_ui import (
     render_specific_query_result,
     render_specific_query_results,
 )
-from query_doctor_web_ui_help import render_help_page
+from query_doctor_web_ui_help import render_demo_guide_page, render_help_page
 from query_doctor_web_ui_optimizer import render_optimizer_page
 from query_doctor_web_ui_running import render_running_queries_page
 from query_doctor_web_ui_recent_scan_presenter import case_score_severity, present_recent_scan_summary
@@ -3647,6 +3647,9 @@ def make_handler(
                 return
             if parsed.path == "/help":
                 self.write_html(200, render_help_page(settings))
+                return
+            if parsed.path in {"/demo", "/demo-guide"}:
+                self.write_html(200, render_demo_guide_page(settings))
                 return
             if parsed.path == "/readme":
                 self.write_html(200, render_readme_page(settings))

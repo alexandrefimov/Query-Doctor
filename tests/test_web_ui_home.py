@@ -135,6 +135,7 @@ def test_web_home_page_links_brand_and_readme_navigation():
     assert '<a class="nav-link nav-link--active" href="/query">Specific Query</a>' in body
     assert '<a class="nav-link" href="/">Finished Queries</a>' in body
     assert '<a class="nav-link" href="/running">Running Queries</a>' in body
+    assert '<a class="nav-link" href="/demo">Demo guide</a>' in body
     assert '<a class="nav-link" href="/help">Help</a>' in body
     assert body.index('href="/">Finished Queries</a>') < body.index('href="/running">Running Queries</a>')
     assert body.index('href="/running">Running Queries</a>') < body.index('href="/query">Specific Query</a>')

@@ -10,6 +10,7 @@ import os
 import re
 import sys
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -862,6 +863,25 @@ def final_distinct_rollup_aggregate_shape_is_supported(
     return True
 
 
+def aggregate_input_rollup_shape_is_supported(
+    aggregate_sql: str,
+    available_names: tuple[str, ...],
+    passthrough_names: set[str],
+) -> bool:
+    for item in aggregate_projection_fragments(aggregate_sql):
+        lowered = lower_sql_outside_quoted_text(item)
+        if not re.search(r"\bsum\s*\(", lowered, re.IGNORECASE):
+            return False
+        rollup_inputs = [
+            name
+            for name in available_names
+            if name not in passthrough_names and identifier_name_referenced(item, name)
+        ]
+        if len(rollup_inputs) > 1:
+            return False
+    return True
+
+
 def detect_optimizer_rewrite_recipe(
     source_sql: str,
     facts_text: str,
@@ -907,7 +927,8 @@ def build_post_union_aggregate_pushdown_recipe(
     dimensions = non_aggregate_projection_names(aggregate_cte.body)
     measures = aggregate_projection_names(aggregate_cte.body)
     union_outputs = union_projection_names(union_cte.body)
-    downstream_names = set(dimensions) | set(measures)
+    input_rollup_names = post_union_aggregate_input_rollup_names(union_cte.body, aggregate_cte.body)
+    downstream_names = set(dimensions) | set(measures) | set(input_rollup_names)
     unused_detail_names = tuple(
         name
         for name in union_outputs
@@ -915,6 +936,7 @@ def build_post_union_aggregate_pushdown_recipe(
     )
     dimensions_text = ", ".join(dimensions) if dimensions else "the downstream GROUP BY dimensions"
     measures_text = ", ".join(measures) if measures else "the downstream aggregate measures"
+    input_rollup_text = ", ".join(input_rollup_names) if input_rollup_names else "additive input columns when the downstream expression can remain unchanged"
     output_text = ", ".join(tuple(dimensions) + tuple(measures)) if dimensions or measures else "the grouped dimensions followed by aggregate measures"
     unused_text = ", ".join(unused_detail_names) if unused_detail_names else "detail-only columns not used downstream"
     prompt_bullets = (
@@ -925,6 +947,7 @@ def build_post_union_aggregate_pushdown_recipe(
         "Do not group by aggregate measures; branch GROUP BY should cover only grouped dimensions.",
         f"Carry only grouped dimensions and needed measures; do not project intermediate detail columns such as {unused_text}.",
         f"Compute branch-level measures for {measures_text}, using the same source expressions and casts as the downstream aggregate.",
+        f"When a downstream SUM expression uses only grouped dimensions plus one additive input, it is also valid to aggregate only {input_rollup_text} in the branches and keep CTE {aggregate_cte.name} unchanged.",
         "Branches with constant transaction rows must still output aggregate measures with SUM expressions.",
         f"Keep CTE {aggregate_cte.name} as a second-stage GROUP BY over the same dimensions, summing branch-level measures.",
         "Keep every original physical table, JOIN predicate, WHERE filter, literal mapping, date range, and final SELECT/window expression unchanged.",
@@ -1670,18 +1693,34 @@ def validate_recipe_backed_cte_rewrite(
     draft_aggregate_body = draft_ctes.get(rewrite_recipe.aggregate_cte)
     if not source_union_body or not draft_union_body or not source_aggregate_body or not draft_aggregate_body:
         return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    errors.extend(validate_unrelated_cte_bodies_preserved(source_ctes, draft_ctes, {rewrite_recipe.source_cte, rewrite_recipe.aggregate_cte}))
     if table_names(source_sql) != table_names(draft_sql):
         errors.append("optimized draft violates rewrite recipe: physical table set changed")
     if not has_union_all(draft_union_body):
         errors.append("optimized draft violates rewrite recipe: UNION ALL CTE was not preserved")
-    errors.extend(validate_post_union_aggregate_branch_shape(source_union_body, draft_union_body, source_aggregate_body))
+    branch_errors, branch_modes = validate_post_union_aggregate_branch_shape(
+        source_union_body,
+        draft_union_body,
+        source_aggregate_body,
+    )
+    errors.extend(branch_errors)
+    valid_branch_modes = {mode for mode in branch_modes if mode != "invalid"}
+    if len(valid_branch_modes) > 1:
+        errors.append("optimized draft violates rewrite recipe: mixed branch rollup shapes")
+    if valid_branch_modes == {"input_rollup"} and normalized_statement_signature(source_aggregate_body) != normalized_statement_signature(draft_aggregate_body):
+        errors.append("optimized draft violates rewrite recipe: downstream aggregate changed for input rollup")
     if not identifier_referenced(draft_aggregate_body, rewrite_recipe.source_cte):
         errors.append("optimized draft violates rewrite recipe: downstream aggregate no longer reads the source CTE")
     if keyword_count_any_depth(draft_aggregate_body, "GROUP") == 0:
         errors.append("optimized draft violates rewrite recipe: downstream safety aggregate was removed")
     if not aggregate_projection_names(draft_aggregate_body):
         errors.append("optimized draft violates rewrite recipe: downstream aggregate measures were removed")
-    if not counter_is_subset(sql_clause_signature_counter(source_sql, "WHERE"), sql_clause_signature_counter(draft_sql, "WHERE")):
+    if not post_union_where_predicates_preserved(
+        source_union_body,
+        draft_union_body,
+        source_aggregate_body,
+        draft_aggregate_body,
+    ):
         errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
     if not counter_is_subset(sql_clause_signature_counter(source_sql, "ON"), sql_clause_signature_counter(draft_sql, "ON")):
         errors.append("optimized draft violates rewrite recipe: source JOIN predicates changed")
@@ -1708,6 +1747,7 @@ def validate_final_union_distinct_rollup_rewrite(
     draft_union_body = draft_ctes.get(rewrite_recipe.source_cte)
     if not source_union_body or not draft_union_body:
         return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    errors.extend(validate_unrelated_cte_bodies_preserved(source_ctes, draft_ctes, {rewrite_recipe.source_cte}))
     if table_names(source_sql) != table_names(draft_sql):
         errors.append("optimized draft violates rewrite recipe: physical table set changed")
     if not has_union_all(draft_union_body):
@@ -1719,7 +1759,7 @@ def validate_final_union_distinct_rollup_rewrite(
     if normalized_statement_signature(source_parsed.final_sql) != normalized_statement_signature(draft_parsed.final_sql):
         errors.append("optimized draft violates rewrite recipe: final aggregate query changed")
     errors.extend(validate_final_union_distinct_rollup_branch_shape(source_union_body, draft_union_body, source_parsed.final_sql))
-    if not counter_is_subset(sql_clause_signature_counter(source_sql, "WHERE"), sql_clause_signature_counter(draft_sql, "WHERE")):
+    if not where_predicates_preserved_or_safely_extended_by_union_branch(source_union_body, draft_union_body):
         errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
     if not counter_is_subset(sql_clause_signature_counter(source_sql, "ON"), sql_clause_signature_counter(draft_sql, "ON")):
         errors.append("optimized draft violates rewrite recipe: source JOIN predicates changed")
@@ -1730,39 +1770,118 @@ def validate_final_union_distinct_rollup_rewrite(
     return errors
 
 
+def validate_unrelated_cte_bodies_preserved(
+    source_ctes: dict[str, str],
+    draft_ctes: dict[str, str],
+    allowed_changed_ctes: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    for cte_name, source_body in source_ctes.items():
+        if cte_name in allowed_changed_ctes:
+            continue
+        draft_body = draft_ctes.get(cte_name)
+        if draft_body is None:
+            errors.append("optimized draft violates rewrite recipe: required CTEs are missing")
+            continue
+        if normalized_statement_signature(source_body) != normalized_statement_signature(draft_body):
+            errors.append("optimized draft violates rewrite recipe: unrelated CTE body changed")
+    return dedupe_preserve_order(errors)
+
+
+def post_union_where_predicates_preserved(
+    source_union_body: str,
+    draft_union_body: str,
+    source_aggregate_body: str,
+    draft_aggregate_body: str,
+) -> bool:
+    return (
+        where_predicates_preserved_or_safely_extended_by_union_branch(source_union_body, draft_union_body)
+        and where_predicates_preserved_or_safely_extended(source_aggregate_body, draft_aggregate_body)
+    )
+
+
+def where_predicates_preserved_or_safely_extended_by_union_branch(source_union_body: str, draft_union_body: str) -> bool:
+    source_branches = split_top_level_union_all_fragments(source_union_body)
+    draft_branches = split_top_level_union_all_fragments(draft_union_body)
+    if len(source_branches) != len(draft_branches):
+        return False
+    return all(
+        where_predicates_preserved_or_safely_extended(source_branch, draft_branch)
+        for source_branch, draft_branch in zip(source_branches, draft_branches)
+    )
+
+
 def validate_post_union_aggregate_branch_shape(
     source_union_body: str,
     draft_union_body: str,
     source_aggregate_body: str,
-) -> list[str]:
+) -> tuple[list[str], tuple[str, ...]]:
     errors: list[str] = []
+    branch_modes: list[str] = []
     source_branches = split_top_level_union_all_fragments(source_union_body)
     draft_branches = split_top_level_union_all_fragments(draft_union_body)
     if len(source_branches) != len(draft_branches):
-        return ["optimized draft violates rewrite recipe: UNION ALL branch count changed"]
+        return ["optimized draft violates rewrite recipe: UNION ALL branch count changed"], ()
     dimensions = non_aggregate_projection_names(source_aggregate_body)
     measures = aggregate_projection_names(source_aggregate_body)
-    unused_detail_names = post_union_unused_detail_projection_names(source_union_body, source_aggregate_body)
-    expected_projection_count = len(dimensions) + len(measures)
+    input_rollup_names = post_union_aggregate_input_rollup_names(source_union_body, source_aggregate_body)
+    measure_required_names = tuple(dimensions) + tuple(measures)
+    input_required_names = tuple(dimensions) + tuple(input_rollup_names)
+    measure_detail_names = post_union_unused_detail_projection_names(source_union_body, measure_required_names)
+    input_detail_names = post_union_unused_detail_projection_names(source_union_body, input_required_names)
     for index, branch in enumerate(draft_branches, start=1):
         projection_names = tuple(name for item in projection_item_fragments(branch) if (name := projection_name_for_fragment(item)))
         projection_name_set = set(projection_names)
-        if expected_projection_count and len(projection_names) != expected_projection_count:
+        branch_aggregate_names = set(aggregate_projection_names(branch))
+        measure_shape_ok = (
+            len(projection_names) == len(measure_required_names)
+            and all(name in projection_name_set for name in dimensions)
+            and all(name in projection_name_set for name in measures)
+            and not [name for name in measure_detail_names if name in projection_name_set]
+            and keyword_count_any_depth(branch, "GROUP") > 0
+            and bool(branch_aggregate_names)
+        )
+        input_shape_ok = (
+            bool(input_rollup_names)
+            and len(projection_names) == len(input_required_names)
+            and all(name in projection_name_set for name in dimensions)
+            and all(name in projection_name_set for name in input_rollup_names)
+            and not [name for name in input_detail_names if name in projection_name_set]
+            and keyword_count_any_depth(branch, "GROUP") > 0
+            and all(name in branch_aggregate_names for name in input_rollup_names)
+        )
+        if measure_shape_ok:
+            branch_modes.append("pushed_measures")
+        elif input_shape_ok:
+            branch_modes.append("input_rollup")
+        else:
+            branch_modes.append("invalid")
+        expected_projection_counts = {len(measure_required_names)}
+        if input_rollup_names:
+            expected_projection_counts.add(len(input_required_names))
+        if expected_projection_counts and len(projection_names) not in expected_projection_counts:
             errors.append(f"optimized draft violates rewrite recipe: branch {index} projection shape does not match pushed aggregate")
         missing_dimensions = [name for name in dimensions if name not in projection_name_set]
         if missing_dimensions:
             errors.append(f"optimized draft violates rewrite recipe: branch {index} is missing grouped dimensions")
         missing_measures = [name for name in measures if name not in projection_name_set]
-        if missing_measures:
+        missing_input_rollup_names = [name for name in input_rollup_names if name not in projection_name_set]
+        if missing_measures and (not input_rollup_names or missing_input_rollup_names):
             errors.append(f"optimized draft violates rewrite recipe: branch {index} is missing aggregate measures")
-        extra_detail_names = [name for name in unused_detail_names if name in projection_name_set]
+        if input_rollup_names and missing_input_rollup_names and missing_measures:
+            errors.append(f"optimized draft violates rewrite recipe: branch {index} is missing aggregate input columns")
+        extra_detail_names = [
+            name
+            for name in set(measure_detail_names) & set(input_detail_names)
+            if name in projection_name_set
+        ]
         if extra_detail_names:
             errors.append(f"optimized draft violates rewrite recipe: branch {index} still projects detail-only columns")
         if keyword_count_any_depth(branch, "GROUP") == 0:
             errors.append(f"optimized draft violates rewrite recipe: branch {index} is not pre-aggregated")
-        if not aggregate_projection_names(branch):
+        if not branch_aggregate_names:
             errors.append(f"optimized draft violates rewrite recipe: branch {index} has no aggregate measures")
-    return dedupe_preserve_order(errors)
+    return dedupe_preserve_order(errors), tuple(branch_modes)
 
 
 def validate_final_union_distinct_rollup_branch_shape(
@@ -1816,8 +1935,16 @@ def validate_final_union_distinct_rollup_branch_shape(
     return dedupe_preserve_order(errors)
 
 
-def post_union_unused_detail_projection_names(source_union_body: str, source_aggregate_body: str) -> tuple[str, ...]:
-    downstream_names = set(non_aggregate_projection_names(source_aggregate_body)) | set(aggregate_projection_names(source_aggregate_body))
+def post_union_aggregate_input_rollup_names(source_union_body: str, source_aggregate_body: str) -> tuple[str, ...]:
+    union_outputs = union_projection_names(source_union_body)
+    dimensions = set(non_aggregate_projection_names(source_aggregate_body))
+    if not aggregate_input_rollup_shape_is_supported(source_aggregate_body, union_outputs, dimensions):
+        return ()
+    return aggregate_input_projection_names(source_aggregate_body, union_outputs, dimensions)
+
+
+def post_union_unused_detail_projection_names(source_union_body: str, required_names: Iterable[str]) -> tuple[str, ...]:
+    downstream_names = set(required_names)
     names: list[str] = []
     for branch in split_top_level_union_all_fragments(source_union_body):
         for item in projection_item_fragments(branch):
@@ -1833,6 +1960,196 @@ def counter_is_subset(expected: Counter[str], actual: Counter[str]) -> bool:
 
 def sql_clause_signature_counter(sql: str, keyword: str) -> Counter[str]:
     return Counter(signature for signature in all_clause_signatures(sql, keyword) if signature)
+
+
+def where_predicates_preserved_or_safely_extended(source_sql: str, draft_sql: str) -> bool:
+    source_predicates = sql_predicate_signature_counter(source_sql, "WHERE")
+    draft_predicates = sql_predicate_signature_counter(draft_sql, "WHERE")
+    if not counter_is_subset(source_predicates, draft_predicates):
+        return False
+    extra_predicates = draft_predicates - source_predicates
+    if not extra_predicates:
+        return True
+    return counter_is_subset(extra_predicates, transitive_inner_join_where_predicate_counter(source_sql))
+
+
+def sql_predicate_signature_counter(sql: str, keyword: str) -> Counter[str]:
+    return Counter(signature for signature in all_predicate_signatures(sql, keyword) if signature)
+
+
+def all_predicate_signatures(sql: str, keyword: str) -> list[str]:
+    target = keyword.upper()
+    signatures: list[str] = []
+    index = 0
+    depth = 0
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(sql, index, char)
+            continue
+        if char == "(":
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if keyword_at(sql, index, target):
+            start = index + len(target)
+            end = next_clause_boundary_at_depth(sql, start, depth)
+            for predicate in split_top_level_conjunct_fragments(sql[start:end]):
+                signatures.append(normalize_sql_signature_fragment(predicate))
+            index = end
+            continue
+        index += 1
+    return signatures
+
+
+def next_clause_boundary_at_depth(sql: str, start: int, clause_depth: int) -> int:
+    boundaries = set(CLAUSE_SIGNATURE_BOUNDARIES) | {"JOIN"}
+    index = start
+    depth = clause_depth
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(sql, index, char)
+            continue
+        if char == "(":
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            if depth == clause_depth:
+                return index
+            depth = max(clause_depth, depth - 1)
+            index += 1
+            continue
+        if depth == clause_depth and any(keyword_at(sql, index, boundary) for boundary in boundaries):
+            return index
+        index += 1
+    return len(sql)
+
+
+def split_top_level_conjunct_fragments(fragment: str) -> list[str]:
+    conjuncts: list[str] = []
+    start = 0
+    index = 0
+    depth = 0
+    pending_between_depth: int | None = None
+    while index < len(fragment):
+        if fragment.startswith("--", index):
+            index = skip_line_comment_text(fragment, index + 2)
+            continue
+        if fragment.startswith("/*", index):
+            index = skip_block_comment_text(fragment, index + 2)
+            continue
+        char = fragment[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(fragment, index, char)
+            continue
+        if char == "(":
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if keyword_at(fragment, index, "BETWEEN"):
+            pending_between_depth = depth
+            index += len("BETWEEN")
+            continue
+        if keyword_at(fragment, index, "AND") and depth == 0:
+            if pending_between_depth == depth:
+                pending_between_depth = None
+                index += len("AND")
+                continue
+            predicate = fragment[start:index].strip()
+            if predicate:
+                conjuncts.append(predicate)
+            start = index + len("AND")
+            index = start
+            continue
+        index += 1
+    predicate = fragment[start:].strip()
+    if predicate:
+        conjuncts.append(predicate)
+    return conjuncts
+
+
+SQL_IDENTIFIER_RE = r"[a-z_][\w$]*(?:\.[a-z_][\w$]*)?"
+SQL_SIMPLE_LITERAL_RE = r"(?:'[^']*'|\"[^\"]*\"|\d+(?:\.\d+)?)"
+
+
+def transitive_inner_join_where_predicate_counter(source_sql: str) -> Counter[str]:
+    if has_non_inner_join_modifier(source_sql):
+        return Counter()
+    join_equalities = predicate_join_equalities(source_sql)
+    if not join_equalities:
+        return Counter()
+    derived: list[str] = []
+    for predicate in all_predicate_signatures(source_sql, "WHERE"):
+        parsed = parse_between_predicate_signature(predicate)
+        if parsed is None:
+            continue
+        source_expr, low_value, high_value = parsed
+        for left_expr, right_expr in join_equalities:
+            target_expr: str | None = None
+            if source_expr == left_expr:
+                target_expr = right_expr
+            elif source_expr == right_expr:
+                target_expr = left_expr
+            if target_expr:
+                derived.append(normalize_sql_signature_fragment(f"{target_expr} BETWEEN {low_value} AND {high_value}"))
+    return Counter(derived)
+
+
+def has_non_inner_join_modifier(sql: str) -> bool:
+    tokens = tokenize_sql(sql)
+    for index, token in enumerate(tokens):
+        if token.upper() != "JOIN":
+            continue
+        cursor = index - 1
+        modifiers: set[str] = set()
+        while cursor >= 0 and tokens[cursor].upper() in JOIN_MODIFIER_KEYWORDS:
+            modifiers.add(tokens[cursor].upper())
+            cursor -= 1
+        if modifiers & {"LEFT", "RIGHT", "FULL", "OUTER", "ANTI", "SEMI"}:
+            return True
+    return False
+
+
+def predicate_join_equalities(sql: str) -> tuple[tuple[str, str], ...]:
+    equalities: list[tuple[str, str]] = []
+    pattern = re.compile(rf"^(?P<left>{SQL_IDENTIFIER_RE})=(?P<right>{SQL_IDENTIFIER_RE})$")
+    for predicate in all_predicate_signatures(sql, "ON"):
+        match = pattern.fullmatch(predicate)
+        if match:
+            equalities.append((match.group("left"), match.group("right")))
+    return tuple(equalities)
+
+
+def parse_between_predicate_signature(predicate: str) -> tuple[str, str, str] | None:
+    pattern = re.compile(
+        rf"^(?P<expr>{SQL_IDENTIFIER_RE}) between (?P<low>{SQL_SIMPLE_LITERAL_RE}) and (?P<high>{SQL_SIMPLE_LITERAL_RE})$"
+    )
+    match = pattern.fullmatch(predicate)
+    if not match:
+        return None
+    return match.group("expr"), match.group("low"), match.group("high")
 
 
 def all_clause_signatures(sql: str, keyword: str) -> list[str]:
