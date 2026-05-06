@@ -144,7 +144,7 @@ METRIC_SIGNAL_CATALOG: tuple[MetricSignalSpec, ...] = (
         family="hdfs",
         label="HDFS DataNode I/O pressure",
         scope=("host", "service"),
-        implementation_status=PLANNED,
+        implementation_status=IMPLEMENTED,
         description="DataNode read/write throughput, latency, volume failures, or bad-disk indicators.",
     ),
     MetricSignalSpec(
@@ -267,6 +267,24 @@ CM_TIMESERIES_MAPPINGS: tuple[CMTimeSeriesMapping, ...] = (
         query_id="host_disk_write_rate",
         label="Host disk write rate",
         tsquery="select write_bytes_rate",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="hdfs_datanode_io_pressure",
+        query_id="hdfs_datanode_read_bytes_rate",
+        label="HDFS DataNode read bytes rate",
+        tsquery="select read_bytes_rate where roleType=DATANODE",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="hdfs_datanode_io_pressure",
+        query_id="hdfs_datanode_local_reads_rate",
+        label="HDFS DataNode local reads rate",
+        tsquery="select reads_from_local_client_rate where roleType=DATANODE",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="hdfs_datanode_io_pressure",
+        query_id="hdfs_datanode_remote_reads_rate",
+        label="HDFS DataNode remote reads rate",
+        tsquery="select reads_from_remote_client_rate where roleType=DATANODE",
     ),
     CMTimeSeriesMapping(
         signal_id="host_network_io_spike",

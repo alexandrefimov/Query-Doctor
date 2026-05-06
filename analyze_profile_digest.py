@@ -2004,6 +2004,8 @@ CM_DAEMON_MEMORY_GROWTH_DELTA_BYTES = 8 * 1024 * 1024 * 1024
 CM_DAEMON_MEMORY_GROWTH_RATIO_THRESHOLD = 1.25
 CM_HOST_DISK_IO_BYTES_PER_SEC = 150 * 1024 * 1024
 CM_HOST_DISK_IO_RATIO_THRESHOLD = 3.0
+CM_HDFS_DATANODE_READ_BYTES_PER_SEC = 150 * 1024 * 1024
+CM_HDFS_REMOTE_READ_RATIO_THRESHOLD = 2.0
 CM_NETWORK_SPIKE_BYTES_PER_SEC = 100 * 1024 * 1024
 CM_NETWORK_SPIKE_RATIO_THRESHOLD = 5.0
 
@@ -2124,6 +2126,9 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         context,
         ("host_disk_read_rate", "host_disk_write_rate"),
     )
+    hdfs_read = cm_metric_by_id(context, "hdfs_datanode_read_bytes_rate")
+    hdfs_local_reads = cm_metric_by_id(context, "hdfs_datanode_local_reads_rate")
+    hdfs_remote_reads = cm_metric_by_id(context, "hdfs_datanode_remote_reads_rate")
     network_metrics = cm_metrics_by_ids(
         context,
         ("host_network_io", "host_network_receive_rate", "host_network_transmit_rate"),
@@ -2203,6 +2208,42 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     else:
         host_disk_io_pressure = cm_signal("unknown", "host disk I/O metrics are missing or have insufficient points")
 
+    hdfs_read_max = numeric_context_value(hdfs_read or {}, "max")
+    hdfs_read_avg = numeric_context_value(hdfs_read or {}, "avg")
+    hdfs_local_max = numeric_context_value(hdfs_local_reads or {}, "max")
+    hdfs_remote_max = numeric_context_value(hdfs_remote_reads or {}, "max")
+    hdfs_spread = metric_series_spread_basis(hdfs_read)
+    hdfs_ready = any(cm_metric_ready(metric) for metric in (hdfs_read, hdfs_local_reads, hdfs_remote_reads))
+    if hdfs_ready and hdfs_read_max is not None and hdfs_read_avg is not None:
+        read_ratio = hdfs_read_max / hdfs_read_avg if hdfs_read_avg > 0 else None
+        remote_ratio = hdfs_remote_max / hdfs_local_max if hdfs_remote_max is not None and hdfs_local_max and hdfs_local_max > 0 else None
+        hdfs_observed = hdfs_read_max >= CM_HDFS_DATANODE_READ_BYTES_PER_SEC or (
+            remote_ratio is not None and remote_ratio >= CM_HDFS_REMOTE_READ_RATIO_THRESHOLD
+        )
+        basis_parts = [
+            f"HDFS DataNode read max={fmt_bytes(hdfs_read_max)}/s avg={fmt_bytes(hdfs_read_avg)}/s"
+        ]
+        if read_ratio is not None:
+            basis_parts.append(f"read ratio={read_ratio:.2f}x")
+        if hdfs_local_max is not None and hdfs_remote_max is not None:
+            basis_parts.append(
+                f"local_reads_max={hdfs_local_max:.2f}/s remote_reads_max={hdfs_remote_max:.2f}/s"
+            )
+        if remote_ratio is not None:
+            basis_parts.append(f"remote/local reads ratio={remote_ratio:.2f}x")
+        basis = "; ".join(basis_parts)
+        if hdfs_spread:
+            basis = f"{basis}; {hdfs_spread}"
+        hdfs_datanode_io_pressure = cm_signal(
+            "observed" if hdfs_observed else "not_observed",
+            basis,
+        )
+    else:
+        hdfs_datanode_io_pressure = cm_signal(
+            "unknown",
+            "HDFS DataNode read metrics are missing or have insufficient points",
+        )
+
     network_max = max_metric_value(network_metrics, "max")
     network_avg = max_metric_value(network_metrics, "avg")
     network_spread = metric_spread_basis(network_metrics)
@@ -2267,6 +2308,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         "daemon_memory_growth": daemon_memory_growth,
         "daemon_memory_pressure": daemon_memory_pressure,
         "host_disk_io_pressure": host_disk_io_pressure,
+        "hdfs_datanode_io_pressure": hdfs_datanode_io_pressure,
         "network_io_spike": network_io_spike,
         "limitations": limitations,
     }
@@ -2425,6 +2467,19 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
             ),
         ),
         signal_row(
+            "hdfs_datanode_io_pressure",
+            title="HDFS DataNode I/O pressure",
+            profile_support=storage_support,
+            correlated_reason=(
+                "HDFS DataNode I/O pressure is correlated with parsed scan/storage evidence; "
+                "treat it as HDFS/storage-path context and validate with comparable reruns."
+            ),
+            context_reason=(
+                "HDFS DataNode I/O pressure was observed, but parsed profile facts did not identify matching "
+                "scan/storage elapsed-time evidence."
+            ),
+        ),
+        signal_row(
             "network_io_spike",
             title="Network I/O spike",
             profile_support=network_support,
@@ -2576,14 +2631,22 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
 
     storage_finding = runtime_diagnosis_finding(analysis, "hdfs_or_storage_bottleneck")
     disk_status = runtime_diagnosis_metric_status(analysis, "host_disk_io_pressure")
+    hdfs_status = runtime_diagnosis_metric_status(analysis, "hdfs_datanode_io_pressure")
     total_read = (analysis.get("totals") or {}).get("TotalBytesRead") or {}
     storage_evidence: list[str] = []
     storage_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "host_disk_io_pressure"))
+    storage_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "hdfs_datanode_io_pressure"))
     if total_read.get("bytes") is not None:
         storage_evidence.append(f"TotalBytesRead={fmt_bytes(float(total_read['bytes']))}.")
     if storage_finding:
         storage_evidence.append("Profile finding: Storage/HDFS candidate signal.")
-    if disk_status == "correlated":
+    if hdfs_status == "correlated":
+        storage_status = "plausible_follow_up"
+        storage_interpretation = (
+            "HDFS/DataNode read path is a plausible follow-up hypothesis because DataNode I/O pressure "
+            "aligns with parsed scan/storage evidence. Validate it with comparable reruns and HDFS/host metrics."
+        )
+    elif disk_status == "correlated":
         storage_status = "plausible_follow_up"
         storage_interpretation = (
             "Storage/local disk path is a plausible follow-up hypothesis because host disk I/O pressure "
@@ -4234,6 +4297,7 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
         "daemon_memory_growth",
         "daemon_memory_pressure",
         "host_disk_io_pressure",
+        "hdfs_datanode_io_pressure",
         "network_io_spike",
     ):
         signal = facts[key]

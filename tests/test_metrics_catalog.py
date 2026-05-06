@@ -37,6 +37,7 @@ def test_metrics_catalog_tracks_implementation_statuses():
     assert by_id["impala_daemon_memory_growth"].implementation_status == IMPLEMENTED
     assert by_id["host_network_io_spike"].implementation_status == IMPLEMENTED
     assert by_id["host_disk_io_pressure"].implementation_status == IMPLEMENTED
+    assert by_id["hdfs_datanode_io_pressure"].implementation_status == IMPLEMENTED
     assert by_id["host_memory_pressure"].implementation_status == COLLECTED_ONLY
     assert by_id["admission_pool_pressure"].implementation_status == PLANNED
     assert by_id["impala_daemon_memory_headroom"].implementation_status == PLANNED
@@ -67,8 +68,14 @@ def test_cm_mappings_reference_known_signal_ids():
     assert {"host_disk_read_rate", "host_disk_write_rate"}.issubset(
         {mapping.query_id for mapping in CM_TIMESERIES_MAPPINGS}
     )
+    assert {
+        "hdfs_datanode_read_bytes_rate",
+        "hdfs_datanode_local_reads_rate",
+        "hdfs_datanode_remote_reads_rate",
+    }.issubset({mapping.query_id for mapping in CM_TIMESERIES_MAPPINGS})
     assert all(mapping.signal_id in by_id for mapping in CM_TIMESERIES_MAPPINGS)
     assert {mapping.signal_id for mapping in CM_TIMESERIES_MAPPINGS} == {
+        "hdfs_datanode_io_pressure",
         "impala_daemon_memory_growth",
         "host_cpu_pressure",
         "host_disk_io_pressure",
