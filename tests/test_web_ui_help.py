@@ -91,6 +91,9 @@ def test_web_demo_guide_renders_curated_russian_demo_page():
 
     assert '<a class="nav-link nav-link--active" href="/demo">Demo guide</a>' in body
     assert "<h1>Demo guide</h1>" in body
+    assert body.count("<details open>") == 1
+    assert "<details open>\n<summary>About this page</summary>" in body
+    assert "<details>\n<summary>On this page</summary>" in body
     assert "дата-инженерам" in body
     assert "deterministic scoring" in body
     assert "Specific Query path" in body
@@ -125,6 +128,14 @@ def test_web_demo_guide_renders_curated_russian_demo_page():
     assert "c84ac4eb1f578be7:7a5f8e0b00000000" in body
     assert "row_count=152" in body
     assert "3e8bf93ce7579564" in body
+    assert "Specific Query full-cycle follow-up" in body
+    assert 'href="#demo-specific-followup"' in body
+    assert "8d40bd516d7f45a9:4bbacbb900000000" in body
+    assert "8742e82981df22d3:9d3f93b900000000" in body
+    assert "Runtime улучшился, но Score не обязан падать." in body
+    assert "Trusted не означает guaranteed extra speedup." in body
+    assert "validation mode <code>strict_v2</code>" in body
+    assert "host CPU pressure was not observed" in body
     assert "gpt55" not in body.lower()
     assert "Stats refresh candidates" in body
     assert "LLM boundaries" in body

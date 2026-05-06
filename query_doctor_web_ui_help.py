@@ -153,9 +153,13 @@ def render_demo_guide_content() -> str:
 <section class="panel docs-panel" aria-label="Query Doctor demo guide">
 <h1>Demo guide</h1>
 <div class="report-body">
+<details open>
+<summary>About this page</summary>
 <p>Эта страница помогает показывать Query Doctor дата-инженерам. Она объясняет, как устроены deterministic scoring, profile analysis, metadata checks, CM metrics correlation, LLM Report и Query LLM optimizer. Это curated UI text, а не рендер документации из репозитория.</p>
+</details>
 
-<h2>On this page</h2>
+<details>
+<summary>On this page</summary>
 <ul>
 <li><a href="#demo-model">Mental model</a></li>
 <li><a href="#demo-specific-path">Specific Query path</a></li>
@@ -164,13 +168,16 @@ def render_demo_guide_content() -> str:
 <li><a href="#demo-optimization">Optimization candidates</a></li>
 <li><a href="#demo-candidate-evaluation">Candidate evaluation logic</a></li>
 <li><a href="#demo-benchmark">Read-only benchmark evidence</a></li>
+<li><a href="#demo-specific-followup">Specific Query full-cycle follow-up</a></li>
 <li><a href="#demo-stats">Stats refresh candidates</a></li>
 <li><a href="#demo-llm">LLM boundaries</a></li>
 <li><a href="#demo-scenarios">Demo scenarios</a></li>
 <li><a href="#demo-qa">Q&amp;A</a></li>
 </ul>
+</details>
 
-<h2 id="demo-model">Mental model</h2>
+<details>
+<summary id="demo-model">Mental model</summary>
 <p>Главная позиция для демо: Query Doctor — engineering diagnostic tool, а не chat wrapper. Python extracts facts and scores candidates. LLM используется только после явного действия пользователя и только для wording или draft assembly в рамках validation.</p>
 <ol>
 <li>Cloudera Manager summaries дают bounded список кандидатов.</li>
@@ -180,11 +187,13 @@ def render_demo_guide_content() -> str:
 <li>Metadata collection включается явно и остается bounded/read-only.</li>
 <li>LLM Report и Query LLM optimizer запускаются только из details выбранного кейса.</li>
 </ol>
+</details>
 
-<h2 id="demo-specific-path">Specific Query path</h2>
+<details>
+<summary id="demo-specific-path">Specific Query path</summary>
 <p><strong>Specific Query</strong> — путь для одного известного Query ID. Это самый понятный workflow для объяснения end-to-end trust chain: от bounded collection до validated report или optimizer fallback.</p>
 
-<details open>
+<details>
 <summary>1. Collection</summary>
 <p>После submit UI валидирует Query ID и запускает single-query collection. Collector читает ровно один matching CM query summary/profile, пишет staged case под локальный corpus, включает redaction и проверяет, что collector вернул ожидаемый case для этого Query ID. Если такой case уже был, новый результат заменяет старый только после успешного collection + analysis.</p>
 <p>Для explicit single-query collection bounded CM time-series summaries включены по умолчанию. Raw time-series points не пишутся в trusted facts и не показываются в browser UI: collector сохраняет только bounded aggregates по allowlisted metric queries.</p>
@@ -232,8 +241,10 @@ def render_demo_guide_content() -> str:
 <p>Если validation не проходит, raw draft не показывается. Вместо этого optimizer записывает trusted <code>no_rewrite</code> outcome with Python-owned bullets: почему draft не trusted и какие review areas можно использовать, чтобы переписать запрос manually. Пользователь видит безопасные bullets/recommendations-only guidance, а не unsafe SQL.</p>
 <p>Если LLM output был incomplete, hit output budget, или draft не содержит material rewrite, UI также показывает no trusted SQL draft и безопасные bullets. Это deliberate safety behavior.</p>
 </details>
+</details>
 
-<h2 id="demo-profile">Profile signals</h2>
+<details>
+<summary id="demo-profile">Profile signals</summary>
 <p>Analyzer смотрит на Impala runtime/profile facts и безопасный CM context. Основные группы сигналов:</p>
 <ul>
 <li><strong>Query Wall Clock</strong>: длительность из safe CM/profile context.</li>
@@ -245,8 +256,10 @@ def render_demo_guide_content() -> str:
 <li><strong>Runtime Counter Context</strong>: cumulative thread/CPU/wait/codegen counters остаются context, если facts не поддерживают elapsed-time interpretation.</li>
 <li><strong>CM Metrics Correlation</strong>: CPU, memory или network signals усиливают context только когда совпадают с profile evidence.</li>
 </ul>
+</details>
 
-<h2 id="demo-triage">Triage score</h2>
+<details>
+<summary id="demo-triage">Triage score</summary>
 <p><strong>Score</strong> — deterministic priority score, а не вероятность root cause. Каждый positive score reason должен ссылаться на analyzer-supported facts.</p>
 <table>
 <thead><tr><th>Signal</th><th>Current contribution</th></tr></thead>
@@ -265,8 +278,10 @@ def render_demo_guide_content() -> str:
 </tbody>
 </table>
 <p><strong>High</strong> severity появляется при score at least <code>30</code> или при сильных count-based signals: много cardinality/memory gaps, combined row and memory gaps, backend skew plus host tail, либо long-running query with execution-tail evidence. <strong>Suspicious</strong> означает positive score ниже high-promotion rules. <strong>Clean</strong> означает score <code>0</code>, но не доказывает, что запрос оптимален.</p>
+</details>
 
-<h2 id="demo-optimization">Optimization candidates</h2>
+<details>
+<summary id="demo-optimization">Optimization candidates</summary>
 <p><strong>Optimization candidates</strong> — deterministic query-shape review score. Это не LLM scoring и не promise speedup.</p>
 <pre><code>score = 55% impact + 45% query-shape opportunity</code></pre>
 <p><strong>Impact</strong> смотрит на runtime, scan/read volume, peak memory, spill/scratch evidence и large exchange/intermediate volume. <strong>Query-shape opportunity</strong> смотрит на large scan waste, join row expansion, cardinality mismatch with join evidence, large exchange before downstream processing, memory pressure at join/aggregation/sort-style operators и spill at shape-sensitive operators.</p>
@@ -277,11 +292,13 @@ def render_demo_guide_content() -> str:
 <li><strong>Low</strong>: weak positive signal или expensive query без достаточного shape evidence.</li>
 <li><strong>Not likely</strong>: нет полезного deterministic optimization evidence.</li>
 </ul>
+</details>
 
-<h2 id="demo-candidate-evaluation">Candidate evaluation logic</h2>
+<details>
+<summary id="demo-candidate-evaluation">Candidate evaluation logic</summary>
 <p>В demo важно проговаривать, что оба action-candidate типа считаются до LLM и до любых rewrite действий. Analyzer facts выбирают candidate, scorer считает tier/impact/confidence, а UI только показывает безопасную интерпретацию.</p>
 
-<details open>
+<details>
 <summary>Query optimization evaluation</summary>
 <p>Query optimization candidate отвечает на вопрос: стоит ли делать SQL shape review. Он не говорит, что переписывание обязательно поможет.</p>
 <table>
@@ -314,8 +331,10 @@ def render_demo_guide_content() -> str:
 </table>
 <p>Required confirmation всегда остается частью recommendation: compare EXPLAIN before/after stats collection, check join order, join distribution, estimates, exchange, spill and memory behavior, then rerun under comparable load.</p>
 </details>
+</details>
 
-<h2 id="demo-benchmark">Read-only benchmark evidence</h2>
+<details>
+<summary id="demo-benchmark">Read-only benchmark evidence</summary>
 <p>Для demo можно показать explicit read-only проверку одного recipe-backed optimizer case. Исходный Query ID: <code>246462725beeed0:506befef00000000</code>. Два optimized drafts прошли deterministic validation как <code>post_union_aggregate_pushdown</code>: read-only scope, same physical tables, preserved filters/joins/projection shape and recipe invariants.</p>
 <p>Benchmark запускался вручную вне Query Doctor UI в порядке <code>original → optimized draft A → optimized draft B → optimized draft B → optimized draft A → original</code>, чтобы частично отделить cold/warm cache effect. Это demo evidence, а не statistical performance guarantee.</p>
 <table>
@@ -338,8 +357,41 @@ def render_demo_guide_content() -> str:
 <tr><td>Optimized draft B</td><td><code>39.412s</code>, <code>27.453s</code></td><td><code>33.432s</code></td><td>same row count and fingerprint</td></tr>
 </tbody>
 </table>
+</details>
 
-<h2 id="demo-stats">Stats refresh candidates</h2>
+<details>
+<summary id="demo-specific-followup">Specific Query full-cycle follow-up</summary>
+<p>После benchmark последние три Query IDs были прогнаны через полный <strong>Specific Query</strong> цикл: collection, analyzer, bounded metadata, validated LLM Report и Query LLM optimizer. Это удобно показать online: все три cases лежат в web corpus и открываются через details по Query ID.</p>
+<table>
+<thead><tr><th>Variant</th><th>Query ID</th><th>Benchmark runtime</th><th>Analyzer duration</th><th>Score</th><th>Report</th><th>Optimizer</th></tr></thead>
+<tbody>
+<tr><td>Optimized draft B</td><td><code>c84ac4eb1f578be7:7a5f8e0b00000000</code></td><td><code>27.453s</code></td><td><code>27s</code></td><td><code>25</code></td><td>trusted</td><td>trusted SQL draft</td></tr>
+<tr><td>Optimized draft A</td><td><code>8d40bd516d7f45a9:4bbacbb900000000</code></td><td><code>35.478s</code></td><td><code>33s</code></td><td><code>25</code></td><td>trusted</td><td>trusted SQL draft</td></tr>
+<tr><td>Original warm run</td><td><code>8742e82981df22d3:9d3f93b900000000</code></td><td><code>47.611s</code></td><td><code>47s</code></td><td><code>23</code></td><td>trusted</td><td>trusted SQL draft</td></tr>
+</tbody>
+</table>
+<p>All three optimizer outputs were trusted with <code>conservative_rewrite</code>, validation mode <code>strict_v2</code>, source scope <code>read_only_statement</code>, and recipe <code>post_union_aggregate_pushdown</code>. Metadata status was <code>collected</code> for all three.</p>
+<table>
+<thead><tr><th>Variant</th><th>Parsed operators</th><th>Cardinality anomalies</th><th>Memory anomalies</th><th>CM metrics correlation</th></tr></thead>
+<tbody>
+<tr><td>Optimized draft B</td><td><code>50</code></td><td><code>10</code></td><td><code>2</code></td><td><code>6/6</code> metrics ok, <code>2</code> correlated signals</td></tr>
+<tr><td>Optimized draft A</td><td><code>50</code></td><td><code>10</code></td><td><code>2</code></td><td><code>6/6</code> metrics ok, <code>2</code> correlated signals</td></tr>
+<tr><td>Original warm run</td><td><code>35</code></td><td><code>5</code></td><td><code>1</code></td><td><code>6/6</code> metrics ok, <code>2</code> correlated signals</td></tr>
+</tbody>
+</table>
+<h3>Что это показывает</h3>
+<ul>
+<li><strong>Runtime улучшился, но Score не обязан падать.</strong> Optimized runs были быстрее, но их Score остался около <code>25</code>. Это ожидаемо: Score — это diagnostic priority по profile facts, а не метрика speedup.</li>
+<li><strong>Optimized plans дают analyzer больше фактов.</strong> В optimized drafts больше parsed operators и estimate anomalies, потому что rewrite добавляет branch-level aggregation stages. Из-за этого Score может оставаться сопоставимым, даже когда wall-clock стал лучше.</li>
+<li><strong>После rerun нет High severity.</strong> Scores <code>23..25</code> ниже High promotion threshold. Правильная формулировка: "remaining review evidence exists", а не "optimized query is still bad".</li>
+<li><strong>CM metrics дают согласованный runtime context.</strong> Во всех трех runs был полный CM metrics coverage. Daemon memory growth и network I/O spike были correlated; host CPU pressure was not observed. Это усиливает runtime context, но не является standalone root cause.</li>
+<li><strong>Trusted не означает guaranteed extra speedup.</strong> Query LLM optimizer снова выдал trusted SQL draft даже для уже optimized variants. Validation доказывает safety и result-shape preservation; полезность следующего rewrite все равно нужно подтверждать benchmark или EXPLAIN comparison.</li>
+<li><strong>Как показывать на demo:</strong> benchmark используем как speed evidence, а Specific Query details — как trust chain evidence. Score не продаем как before/after performance score.</li>
+</ul>
+</details>
+
+<details>
+<summary id="demo-stats">Stats refresh candidates</summary>
 <p><strong>Stats refresh candidates</strong> отвечают на вопрос: стоит ли проверять stats maintenance как possible speed-benefit action. Это не утверждение, что stats caused the slowdown.</p>
 <pre><code>score =
   35% impact
@@ -349,9 +401,11 @@ def render_demo_guide_content() -> str:
 <p>Самая сильная evidence chain: metadata показывает missing/unknown/incomplete table, partition или column stats; estimates расходятся с actual facts; runtime симптомы завязаны на planning-sensitive operators; impact достаточно большой, чтобы проверка была полезной.</p>
 <p>Required confirmation: compare EXPLAIN before/after stats collection, проверить join order, join distribution, estimates, exchange, spill и memory behavior, затем rerun under comparable load.</p>
 <p>Metadata status нужно объяснять аккуратно: <code>not_requested</code> означает unknown, <code>partial</code> снижает confidence, <code>failed</code> является limitation, а <code>collected</code> не доказывает полноту stats автоматически.</p>
+</details>
 
-<h2 id="demo-llm">LLM boundaries</h2>
-<details open>
+<details>
+<summary id="demo-llm">LLM boundaries</summary>
+<details>
 <summary>LLM Report</summary>
 <p>LLM Report — readable narrative по analyzer-owned facts. Он должен отвечать: что supported, что not observed, что unknown из-за missing/bounded evidence и какие follow-up checks нужны. Если wording сильнее facts, validation должна reject или normalization должна сузить формулировку.</p>
 </details>
@@ -361,8 +415,10 @@ def render_demo_guide_content() -> str:
 <p>Если validation fails, Query Doctor может показать trusted recommendations-only или no-rewrite guidance. Это safety feature, а не failed demo.</p>
 </details>
 <p>Правильная формулировка: analyzer selected the candidate and strategy; LLM assembled a draft; validator decided whether the draft is trusted.</p>
+</details>
 
-<h2 id="demo-scenarios">Demo scenarios</h2>
+<details>
+<summary id="demo-scenarios">Demo scenarios</summary>
 <div class="batch-metrics">
 <div class="batch-metric"><span>Scenario 1</span><strong>Trusted SQL draft</strong></div>
 <div class="batch-metric"><span>Scenario 2</span><strong>Rejected unsafe draft</strong></div>
@@ -375,8 +431,10 @@ def render_demo_guide_content() -> str:
 <li><strong>Stats refresh candidate</strong>: покажите цепочку metadata gap + estimate mismatch + planning-sensitive symptoms + required confirmation.</li>
 <li><strong>Recommendations-only</strong>: покажите, что complex SQL не вынуждает продукт показывать unsafe draft.</li>
 </ul>
+</details>
 
-<h2 id="demo-qa">Q&amp;A</h2>
+<details>
+<summary id="demo-qa">Q&amp;A</summary>
 <h3>Почему этот case High?</h3>
 <p>Показывайте visible deterministic reasons: score reasons, impact/confidence, wall-clock, estimate mismatches, host-tail evidence, spill/scratch evidence, metadata status или correlated CM metrics. Не выводите cause, которого нет в facts.</p>
 <h3>Почему UI не показывает raw SQL?</h3>
@@ -389,10 +447,13 @@ def render_demo_guide_content() -> str:
 <p>Нет. Нужна evidence chain и required confirmation. Говорите "stats refresh candidate", "possible speed benefit" и "required confirmation".</p>
 <h3>CM metrics являются root-cause evidence?</h3>
 <p>Обычно это runtime context. Они становятся сильнее только при correlation with profile evidence и все равно не должны заменять deterministic profile facts.</p>
+</details>
 
-<h2>Wording checklist</h2>
+<details>
+<summary>Wording checklist</summary>
 <p><strong>Prefer:</strong> candidate, supported by parsed facts, correlated runtime context, review first, required confirmation, validated draft, recommendations-only fallback.</p>
 <p><strong>Avoid:</strong> root cause без прямых facts, the LLM found, guaranteed speedup, stats caused it, cluster issue from one query, raw SQL/profile/metadata in browser.</p>
+</details>
 </div>
 </section>
 """.strip()
