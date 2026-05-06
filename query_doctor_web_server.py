@@ -254,6 +254,7 @@ class BatchRunConfig:
     include_running: bool = False
     only_running: bool = False
     collect_cm_timeseries: bool = False
+    cm_metrics_profile: str = cm_collector.DEFAULT_CM_METRICS_PROFILE
 
 
 @dataclass(frozen=True)
@@ -1341,6 +1342,7 @@ def parse_batch_run_config(
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
     collect_cm_timeseries = bool(first_form_value(form, "collect_cm_timeseries"))
+    cm_metrics_profile = parse_cm_metrics_profile(form)
     return BatchRunConfig(
         recent_window_minutes=recent_window_minutes,
         scan_date=scan_date,
@@ -1363,6 +1365,7 @@ def parse_batch_run_config(
         include_failed=True,
         include_running=False,
         collect_cm_timeseries=collect_cm_timeseries,
+        cm_metrics_profile=cm_metrics_profile,
     )
 
 
@@ -1386,6 +1389,7 @@ def parse_running_run_config(
         maximum=min(BATCH_CM_JOBS_MAX, BATCH_JOBS_MAX),
     )
     metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
+    cm_metrics_profile = parse_cm_metrics_profile(form)
     return BatchRunConfig(
         recent_window_minutes=WEB_RUNNING_SCAN_WINDOW_MINUTES,
         from_time=None,
@@ -1407,6 +1411,7 @@ def parse_running_run_config(
         include_running=True,
         only_running=True,
         collect_cm_timeseries=True,
+        cm_metrics_profile=cm_metrics_profile,
     )
 
 
@@ -1640,6 +1645,14 @@ def parse_positive_form_int(
     return value
 
 
+def parse_cm_metrics_profile(form: dict[str, list[str]]) -> str:
+    value = first_form_value(form, "cm_metrics_profile") or cm_collector.DEFAULT_CM_METRICS_PROFILE
+    try:
+        return cm_collector.validate_cm_metrics_profile(value)
+    except cm_collector.ConfigError as exc:
+        raise WebError(str(exc)) from exc
+
+
 def parse_non_negative_form_int(
     form: dict[str, list[str]],
     name: str,
@@ -1757,7 +1770,7 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
     if config.only_running:
         cmd.append("--only-running")
     if config.collect_cm_timeseries:
-        cmd.append("--collect-cm-timeseries")
+        cmd.extend(["--collect-cm-timeseries", "--cm-metrics-profile", config.cm_metrics_profile])
     if metadata_enabled:
         append_web_metadata_args(cmd, settings)
     if config.jobs > BATCH_FULL_JOBS_MAX:
@@ -2313,6 +2326,7 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "order",
         "parallelism",
         "metadata_jobs",
+        "cm_metrics_profile",
         "user",
         "pool",
     ):
@@ -2332,6 +2346,7 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "order": config.order,
         "parallelism": str(config.parallelism),
         "metadata_jobs": str(config.metadata_jobs),
+        "cm_metrics_profile": config.cm_metrics_profile,
         "user": config.user,
         "pool": config.pool,
     }
@@ -3720,6 +3735,7 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
             "coverage",
             "availability",
             "unavailable_metrics",
+            "no_data_metrics",
         }:
             summary[key] = value
             continue

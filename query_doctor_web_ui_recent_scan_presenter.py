@@ -477,6 +477,7 @@ def present_recent_scan_cm_metrics(cm_metrics_facts: dict[str, Any] | None) -> R
         ("coverage", safe_display_value(summary.get("coverage"))),
         ("availability", safe_display_value(summary.get("availability"))),
         ("unavailable_metrics", safe_display_value(summary.get("unavailable_metrics"))),
+        ("no_data_metrics", safe_display_value(summary.get("no_data_metrics"))),
     ]
     for key in ("correlated_signals", "context_only_signals"):
         if key in correlation_summary:

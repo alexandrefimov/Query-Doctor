@@ -64,7 +64,7 @@ def render_help_content() -> str:
 <li><strong>Optimization candidates</strong> — deterministic список запросов, где profile facts показывают query-shape review opportunity. Он не обещает ускорение и не запускает LLM или SQL.</li>
 <li><strong>Stats refresh candidates</strong> — deterministic список запросов, где metadata facts, estimate mismatch и planning-sensitive runtime symptoms вместе указывают, что stats refresh may improve speed. Это prediction, а не гарантия: нужен EXPLAIN comparison и rerun under comparable load.</li>
 <li><strong>Only queries with spills</strong> — display-фильтр уже полученных результатов; он не меняет параметры запуска scan.</li>
-<li><strong>Collect CM metrics</strong> включает ограниченный сбор Cloudera Manager time-series summaries для выбранных запросов. По умолчанию выключен для Finished Queries.</li>
+<li><strong>Collect CM metrics</strong> включает ограниченный сбор Cloudera Manager time-series summaries для выбранных запросов. По умолчанию выключен для Finished Queries. <strong>CM metrics profile</strong> выбирает compatibility profile для metric names, например <code>cm6</code> для CDH6 / Cloudera Manager 6.x.</li>
 </ul>
 </details>
 

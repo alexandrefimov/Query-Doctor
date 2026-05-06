@@ -32,7 +32,7 @@ CLUSTER = os.getenv("CLUSTER", "")
 SERVICE = os.getenv("SERVICE", "")
 
 CASES_DIR = Path(os.getenv("QD_CASES_DIR", "cases"))
-QUERY_DOCTOR = Path(os.getenv("QUERY_DOCTOR", "./query_doctor.py")).resolve()
+QUERY_DOCTOR = Path(os.getenv("QUERY_DOCTOR", str(Path(__file__).with_name("query_doctor.py")))).resolve()
 
 VERIFY_TLS = os.getenv("CM_VERIFY_TLS", "false").lower() in ("1", "true", "yes")
 

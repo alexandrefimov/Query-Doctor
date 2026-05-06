@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from query_doctor_metrics_catalog import CM_METRICS_PROFILE_CHOICES, DEFAULT_CM_METRICS_PROFILE
+
 
 WEB_RECENT_SCAN_DEFAULTS = {
     "parallelism": "50",
@@ -65,6 +67,12 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
             config_values=local_config,
             fallback=False,
         ),
+        "cm_metrics_profile": form_or_config_value(
+            form_values,
+            "cm_metrics_profile",
+            config_values=local_config,
+            fallback=DEFAULT_CM_METRICS_PROFILE,
+        ),
         "user": form_or_config_value(form_values, "user", config_values=local_config, config_key="recent_user"),
         "pool": form_or_config_value(form_values, "pool", config_values=local_config, config_key="recent_pool"),
     }
@@ -103,6 +111,7 @@ def render_batch_run_panel(settings: Any, form_values: dict[str, Any] | None = N
         "<div class=\"batch-form-grid\">"
         f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for CM profile downloads and local analysis. Hard cap: 100.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
+        f"{render_cm_metrics_profile_select(value('cm_metrics_profile'))}"
         "</div>"
         "<div class=\"batch-checkbox-row\">"
         f"{render_batch_checkbox('collect_cm_timeseries', 'Collect CM metrics', bool(values.get('collect_cm_timeseries')), help_text='Collect bounded Cloudera Manager time-series metric summaries for selected cases. Adds several read-only CM requests per analyzed query.')}"
@@ -186,6 +195,23 @@ def render_scan_hour_select(selected_value: str, *, scan_date: str = "") -> str:
         "<div class=\"field\">"
         f"{render_label_with_info('scan_hour', 'Scan Hour', 'One local-hour CM window to inspect. Times are shown in Europe/Moscow time and sent to CM as UTC bounds.')}"
         f"<select class=\"input\" id=\"scan_hour\" name=\"scan_hour\">{rendered_options}</select>"
+        "</div>"
+    )
+
+
+def render_cm_metrics_profile_select(selected_value: str) -> str:
+    selected_raw = html.unescape(str(selected_value or DEFAULT_CM_METRICS_PROFILE)).strip()
+    if selected_raw not in CM_METRICS_PROFILE_CHOICES:
+        selected_raw = DEFAULT_CM_METRICS_PROFILE
+    rendered_options = "".join(
+        f"<option value=\"{html.escape(value, quote=True)}\"{' selected' if value == selected_raw else ''}>"
+        f"{html.escape(value)}</option>"
+        for value in CM_METRICS_PROFILE_CHOICES
+    )
+    return (
+        "<div class=\"field\">"
+        f"{render_label_with_info('cm_metrics_profile', 'CM metrics profile', 'Metric-name compatibility profile for bounded Cloudera Manager time-series collection. Use cm6 for Cloudera Manager 6.x / CDH6, cdp or cm7 for newer deployments.')}"
+        f"<select class=\"input\" id=\"cm_metrics_profile\" name=\"cm_metrics_profile\">{rendered_options}</select>"
         "</div>"
     )
 

@@ -522,15 +522,38 @@ Planned direction:
 
 - introduce a package layout such as `query_doctor/` while keeping existing CLI
   entry-point filenames as thin compatibility wrappers during migration;
+- keep `query_doctor/` directly under the repository root for the current
+  migration. Do not mix the behavior-preserving refactor with a `src/` layout or
+  packaging migration; that can be a later dedicated step;
 - prefer a split-first approach when a feature naturally touches a large file:
   if extracting a small focused module is low-risk and makes the feature easier
   to review, do that before adding more logic to the large file;
-- split by product responsibility: collectors, analyzers, metrics, metadata,
-  reporting, validation, optimizer, web routes, web jobs, UI presenters, and
-  safety/redaction;
+- split by product responsibility: CM collection, Impala metadata, analyzer,
+  recent scan, reporting, optimizer, web routes, web jobs, UI presenters,
+  storage and safety;
 - keep safety-critical boundaries explicit: raw collection, normalized facts,
   LLM prompt/report writing, deterministic validation, and browser rendering
   should remain separate modules;
+- all user-visible output must cross an explicit safety/display boundary before
+  it reaches CLI trusted reports or browser UI;
+- keep browser/user/report-visible safety rules centered in `query_doctor/safety/`;
+  source-specific redaction modules may exist only as thin adapters over those
+  common rules;
+- `cm/profile_redaction.py`, if introduced, must remain a CM payload adapter over
+  `query_doctor/safety/redaction.py` and must not contain an independent
+  redaction policy;
+- keep CM profile/time-series collection and Impala metadata as separate source
+  workflows. Impala metadata is not just another collector: it has its own
+  Kerberos, shell/protocol, dry-run, allowlist and analyzer-rerun contract;
+- defer a standalone top-level `metrics/` package until there are multiple
+  independent metric consumers. For now CM/profile/runtime metric interpretation
+  should stay near analyzer contracts to avoid duplicate sources of truth;
+- keep `engines/` deliberately thin while the product is Impala-only. It should
+  model minimal adapter capabilities and allowed commands, not a fake
+  multi-engine platform;
+- name LLM-assisted optimizer code as draft/contract code, for example
+  `llm_draft.py` or `llm_prompt_contract.py`, so deterministic optimizer
+  validation remains the source of trust;
 - reduce large files incrementally to reviewable modules, aiming for files that
   fit comfortably in one focused read and have a single reason to change;
 - use rough size targets, not hard limits: ordinary modules should usually stay
@@ -538,23 +561,97 @@ Planned direction:
   and larger files should have an explicit reason plus a split plan;
 - move tests alongside the new module boundaries or keep focused test files that
   mirror those boundaries;
+- treat `web/trusted_artifacts.py` as a browser safety boundary with dedicated
+  tests proving it does not expose raw SQL, profile text, raw metadata, local
+  paths, raw artifact filenames, partial/untrusted outputs, stdout/stderr,
+  secrets, model names or runtime internals;
 - keep root-level CLI wrappers thin as package modules take ownership of real
   implementation code;
 - do mechanical moves separately from behavior changes so diffs remain
   auditable.
+- do not create placeholder modules merely because they appear in the target
+  architecture. Add package directories and module files only when the current
+  slice uses them or needs them as an import/package boundary.
 
 Priority split candidates:
 
-- `query_doctor_web_server.py`: split routes, job orchestration, command
-  builders, trusted artifact loading, and case resolution;
-- `query_doctor_report.py`: split prompt contract, report sanitizer,
-  validation, recommendation candidates, and streaming client code;
 - `analyze_profile_digest.py`: split profile parsing, findings, backend-tail
   analysis, metrics correlation, and facts rendering;
+- `query_doctor_web_server.py`: split app assembly, routes, job orchestration,
+  command builders, trusted artifact loading, and case resolution. The future
+  `query_doctor/web/app.py` should register routes only, not contain heavy
+  workflow logic;
+- `query_doctor_report.py`: split prompt contract, report sanitizer,
+  validation, recommendation candidates, trusted-report rendering, and streaming
+  client code;
 - `query_doctor_collect_cm_profiles.py`: split CM HTTP/provider code, query
   discovery, profile collection, time-series collection, redaction, and writing;
+- Impala metadata modules: split shell/protocol execution, Kerberos/cache
+  handling, metadata allowlist, workflow orchestration, digesting and analyzer
+  integration under an `impala/` package;
 - optimizer modules: keep SQL parsing, risk classification, validation,
-  fallback recommendations, and web presentation independently testable.
+  fallback recommendations, recipes, LLM draft generation and web presentation
+  independently testable.
+
+Target package shape, refined for current product boundaries:
+
+```text
+query_doctor/
+  cli/
+  config/
+  cm/
+  impala/
+  analyzer/
+  recent/
+  report/
+  optimizer/
+  web/
+    app.py
+    routes/
+    presenters/
+    ui/
+    trusted_artifacts.py
+  safety/
+  storage/
+  engines/
+```
+
+Do not add `web/services/` in the first pass. Web routes should handle HTTP
+parsing and response shaping only, while business logic remains in the domain
+packages: `recent/`, `optimizer/`, `report/`, `cm/`, `impala/`, and `analyzer/`.
+
+Important first-pass omissions:
+
+- no `src/` layout or packaging migration during the behavior-preserving package
+  refactor;
+- no `web/services/` layer until there is a clear non-duplicative need;
+- no top-level `metrics/` package until metric contracts have several
+  independent consumers;
+- no `collectors/impala_metadata/` umbrella because Impala metadata has a
+  distinct safety contract;
+- no broad route/config/report behavior changes during package moves.
+
+Suggested migration slices:
+
+1. Quarantine legacy root prototypes under `legacy/`.
+2. Add the minimal root-level package skeleton `query_doctor/` and compatibility
+   contract only. Create only the package directories and `__init__.py` files
+   needed to establish the boundary; do not create placeholder implementation
+   modules across the future architecture.
+3. Move root entry-point ownership into `query_doctor/cli/` module by module,
+   leaving existing root filenames as thin compatibility wrappers.
+4. Split analyzer facts code first: profile parsing, findings, CM metrics,
+   runtime diagnosis and facts rendering.
+5. Consolidate shared safety helpers under `query_doctor/safety/`, with
+   collector-specific redaction as adapters only.
+6. Split web into app assembly, routes, jobs, command builders, presenters and
+   trusted artifact loading.
+7. Split CM collection into client/config, query discovery, profile collection,
+   time-series, writer and source-specific redaction adapter.
+8. Split Impala metadata into allowlist, Kerberos/cache, shell/protocol,
+   workflow and digest modules.
+9. Clean optimizer boundaries around deterministic validation, recipes,
+   fallback, scoring and LLM draft contracts.
 
 Engineering guidance:
 
@@ -567,6 +664,9 @@ Engineering guidance:
 - treat active docs as part of safety-sensitive completion: roadmap, handoff,
   safety contract, changelog, and Help should be updated when their behavior or
   guidance changes;
+- after each slice, run the broad test suite plus existing relevant focused
+  suites for the touched boundaries. If a planned test directory does not exist
+  yet, run the current closest equivalents and explicitly record the gap.
 - keep one behavior surface per commit where practical: metrics catalog,
   analyzer facts, UI rendering, report prompt/validator, and source collection
   should normally land separately;
@@ -605,8 +705,9 @@ Non-goals for this track:
   recipe updates, local models can produce trusted outcomes, but trusted SQL
   draft coverage remains narrow. Replacement model selection must use optimizer
   bake-off metrics, not report-writer pass-rate.
-- Legacy executable prototypes still need to be removed from the active root or
-  guarded behind explicit unsafe acknowledgement.
+- Legacy executable prototypes have been moved out of the active root into
+  `legacy/`; if they remain runnable long term, they should gain an explicit
+  unsafe acknowledgement flag.
 - Browser model-name redaction should be broadened for the current local
   optimizer bake-off set.
 - Batch and pipeline subprocess stages need explicit timeouts.

@@ -30,6 +30,7 @@ def test_web_help_page_renders_curated_static_help():
     assert "Query Doctor помогает разбирать поведение запросов Apache Impala." in body
     assert "Сейчас реализован только Apache Impala" in body
     assert "Finished Queries" in body
+    assert "CM metrics profile" in body
     assert "Specific Query" in body
     assert "Running Queries" in body
     assert "Query Optimizer" in body

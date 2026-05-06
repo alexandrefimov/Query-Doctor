@@ -11,7 +11,9 @@ from query_doctor_web_ui_recent_scan_form import (
     read_local_config_values,
     render_batch_number_field,
     render_batch_text_field,
+    render_cm_metrics_profile_select,
 )
+from query_doctor_metrics_catalog import DEFAULT_CM_METRICS_PROFILE
 
 
 def render_running_queries_page(
@@ -96,6 +98,12 @@ def render_running_queries_run_panel(
             config_key="recent_metadata_jobs",
             fallback=WEB_RECENT_SCAN_DEFAULTS["metadata_jobs"],
         ),
+        "cm_metrics_profile": form_or_config_value(
+            form_values,
+            "cm_metrics_profile",
+            config_values=local_config,
+            fallback=DEFAULT_CM_METRICS_PROFILE,
+        ),
         "user": form_or_config_value(form_values, "user", config_values=local_config, config_key="recent_user"),
         "pool": form_or_config_value(form_values, "pool", config_values=local_config, config_key="recent_pool"),
     }
@@ -133,6 +141,7 @@ def render_running_queries_run_panel(
         "<div class=\"batch-form-grid\">"
         f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for CM profile downloads and local analysis. Hard cap: 100.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
+        f"{render_cm_metrics_profile_select(value('cm_metrics_profile'))}"
         "</div>"
         "</fieldset>"
         "</div>"

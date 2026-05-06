@@ -2059,6 +2059,31 @@ def cm_signal(status: str, basis: str) -> dict[str, str]:
     return {"status": status, "basis": basis}
 
 
+SAFE_CM_METRIC_ID_RE = re.compile(r"^[A-Za-z0-9_:-]{1,120}$")
+
+
+def safe_cm_metric_id(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if SAFE_CM_METRIC_ID_RE.fullmatch(text) else "metric"
+
+
+def cm_metric_availability_detail(context: dict[str, Any], metric_ids: tuple[str, ...]) -> str:
+    details: list[str] = []
+    for metric_id in metric_ids:
+        metric = cm_metric_by_id(context, metric_id)
+        safe_id = safe_cm_metric_id(metric_id)
+        if not metric:
+            details.append(f"{safe_id}=missing")
+            continue
+        status = safe_cm_metric_id(metric.get("status") or "unknown")
+        point_count = cm_metric_point_count(metric)
+        if status == "ok" and point_count < CM_METRIC_MIN_POINTS_FOR_SIGNAL:
+            details.append(f"{safe_id}=insufficient_points")
+        else:
+            details.append(f"{safe_id}={status}")
+    return ", ".join(details)
+
+
 def metric_series_summaries(metric: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not metric:
         return []
@@ -2174,7 +2199,11 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     else:
         admission_pool_pressure = cm_signal(
             "unknown",
-            "admission pool metrics are missing or have insufficient points",
+            "admission pool metrics are missing or have insufficient points; availability: "
+            + cm_metric_availability_detail(
+                context,
+                ("impala_pool_queued_rate", "impala_pool_rejected_rate", "impala_pool_timed_out_rate"),
+            ),
         )
 
     cpu_user_max = numeric_context_value(host_cpu_user or {}, "max")
@@ -2200,7 +2229,11 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             basis,
         )
     else:
-        host_cpu_pressure = cm_signal("unknown", "host CPU metrics are missing or have insufficient points")
+        host_cpu_pressure = cm_signal(
+            "unknown",
+            "host CPU metrics are missing or have insufficient points; availability: "
+            + cm_metric_availability_detail(context, ("host_cpu_user", "host_cpu_system")),
+        )
 
     daemon_mem_min = numeric_context_value(daemon_memory or {}, "min")
     daemon_mem_max = numeric_context_value(daemon_memory or {}, "max")
@@ -2222,7 +2255,11 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             basis,
         )
     else:
-        daemon_memory_growth = cm_signal("unknown", "daemon memory metric is missing or has insufficient points")
+        daemon_memory_growth = cm_signal(
+            "unknown",
+            "daemon memory metric is missing or has insufficient points; availability: "
+            + cm_metric_availability_detail(context, ("impala_daemon_memory",)),
+        )
 
     daemon_memory_pressure = cm_signal(
         "unknown",
@@ -2249,7 +2286,11 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             basis,
         )
     else:
-        host_disk_io_pressure = cm_signal("unknown", "host disk I/O metrics are missing or have insufficient points")
+        host_disk_io_pressure = cm_signal(
+            "unknown",
+            "host disk I/O metrics are missing or have insufficient points; availability: "
+            + cm_metric_availability_detail(context, ("host_disk_read_rate", "host_disk_write_rate")),
+        )
 
     hdfs_read_max = numeric_context_value(hdfs_read or {}, "max")
     hdfs_read_avg = numeric_context_value(hdfs_read or {}, "avg")
@@ -2284,7 +2325,15 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     else:
         hdfs_datanode_io_pressure = cm_signal(
             "unknown",
-            "HDFS DataNode read metrics are missing or have insufficient points",
+            "HDFS DataNode read metrics are missing or have insufficient points; availability: "
+            + cm_metric_availability_detail(
+                context,
+                (
+                    "hdfs_datanode_read_bytes_rate",
+                    "hdfs_datanode_local_reads_rate",
+                    "hdfs_datanode_remote_reads_rate",
+                ),
+            ),
         )
 
     network_max = max_metric_value(network_metrics, "max")
@@ -2307,7 +2356,14 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             basis,
         )
     else:
-        network_io_spike = cm_signal("unknown", "host network I/O metric is missing or has insufficient points")
+        network_io_spike = cm_signal(
+            "unknown",
+            "host network I/O metric is missing or has insufficient points; availability: "
+            + cm_metric_availability_detail(
+                context,
+                ("host_network_io", "host_network_receive_rate", "host_network_transmit_rate"),
+            ),
+        )
 
     truncated_metrics = [
         str(query.get("id"))
@@ -2315,9 +2371,14 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         if query.get("truncated")
     ][:5]
     unavailable_metrics = [
-        str(query.get("id"))
+        safe_cm_metric_id(query.get("id"))
         for query in queries
         if query.get("status") not in {"ok", "no_data"}
+    ][:5]
+    no_data_metric_ids = [
+        safe_cm_metric_id(query.get("id"))
+        for query in queries
+        if query.get("status") == "no_data"
     ][:5]
     no_data_metrics = sum(1 for query in queries if query.get("status") == "no_data")
     unavailable_metric_count = sum(
@@ -2342,6 +2403,12 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         limitations.append("CM metrics were truncated for: " + ", ".join(truncated_metrics) + ".")
     if unavailable_metrics:
         limitations.append("CM metrics unavailable for: " + ", ".join(unavailable_metrics) + ".")
+        limitations.append(
+            "Unavailable CM metrics can indicate a profile/version metric-name mismatch, a missing role, "
+            "or no metric series for the bounded query window. Treat affected runtime hypotheses as lower confidence."
+        )
+    if no_data_metric_ids:
+        limitations.append("CM metrics returned no_data for: " + ", ".join(no_data_metric_ids) + ".")
     warnings = [warning for warning in context.get("warnings") or [] if isinstance(warning, str)]
     if warnings:
         limitations.append(f"Collection warnings present: {len(warnings)}.")
@@ -2353,6 +2420,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         "no_data_metrics": no_data_metrics,
         "unavailable_metrics_count": unavailable_metric_count,
         "unavailable_metrics": unavailable_metrics,
+        "no_data_metric_ids": no_data_metric_ids,
         "total_points": total_points,
         "admission_pool_pressure": admission_pool_pressure,
         "host_cpu_pressure": host_cpu_pressure,
@@ -4381,6 +4449,11 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
     lines.append(
         "- unavailable_metrics: "
         + (", ".join(unavailable_metrics) if unavailable_metrics else "none")
+    )
+    no_data_metric_ids = facts.get("no_data_metric_ids") or []
+    lines.append(
+        "- no_data_metrics: "
+        + (", ".join(no_data_metric_ids) if no_data_metric_ids else "none")
     )
     for key in (
         "admission_pool_pressure",
