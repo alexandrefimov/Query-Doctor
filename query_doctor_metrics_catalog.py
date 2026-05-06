@@ -126,7 +126,7 @@ METRIC_SIGNAL_CATALOG: tuple[MetricSignalSpec, ...] = (
         family="host",
         label="Host disk I/O pressure",
         scope=("host",),
-        implementation_status=PLANNED,
+        implementation_status=IMPLEMENTED,
         description="Host disk throughput, latency, or queue-depth pressure around the query window.",
     ),
     MetricSignalSpec(
@@ -255,6 +255,18 @@ CM_TIMESERIES_MAPPINGS: tuple[CMTimeSeriesMapping, ...] = (
         query_id="host_memory_used",
         label="Host memory used",
         tsquery="select physical_memory_used",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="host_disk_io_pressure",
+        query_id="host_disk_read_rate",
+        label="Host disk read rate",
+        tsquery="select read_bytes_rate",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="host_disk_io_pressure",
+        query_id="host_disk_write_rate",
+        label="Host disk write rate",
+        tsquery="select write_bytes_rate",
     ),
     CMTimeSeriesMapping(
         signal_id="host_network_io_spike",

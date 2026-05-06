@@ -3663,6 +3663,7 @@ CM_METRIC_SIGNAL_LABELS = {
     "host_cpu_pressure": "Host CPU pressure",
     "daemon_memory_growth": "Daemon memory growth",
     "daemon_memory_pressure": "Daemon memory pressure",
+    "host_disk_io_pressure": "Host disk I/O pressure",
     "network_io_spike": "Network I/O spike",
 }
 

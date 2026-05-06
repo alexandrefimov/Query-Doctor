@@ -2002,6 +2002,8 @@ CM_HOST_CPU_USER_AVG_THRESHOLD = 70.0
 CM_HOST_CPU_SYSTEM_MAX_THRESHOLD = 40.0
 CM_DAEMON_MEMORY_GROWTH_DELTA_BYTES = 8 * 1024 * 1024 * 1024
 CM_DAEMON_MEMORY_GROWTH_RATIO_THRESHOLD = 1.25
+CM_HOST_DISK_IO_BYTES_PER_SEC = 150 * 1024 * 1024
+CM_HOST_DISK_IO_RATIO_THRESHOLD = 3.0
 CM_NETWORK_SPIKE_BYTES_PER_SEC = 100 * 1024 * 1024
 CM_NETWORK_SPIKE_RATIO_THRESHOLD = 5.0
 
@@ -2118,6 +2120,10 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     host_cpu_user = cm_metric_by_id(context, "host_cpu_user")
     host_cpu_system = cm_metric_by_id(context, "host_cpu_system")
     daemon_memory = cm_metric_by_id(context, "impala_daemon_memory")
+    disk_metrics = cm_metrics_by_ids(
+        context,
+        ("host_disk_read_rate", "host_disk_write_rate"),
+    )
     network_metrics = cm_metrics_by_ids(
         context,
         ("host_network_io", "host_network_receive_rate", "host_network_transmit_rate"),
@@ -2174,6 +2180,28 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         "unknown",
         "daemon memory capacity or limit is not part of the current safe CM metrics contract",
     )
+
+    disk_max = max_metric_value(disk_metrics, "max")
+    disk_avg = max_metric_value(disk_metrics, "avg")
+    disk_spread = metric_spread_basis(disk_metrics)
+    disk_ready = any(cm_metric_ready(metric) for metric in disk_metrics)
+    if disk_ready and disk_max is not None and disk_avg is not None:
+        ratio = disk_max / disk_avg if disk_avg > 0 else None
+        disk_observed = disk_max >= CM_HOST_DISK_IO_BYTES_PER_SEC and (
+            ratio is None or ratio >= CM_HOST_DISK_IO_RATIO_THRESHOLD
+        )
+        basis = (
+            f"host disk I/O max={fmt_bytes(disk_max)}/s avg={fmt_bytes(disk_avg)}/s "
+            f"ratio={ratio:.2f}x"
+        ) if ratio is not None else f"host disk I/O max={fmt_bytes(disk_max)}/s avg={fmt_bytes(disk_avg)}/s"
+        if disk_spread:
+            basis = f"{basis}; {disk_spread}"
+        host_disk_io_pressure = cm_signal(
+            "observed" if disk_observed else "not_observed",
+            basis,
+        )
+    else:
+        host_disk_io_pressure = cm_signal("unknown", "host disk I/O metrics are missing or have insufficient points")
 
     network_max = max_metric_value(network_metrics, "max")
     network_avg = max_metric_value(network_metrics, "avg")
@@ -2238,6 +2266,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         "host_cpu_pressure": host_cpu_pressure,
         "daemon_memory_growth": daemon_memory_growth,
         "daemon_memory_pressure": daemon_memory_pressure,
+        "host_disk_io_pressure": host_disk_io_pressure,
         "network_io_spike": network_io_spike,
         "limitations": limitations,
     }
@@ -2262,6 +2291,10 @@ def has_memory_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 def has_network_profile_evidence(analysis: dict[str, Any]) -> bool:
     return "large_intermediate_or_exchange_traffic" in finding_ids(analysis)
+
+
+def has_storage_profile_evidence(analysis: dict[str, Any]) -> bool:
+    return "hdfs_or_storage_bottleneck" in finding_ids(analysis)
 
 
 def has_cpu_profile_evidence(analysis: dict[str, Any]) -> bool:
@@ -2300,6 +2333,7 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
 
     memory_support = has_memory_profile_evidence(analysis)
     network_support = has_network_profile_evidence(analysis)
+    storage_support = has_storage_profile_evidence(analysis)
     cpu_support = has_cpu_profile_evidence(analysis)
 
     def signal_row(
@@ -2376,6 +2410,19 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
                 "not standalone proof."
             ),
             context_reason="Daemon memory pressure is observed only as runtime context without matching profile evidence.",
+        ),
+        signal_row(
+            "host_disk_io_pressure",
+            title="Host disk I/O pressure",
+            profile_support=storage_support,
+            correlated_reason=(
+                "Host disk I/O pressure is correlated with parsed scan/storage evidence; "
+                "treat it as storage-path context and validate with comparable reruns."
+            ),
+            context_reason=(
+                "Host disk I/O pressure was observed, but parsed profile facts did not identify matching "
+                "scan/storage elapsed-time evidence."
+            ),
         ),
         signal_row(
             "network_io_spike",
@@ -2528,12 +2575,21 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
         )
 
     storage_finding = runtime_diagnosis_finding(analysis, "hdfs_or_storage_bottleneck")
+    disk_status = runtime_diagnosis_metric_status(analysis, "host_disk_io_pressure")
     total_read = (analysis.get("totals") or {}).get("TotalBytesRead") or {}
     storage_evidence: list[str] = []
+    storage_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "host_disk_io_pressure"))
     if total_read.get("bytes") is not None:
         storage_evidence.append(f"TotalBytesRead={fmt_bytes(float(total_read['bytes']))}.")
     if storage_finding:
         storage_evidence.append("Profile finding: Storage/HDFS candidate signal.")
+    if disk_status == "correlated":
+        storage_status = "plausible_follow_up"
+        storage_interpretation = (
+            "Storage/local disk path is a plausible follow-up hypothesis because host disk I/O pressure "
+            "aligns with parsed scan/storage evidence. Validate it with comparable reruns and host/HDFS metrics."
+        )
+    elif storage_finding:
         storage_status = "plausible_follow_up"
         storage_interpretation = (
             "Storage/HDFS path is a plausible follow-up hypothesis because scan/storage operators "
@@ -4177,6 +4233,7 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
         "host_cpu_pressure",
         "daemon_memory_growth",
         "daemon_memory_pressure",
+        "host_disk_io_pressure",
         "network_io_spike",
     ):
         signal = facts[key]
