@@ -473,7 +473,10 @@ def present_recent_scan_cm_metrics(cm_metrics_facts: dict[str, Any] | None) -> R
     limitations = raw_limitations if isinstance(raw_limitations, list) else []
     summary_pairs: list[tuple[str, Any]] = [
         ("status", safe_display_value(summary.get("status"))),
+        ("metrics_profile", safe_display_value(summary.get("metrics_profile"))),
         ("coverage", safe_display_value(summary.get("coverage"))),
+        ("availability", safe_display_value(summary.get("availability"))),
+        ("unavailable_metrics", safe_display_value(summary.get("unavailable_metrics"))),
     ]
     for key in ("correlated_signals", "context_only_signals"):
         if key in correlation_summary:

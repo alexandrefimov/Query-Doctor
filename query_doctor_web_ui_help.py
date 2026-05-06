@@ -397,6 +397,22 @@ def render_demo_guide_content() -> str:
 </details>
 
 <details>
+<summary id="demo-cm6-compatibility">CM 6.2.1 metrics compatibility smoke</summary>
+<p>После добавления <code>cm_metrics_profile</code> мы проверили текущий production-like профиль для Cloudera Manager 6.2.1 на optimizer case <code>246462725beeed0:506befef00000000</code>. Collection запускался как read-only Specific Query smoke с <code>cm_metrics_profile=cm6</code>, bounded <code>CM time-series</code> и redaction enabled.</p>
+<table>
+<thead><tr><th>Check</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>CM metrics profile</td><td><code>cm6</code></td></tr>
+<tr><td>Allowlisted metric queries</td><td><code>14/14</code> returned <code>ok</code></td></tr>
+<tr><td>Unavailable metrics</td><td><code>0</code></td></tr>
+<tr><td>Analyzer result</td><td><code>35</code> parsed operators, <code>5</code> cardinality anomalies, <code>1</code> memory anomaly</td></tr>
+<tr><td>Runtime Diagnosis</td><td><code>Network/exchange pressure</code> is the strongest plausible follow-up hypothesis; host disk, HDFS DataNode, CPU and admission pressure were checked but not observed.</td></tr>
+</tbody>
+</table>
+<p>Вывод для demo: на текущей Cloudera 6.2.1 наши metric names совместимы с <code>cm6</code>. При этом архитектурный seam остается полезным: если в другом CM/CDH/CDP окружении имя метрики отличается, меняется catalog mapping для profile, а analyzer и UI продолжают работать по normalized signal IDs.</p>
+</details>
+
+<details>
 <summary id="demo-specific-followup">Specific Query full-cycle follow-up</summary>
 <p>После benchmark последние три Query IDs были прогнаны через полный <strong>Specific Query</strong> цикл: collection, analyzer, bounded metadata, validated LLM Report и Query LLM optimizer. Это удобно показать online: все три cases лежат в web corpus и открываются через details по Query ID.</p>
 <table>

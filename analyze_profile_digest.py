@@ -2319,6 +2319,10 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         for query in queries
         if query.get("status") not in {"ok", "no_data"}
     ][:5]
+    no_data_metrics = sum(1 for query in queries if query.get("status") == "no_data")
+    unavailable_metric_count = sum(
+        1 for query in queries if query.get("status") not in {"ok", "no_data"}
+    )
     limitations = [
         "CM metrics are bounded query-window context signals, not standalone proof of cause.",
         "Raw metric points and per-point times are intentionally excluded from trusted analysis facts.",
@@ -2346,6 +2350,9 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         "status": status,
         "total_metrics": total_metrics,
         "ok_metrics": ok_metrics,
+        "no_data_metrics": no_data_metrics,
+        "unavailable_metrics_count": unavailable_metric_count,
+        "unavailable_metrics": unavailable_metrics,
         "total_points": total_points,
         "admission_pool_pressure": admission_pool_pressure,
         "host_cpu_pressure": host_cpu_pressure,
@@ -4360,9 +4367,20 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
     facts = build_cm_metrics_facts(context)
     lines = ["## CM Metrics Facts", ""]
     lines.append(f"- status: {facts['status']}")
+    if context.get("metrics_profile"):
+        lines.append(f"- metrics_profile: {context.get('metrics_profile')}")
     lines.append(
         f"- coverage: {facts['ok_metrics']}/{facts['total_metrics']} metrics ok, "
         f"{facts['total_points']} points"
+    )
+    lines.append(
+        f"- availability: {facts['ok_metrics']} ok, {facts['no_data_metrics']} no_data, "
+        f"{facts['unavailable_metrics_count']} unavailable"
+    )
+    unavailable_metrics = facts.get("unavailable_metrics") or []
+    lines.append(
+        "- unavailable_metrics: "
+        + (", ".join(unavailable_metrics) if unavailable_metrics else "none")
     )
     for key in (
         "admission_pool_pressure",

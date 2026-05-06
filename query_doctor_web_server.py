@@ -3714,7 +3714,13 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
         key, value = bullet.split(": ", 1)
         key = key.strip()
         value = clean_metadata_fact_value(value)
-        if section == "facts" and key in {"status", "coverage"}:
+        if section == "facts" and key in {
+            "status",
+            "metrics_profile",
+            "coverage",
+            "availability",
+            "unavailable_metrics",
+        }:
             summary[key] = value
             continue
         if section == "facts" and key.endswith("_basis"):

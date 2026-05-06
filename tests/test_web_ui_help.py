@@ -122,6 +122,9 @@ def test_web_demo_guide_renders_curated_russian_demo_page():
     assert "Required confirmation всегда остается частью recommendation" in body
     assert "Read-only benchmark evidence" in body
     assert "246462725beeed0:506befef00000000" in body
+    assert "CM 6.2.1 metrics compatibility smoke" in body
+    assert "14/14" in body
+    assert "cm_metrics_profile=cm6" in body
     assert "Optimized draft A" in body
     assert "904fb4e008edb2e1:435ee57d00000000" in body
     assert "Optimized draft B" in body
