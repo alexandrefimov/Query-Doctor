@@ -1,0 +1,1 @@
+"""Query Doctor package namespace."""

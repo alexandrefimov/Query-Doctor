@@ -1,0 +1,1 @@
+"""Configuration contract package boundary."""

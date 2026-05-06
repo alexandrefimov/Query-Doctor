@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from collections.abc import Callable
+from pathlib import Path
+
+from query_doctor.cli.commands import (
+    command_prefix,
+    resolve_command_backend,
+)
+from query_doctor.impala.metadata_workflow import (
+    add_metadata_arguments,
+    build_metadata_collector_cmd,
+    build_metadata_plan,
+    metadata_config_status,
+    print_metadata_plan,
+    read_default_database_from_facts,
+    read_referenced_tables_from_facts,
+    resolve_metadata_mode,
+    validate_metadata_args,
+)
+
+
+DEFAULT_MODEL = "qwen3-coder:30b-a3b-q8_0"
+
+
+def run_cmd(cmd: list[str], cwd: Path) -> None:
+    print()
+    print("[pipeline] running:")
+    print(" ".join(cmd))
+    result = subprocess.run(cmd, cwd=str(cwd))
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+
+
+def run_metadata_cmd(cmd: list[str], cwd: Path) -> None:
+    print()
+    print("[pipeline] running explicit read-only Impala metadata collector")
+    result = subprocess.run(cmd, cwd=str(cwd))
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run Query Doctor pipeline: deterministic analyzer -> LLM report writer."
+    )
+    parser.add_argument(
+        "case_dir",
+        help="Path to case directory containing profile_digest.md",
+    )
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"Ollama model for report writer. Default: {DEFAULT_MODEL}",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("admin", "user"),
+        default="admin",
+        help="Report audience mode passed to query-doctor-report. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--out",
+        default="diagnosis.md",
+        help="Report output path. Relative paths are resolved by query-doctor-report relative to CASE_DIR.",
+    )
+    parser.add_argument(
+        "--keep-alive",
+        default="0",
+        help="Ollama keep_alive value. Default: 0.",
+    )
+    parser.add_argument(
+        "--report-validation-mode",
+        choices=("strict", "relaxed", "off"),
+        default=os.getenv("QD_REPORT_VALIDATION_MODE", "strict"),
+        help=(
+            "Validation mode passed to query-doctor-report. strict enforces the full report contract; "
+            "relaxed keeps safety/fact checks but ignores shape; off skips validation. Default: %(default)s"
+        ),
+    )
+    parser.add_argument(
+        "--stop-other-models",
+        action="store_true",
+        help="Unload other Ollama models before generation.",
+    )
+    parser.add_argument(
+        "--skip-report",
+        action="store_true",
+        help="Run only deterministic analyzer.",
+    )
+    parser.add_argument(
+        "--stop-after-analysis",
+        action="store_true",
+        help=(
+            "Run analyzer and optional metadata collection, then stop before "
+            "report generation; no LLM/Ollama call."
+        ),
+    )
+    parser.add_argument(
+        "--metadata-failure-policy",
+        choices=("fail", "continue"),
+        default="fail",
+        help=(
+            "What to do if metadata collection fails. Default: fail. "
+            "continue is only allowed with --stop-after-analysis for analyzer-only profile analysis."
+        ),
+    )
+    add_metadata_arguments(parser)
+
+    args = parser.parse_args(argv)
+    validate_metadata_args(parser, args)
+    if args.metadata_failure_policy == "continue" and not args.stop_after_analysis:
+        parser.error("--metadata-failure-policy continue requires --stop-after-analysis")
+    return args
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    repo_dir: Path | None = None,
+    run_cmd_func: Callable[[list[str], Path], None] | None = None,
+    run_metadata_cmd_func: Callable[[list[str], Path], None] | None = None,
+) -> int:
+    args = parse_args(argv)
+
+    repo_dir = Path(__file__).resolve().parents[2] if repo_dir is None else repo_dir
+    command_runner = run_cmd if run_cmd_func is None else run_cmd_func
+    metadata_runner = run_metadata_cmd if run_metadata_cmd_func is None else run_metadata_cmd_func
+    command_backend = resolve_command_backend()
+    case_dir = Path(args.case_dir).expanduser()
+
+    if not case_dir.is_absolute():
+        case_dir = (Path.cwd() / case_dir).resolve()
+
+    profile_digest = case_dir / "profile_digest.md"
+    if not profile_digest.exists():
+        print(f"[pipeline] ERROR: missing {profile_digest}", file=sys.stderr)
+        return 2
+
+    metadata_mode = resolve_metadata_mode(args)
+
+    command_runner(
+        command_prefix(repo_dir, "analyze", backend=command_backend) + [str(case_dir)],
+        cwd=repo_dir,
+    )
+
+    facts = case_dir / "analysis_facts.md"
+    if not facts.exists():
+        print(f"[pipeline] ERROR: analyzer did not create {facts}", file=sys.stderr)
+        return 3
+
+    print()
+    print(f"[pipeline] facts: {facts}")
+
+    if metadata_mode == "auto":
+        config_status = metadata_config_status(args, base_dir=repo_dir)
+        if config_status.configured:
+            print("[pipeline] metadata collection: auto mode configured")
+            metadata_mode = "on"
+        elif config_status.fatal:
+            print(f"[pipeline] ERROR: metadata configuration is invalid: {config_status.reason}", file=sys.stderr)
+            return 2
+        else:
+            print(
+                "[pipeline] metadata collection: not configured; "
+                f"continuing without metadata ({config_status.reason})"
+            )
+
+    if metadata_mode in {"on", "dry-run"}:
+        if metadata_mode == "on":
+            config_status = metadata_config_status(args, base_dir=repo_dir)
+            if not config_status.configured:
+                print(f"[pipeline] ERROR: metadata collection is not configured: {config_status.reason}", file=sys.stderr)
+                return 2
+        raw_tables = read_referenced_tables_from_facts(facts)
+        default_database = args.metadata_default_db or read_default_database_from_facts(facts)
+        metadata_plan = build_metadata_plan(
+            raw_tables,
+            args.metadata_max_tables,
+            default_database=default_database,
+        )
+        print_metadata_plan(metadata_plan, dry_run=metadata_mode == "dry-run")
+        if metadata_mode == "dry-run":
+            print("[pipeline] metadata dry-run complete; analyzer/report were not rerun after metadata collection")
+            return 0
+        if metadata_plan.selected_tables:
+            metadata_cmd = build_metadata_collector_cmd(
+                args,
+                collector_prefix=command_prefix(repo_dir, "collect_impala_context", backend=command_backend),
+                case_dir=case_dir,
+                tables=metadata_plan.selected_tables,
+            )
+            try:
+                metadata_runner(metadata_cmd, cwd=repo_dir)
+            except SystemExit as exc:
+                if args.metadata_failure_policy != "continue" or not args.stop_after_analysis:
+                    raise
+                code = exc.code if isinstance(exc.code, int) else 1
+                print(
+                    "[pipeline] metadata collection failed; continuing analyzer-only "
+                    f"because --metadata-failure-policy continue is set (exit {code})"
+                )
+                print("[pipeline] partial metadata outputs are left on disk but not promoted into analyzer facts")
+                print("[pipeline] stop-after-analysis requested; report generation skipped")
+                return 0
+            command_runner(
+                command_prefix(repo_dir, "analyze", backend=command_backend) + [str(case_dir)],
+                cwd=repo_dir,
+            )
+            if not facts.exists():
+                print(f"[pipeline] ERROR: analyzer did not create {facts}", file=sys.stderr)
+                return 3
+            print()
+            print(f"[pipeline] facts refreshed with Impala metadata: {facts}")
+        else:
+            print("[pipeline] no valid referenced tables found for metadata collection")
+
+    if args.skip_report:
+        print("[pipeline] skip report requested")
+        return 0
+
+    if args.stop_after_analysis:
+        print("[pipeline] stop-after-analysis requested; report generation skipped")
+        return 0
+
+    report_cmd = command_prefix(repo_dir, "report", backend=command_backend) + [
+        str(case_dir),
+        "--model",
+        args.model,
+        "--mode",
+        args.mode,
+        "--out",
+        args.out,
+        "--keep-alive",
+        args.keep_alive,
+        "--validation-mode",
+        args.report_validation_mode,
+    ]
+
+    if args.stop_other_models:
+        report_cmd.append("--stop-other-models")
+
+    command_runner(report_cmd, cwd=repo_dir)
+
+    print()
+    print(f"[pipeline] done: {case_dir / args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
