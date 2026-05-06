@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security model
+    url: https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/security-model.md
+    about: Read the public security and privacy overview before sharing safety details.
+  - name: Safety contract
+    url: https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/safety-contract.md
+    about: Review the mandatory trust and redaction contract.
