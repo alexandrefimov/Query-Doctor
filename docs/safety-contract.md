@@ -81,8 +81,10 @@ contents или real production profile text.
   policy before rendering.
 - Web Recent scan must not auto-run LLM reports; validated report generation is
   explicit for one selected case.
-- Details-page Query LLM optimizer must render only a validated read-only draft
-  and safe status fields. Partial drafts and raw source SQL stay hidden.
+- Details-page Query LLM optimizer must render only a validated read-only draft,
+  safe recommendations/no-rewrite guidance, safe external rewrite validation
+  categories, and safe status fields. Partial drafts, raw source SQL, and
+  externally pasted SQL stay hidden.
 
 ## Report structure
 
@@ -109,6 +111,9 @@ Python-generated appendix.
   must not execute or echo pasted SQL after submit.
 - Details-page Query LLM optimizer may use only server-owned analyzed case
   sources.
+- Details-page external rewrite validation accepts pasted SQL only for bounded
+  in-memory validation against the server-owned source. It must not execute the
+  pasted SQL, persist it as a raw artifact, or echo it back into browser output.
 - Supported details-page source scopes are read-only SELECT/WITH and SELECT/WITH
   payloads extracted from supported INSERT/CTAS statements.
 - Generated optimizer SQL output must still be a read-only SELECT/WITH

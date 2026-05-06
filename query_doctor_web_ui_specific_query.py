@@ -88,6 +88,8 @@ def render_specific_query_detail(
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
+    optimizer_manual_guidance: str | None = None,
+    optimizer_validation_result: dict[str, Any] | None = None,
 ) -> str:
     view = present_recent_scan_case_detail(
         "specific-query",
@@ -99,6 +101,7 @@ def render_specific_query_detail(
     escaped_query_id = html.escape(query_id)
     report_url = specific_query_report_href(query_id)
     optimized_query_url = specific_query_optimized_query_href(query_id)
+    optimizer_validation_url = specific_query_validate_rewrite_href(query_id)
     llm_actions_url = specific_query_llm_actions_href(query_id)
     return (
         "<section class=\"panel batch-panel\" aria-label=\"Specific Query details\">"
@@ -110,7 +113,7 @@ def render_specific_query_detail(
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
         f"{render_analysis_details(view)}"
-        f"{render_llm_actions_block('specific-query', view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations)}"
+        f"{render_llm_actions_block('specific-query', view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result)}"
         "</section>"
     )
 
@@ -125,6 +128,12 @@ def specific_query_optimized_query_href(query_id: Any) -> str:
     if not isinstance(query_id, str) or not query_id.strip():
         return ""
     return f"/query/details/{quote(query_id.strip(), safe='')}/optimized-query"
+
+
+def specific_query_validate_rewrite_href(query_id: Any) -> str:
+    if not isinstance(query_id, str) or not query_id.strip():
+        return ""
+    return f"/query/details/{quote(query_id.strip(), safe='')}/validate-rewrite"
 
 
 def specific_query_llm_actions_href(query_id: Any) -> str:

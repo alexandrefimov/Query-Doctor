@@ -130,6 +130,9 @@ Optimizer draft generator:
 - Может выдавать trusted non-SQL outcomes: deterministic recommendations-only
   или `no_rewrite`, если Python не может доверенно принять SQL draft или draft
   не меняет запрос materially.
+- Details UI также может принять внешний rewritten SQL для bounded in-memory
+  validation against the server-owned source; pasted SQL не выполняется, не
+  сохраняется raw artifact и не echo-ится обратно в browser output.
 - Marker содержит safe status fields such as `source_scope`, `risk_mode` and
   `risk_reasons`; browser UI must not expose raw SQL or artifact filenames.
 - Partial drafts untrusted and hidden from browser-visible details.

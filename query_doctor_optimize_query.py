@@ -45,6 +45,24 @@ PARTIAL_NAME = "optimized_query.partial.txt"
 MARKER_SCHEMA_VERSION = 2
 VALIDATION_MODE = "strict_v2"
 RECOMMENDATION_OUTPUT_KINDS = {"recommendations_only", "no_rewrite"}
+UNSAFE_RECOMMENDATION_TOKENS = (
+    "```",
+    "profile_digest.md",
+    "cm_metadata.json",
+    "analysis_facts.md",
+    "diagnosis.md",
+    "diagnosis.partial.md",
+    "optimized_query.sql",
+    "optimized_query.validated.json",
+    "optimized_query.partial.txt",
+    "ollama",
+)
+UNSAFE_RECOMMENDATION_SQL_LINE_RE = re.compile(
+    r"^\s*(?:[-*]|\d+\.)?\s*"
+    r"(?:select|insert|create|drop|alter|refresh|invalidate|compute\s+stats|show|set|use)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+UNSAFE_RECOMMENDATION_CTE_RE = re.compile(r"\bwith\s+[A-Za-z_][\w$]*\s+as\b", re.IGNORECASE)
 MAX_SOURCE_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_SOURCE_SQL_BYTES", "262144"))
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
 MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTES", "65536"))
@@ -1487,14 +1505,34 @@ def extract_draft_sql(generated: str) -> str:
 
 def extract_recommendations(generated: str) -> str:
     text = generated.strip()
-    if not text:
-        raise QueryOptimizationError("Optimizer recommendations are empty.")
-    enforce_text_size(text, MAX_RECOMMENDATIONS_BYTES)
-    lowered = text.lower()
-    forbidden = ("```", "select ", "insert ", "create ", "drop ", "alter ", "refresh ", "invalidate ", "compute stats", "show ", "set ", "use ")
-    if any(token in lowered for token in forbidden):
-        raise QueryOptimizationError("Optimizer recommendations contain SQL-like or unsafe output.")
+    errors = validate_optimizer_recommendations_text(text)
+    if errors:
+        raise QueryOptimizationError(errors[0])
     return text
+
+
+def validate_optimizer_recommendations_text(text: str) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return ["Optimizer recommendations are empty."]
+    try:
+        enforce_text_size(stripped, MAX_RECOMMENDATIONS_BYTES)
+    except QueryOptimizationError as exc:
+        return [str(exc)]
+    lowered = stripped.lower()
+    if any(token in lowered for token in UNSAFE_RECOMMENDATION_TOKENS):
+        return ["Optimizer recommendations contain SQL-like or unsafe output."]
+    if UNSAFE_RECOMMENDATION_SQL_LINE_RE.search(stripped) or UNSAFE_RECOMMENDATION_CTE_RE.search(stripped):
+        return ["Optimizer recommendations contain SQL-like or unsafe output."]
+    if re.search(r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+", stripped):
+        return ["Optimizer recommendations contain browser-unsafe local path output."]
+    if re.search(r"(?<![\w/])/Users/[^\s<>'\"]+", stripped):
+        return ["Optimizer recommendations contain browser-unsafe local path output."]
+    if re.search(r"(?<![\w/])/var/folders/[^\s<>'\"]+", stripped):
+        return ["Optimizer recommendations contain browser-unsafe local path output."]
+    if re.search(r"(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+", stripped):
+        return ["Optimizer recommendations contain browser-unsafe local path output."]
+    return []
 
 
 def normalize_optimizer_recommendations(
@@ -2396,6 +2434,13 @@ def write_recommendations_marker(
     if output_kind not in RECOMMENDATION_OUTPUT_KINDS:
         raise QueryOptimizationError("Unsupported optimizer recommendations output kind.")
     recommendations_path = case_dir / recommendations_name
+    try:
+        recommendations_text = recommendations_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise QueryOptimizationError("Optimizer recommendations output is unreadable.") from exc
+    recommendation_errors = validate_optimizer_recommendations_text(recommendations_text)
+    if recommendation_errors:
+        raise QueryOptimizationError(recommendation_errors[0])
     marker = {
         "schema_version": MARKER_SCHEMA_VERSION,
         "output_kind": output_kind,

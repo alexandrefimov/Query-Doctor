@@ -62,6 +62,9 @@ Execution:
 - no SQL execution against Impala or any other engine;
 - LLM receives local source SQL and deterministic facts, but browser output gets
   only validated trusted results.
+- if a user pastes an externally rewritten SQL draft for validation, the server
+  validates it in memory only, never executes it, never persists it as a raw
+  artifact, and never echoes it back into browser output.
 
 Allowed trusted result:
 
@@ -77,6 +80,8 @@ Rejected or unsafe result:
 - unvalidated output is not rendered as trusted;
 - validation failure should produce safe status text, not raw draft text or raw
   subprocess output.
+- externally pasted validation candidates are not rendered back to the browser;
+  only safe pass/fail categories may be shown.
 
 ## Draft validation
 
@@ -184,6 +189,11 @@ Current behavior:
   provide a trusted no-rewrite/recommendations outcome when Python can explain
   the rejection safely;
 - always hide partial drafts and raw LLM output.
+- if no trusted SQL draft exists, details may show Python-owned manual rewrite
+  guidance and an external rewrite validation form;
+- external rewrite validation must return only safe categories such as read-only
+  scope passed, table set changed, filter scope changed, JOIN conditions
+  changed, projection changed, incomplete SQL, or no material rewrite.
 
 ## Test obligations
 

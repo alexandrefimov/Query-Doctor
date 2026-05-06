@@ -240,6 +240,7 @@ def render_demo_guide_content() -> str:
 <p>Если LLM вернул SQL draft, Python extracts draft and validates it before trust. Validation проверяет read-only scope, physical table set, preserved filters, joins, projection shape, DISTINCT / GROUP / ORDER / set-operation signatures, source SQL hash, facts hash, source scope and recipe-specific invariants. Marker trust requires current schema and matching hashes.</p>
 <p>Если validation не проходит, raw draft не показывается. Вместо этого optimizer записывает trusted <code>no_rewrite</code> outcome with Python-owned bullets: почему draft не trusted и какие review areas можно использовать, чтобы переписать запрос manually. Пользователь видит безопасные bullets/recommendations-only guidance, а не unsafe SQL.</p>
 <p>Если LLM output был incomplete, hit output budget, или draft не содержит material rewrite, UI также показывает no trusted SQL draft и безопасные bullets. Это deliberate safety behavior.</p>
+<p>Details также содержит форму <strong>Validate rewritten SQL</strong>: пользователь может вставить rewrite, полученный вне Query Doctor, а Python проверит его тем же deterministic validator path без выполнения SQL и без echo вставленного текста обратно в браузер. UI показывает только safe pass/fail categories.</p>
 </details>
 </details>
 

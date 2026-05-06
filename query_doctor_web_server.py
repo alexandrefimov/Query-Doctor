@@ -31,9 +31,16 @@ import table_metadata_facts
 import query_doctor_batch_recent as batch_recent
 from query_doctor_optimize_query import (
     QueryOptimizationError,
+    decide_optimizer_risk_mode,
+    dedupe_preserve_order,
+    detect_optimizer_rewrite_recipe,
+    draft_has_material_change,
     extract_optimizable_source_sql,
+    optimizer_specific_recommendation_bullets,
     read_source_sql,
     sql_completeness_errors,
+    validate_draft_sql,
+    validate_optimizer_recommendations_text,
 )
 from query_doctor_config_contract import load_and_validate_config, merge_kerberos_cache_env
 from query_doctor_web_display_safety import redact_browser_display_text
@@ -137,6 +144,9 @@ OPTIMIZED_QUERY_NAME = "optimized_query.sql"
 OPTIMIZED_QUERY_RECOMMENDATIONS_NAME = "optimized_query_recommendations.md"
 OPTIMIZED_QUERY_PARTIAL_NAME = "optimized_query.partial.txt"
 OPTIMIZED_QUERY_VALIDATION_MARKER = "optimized_query.validated.json"
+EXTERNAL_REWRITE_SQL_FIELD = "rewritten_sql"
+MAX_EXTERNAL_REWRITE_SQL_BYTES = 256 * 1024
+MAX_WEB_POST_BODY_BYTES = 320 * 1024
 WEB_REPORT_VALIDATION_MODE = "strict"
 OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION = 2
 OPTIMIZED_QUERY_VALIDATION_MODE = "strict_v2"
@@ -2173,6 +2183,54 @@ def start_specific_query_optimized_query_job(
     return 303, f"/jobs/{job.job_id}"
 
 
+def handle_batch_case_external_rewrite_validation(
+    case_id: str,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    form: dict[str, list[str]],
+    *,
+    source: str = "auto",
+) -> tuple[int, str]:
+    if source == "running":
+        effective_settings, case = resolve_running_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = running_detail_kwargs()
+    else:
+        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = {}
+    if case is None:
+        return 404, render_batch_case_not_found_page(effective_settings, case_id)
+    case_dir = resolve_batch_case_report_dir(effective_settings, case)
+    result = validate_external_optimizer_rewrite(case_dir, form)
+    return 200, render_batch_case_detail_for_request(
+        effective_settings,
+        case_id,
+        case,
+        job_store,
+        optimizer_validation_result=result,
+        **detail_kwargs,
+    )
+
+
+def handle_specific_query_external_rewrite_validation(
+    query_id: str,
+    settings: WebSettings,
+    job_store: WebJobStore,
+    form: dict[str, list[str]],
+) -> tuple[int, str]:
+    try:
+        validated_query_id = validate_query_id(query_id)
+    except WebError as exc:
+        return 400, render_query_page(settings, query_id=query_id, error=exc)
+    case_dir = expected_case_dir_for_query(validated_query_id, settings)
+    result = validate_external_optimizer_rewrite(case_dir, form)
+    return render_specific_query_detail_for_request(
+        settings,
+        validated_query_id,
+        job_store,
+        optimizer_validation_result=result,
+    )
+
+
 def start_batch_case_llm_actions_job(
     case_id: str,
     settings: WebSettings,
@@ -2558,6 +2616,126 @@ def form_flag_enabled(form: dict[str, list[str]], name: str) -> bool:
     return first_form_value(form, name).lower() in {"1", "true", "yes", "on"}
 
 
+def read_analysis_facts_text(case_dir: Path) -> str:
+    return (case_dir / "analysis_facts.md").read_text(encoding="utf-8", errors="replace")
+
+
+def optimizer_manual_guidance(case_dir: Path | None, *, reason: str = "no_trusted_draft") -> str | None:
+    if case_dir is None:
+        return None
+    try:
+        facts_text = read_analysis_facts_text(case_dir)
+        source = extract_optimizable_source_sql(read_source_sql(case_dir))
+        risk_decision = decide_optimizer_risk_mode(source.sql)
+        rewrite_recipe = detect_optimizer_rewrite_recipe(source.sql, facts_text)
+    except (OSError, OptimizerSqlError, QueryOptimizationError):
+        return None
+    reason_bullets = {
+        "failed": "- No trusted SQL rewrite is shown because optimizer generation did not complete with a validated outcome.",
+        "partial_untrusted": "- No trusted SQL rewrite is shown because the generated draft remained untrusted.",
+        "not_run": "- No trusted SQL rewrite is shown yet. Use the bullets below as manual rewrite guidance.",
+    }
+    bullets = [reason_bullets.get(reason, "- No trusted SQL rewrite is shown for this case.")]
+    bullets.append("- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts.")
+    bullets.extend(optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe))
+    text = "\n".join(bullets)
+    return text if not validate_optimizer_recommendations_text(text) else None
+
+
+def validate_external_optimizer_rewrite(case_dir: Path | None, form: dict[str, list[str]]) -> dict[str, object]:
+    draft_sql = first_form_value(form, EXTERNAL_REWRITE_SQL_FIELD)
+    if not draft_sql:
+        return {
+            "status": "not_ok",
+            "title": "External rewrite validation failed",
+            "items": ["Pasted rewrite is empty."],
+        }
+    if len(draft_sql.encode("utf-8")) > MAX_EXTERNAL_REWRITE_SQL_BYTES:
+        return {
+            "status": "not_ok",
+            "title": "External rewrite validation failed",
+            "items": ["Pasted rewrite exceeds the bounded validation limit."],
+        }
+    if case_dir is None:
+        return {
+            "status": "unavailable",
+            "title": "External rewrite validation unavailable",
+            "items": ["Source case is unavailable."],
+        }
+    try:
+        facts_text = read_analysis_facts_text(case_dir)
+        source = extract_optimizable_source_sql(read_source_sql(case_dir))
+        rewrite_recipe = detect_optimizer_rewrite_recipe(source.sql, facts_text)
+        errors = validate_draft_sql(source.sql, draft_sql, rewrite_recipe)
+        if not errors and not draft_has_material_change(source.sql, draft_sql):
+            errors = ["optimized draft does not materially change source SQL"]
+    except (OSError, OptimizerSqlError, QueryOptimizationError):
+        return {
+            "status": "unavailable",
+            "title": "External rewrite validation unavailable",
+            "items": ["Source SQL is unavailable or outside optimizer validation scope."],
+        }
+    if errors:
+        return {
+            "status": "not_ok",
+            "title": "External rewrite validation failed",
+            "items": safe_optimizer_validation_categories(errors),
+        }
+    return {
+        "status": "ok",
+        "title": "External rewrite validation passed",
+        "items": [
+            "Read-only SQL scope passed.",
+            "Physical table set was preserved.",
+            "Filter, join, projection and result-shape checks passed.",
+            "Run EXPLAIN comparison and rerun under comparable load before using it.",
+        ],
+    }
+
+
+def safe_optimizer_validation_categories(errors: list[str]) -> list[str]:
+    categories: list[str] = []
+    for error in errors:
+        lowered = error.lower()
+        if "empty" in lowered:
+            categories.append("Pasted rewrite is empty.")
+        elif "incomplete" in lowered or "missing its final" in lowered:
+            categories.append("Pasted rewrite appears incomplete.")
+        elif "outside optimizer scope" in lowered or "final sql safety validation" in lowered:
+            categories.append("Pasted rewrite is outside read-only optimizer scope.")
+        elif "adds physical tables" in lowered or "physical table set changed" in lowered:
+            categories.append("Physical table set changed.")
+        elif "removes source where" in lowered or "where predicates changed" in lowered:
+            categories.append("Source filter scope changed.")
+        elif "removes source having" in lowered:
+            categories.append("Source HAVING scope changed.")
+        elif "removes source limit" in lowered:
+            categories.append("Source LIMIT scope changed.")
+        elif "distinct" in lowered:
+            categories.append("DISTINCT output shape changed.")
+        elif "join on" in lowered or "join predicates changed" in lowered:
+            categories.append("JOIN conditions changed.")
+        elif "join shape" in lowered:
+            categories.append("JOIN shape changed.")
+        elif "cte" in lowered:
+            categories.append("CTE shape or body changed outside a supported recipe.")
+        elif "top-level where expression" in lowered:
+            categories.append("Top-level WHERE expression changed.")
+        elif "top-level having expression" in lowered:
+            categories.append("Top-level HAVING expression changed.")
+        elif "top-level group" in lowered:
+            categories.append("Top-level GROUP BY shape changed.")
+        elif "top-level order" in lowered:
+            categories.append("Top-level ORDER BY shape changed.")
+        elif "projection" in lowered:
+            categories.append("Output projection changed.")
+        elif "materially change" in lowered:
+            categories.append("Rewrite does not materially change the source query.")
+        else:
+            categories.append("Deterministic validator rejected the rewrite.")
+    return dedupe_preserve_order(categories)[:8]
+
+
 def batch_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebSettings:
     if settings.batch_summary is not None:
         return settings
@@ -2671,6 +2849,7 @@ def render_batch_case_detail_for_request(
     list_href: str = "/#recent-results",
     detail_base_path: str = "/batch/case",
     active_nav: str = "batch",
+    optimizer_validation_result: dict[str, object] | None = None,
 ) -> str:
     metadata_facts = load_batch_case_metadata_facts(settings, case)
     cm_metrics_facts = load_batch_case_cm_metrics_facts(settings, case)
@@ -2684,6 +2863,12 @@ def render_batch_case_detail_for_request(
         if artifact_dir is not None and optimized_query_state.get("trusted")
         else None
     )
+    manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")
+    optimizer_guidance = (
+        None
+        if trusted_optimized_query or trusted_optimizer_recommendations
+        else optimizer_manual_guidance(artifact_dir, reason=manual_guidance_reason)
+    )
     return render_batch_case_detail_page(
         settings,
         case_id,
@@ -2695,6 +2880,8 @@ def render_batch_case_detail_for_request(
         trusted_report_text=trusted_report_text,
         trusted_optimized_query=trusted_optimized_query,
         trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+        optimizer_manual_guidance=optimizer_guidance,
+        optimizer_validation_result=optimizer_validation_result,
         workflow_title=workflow_title,
         list_href=list_href,
         detail_base_path=detail_base_path,
@@ -2708,6 +2895,7 @@ def render_specific_query_detail_for_request(
     job_store: WebJobStore,
     *,
     job: WebJobSnapshot | None = None,
+    optimizer_validation_result: dict[str, object] | None = None,
 ) -> tuple[int, str]:
     try:
         validated_query_id = validate_query_id(query_id)
@@ -2732,6 +2920,12 @@ def render_specific_query_detail_for_request(
     trusted_optimizer_recommendations = (
         load_validated_optimizer_recommendations(case_dir) if optimized_query_state.get("trusted") else None
     )
+    manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")
+    optimizer_guidance = (
+        None
+        if trusted_optimized_query or trusted_optimizer_recommendations
+        else optimizer_manual_guidance(case_dir, reason=manual_guidance_reason)
+    )
     return 200, render_page(
         settings,
         active_nav="query",
@@ -2747,6 +2941,8 @@ def render_specific_query_detail_for_request(
                 trusted_report_text=trusted_report_text,
                 trusted_optimized_query=trusted_optimized_query,
                 trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+                optimizer_manual_guidance=optimizer_guidance,
+                optimizer_validation_result=optimizer_validation_result,
             )
         ],
     )
@@ -2876,9 +3072,12 @@ def load_validated_optimizer_recommendations(case_dir: Path) -> str | None:
     if marker.get("output_kind") not in {"recommendations_only", "no_rewrite"}:
         return None
     try:
-        return (case_dir / OPTIMIZED_QUERY_RECOMMENDATIONS_NAME).read_text(encoding="utf-8", errors="replace")
+        recommendations = (case_dir / OPTIMIZED_QUERY_RECOMMENDATIONS_NAME).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
+    if validate_optimizer_recommendations_text(recommendations):
+        return None
+    return recommendations
 
 
 def find_batch_case(summary: dict[str, object], case_id: str) -> dict[str, object] | None:
@@ -3735,34 +3934,50 @@ def make_handler(
             parsed = urlparse(self.path)
             report_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/report", parsed.path)
             optimized_query_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/optimized-query", parsed.path)
+            validate_rewrite_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/validate-rewrite", parsed.path)
             llm_actions_match = re.fullmatch(r"/batch/case/(?P<case_id>[^/]+)/llm-actions", parsed.path)
             running_report_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/report", parsed.path)
             running_optimized_query_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/optimized-query", parsed.path)
+            running_validate_rewrite_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/validate-rewrite", parsed.path)
             running_llm_actions_match = re.fullmatch(r"/running/case/(?P<case_id>[^/]+)/llm-actions", parsed.path)
             query_report_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/report", parsed.path)
             query_optimized_query_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/optimized-query", parsed.path)
+            query_validate_rewrite_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/validate-rewrite", parsed.path)
             query_llm_actions_match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)/llm-actions", parsed.path)
             if (
                 parsed.path not in {"/analyze", "/batch/run", "/running/run", "/optimizer", "/query-optimizer"}
                 and report_match is None
                 and optimized_query_match is None
+                and validate_rewrite_match is None
                 and llm_actions_match is None
                 and running_report_match is None
                 and running_optimized_query_match is None
+                and running_validate_rewrite_match is None
                 and running_llm_actions_match is None
                 and query_report_match is None
                 and query_optimized_query_match is None
+                and query_validate_rewrite_match is None
                 and query_llm_actions_match is None
             ):
                 self.send_error(404)
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
-            raw_body = self.rfile.read(min(length, 65536)).decode("utf-8", errors="replace")
+            raw_body = self.rfile.read(min(length, MAX_WEB_POST_BODY_BYTES + 1)).decode("utf-8", errors="replace")
+            if length > MAX_WEB_POST_BODY_BYTES:
+                self.write_html(413, render_page(settings, active_nav="batch", error=WebError("Submitted form exceeds the bounded web input limit.")))
+                return
             form = parse_qs(raw_body, keep_blank_values=True)
             if report_match is not None:
                 status, body = start_batch_case_report_job(report_match.group("case_id"), settings, store, runner=runner)
             elif optimized_query_match is not None:
                 status, body = start_batch_case_optimized_query_job(optimized_query_match.group("case_id"), settings, store, runner=runner)
+            elif validate_rewrite_match is not None:
+                status, body = handle_batch_case_external_rewrite_validation(
+                    validate_rewrite_match.group("case_id"),
+                    settings,
+                    store,
+                    form,
+                )
             elif llm_actions_match is not None:
                 status, body = start_batch_case_llm_actions_job(llm_actions_match.group("case_id"), settings, store, runner=runner)
             elif running_report_match is not None:
@@ -3779,6 +3994,14 @@ def make_handler(
                     settings,
                     store,
                     runner=runner,
+                    source="running",
+                )
+            elif running_validate_rewrite_match is not None:
+                status, body = handle_batch_case_external_rewrite_validation(
+                    running_validate_rewrite_match.group("case_id"),
+                    settings,
+                    store,
+                    form,
                     source="running",
                 )
             elif running_llm_actions_match is not None:
@@ -3802,6 +4025,13 @@ def make_handler(
                     settings,
                     store,
                     runner=runner,
+                )
+            elif query_validate_rewrite_match is not None:
+                status, body = handle_specific_query_external_rewrite_validation(
+                    unquote(query_validate_rewrite_match.group("query_id")),
+                    settings,
+                    store,
+                    form,
                 )
             elif query_llm_actions_match is not None:
                 status, body = start_specific_query_llm_actions_job(

@@ -57,6 +57,8 @@ def render_batch_case_detail(
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
+    optimizer_manual_guidance: str | None = None,
+    optimizer_validation_result: dict[str, Any] | None = None,
     workflow_title: str = "Finished Queries",
     list_href: str = "/#recent-results",
     detail_base_path: str = "/batch/case",
@@ -73,6 +75,7 @@ def render_batch_case_detail(
     escaped_case_id_for_url = html.escape(view.case_id, quote=True)
     report_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/report"
     optimized_query_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/optimized-query"
+    optimizer_validation_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/validate-rewrite"
     llm_actions_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/llm-actions"
     return (
         f"<section class=\"panel batch-panel\" aria-label=\"{safe_workflow_title} case details\">"
@@ -85,7 +88,7 @@ def render_batch_case_detail(
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
         f"{render_analysis_details(view)}"
-        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations)}"
+        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result)}"
         "</section>"
     )
 
@@ -425,10 +428,13 @@ def render_llm_actions_block(
     report_open_url: str | None = None,
     optimizer_action_url: str | None = None,
     optimizer_open_url: str | None = None,
+    optimizer_validation_url: str | None = None,
     combined_action_url: str | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
+    optimizer_manual_guidance: str | None = None,
+    optimizer_validation_result: dict[str, Any] | None = None,
 ) -> str:
     report_view = report_state if isinstance(report_state, ReportActionView) else present_report_action(report_state)
     optimizer_state = optimized_query_state or {"status": "not_run"}
@@ -441,6 +447,10 @@ def render_llm_actions_block(
     )
     optimizer_open = html.escape(
         optimizer_open_url or f"/batch/case/{escaped_case_id}/optimized-query",
+        quote=True,
+    )
+    optimizer_validation_action = html.escape(
+        optimizer_validation_url or f"/batch/case/{escaped_case_id}/validate-rewrite",
         quote=True,
     )
     combined_action = html.escape(combined_action_url or f"/batch/case/{escaped_case_id}/llm-actions", quote=True)
@@ -478,6 +488,9 @@ def render_llm_actions_block(
         optimizer_state,
         trusted_optimized_query=trusted_optimized_query,
         trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+        optimizer_manual_guidance=optimizer_manual_guidance,
+        optimizer_validation_action_url=optimizer_validation_action,
+        optimizer_validation_result=optimizer_validation_result,
     )
     return (
         "<section id=\"llm-actions\" class=\"panel docs-panel\" aria-label=\"LLM actions\">"
@@ -553,6 +566,9 @@ def render_optimizer_status(
     *,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
+    optimizer_manual_guidance: str | None = None,
+    optimizer_validation_action_url: str | None = None,
+    optimizer_validation_result: dict[str, Any] | None = None,
 ) -> str:
     status = str(state.get("status") or "not_run")
     output_kind = str(state.get("output_kind") or "sql_draft")
@@ -577,12 +593,22 @@ def render_optimizer_status(
         trusted_optimized_query=trusted_optimized_query,
         trusted_optimizer_recommendations=trusted_optimizer_recommendations,
     )
-    if not status_html and not draft_html:
+    guidance_html = render_optimizer_manual_guidance(
+        optimizer_manual_guidance,
+        status=status,
+        has_trusted_output=bool(trusted_optimized_query or trusted_optimizer_recommendations),
+    )
+    validation_html = render_external_rewrite_validation(
+        state,
+        optimizer_validation_action_url,
+        optimizer_validation_result,
+    )
+    if not status_html and not draft_html and not guidance_html and not validation_html:
         return ""
     return (
         "<div class=\"llm-result-block\" aria-label=\"Query LLM optimizer result\">"
         "<h2>Query LLM optimizer</h2>"
-        f"{status_html}{draft_html}"
+        f"{status_html}{draft_html}{guidance_html}{validation_html}"
         "</div>"
     )
 
@@ -617,6 +643,63 @@ def render_optimizer_trusted_output(
             "</details>"
         )
     return ""
+
+
+def render_optimizer_manual_guidance(
+    guidance: str | None,
+    *,
+    status: str,
+    has_trusted_output: bool,
+) -> str:
+    if not guidance or has_trusted_output or status == "running":
+        return ""
+    return (
+        "<details class=\"analysis-subdetails\" open aria-label=\"Manual optimizer guidance\">"
+        "<summary>Manual rewrite guidance</summary>"
+        "<p class=\"helper\">Python-owned bullets for manual rewrite review.</p>"
+        f"<div>{render_safe_markdown_paragraphs(guidance)}</div>"
+        "</details>"
+    )
+
+
+def render_external_rewrite_validation(
+    state: dict[str, Any],
+    action_url: str | None,
+    result: dict[str, Any] | None,
+) -> str:
+    if not action_url or not state.get("source_available"):
+        return ""
+    result_html = render_external_rewrite_validation_result(result)
+    return (
+        "<details class=\"analysis-subdetails\" open aria-label=\"Validate rewritten SQL\">"
+        "<summary>Validate rewritten SQL</summary>"
+        f"{result_html}"
+        f"<form class=\"optimizer-form\" method=\"post\" action=\"{html.escape(action_url, quote=True)}\">"
+        "<div class=\"label-row\"><label for=\"external_rewritten_sql\">Rewritten SQL</label>"
+        "<span class=\"hint\">read-only validation only</span></div>"
+        "<textarea class=\"input optimizer-sql\" id=\"external_rewritten_sql\" name=\"rewritten_sql\" required></textarea>"
+        "<button class=\"button\" type=\"submit\">Validate rewrite</button>"
+        "</form>"
+        "</details>"
+    )
+
+
+def render_external_rewrite_validation_result(result: dict[str, Any] | None) -> str:
+    if not result:
+        return ""
+    status = str(result.get("status") or "not_ok")
+    title = str(result.get("title") or "External rewrite validation result")
+    class_name = "success-card" if status == "ok" else "error-card"
+    items = result.get("items")
+    if not isinstance(items, list):
+        items = []
+    rows = "".join(f"<p>{html.escape(str(item))}</p>" for item in items if str(item).strip())
+    return (
+        f"<div class=\"{class_name}\" role=\"status\">"
+        f"<strong>{html.escape(title)}</strong>"
+        f"{rows}"
+        "</div>"
+    )
 
 
 def render_trusted_optimized_query_draft(trusted_optimized_query: str) -> str:
