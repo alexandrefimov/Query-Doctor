@@ -110,6 +110,13 @@ def test_web_demo_guide_renders_curated_russian_demo_page():
     assert "Profile signals" in body
     assert "Triage score" in body
     assert "Optimization candidates" in body
+    assert "Candidate evaluation logic" in body
+    assert 'href="#demo-candidate-evaluation"' in body
+    assert "Query optimization evaluation" in body
+    assert "Without shape evidence score is capped at <code>20</code>" in body
+    assert "Stats refresh evaluation" in body
+    assert "generic column-only gap caps at <code>65</code>" in body
+    assert "Required confirmation всегда остается частью recommendation" in body
     assert "Read-only benchmark evidence" in body
     assert "246462725beeed0:506befef00000000" in body
     assert "Optimized draft A" in body

@@ -162,6 +162,7 @@ def render_demo_guide_content() -> str:
 <li><a href="#demo-profile">Profile signals</a></li>
 <li><a href="#demo-triage">Triage score</a></li>
 <li><a href="#demo-optimization">Optimization candidates</a></li>
+<li><a href="#demo-candidate-evaluation">Candidate evaluation logic</a></li>
 <li><a href="#demo-benchmark">Read-only benchmark evidence</a></li>
 <li><a href="#demo-stats">Stats refresh candidates</a></li>
 <li><a href="#demo-llm">LLM boundaries</a></li>
@@ -276,6 +277,43 @@ def render_demo_guide_content() -> str:
 <li><strong>Low</strong>: weak positive signal или expensive query без достаточного shape evidence.</li>
 <li><strong>Not likely</strong>: нет полезного deterministic optimization evidence.</li>
 </ul>
+
+<h2 id="demo-candidate-evaluation">Candidate evaluation logic</h2>
+<p>В demo важно проговаривать, что оба action-candidate типа считаются до LLM и до любых rewrite действий. Analyzer facts выбирают candidate, scorer считает tier/impact/confidence, а UI только показывает безопасную интерпретацию.</p>
+
+<details open>
+<summary>Query optimization evaluation</summary>
+<p>Query optimization candidate отвечает на вопрос: стоит ли делать SQL shape review. Он не говорит, что переписывание обязательно поможет.</p>
+<table>
+<thead><tr><th>Step</th><th>Logic</th><th>Demo wording</th></tr></thead>
+<tbody>
+<tr><td>1. Impact</td><td>Runtime, scan/read volume, peak memory, spill/scratch evidence and exchange/intermediate volume add impact points.</td><td>Есть ли material runtime cost, ради которого review имеет смысл?</td></tr>
+<tr><td>2. Shape evidence</td><td>Large scan waste, join row expansion, large exchange, memory pressure at join/aggregate/sort-style operators, or spill at shape-sensitive operators add opportunity points.</td><td>Есть ли query-shape evidence, а не просто дорогой запрос?</td></tr>
+<tr><td>3. Weighted score</td><td><code>round((impact * 0.55 + opportunity * 0.45) * penalty)</code>, capped to <code>0..100</code>.</td><td>Impact и shape evidence вместе дают candidate score.</td></tr>
+<tr><td>4. Gate</td><td>Without shape evidence score is capped at <code>20</code> and tier cannot exceed Low.</td><td>Дорогой scan сам по себе не делает High optimization candidate.</td></tr>
+<tr><td>5. Tier</td><td>High: <code>&gt;=70</code>; Medium: <code>&gt;=40</code>; Low: weak positive signal; Not likely: no useful evidence.</td><td>В table показываются только Medium/High action candidates.</td></tr>
+<tr><td>6. Confidence</td><td>High needs at least two opportunity reasons and no counter-signals. Medium allows shape evidence with weaker or bounded counter-signals. Low means evidence is thin or compromised.</td><td>Confidence — полнота evidence, не гарантия speedup.</td></tr>
+</tbody>
+</table>
+<p>Counter-signals apply a penalty before tiering: failed/incomplete analysis, failed/cancelled execution, admission wait dominating runtime, very short query, storage-only read volume without shape evidence, or backend symptoms without query-shape evidence. A stats gap plus cardinality mismatch is shown as a cross-signal: SQL review may still be useful, but stats refresh may also need confirmation.</p>
+</details>
+
+<details>
+<summary>Stats refresh evaluation</summary>
+<p>Stats refresh candidate отвечает на вопрос: стоит ли проверять stats maintenance как possible speed-benefit action. Он не утверждает, что missing stats caused the slowdown.</p>
+<table>
+<thead><tr><th>Step</th><th>Logic</th><th>Demo wording</th></tr></thead>
+<tbody>
+<tr><td>1. Metadata evidence</td><td>Missing/unknown/incomplete table, partition or column stats add metadata points. Partial metadata stays usable but lowers confidence.</td><td>Есть ли supported stats gap, а не просто failed metadata collection?</td></tr>
+<tr><td>2. Estimate mismatch</td><td>Actual-vs-estimated row mismatch, cardinality anomalies, zero/unknown row estimates, memory mismatch or zero/unknown memory estimates add mismatch points.</td><td>Видно ли, что planner estimates расходятся с runtime facts?</td></tr>
+<tr><td>3. Planning symptom</td><td>Mismatch before expensive joins, exchange/distribution pressure, spill or memory pressure after planning-sensitive operators add planning points.</td><td>Может ли stats change affect join order, distribution, memory or exchange?</td></tr>
+<tr><td>4. Weighted score</td><td><code>round((impact * 0.35 + metadata * 0.55 + mismatch * 0.45 + planning * 0.45) * penalty)</code>, capped to <code>0..100</code>.</td><td>Stats score требует цепочку evidence, а не один metadata flag.</td></tr>
+<tr><td>5. Gates and caps</td><td>No metadata and no mismatch caps at <code>15</code>; missing metadata caps at <code>45</code> or <code>35</code>; no mismatch or no planning symptom caps at <code>35</code>; generic column-only gap caps at <code>65</code>.</td><td>Без полной цепочки scorer не повышает candidate агрессивно.</td></tr>
+<tr><td>6. Tier and benefit</td><td>High requires complete chain and score <code>&gt;=70</code>. Medium starts at <code>&gt;=40</code>. Insufficient metadata can become Unknown. Speed benefit is High/Medium/Low/Unknown from tier, confidence and planning symptom.</td><td>Candidate означает check-first action with required confirmation.</td></tr>
+</tbody>
+</table>
+<p>Required confirmation всегда остается частью recommendation: compare EXPLAIN before/after stats collection, check join order, join distribution, estimates, exchange, spill and memory behavior, then rerun under comparable load.</p>
+</details>
 
 <h2 id="demo-benchmark">Read-only benchmark evidence</h2>
 <p>Для demo можно показать explicit read-only проверку одного recipe-backed optimizer case. Исходный Query ID: <code>246462725beeed0:506befef00000000</code>. Два optimized drafts прошли deterministic validation как <code>post_union_aggregate_pushdown</code>: read-only scope, same physical tables, preserved filters/joins/projection shape and recipe invariants.</p>
