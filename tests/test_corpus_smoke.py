@@ -1,19 +1,26 @@
-import importlib.util
 import json
 from pathlib import Path
 from typing import Optional
+
+from command_test_support import command_args, command_uses_role
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 def load_smoke_module():
-    path = REPO_DIR / "query_doctor_corpus_smoke.py"
-    spec = importlib.util.spec_from_file_location("query_doctor_corpus_smoke", path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    from query_doctor.cli import corpus_smoke
+
+    return corpus_smoke
+
+
+def test_package_entrypoint_keeps_repo_root_and_analyzer_command():
+    from query_doctor.cli import corpus_smoke
+
+    assert corpus_smoke.REPO_DIR == REPO_DIR
+    cmd = corpus_smoke.analyzer_command(Path("/case"))
+    assert command_uses_role(cmd, "analyze")
+    assert command_args(cmd, "analyze") == ["/case"]
 
 
 def make_case(root: Path, name: str) -> Path:

@@ -1,4 +1,4 @@
-from query_doctor_metrics_catalog import (
+from query_doctor.cm.metrics_catalog import (
     ADDITIONAL,
     CM_TIMESERIES_MAPPINGS,
     COLLECTED_ONLY,
@@ -14,7 +14,7 @@ from query_doctor_metrics_catalog import (
     metric_signals_for_tier,
     normalize_cm_metrics_profile,
 )
-from query_doctor_collect_cm_profiles import (
+from query_doctor.cm.models import (
     CM_TIMESERIES_QUERY_ALLOWLIST,
     cm_timeseries_query_allowlist,
 )

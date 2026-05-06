@@ -1,4 +1,4 @@
-from query_doctor_stats_optimization_score import score_stats_optimization_candidate
+from query_doctor.recent.stats_optimization_score import score_stats_optimization_candidate
 
 
 def stats_facts(

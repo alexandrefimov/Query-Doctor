@@ -3,6 +3,15 @@ from pathlib import Path
 from web_server_test_support import load_web_module
 
 
+def test_package_report_renderer_is_available():
+    from query_doctor.web.ui import report
+
+    assert callable(report.render_result)
+    escaped = report.escape_report_value("qwen3-coder:30b")
+    assert "qwen3-coder" not in escaped
+    assert escaped
+
+
 def test_web_handler_renders_mocked_analysis_result_without_raw_html():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
@@ -63,6 +72,7 @@ def test_web_handler_renders_mocked_analysis_result_without_raw_html():
 
 def test_web_report_markdown_renders_safe_html():
     module = load_web_module()
+    from query_doctor.web.ui import markdown
 
     rendered = module.render_report_markdown_html(
         "# Title\n\n"
@@ -96,10 +106,12 @@ def test_web_report_markdown_renders_safe_html():
     assert "<li>hidden item</li>" in rendered
     assert "SELECT &lt;secret&gt;;" in rendered
     assert "<b>unsafe</b>" not in rendered
+    assert module.render_report_markdown_html is markdown.render_report_markdown_html
 
 
 def test_details_inline_report_keeps_summary_open_and_appendix_collapsed():
     module = load_web_module()
+    from query_doctor.web.ui import markdown
 
     rendered = module.render_details_inline_report_html(
         "## Краткий вывод\n\n"
@@ -120,6 +132,7 @@ def test_details_inline_report_keeps_summary_open_and_appendix_collapsed():
     assert '<details class="analysis-subdetails report-appendix" aria-label="LLM report details">' in rendered
     assert "Detailed evidence." in rendered[appendix_index:]
     assert "Follow-up check." in rendered[appendix_index:]
+    assert module.render_details_inline_report_html is markdown.render_details_inline_report_html
 
 
 def test_web_result_renders_collected_source():

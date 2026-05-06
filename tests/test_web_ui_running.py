@@ -3,6 +3,13 @@ from pathlib import Path
 from web_server_test_support import load_web_module
 
 
+def test_package_running_page_renderer_is_available():
+    from query_doctor.web.ui import running
+
+    assert callable(running.render_running_queries_page)
+    assert hasattr(running, "render_running_queries_run_panel")
+
+
 def test_web_running_page_renders_without_scan_window_fields_and_with_bounds_note():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
@@ -44,4 +51,3 @@ def test_web_running_route_renders_page():
         "CM metrics are always collected by default for this bounded running scan."
         in captured["body"]
     )
-

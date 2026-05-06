@@ -1,6 +1,6 @@
 import pytest
 
-from query_doctor_engines import (
+from query_doctor.engines import (
     UnknownEngineError,
     get_default_engine_adapter,
     get_engine_adapter,

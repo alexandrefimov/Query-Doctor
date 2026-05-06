@@ -17,6 +17,13 @@ FORBIDDEN_HELP_STRINGS = (
 )
 
 
+def test_package_help_pages_are_available():
+    from query_doctor.web.ui import help as help_ui
+
+    assert callable(help_ui.render_help_page)
+    assert callable(help_ui.render_demo_guide_page)
+
+
 def test_web_help_page_renders_curated_static_help():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))

@@ -1,4 +1,3 @@
-import importlib.util
 from pathlib import Path
 
 
@@ -6,12 +5,15 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 def load_cleanup_module():
-    path = REPO_DIR / "query_doctor_cleanup_generated.py"
-    spec = importlib.util.spec_from_file_location("query_doctor_cleanup_generated", path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    from query_doctor.cli import cleanup_generated
+
+    return cleanup_generated
+
+
+def test_package_entrypoint_keeps_repo_root_safety_anchor():
+    from query_doctor.cli import cleanup_generated
+
+    assert cleanup_generated.REPO_DIR == REPO_DIR
 
 
 def write_case(case_dir: Path) -> None:

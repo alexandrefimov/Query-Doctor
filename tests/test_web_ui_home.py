@@ -3,6 +3,34 @@ from pathlib import Path
 from web_server_test_support import load_web_module
 
 
+def test_package_layout_renderers_are_available():
+    from query_doctor.web.ui import layout
+
+    assert layout.BRAND_MARK_SVG
+    assert callable(layout.render_favicon_link)
+    assert callable(layout.render_shared_styles)
+    assert callable(layout.render_app_header)
+    assert callable(layout.render_client_script)
+
+
+def test_package_progress_renderers_are_available():
+    from query_doctor.web.ui import progress
+
+    assert progress.WEB_STAGES
+    assert callable(progress.render_pending_progress_panel)
+    assert callable(progress.render_job_panel)
+
+
+def test_package_page_renderers_are_available():
+    from query_doctor.web.ui import pages
+
+    assert callable(pages.render_page)
+    assert callable(pages.render_query_page)
+    assert callable(pages.render_batch_page)
+    assert callable(pages.render_batch_case_detail_page)
+    assert callable(pages.render_error_panel)
+
+
 def test_web_render_page_escapes_user_input():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))

@@ -1,4 +1,4 @@
-from query_doctor_query_optimization_score import score_query_optimization_candidate
+from query_doctor.recent.query_optimization_score import score_query_optimization_candidate
 
 
 def high_shape_facts() -> str:
