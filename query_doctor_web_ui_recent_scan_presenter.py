@@ -155,6 +155,23 @@ class RecentScanCmMetricsView:
 
 
 @dataclass(frozen=True)
+class RecentScanRuntimeDiagnosisSignalView:
+    title: str
+    status: Any
+    interpretation: Any
+    evidence: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RecentScanRuntimeDiagnosisView:
+    unavailable: bool
+    status: Any
+    summary: Any
+    guardrail: Any
+    signals: tuple[RecentScanRuntimeDiagnosisSignalView, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any
@@ -178,6 +195,7 @@ class RecentScanCaseDetailView:
     stats_candidate: dict[str, Any]
     metadata: RecentScanMetadataView
     cm_metrics: RecentScanCmMetricsView
+    runtime_diagnosis: RecentScanRuntimeDiagnosisView
     report_action: ReportActionView
     score_severity: str
 
@@ -278,6 +296,7 @@ def present_recent_scan_case_detail(
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
     cm_metrics_facts: dict[str, Any] | None = None,
+    runtime_diagnosis_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
@@ -343,6 +362,7 @@ def present_recent_scan_case_detail(
         stats_candidate=stats_candidate,
         metadata=present_recent_scan_metadata(case, metadata_facts),
         cm_metrics=present_recent_scan_cm_metrics(cm_metrics_facts),
+        runtime_diagnosis=present_recent_scan_runtime_diagnosis(runtime_diagnosis_facts),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )
@@ -489,6 +509,43 @@ def present_recent_scan_cm_metrics(cm_metrics_facts: dict[str, Any] | None) -> R
         signals=signal_views,
         correlations=correlation_views,
         limitations=limitation_views,
+    )
+
+
+def present_recent_scan_runtime_diagnosis(
+    runtime_diagnosis_facts: dict[str, Any] | None,
+) -> RecentScanRuntimeDiagnosisView:
+    if not runtime_diagnosis_facts:
+        return RecentScanRuntimeDiagnosisView(
+            unavailable=True,
+            status="unknown",
+            summary="Runtime diagnosis is not available for this case.",
+            guardrail="",
+            signals=(),
+        )
+    raw_signals = runtime_diagnosis_facts.get("signals")
+    signal_dicts = [signal for signal in raw_signals if isinstance(signal, dict)] if isinstance(raw_signals, list) else []
+    signals = tuple(
+        RecentScanRuntimeDiagnosisSignalView(
+            title=safe_display_text(signal.get("title") or signal.get("key") or "Runtime signal"),
+            status=safe_display_value(signal.get("status")),
+            interpretation=safe_display_value(signal.get("interpretation")),
+            evidence=tuple(
+                safe_display_text(item)
+                for item in (signal.get("evidence") if isinstance(signal.get("evidence"), list) else [])
+                if item is not None
+            ),
+        )
+        for signal in signal_dicts
+    )
+    summary = safe_display_value(runtime_diagnosis_facts.get("summary"))
+    status = safe_display_value(runtime_diagnosis_facts.get("status"))
+    return RecentScanRuntimeDiagnosisView(
+        unavailable=not bool(summary or signals),
+        status=status,
+        summary=summary,
+        guardrail=safe_display_value(runtime_diagnosis_facts.get("guardrail")),
+        signals=signals,
     )
 
 

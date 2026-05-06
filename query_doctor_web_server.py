@@ -2058,6 +2058,7 @@ def start_specific_query_report_job(
     if not case_allows_llm_report(case):
         metadata_facts = load_specific_query_metadata_facts(case_dir)
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
+        runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
         report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store)
         return 400, render_page(
             settings,
@@ -2069,6 +2070,7 @@ def start_specific_query_report_job(
                     case,
                     metadata_facts,
                     cm_metrics_facts,
+                    runtime_diagnosis_facts,
                     report_state=report_state,
                 )
             ],
@@ -2076,6 +2078,7 @@ def start_specific_query_report_job(
     if job_store.running_query_report(validated_query_id) is not None:
         metadata_facts = load_specific_query_metadata_facts(case_dir)
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
+        runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
         report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store)
         return 400, render_page(
             settings,
@@ -2087,6 +2090,7 @@ def start_specific_query_report_job(
                     case,
                     metadata_facts,
                     cm_metrics_facts,
+                    runtime_diagnosis_facts,
                     report_state=report_state,
                 )
             ],
@@ -2156,6 +2160,7 @@ def start_specific_query_optimized_query_job(
         case = build_query_id_summary_case(validated_query_id, case_dir)
         metadata_facts = load_specific_query_metadata_facts(case_dir)
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
+        runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
         optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=validated_query_id)
         return 400, render_page(
             settings,
@@ -2167,6 +2172,7 @@ def start_specific_query_optimized_query_job(
                     case,
                     metadata_facts,
                     cm_metrics_facts,
+                    runtime_diagnosis_facts,
                     optimized_query_state=optimized_query_state,
                 )
             ],
@@ -2642,6 +2648,17 @@ def optimizer_manual_guidance(case_dir: Path | None, *, reason: str = "no_truste
     return text if not validate_optimizer_recommendations_text(text) else None
 
 
+def optimizer_manual_rewrite_allowed(state: dict[str, object]) -> bool:
+    status = str(state.get("status") or "")
+    if status == "partial_untrusted":
+        return True
+    if status == "generated" and str(state.get("fallback_reason") or "") == "validation_failed":
+        return True
+    if status == "failed" and "failed deterministic validation" in str(state.get("error") or "").lower():
+        return True
+    return False
+
+
 def validate_external_optimizer_rewrite(case_dir: Path | None, form: dict[str, list[str]]) -> dict[str, object]:
     draft_sql = first_form_value(form, EXTERNAL_REWRITE_SQL_FIELD)
     if not draft_sql:
@@ -2853,6 +2870,7 @@ def render_batch_case_detail_for_request(
 ) -> str:
     metadata_facts = load_batch_case_metadata_facts(settings, case)
     cm_metrics_facts = load_batch_case_cm_metrics_facts(settings, case)
+    runtime_diagnosis_facts = load_batch_case_runtime_diagnosis_facts(settings, case)
     report_state = load_batch_case_report_state(settings, case_id, case, job_store, job=job)
     artifact_dir = resolve_batch_case_report_dir(settings, case)
     optimized_query_state = load_optimized_query_state(artifact_dir, job_store, batch_case_id=case_id, job=job)
@@ -2866,7 +2884,9 @@ def render_batch_case_detail_for_request(
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")
     optimizer_guidance = (
         None
-        if trusted_optimized_query or trusted_optimizer_recommendations
+        if trusted_optimized_query
+        or trusted_optimizer_recommendations
+        or not optimizer_manual_rewrite_allowed(optimized_query_state)
         else optimizer_manual_guidance(artifact_dir, reason=manual_guidance_reason)
     )
     return render_batch_case_detail_page(
@@ -2875,6 +2895,7 @@ def render_batch_case_detail_for_request(
         case,
         metadata_facts,
         cm_metrics_facts,
+        runtime_diagnosis_facts,
         report_state=report_state,
         optimized_query_state=optimized_query_state,
         trusted_report_text=trusted_report_text,
@@ -2913,6 +2934,7 @@ def render_specific_query_detail_for_request(
     case = build_query_id_summary_case(validated_query_id, case_dir)
     metadata_facts = load_specific_query_metadata_facts(case_dir)
     cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
+    runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
     report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store, job=job)
     optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=validated_query_id, job=job)
     trusted_report_text = load_validated_specific_query_report(case_dir) if report_state.get("trusted") else None
@@ -2923,7 +2945,9 @@ def render_specific_query_detail_for_request(
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")
     optimizer_guidance = (
         None
-        if trusted_optimized_query or trusted_optimizer_recommendations
+        if trusted_optimized_query
+        or trusted_optimizer_recommendations
+        or not optimizer_manual_rewrite_allowed(optimized_query_state)
         else optimizer_manual_guidance(case_dir, reason=manual_guidance_reason)
     )
     return 200, render_page(
@@ -2936,6 +2960,7 @@ def render_specific_query_detail_for_request(
                 case,
                 metadata_facts,
                 cm_metrics_facts,
+                runtime_diagnosis_facts,
                 report_state=report_state,
                 optimized_query_state=optimized_query_state,
                 trusted_report_text=trusted_report_text,
@@ -2964,11 +2989,20 @@ def render_specific_query_report_for_request(settings: WebSettings, query_id: st
     if report_text is None:
         metadata_facts = load_specific_query_metadata_facts(case_dir)
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
+        runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
         return 404, render_page(
             settings,
             active_nav="query",
             show_run_panel=False,
-            extra_sections=[render_specific_query_detail(validated_query_id, case, metadata_facts, cm_metrics_facts)],
+            extra_sections=[
+                render_specific_query_detail(
+                    validated_query_id,
+                    case,
+                    metadata_facts,
+                    cm_metrics_facts,
+                    runtime_diagnosis_facts,
+                )
+            ],
         )
     return 200, render_specific_query_report_page(settings, validated_query_id, case, report_text)
 
@@ -3019,6 +3053,14 @@ def load_specific_query_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
 def load_specific_query_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
     for artifact_dir in batch_case_artifact_dirs(case_dir):
         facts = load_case_analysis_cm_metrics_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
+def load_specific_query_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_runtime_diagnosis_facts(artifact_dir)
         if facts:
             return facts
     return None
@@ -3121,6 +3163,17 @@ def load_batch_case_cm_metrics_facts(settings: WebSettings, case: dict[str, obje
         return None
     for artifact_dir in batch_case_artifact_dirs(case_dir):
         facts = load_case_analysis_cm_metrics_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
+def load_batch_case_runtime_diagnosis_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
+        return None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_runtime_diagnosis_facts(artifact_dir)
         if facts:
             return facts
     return None
@@ -3282,6 +3335,7 @@ def load_optimized_query_state(
         "partial": partial,
         "source_available": source_available,
         "output_kind": marker.get("output_kind") or "sql_draft",
+        "fallback_reason": marker.get("fallback_reason") or "",
         "risk_mode": marker.get("risk_mode") or "",
         "source_scope": marker.get("source_scope") or "",
         "error": job.error if job is not None and job.status == "failed" else "",
@@ -3467,6 +3521,18 @@ def load_case_analysis_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None
     except (OSError, ValueError):
         return None
     return parse_cm_metrics_facts(text)
+
+
+def load_case_analysis_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
+    try:
+        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
+        facts_path.relative_to(case_dir)
+        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
+            return None
+        text = facts_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return None
+    return parse_runtime_diagnosis_facts(text)
 
 
 def load_batch_case_impala_context_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -3691,6 +3757,60 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
         "correlation_summary": correlation_summary,
         "correlations": correlations,
         "limitations": limitations[:5],
+    }
+
+
+def parse_runtime_diagnosis_facts(text: str) -> dict[str, Any] | None:
+    section = ""
+    summary: dict[str, str] = {}
+    signals: list[dict[str, Any]] = []
+    current_signal: dict[str, Any] | None = None
+    in_evidence = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            section = "runtime_diagnosis" if line == "## Runtime Diagnosis" else ""
+            current_signal = None
+            in_evidence = False
+            continue
+        if not section:
+            continue
+        if line.startswith("### "):
+            title = clean_metadata_fact_value(line.removeprefix("###").strip())
+            current_signal = {"title": title, "evidence": []}
+            signals.append(current_signal)
+            in_evidence = False
+            continue
+        if not line.startswith("- "):
+            continue
+        bullet = line[2:].strip()
+        if current_signal is not None and in_evidence and bullet:
+            current_signal.setdefault("evidence", []).append(clean_metadata_fact_value(bullet))
+            continue
+        if ": " not in bullet:
+            continue
+        key, value = bullet.split(": ", 1)
+        key = key.strip()
+        value = clean_metadata_fact_value(value)
+        if current_signal is None:
+            if key in {"status", "summary", "guardrail"}:
+                summary[key] = value
+            continue
+        if key == "evidence":
+            in_evidence = True
+            if value and value != "none":
+                current_signal.setdefault("evidence", []).append(value)
+            continue
+        if key in {"status", "interpretation"}:
+            current_signal[key] = value
+            in_evidence = False
+    if not summary and not signals:
+        return None
+    return {
+        "status": summary.get("status", "unknown"),
+        "summary": summary.get("summary", "unknown"),
+        "guardrail": summary.get("guardrail", ""),
+        "signals": signals,
     }
 
 

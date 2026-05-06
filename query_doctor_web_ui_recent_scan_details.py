@@ -10,6 +10,7 @@ from query_doctor_web_ui_recent_scan_presenter import (
     RecentScanCaseDetailView,
     RecentScanMetadataTableView,
     RecentScanMetadataView,
+    RecentScanRuntimeDiagnosisView,
     ReportActionView,
     batch_case_display_report_status,
     batch_report_status,
@@ -51,6 +52,7 @@ def render_batch_case_detail(
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
     cm_metrics_facts: dict[str, Any] | None = None,
+    runtime_diagnosis_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
     optimized_query_state: dict[str, Any] | None = None,
@@ -68,6 +70,7 @@ def render_batch_case_detail(
         case,
         metadata_facts,
         cm_metrics_facts,
+        runtime_diagnosis_facts,
         report_state=report_state,
     )
     safe_workflow_title = html.escape(workflow_title)
@@ -156,6 +159,7 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<h1>Findings</h1>"
         "<div class=\"report-body\">"
         "<p class=\"helper\">Основные deterministic findings раскрыты сразу. Они опираются только на analyzer facts и не являются root-cause claim без прямого evidence.</p>"
+        f"{render_runtime_diagnosis_summary(view.runtime_diagnosis)}"
         f"{render_action_candidate_findings(view)}"
         f"{render_score_reason_explanations(view)}"
         "</div>"
@@ -165,6 +169,7 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<summary>Evidence details</summary>"
         "<div class=\"report-body analysis-details-body\">"
         "<p class=\"helper\">Подробные deterministic facts для проверки findings. Эти данные свернуты, чтобы первый экран оставался диагностическим.</p>"
+        f"{render_runtime_diagnosis_details(view.runtime_diagnosis)}"
         f"{render_runtime_signals(view)}"
         f"{render_cm_metrics_section(view.cm_metrics)}"
         f"{render_metadata_facts_section(view.metadata)}"
@@ -296,6 +301,125 @@ def render_runtime_signals(view: RecentScanCaseDetailView) -> str:
         f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
         "</details>"
     )
+
+
+def render_runtime_diagnosis_summary(view: RecentScanRuntimeDiagnosisView) -> str:
+    if view.unavailable:
+        return ""
+    return (
+        "<div class=\"runtime-diagnosis-summary\">"
+        "<strong>Runtime Diagnosis</strong>"
+        f"<p>{escape_value(runtime_diagnosis_summary_text(view.summary))}</p>"
+        "</div>"
+    )
+
+
+def render_runtime_diagnosis_details(view: RecentScanRuntimeDiagnosisView) -> str:
+    if view.unavailable:
+        return ""
+    rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(signal.title)}</td>"
+        f"<td>{runtime_diagnosis_status_badge(signal.status)}</td>"
+        f"<td>{escape_value(runtime_diagnosis_interpretation(signal.interpretation))}</td>"
+        f"<td>{render_runtime_diagnosis_evidence(signal.evidence)}</td>"
+        "</tr>"
+        for signal in view.signals
+    )
+    if not rows:
+        rows = "<tr><td colspan=\"4\" class=\"empty-cell\">runtime diagnosis signals are not available</td></tr>"
+    return (
+        "<details class=\"analysis-subdetails\" aria-label=\"Runtime diagnosis\">"
+        "<summary>Runtime diagnosis</summary>"
+        "<div class=\"report-body\">"
+        "<p>Python-owned runtime hypothesis summary. It can point to follow-up areas, but does not convert correlated metrics into standalone root-cause proof.</p>"
+        "<div class=\"meta-list\">"
+        f"{metadata_rows([('status', view.status), ('summary', view.summary), ('guardrail', view.guardrail)])}"
+        "</div>"
+        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        "<thead><tr><th>Signal</th><th>Status</th><th>Interpretation</th><th>Evidence</th></tr></thead>"
+        f"<tbody>{rows}</tbody>"
+        "</table></div>"
+        "</div>"
+        "</details>"
+    )
+
+
+def render_runtime_diagnosis_evidence(evidence: tuple[str, ...]) -> str:
+    if not evidence:
+        return '<span class="muted">none</span>'
+    return (
+        "<ul class=\"compact-list\">"
+        + "".join(f"<li>{escape_value(item)}</li>" for item in evidence[:5])
+        + "</ul>"
+    )
+
+
+def runtime_diagnosis_status_badge(value: Any) -> SafeHtml:
+    normalized = str(value or "unknown").strip().lower()
+    classes = {
+        "plausible_follow_up": "yellow",
+        "context_only": "gray",
+        "not_observed": "green",
+        "unknown": "gray",
+        "unavailable": "gray",
+    }
+    label = normalized.replace("_", " ") if normalized else "unknown"
+    return SafeHtml(f'<span class="badge {classes.get(normalized, "gray")}">{html.escape(label)}</span>')
+
+
+def runtime_diagnosis_summary_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if text == "Network/exchange pressure is the strongest plausible follow-up hypothesis from deterministic facts.":
+        return (
+            "Проблемы могут быть связаны с network/exchange pressure: analyzer видит correlated "
+            "network context и profile evidence. Это follow-up hypothesis, не standalone root-cause proof."
+        )
+    if text == "No single runtime environment hypothesis is supported as likely by the deterministic facts.":
+        return (
+            "Analyzer не видит достаточно evidence, чтобы назвать network, HDFS, CPU или admission "
+            "основным объяснением. Доступные signals остаются context-only."
+        )
+    return text
+
+
+def runtime_diagnosis_interpretation(value: Any) -> str:
+    text = str(value or "").strip()
+    translations = {
+        (
+            "Network/exchange pressure or downstream exchange backpressure is a plausible follow-up "
+            "hypothesis for this query window. Validate it with comparable reruns and bounded cluster "
+            "network metrics; this is not standalone proof of external network instability."
+        ): (
+            "Network/exchange pressure или downstream exchange backpressure выглядит как plausible "
+            "follow-up hypothesis для этого query window. Проверять нужно comparable rerun и bounded "
+            "cluster network metrics; это не proof внешней network instability."
+        ),
+        (
+            "Network I/O spike was observed, but parsed profile facts did not provide matching "
+            "exchange/data-movement evidence. Treat it as runtime context only."
+        ): (
+            "Network I/O spike observed, но profile facts не дали matching exchange/data-movement "
+            "evidence. Это runtime context only."
+        ),
+        "Network/exchange pressure was not established by the available deterministic facts.": (
+            "Network/exchange pressure не подтвержден доступными deterministic facts."
+        ),
+        (
+            "Large read volume is an I/O footprint. Without slow scan/storage share evidence it does not prove "
+            "HDFS service latency, block-size issues, or replication-factor problems."
+        ): (
+            "Большой read volume — это I/O footprint. Без slow scan/storage share evidence он не доказывает "
+            "HDFS latency, block-size или replication-factor problem."
+        ),
+        (
+            "Host CPU pressure was checked and not observed; admission queue wait was not reported in the safe "
+            "query context."
+        ): (
+            "Host CPU pressure checked and not observed; admission queue wait не reported в safe query context."
+        ),
+    }
+    return translations.get(text, text)
 
 
 def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
@@ -596,6 +720,7 @@ def render_optimizer_status(
     guidance_html = render_optimizer_manual_guidance(
         optimizer_manual_guidance,
         status=status,
+        manual_rewrite_allowed=optimizer_manual_rewrite_available(state),
         has_trusted_output=bool(trusted_optimized_query or trusted_optimizer_recommendations),
     )
     validation_html = render_external_rewrite_validation(
@@ -649,12 +774,13 @@ def render_optimizer_manual_guidance(
     guidance: str | None,
     *,
     status: str,
+    manual_rewrite_allowed: bool,
     has_trusted_output: bool,
 ) -> str:
-    if not guidance or has_trusted_output or status == "running":
+    if not guidance or not manual_rewrite_allowed or has_trusted_output or status == "running":
         return ""
     return (
-        "<details class=\"analysis-subdetails\" open aria-label=\"Manual optimizer guidance\">"
+        "<details class=\"analysis-subdetails\" aria-label=\"Manual optimizer guidance\">"
         "<summary>Manual rewrite guidance</summary>"
         "<p class=\"helper\">Python-owned bullets for manual rewrite review.</p>"
         f"<div>{render_safe_markdown_paragraphs(guidance)}</div>"
@@ -667,11 +793,11 @@ def render_external_rewrite_validation(
     action_url: str | None,
     result: dict[str, Any] | None,
 ) -> str:
-    if not action_url or not state.get("source_available"):
+    if not action_url or not state.get("source_available") or not optimizer_manual_rewrite_available(state):
         return ""
     result_html = render_external_rewrite_validation_result(result)
     return (
-        "<details class=\"analysis-subdetails\" open aria-label=\"Validate rewritten SQL\">"
+        "<details class=\"analysis-subdetails\" aria-label=\"Validate rewritten SQL\">"
         "<summary>Validate rewritten SQL</summary>"
         f"{result_html}"
         f"<form class=\"optimizer-form\" method=\"post\" action=\"{html.escape(action_url, quote=True)}\">"
@@ -682,6 +808,17 @@ def render_external_rewrite_validation(
         "</form>"
         "</details>"
     )
+
+
+def optimizer_manual_rewrite_available(state: dict[str, Any]) -> bool:
+    status = str(state.get("status") or "")
+    if status == "partial_untrusted":
+        return True
+    if status == "generated" and str(state.get("fallback_reason") or "") == "validation_failed":
+        return True
+    if status == "failed" and "failed deterministic validation" in str(state.get("error") or "").lower():
+        return True
+    return False
 
 
 def render_external_rewrite_validation_result(result: dict[str, Any] | None) -> str:

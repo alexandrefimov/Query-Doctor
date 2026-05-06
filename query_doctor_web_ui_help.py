@@ -168,6 +168,7 @@ def render_demo_guide_content() -> str:
 <li><a href="#demo-optimization">Optimization candidates</a></li>
 <li><a href="#demo-candidate-evaluation">Candidate evaluation logic</a></li>
 <li><a href="#demo-benchmark">Read-only benchmark evidence</a></li>
+<li><a href="#demo-local-model-benchmark">Local model benchmark run</a></li>
 <li><a href="#demo-specific-followup">Specific Query full-cycle follow-up</a></li>
 <li><a href="#demo-stats">Stats refresh candidates</a></li>
 <li><a href="#demo-llm">LLM boundaries</a></li>
@@ -240,7 +241,7 @@ def render_demo_guide_content() -> str:
 <p>Если LLM вернул SQL draft, Python extracts draft and validates it before trust. Validation проверяет read-only scope, physical table set, preserved filters, joins, projection shape, DISTINCT / GROUP / ORDER / set-operation signatures, source SQL hash, facts hash, source scope and recipe-specific invariants. Marker trust requires current schema and matching hashes.</p>
 <p>Если validation не проходит, raw draft не показывается. Вместо этого optimizer записывает trusted <code>no_rewrite</code> outcome with Python-owned bullets: почему draft не trusted и какие review areas можно использовать, чтобы переписать запрос manually. Пользователь видит безопасные bullets/recommendations-only guidance, а не unsafe SQL.</p>
 <p>Если LLM output был incomplete, hit output budget, или draft не содержит material rewrite, UI также показывает no trusted SQL draft и безопасные bullets. Это deliberate safety behavior.</p>
-<p>Details также содержит форму <strong>Validate rewritten SQL</strong>: пользователь может вставить rewrite, полученный вне Query Doctor, а Python проверит его тем же deterministic validator path без выполнения SQL и без echo вставленного текста обратно в браузер. UI показывает только safe pass/fail categories.</p>
+<p>Если LLM optimizer draft не прошел validation, Details показывает закрытый по умолчанию manual rewrite block с Python-owned guidance и формой <strong>Validate rewritten SQL</strong>. Пользователь может вставить rewrite, полученный вне Query Doctor, а Python проверит его тем же deterministic validator path без выполнения SQL и без echo вставленного текста обратно в браузер. UI показывает только safe pass/fail categories.</p>
 </details>
 </details>
 
@@ -358,6 +359,41 @@ def render_demo_guide_content() -> str:
 <tr><td>Optimized draft B</td><td><code>39.412s</code>, <code>27.453s</code></td><td><code>33.432s</code></td><td>same row count and fingerprint</td></tr>
 </tbody>
 </table>
+</details>
+
+<details>
+<summary id="demo-local-model-benchmark">Local model benchmark run</summary>
+<p>Это отдельный read-only benchmark run для двух local optimizer drafts. Оба drafts прошли deterministic validation как trusted <code>sql_draft</code>: mode <code>conservative_rewrite</code>, validation <code>strict_v2</code>, recipe <code>post_union_aggregate_pushdown</code>. Model names в browser UI не показываем; используем safe labels <strong>Local draft A</strong> и <strong>Local draft B</strong>.</p>
+<table>
+<thead><tr><th>Run</th><th>Variant</th><th>Runtime</th><th>Query ID</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Original cold</td><td><code>366.553s</code></td><td><code>cd4f188dc28f1295:5278410000000000</code></td></tr>
+<tr><td>2</td><td>Local draft A cold</td><td><code>221.701s</code></td><td><code>9840956ed9a92bd0:56b5017f00000000</code></td></tr>
+<tr><td>3</td><td>Local draft B first</td><td><code>81.416s</code></td><td><code>86484b84086fcaa5:6165348000000000</code></td></tr>
+<tr><td>4</td><td>Local draft B warm</td><td><code>49.224s</code></td><td><code>af4defc6ce5e610c:b4978b5900000000</code></td></tr>
+<tr><td>5</td><td>Local draft A warm</td><td><code>69.435s</code></td><td><code>d4ba695214b3f38:f194971000000000</code></td></tr>
+<tr><td>6</td><td>Original warm</td><td><code>93.307s</code></td><td><code>d341bed701d0c143:20bf8a5800000000</code></td></tr>
+</tbody>
+</table>
+<p>Result validation совпала во всех 6 runs: <code>row_count=152</code>, fingerprint <code>deafdcde158525b1</code>. Средний runtime: Original <code>229.930s</code>, Local draft A <code>145.568s</code>, Local draft B <code>65.320s</code>.</p>
+<table>
+<thead><tr><th>Signal</th><th>Observed facts</th><th>Interpretation</th></tr></thead>
+<tbody>
+<tr><td>HDFS / scan path</td><td>All runs read the same volume, about <code>115 GiB</code>. Scanner counters show local reads, <code>RemoteScanRanges=0</code> and <code>BytesReadRemoteUnexpected=0</code>.</td><td>No evidence of remote HDFS reads. The first Original had cold-read evidence: raw HDFS read time sum was much higher than later runs.</td></tr>
+<tr><td>Cold Original</td><td><code>TotalRawHdfsReadTime</code> sum was about <code>705.9s</code>, max <code>27.3s</code>. Later runs were about <code>84..94s</code> sum and about <code>2.1..2.4s</code> max.</td><td>First Original was likely affected by cold storage/cache path. This is not proof that HDFS service was generally slow.</td></tr>
+<tr><td>Local draft A cold</td><td>Raw HDFS read time was already normal, but <code>FirstBatchWaitTime</code> / <code>DataWaitTime</code> max was about <code>220s</code>; network receive wait was also high.</td><td>The second slow run looks more like downstream wait / exchange backpressure than HDFS read latency.</td></tr>
+<tr><td>CPU / admission</td><td><code>host_cpu_pressure</code> was <code>not_observed</code>; admission wait was not present in the collected CM context.</td><td>No direct evidence that CPU saturation or admission queueing caused the slow first runs.</td></tr>
+<tr><td>Memory / network context</td><td>Daemon memory growth and network I/O spike were correlated in every run; memory pressure remains <code>unknown</code> because safe capacity/limit metrics are not in the current contract.</td><td>Useful runtime context, but not standalone root-cause proof. The safe wording is "correlated context", not "cluster resource starvation".</td></tr>
+</tbody>
+</table>
+<h3>Вывод для demo</h3>
+<ul>
+<li>Первый Original был медленнее не только из-за SQL shape: есть evidence холодного local HDFS/cache read path.</li>
+<li>Первый Local draft A был медленным уже при нормальном raw HDFS read time; его slowdown лучше объясняется wait/network backpressure context.</li>
+<li>Подозрение для follow-up: effective network/exchange bandwidth или channel pressure мог ограничивать отдачу данных на ранних runs. Это hypothesis по wait counters + correlated network I/O spike, а не доказанный root cause.</li>
+<li>Local draft B оказался самым стабильным local result: <code>81.416s</code> first run и <code>49.224s</code> warm run.</li>
+<li>Нельзя честно сказать "HDFS тормозил весь тест" или "не хватало CPU". Поддержанная формулировка: cold/cache effects plus exchange/wait context affected early runs; CPU/admission pressure was not observed.</li>
+</ul>
 </details>
 
 <details>

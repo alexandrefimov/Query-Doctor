@@ -128,6 +128,19 @@ def test_web_demo_guide_renders_curated_russian_demo_page():
     assert "c84ac4eb1f578be7:7a5f8e0b00000000" in body
     assert "row_count=152" in body
     assert "3e8bf93ce7579564" in body
+    assert "Local model benchmark run" in body
+    assert 'href="#demo-local-model-benchmark"' in body
+    assert "Local draft A cold" in body
+    assert "9840956ed9a92bd0:56b5017f00000000" in body
+    assert "Local draft B warm" in body
+    assert "af4defc6ce5e610c:b4978b5900000000" in body
+    assert "deafdcde158525b1" in body
+    assert "RemoteScanRanges=0" in body
+    assert "BytesReadRemoteUnexpected=0" in body
+    assert "cold storage/cache path" in body
+    assert "effective network/exchange bandwidth" in body
+    assert "not proof of root cause" in body or "не доказанный root cause" in body
+    assert "CPU/admission pressure was not observed" in body
     assert "Specific Query full-cycle follow-up" in body
     assert 'href="#demo-specific-followup"' in body
     assert "8d40bd516d7f45a9:4bbacbb900000000" in body

@@ -189,8 +189,10 @@ Current behavior:
   provide a trusted no-rewrite/recommendations outcome when Python can explain
   the rejection safely;
 - always hide partial drafts and raw LLM output.
-- if no trusted SQL draft exists, details may show Python-owned manual rewrite
-  guidance and an external rewrite validation form;
+- if an LLM optimizer draft fails deterministic validation, details may show
+  Python-owned manual rewrite guidance and an external rewrite validation form;
+- the manual rewrite block stays hidden for not-run, trusted SQL draft,
+  recommendations-only, output-budget and no-material-change outcomes;
 - external rewrite validation must return only safe categories such as read-only
   scope passed, table set changed, filter scope changed, JOIN conditions
   changed, projection changed, incomplete SQL, or no material rewrite.

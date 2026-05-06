@@ -83,6 +83,7 @@ def render_specific_query_detail(
     case: dict[str, Any],
     metadata_facts: dict[str, Any] | None = None,
     cm_metrics_facts: dict[str, Any] | None = None,
+    runtime_diagnosis_facts: dict[str, Any] | None = None,
     report_state: dict[str, Any] | None = None,
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
@@ -96,6 +97,7 @@ def render_specific_query_detail(
         case,
         metadata_facts,
         cm_metrics_facts,
+        runtime_diagnosis_facts,
         report_state=report_state,
     )
     escaped_query_id = html.escape(query_id)
