@@ -3,15 +3,21 @@ from query_doctor_metrics_catalog import (
     CM_TIMESERIES_MAPPINGS,
     COLLECTED_ONLY,
     DEEP_DIVE,
+    DEFAULT_CM_METRICS_PROFILE,
     IMPLEMENTED,
     METRIC_SIGNAL_CATALOG,
     PLANNED,
     REQUIRED_BASELINE,
+    cm_timeseries_mappings_for_profile,
     metric_signal_by_id,
     metric_signals_for_family,
     metric_signals_for_tier,
+    normalize_cm_metrics_profile,
 )
-from query_doctor_collect_cm_profiles import CM_TIMESERIES_QUERY_ALLOWLIST
+from query_doctor_collect_cm_profiles import (
+    CM_TIMESERIES_QUERY_ALLOWLIST,
+    cm_timeseries_query_allowlist,
+)
 
 
 def test_metrics_catalog_has_required_baseline_families():
@@ -47,7 +53,7 @@ def test_metrics_catalog_tracks_implementation_statuses():
 def test_current_cm_timeseries_allowlist_is_defined_by_catalog():
     catalog_allowlist = tuple(
         (mapping.query_id, mapping.label, mapping.tsquery)
-        for mapping in CM_TIMESERIES_MAPPINGS
+        for mapping in cm_timeseries_mappings_for_profile(DEFAULT_CM_METRICS_PROFILE)
     )
     collector_allowlist = tuple(
         (query.query_id, query.label, query.tsquery)
@@ -55,6 +61,33 @@ def test_current_cm_timeseries_allowlist_is_defined_by_catalog():
     )
 
     assert collector_allowlist == catalog_allowlist
+
+
+def test_cm_timeseries_profile_aliases_normalize_to_canonical_profiles():
+    assert normalize_cm_metrics_profile("cm6.2.1") == "cm6"
+    assert normalize_cm_metrics_profile("cdh6") == "cm6"
+    assert normalize_cm_metrics_profile("default") == "cm6"
+    assert normalize_cm_metrics_profile("cdp") == "cm7"
+    assert normalize_cm_metrics_profile("CM7.X") == "cm7"
+
+
+def test_cm_timeseries_allowlist_is_profile_scoped():
+    cm6 = cm_timeseries_query_allowlist("cm6.2.1")
+    cm7 = cm_timeseries_query_allowlist("cdp")
+
+    assert cm6
+    assert cm7
+    assert all("cm6" in mapping.profiles for mapping in cm_timeseries_mappings_for_profile("cm6"))
+    assert all("cm7" in mapping.profiles for mapping in cm_timeseries_mappings_for_profile("cm7"))
+
+
+def test_unknown_cm_metrics_profile_is_rejected():
+    try:
+        normalize_cm_metrics_profile("cm5")
+    except ValueError as exc:
+        assert "CM metrics profile must be one of:" in str(exc)
+    else:
+        raise AssertionError("unknown CM metrics profile should be rejected")
 
 
 def test_cm_mappings_reference_known_signal_ids():

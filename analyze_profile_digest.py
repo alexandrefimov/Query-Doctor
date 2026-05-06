@@ -1967,6 +1967,9 @@ def collect_cm_timeseries_context(case_dir: Path) -> dict[str, Any] | None:
         return {"available": False, "error": "CM time-series context query list is missing"}
     return {
         "available": bool(raw.get("available")),
+        "metrics_profile": raw.get("metrics_profile")
+        if isinstance(raw.get("metrics_profile"), str)
+        else None,
         "window": raw.get("window") if isinstance(raw.get("window"), dict) else {},
         "limits": raw.get("limits") if isinstance(raw.get("limits"), dict) else {},
         "queries": [
@@ -4295,6 +4298,8 @@ def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
 
     lines = ["## CM Time-Series Context", ""]
     lines.append(f"- available: {'yes' if context.get('available') else 'no'}")
+    if context.get("metrics_profile"):
+        lines.append(f"- metrics_profile: {context.get('metrics_profile')}")
     window = context.get("window") or {}
     if window.get("from") and window.get("to"):
         lines.append(f"- window: {window['from']} to {window['to']}")

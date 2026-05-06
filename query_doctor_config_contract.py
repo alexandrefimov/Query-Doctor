@@ -30,6 +30,7 @@ ALLOWED_CONFIG_KEYS = {
     "cm_user",
     "cm_url",
     "collect_cm_timeseries",
+    "cm_metrics_profile",
     "cm_timeseries_padding_sec",
     "host",
     "insecure_skip_verify",
@@ -281,6 +282,7 @@ def normalize_config_value(key: str, value: object) -> object:
     if key in {
         "ca_bundle",
         "cluster",
+        "cm_metrics_profile",
         "cm_url",
         "host",
         "optimizer_model",

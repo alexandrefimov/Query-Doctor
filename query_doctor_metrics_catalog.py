@@ -9,6 +9,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+DEFAULT_CM_METRICS_PROFILE = "cm6"
+CM_METRICS_PROFILE_ALIASES = {
+    "default": DEFAULT_CM_METRICS_PROFILE,
+    "cm6": "cm6",
+    "cdh6": "cm6",
+    "cm6.2": "cm6",
+    "cm6.2.1": "cm6",
+    "cm7": "cm7",
+    "cm7.x": "cm7",
+    "cdp": "cm7",
+}
+CM_METRICS_PROFILE_CHOICES = tuple(CM_METRICS_PROFILE_ALIASES)
+
 
 @dataclass(frozen=True)
 class MetricSignalSpec:
@@ -27,6 +40,7 @@ class CMTimeSeriesMapping:
     query_id: str
     label: str
     tsquery: str
+    profiles: tuple[str, ...] = (DEFAULT_CM_METRICS_PROFILE, "cm7")
 
 
 REQUIRED_BASELINE = "required_baseline"
@@ -321,6 +335,20 @@ CM_TIMESERIES_MAPPINGS: tuple[CMTimeSeriesMapping, ...] = (
 
 def metric_signal_by_id() -> dict[str, MetricSignalSpec]:
     return {spec.signal_id: spec for spec in METRIC_SIGNAL_CATALOG}
+
+
+def normalize_cm_metrics_profile(profile: str | None = None) -> str:
+    key = (profile or DEFAULT_CM_METRICS_PROFILE).strip().lower()
+    normalized = CM_METRICS_PROFILE_ALIASES.get(key)
+    if normalized is None:
+        choices = ", ".join(CM_METRICS_PROFILE_CHOICES)
+        raise ValueError(f"CM metrics profile must be one of: {choices}.")
+    return normalized
+
+
+def cm_timeseries_mappings_for_profile(profile: str | None = None) -> tuple[CMTimeSeriesMapping, ...]:
+    normalized = normalize_cm_metrics_profile(profile)
+    return tuple(mapping for mapping in CM_TIMESERIES_MAPPINGS if normalized in mapping.profiles)
 
 
 def metric_signals_for_tier(tier: str) -> tuple[MetricSignalSpec, ...]:

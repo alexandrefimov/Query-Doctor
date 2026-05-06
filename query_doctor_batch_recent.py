@@ -86,6 +86,7 @@ class BatchConfig:
     query_type: str | None
     max_profile_bytes: int
     collect_cm_timeseries: bool
+    cm_metrics_profile: str
     cm_timeseries_padding_sec: int
     max_timeseries_bytes: int
     max_timeseries_points: int
@@ -303,6 +304,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         default=None,
         help="Collect bounded allowlisted CM time-series summaries for each collected case.",
+    )
+    parser.add_argument(
+        "--cm-metrics-profile",
+        choices=cm_profiles.CM_METRICS_PROFILE_CHOICES,
+        help=(
+            "CM metric-name compatibility profile for allowlisted time-series queries. "
+            f"Default: {cm_profiles.DEFAULT_CM_METRICS_PROFILE}."
+        ),
     )
     parser.add_argument(
         "--cm-timeseries-padding-sec",
@@ -706,6 +715,14 @@ def build_batch_config(
             config_values.get("collect_cm_timeseries"),
             default=False,
         ),
+        cm_metrics_profile=cm_profiles.validate_cm_metrics_profile(
+            first_string(
+                args.cm_metrics_profile,
+                config_values.get("cm_metrics_profile"),
+                env.get("CM_METRICS_PROFILE"),
+                cm_profiles.DEFAULT_CM_METRICS_PROFILE,
+            )
+        ),
         cm_timeseries_padding_sec=first_int(
             args.cm_timeseries_padding_sec,
             config_values.get("cm_timeseries_padding_sec"),
@@ -1056,6 +1073,8 @@ def collect_case_profile(
             cmd.extend(
                 [
                     "--collect-cm-timeseries",
+                    "--cm-metrics-profile",
+                    config.cm_metrics_profile,
                     "--cm-timeseries-padding-sec",
                     str(config.cm_timeseries_padding_sec),
                     "--max-timeseries-bytes",

@@ -15,6 +15,7 @@
   "max_profile_bytes": 52428800,
   "optimizer_model": "",
   "collect_cm_timeseries": false,
+  "cm_metrics_profile": "cm6",
   "cm_timeseries_padding_sec": 120,
   "max_timeseries_bytes": 2097152,
   "max_timeseries_points": 2000,

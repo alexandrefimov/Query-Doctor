@@ -39,7 +39,12 @@ from query_doctor_config_contract import (
     load_local_config,
     normalize_config_key as normalize_local_config_key,
 )
-from query_doctor_metrics_catalog import CM_TIMESERIES_MAPPINGS
+from query_doctor_metrics_catalog import (
+    CM_METRICS_PROFILE_CHOICES,
+    DEFAULT_CM_METRICS_PROFILE,
+    cm_timeseries_mappings_for_profile,
+    normalize_cm_metrics_profile,
+)
 
 DEFAULT_SINCE_HOURS = 24
 DEFAULT_LIMIT = 20
@@ -234,6 +239,7 @@ class CollectorConfig:
     redact_identifiers: bool
     redact_hosts: bool
     collect_cm_timeseries: bool
+    cm_metrics_profile: str
     cm_timeseries_padding_sec: int
     max_timeseries_bytes: int
     max_timeseries_points: int
@@ -249,14 +255,20 @@ class CMTimeSeriesQuery:
     tsquery: str
 
 
-CM_TIMESERIES_QUERY_ALLOWLIST = tuple(
-    CMTimeSeriesQuery(
-        query_id=mapping.query_id,
-        label=mapping.label,
-        tsquery=mapping.tsquery,
+def cm_timeseries_query_allowlist(
+    metrics_profile: str | None = None,
+) -> tuple[CMTimeSeriesQuery, ...]:
+    return tuple(
+        CMTimeSeriesQuery(
+            query_id=mapping.query_id,
+            label=mapping.label,
+            tsquery=mapping.tsquery,
+        )
+        for mapping in cm_timeseries_mappings_for_profile(metrics_profile)
     )
-    for mapping in CM_TIMESERIES_MAPPINGS
-)
+
+
+CM_TIMESERIES_QUERY_ALLOWLIST = cm_timeseries_query_allowlist(DEFAULT_CM_METRICS_PROFILE)
 
 
 @dataclass(frozen=True)
@@ -602,6 +614,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable CM time-series summaries for this explicit query collection.",
     )
     parser.add_argument(
+        "--cm-metrics-profile",
+        choices=CM_METRICS_PROFILE_CHOICES,
+        help=(
+            "CM metric-name compatibility profile for allowlisted time-series queries. "
+            f"Default: {DEFAULT_CM_METRICS_PROFILE}."
+        ),
+    )
+    parser.add_argument(
         "--cm-timeseries-padding-sec",
         type=non_negative_int,
         help=f"Seconds to pad before query start and after query end. Default: {DEFAULT_CM_TIMESERIES_PADDING_SEC}.",
@@ -702,6 +722,13 @@ def validate_recent_order(value: str | None) -> str:
             "recent_order must be one of: " + ", ".join(RECENT_ORDER_CHOICES) + "."
         )
     return order
+
+
+def validate_cm_metrics_profile(value: str | None) -> str:
+    try:
+        return normalize_cm_metrics_profile(value)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
 
 
 def resolve_optional_output_json(value: str | None, *, cwd: Path) -> Path | None:
@@ -924,6 +951,15 @@ def build_config(
         collect_cm_timeseries=bool(args.collect_cm_timeseries)
         if args.collect_cm_timeseries is not None
         else True,
+        cm_metrics_profile=validate_cm_metrics_profile(
+            string_setting(
+                "cm_metrics_profile",
+                cli_value=args.cm_metrics_profile,
+                config_values=config_values,
+                env_value=env.get("CM_METRICS_PROFILE"),
+                default=DEFAULT_CM_METRICS_PROFILE,
+            )
+        ),
         cm_timeseries_padding_sec=int_setting(
             "cm_timeseries_padding_sec",
             cli_value=args.cm_timeseries_padding_sec,
@@ -1788,15 +1824,18 @@ def collect_cm_timeseries_context(
     client: CMHttpClient,
     summary: CMQuerySummary,
     *,
+    metrics_profile: str = DEFAULT_CM_METRICS_PROFILE,
     padding_sec: int = DEFAULT_CM_TIMESERIES_PADDING_SEC,
     max_response_bytes: int = DEFAULT_MAX_TIMESERIES_BYTES,
     max_points: int = DEFAULT_MAX_TIMESERIES_POINTS,
 ) -> dict[str, object]:
+    normalized_profile = validate_cm_metrics_profile(metrics_profile)
     window = padded_cm_timeseries_window(summary, padding_sec=padding_sec)
     if window is None:
         return {
             "available": False,
             "reason": "query start/end time unavailable",
+            "metrics_profile": normalized_profile,
             "limits": {
                 "max_response_bytes": max_response_bytes,
                 "max_points_per_query": max_points,
@@ -1806,7 +1845,7 @@ def collect_cm_timeseries_context(
     from_time, to_time = window
     queries: list[dict[str, object]] = []
     warnings: list[str] = []
-    for query in CM_TIMESERIES_QUERY_ALLOWLIST:
+    for query in cm_timeseries_query_allowlist(normalized_profile):
         try:
             raw = fetch_cm_timeseries_json(
                 client,
@@ -1831,6 +1870,7 @@ def collect_cm_timeseries_context(
         "available": any(item.get("status") == "ok" for item in queries),
         "schema_version": 1,
         "source": "cm_timeseries",
+        "metrics_profile": normalized_profile,
         "limits": {
             "max_response_bytes": max_response_bytes,
             "max_points_per_query": max_points,
@@ -2989,6 +3029,7 @@ def run_cm_single_query_collection(
             cm_timeseries_context = collect_cm_timeseries_context(
                 client,
                 summary,
+                metrics_profile=config.cm_metrics_profile,
                 padding_sec=config.cm_timeseries_padding_sec,
                 max_response_bytes=config.max_timeseries_bytes,
                 max_points=config.max_timeseries_points,
@@ -3029,6 +3070,7 @@ def run_cm_single_query_collection(
     print(f"Max profile bytes: {config.max_profile_bytes}")
     if config.collect_cm_timeseries:
         print("CM time-series context: enabled")
+        print(f"CM metrics profile: {config.cm_metrics_profile}")
     print("No raw JSON, SQL, profile text, analyzer output, or reports were written.")
     return 0
 
@@ -3053,6 +3095,8 @@ def print_dry_run_plan(config: CollectorConfig) -> None:
     print(f"Identifier redaction: {'enabled' if config.redact_identifiers else 'disabled'}")
     print(f"Host redaction: {'enabled' if config.redact_hosts else 'disabled'}")
     print(f"CM time-series context: {'enabled' if config.collect_cm_timeseries else 'disabled'}")
+    if config.collect_cm_timeseries:
+        print(f"CM metrics profile: {config.cm_metrics_profile}")
     print(tls_plan_line(config))
     print(ca_bundle_plan_line(config))
     print(f"Credentials: {config.credentials.display()}")
