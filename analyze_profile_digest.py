@@ -2000,6 +2000,9 @@ CM_METRIC_MIN_POINTS_FOR_SIGNAL = 3
 CM_HOST_CPU_USER_MAX_THRESHOLD = 85.0
 CM_HOST_CPU_USER_AVG_THRESHOLD = 70.0
 CM_HOST_CPU_SYSTEM_MAX_THRESHOLD = 40.0
+CM_ADMISSION_POOL_QUEUED_RATE_THRESHOLD = 0.01
+CM_ADMISSION_POOL_REJECTED_RATE_THRESHOLD = 0.0
+CM_ADMISSION_POOL_TIMED_OUT_RATE_THRESHOLD = 0.0
 CM_DAEMON_MEMORY_GROWTH_DELTA_BYTES = 8 * 1024 * 1024 * 1024
 CM_DAEMON_MEMORY_GROWTH_RATIO_THRESHOLD = 1.25
 CM_HOST_DISK_IO_BYTES_PER_SEC = 150 * 1024 * 1024
@@ -2119,6 +2122,9 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     available = bool(context.get("available")) and total_metrics > 0
     status = "available" if available and ok_metrics == total_metrics else "partial" if ok_metrics else "unavailable"
 
+    admission_queued = cm_metric_by_id(context, "impala_pool_queued_rate")
+    admission_rejected = cm_metric_by_id(context, "impala_pool_rejected_rate")
+    admission_timed_out = cm_metric_by_id(context, "impala_pool_timed_out_rate")
     host_cpu_user = cm_metric_by_id(context, "host_cpu_user")
     host_cpu_system = cm_metric_by_id(context, "host_cpu_system")
     daemon_memory = cm_metric_by_id(context, "impala_daemon_memory")
@@ -2133,6 +2139,40 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         context,
         ("host_network_io", "host_network_receive_rate", "host_network_transmit_rate"),
     )
+
+    queued_max = numeric_context_value(admission_queued or {}, "max")
+    queued_avg = numeric_context_value(admission_queued or {}, "avg")
+    rejected_max = numeric_context_value(admission_rejected or {}, "max")
+    timed_out_max = numeric_context_value(admission_timed_out or {}, "max")
+    admission_spread = metric_series_spread_basis(admission_queued)
+    admission_ready = any(cm_metric_ready(metric) for metric in (admission_queued, admission_rejected, admission_timed_out))
+    if admission_ready:
+        queued_observed = queued_max is not None and queued_max >= CM_ADMISSION_POOL_QUEUED_RATE_THRESHOLD
+        rejected_observed = rejected_max is not None and rejected_max > CM_ADMISSION_POOL_REJECTED_RATE_THRESHOLD
+        timed_out_observed = timed_out_max is not None and timed_out_max > CM_ADMISSION_POOL_TIMED_OUT_RATE_THRESHOLD
+        basis_parts: list[str] = []
+        if queued_max is not None:
+            basis_parts.append(
+                f"admission queued max={queued_max:.2f}/s avg={queued_avg:.2f}/s"
+                if queued_avg is not None
+                else f"admission queued max={queued_max:.2f}/s"
+            )
+        if rejected_max is not None:
+            basis_parts.append(f"admission rejected max={rejected_max:.2f}/s")
+        if timed_out_max is not None:
+            basis_parts.append(f"admission timed_out max={timed_out_max:.2f}/s")
+        basis = "; ".join(basis_parts) if basis_parts else "available admission pool metrics did not cross thresholds"
+        if admission_spread:
+            basis = f"{basis}; {admission_spread}"
+        admission_pool_pressure = cm_signal(
+            "observed" if queued_observed or rejected_observed or timed_out_observed else "not_observed",
+            basis,
+        )
+    else:
+        admission_pool_pressure = cm_signal(
+            "unknown",
+            "admission pool metrics are missing or have insufficient points",
+        )
 
     cpu_user_max = numeric_context_value(host_cpu_user or {}, "max")
     cpu_user_avg = numeric_context_value(host_cpu_user or {}, "avg")
@@ -2304,6 +2344,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         "total_metrics": total_metrics,
         "ok_metrics": ok_metrics,
         "total_points": total_points,
+        "admission_pool_pressure": admission_pool_pressure,
         "host_cpu_pressure": host_cpu_pressure,
         "daemon_memory_growth": daemon_memory_growth,
         "daemon_memory_pressure": daemon_memory_pressure,
@@ -2337,6 +2378,11 @@ def has_network_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 def has_storage_profile_evidence(analysis: dict[str, Any]) -> bool:
     return "hdfs_or_storage_bottleneck" in finding_ids(analysis)
+
+
+def has_admission_profile_evidence(analysis: dict[str, Any]) -> bool:
+    admission_wait_ms = numeric_context_value(analysis.get("cm_query_context") or {}, "admission_wait_ms")
+    return admission_wait_ms is not None and admission_wait_ms >= 1000
 
 
 def has_cpu_profile_evidence(analysis: dict[str, Any]) -> bool:
@@ -2376,6 +2422,7 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
     memory_support = has_memory_profile_evidence(analysis)
     network_support = has_network_profile_evidence(analysis)
     storage_support = has_storage_profile_evidence(analysis)
+    admission_support = has_admission_profile_evidence(analysis)
     cpu_support = has_cpu_profile_evidence(analysis)
 
     def signal_row(
@@ -2419,6 +2466,18 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
         }
 
     signals = [
+        signal_row(
+            "admission_pool_pressure",
+            title="Admission/pool pressure",
+            profile_support=admission_support,
+            correlated_reason=(
+                "Admission/pool pressure is correlated with query admission wait evidence; "
+                "treat it as pool runtime context and validate against pool limits and comparable reruns."
+            ),
+            context_reason=(
+                "Admission/pool pressure was observed, but the query did not expose matching admission wait evidence."
+            ),
+        ),
         signal_row(
             "host_cpu_pressure",
             title="Host CPU pressure",
@@ -2678,11 +2737,19 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
     )
 
     cpu_status = runtime_diagnosis_metric_status(analysis, "host_cpu_pressure")
+    admission_status = runtime_diagnosis_metric_status(analysis, "admission_pool_pressure")
     admission_wait_ms = numeric_context_value(analysis.get("cm_query_context") or {}, "admission_wait_ms")
     cpu_evidence = runtime_diagnosis_metric_evidence(analysis, "host_cpu_pressure")
+    cpu_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "admission_pool_pressure"))
     if admission_wait_ms is not None:
         cpu_evidence.append(f"admission_wait={fmt_duration(admission_wait_ms)}.")
-    if cpu_status == "correlated" or (admission_wait_ms is not None and admission_wait_ms >= 1000):
+    if admission_status == "correlated":
+        cpu_runtime_status = "plausible_follow_up"
+        cpu_runtime_interpretation = (
+            "Admission/pool pressure is a plausible follow-up hypothesis because pool metrics align with "
+            "query admission wait evidence. Confirm against pool limits, queue behavior, and comparable reruns."
+        )
+    elif cpu_status == "correlated" or (admission_wait_ms is not None and admission_wait_ms >= 1000):
         cpu_runtime_status = "plausible_follow_up"
         cpu_runtime_interpretation = (
             "CPU/admission runtime pressure is a plausible follow-up hypothesis only for the collected window; "
@@ -4293,6 +4360,7 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
         f"{facts['total_points']} points"
     )
     for key in (
+        "admission_pool_pressure",
         "host_cpu_pressure",
         "daemon_memory_growth",
         "daemon_memory_pressure",

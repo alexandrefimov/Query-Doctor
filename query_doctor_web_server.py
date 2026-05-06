@@ -3660,6 +3660,7 @@ def parse_table_metadata_context_facts(text: str) -> dict[str, Any] | None:
 
 
 CM_METRIC_SIGNAL_LABELS = {
+    "admission_pool_pressure": "Admission/pool pressure",
     "host_cpu_pressure": "Host CPU pressure",
     "daemon_memory_growth": "Daemon memory growth",
     "daemon_memory_pressure": "Daemon memory pressure",

@@ -63,7 +63,7 @@ METRIC_SIGNAL_CATALOG: tuple[MetricSignalSpec, ...] = (
         family="query_admission",
         label="Admission and pool pressure",
         scope=("pool", "cluster"),
-        implementation_status=PLANNED,
+        implementation_status=IMPLEMENTED,
         description="Pool queue, concurrency, memory/resource saturation, rejection, or timeout pressure.",
     ),
     MetricSignalSpec(
@@ -237,6 +237,24 @@ CM_TIMESERIES_MAPPINGS: tuple[CMTimeSeriesMapping, ...] = (
         query_id="impala_daemon_memory",
         label="Impala daemon memory pressure",
         tsquery="select mem_rss where roleType=IMPALAD",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="admission_pool_pressure",
+        query_id="impala_pool_queued_rate",
+        label="Impala admission queued rate",
+        tsquery="select impala_admission_controller_total_queued_rate",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="admission_pool_pressure",
+        query_id="impala_pool_rejected_rate",
+        label="Impala admission rejected rate",
+        tsquery="select impala_admission_controller_total_rejected_rate",
+    ),
+    CMTimeSeriesMapping(
+        signal_id="admission_pool_pressure",
+        query_id="impala_pool_timed_out_rate",
+        label="Impala admission timed-out rate",
+        tsquery="select impala_admission_controller_total_timed_out_rate",
     ),
     CMTimeSeriesMapping(
         signal_id="host_cpu_pressure",
