@@ -110,6 +110,15 @@ def test_web_demo_guide_renders_curated_russian_demo_page():
     assert "Profile signals" in body
     assert "Triage score" in body
     assert "Optimization candidates" in body
+    assert "Read-only benchmark evidence" in body
+    assert "246462725beeed0:506befef00000000" in body
+    assert "Optimized draft A" in body
+    assert "904fb4e008edb2e1:435ee57d00000000" in body
+    assert "Optimized draft B" in body
+    assert "c84ac4eb1f578be7:7a5f8e0b00000000" in body
+    assert "row_count=152" in body
+    assert "3e8bf93ce7579564" in body
+    assert "gpt55" not in body.lower()
     assert "Stats refresh candidates" in body
     assert "LLM boundaries" in body
     assert "Query LLM optimizer" in body

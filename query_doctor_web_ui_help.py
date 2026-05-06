@@ -162,6 +162,7 @@ def render_demo_guide_content() -> str:
 <li><a href="#demo-profile">Profile signals</a></li>
 <li><a href="#demo-triage">Triage score</a></li>
 <li><a href="#demo-optimization">Optimization candidates</a></li>
+<li><a href="#demo-benchmark">Read-only benchmark evidence</a></li>
 <li><a href="#demo-stats">Stats refresh candidates</a></li>
 <li><a href="#demo-llm">LLM boundaries</a></li>
 <li><a href="#demo-scenarios">Demo scenarios</a></li>
@@ -275,6 +276,30 @@ def render_demo_guide_content() -> str:
 <li><strong>Low</strong>: weak positive signal или expensive query без достаточного shape evidence.</li>
 <li><strong>Not likely</strong>: нет полезного deterministic optimization evidence.</li>
 </ul>
+
+<h2 id="demo-benchmark">Read-only benchmark evidence</h2>
+<p>Для demo можно показать explicit read-only проверку одного recipe-backed optimizer case. Исходный Query ID: <code>246462725beeed0:506befef00000000</code>. Два optimized drafts прошли deterministic validation как <code>post_union_aggregate_pushdown</code>: read-only scope, same physical tables, preserved filters/joins/projection shape and recipe invariants.</p>
+<p>Benchmark запускался вручную вне Query Doctor UI в порядке <code>original → optimized draft A → optimized draft B → optimized draft B → optimized draft A → original</code>, чтобы частично отделить cold/warm cache effect. Это demo evidence, а не statistical performance guarantee.</p>
+<table>
+<thead><tr><th>Run</th><th>Variant</th><th>Runtime</th><th>Query ID</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Original</td><td><code>216.024s</code></td><td><code>2d4d48b61060e46f:f7549a00000000</code></td></tr>
+<tr><td>2</td><td>Optimized draft A</td><td><code>34.764s</code></td><td><code>904fb4e008edb2e1:435ee57d00000000</code></td></tr>
+<tr><td>3</td><td>Optimized draft B</td><td><code>39.412s</code></td><td><code>844ca860ddfe259b:2da9048200000000</code></td></tr>
+<tr><td>4</td><td>Optimized draft B</td><td><code>27.453s</code></td><td><code>c84ac4eb1f578be7:7a5f8e0b00000000</code></td></tr>
+<tr><td>5</td><td>Optimized draft A</td><td><code>35.478s</code></td><td><code>8d40bd516d7f45a9:4bbacbb900000000</code></td></tr>
+<tr><td>6</td><td>Original</td><td><code>47.611s</code></td><td><code>8742e82981df22d3:9d3f93b900000000</code></td></tr>
+</tbody>
+</table>
+<p>Result validation для всех 6 runs совпала: <code>row_count=152</code>, row multiset fingerprint <code>3e8bf93ce7579564</code>. Для online проверки на demo можно взять любой Query ID из таблицы, открыть <strong>Specific Query</strong>, выполнить analysis и сравнить Score / Findings / Optimization candidate между original и optimized variants.</p>
+<table>
+<thead><tr><th>Variant</th><th>Observed runtimes</th><th>Average runtime</th><th>Result check</th></tr></thead>
+<tbody>
+<tr><td>Original</td><td><code>216.024s</code>, <code>47.611s</code></td><td><code>131.817s</code></td><td>same row count and fingerprint</td></tr>
+<tr><td>Optimized draft A</td><td><code>34.764s</code>, <code>35.478s</code></td><td><code>35.121s</code></td><td>same row count and fingerprint</td></tr>
+<tr><td>Optimized draft B</td><td><code>39.412s</code>, <code>27.453s</code></td><td><code>33.432s</code></td><td>same row count and fingerprint</td></tr>
+</tbody>
+</table>
 
 <h2 id="demo-stats">Stats refresh candidates</h2>
 <p><strong>Stats refresh candidates</strong> отвечают на вопрос: стоит ли проверять stats maintenance как possible speed-benefit action. Это не утверждение, что stats caused the slowdown.</p>
