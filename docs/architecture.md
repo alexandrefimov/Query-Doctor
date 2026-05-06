@@ -1,19 +1,22 @@
-# Архитектура Query Doctor
+# Query Doctor Architecture
 
-Query Doctor держит fact extraction детерминированным, а LLM использует только
-уже извлечённые факты для русскоязычной формулировки отчёта.
+Language: English | [Русский](i18n/ru/architecture.md)
+
+Query Doctor keeps fact extraction deterministic. LLMs may phrase the final
+Russian-language narrative only from facts that Python has already extracted and
+validated.
 
 ## Pipeline
 
 ```text
 Cloudera Manager profile / profile_digest.md
-  -> query_doctor_collect_cm_profiles.py
+  -> query-doctor-collect-cm-profiles
   -> ignored local case directory
-  -> analyze_profile_digest.py
+  -> query-doctor-analyze
   -> analysis_facts.md
   -> action cards and deterministic evidence
   -> optional Table Metadata Context from local impala_context.json
-  -> query_doctor_report.py
+  -> query-doctor-report
   -> sanitizer and fail-closed validator
   -> deterministic analyzer facts appendix
   -> trusted LLM report
@@ -25,147 +28,167 @@ Cloudera Manager 6.2.1 environment. Treat newer Cloudera Manager versions and
 non-Cloudera Impala deployments as future source-provider work, not as current
 support.
 
-## Компоненты
+## Components
 
-Collector:
-- Выполняет explicit, bounded, read-only сбор профилей из Cloudera Manager.
-- Требует redaction для real collection.
-- Сохраняет analyzer-useful counters и stable safe host aliases.
-- Пишет generated local cases только в ignored corpus paths.
-- Сам не запускает analyzer или report writer.
+### Collector
 
-Future collector source seam:
-- Keep profile acquisition behind a small source-provider contract: discover
-  query summaries, fetch one explicit profile, fetch safe query context, and
-  fetch bounded runtime metrics if available.
-- Current provider: Cloudera Manager API, tested against CM 6.2.1 behavior.
-- Planned CM-version seam: isolate endpoint paths, response parsing, query
-  state normalization, and time-series tsquery allowlists so newer CM versions
-  can be added with fixtures and safety tests instead of changing analyzer/UI
+The collector:
+
+- performs explicit, bounded, read-only profile collection from Cloudera
+  Manager;
+- requires redaction for real collection;
+- keeps analyzer-useful counters and stable safe host aliases;
+- writes generated local cases only under ignored corpus/output paths;
+- does not run the analyzer or report writer.
+
+Future profile acquisition should stay behind a small source-provider contract:
+discover query summaries, fetch one explicit profile, fetch safe query context,
+and fetch bounded runtime metrics when available.
+
+Current provider support:
+
+- Cloudera Manager API, tested against CM 6.2.1 behavior.
+
+Planned provider seams:
+
+- CM-version seam: isolate endpoint paths, response parsing, query-state
+  normalization, and time-series tsquery allowlists so newer CM versions can be
+  added with fixtures and safety tests instead of changing analyzer/UI
   contracts.
-- Planned non-CM Impala seam: collect profiles directly from Impala daemon
-  debug/profile endpoints for clusters without Cloudera Manager. This must stay
-  explicit, bounded, read-only, redacted, and single-query oriented before any
-  batch workflow uses it.
-- Planned metrics seam: keep metrics source separate from profile source.
-  Cloudera Manager time-series is the current implementation; Prometheus is the
-  likely future metrics provider for non-CM clusters. Prometheus integration
-  needs a bounded query allowlist, fixed time windows, response-size limits, and
+- Non-CM Impala seam: collect profiles directly from Impala daemon debug/profile
+  endpoints for clusters without Cloudera Manager. This must stay explicit,
+  bounded, read-only, redacted, and single-query oriented before any batch
+  workflow uses it.
+- Metrics seam: keep metrics source separate from profile source. Cloudera
+  Manager time-series is the current implementation; Prometheus is the likely
+  future metrics provider for non-CM clusters. Prometheus integration needs a
+  bounded query allowlist, fixed time windows, response-size limits, and
   summarized facts only.
 
-Future diagnostic signal seam:
-- Treat profiles, metadata, metrics, and logs as separate diagnostic signal
-  families. Each family can have its own source providers and deterministic
-  analyzer before facts enter the shared report contract.
+### Diagnostic Signal Seam
+
+Profiles, metadata, metrics, and logs are separate diagnostic signal families.
+Each family can have its own source providers and deterministic analyzer before
+facts enter the shared report contract.
+
 - Profile analyzer: implemented today for Impala runtime profiles.
+- Metadata analyzer: implemented through bounded Impala metadata context.
 - Metrics analyzer: partially started through bounded CM time-series summaries;
   future providers may read pre-aggregated metrics from CM/Prometheus or compute
   safe aggregates locally from bounded raw responses.
 - Log analyzer: planned only. It should prefer prepared log indexes or
-  structured log stores when available, and fall back to bounded local parsing
-  only with explicit allowlists, time windows, redaction and tests.
-- Cross-signal correlation belongs in Python-owned facts, not in LLM invention.
-  The LLM may phrase a complex report only after the profile, metrics, logs and
-  metadata analyzers publish normalized facts with confidence/status fields.
-- The same seam can later apply beyond Impala: other tools or a Hadoop cluster
-  as a whole may provide profile-like events, metrics, logs and metadata. That
-  is future architecture work, not current support.
+  structured log stores when available and fall back to bounded local parsing
+  only with explicit allowlists, time windows, redaction, and tests.
 
-Analyzer:
-- Читает `profile_digest.md`.
-- Извлекает deterministic facts в `analysis_facts.md`.
-- Пишет operator summaries, anomaly counts, action cards, backend/host evidence,
-  referenced tables и optional table metadata facts, если они есть.
-- Читает local `impala_context.json`, если он есть, и добавляет
-  `## Table Metadata Context`.
-- Future analyzers may add safe metrics/log/cluster facts, but only after their
-  source providers have bounded collection contracts and tests.
-- Не вызывает Cloudera Manager, Ollama или report writer.
+Cross-signal correlation belongs in Python-owned facts, not in LLM inference.
+The LLM may phrase a complex report only after profile, metrics, logs, and
+metadata analyzers publish normalized facts with confidence/status fields.
 
-Report writer:
-- Читает только `analysis_facts.md`.
-- Использует LLM для narrative wording, не для fact discovery.
-- Не должен делать inference из raw profile text, SQL, local config или external
-  context.
-- May eventually render a multi-signal diagnosis, but only from normalized
-  Python-owned facts produced by profile, metadata, metrics and log analyzers.
-- Генерирует trusted LLM report с одной fact boundary.
-- Требует user-facing narrative sections `## Краткий вывод`,
-  `## Практические рекомендации`, `## Подробный разбор` и
-  `## Админские проверки`.
-- Детерминированно добавляет `## Факты анализатора` из `analysis_facts.md`; LLM
-  не должен писать эту appendix-секцию.
-- Сейчас намеренно исключает `## Table Metadata Context` и
-  `## CM Time-Series Context` из prompt LLM.
-- Передает LLM curated metadata digest и нормализованные `## CM Metrics Facts`;
-  детальные context-секции остаются только в Python-generated
-  `## Факты анализатора`.
-- Буферизует raw LLM output. Финальный report пишется только после
-  normalization, sanitization, narrative validation, appendix append и final
-  validation.
+Future Cluster Doctor work should follow
+[cluster-doctor-contract.md](cluster-doctor-contract.md): keep it as a separate
+explicit user-run read-only cluster/service/workload-window diagnostic seam, and
+let Query Doctor consume only normalized Python-owned context or deterministic
+correlation facts.
 
-Sanitizer и validator:
-- Нормализуют узкий набор unsafe generated wording в явную safe wording.
-- Отклоняют reports с unsupported claims.
-- Работают fail-closed: rejected report безопаснее, чем accepted invented
-  evidence.
-- При validation failure пишут только sanitized/normalized `.partial` и
-  сохраняют существующий final report.
+### Analyzer
 
-Optimizer draft generator:
-- `query_doctor_optimize_query.py` читает только server-owned analyzed case
-  inputs.
-- Может использовать read-only SELECT/WITH source или SELECT/WITH payload,
-  извлечённый из supported INSERT/CTAS source.
-- Использует LLM для wording/SQL draft generation, но Python validator owns
-  trust.
-- Не выполняет SQL.
-- Пишет validated draft только после read-only SQL validation и result-shape
-  checks: физические таблицы, filter scope, projection, DISTINCT, top-level
-  GROUP/ORDER/set operations, CTE names и top-level join shape.
-- Классифицирует риск rewrite как `rewrite_allowed`,
-  `conservative_rewrite` или `recommendations_only`; conservative mode
-  удерживает CTE/JOIN/projection/filter shape и использует более строгие prompt
-  constraints.
-- Может выдавать trusted non-SQL outcomes: deterministic recommendations-only
-  или `no_rewrite`, если Python не может доверенно принять SQL draft или draft
-  не меняет запрос materially.
-- После LLM optimizer validation failure Details UI также может принять внешний
-  rewritten SQL для bounded in-memory validation against the server-owned
-  source; pasted SQL не выполняется, не сохраняется raw artifact и не echo-ится
-  обратно в browser output.
-- Marker содержит safe status fields such as `source_scope`, `risk_mode` and
-  `risk_reasons`; browser UI must not expose raw SQL or artifact filenames.
-- Partial drafts untrusted and hidden from browser-visible details.
+The analyzer:
 
-Local UI:
-- Показывает локальные workflows: Finished Queries, Running Queries, Specific
-  Query, details pages and Query Optimizer.
-- Finished Queries discovers CM summaries first, collects bounded selected
-  profiles, ranks deterministically and leaves report/optimizer generation
-  explicit per case.
-- Running Queries uses the same result shape for currently running queries.
-- Specific Query analyzes one known Query ID without automatic LLM and appends
-  results to its table.
-- Query Optimizer parses one safe SELECT/WITH statement locally, does not execute
-  pasted SQL and does not render it back after submit.
-- Не является источником фактов.
-- Не включает broad unsafe collection or automatic web LLM batch reports.
+- reads `profile_digest.md`;
+- extracts deterministic facts into `analysis_facts.md`;
+- writes operator summaries, anomaly counts, action cards, backend/host
+  evidence, referenced tables, and optional table metadata facts when present;
+- reads local `impala_context.json` when present and adds
+  `## Table Metadata Context`;
+- may later add safe metrics/log/cluster facts only after source providers have
+  bounded collection contracts and tests;
+- does not call Cloudera Manager, Ollama, or the report writer.
 
-See [roadmap.md](roadmap.md) for planned UI cleanup and the multi-engine
-architecture direction. The current implementation remains Impala-only.
+### Report Writer
 
-## Текущее real-case покрытие
+The report writer:
 
-Локальный ignored corpus и recent real-case checks покрывают важные классы:
+- reads only `analysis_facts.md`;
+- uses an LLM for narrative wording, not fact discovery;
+- must not infer facts from raw profile text, SQL, local config, or external
+  context;
+- may eventually render a multi-signal diagnosis, but only from normalized
+  Python-owned facts produced by profile, metadata, metrics, and log analyzers;
+- generates trusted LLM reports within one fact boundary;
+- requires user-facing narrative sections `## Краткий вывод`,
+  `## Практические рекомендации`, `## Подробный разбор`, and
+  `### Follow-up checks`;
+- deterministically appends `## Факты анализатора` from `analysis_facts.md`;
+- excludes `## Table Metadata Context` and `## CM Time-Series Context` from the
+  LLM prompt today;
+- passes only curated metadata digest and normalized `## CM Metrics Facts` to
+  the LLM;
+- buffers raw LLM output and writes final reports only after normalization,
+  sanitization, narrative validation, appendix append, and final validation.
 
-- `e94fbeb93feb2ad1_edd9d52c00000000`: host/backend data-skew evidence без
-  доказанного execution-tail host.
-- `fa469f95f6fb7286_ea9f070d00000000`: bad-query case с подтверждёнными
-  row/cardinality и memory estimate anomalies.
-- Details-page optimizer smoke now covers read-only SELECT/WITH sources,
+### Sanitizer And Validator
+
+The sanitizer and validator:
+
+- normalize a narrow set of unsafe generated wording into explicit safe wording;
+- reject reports with unsupported claims;
+- fail closed: a rejected report is safer than accepted invented evidence;
+- write only sanitized/normalized `.partial` output on validation failure and
+  preserve the existing final report.
+
+### Optimizer Draft Generator
+
+The details-page optimizer:
+
+- reads only server-owned analyzed case inputs;
+- may use a read-only SELECT/WITH source or a SELECT/WITH payload extracted from
+  supported INSERT/CTAS sources;
+- uses the LLM for wording or SQL draft generation, while Python owns trust;
+- never executes SQL;
+- writes a validated draft only after read-only SQL validation and result-shape
+  checks over physical tables, filter scope, projection, DISTINCT, top-level
+  GROUP/ORDER/set operations, CTE names, and top-level join shape;
+- classifies rewrite risk as `rewrite_allowed`, `conservative_rewrite`, or
+  `recommendations_only`;
+- may emit trusted non-SQL outcomes such as deterministic recommendations-only
+  or `no_rewrite` when Python cannot trust a SQL draft or the draft has no
+  material change;
+- may expose external rewrite validation only after an LLM optimizer validation
+  failure, and only as bounded in-memory validation against the server-owned
+  source;
+- keeps partial drafts untrusted and hidden from browser-visible details.
+
+### Local UI
+
+The local UI:
+
+- exposes Finished Queries, Running Queries, Specific Query, details pages, and
+  Query Optimizer workflows;
+- discovers CM summaries first for Finished Queries, then collects bounded
+  selected profiles, ranks deterministically, and leaves report/optimizer
+  generation explicit per case;
+- uses the same result shape for Running Queries;
+- analyzes one known Query ID for Specific Query without automatic LLM and
+  appends results to its table;
+- parses one safe SELECT/WITH statement locally for Query Optimizer, does not
+  execute pasted SQL, and does not render it back after submit;
+- is not a source of facts;
+- does not include broad unsafe collection or automatic web LLM batch reports.
+
+See [roadmap.md](roadmap.md) for planned UI cleanup and architecture direction.
+The current implementation remains Impala-only.
+
+## Real-Case Coverage
+
+Ignored local corpus and recent real-case checks cover important classes:
+
+- `e94fbeb93feb2ad1_edd9d52c00000000`: host/backend data-skew evidence without
+  proven execution-tail host.
+- `fa469f95f6fb7286_ea9f070d00000000`: bad-query case with supported
+  row/cardinality and memory estimate anomalies.
+- Details-page optimizer smoke covers read-only SELECT/WITH sources,
   SELECT/WITH payload extraction from supported DML/CTAS, conservative rewrite
-  mode and validation rejection for unsafe result-shape changes.
+  mode, and validation rejection for unsafe result-shape changes.
 
-Не добавляйте в committed docs raw SQL, raw hostnames, raw IP addresses, raw
-profiles, local config или credentials.
+Do not add raw SQL, raw hostnames, raw IP addresses, raw profiles, local config,
+or credentials to committed docs.

@@ -113,8 +113,8 @@ Near term:
 
 Mid term:
 
-- Split `query_doctor_web_server.py` into smaller route/service modules where it
-  reduces safety review cost.
+- Continue splitting large package web modules into smaller route/job/presenter
+  modules where it reduces safety review cost.
 - Add an Impala source-provider seam so CM API collection, future direct Impala
   daemon profile collection and future Prometheus metrics can evolve without
   changing analyzer/report/browser safety contracts.
@@ -154,7 +154,7 @@ Current docs to treat as active guidance:
 - `README.md`
 - `docs/roadmap.md`
 - `docs/architecture.md`
-- Russian Help page in `query_doctor_web_ui_help.py`
+- Russian Help page in `query_doctor.web.ui.help`
 
 Historical design notes and prototype docs are useful context, but they are not
 the current safety contract unless the active docs above say so.

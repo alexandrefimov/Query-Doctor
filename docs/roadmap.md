@@ -24,6 +24,10 @@ workflows already work.
 - Specific Query deterministic analysis for one known Query ID.
 - Details pages with explicit LLM Report and Query LLM optimizer actions.
 - Query Optimizer for pasted SQL review.
+- CM Events has a small read-only CLI MVP and can emit a schema-versioned,
+  raw-free `cluster_event_context.json` artifact plus an aggregate
+  `cluster_context.json` artifact for the future Cluster Doctor contract. This
+  is not yet a Cluster Doctor web workflow or report path.
 
 ## Safety baseline
 
@@ -157,10 +161,9 @@ Important:
 
 Can wait:
 
-- Mechanical web server split after the safety items above: routes, job
-  orchestration, command construction, case resolution and trusted-artifact
-  loading should move out of `query_doctor_web_server.py` in behavior-preserving
-  steps.
+- Mechanical web split after the safety items above: routes, job orchestration,
+  command construction, case resolution and trusted-artifact loading should keep
+  moving out of large package modules in behavior-preserving steps.
 - Mechanical report split after validator wording stabilizes: extract report
   sanitizer/validator and claim normalizers into a focused module without
   changing trusted-report semantics.
@@ -247,6 +250,11 @@ Maintainability and future seams:
 - Web server split: after the safety-critical items above, continue the
   mechanical split of routing, job orchestration, command construction,
   case-resolution and trusted-artifact loading out of the monolithic web server.
+- Production web serving and AD auth: before any shared/team deployment, choose
+  a production-grade web serving model instead of the current local development
+  server, and add Active Directory authentication/authorization. Keep the
+  no-auth localhost mode explicitly limited to local development and demo use,
+  and preserve the browser safety contract for every authenticated route.
 - Host alias consistency: decide whether profile and metadata artifacts need a
   shared host-alias map for cross-artifact diagnostics; if yes, share the
   redactor within one collected case without weakening host redaction defaults.
@@ -313,14 +321,18 @@ that can combine profiles, metrics, logs and metadata without weakening the
 fact boundary.
 
 The current cluster-metrics audit and phased implementation plan live in
-`docs/cluster-metrics-roadmap-audit.md`.
+`docs/cluster-metrics-roadmap-audit.md`. The future Cluster Doctor product
+boundary and provider/signal contract live in
+`docs/cluster-doctor-contract.md`.
 
 Current signal families:
 
 - Profile facts: implemented for Apache Impala runtime profiles.
 - Metadata facts: implemented through a narrow read-only Impala allowlist.
 - Metrics facts: started through bounded CM time-series summaries.
-- Log facts: not implemented.
+- Log/event facts: started through a bounded CM Events summary CLI. Browser UI,
+  Cluster Doctor routes, report integration and non-CM event providers are not
+  implemented.
 
 Planned analyzer seams:
 
@@ -328,10 +340,15 @@ Planned analyzer seams:
   time-series or Prometheus, and summarize fixed windows into Python-owned
   facts: availability, coverage, peaks, trends, pressure indicators and
   limitations.
-- Log analyzer: consume prepared log indexes or structured log stores where
-  possible, with fallback bounded parsing only after a safety design. It should
-  extract event counts, error categories, affected components, time alignment
-  and limitations, not raw log lines.
+- Log/event analyzer: consume prepared event indexes or structured log stores
+  where possible. The preferred first source for CM-based Hadoop deployments is
+  CM events and health alerts; the current CLI slice normalizes bounded CM
+  Events responses into safe counts and signal ids only. OpenSearch/
+  Elasticsearch-style ingest pipelines, Loki/Grafana rules or Alertmanager, and
+  Splunk saved searches/summarized indexes are later adapters when those systems
+  already own log preparation. It should extract event counts, severity,
+  normalized categories, affected safe scopes, trend, time alignment and
+  limitations, not raw log lines.
 - Correlation layer: combine profile, metrics, logs and metadata facts into
   explicit supported/unknown/not-observed statements. This layer must avoid
   claiming root cause unless facts directly support it.
@@ -343,6 +360,8 @@ Possible future scopes:
 
 - query-level Impala diagnostics
 - Impala service or daemon diagnostics
+- Cluster Doctor as a separate explicit user-run read-only diagnostic cockpit
+  for cluster/service/workload windows
 - other Hadoop ecosystem services
 - Hadoop cluster-level incident diagnostics
 - other SQL engines after engine-specific safety contracts exist
@@ -350,10 +369,18 @@ Possible future scopes:
 Non-goals until contracts exist:
 
 - arbitrary log search from the UI
+- broad raw-log parsing inside Cluster Doctor
 - arbitrary PromQL or metric names from users
 - broad log/profile scraping
 - LLM-driven fact discovery
 - cluster-wide root-cause claims without deterministic evidence
+
+Cluster Doctor is the intended future seam for manual cluster-window
+diagnostics, but it is not current product support. The target experience is a
+smart read-only cluster manager: users can check current cluster state, pressure,
+degraded-service candidates, limitations and next checks without service-control
+or configuration actions. Query Doctor may consume future Cluster Doctor output
+only as normalized Python-owned context or deterministic correlation facts.
 
 ## Analytical quality roadmap
 
@@ -572,19 +599,22 @@ Planned direction:
 - do not create placeholder modules merely because they appear in the target
   architecture. Add package directories and module files only when the current
   slice uses them or needs them as an import/package boundary.
+- `docs/root-compatibility-audit.md` records the completed root-script removal
+  and the supported package command/import mappings.
 
 Priority split candidates:
 
-- `analyze_profile_digest.py`: split profile parsing, findings, backend-tail
-  analysis, metrics correlation, and facts rendering;
-- `query_doctor_web_server.py`: split app assembly, routes, job orchestration,
-  command builders, trusted artifact loading, and case resolution. The future
+- `query_doctor.analyzer.*`: keep splitting profile parsing, findings,
+  backend-tail analysis, metrics correlation, and facts rendering when behavior
+  work needs it;
+- `query_doctor.web.*`: split app assembly, routes, job orchestration, command
+  builders, trusted artifact loading, and case resolution. The future
   `query_doctor/web/app.py` should register routes only, not contain heavy
   workflow logic;
-- `query_doctor_report.py`: split prompt contract, report sanitizer,
+- `query_doctor.cli.report`: split prompt contract, report sanitizer,
   validation, recommendation candidates, trusted-report rendering, and streaming
   client code;
-- `query_doctor_collect_cm_profiles.py`: split CM HTTP/provider code, query
+- `query_doctor.cli.collect_cm_profiles`: split CM HTTP/provider code, query
   discovery, profile collection, time-series collection, redaction, and writing;
 - Impala metadata modules: split shell/protocol execution, Kerberos/cache
   handling, metadata allowlist, workflow orchestration, digesting and analyzer
@@ -633,7 +663,8 @@ Important first-pass omissions:
 
 Suggested migration slices:
 
-1. Quarantine legacy root prototypes under `legacy/`.
+1. Remove legacy root prototypes from the public main branch after the initial
+   quarantine/review step.
 2. Add the minimal root-level package skeleton `query_doctor/` and compatibility
    contract only. Create only the package directories and `__init__.py` files
    needed to establish the boundary; do not create placeholder implementation
@@ -705,9 +736,10 @@ Non-goals for this track:
   recipe updates, local models can produce trusted outcomes, but trusted SQL
   draft coverage remains narrow. Replacement model selection must use optimizer
   bake-off metrics, not report-writer pass-rate.
-- Legacy executable prototypes have been moved out of the active root into
-  `legacy/`; if they remain runnable long term, they should gain an explicit
-  unsafe acknowledgement flag.
+- Legacy executable prototypes have been removed from the public main branch
+  after quarantine/review; if any prototype returns long term, it should live
+  under an explicit experimental namespace and require an unsafe acknowledgement
+  flag.
 - Browser model-name redaction should be broadened for the current local
   optimizer bake-off set.
 - Batch and pipeline subprocess stages need explicit timeouts.

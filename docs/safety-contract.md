@@ -1,42 +1,46 @@
-# Контракт безопасности Query Doctor
+# Query Doctor Safety Contract
 
-Примечание: этот файл содержит обязательные safety rules; точные phrases вроде
-`Do not weaken validators` и технические термины местами намеренно оставлены на
-английском для точности исполнения.
+Language: English | [Русский](i18n/ru/safety-contract.md)
 
-## Граница фактов
+This file contains mandatory safety rules. Exact phrases such as `Do not weaken
+validators` are intentionally kept precise because they define review and
+implementation boundaries.
 
-- Python отвечает за факты.
-- LLM отвечает только за wording.
-- Любой диагностический claim должен соответствовать `supported`,
-  `not_observed` или `unknown` evidence в `analysis_facts.md`.
-- Не заявляйте root cause, если `analysis_facts.md` прямо не поддерживает эту
-  причину.
-- Report writer не должен делать inference из raw profile text, SQL, CM JSON,
-  local config или external knowledge.
+## Fact Boundary
 
-## Граница collection
+- Python owns facts.
+- The LLM owns wording only.
+- Every diagnostic claim must map to `supported`, `not_observed`, or `unknown`
+  evidence in `analysis_facts.md`.
+- Do not state root cause unless `analysis_facts.md` directly supports that
+  cause.
+- The report writer must not infer facts from raw profile text, SQL, Cloudera
+  Manager JSON, local config, or external knowledge.
 
-- Broad cluster/profile/table scanning по умолчанию запрещён.
+## Collection Boundary
+
+- Broad cluster, profile, or table scanning is disabled by default.
 - External collection must be explicit, bounded, read-only, redacted, and safe
   by default.
-- Dry-run и preflight paths не должны собирать profile text.
-- Real profile collection не должен печатать raw profiles, SQL, raw CM JSON или
+- Dry-run and preflight paths must not collect profile text.
+- Real profile collection must not print raw profiles, SQL, raw CM JSON, or
   credentials.
-- Первый поддержанный real Impala metadata connection path - Kerberos плюс
-  `impala-shell` с уже полученным TGT от `kinit`.
-- Metadata collector не вызывает `kinit`, не prompt'ит passwords, не принимает
-  AD/LDAP passwords и не использует impyla/Python DB API.
-- Metadata collector принимает только explicit table names и read-only
-  statements `SHOW CREATE TABLE`, `SHOW TABLE STATS`, `SHOW COLUMN STATS`.
-- Raw `impala-shell` stdout/stderr не печатается в terminal; collected output
-  bounded, redacted и пишется только под explicit `--out`.
+- The first supported real Impala metadata connection path is Kerberos plus
+  `impala-shell` with an already available TGT from `kinit`.
+- The metadata collector does not call `kinit`, does not prompt for passwords,
+  does not accept AD/LDAP passwords, and does not use impyla or a Python DB API.
+- The metadata collector accepts only explicit table names and read-only
+  statements: `SHOW CREATE TABLE`, `SHOW TABLE STATS`, and
+  `SHOW COLUMN STATS`.
+- Raw `impala-shell` stdout/stderr must not be printed to the terminal.
+  Collected output is bounded, redacted, and written only under explicit
+  `--out`.
 - Generated `impala_context.md` and `impala_context.json` are local outputs and
   must not be committed.
 
-## Git boundary
+## Git Boundary
 
-Generated/sensitive/local outputs must not be committed:
+Generated, sensitive, or local outputs must not be committed:
 
 - `cases/cm-corpus/`
 - `cases/cm-corpus-hostalias/`
@@ -47,36 +51,38 @@ Generated/sensitive/local outputs must not be committed:
 - real CM profile material
 - `impala_context.md` / `impala_context.json`
 
-Никогда не коммитьте raw hostnames, IPs, users, emails, tokens, cookies,
+Never commit raw hostnames, IP addresses, users, emails, tokens, cookies,
 passwords, Authorization headers, embedded URL credentials, local config
-contents или real production profile text.
+contents, or real production profile text.
 
-## Report validation
+## Report Validation
 
-- Validators работают fail-closed.
+- Validators are fail-closed.
 - Do not weaken validators to make reports pass.
-- Если report rejected, уточняйте deterministic facts, prompt wording,
-  sanitizer behavior или tests.
-- Новые validator rules должны иметь unsafe-rejected и safe-allowed tests.
-- Deterministic normalization не должна silently hide unsupported claims.
-- Safe replacements должны быть explicit, narrow и tested.
-- Raw LLM output буферизуется и не должен stream'иться в stdout/stderr или
+- If a report is rejected, improve deterministic facts, prompt wording,
+  sanitizer behavior, or tests.
+- New validator rules must include unsafe-rejected and safe-allowed tests.
+- Deterministic normalization must not silently hide unsupported claims.
+- Safe replacements must be explicit, narrow, and tested.
+- Raw LLM output is buffered and must not stream to stdout/stderr or
   user-facing UI.
-- Final report files пишутся только после normalization, sanitization,
-  validation, deterministic appendix append и final validation.
-- Validation failure пишет sanitized/normalized `.partial` и сохраняет
-  существующий final report.
+- Final report files are written only after normalization, sanitization,
+  validation, deterministic appendix append, and final validation.
+- Validation failure writes only a sanitized/normalized `.partial` and preserves
+  the existing final report.
 - Trusted final reports must not contain raw SQL-like text, SQL fenced code
-  blocks, pasted query fragments or raw metadata command snippets such as table-
-  specific `SHOW CREATE TABLE` / `SHOW TABLE STATS` / `SHOW COLUMN STATS`.
-- Partial or invalid report output is untrusted and must not be displayed as the
-  final diagnosis.
+  blocks, pasted query fragments, or raw metadata command snippets such as
+  table-specific `SHOW CREATE TABLE`, `SHOW TABLE STATS`, or
+  `SHOW COLUMN STATS`.
+- Partial or invalid report output is untrusted and must not be displayed as
+  the final diagnosis.
 
-## Browser display boundary
+## Browser Display Boundary
 
 - Browser-visible UI must not render raw SQL, raw profiles, raw metadata,
   stdout/stderr, local paths, `case_dir`, credentials, secret values, Kerberos
-  ticket contents, metadata connection details, model names or Ollama internals.
+  ticket contents, metadata connection details, model names, or Ollama
+  internals.
 - Dynamic browser-visible text should use the shared browser display redaction
   policy before rendering.
 - Web Recent scan must not auto-run LLM reports; validated report generation is
@@ -86,26 +92,63 @@ contents или real production profile text.
   rewrite validation categories, and safe status fields. Partial drafts, raw
   source SQL, and externally pasted SQL stay hidden.
 
-## Report structure
+## Future Cluster Doctor
 
-LLM пишет user-facing narrative sections:
+- Cluster Doctor is a future explicit user-run cluster/service/workload
+  diagnostic seam, not current product support.
+- Query Doctor may consume future Cluster Doctor output only as normalized
+  Python-owned facts with status, scope, coverage, confidence, limitations, and
+  deterministic correlation.
+- Cluster Doctor must stay read-only: it may recommend checks or operational
+  follow-up, but must not execute service control, configuration changes, data
+  changes, or remediation automation.
+- Future providers such as Cloudera Manager, Prometheus, prepared metric stores,
+  or log/event stores must be explicit, bounded, read-only, allowlisted,
+  redacted, and tested before their facts enter reports or browser UI.
+- Future log/event support must consume prepared event summaries only. Raw log
+  lines, stack traces, raw alert text, principals, usernames, query text, and
+  raw parser payloads must not enter browser-visible UI, trusted reports, or LLM
+  prompts.
+- The CM Events MVP CLI is read-only and bounded. It may print normalized event
+  counts, severities, and signal ids, but must not print raw CM event payloads,
+  raw log lines, event ids, hostnames, principals, paths, query text, or raw
+  provider JSON.
+- `cluster_event_context.json` is a schema-versioned internal Cluster Doctor
+  seam artifact built only from normalized CM event summaries. It must whitelist
+  exported fields and omit raw provider payloads, raw log lines, event ids,
+  hostnames, principals, paths, query text, URLs, local paths, secrets, command
+  output, model/runtime names, and raw artifact filenames.
+- `cluster_context.json` is a schema-versioned aggregate Cluster Doctor seam
+  artifact built only from safe context artifacts. It may include source status,
+  product status, normalized signal counts, limitations, and next checks, but
+  it must not include raw provider payloads or browser-forbidden details.
+- Raw metric series, raw logs, raw provider JSON, raw alert text, raw
+  timestamps, hostnames, entity IDs, URLs, paths, credentials, artifact names,
+  command-stream details, model names, and runtime internals must not be
+  rendered in trusted reports or browser-visible UI.
+- Cluster-wide root-cause or incident claims require their own deterministic
+  claim registry, fixtures, report validation, and browser safety tests.
+
+## Report Structure
+
+The LLM writes these user-facing narrative sections:
 
 - `## Краткий вывод`
 - `## Практические рекомендации`
 - `## Подробный разбор`
 - `### Follow-up checks`
 
-Python добавляет:
+Python appends:
 
 - `## Факты анализатора`
 
-Analyzer facts appendix детерминированно строится из `analysis_facts.md`. LLM не
-должен писать или reinterpret эту секцию.
+The analyzer facts appendix is built deterministically from `analysis_facts.md`.
+The LLM must not write or reinterpret that section.
 
-`## Table Metadata Context` сейчас исключён из prompt LLM и появляется только в
-Python-generated appendix.
+`## Table Metadata Context` is currently excluded from the LLM prompt and
+appears only in the Python-generated appendix.
 
-## Query LLM optimizer
+## Query LLM Optimizer
 
 - Pasted-SQL Query Optimizer accepts only one safe SELECT/WITH statement and
   must not execute or echo pasted SQL after submit.
@@ -121,15 +164,15 @@ Python-generated appendix.
   statement. If no useful rewrite is validated, the trusted optimizer output may
   be a safe recommendations-only/no-rewrite outcome instead of SQL.
 - Python validation owns trust: physical tables, filters, projection, DISTINCT,
-  top-level GROUP/ORDER/set operations, CTE shape and top-level JOIN shape must
+  top-level GROUP/ORDER/set operations, CTE shape, and top-level JOIN shape must
   remain within validated scope.
 - Prompt constraints are not enough for safety. High-risk cases should fall back
   to safe recommendations instead of accepting an unsafe SQL draft, and
   no-benefit drafts should not be presented as optimized SQL.
 
-## Claim discipline
+## Claim Discipline
 
-Держите эти категории отдельно:
+Keep these categories separate:
 
 - backend data skew
 - execution skew
@@ -139,19 +182,20 @@ Python-generated appendix.
 - diagnostic recommendation
 - proven cause
 
-Правила:
+Rules:
 
-- Backend data skew означает, что parsed backend rows/records распределены
-  неравномерно. Это само по себе не доказывает stale stats, cardinality
-  underestimation, hot keys или один slow host.
-- Execution skew требует parsed evidence, что backend/host медленнее peers.
-- Write-path anomaly можно проверять, когда он `unknown`, но нельзя заявлять как
-  proven cause.
-- Row/cardinality underestimation требует actual rows больше estimated rows или
-  ratio выше `1`.
-- Memory underestimation требует actual/peak memory больше estimated memory или
-  ratio выше `1`.
-- Operator/profile counter time не равен query wall-clock duration, если
-  `analysis_facts.md` явно не содержит wall-clock evidence.
+- Backend data skew means parsed backend rows/records are unevenly distributed.
+  It does not prove stale stats, cardinality underestimation, hot keys, or one
+  slow host by itself.
+- Execution skew requires parsed evidence that a backend or host is slower than
+  peers.
+- Write-path anomaly can be checked when it is `unknown`, but must not be stated
+  as a proven cause.
+- Row/cardinality underestimation requires actual rows greater than estimated
+  rows or a ratio above `1`.
+- Memory underestimation requires actual/peak memory greater than estimated
+  memory or a ratio above `1`.
+- Operator/profile counter time is not query wall-clock duration unless
+  `analysis_facts.md` explicitly contains wall-clock evidence.
 
-Если сомневаетесь, пишите, что evidence missing.
+When in doubt, say evidence is missing.

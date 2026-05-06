@@ -1,0 +1,104 @@
+# Query Doctor Documentation
+
+Language: English | [Русский](i18n/ru/README.md)
+
+This directory contains both current user/developer documentation and internal
+engineering history. The files below are grouped by intended audience so public
+readers do not need to infer which documents are active.
+
+## Language Policy
+
+English is the canonical language for public documentation. New public-facing
+docs should be English-first. Russian may be added as a localized companion
+under `docs/i18n/ru/` for long operator-facing or demo-oriented text, but it
+should link back to the canonical English source.
+
+Historical and internal documents may still contain Russian while they are being
+cleaned up. Treat the README, this index, safety contract, architecture docs and
+roadmap as the current public baseline.
+
+## Start Here
+
+- [../README.md](../README.md): concise project overview, install, workflows,
+  safety model, and current public status.
+- [local-smoke.md](local-smoke.md): local validation workflows and smoke checks
+  ([Русский](i18n/ru/local-smoke.md)).
+- [credentials.md](credentials.md): local credential layout and secret handling
+  ([Русский](i18n/ru/credentials.md)).
+- [demo-preflight.md](demo-preflight.md): deterministic demo/release preflight.
+- [security-model.md](security-model.md): public security and privacy overview.
+
+## Licensing
+
+- [../LICENSE](../LICENSE): public `AGPL-3.0-or-later` license.
+- [../COMMERCIAL-LICENSE.md](../COMMERCIAL-LICENSE.md): commercial licensing
+  note for proprietary, hosted, embedded, or enterprise use cases.
+- [../CONTRIBUTING.md](../CONTRIBUTING.md): contribution rules, including the
+  dual-licensing contribution model.
+
+## Architecture And Safety
+
+- [architecture.md](architecture.md): current component boundaries
+  ([Русский](i18n/ru/architecture.md)).
+- [contributor-architecture.md](contributor-architecture.md): contributor map
+  for collectors, analyzer, report writer, optimizer, web UI, and trusted
+  artifacts.
+- [safety-contract.md](safety-contract.md): mandatory trust and redaction rules
+  ([Русский](i18n/ru/safety-contract.md)).
+- [roadmap.md](roadmap.md): implemented scope, near-term work, and future seams.
+- [query-optimizer-contract.md](query-optimizer-contract.md): Query Optimizer
+  and details-page LLM optimizer trust boundary.
+- [cluster-doctor-contract.md](cluster-doctor-contract.md): future Cluster
+  Doctor architecture seam and raw-free context artifacts.
+
+## Operations And Demo Guides
+
+- [DEMO.md](DEMO.md): current web demo notes and talk track
+  ([Русский](i18n/ru/DEMO.md)).
+- [demo-mode.md](demo-mode.md): synthetic demo pack generation.
+- [demo-cases.md](demo-cases.md): demo case notes.
+- [demo-data-engineer-brief.md](demo-data-engineer-brief.md): deeper demo brief
+  for data engineers.
+- [model-bakeoff.md](model-bakeoff.md): local model compatibility and bake-off
+  notes ([Русский](i18n/ru/model-bakeoff.md)).
+
+## Collector And Metrics Design
+
+- [CM_COLLECTION_ENABLEMENT_PLAN.md](CM_COLLECTION_ENABLEMENT_PLAN.md):
+  Cloudera Manager collection enablement notes
+  ([Русский](i18n/ru/CM_COLLECTION_ENABLEMENT_PLAN.md)).
+- [CM_CORPUS_COLLECTOR_DESIGN.md](CM_CORPUS_COLLECTOR_DESIGN.md): CM corpus
+  collector design history
+  ([Русский](i18n/ru/CM_CORPUS_COLLECTOR_DESIGN.md)).
+- [cluster-metrics-roadmap-audit.md](cluster-metrics-roadmap-audit.md):
+  metrics roadmap audit and signal taxonomy.
+
+## Internal Audits And Handoff
+
+These files are mainly for maintainers and coding agents. They are useful but
+should not be read as product user guides.
+
+- [codex-handoff.md](codex-handoff.md): current engineering baseline and
+  operating rules for Codex agents.
+- [code-audit.md](code-audit.md): implementation audit and open follow-ups.
+- [project-audit.md](project-audit.md): broader project audit.
+- [analyzer-audit.md](analyzer-audit.md): analyzer-specific audit notes.
+- [root-compatibility-audit.md](root-compatibility-audit.md): root script
+  compatibility and migration plan.
+
+## Historical Planning
+
+These documents contain useful history, but current behavior should be checked
+against the README, roadmap, safety contract, and architecture docs first.
+
+- [MVP.md](MVP.md): archived MVP note with links to the current baseline docs.
+- [changelog.md](changelog.md): significant product, safety, workflow, and
+  documentation baseline changes.
+
+## Command Convention
+
+Current documentation should prefer packaged `query-doctor-*` console scripts.
+When running directly from a checkout without installed console scripts, use
+`python -m query_doctor.cli.<command_module>`. Root-level compatibility
+launchers may exist in older releases, but current public docs should not use
+them.

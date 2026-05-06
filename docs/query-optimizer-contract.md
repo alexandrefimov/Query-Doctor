@@ -368,5 +368,5 @@ After optimizer safety stabilizes:
 - close browser artifact filename redaction gaps;
 - remove or sanitize legacy details-rendering dict overloads;
 - consolidate report and optimizer trusted-artifact checks;
-- split `query_doctor_web_server.py` into smaller route, job, command, case
-  resolution, and trusted-artifact modules.
+- continue splitting large package web modules into smaller route, job, command,
+  case resolution, and trusted-artifact modules.

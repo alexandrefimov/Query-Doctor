@@ -79,7 +79,7 @@ Provider-specific metric names should stay in allowlisted adapters. Analyzer,
 report, UI, and scoring code should consume normalized signal names.
 
 The initial code contract for this catalog lives in
-`query_doctor_metrics_catalog.py`. It defines normalized signal ids, tiers,
+`query_doctor.cm.metrics_catalog`. It defines normalized signal ids, tiers,
 families, implementation status, and the current CM time-series mappings used by
 the collector.
 
