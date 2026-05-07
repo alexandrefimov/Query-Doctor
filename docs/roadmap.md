@@ -122,8 +122,9 @@ useful.
 - Small anonymized optimizer benchmark set. Initial committed corpus lives in
   `tests/fixtures/optimizer_cases/` and covers recipe-backed trusted drafts,
   validation rejection, no-material-change/no-rewrite and recommendations-only
-  outcomes; next work is adding more real anonymized long-WITH and join/filter
-  preservation cases.
+  outcomes. `scripts/compare_optimizer_models.py --fixture-corpus` can use it
+  for repeatable prompt/model bake-offs; next work is adding more real
+  anonymized long-WITH and join/filter preservation cases.
 - Prompt tuning so optimizer drafts are useful without changing semantics.
 - Demo case pack with one clearly problematic query, one bounded-evidence query
   and one normal/near-normal query, including expected analyzer/report/optimizer

@@ -54,3 +54,99 @@ def test_dry_run_writes_optimizer_summary_without_raw_paths(tmp_path):
     assert summary["optimizer_num_predict"] == 4096
     assert summary["results"][0]["status"] == "dry_run"
     assert str(tmp_path) not in json.dumps(summary)
+
+
+def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
+    module = load_compare_module()
+    out_dir = tmp_path / "out"
+
+    result = module.main(
+        [
+            "--models",
+            "qwen3-coder:30b-a3b-q8_0",
+            "--fixture-corpus",
+            "--dry-run",
+            "--out-dir",
+            str(out_dir),
+        ]
+    )
+
+    assert result == 0
+    summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
+    results = summary["results"]
+    assert len(results) == 5
+    assert {item["expected_output_kind"] for item in results} == {
+        "sql_draft",
+        "validation_rejected",
+        "no_rewrite",
+        "recommendations_only",
+    }
+    assert all(item["matched_expected_outcome"] is True for item in results)
+    aggregate = summary["aggregates"]["by_model"]["qwen3-coder:30b-a3b-q8_0"]
+    assert aggregate["expected_outcome_match_rate"] == 1.0
+    by_case = summary["aggregates"]["by_case"]
+    assert len(by_case) == 5
+    case_summary = by_case["optimizer_cases:reject_changed_predicate"]
+    assert case_summary["expected_output_kind"] == "validation_rejected"
+    assert case_summary["expected_outcome_match_rate"] == 1.0
+    assert case_summary["models"]["qwen3-coder:30b-a3b-q8_0"]["expected_outcome_match_rate"] == 1.0
+    assert str(module.DEFAULT_FIXTURE_CORPUS) not in json.dumps(summary)
+
+
+def test_aggregate_metrics_include_case_level_expected_mismatches():
+    module = load_compare_module()
+    results = [
+        {
+            "case_name": "optimizer_cases:case-a",
+            "requested_model": "model-a",
+            "status": "ok",
+            "output_kind": "sql_draft",
+            "expected_output_kind": "sql_draft",
+            "matched_expected_outcome": True,
+            "elapsed_sec": 1.0,
+        },
+        {
+            "case_name": "optimizer_cases:case-a",
+            "requested_model": "model-b",
+            "status": "ok",
+            "output_kind": "no_rewrite",
+            "expected_output_kind": "sql_draft",
+            "matched_expected_outcome": False,
+            "elapsed_sec": 1.0,
+        },
+    ]
+
+    aggregates = module.build_aggregates(results)
+
+    case_summary = aggregates["by_case"]["optimizer_cases:case-a"]
+    assert case_summary["expected_output_kind"] == "sql_draft"
+    assert case_summary["expected_outcome_match_rate"] == 0.5
+    assert case_summary["models"]["model-a"]["expected_outcome_match_rate"] == 1.0
+    assert case_summary["models"]["model-b"]["expected_outcome_match_rate"] == 0.0
+
+
+def test_fixture_case_copy_materializes_source_sql_for_optimizer_cli(tmp_path):
+    module = load_compare_module()
+    fixture = module.DEFAULT_FIXTURE_CORPUS / "no_material_change"
+    run_dir = tmp_path / "run"
+
+    module.copy_case_for_run(fixture, run_dir)
+
+    assert (run_dir / "original_query.sql").read_text(encoding="utf-8") == (
+        fixture / "source.sql"
+    ).read_text(encoding="utf-8")
+
+
+def test_expected_validation_rejection_matches_trusted_no_rewrite_fallback():
+    module = load_compare_module()
+
+    assert module.actual_matches_expected_outcome(
+        status="ok",
+        marker={"output_kind": "no_rewrite", "fallback_reason": "validation_failed"},
+        expected={"expected_output_kind": "validation_rejected", "expected_recipe": "post_union_aggregate_pushdown"},
+    )
+    assert not module.actual_matches_expected_outcome(
+        status="ok",
+        marker={"output_kind": "sql_draft", "rewrite_recipe": "post_union_aggregate_pushdown"},
+        expected={"expected_output_kind": "validation_rejected", "expected_recipe": "post_union_aggregate_pushdown"},
+    )

@@ -13,3 +13,13 @@ Each case contains:
 The corpus is intentionally narrow. Add cases when prompt tuning, model
 bake-offs, validator changes, or new Python-owned rewrite recipes need a stable
 baseline.
+
+Use it with the optimizer bake-off helper:
+
+```bash
+python3 scripts/compare_optimizer_models.py --models qwen3-coder:30b --fixture-corpus --dry-run
+```
+
+Remove `--dry-run` to call the configured optimizer model. The script copies
+fixtures into its output directory and materializes `source.sql` as
+`original_query.sql` for the optimizer CLI; it does not mutate the fixtures.

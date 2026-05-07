@@ -19,11 +19,21 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from query_doctor.cli.optimize_query import MARKER_NAME, OUTPUT_NAME, PARTIAL_NAME, RECOMMENDATIONS_NAME
+from query_doctor.cli.optimize_query import (
+    MARKER_NAME,
+    OUTPUT_NAME,
+    PARTIAL_NAME,
+    RECOMMENDATIONS_NAME,
+    decide_optimizer_risk_mode,
+    detect_optimizer_rewrite_recipe,
+    draft_has_material_change,
+    validate_draft_sql,
+)
 from query_doctor.report.llm_client import DEFAULT_KEEP_ALIVE, DEFAULT_OLLAMA_URL
 
 
 PROGRESS_PREFIX = "[Query Doctor optimizer compare]"
+DEFAULT_FIXTURE_CORPUS = PROJECT_ROOT / "tests" / "fixtures" / "optimizer_cases"
 HIDDEN_ERROR_PATH = "<local path hidden>"
 HIDDEN_ARTIFACT = "<artifact hidden>"
 GENERATED_ARTIFACT_FILENAME_RE = re.compile(
@@ -73,6 +83,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=int(os.getenv("QD_OPTIMIZER_NUM_PREDICT", "4096")),
         help="QD_OPTIMIZER_NUM_PREDICT value to use for each optimizer run.",
     )
+    parser.add_argument(
+        "--fixture-corpus",
+        nargs="?",
+        const=DEFAULT_FIXTURE_CORPUS,
+        type=Path,
+        help=(
+            "Append optimizer benchmark fixtures from this corpus directory. "
+            f"Default path when passed without a value: {DEFAULT_FIXTURE_CORPUS}."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Resolve cases and write summary without calling Ollama.")
     return parser.parse_args(argv)
 
@@ -99,10 +119,118 @@ def copy_case_for_run(case_dir: Path, run_dir: Path) -> None:
     if run_dir.exists():
         shutil.rmtree(run_dir)
     shutil.copytree(case_dir, run_dir)
+    source_path = run_dir / "source.sql"
+    original_query_path = run_dir / "original_query.sql"
+    if source_path.is_file() and not original_query_path.exists():
+        original_query_path.write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
     for name in (OUTPUT_NAME, PARTIAL_NAME, MARKER_NAME, RECOMMENDATIONS_NAME):
         path = run_dir / name
         if path.exists():
             path.unlink()
+
+
+def read_expected_fixture(case_dir: Path) -> dict[str, Any]:
+    expected_path = case_dir / "expected.json"
+    if not expected_path.is_file():
+        return {}
+    try:
+        payload = json.loads(expected_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def fixture_case_dirs(corpus_dir: Path) -> list[Path]:
+    if not corpus_dir.is_dir():
+        return []
+    return sorted(
+        path.resolve()
+        for path in corpus_dir.iterdir()
+        if path.is_dir() and (path / "expected.json").is_file() and (path / "source.sql").is_file()
+    )
+
+
+def offline_fixture_outcome(case_dir: Path) -> dict[str, Any]:
+    expected = read_expected_fixture(case_dir)
+    if not expected:
+        return {}
+    try:
+        source_sql = (case_dir / "source.sql").read_text(encoding="utf-8")
+        facts_text = (case_dir / "analysis_facts.md").read_text(encoding="utf-8")
+    except OSError as exc:
+        return {
+            "expected_output_kind": expected.get("expected_output_kind"),
+            "matched_expected_outcome": False,
+            "offline_error_summary": safe_error_summary(exc),
+        }
+
+    risk = decide_optimizer_risk_mode(source_sql)
+    recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
+    offline_recipe = recipe.recipe_id if recipe else None
+    offline: dict[str, Any] = {
+        "expected_output_kind": expected.get("expected_output_kind"),
+        "expected_recipe": expected.get("expected_recipe"),
+        "expected_risk_mode": expected.get("expected_risk_mode"),
+        "offline_risk_mode": risk.mode,
+        "offline_risk_reasons": list(risk.reasons),
+        "offline_recipe": offline_recipe,
+    }
+
+    draft_path = case_dir / "draft.sql"
+    if not draft_path.is_file():
+        offline["offline_output_kind"] = "recommendations_only"
+        offline["offline_validation_errors"] = []
+        offline["matched_expected_outcome"] = (
+            expected.get("expected_output_kind") == "recommendations_only"
+            and expected.get("expected_recipe") == offline_recipe
+            and expected.get("expected_risk_mode") == risk.mode
+            and list(expected.get("expected_risk_reasons", risk.reasons)) == list(risk.reasons)
+        )
+        return offline
+
+    draft_sql = draft_path.read_text(encoding="utf-8")
+    errors = validate_draft_sql(source_sql, draft_sql, recipe)
+    material_change = draft_has_material_change(source_sql, draft_sql)
+    if errors:
+        output_kind = "validation_rejected"
+    elif material_change:
+        output_kind = "sql_draft"
+    else:
+        output_kind = "no_rewrite"
+    offline.update(
+        {
+            "offline_output_kind": output_kind,
+            "offline_material_change": material_change,
+            "offline_validation_errors": [safe_error_summary(error, max_chars=200) for error in errors],
+        }
+    )
+    expected_errors = expected.get("expect_validation_errors", [])
+    if not isinstance(expected_errors, list):
+        expected_errors = []
+    offline["matched_expected_outcome"] = (
+        expected.get("expected_output_kind") == output_kind
+        and expected.get("expected_recipe") == offline_recipe
+        and expected.get("expected_risk_mode") == risk.mode
+        and bool(expected.get("expect_material_change", material_change)) == material_change
+        and all(str(error) in errors for error in expected_errors)
+        and (bool(expected_errors) or not errors)
+    )
+    return offline
+
+
+def actual_matches_expected_outcome(*, status: str, marker: dict[str, Any], expected: dict[str, Any]) -> bool:
+    if status != "ok":
+        return False
+    expected_kind = str(expected.get("expected_output_kind") or "")
+    output_kind = str(marker.get("output_kind") or "")
+    if expected_kind == "validation_rejected":
+        return output_kind == "no_rewrite" and str(marker.get("fallback_reason") or "") == "validation_failed"
+    if expected_kind != output_kind:
+        return False
+    expected_recipe = expected.get("expected_recipe")
+    if expected_recipe is None:
+        return "rewrite_recipe" not in marker
+    return str(marker.get("rewrite_recipe") or "") == str(expected_recipe)
 
 
 def run_case_model(
@@ -122,6 +250,9 @@ def run_case_model(
         "requested_model": model,
         "run_index": run_index,
     }
+    offline = offline_fixture_outcome(case_dir)
+    if offline:
+        common.update(offline)
     if args.dry_run:
         return {
             **common,
@@ -176,7 +307,7 @@ def run_case_model(
     else:
         status = "error"
         validation_status = "failed"
-    return {
+    result = {
         **common,
         "status": status,
         "validation_status": validation_status,
@@ -187,12 +318,17 @@ def run_case_model(
         "elapsed_sec": elapsed,
         "error_summary": "" if status == "ok" else extract_error_summary(completed.stderr),
     }
+    if offline:
+        result["matched_expected_outcome"] = actual_matches_expected_outcome(status=status, marker=marker, expected=offline)
+    return result
 
 
 def build_aggregates(results: list[dict[str, Any]]) -> dict[str, Any]:
     by_model: dict[str, dict[str, Any]] = {}
+    by_case: dict[str, dict[str, Any]] = {}
     for result in results:
         model = str(result.get("requested_model") or "unknown")
+        case_name = str(result.get("case_name") or "unknown")
         bucket = by_model.setdefault(
             model,
             {
@@ -200,15 +336,44 @@ def build_aggregates(results: list[dict[str, Any]]) -> dict[str, Any]:
                 "status_counts": defaultdict(int),
                 "output_kind_counts": defaultdict(int),
                 "fallback_reason_counts": defaultdict(int),
+                "matched_expected_outcomes": 0,
+                "expected_outcomes": 0,
                 "elapsed_sec": [],
             },
         )
-        bucket["runs"] += 1
-        bucket["status_counts"][str(result.get("status") or "unknown")] += 1
-        bucket["output_kind_counts"][str(result.get("output_kind") or "none")] += 1
-        bucket["fallback_reason_counts"][str(result.get("fallback_reason") or "none")] += 1
+        update_result_bucket(bucket, result)
         if result.get("status") == "ok" and isinstance(result.get("elapsed_sec"), (int, float)):
             bucket["elapsed_sec"].append(float(result["elapsed_sec"]))
+
+        case_bucket = by_case.setdefault(
+            case_name,
+            {
+                "runs": 0,
+                "status_counts": defaultdict(int),
+                "output_kind_counts": defaultdict(int),
+                "fallback_reason_counts": defaultdict(int),
+                "expected_output_kind_counts": defaultdict(int),
+                "matched_expected_outcomes": 0,
+                "expected_outcomes": 0,
+                "models": {},
+            },
+        )
+        update_result_bucket(case_bucket, result)
+        expected_kind = str(result.get("expected_output_kind") or "")
+        if expected_kind:
+            case_bucket["expected_output_kind_counts"][expected_kind] += 1
+        case_model_bucket = case_bucket["models"].setdefault(
+            model,
+            {
+                "runs": 0,
+                "status_counts": defaultdict(int),
+                "output_kind_counts": defaultdict(int),
+                "fallback_reason_counts": defaultdict(int),
+                "matched_expected_outcomes": 0,
+                "expected_outcomes": 0,
+            },
+        )
+        update_result_bucket(case_model_bucket, result)
 
     rendered: dict[str, Any] = {}
     for model, bucket in by_model.items():
@@ -221,12 +386,65 @@ def build_aggregates(results: list[dict[str, Any]]) -> dict[str, Any]:
             "trusted_no_rewrite_rate": bucket["output_kind_counts"].get("no_rewrite", 0) / runs,
             "trusted_recommendations_rate": bucket["output_kind_counts"].get("recommendations_only", 0) / runs,
             "partial_untrusted_rate": bucket["output_kind_counts"].get("partial_untrusted", 0) / runs,
+            "expected_outcome_match_rate": (
+                bucket["matched_expected_outcomes"] / bucket["expected_outcomes"]
+                if bucket["expected_outcomes"]
+                else None
+            ),
             "mean_elapsed_sec": sum(elapsed) / len(elapsed) if elapsed else None,
             "status_counts": dict(bucket["status_counts"]),
             "output_kind_counts": dict(bucket["output_kind_counts"]),
             "fallback_reason_counts": dict(bucket["fallback_reason_counts"]),
         }
-    return {"by_model": rendered}
+    return {"by_model": rendered, "by_case": render_case_aggregates(by_case)}
+
+
+def update_result_bucket(bucket: dict[str, Any], result: dict[str, Any]) -> None:
+    bucket["runs"] += 1
+    bucket["status_counts"][str(result.get("status") or "unknown")] += 1
+    bucket["output_kind_counts"][str(result.get("output_kind") or "none")] += 1
+    bucket["fallback_reason_counts"][str(result.get("fallback_reason") or "none")] += 1
+    if "matched_expected_outcome" in result:
+        bucket["expected_outcomes"] += 1
+        if result.get("matched_expected_outcome") is True:
+            bucket["matched_expected_outcomes"] += 1
+
+
+def expected_match_rate(bucket: dict[str, Any]) -> float | None:
+    expected_outcomes = int(bucket.get("expected_outcomes") or 0)
+    if not expected_outcomes:
+        return None
+    return int(bucket.get("matched_expected_outcomes") or 0) / expected_outcomes
+
+
+def render_case_aggregates(by_case: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    rendered: dict[str, Any] = {}
+    for case_name, bucket in sorted(by_case.items()):
+        expected_counts = dict(bucket["expected_output_kind_counts"])
+        if len(expected_counts) == 1:
+            expected_output_kind = next(iter(expected_counts))
+        else:
+            expected_output_kind = None
+        rendered[case_name] = {
+            "runs": bucket["runs"],
+            "expected_output_kind": expected_output_kind,
+            "expected_output_kind_counts": expected_counts,
+            "expected_outcome_match_rate": expected_match_rate(bucket),
+            "status_counts": dict(bucket["status_counts"]),
+            "output_kind_counts": dict(bucket["output_kind_counts"]),
+            "fallback_reason_counts": dict(bucket["fallback_reason_counts"]),
+            "models": {
+                model: {
+                    "runs": model_bucket["runs"],
+                    "expected_outcome_match_rate": expected_match_rate(model_bucket),
+                    "status_counts": dict(model_bucket["status_counts"]),
+                    "output_kind_counts": dict(model_bucket["output_kind_counts"]),
+                    "fallback_reason_counts": dict(model_bucket["fallback_reason_counts"]),
+                }
+                for model, model_bucket in sorted(bucket["models"].items())
+            },
+        }
+    return rendered
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -238,6 +456,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PROGRESS_PREFIX} ERROR: --optimizer-num-predict must be >= 1", file=sys.stderr)
         return 2
     case_dirs = [path.expanduser().resolve() for path in args.cases]
+    fixture_corpus = Path(args.fixture_corpus).expanduser().resolve() if args.fixture_corpus else None
+    if fixture_corpus is not None:
+        fixture_dirs = fixture_case_dirs(fixture_corpus)
+        if not fixture_dirs:
+            print(
+                f"{PROGRESS_PREFIX} ERROR: fixture corpus is unavailable or empty: {safe_error_summary(fixture_corpus)}",
+                file=sys.stderr,
+            )
+            return 2
+        case_dirs.extend(fixture_dirs)
     if not case_dirs:
         print(f"{PROGRESS_PREFIX} ERROR: provide at least one case directory.", file=sys.stderr)
         return 2
