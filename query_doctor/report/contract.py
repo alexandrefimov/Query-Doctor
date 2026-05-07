@@ -1,87 +1,70 @@
-"""Static LLM report contract headings and prompt policy."""
+"""Default LLM report contract headings and prompt policy.
 
-REPORT_TITLE_HEADING = "# Query Doctor Report"
-REPORT_SYSTEM_PROMPT = (
-    "You are only a report writer. Use only supplied deterministic facts. "
-    "Write in Russian. Do not invent unsupported evidence or recommendations. "
-    "Keep cardinality mismatch separate from memory mismatch. "
-    "Use row underestimation only when actual rows are greater than estimated rows. "
-    "Use row overestimation when actual rows are lower than estimated rows. "
-    "Use memory underestimation only when actual or peak memory is above estimated memory. "
-    "Use memory overestimation when actual or peak memory is below estimated memory. "
-    "Do not treat mem ratio below 1.0 as memory underestimation evidence. "
-    "Do not present Impala operator/profile counter time as query wall-clock duration unless facts explicitly provide wall-clock evidence. "
-    "Use operator/profile time counter wording instead of saying an operator ran for X hours. "
-    "Keep backend data skew separate from cardinality/row-estimate anomalies and execution skew. "
-    "Do not claim a single slow backend/tail host unless host-tail facts explicitly support it. "
-    "Do not recommend external network checks based only on TotalBytesSent. "
-    "Treat TotalBytesSent as intermediate/exchange data volume unless facts explicitly say network fault. "
-    "Do not call low-memory EXCHANGE operators memory bottlenecks. "
-    "Do not claim HDFS, external network, codegen, skew, or spill causes unless facts explicitly support them."
+The legacy module-level constants intentionally expose the Russian contract for
+existing validators and tests. New language-aware code should use
+``get_report_language_contract`` instead.
+"""
+
+from query_doctor.report.language_contract import (
+    REPORT_LANGUAGE_CONTRACTS,
+    RU_REPORT_CONTRACT,
+    SUPPORTED_REPORT_LANGUAGES,
+    ReportLanguageContract,
+    get_report_language_contract,
 )
 
-SHORT_SUMMARY_HEADING = "## Краткий вывод"
-RECOMMENDATIONS_HEADING = "## Практические рекомендации"
-DETAILED_REPORT_HEADING = "## Подробный разбор"
-ANALYZER_FACTS_HEADING = "## Факты анализатора"
+__all__ = [
+    "REPORT_LANGUAGE_CONTRACTS",
+    "RU_REPORT_CONTRACT",
+    "SUPPORTED_REPORT_LANGUAGES",
+    "ReportLanguageContract",
+    "get_report_language_contract",
+    "REPORT_TITLE_HEADING",
+    "REPORT_SYSTEM_PROMPT",
+    "SHORT_SUMMARY_HEADING",
+    "RECOMMENDATIONS_HEADING",
+    "DETAILED_REPORT_HEADING",
+    "ANALYZER_FACTS_HEADING",
+    "TABLE_METADATA_CONTEXT_HEADING",
+    "CM_TIMESERIES_CONTEXT_HEADING",
+    "CM_METRICS_FACTS_HEADING",
+    "CM_METRICS_CORRELATION_HEADING",
+    "EVIDENCE_SAFE_PROBLEMS_HEADING",
+    "EVIDENCE_HEADING",
+    "AMPLIFIERS_HEADING",
+    "NOT_SUPPORTED_HEADING",
+    "NEXT_CHECKS_HEADING",
+    "REQUIRED_REPORT_SECTIONS",
+    "ROOT_CAUSE_HEADING_REWRITE",
+    "DETAIL_HEADING_REWRITE",
+    "USER_READ_ONLY_HEADING",
+    "USER_ADMIN_PACKAGE_HEADING",
+    "USER_VALIDATION_HEADING",
+    "USER_VERIFY_HEADING",
+    "USER_HEADING_REWRITE",
+]
+
+
+REPORT_TITLE_HEADING = RU_REPORT_CONTRACT.title_heading
+REPORT_SYSTEM_PROMPT = RU_REPORT_CONTRACT.system_prompt
+SHORT_SUMMARY_HEADING = RU_REPORT_CONTRACT.short_summary_heading
+RECOMMENDATIONS_HEADING = RU_REPORT_CONTRACT.recommendations_heading
+DETAILED_REPORT_HEADING = RU_REPORT_CONTRACT.detailed_report_heading
+ANALYZER_FACTS_HEADING = RU_REPORT_CONTRACT.analyzer_facts_heading
 TABLE_METADATA_CONTEXT_HEADING = "## Table Metadata Context"
 CM_TIMESERIES_CONTEXT_HEADING = "## CM Time-Series Context"
 CM_METRICS_FACTS_HEADING = "## CM Metrics Facts"
 CM_METRICS_CORRELATION_HEADING = "## CM Metrics Correlation"
-EVIDENCE_SAFE_PROBLEMS_HEADING = "### Основные подтверждённые проблемы по профилю"
-EVIDENCE_HEADING = "### Подтверждающие факты"
-AMPLIFIERS_HEADING = "### Что усиливает проблему"
-NOT_SUPPORTED_HEADING = "### Что НЕ подтверждается фактами"
-NEXT_CHECKS_HEADING = "### Follow-up checks"
-REQUIRED_REPORT_SECTIONS = [
-    REPORT_TITLE_HEADING,
-    SHORT_SUMMARY_HEADING,
-    RECOMMENDATIONS_HEADING,
-    DETAILED_REPORT_HEADING,
-    EVIDENCE_SAFE_PROBLEMS_HEADING,
-    EVIDENCE_HEADING,
-    AMPLIFIERS_HEADING,
-    NOT_SUPPORTED_HEADING,
-    NEXT_CHECKS_HEADING,
-]
-ROOT_CAUSE_HEADING_REWRITE = {
-    "## Главная причина замедления": EVIDENCE_SAFE_PROBLEMS_HEADING,
-    "### Главная причина замедления": EVIDENCE_SAFE_PROBLEMS_HEADING,
-    "## Root cause": EVIDENCE_SAFE_PROBLEMS_HEADING,
-    "### Root cause": EVIDENCE_SAFE_PROBLEMS_HEADING,
-}
-DETAIL_HEADING_REWRITE = {
-    "## Короткий вывод": SHORT_SUMMARY_HEADING,
-    "### Короткий вывод": SHORT_SUMMARY_HEADING,
-    "### Краткий вывод": SHORT_SUMMARY_HEADING,
-    "## Основные подтверждённые проблемы по профилю": EVIDENCE_SAFE_PROBLEMS_HEADING,
-    "## Подтверждающие факты": EVIDENCE_HEADING,
-    "## Что усиливает проблему": AMPLIFIERS_HEADING,
-    "## Что НЕ подтверждается фактами": NOT_SUPPORTED_HEADING,
-    "### Практические рекомендации": RECOMMENDATIONS_HEADING,
-    "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
-    "### Что проверить следующим запуском": NEXT_CHECKS_HEADING,
-    "## Админские проверки": NEXT_CHECKS_HEADING,
-    "### Админские проверки": NEXT_CHECKS_HEADING,
-    "## Follow-up checks": NEXT_CHECKS_HEADING,
-}
-USER_READ_ONLY_HEADING = "### Read-only проверки, которые можно выполнить"
-USER_ADMIN_PACKAGE_HEADING = "### Если проблема останется, отправьте админам/платформенной команде"
-USER_VALIDATION_HEADING = "### Изменения, требующие проверки"
-USER_VERIFY_HEADING = "### Как проверить улучшение"
-USER_HEADING_REWRITE = {
-    "## Read-only checks you can run": USER_READ_ONLY_HEADING,
-    "### Read-only checks you can run": USER_READ_ONLY_HEADING,
-    "## Safe checks for the SQL owner": USER_READ_ONLY_HEADING,
-    "### Safe checks for the SQL owner": USER_READ_ONLY_HEADING,
-    "## Read-only проверки, которые можно выполнить": USER_READ_ONLY_HEADING,
-    "## If it still fails, send this to the admin/platform team": USER_ADMIN_PACKAGE_HEADING,
-    "### If it still fails, send this to the admin/platform team": USER_ADMIN_PACKAGE_HEADING,
-    "## Если проблема останется, отправьте админам/платформенной команде": USER_ADMIN_PACKAGE_HEADING,
-    "## Changes requiring validation": USER_VALIDATION_HEADING,
-    "### Changes requiring validation": USER_VALIDATION_HEADING,
-    "## Изменения, требующие проверки": USER_VALIDATION_HEADING,
-    "## How to verify improvement": USER_VERIFY_HEADING,
-    "### How to verify improvement": USER_VERIFY_HEADING,
-    "## Как проверить улучшение": USER_VERIFY_HEADING,
-}
+EVIDENCE_SAFE_PROBLEMS_HEADING = RU_REPORT_CONTRACT.evidence_safe_problems_heading
+EVIDENCE_HEADING = RU_REPORT_CONTRACT.evidence_heading
+AMPLIFIERS_HEADING = RU_REPORT_CONTRACT.amplifiers_heading
+NOT_SUPPORTED_HEADING = RU_REPORT_CONTRACT.not_supported_heading
+NEXT_CHECKS_HEADING = RU_REPORT_CONTRACT.next_checks_heading
+REQUIRED_REPORT_SECTIONS = RU_REPORT_CONTRACT.required_sections
+ROOT_CAUSE_HEADING_REWRITE = RU_REPORT_CONTRACT.root_cause_heading_rewrite
+DETAIL_HEADING_REWRITE = RU_REPORT_CONTRACT.detail_heading_rewrite
+USER_READ_ONLY_HEADING = RU_REPORT_CONTRACT.user_read_only_heading
+USER_ADMIN_PACKAGE_HEADING = RU_REPORT_CONTRACT.user_admin_package_heading
+USER_VALIDATION_HEADING = RU_REPORT_CONTRACT.user_validation_heading
+USER_VERIFY_HEADING = RU_REPORT_CONTRACT.user_verify_heading
+USER_HEADING_REWRITE = RU_REPORT_CONTRACT.user_heading_rewrite

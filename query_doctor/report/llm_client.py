@@ -114,6 +114,7 @@ def stream_ollama_report(
     ollama_url: str,
     temperature: float,
     keep_alive: str,
+    system_prompt: str = REPORT_SYSTEM_PROMPT,
     num_ctx: int | None = None,
     num_predict: int | None = None,
 ) -> str:
@@ -123,6 +124,7 @@ def stream_ollama_report(
         ollama_url=ollama_url,
         temperature=temperature,
         keep_alive=keep_alive,
+        system_prompt=system_prompt,
         num_ctx=num_ctx,
         num_predict=num_predict,
     ).text
@@ -135,6 +137,7 @@ def stream_ollama_report_with_meta(
     ollama_url: str,
     temperature: float,
     keep_alive: str,
+    system_prompt: str = REPORT_SYSTEM_PROMPT,
     num_ctx: int | None = None,
     num_predict: int | None = None,
 ) -> StreamedLLMResponse:
@@ -143,7 +146,7 @@ def stream_ollama_report_with_meta(
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
-            {"role": "system", "content": REPORT_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
         "stream": True,

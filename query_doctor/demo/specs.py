@@ -348,51 +348,51 @@ def rejected_draft_facts_text() -> str:
 
 def optimization_report_text() -> str:
     recommendation_bullets = canonical_recommendation_bullets(
-        recommendation_candidate_lines(optimization_facts_text())
+        recommendation_candidate_lines(optimization_facts_text(), language="en")
     )[:3]
     return "\n".join(
         [
             "# Query Doctor Report",
             "",
-            "## Краткий вывод",
-            "- Детерминированный анализ пометил кейс как высокий кандидат на query-shape review.",
-            "- Подтверждены cardinality mismatch, memory pressure и exchange-heavy context.",
-            "- Это synthetic demo output: формулировки основаны только на сгенерированных analyzer facts.",
+            "## Short Summary",
+            "- Deterministic analysis marks this case as a high query-shape review candidate.",
+            "- Analyzer facts support cardinality mismatch, memory pressure, and exchange-heavy runtime context.",
+            "- This is synthetic demo output: wording is based only on generated analyzer facts.",
             "",
-            "## Практические рекомендации",
+            "## Practical Recommendations",
             *recommendation_bullets,
             "",
-            "## Подробный разбор",
-            "Этот demo report показывает trusted-report форму без вызова LLM. "
-            "Python сгенерировал facts, а отчет только переформулирует эти факты. "
-            "Кейс указывает на review area вокруг query shape, join expansion и memory-sensitive operators. "
-            "Он не доказывает единственную первопричину и не обещает ускорение без проверки плана и повторного запуска.",
+            "## Detailed Analysis",
+            "This demo report shows the trusted-report shape without calling an LLM. "
+            "Python generated the facts, and the report only rephrases those facts. "
+            "The case points to review areas around query shape, join expansion, and memory-sensitive operators. "
+            "It does not prove a single root cause or promise speedup without plan comparison and a comparable rerun.",
             "",
-            "### Основные подтверждённые проблемы по профилю",
-            "- Есть несколько cardinality estimate anomalies.",
-            "- Есть memory estimate anomalies рядом с join/aggregation-style processing.",
-            "- Есть host-tail evidence, поэтому длительность важна только вместе с profile support.",
+            "### Supported Profile Findings",
+            "- Multiple cardinality estimate anomalies are present.",
+            "- Memory estimate anomalies appear around join/aggregation-style processing.",
+            "- Host-tail evidence is present, so duration matters only together with profile support.",
             "",
-            "### Подтверждающие факты",
+            "### Supporting Evidence",
             "- Parsed operators: 18.",
             "- Cardinality anomalies: 4.",
             "- Memory anomalies: 3.",
             "- Host-tail candidates: 1.",
             "",
-            "### Что усиливает проблему",
-            "- Runtime context указывает на exchange-heavy review path.",
-            "- Metadata не собиралась, поэтому stats conclusions остаются unknown.",
-            "- Optimizer guidance должен оставаться candidate guidance до подтверждения планом.",
+            "### Amplifying Factors",
+            "- Runtime context points to an exchange-heavy review path.",
+            "- Metadata was not collected, so stats conclusions remain unknown.",
+            "- Optimizer guidance must remain candidate guidance until confirmed by plan comparison.",
             "",
-            "### Что НЕ подтверждается фактами",
-            "- Не доказана единственная root cause.",
-            "- Не доказано, что statistics maintenance alone исправит этот кейс.",
-            "- Не доказан guaranteed speedup percentage.",
+            "### What Is Not Supported By Facts",
+            "- A single root cause is not proven.",
+            "- Facts do not prove that statistics maintenance alone fixes this case.",
+            "- No guaranteed speedup percentage is proven.",
             "",
             "### Follow-up checks",
-            "- Сравнить план до и после review change.",
-            "- Зафиксировать join cardinality и pre-aggregation opportunity.",
-            "- Запустить comparable rerun перед тем, как говорить о production benefit.",
+            "- Compare the plan before and after any review change.",
+            "- Record join cardinality and pre-aggregation opportunity.",
+            "- Run a comparable rerun before claiming production benefit.",
             "",
         ]
     )

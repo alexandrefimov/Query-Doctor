@@ -115,16 +115,16 @@ h1,h2,h3,p{margin-top:0} h1{margin-bottom:8px;font-size:20px;line-height:1.2;let
     <section class="report-shell">
       <div class="content-main">
         <section class="panel section-card" aria-labelledby="short-summary">
-          <h2 id="short-summary">Краткий вывод</h2>
+          <h2 id="short-summary">Short summary</h2>
           <div class="summary-box">
             <div class="summary-main">
-              <div><strong>Основной сигнал: backend skew / long tail.</strong><p>Профиль указывает на заметно неравномерное завершение backend-ов. Один tail-backend держит выполнение дольше остальных; это подтверждено analyzer facts и не формулируется как окончательная root cause без дополнительных проверок.</p></div>
+              <div><strong>Main signal: backend skew / long tail.</strong><p>The profile points to noticeably uneven backend completion. One tail backend keeps execution open longer than the others; this is supported by analyzer facts and is not stated as a definitive root cause without additional checks.</p></div>
               <span class="badge amber">NEEDS ATTENTION</span>
             </div>
             <ul class="checklist">
-              <li>Сначала проверь tail-backend и соответствующий host: сетевые ошибки, дисковые задержки, CPU steal, GC / daemon pressure.</li>
-              <li>Проверь статистики таблиц и партиций, если SQL использует join/filter по большим таблицам.</li>
-              <li>Сравни EXPLAIN и profile estimates: есть ли расхождение cardinality / rows / memory.</li>
+              <li>Check the tail backend and related host first: network errors, disk latency, CPU steal, GC, and daemon pressure.</li>
+              <li>Check table and partition statistics if the SQL uses joins or filters over large tables.</li>
+              <li>Compare EXPLAIN and profile estimates for cardinality, row, or memory mismatches.</li>
             </ul>
           </div>
         </section>
@@ -139,7 +139,7 @@ h1,h2,h3,p{margin-top:0} h1{margin-bottom:8px;font-size:20px;line-height:1.2;let
         </section>
 
         <section class="panel section-card" aria-labelledby="detailed-findings">
-          <h2 id="detailed-findings">Подробный разбор</h2>
+          <h2 id="detailed-findings">Detailed findings</h2>
           <div class="section-note">Narrative generated from validated analyzer facts. Unsupported conclusions remain marked as unknown.</div>
           <div class="finding-list">
             <article class="finding">
@@ -188,7 +188,7 @@ h1,h2,h3,p{margin-top:0} h1{margin-bottom:8px;font-size:20px;line-height:1.2;let
         </section>
 
         <details class="panel appendix-details" open aria-labelledby="analyzer-facts">
-          <summary><h2 id="analyzer-facts">Факты анализатора</h2><span class="badge gray">deterministic appendix</span></summary>
+          <summary><h2 id="analyzer-facts">Analyzer facts</h2><span class="badge gray">deterministic appendix</span></summary>
           <div class="appendix-body">
             <div class="section-note">Generated from <span class="technical">analysis_facts.md</span>. This section is not LLM-written narrative.</div>
             <div class="facts-grid">
@@ -209,7 +209,7 @@ h1,h2,h3,p{margin-top:0} h1{margin-bottom:8px;font-size:20px;line-height:1.2;let
       </div>
 
       <aside class="side-panel" aria-label="Report side panel">
-        <section class="panel side-card"><h2>Sections</h2><nav class="toc-list" aria-label="Report sections"><a href="#short-summary">Краткий вывод</a><a href="#triage-actions">Immediate next checks</a><a href="#detailed-findings">Подробный разбор</a><a href="#query-checks">Query and statistics checks</a><a href="#analyzer-facts">Факты анализатора</a></nav></section>
+        <section class="panel side-card"><h2>Sections</h2><nav class="toc-list" aria-label="Report sections"><a href="#short-summary">Short summary</a><a href="#triage-actions">Immediate next checks</a><a href="#detailed-findings">Detailed findings</a><a href="#query-checks">Query and statistics checks</a><a href="#analyzer-facts">Analyzer facts</a></nav></section>
         <section class="panel side-card"><h2>Report metadata</h2><div class="meta-list"><div class="meta-row"><span>Created</span><strong>2026-05-01 13:42</strong></div><div class="meta-row"><span>Mode</span><strong>admin</strong></div><div class="meta-row"><span>Validation</span><strong>PASS</strong></div><div class="meta-row"><span>Source</span><strong>CM query</strong></div></div></section>
         <section class="panel side-card"><h2>Query context</h2><div class="meta-list"><div class="meta-row"><span>Pool</span><strong>root.analytics</strong></div><div class="meta-row"><span>User</span><strong>user_01</strong></div><div class="meta-row"><span>Coordinator</span><strong>host_03</strong></div><div class="meta-row"><span>Duration</span><strong>41m 12s</strong></div><div class="meta-row"><span>Admission wait</span><strong>1m 08s</strong></div><div class="meta-row"><span>Peak memory</span><strong>18.4 GB</strong></div></div></section>
         <section class="panel side-card"><h2>Evidence completeness</h2><div class="meta-list"><div class="meta-row"><span>Profile</span><span class="badge green">available</span></div><div class="meta-row"><span>SQL</span><span class="badge green">extracted</span></div><div class="meta-row"><span>EXPLAIN</span><span class="badge green">auto-collected</span></div><div class="meta-row"><span>Metadata</span><span class="badge amber">partial</span></div><div class="meta-row"><span>Host metrics</span><span class="badge gray">not collected</span></div></div></section>

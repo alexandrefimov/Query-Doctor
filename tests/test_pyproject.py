@@ -45,7 +45,7 @@ def setup_py_text() -> str:
 def test_pyproject_declares_query_doctor_package_and_console_scripts():
     text = (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert 'requires = ["setuptools>=61", "wheel"]' in text
+    assert 'requires = ["setuptools>=77", "wheel"]' in text
     assert 'build-backend = "setuptools.build_meta"' in text
     assert 'name = "query-doctor"' in text
     assert 'include = ["query_doctor*"]' in text
@@ -56,8 +56,38 @@ def test_project_license_metadata_is_consistent():
     pyproject_text = (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8")
     setup_text = setup_py_text()
 
-    assert 'license = { text = "AGPL-3.0-or-later" }' in pyproject_text
+    assert 'license = "AGPL-3.0-or-later"' in pyproject_text
     assert 'license="AGPL-3.0-or-later"' in setup_text
+
+
+def test_public_packaging_metadata_is_present():
+    pyproject_text = (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8")
+    setup_text = setup_py_text()
+
+    for expected in (
+        "authors = [",
+        "maintainers = [",
+        "keywords = [",
+        "classifiers = [",
+        "[project.urls]",
+        'Homepage = "https://github.com/alexandrefimov/Query-Doctor"',
+        'Issues = "https://github.com/alexandrefimov/Query-Doctor/issues"',
+        '"Development Status :: 3 - Alpha"',
+        '"Programming Language :: Python :: 3.9"',
+        '"Programming Language :: Python :: 3.11"',
+    ):
+        assert expected in pyproject_text
+
+    for expected in (
+        'author="Aleksandr Efimov"',
+        'maintainer="Aleksandr Efimov"',
+        'url="https://github.com/alexandrefimov/Query-Doctor"',
+        '"Homepage": "https://github.com/alexandrefimov/Query-Doctor"',
+        '"Development Status :: 3 - Alpha"',
+        '"Programming Language :: Python :: 3.9"',
+        '"Programming Language :: Python :: 3.11"',
+    ):
+        assert expected in setup_text
 
 
 def test_legacy_setup_py_console_scripts_match_pyproject():

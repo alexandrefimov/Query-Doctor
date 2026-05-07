@@ -146,6 +146,10 @@ from query_doctor.report.facts_extractors import (
     parse_backend_tail_summary,
     parse_ratio_value,
 )
+from query_doctor.report.language_contract import (
+    SUPPORTED_REPORT_LANGUAGES,
+    get_report_language_contract,
+)
 from query_doctor.report.contract_digest import (
     action_card_differentiators,
     build_report_contract_digest,
@@ -237,7 +241,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="diagnosis_report.md",
         help="Output report path. Relative paths are resolved under CASE_DIR; absolute paths are used as-is. Default: %(default)s",
     )
-    parser.add_argument("--language", default="ru", help="Report language. Currently only ru is supported.")
+    parser.add_argument(
+        "--language",
+        choices=SUPPORTED_REPORT_LANGUAGES,
+        default="en",
+        help="Report language. Default: %(default)s",
+    )
     parser.add_argument("--dry-prompt", action="store_true", help="Print the final prompt and exit without calling Ollama")
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
@@ -271,9 +280,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
-    if args.language != "ru":
-        print("ERROR: only --language ru is currently supported for the required report structure.", file=sys.stderr)
-        return 2
+    report_contract = get_report_language_contract(args.language)
     validation_mode = "off" if args.no_validate else args.validation_mode
 
     case_dir = Path(args.case_dir).expanduser().resolve()
@@ -330,12 +337,14 @@ def main(argv: list[str] | None = None) -> int:
         ollama_url=args.ollama_url,
         temperature=args.temperature,
         keep_alive=args.keep_alive,
+        system_prompt=report_contract.system_prompt,
     )
 
     narrative_text = normalize_report_text(
         report_header(facts_path, facts_sha256, args.model) + generated_body,
         facts_text=facts_text,
         mode=args.mode,
+        language=args.language,
     )
 
     if validation_mode != "off":
@@ -343,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
             narrative_text,
             facts_text=facts_text,
             validation_mode=validation_mode,
+            language=args.language,
         )
         if validation_errors:
             partial_path = write_failed_report_to_partial(output_path, narrative_text)
@@ -352,13 +362,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{PROGRESS_PREFIX} partial report saved to: {partial_path}", file=sys.stderr)
             return 4
 
-    final_report_text = append_analyzer_facts_appendix(narrative_text, facts_text)
+    final_report_text = append_analyzer_facts_appendix(narrative_text, facts_text, language=args.language)
 
     if validation_mode != "off":
         validation_errors = validate_report_for_mode(
             final_report_text,
             facts_text=facts_text,
             validation_mode=validation_mode,
+            language=args.language,
         )
         if validation_errors:
             partial_path = write_failed_report_to_partial(output_path, final_report_text)

@@ -1,6 +1,6 @@
 # Query Doctor Safety Contract
 
-Language: English | [Русский](i18n/ru/safety-contract.md)
+Language: English | [Russian](i18n/ru/safety-contract.md)
 
 This file contains mandatory safety rules. Exact phrases such as `Do not weaken
 validators` are intentionally kept precise because they define review and
@@ -131,16 +131,10 @@ contents, or real production profile text.
 
 ## Report Structure
 
-The LLM writes these user-facing narrative sections:
+The LLM writes localized user-facing narrative sections for summary, practical
+recommendations, detailed findings, and follow-up checks.
 
-- `## Краткий вывод`
-- `## Практические рекомендации`
-- `## Подробный разбор`
-- `### Follow-up checks`
-
-Python appends:
-
-- `## Факты анализатора`
+Python appends a localized analyzer facts appendix.
 
 The analyzer facts appendix is built deterministically from `analysis_facts.md`.
 The LLM must not write or reinterpret that section.

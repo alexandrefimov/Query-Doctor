@@ -10,22 +10,7 @@ from query_doctor.report.claim_validation import (
     find_unsupported_metadata_claim_errors,
     find_zero_cardinality_unsupported_claims,
 )
-from query_doctor.report.contract import (
-    ANALYZER_FACTS_HEADING,
-    DETAIL_HEADING_REWRITE,
-    EVIDENCE_HEADING,
-    NEXT_CHECKS_HEADING,
-    NOT_SUPPORTED_HEADING,
-    RECOMMENDATIONS_HEADING,
-    REQUIRED_REPORT_SECTIONS,
-    ROOT_CAUSE_HEADING_REWRITE,
-    SHORT_SUMMARY_HEADING,
-    USER_ADMIN_PACKAGE_HEADING,
-    USER_HEADING_REWRITE,
-    USER_READ_ONLY_HEADING,
-    USER_VALIDATION_HEADING,
-    USER_VERIFY_HEADING,
-)
+from query_doctor.report.contract import ANALYZER_FACTS_HEADING
 from query_doctor.report.estimate_validation import (
     find_contradicted_memory_overestimation_claims,
     find_contradicted_memory_underestimation_claims,
@@ -42,6 +27,10 @@ from query_doctor.report.facts_extractors import (
     facts_have_spill_scratch_evidence,
     facts_memory_anomaly_count,
     parse_backend_tail_summary,
+)
+from query_doctor.report.language_contract import (
+    ReportLanguageContract,
+    get_report_language_contract,
 )
 from query_doctor.report.llm_client import PROGRESS_PREFIX
 from query_doctor.report.markdown import strip_markdown_section
@@ -74,7 +63,6 @@ from query_doctor.report.safety_validation import (
     validate_report_internal_fingerprints,
 )
 from query_doctor.report.text_postprocess import (
-    ZERO_CARDINALITY_NOT_SUPPORTED_BULLET,
     move_misplaced_admin_bullets_into_admin_section,
     move_misplaced_zero_cardinality_note,
     normalize_report_headings,
@@ -99,14 +87,21 @@ def should_drop_zero_cardinality_positive_claim(line: str, facts_text: str) -> b
     )
 
 
-def strip_unsupported_prose(line: str, current_section: str, facts_text: str = "") -> str | None:
+def strip_unsupported_prose(
+    line: str,
+    current_section: str,
+    facts_text: str = "",
+    *,
+    report_contract: ReportLanguageContract | None = None,
+) -> str | None:
+    contract = report_contract or get_report_language_contract("ru")
     stripped = line.lstrip()
     is_list_item = stripped.startswith(("-", "*")) or bool(re.match(r"^\d+\.\s+", stripped))
     if should_rewrite_spill_storage_line(line):
-        if current_section == NEXT_CHECKS_HEADING:
+        if current_section == contract.next_checks_heading:
             return SPILL_SCRATCH_NEXT_CHECK
         return None
-    if current_section in {RECOMMENDATIONS_HEADING, NEXT_CHECKS_HEADING}:
+    if current_section in {contract.recommendations_heading, contract.next_checks_heading}:
         return None
 
     if is_list_item:
@@ -129,14 +124,17 @@ def strip_unsupported_prose(line: str, current_section: str, facts_text: str = "
     return result or None
 
 
-def sanitize_report_text(report_text: str, facts_text: str) -> str:
+def sanitize_report_text(report_text: str, facts_text: str, *, language: str = "ru") -> str:
     """Return report text with unsupported recommendations removed.
 
     Pure helper for tests and callers: no file I/O, no network, no Ollama calls.
     """
-    report_text = normalize_report_headings(report_text, ROOT_CAUSE_HEADING_REWRITE)
-    report_text = normalize_report_headings(report_text, DETAIL_HEADING_REWRITE)
-    report_text = strip_markdown_section(report_text, ANALYZER_FACTS_HEADING)
+    contract = get_report_language_contract(language)
+    report_text = normalize_report_headings(report_text, contract.root_cause_heading_rewrite)
+    report_text = normalize_report_headings(report_text, contract.detail_heading_rewrite)
+    report_text = strip_markdown_section(report_text, contract.analyzer_facts_heading)
+    if contract.analyzer_facts_heading != ANALYZER_FACTS_HEADING:
+        report_text = strip_markdown_section(report_text, ANALYZER_FACTS_HEADING)
     lines = [line for line in report_text.splitlines() if not line.startswith(PROGRESS_PREFIX)]
 
     # The wrapper owns the top-level title and fingerprint. Some local models
@@ -170,12 +168,12 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
         if direction_normalized is None:
             continue
         line = direction_normalized
-        is_not_supported = current_section == NOT_SUPPORTED_HEADING
+        is_not_supported = current_section == contract.not_supported_heading
         is_structure_line = line.startswith("#") or line.startswith(">") or not line.strip()
         if not is_structure_line and not is_not_supported and should_drop_zero_cardinality_positive_claim(
             line, facts_text
         ):
-            line = ZERO_CARDINALITY_NOT_SUPPORTED_BULLET
+            line = contract.zero_cardinality_not_supported_bullet
         if (
             not is_structure_line
             and not is_not_supported
@@ -184,7 +182,7 @@ def sanitize_report_text(report_text: str, facts_text: str) -> str:
                 or should_rewrite_spill_storage_line(line)
             )
         ):
-            stripped = strip_unsupported_prose(line, current_section, facts_text)
+            stripped = strip_unsupported_prose(line, current_section, facts_text, report_contract=contract)
             if stripped is None:
                 continue
             line = stripped
@@ -215,7 +213,8 @@ def facts_include_referenced_tables(facts_text: str) -> bool:
     return False
 
 
-def validate_report_against_facts(report_text: str, facts_text: str) -> list[str]:
+def validate_report_against_facts(report_text: str, facts_text: str, *, language: str = "ru") -> list[str]:
+    contract = get_report_language_contract(language)
     errors: list[str] = []
     cardinality_count = facts_cardinality_anomaly_count(facts_text)
     if cardinality_count == 0:
@@ -234,76 +233,108 @@ def validate_report_against_facts(report_text: str, facts_text: str) -> list[str
     errors.extend(find_cm_context_only_claim_errors(report_text, facts_text))
     errors.extend(find_primary_bottleneck_overclaim_errors(report_text))
     errors.extend(find_unsupported_metadata_claim_errors(report_text))
-    errors.extend(validate_recommendations_against_candidates(report_text, facts_text))
-    errors.extend(validate_unsupported_conclusions_slot(report_text, facts_text))
+    errors.extend(
+        validate_recommendations_against_candidates(
+            report_text,
+            facts_text,
+            recommendations_heading=contract.recommendations_heading,
+            language=language,
+        )
+    )
+    errors.extend(
+        validate_unsupported_conclusions_slot(
+            report_text,
+            facts_text,
+            short_summary_heading=contract.short_summary_heading,
+        )
+    )
     return errors
 
 
-def enforce_report_fact_requirements(text: str, facts_text: str) -> str:
+def enforce_report_fact_requirements(text: str, facts_text: str, *, language: str = "ru") -> str:
+    contract = get_report_language_contract(language)
     if facts_cardinality_anomaly_count(facts_text) == 0:
         text = insert_bullets_into_section(
             text,
-            NOT_SUPPORTED_HEADING,
-            [ZERO_CARDINALITY_NOT_SUPPORTED_BULLET],
+            contract.not_supported_heading,
+            [contract.zero_cardinality_not_supported_bullet],
         )
     return text
 
 
-def enforce_user_report_requirements(text: str, facts_text: str) -> str:
-    text = normalize_report_headings(text, USER_HEADING_REWRITE)
+def enforce_user_report_requirements(text: str, facts_text: str, *, language: str = "ru") -> str:
+    contract = get_report_language_contract(language)
+    text = normalize_report_headings(text, contract.user_heading_rewrite)
     text = normalize_report_headings(
         text,
         {
-            USER_READ_ONLY_HEADING: NEXT_CHECKS_HEADING,
-            USER_ADMIN_PACKAGE_HEADING: NEXT_CHECKS_HEADING,
-            USER_VALIDATION_HEADING: RECOMMENDATIONS_HEADING,
-            USER_VERIFY_HEADING: NEXT_CHECKS_HEADING,
+            contract.user_read_only_heading: contract.next_checks_heading,
+            contract.user_admin_package_heading: contract.next_checks_heading,
+            contract.user_validation_heading: contract.recommendations_heading,
+            contract.user_verify_heading: contract.next_checks_heading,
         },
     )
     if facts_has_backend_tail_evidence(facts_text):
+        backend_bullet = (
+            "- Передать платформенной команде backend/host evidence из analysis_facts.md; host/network/HDFS/RPC path — это проверки, не доказанная причина."
+            if language == "ru"
+            else "- Send backend/host evidence from analysis_facts.md to the platform team; host/network/HDFS/RPC path items are checks, not a proven cause."
+        )
         text = insert_bullets_into_section(
             text,
-            NEXT_CHECKS_HEADING,
-            [
-                "- Передать платформенной команде backend/host evidence из analysis_facts.md; host/network/HDFS/RPC path — это проверки, не доказанная причина."
-            ],
+            contract.next_checks_heading,
+            [backend_bullet],
         )
-    return enforce_admin_report_requirements(text, facts_text)
+    return enforce_admin_report_requirements(text, facts_text, language=language)
 
 
-def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
-    text = normalize_report_headings(text, ROOT_CAUSE_HEADING_REWRITE)
+def enforce_admin_report_requirements(text: str, facts_text: str = "", *, language: str = "ru") -> str:
+    contract = get_report_language_contract(language)
+
+    def localized(ru_text: str, en_text: str) -> str:
+        return ru_text if language == "ru" else en_text
+
+    text = normalize_report_headings(text, contract.root_cause_heading_rewrite)
     text = normalize_report_headings(
         text,
         {
-            "## Next checks": NEXT_CHECKS_HEADING,
-            "## What to check next": NEXT_CHECKS_HEADING,
-            "## Checks for next run": NEXT_CHECKS_HEADING,
-            "### Next checks": NEXT_CHECKS_HEADING,
-            "### What to check next": NEXT_CHECKS_HEADING,
-            "### Checks for next run": NEXT_CHECKS_HEADING,
-            "## Что проверить следующим запуском": NEXT_CHECKS_HEADING,
-            "## Админские проверки": NEXT_CHECKS_HEADING,
-            "### Админские проверки": NEXT_CHECKS_HEADING,
+            "## Next checks": contract.next_checks_heading,
+            "## What to check next": contract.next_checks_heading,
+            "## Checks for next run": contract.next_checks_heading,
+            "### Next checks": contract.next_checks_heading,
+            "### What to check next": contract.next_checks_heading,
+            "### Checks for next run": contract.next_checks_heading,
+            "## Что проверить следующим запуском": contract.next_checks_heading,
+            "## Админские проверки": contract.next_checks_heading,
+            "### Админские проверки": contract.next_checks_heading,
         },
     )
     metrics_evidence_bullet = cm_metrics_report_evidence_bullet(facts_text)
     if metrics_evidence_bullet:
-        text = insert_bullets_into_section(text, EVIDENCE_HEADING, [metrics_evidence_bullet])
+        text = insert_bullets_into_section(text, contract.evidence_heading, [metrics_evidence_bullet])
     admin_bullet_rules: list[tuple[str, tuple[str, ...]]] = []
     if facts_has_backend_tail_evidence(facts_text):
         admin_bullet_rules.extend(
             [
                 (
-                    "- Проверить per-host RowsProduced для операторов из Action Cards.",
+                    localized(
+                        "- Проверить per-host RowsProduced для операторов из Action Cards.",
+                        "- Check per-host RowsProduced for operators from Action Cards.",
+                    ),
                     (r"per-host\s+RowsProduced",),
                 ),
                 (
-                    "- Проверить per-host PeakMemUsage для тех же операторов.",
+                    localized(
+                        "- Проверить per-host PeakMemUsage для тех же операторов.",
+                        "- Check per-host PeakMemUsage for the same operators.",
+                    ),
                     (r"per-host\s+PeakMemUsage",),
                 ),
                 (
-                    "- Проверить CM metrics/logs на host-level resource pressure во время окна запроса.",
+                    localized(
+                        "- Проверить CM metrics/logs на host-level resource pressure во время окна запроса.",
+                        "- Check CM metrics/logs for host-level resource pressure during the query window.",
+                    ),
                     (r"CM\s+metrics/logs|CM\s+metrics|CM\s+logs|host-level\s+resource\s+pressure",),
                 ),
             ]
@@ -311,7 +342,10 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
     if facts_have_spill_scratch_evidence(facts_text):
         admin_bullet_rules.append(
             (
-                "- Проверить spill/scratch counters в query profile.",
+                localized(
+                    "- Проверить spill/scratch counters в query profile.",
+                    "- Check spill/scratch counters in the query profile.",
+                ),
                 (r"spill/scratch\s+counters|spill.*scratch|scratch.*spill",),
             )
         )
@@ -319,14 +353,20 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
     if facts_have_admission_or_pool_evidence(facts_text) or (memory_count is not None and memory_count > 0):
         admin_bullet_rules.append(
             (
-                "- Проверить лимиты памяти admission pool и поведение очереди.",
+                localized(
+                    "- Проверить лимиты памяти admission pool и поведение очереди.",
+                    "- Check admission pool memory limits and queue behavior.",
+                ),
                 (r"admission\s+pool|лимит\w*\s+памят\w+.*очеред",),
             )
         )
     if facts_have_action_cards(facts_text):
         admin_bullet_rules.append(
             (
-                "- Проверить profile counters по указанным операторам, прежде чем считать предполагаемые проблемы доказанными причинами.",
+                localized(
+                    "- Проверить profile counters по указанным операторам, прежде чем считать предполагаемые проблемы доказанными причинами.",
+                    "- Check profile counters for the listed operators before treating suspected issues as proven causes.",
+                ),
                 (r"profile\s+counters|сч[её]тчик\w+\s+profile",),
             )
         )
@@ -334,22 +374,37 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
     if cm_correlation.get("status") == "available":
         admin_bullet_rules.append(
             (
-                "- Сопоставить CM Metrics Correlation с profile evidence: correlated signals использовать только как runtime context, context-only metrics не считать root cause.",
+                localized(
+                    "- Сопоставить CM Metrics Correlation с profile evidence: correlated signals использовать только как runtime context, context-only metrics не считать root cause.",
+                    "- Compare CM Metrics Correlation with profile evidence: use correlated signals only as runtime context and do not treat context-only metrics as root cause.",
+                ),
                 (r"correlated\s+signals.*runtime\s+context|context-only\s+metrics.*root\s+cause",),
             )
         )
     if facts_has_backend_tail_evidence(facts_text):
         backend_summary = parse_backend_tail_summary(facts_text)
         if backend_has_proven_tail(backend_summary):
-            backend_tail_bullet = (
-                "- Приоритизировать Backend / Host Tail Evidence: сравнить per-host runtime/profile time, "
-                "RowsProduced, BytesRead/BytesWritten и rates для tail host и соседних hosts."
+            backend_tail_bullet = localized(
+                (
+                    "- Приоритизировать Backend / Host Tail Evidence: сравнить per-host runtime/profile time, "
+                    "RowsProduced, BytesRead/BytesWritten и rates для tail host и соседних hosts."
+                ),
+                (
+                    "- Prioritize Backend / Host Tail Evidence: compare per-host runtime/profile time, "
+                    "RowsProduced, BytesRead/BytesWritten and rates for the tail host and peers."
+                ),
             )
             backend_tail_patterns = (r"Backend\s*/\s*Host\s+Tail\s+Evidence|execution\s+tail|tail\s+host",)
         else:
-            backend_tail_bullet = (
-                "- Приоритизировать Backend / Host Tail Evidence: сравнить per-host RowsProduced, "
-                "BytesRead/BytesWritten и rates; single tail host не доказан parsed facts."
+            backend_tail_bullet = localized(
+                (
+                    "- Приоритизировать Backend / Host Tail Evidence: сравнить per-host RowsProduced, "
+                    "BytesRead/BytesWritten и rates; single tail host не доказан parsed facts."
+                ),
+                (
+                    "- Prioritize Backend / Host Tail Evidence: compare per-host RowsProduced, "
+                    "BytesRead/BytesWritten and rates; parsed facts do not prove a single tail host."
+                ),
             )
             backend_tail_patterns = (
                 r"Backend\s*/\s*Host\s+Tail\s+Evidence|single\s+tail\s+host\s+не\s+доказан",
@@ -360,39 +415,63 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "") -> str:
                 backend_tail_patterns,
             ),
             (
-                "- Проверить host-specific write/RPC/HDFS path как гипотезу; это не доказанная причина без внешних host/network/HDFS метрик.",
+                localized(
+                    "- Проверить host-specific write/RPC/HDFS path как гипотезу; это не доказанная причина без внешних host/network/HDFS метрик.",
+                    "- Check host-specific write/RPC/HDFS path as a hypothesis; it is not a proven cause without external host/network/HDFS metrics.",
+                ),
                 (r"write/RPC/HDFS|HDFS/RPC/write|host-specific.*write",),
             ),
         ] + admin_bullet_rules
     return insert_required_bullets_into_section(
         text,
-        NEXT_CHECKS_HEADING,
+        contract.next_checks_heading,
         admin_bullet_rules,
     )
 
 
-def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admin") -> None:
+def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admin", language: str = "ru") -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
-    text = normalize_report_text(text, facts_text=facts_text, mode=mode)
+    text = normalize_report_text(text, facts_text=facts_text, mode=mode, language=language)
     path.write_text(text, encoding="utf-8")
 
 
-def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin") -> str:
-    text = sanitize_report_text(text, facts_text)
-    text = normalize_report_headings(text, DETAIL_HEADING_REWRITE)
+def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin", language: str = "ru") -> str:
+    contract = get_report_language_contract(language)
+    text = sanitize_report_text(text, facts_text, language=language)
+    text = normalize_report_headings(text, contract.detail_heading_rewrite)
     text = remove_report_html_blocks(text)
-    text = remove_negative_caveats_from_short_summary(text)
-    text = normalize_practical_recommendations(text, facts_text)
-    text = move_misplaced_admin_bullets_into_admin_section(text)
-    text = move_misplaced_zero_cardinality_note(text)
+    text = remove_negative_caveats_from_short_summary(text, short_summary_heading=contract.short_summary_heading)
+    text = normalize_practical_recommendations(
+        text,
+        facts_text,
+        recommendations_heading=contract.recommendations_heading,
+        next_checks_heading=contract.next_checks_heading,
+        language=language,
+    )
+    text = move_misplaced_admin_bullets_into_admin_section(text, next_checks_heading=contract.next_checks_heading)
+    text = move_misplaced_zero_cardinality_note(
+        text,
+        not_supported_heading=contract.not_supported_heading,
+        zero_cardinality_bullet=contract.zero_cardinality_not_supported_bullet,
+    )
     if mode == "user":
-        text = enforce_user_report_requirements(text, facts_text)
+        text = enforce_user_report_requirements(text, facts_text, language=language)
     if mode == "admin":
-        text = enforce_admin_report_requirements(text, facts_text)
-    text = enforce_report_fact_requirements(text, facts_text)
-    text = normalize_practical_recommendations(text, facts_text)
-    text = move_misplaced_admin_bullets_into_admin_section(text)
-    text = move_misplaced_zero_cardinality_note(text)
+        text = enforce_admin_report_requirements(text, facts_text, language=language)
+    text = enforce_report_fact_requirements(text, facts_text, language=language)
+    text = normalize_practical_recommendations(
+        text,
+        facts_text,
+        recommendations_heading=contract.recommendations_heading,
+        next_checks_heading=contract.next_checks_heading,
+        language=language,
+    )
+    text = move_misplaced_admin_bullets_into_admin_section(text, next_checks_heading=contract.next_checks_heading)
+    text = move_misplaced_zero_cardinality_note(
+        text,
+        not_supported_heading=contract.not_supported_heading,
+        zero_cardinality_bullet=contract.zero_cardinality_not_supported_bullet,
+    )
     text = remove_report_html_blocks(text)
     return text
 
@@ -403,7 +482,9 @@ def validate_report_text(
     facts_text: str = "",
     min_chars: int = MIN_REPORT_CHARS,
     min_sections: int = MIN_MARKDOWN_SECTIONS,
+    language: str = "ru",
 ) -> list[str]:
+    contract = get_report_language_contract(language)
     errors: list[str] = []
     stripped = text.strip()
     if len(stripped) < min_chars:
@@ -419,52 +500,58 @@ def validate_report_text(
             f"report has too few markdown sections: {len(section_lines)}, minimum is {min_sections}"
         )
 
-    for required in REQUIRED_REPORT_SECTIONS:
+    for required in contract.required_sections:
         if required not in section_lines:
             errors.append(f"missing required section: {required}")
 
-    if section_lines.count("# Query Doctor Report") != 1:
+    if section_lines.count(contract.title_heading) != 1:
         errors.append(
-            f"expected exactly one '# Query Doctor Report' heading, found {section_lines.count('# Query Doctor Report')}"
+            f"expected exactly one {contract.title_heading!r} heading, found {section_lines.count(contract.title_heading)}"
         )
 
-    short_summary_items = count_report_section_items(text, SHORT_SUMMARY_HEADING)
+    short_summary_items = count_report_section_items(text, contract.short_summary_heading)
     if short_summary_items is not None and not 2 <= short_summary_items <= 6:
         errors.append(
             f"short summary must contain 2-6 concise items, found {short_summary_items}"
         )
     errors.extend(validate_report_html_safety(text))
     errors.extend(validate_report_internal_fingerprints(text))
-    errors.extend(validate_recommendations_section(text))
+    errors.extend(validate_recommendations_section(text, recommendations_heading=contract.recommendations_heading))
 
     if contains_raw_sql_like_text(text):
         errors.append("report contains SQL-like text that is not allowed in trusted output")
 
     if facts_text:
-        errors.extend(validate_report_against_facts(text, facts_text))
+        errors.extend(validate_report_against_facts(text, facts_text, language=language))
 
     return errors
 
 
-def validate_report_safety_text(text: str, *, facts_text: str = "") -> list[str]:
+def validate_report_safety_text(text: str, *, facts_text: str = "", language: str = "ru") -> list[str]:
     errors: list[str] = []
     errors.extend(validate_report_html_safety(text))
     errors.extend(validate_report_internal_fingerprints(text))
     if contains_raw_sql_like_text(text):
         errors.append("report contains SQL-like text that is not allowed in trusted output")
     if facts_text:
-        errors.extend(validate_report_against_facts(text, facts_text))
+        errors.extend(validate_report_against_facts(text, facts_text, language=language))
     return errors
 
 
-def validate_report_for_mode(text: str, *, facts_text: str = "", validation_mode: str = "strict") -> list[str]:
+def validate_report_for_mode(
+    text: str,
+    *,
+    facts_text: str = "",
+    validation_mode: str = "strict",
+    language: str = "ru",
+) -> list[str]:
     if validation_mode == "off":
         return []
     if validation_mode == "relaxed":
-        return validate_report_safety_text(text, facts_text=facts_text)
-    return validate_report_text(text, facts_text=facts_text)
+        return validate_report_safety_text(text, facts_text=facts_text, language=language)
+    return validate_report_text(text, facts_text=facts_text, language=language)
 
 
-def validate_report_file(output_path: Path, *, facts_text: str = "") -> list[str]:
+def validate_report_file(output_path: Path, *, facts_text: str = "", language: str = "ru") -> list[str]:
     text = output_path.read_text(encoding="utf-8", errors="replace")
-    return validate_report_text(text, facts_text=facts_text)
+    return validate_report_text(text, facts_text=facts_text, language=language)

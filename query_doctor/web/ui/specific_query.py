@@ -114,7 +114,7 @@ def render_specific_query_detail(
         "<div class=\"breadcrumb\"><a href=\"/query\">Specific Query</a><span>/</span>"
         f"<span>{escaped_query_id}</span></div>"
         "<div class=\"batch-head\"><div><h1>Specific Query details</h1>"
-        "<p>Детерминированные facts по одному проанализированному запросу.</p></div></div>"
+        "<p>Deterministic facts for one analyzed query.</p></div></div>"
         f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"

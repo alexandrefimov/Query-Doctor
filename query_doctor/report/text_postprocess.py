@@ -23,10 +23,14 @@ SHORT_SUMMARY_NEGATIVE_RE = re.compile(
 )
 
 
-def remove_negative_caveats_from_short_summary(text: str) -> str:
+def remove_negative_caveats_from_short_summary(
+    text: str,
+    *,
+    short_summary_heading: str = SHORT_SUMMARY_HEADING,
+) -> str:
     lines = text.splitlines()
     try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == SHORT_SUMMARY_HEADING)
+        start = next(i for i, line in enumerate(lines) if line.strip() == short_summary_heading)
     except StopIteration:
         return text
     end = len(lines)
@@ -45,7 +49,11 @@ def remove_negative_caveats_from_short_summary(text: str) -> str:
     return "\n".join(lines[:start] + cleaned + lines[end:])
 
 
-def move_misplaced_admin_bullets_into_admin_section(text: str) -> str:
+def move_misplaced_admin_bullets_into_admin_section(
+    text: str,
+    *,
+    next_checks_heading: str = NEXT_CHECKS_HEADING,
+) -> str:
     lines = text.splitlines()
     moved: list[str] = []
     kept: list[str] = []
@@ -62,7 +70,7 @@ def move_misplaced_admin_bullets_into_admin_section(text: str) -> str:
         kept.append(line)
     if not moved:
         return text
-    return insert_bullets_into_section("\n".join(kept), NEXT_CHECKS_HEADING, moved)
+    return insert_bullets_into_section("\n".join(kept), next_checks_heading, moved)
 
 
 def remove_report_html_blocks(text: str) -> str:
@@ -77,8 +85,13 @@ def remove_report_html_blocks(text: str) -> str:
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
-def move_misplaced_zero_cardinality_note(text: str) -> str:
-    if ZERO_CARDINALITY_NOT_SUPPORTED_BULLET not in text or NOT_SUPPORTED_HEADING not in text:
+def move_misplaced_zero_cardinality_note(
+    text: str,
+    *,
+    not_supported_heading: str = NOT_SUPPORTED_HEADING,
+    zero_cardinality_bullet: str = ZERO_CARDINALITY_NOT_SUPPORTED_BULLET,
+) -> str:
+    if zero_cardinality_bullet not in text or not_supported_heading not in text:
         return text
     lines = text.splitlines()
     cleaned: list[str] = []
@@ -86,17 +99,17 @@ def move_misplaced_zero_cardinality_note(text: str) -> str:
     in_not_supported = False
     for line in lines:
         stripped = line.strip()
-        if stripped == NOT_SUPPORTED_HEADING:
+        if stripped == not_supported_heading:
             in_not_supported = True
         elif stripped.startswith("## ") or stripped.startswith("### ") or stripped in {"<details>", "</details>"}:
             in_not_supported = False
-        if stripped == ZERO_CARDINALITY_NOT_SUPPORTED_BULLET and not in_not_supported:
+        if stripped == zero_cardinality_bullet and not in_not_supported:
             removed = True
             continue
         cleaned.append(line)
     if not removed:
         return text
-    return insert_bullets_into_section("\n".join(cleaned), NOT_SUPPORTED_HEADING, [ZERO_CARDINALITY_NOT_SUPPORTED_BULLET])
+    return insert_bullets_into_section("\n".join(cleaned), not_supported_heading, [zero_cardinality_bullet])
 
 
 def normalize_report_headings(text: str, replacements: dict[str, str]) -> str:

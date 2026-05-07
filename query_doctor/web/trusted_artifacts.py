@@ -152,8 +152,8 @@ def batch_case_artifact_dir_has_safe_facts(case_dir: Path) -> bool:
 
 
 def optimizer_artifact_status_for_dir(case_dir: Path) -> str:
-    marker = read_optimizer_marker(case_dir)
-    if marker and optimizer_marker_is_valid(case_dir, marker):
+    if optimized_query_validated_exists(case_dir):
+        marker = read_optimizer_marker(case_dir)
         output_kind = str(marker.get("output_kind") or "sql_draft")
         if output_kind == "recommendations_only":
             return "trusted_recommendations"
@@ -232,44 +232,6 @@ def write_batch_case_report_validation_marker(case_dir: Path) -> None:
         "source": "query_doctor_web_server batch case report action",
     }
     (case_dir / BATCH_REPORT_VALIDATION_MARKER).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
-
-
-def optimizer_marker_is_valid(case_dir: Path, marker: dict[str, Any]) -> bool:
-    # A marker is trusted only when it binds the current output, facts, source text and strict validation mode.
-    facts_path = case_dir / "analysis_facts.md"
-    if marker.get("validated") is not True:
-        return False
-    if marker.get("schema_version") != OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION:
-        return False
-    if marker.get("validation_mode") != OPTIMIZED_QUERY_VALIDATION_MODE:
-        return False
-    if not facts_path.is_file() or marker.get("facts_sha256") != file_sha256(facts_path):
-        return False
-    output_kind = str(marker.get("output_kind") or "sql_draft")
-    if output_kind in {"recommendations_only", "no_rewrite"}:
-        recommendations_path = case_dir / OPTIMIZED_QUERY_RECOMMENDATIONS_NAME
-        if marker.get("recommendations") != OPTIMIZED_QUERY_RECOMMENDATIONS_NAME:
-            return False
-        if not recommendations_path.is_file() or marker.get("recommendations_sha256") != file_sha256(recommendations_path):
-            return False
-    else:
-        draft_path = case_dir / OPTIMIZED_QUERY_NAME
-        if marker.get("draft") != OPTIMIZED_QUERY_NAME:
-            return False
-        if not draft_path.is_file() or marker.get("draft_sha256") != file_sha256(draft_path):
-            return False
-    if output_kind not in {"recommendations_only", "no_rewrite"}:
-        draft_path = case_dir / OPTIMIZED_QUERY_NAME
-        try:
-            if sql_completeness_errors(draft_path.read_text(encoding="utf-8", errors="replace")):
-                return False
-        except OSError:
-            return False
-    try:
-        source_sql = extract_optimizable_source_sql(read_source_sql(case_dir))
-    except QueryOptimizationError:
-        return False
-    return marker.get("source_sql_sha256") == text_sha256(source_sql.sql)
 
 
 def optimized_query_validated_exists(case_dir: Path) -> bool:

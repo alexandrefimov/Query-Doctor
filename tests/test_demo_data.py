@@ -51,6 +51,11 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
     optimizer_dir = resolve_batch_case_report_dir(settings, optimizer_case)
     assert optimizer_dir == out_dir / "cases" / "case-001"
     assert batch_case_validated_report_exists(optimizer_dir, optimizer_case)
+    report_text = (optimizer_dir / "diagnosis.md").read_text(encoding="utf-8")
+    assert "## Short Summary" in report_text
+    assert "## Practical Recommendations" in report_text
+    assert "## Detailed Analysis" in report_text
+    assert not any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in report_text)
     assert optimized_query_validated_exists(optimizer_dir)
     recommendations = load_validated_optimizer_recommendations(optimizer_dir)
     assert recommendations is not None

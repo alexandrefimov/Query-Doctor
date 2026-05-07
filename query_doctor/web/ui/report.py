@@ -97,7 +97,7 @@ def render_report_header(result: Any) -> str:
 def render_appendix_notice() -> str:
     return (
         "<div class=\"appendix-notice\">"
-        "<span><strong>Факты анализатора</strong> are marked as deterministic appendix when present. "
+        "<span><strong>Analyzer facts</strong> are marked as deterministic appendix when present. "
         "This section is not LLM-written narrative.</span>"
         "<span class=\"badge gray\">deterministic appendix</span>"
         "</div>"

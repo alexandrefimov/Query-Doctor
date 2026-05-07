@@ -48,7 +48,7 @@ def render_batch_case_report_action(
         status_html = ""
     notes = []
     if not report_enabled:
-        notes.append("LLM Report доступен только для suspicious/bad запросов.")
+        notes.append("LLM Report is available only for suspicious or bad queries.")
     elif view.note:
         notes.append(html.escape(view.note))
     notes_html = ""

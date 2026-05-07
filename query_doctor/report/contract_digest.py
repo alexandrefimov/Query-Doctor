@@ -31,6 +31,10 @@ from query_doctor.report.recommendation_candidates import recommendation_candida
 FACT_APPENDIX_MAX_ITEMS = 8
 
 
+def _localized(language: str, ru_text: str, en_text: str) -> str:
+    return ru_text if language == "ru" else en_text
+
+
 def markdown_bullet_lines(lines: list[str], *, limit: int = FACT_APPENDIX_MAX_ITEMS) -> list[str]:
     bullets = [line.strip() for line in lines if line.lstrip().startswith("- ")]
     return bullets[:limit]
@@ -41,29 +45,45 @@ def markdown_subheading_titles(lines: list[str], *, prefix: str = "### ", limit:
     return titles[:limit]
 
 
-def supported_summary_points(facts_text: str) -> list[str]:
+def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[str]:
     points: list[str] = []
     cardinality_count = facts_cardinality_anomaly_count(facts_text)
     memory_count = facts_memory_anomaly_count(facts_text)
     if cardinality_count and cardinality_count > 0:
         points.append(
-            "В parsed facts есть подтверждённые cardinality estimate anomalies; "
-            "описание должно сохранять направление estimate mismatch."
+            _localized(
+                language,
+                "В parsed facts есть подтверждённые cardinality estimate anomalies; "
+                "описание должно сохранять направление estimate mismatch.",
+                "Parsed facts contain confirmed cardinality estimate anomalies; wording must preserve the estimate mismatch direction.",
+            )
         )
     if memory_count and memory_count > 0:
         points.append(
-            "В parsed facts есть memory estimate anomalies; это отдельный сигнал от cardinality mismatch."
+            _localized(
+                language,
+                "В parsed facts есть memory estimate anomalies; это отдельный сигнал от cardinality mismatch.",
+                "Parsed facts contain memory estimate anomalies; this is separate from cardinality mismatch.",
+            )
         )
     if facts_have_large_intermediate_or_exchange(facts_text):
         points.append(
-            "В parsed facts есть large intermediate/exchange traffic; описывать как data movement volume, "
-            "не как external network instability."
+            _localized(
+                language,
+                "В parsed facts есть large intermediate/exchange traffic; описывать как data movement volume, "
+                "не как external network instability.",
+                "Parsed facts contain large intermediate/exchange traffic; describe it as data movement volume, not external network instability.",
+            )
         )
     if facts_has_backend_tail_evidence(facts_text):
         summary = parse_backend_tail_summary(facts_text)
         if backend_data_skew_is_supported(summary):
             points.append(
-                "Backend facts support data skew по RowsProduced; это не доказывает cardinality underestimation."
+                _localized(
+                    language,
+                    "Backend facts support data skew по RowsProduced; это не доказывает cardinality underestimation.",
+                    "Backend facts support data skew by RowsProduced; this does not prove cardinality underestimation.",
+                )
             )
         if backend_has_proven_tail(summary):
             points.append("Backend facts support execution skew / host-tail evidence.")
@@ -253,7 +273,7 @@ def evidence_groups(facts_text: str) -> dict[str, list[str]]:
     return groups
 
 
-def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
+def build_report_contract_digest(facts_text: str, *, language: str = "ru") -> dict[str, Any]:
     """Return a compact Python-owned contract for LLM report slots."""
     summary_lines = extract_markdown_section(facts_text, "## Summary")
     totals_lines = extract_markdown_section(facts_text, "## Totals")
@@ -299,12 +319,12 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
             for label in ("score", "level")
             if first_bullet_value(evidence_quality_lines, label) is not None
         },
-        "supported_summary_points": supported_summary_points(facts_text),
+        "supported_summary_points": supported_summary_points(facts_text, language=language),
         "case_differentiators": case_summary_differentiators(facts_text),
         "evidence_groups": evidence_groups(facts_text),
         "recommendation_candidates": [
             {"id": candidate_id, "text": text}
-            for candidate_id, text in recommendation_candidate_lines(facts_text)
+            for candidate_id, text in recommendation_candidate_lines(facts_text, language=language)
         ],
         "action_card_titles": markdown_subheading_titles(action_card_lines),
         "finding_titles": markdown_subheading_titles(findings_lines),
@@ -312,9 +332,9 @@ def build_report_contract_digest(facts_text: str) -> dict[str, Any]:
     }
 
 
-def format_report_contract_digest(facts_text: str) -> str:
+def format_report_contract_digest(facts_text: str, *, language: str = "ru") -> str:
     return json.dumps(
-        build_report_contract_digest(facts_text),
+        build_report_contract_digest(facts_text, language=language),
         ensure_ascii=False,
         indent=2,
         sort_keys=True,

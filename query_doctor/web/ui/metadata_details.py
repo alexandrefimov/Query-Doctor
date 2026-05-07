@@ -25,7 +25,7 @@ def render_metadata_facts_section(view: RecentScanMetadataView) -> str:
             "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
             "<summary>Metadata facts</summary>"
             "<div class=\"report-body\"><p>metadata facts are not available</p>"
-            "<p>Здесь показаны только deterministic analyzer facts.</p>"
+            "<p>Only deterministic analyzer facts are shown here.</p>"
             f"{degraded_html}</div>"
             "</details>"
         )
@@ -76,9 +76,9 @@ def render_metadata_facts_body(
         "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
         "<summary>Metadata facts</summary>"
         "<div class=\"report-body\">"
-        "<p>Детерминированные table-level metadata facts. Missing/incomplete stats — это limitations/checks, а не root causes.</p>"
-        "<p><code>ok</code> у SHOW-команд означает, что metadata command успешно выполнилась; "
-        "stats coverage оценивается отдельно в Row-count stats и Column stats.</p>"
+        "<p>Deterministic table-level metadata facts. Missing or incomplete stats are limitations/checks, not root causes.</p>"
+        "<p><code>ok</code> for SHOW commands means the metadata command completed successfully; "
+        "stats coverage is evaluated separately in Row-count stats and Column stats.</p>"
         f"{fallback_html}"
         f"{degraded_html}"
         f"<div class=\"meta-list\">{summary_rows}</div>"
@@ -97,13 +97,13 @@ def render_metadata_facts_body(
 def metadata_degraded_note(view: RecentScanMetadataView) -> str:
     status_values = {str(label): str(value or "").lower() for label, value in view.summary_items}
     status = status_values.get("metadata status", "")
-    base = "Profile-based findings остаются валидными; metadata evidence для follow-up может быть ограничен."
+    base = "Profile-based findings remain valid; metadata evidence for follow-up may be limited."
     if view.unavailable or status in {"skipped", "not_run", "unknown"}:
         return base
     if status == "partial":
-        return f"Metadata collection была partial. {base}"
+        return f"Metadata collection was partial. {base}"
     if status == "failed":
-        return f"Metadata collection завершилась ошибкой. {base}"
+        return f"Metadata collection failed. {base}"
     return ""
 
 

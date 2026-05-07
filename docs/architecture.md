@@ -1,21 +1,158 @@
 # Query Doctor Architecture
 
-Language: English | [Русский](i18n/ru/architecture.md)
+Language: English | [Russian](i18n/ru/architecture.md)
 
 Query Doctor keeps fact extraction deterministic. LLMs may phrase the final
-Russian-language narrative only from facts that Python has already extracted and
-validated.
+report narrative only from facts that Python has already extracted and
+validated. English is the default trusted report language; Russian remains an
+explicit localized output path.
 
-## Pipeline
+## Current Architecture
+
+```mermaid
+flowchart TD
+    subgraph External["External read-only sources"]
+        CM[Cloudera Manager summaries and profiles]
+        ImpalaMeta[Allowlisted Impala metadata]
+        CMMetrics[Bounded CM time-series summaries]
+    end
+
+    subgraph Local["Local Query Doctor runtime"]
+        Collector[Explicit bounded collectors]
+        CaseStore[Ignored local case output]
+        Analyzer[Deterministic analyzer]
+        Facts[Analyzer-owned facts]
+        Ranking[Ranking and action candidates]
+        WebUI[Local web UI]
+    end
+
+    subgraph Trust["Explicit trusted-output actions"]
+        ReportWriter[LLM report wording]
+        ReportValidator[Sanitizer and fail-closed report validator]
+        TrustedReport[Trusted report]
+        OptimizerDraft[Details-page optimizer draft]
+        OptimizerValidator[Deterministic optimizer validator]
+        TrustedOptimizer[Trusted optimizer outcome]
+    end
+
+    subgraph Pasted["Separate pasted-query workflow"]
+        PastedInput[Submitted query text]
+        QueryParser[Read-only parser and analyzer]
+        QueryFindings[Safe findings and limitations]
+    end
+
+    CM --> Collector
+    ImpalaMeta --> Collector
+    CMMetrics --> Collector
+    Collector --> CaseStore
+    CaseStore --> Analyzer
+    Analyzer --> Facts
+    Facts --> Ranking
+    Ranking --> WebUI
+    Facts --> ReportWriter
+    ReportWriter --> ReportValidator
+    ReportValidator --> TrustedReport
+    TrustedReport --> WebUI
+    Facts --> OptimizerDraft
+    OptimizerDraft --> OptimizerValidator
+    OptimizerValidator --> TrustedOptimizer
+    TrustedOptimizer --> WebUI
+    PastedInput --> QueryParser
+    QueryParser --> QueryFindings
+    QueryFindings --> WebUI
+```
+
+Current implementation is intentionally narrow:
+
+- Apache Impala is the only implemented query engine.
+- Cloudera Manager summaries and profiles are the implemented profile source.
+- CM time-series support is bounded and summarized before becoming facts.
+- Impala metadata collection is explicit, read-only, and allowlisted.
+- Reports and details-page optimizer drafts run only after an explicit
+  selected-case action.
+- The pasted-query optimizer is read-only, does not execute input, and does not
+  echo submitted text after submit.
+
+## Future Architecture
+
+This diagram is a roadmap shape, not current support. Future providers and
+workflows must first add contracts, fixtures, safety tests, and public docs
+before they become product behavior.
+
+```mermaid
+flowchart TD
+    subgraph Providers["Roadmap source-provider seams"]
+        CMProvider[CM profiles and metrics]
+        ImpalaDaemon[Direct Impala profile endpoint]
+        PromProvider[Prometheus-style metrics]
+        EventProvider[Prepared log/event summaries]
+        LakehouseProvider[Future lakehouse providers]
+    end
+
+    subgraph Normalized["Python-owned normalized facts"]
+        ProfileFacts[Profile facts]
+        MetadataFacts[Metadata facts]
+        MetricFacts[Metric facts]
+        EventFacts[Event facts]
+        Correlation[Deterministic correlation]
+    end
+
+    subgraph Products["Product surfaces"]
+        QueryDoctor[Query Doctor query workflows]
+        ClusterDoctor[Cluster Doctor window workflow]
+        OptimizerSurface[Read-only optimizer workflows]
+    end
+
+    subgraph TrustBoundary["Shared trust boundary"]
+        ClaimRegistry[Claim and evidence policy]
+        Validators[Report and optimizer validators]
+        Reports[Trusted reports]
+        Browser[Safe browser summaries]
+    end
+
+    CMProvider --> ProfileFacts
+    CMProvider --> MetricFacts
+    ImpalaDaemon --> ProfileFacts
+    PromProvider --> MetricFacts
+    EventProvider --> EventFacts
+    LakehouseProvider --> ProfileFacts
+    LakehouseProvider --> MetricFacts
+    ProfileFacts --> Correlation
+    MetadataFacts --> Correlation
+    MetricFacts --> Correlation
+    EventFacts --> Correlation
+    Correlation --> QueryDoctor
+    Correlation --> ClusterDoctor
+    MetadataFacts --> OptimizerSurface
+    QueryDoctor --> ClaimRegistry
+    ClusterDoctor --> ClaimRegistry
+    OptimizerSurface --> ClaimRegistry
+    ClaimRegistry --> Validators
+    Validators --> Reports
+    Validators --> Browser
+```
+
+Future direction:
+
+- keep engine and provider adapters thin until there is implemented behavior;
+- add direct Impala, Prometheus-style metrics, and prepared event providers only
+  behind explicit bounded read-only contracts;
+- keep Cluster Doctor as a separate user-run cluster/window diagnostic product,
+  not an implicit query root-cause engine;
+- let Python publish facts, statuses, confidence, limitations, and claim scope
+  before any LLM wording is allowed;
+- keep browser and report output raw-free across every future source.
+
+## Current Pipeline
 
 ```text
-Cloudera Manager profile / profile_digest.md
+Cloudera Manager profile summary
   -> query-doctor-collect-cm-profiles
   -> ignored local case directory
   -> query-doctor-analyze
-  -> analysis_facts.md
+  -> analyzer-owned facts artifact
   -> action cards and deterministic evidence
-  -> optional Table Metadata Context from local impala_context.json
+  -> optional bounded metadata context
   -> query-doctor-report
   -> sanitizer and fail-closed validator
   -> deterministic analyzer facts appendix
@@ -27,6 +164,10 @@ The implemented collection path is currently validated against the local
 Cloudera Manager 6.2.1 environment. Treat newer Cloudera Manager versions and
 non-Cloudera Impala deployments as future source-provider work, not as current
 support.
+
+The same boundary applies to every workflow: collectors and parsers prepare
+bounded inputs, Python-owned analyzers create facts, LLMs phrase only trusted
+facts, and validators decide what can be rendered or stored as trusted output.
 
 ## Components
 
@@ -94,31 +235,31 @@ correlation facts.
 
 The analyzer:
 
-- reads `profile_digest.md`;
-- extracts deterministic facts into `analysis_facts.md`;
+- reads the local collected profile digest;
+- extracts deterministic facts into the analyzer facts artifact;
 - writes operator summaries, anomaly counts, action cards, backend/host
   evidence, referenced tables, and optional table metadata facts when present;
-- reads local `impala_context.json` when present and adds
+- reads local metadata context when present and adds
   `## Table Metadata Context`;
-- may later add safe metrics/log/cluster facts only after source providers have
-  bounded collection contracts and tests;
-- does not call Cloudera Manager, Ollama, or the report writer.
+- may later add safe metrics, event, or cluster facts only after source
+  providers have bounded collection contracts and tests;
+- does not call Cloudera Manager, the LLM runtime, or the report writer.
 
 ### Report Writer
 
 The report writer:
 
-- reads only `analysis_facts.md`;
+- reads only the analyzer facts artifact;
 - uses an LLM for narrative wording, not fact discovery;
 - must not infer facts from raw profile text, SQL, local config, or external
   context;
 - may eventually render a multi-signal diagnosis, but only from normalized
   Python-owned facts produced by profile, metadata, metrics, and log analyzers;
 - generates trusted LLM reports within one fact boundary;
-- requires user-facing narrative sections `## Краткий вывод`,
-  `## Практические рекомендации`, `## Подробный разбор`, and
-  `### Follow-up checks`;
-- deterministically appends `## Факты анализатора` from `analysis_facts.md`;
+- requires localized user-facing narrative sections for summary,
+  recommendations, detailed findings, and follow-up checks;
+- deterministically appends a localized analyzer facts appendix from the facts
+  artifact;
 - excludes `## Table Metadata Context` and `## CM Time-Series Context` from the
   LLM prompt today;
 - passes only curated metadata digest and normalized `## CM Metrics Facts` to

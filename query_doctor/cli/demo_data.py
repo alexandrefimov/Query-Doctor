@@ -210,7 +210,7 @@ def synthetic_profile_digest(spec: DemoCaseSpec) -> str:
 
 
 def write_validated_report(case_dir: Path, report_text: str, facts_text: str) -> None:
-    errors = validate_report_text(report_text, facts_text=facts_text)
+    errors = validate_report_text(report_text, facts_text=facts_text, language="en")
     if errors:
         raise ValueError(f"Generated demo report did not pass safety validation: {errors[0]}")
     (case_dir / BATCH_REPORT_NAME).write_text(report_text, encoding="utf-8")

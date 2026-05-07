@@ -1,0 +1,51 @@
+# GitHub label baseline for public repository setup.
+#
+# This file is compatible with common label-sync tools. Keep labels focused on
+# review routing and community onboarding; avoid labels that encourage sharing
+# private production inputs.
+
+- name: bug
+  color: d73a4a
+  description: Incorrect behavior in a supported local workflow.
+- name: enhancement
+  color: a2eeef
+  description: Bounded feature request or workflow improvement.
+- name: documentation
+  color: 0075ca
+  description: Public docs, examples, release notes, or maintainer guides.
+- name: safety
+  color: b60205
+  description: Privacy, redaction, validation, or trust-boundary concern.
+- name: optimizer
+  color: 5319e7
+  description: Query Optimizer or details-page LLM optimizer behavior.
+- name: collector
+  color: 0e8a16
+  description: Cloudera Manager, Impala metadata, or future provider collection.
+- name: analyzer
+  color: fbca04
+  description: Deterministic facts, scoring, or evidence extraction.
+- name: web-ui
+  color: 1d76db
+  description: Browser UI, presenters, or local web workflows.
+- name: tests
+  color: c5def5
+  description: Test coverage, fixtures, CI, or release-gate checks.
+- name: refactor
+  color: cfd3d7
+  description: Behavior-preserving maintainability work.
+- name: good first issue
+  color: 7057ff
+  description: Small, well-scoped task for a first contribution.
+- name: help wanted
+  color: 008672
+  description: Maintainer-approved contribution opportunity.
+- name: needs reproduction
+  color: d876e3
+  description: Needs a sanitized synthetic reproduction before action.
+- name: blocked
+  color: bfdadc
+  description: Waiting on a decision, upstream dependency, or safe fixture.
+- name: wontfix
+  color: ffffff
+  description: Intentionally out of scope for Query Doctor.

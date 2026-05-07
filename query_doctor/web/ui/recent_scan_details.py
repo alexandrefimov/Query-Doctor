@@ -111,7 +111,7 @@ def render_batch_case_detail(
         f"<div class=\"breadcrumb\"><a href=\"{safe_list_href}\">{safe_workflow_title}</a><span>/</span>"
         f"<span>{html.escape(view.case_id)}</span></div>"
         f"<div class=\"batch-head\"><div><h1>{safe_workflow_title} case details</h1>"
-        "<p>Детерминированные facts по одному проанализированному запросу.</p></div>"
+        "<p>Deterministic facts for one analyzed query.</p></div>"
         f"<span class=\"badge blue\">{html.escape(view.case_id)}</span></div>"
         f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"
@@ -184,7 +184,7 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<section id=\"findings\" class=\"panel docs-panel findings-panel\" aria-label=\"Findings\">"
         "<h1>Findings</h1>"
         "<div class=\"report-body\">"
-        "<p class=\"helper\">Основные deterministic findings раскрыты сразу. Они опираются только на analyzer facts и не являются root-cause claim без прямого evidence.</p>"
+        "<p class=\"helper\">Primary deterministic findings are open by default. They rely only on analyzer facts and are not root-cause claims without direct evidence.</p>"
         f"{render_runtime_diagnosis_summary(view.runtime_diagnosis)}"
         f"{render_action_candidate_findings(view)}"
         f"{render_score_reason_explanations(view)}"
@@ -194,7 +194,7 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<details class=\"panel docs-panel analysis-details\" aria-label=\"Evidence details\">"
         "<summary>Evidence details</summary>"
         "<div class=\"report-body analysis-details-body\">"
-        "<p class=\"helper\">Подробные deterministic facts для проверки findings. Эти данные свернуты, чтобы первый экран оставался диагностическим.</p>"
+        "<p class=\"helper\">Detailed deterministic facts are available for checking findings. They stay collapsed so the first screen remains diagnostic.</p>"
         f"{render_runtime_diagnosis_details(view.runtime_diagnosis)}"
         f"{render_runtime_signals(view)}"
         f"{render_cm_metrics_section(view.cm_metrics)}"
@@ -239,7 +239,7 @@ def render_score_reason_explanations(view: RecentScanCaseDetailView) -> str:
     if not reasons:
         reason_cards = (
             "<li class=\"reason-card\"><strong>No positive deterministic score reasons</strong>"
-            "<p>Batch score не содержит suspicious analyzer signal для этого кейса.</p></li>"
+            "<p>Batch score does not contain a suspicious analyzer signal for this case.</p></li>"
         )
     else:
         reason_cards = "".join(render_score_reason_card(reason) for reason in reasons)
@@ -262,54 +262,54 @@ def explain_score_reason(reason: Any) -> tuple[str, str]:
     if "cardinality estimate anomalies" in lower:
         return (
             text,
-            "В runtime profile есть operators, где estimated rows сильно расходятся с actual rows. "
-            "Это может влиять на planning, memory sizing и join decisions; это не root-cause claim.",
+            "Runtime profile contains operators where estimated rows diverge strongly from actual rows. "
+            "This may affect planning, memory sizing, and join decisions; it is not a root-cause claim.",
         )
     if "memory estimate anomalies" in lower:
         return (
             text,
-            "Наблюдаемые runtime memory signals выглядят несогласованными с estimates. "
-            "Это deterministic runtime signal, а не доказательство причины медленного запроса.",
+            "Observed runtime memory signals look inconsistent with estimates. "
+            "This is a deterministic runtime signal, not proof of the slow query cause.",
         )
     if "zero/unknown row estimate gaps" in lower:
         return (
             text,
-            "Некоторые operators вернули rows при zero/non-positive или unavailable estimate. "
-            "Это сильный estimate-quality signal, но не root-cause claim.",
+            "Some operators returned rows while the estimate was zero, non-positive, or unavailable. "
+            "This is a strong estimate-quality signal, but not a root-cause claim.",
         )
     if "zero/unknown memory estimate gaps" in lower:
         return (
             text,
-            "Некоторые operators использовали memory при zero/non-positive или unavailable estimate. "
-            "Это planning/estimate signal, но не root-cause claim.",
+            "Some operators used memory while the estimate was zero, non-positive, or unavailable. "
+            "This is a planning/estimate signal, but not a root-cause claim.",
         )
     if "backend data skew" in lower:
         return (
             text,
-            "В profile распределение работы по backends выглядит неравномерным. "
-            "Это не указывает точную network, storage или data-layout причину.",
+            "Profile work distribution across backends looks uneven. "
+            "This does not identify a specific network, storage, or data-layout cause.",
         )
     if "host tail candidates" in lower:
         return (
             text,
-            "Один или несколько backends могут быть tail candidates по deterministic profile timing signals.",
+            "One or more backends may be tail candidates based on deterministic profile timing signals.",
         )
     if "table stats row-count completeness" in lower:
         return (
             text,
-            "В table metadata есть missing/unknown row-count completeness. "
-            "Это limitation/check для follow-up, а не root-cause claim.",
+            "Table metadata has missing or unknown row-count completeness. "
+            "This is a follow-up limitation or check, not a root-cause claim.",
         )
     if "column stats completeness" in lower:
         return (
             text,
-            "Collected metadata показывает incomplete/unknown column stats. "
-            "Это limitation/check, а не root-cause claim.",
+            "Collected metadata shows incomplete or unknown column stats. "
+            "This is a limitation or check, not a root-cause claim.",
         )
     if "metadata collection failed" in lower or "metadata failed" in lower:
         return (
             text,
-            "Metadata не удалось собрать для этого кейса. Runtime profile facts все равно показаны и ранжируются детерминированно.",
+            "Metadata collection failed for this case. Runtime profile facts are still shown and ranked deterministically.",
         )
     return (
         "Other deterministic reason",

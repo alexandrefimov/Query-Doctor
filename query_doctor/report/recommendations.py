@@ -173,10 +173,17 @@ def canonical_recommendation_bullets(candidates: list[tuple[str, str]]) -> list[
     return [f"- {text}" for _, text in candidates]
 
 
-def normalize_practical_recommendations(text: str, facts_text: str) -> str:
+def normalize_practical_recommendations(
+    text: str,
+    facts_text: str,
+    *,
+    recommendations_heading: str = RECOMMENDATIONS_HEADING,
+    next_checks_heading: str = NEXT_CHECKS_HEADING,
+    language: str = "ru",
+) -> str:
     lines = text.splitlines()
     try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == RECOMMENDATIONS_HEADING)
+        start = next(i for i, line in enumerate(lines) if line.strip() == recommendations_heading)
     except StopIteration:
         return text
     end = len(lines)
@@ -186,7 +193,7 @@ def normalize_practical_recommendations(text: str, facts_text: str) -> str:
             break
 
     moved_to_admin: list[str] = []
-    candidates = recommendation_candidate_lines(facts_text)
+    candidates = recommendation_candidate_lines(facts_text, language=language)
     preserved: list[str] = []
     preserved_candidate_ids: set[str] = set()
     for line in lines[start + 1 : end]:
@@ -228,5 +235,5 @@ def normalize_practical_recommendations(text: str, facts_text: str) -> str:
     normalized_section = [""] + preserved[:MAX_RECOMMENDATION_ITEMS]
     normalized = "\n".join(lines[: start + 1] + normalized_section + lines[end:])
     if moved_to_admin:
-        normalized = insert_bullets_into_section(normalized, NEXT_CHECKS_HEADING, moved_to_admin)
+        normalized = insert_bullets_into_section(normalized, next_checks_heading, moved_to_admin)
     return normalized

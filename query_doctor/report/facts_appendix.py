@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from query_doctor.report.contract import ANALYZER_FACTS_HEADING
+from query_doctor.report.language_contract import get_report_language_contract
 from query_doctor.report.markdown import (
     extract_markdown_section,
     extract_markdown_subsection,
@@ -41,7 +42,8 @@ def limited_nonempty_lines(
     return selected[:limit], max(0, len(selected) - limit)
 
 
-def render_analyzer_facts_appendix(facts_text: str) -> str:
+def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> str:
+    contract = get_report_language_contract(language)
     summary_lines = extract_markdown_section(facts_text, "## Summary")
     query_wall_clock_lines = extract_markdown_section(facts_text, "## Query Wall Clock")
     evidence_quality_lines = extract_markdown_section(facts_text, "## Evidence Quality")
@@ -61,9 +63,9 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
 
     lines: list[str] = [
         "",
-        ANALYZER_FACTS_HEADING,
+        contract.analyzer_facts_heading,
         "",
-        "### Сводка",
+        contract.summary_appendix_heading,
     ]
     for label in (
         "Parsed operators",
@@ -206,7 +208,7 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
             )
 
     if limitation_lines:
-        lines.extend(["", "### Важные ограничения"])
+        lines.extend(["", contract.limitations_appendix_heading])
         limitation_excerpt, remaining_limitations = limited_nonempty_lines(
             [line for line in limitation_lines if line.lstrip().startswith("- ")],
             limit=FACT_APPENDIX_MAX_ITEMS,
@@ -221,6 +223,9 @@ def render_analyzer_facts_appendix(facts_text: str) -> str:
     return "\n".join(lines)
 
 
-def append_analyzer_facts_appendix(report_text: str, facts_text: str) -> str:
-    without_model_appendix = strip_markdown_section(report_text, ANALYZER_FACTS_HEADING)
-    return without_model_appendix.rstrip() + "\n" + render_analyzer_facts_appendix(facts_text)
+def append_analyzer_facts_appendix(report_text: str, facts_text: str, *, language: str = "ru") -> str:
+    contract = get_report_language_contract(language)
+    without_model_appendix = strip_markdown_section(report_text, contract.analyzer_facts_heading)
+    if contract.analyzer_facts_heading != ANALYZER_FACTS_HEADING:
+        without_model_appendix = strip_markdown_section(without_model_appendix, ANALYZER_FACTS_HEADING)
+    return without_model_appendix.rstrip() + "\n" + render_analyzer_facts_appendix(facts_text, language=language)

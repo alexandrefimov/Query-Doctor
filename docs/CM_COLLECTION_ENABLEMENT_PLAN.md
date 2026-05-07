@@ -1,6 +1,6 @@
 # Cloudera Manager Collection Enablement Plan
 
-Language: English | [Русский](i18n/ru/CM_COLLECTION_ENABLEMENT_PLAN.md)
+Language: English | [Russian](i18n/ru/CM_COLLECTION_ENABLEMENT_PLAN.md)
 
 This document is a rollout checklist for the read-only Cloudera Manager profile
 collector. It covers local generated corpus inputs for regression and smoke

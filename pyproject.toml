@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,8 +7,35 @@ name = "query-doctor"
 version = "0.1.0"
 description = "Local-first Apache Impala query diagnostic tool."
 readme = "README.md"
-license = { text = "AGPL-3.0-or-later" }
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.9"
+authors = [
+    { name = "Aleksandr Efimov" },
+]
+maintainers = [
+    { name = "Aleksandr Efimov" },
+]
+keywords = [
+    "apache-impala",
+    "cloudera-manager",
+    "diagnostics",
+    "query-analysis",
+    "sql",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Database",
+    "Topic :: System :: Monitoring",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -32,6 +59,12 @@ query-doctor-optimize-query = "query_doctor.cli.optimize_query:main"
 query-doctor-pipeline = "query_doctor.cli.pipeline:main"
 query-doctor-report = "query_doctor.cli.report:main"
 query-doctor-web = "query_doctor.cli.web:main"
+
+[project.urls]
+Homepage = "https://github.com/alexandrefimov/Query-Doctor"
+Repository = "https://github.com/alexandrefimov/Query-Doctor"
+Issues = "https://github.com/alexandrefimov/Query-Doctor/issues"
+Documentation = "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md"
 
 [tool.setuptools.packages.find]
 include = ["query_doctor*"]

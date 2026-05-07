@@ -98,13 +98,13 @@ def runtime_diagnosis_summary_text(value: Any) -> str:
     text = str(value or "").strip()
     if text == "Network/exchange pressure is the strongest plausible follow-up hypothesis from deterministic facts.":
         return (
-            "Проблемы могут быть связаны с network/exchange pressure: analyzer видит correlated "
-            "network context и profile evidence. Это follow-up hypothesis, не standalone root-cause proof."
+            "Network/exchange pressure may be relevant: analyzer facts show correlated network context "
+            "and profile evidence. This is a follow-up hypothesis, not standalone root-cause proof."
         )
     if text == "No single runtime environment hypothesis is supported as likely by the deterministic facts.":
         return (
-            "Analyzer не видит достаточно evidence, чтобы назвать network, HDFS, CPU или admission "
-            "основным объяснением. Доступные signals остаются context-only."
+            "Analyzer facts do not support network, HDFS, CPU, or admission as the main explanation. "
+            "Available signals remain context only."
         )
     return text
 
@@ -116,34 +116,20 @@ def runtime_diagnosis_interpretation(value: Any) -> str:
             "Network/exchange pressure or downstream exchange backpressure is a plausible follow-up "
             "hypothesis for this query window. Validate it with comparable reruns and bounded cluster "
             "network metrics; this is not standalone proof of external network instability."
-        ): (
-            "Network/exchange pressure или downstream exchange backpressure выглядит как plausible "
-            "follow-up hypothesis для этого query window. Проверять нужно comparable rerun и bounded "
-            "cluster network metrics; это не proof внешней network instability."
-        ),
+        ): text,
         (
             "Network I/O spike was observed, but parsed profile facts did not provide matching "
             "exchange/data-movement evidence. Treat it as runtime context only."
-        ): (
-            "Network I/O spike observed, но profile facts не дали matching exchange/data-movement "
-            "evidence. Это runtime context only."
-        ),
-        "Network/exchange pressure was not established by the available deterministic facts.": (
-            "Network/exchange pressure не подтвержден доступными deterministic facts."
-        ),
+        ): text,
+        "Network/exchange pressure was not established by the available deterministic facts.": text,
         (
             "Large read volume is an I/O footprint. Without slow scan/storage share evidence it does not prove "
             "HDFS service latency, block-size issues, or replication-factor problems."
-        ): (
-            "Большой read volume — это I/O footprint. Без slow scan/storage share evidence он не доказывает "
-            "HDFS latency, block-size или replication-factor problem."
-        ),
+        ): text,
         (
             "Host CPU pressure was checked and not observed; admission queue wait was not reported in the safe "
             "query context."
-        ): (
-            "Host CPU pressure checked and not observed; admission queue wait не reported в safe query context."
-        ),
+        ): text,
     }
     return translations.get(text, text)
 
@@ -197,14 +183,14 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         "<details class=\"analysis-subdetails\" aria-label=\"CM metrics\">"
         "<summary>CM metrics</summary>"
         "<div class=\"report-body\">"
-        "<p>Детерминированные CM metric facts за окно выполнения запроса. Наблюдаемые сигналы дают runtime context, но сами по себе не доказывают root cause.</p>"
+        "<p>Deterministic CM metric facts for the query runtime window. Observed signals provide runtime context, but do not prove root cause by themselves.</p>"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr><th>Metric</th><th>Status</th><th>Basis</th></tr></thead>"
         f"<tbody>{signal_rows}</tbody>"
         "</table></div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
-        "<thead><tr><th>Metric</th><th>Correlation</th><th>Metric status</th><th>Strength</th><th>Интерпретация</th></tr></thead>"
+        "<thead><tr><th>Metric</th><th>Correlation</th><th>Metric status</th><th>Strength</th><th>Interpretation</th></tr></thead>"
         f"<tbody>{correlation_rows}</tbody>"
         "</table></div>"
         f"{limitations_html}"
@@ -219,15 +205,15 @@ def cm_metric_interpretation(value: Any) -> Any:
     text = str(value)
     translations = {
         "No deterministic optimizer or report action is derived from this metric status.": (
-            "По этому metric status нет deterministic optimizer/report action."
+            "No deterministic optimizer or report action is derived from this metric status."
         ),
         "Daemon memory growth is correlated with parsed memory, spill, or high-memory operator evidence; prioritize reducing intermediate memory footprint.": (
-            "Daemon memory growth коррелирует с parsed memory, spill или high-memory operator evidence; "
-            "для follow-up приоритизируйте снижение intermediate memory footprint."
+            "Daemon memory growth is correlated with parsed memory, spill, or high-memory operator evidence; "
+            "prioritize reducing intermediate memory footprint."
         ),
         "Network I/O spike is correlated with parsed large exchange/data movement evidence; prioritize reducing exchange rows or payload.": (
-            "Network I/O spike коррелирует с parsed large exchange/data movement evidence; "
-            "для follow-up приоритизируйте снижение exchange rows или payload."
+            "Network I/O spike is correlated with parsed large exchange/data movement evidence; "
+            "prioritize reducing exchange rows or payload."
         ),
     }
     return translations.get(text, value)

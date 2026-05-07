@@ -10,6 +10,11 @@ This repository is still being prepared for public release. Until a formal
 release policy is added, security-sensitive reports should be handled privately
 with the repository maintainers.
 
+Preferred private reporting path, when available, is GitHub Security Advisories
+for this repository. If advisories are not enabled yet, contact the maintainer
+privately and share only sanitized reproduction details until a private channel
+is confirmed.
+
 ## Reporting
 
 Do not file public issues containing:
@@ -26,6 +31,9 @@ Do not file public issues containing:
 When reporting a security issue, include a minimal sanitized reproduction,
 affected command or workflow, expected behavior, actual behavior, and why the
 output crosses a trust boundary.
+
+For public issues, describe the affected boundary and use synthetic placeholders
+only. Do not attach real generated artifacts from production environments.
 
 ## Security Boundaries
 

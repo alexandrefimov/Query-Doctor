@@ -39,6 +39,7 @@ _TABLE_KEYS = {
 def build_metadata_facts_digest(
     analysis_facts_text: str,
     *,
+    language: str = "ru",
     max_tables: int = METADATA_DIGEST_MAX_TABLES,
     max_chars: int = METADATA_DIGEST_MAX_CHARS,
 ) -> str:
@@ -50,6 +51,22 @@ def build_metadata_facts_digest(
     context_lines, tables = _parse_metadata_section(section)
     if not context_lines and not tables:
         return ""
+
+    preferred_wording = (
+        [
+            '- Prefer wording like "метаданные показывают неполноту статистики", '
+            '"это может влиять на оценки оптимизатора", and "следующая проверка".',
+            '- Avoid wording like "причина — устаревшая статистика", '
+            '"нужно выполнить COMPUTE STATS", and "статистика точно сломала план".',
+        ]
+        if language == "ru"
+        else [
+            '- Prefer wording like "metadata shows incomplete statistics", '
+            '"this may affect optimizer estimates", and "next check".',
+            '- Avoid wording like "stale statistics are the cause", '
+            '"COMPUTE STATS must be run", and "statistics definitely broke the plan".',
+        ]
+    )
 
     lines = [
         "## Metadata Facts Digest",
@@ -64,10 +81,7 @@ def build_metadata_facts_digest(
         "- Do not recommend COMPUTE STATS as required.",
         "- You may recommend checking/updating stats only as a conditional next check "
         "when stats are missing/incomplete/unknown and relevant to the query.",
-        "- Prefer wording like \"метаданные показывают неполноту статистики\", "
-        "\"это может влиять на оценки оптимизатора\", and \"следующая проверка\".",
-        "- Avoid wording like \"причина — устаревшая статистика\", "
-        "\"нужно выполнить COMPUTE STATS\", and \"статистика точно сломала план\".",
+        *preferred_wording,
         "",
     ]
     if context_lines:

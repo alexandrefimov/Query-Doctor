@@ -87,11 +87,11 @@ def render_llm_actions_block(
     )
     notes: list[str] = []
     if not report_enabled:
-        notes.append("LLM Report доступен только для suspicious/bad запросов.")
+        notes.append("LLM Report is available only for suspicious or bad queries.")
     elif report_view.note:
         notes.append(html.escape(report_view.note))
     if optimizer_status == "unavailable":
-        notes.append("Source SQL недоступен или выходит за read-only scope оптимизатора для этого кейса.")
+        notes.append("Source SQL is unavailable or outside the optimizer read-only scope for this case.")
     notes_html = f"<p class=\"helper\">{'<br>'.join(notes)}</p>" if notes else ""
     report_status_html = render_llm_report_status(report_view, trusted_report_html)
     optimizer_status_html = render_optimizer_status(
@@ -167,8 +167,8 @@ def render_optimizer_status(
     elif status == "partial_untrusted":
         status_html = (
             "<div class=\"error-card\" role=\"alert\">"
-            "Optimized query draft есть, но не прошел deterministic validation. "
-            "Partial draft остается untrusted и скрыт."
+            "An optimized query draft exists, but failed deterministic validation. "
+            "The partial draft remains untrusted and hidden."
             "</div>"
         )
     elif status == "generated":
@@ -213,17 +213,17 @@ def render_optimizer_trusted_output(
         return (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer draft\">"
             "<summary>Query LLM optimizer draft</summary>"
-            "<p class=\"helper\">Только draft. Запрос не выполнялся и требует ревью перед использованием.</p>"
+            "<p class=\"helper\">Draft only. The query was not executed and requires review before use.</p>"
             f"{render_trusted_optimized_query_draft(trusted_optimized_query)}"
             "</details>"
         )
     if status == "generated" and trusted_optimizer_recommendations:
         if output_kind == "no_rewrite":
             summary = "Query LLM optimizer outcome"
-            helper = "Trusted SQL rewrite не показывается: Python классифицировал validated draft как no-benefit/no-rewrite."
+            helper = "Trusted SQL rewrite is hidden: Python classified the validated draft as no-benefit/no-rewrite."
         else:
             summary = "Query LLM optimizer recommendations"
-            helper = "SQL rewrite пропущен: Python пометил форму запроса как слишком рискованную для trusted draft."
+            helper = "SQL rewrite is skipped: Python marked the query shape as too risky for a trusted draft."
         return (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer recommendations\">"
             f"<summary>{html.escape(summary)}</summary>"
@@ -351,23 +351,23 @@ def render_optimized_query_action(
     elif status == "partial_untrusted":
         status_html = (
             "<div class=\"error-card\" role=\"alert\">"
-            "Optimized query draft есть, но не прошел deterministic validation. "
-            "Partial draft остается untrusted и скрыт."
+            "An optimized query draft exists, but failed deterministic validation. "
+            "The partial draft remains untrusted and hidden."
             "</div>"
         )
     elif status == "unavailable":
-        status_html = "<p class=\"helper\">Source SQL недоступен или выходит за read-only scope оптимизатора для этого кейса.</p>"
+        status_html = "<p class=\"helper\">Source SQL is unavailable or outside the optimizer read-only scope for this case.</p>"
     elif status == "generated":
         status_html = render_optimized_query_outcome(state)
     else:
         status_html = ""
     notes: list[str] = []
     if status == "unavailable":
-        notes.append("Source SQL недоступен или вне read-only scope оптимизатора.")
+        notes.append("Source SQL is unavailable or outside optimizer read-only scope.")
     elif status == "partial_untrusted":
-        notes.append("Оптимизатор вернул untrusted draft; он скрыт по safety contract.")
+        notes.append("Optimizer returned an untrusted draft; it is hidden by the safety contract.")
     elif status == "failed":
-        notes.append("Запуск Optimizer завершился ошибкой; результаты недоступны.")
+        notes.append("Optimizer run failed; results are unavailable.")
     notes_html = ""
     if notes:
         notes_html = f"<p class=\"helper\">{'<br>'.join(notes)}</p>"
@@ -376,17 +376,17 @@ def render_optimized_query_action(
         draft_html = (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer draft\">"
             "<summary>Query LLM optimizer draft</summary>"
-            "<p class=\"helper\">Только draft. Запрос не выполнялся и требует ревью перед использованием.</p>"
+            "<p class=\"helper\">Draft only. The query was not executed and requires review before use.</p>"
             f"{render_trusted_optimized_query_draft(trusted_optimized_query)}"
             "</details>"
         )
     elif status == "generated" and trusted_optimizer_recommendations:
         if output_kind == "no_rewrite":
             summary = "Query LLM optimizer outcome"
-            helper = "Trusted SQL rewrite не показывается: Python классифицировал validated draft как no-benefit/no-rewrite."
+            helper = "Trusted SQL rewrite is hidden: Python classified the validated draft as no-benefit/no-rewrite."
         else:
             summary = "Query LLM optimizer recommendations"
-            helper = "SQL rewrite пропущен: Python пометил форму запроса как слишком рискованную для trusted draft."
+            helper = "SQL rewrite is skipped: Python marked the query shape as too risky for a trusted draft."
         draft_html = (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer recommendations\">"
             f"<summary>{html.escape(summary)}</summary>"

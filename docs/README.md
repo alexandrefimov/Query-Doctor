@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Language: English | [Русский](i18n/ru/README.md)
+Language: English | [Russian](i18n/ru/README.md)
 
 This directory contains both current user/developer documentation and internal
 engineering history. The files below are grouped by intended audience so public
@@ -22,11 +22,17 @@ roadmap as the current public baseline.
 - [../README.md](../README.md): concise project overview, install, workflows,
   safety model, and current public status.
 - [local-smoke.md](local-smoke.md): local validation workflows and smoke checks
-  ([Русский](i18n/ru/local-smoke.md)).
+  ([Russian](i18n/ru/local-smoke.md)).
 - [credentials.md](credentials.md): local credential layout and secret handling
-  ([Русский](i18n/ru/credentials.md)).
+  ([Russian](i18n/ru/credentials.md)).
 - [demo-preflight.md](demo-preflight.md): deterministic demo/release preflight.
 - [security-model.md](security-model.md): public security and privacy overview.
+- [public-release-readiness.md](public-release-readiness.md): practical P0/P1/P2
+  checklist for making the repository public.
+- [release-checklist.md](release-checklist.md): release and visibility-change
+  checklist for maintainers.
+- [community-starter-issues.md](community-starter-issues.md): curated public
+  issue backlog for maintainers.
 
 ## Licensing
 
@@ -35,11 +41,14 @@ roadmap as the current public baseline.
   note for proprietary, hosted, embedded, or enterprise use cases.
 - [../CONTRIBUTING.md](../CONTRIBUTING.md): contribution rules, including the
   dual-licensing contribution model.
+- [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md): community conduct and
+  sensitive-data discussion rules.
 
 ## Architecture And Safety
 
-- [architecture.md](architecture.md): current component boundaries
-  ([Русский](i18n/ru/architecture.md)).
+- [architecture.md](architecture.md): current and future component boundary
+  diagrams
+  ([Russian](i18n/ru/architecture.md)).
 - [contributor-architecture.md](contributor-architecture.md): contributor map
   for collectors, analyzer, report writer, optimizer, web UI, and trusted
   artifacts.
@@ -47,7 +56,7 @@ roadmap as the current public baseline.
   module-size, test, dependency, and documentation practices for contributors
   and coding agents.
 - [safety-contract.md](safety-contract.md): mandatory trust and redaction rules
-  ([Русский](i18n/ru/safety-contract.md)).
+  ([Russian](i18n/ru/safety-contract.md)).
 - [roadmap.md](roadmap.md): implemented scope, near-term work, and future seams.
 - [query-optimizer-contract.md](query-optimizer-contract.md): Query Optimizer
   and details-page LLM optimizer trust boundary.
@@ -57,22 +66,22 @@ roadmap as the current public baseline.
 ## Operations And Demo Guides
 
 - [DEMO.md](DEMO.md): current web demo notes and talk track
-  ([Русский](i18n/ru/DEMO.md)).
+  ([Russian](i18n/ru/DEMO.md)).
 - [demo-mode.md](demo-mode.md): synthetic demo pack generation.
 - [demo-cases.md](demo-cases.md): demo case notes.
 - [demo-data-engineer-brief.md](demo-data-engineer-brief.md): deeper demo brief
   for data engineers.
 - [model-bakeoff.md](model-bakeoff.md): local model compatibility and bake-off
-  notes ([Русский](i18n/ru/model-bakeoff.md)).
+  notes ([Russian](i18n/ru/model-bakeoff.md)).
 
 ## Collector And Metrics Design
 
 - [CM_COLLECTION_ENABLEMENT_PLAN.md](CM_COLLECTION_ENABLEMENT_PLAN.md):
   Cloudera Manager collection enablement notes
-  ([Русский](i18n/ru/CM_COLLECTION_ENABLEMENT_PLAN.md)).
+  ([Russian](i18n/ru/CM_COLLECTION_ENABLEMENT_PLAN.md)).
 - [CM_CORPUS_COLLECTOR_DESIGN.md](CM_CORPUS_COLLECTOR_DESIGN.md): CM corpus
   collector design history
-  ([Русский](i18n/ru/CM_CORPUS_COLLECTOR_DESIGN.md)).
+  ([Russian](i18n/ru/CM_CORPUS_COLLECTOR_DESIGN.md)).
 - [cluster-metrics-roadmap-audit.md](cluster-metrics-roadmap-audit.md):
   metrics roadmap audit and signal taxonomy.
 

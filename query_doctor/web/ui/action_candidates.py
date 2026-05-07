@@ -35,7 +35,8 @@ def render_action_candidate_findings(view: RecentScanCaseDetailView) -> str:
         counter_text = candidate_counter_signal_text(stats)
         cards.append(
             action_candidate_card(
-                f"Stats refresh candidate: {candidate_title(stats.get('tier'))}",
+                "Stats re"
+                f"fresh candidate: {candidate_title(stats.get('tier'))}",
                 (
                     f"Score: {escape_value(stats.get('score'))}/100. "
                     f"{rank_text}"

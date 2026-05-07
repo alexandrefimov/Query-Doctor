@@ -65,9 +65,13 @@ def extract_report_section_lines(text: str, heading: str) -> list[str]:
     return section_lines
 
 
-def validate_recommendations_section(text: str) -> list[str]:
+def validate_recommendations_section(
+    text: str,
+    *,
+    recommendations_heading: str = RECOMMENDATIONS_HEADING,
+) -> list[str]:
     errors: list[str] = []
-    items = count_report_section_items(text, RECOMMENDATIONS_HEADING)
+    items = count_report_section_items(text, recommendations_heading)
     if items is None:
         return errors
     if not 2 <= items <= MAX_RECOMMENDATION_ITEMS:
@@ -75,7 +79,7 @@ def validate_recommendations_section(text: str) -> list[str]:
             f"practical recommendations must contain 2-{MAX_RECOMMENDATION_ITEMS} concise items, found {items}"
         )
 
-    section_lines = extract_report_section_lines(text, RECOMMENDATIONS_HEADING)
+    section_lines = extract_report_section_lines(text, recommendations_heading)
     for line in section_lines:
         stripped = line.strip()
         if not re.match(r"^(?:[-*]|\d+\.)\s+\S", stripped):
@@ -89,9 +93,15 @@ def validate_recommendations_section(text: str) -> list[str]:
     return errors
 
 
-def validate_recommendations_against_candidates(text: str, facts_text: str) -> list[str]:
-    candidates = recommendation_candidate_lines(facts_text)
-    section_lines = extract_report_section_lines(text, RECOMMENDATIONS_HEADING)
+def validate_recommendations_against_candidates(
+    text: str,
+    facts_text: str,
+    *,
+    recommendations_heading: str = RECOMMENDATIONS_HEADING,
+    language: str = "ru",
+) -> list[str]:
+    candidates = recommendation_candidate_lines(facts_text, language=language)
+    section_lines = extract_report_section_lines(text, recommendations_heading)
     for line in section_lines:
         stripped = line.strip()
         if not re.match(r"^(?:[-*]|\d+\.)\s+\S", stripped):
@@ -104,7 +114,12 @@ def validate_recommendations_against_candidates(text: str, facts_text: str) -> l
     return []
 
 
-def validate_unsupported_conclusions_slot(text: str, facts_text: str) -> list[str]:
+def validate_unsupported_conclusions_slot(
+    text: str,
+    facts_text: str,
+    *,
+    short_summary_heading: str = SHORT_SUMMARY_HEADING,
+) -> list[str]:
     digest = build_report_contract_digest(facts_text)
     unsupported = [
         line[2:].strip()
@@ -114,7 +129,7 @@ def validate_unsupported_conclusions_slot(text: str, facts_text: str) -> list[st
     if not unsupported:
         return []
 
-    short_summary = "\n".join(extract_report_section_lines(text, SHORT_SUMMARY_HEADING)).lower()
+    short_summary = "\n".join(extract_report_section_lines(text, short_summary_heading)).lower()
     for conclusion in unsupported:
         normalized = conclusion.lower()
         if normalized and normalized in short_summary:

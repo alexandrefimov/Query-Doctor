@@ -93,6 +93,12 @@ useful.
 
 ## Planned near-term features
 
+- Report and UI language selection: keep English as the canonical public
+  documentation language, keep Russian docs under `docs/i18n/ru/`, and move
+  trusted reports toward English-by-default output with explicit English/Russian
+  selection in the web UI and CLI. This requires language-specific report
+  headings, prompts, normalizers, validators, trust markers and tests; do not
+  switch the default by prompt text alone.
 - Validate and tune the optional CM time-series allowlist on real Cloudera
   Manager data, then expand it toward admission/pool pressure, Impala daemon
   CPU/memory pressure, host IO/network/load, and bounded role health signals.
@@ -155,9 +161,9 @@ Important:
   coverage for unsupported stale-statistics/root-cause wording in Russian and
   English, plus the planned Root-Cause Claim Registry.
 - Documentation drift cleanup: align README, Help, architecture and historical
-  MVP wording around current workflow names. `Admin/user` report modes and
-  `Админские проверки` should remain documented only as legacy/historical terms,
-  not current product surfaces.
+  MVP wording around current workflow names. `Admin/user` report modes and the
+  legacy Russian admin-checks heading should remain documented only as
+  historical terms, not current product surfaces.
 
 Can wait:
 
