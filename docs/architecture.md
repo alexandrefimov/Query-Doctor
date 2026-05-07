@@ -86,12 +86,14 @@ flowchart TD
         ImpalaDaemon[Direct Impala profile endpoint]
         PromProvider[Prometheus-style metrics]
         EventProvider[Prepared log/event summaries]
-        LakehouseProvider[Future lakehouse providers]
+        LakehouseProvider[Future Big Data SQL/lakehouse providers]
+        StorageProvider[Future storage and table-format context]
     end
 
     subgraph Normalized["Python-owned normalized facts"]
         ProfileFacts[Profile facts]
         MetadataFacts[Metadata facts]
+        StorageFacts[Storage and table-format facts]
         MetricFacts[Metric facts]
         EventFacts[Event facts]
         Correlation[Deterministic correlation]
@@ -117,8 +119,10 @@ flowchart TD
     EventProvider --> EventFacts
     LakehouseProvider --> ProfileFacts
     LakehouseProvider --> MetricFacts
+    StorageProvider --> StorageFacts
     ProfileFacts --> Correlation
     MetadataFacts --> Correlation
+    StorageFacts --> Correlation
     MetricFacts --> Correlation
     EventFacts --> Correlation
     Correlation --> QueryDoctor
@@ -135,6 +139,12 @@ flowchart TD
 Future direction:
 
 - keep engine and provider adapters thin until there is implemented behavior;
+- keep future engine work focused on Big Data SQL/lakehouse runtimes rather
+  than generic OLTP database support;
+- treat query engine and storage/table-format context as orthogonal axes:
+  engine adapters parse how a query ran, while storage context adapters publish
+  bounded facts about HDFS, object storage, table formats or internal analytical
+  storage;
 - add direct Impala, Prometheus-style metrics, and prepared event providers only
   behind explicit bounded read-only contracts;
 - keep Cluster Doctor as a separate user-run cluster/window diagnostic product,

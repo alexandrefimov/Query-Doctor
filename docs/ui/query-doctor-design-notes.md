@@ -7,9 +7,9 @@ user guide and not a product contract. Current behavior is documented in
 
 ## Product Direction
 
-Query Doctor is a local-first diagnostic tool for Apache Impala query analysis.
-The UI should feel like a serious engineering instrument for admins, DevOps
-engineers, data engineers and data scientists.
+Query Doctor is a local-first Big Data Query Diagnostic Tool for Apache Impala
+workloads. The UI should feel like a serious engineering instrument for admins,
+DevOps engineers, data engineers and data scientists.
 
 It should not feel like a SaaS landing page, a playful AI demo or a monitoring
 dashboard. The product value is trust, evidence, traceability and fast

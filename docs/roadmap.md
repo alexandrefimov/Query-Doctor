@@ -1,8 +1,8 @@
 # Query Doctor roadmap
 
 This roadmap separates implemented behavior from planned architecture. It is not
-a support matrix and should not be read as a promise that future engines or
-workflows already work.
+a support matrix and should not be read as a promise that future Big Data
+engines or workflows already work.
 
 ## Current implementation
 
@@ -14,8 +14,11 @@ workflows already work.
 - No runtime engine selector exists.
 - Direct Impala daemon profile collection and Prometheus metrics collection are
   not implemented.
-- Trino, Spark SQL, Hive, PostgreSQL, ClickHouse, Snowflake and BigQuery are not
-  implemented.
+- Trino, Spark SQL, StarRocks, Apache Doris, ClickHouse, Dremio and cloud
+  warehouse providers are not implemented.
+- PostgreSQL/MySQL-style OLTP engines are not current roadmap targets. A Hive
+  Metastore backing database can be a metadata-provider implementation detail,
+  but it is not query-engine support.
 
 ## Current workflows
 
@@ -180,10 +183,11 @@ Important:
   uses a shared sanitizer that hides SQL-like snippets, model names, artifact
   names, field names, local paths and subprocess markers while preserving safe
   scope guidance. Keep using this helper for new dynamic browser errors.
-- Metadata coverage honesty: promote `skipped` / `not_attempted`, `partial`,
-  `failed`, `not_applicable`, and empty collected metadata states as separate
-  UI signals instead of letting summary counts imply that uncollected metadata
-  means no missing stats.
+- Metadata coverage honesty: addressed in Details metadata facts by showing a
+  separate `metadata coverage` signal for `skipped` / `not_attempted`,
+  `partial`, `failed`, `not_applicable`, and empty collected metadata states,
+  so summary counts do not imply that uncollected metadata means no missing
+  stats.
 - Stats recommendation wording: distinguish table row-count stats from column
   stats in deterministic recommendations. Keep the action wording as candidate
   maintenance that requires EXPLAIN comparison and a comparable rerun, not as a
@@ -544,10 +548,11 @@ Non-goals until the data contracts exist:
   browser
 - claiming action outcomes without before/after measurements
 
-## Multi-engine core roadmap
+## Big Data engine roadmap
 
-Goal: build an engine-agnostic diagnostic core that can support multiple SQL
-engines over time while preserving current Impala behavior.
+Goal: build a Big Data SQL/lakehouse diagnostic core that can support
+distributed analytical query engines over time while preserving current Impala
+behavior.
 
 Future architecture should include:
 
@@ -562,16 +567,47 @@ Future architecture should include:
 - engine-specific metrics/log analyzers where needed
 - engine-specific recommendation modules when needed
 
-Possible future adapters:
+Candidate future Big Data adapters should pass three gates before entering the
+main roadmap: recent active development, modern analytical/lakehouse relevance,
+and a plausible source for safe diagnostic facts such as profiles, plans,
+metrics or structured query history.
 
-- Trino / Presto
-- Spark SQL
-- Hive
-- PostgreSQL
-- ClickHouse
-- Snowflake / BigQuery, only if safe collection contracts are designed
+Active candidate shortlist:
+
+- Trino, as the primary distributed SQL/lakehouse query-engine candidate after
+  Impala.
+- Spark SQL, especially for batch, ETL and large analytical workloads where
+  Spark event logs or SQL metrics can become bounded diagnostic facts.
+- StarRocks, as an actively developed MPP real-time analytical engine with
+  query profile and plan-analysis surfaces.
+- Apache Doris, as an actively developed MPP real-time analytical warehouse with
+  query profile support and lakehouse features.
+- ClickHouse, as an actively developed real-time analytical/OLAP engine. Its
+  diagnostic model should be separate from Hadoop-style profile parsing.
+- Dremio, as an active lakehouse/federated SQL engine candidate, gated by an
+  explicit safe job-profile and API contract.
+
+Current watchlist, not near-term first-class targets:
+
+- Hive / Hive-on-Tez: still has recent 4.x releases, but should be treated as
+  legacy warehouse compatibility or metastore ecosystem work unless real users
+  need a first-class runtime diagnostic adapter.
+- Apache Drill: still maintained, but lower priority than Trino, Spark SQL,
+  StarRocks, Doris, ClickHouse and Dremio for modern community relevance.
+- Flink SQL: actively developed, but stream/batch stateful-job diagnostics have
+  a different product shape. Consider it only after Query Doctor has a clear
+  streaming diagnostic track.
 
 These are planned possibilities, not implemented support.
+
+Out of the current engine roadmap:
+
+- PostgreSQL, MySQL, SQLite and similar OLTP or embedded database engines as
+  query-diagnosis targets.
+- DuckDB as a supported diagnostic engine, except possible local fixtures or
+  developer tooling.
+- Snowflake and BigQuery until a separate cloud-warehouse safety and collection
+  contract exists; they should not drive the near-term Big Data engine seam.
 
 Adding any engine requires:
 
@@ -582,6 +618,60 @@ Adding any engine requires:
 - report validator coverage
 - no raw SQL/profile/metadata exposure
 - no speculative root-cause claims
+
+## Storage and table-format context roadmap
+
+Storage and table format are a separate roadmap axis from the query engine. Do
+not fold storage behavior into engine adapters as if one engine implied one
+storage model.
+
+Conceptual axes:
+
+- Engine: Impala, Trino, Spark SQL, StarRocks, Apache Doris, ClickHouse, Dremio.
+- Storage and table format: HDFS, S3-compatible object storage, ADLS, GCS,
+  Apache Iceberg, Apache Hudi, Delta Lake, Apache Kudu, and engine-internal OLAP
+  storage.
+
+Engine adapters explain how a query was planned and executed. Storage and
+table-format adapters explain the data layout, metadata and storage-context
+signals the query touched.
+
+Future storage/table-format context should include only bounded, read-only,
+redacted facts such as:
+
+- partition, file, manifest, tablet, part, segment, bucket or split counts;
+- table statistics freshness and metadata coverage status;
+- small-file, excessive-fragmentation, skewed-tablet/part or partition-pruning
+  risk signals;
+- safe object-store context such as listing/planning pressure, cache status or
+  remote-read symptoms when those facts are available from the engine/runtime;
+- table-format context for Iceberg, Hudi and Delta, including metadata volume,
+  snapshot/manifest scale, compaction or clustering indicators where available;
+- internal analytical-storage context for StarRocks, Doris and ClickHouse, such
+  as tablets, replicas, parts, projections, primary-key pruning, compaction and
+  merge pressure.
+
+Storage-context findings must remain diagnostic candidates unless direct
+analyzer facts support stronger language. For example, a large Iceberg manifest
+set can support planning-risk wording; it must not become "S3 caused the
+slowdown" without correlated runtime evidence.
+
+Initial implementation order should follow real user cases:
+
+1. Impala + HDFS/Kudu context, because it is closest to the implemented engine.
+2. Trino/Spark SQL + object storage + Iceberg/Hudi/Delta context.
+3. StarRocks/Doris internal or lakehouse storage context.
+4. ClickHouse parts/projections/distributed-query context.
+5. ADLS/GCS-specific context only after the S3-compatible contract is proven.
+
+Adding any storage or table-format context requires:
+
+- explicit read-only collection contract;
+- bounded object/table/partition/file/manifest limits;
+- redaction for paths, object names, table names and storage endpoints;
+- normalized analyzer facts before browser/report rendering;
+- browser safety tests for raw path/object/metadata leakage;
+- report validator coverage for unsupported storage root-cause claims.
 
 ## Repository structure roadmap
 

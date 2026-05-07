@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from query_doctor.report.language_contract import EN_REPORT_CONTRACT, RU_REPORT_CONTRACT
 from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.web.ui.markdown import render_report_markdown_html
 
@@ -256,4 +257,9 @@ def strip_inline_markdown(text: str) -> str:
 
 
 def has_analyzer_facts_section(markdown_text: str) -> bool:
-    return bool(re.search(r"^##\s+Факты анализатора\s*$", markdown_text, re.MULTILINE))
+    headings = (
+        EN_REPORT_CONTRACT.analyzer_facts_heading.removeprefix("## ").strip(),
+        RU_REPORT_CONTRACT.analyzer_facts_heading.removeprefix("## ").strip(),
+    )
+    pattern = r"^##\s+(?:" + "|".join(re.escape(heading) for heading in headings) + r")\s*$"
+    return bool(re.search(pattern, markdown_text, re.MULTILINE))

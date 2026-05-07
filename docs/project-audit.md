@@ -134,15 +134,16 @@ Mid term:
 
 Long term:
 
-- Evolve toward an engine-agnostic diagnostic core with engine-specific
+- Evolve toward a Big Data SQL/lakehouse diagnostic core with engine-specific
   collectors, metadata providers, parsers and recommendation modules.
 - Evolve toward broader operational diagnostics where prepared metrics and logs
   from Hadoop ecosystem services can be summarized deterministically and used in
   a single complex report.
 - Maintain an anonymized benchmark corpus for analyzer, report and optimizer
   quality checks.
-- Add new engines only after their read-only collection contract, metadata
-  allowlist, analyzer facts, browser safety tests and validators exist.
+- Add new Big Data SQL/lakehouse engines only after their read-only collection
+  contract, metadata allowlist, analyzer facts, browser safety tests and
+  validators exist.
 
 ## Documentation status
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "query-doctor"
 version = "0.1.0"
-description = "Local-first Apache Impala query diagnostic tool."
+description = "Local-first Big Data query diagnostics for Apache Impala."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.9"
@@ -17,8 +17,10 @@ maintainers = [
 ]
 keywords = [
     "apache-impala",
+    "big-data",
     "cloudera-manager",
     "diagnostics",
+    "lakehouse",
     "query-analysis",
     "sql",
 ]

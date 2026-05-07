@@ -201,28 +201,32 @@ def optimizer_specific_recommendation_bullets(
         bullets.append(action_card_recommendation_bullet(card))
     if risk_decision and "cte_body_validation_not_proven" in risk_decision.reasons:
         bullets.append(
-            "- Для CTE-запроса SQL draft будет принят только если строгая проверка не увидит изменения CTE body: "
-            "безопасный ручной путь - менять один CTE за раз, не переименовывать CTE, не менять JOIN keys/filter scope "
-            "и проверять совпадение выходных колонок после каждого шага."
+            "- For CTE-heavy queries, a SQL draft is trusted only when strict validation sees no unsupported CTE body change: "
+            "the safe manual path is to change one CTE at a time, preserve CTE names, keep JOIN keys and filter scope stable, "
+            "and verify the output columns after each step."
         )
     if any("EXCHANGE" in card.operator.upper() for card in cards) or facts_have_finding(facts_text, "Large intermediate or exchange traffic"):
         bullets.append(
-            "- Сначала сокращать rows/payload до EXCHANGE или другого data movement: переносить безопасную фильтрацию, "
-            "предварительную агрегацию или отсечение лишних промежуточных колонок раньше, сохраняя итоговые колонки и filter scope."
+            "- Reduce rows/payload before EXCHANGE or other data movement first: move safe filtering, pre-aggregation, "
+            "or intermediate-column pruning earlier while preserving final columns and filter scope."
         )
     bullets.extend(cluster_runtime_context_optimizer_bullets(facts_text))
     if any(keyword in card.operator.upper() for card in cards for keyword in ("JOIN", "NESTED LOOP")):
         bullets.append(
-            "- Для JOIN-участков проверить many-to-many amplification и входные cardinality до дорогого оператора; "
-            "join keys и join type не менять без отдельной проверки плана и результата."
+            "- For JOIN sections, review many-to-many amplification and input cardinality before the expensive operator; "
+            "do not change join keys or join type without separate plan and result validation."
         )
     if facts_have_cardinality_or_stats_gap(facts_text):
         bullets.append(
-            "- Перед ручным rewrite проверить и при необходимости обновить table/column stats по затронутым таблицам и join/filter колонкам; "
-            "после этого сравнить новый профиль, потому что часть cardinality mismatch может уйти без изменения SQL shape."
+            "- Before a manual rewrite, check and refresh table/column stats for affected tables and join/filter columns when needed; "
+            "then compare a new profile because some cardinality mismatch may disappear without changing SQL shape."
         )
     if not bullets:
-        bullets.extend(canonical_recommendation_bullets(recommendation_candidate_lines(facts_text))[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS])
+        bullets.extend(
+            canonical_recommendation_bullets(recommendation_candidate_lines(facts_text, language="en"))[
+                :MAX_OPTIMIZER_RECOMMENDATION_ITEMS
+            ]
+        )
     return dedupe_preserve_order(bullets)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS]
 
 
@@ -236,18 +240,18 @@ def cluster_runtime_context_optimizer_bullets(facts_text: str) -> list[str]:
     scoring = summary.get("scoring_contribution") or ""
     if correlated != "none" and "Network I/O spike" in correlated:
         bullets.append(
-            "- Cluster Runtime Context подтверждает correlated Network I/O spike только как runtime context: "
-            "для SQL rewrite использовать это лишь вместе с profile evidence по EXCHANGE/data movement и уменьшать rows/payload до exchange."
+            "- Cluster Runtime Context supports a correlated Network I/O spike only as runtime context: "
+            "use it for SQL rewrite only together with profile evidence for EXCHANGE/data movement, and reduce rows/payload before exchange."
         )
     if context_only != "none":
         bullets.append(
-            f"- Не строить SQL rewrite только из context-only runtime signals ({context_only}); "
-            "они годятся для follow-up checks, но не являются Python-owned rewrite target."
+            f"- Do not build a SQL rewrite from context-only runtime signals ({context_only}); "
+            "they are useful for follow-up checks but are not Python-owned rewrite targets."
         )
     if scoring:
         bullets.append(
-            f"- Runtime scoring contribution ({scoring}) объясняет triage priority, а не ожидаемый speedup; "
-            "не обещать ускорение без comparable rerun."
+            f"- Runtime scoring contribution ({scoring}) explains triage priority, not expected speedup; "
+            "do not promise acceleration without a comparable rerun."
         )
     return bullets
 
@@ -261,31 +265,31 @@ def action_card_recommendation_bullet(card: OptimizerActionCard) -> str:
     memory_ratio = card.evidence.get("peak/estimated memory ratio")
     if actual_rows and estimated_rows:
         ratio_text = f", ratio {rows_ratio}" if rows_ratio else ""
-        details.append(f"rows: фактически {actual_rows} vs оценка {estimated_rows}{ratio_text}")
+        details.append(f"rows: actual {actual_rows} vs estimated {estimated_rows}{ratio_text}")
     if peak_memory:
         memory_text = f", ratio {memory_ratio}" if memory_ratio else ""
         details.append(f"memory: peak {peak_memory}{memory_text}")
     evidence = f" ({'; '.join(details)})" if details else ""
     target = rewrite_target_for_operator(card.operator)
     return (
-        f"- Начать с {card.title} на операторе {card.operator}{evidence}: {target}. "
-        "Не менять результат запроса; проверять тот же набор выходных колонок, тот же filter scope и тот же table set."
+        f"- Start with {card.title} on operator {card.operator}{evidence}: {target}. "
+        "Do not change query results; verify the same output columns, the same filter scope, and the same table set."
     )
 
 
 def rewrite_target_for_operator(operator: str) -> str:
     upper = operator.upper()
     if "EXCHANGE" in upper:
-        return "цель ручной правки - уменьшить rows/payload до перераспределения данных"
+        return "manual rewrite target is reducing rows/payload before data redistribution"
     if "JOIN" in upper:
-        return "цель ручной правки - уменьшить входы JOIN через раннюю фильтрацию или предварительную агрегацию без смены join keys"
+        return "manual rewrite target is reducing JOIN inputs through earlier filtering or pre-aggregation without changing join keys"
     if "SORT" in upper:
-        return "цель ручной правки - уменьшить количество строк или ширину строк до SORT"
+        return "manual rewrite target is reducing row count or row width before SORT"
     if "AGGREGATE" in upper:
-        return "цель ручной правки - уменьшить входные rows до AGGREGATE или проверить возможность более ранней агрегации"
+        return "manual rewrite target is reducing input rows before AGGREGATE or checking whether earlier aggregation is possible"
     if "ANALYTIC" in upper:
-        return "цель ручной правки - уменьшить входные rows/columns до ANALYTIC"
-    return "цель ручной правки - уменьшить входные rows или intermediate payload до этого оператора"
+        return "manual rewrite target is reducing input rows/columns before ANALYTIC"
+    return "manual rewrite target is reducing input rows or intermediate payload before this operator"
 
 
 def facts_have_finding(facts_text: str, title_fragment: str) -> bool:

@@ -5,12 +5,22 @@ from __future__ import annotations
 import html
 import re
 
+from query_doctor.report.language_contract import EN_REPORT_CONTRACT, RU_REPORT_CONTRACT
+
 
 def render_details_inline_report_html(report_text: str) -> str:
     sections = split_report_markdown_h2_sections(report_text)
     if not sections:
         return render_report_markdown_html(report_text, with_heading_ids=True)
-    visible_titles = {"Краткий вывод", "Практические рекомендации"}
+    visible_titles = {
+        heading.removeprefix("## ").strip()
+        for heading in (
+            EN_REPORT_CONTRACT.short_summary_heading,
+            EN_REPORT_CONTRACT.recommendations_heading,
+            RU_REPORT_CONTRACT.short_summary_heading,
+            RU_REPORT_CONTRACT.recommendations_heading,
+        )
+    }
     visible_html: list[str] = []
     appendix_html: list[str] = []
     for title, section_text in sections:

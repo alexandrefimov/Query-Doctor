@@ -30,7 +30,7 @@ def render_help_content() -> str:
 <section class="panel docs-panel" aria-label="Query Doctor help">
 <h1>Help</h1>
 <div class="report-body">
-<p>Query Doctor is a local-first diagnostic tool for Apache Impala queries. It combines deterministic profile analysis, bounded metadata checks, optional bounded Cloudera Manager metric context, and validated report generation. The implemented engine is Apache Impala only.</p>
+<p>Query Doctor is a local-first Big Data Query Diagnostic Tool for Apache Impala workloads. It combines deterministic profile analysis, bounded metadata checks, optional bounded Cloudera Manager metric context, and validated report generation. The implemented engine is Apache Impala only.</p>
 
 <h2>On this page</h2>
 <ul>
@@ -142,8 +142,10 @@ def render_help_content() -> str:
 <p>No. Treat it as a stats refresh candidate only when metadata gaps, estimate mismatch, and planning-sensitive runtime symptoms line up. Confirmation requires EXPLAIN comparison and a comparable rerun.</p>
 <h3>Does CM metrics context prove root cause?</h3>
 <p>Usually no. CM metrics are bounded runtime context. They become stronger only when correlated with deterministic profile evidence.</p>
-<h3>Can Query Doctor support Trino, Spark, Hive, or another engine?</h3>
-<p>Not yet. That needs a safe read-only collection contract, metadata allowlist, parser/profile support, browser safety tests, and report validator coverage for that engine.</p>
+<h3>Can Query Doctor support Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio, or another Big Data SQL engine?</h3>
+<p>Not yet. Future engine work is scoped to actively developed Big Data SQL, MPP analytical, and lakehouse runtimes, not generic OLTP databases. Each engine needs a safe read-only collection contract, metadata allowlist, parser/profile support, browser safety tests, and report validator coverage before it becomes supported behavior.</p>
+<h3>Does the storage backend matter?</h3>
+<p>Yes, but it is a separate dimension from the query engine. Future storage context for HDFS, S3-compatible object storage, Iceberg, Hudi, Delta, Kudu, or engine-internal analytical storage must be collected as bounded analyzer-owned facts. Storage context can support candidates such as small-file risk or planning pressure, but it cannot prove root cause by itself.</p>
 </div>
 </section>
 """.strip()

@@ -16,7 +16,7 @@ from query_doctor.report.recommendation_candidates import recommendation_candida
 
 
 def build_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
-    candidates = recommendation_candidate_lines(facts_text)
+    candidates = recommendation_candidate_lines(facts_text, language="en")
     rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
     manual_bullets = optimizer_prompt_rewrite_bullets(facts_text, risk_decision, rewrite_recipe)
     mode_contract = optimizer_mode_contract(risk_decision, rewrite_recipe)
@@ -96,7 +96,7 @@ INPUT SQL END
 
 
 def build_recommendations_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
-    candidates = recommendation_candidate_lines(facts_text)
+    candidates = recommendation_candidate_lines(facts_text, language="en")
     rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
     manual_bullets = optimizer_prompt_rewrite_bullets(facts_text, risk_decision, rewrite_recipe)
     digest = build_optimizer_fact_digest(facts_text, risk_decision, rewrite_recipe)

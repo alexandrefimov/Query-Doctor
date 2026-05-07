@@ -34,7 +34,7 @@ def test_web_help_page_renders_curated_static_help():
     assert "<h1>Help</h1>" in body
     assert "On this page" in body
     assert "Workflows" in body
-    assert "Query Doctor is a local-first diagnostic tool for Apache Impala queries." in body
+    assert "Query Doctor is a local-first Big Data Query Diagnostic Tool" in body
     assert "The implemented engine is Apache Impala only." in body
     assert "Finished Queries" in body
     assert "Collect CM metrics" in body
@@ -71,7 +71,10 @@ def test_web_help_page_renders_curated_static_help():
     assert "SHOW CREATE TABLE" in body
     assert "SHOW TABLE STATS" in body
     assert "SHOW COLUMN STATS" in body
-    assert "Not yet. That needs a safe read-only collection contract" in body
+    assert "StarRocks, Doris, ClickHouse, Dremio" in body
+    assert "actively developed Big Data SQL, MPP analytical, and lakehouse runtimes" in body
+    assert "Does the storage backend matter?" in body
+    assert "small-file risk or planning pressure" in body
     assert not any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in body)
     for forbidden in FORBIDDEN_HELP_STRINGS:
         assert forbidden not in body

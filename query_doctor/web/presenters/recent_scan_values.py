@@ -69,7 +69,7 @@ def metadata_score_reasons(case: dict[str, Any]) -> list[str]:
     for reason in reasons:
         text = safe_display_text(reason)
         lower = text.lower()
-        if any(marker in lower for marker in ("metadata", "stats", "statistic", "статист")):
+        if any(marker in lower for marker in ("metadata", "stats", "statistic")):
             result.append(text)
     return result
 

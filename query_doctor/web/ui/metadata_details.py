@@ -67,7 +67,7 @@ def render_metadata_facts_body(
         for label, value in view.summary_items
     )
     fallback_html = (
-        f"<p>{html.escape(view.fallback_note).replace('batch_summary.json', '<code>batch_summary.json</code>')}</p>"
+        f"<p>{html.escape(view.fallback_note)}</p>"
         if view.fallback_note
         else ""
     )
@@ -98,13 +98,27 @@ def render_metadata_facts_body(
 def metadata_degraded_note(view: RecentScanMetadataView) -> str:
     status_values = {str(label): str(value or "").lower() for label, value in view.summary_items}
     status = status_values.get("metadata status", "")
+    coverage = status_values.get("metadata coverage", "")
     base = "Profile-based findings remain valid; metadata evidence for follow-up may be limited."
-    if view.unavailable or status in {"skipped", "not_run", "unknown"}:
+    if status in {"not_requested", "not_attempted"}:
+        return f"Metadata collection was not requested for this case. {base}"
+    if status == "skipped":
+        return f"Metadata collection was skipped. {base}"
+    if view.unavailable or status in {"not_run", "none", "unknown"}:
         return base
     if status == "partial":
         return f"Metadata collection was partial. {base}"
     if status == "failed":
         return f"Metadata collection failed. {base}"
+    if "no table rows available" in coverage:
+        return (
+            "Metadata summary indicates collection finished, but no table-level rows are available. "
+            "Treat stats coverage as unknown until table metadata is refreshed."
+        )
+    if "metadata command errors" in coverage:
+        return f"Some metadata commands failed. {base}"
+    if "not applicable" in coverage:
+        return "Some metadata commands were not applicable, commonly for views; this is not a missing-stats signal by itself."
     return ""
 
 
@@ -136,7 +150,7 @@ def metadata_score_reasons(case: dict[str, Any]) -> list[str]:
     for reason in reasons:
         text = safe_display_text(reason)
         lower = text.lower()
-        if any(marker in lower for marker in ("metadata", "stats", "statistic", "статист")):
+        if any(marker in lower for marker in ("metadata", "stats", "statistic")):
             result.append(text)
     return result
 

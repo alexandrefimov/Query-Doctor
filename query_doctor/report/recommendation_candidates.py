@@ -166,7 +166,7 @@ def recommendation_candidate_lines(facts_text: str, *, language: str = "ru") -> 
             _localized(
                 language,
                 "Использовать этот результат как baseline для сравнения с новым профилем после изменения запроса.",
-                "Use this result as a baseline for comparison with a new profile after a query change.",
+                "Treat this result as a baseline for comparison with a new profile after a query change.",
             ),
         )
         add(

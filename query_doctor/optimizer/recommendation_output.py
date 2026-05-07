@@ -77,7 +77,7 @@ def normalize_optimizer_recommendations(
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
 ) -> str:
     text = extract_recommendations(generated)
-    candidates = recommendation_candidate_lines(facts_text)
+    candidates = recommendation_candidate_lines(facts_text, language="en")
     preserved: list[str] = []
     seen_candidate_ids: set[str] = set()
     for line in text.splitlines():

@@ -10,23 +10,25 @@ from query_doctor.web.presenters.recent_scan_values import (
     metadata_fact_limitations,
     metadata_score_reasons,
     metadata_statement_counts_summary,
+    numeric_value,
     safe_display_value,
     safe_statement_statuses,
 )
 
 
+AGGREGATE_METADATA_FALLBACK_NOTE = (
+    "Table-level metadata facts are unavailable. Safe aggregate metadata facts "
+    "from the batch summary are shown instead."
+)
+
+
 def present_recent_scan_metadata(case: dict[str, Any], metadata_facts: dict[str, Any] | None) -> RecentScanMetadataView:
     if not metadata_facts:
-        fallback_note = (
-            "Table-level metadata facts are unavailable. Safe aggregate metadata facts "
-            "from batch_summary.json are shown instead."
-            if has_metadata_aggregate_facts(case)
-            else ""
-        )
+        fallback_note = AGGREGATE_METADATA_FALLBACK_NOTE if has_metadata_aggregate_facts(case) else ""
         return RecentScanMetadataView(
             unavailable=not bool(fallback_note),
             fallback_note=fallback_note,
-            summary_items=metadata_summary_items(case, {}),
+            summary_items=metadata_summary_items(case, {}, table_count=0),
             tables=(),
         )
     statement_counts = metadata_facts.get("statement_counts")
@@ -37,7 +39,7 @@ def present_recent_scan_metadata(case: dict[str, Any], metadata_facts: dict[str,
     return RecentScanMetadataView(
         unavailable=False,
         fallback_note="",
-        summary_items=metadata_summary_items(case, statement_counts),
+        summary_items=metadata_summary_items(case, statement_counts, table_count=len(raw_tables)),
         tables=tuple(present_metadata_table(table) for table in raw_tables),
     )
 
@@ -59,10 +61,16 @@ def present_metadata_table(table: dict[str, Any]) -> RecentScanMetadataTableView
     )
 
 
-def metadata_summary_items(case: dict[str, Any], statement_counts: dict[Any, Any]) -> tuple[tuple[str, Any], ...]:
+def metadata_summary_items(
+    case: dict[str, Any],
+    statement_counts: dict[Any, Any],
+    *,
+    table_count: int | None = None,
+) -> tuple[tuple[str, Any], ...]:
     counts_known = bool(statement_counts)
     items: list[tuple[str, Any]] = [
         ("metadata status", safe_display_value(case.get("metadata_status"))),
+        ("metadata coverage", metadata_coverage_summary(case, statement_counts, table_count)),
         ("referenced tables", safe_display_value(case.get("referenced_table_count"))),
         ("collected metadata tables", safe_display_value(case.get("collected_metadata_table_count"))),
         ("too large metadata", safe_display_value(case.get("too_large_count"))),
@@ -72,3 +80,40 @@ def metadata_summary_items(case: dict[str, Any], statement_counts: dict[Any, Any
     if metadata_reasons:
         items.append(("stats coverage", "; ".join(metadata_reasons)))
     return tuple(items)
+
+
+def metadata_coverage_summary(
+    case: dict[str, Any],
+    statement_counts: dict[Any, Any],
+    table_count: int | None,
+) -> str:
+    status = str(case.get("metadata_status") or "").strip().lower()
+    referenced_tables = numeric_value(case.get("referenced_table_count"))
+    collected_tables = numeric_value(case.get("collected_metadata_table_count"))
+    too_large = numeric_value(case.get("too_large_count"))
+    command_errors = numeric_value(statement_counts.get("error"))
+    not_applicable = numeric_value(statement_counts.get("not_applicable"))
+
+    if status in {"not_requested", "not_attempted"}:
+        return "not requested for this case"
+    if status in {"skipped", "not_run", "none"}:
+        return "not collected for this case"
+    if status == "failed":
+        return "collection failed; table facts unavailable"
+    if status == "partial":
+        if table_count == 0:
+            return "partial; no table rows available"
+        return "partial table coverage"
+    if table_count == 0 and status in {"collected", "ok", "available", "done"}:
+        return "collected status but no table rows available"
+    if command_errors > 0:
+        return "metadata command errors present"
+    if not_applicable > 0:
+        return "some metadata commands not applicable"
+    if too_large > 0:
+        return "some metadata output exceeded bounds"
+    if table_count and table_count > 0:
+        return "table rows available"
+    if referenced_tables > 0 or collected_tables > 0:
+        return "aggregate metadata facts only"
+    return "unknown"
