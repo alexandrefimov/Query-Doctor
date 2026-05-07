@@ -27,23 +27,60 @@ from query_doctor.impala.metadata_workflow import (
 
 
 DEFAULT_MODEL = "qwen3-coder:30b-a3b-q8_0"
+ANALYZER_TIMEOUT_SEC = 900
+METADATA_STAGE_TIMEOUT_SEC = 1800
+REPORT_TIMEOUT_SEC = 2400
+SUBPROCESS_TIMEOUT_EXIT_CODE = 124
 
 
-def run_cmd(cmd: list[str], cwd: Path) -> None:
+def run_cmd(cmd: list[str], cwd: Path, *, timeout_sec: int | None = None) -> None:
     print()
     print("[pipeline] running:")
     print(" ".join(cmd))
-    result = subprocess.run(cmd, cwd=str(cwd))
+    effective_timeout = ANALYZER_TIMEOUT_SEC if timeout_sec is None else timeout_sec
+    try:
+        result = subprocess.run(cmd, cwd=str(cwd), timeout=effective_timeout)
+    except subprocess.TimeoutExpired:
+        print(
+            f"[pipeline] ERROR: subprocess timed out after {effective_timeout}s",
+            file=sys.stderr,
+        )
+        raise SystemExit(SUBPROCESS_TIMEOUT_EXIT_CODE) from None
     if result.returncode != 0:
         raise SystemExit(result.returncode)
 
 
-def run_metadata_cmd(cmd: list[str], cwd: Path) -> None:
+def run_metadata_cmd(cmd: list[str], cwd: Path, *, timeout_sec: int | None = None) -> None:
     print()
     print("[pipeline] running explicit read-only Impala metadata collector")
-    result = subprocess.run(cmd, cwd=str(cwd))
+    effective_timeout = METADATA_STAGE_TIMEOUT_SEC if timeout_sec is None else timeout_sec
+    try:
+        result = subprocess.run(cmd, cwd=str(cwd), timeout=effective_timeout)
+    except subprocess.TimeoutExpired:
+        print(
+            f"[pipeline] ERROR: metadata collection timed out after {effective_timeout}s",
+            file=sys.stderr,
+        )
+        raise SystemExit(SUBPROCESS_TIMEOUT_EXIT_CODE) from None
     if result.returncode != 0:
         raise SystemExit(result.returncode)
+
+
+DEFAULT_RUN_CMD = run_cmd
+DEFAULT_RUN_METADATA_CMD = run_metadata_cmd
+
+
+def call_runner_with_timeout(
+    runner: Callable[[list[str], Path], None],
+    cmd: list[str],
+    *,
+    cwd: Path,
+    timeout_sec: int,
+) -> None:
+    if runner is DEFAULT_RUN_CMD or runner is DEFAULT_RUN_METADATA_CMD:
+        runner(cmd, cwd, timeout_sec=timeout_sec)
+        return
+    runner(cmd, cwd)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -145,9 +182,11 @@ def main(
 
     metadata_mode = resolve_metadata_mode(args)
 
-    command_runner(
+    call_runner_with_timeout(
+        command_runner,
         command_prefix(repo_dir, "analyze", backend=command_backend) + [str(case_dir)],
         cwd=repo_dir,
+        timeout_sec=ANALYZER_TIMEOUT_SEC,
     )
 
     facts = case_dir / "analysis_facts.md"
@@ -197,7 +236,12 @@ def main(
                 tables=metadata_plan.selected_tables,
             )
             try:
-                metadata_runner(metadata_cmd, cwd=repo_dir)
+                call_runner_with_timeout(
+                    metadata_runner,
+                    metadata_cmd,
+                    cwd=repo_dir,
+                    timeout_sec=METADATA_STAGE_TIMEOUT_SEC,
+                )
             except SystemExit as exc:
                 if args.metadata_failure_policy != "continue" or not args.stop_after_analysis:
                     raise
@@ -209,9 +253,11 @@ def main(
                 print("[pipeline] partial metadata outputs are left on disk but not promoted into analyzer facts")
                 print("[pipeline] stop-after-analysis requested; report generation skipped")
                 return 0
-            command_runner(
+            call_runner_with_timeout(
+                command_runner,
                 command_prefix(repo_dir, "analyze", backend=command_backend) + [str(case_dir)],
                 cwd=repo_dir,
+                timeout_sec=ANALYZER_TIMEOUT_SEC,
             )
             if not facts.exists():
                 print(f"[pipeline] ERROR: analyzer did not create {facts}", file=sys.stderr)
@@ -246,7 +292,7 @@ def main(
     if args.stop_other_models:
         report_cmd.append("--stop-other-models")
 
-    command_runner(report_cmd, cwd=repo_dir)
+    call_runner_with_timeout(command_runner, report_cmd, cwd=repo_dir, timeout_sec=REPORT_TIMEOUT_SEC)
 
     print()
     print(f"[pipeline] done: {case_dir / args.out}")

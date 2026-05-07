@@ -361,6 +361,26 @@ def cluster_runtime_context_points(facts_text: str) -> list[str]:
     return points[:FACT_APPENDIX_MAX_ITEMS]
 
 
+def cluster_runtime_context_report_evidence_bullet(facts_text: str) -> str | None:
+    summary = cluster_runtime_context_summary(facts_text)
+    if summary.get("status") not in {"available", "partial"}:
+        return None
+    parts = ["Cluster runtime context collected"]
+    coverage = summary.get("coverage")
+    if coverage:
+        parts.append(coverage)
+    correlated = summary.get("correlated_signals")
+    context_only = summary.get("context_only_signals")
+    if correlated and correlated != "none":
+        parts.append(f"correlated signals: {correlated}")
+    if context_only and context_only != "none":
+        parts.append(f"context-only signals: {context_only}")
+    scoring = summary.get("scoring_contribution")
+    if scoring:
+        parts.append("scoring: " + scoring)
+    return "- " + "; ".join(parts) + ". Treat this as runtime follow-up context, not standalone root-cause proof."
+
+
 def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
     facts_summary = cm_metrics_facts_summary(facts_text)
     correlation_summary = cm_metrics_correlation_summary(facts_text)

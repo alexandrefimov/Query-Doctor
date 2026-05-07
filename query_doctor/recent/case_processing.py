@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
 
-from query_doctor.cli.commands import command_prefix
+from query_doctor.cli.commands import command_prefix, command_spec
 from query_doctor.recent.batch_config import elapsed_seconds, format_seconds
 from query_doctor.recent.batch_models import BatchConfig, CaseResult
 from query_doctor.recent.batch_scoring import inspect_case_outputs, score_case
@@ -21,6 +21,14 @@ from query_doctor.recent.metadata_refresh import (
     select_metadata_refresh_candidates,
 )
 from query_doctor.recent.progress import ProgressWriter
+
+
+PROFILE_COLLECTION_TIMEOUT_SEC = 900
+ANALYSIS_TIMEOUT_SEC = 900
+METADATA_ANALYSIS_TIMEOUT_SEC = 1800
+REPORT_TIMEOUT_SEC = 2400
+DEFAULT_SUBPROCESS_TIMEOUT_SEC = 900
+SUBPROCESS_TIMEOUT_RETURN_CODE = 124
 
 
 def collect_case_profile(
@@ -63,8 +71,12 @@ def collect_case_profile(
         append_cm_config_args(cmd, config)
         result = run_subprocess(cmd, cwd=repo_root, env=env)
         if result.returncode != 0:
-            case.collection_status = "failed"
-            case.failure_category = "profile_collection_failed"
+            if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
+                case.collection_status = "timeout"
+                case.failure_category = "profile_collection_timeout"
+            else:
+                case.collection_status = "failed"
+                case.failure_category = "profile_collection_failed"
             return
         profile_paths = sorted(case.wrapper_dir.rglob("profile_digest.md"))
         if not profile_paths:
@@ -229,8 +241,11 @@ def run_analysis_pass(
         append_metadata_args(cmd, replace(config, metadata_mode=effective_metadata_mode))
         result = run_subprocess(cmd, cwd=repo_root, env=env)
         case.analysis_status = "ok" if result.returncode == 0 else "failed"
+        if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
+            case.analysis_status = "timeout"
+            case.failure_category = "analysis_or_metadata_timeout"
         if result.returncode != 0:
-            case.failure_category = "analysis_or_metadata_failed"
+            case.failure_category = case.failure_category or "analysis_or_metadata_failed"
         inspect_case_outputs(case)
         if case.analysis_status == "ok" and case.metadata_status == "failed":
             case.failure_category = "metadata_collection_failed"
@@ -330,7 +345,10 @@ def run_top_reports(
             diagnosis = case.actual_case_dir / "diagnosis.md"
             partial = case.actual_case_dir / "diagnosis.partial.md"
             case.report_generated = diagnosis.exists()
-            if result.returncode == 0 and diagnosis.exists():
+            if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
+                case.report_validation_status = "timeout"
+                case.failure_category = case.failure_category or "report_generation_timeout"
+            elif result.returncode == 0 and diagnosis.exists():
                 case.report_validation_status = "passed"
             elif partial.exists():
                 case.report_validation_status = "failed_partial_untrusted"
@@ -346,13 +364,46 @@ def run_top_reports(
             )
 
 
+def command_uses_role(cmd: list[str], role: str) -> bool:
+    spec = command_spec(role)
+    return spec.module in cmd or spec.console_script in cmd
+
+
+def command_value(cmd: list[str], flag: str) -> str | None:
+    try:
+        index = cmd.index(flag)
+    except ValueError:
+        return None
+    if index + 1 >= len(cmd):
+        return None
+    return cmd[index + 1]
+
+
+def subprocess_timeout_sec(cmd: list[str]) -> int:
+    if command_uses_role(cmd, "collect_cm"):
+        return PROFILE_COLLECTION_TIMEOUT_SEC
+    if command_uses_role(cmd, "pipeline"):
+        if "--stop-after-analysis" not in cmd:
+            return REPORT_TIMEOUT_SEC
+        metadata_mode = command_value(cmd, "--metadata-mode") or "auto"
+        if metadata_mode == "off":
+            return ANALYSIS_TIMEOUT_SEC
+        return METADATA_ANALYSIS_TIMEOUT_SEC
+    return DEFAULT_SUBPROCESS_TIMEOUT_SEC
+
+
 def run_subprocess(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        env=env,
-        shell=False,
-        text=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    timeout_sec = subprocess_timeout_sec(cmd)
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            shell=False,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, SUBPROCESS_TIMEOUT_RETURN_CODE)

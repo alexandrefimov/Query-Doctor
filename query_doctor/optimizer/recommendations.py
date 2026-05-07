@@ -13,7 +13,10 @@ from query_doctor.optimizer.sql_shape import (
     top_level_join_signature,
     top_level_keyword_count,
 )
-from query_doctor.report.facts_extractors import first_bullet_value as first_report_bullet_value
+from query_doctor.report.facts_extractors import (
+    cluster_runtime_context_summary,
+    first_bullet_value as first_report_bullet_value,
+)
 from query_doctor.report.markdown import extract_markdown_section as extract_report_markdown_section
 from query_doctor.report.contract_digest import build_report_contract_digest
 from query_doctor.report.recommendation_candidates import recommendation_candidate_lines
@@ -107,6 +110,7 @@ def build_optimizer_fact_digest(
         "summary": digest.get("summary", {}),
         "evidence_flags": digest.get("evidence_flags", {}),
         "cm_metrics_correlation": digest.get("cm_metrics_correlation", {}),
+        "cluster_runtime_context": digest.get("cluster_runtime_context", {}),
         "recommendation_candidates": digest.get("recommendation_candidates", []),
         "specific_recommendation_context": optimizer_specific_recommendation_bullets(
             facts_text,
@@ -206,6 +210,7 @@ def optimizer_specific_recommendation_bullets(
             "- Сначала сокращать rows/payload до EXCHANGE или другого data movement: переносить безопасную фильтрацию, "
             "предварительную агрегацию или отсечение лишних промежуточных колонок раньше, сохраняя итоговые колонки и filter scope."
         )
+    bullets.extend(cluster_runtime_context_optimizer_bullets(facts_text))
     if any(keyword in card.operator.upper() for card in cards for keyword in ("JOIN", "NESTED LOOP")):
         bullets.append(
             "- Для JOIN-участков проверить many-to-many amplification и входные cardinality до дорогого оператора; "
@@ -219,6 +224,32 @@ def optimizer_specific_recommendation_bullets(
     if not bullets:
         bullets.extend(canonical_recommendation_bullets(recommendation_candidate_lines(facts_text))[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS])
     return dedupe_preserve_order(bullets)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS]
+
+
+def cluster_runtime_context_optimizer_bullets(facts_text: str) -> list[str]:
+    summary = cluster_runtime_context_summary(facts_text)
+    if summary.get("status") not in {"available", "partial"}:
+        return []
+    bullets: list[str] = []
+    correlated = summary.get("correlated_signals") or "none"
+    context_only = summary.get("context_only_signals") or "none"
+    scoring = summary.get("scoring_contribution") or ""
+    if correlated != "none" and "Network I/O spike" in correlated:
+        bullets.append(
+            "- Cluster Runtime Context подтверждает correlated Network I/O spike только как runtime context: "
+            "для SQL rewrite использовать это лишь вместе с profile evidence по EXCHANGE/data movement и уменьшать rows/payload до exchange."
+        )
+    if context_only != "none":
+        bullets.append(
+            f"- Не строить SQL rewrite только из context-only runtime signals ({context_only}); "
+            "они годятся для follow-up checks, но не являются Python-owned rewrite target."
+        )
+    if scoring:
+        bullets.append(
+            f"- Runtime scoring contribution ({scoring}) объясняет triage priority, а не ожидаемый speedup; "
+            "не обещать ускорение без comparable rerun."
+        )
+    return bullets
 
 
 def action_card_recommendation_bullet(card: OptimizerActionCard) -> str:

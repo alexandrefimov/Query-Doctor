@@ -65,6 +65,7 @@ Safety and scope:
 - Prefer concrete operator/action-card guidance from the optimizer fact digest when deciding whether a rewrite is useful.
 - Use PYTHON-OWNED MANUAL REWRITE BULLETS as the concrete rewrite intent; do not invent other optimization goals.
 - Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive SQL changes.
+- Use Cluster Runtime Context only to understand coverage, context-only/correlated runtime signals, and triage scoring; it is not a speedup estimate or standalone SQL rewrite target.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - If a safe SQL rewrite is not supported, return the original query shape with only harmless formatting.
 
@@ -115,6 +116,7 @@ Safety and scope:
 - Every trusted bullet must map to PYTHON-OWNED RECOMMENDATION CANDIDATES or specific Action Card context; unsupported bullets will be discarded.
 - Prefer concrete Action Card operator IDs and safe plan-level advice from the optimizer fact digest.
 - Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive recommendations.
+- Use Cluster Runtime Context only to frame runtime evidence and scoring; context-only signals must remain follow-up checks, not rewrite targets.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - Prefer concrete actions such as collecting stats, reducing projected columns, narrowing filters, splitting a risky query, or reviewing join shape only when supported by facts.
 - Keep the answer under 8 bullets.

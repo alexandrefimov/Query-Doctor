@@ -1,0 +1,8 @@
+{
+  "case_id": "post_union_aggregate_pushdown",
+  "expected_output_kind": "sql_draft",
+  "expected_recipe": "post_union_aggregate_pushdown",
+  "expected_risk_mode": "conservative_rewrite",
+  "expect_material_change": true,
+  "expect_validation_errors": []
+}

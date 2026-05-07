@@ -1,0 +1,10 @@
+{
+  "case_id": "reject_changed_predicate",
+  "expected_output_kind": "validation_rejected",
+  "expected_recipe": "post_union_aggregate_pushdown",
+  "expected_risk_mode": "conservative_rewrite",
+  "expect_material_change": true,
+  "expect_validation_errors": [
+    "optimized draft violates rewrite recipe: source WHERE predicates changed"
+  ]
+}

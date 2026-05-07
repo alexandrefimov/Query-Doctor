@@ -336,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PROGRESS_PREFIX} optimizer risk mode: {risk_decision.mode}", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
         if risk_decision.mode == "recommendations_only":
+            remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_prompt = build_recommendations_prompt(
                 source_sql=source_sql.sql,
                 facts_text=facts_text,
@@ -432,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{PROGRESS_PREFIX} optimizer no rewrite recommended after validation failure", file=sys.stderr)
             return 0
         if not draft_has_material_change(source_sql.sql, draft_sql):
+            remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
                 no_rewrite_recommendations(risk_decision, facts_text, rewrite_recipe) + "\n",

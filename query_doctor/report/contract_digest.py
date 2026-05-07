@@ -117,6 +117,23 @@ def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[s
             f"CM Metrics Correlation contains {context_only_signals} context-only signal(s); "
             "keep them out of root-cause wording and SQL optimizer actions."
         )
+    cluster_context = cluster_runtime_context_summary(facts_text)
+    cluster_correlated = cluster_context.get("correlated_signals")
+    cluster_context_only = cluster_context.get("context_only_signals")
+    cluster_scoring = cluster_context.get("scoring_contribution")
+    if cluster_context.get("status") in {"available", "partial"}:
+        parts = []
+        if cluster_correlated and cluster_correlated != "none":
+            parts.append(f"correlated={cluster_correlated}")
+        if cluster_context_only and cluster_context_only != "none":
+            parts.append(f"context-only={cluster_context_only}")
+        if cluster_scoring:
+            parts.append(f"scoring={cluster_scoring}")
+        suffix = "; ".join(parts) if parts else "no runtime signal rollup"
+        points.append(
+            "Cluster Runtime Context is a Python-owned runtime summary "
+            f"({suffix}); use it for evidence framing, not root-cause proof."
+        )
     if not points:
         points.append("Parsed facts do not select a confirmed optimization target; use this report as a baseline.")
     return points[:FACT_APPENDIX_MAX_ITEMS]

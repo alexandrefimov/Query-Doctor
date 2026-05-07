@@ -119,7 +119,11 @@ useful.
   metadata by default, because `Stats refresh candidates` and some
   `Optimization candidates` need metadata to distinguish SQL-shape work from
   stats maintenance.
-- Small anonymized optimizer benchmark set.
+- Small anonymized optimizer benchmark set. Initial committed corpus lives in
+  `tests/fixtures/optimizer_cases/` and covers recipe-backed trusted drafts,
+  validation rejection, no-material-change/no-rewrite and recommendations-only
+  outcomes; next work is adding more real anonymized long-WITH and join/filter
+  preservation cases.
 - Prompt tuning so optimizer drafts are useful without changing semantics.
 - Demo case pack with one clearly problematic query, one bounded-evidence query
   and one normal/near-normal query, including expected analyzer/report/optimizer
@@ -245,11 +249,11 @@ Safety and browser trust:
 
 Batch safety and operability:
 
-- Subprocess timeouts: add explicit timeouts for collection, analyzer,
-  metadata-refresh and report subprocess stages so one hung CM/metadata/report
-  command cannot block a batch indefinitely. Timeout values should be stage
-  specific and visible in failure facts/summaries without leaking raw command
-  output.
+- Subprocess timeouts: implemented for Recent batch collection, analyzer,
+  metadata-refresh and report subprocess stages, and for standalone pipeline
+  analyzer/metadata/report runner helpers. Timeout status is recorded without
+  leaking raw command output. Future work is making the timeout values
+  configurable if production runs need different limits.
 - High-parallelism guardrails: enforce the documented rule that high analyzer
   parallelism is allowed only with reports disabled and metadata refresh off, or
   update the documentation and tests if the intended contract changes.
@@ -283,19 +287,35 @@ Maintainability and future seams:
 - Web server split: after the safety-critical items above, continue the
   mechanical split of routing, job orchestration, command construction,
   case-resolution and trusted-artifact loading out of the monolithic web server.
-- Production web serving and AD auth: before any shared/team deployment, choose
-  a production-grade web serving model instead of the current local development
-  server, and add Active Directory authentication/authorization. Keep the
-  no-auth localhost mode explicitly limited to local development and demo use,
-  and preserve the browser safety contract for every authenticated route.
+- Production web serving, authentication and roles: before any shared/team
+  deployment, choose a production-grade web serving model instead of the current
+  local development server. Preferred authentication is a corporate IdP backed
+  by Active Directory and exposed to Query Doctor through OIDC/SAML or a trusted
+  reverse-proxy/IAP integration. Avoid direct LDAP password handling inside
+  Query Doctor unless there is no corporate SSO option. Kerberos/SPNEGO can be a
+  fallback for an intranet-only deployment, but authorization should still be
+  expressed as explicit app roles derived from trusted AD/IdP groups.
+- Role model roadmap: keep no-auth localhost mode limited to local development
+  and demo use. For shared deployments, start with `viewer`, `operator` and
+  `admin` roles. `viewer` can inspect sanitized summaries/details and trusted
+  reports, but cannot see original SQL. `operator` can run bounded collection
+  and explicit report/optimizer actions within configured scopes, but still
+  cannot see original SQL by default. `admin` can access an explicit
+  privileged original-SQL view for server-owned collected queries when policy
+  allows it; this view must require authorization checks, an explicit reveal
+  action, browser redaction where practical, and audit logging. Pasted SQL from
+  the standalone Query Optimizer should remain non-echoed even for admins.
+  Raw profiles, raw metadata, subprocess output, local paths, secrets, model
+  names and raw artifact filenames remain outside browser-visible output for
+  every role unless a separate audited export feature is designed.
 - Host alias consistency: decide whether profile and metadata artifacts need a
   shared host-alias map for cross-artifact diagnostics; if yes, share the
   redactor within one collected case without weakening host redaction defaults.
 - Optimizer safe transforms: keep current signature validation strict, then add
   narrow Python-owned transforms only where SQL equivalence can be proven.
-- Optimizer benchmark corpus: build anonymized long-WITH, CTE-preservation,
-  predicate/join/projection fixtures for semantic-preservation tests, prompt
-  tuning and model bake-offs.
+- Optimizer benchmark corpus: extend the initial `tests/fixtures/optimizer_cases/`
+  baseline with anonymized long-WITH, CTE-preservation, predicate/join/projection
+  fixtures for semantic-preservation tests, prompt tuning and model bake-offs.
 - Engine adapter contract: keep Impala as the only implemented engine, but
   later make the existing seam describe real engine-specific contracts:
   operator maps, profile parsers, metadata allowlists, validator terminology and

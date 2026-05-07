@@ -1,0 +1,8 @@
+{
+  "case_id": "no_material_change",
+  "expected_output_kind": "no_rewrite",
+  "expected_recipe": null,
+  "expected_risk_mode": "rewrite_allowed",
+  "expect_material_change": false,
+  "expect_validation_errors": []
+}

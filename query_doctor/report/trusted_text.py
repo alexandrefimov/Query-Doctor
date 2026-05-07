@@ -19,6 +19,7 @@ from query_doctor.report.estimate_validation import (
 )
 from query_doctor.report.facts_extractors import (
     backend_has_proven_tail,
+    cluster_runtime_context_report_evidence_bullet,
     cm_metrics_correlation_summary,
     cm_metrics_report_evidence_bullet,
     facts_cardinality_anomaly_count,
@@ -312,6 +313,9 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "", *, langua
     metrics_evidence_bullet = cm_metrics_report_evidence_bullet(facts_text)
     if metrics_evidence_bullet:
         text = insert_bullets_into_section(text, contract.evidence_heading, [metrics_evidence_bullet])
+    cluster_runtime_bullet = cluster_runtime_context_report_evidence_bullet(facts_text)
+    if cluster_runtime_bullet:
+        text = insert_bullets_into_section(text, contract.evidence_heading, [cluster_runtime_bullet])
     admin_bullet_rules: list[tuple[str, tuple[str, ...]]] = []
     if facts_has_backend_tail_evidence(facts_text):
         admin_bullet_rules.extend(

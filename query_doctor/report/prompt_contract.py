@@ -359,6 +359,8 @@ Engineering interpretation rules:
 - If analysis_facts.md contains a Spill or scratch I/O finding, do not say spill/scratch evidence is absent; say non-zero spill/scratch metric evidence exists and keep causal wording separate.
 - Use CM Metrics Facts as the only metrics interpretation source. Do not infer from CM Time-Series Context or raw aggregates.
 - CM Metrics Facts statuses mean exactly: observed = bounded runtime context signal, not_observed = checked below threshold, unknown = unavailable or insufficient facts.
+- Use Cluster Runtime Context only as a compact Python-owned summary of CM metrics coverage, correlated/context-only signal rollup, limitations, and bounded triage score contribution.
+- Cluster Runtime Context scoring contribution explains why the deterministic triage score changed; it is not a performance-speedup estimate and not causal proof.
 - Do not state CPU, memory, daemon, network, HDFS, or cluster pressure as a root cause from CM metrics alone.
 - Mention observed CM metrics in "{short_summary_label}" only when they are useful confirmed context for this query; keep not_observed and unknown metric statuses out of the short summary.
 - Put unknown/not_observed CM metric limitations under "{not_supported_label}" or "{next_checks_label}", not in the short summary.

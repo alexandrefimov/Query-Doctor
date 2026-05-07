@@ -1,0 +1,8 @@
+{
+  "case_id": "final_union_distinct_rollup",
+  "expected_output_kind": "sql_draft",
+  "expected_recipe": "final_union_distinct_rollup",
+  "expected_risk_mode": "conservative_rewrite",
+  "expect_material_change": true,
+  "expect_validation_errors": []
+}
