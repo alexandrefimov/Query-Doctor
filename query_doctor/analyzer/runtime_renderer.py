@@ -152,3 +152,45 @@ def render_runtime_diagnosis(analysis: dict[str, Any]) -> list[str]:
             lines.append("- evidence: none")
         lines.append("")
     return lines
+
+
+def render_cluster_runtime_context(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("cluster_runtime_context") or {}
+    if not context:
+        return []
+
+    lines = ["## Cluster Runtime Context", ""]
+    for key in (
+        "status",
+        "collection_status",
+        "coverage",
+        "metrics_profile",
+        "window_scope",
+        "limit_summary",
+        "scoring_contribution",
+        "guardrail",
+    ):
+        lines.append(f"- {key}: {context.get(key) or 'unknown'}")
+    lines.append("")
+
+    lines.extend(["### Signal rollup", ""])
+    for key in (
+        "observed_signals",
+        "correlated_signals",
+        "context_only_signals",
+        "unknown_signals",
+        "not_observed_signals",
+    ):
+        values = [str(item) for item in context.get(key) or [] if item]
+        lines.append(f"- {key}: {', '.join(values) if values else 'none'}")
+    lines.append("")
+
+    limitations = [str(item) for item in context.get("limitations") or [] if item]
+    lines.extend(["### Cluster runtime limitations", ""])
+    if limitations:
+        for item in limitations[:8]:
+            lines.append(f"- {md_escape(item)}")
+    else:
+        lines.append("- none")
+    lines.append("")
+    return lines

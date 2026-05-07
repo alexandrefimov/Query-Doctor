@@ -331,15 +331,15 @@ class:
 
 ### Phase 1: Make Current Metrics Auditable
 
-Status: implemented for current CM Metrics Facts and CM Metrics Correlation;
-future work is a dedicated `Cluster Runtime Context` analyzer section.
+Status: implemented for current CM Metrics Facts, CM Metrics Correlation, and
+the derived `Cluster Runtime Context` analyzer section.
 
 Goal: make the current CM metrics feature easier to trust and evaluate.
 
 Deliverables:
 
-- Add a `Cluster Runtime Context` analyzer section derived from existing CM
-  metrics facts and correlation.
+- Keep the `Cluster Runtime Context` analyzer section derived from existing CM
+  metrics facts and correlation current as new safe runtime signals are added.
 - Add explicit fields:
   - collection status;
   - coverage;

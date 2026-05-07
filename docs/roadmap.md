@@ -131,6 +131,33 @@ useful.
 These are incremental UI and architecture improvements. They should preserve
 current Impala behavior and safety boundaries.
 
+## Current development track
+
+After the package-refactor stabilization checkpoint, broad line-count driven
+splitting should pause. The next work should start from product value, safety
+audits, or mixed-responsibility modules that block concrete changes.
+
+Near-term priority:
+
+1. Runtime Diagnosis / CM Metrics. Make runtime context easier to trust by
+   exposing collection status, coverage, observed signals, correlated signals,
+   context-only signals, limitations, and bounded scoring contribution from
+   Python-owned facts. Keep wording cautious: CM metrics can strengthen
+   profile-supported hypotheses but must not become standalone root-cause
+   claims.
+2. Query Optimizer usefulness. Improve deterministic manual bullets and
+   Python-owned safe rewrite recipes before broadening prompt-only rewrite
+   freedom. Validator strictness remains the trust boundary.
+3. Details / Specific Query UX. Continue making the path from score reasons to
+   evidence and follow-up actions readable without rendering raw artifacts,
+   raw SQL, local paths, model names, or runtime internals.
+
+Runtime-context implementation rule: derive browser/report-visible runtime
+summaries only from normalized analyzer facts such as `CM Metrics Facts`,
+`CM Metrics Correlation`, `Runtime Diagnosis`, and future safe cluster context
+artifacts. Do not render raw metric points, timestamps, hostnames, CM entity
+IDs, artifact filenames, subprocess output, or provider JSON.
+
 ## External audit triage follow-ups
 
 Goal: preserve useful findings from the 2026-05-05 external audit while keeping

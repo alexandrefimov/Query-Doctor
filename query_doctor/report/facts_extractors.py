@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from query_doctor.report.contract import (
+    CLUSTER_RUNTIME_CONTEXT_HEADING,
     CM_METRICS_CORRELATION_HEADING,
     CM_METRICS_FACTS_HEADING,
     CM_TIMESERIES_CONTEXT_HEADING,
@@ -315,6 +316,48 @@ def cm_metrics_correlation_points(facts_text: str) -> list[str]:
             continue
         if value.startswith("correlated"):
             points.append(f"{title}: {value}")
+    return points[:FACT_APPENDIX_MAX_ITEMS]
+
+
+def cluster_runtime_context_summary(facts_text: str) -> dict[str, str]:
+    lines = extract_markdown_section(facts_text, CLUSTER_RUNTIME_CONTEXT_HEADING)
+    if not lines:
+        return {}
+
+    summary: dict[str, str] = {}
+    for label in (
+        "status",
+        "collection_status",
+        "coverage",
+        "metrics_profile",
+        "window_scope",
+        "limit_summary",
+        "scoring_contribution",
+        "observed_signals",
+        "correlated_signals",
+        "context_only_signals",
+        "unknown_signals",
+        "not_observed_signals",
+        "guardrail",
+    ):
+        value = first_bullet_value(lines, label)
+        if value is not None:
+            summary[label] = value
+    return summary
+
+
+def cluster_runtime_context_points(facts_text: str) -> list[str]:
+    summary = cluster_runtime_context_summary(facts_text)
+    points: list[str] = []
+    for label in (
+        "coverage",
+        "correlated_signals",
+        "context_only_signals",
+        "scoring_contribution",
+    ):
+        value = summary.get(label)
+        if value and value != "none":
+            points.append(f"{label}: {value}")
     return points[:FACT_APPENDIX_MAX_ITEMS]
 
 

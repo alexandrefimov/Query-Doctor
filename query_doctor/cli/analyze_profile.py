@@ -9,6 +9,7 @@ from pathlib import Path
 
 from query_doctor.analyzer.action_cards import DEFAULT_LARGE_BYTES_THRESHOLD, build_action_cards
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_correlation
+from query_doctor.analyzer.cluster_runtime_context import build_cluster_runtime_context
 from query_doctor.analyzer.context_collection import (
     collect_cm_query_context,
     collect_cm_timeseries_context,
@@ -93,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
     analysis["default_database"] = extract_default_database(text)
     analysis["cm_metrics_correlation"] = build_cm_metrics_correlation(analysis)
+    analysis["cluster_runtime_context"] = build_cluster_runtime_context(analysis)
     analysis["runtime_diagnosis"] = build_runtime_diagnosis(analysis)
     analysis["action_cards"] = build_action_cards(analysis)
     analysis["evidence_quality"] = build_evidence_quality(analysis)
