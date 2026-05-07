@@ -28,7 +28,6 @@ class OptimizerFinding:
 
 @dataclass(frozen=True)
 class OptimizerAnalysis:
-    sql: str
     tables: list[ExtractedTable]
     findings: list[OptimizerFinding] = field(default_factory=list)
     metadata_status: str = "unavailable"
@@ -99,7 +98,6 @@ def analyze_query_optimizer(
 
     safe_findings = [sanitize_finding(finding) for finding in findings]
     return OptimizerAnalysis(
-        sql=sql,
         tables=extracted_tables,
         findings=safe_findings,
         metadata_status=metadata_status,

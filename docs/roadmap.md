@@ -172,14 +172,12 @@ Triage summary from the 2026-05-05 Claude audit:
 
 Important:
 
-- Query Optimizer raw SQL lifetime: the current page renderer no longer accepts
-  a `sql` prefill parameter and has no-echo tests, but `OptimizerAnalysis` still
-  carries the submitted SQL even though browser rendering does not need it.
-  Remove or isolate that raw field so future result renderers cannot accidentally
-  echo pasted SQL.
-- Browser error-path SQL redaction: keep submitted SQL out of successful
-  optimizer responses, and also standardize dynamic browser error/job messages
-  so SQL-like snippets are redacted by default on error paths.
+- Query Optimizer raw SQL lifetime: addressed for the browser-facing result
+  model. The page renderer has no `sql` prefill parameter, no-echo tests cover
+  success and parser-error responses, and `OptimizerAnalysis` no longer carries
+  submitted SQL.
+- Browser error-path SQL redaction: keep extending shared browser error/job
+  sanitization when new dynamic SQL-like error sources are introduced.
 - Metadata coverage honesty: promote `skipped` / `not_attempted`, `partial`,
   `failed`, `not_applicable`, and empty collected metadata states as separate
   UI signals instead of letting summary counts imply that uncollected metadata
@@ -237,10 +235,9 @@ Safety and browser trust:
 - Incomplete-case errors: existing-case and report-action failures should avoid
   naming required artifact files. Add regression tests for any new Specific
   Query, Finished/Running details and job error surfaces.
-- Query Optimizer no-echo contract: remove the post-submit ability to render a
-  submitted SQL value back into the textarea, or split the empty form renderer
-  from result/error renderers. Add error-path tests where parser exceptions
-  contain fragments of submitted SQL.
+- Query Optimizer no-echo contract: current renderer always emits an empty
+  textarea after submit, parser-error responses are covered by no-echo tests,
+  and browser-facing optimizer results no longer carry submitted SQL.
 - Report raw-output guardrails: keep the report validator rejecting SQL-like
   output beyond SELECT/WITH/DML/allowed SHOW snippets, including disallowed
   metadata commands such as DESCRIBE, SHOW PARTITIONS, MSCK and INVALIDATE.
@@ -255,11 +252,12 @@ Batch safety and operability:
   analyzer/metadata/report runner helpers. Timeout status is recorded without
   leaking raw command output. Future work is making the timeout values
   configurable if production runs need different limits.
-- High-parallelism guardrails: enforce the documented rule that high analyzer
-  parallelism is allowed only with reports disabled and metadata refresh off, or
-  update the documentation and tests if the intended contract changes.
-- Metadata worker default: resolve the current code/docs mismatch for
-  `--metadata-jobs` and add a canary test for the chosen default and hard cap.
+- High-parallelism guardrails: current contract allows high analyzer
+  parallelism only with reports disabled. Metadata refresh is guarded
+  separately by `--metadata-jobs`, with default `5` and hard cap `5`, so
+  analyzer `--jobs` does not increase metastore/Impala metadata concurrency.
+- Metadata worker default: current contract is documented and covered by a
+  canary test: `--metadata-jobs` defaults to `5` and cannot exceed `5`.
 - Batch path robustness: add a regression test that batch case discovery does
   not follow unexpected symlinks or escape the wrapper/output root.
 - Parallel batch tests: add a focused test with mocked subprocess runners and

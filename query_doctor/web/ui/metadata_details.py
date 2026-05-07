@@ -11,6 +11,7 @@ from query_doctor.web.presenters.recent_scan import (
     metadata_fact_limitations as present_metadata_fact_limitations,
     numeric_value,
     present_recent_scan_metadata,
+    safe_display_text,
     safe_statement_statuses,
 )
 from query_doctor.web.ui.html_helpers import compact_cell, escape_value, reason_cell, status_badge
@@ -133,7 +134,7 @@ def metadata_score_reasons(case: dict[str, Any]) -> list[str]:
         return []
     result: list[str] = []
     for reason in reasons:
-        text = str(reason)
+        text = safe_display_text(reason)
         lower = text.lower()
         if any(marker in lower for marker in ("metadata", "stats", "statistic", "статист")):
             result.append(text)

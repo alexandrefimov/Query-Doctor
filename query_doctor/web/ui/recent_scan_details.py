@@ -14,6 +14,7 @@ from query_doctor.web.presenters.recent_scan import (
     numeric_value,
     present_recent_scan_case_detail,
     safe_display_value,
+    safe_display_text,
 )
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
@@ -263,7 +264,7 @@ def render_score_reason_card(reason: Any) -> str:
 
 
 def explain_score_reason(reason: Any) -> tuple[str, str]:
-    text = str(reason)
+    text = safe_display_text(reason)
     lower = text.lower()
     if "cardinality estimate anomalies" in lower:
         return (
