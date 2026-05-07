@@ -23,3 +23,5 @@ python3 scripts/compare_optimizer_models.py --models qwen3-coder:30b --fixture-c
 Remove `--dry-run` to call the configured optimizer model. The script copies
 fixtures into its output directory and materializes `source.sql` as
 `original_query.sql` for the optimizer CLI; it does not mutate the fixtures.
+Outputs include both `summary.json` for automation and `summary.md` for quick
+human review.

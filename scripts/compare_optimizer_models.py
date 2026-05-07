@@ -59,19 +59,102 @@ def safe_error_summary(value: object, *, max_chars: int = 500) -> str:
     return text[:max_chars]
 
 
+def markdown_escape(value: object) -> str:
+    text = str(value)
+    return text.replace("|", "\\|").replace("\n", " ").strip()
+
+
 def case_label(case_dir: Path) -> str:
     return f"{safe_slug(case_dir.parent.name)}:{safe_slug(case_dir.name)}"
 
 
+def read_case_list_file(path: Path) -> list[str]:
+    references: list[str] = []
+    try:
+        lines = path.expanduser().read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ValueError(f"cannot read cases file: {safe_error_summary(exc)}") from exc
+    for line in lines:
+        value = line.split("#", 1)[0].strip()
+        if value:
+            references.append(value)
+    return references
+
+
+def find_case_dir_by_id(case_root: Path, case_id: str) -> Path:
+    normalized = safe_slug(case_id.replace(":", "_"))
+    direct = case_root / normalized
+    if direct.is_dir():
+        return direct.resolve()
+    matches = sorted(
+        path.resolve()
+        for path in case_root.rglob(normalized)
+        if path.is_dir() and path.name == normalized
+    )
+    if not matches:
+        raise ValueError(f"case id not found under --cases-root: {safe_slug(case_id)}")
+    if len(matches) > 1:
+        raise ValueError(f"case id is ambiguous under --cases-root: {safe_slug(case_id)}")
+    return matches[0]
+
+
+def resolve_case_reference(reference: str, *, case_root: Path | None) -> Path:
+    expanded = Path(reference).expanduser()
+    looks_like_path = (
+        expanded.is_absolute()
+        or reference.startswith("./")
+        or reference.startswith("../")
+        or reference.startswith("~")
+        or "/" in reference
+        or "\\" in reference
+    )
+    if looks_like_path:
+        return expanded.resolve()
+    if case_root is None:
+        raise ValueError(f"bare case id requires --cases-root: {safe_slug(reference)}")
+    return find_case_dir_by_id(case_root, reference)
+
+
+def resolve_case_dirs(args: argparse.Namespace) -> list[Path]:
+    case_root = Path(args.cases_root).expanduser().resolve() if args.cases_root else None
+    references: list[str] = []
+    if args.cases_file:
+        references.extend(read_case_list_file(Path(args.cases_file)))
+    references.extend(str(reference) for reference in args.cases)
+
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+    for reference in references:
+        path = resolve_case_reference(reference, case_root=case_root)
+        if path not in seen:
+            resolved.append(path)
+            seen.add(path)
+    return resolved
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compare Query LLM optimizer outcomes across Ollama models.")
-    parser.add_argument("cases", nargs="*", type=Path, help="Case directories with analysis_facts.md and source SQL context.")
+    parser.add_argument(
+        "cases",
+        nargs="*",
+        help="Case directories, or bare case IDs when --cases-root is provided.",
+    )
     parser.add_argument("--models", nargs="+", required=True, help="Ollama model names to compare.")
+    parser.add_argument(
+        "--cases-file",
+        type=Path,
+        help="Text file with case directories or case IDs, one per line. Blank lines and # comments are ignored.",
+    )
+    parser.add_argument(
+        "--cases-root",
+        type=Path,
+        help="Root directory used to resolve bare case IDs from positional cases or --cases-file.",
+    )
     parser.add_argument(
         "--out-dir",
         type=Path,
         default=Path("/tmp/query-doctor-optimizer-bakeoff"),
-        help="Output directory for copied cases and summary.json.",
+        help="Output directory for copied cases, summary.json and summary.md.",
     )
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
     parser.add_argument("--keep-alive", default=DEFAULT_KEEP_ALIVE)
@@ -447,6 +530,134 @@ def render_case_aggregates(by_case: dict[str, dict[str, Any]]) -> dict[str, Any]
     return rendered
 
 
+def format_rate(value: object) -> str:
+    if not isinstance(value, (int, float)):
+        return "n/a"
+    return f"{value * 100:.1f}%"
+
+
+def format_seconds(value: object) -> str:
+    if not isinstance(value, (int, float)):
+        return "n/a"
+    return f"{value:.2f}"
+
+
+def write_summary_outputs(out_dir: Path, payload: dict[str, Any]) -> None:
+    (out_dir / "summary.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    (out_dir / "summary.md").write_text(render_summary_markdown(payload), encoding="utf-8")
+
+
+def render_summary_markdown(payload: dict[str, Any]) -> str:
+    aggregates = payload.get("aggregates")
+    if not isinstance(aggregates, dict):
+        aggregates = {}
+    by_model = aggregates.get("by_model")
+    if not isinstance(by_model, dict):
+        by_model = {}
+    by_case = aggregates.get("by_case")
+    if not isinstance(by_case, dict):
+        by_case = {}
+    results = payload.get("results")
+    if not isinstance(results, list):
+        results = []
+
+    lines = [
+        "# Query Doctor Optimizer Model Compare",
+        "",
+        "This is a safety/quality benchmark for Query Doctor optimizer outcomes. It is not a SQL execution or performance benchmark.",
+        "The script does not execute candidate SQL; trusted outcomes still depend on deterministic optimizer validation.",
+        "",
+        f"- runs: {len(results)}",
+        f"- optimizer_num_predict: {payload.get('optimizer_num_predict', 'n/a')}",
+        "",
+        "## Model Summary",
+        "",
+        "| model | runs | trusted outcome | trusted SQL draft | no rewrite | recommendations | partial untrusted | expected match | mean sec |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for model, metrics in sorted(by_model.items()):
+        if not isinstance(metrics, dict):
+            continue
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    markdown_escape(model),
+                    str(metrics.get("runs", 0)),
+                    format_rate(metrics.get("trusted_outcome_rate")),
+                    format_rate(metrics.get("trusted_sql_draft_rate")),
+                    format_rate(metrics.get("trusted_no_rewrite_rate")),
+                    format_rate(metrics.get("trusted_recommendations_rate")),
+                    format_rate(metrics.get("partial_untrusted_rate")),
+                    format_rate(metrics.get("expected_outcome_match_rate")),
+                    format_seconds(metrics.get("mean_elapsed_sec")),
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Case Summary",
+            "",
+            "| case | expected | runs | expected match | status counts | output counts |",
+            "|---|---|---:|---:|---|---|",
+        ]
+    )
+    for case_name, metrics in sorted(by_case.items()):
+        if not isinstance(metrics, dict):
+            continue
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    markdown_escape(case_name),
+                    markdown_escape(metrics.get("expected_output_kind") or "mixed"),
+                    str(metrics.get("runs", 0)),
+                    format_rate(metrics.get("expected_outcome_match_rate")),
+                    markdown_escape(format_counts(metrics.get("status_counts"))),
+                    markdown_escape(format_counts(metrics.get("output_kind_counts"))),
+                ]
+            )
+            + " |"
+        )
+
+    mismatches = [
+        result
+        for result in results
+        if isinstance(result, dict) and result.get("matched_expected_outcome") is False
+    ]
+    lines.extend(["", "## Mismatched Expected Outcomes", ""])
+    if not mismatches:
+        lines.append("- none")
+    else:
+        for result in mismatches:
+            lines.append(
+                "- "
+                + ", ".join(
+                    [
+                        f"case={markdown_escape(result.get('case_name', 'unknown'))}",
+                        f"model={markdown_escape(result.get('requested_model', 'unknown'))}",
+                        f"run={markdown_escape(result.get('run_index', 'n/a'))}",
+                        f"expected={markdown_escape(result.get('expected_output_kind', 'n/a'))}",
+                        f"actual={markdown_escape(result.get('output_kind') or result.get('status') or 'n/a')}",
+                    ]
+                )
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def format_counts(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return "none"
+    return ", ".join(f"{key}={value[key]}" for key in sorted(value))
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     if args.repeat < 1:
@@ -455,7 +666,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.optimizer_num_predict < 1:
         print(f"{PROGRESS_PREFIX} ERROR: --optimizer-num-predict must be >= 1", file=sys.stderr)
         return 2
-    case_dirs = [path.expanduser().resolve() for path in args.cases]
+    try:
+        case_dirs = resolve_case_dirs(args)
+    except ValueError as exc:
+        print(f"{PROGRESS_PREFIX} ERROR: {safe_error_summary(exc)}", file=sys.stderr)
+        return 2
     fixture_corpus = Path(args.fixture_corpus).expanduser().resolve() if args.fixture_corpus else None
     if fixture_corpus is not None:
         fixture_dirs = fixture_case_dirs(fixture_corpus)
@@ -485,17 +700,13 @@ def main(argv: list[str] | None = None) -> int:
                     flush=True,
                 )
                 results.append(run_case_model(case_dir=case_dir, model=model, run_index=run_index, out_dir=args.out_dir, args=args))
-                (args.out_dir / "summary.json").write_text(
-                    json.dumps(
-                        {
-                            "results": results,
-                            "aggregates": build_aggregates(results),
-                            "optimizer_num_predict": args.optimizer_num_predict,
-                        },
-                        indent=2,
-                        sort_keys=True,
-                    ),
-                    encoding="utf-8",
+                write_summary_outputs(
+                    args.out_dir,
+                    {
+                        "results": results,
+                        "aggregates": build_aggregates(results),
+                        "optimizer_num_predict": args.optimizer_num_predict,
+                    },
                 )
 
     return 0
