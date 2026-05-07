@@ -25,10 +25,9 @@ from query_doctor.impala.shell_runner import (
 from query_doctor.impala.shell_output import normalize_output_bytes
 from query_doctor.cli.collect_cm_profiles import (
     ConfigError,
-    HostAliasRedactor,
     load_effective_local_config,
-    redact_profile_text,
 )
+from query_doctor.safety.redaction import HostAliasRedactor, redact_profile_text
 from query_doctor.config.contract import merge_kerberos_cache_env
 
 

@@ -1,0 +1,226 @@
+"""Deterministic analyzer facts appendix rendering."""
+
+from __future__ import annotations
+
+import re
+
+from query_doctor.report.contract import ANALYZER_FACTS_HEADING
+from query_doctor.report.markdown import (
+    extract_markdown_section,
+    extract_markdown_subsection,
+    strip_markdown_section,
+)
+
+
+FACT_APPENDIX_MAX_ITEMS = 8
+
+
+def first_bullet_value(lines: list[str], label: str) -> str | None:
+    pattern = re.compile(
+        rf"^\s*-\s*{re.escape(label)}\s*:\s*(?P<value>.+?)\s*$",
+        re.IGNORECASE,
+    )
+    for line in lines:
+        match = pattern.match(line)
+        if match:
+            return match.group("value").strip()
+    return None
+
+
+def append_fact_bullet(output: list[str], label: str, value: str | None) -> None:
+    if value:
+        output.append(f"- {label}: {value}")
+
+
+def limited_nonempty_lines(
+    lines: list[str],
+    *,
+    limit: int = FACT_APPENDIX_MAX_ITEMS,
+) -> tuple[list[str], int]:
+    selected = [line.rstrip() for line in lines if line.strip()]
+    return selected[:limit], max(0, len(selected) - limit)
+
+
+def render_analyzer_facts_appendix(facts_text: str) -> str:
+    summary_lines = extract_markdown_section(facts_text, "## Summary")
+    query_wall_clock_lines = extract_markdown_section(facts_text, "## Query Wall Clock")
+    evidence_quality_lines = extract_markdown_section(facts_text, "## Evidence Quality")
+    totals_lines = extract_markdown_section(facts_text, "## Totals")
+    backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
+    backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
+    backend_normalized_lines = extract_markdown_subsection(backend_lines, "### Normalized tail candidates")
+    backend_candidates_lines = extract_markdown_subsection(backend_lines, "### Host tail candidates")
+    referenced_table_lines = extract_markdown_section(facts_text, "## Referenced Tables")
+    table_metadata_lines = extract_markdown_section(facts_text, "## Table Metadata Context")
+    action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
+    findings_lines = extract_markdown_section(facts_text, "## Findings")
+    limitation_lines = extract_markdown_section(
+        facts_text,
+        "## What is NOT supported by the parsed evidence",
+    )
+
+    lines: list[str] = [
+        "",
+        ANALYZER_FACTS_HEADING,
+        "",
+        "### Сводка",
+    ]
+    for label in (
+        "Parsed operators",
+        "Cardinality anomalies",
+        "Memory anomalies",
+        "Zero/unknown row estimate gaps",
+        "Zero/unknown memory estimate gaps",
+    ):
+        append_fact_bullet(lines, label, first_bullet_value(summary_lines, label))
+    for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent"):
+        append_fact_bullet(lines, label, first_bullet_value(totals_lines, label))
+    for label in ("duration", "source", "confidence"):
+        append_fact_bullet(lines, f"query wall-clock {label}", first_bullet_value(query_wall_clock_lines, label))
+    if evidence_quality_lines:
+        lines.extend(["", "### Evidence Quality"])
+        for label in ("score", "level"):
+            append_fact_bullet(lines, label, first_bullet_value(evidence_quality_lines, label))
+        strengths = extract_markdown_subsection(evidence_quality_lines, "### Strengths")
+        limitations = extract_markdown_subsection(evidence_quality_lines, "### Limitations")
+        strength_excerpt, remaining_strengths = limited_nonempty_lines(strengths, limit=FACT_APPENDIX_MAX_ITEMS)
+        if strength_excerpt:
+            lines.extend(["", "#### Strengths"])
+            lines.extend(strength_excerpt)
+            if remaining_strengths:
+                lines.append(f"- ... {remaining_strengths} more evidence-quality strengths omitted")
+        limitation_excerpt, remaining_limitations = limited_nonempty_lines(limitations, limit=FACT_APPENDIX_MAX_ITEMS)
+        if limitation_excerpt:
+            lines.extend(["", "#### Limitations"])
+            lines.extend(limitation_excerpt)
+            if remaining_limitations:
+                lines.append(f"- ... {remaining_limitations} more evidence-quality limitations omitted")
+
+    if backend_summary_lines:
+        lines.extend(["", "### Backend / Host Tail Evidence"])
+        for label in (
+            "backend rows parsed",
+            "host tail candidates",
+            "execution tail candidates",
+            "read-rate tail candidates",
+            "write-path tail candidates",
+            "data skew",
+            "execution skew",
+            "write-path anomaly",
+        ):
+            append_fact_bullet(lines, label, first_bullet_value(backend_summary_lines, label))
+
+        normalized_excerpt, remaining_normalized = limited_nonempty_lines(
+            backend_normalized_lines,
+            limit=FACT_APPENDIX_MAX_ITEMS,
+        )
+        if normalized_excerpt:
+            lines.extend(["", "### Normalized tail candidates"])
+            lines.extend(normalized_excerpt)
+            if remaining_normalized:
+                lines.append(f"- ... {remaining_normalized} more normalized tail lines omitted")
+
+        candidate_excerpt, remaining_candidates = limited_nonempty_lines(
+            [
+                line
+                for line in backend_candidates_lines
+                if not re.match(r"^\s*\|?\s*-{3,}", line)
+            ],
+            limit=6,
+        )
+        if candidate_excerpt and candidate_excerpt != ["- none"]:
+            lines.extend(["", "Host tail candidates excerpt:"])
+            lines.extend(candidate_excerpt)
+            if remaining_candidates:
+                lines.append(
+                    f"- ... {remaining_candidates} more candidate lines omitted from appendix."
+                )
+
+    if referenced_table_lines:
+        table_excerpt, remaining_tables = limited_nonempty_lines(
+            [
+                line
+                for line in referenced_table_lines
+                if line.lstrip().startswith("- ")
+            ],
+            limit=FACT_APPENDIX_MAX_ITEMS,
+        )
+        if table_excerpt:
+            lines.extend(["", "### Referenced Tables"])
+            lines.extend(table_excerpt)
+            if remaining_tables:
+                lines.append(f"- ... {remaining_tables} more table lines omitted from appendix.")
+
+    if table_metadata_lines:
+        metadata_excerpt, remaining_metadata = limited_nonempty_lines(
+            [
+                line
+                for line in table_metadata_lines
+                if line.startswith("### Table:") or line.lstrip().startswith("- ")
+            ],
+            limit=FACT_APPENDIX_MAX_ITEMS * 2,
+        )
+        if metadata_excerpt:
+            lines.extend(["", "### Table Metadata Context"])
+            lines.extend(metadata_excerpt)
+            if remaining_metadata:
+                lines.append(
+                    f"- ... {remaining_metadata} more metadata lines omitted from appendix."
+                )
+
+    if action_card_lines:
+        lines.extend(["", "### Action cards"])
+        card_titles = [
+            line[4:].strip()
+            for line in action_card_lines
+            if line.startswith("### Card ")
+        ]
+        if card_titles:
+            for title in card_titles[:FACT_APPENDIX_MAX_ITEMS]:
+                lines.append(f"- {title}")
+            if len(card_titles) > FACT_APPENDIX_MAX_ITEMS:
+                lines.append(
+                    f"- ... {len(card_titles) - FACT_APPENDIX_MAX_ITEMS} more action cards omitted from appendix."
+                )
+        else:
+            excerpt, remaining = limited_nonempty_lines(
+                action_card_lines,
+                limit=FACT_APPENDIX_MAX_ITEMS,
+            )
+            lines.extend(excerpt or ["- No action-card facts present in analysis_facts.md."])
+            if remaining:
+                lines.append(f"- ... {remaining} more action-card lines omitted from appendix.")
+
+    finding_titles = [
+        line[4:].strip()
+        for line in findings_lines
+        if line.startswith("### ")
+    ]
+    if finding_titles:
+        lines.extend(["", "### Findings"])
+        for title in finding_titles[:FACT_APPENDIX_MAX_ITEMS]:
+            lines.append(f"- {title}")
+        if len(finding_titles) > FACT_APPENDIX_MAX_ITEMS:
+            lines.append(
+                f"- ... {len(finding_titles) - FACT_APPENDIX_MAX_ITEMS} more findings omitted from appendix."
+            )
+
+    if limitation_lines:
+        lines.extend(["", "### Важные ограничения"])
+        limitation_excerpt, remaining_limitations = limited_nonempty_lines(
+            [line for line in limitation_lines if line.lstrip().startswith("- ")],
+            limit=FACT_APPENDIX_MAX_ITEMS,
+        )
+        lines.extend(limitation_excerpt)
+        if remaining_limitations:
+            lines.append(
+                f"- ... {remaining_limitations} more limitation lines omitted from appendix."
+            )
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def append_analyzer_facts_appendix(report_text: str, facts_text: str) -> str:
+    without_model_appendix = strip_markdown_section(report_text, ANALYZER_FACTS_HEADING)
+    return without_model_appendix.rstrip() + "\n" + render_analyzer_facts_appendix(facts_text)

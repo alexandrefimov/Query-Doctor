@@ -1,0 +1,461 @@
+"""Configuration and safety checks for the Recent batch workflow."""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import tempfile
+import time
+from datetime import datetime
+from pathlib import Path
+
+from query_doctor.cli import collect_cm_profiles as cm_profiles
+from query_doctor.config.contract import merge_kerberos_cache_env
+from query_doctor.recent.batch_models import BatchConfig
+
+
+MAX_CM_INSPECT_LIMIT = 5000
+MAX_RAW_CM_SUMMARY_SCAN_LIMIT = 20000
+MAX_TRIAGE_PROFILE_LIMIT = 5000
+MAX_METADATA_TOP_LIMIT = 200
+BAD_METADATA_REFRESH_LIMIT = 50
+SUSPICIOUS_METADATA_REFRESH_LIMIT = 20
+SUSPICIOUS_METADATA_PROMOTION_SCORE_FLOOR = 23
+MAX_JOBS = 4
+MAX_HIGH_JOBS = 100
+MAX_CM_JOBS = 100
+MAX_METADATA_JOBS = 5
+ORDER_CHOICES = ("recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority")
+METADATA_MODE_CHOICES = ("auto", "on", "off", "dry-run")
+SAFE_OUTPUT_PREFIX = "query-doctor-"
+SYSTEM_OUTPUT_ROOTS = (
+    "/etc",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/var",
+    "/opt",
+    "/System",
+    "/Library",
+    "/Applications",
+    "/private/etc",
+    "/private/var",
+)
+
+
+def elapsed_seconds(started: float) -> float:
+    return round(max(0.0, time.monotonic() - started), 3)
+
+
+def format_seconds(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.3f}s"
+
+
+def duration_filter_label(config: BatchConfig) -> str:
+    lower = config.min_duration_sec
+    upper = config.max_duration_sec
+    if lower is None and upper is None:
+        return "none"
+    parts: list[str] = []
+    if lower is not None:
+        parts.append(f">= {display_float(lower)} sec")
+    if upper is not None:
+        parts.append(f"<= {display_float(upper)} sec")
+    return " and ".join(parts)
+
+
+def display_float(value: float) -> str:
+    return str(int(value)) if value == int(value) else str(value)
+
+
+def validate_cm_time_bound(value: str, *, name: str) -> str:
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise ValueError(f"{name} must be formatted as YYYY-MM-DDTHH:MM:SSZ") from exc
+    return value
+
+
+def build_batch_config(
+    args: argparse.Namespace,
+    *,
+    env: dict[str, str],
+    cwd: Path,
+    repo_root: Path,
+) -> BatchConfig:
+    use_repo_default = not any((args.cm_url, args.cluster, args.service, args.ca_bundle))
+    default_config_path = None
+    if not args.config:
+        default_config_path = cm_profiles.discover_default_local_config(
+            cwd=cwd,
+            repo_root=repo_root,
+            use_repo_default=use_repo_default,
+        )
+    effective_config_path = resolve_config_path(args.config, cwd) or (
+        str(default_config_path) if default_config_path else None
+    )
+    try:
+        config_values = cm_profiles.load_effective_local_config(
+            args.config,
+            cwd=cwd,
+            repo_root=repo_root,
+            use_repo_default=use_repo_default,
+        )
+    except cm_profiles.ConfigError:
+        if args.config or use_repo_default:
+            raise
+        # Explicit connection flags should not be blocked by an unrelated
+        # implicit local config in the current working directory.
+        config_values = {}
+        effective_config_path = None
+    cm_url = first_string(args.cm_url, env.get("CM_URL"), config_values.get("cm_url"))
+    cluster = first_string(args.cluster, config_values.get("cluster"))
+    service = first_string(args.service, config_values.get("service"))
+    if not cm_url:
+        raise ValueError("Missing --cm-url, CM_URL, or local config cm_url.")
+    if not cluster:
+        raise ValueError("Missing --cluster or local config cluster.")
+    if not service:
+        raise ValueError("Missing --service or local config service.")
+
+    cm_inspect_limit = first_int(
+        args.cm_inspect_limit,
+        config_values.get("recent_cm_summary_limit"),
+        default=100,
+    )
+    triage_profile_limit = first_int(
+        args.select_limit_alias,
+        args.triage_profile_limit,
+        config_values.get("recent_profile_analysis_limit"),
+        default=20,
+    )
+    metadata_top_limit = first_int(
+        args.metadata_top_limit,
+        config_values.get("recent_metadata_top_limit"),
+        default=0,
+    )
+    recent_window_minutes = first_int(
+        args.recent_window_minutes,
+        config_values.get("recent_window_minutes"),
+        default=60,
+    )
+    from_time = first_string(args.from_time, config_values.get("recent_from_time"))
+    to_time = first_string(args.to_time, config_values.get("recent_to_time"))
+    if bool(from_time) != bool(to_time):
+        raise ValueError("--from-time and --to-time must be provided together")
+    if from_time and to_time:
+        from_time = validate_cm_time_bound(from_time, name="--from-time")
+        to_time = validate_cm_time_bound(to_time, name="--to-time")
+        if from_time >= to_time:
+            raise ValueError("--to-time must be later than --from-time")
+    if cm_inspect_limit > MAX_CM_INSPECT_LIMIT:
+        raise ValueError(f"--cm-inspect-limit must be <= {MAX_CM_INSPECT_LIMIT}")
+    if triage_profile_limit > MAX_TRIAGE_PROFILE_LIMIT:
+        raise ValueError(f"--triage-profile-limit must be <= {MAX_TRIAGE_PROFILE_LIMIT}")
+    if triage_profile_limit > cm_inspect_limit:
+        raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
+    if metadata_top_limit > MAX_METADATA_TOP_LIMIT:
+        raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
+    cm_jobs = first_int(args.cm_jobs, config_values.get("recent_cm_jobs"), default=args.jobs)
+    metadata_jobs = first_int(args.metadata_jobs, config_values.get("recent_metadata_jobs"), default=5)
+    validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
+    validate_cm_jobs_config(cm_jobs)
+    validate_metadata_jobs_config(metadata_jobs)
+    min_duration_sec = (
+        None
+        if args.no_min_duration_filter
+        else first_float(
+            args.min_duration_sec,
+            config_values.get("recent_min_duration_sec"),
+            default=60.0,
+        )
+    )
+    max_duration_sec = first_float(
+        args.max_duration_sec,
+        config_values.get("recent_max_duration_sec"),
+        default=None,
+    )
+    if max_duration_sec is not None and min_duration_sec is not None:
+        if max_duration_sec < min_duration_sec:
+            raise ValueError("--max-duration-sec must be >= --min-duration-sec")
+
+    out_value = first_string(args.out, config_values.get("out"))
+    if not out_value:
+        raise ValueError("missing required output directory: provide --out or config field out")
+    out = Path(out_value).expanduser()
+    if not out.is_absolute():
+        out = (cwd / out).resolve()
+    validate_batch_output_path(out, repo_root)
+    progress_jsonl = None
+    if args.progress_jsonl:
+        progress_jsonl = Path(args.progress_jsonl).expanduser()
+        if not progress_jsonl.is_absolute():
+            progress_jsonl = (cwd / progress_jsonl).resolve()
+
+    ca_bundle = expand_optional_path_string(
+        first_string(args.ca_bundle, env.get("CM_CA_BUNDLE"), config_values.get("ca_bundle"))
+    )
+    insecure_skip_verify = first_bool(
+        args.insecure_skip_verify,
+        config_values.get("insecure_skip_verify"),
+        default=False,
+    )
+
+    return BatchConfig(
+        out=out,
+        cm_url=str(cm_url),
+        cluster=str(cluster),
+        service=str(service),
+        cm_username=first_string(env.get("CM_USERNAME"), config_values.get("username")),
+        ca_bundle=ca_bundle,
+        verify_tls=not insecure_skip_verify,
+        recent_window_minutes=recent_window_minutes,
+        from_time=from_time,
+        to_time=to_time,
+        cm_inspect_limit=cm_inspect_limit,
+        triage_profile_limit=triage_profile_limit,
+        metadata_top_limit=metadata_top_limit,
+        min_duration_sec=min_duration_sec,
+        max_duration_sec=max_duration_sec,
+        order=first_string(args.order, config_values.get("recent_order"), "duration-desc") or "duration-desc",
+        include_failed=first_bool(args.include_failed, config_values.get("recent_include_failed"), default=False),
+        include_running=first_bool(args.include_running, config_values.get("recent_include_running"), default=False),
+        only_running=first_bool(args.only_running, config_values.get("recent_only_running"), default=False),
+        user=first_string(args.user, config_values.get("recent_user")),
+        pool=first_string(args.pool, config_values.get("recent_pool")),
+        query_type=first_string(args.query_type, config_values.get("query_type")),
+        max_profile_bytes=first_int(
+            args.max_profile_bytes,
+            config_values.get("max_profile_bytes"),
+            default=cm_profiles.DEFAULT_MAX_PROFILE_BYTES,
+        ),
+        collect_cm_timeseries=first_bool(
+            args.collect_cm_timeseries,
+            config_values.get("collect_cm_timeseries"),
+            default=False,
+        ),
+        cm_metrics_profile=cm_profiles.validate_cm_metrics_profile(
+            first_string(
+                args.cm_metrics_profile,
+                config_values.get("cm_metrics_profile"),
+                env.get("CM_METRICS_PROFILE"),
+                cm_profiles.DEFAULT_CM_METRICS_PROFILE,
+            )
+        ),
+        cm_timeseries_padding_sec=first_int(
+            args.cm_timeseries_padding_sec,
+            config_values.get("cm_timeseries_padding_sec"),
+            default=cm_profiles.DEFAULT_CM_TIMESERIES_PADDING_SEC,
+        ),
+        max_timeseries_bytes=first_int(
+            args.max_timeseries_bytes,
+            config_values.get("max_timeseries_bytes"),
+            default=cm_profiles.DEFAULT_MAX_TIMESERIES_BYTES,
+        ),
+        max_timeseries_points=first_int(
+            args.max_timeseries_points,
+            config_values.get("max_timeseries_points"),
+            default=cm_profiles.DEFAULT_MAX_TIMESERIES_POINTS,
+        ),
+        metadata_mode=args.metadata_mode,
+        metadata_coordinator=first_string(args.metadata_coordinator, config_values.get("metadata_coordinator")),
+        metadata_impala_shell=first_string(args.metadata_impala_shell, config_values.get("metadata_impala_shell")),
+        metadata_auth=first_string(args.metadata_auth, config_values.get("metadata_auth"), "kerberos") or "kerberos",
+        metadata_protocol=first_string(args.metadata_protocol, config_values.get("metadata_protocol"), "beeswax") or "beeswax",
+        metadata_ssl=first_bool(args.metadata_ssl, config_values.get("metadata_ssl"), default=False),
+        metadata_ca_cert=first_string(args.metadata_ca_cert, config_values.get("metadata_ca_cert")),
+        metadata_timeout_sec=first_int(
+            args.metadata_timeout_sec,
+            config_values.get("metadata_timeout_sec"),
+            default=30,
+        ),
+        metadata_max_tables=first_int(args.metadata_max_tables, config_values.get("metadata_max_tables"), default=None),
+        metadata_max_output_bytes=first_int(
+            args.metadata_max_output_bytes,
+            config_values.get("metadata_max_output_bytes"),
+            default=None,
+        ),
+        metadata_redact=first_bool(args.metadata_redact, config_values.get("metadata_redact"), default=False),
+        top_reports=args.top_reports,
+        cm_jobs=cm_jobs,
+        jobs=args.jobs,
+        metadata_jobs=metadata_jobs,
+        allow_high_jobs=args.allow_high_jobs,
+        discover_only=args.discover_only,
+        overwrite=args.overwrite,
+        config_path=effective_config_path,
+        progress_jsonl=progress_jsonl,
+        krb5ccname=first_string(config_values.get("krb5ccname")),
+    )
+
+
+def validate_jobs_config(jobs: int, *, allow_high_jobs: bool, metadata_mode: str, top_reports: int) -> None:
+    if jobs > MAX_HIGH_JOBS:
+        raise ValueError(f"--jobs must be <= {MAX_HIGH_JOBS}")
+    if allow_high_jobs:
+        if top_reports != 0:
+            raise ValueError("--allow-high-jobs requires --top-reports 0")
+        return
+    if jobs > MAX_JOBS:
+        raise ValueError(f"--jobs must be <= {MAX_JOBS} unless --allow-high-jobs is used with --top-reports 0")
+
+
+def validate_cm_jobs_config(cm_jobs: int) -> None:
+    if cm_jobs > MAX_CM_JOBS:
+        raise ValueError(f"--cm-jobs must be <= {MAX_CM_JOBS}")
+
+
+def validate_metadata_jobs_config(metadata_jobs: int) -> None:
+    if metadata_jobs > MAX_METADATA_JOBS:
+        raise ValueError(f"--metadata-jobs must be <= {MAX_METADATA_JOBS}")
+
+
+def first_string(*values: object) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        normalized = str(value).strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def first_int(*values: object, default: int | None) -> int | None:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            continue
+        return int(value)
+    return default
+
+
+def first_float(*values: object, default: float | None) -> float | None:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            continue
+        return float(value)
+    return default
+
+
+def first_bool(*values: object, default: bool) -> bool:
+    for value in values:
+        if value is None:
+            continue
+        return bool(value)
+    return default
+
+
+def resolve_config_path(config_path: str | None, cwd: Path) -> str | None:
+    if not config_path:
+        return None
+    path = Path(config_path).expanduser()
+    if not path.is_absolute():
+        path = cwd / path
+    return str(path.resolve())
+
+
+def expand_optional_path_string(value: str | None) -> str | None:
+    return str(Path(value).expanduser()) if value else None
+
+
+def effective_subprocess_env(env: dict[str, str], krb5ccname: str | None) -> dict[str, str]:
+    return merge_kerberos_cache_env(env, {"krb5ccname": krb5ccname})
+
+
+def validate_batch_output_path(out: Path, repo_root: Path) -> None:
+    repo_root = repo_root.resolve()
+    out = out.resolve()
+    if path_is_relative_to(out, repo_root):
+        raise ValueError("--out must be outside the repository. Use /tmp or another directory outside the repository.")
+    validate_not_dangerous_output_path(out)
+
+
+def validate_not_dangerous_output_path(out: Path) -> None:
+    resolved = out.resolve()
+    root = Path(resolved.anchor or "/").resolve()
+    home = Path.home().resolve()
+    safe_temp_roots = safe_output_temp_roots()
+    if resolved == root:
+        raise ValueError("--out must point to a dedicated batch directory, not filesystem root")
+    if resolved in safe_temp_roots:
+        raise ValueError("--out must point to a dedicated query-doctor-* batch directory, not the temp root itself")
+    if resolved == home:
+        raise ValueError("--out must point to a dedicated batch directory, not the home directory")
+    if resolved.parent == root:
+        raise ValueError("--out path is too shallow; use a dedicated /tmp batch directory")
+    if resolved.parent == home:
+        raise ValueError("--out must not be a direct child of the home directory; use /tmp or another dedicated directory")
+    under_safe_temp = any(path_is_relative_to(resolved, temp_root) for temp_root in safe_temp_roots)
+    if not under_safe_temp:
+        for system_root in system_output_roots():
+            if path_is_relative_to(resolved, system_root):
+                raise ValueError("--out must not point inside a system directory; use /tmp/query-doctor-*")
+        raise ValueError("--out must be a dedicated query-doctor-* directory under /tmp or the system temp directory")
+    if not resolved.name.startswith(SAFE_OUTPUT_PREFIX):
+        raise ValueError("--out directory name must start with query-doctor-")
+
+
+def prepare_batch_output_dir(out: Path, *, repo_root: Path, overwrite: bool) -> None:
+    validate_batch_output_path(out, repo_root)
+    if out.exists() and out.is_symlink():
+        raise ValueError("--out must not be a symlink")
+    if out.exists() and not out.is_dir():
+        raise ValueError("--out exists and is not a directory")
+    if out.exists() and any(out.iterdir()):
+        if not overwrite:
+            raise ValueError("output directory exists and is not empty; use --overwrite or choose a new /tmp path")
+        validate_safe_overwrite_target(out, repo_root=repo_root)
+        shutil.rmtree(out)
+    out.mkdir(parents=True, exist_ok=True)
+
+
+def validate_safe_overwrite_target(out: Path, *, repo_root: Path) -> None:
+    validate_batch_output_path(out, repo_root)
+    if not out.exists():
+        return
+    if out.is_symlink():
+        raise ValueError("--out must not be a symlink")
+    if not out.is_dir():
+        raise ValueError("--out exists and is not a directory")
+
+
+def safe_output_temp_roots() -> set[Path]:
+    return {
+        Path("/tmp").resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    }
+
+
+def system_output_roots() -> tuple[Path, ...]:
+    return tuple(Path(value).resolve() for value in SYSTEM_OUTPUT_ROOTS)
+
+
+def path_is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def preflight(config: BatchConfig, *, env: dict[str, str], repo_root: Path) -> None:
+    if not (env.get("CM_PASSWORD") or env.get("CM_TOKEN")):
+        raise ValueError("CM auth env is not set in this execution environment.")
+    if config.metadata_mode != "off" and config.metadata_coordinator:
+        if not env.get("KRB5CCNAME"):
+            raise ValueError("KRB5CCNAME is required when metadata collection is configured.")
+        if config.metadata_impala_shell:
+            shell_path = Path(config.metadata_impala_shell)
+            if "/" in config.metadata_impala_shell and not shell_path.is_absolute():
+                shell_path = repo_root / shell_path
+            if "/" in config.metadata_impala_shell and not shell_path.exists():
+                raise ValueError(f"metadata impala-shell is not available: {config.metadata_impala_shell}")
+
+
+def secret_values(env: dict[str, str]) -> list[str]:
+    return [value for value in (env.get("CM_PASSWORD"), env.get("CM_TOKEN")) if value]

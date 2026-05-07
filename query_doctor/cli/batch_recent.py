@@ -4,201 +4,116 @@
 from __future__ import annotations
 
 import argparse
-import json
 import math
 import os
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from collections import Counter
-from dataclasses import dataclass, field, replace
-from datetime import datetime
+from dataclasses import replace
 from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
 from query_doctor.cli.commands import command_prefix
-from query_doctor.config.contract import merge_kerberos_cache_env
 from query_doctor.engines import get_default_engine_adapter
+from query_doctor.recent.batch_config import (
+    MAX_CM_INSPECT_LIMIT,
+    MAX_CM_JOBS,
+    MAX_HIGH_JOBS,
+    MAX_JOBS,
+    MAX_METADATA_JOBS,
+    MAX_METADATA_TOP_LIMIT,
+    MAX_RAW_CM_SUMMARY_SCAN_LIMIT,
+    MAX_TRIAGE_PROFILE_LIMIT,
+    METADATA_MODE_CHOICES,
+    ORDER_CHOICES,
+    SAFE_OUTPUT_PREFIX,
+    build_batch_config,
+    display_float,
+    duration_filter_label,
+    effective_subprocess_env,
+    elapsed_seconds,
+    expand_optional_path_string,
+    first_bool,
+    first_float,
+    first_int,
+    first_string,
+    format_seconds,
+    preflight,
+    prepare_batch_output_dir,
+    resolve_config_path,
+    safe_output_temp_roots,
+    secret_values,
+    system_output_roots,
+    validate_batch_output_path,
+    validate_cm_jobs_config,
+    validate_cm_time_bound,
+    validate_jobs_config,
+    validate_metadata_jobs_config,
+    validate_not_dangerous_output_path,
+    validate_safe_overwrite_target,
+)
+from query_doctor.recent.batch_models import BatchConfig, CaseResult, DiscoveryResult
+from query_doctor.recent.batch_scoring import (
+    backend_data_skew_value,
+    count_max_table_skips,
+    count_referenced_tables,
+    duration_seconds_value,
+    extract_scoring_components,
+    fact_int,
+    fact_values,
+    has_metadata_completeness_value,
+    has_metadata_error_status,
+    has_supported_spill_scratch_evidence,
+    inspect_case_outputs,
+    normalized_tail_candidate_count,
+    score_analysis_facts,
+    score_case,
+    scoring_section_text,
+    section_text,
+    severe_backend_data_skew_ratio,
+    table_stats_status_from_facts,
+)
+from query_doctor.recent.batch_summary import (
+    batch_ranking_key,
+    build_summary,
+    candidate_reason_counts,
+    candidate_reason_sql_verb_counts,
+    case_score_severity,
+    case_to_summary,
+    rank_cases_for_query_optimization,
+    rank_cases_for_stats_optimization,
+    write_batch_outputs,
+)
+from query_doctor.recent.command_args import append_cm_config_args, append_metadata_args
+from query_doctor.recent.discovery import (
+    build_recent_filters,
+    classify_duration_filter_mode,
+    discover_candidates as discover_candidates_impl,
+    make_cm_http_client,
+    matching_candidate_limit_hit,
+    raw_cm_summary_scan_limit,
+)
+from query_doctor.recent.progress import ProgressWriter
 from query_doctor.recent.query_optimization_score import (
     QueryOptimizationCandidateScore,
-    query_optimization_sort_key,
     score_query_optimization_candidate,
 )
 from query_doctor.recent.stats_optimization_score import (
     StatsOptimizationCandidateScore,
     score_stats_optimization_candidate,
-    stats_optimization_sort_key,
 )
-
-
-MAX_CM_INSPECT_LIMIT = 5000
-MAX_RAW_CM_SUMMARY_SCAN_LIMIT = 20000
-MAX_TRIAGE_PROFILE_LIMIT = 5000
-MAX_METADATA_TOP_LIMIT = 200
-BAD_METADATA_REFRESH_LIMIT = 50
-SUSPICIOUS_METADATA_REFRESH_LIMIT = 20
-SUSPICIOUS_METADATA_PROMOTION_SCORE_FLOOR = 23
-MAX_JOBS = 4
-MAX_HIGH_JOBS = 100
-MAX_CM_JOBS = 100
-MAX_METADATA_JOBS = 5
-ORDER_CHOICES = ("recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority")
-METADATA_MODE_CHOICES = ("auto", "on", "off", "dry-run")
-SAFE_OUTPUT_PREFIX = "query-doctor-"
-SYSTEM_OUTPUT_ROOTS = (
-    "/etc",
-    "/usr",
-    "/bin",
-    "/sbin",
-    "/var",
-    "/opt",
-    "/System",
-    "/Library",
-    "/Applications",
-    "/private/etc",
-    "/private/var",
+from query_doctor.recent.metadata_refresh import (
+    mark_metadata_not_requested,
+    metadata_refresh_candidates,
+    metadata_refresh_skip_reason,
+    rank_cases_for_metadata,
+    select_metadata_refresh_candidates,
+    suspicious_can_be_promoted_by_metadata,
 )
 REPO_DIR = Path(__file__).resolve().parents[2]
 
-
-@dataclass(frozen=True)
-class BatchConfig:
-    out: Path
-    cm_url: str
-    cluster: str
-    service: str
-    cm_username: str | None
-    ca_bundle: str | None
-    verify_tls: bool
-    recent_window_minutes: int
-    cm_inspect_limit: int
-    triage_profile_limit: int
-    metadata_top_limit: int
-    min_duration_sec: float | None
-    max_duration_sec: float | None
-    order: str
-    include_failed: bool
-    include_running: bool
-    user: str | None
-    pool: str | None
-    query_type: str | None
-    max_profile_bytes: int
-    collect_cm_timeseries: bool
-    cm_metrics_profile: str
-    cm_timeseries_padding_sec: int
-    max_timeseries_bytes: int
-    max_timeseries_points: int
-    metadata_mode: str
-    metadata_coordinator: str | None
-    metadata_impala_shell: str | None
-    metadata_auth: str
-    metadata_protocol: str
-    metadata_ssl: bool
-    metadata_ca_cert: str | None
-    metadata_timeout_sec: int
-    metadata_max_tables: int | None
-    metadata_max_output_bytes: int | None
-    metadata_redact: bool
-    top_reports: int
-    cm_jobs: int
-    jobs: int
-    metadata_jobs: int
-    allow_high_jobs: bool
-    discover_only: bool
-    overwrite: bool
-    config_path: str | None
-    progress_jsonl: Path | None
-    krb5ccname: str | None
-    from_time: str | None = None
-    to_time: str | None = None
-    only_running: bool = False
-
-
-@dataclass
-class DiscoveryResult:
-    candidates: list[cm_profiles.RecentQueryCandidate]
-    warnings: list[str]
-    duration_filter_mode: str
-    server_filter_expression: str | None
-    summaries_inspected: int | None = None
-    scan_too_broad: bool = False
-
-
-@dataclass
-class CaseResult:
-    index: int
-    query_id: str
-    duration_sec: float | None
-    user: str | None
-    pool: str | None
-    query_type: str | None
-    sql_verb: str | None
-    wrapper_dir: Path
-    actual_case_dir: Path | None = None
-    collection_status: str = "not_started"
-    analysis_status: str = "not_started"
-    metadata_status: str = "not_observed"
-    table_stats_status: str = "not_checked"
-    referenced_table_count: int = 0
-    collected_metadata_table_count: int = 0
-    skipped_due_to_max_table_limit: int = 0
-    too_large_count: int = 0
-    score: int = 0
-    score_reasons: list[str] = field(default_factory=list)
-    query_optimization_candidate: QueryOptimizationCandidateScore | None = None
-    query_optimization_rank: int | None = None
-    stats_optimization_candidate: StatsOptimizationCandidateScore | None = None
-    stats_optimization_rank: int | None = None
-    cardinality_anomaly_count: int | None = None
-    memory_anomaly_count: int | None = None
-    zero_row_estimate_gap_count: int | None = None
-    zero_memory_estimate_gap_count: int | None = None
-    backend_data_skew: bool | str = "unknown"
-    host_tail_candidate_count: int | None = None
-    execution_tail_candidate_count: int | None = None
-    report_generated: bool = False
-    report_validation_status: str = "not_run"
-    failure_category: str | None = None
-    candidate_rank: int | None = None
-    triage_rank: int | None = None
-    metadata_refreshed: bool = False
-    cm_collect_seconds: float | None = None
-    analysis_seconds: float | None = None
-    report_seconds: float | None = None
-
-
-class ProgressWriter:
-    def __init__(self, path: Path | None) -> None:
-        self.path = path
-        self._handle = None
-        self._lock = None
-        if path is not None:
-            import threading
-
-            self._lock = threading.Lock()
-            self._handle = path.open("a", encoding="utf-8")
-
-    def close(self) -> None:
-        if self._handle is not None:
-            self._handle.close()
-
-    def emit(self, **event: object) -> None:
-        if self._handle is None:
-            return
-        payload = {
-            key: value
-            for key, value in event.items()
-            if value is not None
-        }
-        line = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-        assert self._lock is not None
-        with self._lock:
-            self._handle.write(line + "\n")
-            self._handle.flush()
 
 
 def positive_int(value: str) -> int:
@@ -393,14 +308,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def validate_cm_time_bound(value: str, *, name: str) -> str:
-    try:
-        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
-    except ValueError as exc:
-        raise ValueError(f"{name} must be formatted as YYYY-MM-DDTHH:MM:SSZ") from exc
-    return value
-
-
 def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) -> int:
     total_started = time.monotonic()
     env = dict(os.environ if env is None else env)
@@ -532,520 +439,10 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         progress.close()
 
 
-def elapsed_seconds(started: float) -> float:
-    return round(max(0.0, time.monotonic() - started), 3)
-
-
-def format_seconds(value: float | None) -> str:
-    if value is None:
-        return "n/a"
-    return f"{value:.3f}s"
-
-
-def duration_filter_label(config: BatchConfig) -> str:
-    lower = config.min_duration_sec
-    upper = config.max_duration_sec
-    if lower is None and upper is None:
-        return "none"
-    parts: list[str] = []
-    if lower is not None:
-        parts.append(f">= {display_float(lower)} sec")
-    if upper is not None:
-        parts.append(f"<= {display_float(upper)} sec")
-    return " and ".join(parts)
-
-
-def display_float(value: float) -> str:
-    return str(int(value)) if value == int(value) else str(value)
-
-
-def build_batch_config(
-    args: argparse.Namespace,
-    *,
-    env: dict[str, str],
-    cwd: Path,
-    repo_root: Path,
-) -> BatchConfig:
-    use_repo_default = not any((args.cm_url, args.cluster, args.service, args.ca_bundle))
-    default_config_path = None
-    if not args.config:
-        default_config_path = cm_profiles.discover_default_local_config(
-            cwd=cwd,
-            repo_root=repo_root,
-            use_repo_default=use_repo_default,
-        )
-    effective_config_path = resolve_config_path(args.config, cwd) or (
-        str(default_config_path) if default_config_path else None
-    )
-    try:
-        config_values = cm_profiles.load_effective_local_config(
-            args.config,
-            cwd=cwd,
-            repo_root=repo_root,
-            use_repo_default=use_repo_default,
-        )
-    except cm_profiles.ConfigError:
-        if args.config or use_repo_default:
-            raise
-        # Explicit connection flags should not be blocked by an unrelated
-        # implicit local config in the current working directory.
-        config_values = {}
-        effective_config_path = None
-    cm_url = first_string(args.cm_url, env.get("CM_URL"), config_values.get("cm_url"))
-    cluster = first_string(args.cluster, config_values.get("cluster"))
-    service = first_string(args.service, config_values.get("service"))
-    if not cm_url:
-        raise ValueError("Missing --cm-url, CM_URL, or local config cm_url.")
-    if not cluster:
-        raise ValueError("Missing --cluster or local config cluster.")
-    if not service:
-        raise ValueError("Missing --service or local config service.")
-
-    cm_inspect_limit = first_int(
-        args.cm_inspect_limit,
-        config_values.get("recent_cm_summary_limit"),
-        default=100,
-    )
-    triage_profile_limit = first_int(
-        args.select_limit_alias,
-        args.triage_profile_limit,
-        config_values.get("recent_profile_analysis_limit"),
-        default=20,
-    )
-    metadata_top_limit = first_int(
-        args.metadata_top_limit,
-        config_values.get("recent_metadata_top_limit"),
-        default=0,
-    )
-    recent_window_minutes = first_int(
-        args.recent_window_minutes,
-        config_values.get("recent_window_minutes"),
-        default=60,
-    )
-    from_time = first_string(args.from_time, config_values.get("recent_from_time"))
-    to_time = first_string(args.to_time, config_values.get("recent_to_time"))
-    if bool(from_time) != bool(to_time):
-        raise ValueError("--from-time and --to-time must be provided together")
-    if from_time and to_time:
-        from_time = validate_cm_time_bound(from_time, name="--from-time")
-        to_time = validate_cm_time_bound(to_time, name="--to-time")
-        if from_time >= to_time:
-            raise ValueError("--to-time must be later than --from-time")
-    if cm_inspect_limit > MAX_CM_INSPECT_LIMIT:
-        raise ValueError(f"--cm-inspect-limit must be <= {MAX_CM_INSPECT_LIMIT}")
-    if triage_profile_limit > MAX_TRIAGE_PROFILE_LIMIT:
-        raise ValueError(f"--triage-profile-limit must be <= {MAX_TRIAGE_PROFILE_LIMIT}")
-    if triage_profile_limit > cm_inspect_limit:
-        raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
-    if metadata_top_limit > MAX_METADATA_TOP_LIMIT:
-        raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
-    cm_jobs = first_int(args.cm_jobs, config_values.get("recent_cm_jobs"), default=args.jobs)
-    metadata_jobs = first_int(args.metadata_jobs, config_values.get("recent_metadata_jobs"), default=5)
-    validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
-    validate_cm_jobs_config(cm_jobs)
-    validate_metadata_jobs_config(metadata_jobs)
-    min_duration_sec = (
-        None
-        if args.no_min_duration_filter
-        else first_float(
-            args.min_duration_sec,
-            config_values.get("recent_min_duration_sec"),
-            default=60.0,
-        )
-    )
-    max_duration_sec = first_float(
-        args.max_duration_sec,
-        config_values.get("recent_max_duration_sec"),
-        default=None,
-    )
-    if max_duration_sec is not None and min_duration_sec is not None:
-        if max_duration_sec < min_duration_sec:
-            raise ValueError("--max-duration-sec must be >= --min-duration-sec")
-
-    out_value = first_string(args.out, config_values.get("out"))
-    if not out_value:
-        raise ValueError("missing required output directory: provide --out or config field out")
-    out = Path(out_value).expanduser()
-    if not out.is_absolute():
-        out = (cwd / out).resolve()
-    validate_batch_output_path(out, repo_root)
-    progress_jsonl = None
-    if args.progress_jsonl:
-        progress_jsonl = Path(args.progress_jsonl).expanduser()
-        if not progress_jsonl.is_absolute():
-            progress_jsonl = (cwd / progress_jsonl).resolve()
-
-    ca_bundle = expand_optional_path_string(
-        first_string(args.ca_bundle, env.get("CM_CA_BUNDLE"), config_values.get("ca_bundle"))
-    )
-    insecure_skip_verify = first_bool(
-        args.insecure_skip_verify,
-        config_values.get("insecure_skip_verify"),
-        default=False,
-    )
-
-    return BatchConfig(
-        out=out,
-        cm_url=str(cm_url),
-        cluster=str(cluster),
-        service=str(service),
-        cm_username=first_string(env.get("CM_USERNAME"), config_values.get("username")),
-        ca_bundle=ca_bundle,
-        verify_tls=not insecure_skip_verify,
-        recent_window_minutes=recent_window_minutes,
-        from_time=from_time,
-        to_time=to_time,
-        cm_inspect_limit=cm_inspect_limit,
-        triage_profile_limit=triage_profile_limit,
-        metadata_top_limit=metadata_top_limit,
-        min_duration_sec=min_duration_sec,
-        max_duration_sec=max_duration_sec,
-        order=first_string(args.order, config_values.get("recent_order"), "duration-desc") or "duration-desc",
-        include_failed=first_bool(args.include_failed, config_values.get("recent_include_failed"), default=False),
-        include_running=first_bool(args.include_running, config_values.get("recent_include_running"), default=False),
-        only_running=first_bool(args.only_running, config_values.get("recent_only_running"), default=False),
-        user=first_string(args.user, config_values.get("recent_user")),
-        pool=first_string(args.pool, config_values.get("recent_pool")),
-        query_type=first_string(args.query_type, config_values.get("query_type")),
-        max_profile_bytes=first_int(
-            args.max_profile_bytes,
-            config_values.get("max_profile_bytes"),
-            default=cm_profiles.DEFAULT_MAX_PROFILE_BYTES,
-        ),
-        collect_cm_timeseries=first_bool(
-            args.collect_cm_timeseries,
-            config_values.get("collect_cm_timeseries"),
-            default=False,
-        ),
-        cm_metrics_profile=cm_profiles.validate_cm_metrics_profile(
-            first_string(
-                args.cm_metrics_profile,
-                config_values.get("cm_metrics_profile"),
-                env.get("CM_METRICS_PROFILE"),
-                cm_profiles.DEFAULT_CM_METRICS_PROFILE,
-            )
-        ),
-        cm_timeseries_padding_sec=first_int(
-            args.cm_timeseries_padding_sec,
-            config_values.get("cm_timeseries_padding_sec"),
-            default=cm_profiles.DEFAULT_CM_TIMESERIES_PADDING_SEC,
-        ),
-        max_timeseries_bytes=first_int(
-            args.max_timeseries_bytes,
-            config_values.get("max_timeseries_bytes"),
-            default=cm_profiles.DEFAULT_MAX_TIMESERIES_BYTES,
-        ),
-        max_timeseries_points=first_int(
-            args.max_timeseries_points,
-            config_values.get("max_timeseries_points"),
-            default=cm_profiles.DEFAULT_MAX_TIMESERIES_POINTS,
-        ),
-        metadata_mode=args.metadata_mode,
-        metadata_coordinator=first_string(args.metadata_coordinator, config_values.get("metadata_coordinator")),
-        metadata_impala_shell=first_string(args.metadata_impala_shell, config_values.get("metadata_impala_shell")),
-        metadata_auth=first_string(args.metadata_auth, config_values.get("metadata_auth"), "kerberos") or "kerberos",
-        metadata_protocol=first_string(args.metadata_protocol, config_values.get("metadata_protocol"), "beeswax") or "beeswax",
-        metadata_ssl=first_bool(args.metadata_ssl, config_values.get("metadata_ssl"), default=False),
-        metadata_ca_cert=first_string(args.metadata_ca_cert, config_values.get("metadata_ca_cert")),
-        metadata_timeout_sec=first_int(
-            args.metadata_timeout_sec,
-            config_values.get("metadata_timeout_sec"),
-            default=30,
-        ),
-        metadata_max_tables=first_int(args.metadata_max_tables, config_values.get("metadata_max_tables"), default=None),
-        metadata_max_output_bytes=first_int(
-            args.metadata_max_output_bytes,
-            config_values.get("metadata_max_output_bytes"),
-            default=None,
-        ),
-        metadata_redact=first_bool(args.metadata_redact, config_values.get("metadata_redact"), default=False),
-        top_reports=args.top_reports,
-        cm_jobs=cm_jobs,
-        jobs=args.jobs,
-        metadata_jobs=metadata_jobs,
-        allow_high_jobs=args.allow_high_jobs,
-        discover_only=args.discover_only,
-        overwrite=args.overwrite,
-        config_path=effective_config_path,
-        progress_jsonl=progress_jsonl,
-        krb5ccname=first_string(config_values.get("krb5ccname")),
-    )
-
-
-def validate_jobs_config(jobs: int, *, allow_high_jobs: bool, metadata_mode: str, top_reports: int) -> None:
-    if jobs > MAX_HIGH_JOBS:
-        raise ValueError(f"--jobs must be <= {MAX_HIGH_JOBS}")
-    if allow_high_jobs:
-        if top_reports != 0:
-            raise ValueError("--allow-high-jobs requires --top-reports 0")
-        return
-    if jobs > MAX_JOBS:
-        raise ValueError(f"--jobs must be <= {MAX_JOBS} unless --allow-high-jobs is used with --top-reports 0")
-
-
-def validate_cm_jobs_config(cm_jobs: int) -> None:
-    if cm_jobs > MAX_CM_JOBS:
-        raise ValueError(f"--cm-jobs must be <= {MAX_CM_JOBS}")
-
-
-def validate_metadata_jobs_config(metadata_jobs: int) -> None:
-    if metadata_jobs > MAX_METADATA_JOBS:
-        raise ValueError(f"--metadata-jobs must be <= {MAX_METADATA_JOBS}")
-
-
-def first_string(*values: object) -> str | None:
-    for value in values:
-        if value is None:
-            continue
-        normalized = str(value).strip()
-        if normalized:
-            return normalized
-    return None
-
-
-def first_int(*values: object, default: int | None) -> int | None:
-    for value in values:
-        if value is None:
-            continue
-        if isinstance(value, bool):
-            continue
-        return int(value)
-    return default
-
-
-def first_float(*values: object, default: float | None) -> float | None:
-    for value in values:
-        if value is None:
-            continue
-        if isinstance(value, bool):
-            continue
-        return float(value)
-    return default
-
-
-def first_bool(*values: object, default: bool) -> bool:
-    for value in values:
-        if value is None:
-            continue
-        return bool(value)
-    return default
-
-
-def resolve_config_path(config_path: str | None, cwd: Path) -> str | None:
-    if not config_path:
-        return None
-    path = Path(config_path).expanduser()
-    if not path.is_absolute():
-        path = cwd / path
-    return str(path.resolve())
-
-
-def effective_subprocess_env(env: dict[str, str], krb5ccname: str | None) -> dict[str, str]:
-    return merge_kerberos_cache_env(env, {"krb5ccname": krb5ccname})
-
-
-def validate_batch_output_path(out: Path, repo_root: Path) -> None:
-    repo_root = repo_root.resolve()
-    out = out.resolve()
-    if path_is_relative_to(out, repo_root):
-        raise ValueError("--out must be outside the repository. Use /tmp or another directory outside the repository.")
-    validate_not_dangerous_output_path(out)
-
-
-def validate_not_dangerous_output_path(out: Path) -> None:
-    resolved = out.resolve()
-    root = Path(resolved.anchor or "/").resolve()
-    home = Path.home().resolve()
-    safe_temp_roots = safe_output_temp_roots()
-    if resolved == root:
-        raise ValueError("--out must point to a dedicated batch directory, not filesystem root")
-    if resolved in safe_temp_roots:
-        raise ValueError("--out must point to a dedicated query-doctor-* batch directory, not the temp root itself")
-    if resolved == home:
-        raise ValueError("--out must point to a dedicated batch directory, not the home directory")
-    if resolved.parent == root:
-        raise ValueError("--out path is too shallow; use a dedicated /tmp batch directory")
-    if resolved.parent == home:
-        raise ValueError("--out must not be a direct child of the home directory; use /tmp or another dedicated directory")
-    under_safe_temp = any(path_is_relative_to(resolved, temp_root) for temp_root in safe_temp_roots)
-    if not under_safe_temp:
-        for system_root in system_output_roots():
-            if path_is_relative_to(resolved, system_root):
-                raise ValueError("--out must not point inside a system directory; use /tmp/query-doctor-*")
-        raise ValueError("--out must be a dedicated query-doctor-* directory under /tmp or the system temp directory")
-    if not resolved.name.startswith(SAFE_OUTPUT_PREFIX):
-        raise ValueError("--out directory name must start with query-doctor-")
-
-
-def prepare_batch_output_dir(out: Path, *, repo_root: Path, overwrite: bool) -> None:
-    validate_batch_output_path(out, repo_root)
-    if out.exists() and out.is_symlink():
-        raise ValueError("--out must not be a symlink")
-    if out.exists() and not out.is_dir():
-        raise ValueError("--out exists and is not a directory")
-    if out.exists() and any(out.iterdir()):
-        if not overwrite:
-            raise ValueError("output directory exists and is not empty; use --overwrite or choose a new /tmp path")
-        validate_safe_overwrite_target(out, repo_root=repo_root)
-        shutil.rmtree(out)
-    out.mkdir(parents=True, exist_ok=True)
-
-
-def validate_safe_overwrite_target(out: Path, *, repo_root: Path) -> None:
-    validate_batch_output_path(out, repo_root)
-    if not out.exists():
-        return
-    if out.is_symlink():
-        raise ValueError("--out must not be a symlink")
-    if not out.is_dir():
-        raise ValueError("--out exists and is not a directory")
-
-
-def safe_output_temp_roots() -> set[Path]:
-    return {
-        Path("/tmp").resolve(),
-        Path(tempfile.gettempdir()).resolve(),
-    }
-
-
-def system_output_roots() -> tuple[Path, ...]:
-    return tuple(Path(value).resolve() for value in SYSTEM_OUTPUT_ROOTS)
-
-
-def path_is_relative_to(path: Path, parent: Path) -> bool:
-    try:
-        path.relative_to(parent)
-        return True
-    except ValueError:
-        return False
-
-
-def preflight(config: BatchConfig, *, env: dict[str, str], repo_root: Path) -> None:
-    if not (env.get("CM_PASSWORD") or env.get("CM_TOKEN")):
-        raise ValueError("CM auth env is not set in this execution environment.")
-    if config.metadata_mode != "off" and config.metadata_coordinator:
-        if not env.get("KRB5CCNAME"):
-            raise ValueError("KRB5CCNAME is required when metadata collection is configured.")
-        if config.metadata_impala_shell:
-            shell_path = Path(config.metadata_impala_shell)
-            if "/" in config.metadata_impala_shell and not shell_path.is_absolute():
-                shell_path = repo_root / shell_path
-            if "/" in config.metadata_impala_shell and not shell_path.exists():
-                raise ValueError(f"metadata impala-shell is not available: {config.metadata_impala_shell}")
-
-
-def secret_values(env: dict[str, str]) -> list[str]:
-    return [value for value in (env.get("CM_PASSWORD"), env.get("CM_TOKEN")) if value]
-
-
-def make_cm_http_client(config: BatchConfig, env: dict[str, str]) -> cm_profiles.CMHttpClient:
-    http_config = cm_profiles.CMHttpConfig(
-        cm_url=config.cm_url,
-        username=config.cm_username,
-        password=env.get("CM_PASSWORD"),
-        token=env.get("CM_TOKEN"),
-        ca_bundle=config.ca_bundle,
-        verify_tls=config.verify_tls,
-    )
-    return cm_profiles.CMHttpClient(http_config)
-
-
-def build_recent_filters(config: BatchConfig) -> cm_profiles.CMQueryFilters:
-    return cm_profiles.CMQueryFilters(
-        cluster=config.cluster,
-        service=config.service,
-        since_hours=max(1, (config.recent_window_minutes + 59) // 60),
-        since_minutes=None if config.from_time and config.to_time else config.recent_window_minutes,
-        from_time=config.from_time,
-        to_time=config.to_time,
-        limit=config.cm_inspect_limit,
-        min_duration_sec=config.min_duration_sec,
-        max_duration_sec=config.max_duration_sec,
-        server_duration_filter=True,
-        pool=config.pool,
-        user=config.user,
-        status="all",
-        query_id=None,
-        query_type=config.query_type,
-    )
 
 
 def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> DiscoveryResult:
-    client = make_cm_http_client(config, env)
-    filters = build_recent_filters(config)
-    discovery_filters = replace(filters, limit=raw_cm_summary_scan_limit(config.cm_inspect_limit))
-
-    def fetch_page(received_filters: cm_profiles.CMQueryFilters, page_token: str | None) -> cm_profiles.CMQueryPage:
-        return cm_profiles.fetch_cm_query_summary_page(client, received_filters, page_token)
-
-    server_filter_expression = cm_profiles.build_cm_query_filter_expression(discovery_filters)
-    duration_filter_mode = classify_duration_filter_mode(
-        server_filter_expression,
-        min_duration_sec=config.min_duration_sec,
-        max_duration_sec=config.max_duration_sec,
-    )
-    summaries, warnings, used_duration_fallback = cm_profiles.collect_query_summaries_with_duration_fallback(
-        discovery_filters,
-        fetch_page,
-        secrets=secret_values(env),
-    )
-    if used_duration_fallback:
-        duration_filter_mode = "server-side-fallback-client-side"
-        discovery_filters = replace(discovery_filters, min_duration_sec=None, max_duration_sec=None, server_duration_filter=False)
-    candidates = cm_profiles.select_recent_query_candidates(
-        summaries,
-        select_limit=config.triage_profile_limit,
-        include_failed=config.include_failed,
-        include_running=config.include_running or config.only_running,
-        only_running=config.only_running,
-        user=config.user,
-        pool=config.pool,
-        query_type=config.query_type,
-        min_duration_sec=config.min_duration_sec,
-        max_duration_sec=config.max_duration_sec,
-        order=config.order,
-    )
-    if matching_candidate_limit_hit(candidates):
-        limit = config.triage_profile_limit
-        warnings.append(
-            f"More than {limit} query summaries matched the current filters. Narrow the scan hour or filters and run again."
-        )
-        return DiscoveryResult(
-            candidates=[],
-            warnings=list(warnings),
-            duration_filter_mode=duration_filter_mode,
-            server_filter_expression=server_filter_expression,
-            summaries_inspected=len(summaries),
-            scan_too_broad=True,
-        )
-    return DiscoveryResult(
-        candidates=candidates,
-        warnings=list(warnings),
-        duration_filter_mode=duration_filter_mode,
-        server_filter_expression=server_filter_expression,
-        summaries_inspected=len(summaries),
-    )
-
-
-def raw_cm_summary_scan_limit(candidate_limit: int) -> int:
-    return min(MAX_RAW_CM_SUMMARY_SCAN_LIMIT, max(candidate_limit, candidate_limit * 4))
-
-
-def matching_candidate_limit_hit(candidates: list[cm_profiles.RecentQueryCandidate]) -> bool:
-    return any(candidate.reason == "eligible but not selected because recent-select limit was reached" for candidate in candidates)
-
-
-def classify_duration_filter_mode(
-    filter_expression: str | None,
-    *,
-    min_duration_sec: float | None,
-    max_duration_sec: float | None = None,
-) -> str:
-    if min_duration_sec is None and max_duration_sec is None:
-        return "none"
-    if filter_expression and "duration" in filter_expression.lower():
-        return "server-side"
-    return "client-side"
+    return discover_candidates_impl(config, env=env, make_client=make_cm_http_client)
 
 
 def collect_case_profile(
@@ -1229,19 +626,6 @@ def print_case_progress(case: CaseResult) -> None:
         )
 
 
-def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
-    if config.config_path:
-        cmd.extend(["--config", config.config_path])
-        return
-    cmd.extend(["--cm-url", config.cm_url, "--cluster", config.cluster, "--service", config.service])
-    if config.ca_bundle:
-        cmd.extend(["--ca-bundle", config.ca_bundle])
-
-
-def expand_optional_path_string(value: str | None) -> str | None:
-    return str(Path(value).expanduser()) if value else None
-
-
 def run_analysis_pass(
     config: BatchConfig,
     case: CaseResult,
@@ -1274,100 +658,6 @@ def run_analysis_pass(
             case.failure_category = "metadata_collection_failed"
     finally:
         case.analysis_seconds = elapsed_seconds(started)
-
-
-def append_metadata_args(cmd: list[str], config: BatchConfig) -> None:
-    cmd.extend(["--metadata-mode", config.metadata_mode])
-    if config.metadata_mode == "off" or not config.metadata_coordinator:
-        return
-    cmd.extend(["--metadata-coordinator", config.metadata_coordinator])
-    if config.metadata_impala_shell:
-        cmd.extend(["--metadata-impala-shell", config.metadata_impala_shell])
-    cmd.extend(["--metadata-auth", config.metadata_auth])
-    cmd.extend(["--metadata-protocol", config.metadata_protocol])
-    cmd.extend(["--metadata-timeout-sec", str(config.metadata_timeout_sec)])
-    if config.metadata_ssl:
-        cmd.append("--metadata-ssl")
-    if config.metadata_ca_cert:
-        cmd.extend(["--metadata-ca-cert", config.metadata_ca_cert])
-    if config.metadata_max_tables is not None:
-        cmd.extend(["--metadata-max-tables", str(config.metadata_max_tables)])
-    if config.metadata_max_output_bytes is not None:
-        cmd.extend(["--metadata-max-output-bytes", str(config.metadata_max_output_bytes)])
-    if config.metadata_redact:
-        cmd.append("--metadata-redact")
-
-
-def rank_cases_for_metadata(cases: list[CaseResult]) -> list[CaseResult]:
-    ranked = sorted(
-        [case for case in cases if case.analysis_status == "ok"],
-        key=batch_ranking_key,
-    )
-    for rank, case in enumerate(ranked, start=1):
-        case.triage_rank = rank
-    return ranked
-
-
-def rank_cases_for_query_optimization(cases: list[CaseResult]) -> list[CaseResult]:
-    ranked = sorted(
-        [
-            case
-            for case in cases
-            if case.analysis_status == "ok"
-            and case.query_optimization_candidate is not None
-            and case.query_optimization_candidate.tier in {"high", "medium"}
-        ],
-        key=lambda case: query_optimization_sort_key(case_to_summary(case)),
-    )
-    for rank, case in enumerate(ranked, start=1):
-        case.query_optimization_rank = rank
-    return ranked
-
-
-def rank_cases_for_stats_optimization(cases: list[CaseResult]) -> list[CaseResult]:
-    for case in cases:
-        case.stats_optimization_rank = None
-    ranked = sorted(
-        [
-            case
-            for case in cases
-            if case.stats_optimization_candidate
-            and case.stats_optimization_candidate.tier in {"high", "medium"}
-        ],
-        key=lambda case: stats_optimization_sort_key(case_to_summary(case)),
-    )
-    for rank, case in enumerate(ranked, start=1):
-        case.stats_optimization_rank = rank
-    return ranked
-
-
-def metadata_refresh_candidates(config: BatchConfig, cases: list[CaseResult]) -> list[CaseResult]:
-    ranked = rank_cases_for_metadata(cases)
-    if metadata_refresh_skip_reason(config, ranked) is not None:
-        mark_metadata_not_requested(ranked)
-        return []
-    candidates = select_metadata_refresh_candidates(ranked, config.metadata_top_limit)
-    refreshed_ids = {id(case) for case in candidates}
-    mark_metadata_not_requested([case for case in ranked if id(case) not in refreshed_ids])
-    return candidates
-
-
-def metadata_refresh_skip_reason(config: BatchConfig, ranked_cases: list[CaseResult]) -> str | None:
-    if config.metadata_mode == "off":
-        return "metadata disabled"
-    if not config.metadata_coordinator:
-        return "metadata not configured"
-    if config.metadata_top_limit <= 0:
-        return "metadata_top_limit=0"
-    if not ranked_cases:
-        return "no eligible cases"
-    return None
-
-
-def mark_metadata_not_requested(cases: list[CaseResult]) -> None:
-    for case in cases:
-        if case.metadata_status in {"skipped", "not_observed"}:
-            case.metadata_status = "not_requested"
 
 
 def refresh_top_metadata(
@@ -1404,26 +694,6 @@ def refresh_top_metadata(
     refreshed_ids = {id(case) for case in candidates}
     mark_metadata_not_requested([case for case in cases if case.analysis_status == "ok" and id(case) not in refreshed_ids])
     progress.emit(stage="metadata_refresh", status="done", total=len(candidates))
-
-
-def select_metadata_refresh_candidates(ranked_cases: list[CaseResult], limit: int) -> list[CaseResult]:
-    if limit <= 0:
-        return []
-    remaining = limit
-    bad_limit = min(BAD_METADATA_REFRESH_LIMIT, remaining)
-    bad = [case for case in ranked_cases if case_score_severity(case) == "high"][:bad_limit]
-    remaining -= len(bad)
-    suspicious_limit = min(SUSPICIOUS_METADATA_REFRESH_LIMIT, remaining)
-    suspicious = [
-        case
-        for case in ranked_cases
-        if case_score_severity(case) == "suspicious" and suspicious_can_be_promoted_by_metadata(case)
-    ][:suspicious_limit]
-    return bad + suspicious
-
-
-def suspicious_can_be_promoted_by_metadata(case: CaseResult) -> bool:
-    return case.score >= SUSPICIOUS_METADATA_PROMOTION_SCORE_FLOOR
 
 
 def refresh_case_metadata(
@@ -1509,574 +779,6 @@ def run_subprocess(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> subproc
         stderr=subprocess.DEVNULL,
     )
 
-
-def inspect_case_outputs(case: CaseResult) -> None:
-    if case.actual_case_dir is None:
-        return
-    facts_path = case.actual_case_dir / "analysis_facts.md"
-    if facts_path.exists():
-        facts = facts_path.read_text(encoding="utf-8", errors="replace")
-        case.table_stats_status = table_stats_status_from_facts(facts)
-        case.referenced_table_count = count_referenced_tables(facts)
-        case.skipped_due_to_max_table_limit = count_max_table_skips(facts)
-    context_path = case.actual_case_dir / "impala_context.json"
-    if not context_path.exists():
-        case.metadata_status = "skipped"
-        return
-    try:
-        context = json.loads(context_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        case.metadata_status = "failed"
-        return
-    results = context.get("results", [])
-    if not isinstance(results, list):
-        case.metadata_status = "failed"
-        return
-    statuses = Counter(str(item.get("status")) for item in results if isinstance(item, dict))
-    case.too_large_count = statuses.get("too_large", 0)
-    if statuses.get("error", 0) and statuses.get("ok", 0):
-        case.metadata_status = "partial"
-    elif statuses.get("error", 0):
-        case.metadata_status = "failed"
-    elif statuses.get("ok", 0):
-        case.metadata_status = "collected"
-    else:
-        case.metadata_status = "skipped"
-    tables = context.get("tables", [])
-    if isinstance(tables, list) and case.metadata_status in {"collected", "partial"}:
-        case.collected_metadata_table_count = len(tables)
-
-
-def count_referenced_tables(facts: str) -> int:
-    section = section_text(facts, "## Referenced Tables")
-    return sum(
-        1
-        for line in section.splitlines()
-        if line.strip().startswith("- `") and "not_observed" not in line
-    )
-
-
-def count_max_table_skips(facts: str) -> int:
-    return len(re.findall(r"skipped.*max", facts, flags=re.IGNORECASE))
-
-
-def table_stats_status_from_facts(facts: str) -> str:
-    values = [value.lower() for value in fact_values(facts, "table stats row-count completeness")]
-    if not values:
-        return "not_checked"
-    if any(value in {"missing", "unknown", "missing/unknown", "not_available"} for value in values):
-        return "missing"
-    if any(value in {"not_applicable", "n/a"} for value in values):
-        return "not_applicable"
-    if all(value == "available" for value in values):
-        return "available"
-    return "unknown"
-
-
-def score_case(case: CaseResult) -> None:
-    if case.actual_case_dir is None:
-        return
-    facts_path = case.actual_case_dir / "analysis_facts.md"
-    if not facts_path.exists():
-        return
-    facts = facts_path.read_text(encoding="utf-8", errors="replace")
-    components = extract_scoring_components(facts)
-    case.cardinality_anomaly_count = components["cardinality_anomaly_count"]
-    case.memory_anomaly_count = components["memory_anomaly_count"]
-    case.zero_row_estimate_gap_count = components["zero_row_estimate_gap_count"]
-    case.zero_memory_estimate_gap_count = components["zero_memory_estimate_gap_count"]
-    case.backend_data_skew = components["backend_data_skew"]
-    case.host_tail_candidate_count = components["host_tail_candidate_count"]
-    case.execution_tail_candidate_count = components["execution_tail_candidate_count"]
-    score, reasons = score_analysis_facts(facts, metadata_status=case.metadata_status)
-    case.score = score
-    case.score_reasons = reasons
-    case.query_optimization_candidate = score_query_optimization_candidate(
-        facts,
-        duration_sec=case.duration_sec,
-        collection_status=case.collection_status,
-        analysis_status=case.analysis_status,
-        failure_category=case.failure_category,
-    )
-    case.stats_optimization_candidate = score_stats_optimization_candidate(
-        facts,
-        duration_sec=case.duration_sec,
-        metadata_status=case.metadata_status,
-        collection_status=case.collection_status,
-        analysis_status=case.analysis_status,
-        failure_category=case.failure_category,
-    )
-
-
-def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -> tuple[int, list[str]]:
-    score = 0
-    reasons: list[str] = []
-    components = extract_scoring_components(facts)
-    cardinality = components["cardinality_anomaly_count"] or 0
-    if cardinality > 0:
-        score += min(12, cardinality * 3)
-        reasons.append(f"cardinality estimate anomalies: {cardinality}")
-    memory = components["memory_anomaly_count"] or 0
-    if memory > 0:
-        score += min(8, memory * 2)
-        reasons.append(f"memory estimate anomalies: {memory}")
-    zero_row_gaps = components["zero_row_estimate_gap_count"] or 0
-    if zero_row_gaps > 0:
-        score += min(12, zero_row_gaps * 3)
-        reasons.append(f"zero/unknown row estimate gaps: {zero_row_gaps}")
-    zero_memory_gaps = components["zero_memory_estimate_gap_count"] or 0
-    if zero_memory_gaps > 0:
-        score += min(8, zero_memory_gaps * 2)
-        reasons.append(f"zero/unknown memory estimate gaps: {zero_memory_gaps}")
-    lower = facts.lower()
-    if has_supported_spill_scratch_evidence(facts):
-        score += 3
-        reasons.append("spill/scratch evidence: non-zero metrics")
-    host_tail_candidates = components["host_tail_candidate_count"] or 0
-    execution_tail_candidates = components["execution_tail_candidate_count"] or 0
-    if host_tail_candidates > 0:
-        score += min(12, host_tail_candidates * 8)
-        reasons.append(f"host-tail candidates: {host_tail_candidates}")
-    duration_sec = components["duration_sec"]
-    if isinstance(duration_sec, (int, float)) and duration_sec >= 1800 and execution_tail_candidates > 0:
-        score += 8
-        reasons.append(f"long-running query with host tail: {duration_sec / 60:.1f}m")
-    if components["backend_data_skew"] is True:
-        score += 2
-        reasons.append("backend data skew evidence")
-    severe_backend_skew_ratio = components["severe_backend_data_skew_ratio"]
-    if severe_backend_skew_ratio is not None:
-        score += 8
-        reasons.append(f"severe backend data skew ratio: {severe_backend_skew_ratio:.1f}x")
-    cm_correlated_signals = components["cm_metrics_correlated_signals"] or 0
-    if cm_correlated_signals > 0:
-        score += min(6, cm_correlated_signals * 2)
-        reasons.append(f"CM metrics correlated signals: {cm_correlated_signals}")
-    if metadata_status == "failed" or has_metadata_error_status(facts):
-        score += 3
-        reasons.append("metadata collection failed for referenced table")
-    if has_metadata_completeness_value(
-        facts,
-        "table stats row-count completeness",
-        {"missing", "unknown", "missing/unknown"},
-    ):
-        score += 2
-        reasons.append("table stats row-count completeness missing/unknown")
-    if has_metadata_completeness_value(
-        facts,
-        "column stats completeness",
-        {"incomplete", "unknown", "incomplete/unknown"},
-    ):
-        score += 1
-        reasons.append("column stats completeness incomplete/unknown")
-    if "too_large" in lower:
-        score += 1
-        reasons.append("metadata output too_large limitation")
-    if score == 0:
-        reasons.append("no analyzer-supported suspicious facts")
-    return score, reasons
-
-
-def extract_scoring_components(facts: str) -> dict[str, object]:
-    summary_facts = scoring_section_text(facts, "## Summary")
-    backend_facts = scoring_section_text(facts, "## Backend / Host Tail Evidence")
-    cm_query_facts = scoring_section_text(facts, "## CM Query Context")
-    cm_correlation_facts = scoring_section_text(facts, "## CM Metrics Correlation")
-    host_tail_candidates = fact_int(backend_facts, "host tail candidates")
-    if host_tail_candidates is None:
-        host_tail_candidates = normalized_tail_candidate_count(backend_facts)
-    execution_tail_candidates = fact_int(backend_facts, "execution tail candidates")
-    if execution_tail_candidates is None:
-        normalized_execution_tails = normalized_tail_candidate_count(backend_facts, family="execution")
-        execution_tail_candidates = (
-            normalized_execution_tails
-            if normalized_execution_tails is not None
-            else host_tail_candidates
-        )
-    return {
-        "cardinality_anomaly_count": fact_int(summary_facts, "Cardinality anomalies"),
-        "memory_anomaly_count": fact_int(summary_facts, "Memory anomalies"),
-        "zero_row_estimate_gap_count": fact_int(summary_facts, "Zero/unknown row estimate gaps"),
-        "zero_memory_estimate_gap_count": fact_int(summary_facts, "Zero/unknown memory estimate gaps"),
-        "backend_data_skew": backend_data_skew_value(backend_facts),
-        "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(backend_facts),
-        "host_tail_candidate_count": host_tail_candidates,
-        "execution_tail_candidate_count": execution_tail_candidates,
-        "duration_sec": duration_seconds_value(cm_query_facts),
-        "cm_metrics_correlated_signals": fact_int(cm_correlation_facts, "correlated_signals"),
-    }
-
-
-def fact_values(facts: str, label: str) -> list[str]:
-    values: list[str] = []
-    expected = label.lower()
-    for line in facts.splitlines():
-        item = line.strip()
-        if item.startswith("- "):
-            item = item[2:].strip()
-        key, separator, value = item.partition(":")
-        if separator and key.strip().lower() == expected:
-            values.append(value.strip())
-    return values
-
-
-def normalized_tail_candidate_count(facts: str, *, family: str | None = None) -> int | None:
-    hosts: set[str] = set()
-    saw_normalized_table = False
-    expected_family = family.lower() if family else None
-    for line in facts.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        if len(cells) < 8:
-            continue
-        if cells[0].lower() == "host" or set(cells[0]) == {"-"}:
-            saw_normalized_table = True
-            continue
-        saw_normalized_table = True
-        row_family = cells[2].lower()
-        if expected_family and row_family != expected_family:
-            continue
-        if cells[0]:
-            hosts.add(cells[0])
-    if not saw_normalized_table:
-        return None
-    return len(hosts)
-
-
-def fact_int(facts: str, label: str) -> int | None:
-    for value in fact_values(facts, label):
-        match = re.search(r"\d+", value)
-        if match:
-            return int(match.group(0))
-    return None
-
-
-def duration_seconds_value(facts: str) -> float | None:
-    for value in fact_values(facts, "duration"):
-        match = re.search(r"(\d+(?:\.\d+)?)(ms|s|m|h)\b", value, re.IGNORECASE)
-        if not match:
-            continue
-        number = float(match.group(1))
-        unit = match.group(2).lower()
-        if unit == "ms":
-            return number / 1000
-        if unit == "s":
-            return number
-        if unit == "m":
-            return number * 60
-        if unit == "h":
-            return number * 3600
-    return None
-
-
-def has_supported_spill_scratch_evidence(facts: str) -> bool:
-    supported_values = ("supported", "yes", "present", "non-zero")
-    if any(
-        value.lower().startswith(supported_values)
-        for value in fact_values(facts, "spill/scratch evidence")
-    ):
-        return True
-    return "detected non-zero spill/scratch metric evidence" in facts.lower()
-
-
-def backend_data_skew_value(facts: str) -> bool | str:
-    values = [value.lower() for value in fact_values(facts, "data skew")]
-    if any(value.startswith("yes") for value in values):
-        return True
-    if any(value.startswith(("no", "not_observed")) for value in values):
-        return False
-    return "unknown"
-
-
-def severe_backend_data_skew_ratio(facts: str) -> float | None:
-    if backend_data_skew_value(facts) is not True:
-        return None
-    for value in fact_values(facts, "data skew"):
-        match = re.search(r"(\d+(?:\.\d+)?)x", value, re.IGNORECASE)
-        if not match:
-            continue
-        ratio = float(match.group(1))
-        if ratio >= 10:
-            return ratio
-    return None
-
-
-def has_metadata_error_status(facts: str) -> bool:
-    status_labels = (
-        "SHOW CREATE TABLE status",
-        "SHOW TABLE STATS status",
-        "SHOW COLUMN STATS status",
-    )
-    return any(
-        value.lower().startswith("error")
-        for label in status_labels
-        for value in fact_values(facts, label)
-    )
-
-
-def has_metadata_completeness_value(facts: str, label: str, bad_values: set[str]) -> bool:
-    return any(value.lower() in bad_values for value in fact_values(facts, label))
-
-
-def section_text(text: str, heading: str) -> str:
-    match = re.search(rf"(?m)^{re.escape(heading)}\s*$", text)
-    if not match:
-        return ""
-    start = match.end()
-    next_heading = re.search(r"(?m)^##\s+", text[start:])
-    end = start + next_heading.start() if next_heading else len(text)
-    return text[start:end]
-
-
-def scoring_section_text(text: str, heading: str) -> str:
-    section = section_text(text, heading)
-    if section:
-        return section
-    if text.lstrip().startswith("## ") or "\n## " in text:
-        return ""
-    return text
-
-
-def build_summary(
-    config: BatchConfig,
-    discovery: DiscoveryResult,
-    cases: list[CaseResult],
-    warnings: list[str],
-    *,
-    discovery_seconds: float | None,
-    total_seconds: float,
-    discovery_failed: bool = False,
-) -> dict[str, object]:
-    rank_cases_for_query_optimization(cases)
-    rank_cases_for_stats_optimization(cases)
-    selected_count = len(cases)
-    inspected = discovery.summaries_inspected if discovery.summaries_inspected is not None else len(discovery.candidates)
-    reason_counts = {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
-    reason_sql_verb_counts = {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
-    return {
-        "mode": "recent-query-batch",
-        "out": str(config.out),
-        "cm_inspect_limit": config.cm_inspect_limit,
-        "triage_profile_limit": config.triage_profile_limit,
-        "select_limit": config.triage_profile_limit,
-        "metadata_top_limit": config.metadata_top_limit,
-        "recent_window_minutes": config.recent_window_minutes,
-        "from_time": config.from_time,
-        "to_time": config.to_time,
-        "min_duration_sec": config.min_duration_sec,
-        "query_type_filter": config.query_type or "all",
-        "include_failed": config.include_failed,
-        "include_running": config.include_running,
-        "only_running": config.only_running,
-        "user_filter_present": bool(config.user),
-        "pool_filter_present": bool(config.pool),
-        "order": config.order,
-        "duration_filter": duration_filter_label(config),
-        "duration_filter_mode": discovery.duration_filter_mode,
-        "total_seconds": total_seconds,
-        "discovery_seconds": discovery_seconds,
-        "server_filter_expression_present": bool(discovery.server_filter_expression),
-        "summaries_inspected": inspected,
-        "cm_summary_safety_cap": MAX_CM_INSPECT_LIMIT,
-        "cm_summary_raw_scan_cap": MAX_RAW_CM_SUMMARY_SCAN_LIMIT,
-        "cm_summary_page_size": cm_profiles.CM_QUERY_SUMMARY_PAGE_SIZE,
-        "cm_summary_safety_cap_hit": bool(discovery.scan_too_broad),
-        "scan_too_broad": bool(discovery.scan_too_broad),
-        "selected_count": selected_count,
-        "candidate_reason_counts": reason_counts,
-        "candidate_reason_sql_verb_counts": reason_sql_verb_counts,
-        "candidate_exclusion_count": 0 if discovery.scan_too_broad else max(0, inspected - selected_count),
-        "top_reports": config.top_reports,
-        "cm_jobs": config.cm_jobs,
-        "jobs": config.jobs,
-        "metadata_jobs": config.metadata_jobs,
-        "warnings": [cm_profiles.sanitize_text_for_log(warning) for warning in warnings],
-        "discovery_failed": bool(discovery_failed),
-        "cases": [case_to_summary(case) for case in sorted(cases, key=batch_ranking_key)],
-    }
-
-
-def batch_ranking_key(case: CaseResult) -> tuple[object, ...]:
-    return (
-        -case.score,
-        -(case.duration_sec or 0),
-        -(case.cardinality_anomaly_count or 0),
-        -(case.memory_anomaly_count or 0),
-        0 if case.backend_data_skew is True else 1,
-        -(case.host_tail_candidate_count or 0),
-        case.query_id,
-        case.index,
-    )
-
-
-def candidate_reason_counts(candidates: list[cm_profiles.RecentQueryCandidate]) -> dict[str, int]:
-    counts = Counter(
-        cm_profiles.sanitize_text_for_log(candidate.reason or "unknown")
-        for candidate in candidates
-    )
-    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
-
-
-def candidate_reason_sql_verb_counts(candidates: list[cm_profiles.RecentQueryCandidate]) -> dict[str, dict[str, int]]:
-    grouped: dict[str, Counter[str]] = {}
-    for candidate in candidates:
-        reason = cm_profiles.sanitize_text_for_log(candidate.reason or "unknown")
-        verb = candidate.sql_verb or "unknown"
-        grouped.setdefault(reason, Counter())[cm_profiles.sanitize_text_for_log(verb)] += 1
-    return {
-        reason: dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
-        for reason, counts in sorted(grouped.items())
-    }
-
-
-def case_to_summary(case: CaseResult) -> dict[str, object]:
-    stage_seconds = [
-        value
-        for value in (case.cm_collect_seconds, case.analysis_seconds, case.report_seconds)
-        if value is not None
-    ]
-    return {
-        "case_index": case.index,
-        "candidate_rank": case.candidate_rank,
-        "triage_rank": case.triage_rank,
-        "query_id": case.query_id,
-        "duration_sec": case.duration_sec,
-        "user": cm_profiles.sanitize_text_for_log(case.user) if case.user else None,
-        "pool": cm_profiles.sanitize_text_for_log(case.pool) if case.pool else None,
-        "query_type": case.query_type,
-        "sql_verb": case.sql_verb,
-        "collection_status": case.collection_status,
-        "analysis_status": case.analysis_status,
-        "metadata_status": case.metadata_status,
-        "table_stats_status": case.table_stats_status,
-        "referenced_table_count": case.referenced_table_count,
-        "collected_metadata_table_count": case.collected_metadata_table_count,
-        "skipped_due_to_max_table_limit": case.skipped_due_to_max_table_limit,
-        "too_large_count": case.too_large_count,
-        "score": case.score,
-        "score_severity": case_score_severity(case),
-        "score_reasons": case.score_reasons,
-        "query_optimization_candidate": case.query_optimization_candidate.to_dict()
-        if case.query_optimization_candidate
-        else None,
-        "query_optimization_rank": case.query_optimization_rank,
-        "stats_optimization_candidate": case.stats_optimization_candidate.to_dict()
-        if case.stats_optimization_candidate
-        else None,
-        "stats_optimization_rank": case.stats_optimization_rank,
-        "cardinality_anomaly_count": case.cardinality_anomaly_count,
-        "memory_anomaly_count": case.memory_anomaly_count,
-        "zero_row_estimate_gap_count": case.zero_row_estimate_gap_count,
-        "zero_memory_estimate_gap_count": case.zero_memory_estimate_gap_count,
-        "backend_data_skew": case.backend_data_skew,
-        "host_tail_candidate_count": case.host_tail_candidate_count,
-        "execution_tail_candidate_count": case.execution_tail_candidate_count,
-        "case_dir": str(case.wrapper_dir),
-        "report_generated": case.report_generated,
-        "report_validation_status": case.report_validation_status,
-        "metadata_refreshed": case.metadata_refreshed,
-        "failure_category": case.failure_category,
-        "cm_collect_seconds": case.cm_collect_seconds,
-        "analysis_seconds": case.analysis_seconds,
-        "report_seconds": case.report_seconds,
-        "total_seconds": round(sum(stage_seconds), 3) if stage_seconds else None,
-    }
-
-
-def case_score_severity(case: CaseResult) -> str:
-    if case.collection_status == "failed" or case.analysis_status == "failed":
-        return "failed"
-    if case.score <= 0:
-        return "clean"
-    cardinality = case.cardinality_anomaly_count or 0
-    memory = case.memory_anomaly_count or 0
-    zero_row_gaps = case.zero_row_estimate_gap_count or 0
-    zero_memory_gaps = case.zero_memory_estimate_gap_count or 0
-    host_tail = case.host_tail_candidate_count or 0
-    execution_tail = case.execution_tail_candidate_count
-    if execution_tail is None:
-        execution_tail = host_tail
-    if (
-        case.score >= 30
-        or cardinality >= 5
-        or memory >= 4
-        or zero_row_gaps >= 4
-        or zero_memory_gaps >= 4
-        or (cardinality >= 3 and memory >= 2)
-        or (zero_row_gaps >= 2 and zero_memory_gaps >= 2)
-        or (case.backend_data_skew is True and host_tail >= 2)
-        or (execution_tail >= 1 and (case.duration_sec or 0) >= 1800)
-    ):
-        return "high"
-    return "suspicious"
-
-
-def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
-    (out / "batch_summary.json").write_text(
-        json.dumps(summary, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    lines = [
-        "# Query Doctor Recent Batch Summary",
-        "",
-        f"- summaries inspected: {summary['summaries_inspected']}",
-        f"- selected candidates: {summary['selected_count']}",
-        f"- excluded candidates: {summary.get('candidate_exclusion_count', 0)}",
-        f"- triage profile limit: {summary['triage_profile_limit']}",
-        f"- metadata top limit: {summary['metadata_top_limit']}",
-        f"- search depth minutes: {summary['recent_window_minutes']}",
-        f"- explicit time window: {summary.get('from_time') or 'relative'} -> {summary.get('to_time') or 'relative'}",
-        f"- query type filter: {summary['query_type_filter']}",
-        f"- duration filter: {summary['duration_filter']}",
-        f"- include failed: {summary['include_failed']}",
-        f"- include running: {summary['include_running']}",
-        f"- only running: {summary.get('only_running', False)}",
-        f"- top reports: {summary['top_reports']}",
-        f"- CM jobs: {summary['cm_jobs']}",
-        f"- analyzer jobs: {summary['jobs']}",
-        f"- metadata jobs: {summary['metadata_jobs']}",
-        f"- discovery seconds: {summary['discovery_seconds']}",
-        f"- total seconds: {summary['total_seconds']}",
-        "",
-    ]
-    reason_counts = summary.get("candidate_reason_counts")
-    if isinstance(reason_counts, dict) and reason_counts:
-        lines.extend(["## Candidate Selection Breakdown", ""])
-        for reason, count in reason_counts.items():
-            lines.append(f"- {reason}: {count}")
-        lines.append("")
-    lines.extend(
-        [
-            "| case | query id | duration sec | collection | analysis | metadata | score | facts | report | timings sec |",
-            "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- | --- |",
-        ]
-    )
-    for case in summary["cases"]:
-        assert isinstance(case, dict)
-        timings = (
-            f"cm={case['cm_collect_seconds']}, "
-            f"analysis={case['analysis_seconds']}, "
-            f"report={case['report_seconds']}, "
-            f"total={case['total_seconds']}"
-        )
-        facts = (
-            f"card={case['cardinality_anomaly_count']}, "
-            f"mem={case['memory_anomaly_count']}, "
-            f"skew={case['backend_data_skew']}, "
-            f"tail={case['host_tail_candidate_count']}"
-        )
-        lines.append(
-            (
-                "| {case_index} | {query_id} | {duration_sec} | {collection_status} | "
-                "{analysis_status} | {metadata_status} | {score} | "
-                f"{facts} | "
-                "{report_validation_status} | "
-                f"{timings} |"
-            ).format(**case)
-        )
-    (out / "batch_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -14,14 +14,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Iterable
 
-from query_doctor.cli.collect_cm_profiles import (
+from query_doctor.cm.client import (
     CM_API_VERSION,
-    CMAdapterError,
-    CMClientError,
     CMHttpClient,
-    CMHttpError,
     cm_time_window_minutes,
     normalize_optional_string,
+)
+from query_doctor.cm.models import (
+    CMAdapterError,
+    CMClientError,
+    CMHttpError,
+)
+from query_doctor.safety.redaction import (
     sanitize_adapter_error_message,
 )
 
