@@ -140,6 +140,3 @@ PYTHON-OWNED OPTIMIZER FACT DIGEST BEGIN
 {json.dumps(digest, ensure_ascii=False, indent=2, sort_keys=True)}
 PYTHON-OWNED OPTIMIZER FACT DIGEST END
 """.strip()
-
-
-

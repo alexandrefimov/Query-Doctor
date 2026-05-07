@@ -101,8 +101,6 @@ def build_post_union_aggregate_pushdown_recipe(
         prompt_bullets=prompt_bullets,
         safe_bullets=safe_bullets,
     )
-
-
 def build_final_union_distinct_rollup_recipe(
     union_cte: CteDefinition,
     final_sql: str,
@@ -149,6 +147,3 @@ def build_final_union_distinct_rollup_recipe(
         prompt_bullets=prompt_bullets,
         safe_bullets=safe_bullets,
     )
-
-
-

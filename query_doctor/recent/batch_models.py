@@ -116,4 +116,3 @@ class CaseResult:
     cm_collect_seconds: float | None = None
     analysis_seconds: float | None = None
     report_seconds: float | None = None
-
