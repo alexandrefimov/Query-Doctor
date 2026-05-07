@@ -18,6 +18,7 @@ Run from the repository root:
 ```bash
 DEMO_OUT="${TMPDIR:-./query-doctor-demo-pack}"
 python -m ruff check query_doctor tests
+python scripts/check_markdown_links.py
 python -m pytest -q
 git diff --check
 query-doctor-demo-preflight --public-release
@@ -50,11 +51,20 @@ gate:
 - deterministic whitespace checks;
 - public-release preflight;
 - ruff correctness checks;
+- local Markdown link checks for repository docs;
 - focused browser, report, optimizer, and demo safety tests;
 - synthetic demo pack generation;
 - CLI entry-point smoke checks.
 
+Package CI should build the source distribution and wheel, run metadata checks,
+install the wheel into a clean virtual environment, and smoke installed console
+scripts. Docs CI should catch broken local Markdown links before merge. CodeQL
+and Dependency Review should stay enabled on the public repository as security
+signals alongside Dependabot.
+
 The scheduled or manually dispatched full suite is the broader regression gate.
+The manually dispatched Release Gate workflow should mirror this checklist with
+full pytest, public preflight, demo smoke, docs link checks and packaging smoke.
 Run the full suite locally before visibility changes, tags, or public
 announcements even when fast PR CI is green.
 

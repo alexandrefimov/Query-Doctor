@@ -31,6 +31,18 @@
 - name: tests
   color: c5def5
   description: Test coverage, fixtures, CI, or release-gate checks.
+- name: dependencies
+  color: 0366d6
+  description: Dependency, package metadata, or GitHub Actions updates.
+- name: ci
+  color: 0e8a16
+  description: Continuous integration workflow or release-gate automation.
+- name: tooling
+  color: fef2c0
+  description: Developer tooling, packaging, linting, or local automation.
+- name: security
+  color: ee0701
+  description: Security scanning, dependency review, or vulnerability handling.
 - name: refactor
   color: cfd3d7
   description: Behavior-preserving maintainability work.

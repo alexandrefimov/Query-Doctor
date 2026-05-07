@@ -35,6 +35,9 @@ baseline in place:
   reporting, code of conduct, Dependabot, and CI matrix coverage are present.
 - CI runs deterministic safety checks on pull requests and main, and runs the
   broader test suite on schedule or manual dispatch.
+- Additional public-quality automation covers package build/install smoke,
+  local Markdown link checks, CodeQL scanning, Dependency Review, and a manual
+  release-gate workflow.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample
   cases and an English trusted demo report by default.
 
@@ -47,6 +50,8 @@ change.
 - Dependabot checks GitHub Actions and Python tooling updates.
 - CI covers the supported Python floor and a modern Python version.
 - Scheduled CI runs the broader test suite separately from fast PR safety checks.
+- Packaging, docs, CodeQL, Dependency Review, and manual release-gate workflows
+  cover public repository quality beyond the fast deterministic safety gate.
 - Contributor docs explain dev tooling, safety boundaries, and explicit staging.
 - Code of conduct exists and reinforces sanitized examples and safety-first
   discussion.

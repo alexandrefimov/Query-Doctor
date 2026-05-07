@@ -20,3 +20,9 @@ repos:
         entry: git diff --check --cached
         language: system
         pass_filenames: false
+
+      - id: markdown-link-check
+        name: markdown link check
+        entry: python scripts/check_markdown_links.py
+        language: system
+        pass_filenames: false

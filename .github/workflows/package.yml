@@ -1,0 +1,78 @@
+name: Package CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build, check, and install wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install package build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: Build source and wheel distributions
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Install wheel in a clean virtualenv
+        run: |
+          python -m venv /tmp/query-doctor-wheel-venv
+          /tmp/query-doctor-wheel-venv/bin/python -m pip install --upgrade pip
+          /tmp/query-doctor-wheel-venv/bin/python -m pip install dist/*.whl
+
+      - name: Smoke installed console scripts
+        run: |
+          /tmp/query-doctor-wheel-venv/bin/query-doctor-demo --out /tmp/query-doctor-package-demo --overwrite
+          test -f /tmp/query-doctor-package-demo/batch_summary.json
+          /tmp/query-doctor-wheel-venv/bin/query-doctor-demo-preflight --help
+          /tmp/query-doctor-wheel-venv/bin/query-doctor-web --help
+          /tmp/query-doctor-wheel-venv/bin/query-doctor-report --help
+          /tmp/query-doctor-wheel-venv/bin/query-doctor-optimize-query --help
+
+      - name: Check declared console scripts are installed
+        run: |
+          /tmp/query-doctor-wheel-venv/bin/python - <<'PY'
+          import sys
+          from pathlib import Path
+
+          scripts = []
+          in_scripts = False
+          for line in Path("pyproject.toml").read_text(encoding="utf-8").splitlines():
+              stripped = line.strip()
+              if stripped == "[project.scripts]":
+                  in_scripts = True
+                  continue
+              if in_scripts and stripped.startswith("["):
+                  break
+              if in_scripts and stripped and not stripped.startswith("#") and "=" in stripped:
+                  scripts.append(stripped.split("=", 1)[0].strip())
+
+          script_dir = Path(sys.executable).parent
+          missing = sorted(name for name in scripts if not (script_dir / name).exists())
+          if missing:
+              for name in missing:
+                  print(f"missing console script: {name}", file=sys.stderr)
+              raise SystemExit(1)
+          PY

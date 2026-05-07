@@ -1,0 +1,68 @@
+name: Release Gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    name: Release gate / Python 3.11
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Check committed whitespace
+        run: git diff --check
+
+      - name: Install local package, dev tools, and package tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip install build twine
+
+      - name: Run ruff correctness checks
+        run: python -m ruff check query_doctor tests scripts
+
+      - name: Run full pytest suite
+        run: python -m pytest -q
+
+      - name: Run public-release preflight
+        run: query-doctor-demo-preflight --public-release
+
+      - name: Generate synthetic demo pack
+        run: |
+          query-doctor-demo --out /tmp/query-doctor-release-demo --overwrite
+          test -f /tmp/query-doctor-release-demo/batch_summary.json
+
+      - name: Check local Markdown links
+        run: python scripts/check_markdown_links.py
+
+      - name: Build source and wheel distributions
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Install wheel in a clean virtualenv
+        run: |
+          python -m venv /tmp/query-doctor-release-wheel-venv
+          /tmp/query-doctor-release-wheel-venv/bin/python -m pip install --upgrade pip
+          /tmp/query-doctor-release-wheel-venv/bin/python -m pip install dist/*.whl
+          /tmp/query-doctor-release-wheel-venv/bin/query-doctor-demo --out /tmp/query-doctor-release-wheel-demo --overwrite
+          test -f /tmp/query-doctor-release-wheel-demo/batch_summary.json
+          /tmp/query-doctor-release-wheel-venv/bin/query-doctor-demo-preflight --help
+          /tmp/query-doctor-release-wheel-venv/bin/query-doctor-web --help
+          /tmp/query-doctor-release-wheel-venv/bin/query-doctor-report --help
+          /tmp/query-doctor-release-wheel-venv/bin/query-doctor-optimize-query --help
