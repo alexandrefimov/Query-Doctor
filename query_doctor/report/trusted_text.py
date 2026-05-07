@@ -62,6 +62,7 @@ from query_doctor.report.safety_validation import (
     contains_raw_sql_like_text,
     validate_report_html_safety,
     validate_report_internal_fingerprints,
+    validate_report_language_safety,
 )
 from query_doctor.report.text_postprocess import (
     move_misplaced_admin_bullets_into_admin_section,
@@ -520,6 +521,7 @@ def validate_report_text(
         )
     errors.extend(validate_report_html_safety(text))
     errors.extend(validate_report_internal_fingerprints(text))
+    errors.extend(validate_report_language_safety(text, language=language))
     errors.extend(validate_recommendations_section(text, recommendations_heading=contract.recommendations_heading))
 
     if contains_raw_sql_like_text(text):
@@ -535,6 +537,7 @@ def validate_report_safety_text(text: str, *, facts_text: str = "", language: st
     errors: list[str] = []
     errors.extend(validate_report_html_safety(text))
     errors.extend(validate_report_internal_fingerprints(text))
+    errors.extend(validate_report_language_safety(text, language=language))
     if contains_raw_sql_like_text(text):
         errors.append("report contains SQL-like text that is not allowed in trusted output")
     if facts_text:

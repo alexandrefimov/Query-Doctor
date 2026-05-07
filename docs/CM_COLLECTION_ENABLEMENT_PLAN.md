@@ -6,10 +6,16 @@ This document is a rollout checklist for the read-only Cloudera Manager profile
 collector. It covers local generated corpus inputs for regression and smoke
 testing, not production runtime behavior.
 
+Archived status: this note preserves the original single-query Cloudera Manager
+collector rollout. For current operator workflows, use [credentials.md](credentials.md),
+[local-smoke.md](local-smoke.md), [DEMO.md](DEMO.md), and
+[roadmap.md](roadmap.md). Do not treat the historical rollout sequence below as
+the current Recent scan or web workflow.
+
 ## Current State
 
-- The CM collector CLI supports real profile collection only for an explicit
-  `--query-id`.
+- The Cloudera Manager (CM) collector CLI supports real profile collection only
+  for an explicit `--query-id`.
 - `--dry-run` builds a plan only.
 - Broad recent-query collection is not a standalone collector mode.
 - Real collection requires `--redact`.
@@ -22,8 +28,7 @@ testing, not production runtime behavior.
 - Run the full pytest suite before every rollout checkpoint and record the
   current result in task or audit output.
 - The historical first single-query smoke under `cases/cm-corpus/` completed
-  collection, analyzer parsing, admin/user report generation and deterministic
-  report validation.
+  collection, analyzer parsing and deterministic report validation.
 
 ## Goal
 
@@ -99,7 +104,7 @@ Completed single-query rollout:
    size guard.
 5. Reviewed generated files manually.
 6. Ran the analyzer on the collected case.
-7. Ran admin/user report smoke.
+7. Ran report validation smoke.
 8. Removed generated `analysis_facts.md` and report files after validation.
 9. Confirmed `cases/cm-corpus/` remained ignored and uncommitted.
 
@@ -149,19 +154,10 @@ Check:
 - Analyzer reads `profile_digest.md`.
 - Action Cards appear only when evidence exists.
 
-Historical first-smoke result:
-
-- Ignored local case: `cases/cm-corpus/494ef9bf2699a3c5_5b65e20400000000`.
-- Analyzer parsed `169` operators.
-- Cardinality anomalies: `0`.
-- Memory anomalies: `2`.
-- Action Cards were present.
-- Admin/user report generation passed deterministic validation.
-- Generated `analysis_facts.md`, `report_admin.md` and `report_user.md` were
-  removed after inspection.
-
-For current smoke status, run local validation commands and record the current
-result in task or audit output. Do not treat historical counts as evergreen.
+The original first-smoke counts and local case identifier were intentionally
+removed from this public archive because they are not evergreen and are not
+needed for current agent or operator work. For current smoke status, run local
+validation commands and record the current result in task or audit output.
 
 ## Rollback And Cleanup
 
@@ -175,13 +171,11 @@ Never use broad removal commands without confirming the path. Do not delete
 existing hand-curated cases. Do not delete `profile_digest.md` from committed
 test fixtures.
 
-## Open Questions
+## Remaining Useful Questions
 
-- Exact response shape in the installed CM version.
-- Whether the endpoint returns raw profile text or a digest.
-- Whether query profile text contains original SQL.
-- Whether to keep query IDs in a redacted corpus.
-- Whether the first corpus should remain local-only or become a sanitized
-  fixture candidate.
-- How to choose representative queries for the first bounded batch corpus.
-- Whether broad collection needs an additional explicit acknowledgement flag.
+- How to grow sanitized fixtures without committing raw production profiles,
+  raw SQL, raw Cloudera Manager payloads, hostnames, paths or secrets.
+- How to choose representative generated cases for analyzer and optimizer
+  regression work while keeping generated corpus output ignored by Git.
+- Which future source-provider seams need separate contracts before expanding
+  beyond the current Cloudera Manager based Impala collection path.

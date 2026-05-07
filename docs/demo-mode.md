@@ -3,16 +3,16 @@
 Query Doctor can generate a local synthetic demo pack that works without
 Cloudera Manager, Impala, network access, or LLM calls.
 
-Generate the pack:
+Generate the pack under a dedicated temp directory:
 
 ```bash
-query-doctor-demo --out <demo-output-dir> --overwrite
+query-doctor-demo --out /tmp/query-doctor-demo-pack --overwrite
 ```
 
 Then launch the web UI with the generated batch summary:
 
 ```bash
-query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary <demo-output-dir>/batch_summary.json
+query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary /tmp/query-doctor-demo-pack/batch_summary.json
 ```
 
 Open:

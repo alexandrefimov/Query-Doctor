@@ -67,6 +67,7 @@ from query_doctor.web.ui.runtime_metrics import (
     render_runtime_diagnosis_details,
     render_runtime_diagnosis_summary,
     render_runtime_signals,
+    render_runtime_verdict,
 )
 
 
@@ -130,7 +131,7 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
     spill_text = "spill evidence observed" if view.has_spill else "no spill evidence observed"
     stats_text = f"table stats {view.table_stats_status}" if view.table_stats_status is not None else "table stats not checked"
     cm_metrics_text = "not collected" if view.cm_metrics.unavailable else "available"
-    cluster_runtime_text = "not available" if view.cluster_runtime_context.unavailable else "available"
+    cluster_runtime_text = view.runtime_verdict.title
     items = (
         ("user", view.user),
         ("score", score_badge_from_values(view.score, None, None, severity=view.score_severity)),
@@ -191,6 +192,7 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<h1>Findings</h1>"
         "<div class=\"report-body\">"
         "<p class=\"helper\">Primary deterministic findings are open by default. They rely only on analyzer facts and are not root-cause claims without direct evidence.</p>"
+        f"{render_runtime_verdict(view.runtime_verdict)}"
         f"{render_runtime_diagnosis_summary(view.runtime_diagnosis)}"
         f"{render_action_candidate_findings(view)}"
         f"{render_score_reason_explanations(view)}"

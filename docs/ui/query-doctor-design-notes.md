@@ -7,9 +7,9 @@ user guide and not a product contract. Current behavior is documented in
 
 ## Product Direction
 
-Query Doctor is a local-first Big Data Query Diagnostic Tool for Apache Impala
-workloads. The UI should feel like a serious engineering instrument for admins,
-DevOps engineers, data engineers and data scientists.
+Query Doctor is a local-first Big Data query diagnostic tool focused today on
+Apache Impala workloads. The UI should feel like a serious engineering
+instrument for admins, DevOps engineers, data engineers and data scientists.
 
 It should not feel like a SaaS landing page, a playful AI demo or a monitoring
 dashboard. The product value is trust, evidence, traceability and fast
@@ -17,8 +17,8 @@ operational scanning.
 
 Current UI centers:
 
-- Finished Queries;
-- Running Queries;
+- Recent scan, with Finished queries as the default target and Running now as a
+  lower-confidence live target;
 - Specific Query;
 - details-page deterministic analysis and explicit LLM actions;
 - pasted-query Query Optimizer.
@@ -114,34 +114,51 @@ Avoid large colorful status pills.
 
 ## Current Page Map
 
-### Finished Queries
+### Recent Scan
 
-Primary scan page. It discovers completed CM Impala query summaries for one
-selected hour, applies filters, collects bounded selected profiles, runs
-deterministic analyzer/metadata work, ranks cases and lets the user open details.
+Primary scan page. It discovers Cloudera Manager (CM) Impala query summaries,
+applies filters, collects bounded selected profiles, runs deterministic
+analyzer/metadata work, ranks cases and lets the user open details.
+
+Finished queries are the default target because completed runtime profiles carry
+the strongest evidence. Running queries are available as a live target inside
+Recent scan, not as a peer top-level workflow. Running evidence can be useful
+for urgent inspection, but the UI must signal that profile facts and counters may
+be incomplete until the query finishes.
 
 Do not imply that LLM runs for all selected queries. LLM Report and Query LLM
 optimizer actions are explicit details-page actions only.
 
 Expected controls:
 
+- scan target: Finished queries / Running now;
 - scan date and scan hour;
 - duration, user and pool filters;
-- CM/profile analysis bounds;
-- parallelism and metadata parallelism;
+- advanced settings for parallelism, metadata parallelism and CM metrics;
 - display-only filters over analyzed results.
+
+Scan date and scan hour are shown only for Finished queries. Running now has no
+date/hour controls.
 
 Expected result groups:
 
 - bad queries;
 - suspicious queries;
+- optimizer-ready outcomes;
 - optimization candidates;
 - statistics-maintenance candidates.
 
-### Running Queries
+Recommended result labels should gradually move from implementation categories
+toward triage language:
 
-Mirrors Finished Queries result and details behavior, but is scoped to currently
-running queries and has no scan date/hour controls.
+- Review first;
+- Needs evidence;
+- Optimization work;
+- Stats maintenance;
+- Validated optimizer outcomes.
+
+The underlying grouping predicates may remain server-owned and deterministic.
+Do not let label changes alter analyzer facts or safety semantics.
 
 ### Specific Query
 
@@ -162,6 +179,19 @@ and are never executed by Query Doctor.
 High-risk, no-benefit, output-budget or validation-failure cases should show
 trusted no-rewrite or recommendations-only outcomes instead of speculative
 query text.
+
+The target Details shape is an evidence/action console:
+
+- Decision summary: severity, evidence state, top supported finding and next
+  action.
+- Action candidates: optimizer, stats refresh and runtime follow-up cards.
+- Evidence coverage: profile, metadata, CM metrics, runtime context and
+  limitations.
+- Generated outputs: validated report and Query LLM optimizer outcome.
+
+The first screen should answer "what should I inspect or do next?" without
+requiring the user to parse appendices. Detailed facts remain available for
+traceability, but they should not crowd out the decision path.
 
 ### Query Optimizer
 
@@ -245,6 +275,96 @@ Avoid unsupported certainty:
 - Show missing artifacts as unavailable or partial.
 - Keep browser-visible text behind presenter/safety helpers.
 - Keep source files reasonably small.
+
+## UI/UX Audit Backlog
+
+This backlog records the current UI audit direction. It is scoped to product
+UX and safety-preserving presentation work; analyzer, collector and validator
+contracts remain the source of facts.
+
+### Start Now
+
+1. Details page v2.
+
+   Rework details around the flow from deterministic finding to evidence,
+   limitation and next action. This can use existing safe view models first:
+   case overview, action candidates, metadata facts, CM metrics facts, runtime
+   diagnosis, cluster runtime context and trusted artifact state.
+
+   Do not add new diagnostic claims in the renderer. If a field is not owned by
+   Python/analyzer facts, show it as unavailable or defer the UI.
+
+2. Optimizer outcome panel.
+
+   Make Query LLM optimizer states outcome-first rather than draft-first:
+
+   - trusted SQL draft;
+   - trusted recommendations;
+   - trusted no-rewrite;
+   - validation rejected;
+   - output budget reached;
+   - source unavailable.
+
+   `no_rewrite` and `recommendations_only` are trusted safe outcomes when the
+   deterministic marker and validators accept them. They should not feel like
+   generic failures.
+
+3. Recent scan triage labels and coverage.
+
+   Keep the deterministic group predicates, but move visible labels toward
+   action language: review first, needs evidence, optimization work, stats
+   maintenance and validated optimizer outcomes. Add a compact evidence coverage
+   summary when it can be derived from existing safe statuses.
+
+4. Running target evidence warning.
+
+   Running now should keep a persistent warning on result and details views that
+   live evidence may be incomplete until the query finishes. This is in addition
+   to the scan-target help text on the form.
+
+### Design Ahead
+
+1. Evidence Quality.
+
+   The UI should be ready for analyzer-owned evidence quality fields separate
+   from severity: quality level, score, coverage summary and limitations. Do not
+   synthesize these in the browser from prose.
+
+2. Query families and workload view.
+
+   Similar-query clustering should become a separate result mode or section
+   using browser-safe fingerprint/family summaries. It should not become a raw
+   SQL display or an overloaded single-query table column.
+
+3. Action lifecycle.
+
+   Future recommendation tracking should fit into action cards with statuses
+   such as recommended, needs validation, applied externally, comparable rerun
+   needed, improved, unchanged and unknown. Until the backend owns those facts,
+   keep these labels out of current UI.
+
+4. Report language selection.
+
+   Reserve the product shape for explicit English/Russian report selection, but
+   do not add a superficial language dropdown before report headings, prompts,
+   normalizers, validators, trust markers and tests are language-aware.
+
+5. Cluster Doctor context.
+
+   Runtime and cluster-context panels should be able to consume future normalized
+   Cluster Doctor artifacts, but Cluster Doctor should not appear as a top-level
+   workflow before its read-only collection and report contracts exist.
+
+### Do Not Do Yet
+
+- Do not add charts or dashboard visuals unless the plotted data is already a
+  bounded, normalized analyzer fact.
+- Do not add Settings, engine selector, role management or SQL reveal UI ahead
+  of their safety contracts.
+- Do not introduce a frontend build stack for this UX refresh.
+- Do not make LLM actions look automatic or batch-wide.
+- Do not expose raw SQL, raw profiles, raw metadata, raw metric points, local
+  paths, raw artifact names, model/runtime internals, command output or secrets.
 
 ## Testing Guidance
 

@@ -12,6 +12,7 @@ from query_doctor.web.ui.recent_scan_form import (
     render_batch_number_field,
     render_batch_text_field,
     render_cm_metrics_profile_select,
+    render_running_scan_framing_note,
 )
 from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE
 from query_doctor.web.ui.pages import render_page
@@ -130,6 +131,7 @@ def render_running_queries_run_panel(
         "<strong>Scope:</strong> current running CM summaries → analyzable profiles → ranked cases → automatic metadata for top bad/suspicious cases · no auto LLM. "
         "CM metrics are always collected by default for this bounded running scan."
         "</div>"
+        f"{render_running_scan_framing_note()}"
         "<div class=\"batch-form-sections\">"
         "<fieldset class=\"batch-form-section\"><legend>Query filters</legend>"
         "<div class=\"batch-form-grid\">"

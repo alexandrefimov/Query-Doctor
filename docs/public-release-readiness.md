@@ -14,10 +14,11 @@ scope.
   query IDs, hostnames, users, local paths, generated reports, and real config.
 - README quickstart works from a fresh virtual environment.
 - GitHub CI is green on the public default branch.
-- Public docs state current support honestly: Big Data Query Diagnostic Tool
-  positioning, Apache Impala as the only implemented engine, current Cloudera
-  Manager collection validated against the local CM 6.2.1 environment, and
-  future Big Data engines/providers/Cluster Doctor as roadmap seams only.
+- Public docs state current support honestly: Query Doctor is a Big Data query
+  diagnostic tool focused today on Apache Impala workloads; Apache Impala is the
+  only implemented engine; current Cloudera Manager collection is validated
+  against the local CM 6.2.1 environment; and future Big Data
+  engines/providers/Cluster Doctor are roadmap seams only.
 - Public docs use English as canonical language, with Russian pages only as
   localized companions under `docs/i18n/ru/`.
 - No generated cases, reports, profiles, metadata outputs, local configs,

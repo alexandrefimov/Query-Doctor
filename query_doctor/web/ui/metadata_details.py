@@ -49,7 +49,7 @@ def render_metadata_facts_body(
         if fallback_note:
             view = RecentScanMetadataView(
                 unavailable=view.unavailable,
-                fallback_note=fallback_note,
+                fallback_note=safe_display_text(fallback_note),
                 summary_items=view.summary_items,
                 tables=view.tables,
             )

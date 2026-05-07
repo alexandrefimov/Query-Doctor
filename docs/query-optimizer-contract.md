@@ -1,6 +1,6 @@
-# Query Optimizer contract
+# Query Optimizer Contract
 
-Date: 2026-05-05
+Last reviewed: 2026-05-07
 
 This document defines the current Query Doctor optimizer boundaries. It covers
 both optimizer surfaces:
@@ -18,7 +18,7 @@ both optimizer surfaces:
   internals, or raw artifact filenames.
 - Python owns facts, source extraction, validation, trust markers, and allowed
   recommendation targets.
-- LLM output is never trusted by prompt alone.
+- LLM output is never trusted because of prompt instructions alone.
 
 ## Pasted-SQL Query Optimizer
 
@@ -121,10 +121,10 @@ Recipe-backed exceptions:
 
 Known limitations:
 
-- validation is conservative and signature-based. It rejects changes inside
+- Validation is conservative and signature-based. It rejects changes inside
   top-level clauses and projections unless Python owns a specific safe
   transform. It still does not prove general SQL equivalence.
-- recipe coverage is intentionally narrow. Unsupported shapes should produce a
+- Recipe coverage is intentionally narrow. Unsupported shapes should produce a
   trusted recommendations-only or no-rewrite outcome rather than a speculative
   SQL draft.
 
@@ -151,9 +151,10 @@ not a general SQL equivalence engine. Known current issues:
 - The validator rejects safe-looking rewrites that are not proven equivalent by
   normalized signatures. This is intentional for trust, but it limits optimizer
   usefulness until safe Python-owned transforms are added.
-- There is no committed anonymized optimizer benchmark corpus yet. The current
-  local bake-off uses scratch cases under `/tmp` or `/private/tmp`; it is useful
-  for model choice, but not stable regression coverage.
+- The first committed anonymized optimizer benchmark corpus exists under
+  `tests/fixtures/optimizer_cases/`. It covers trusted SQL drafts, validation
+  rejection, no-material-change/no-rewrite and recommendations-only outcomes.
+  It is a baseline corpus, not complete optimizer coverage.
 - Report-writer model quality does not predict optimizer rewrite quality. Query
   LLM optimizer needs its own bake-off metrics: trusted SQL draft rate,
   no-rewrite/recommendations rate, partial-untrusted rate, and latency.
@@ -188,7 +189,7 @@ Current behavior:
 - validation rejection for a completed draft: show no trusted SQL draft and
   provide a trusted no-rewrite/recommendations outcome when Python can explain
   the rejection safely;
-- always hide partial drafts and raw LLM output.
+- always hide partial drafts and raw LLM output;
 - if an LLM optimizer draft fails deterministic validation, details may show
   Python-owned manual rewrite guidance and an external rewrite validation form;
 - the manual rewrite block stays hidden for not-run, trusted SQL draft,
@@ -312,24 +313,24 @@ Forbidden fields:
 
 ### Phase 5. Optimizer benchmark fixtures
 
-Status: local bake-off tooling exists; committed anonymized fixtures are still
-planned.
+Status: first committed anonymized fixture corpus exists under
+`tests/fixtures/optimizer_cases/`, and
+`scripts/compare_optimizer_models.py --fixture-corpus` can run repeatable
+offline expected-outcome checks.
 
 Goal:
 
-- create a small fixture set that makes future optimizer changes cheap to test.
+- grow the fixture set so future optimizer changes stay cheap to test;
 - keep model replacement decisions separate from report-writer bake-offs.
 
 Fixture set:
 
-- simple SELECT;
-- SELECT with WHERE and LIMIT;
-- JOIN with ON;
-- INSERT OVERWRITE SELECT payload;
-- CTAS payload;
-- CTE-heavy high-risk query;
-- join-heavy high-risk query;
-- query where optimizer must refuse a SQL draft and use recommendations only.
+- recipe-backed trusted SQL draft cases;
+- validation rejection cases;
+- no-material-change/no-rewrite cases;
+- recommendations-only high-risk cases;
+- future additions for simple SELECT, SELECT with WHERE/LIMIT, JOIN with ON,
+  INSERT/CTAS payloads, and more CTE-heavy edge cases.
 
 Each fixture should define:
 

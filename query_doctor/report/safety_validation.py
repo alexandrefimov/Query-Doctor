@@ -10,6 +10,7 @@ REPORT_INTERNAL_FINGERPRINT_RE = re.compile(
     r"\b(?:qwen\d|llama\d|ollama|model requested|facts sha256|source facts filename)\b",
     re.IGNORECASE,
 )
+CYRILLIC_TEXT_RE = re.compile(r"[\u0400-\u04FF]")
 RAW_HTML_TAG_RE = re.compile(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)(?:\s+[^>]*)?>")
 ALLOWED_REPORT_HTML_TAGS: set[str] = set()
 SQL_FENCE_START_RE = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})\s*(?P<lang>[A-Za-z0-9_-]*)\s*$")
@@ -67,6 +68,12 @@ def validate_report_html_safety(text: str) -> list[str]:
 def validate_report_internal_fingerprints(text: str) -> list[str]:
     if any(REPORT_INTERNAL_FINGERPRINT_RE.search(line) for line in text.splitlines()):
         return ["report contains browser-visible internal artifact/runtime fingerprint"]
+    return []
+
+
+def validate_report_language_safety(text: str, *, language: str) -> list[str]:
+    if language == "en" and CYRILLIC_TEXT_RE.search(text):
+        return ["English report contains Cyrillic text"]
     return []
 
 

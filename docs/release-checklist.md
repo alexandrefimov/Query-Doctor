@@ -16,7 +16,7 @@ announcing a public release.
 Run from the repository root:
 
 ```bash
-DEMO_OUT="${TMPDIR:-./query-doctor-demo-pack}"
+DEMO_OUT="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 python -m ruff check query_doctor tests
 python scripts/check_markdown_links.py
 python -m pytest -q
@@ -28,7 +28,7 @@ query-doctor-demo --out "$DEMO_OUT" --overwrite
 If console scripts are not installed, use:
 
 ```bash
-DEMO_OUT="${TMPDIR:-./query-doctor-demo-pack}"
+DEMO_OUT="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 python -m query_doctor.cli.demo_preflight --public-release
 python -m query_doctor.cli.demo_data --out "$DEMO_OUT" --overwrite
 ```

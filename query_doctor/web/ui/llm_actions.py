@@ -27,6 +27,24 @@ OPTIMIZED_QUERY_PROGRESS_STEPS = (
     ("Done", {"Done"}),
 )
 
+OPTIMIZER_OUTPUT_LABELS = {
+    "sql_draft": "Validated SQL draft",
+    "no_rewrite": "No trusted rewrite",
+    "recommendations_only": "Recommendations only",
+}
+OPTIMIZER_RISK_LABELS = {
+    "rewrite_allowed": "Rewrite allowed",
+    "recommendations_only": "Recommendations only",
+}
+OPTIMIZER_SOURCE_SCOPE_LABELS = {
+    "read_only_statement": "Read-only statement",
+}
+OPTIMIZER_FALLBACK_LABELS = {
+    "validation_failed": "Draft failed deterministic validation",
+    "no_material_change": "No material rewrite",
+    "output_budget": "Output budget reached",
+}
+
 
 def render_llm_actions_block(
     case_id: str,
@@ -165,12 +183,7 @@ def render_optimizer_status(
     elif status == "failed":
         status_html = render_optimized_query_failure(state)
     elif status == "partial_untrusted":
-        status_html = (
-            "<div class=\"error-card\" role=\"alert\">"
-            "An optimized query draft exists, but failed deterministic validation. "
-            "The partial draft remains untrusted and hidden."
-            "</div>"
-        )
+        status_html = render_optimized_query_outcome(state)
     elif status == "generated":
         status_html = render_optimized_query_outcome(state)
     else:
@@ -220,10 +233,10 @@ def render_optimizer_trusted_output(
     if status == "generated" and trusted_optimizer_recommendations:
         if output_kind == "no_rewrite":
             summary = "Query LLM optimizer outcome"
-            helper = "Trusted SQL rewrite is hidden: Python classified the validated draft as no-benefit/no-rewrite."
+            helper = "Deterministic checks classified the safe outcome as no rewrite needed."
         else:
             summary = "Query LLM optimizer recommendations"
-            helper = "SQL rewrite is skipped: Python marked the query shape as too risky for a trusted draft."
+            helper = "Deterministic risk checks skipped SQL rewrite; review the recommendations instead."
         return (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer recommendations\">"
             f"<summary>{html.escape(summary)}</summary>"
@@ -349,12 +362,7 @@ def render_optimized_query_action(
     elif status == "failed":
         status_html = render_optimized_query_failure(state)
     elif status == "partial_untrusted":
-        status_html = (
-            "<div class=\"error-card\" role=\"alert\">"
-            "An optimized query draft exists, but failed deterministic validation. "
-            "The partial draft remains untrusted and hidden."
-            "</div>"
-        )
+        status_html = render_optimized_query_outcome(state)
     elif status == "unavailable":
         status_html = "<p class=\"helper\">Source SQL is unavailable or outside the optimizer read-only scope for this case.</p>"
     elif status == "generated":
@@ -383,10 +391,10 @@ def render_optimized_query_action(
     elif status == "generated" and trusted_optimizer_recommendations:
         if output_kind == "no_rewrite":
             summary = "Query LLM optimizer outcome"
-            helper = "Trusted SQL rewrite is hidden: Python classified the validated draft as no-benefit/no-rewrite."
+            helper = "Deterministic checks classified the safe outcome as no rewrite needed."
         else:
             summary = "Query LLM optimizer recommendations"
-            helper = "SQL rewrite is skipped: Python marked the query shape as too risky for a trusted draft."
+            helper = "Deterministic risk checks skipped SQL rewrite; review the recommendations instead."
         draft_html = (
             "<details class=\"analysis-subdetails\" open aria-label=\"Query LLM optimizer recommendations\">"
             f"<summary>{html.escape(summary)}</summary>"
@@ -456,16 +464,97 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
 
 
 def render_optimized_query_outcome(state: dict[str, Any]) -> str:
+    status = str(state.get("status") or "not_run")
+    output_kind = str(state.get("output_kind") or "sql_draft")
+    manual_validation = (
+        "Available"
+        if optimizer_manual_rewrite_available(state) and state.get("source_available")
+        else "Not needed"
+    )
+    if status == "partial_untrusted":
+        title = "Validation failed"
+        summary = (
+            "The generated SQL draft failed deterministic validation. "
+            "It remains hidden; use manual rewrite validation for a reviewed alternative."
+        )
+        card_class = "error-card"
+        role = "alert"
+        manual_validation = "Available" if state.get("source_available") else "Unavailable"
+    elif status == "generated" and output_kind == "no_rewrite":
+        if str(state.get("fallback_reason") or "") == "validation_failed":
+            title = "No trusted rewrite"
+            summary = (
+                "A generated draft was rejected by deterministic validation. "
+                "The page shows safe guidance instead of exposing the rejected SQL."
+            )
+            card_class = "error-card"
+            role = "alert"
+        else:
+            title = "No rewrite needed"
+            summary = "The optimizer produced a trusted no-rewrite outcome with safe guidance for review."
+            card_class = "success-card"
+            role = "status"
+    elif status == "generated" and output_kind == "recommendations_only":
+        title = "Recommendations only"
+        summary = (
+            "The query shape was not safe enough for a trusted SQL draft, "
+            "so the optimizer returned review guidance only."
+        )
+        card_class = "success-card"
+        role = "status"
+    elif status == "generated":
+        title = "Validated SQL draft"
+        summary = (
+            "A trusted SQL draft passed deterministic validation. "
+            "It was not executed and still requires review before use."
+        )
+        card_class = "success-card"
+        role = "status"
+    else:
+        return ""
+
     items = []
-    for label, key in (
-        ("Source scope", "source_scope"),
-        ("Risk mode", "risk_mode"),
-        ("Output", "output_kind"),
+    for label, value in (
+        ("Outcome", optimizer_output_label(output_kind)),
+        ("Source scope", optimizer_source_scope_label(str(state.get("source_scope") or ""))),
+        ("Risk mode", optimizer_risk_label(str(state.get("risk_mode") or ""))),
+        ("Reason", optimizer_fallback_label(str(state.get("fallback_reason") or ""))),
+        ("Manual validation", manual_validation),
     ):
-        value = str(state.get(key) or "").strip()
+        value = str(value or "").strip()
         if value:
             items.append(f"<span>{html.escape(label)}: {html.escape(value)}</span>")
-    return f"<div class=\"batch-progress-metrics\">{''.join(items)}</div>" if items else ""
+    metrics = f"<div class=\"batch-progress-metrics\">{''.join(items)}</div>" if items else ""
+    return (
+        f"<div class=\"{card_class}\" role=\"{role}\">"
+        f"<strong>{html.escape(title)}</strong>"
+        f"<p>{html.escape(summary)}</p>"
+        f"{metrics}"
+        "</div>"
+    )
+
+
+def optimizer_output_label(value: str) -> str:
+    return OPTIMIZER_OUTPUT_LABELS.get(value, humanize_optimizer_token(value))
+
+
+def optimizer_source_scope_label(value: str) -> str:
+    return OPTIMIZER_SOURCE_SCOPE_LABELS.get(value, humanize_optimizer_token(value))
+
+
+def optimizer_risk_label(value: str) -> str:
+    return OPTIMIZER_RISK_LABELS.get(value, humanize_optimizer_token(value))
+
+
+def optimizer_fallback_label(value: str) -> str:
+    return OPTIMIZER_FALLBACK_LABELS.get(value, humanize_optimizer_token(value))
+
+
+def humanize_optimizer_token(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return ""
+    return value.replace("_", " ").capitalize()
 
 
 def render_safe_markdown_paragraphs(text: str) -> str:

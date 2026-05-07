@@ -60,15 +60,13 @@ def render_app_header(active: str) -> str:
 
 
 def render_top_nav(active: str) -> str:
-    batch_class = "nav-link nav-link--active" if active == "batch" else "nav-link"
+    batch_class = "nav-link nav-link--active" if active in {"batch", "running"} else "nav-link"
     query_class = "nav-link nav-link--active" if active == "query" else "nav-link"
-    running_class = "nav-link nav-link--active" if active == "running" else "nav-link"
     demo_class = "nav-link nav-link--active" if active == "demo" else "nav-link"
     help_class = "nav-link nav-link--active" if active == "help" else "nav-link"
     return (
         "<nav class=\"top-nav\" aria-label=\"Main navigation\">"
-        f"<a class=\"{batch_class}\" href=\"/\">Finished Queries</a>"
-        f"<a class=\"{running_class}\" href=\"/running\">Running Queries</a>"
+        f"<a class=\"{batch_class}\" href=\"/\">Recent scan</a>"
         f"<a class=\"{query_class}\" href=\"/query\">Specific Query</a>"
         f"<a class=\"{demo_class}\" href=\"/demo\">Demo guide</a>"
         f"<a class=\"{help_class}\" href=\"/help\">Help</a>"
@@ -227,6 +225,25 @@ document.addEventListener('DOMContentLoaded', function () {
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
       closeInfoPopovers(null);
+    }
+  });
+  function applyScanTarget(form) {
+    var selector = form.querySelector('select[name="scan_target"]');
+    if (!selector) {
+      return;
+    }
+    var target = selector.value === 'running' ? 'running' : 'finished';
+    form.setAttribute('action', target === 'running' ? '/running/run' : '/batch/run');
+    Array.prototype.slice.call(form.querySelectorAll('[data-scan-target-field]')).forEach(function (element) {
+      var visible = element.getAttribute('data-scan-target-field') === target;
+      element.classList.toggle('manual-inputs-hidden', !visible);
+    });
+  }
+  Array.prototype.slice.call(document.querySelectorAll('[data-scan-target-form]')).forEach(function (scanForm) {
+    applyScanTarget(scanForm);
+    var selector = scanForm.querySelector('select[name="scan_target"]');
+    if (selector) {
+      selector.addEventListener('change', function () { applyScanTarget(scanForm); });
     }
   });
   function detailJobProgressElements() {

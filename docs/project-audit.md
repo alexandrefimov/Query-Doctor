@@ -81,9 +81,10 @@ hardening, stale-artifact cleanup, and documentation alignment.
 - Multi-engine support is still only an architecture direction. Adding runtime
   selectors before engine-specific collectors, parsers and validators would be
   misleading.
-- Deployment-source support is currently CM-based and validated against local
-  CM 6.2.1 behavior. Newer CM versions, direct Impala daemon profile collection
-  and Prometheus metrics need explicit provider contracts before implementation.
+- Deployment-source support is currently Cloudera Manager (CM) based and
+  validated against local CM 6.2.1 behavior. Newer CM versions, direct Impala
+  daemon profile collection and Prometheus metrics need explicit provider
+  contracts before implementation.
 - Metrics and logs are natural next diagnostic signals, but they need their own
   source/provider and analyzer contracts. A future complex report should combine
   normalized facts, not raw logs or raw metric series.
@@ -189,7 +190,9 @@ Current optimizer problems:
   bake-off data;
 - completed validation rejections can now become deterministic no-rewrite /
   recommendations outcomes when Python can explain them safely;
-- there is no committed anonymized optimizer fixture corpus yet.
+- the first committed anonymized optimizer fixture corpus exists under
+  `tests/fixtures/optimizer_cases/`, but it should grow with more real
+  long-WITH, join/filter/projection-preservation and model-failure cases.
 
 ## Validation notes
 

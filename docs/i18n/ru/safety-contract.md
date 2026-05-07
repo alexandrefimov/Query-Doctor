@@ -16,8 +16,8 @@
   `not_observed` или `unknown` evidence в `analysis_facts.md`.
 - Не заявляйте root cause, если `analysis_facts.md` прямо не поддерживает эту
   причину.
-- Report writer не должен делать inference из raw profile text, SQL, CM JSON,
-  local config или external knowledge.
+- Report writer не должен делать inference из raw profile text, SQL, raw
+  Cloudera Manager (CM) JSON, local config или external knowledge.
 
 ## Граница collection
 
@@ -25,8 +25,8 @@
 - External collection must be explicit, bounded, read-only, redacted, and safe
   by default.
 - Dry-run и preflight paths не должны собирать profile text.
-- Real profile collection не должен печатать raw profiles, SQL, raw CM JSON или
-  credentials.
+- Real profile collection не должен печатать raw profiles, SQL, raw Cloudera
+  Manager (CM) JSON или credentials.
 - Первый поддержанный real Impala metadata connection path - Kerberos плюс
   `impala-shell` с уже полученным TGT от `kinit`.
 - Metadata collector не вызывает `kinit`, не prompt'ит passwords, не принимает
@@ -47,7 +47,7 @@ Generated/sensitive/local outputs must not be committed:
 - `analysis_facts.md`
 - generated `report*.md` / `diagnosis*.md`
 - `*.partial`
-- local CM config
+- local Cloudera Manager (CM) config
 - real CM profile material
 - `impala_context.md` / `impala_context.json`
 

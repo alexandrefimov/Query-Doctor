@@ -1,7 +1,8 @@
 # Cluster Doctor Contract
 
-This document defines the future architecture seam for Cluster Doctor. It is a
-product and safety contract, not implemented support.
+This document defines the architecture seam for a future Cluster Doctor product
+surface. It is a product and safety contract, not a claim that a Cluster Doctor
+web workflow or report path is implemented.
 
 Query Doctor remains query-centric and Apache Impala-only today. Cluster Doctor
 is a possible future sibling module for cluster-window diagnostics across
@@ -320,27 +321,26 @@ artifact filenames, model names, runtime internals, or command-stream details.
 Report validation must reject unsupported cluster-cause wording and any raw
 provider output pattern introduced by a future Cluster Doctor report path.
 
-## Proposed Package Shape
+## Package Shape
 
-Do not create empty implementation modules until the first real slice needs
-them. When implementation begins, keep the shape narrow:
+Do not create empty implementation modules. The first narrow implementation
+slice already exists for raw-free context artifacts:
 
 ```text
 query_doctor/cluster/
   context.py
   event_context.py
-  contracts.py
-  providers/
-  analyzers/
-  report/
 ```
 
-Expected responsibilities:
+Current responsibilities:
 
 - `context.py`: current narrow schema-versioned raw-free aggregate cluster
   context builder.
 - `event_context.py`: current narrow schema-versioned raw-free event context
   artifact builder.
+
+Future modules should be added only when a concrete slice needs them:
+
 - `contracts.py`: normalized dataclasses/enums and claim policy.
 - `providers/`: bounded provider adapters and fixtures.
 - `analyzers/`: Python-owned signal extraction and correlation.
@@ -358,6 +358,11 @@ Phase 0: contract only.
 - Keep existing Query Doctor behavior unchanged.
 
 Phase 1: shared runtime-context contract.
+
+Status: implemented for Query Doctor CM metrics facts, CM Metrics Correlation,
+`Cluster Runtime Context`, `Runtime Diagnosis`, report prompt/validation, and
+Details rendering. This is still Query Doctor runtime context, not a standalone
+Cluster Doctor workflow.
 
 - Normalize current CM metrics facts into a `Cluster Runtime Context` section.
 - Preserve existing CM collection behavior and browser safety.

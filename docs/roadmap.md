@@ -7,8 +7,9 @@ engines or workflows already work.
 ## Current implementation
 
 - Apache Impala is the only implemented SQL engine.
-- Current profile and CM-metrics collection is implemented through Cloudera
-  Manager APIs and has been validated against the local CM 6.2.1 environment.
+- Current profile and Cloudera Manager (CM) metrics collection is implemented
+  through Cloudera Manager APIs and has been validated against the local CM
+  6.2.1 environment.
 - The engine adapter is a minimal architectural seam for describing current
   engine capabilities.
 - No runtime engine selector exists.
@@ -27,10 +28,10 @@ engines or workflows already work.
 - Specific Query deterministic analysis for one known Query ID.
 - Details pages with explicit LLM Report and Query LLM optimizer actions.
 - Query Optimizer for pasted SQL review.
-- CM Events has a small read-only CLI MVP and can emit a schema-versioned,
-  raw-free `cluster_event_context.json` artifact plus an aggregate
-  `cluster_context.json` artifact for the future Cluster Doctor contract. This
-  is not yet a Cluster Doctor web workflow or report path.
+- Cloudera Manager (CM) Events has a small read-only CLI MVP and can emit a
+  schema-versioned, raw-free `cluster_event_context.json` artifact plus an
+  aggregate `cluster_context.json` artifact for the future Cluster Doctor
+  contract. This is not yet a Cluster Doctor web workflow or report path.
 
 ## Safety baseline
 
@@ -96,12 +97,11 @@ useful.
 
 ## Planned near-term features
 
-- Report and UI language selection: keep English as the canonical public
-  documentation language, keep Russian docs under `docs/i18n/ru/`, and move
-  trusted reports toward English-by-default output with explicit English/Russian
-  selection in the web UI and CLI. This requires language-specific report
-  headings, prompts, normalizers, validators, trust markers and tests; do not
-  switch the default by prompt text alone.
+- Report language selection: English is now the default trusted report language
+  in the CLI and synthetic demo, with Russian still available through the
+  language-specific report contract. Future web language selection should use
+  the same tested prompt, normalizer, validator and trust-marker boundary; do
+  not switch language behavior by prompt text alone.
 - Validate and tune the optional CM time-series allowlist on real Cloudera
   Manager data, then expand it toward admission/pool pressure, Impala daemon
   CPU/memory pressure, host IO/network/load, and bounded role health signals.
@@ -113,8 +113,8 @@ useful.
   output-budget no-rewrite outcome.
   The current trusted path records `no_rewrite` when a valid draft is only a
   cosmetic/no-material-change rewrite or when model generation reaches the
-  optimizer output budget; next work is broader recipe coverage, web-load
-  recommendation validation and stale-artifact cleanup.
+  optimizer output budget; next work is broader recipe coverage and clearer
+  browser-safe validation/outcome explanation.
 - Details page UX audit: review which blocks are still useful, which are
   redundant, what should be added or promoted, and whether the page is efficient
   for Finished, Running and Specific Query workflows.
@@ -675,27 +675,26 @@ Adding any storage or table-format context requires:
 
 ## Repository structure roadmap
 
-Goal: move from the current prototype-like repo root layout toward a
-production-like package structure without changing behavior or weakening safety
-boundaries.
+Goal: continue moving the package structure toward clearer ownership without
+changing behavior or weakening safety boundaries.
 
 Current problem:
 
-- too many runtime modules live directly in the repository root;
-- large files such as the web server, report writer, analyzer, and CM collector
-  are harder to review safely;
+- the root compatibility launchers have been removed, but several package
+  modules remain large enough to slow safety review;
+- large files such as report orchestration, web details rendering, recent-scan
+  presentation, optimizer validation and CM collection are harder to review
+  safely;
 - route orchestration, subprocess command construction, trust checks, parsing,
   rendering, and source-provider logic are sometimes too close together;
 - large files slow down human review and make Codex/code-assistant context less
   effective.
 
-Planned direction:
+Current direction:
 
-- introduce a package layout such as `query_doctor/` while keeping existing CLI
-  entry-point filenames as thin compatibility wrappers during migration;
-- keep `query_doctor/` directly under the repository root for the current
-  migration. Do not mix the behavior-preserving refactor with a `src/` layout or
-  packaging migration; that can be a later dedicated step;
+- keep `query_doctor/` directly under the repository root for now. Do not mix
+  behavior-preserving package cleanup with a `src/` layout or packaging
+  migration; that can be a later dedicated step;
 - prefer a split-first approach when a feature naturally touches a large file:
   if extracting a small focused module is low-risk and makes the feature easier
   to review, do that before adding more logic to the large file;
@@ -736,8 +735,6 @@ Planned direction:
   tests proving it does not expose raw SQL, profile text, raw metadata, local
   paths, raw artifact filenames, partial/untrusted outputs, stdout/stderr,
   secrets, model names or runtime internals;
-- keep root-level CLI wrappers thin as package modules take ownership of real
-  implementation code;
 - do mechanical moves separately from behavior changes so diffs remain
   auditable.
 - do not create placeholder modules merely because they appear in the target
@@ -829,27 +826,31 @@ Important first-pass omissions:
   distinct safety contract;
 - no broad route/config/report behavior changes during package moves.
 
-Suggested migration slices:
+Completed migration baseline:
 
-1. Remove legacy root prototypes from the public main branch after the initial
-   quarantine/review step.
-2. Add the minimal root-level package skeleton `query_doctor/` and compatibility
-   contract only. Create only the package directories and `__init__.py` files
-   needed to establish the boundary; do not create placeholder implementation
-   modules across the future architecture.
-3. Move root entry-point ownership into `query_doctor/cli/` module by module,
-   leaving existing root filenames as thin compatibility wrappers.
-4. Split analyzer facts code first: profile parsing, findings, CM metrics,
-   runtime diagnosis and facts rendering.
-5. Consolidate shared safety helpers under `query_doctor/safety/`, with
+- Legacy root prototypes and compatibility launchers have been removed from the
+  public main branch.
+- Packaged console scripts and `python -m query_doctor.cli...` modules are the
+  supported command paths.
+- The main ownership boundaries now exist under `query_doctor/` for CLI,
+  config, CM, Impala metadata, analyzer, recent scan, report, optimizer, web
+  and safety code.
+
+Next cleanup slices:
+
+1. Split analyzer facts code where behavior work needs it: profile parsing,
+   findings, CM metrics, runtime diagnosis and facts rendering.
+2. Keep shared safety helpers under `query_doctor/safety/`, with
    collector-specific redaction as adapters only.
-6. Split web into app assembly, routes, jobs, command builders, presenters and
-   trusted artifact loading.
-7. Split CM collection into client/config, query discovery, profile collection,
-   time-series, writer and source-specific redaction adapter.
-8. Split Impala metadata into allowlist, Kerberos/cache, shell/protocol,
-   workflow and digest modules.
-9. Clean optimizer boundaries around deterministic validation, recipes,
+3. Continue splitting web into app assembly, routes, jobs, command builders,
+   presenters and trusted artifact loading when a touched feature needs the
+   boundary.
+4. Continue splitting CM collection into client/config, query discovery,
+   profile collection, time-series, writer and source-specific redaction
+   adapter when source-provider work resumes.
+5. Continue splitting Impala metadata into allowlist, Kerberos/cache,
+   shell/protocol, workflow and digest modules when metadata behavior changes.
+6. Clean optimizer boundaries around deterministic validation, recipes,
    fallback, scoring and LLM draft contracts.
 
 Engineering guidance:
@@ -908,7 +909,8 @@ Non-goals for this track:
   after quarantine/review; if any prototype returns long term, it should live
   under an explicit experimental namespace and require an unsafe acknowledgement
   flag.
-- Browser model-name redaction should be broadened for the current local
-  optimizer bake-off set.
-- Batch and pipeline subprocess stages need explicit timeouts.
+- Browser model-name redaction has current bake-off family coverage; keep it
+  updated when new provider/model names are introduced.
+- Batch and pipeline subprocess stages now have explicit timeouts; future work
+  is making timeout values configurable if real cluster runs need it.
 - Archived prototypes must not be used as current safety guidance.

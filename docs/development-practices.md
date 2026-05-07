@@ -12,7 +12,7 @@ tests. The weaker areas are maintainability and repeatability:
 
 - several production modules are large enough to slow review, especially report
   orchestration, details rendering, recent-scan presentation, optimizer
-  validation, and CM collection;
+  validation, and Cloudera Manager (CM) collection;
 - several test files have become broad scenario buckets instead of focused
   behavior contracts;
 - linting and pre-commit automation now have a conservative baseline, but the

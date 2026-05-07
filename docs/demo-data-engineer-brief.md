@@ -28,7 +28,7 @@ Query Doctor has three separate surfaces:
 
 The demo should make this order clear:
 
-1. CM summaries identify bounded query candidates.
+1. Cloudera Manager (CM) summaries identify bounded query candidates.
 2. Selected profiles are collected and redacted.
 3. The analyzer creates normalized facts.
 4. Recent scan ranks cases from those facts.

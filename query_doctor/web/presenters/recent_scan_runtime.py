@@ -11,6 +11,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanCmMetricsView,
     RecentScanRuntimeDiagnosisSignalView,
     RecentScanRuntimeDiagnosisView,
+    RecentScanRuntimeVerdictView,
 )
 from query_doctor.web.presenters.recent_scan_values import safe_display_text, safe_display_value
 
@@ -172,3 +173,130 @@ def present_recent_scan_cluster_runtime_context(
         signal_rollup_items=signal_rollup_items,
         limitations=limitation_views,
     )
+
+
+def present_recent_scan_runtime_verdict(
+    cluster_runtime_context: RecentScanClusterRuntimeContextView,
+    runtime_diagnosis: RecentScanRuntimeDiagnosisView,
+) -> RecentScanRuntimeVerdictView:
+    summary = dict(cluster_runtime_context.summary_items)
+    rollup = dict(cluster_runtime_context.signal_rollup_items)
+    status = _normalized(summary.get("status"))
+    collection_status = _normalized(summary.get("collection_status"))
+    coverage = _text(summary.get("coverage"))
+    scoring = _text(summary.get("scoring_contribution"))
+    correlated = _text(rollup.get("correlated_signals"))
+    context_only = _text(rollup.get("context_only_signals"))
+    observed = _text(rollup.get("observed_signals"))
+    not_observed = _text(rollup.get("not_observed_signals"))
+    diagnosis_summary = _text(runtime_diagnosis.summary if not runtime_diagnosis.unavailable else "")
+
+    if cluster_runtime_context.unavailable or collection_status in {"not_collected", "unavailable"} or status == "unavailable":
+        return RecentScanRuntimeVerdictView(
+            title="Runtime context not collected",
+            badge_class="batch-status--neutral",
+            summary=(
+                "Bounded Cloudera Manager runtime context is not available for this case. "
+                "Profile and metadata findings remain the primary evidence."
+            ),
+            reasons=_reason_tuple(
+                _prefixed("coverage", coverage),
+                _first_limitation(cluster_runtime_context),
+            ),
+        )
+
+    if _meaningful(correlated):
+        return RecentScanRuntimeVerdictView(
+            title="Correlated runtime context",
+            badge_class="batch-status--warning",
+            summary=(
+                "Cluster/runtime context aligns with profile evidence. Treat it as a follow-up signal, "
+                "not standalone root-cause proof."
+            ),
+            reasons=_reason_tuple(
+                _prefixed("correlated signals", correlated),
+                _prefixed("coverage", coverage),
+                _prefixed("scoring", scoring),
+                _prefixed("runtime diagnosis", diagnosis_summary),
+            ),
+        )
+
+    if status == "partial":
+        return RecentScanRuntimeVerdictView(
+            title="Runtime context partial",
+            badge_class="batch-status--warning",
+            summary=(
+                "Runtime context was collected with partial coverage. Use the detailed facts before "
+                "drawing conclusions from missing or unavailable signals."
+            ),
+            reasons=_reason_tuple(
+                _prefixed("coverage", coverage),
+                _prefixed("context-only signals", context_only),
+                _first_limitation(cluster_runtime_context),
+            ),
+        )
+
+    if _meaningful(context_only) or _meaningful(observed):
+        return RecentScanRuntimeVerdictView(
+            title="Runtime context observed",
+            badge_class="batch-status--warning",
+            summary=(
+                "Runtime pressure was observed, but current deterministic facts do not correlate it "
+                "with profile evidence."
+            ),
+            reasons=_reason_tuple(
+                _prefixed("context-only signals", context_only),
+                _prefixed("observed signals", observed),
+                _prefixed("coverage", coverage),
+            ),
+        )
+
+    if status in {"available", "ok"} or collection_status == "collected":
+        return RecentScanRuntimeVerdictView(
+            title="Runtime context clean",
+            badge_class="batch-status--ok",
+            summary="Collected runtime context did not add correlated or context-only runtime signals for this query.",
+            reasons=_reason_tuple(
+                _prefixed("coverage", coverage),
+                _prefixed("not observed", not_observed),
+                _prefixed("scoring", scoring),
+            ),
+        )
+
+    return RecentScanRuntimeVerdictView(
+        title="Runtime context unknown",
+        badge_class="batch-status--neutral",
+        summary="Runtime context is inconclusive for this case.",
+        reasons=_reason_tuple(
+            _prefixed("coverage", coverage),
+            _first_limitation(cluster_runtime_context),
+        ),
+    )
+
+
+def _normalized(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _text(value: Any) -> str:
+    return safe_display_text(value).strip()
+
+
+def _meaningful(value: str) -> bool:
+    return value.strip().lower() not in {"", "none", "unknown", "not_reported"}
+
+
+def _prefixed(label: str, value: str) -> str:
+    if not _meaningful(value):
+        return ""
+    return f"{label}: {value}"
+
+
+def _first_limitation(view: RecentScanClusterRuntimeContextView) -> str:
+    if not view.limitations:
+        return ""
+    return f"limitation: {view.limitations[0]}"
+
+
+def _reason_tuple(*items: str) -> tuple[str, ...]:
+    return tuple(item for item in items if item)[:3]

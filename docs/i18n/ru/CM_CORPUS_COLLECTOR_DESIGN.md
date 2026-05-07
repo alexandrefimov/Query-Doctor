@@ -6,6 +6,11 @@
 сохраняет русскую companion-версию design notes для read-only Cloudera Manager
 profile collector.
 
+Архивная пометка: этот файл является design context для collector и generated
+local corpus workflow. Для текущей операторской и safety guidance используйте
+английские `credentials.md`, `local-smoke.md`, `DEMO.md` и
+`safety-contract.md`.
+
 Текущий предпочтительный entry point: `query-doctor-collect-cm-profiles`.
 
 Инструмент забирает один явный Impala query profile из Cloudera Manager и

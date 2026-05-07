@@ -1,4 +1,4 @@
-# План включения CM collection
+# Архивный план включения Cloudera Manager (CM) collection
 
 Язык: [English](../../CM_COLLECTION_ENABLEMENT_PLAN.md) | Русский
 
@@ -6,10 +6,16 @@
 сохраняет русскую companion-версию rollout checklist для read-only Cloudera
 Manager profile collector.
 
+Архивный статус: эта заметка сохраняет исходный rollout single-query
+Cloudera Manager collector. Для текущих операторских workflow используйте
+английские `credentials.md`, `local-smoke.md`, `DEMO.md` и `roadmap.md`. Не
+используйте этот historical rollout как текущий контракт Recent scan или web
+workflow.
+
 ## Текущее состояние
 
-- CM collector CLI поддерживает real collection только для explicit
-  `--query-id`.
+- Cloudera Manager (CM) collector CLI поддерживает real collection только для
+  explicit `--query-id`.
 - `--dry-run` только строит plan.
 - Broad recent-query collection не является standalone collector mode.
 - Real collection требует `--redact`.
@@ -22,8 +28,7 @@ Manager profile collector.
 - Перед каждым rollout checkpoint запускайте full pytest suite и записывайте
   текущий результат в task/audit output.
 - Historical first single-query smoke под `cases/cm-corpus/` прошёл collection,
-  analyzer parsing, admin/user report generation и deterministic report
-  validation.
+  analyzer parsing и deterministic report validation.
 
 ## Цель
 
@@ -85,8 +90,9 @@ query-doctor-collect-cm-profiles \
   --ca-bundle /path/to/company-ca.pem
 ```
 
-Root-level compatibility launchers могут работать во время migration, но новые
-docs должны использовать `query-doctor-*` console scripts.
+Root-level compatibility launchers удалены. Используйте `query-doctor-*`
+console scripts или `python -m query_doctor.cli.collect_cm_profiles`, если
+запускаете прямо из checkout без installed entry points.
 
 ## Safe rollout steps
 
@@ -99,7 +105,7 @@ Completed single-query rollout:
    size guard.
 5. Generated files проверены вручную.
 6. Analyzer запущен на collected case.
-7. Выполнен admin/user report smoke.
+7. Выполнен report validation smoke.
 8. Generated `analysis_facts.md` и report files удалены после validation.
 9. Подтверждено, что `cases/cm-corpus/` остаётся ignored and uncommitted.
 
@@ -149,19 +155,10 @@ Generated case должен содержать:
 - Analyzer читает `profile_digest.md`.
 - Action Cards появляются только при наличии evidence.
 
-Historical first-smoke result:
-
-- Ignored local case: `cases/cm-corpus/494ef9bf2699a3c5_5b65e20400000000`.
-- Analyzer parsed `169` operators.
-- Cardinality anomalies: `0`.
-- Memory anomalies: `2`.
-- Action Cards были present.
-- Admin/user report generation прошёл deterministic validation.
-- Generated `analysis_facts.md`, `report_admin.md`, `report_user.md` удалены
-  после inspection.
-
+Historical first-smoke counts и local case identifier удалены из публичного
+архива: они не evergreen и не нужны для текущей работы агента или оператора.
 Для текущего smoke status запускайте local validation commands и записывайте
-текущий результат в task/audit output, а не считайте historical counts evergreen.
+текущий результат в task/audit output.
 
 ## Rollback/cleanup
 
@@ -175,14 +172,11 @@ rm -rf cases/cm-corpus/<specific_case_dir>
 удаляйте existing hand-curated cases. Не удаляйте `profile_digest.md` из
 committed test fixtures.
 
-## Open questions
+## Оставшиеся полезные вопросы
 
-- Exact response shape в установленной CM version.
-- Возвращается raw profile или digest.
-- Содержит ли query profile text original SQL.
-- Сохранять ли query IDs в redacted corpus.
-- Должен ли первый corpus оставаться local-only или стать sanitized fixture
-  candidate.
-- Как выбрать first bounded batch corpus representative queries.
-- Должен ли broad collection требовать дополнительный explicit acknowledgement
-  flag.
+- Как растить sanitized fixtures без commit raw production profiles, raw SQL,
+  raw Cloudera Manager payloads, hostnames, paths или secrets.
+- Как выбирать representative generated cases для analyzer и optimizer
+  regression work, оставляя generated corpus output ignored by Git.
+- Какие future source-provider seams требуют отдельных contracts перед
+  расширением за пределы текущего Cloudera Manager based Impala collection path.

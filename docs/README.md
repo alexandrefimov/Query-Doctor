@@ -17,6 +17,17 @@ Historical and internal documents may still contain Russian while they are being
 cleaned up. Treat the README, this index, safety contract, architecture docs and
 roadmap as the current public baseline.
 
+## Current Baseline For Agents
+
+Coding agents should treat [../README.md](../README.md), this index,
+[safety-contract.md](safety-contract.md), [architecture.md](architecture.md),
+[roadmap.md](roadmap.md), [development-practices.md](development-practices.md)
+and [codex-handoff.md](codex-handoff.md) as the active implementation baseline.
+[code-audit.md](code-audit.md) tracks current risks and follow-ups. Historical
+planning notes, localized companion pages and older changelog entries are useful
+context, but they are not behavior contracts when they conflict with the active
+baseline.
+
 ## Start Here
 
 - [../README.md](../README.md): concise project overview, install, workflows,
@@ -77,10 +88,10 @@ roadmap as the current public baseline.
 ## Collector And Metrics Design
 
 - [CM_COLLECTION_ENABLEMENT_PLAN.md](CM_COLLECTION_ENABLEMENT_PLAN.md):
-  Cloudera Manager collection enablement notes
+  archived Cloudera Manager collection rollout notes
   ([Russian](i18n/ru/CM_COLLECTION_ENABLEMENT_PLAN.md)).
-- [CM_CORPUS_COLLECTOR_DESIGN.md](CM_CORPUS_COLLECTOR_DESIGN.md): CM corpus
-  collector design history
+- [CM_CORPUS_COLLECTOR_DESIGN.md](CM_CORPUS_COLLECTOR_DESIGN.md): Cloudera
+  Manager (CM) corpus collector design history and current safety constraints
   ([Russian](i18n/ru/CM_CORPUS_COLLECTOR_DESIGN.md)).
 - [cluster-metrics-roadmap-audit.md](cluster-metrics-roadmap-audit.md):
   metrics roadmap audit and signal taxonomy.
@@ -95,8 +106,8 @@ should not be read as product user guides.
 - [code-audit.md](code-audit.md): implementation audit and open follow-ups.
 - [project-audit.md](project-audit.md): broader project audit.
 - [analyzer-audit.md](analyzer-audit.md): analyzer-specific audit notes.
-- [root-compatibility-audit.md](root-compatibility-audit.md): root script
-  compatibility and migration plan.
+- [root-compatibility-audit.md](root-compatibility-audit.md): completed root
+  script removal and supported package command/import mappings.
 
 ## Historical Planning
 

@@ -173,6 +173,10 @@ def canonical_recommendation_bullets(candidates: list[tuple[str, str]]) -> list[
     return [f"- {text}" for _, text in candidates]
 
 
+def _has_case_anchor(text: str) -> bool:
+    return "Action Card operator" in text or "TotalBytesSent" in text
+
+
 def normalize_practical_recommendations(
     text: str,
     facts_text: str,
@@ -194,6 +198,7 @@ def normalize_practical_recommendations(
 
     moved_to_admin: list[str] = []
     candidates = recommendation_candidate_lines(facts_text, language=language)
+    candidate_text_by_id = dict(candidates)
     preserved: list[str] = []
     preserved_candidate_ids: set[str] = set()
     for line in lines[start + 1 : end]:
@@ -216,7 +221,11 @@ def normalize_practical_recommendations(
         body = recommendation_bullet_body(stripped)
         if body is None:
             continue
-        bullet = f"- {body}"
+        candidate_text = candidate_text_by_id.get(candidate_id, "")
+        if _has_case_anchor(candidate_text) and not _has_case_anchor(body):
+            bullet = f"- {candidate_text}"
+        else:
+            bullet = f"- {body}"
         if bullet not in preserved:
             preserved.append(bullet)
             preserved_candidate_ids.add(candidate_id)

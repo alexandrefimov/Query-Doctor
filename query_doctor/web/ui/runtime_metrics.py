@@ -10,6 +10,7 @@ from query_doctor.web.presenters.recent_scan import (
     RecentScanClusterRuntimeContextView,
     RecentScanCmMetricsView,
     RecentScanRuntimeDiagnosisView,
+    RecentScanRuntimeVerdictView,
 )
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
@@ -17,6 +18,25 @@ from query_doctor.web.ui.html_helpers import (
     escape_value,
     metadata_rows,
 )
+
+
+def render_runtime_verdict(view: RecentScanRuntimeVerdictView) -> str:
+    reasons = ""
+    if view.reasons:
+        reasons = (
+            "<ul class=\"compact-list\">"
+            + "".join(f"<li>{escape_value(reason)}</li>" for reason in view.reasons)
+            + "</ul>"
+        )
+    return (
+        "<div class=\"reason-card runtime-verdict\" aria-label=\"Runtime verdict\">"
+        "<strong>"
+        f"<span class=\"batch-mini-badge {html.escape(view.badge_class)}\">{escape_value(view.title)}</span>"
+        "</strong>"
+        f"<p>{escape_value(view.summary)}</p>"
+        f"{reasons}"
+        "</div>"
+    )
 
 
 def render_runtime_signals(view: RecentScanCaseDetailView) -> str:

@@ -15,7 +15,7 @@ diagnosis. The desired product outcome is:
 
 The current implementation already has the first safe version of this feature:
 
-- Cloudera Manager is the only implemented metrics source provider.
+- Cloudera Manager (CM) is the only implemented metrics source provider.
 - Explicit single-query collection gathers bounded CM time-series summaries by
   default.
 - Recent batch collection keeps CM metrics disabled by default and requires an
@@ -29,6 +29,8 @@ The current implementation already has the first safe version of this feature:
   - `CM Time-Series Context`
   - `CM Metrics Facts`
   - `CM Metrics Correlation`
+  - `Cluster Runtime Context`
+  - `Runtime Diagnosis`
 - The report prompt tells the LLM to use only `CM Metrics Facts` for metrics
   interpretation and to treat metrics as runtime context, not standalone proof
   of cause.
@@ -296,9 +298,11 @@ post-window buckets, still without raw points.
 
 ### 5. UI Shows Details, But Not A Cluster-State Verdict
 
-Details pages can render runtime signals and CM metrics safely, but the product
-does not yet have a concise "cluster state during this query" block. Users still
-need to infer whether cluster state helped explain the query.
+Details pages can render runtime signals, CM metrics and the Python-owned
+Cluster Runtime Context safely. The remaining product gap is a compact
+verdict-style state that lets users distinguish "cluster context collected and
+clean" from "context observed but not correlated" or "context correlated with
+profile evidence" without reading the full facts block.
 
 Roadmap implication: add a deterministic cluster-state summary view:
 
@@ -462,10 +466,8 @@ or UI layer.
 
 ## Recommended Next Step
 
-Implement Phase 1 first. It is mostly a product/facts-contract improvement over
-already-collected metrics, and it creates the acceptance harness needed before
-expanding the allowlist.
-
-The first concrete change should be a deterministic `Cluster Runtime Context`
-section in `analysis_facts.md`, plus focused analyzer/report/UI tests proving
-that trusted output states the collected cluster context without overclaiming.
+Phase 1 is implemented for the current CM metrics facts, correlation and
+Cluster Runtime Context. The next step is Phase 2: expand the CM allowlist
+incrementally around admission/pool pressure, daemon memory headroom and
+storage/host I/O, with fixtures, analyzer thresholds, correlation policy,
+browser-safety tests and report validation for each added signal.

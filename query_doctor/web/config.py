@@ -83,7 +83,10 @@ def validate_web_startup_config(
     *,
     cwd: Path,
     env: dict[str, str] | os._Environ[str] | None = None,
+    require_cm: bool = True,
 ) -> list[str]:
+    if not require_cm:
+        return []
     env = os.environ if env is None else env
     config_values = load_web_local_config(config_path, cwd=cwd)
     missing: list[str] = []

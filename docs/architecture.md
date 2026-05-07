@@ -2,10 +2,10 @@
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
-Query Doctor keeps fact extraction deterministic. LLMs may phrase the final
-report narrative only from facts that Python has already extracted and
-validated. English is the default trusted report language; Russian remains an
-explicit localized output path.
+Query Doctor keeps fact extraction deterministic. LLMs may write report wording
+only from facts that Python has already extracted and validated. English is the
+default trusted report language; Russian remains an explicit localized output
+path.
 
 ## Current Architecture
 
@@ -14,7 +14,7 @@ flowchart TD
     subgraph External["External read-only sources"]
         CM[Cloudera Manager summaries and profiles]
         ImpalaMeta[Allowlisted Impala metadata]
-        CMMetrics[Bounded CM time-series summaries]
+        CMMetrics[Bounded Cloudera Manager time-series summaries]
     end
 
     subgraph Local["Local Query Doctor runtime"]
@@ -62,11 +62,12 @@ flowchart TD
     QueryFindings --> WebUI
 ```
 
-Current implementation is intentionally narrow:
+Current support is intentionally narrow:
 
 - Apache Impala is the only implemented query engine.
 - Cloudera Manager summaries and profiles are the implemented profile source.
-- CM time-series support is bounded and summarized before becoming facts.
+- Cloudera Manager (CM) time-series support is bounded and summarized before
+  becoming facts.
 - Impala metadata collection is explicit, read-only, and allowlisted.
 - Reports and details-page optimizer drafts run only after an explicit
   selected-case action.
@@ -82,7 +83,7 @@ before they become product behavior.
 ```mermaid
 flowchart TD
     subgraph Providers["Roadmap source-provider seams"]
-        CMProvider[CM profiles and metrics]
+        CMProvider[Cloudera Manager profiles and metrics]
         ImpalaDaemon[Direct Impala profile endpoint]
         PromProvider[Prometheus-style metrics]
         EventProvider[Prepared log/event summaries]
@@ -162,7 +163,7 @@ Cloudera Manager profile summary
   -> query-doctor-analyze
   -> analyzer-owned facts artifact
   -> action cards and deterministic evidence
-  -> optional bounded metadata context
+  -> optional bounded metadata collection and analyzer rerun
   -> query-doctor-report
   -> sanitizer and fail-closed validator
   -> deterministic analyzer facts appendix
@@ -176,8 +177,9 @@ non-Cloudera Impala deployments as future source-provider work, not as current
 support.
 
 The same boundary applies to every workflow: collectors and parsers prepare
-bounded inputs, Python-owned analyzers create facts, LLMs phrase only trusted
-facts, and validators decide what can be rendered or stored as trusted output.
+bounded inputs, Python-owned analyzers create facts, LLMs phrase those facts
+only after an explicit action, and validators decide what can be rendered or
+stored as trusted output.
 
 ## Components
 
@@ -266,7 +268,7 @@ The report writer:
 - may eventually render a multi-signal diagnosis, but only from normalized
   Python-owned facts produced by profile, metadata, metrics, and log analyzers;
 - generates trusted LLM reports within one fact boundary;
-- requires localized user-facing narrative sections for summary,
+- writes localized user-facing narrative sections for summary,
   recommendations, detailed findings, and follow-up checks;
 - deterministically appends a localized analyzer facts appendix from the facts
   artifact;

@@ -23,7 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = build_web_settings(args, cwd=Path.cwd())
         validate_bind_host(settings.host, allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind)
-        startup_warnings = validate_web_startup_config(settings.config, cwd=Path.cwd())
+        startup_warnings = validate_web_startup_config(
+            settings.config,
+            cwd=Path.cwd(),
+            require_cm=settings.batch_summary is None,
+        )
     except WebError as exc:
         print(f"[Query Doctor web] ERROR: {exc}", file=sys.stderr)
         return 2

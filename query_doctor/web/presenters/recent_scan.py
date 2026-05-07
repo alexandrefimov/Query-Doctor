@@ -16,6 +16,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanMetadataView,
     RecentScanRuntimeDiagnosisSignalView,
     RecentScanRuntimeDiagnosisView,
+    RecentScanRuntimeVerdictView,
     RecentScanSummaryView,
     ReportActionView,
 )
@@ -59,6 +60,7 @@ from query_doctor.web.presenters.recent_scan_runtime import (
     present_recent_scan_cluster_runtime_context,
     present_recent_scan_cm_metrics,
     present_recent_scan_runtime_diagnosis,
+    present_recent_scan_runtime_verdict,
 )
 
 def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryView:
@@ -173,6 +175,9 @@ def present_recent_scan_case_detail(
     )
     optimization = query_optimization_candidate_view(case)
     stats_candidate = stats_optimization_candidate_view(case)
+    cm_metrics = present_recent_scan_cm_metrics(cm_metrics_facts)
+    runtime_diagnosis = present_recent_scan_runtime_diagnosis(runtime_diagnosis_facts)
+    cluster_runtime_context = present_recent_scan_cluster_runtime_context(cluster_runtime_context_facts)
     return RecentScanCaseDetailView(
         case_id=safe_display_text(case_id),
         query_id=safe_display_value(case.get("query_id")),
@@ -223,9 +228,10 @@ def present_recent_scan_case_detail(
         optimization_candidate=optimization,
         stats_candidate=stats_candidate,
         metadata=present_recent_scan_metadata(case, metadata_facts),
-        cm_metrics=present_recent_scan_cm_metrics(cm_metrics_facts),
-        runtime_diagnosis=present_recent_scan_runtime_diagnosis(runtime_diagnosis_facts),
-        cluster_runtime_context=present_recent_scan_cluster_runtime_context(cluster_runtime_context_facts),
+        cm_metrics=cm_metrics,
+        runtime_diagnosis=runtime_diagnosis,
+        cluster_runtime_context=cluster_runtime_context,
+        runtime_verdict=present_recent_scan_runtime_verdict(cluster_runtime_context, runtime_diagnosis),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )

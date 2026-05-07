@@ -23,8 +23,8 @@ implementation boundaries.
 - External collection must be explicit, bounded, read-only, redacted, and safe
   by default.
 - Dry-run and preflight paths must not collect profile text.
-- Real profile collection must not print raw profiles, SQL, raw CM JSON, or
-  credentials.
+- Real profile collection must not print raw profiles, SQL, raw Cloudera
+  Manager (CM) JSON, or credentials.
 - The first supported real Impala metadata connection path is Kerberos plus
   `impala-shell` with an already available TGT from `kinit`.
 - The metadata collector does not call `kinit`, does not prompt for passwords,
@@ -47,7 +47,7 @@ Generated, sensitive, or local outputs must not be committed:
 - `analysis_facts.md`
 - generated `report*.md` / `diagnosis*.md`
 - `*.partial`
-- local CM config
+- local Cloudera Manager (CM) config
 - real CM profile material
 - `impala_context.md` / `impala_context.json`
 

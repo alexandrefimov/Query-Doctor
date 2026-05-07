@@ -146,6 +146,14 @@ class RecentScanClusterRuntimeContextView:
 
 
 @dataclass(frozen=True)
+class RecentScanRuntimeVerdictView:
+    title: str
+    badge_class: str
+    summary: str
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any
@@ -171,5 +179,6 @@ class RecentScanCaseDetailView:
     cm_metrics: RecentScanCmMetricsView
     runtime_diagnosis: RecentScanRuntimeDiagnosisView
     cluster_runtime_context: RecentScanClusterRuntimeContextView
+    runtime_verdict: RecentScanRuntimeVerdictView
     report_action: ReportActionView
     score_severity: str

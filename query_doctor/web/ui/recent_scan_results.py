@@ -114,11 +114,10 @@ def render_batch_summary(
         for display_rank, row in enumerate(rows_for_group, start=1)
     )
     if not rows:
-        empty_text = broad_scan_message or (
-            f"No {QUERY_GROUPS[active_group][0].lower()} with spills were found in the configured batch summary."
-            if only_with_spills
-            else
-            f"No {QUERY_GROUPS[active_group][0].lower()} were found in the configured batch summary."
+        empty_text = broad_scan_message or batch_result_empty_message(
+            view.rows,
+            active_group,
+            only_with_spills=only_with_spills,
         )
         rows = f"<tr><td colspan=\"{batch_table_column_count(active_group)}\" class=\"empty-cell\">{html.escape(empty_text)}</td></tr>"
     scan_details = render_batch_scan_details(summary)
@@ -172,6 +171,31 @@ def recent_scan_too_broad_message(summary: dict[str, Any]) -> str | None:
     return f"Scan stopped because this hour has more than {cap} matching CM summaries. Narrow the filters or choose another hour."
 
 
+def batch_result_empty_message(
+    rows: tuple[RecentScanCaseRowView, ...],
+    active_group: str,
+    *,
+    only_with_spills: bool = False,
+) -> str:
+    group_label = QUERY_GROUPS[active_group][0].lower()
+    spill_suffix = " with spill evidence" if only_with_spills else ""
+    if not rows:
+        return f"No {group_label}{spill_suffix} were found in the configured batch summary."
+    if only_with_spills:
+        return f"No {group_label} with spill evidence matched this result filter. Clear the spill filter to see all rows in this group."
+    if active_group == "bad":
+        return "No bad queries were found in this scan. Check Suspicious, Optimization candidates, or Stats refresh candidates for lower-severity follow-up work."
+    if active_group == "suspicious":
+        return "No suspicious-only queries were found in this scan. Bad queries and action-candidate tabs may still contain follow-up work."
+    if active_group == "optimizer_ready":
+        return "No optimizer-ready cases have a trusted draft or trusted recommendations yet. Open an optimization candidate and run the Query LLM optimizer explicitly."
+    if active_group == "optimization":
+        return "No medium/high optimization candidates were found. Query Doctor did not identify a supported query-shape review opportunity in this scan."
+    if active_group == "stats":
+        return "No medium/high stats refresh candidates were found. Query Doctor did not find enough stats evidence plus runtime symptoms for this scan."
+    return f"No {group_label} were found in the configured batch summary."
+
+
 def render_batch_warning_note(summary: dict[str, Any]) -> str:
     warnings = present_recent_scan_summary(summary).warning_messages
     if not warnings:
@@ -203,7 +227,7 @@ def render_batch_case_row(
             candidate_cell(view.optimization_tier),
             compact_cell(view.optimization_impact.title()),
             compact_cell(view.optimization_confidence.title()),
-            optimizer_artifact_status_cell(view.optimization_artifact_status),
+            optimizer_next_action_cell(view.optimization_artifact_status),
             reason_cell(view.optimization_review_areas or "review query shape"),
             summary_cell(view, query_group=normalized),
         ]
@@ -217,7 +241,7 @@ def render_batch_case_row(
             reason_cell(stats_need_label(view.stats_need_type)),
             compact_cell(view.stats_speed_benefit.title()),
             compact_cell(view.stats_confidence.title()),
-            reason_cell(view.stats_required_confirmation or "compare EXPLAIN and rerun comparable load"),
+            reason_cell(stats_next_action_label(view.stats_required_confirmation)),
             summary_cell(view, query_group=normalized),
         ]
     else:
@@ -308,8 +332,33 @@ def stats_need_label(value: Any) -> str:
     return labels.get(str(value), str(value))
 
 
-def optimizer_artifact_status_cell(value: Any) -> str:
-    return compact_cell(optimizer_artifact_status_label(value))
+def optimizer_next_action_cell(value: Any) -> str:
+    label, class_name, title = optimizer_next_action_view(value)
+    return (
+        "<td class=\"batch-cell--compact\">"
+        f"<span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(title)}\">"
+        f"{escape_value(label)}</span></td>"
+    )
+
+
+def optimizer_next_action_view(value: Any) -> tuple[str, str, str]:
+    status = str(value or "unknown")
+    labels = {
+        "trusted_draft": ("Open draft", "batch-status--ok"),
+        "trusted_recommendations": ("Open guidance", "batch-status--ok"),
+        "trusted_no_rewrite": ("Open outcome", "batch-status--ok"),
+        "partial_untrusted": ("Validate manually", "batch-status--warning"),
+        "not_run": ("Generate draft", "batch-status--neutral"),
+        "source_unavailable": ("Source unavailable", "batch-status--neutral"),
+        "unknown": ("Check details", "batch-status--neutral"),
+    }
+    label, class_name = labels.get(status, labels["unknown"])
+    return label, class_name, optimizer_artifact_status_label(status)
+
+
+def stats_next_action_label(value: Any) -> str:
+    text = str(value or "").strip()
+    return text or "compare EXPLAIN and rerun comparable load"
 
 
 def optimizer_artifact_status_label(value: Any) -> str:

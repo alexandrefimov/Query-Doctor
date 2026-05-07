@@ -59,13 +59,13 @@ def test_safe_error_summary_hides_paths_and_generated_artifact_names(tmp_path):
     assert module.HIDDEN_ARTIFACT in summary
 
 
-def test_aggregate_metrics_use_repeat_medians_for_pair_speedup():
+def test_aggregate_metrics_use_generic_repeat_medians_for_pair_latency_ratio():
     module = load_compare_module()
     results = [
         {
             "provider": "ollama",
-            "requested_model": "qwen3-coder:30b",
-            "resolved_model_id": "qwen3-coder:30b",
+            "requested_model": "qwen3-coder:30b-a3b-q8_0",
+            "resolved_model_id": "qwen3-coder:30b-a3b-q8_0",
             "case_name": "fixtures:case-a",
             "run_index": 1,
             "status": "ok",
@@ -75,8 +75,8 @@ def test_aggregate_metrics_use_repeat_medians_for_pair_speedup():
         },
         {
             "provider": "ollama",
-            "requested_model": "qwen3-coder:30b",
-            "resolved_model_id": "qwen3-coder:30b",
+            "requested_model": "qwen3-coder:30b-a3b-q8_0",
+            "resolved_model_id": "qwen3-coder:30b-a3b-q8_0",
             "case_name": "fixtures:case-a",
             "run_index": 2,
             "status": "ok",
@@ -110,9 +110,13 @@ def test_aggregate_metrics_use_repeat_medians_for_pair_speedup():
 
     aggregates = module._build_aggregate_metrics(results)
 
-    assert aggregates["by_model"]["qwen3-coder:30b"]["runs"] == 2
+    assert aggregates["by_model"]["qwen3-coder:30b-a3b-q8_0"]["runs"] == 2
     assert aggregates["by_case"]["fixtures:case-a"]["models"]["gpt-oss:20b"]["ok"] == 2
-    assert aggregates["pair_benchmark"]["mean_per_case_speedup"] == 2.0
+    pair = aggregates["pair_benchmark"]["latency_pairs"]["gpt-oss:20b :: qwen3-coder:30b-a3b-q8_0"]
+    assert pair["baseline_model"] == "gpt-oss:20b"
+    assert pair["comparison_model"] == "qwen3-coder:30b-a3b-q8_0"
+    assert pair["mean_per_case_latency_ratio"] == 0.5
+    assert "mean_latency_qwen_sec" not in aggregates["pair_benchmark"]
 
 
 def test_dry_prompt_writes_summary_and_review_template(tmp_path, capsys):

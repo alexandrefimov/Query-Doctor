@@ -193,6 +193,7 @@ def parse_running_run_config(
 def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for name in (
+        "scan_target",
         "scan_date",
         "scan_hour",
         "metadata_top_limit",
@@ -213,6 +214,7 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
 
 def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
     return {
+        "scan_target": "running" if config.only_running else "finished",
         "scan_date": config.scan_date,
         "scan_hour": str(config.scan_hour),
         "metadata_top_limit": str(config.metadata_top_limit),

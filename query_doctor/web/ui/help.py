@@ -90,8 +90,8 @@ def render_help_content() -> str:
 <li><strong>Duration</strong> comes from Cloudera Manager summary data when available.</li>
 <li><strong>STATS</strong> summarizes table statistics availability.</li>
 <li><strong>META</strong> summarizes metadata collection status.</li>
-<li><strong>Optimization candidates</strong> use Candidate, Impact, Confidence, and Review first columns.</li>
-<li><strong>Stats refresh candidates</strong> use Candidate, Need, Speed benefit, Confidence, and Confirm columns.</li>
+<li><strong>Optimization candidates</strong> use Candidate, Impact, Confidence, Next action, and Review scope columns.</li>
+<li><strong>Stats refresh candidates</strong> use Candidate, Need, Speed benefit, Confidence, and Next action columns.</li>
 <li>Cases without triage severity and without Medium/High optimization or stats-refresh candidacy are intentionally hidden from separate result groups.</li>
 <li><strong>Summary</strong> explains deterministic signals without raw evidence.</li>
 </ul>

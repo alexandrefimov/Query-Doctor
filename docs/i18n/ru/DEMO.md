@@ -13,8 +13,9 @@ pages, Query Optimizer и explicit LLM actions.
 
 ## Запуск
 
-Используйте ignored local CM config и credentials из environment variables.
-На локальной машине Query Doctor ожидает read-only CM credentials в
+Используйте ignored local Cloudera Manager (CM) config и credentials из
+environment variables. На локальной машине Query Doctor ожидает read-only CM
+credentials в
 `~/.qdcreds/cm-ro.env`; значения секретов не хранятся в репозитории и не
 попадают в committed config.
 
@@ -59,8 +60,9 @@ query-doctor-collect-cm-profiles \
 
 ## Основные страницы
 
-- **Finished Queries**: bounded scan завершенных CM summaries, selected profile
-  collection, deterministic ranking, no automatic LLM reports.
+- **Finished Queries**: bounded scan завершенных Cloudera Manager (CM)
+  summaries, selected profile collection, deterministic ranking, no automatic
+  LLM reports.
 - **Running Queries**: тот же result shape для running queries.
 - **Specific Query**: один explicit CM query ID без automatic LLM.
 - **Details**: deterministic details плюс explicit LLM Report / Query LLM

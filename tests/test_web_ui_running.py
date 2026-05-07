@@ -22,6 +22,11 @@ def test_web_running_page_renders_without_scan_window_fields_and_with_bounds_not
         "CM metrics are always collected by default for this bounded running scan."
         in body
     )
+    assert "Live snapshot:" in body
+    assert "no date/hour window is used" in body
+    assert "profiles can be incomplete while queries execute" in body
+    assert "may show fewer deterministic findings than after completion" in body
+    assert "No LLM report or optimizer draft runs automatically" in body
     assert "Minimum duration (sec)" in body
     assert "Username" in body
     assert "Resource pool" in body
@@ -51,3 +56,5 @@ def test_web_running_route_renders_page():
         "CM metrics are always collected by default for this bounded running scan."
         in captured["body"]
     )
+    assert "Live snapshot:" in captured["body"]
+    assert "profiles can be incomplete while queries execute" in captured["body"]

@@ -30,12 +30,23 @@ def batch_table_columns(query_group: str) -> tuple[str, ...]:
             "Candidate",
             "Impact",
             "Confidence",
-            "Optimizer",
-            "Review first",
+            "Next action",
+            "Review scope",
             "Summary",
         )
     if normalized == "stats":
-        return ("Rank", "Query ID", "User", "Duration", "Candidate", "Need", "Speed benefit", "Confidence", "Confirm", "Summary")
+        return (
+            "Rank",
+            "Query ID",
+            "User",
+            "Duration",
+            "Candidate",
+            "Need",
+            "Speed benefit",
+            "Confidence",
+            "Next action",
+            "Summary",
+        )
     return ("Rank", "Query ID", "User", "Score", "Duration", "STATS", "META", "Summary")
 
 

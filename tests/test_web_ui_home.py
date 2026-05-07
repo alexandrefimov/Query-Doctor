@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from web_server_test_support import load_web_module
+from query_doctor.web.ui.recent_scan_results import render_batch_summary
 
 
 def test_package_layout_renderers_are_available():
@@ -142,6 +143,61 @@ def test_web_render_page_contains_optimizer_copy_handler():
     assert "Copy query" in body
 
 
+def test_recent_scan_default_empty_group_points_to_follow_up_tabs():
+    body = render_batch_summary(
+        {
+            "selected_count": 1,
+            "cases": [
+                {
+                    "case_index": 1,
+                    "query_id": "abc:def",
+                    "score": 5,
+                    "score_severity": "suspicious",
+                    "collection_status": "ok",
+                    "analysis_status": "ok",
+                    "metadata_status": "skipped",
+                    "score_reasons": ["memory estimate anomalies: 1"],
+                }
+            ],
+        }
+    )
+
+    assert "No bad queries were found in this scan." in body
+    assert "Check Suspicious, Optimization candidates, or Stats refresh candidates" in body
+    assert "Suspicious queries <span>1</span>" in body
+
+
+def test_recent_scan_optimizer_ready_empty_group_explains_explicit_action():
+    body = render_batch_summary(
+        {
+            "selected_count": 1,
+            "cases": [
+                {
+                    "case_index": 1,
+                    "query_id": "abc:def",
+                    "score": 5,
+                    "score_severity": "suspicious",
+                    "collection_status": "ok",
+                    "analysis_status": "ok",
+                    "metadata_status": "skipped",
+                    "query_optimization_candidate": {
+                        "tier": "medium",
+                        "score": 3,
+                        "impact": "medium",
+                        "confidence": "medium",
+                    },
+                    "score_reasons": ["memory estimate anomalies: 1"],
+                }
+            ],
+        },
+        query_group="optimizer_ready",
+    )
+
+    assert "No optimizer-ready cases have a trusted draft or trusted recommendations yet." in body
+    assert "run the Query LLM optimizer explicitly" in body
+    assert "Optimization candidates <span>1</span>" in body
+
+
 def test_web_render_page_omits_modes_even_when_report_mode_is_passed():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
@@ -161,12 +217,11 @@ def test_web_home_page_links_brand_and_readme_navigation():
 
     assert '<a class="brand" href="/" aria-label="Query Doctor home">' in body
     assert '<a class="nav-link nav-link--active" href="/query">Specific Query</a>' in body
-    assert '<a class="nav-link" href="/">Finished Queries</a>' in body
-    assert '<a class="nav-link" href="/running">Running Queries</a>' in body
+    assert '<a class="nav-link" href="/">Recent scan</a>' in body
+    assert 'href="/running">Running Queries</a>' not in body
     assert '<a class="nav-link" href="/demo">Demo guide</a>' in body
     assert '<a class="nav-link" href="/help">Help</a>' in body
-    assert body.index('href="/">Finished Queries</a>') < body.index('href="/running">Running Queries</a>')
-    assert body.index('href="/running">Running Queries</a>') < body.index('href="/query">Specific Query</a>')
+    assert body.index('href="/">Recent scan</a>') < body.index('href="/query">Specific Query</a>')
     assert body.index('href="/query">Specific Query</a>') < body.index('href="/help">Help</a>')
     assert '<a class="nav-link" href="/readme">README</a>' not in body
     assert "Settings" not in body

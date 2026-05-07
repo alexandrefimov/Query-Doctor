@@ -11,7 +11,7 @@ Query Doctor держит fact extraction детерминированным, а
 ## Pipeline
 
 ```text
-Cloudera Manager profile / profile_digest.md
+Cloudera Manager (CM) profile / profile_digest.md
   -> query-doctor-collect-cm-profiles
   -> ignored local case directory
   -> query-doctor-analyze
@@ -43,7 +43,8 @@ Future collector source seam:
 - Keep profile acquisition behind a small source-provider contract: discover
   query summaries, fetch one explicit profile, fetch safe query context, and
   fetch bounded runtime metrics if available.
-- Current provider: Cloudera Manager API, tested against CM 6.2.1 behavior.
+- Current provider: Cloudera Manager (CM) API, tested against CM 6.2.1
+  behavior.
 - Planned CM-version seam: isolate endpoint paths, response parsing, query
   state normalization, and time-series tsquery allowlists so newer CM versions
   can be added with fixtures and safety tests instead of changing analyzer/UI
