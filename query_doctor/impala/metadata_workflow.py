@@ -15,7 +15,7 @@ from query_doctor.impala.shell_runner import (
     validate_coordinator,
     validate_protocol,
 )
-from query_doctor.cli.collect_impala_context import (
+from query_doctor.impala.metadata_policy import (
     CollectorError,
     normalize_database_identifier,
     normalize_table_identifier,

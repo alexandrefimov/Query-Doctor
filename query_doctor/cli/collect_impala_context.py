@@ -4,12 +4,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
@@ -23,185 +21,45 @@ from query_doctor.impala.shell_runner import (
     validate_protocol,
 )
 from query_doctor.impala.shell_output import normalize_output_bytes
+from query_doctor.impala.metadata_policy import (
+    ALLOWED_STATEMENTS,
+    CollectorError,
+    StatementPlan,
+    build_statement_plan,
+    dedupe_preserve_order,
+    normalize_database_identifier,
+    normalize_table_identifier,
+    validate_read_only_statement,
+)
+from query_doctor.impala.metadata_results import (
+    StatementResult,
+    not_applicable_result,
+    planned_result,
+    write_outputs,
+)
+from query_doctor.impala.metadata_redaction import (
+    GENERIC_URL_CREDENTIAL_RE,
+    SQL_SECRET_VALUE_RE,
+    URI_HOST_RE,
+    USER_PATH_RE,
+    redact_impala_context_text,
+    redact_uri_hosts,
+)
 from query_doctor.cli.collect_cm_profiles import (
     ConfigError,
     load_effective_local_config,
 )
-from query_doctor.safety.redaction import HostAliasRedactor, redact_profile_text
 from query_doctor.config.contract import merge_kerberos_cache_env
 
 
 DEFAULT_TIMEOUT_SEC = 30
 DEFAULT_MAX_OUTPUT_BYTES = 262_144
-ALLOWED_STATEMENTS = (
-    "SHOW CREATE TABLE",
-    "SHOW TABLE STATS",
-    "SHOW COLUMN STATS",
-)
 CREATE_VIEW_RE = re.compile(r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", re.IGNORECASE | re.MULTILINE)
 VIEW_NOT_APPLICABLE_RE = re.compile(r"not\s+applicable\s+to\s+a\s+view", re.IGNORECASE)
-IDENTIFIER_PART_RE = re.compile(r"(?:`([A-Za-z_][A-Za-z0-9_$]*)`|([A-Za-z_][A-Za-z0-9_$]*))\Z")
-SQL_SECRET_VALUE_RE = re.compile(
-    r"((?:'|\")?(?:password|passwd|pwd|token|secret|cookie|api[_-]?key|access[_-]?token|"
-    r"refresh[_-]?token)(?:'|\")?[ \t]*[=:][ \t]*(?:'|\")?)([^'\"\s,;)]+)((?:'|\")?)",
-    re.IGNORECASE,
-)
-GENERIC_URL_CREDENTIAL_RE = re.compile(
-    r"\b([A-Za-z][A-Za-z0-9+.-]*://)([^/\s:@]+):([^@\s/]+)@",
-    re.IGNORECASE,
-)
-URI_HOST_RE = re.compile(
-    r"\b(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)"
-    r"(?P<credential><redacted>@)?"
-    r"(?P<host>\[[^\]\s]+\]|[^/\s:?#'\"`]+)"
-    r"(?P<port>:\d+)?"
-)
-USER_PATH_RE = re.compile(r"(?i)(/user/)[^/\s'\"`]+")
 REPO_DIR = Path(__file__).resolve().parents[2]
 
 
-class CollectorError(Exception):
-    """Raised for validation or collection failures that are safe to print."""
-
-
-@dataclass(frozen=True)
-class StatementPlan:
-    table: str
-    label: str
-    sql: str
-
-
-@dataclass
-class StatementResult:
-    table: str
-    label: str
-    sql: str
-    status: str
-    stdout: str = ""
-    stderr: str = ""
-    returncode: int | None = None
-    error: str = ""
-    stdout_raw_bytes: int = 0
-    stdout_bytes: int = 0
-    stdout_normalized: bool = False
-    stderr_raw_bytes: int = 0
-    stderr_bytes: int = 0
-    stderr_normalized: bool = False
-
-
 Runner = Callable[..., subprocess.CompletedProcess[bytes]]
-
-
-def redact_impala_context_text(text: object) -> str:
-    redacted = redact_profile_text(str(text))
-    redacted = GENERIC_URL_CREDENTIAL_RE.sub(r"\1<redacted>@", redacted)
-    redacted = redact_uri_hosts(redacted)
-    redacted = SQL_SECRET_VALUE_RE.sub(r"\1<redacted>\3", redacted)
-    redacted = USER_PATH_RE.sub(r"\1<user>", redacted)
-    return redacted
-
-
-def redact_uri_hosts(text: str) -> str:
-    host_redactor = HostAliasRedactor()
-
-    def replace_host(match: re.Match[str]) -> str:
-        host = match.group("host")
-        if host.startswith("host_"):
-            alias = host
-        else:
-            alias = host_redactor.alias_for(host.strip("[]"))
-        return (
-            f"{match.group('scheme')}{match.group('credential') or ''}"
-            f"{alias}{match.group('port') or ''}"
-        )
-
-    return URI_HOST_RE.sub(replace_host, text)
-
-
-def normalize_table_identifier(raw_table: str) -> str:
-    table = raw_table.strip()
-    if not table:
-        raise CollectorError("Table identifier must not be empty.")
-    if any(marker in table for marker in (";", "--", "/*", "*/")):
-        raise CollectorError(f"Refusing unsafe table identifier: {raw_table!r}")
-    if any(quote in table for quote in ("'", '"')):
-        raise CollectorError(f"Refusing quoted table identifier: {raw_table!r}")
-    if re.search(r"\s", table):
-        raise CollectorError(f"Refusing table identifier with whitespace: {raw_table!r}")
-
-    parts = table.split(".")
-    if len(parts) != 2:
-        raise CollectorError(
-            f"Refusing table identifier {raw_table!r}; expected exactly db.table."
-        )
-
-    normalized_parts: list[str] = []
-    for part in parts:
-        match = IDENTIFIER_PART_RE.fullmatch(part)
-        if not match:
-            raise CollectorError(f"Refusing unsupported table identifier: {raw_table!r}")
-        normalized_parts.append(match.group(1) or match.group(2))
-    return ".".join(normalized_parts)
-
-
-def normalize_database_identifier(raw_database: str) -> str:
-    database = raw_database.strip()
-    if not database:
-        raise CollectorError("Database identifier must not be empty.")
-    if any(marker in database for marker in (";", "--", "/*", "*/")):
-        raise CollectorError(f"Refusing unsafe database identifier: {raw_database!r}")
-    if any(quote in database for quote in ("'", '"')):
-        raise CollectorError(f"Refusing quoted database identifier: {raw_database!r}")
-    if re.search(r"\s", database) or "." in database:
-        raise CollectorError(f"Refusing unsupported database identifier: {raw_database!r}")
-    match = IDENTIFIER_PART_RE.fullmatch(database)
-    if not match:
-        raise CollectorError(f"Refusing unsupported database identifier: {raw_database!r}")
-    return match.group(1) or match.group(2)
-
-
-def dedupe_preserve_order(values: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
-
-
-def build_statement_plan(tables: Iterable[str]) -> list[StatementPlan]:
-    plans: list[StatementPlan] = []
-    for table in tables:
-        normalized_table = normalize_table_identifier(table)
-        plans.extend(
-            [
-                StatementPlan(
-                    table=normalized_table,
-                    label="SHOW CREATE TABLE",
-                    sql=f"SHOW CREATE TABLE {normalized_table}",
-                ),
-                StatementPlan(
-                    table=normalized_table,
-                    label="SHOW TABLE STATS",
-                    sql=f"SHOW TABLE STATS {normalized_table}",
-                ),
-                StatementPlan(
-                    table=normalized_table,
-                    label="SHOW COLUMN STATS",
-                    sql=f"SHOW COLUMN STATS {normalized_table}",
-                ),
-            ]
-        )
-    return plans
-
-
-def validate_read_only_statement(sql: str, table: str) -> None:
-    normalized = " ".join(sql.strip().rstrip(";").split())
-    allowed = {f"{prefix} {table}" for prefix in ALLOWED_STATEMENTS}
-    if normalized not in allowed:
-        raise CollectorError(f"Refusing unsupported Impala statement: {sql}")
 
 
 def build_impala_shell_args(args: argparse.Namespace, sql: str) -> list[str]:
@@ -315,117 +173,6 @@ def is_create_view_output(text: str) -> bool:
 
 def is_view_not_applicable_error(stdout: str, stderr: str) -> bool:
     return bool(VIEW_NOT_APPLICABLE_RE.search(stdout) or VIEW_NOT_APPLICABLE_RE.search(stderr))
-
-
-def planned_result(plan: StatementPlan) -> StatementResult:
-    return StatementResult(
-        table=plan.table,
-        label=plan.label,
-        sql=plan.sql,
-        status="planned",
-    )
-
-
-def not_applicable_result(plan: StatementPlan, reason: str) -> StatementResult:
-    return StatementResult(
-        table=plan.table,
-        label=plan.label,
-        sql=plan.sql,
-        status="not_applicable",
-        error=reason,
-    )
-
-
-def result_to_json(result: StatementResult) -> dict[str, object]:
-    return {
-        "table": result.table,
-        "statement": result.label,
-        "sql": result.sql,
-        "status": result.status,
-        "returncode": result.returncode,
-        "error": result.error,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-        "stdout_raw_bytes": result.stdout_raw_bytes,
-        "stdout_bytes": result.stdout_bytes,
-        "stdout_normalized": result.stdout_normalized,
-        "stderr_raw_bytes": result.stderr_raw_bytes,
-        "stderr_bytes": result.stderr_bytes,
-        "stderr_normalized": result.stderr_normalized,
-    }
-
-
-def render_statement_output(result: StatementResult) -> str:
-    output = result.stdout.strip()
-    if result.stderr.strip():
-        output = (output + "\n\nstderr:\n" + result.stderr.strip()).strip()
-    if result.error:
-        output = (output + "\n\nerror: " + result.error).strip()
-    return output or "(no output captured)"
-
-
-def render_markdown(
-    *,
-    timestamp: str,
-    tables: list[str],
-    results: list[StatementResult],
-    args: argparse.Namespace,
-) -> str:
-    lines = [
-        "# Impala Context",
-        "",
-        "## Collection Summary",
-        f"- collection timestamp: {timestamp}",
-        f"- tables requested: {len(tables)}",
-        "- read-only statements only: yes",
-        f"- max output bytes: {args.max_output_bytes}",
-        f"- timeout seconds: {args.timeout_sec}",
-        "- redaction: enabled",
-        f"- dry-run: {'yes' if args.dry_run else 'no'}",
-        "",
-    ]
-
-    for table in tables:
-        lines += [f"## Table: {table}", ""]
-        for result in [item for item in results if item.table == table]:
-            fence = "sql" if result.label == "SHOW CREATE TABLE" else "text"
-            lines += [
-                f"### {result.label}",
-                f"status: {result.status}",
-                "",
-                f"```{fence}",
-                render_statement_output(result),
-                "```",
-                "",
-            ]
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def write_outputs(
-    out_dir: Path,
-    *,
-    timestamp: str,
-    tables: list[str],
-    results: list[StatementResult],
-    args: argparse.Namespace,
-) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    markdown = render_markdown(timestamp=timestamp, tables=tables, results=results, args=args)
-    payload = {
-        "collection_timestamp": timestamp,
-        "tables": tables,
-        "read_only_statements_only": True,
-        "max_output_bytes": args.max_output_bytes,
-        "timeout_seconds": args.timeout_sec,
-        "redaction": "enabled",
-        "dry_run": args.dry_run,
-        "results": [result_to_json(result) for result in results],
-    }
-    (out_dir / "impala_context.md").write_text(markdown, encoding="utf-8")
-    (out_dir / "impala_context.json").write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
 
 
 def collect_impala_context(

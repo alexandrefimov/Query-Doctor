@@ -604,9 +604,18 @@ Planned direction:
 
 Priority split candidates:
 
+- Broad package refactoring is now in a stabilization phase. Do not continue
+  splitting modules only because they are near 400-600 lines. Further splits
+  should be driven by a feature, a safety review, repeated edit conflicts, or a
+  clearly mixed responsibility.
+- `query_doctor.web.trusted_artifacts`: treat this as an audit-heavy browser
+  trust boundary, not a normal size-reduction target. Split it only if the
+  resulting sub-boundaries are obvious and covered by dedicated trust-boundary
+  tests.
 - `query_doctor.analyzer.*`: keep splitting profile parsing, findings,
   backend-tail analysis, metrics correlation, and facts rendering when behavior
-  work needs it;
+  work needs it. Backend-tail parsing and backend-tail scoring/rendered JSON
+  are already separated.
 - `query_doctor.web.*`: split app assembly, routes, job orchestration, command
   builders, trusted artifact loading, and case resolution. The future
   `query_doctor/web/app.py` should register routes only, not contain heavy
@@ -614,14 +623,29 @@ Priority split candidates:
 - `query_doctor.cli.report`: split prompt contract, report sanitizer,
   validation, recommendation candidates, trusted-report rendering, and streaming
   client code;
-- `query_doctor.cli.collect_cm_profiles`: split CM HTTP/provider code, query
-  discovery, profile collection, time-series collection, redaction, and writing;
+- CM collector/config modules: keep the current split between CLI args, config
+  defaults, config value readers, validation policy, builder logic, client,
+  query discovery, profile collection and time-series collection;
 - Impala metadata modules: split shell/protocol execution, Kerberos/cache
-  handling, metadata allowlist, workflow orchestration, digesting and analyzer
-  integration under an `impala/` package;
+  handling, metadata allowlist, workflow orchestration, result rendering,
+  digesting and analyzer integration under the `impala/` package;
 - optimizer modules: keep SQL parsing, risk classification, validation,
-  fallback recommendations, recipes, LLM draft generation and web presentation
-  independently testable.
+  rewrite-safety guards, fragment helpers, fallback recommendations, recipes,
+  LLM draft generation and web presentation independently testable.
+
+Stabilization checkpoint:
+
+- The root-level compatibility launchers are removed. Supported commands are
+  packaged `query-doctor-*` console scripts and `python -m query_doctor.cli...`.
+- The package-first refactor has established the main ownership boundaries for
+  analyzer backend-tail analysis, recent-scan presenters, web details renderers,
+  optimizer SQL validation helpers, CM collector CLI/config, and Impala metadata
+  result rendering.
+- Remaining files around 400-600 lines are acceptable when they are cohesive
+  boundaries: browser artifact trust, static UI help, scoring models, analyzer
+  orchestration, report trusted text, and explicit CLI orchestration.
+- Next cleanup work should start with a focused audit or failing feature pain,
+  not with a line-count target.
 
 Target package shape, refined for current product boundaries:
 

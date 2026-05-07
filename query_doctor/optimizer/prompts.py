@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-from query_doctor.cli.report import recommendation_candidate_lines
 from query_doctor.optimizer.models import OptimizerRiskDecision
 from query_doctor.optimizer.recipes import detect_optimizer_rewrite_recipe
 from query_doctor.optimizer.recommendations import (
@@ -13,6 +12,7 @@ from query_doctor.optimizer.recommendations import (
     optimizer_mode_contract,
     optimizer_prompt_rewrite_bullets,
 )
+from query_doctor.report.recommendation_candidates import recommendation_candidate_lines
 
 
 def build_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
@@ -140,7 +140,6 @@ PYTHON-OWNED OPTIMIZER FACT DIGEST BEGIN
 {json.dumps(digest, ensure_ascii=False, indent=2, sort_keys=True)}
 PYTHON-OWNED OPTIMIZER FACT DIGEST END
 """.strip()
-
 
 
 

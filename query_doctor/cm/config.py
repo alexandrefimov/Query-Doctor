@@ -5,96 +5,46 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from query_doctor.config.contract import (
-    ConfigError,
-    RECENT_ORDER_CHOICES,
-    load_and_validate_config,
+from query_doctor.config.contract import ConfigError
+from query_doctor.cm.client import DEFAULT_MAX_PROFILE_BYTES, DEFAULT_MAX_TIMESERIES_BYTES
+from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE
+from query_doctor.cm.config_defaults import (
+    DEFAULT_LIMIT,
+    DEFAULT_MIN_DURATION_SEC,
+    DEFAULT_RECENT_LIMIT,
+    DEFAULT_RECENT_SELECT,
+    DEFAULT_RECENT_WINDOW_MINUTES,
+    DEFAULT_SINCE_HOURS,
+    MAX_RECENT_LIMIT,
+    MAX_RECENT_SELECT,
 )
-from query_doctor.cm.client import DEFAULT_MAX_PROFILE_BYTES, DEFAULT_MAX_TIMESERIES_BYTES, normalize_optional_string
-from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE, normalize_cm_metrics_profile
 from query_doctor.cm.models import (
     CMHttpConfig,
     CMQueryFilters,
     CollectorConfig,
     CredentialSummary,
 )
+from query_doctor.cm.config_values import (
+    bool_setting,
+    float_setting,
+    int_setting,
+    load_effective_local_config,
+    path_string_setting,
+    resolve_optional_output_json,
+    string_setting,
+)
+from query_doctor.cm.config_validation import (
+    validate_cm_metrics_profile,
+    validate_output_path,
+    validate_recent_duration_bounds,
+    validate_recent_limit,
+    validate_recent_order,
+    validate_recent_select,
+)
 from query_doctor.cm.timeseries import DEFAULT_CM_TIMESERIES_PADDING_SEC, DEFAULT_MAX_TIMESERIES_POINTS
 
 
-DEFAULT_SINCE_HOURS = 24
-DEFAULT_LIMIT = 20
-DEFAULT_MIN_DURATION_SEC = 60
-DEFAULT_RECENT_LIMIT = 20
-DEFAULT_RECENT_SELECT = 5
-DEFAULT_RECENT_WINDOW_MINUTES = 60
-MAX_RECENT_LIMIT = 100
-MAX_RECENT_SELECT = 20
-
 REPO_DIR = Path(__file__).resolve().parents[2]
-
-
-def validate_recent_limit(value: int | None) -> int:
-    limit = value or DEFAULT_RECENT_LIMIT
-    if limit > MAX_RECENT_LIMIT:
-        raise ConfigError(
-            f"--recent-limit must be <= {MAX_RECENT_LIMIT} for bounded listing."
-        )
-    return limit
-
-
-def validate_recent_select(value: int | None, limit_value: int | None) -> int:
-    recent_limit = validate_recent_limit(limit_value)
-    selected = value or min(DEFAULT_RECENT_SELECT, recent_limit)
-    if selected > MAX_RECENT_SELECT:
-        raise ConfigError(
-            f"--recent-select must be <= {MAX_RECENT_SELECT} for bounded listing."
-        )
-    if selected > recent_limit:
-        raise ConfigError("--recent-select must be <= --recent-limit.")
-    return selected
-
-
-def validate_recent_duration_bounds(
-    min_duration_sec: float | None,
-    max_duration_sec: float | None,
-) -> tuple[float | None, float | None]:
-    if (
-        min_duration_sec is not None
-        and max_duration_sec is not None
-        and max_duration_sec < min_duration_sec
-    ):
-        raise ConfigError(
-            "--recent-max-duration-sec must be >= --recent-min-duration-sec."
-        )
-    return min_duration_sec, max_duration_sec
-
-
-def validate_recent_order(value: str | None) -> str:
-    order = value or "recent"
-    if order not in RECENT_ORDER_CHOICES:
-        raise ConfigError(
-            "recent_order must be one of: " + ", ".join(RECENT_ORDER_CHOICES) + "."
-        )
-    return order
-
-
-def validate_cm_metrics_profile(value: str | None) -> str:
-    try:
-        return normalize_cm_metrics_profile(value)
-    except ValueError as exc:
-        raise ConfigError(str(exc)) from exc
-
-
-def resolve_optional_output_json(value: str | None, *, cwd: Path) -> Path | None:
-    normalized = normalize_optional_string(value)
-    if not normalized:
-        return None
-    path = Path(normalized).expanduser()
-    if not path.is_absolute():
-        path = cwd / path
-    if path.exists() and path.is_dir():
-        raise ConfigError("--recent-output-json must point to a file, not a directory.")
-    return path
 
 
 def build_config(
@@ -343,109 +293,6 @@ def build_config(
     )
 
 
-def load_effective_local_config(
-    config_path: str | None,
-    *,
-    cwd: Path,
-    repo_root: Path,
-    use_repo_default: bool = True,
-) -> dict[str, object]:
-    result = load_and_validate_config(
-        config_path,
-        cwd=cwd,
-        repo_root=repo_root,
-        use_repo_default=use_repo_default,
-    )
-    return result.values
-
-
-def string_setting(
-    name: str,
-    *,
-    cli_value: str | None,
-    config_values: dict[str, object],
-    env_value: str | None = None,
-    default: str | None = None,
-) -> str | None:
-    for value in (cli_value, env_value, config_values.get(name), default):
-        if value is None:
-            continue
-        normalized = str(value).strip()
-        if normalized:
-            return normalized
-    return None
-
-
-def path_string_setting(
-    name: str,
-    *,
-    cli_value: str | None,
-    config_values: dict[str, object],
-    env_value: str | None = None,
-    default: str | None = None,
-) -> str | None:
-    value = string_setting(
-        name,
-        cli_value=cli_value,
-        config_values=config_values,
-        env_value=env_value,
-        default=default,
-    )
-    return str(Path(value).expanduser()) if value else None
-
-
-def int_setting(
-    name: str,
-    *,
-    cli_value: int | None,
-    config_values: dict[str, object],
-    env_value: str | None = None,
-    default: int,
-) -> int:
-    if cli_value is not None:
-        return cli_value
-    if env_value is not None:
-        if not env_value.strip():
-            raise ConfigError(f"Environment value for {name} must be a positive integer.")
-        try:
-            parsed = int(env_value.strip())
-        except ValueError as exc:
-            raise ConfigError(f"Environment value for {name} must be an integer.") from exc
-        if parsed <= 0:
-            raise ConfigError(f"Environment value for {name} must be a positive integer.")
-        return parsed
-    if name in config_values:
-        return int(config_values[name])
-    return default
-
-
-def float_setting(
-    name: str,
-    *,
-    cli_value: float | None,
-    config_values: dict[str, object],
-    default: float | None = None,
-) -> float | None:
-    if cli_value is not None:
-        return cli_value
-    if name in config_values:
-        return float(config_values[name])
-    return default
-
-
-def bool_setting(
-    name: str,
-    *,
-    cli_value: bool | None,
-    config_values: dict[str, object],
-    default: bool,
-) -> bool:
-    if cli_value is not None:
-        return bool(cli_value)
-    value = config_values.get(name, default)
-    return bool(value)
-
-
 def build_http_config(
     config: CollectorConfig,
     *,
@@ -517,19 +364,3 @@ def build_preflight_query_filters(config: CollectorConfig) -> CMQueryFilters:
         query_id=config.query_id,
         query_type=config.query_type,
     )
-
-
-def validate_output_path(value: str, *, cwd: Path, repo_root: Path) -> Path:
-    if value is None or not value.strip():
-        raise ConfigError("Missing --out.")
-
-    raw_path = Path(value).expanduser()
-    path = raw_path if raw_path.is_absolute() else cwd / raw_path
-    resolved = path.resolve(strict=False)
-
-    if resolved == Path(resolved.anchor):
-        raise ConfigError("Refusing to use filesystem root as --out.")
-    if resolved == repo_root.resolve(strict=False):
-        raise ConfigError("Refusing to use the current repository root as --out.")
-
-    return resolved

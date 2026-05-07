@@ -13,10 +13,7 @@ from query_doctor.web.ui.recent_scan_details import (
     display_score,
     escape_value,
 )
-from query_doctor.web.trusted_artifacts import (
-    OPTIMIZER_STATUS_ORDER,
-    decorate_cases_with_optimizer_artifact_status,
-)
+from query_doctor.web.trusted_artifacts import decorate_cases_with_optimizer_artifact_status
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseRowView,
     numeric_count,
@@ -24,17 +21,28 @@ from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_case_row,
     present_recent_scan_summary,
 )
-
-
-QUERY_GROUPS = {
-    "bad": ("Bad queries", {"failed", "high"}),
-    "suspicious": ("Suspicious queries", {"suspicious"}),
-    "optimizer_ready": ("Optimizer-ready", set()),
-    "optimization": ("Optimization candidates", set()),
-    "stats": ("Stats refresh candidates", set()),
-}
-DEFAULT_QUERY_GROUP = "bad"
-
+from query_doctor.web.ui.recent_scan_groups import (
+    DEFAULT_QUERY_GROUP,
+    QUERY_GROUPS,
+    batch_table_column_count,
+    batch_table_head,
+    filter_rows_by_query_group,
+    filter_rows_by_spills,
+    normalize_query_group,
+    optimizer_artifact_is_trusted,
+    render_result_filters,
+    sort_rows_for_query_group,
+)
+from query_doctor.web.ui.recent_scan_progress import (
+    batch_progress_percent,
+    case_detail,
+    discovery_detail,
+    metadata_detail,
+    progress_step,
+    read_batch_progress_events,
+    render_batch_progress_panel,
+    summarize_batch_progress,
+)
 
 def render_batch_card(
     settings: Any,
@@ -135,188 +143,6 @@ def render_batch_summary(
         "</table></div>"
         "</section>"
     )
-
-
-def batch_table_columns(query_group: str) -> tuple[str, ...]:
-    normalized = normalize_query_group(query_group)
-    if normalized in {"optimizer_ready", "optimization"}:
-        return (
-            "Rank",
-            "Query ID",
-            "User",
-            "Duration",
-            "Candidate",
-            "Impact",
-            "Confidence",
-            "Optimizer",
-            "Review first",
-            "Summary",
-        )
-    if normalized == "stats":
-        return ("Rank", "Query ID", "User", "Duration", "Candidate", "Need", "Speed benefit", "Confidence", "Confirm", "Summary")
-    return ("Rank", "Query ID", "User", "Score", "Duration", "STATS", "META", "Summary")
-
-
-def batch_table_column_count(query_group: str) -> int:
-    return len(batch_table_columns(query_group))
-
-
-def batch_table_head(query_group: str) -> str:
-    headers = "".join(f"<th>{html.escape(label)}</th>" for label in batch_table_columns(query_group))
-    return f"<thead><tr>{headers}</tr></thead>"
-
-
-def normalize_query_group(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    return text if text in QUERY_GROUPS else DEFAULT_QUERY_GROUP
-
-
-def filter_rows_by_query_group(
-    rows: tuple[RecentScanCaseRowView, ...],
-    query_group: str,
-) -> tuple[RecentScanCaseRowView, ...]:
-    normalized = normalize_query_group(query_group)
-    if normalized == "optimizer_ready":
-        return tuple(
-            row
-            for row in rows
-            if row.optimization_tier in {"high", "medium"} and optimizer_artifact_is_trusted(row.optimization_artifact_status)
-        )
-    if normalized == "optimization":
-        return tuple(row for row in rows if row.optimization_tier in {"high", "medium"})
-    if normalized == "stats":
-        return tuple(row for row in rows if row.stats_tier in {"high", "medium"})
-    _label, severities = QUERY_GROUPS[normalized]
-    return tuple(row for row in rows if row.score_severity in severities)
-
-
-def sort_rows_for_query_group(
-    rows: tuple[RecentScanCaseRowView, ...],
-    query_group: str,
-) -> tuple[RecentScanCaseRowView, ...]:
-    normalized = normalize_query_group(query_group)
-    if normalized not in {"optimizer_ready", "optimization", "stats"}:
-        return rows
-    if normalized == "stats":
-        stats_tier_order = {"high": 4, "medium": 3, "low": 2, "unknown": 1, "not_likely": 0}
-        confidence_order = {"high": 2, "medium": 1, "low": 0}
-        impact_order = {"high": 2, "medium": 1, "low": 0}
-        return tuple(
-            sorted(
-                rows,
-                key=lambda row: (
-                    -stats_tier_order.get(row.stats_tier, 0),
-                    -row.stats_score,
-                    -confidence_order.get(row.stats_confidence, 0),
-                    -impact_order.get(row.stats_impact, 0),
-                    -numeric_value(row.duration_sec),
-                    row.rank,
-                ),
-            )
-        )
-    tier_order = {"high": 3, "medium": 2, "low": 1, "not_likely": 0}
-    impact_order = {"high": 2, "medium": 1, "low": 0}
-    if normalized == "optimizer_ready":
-        return tuple(
-            sorted(
-                rows,
-                key=lambda row: (
-                    -OPTIMIZER_STATUS_ORDER.get(row.optimization_artifact_status, 0),
-                    -tier_order.get(row.optimization_tier, 0),
-                    -row.optimization_score,
-                    -impact_order.get(row.optimization_impact, 0),
-                    -numeric_value(row.duration_sec),
-                    row.rank,
-                ),
-            )
-        )
-    return tuple(
-        sorted(
-            rows,
-            key=lambda row: (
-                -tier_order.get(row.optimization_tier, 0),
-                -row.optimization_score,
-                -impact_order.get(row.optimization_impact, 0),
-                -OPTIMIZER_STATUS_ORDER.get(row.optimization_artifact_status, 0),
-                -numeric_value(row.duration_sec),
-                row.rank,
-            ),
-        )
-    )
-
-
-def filter_rows_by_spills(
-    rows: tuple[RecentScanCaseRowView, ...],
-    *,
-    only_with_spills: bool,
-) -> tuple[RecentScanCaseRowView, ...]:
-    if not only_with_spills:
-        return rows
-    return tuple(row for row in rows if row.has_spill)
-
-
-def render_query_group_switcher(
-    rows: tuple[RecentScanCaseRowView, ...],
-    active_group: str,
-    *,
-    only_with_spills: bool = False,
-) -> str:
-    rows_for_counts = filter_rows_by_spills(rows, only_with_spills=only_with_spills)
-    counts = {
-        key: (
-            sum(
-                1
-                for row in rows_for_counts
-                if row.optimization_tier in {"high", "medium"}
-                and optimizer_artifact_is_trusted(row.optimization_artifact_status)
-            )
-            if key == "optimizer_ready"
-            else sum(1 for row in rows_for_counts if row.optimization_tier in {"high", "medium"})
-            if key == "optimization"
-            else sum(1 for row in rows_for_counts if row.stats_tier in {"high", "medium"})
-            if key == "stats"
-            else sum(1 for row in rows_for_counts if row.score_severity in severities)
-        )
-        for key, (_label, severities) in QUERY_GROUPS.items()
-    }
-    links = []
-    for key, (label, _severities) in QUERY_GROUPS.items():
-        css_class = "batch-filter-link batch-filter-link--active" if key == active_group else "batch-filter-link"
-        href = f"?query_group={html.escape(key, quote=True)}"
-        if only_with_spills:
-            href += "&only_with_spills=on"
-        href += "#recent-results"
-        links.append(
-            f"<a class=\"{css_class}\" href=\"{href}\">"
-            f"{html.escape(label)} <span>{counts[key]}</span></a>"
-        )
-    return f"<nav class=\"batch-filter-tabs\" aria-label=\"Query result filter\">{''.join(links)}</nav>"
-
-
-def render_result_filters(
-    rows: tuple[RecentScanCaseRowView, ...],
-    active_group: str,
-    *,
-    only_with_spills: bool = False,
-) -> str:
-    switcher = render_query_group_switcher(rows, active_group, only_with_spills=only_with_spills)
-    spill_toggle = render_spill_filter_toggle(active_group, only_with_spills=only_with_spills)
-    return f"<div class=\"batch-result-filters\">{switcher}{spill_toggle}</div>"
-
-
-def render_spill_filter_toggle(active_group: str, *, only_with_spills: bool = False) -> str:
-    href = f"?query_group={html.escape(normalize_query_group(active_group), quote=True)}"
-    active_class = " batch-spill-toggle--active" if only_with_spills else ""
-    if not only_with_spills:
-        href += "&only_with_spills=on"
-    href += "#recent-results"
-    return (
-        f"<a class=\"batch-spill-toggle{active_class}\" href=\"{href}\" "
-        f"aria-label=\"Only queries with spills\" aria-pressed=\"{str(only_with_spills).lower()}\">"
-        f"<span class=\"batch-spill-check\" aria-hidden=\"true\">{'✓' if only_with_spills else ''}</span>"
-        "<span>Only queries with spills</span></a>"
-    )
-
 
 def render_batch_scope_note(summary: dict[str, Any]) -> str:
     parts = list(present_recent_scan_summary(summary).scope_parts)
@@ -498,11 +324,6 @@ def optimizer_artifact_status_label(value: Any) -> str:
     }
     return labels.get(str(value or "unknown"), "Unknown")
 
-
-def optimizer_artifact_is_trusted(value: Any) -> bool:
-    return OPTIMIZER_STATUS_ORDER.get(str(value or "unknown"), 0) >= 3
-
-
 def metadata_cell(status: Any) -> str:
     normalized = str(status).lower() if status is not None else "unknown"
     if normalized in {"ok", "available", "done", "collected"}:
@@ -558,234 +379,3 @@ def batch_case_id(case: dict[str, Any]) -> str | None:
     if parsed <= 0:
         return None
     return f"case-{parsed:03d}"
-
-
-def render_batch_progress_panel(progress_path: Path | None, job_status: str = "running") -> str:
-    events = read_batch_progress_events(progress_path)
-    summary = summarize_batch_progress(events, job_status=job_status)
-    steps = "".join(
-        "<div class=\"batch-progress-step batch-progress-step--{state}\">"
-        "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
-            state=html.escape(step["state"]),
-            icon=html.escape(step["icon"]),
-            label=html.escape(step["label"]),
-            detail=html.escape(step["detail"]),
-        )
-        for step in summary["steps"]
-    )
-    metrics = "".join(
-        f"<span>{html.escape(label)}: {html.escape(str(value))}</span>"
-        for label, value in summary["metrics"]
-    )
-    metrics_html = f"<div class=\"batch-progress-metrics\">{metrics}</div>" if metrics else ""
-    return (
-        "<div class=\"batch-progress\" aria-label=\"Batch progress\">"
-        f"<div class=\"batch-progress-steps\">{steps}</div>"
-        f"{metrics_html}"
-        "</div>"
-    )
-
-
-def batch_progress_percent(progress_path: Path | None, job_status: str = "running") -> int:
-    events = read_batch_progress_events(progress_path)
-    summary = summarize_batch_progress(events, job_status=job_status)
-    steps = summary["steps"]
-    if not steps:
-        return 0
-    complete_states = {"done", "skipped"}
-    completed = sum(1 for step in steps if step.get("state") in complete_states)
-    return round(completed * 100 / len(steps))
-
-
-def read_batch_progress_events(progress_path: Path | None) -> list[dict[str, Any]]:
-    if progress_path is None or not progress_path.is_file():
-        return []
-    events: list[dict[str, Any]] = []
-    try:
-        for line in progress_path.read_text(encoding="utf-8").splitlines()[-50000:]:
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(event, dict):
-                events.append(event)
-    except OSError:
-        return []
-    return events
-
-
-def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -> dict[str, Any]:
-    counters = {
-        "total": 0,
-        "jobs": None,
-        "summaries_inspected": None,
-        "candidates_selected": None,
-        "duration_filter": None,
-        "collection_done": 0,
-        "collection_failed": 0,
-        "analysis_done": 0,
-        "analysis_started": 0,
-        "analysis_failed": 0,
-        "failed": 0,
-        "metadata_total": None,
-        "metadata_done": 0,
-        "metadata_skip_reason": None,
-    }
-    states = {
-        "discovery": "pending",
-        "collection": "pending",
-        "analysis": "pending",
-        "metadata": "pending",
-        "summary": "pending",
-        "completed": "pending",
-    }
-    for event in events:
-        stage = str(event.get("stage") or "")
-        status = str(event.get("status") or "")
-        if stage == "discovery":
-            if status == "started":
-                states["discovery"] = "running"
-            elif status == "done":
-                states["discovery"] = "done"
-                counters["summaries_inspected"] = event.get("summaries_inspected")
-                counters["candidates_selected"] = event.get("candidates_selected")
-                counters["duration_filter"] = event.get("duration_filter")
-            elif status == "failed":
-                states["discovery"] = "failed"
-        elif stage == "case_processing":
-            if status == "started":
-                counters["total"] = numeric_count(event.get("total"))
-                counters["jobs"] = event.get("jobs")
-                states["collection"] = "running"
-            elif status == "done":
-                states["collection"] = "done"
-                states["analysis"] = "done"
-        elif stage == "case":
-            if status == "collection_started" and states["collection"] != "done":
-                states["collection"] = "running"
-            elif status == "collection_done":
-                counters["collection_done"] += 1
-            elif status == "analysis_started" and states["analysis"] != "done":
-                counters["analysis_started"] += 1
-                if states["collection"] != "failed":
-                    states["collection"] = "done"
-                states["analysis"] = "running"
-            elif status == "analysis_done":
-                counters["analysis_done"] += 1
-            elif status == "failed":
-                counters["failed"] += 1
-                if event.get("phase") == "collection":
-                    counters["collection_failed"] += 1
-                elif event.get("phase") == "analysis":
-                    counters["analysis_failed"] += 1
-        elif stage == "summary":
-            if status == "started":
-                states["collection"] = "done"
-                states["analysis"] = "done"
-                if states["metadata"] == "running":
-                    states["metadata"] = "done"
-                states["summary"] = "running"
-            elif status == "done":
-                states["summary"] = "done"
-        elif stage == "metadata_refresh":
-            if status == "started":
-                if states["collection"] != "failed":
-                    states["collection"] = "done"
-                if states["analysis"] != "failed":
-                    states["analysis"] = "done"
-                states["metadata"] = "running"
-                if not event.get("case_id"):
-                    counters["metadata_total"] = numeric_count(event.get("total"))
-            elif status == "done":
-                if event.get("case_id"):
-                    counters["metadata_done"] += 1
-                else:
-                    states["metadata"] = "done"
-            elif status == "failed":
-                counters["failed"] += 1
-            elif status == "skipped":
-                states["metadata"] = "skipped"
-                counters["metadata_skip_reason"] = event.get("reason")
-        elif stage == "batch":
-            if status == "done":
-                states["completed"] = "done"
-                states["summary"] = "done"
-                states["collection"] = "done"
-                states["analysis"] = "done"
-                if states["metadata"] == "running":
-                    states["metadata"] = "done"
-                elif states["metadata"] == "pending":
-                    states["metadata"] = "skipped"
-            elif status == "failed":
-                states["completed"] = "failed"
-    if job_status == "failed" and states["completed"] != "done":
-        states["completed"] = "failed"
-    if job_status == "ok":
-        states["completed"] = "done"
-        for key in ("discovery", "collection", "analysis", "summary"):
-            if states[key] in {"pending", "running"}:
-                states[key] = "done"
-        if states["metadata"] in {"pending", "running"}:
-            states["metadata"] = "skipped"
-    total = numeric_count(counters["total"])
-    if total:
-        if counters["collection_done"] + counters["collection_failed"] >= total and states["collection"] != "failed":
-            states["collection"] = "done"
-        if counters["analysis_done"] + counters["analysis_failed"] >= total and states["analysis"] != "failed":
-            states["analysis"] = "done"
-    processed = counters["analysis_done"] + counters["failed"]
-    metrics = []
-    if counters["summaries_inspected"] is not None:
-        metrics.append(("summaries", counters["summaries_inspected"]))
-    if counters["candidates_selected"] is not None:
-        metrics.append(("candidates", counters["candidates_selected"]))
-    if counters["duration_filter"] is not None:
-        metrics.append(("duration filter", counters["duration_filter"]))
-    if total:
-        metrics.append(("cases processed", f"{processed}/{total}"))
-    if counters["failed"]:
-        metrics.append(("failed cases", counters["failed"]))
-    if counters["jobs"] is not None:
-        metrics.append(("jobs", counters["jobs"]))
-    return {
-        "steps": [
-            progress_step("CM discovery", states["discovery"], discovery_detail(counters)),
-            progress_step("Profile collection", states["collection"], case_detail(counters, "collection_done")),
-            progress_step("Analyzer scoring", states["analysis"], case_detail(counters, "analysis_done")),
-            progress_step("Metadata refresh", states["metadata"], metadata_detail(counters)),
-            progress_step("Ranking / summary", states["summary"], "summary written" if states["summary"] == "done" else "waiting"),
-            progress_step("Completed", states["completed"], "batch done" if states["completed"] == "done" else "waiting"),
-        ],
-        "metrics": metrics,
-    }
-
-
-def metadata_detail(counters: dict[str, Any]) -> str:
-    if counters.get("metadata_skip_reason"):
-        return str(counters["metadata_skip_reason"])
-    total = counters.get("metadata_total")
-    done = counters.get("metadata_done", 0)
-    if total is None:
-        return "not requested yet"
-    if not total:
-        return "not requested"
-    return f"{done}/{total} refreshed"
-
-
-def progress_step(label: str, state: str, detail: str) -> dict[str, str]:
-    icons = {"done": "✓", "running": "…", "failed": "!", "pending": "·", "skipped": "−"}
-    return {"label": label, "state": state, "icon": icons.get(state, "·"), "detail": detail}
-
-
-def discovery_detail(counters: dict[str, Any]) -> str:
-    if counters["candidates_selected"] is not None:
-        return f"{counters['candidates_selected']} selected"
-    return "waiting"
-
-
-def case_detail(counters: dict[str, Any], key: str) -> str:
-    total = numeric_count(counters["total"])
-    done = numeric_count(counters[key])
-    if total:
-        return f"{done}/{total}"
-    return "waiting"

@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 import re
 
-from query_doctor.cli.report import (
+from query_doctor.report.recommendation_candidates import recommendation_candidate_lines
+from query_doctor.report.recommendations import (
     canonical_recommendation_bullets,
     recommendation_candidate_id_for_bullet,
-    recommendation_candidate_lines,
 )
 from query_doctor.optimizer.models import OptimizerRewriteRecipe, OptimizerRiskDecision
 from query_doctor.optimizer.recommendations import optimizer_specific_recommendation_bullets

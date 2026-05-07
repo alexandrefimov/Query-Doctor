@@ -1,0 +1,218 @@
+"""Recent scan summary, scope, and signal presentation helpers."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from query_doctor.web.presenters.recent_scan_values import (
+    numeric_count,
+    numeric_value,
+    safe_display_text,
+    safe_truthy,
+)
+
+
+CANDIDATE_REASON_LABELS = {
+    "selected: SELECT-like user query": "SELECT/WITH query",
+    "selected: INSERT query": "INSERT query",
+    "selected: DELETE query": "DELETE query",
+    "selected: UPSERT query": "UPSERT query",
+    "selected: CREATE TABLE AS SELECT query": "CREATE TABLE AS SELECT query",
+    "selected: query type indicates user query; SQL verb unknown": "QUERY with unknown SQL verb",
+    "eligible but not selected because recent-select limit was reached": "analysis cap reached",
+    "excluded: user filter mismatch": "user filter mismatch",
+    "excluded: pool filter mismatch": "pool filter mismatch",
+    "excluded: query type filter mismatch": "query type mismatch",
+    "excluded: running query": "running query",
+    "excluded: failed query": "failed query",
+    "excluded: cancelled query": "cancelled query",
+    "excluded: Query Doctor collector smoke statement": "Query Doctor smoke statement",
+    "excluded: admin or metadata statement": "admin or metadata statement",
+    "excluded: not SELECT-like query text": "not SELECT/WITH query text",
+    "excluded: not analyzable query text": "not analyzable query text",
+    "excluded: query type is not user QUERY/SELECT": "not user QUERY/SELECT type",
+    "excluded: unknown statement type": "unknown statement type",
+    "excluded: duration unknown": "duration unknown",
+    "excluded: duration below recent-min-duration-sec": "below minimum duration",
+    "excluded: duration above recent-max-duration-sec": "above maximum duration",
+}
+
+
+def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
+    parts: list[str] = []
+    summaries = summary.get("summaries_inspected")
+    if summary.get("cm_summary_safety_cap_hit"):
+        cap = summary.get("cm_summary_safety_cap") or summaries
+        parts.append(f"CM match limit hit: {safe_display_text(cap)}")
+    elif summaries is not None:
+        parts.append(f"CM summaries inspected: {safe_display_text(summaries)}")
+    if summary.get("from_time") or summary.get("to_time"):
+        parts.append(
+            "CM time window: "
+            f"{safe_display_text(summary.get('from_time') or 'unknown')} -> "
+            f"{safe_display_text(summary.get('to_time') or 'unknown')}"
+        )
+    elif summary.get("recent_window_minutes") is not None:
+        parts.append(f"Search depth: {safe_display_text(summary.get('recent_window_minutes'))} minutes")
+    parts.append(f"Duration filter: {safe_display_text(summary.get('duration_filter') or 'none')}")
+    duration_filter_mode = str(summary.get("duration_filter_mode") or "").strip().lower()
+    if duration_filter_mode and duration_filter_mode != "none":
+        parts.append(f"Duration filtering: {safe_display_text(summary.get('duration_filter_mode'))}")
+    if summary.get("triage_profile_limit") is not None:
+        parts.append(f"Analyzer limit: {safe_display_text(summary.get('triage_profile_limit'))}")
+    if summary.get("metadata_top_limit") is not None:
+        parts.append(
+            f"Metadata budget: up to {safe_display_text(summary.get('metadata_top_limit'))} bad/suspicious cases"
+        )
+    if summary.get("query_type_filter") is not None:
+        parts.append(f"Query type: {query_type_filter_label(summary.get('query_type_filter'))}")
+    if summary.get("only_running"):
+        parts.append("Status: running only")
+    if summary.get("user_filter_present"):
+        parts.append("User filter: set")
+    else:
+        parts.append("User filter: all users")
+    if summary.get("pool_filter_present"):
+        parts.append("Pool filter: set")
+    else:
+        parts.append("Pool filter: all pools")
+    if summary.get("cm_jobs") is not None or summary.get("jobs") is not None:
+        parts.append(
+            "Parallelism: "
+            f"CM {safe_display_text(summary.get('cm_jobs') or 'n/a')}, "
+            f"analyzer {safe_display_text(summary.get('jobs') or 'n/a')}, "
+            f"metadata {safe_display_text(summary.get('metadata_jobs') or 'n/a')}"
+        )
+    parts.extend(candidate_selection_scope_parts(summary))
+    return tuple(parts)
+
+
+def candidate_selection_scope_parts(summary: dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    if "selected_count" in summary:
+        selected = numeric_count(summary.get("selected_count"))
+        parts.append(f"Analyzed queries: {safe_display_text(selected)}")
+    if "candidate_exclusion_count" in summary:
+        excluded = numeric_count(summary.get("candidate_exclusion_count"))
+        parts.append(f"Excluded before analysis: {safe_display_text(excluded)}")
+
+    reason_counts = summary.get("candidate_reason_counts")
+    if not isinstance(reason_counts, dict):
+        return parts
+    exclusion_reasons: list[tuple[str, int, str]] = []
+    for reason, count in reason_counts.items():
+        reason_text = str(reason)
+        if reason_text.startswith("selected:"):
+            continue
+        parsed_count = numeric_count(count)
+        if parsed_count is None or parsed_count <= 0:
+            continue
+        exclusion_reasons.append((reason_text, parsed_count, candidate_reason_label(reason_text)))
+    if exclusion_reasons:
+        top = "; ".join(
+            f"{label}: {count}{candidate_reason_sql_verb_detail(summary, reason)}"
+            for reason, count, label in exclusion_reasons[:3]
+        )
+        parts.append(f"Top exclusions: {safe_display_text(top)}")
+    return parts
+
+
+def candidate_reason_sql_verb_detail(summary: dict[str, Any], reason: str) -> str:
+    breakdowns = summary.get("candidate_reason_sql_verb_counts")
+    if not isinstance(breakdowns, dict):
+        return ""
+    counts = breakdowns.get(reason)
+    if not isinstance(counts, dict):
+        return ""
+    items: list[tuple[str, int]] = []
+    for verb, count in counts.items():
+        parsed = numeric_count(count)
+        if parsed is None or parsed <= 0:
+            continue
+        label = "unknown/no SQL verb" if str(verb).lower() == "unknown" else str(verb)
+        items.append((label, parsed))
+    items.sort(key=lambda item: (-item[1], item[0]))
+    if not items:
+        return ""
+    visible = items[:3]
+    hidden_total = sum(count for _label, count in items[3:])
+    parts = [f"{label} {count}" for label, count in visible]
+    if hidden_total:
+        parts.append(f"other {hidden_total}")
+    top = ", ".join(parts)
+    return f" ({top})"
+
+
+def query_type_filter_label(value: Any) -> str:
+    text = safe_display_text(value).strip()
+    if not text or text.lower() == "all":
+        return "all supported"
+    return text
+
+
+def candidate_reason_label(reason: str) -> str:
+    return CANDIDATE_REASON_LABELS.get(reason, safe_display_text(reason))
+
+
+def case_has_spill(case: dict[str, Any]) -> bool:
+    reasons = case.get("score_reasons")
+    if not isinstance(reasons, list):
+        return False
+    return any("spill/scratch evidence: non-zero metrics" in str(reason).lower() for reason in reasons)
+
+
+def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> str | None:
+    if summary.get("scan_too_broad"):
+        return "This hour has more matching queries than the scan limit. Narrow the filters or choose a smaller hour slice."
+    if summary.get("discovery_failed"):
+        return "Recent scan discovery failed before case selection. Check CM connectivity and access settings, then run again."
+    selected = numeric_count(summary.get("selected_count"))
+    if selected or case_count:
+        return None
+    summaries = summary.get("summaries_inspected")
+    if summaries is not None and numeric_count(summaries) == 0:
+        return "No matching queries found for this hour bucket. Try another hour or changing filters."
+    if summaries is not None:
+        return "No query candidates matched the current scan criteria. Try another hour or changing filters."
+    return None
+
+
+def recent_scan_warning_messages(summary: dict[str, Any]) -> tuple[str, ...]:
+    warnings = summary.get("warnings")
+    if not isinstance(warnings, list):
+        return ()
+    return tuple(safe_display_text(warning) for warning in warnings[:3] if warning is not None)
+
+
+def recent_scan_status_summary(
+    collection_status: Any,
+    analysis_status: Any,
+    metadata_status: Any,
+    report_status: str,
+) -> str:
+    return (
+        f"collection {safe_display_text(collection_status)}; "
+        f"analysis {safe_display_text(analysis_status)}; "
+        f"metadata {safe_display_text(metadata_status)}; "
+        f"report {safe_display_text(report_status)}"
+    )
+
+
+def recent_scan_signal_summary(case: dict[str, Any]) -> str:
+    signals: list[str] = []
+    cardinality = numeric_count(case.get("cardinality_anomaly_count"))
+    memory = numeric_count(case.get("memory_anomaly_count"))
+    tail = numeric_count(case.get("host_tail_candidate_count"))
+    if cardinality > 0:
+        signals.append(f"cardinality {safe_display_text(cardinality)}")
+    if memory > 0:
+        signals.append(f"memory {safe_display_text(memory)}")
+    if safe_truthy(case.get("backend_data_skew")):
+        signals.append("skew observed")
+    if tail > 0:
+        signals.append(f"host-tail {safe_display_text(tail)}")
+    if signals:
+        return "; ".join(signals)
+    if numeric_value(case.get("score")) <= 0:
+        return "no positive analyzer signals"
+    return "positive score from detailed analyzer reasons"

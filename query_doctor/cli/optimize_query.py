@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import os
 import re
 import sys
@@ -17,9 +15,23 @@ from query_doctor.optimizer.models import (
     CteDefinition,
     CteParseResult,
     OptimizerActionCard,
-    OptimizerRewriteRecipe,
     OptimizerRiskDecision,
     ProjectionSignature,
+)
+from query_doctor.optimizer.artifacts import (
+    MARKER_NAME,
+    MARKER_SCHEMA_VERSION,
+    OPTIMIZER_NUM_PREDICT,
+    OUTPUT_NAME,
+    PARTIAL_NAME,
+    RECOMMENDATIONS_NAME,
+    VALIDATION_MODE,
+    file_sha256,
+    llm_generation_metadata,
+    remove_stale_trusted_optimizer_outputs,
+    text_sha256,
+    write_marker,
+    write_recommendations_marker,
 )
 from query_doctor.optimizer.prompts import build_prompt, build_recommendations_prompt
 from query_doctor.optimizer.recommendations import (
@@ -150,13 +162,13 @@ from query_doctor.optimizer.validation import (
     where_predicates_preserved_or_safely_extended,
     where_predicates_preserved_or_safely_extended_by_union_branch,
 )
-from query_doctor.cli.report import (
-    build_report_contract_digest,
+from query_doctor.report.facts_extractors import first_bullet_value as first_report_bullet_value
+from query_doctor.report.markdown import extract_markdown_section as extract_report_markdown_section
+from query_doctor.report.contract_digest import build_report_contract_digest
+from query_doctor.report.recommendation_candidates import recommendation_candidate_lines
+from query_doctor.report.recommendations import (
     canonical_recommendation_bullets,
-    extract_markdown_section as extract_report_markdown_section,
-    first_bullet_value as first_report_bullet_value,
     recommendation_candidate_id_for_bullet,
-    recommendation_candidate_lines,
 )
 from query_doctor.report.llm_client import (
     DEFAULT_KEEP_ALIVE,
@@ -169,13 +181,6 @@ from query_doctor.report.llm_client import (
 )
 
 
-OUTPUT_NAME = "optimized_query.sql"
-RECOMMENDATIONS_NAME = "optimized_query_recommendations.md"
-MARKER_NAME = "optimized_query.validated.json"
-PARTIAL_NAME = "optimized_query.partial.txt"
-MARKER_SCHEMA_VERSION = 2
-VALIDATION_MODE = "strict_v2"
-RECOMMENDATION_OUTPUT_KINDS = {"recommendations_only", "no_rewrite"}
 UNSAFE_RECOMMENDATION_TOKENS = (
     "```",
     "profile_digest.md",
@@ -196,7 +201,6 @@ UNSAFE_RECOMMENDATION_SQL_LINE_RE = re.compile(
 UNSAFE_RECOMMENDATION_CTE_RE = re.compile(r"\bwith\s+[A-Za-z_][\w$]*\s+as\b", re.IGNORECASE)
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
 MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTES", "65536"))
-OPTIMIZER_NUM_PREDICT = int(os.getenv("QD_OPTIMIZER_NUM_PREDICT", "4096"))
 SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.DOTALL)
 TOP_LEVEL_SHAPE_KEYWORDS = ("GROUP", "ORDER")
 TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")
@@ -293,132 +297,6 @@ def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
     if conservative_reasons:
         return OptimizerRiskDecision(mode="conservative_rewrite", reasons=tuple(conservative_reasons))
     return OptimizerRiskDecision(mode="rewrite_allowed", reasons=())
-
-
-
-
-
-
-def remove_stale_trusted_optimizer_outputs(case_dir: Path, output_name: str) -> None:
-    for name in (output_name, PARTIAL_NAME, MARKER_NAME):
-        try:
-            (case_dir / name).unlink()
-        except FileNotFoundError:
-            continue
-
-
-def llm_generation_metadata(
-    response: StreamedLLMResponse,
-    *,
-    prompt: str,
-    source_sql: str,
-    generated: str,
-) -> dict[str, object]:
-    metadata: dict[str, object] = {
-        "num_predict": OPTIMIZER_NUM_PREDICT,
-        "prompt_chars": len(prompt),
-        "source_sql_chars": len(source_sql),
-        "generated_chars": len(generated),
-    }
-    if response.done_reason:
-        metadata["done_reason"] = response.done_reason
-    if response.eval_count is not None:
-        metadata["eval_count"] = response.eval_count
-    if response.prompt_eval_count is not None:
-        metadata["prompt_eval_count"] = response.prompt_eval_count
-    return metadata
-
-
-def text_sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def write_marker(
-    case_dir: Path,
-    output_name: str,
-    *,
-    source_sql: str,
-    facts_text: str,
-    source_scope: str,
-    risk_decision: OptimizerRiskDecision,
-    rewrite_recipe: OptimizerRewriteRecipe | None = None,
-    generation_metadata: dict[str, object] | None = None,
-) -> None:
-    # Bind trusted output to current facts and source hashes so stale artifacts fail web-load trust checks.
-    draft_path = case_dir / output_name
-    marker = {
-        "schema_version": MARKER_SCHEMA_VERSION,
-        "output_kind": "sql_draft",
-        "draft": output_name,
-        "draft_sha256": file_sha256(draft_path),
-        "facts_sha256": text_sha256(facts_text),
-        "source_sql_sha256": text_sha256(source_sql),
-        "risk_mode": risk_decision.mode,
-        "risk_reasons": list(risk_decision.reasons),
-        "source_scope": source_scope,
-        "validated": True,
-        "validation_mode": VALIDATION_MODE,
-        "source": "query_doctor_optimize_query",
-    }
-    if generation_metadata:
-        marker["generation_metadata"] = generation_metadata
-    if rewrite_recipe:
-        marker["rewrite_recipe"] = rewrite_recipe.recipe_id
-    (case_dir / MARKER_NAME).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
-
-
-def write_recommendations_marker(
-    case_dir: Path,
-    recommendations_name: str,
-    *,
-    source_sql: str,
-    facts_text: str,
-    source_scope: str,
-    risk_decision: OptimizerRiskDecision,
-    rewrite_recipe: OptimizerRewriteRecipe | None = None,
-    output_kind: str = "recommendations_only",
-    fallback_reason: str | None = None,
-    validation_errors: list[str] | None = None,
-    generation_metadata: dict[str, object] | None = None,
-) -> None:
-    # Recommendations-only and no-rewrite outcomes use the same hash-bound trust marker as SQL drafts.
-    if output_kind not in RECOMMENDATION_OUTPUT_KINDS:
-        raise QueryOptimizationError("Unsupported optimizer recommendations output kind.")
-    recommendations_path = case_dir / recommendations_name
-    try:
-        recommendations_text = recommendations_path.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        raise QueryOptimizationError("Optimizer recommendations output is unreadable.") from exc
-    recommendation_errors = validate_optimizer_recommendations_text(recommendations_text)
-    if recommendation_errors:
-        raise QueryOptimizationError(recommendation_errors[0])
-    marker = {
-        "schema_version": MARKER_SCHEMA_VERSION,
-        "output_kind": output_kind,
-        "recommendations": recommendations_name,
-        "recommendations_sha256": file_sha256(recommendations_path),
-        "facts_sha256": text_sha256(facts_text),
-        "source_sql_sha256": text_sha256(source_sql),
-        "risk_mode": risk_decision.mode,
-        "risk_reasons": list(risk_decision.reasons),
-        "source_scope": source_scope,
-        "validated": True,
-        "validation_mode": VALIDATION_MODE,
-        "source": "query_doctor_optimize_query",
-    }
-    if fallback_reason:
-        marker["fallback_reason"] = fallback_reason
-    if validation_errors:
-        marker["validation_errors"] = dedupe_preserve_order(validation_errors)
-    if generation_metadata:
-        marker["generation_metadata"] = generation_metadata
-    if rewrite_recipe:
-        marker["rewrite_recipe"] = rewrite_recipe.recipe_id
-    (case_dir / MARKER_NAME).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

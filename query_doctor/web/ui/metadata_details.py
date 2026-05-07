@@ -1,0 +1,166 @@
+"""Metadata fact rendering helpers for recent scan details."""
+
+from __future__ import annotations
+
+import html
+from typing import Any
+
+from query_doctor.web.presenters.recent_scan import (
+    RecentScanMetadataTableView,
+    RecentScanMetadataView,
+    metadata_fact_limitations as present_metadata_fact_limitations,
+    numeric_value,
+    present_recent_scan_metadata,
+    safe_statement_statuses,
+)
+from query_doctor.web.ui.html_helpers import compact_cell, escape_value, reason_cell, status_badge
+
+
+def render_metadata_facts_section(view: RecentScanMetadataView) -> str:
+    metadata_view = view
+    if metadata_view.unavailable:
+        degraded_note = metadata_degraded_note(metadata_view)
+        degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
+        return (
+            "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
+            "<summary>Metadata facts</summary>"
+            "<div class=\"report-body\"><p>metadata facts are not available</p>"
+            "<p>Здесь показаны только deterministic analyzer facts.</p>"
+            f"{degraded_html}</div>"
+            "</details>"
+        )
+    return render_metadata_facts_body(metadata_view)
+
+
+def render_metadata_facts_body(
+    metadata_view_or_case: RecentScanMetadataView | dict[str, Any],
+    statement_counts: dict[Any, Any] | None = None,
+    tables: list[Any] | None = None,
+    fallback_note: str = "",
+) -> str:
+    if isinstance(metadata_view_or_case, RecentScanMetadataView):
+        view = metadata_view_or_case
+    else:
+        view = present_recent_scan_metadata(
+            metadata_view_or_case,
+            {"statement_counts": statement_counts or {}, "tables": tables or []},
+        )
+        if fallback_note:
+            view = RecentScanMetadataView(
+                unavailable=view.unavailable,
+                fallback_note=fallback_note,
+                summary_items=view.summary_items,
+                tables=view.tables,
+            )
+    rows = "\n".join(render_metadata_fact_table_row(table) for table in view.tables)
+    if not rows:
+        rows = (
+            "<tr><td colspan=\"12\" class=\"empty-cell\">"
+            "table-level metadata rows are not available; aggregate facts are shown above"
+            "</td></tr>"
+        )
+    summary_rows = "".join(
+        "<div class=\"meta-row\">"
+        f"<span>{html.escape(label)}</span><strong>{escape_value(value)}</strong>"
+        "</div>"
+        for label, value in view.summary_items
+    )
+    fallback_html = (
+        f"<p>{html.escape(view.fallback_note).replace('batch_summary.json', '<code>batch_summary.json</code>')}</p>"
+        if view.fallback_note
+        else ""
+    )
+    degraded_note = metadata_degraded_note(view)
+    degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
+    return (
+        "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
+        "<summary>Metadata facts</summary>"
+        "<div class=\"report-body\">"
+        "<p>Детерминированные table-level metadata facts. Missing/incomplete stats — это limitations/checks, а не root causes.</p>"
+        "<p><code>ok</code> у SHOW-команд означает, что metadata command успешно выполнилась; "
+        "stats coverage оценивается отдельно в Row-count stats и Column stats.</p>"
+        f"{fallback_html}"
+        f"{degraded_html}"
+        f"<div class=\"meta-list\">{summary_rows}</div>"
+        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        "<thead><tr>"
+        "<th>Table</th><th>Object</th><th>SHOW CREATE command</th><th>TABLE STATS command</th><th>COLUMN STATS command</th>"
+        "<th>Row-count stats</th><th>Column stats</th><th>Observed</th><th>Missing</th><th>Partitions</th><th>Format</th><th>Limitations</th>"
+        "</tr></thead>"
+        f"<tbody>{rows}</tbody>"
+        "</table></div>"
+        "</div>"
+        "</details>"
+    )
+
+
+def metadata_degraded_note(view: RecentScanMetadataView) -> str:
+    status_values = {str(label): str(value or "").lower() for label, value in view.summary_items}
+    status = status_values.get("metadata status", "")
+    base = "Profile-based findings остаются валидными; metadata evidence для follow-up может быть ограничен."
+    if view.unavailable or status in {"skipped", "not_run", "unknown"}:
+        return base
+    if status == "partial":
+        return f"Metadata collection была partial. {base}"
+    if status == "failed":
+        return f"Metadata collection завершилась ошибкой. {base}"
+    return ""
+
+
+def has_metadata_aggregate_facts(case: dict[str, Any]) -> bool:
+    metadata_status = str(case.get("metadata_status") or "").lower()
+    if metadata_status in {"collected", "failed", "partial"}:
+        return True
+    for key in ("referenced_table_count", "collected_metadata_table_count", "too_large_count"):
+        if numeric_value(case.get(key)) > 0:
+            return True
+    return bool(metadata_score_reasons(case))
+
+
+def metadata_statement_counts_summary(statement_counts: dict[Any, Any]) -> str:
+    parts = [
+        ("ok", statement_counts.get("ok", 0)),
+        ("error", statement_counts.get("error", 0)),
+        ("not_applicable", statement_counts.get("not_applicable", 0)),
+        ("too_large", statement_counts.get("too_large", 0)),
+    ]
+    return " / ".join(f"{int(numeric_value(value))} {label}" for label, value in parts)
+
+
+def metadata_score_reasons(case: dict[str, Any]) -> list[str]:
+    reasons = case.get("score_reasons")
+    if not isinstance(reasons, list):
+        return []
+    result: list[str] = []
+    for reason in reasons:
+        text = str(reason)
+        lower = text.lower()
+        if any(marker in lower for marker in ("metadata", "stats", "statistic", "статист")):
+            result.append(text)
+    return result
+
+
+def render_metadata_fact_table_row(table: dict[str, Any] | RecentScanMetadataTableView) -> str:
+    if isinstance(table, RecentScanMetadataTableView):
+        view = table
+    else:
+        view = present_recent_scan_metadata({"metadata_status": "unknown"}, {"tables": [table]}).tables[0]
+    cells = [
+        reason_cell(view.table),
+        compact_cell(view.object_type),
+        compact_cell(status_badge(view.statements.get("create metadata"))),
+        compact_cell(status_badge(view.statements.get("table stats"))),
+        compact_cell(status_badge(view.statements.get("column stats"))),
+        compact_cell(view.row_count_stats),
+        compact_cell(view.column_stats),
+        compact_cell(view.observed_columns),
+        compact_cell(view.missing_markers),
+        reason_cell(view.partition_columns),
+        compact_cell(view.file_format),
+        reason_cell(view.limitations),
+    ]
+    return f"<tr>{''.join(cells)}</tr>"
+
+
+def metadata_fact_limitations(table: dict[str, Any], statements: dict[Any, Any]) -> str:
+    return present_metadata_fact_limitations(table, safe_statement_statuses(statements))

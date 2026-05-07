@@ -7,22 +7,25 @@ from pathlib import Path
 from setuptools import find_packages, setup
 
 
-CONSOLE_SCRIPTS = [
-    "query-doctor-analyze=query_doctor.cli.analyze_profile:main",
-    "query-doctor-batch-recent=query_doctor.cli.batch_recent:main",
-    "query-doctor-cleanup-generated=query_doctor.cli.cleanup_generated:main",
-    "query-doctor-cm-events=query_doctor.cli.cm_events:main",
-    "query-doctor-cm-sample-smoke=query_doctor.cli.cm_sample_smoke:main",
-    "query-doctor-collect-cm-profiles=query_doctor.cli.collect_cm_profiles:main",
-    "query-doctor-collect-impala-context=query_doctor.cli.collect_impala_context:main",
-    "query-doctor-corpus-smoke=query_doctor.cli.corpus_smoke:main",
-    "query-doctor-demo=query_doctor.cli.demo_data:main",
-    "query-doctor-demo-preflight=query_doctor.cli.demo_preflight:main",
-    "query-doctor-optimize-query=query_doctor.cli.optimize_query:main",
-    "query-doctor-pipeline=query_doctor.cli.pipeline:main",
-    "query-doctor-report=query_doctor.cli.report:main",
-    "query-doctor-web=query_doctor.cli.web:main",
-]
+def project_scripts(pyproject_path: Path = Path("pyproject.toml")) -> list[str]:
+    scripts: list[str] = []
+    in_scripts = False
+    for line in pyproject_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped == "[project.scripts]":
+            in_scripts = True
+            continue
+        if in_scripts and stripped.startswith("["):
+            break
+        if not in_scripts or not stripped or stripped.startswith("#"):
+            continue
+        name, value = stripped.split("=", 1)
+        target = value.strip().strip('"')
+        scripts.append(f"{name.strip()}={target}")
+    return scripts
+
+
+CONSOLE_SCRIPTS = project_scripts()
 
 
 setup(

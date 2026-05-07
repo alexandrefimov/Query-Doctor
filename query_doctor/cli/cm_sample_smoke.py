@@ -3,16 +3,41 @@
 
 from __future__ import annotations
 
-import argparse
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Callable
 
 from query_doctor.cli import corpus_smoke
-from query_doctor.cli.commands import command_prefix
+from query_doctor.cli.cm_sample_config import (
+    DEFAULT_CANDIDATE_SCAN_LIMIT,
+    DEFAULT_HEALTHY_MAX_DURATION_SEC,
+    DEFAULT_LIMIT,
+    DEFAULT_OUT,
+    DEFAULT_SINCE_HOURS,
+    DEFAULT_SLOW_MIN_DURATION_SEC,
+    MAX_CANDIDATE_SCAN_LIMIT,
+    MAX_LIMIT,
+    REPO_DIR,
+    SampleSmokeConfig,
+    SampleSmokeError,
+    build_config,
+    config_bool,
+    config_string,
+    non_negative_int,
+    parse_args,
+    positive_int,
+)
+from query_doctor.cli.cm_sample_reports import (
+    REPORT_MODES,
+    cleanup_generated,
+    partial_report_path,
+    report_modes_for as _report_modes_for,
+    report_output_path,
+    run_report,
+    run_reports,
+)
 from query_doctor.cli.collect_cm_profiles import (
     CMAdapterError,
     CMClientError,
@@ -21,7 +46,6 @@ from query_doctor.cli.collect_cm_profiles import (
     CMQueryFilters,
     CMQueryPage,
     CMQuerySummary,
-    DEFAULT_MAX_PROFILE_BYTES,
     OutputError,
     build_cm_query_summary_page_request,
     case_dir_for_query,
@@ -29,26 +53,29 @@ from query_doctor.cli.collect_cm_profiles import (
     enforce_profile_text_size,
     fetch_cm_profile_text,
     fetch_cm_query_summary_page,
-    load_local_config,
     sanitize_adapter_error_message,
     sanitize_cm_url_for_display,
-    validate_output_path,
     write_collected_case,
+)
+from query_doctor.cm.sample_selection import (
+    QUERY_TYPES,
+    SUCCESS_STATUSES,
+    SelectionDiagnostics,
+    display_duration,
+    is_eligible_summary,
+    is_query_type,
+    is_success_status,
+    normalized,
+    print_candidate_table,
+    print_selection_diagnostics,
+    record_selection_skip,
+    select_sample,
+    select_sample_with_diagnostics,
+    selection_skip_reason,
+    summary_duration_sec,
 )
 
 
-REPO_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_OUT = "cases/cm-corpus"
-DEFAULT_LIMIT = 5
-MAX_LIMIT = 10
-DEFAULT_SINCE_HOURS = 24
-DEFAULT_CANDIDATE_SCAN_LIMIT = 50
-MAX_CANDIDATE_SCAN_LIMIT = 200
-DEFAULT_HEALTHY_MAX_DURATION_SEC = 60
-DEFAULT_SLOW_MIN_DURATION_SEC = 300
-REPORT_MODES = ("none", "user", "admin", "both")
-SUCCESS_STATUSES = {"success", "succeeded", "finished", "completed", "ok"}
-QUERY_TYPES = {"query"}
 SECRET_PARAM_KEY_PARTS = ("password", "token", "auth", "authorization", "secret", "credential")
 AUTH_HEADER_DISPLAY_RE = re.compile(r"\bAuthorization\s*:\s*(?:Bearer|Basic)?\s*(?:<redacted>|\S+)", re.IGNORECASE)
 SERIOUS_SUMMARY_WARNING_PATTERNS = (
@@ -63,59 +90,6 @@ SERIOUS_SUMMARY_WARNING_PATTERNS = (
 )
 
 
-class SampleSmokeError(ValueError):
-    """Raised for user-facing sample smoke errors."""
-
-
-class SampleSmokeConfig:
-    def __init__(
-        self,
-        *,
-        cm_url: str,
-        cluster: str,
-        service: str,
-        out: Path,
-        sample: str,
-        limit: int,
-        since_hours: int,
-        candidate_scan_limit: int,
-        max_profile_bytes: int,
-        max_duration_sec: int,
-        min_duration_sec: int,
-        min_duration_sec_explicit: bool,
-        dry_run: bool,
-        keep_generated: bool,
-        report_mode: str,
-        show_request_plan: bool,
-        fail_if_healthy_has_action_cards: bool,
-        include_missing_duration: bool,
-        ca_bundle: str | None,
-        insecure_skip_verify: bool,
-        redact_identifiers: bool,
-    ) -> None:
-        self.cm_url = cm_url
-        self.cluster = cluster
-        self.service = service
-        self.out = out
-        self.sample = sample
-        self.limit = limit
-        self.since_hours = since_hours
-        self.candidate_scan_limit = candidate_scan_limit
-        self.max_profile_bytes = max_profile_bytes
-        self.max_duration_sec = max_duration_sec
-        self.min_duration_sec = min_duration_sec
-        self.min_duration_sec_explicit = min_duration_sec_explicit
-        self.dry_run = dry_run
-        self.keep_generated = keep_generated
-        self.report_mode = report_mode
-        self.show_request_plan = show_request_plan
-        self.fail_if_healthy_has_action_cards = fail_if_healthy_has_action_cards
-        self.include_missing_duration = include_missing_duration
-        self.ca_bundle = ca_bundle
-        self.insecure_skip_verify = insecure_skip_verify
-        self.redact_identifiers = redact_identifiers
-
-
 class CollectionSummary:
     def __init__(self) -> None:
         self.case_dirs: list[Path] = []
@@ -123,169 +97,6 @@ class CollectionSummary:
         self.failed_count = 0
         self.skipped_count = 0
         self.failures: list[str] = []
-
-
-class SelectionDiagnostics:
-    def __init__(self, *, summaries_fetched: int) -> None:
-        self.summaries_fetched = summaries_fetched
-        self.summaries_considered = 0
-        self.selected_candidates = 0
-        self.skipped_missing_query_id = 0
-        self.skipped_missing_duration = 0
-        self.skipped_duration_above_max = 0
-        self.skipped_duration_below_min = 0
-        self.skipped_non_success_status = 0
-        self.skipped_non_query_type = 0
-        self.skipped_other_filter = 0
-
-
-def positive_int(value: str) -> int:
-    parsed = int(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("must be a positive integer")
-    return parsed
-
-
-def non_negative_int(value: str) -> int:
-    parsed = int(value)
-    if parsed < 0:
-        raise argparse.ArgumentTypeError("must be a non-negative integer")
-    return parsed
-
-
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Optionally sample recent CM Impala query summaries, collect a bounded redacted "
-            "sample, and run analyzer-only smoke validation. Defaults to dry-run."
-        )
-    )
-    parser.add_argument("--config", required=True, help="Local non-secret CM config JSON.")
-    parser.add_argument("--sample", choices=("healthy", "slow"), default="healthy")
-    parser.add_argument("--limit", type=positive_int, default=DEFAULT_LIMIT)
-    parser.add_argument("--since-hours", type=positive_int, default=DEFAULT_SINCE_HOURS)
-    parser.add_argument("--candidate-scan-limit", type=positive_int, default=DEFAULT_CANDIDATE_SCAN_LIMIT)
-    parser.add_argument("--max-profile-bytes", type=positive_int, default=DEFAULT_MAX_PROFILE_BYTES)
-    parser.add_argument("--out", default=DEFAULT_OUT)
-    parser.add_argument("--max-duration-sec", type=non_negative_int, default=DEFAULT_HEALTHY_MAX_DURATION_SEC)
-    parser.add_argument("--min-duration-sec", type=non_negative_int)
-    parser.add_argument("--include-missing-duration", action="store_true")
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true", help="Fetch summaries and print selected candidates only.")
-    mode.add_argument("--apply", action="store_true", help="Collect selected profiles and run analyzer smoke.")
-    parser.add_argument("--keep-generated", action="store_true")
-    parser.add_argument("--report-mode", choices=REPORT_MODES, default="none")
-    parser.add_argument(
-        "--show-request-plan",
-        action="store_true",
-        help="Print the sanitized query-summary endpoint path and request params.",
-    )
-    parser.add_argument("--fail-if-healthy-has-action-cards", action="store_true")
-    parser.add_argument("--ca-bundle", help="PEM CA bundle for verified CM TLS connections.")
-    parser.add_argument("--insecure-skip-verify", action="store_true")
-    parser.add_argument("--redact-identifiers", action="store_true")
-    return parser.parse_args(argv)
-
-
-def config_string(
-    name: str,
-    *,
-    cli_value: str | None,
-    config_values: dict[str, object],
-    env_value: str | None = None,
-    default: str | None = None,
-) -> str | None:
-    for value in (cli_value, config_values.get(name), env_value, default):
-        if value is None:
-            continue
-        normalized = str(value).strip()
-        if normalized:
-            return normalized
-    return None
-
-
-def config_bool(
-    name: str,
-    *,
-    cli_value: bool,
-    config_values: dict[str, object],
-    default: bool = False,
-) -> bool:
-    if cli_value:
-        return True
-    return bool(config_values.get(name, default))
-
-
-def build_config(
-    args: argparse.Namespace,
-    *,
-    env: dict[str, str] | os._Environ[str] | None = None,
-    cwd: Path | None = None,
-    repo_root: Path | None = None,
-) -> SampleSmokeConfig:
-    env = os.environ if env is None else env
-    cwd = Path.cwd() if cwd is None else cwd
-    repo_root = REPO_DIR if repo_root is None else repo_root
-    config_values = load_local_config(args.config, cwd=cwd)
-
-    if args.limit > MAX_LIMIT:
-        raise SampleSmokeError(f"--limit must be <= {MAX_LIMIT}.")
-    if args.candidate_scan_limit > MAX_CANDIDATE_SCAN_LIMIT:
-        raise SampleSmokeError(f"--candidate-scan-limit must be <= {MAX_CANDIDATE_SCAN_LIMIT}.")
-
-    cm_url = config_string("cm_url", cli_value=None, config_values=config_values, env_value=env.get("CM_URL"))
-    cluster = config_string("cluster", cli_value=None, config_values=config_values)
-    service = config_string("service", cli_value=None, config_values=config_values)
-    out_value = config_string("out", cli_value=args.out, config_values=config_values, default=DEFAULT_OUT)
-    ca_bundle = config_string(
-        "ca_bundle",
-        cli_value=args.ca_bundle,
-        config_values=config_values,
-        env_value=env.get("CM_CA_BUNDLE"),
-    )
-
-    if not cm_url:
-        raise SampleSmokeError("Missing cm_url in config or CM_URL.")
-    if not cluster:
-        raise SampleSmokeError("Missing cluster in config.")
-    if not service:
-        raise SampleSmokeError("Missing service in config.")
-    if not out_value:
-        raise SampleSmokeError("Missing output path.")
-
-    return SampleSmokeConfig(
-        cm_url=cm_url,
-        cluster=cluster,
-        service=service,
-        out=validate_output_path(out_value, cwd=cwd, repo_root=repo_root),
-        sample=args.sample,
-        limit=args.limit,
-        since_hours=args.since_hours,
-        candidate_scan_limit=args.candidate_scan_limit,
-        max_profile_bytes=args.max_profile_bytes,
-        max_duration_sec=args.max_duration_sec,
-        min_duration_sec=(
-            args.min_duration_sec if args.min_duration_sec is not None else DEFAULT_SLOW_MIN_DURATION_SEC
-        ),
-        min_duration_sec_explicit=args.min_duration_sec is not None,
-        dry_run=not args.apply,
-        keep_generated=args.keep_generated,
-        report_mode=args.report_mode,
-        show_request_plan=args.show_request_plan,
-        fail_if_healthy_has_action_cards=args.fail_if_healthy_has_action_cards,
-        include_missing_duration=args.include_missing_duration,
-        ca_bundle=ca_bundle,
-        insecure_skip_verify=config_bool(
-            "insecure_skip_verify",
-            cli_value=args.insecure_skip_verify,
-            config_values=config_values,
-        ),
-        redact_identifiers=config_bool(
-            "redact_identifiers",
-            cli_value=args.redact_identifiers,
-            config_values=config_values,
-        ),
-    )
 
 
 def build_summary_filters(config: SampleSmokeConfig) -> CMQueryFilters:
@@ -400,176 +211,6 @@ def collect_summary_candidates(
 def sanitize_summary_warning_message(text: object, *, secrets: tuple[str, ...] = ()) -> str:
     safe = sanitize_adapter_error_message(text, secrets=secrets)
     return AUTH_HEADER_DISPLAY_RE.sub("auth header <redacted>", safe)
-
-
-def normalized(value: str | None) -> str | None:
-    if value is None:
-        return None
-    text = value.strip().lower()
-    return text or None
-
-
-def is_success_status(status: str | None) -> bool:
-    value = normalized(status)
-    return value is None or value in SUCCESS_STATUSES
-
-
-def is_query_type(query_type: str | None) -> bool:
-    value = normalized(query_type)
-    return value is None or value in QUERY_TYPES
-
-
-def summary_duration_sec(summary: CMQuerySummary) -> float | None:
-    return summary.duration_sec
-
-
-def is_eligible_summary(summary: CMQuerySummary, config: SampleSmokeConfig) -> bool:
-    return selection_skip_reason(summary, config) is None
-
-
-def selection_skip_reason(summary: CMQuerySummary, config: SampleSmokeConfig) -> str | None:
-    if not summary.query_id:
-        return "missing_query_id"
-    if not is_query_type(summary.query_type):
-        return "non_query_type"
-
-    duration = summary_duration_sec(summary)
-    if duration is None and (config.sample == "slow" or not config.include_missing_duration):
-        return "missing_duration"
-
-    if config.sample == "healthy":
-        if not is_success_status(summary.status):
-            return "non_success_status"
-        if (
-            config.min_duration_sec_explicit
-            and duration is not None
-            and duration < config.min_duration_sec
-        ):
-            return "duration_below_min"
-        if duration is not None and duration > config.max_duration_sec:
-            return "duration_above_max"
-        return None
-
-    if duration is not None and duration < config.min_duration_sec:
-        return "duration_below_min"
-    return None
-
-
-def record_selection_skip(diagnostics: SelectionDiagnostics, reason: str) -> None:
-    if reason == "missing_query_id":
-        diagnostics.skipped_missing_query_id += 1
-    elif reason == "missing_duration":
-        diagnostics.skipped_missing_duration += 1
-    elif reason == "duration_above_max":
-        diagnostics.skipped_duration_above_max += 1
-    elif reason == "duration_below_min":
-        diagnostics.skipped_duration_below_min += 1
-    elif reason == "non_success_status":
-        diagnostics.skipped_non_success_status += 1
-    elif reason == "non_query_type":
-        diagnostics.skipped_non_query_type += 1
-    else:
-        diagnostics.skipped_other_filter += 1
-
-
-def select_sample(summaries: list[CMQuerySummary], config: SampleSmokeConfig) -> list[CMQuerySummary]:
-    selected, _diagnostics = select_sample_with_diagnostics(summaries, config)
-    return selected
-
-
-def select_sample_with_diagnostics(
-    summaries: list[CMQuerySummary],
-    config: SampleSmokeConfig,
-) -> tuple[list[CMQuerySummary], SelectionDiagnostics]:
-    diagnostics = SelectionDiagnostics(summaries_fetched=len(summaries))
-    eligible: list[CMQuerySummary] = []
-    for summary in summaries:
-        diagnostics.summaries_considered += 1
-        reason = selection_skip_reason(summary, config)
-        if reason is None:
-            eligible.append(summary)
-        else:
-            record_selection_skip(diagnostics, reason)
-
-    if config.sample == "healthy":
-        selected = sorted(
-            eligible,
-            key=lambda item: (
-                summary_duration_sec(item) is None,
-                summary_duration_sec(item) if summary_duration_sec(item) is not None else float("inf"),
-                item.query_id,
-            ),
-        )[: config.limit]
-    else:
-        selected = sorted(
-            eligible,
-            key=lambda item: (
-                -(summary_duration_sec(item) or 0),
-                item.query_id,
-            ),
-        )[: config.limit]
-    diagnostics.selected_candidates = len(selected)
-    return selected, diagnostics
-
-
-def display_duration(summary: CMQuerySummary) -> str:
-    duration = summary_duration_sec(summary)
-    if duration is None:
-        return "n/a"
-    if duration == int(duration):
-        return f"{int(duration)}s"
-    return f"{duration:.3f}s"
-
-
-def print_candidate_table(candidates: list[CMQuerySummary]) -> None:
-    headers = ["query_id", "duration", "status", "user", "query_type"]
-    rows = [
-        [
-            summary.query_id,
-            display_duration(summary),
-            summary.status or "<unknown>",
-            "<user>" if summary.user else "<unknown>",
-            summary.query_type or "<unknown>",
-        ]
-        for summary in candidates
-    ]
-    widths = [
-        max(len(headers[index]), *(len(row[index]) for row in rows)) if rows else len(headers[index])
-        for index in range(len(headers))
-    ]
-    print(" | ".join(headers[index].ljust(widths[index]) for index in range(len(headers))))
-    print(" | ".join("-" * widths[index] for index in range(len(headers))))
-    for row in rows:
-        print(" | ".join(row[index].ljust(widths[index]) for index in range(len(headers))))
-
-
-def print_selection_diagnostics(
-    config: SampleSmokeConfig,
-    diagnostics: SelectionDiagnostics,
-    *,
-    show_zero_hint: bool,
-) -> None:
-    print("Selection diagnostics:")
-    print(f"- Summaries fetched: {diagnostics.summaries_fetched}")
-    print(f"- Considered: {diagnostics.summaries_considered}")
-    print(f"- Selected: {diagnostics.selected_candidates}")
-    skip_lines = [
-        ("Skipped missing query id", diagnostics.skipped_missing_query_id),
-        ("Skipped missing duration", diagnostics.skipped_missing_duration),
-        (f"Skipped duration > {config.max_duration_sec}s", diagnostics.skipped_duration_above_max),
-        (f"Skipped duration < {config.min_duration_sec}s", diagnostics.skipped_duration_below_min),
-        ("Skipped non-success status", diagnostics.skipped_non_success_status),
-        ("Skipped non-QUERY type", diagnostics.skipped_non_query_type),
-        ("Skipped other explicit filter", diagnostics.skipped_other_filter),
-    ]
-    for label, count in skip_lines:
-        if count:
-            print(f"- {label}: {count}")
-    if diagnostics.selected_candidates == 0 and show_zero_hint:
-        print(
-            "No candidates selected. Try increasing --max-duration-sec or --candidate-scan-limit, "
-            "or inspect whether CM summary rows include duration/status/query type fields."
-        )
 
 
 def is_serious_summary_warning(warning: str) -> bool:
@@ -696,70 +337,7 @@ def print_collection_summary(result: CollectionSummary) -> None:
 
 
 def report_modes_for(config: SampleSmokeConfig) -> list[str]:
-    if config.report_mode == "none":
-        return []
-    if config.report_mode == "both":
-        return ["admin", "user"]
-    return [config.report_mode]
-
-
-def report_output_path(case_dir: Path, mode: str) -> Path:
-    return case_dir / f"report_{mode}.md"
-
-
-def partial_report_path(output_path: Path) -> Path:
-    return output_path.with_name(f"{output_path.stem}.partial{output_path.suffix}")
-
-
-def run_report(case_dir: Path, mode: str) -> int:
-    result = subprocess.run(
-        command_prefix(REPO_DIR, "report")
-        + [
-            str(case_dir),
-            "--mode",
-            mode,
-            "--out",
-            report_output_path(case_dir, mode).name,
-        ],
-        cwd=REPO_DIR,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    return result.returncode
-
-
-def run_reports(
-    case_dirs: list[Path],
-    modes: list[str],
-    *,
-    report_runner: Callable[[Path, str], int],
-) -> tuple[int, list[Path]]:
-    failures = 0
-    generated_paths: list[Path] = []
-    for case_dir in case_dirs:
-        for mode in modes:
-            output_path = report_output_path(case_dir, mode)
-            partial_path = partial_report_path(output_path)
-            if output_path.exists() or partial_path.exists():
-                failures += 1
-                print(f"Report skipped: refusing to overwrite existing generated report for {case_dir} mode {mode}")
-                continue
-            exit_code = report_runner(case_dir, mode)
-            generated_paths.extend([output_path, partial_path])
-            if exit_code != 0:
-                failures += 1
-    return failures, generated_paths
-
-
-def cleanup_generated(case_dirs: list[Path], report_paths: list[Path]) -> None:
-    for case_dir in case_dirs:
-        facts_path = case_dir / corpus_smoke.FACTS_FILENAME
-        if facts_path.exists():
-            facts_path.unlink()
-    for path in report_paths:
-        if path.exists():
-            path.unlink()
+    return _report_modes_for(config.report_mode)
 
 
 def run_apply(

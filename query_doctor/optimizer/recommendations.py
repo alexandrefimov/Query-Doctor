@@ -5,13 +5,6 @@ from __future__ import annotations
 import os
 import re
 
-from query_doctor.cli.report import (
-    build_report_contract_digest,
-    canonical_recommendation_bullets,
-    extract_markdown_section as extract_report_markdown_section,
-    first_bullet_value as first_report_bullet_value,
-    recommendation_candidate_lines,
-)
 from query_doctor.optimizer.models import OptimizerActionCard, OptimizerRewriteRecipe, OptimizerRiskDecision
 from query_doctor.optimizer.sql import collect_cte_names
 from query_doctor.optimizer.sql_shape import (
@@ -20,6 +13,11 @@ from query_doctor.optimizer.sql_shape import (
     top_level_join_signature,
     top_level_keyword_count,
 )
+from query_doctor.report.facts_extractors import first_bullet_value as first_report_bullet_value
+from query_doctor.report.markdown import extract_markdown_section as extract_report_markdown_section
+from query_doctor.report.contract_digest import build_report_contract_digest
+from query_doctor.report.recommendation_candidates import recommendation_candidate_lines
+from query_doctor.report.recommendations import canonical_recommendation_bullets
 
 
 TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")

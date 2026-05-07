@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from query_doctor.report.contract import NEXT_CHECKS_HEADING, RECOMMENDATIONS_HEADING
-from query_doctor.report.prompt_contract import MAX_RECOMMENDATION_ITEMS, recommendation_candidate_lines
+from query_doctor.report.recommendation_candidates import MAX_RECOMMENDATION_ITEMS, recommendation_candidate_lines
 
 
 VAGUE_RECOMMENDATION_RE = re.compile(

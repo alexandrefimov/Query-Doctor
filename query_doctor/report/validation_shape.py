@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 
 from query_doctor.report.contract import RECOMMENDATIONS_HEADING, SHORT_SUMMARY_HEADING
-from query_doctor.report.prompt_contract import build_report_contract_digest, recommendation_candidate_lines
+from query_doctor.report.contract_digest import build_report_contract_digest
+from query_doctor.report.recommendation_candidates import recommendation_candidate_lines
 from query_doctor.report.recommendations import (
     ADMIN_ONLY_RECOMMENDATION_RE,
     GENERIC_OPTIMIZE_RE,

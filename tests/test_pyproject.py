@@ -1,7 +1,9 @@
 import ast
 import importlib
 import inspect
+import runpy
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -25,13 +27,15 @@ def project_scripts() -> dict[str, str]:
 
 
 def setup_py_console_scripts() -> dict[str, str]:
-    tree = ast.parse((REPO_DIR / "setup.py").read_text(encoding="utf-8"))
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            if any(isinstance(target, ast.Name) and target.id == "CONSOLE_SCRIPTS" for target in node.targets):
-                values = ast.literal_eval(node.value)
-                return dict(item.split("=", 1) for item in values)
-    raise AssertionError("CONSOLE_SCRIPTS not found in setup.py")
+    captured: dict[str, object] = {}
+
+    def fake_setup(**kwargs):
+        captured.update(kwargs)
+
+    with patch("setuptools.setup", fake_setup):
+        runpy.run_path(str(REPO_DIR / "setup.py"))
+    scripts = captured["entry_points"]["console_scripts"]
+    return dict(item.split("=", 1) for item in scripts)
 
 
 def setup_py_text() -> str:
@@ -58,6 +62,32 @@ def test_project_license_metadata_is_consistent():
 
 def test_legacy_setup_py_console_scripts_match_pyproject():
     assert setup_py_console_scripts() == project_scripts()
+
+
+def test_internal_command_specs_match_pyproject_console_scripts():
+    from query_doctor.cli.commands import COMMAND_SPECS
+
+    scripts = project_scripts()
+    for role, spec in COMMAND_SPECS.items():
+        assert scripts.get(spec.console_script) == f"{spec.module}:main", role
+
+
+def test_legacy_setup_py_reads_console_scripts_from_pyproject():
+    tree = ast.parse((REPO_DIR / "setup.py").read_text(encoding="utf-8"))
+
+    literal_script_lists = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.List)
+        and any(
+            isinstance(item, ast.Constant)
+            and isinstance(item.value, str)
+            and item.value.startswith("query-doctor-")
+            for item in node.elts
+        )
+    ]
+
+    assert literal_script_lists == []
 
 
 def test_console_script_entrypoints_are_importable_and_callable_without_args():
