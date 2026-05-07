@@ -21,3 +21,14 @@ updates:
     labels:
       - dependencies
       - tooling
+    ignore:
+      # These pins belong to the isolated CDH6-compatible impala-shell venv.
+      # impala-shell==4.3.0 declares exact requirements for them, so moving
+      # any one of these versions breaks scripts/bootstrap-impala-shell.
+      # Revisit only together with an impala-shell compatibility update.
+      - dependency-name: "bitarray"
+      - dependency-name: "configparser"
+      - dependency-name: "prettytable"
+      - dependency-name: "six"
+      - dependency-name: "sqlparse"
+      - dependency-name: "thrift"

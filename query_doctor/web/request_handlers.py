@@ -6,7 +6,7 @@ import subprocess
 import threading
 from typing import Callable
 
-from query_doctor.safety.browser_display import redact_browser_display_text
+from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.form_helpers import first_form_value
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebError, WebSettings
@@ -21,7 +21,7 @@ AnalysisFunc = Callable[[str, str, bool, WebSettings], object]
 
 
 def sanitize_for_display(value: object) -> str:
-    return redact_browser_display_text(value, redact_artifact_markers=True, max_chars=1200)
+    return sanitize_browser_error_text(value)
 
 
 def handle_analyze_request(

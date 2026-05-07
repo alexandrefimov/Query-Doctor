@@ -134,7 +134,7 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert result == 0
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     results = summary["results"]
-    assert len(results) == 5
+    assert len(results) == 8
     assert {item["expected_output_kind"] for item in results} == {
         "sql_draft",
         "validation_rejected",
@@ -145,7 +145,7 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     aggregate = summary["aggregates"]["by_model"]["qwen3-coder:30b-a3b-q8_0"]
     assert aggregate["expected_outcome_match_rate"] == 1.0
     by_case = summary["aggregates"]["by_case"]
-    assert len(by_case) == 5
+    assert len(by_case) == 8
     case_summary = by_case["optimizer_cases:reject_changed_predicate"]
     assert case_summary["expected_output_kind"] == "validation_rejected"
     assert case_summary["expected_outcome_match_rate"] == 1.0

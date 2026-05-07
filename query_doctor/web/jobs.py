@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 from query_doctor.safety.browser_display import redact_browser_display_text
+from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.models import (
     WebJob,
     WebJobSnapshot,
@@ -48,7 +49,7 @@ LLM_ACTIONS_STAGES = (
 
 
 def sanitize_job_error(value: object) -> str:
-    return redact_browser_display_text(value, redact_artifact_markers=True, max_chars=1200)
+    return sanitize_browser_error_text(value)
 
 
 def render_query_analysis_output(result: object) -> list[str]:

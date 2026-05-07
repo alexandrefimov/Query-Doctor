@@ -176,8 +176,10 @@ Important:
   model. The page renderer has no `sql` prefill parameter, no-echo tests cover
   success and parser-error responses, and `OptimizerAnalysis` no longer carries
   submitted SQL.
-- Browser error-path SQL redaction: keep extending shared browser error/job
-  sanitization when new dynamic SQL-like error sources are introduced.
+- Browser error-path SQL redaction: current browser error/job-error rendering
+  uses a shared sanitizer that hides SQL-like snippets, model names, artifact
+  names, field names, local paths and subprocess markers while preserving safe
+  scope guidance. Keep using this helper for new dynamic browser errors.
 - Metadata coverage honesty: promote `skipped` / `not_attempted`, `partial`,
   `failed`, `not_applicable`, and empty collected metadata states as separate
   UI signals instead of letting summary counts imply that uncollected metadata

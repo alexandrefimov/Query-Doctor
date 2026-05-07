@@ -6,7 +6,6 @@ import subprocess
 import threading
 from dataclasses import replace
 
-from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.web.batch_scan import (
     build_batch_command,
     form_values_from_config,
@@ -16,6 +15,7 @@ from query_doctor.web.batch_scan import (
     validate_batch_config_for_settings,
 )
 from query_doctor.web.config import metadata_configured
+from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT, BatchRunConfig, WebError, WebSettings
 from query_doctor.web.subprocesses import (
@@ -31,7 +31,7 @@ from query_doctor.web.ui.recent_scan import render_batch_card
 
 
 def sanitize_for_display(value: object) -> str:
-    return redact_browser_display_text(value, redact_artifact_markers=True, max_chars=1200)
+    return sanitize_browser_error_text(value)
 
 
 def start_batch_job(

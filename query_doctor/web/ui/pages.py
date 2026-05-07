@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from query_doctor.safety.browser_display import redact_browser_display_text
+from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.ui.home import render_no_reports_note, render_run_panel, render_trust_strip
 from query_doctor.web.ui.layout import (
     render_app_header,
@@ -72,7 +72,7 @@ def render_page(
 
 
 def render_error_panel(error: object) -> str:
-    safe_error = redact_browser_display_text(error, redact_artifact_markers=True)
+    safe_error = sanitize_browser_error_text(error, max_chars=None)
     return (
         "<section class=\"error-card\" role=\"alert\">"
         "<strong>Safe inspection state</strong>"

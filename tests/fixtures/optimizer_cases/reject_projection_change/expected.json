@@ -1,0 +1,11 @@
+{
+  "case_id": "reject_projection_change",
+  "expected_output_kind": "validation_rejected",
+  "expected_recipe": null,
+  "expected_risk_mode": "rewrite_allowed",
+  "expect_material_change": true,
+  "expect_validation_errors": [
+    "optimized draft changes output projection count",
+    "optimized draft changes output projection expressions"
+  ]
+}

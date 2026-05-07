@@ -1,0 +1,10 @@
+{
+  "case_id": "reject_changed_join_predicate",
+  "expected_output_kind": "validation_rejected",
+  "expected_recipe": null,
+  "expected_risk_mode": "rewrite_allowed",
+  "expect_material_change": true,
+  "expect_validation_errors": [
+    "optimized draft changes top-level JOIN ON conditions"
+  ]
+}

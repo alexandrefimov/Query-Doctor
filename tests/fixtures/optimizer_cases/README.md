@@ -12,7 +12,9 @@ Each case contains:
 
 The corpus is intentionally narrow. Add cases when prompt tuning, model
 bake-offs, validator changes, or new Python-owned rewrite recipes need a stable
-baseline.
+baseline. Include both positive recipe drafts and negative safety cases such as
+changed predicates, changed joins, changed projection shape, or query shapes
+that must remain recommendations-only.
 
 Use it with the optimizer bake-off helper:
 
