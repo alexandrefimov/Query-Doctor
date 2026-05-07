@@ -61,6 +61,7 @@ from query_doctor.web.ui.report_actions import (
 )
 from query_doctor.web.ui.runtime_metrics import (
     cm_metric_interpretation,
+    render_cluster_runtime_context_section,
     render_cm_metrics_section,
     render_runtime_diagnosis_details,
     render_runtime_diagnosis_summary,
@@ -79,6 +80,7 @@ def render_batch_case_detail(
     metadata_facts: dict[str, Any] | None = None,
     cm_metrics_facts: dict[str, Any] | None = None,
     runtime_diagnosis_facts: dict[str, Any] | None = None,
+    cluster_runtime_context_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
     optimized_query_state: dict[str, Any] | None = None,
@@ -97,6 +99,7 @@ def render_batch_case_detail(
         metadata_facts,
         cm_metrics_facts,
         runtime_diagnosis_facts,
+        cluster_runtime_context_facts,
         report_state=report_state,
     )
     safe_workflow_title = html.escape(workflow_title)
@@ -126,6 +129,7 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
     spill_text = "spill evidence observed" if view.has_spill else "no spill evidence observed"
     stats_text = f"table stats {view.table_stats_status}" if view.table_stats_status is not None else "table stats not checked"
     cm_metrics_text = "not collected" if view.cm_metrics.unavailable else "available"
+    cluster_runtime_text = "not available" if view.cluster_runtime_context.unavailable else "available"
     items = (
         ("user", view.user),
         ("score", score_badge_from_values(view.score, None, None, severity=view.score_severity)),
@@ -134,6 +138,7 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
         ("query optimization", candidate_overview_value(view.optimization_candidate, view.optimization_rank)),
         ("stats refresh", candidate_overview_value(view.stats_candidate, view.stats_rank)),
         ("CM metrics", cm_metrics_text),
+        ("cluster runtime", cluster_runtime_text),
         ("spill", spill_text),
         ("table stats", stats_text),
     )
@@ -196,6 +201,7 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<div class=\"report-body analysis-details-body\">"
         "<p class=\"helper\">Detailed deterministic facts are available for checking findings. They stay collapsed so the first screen remains diagnostic.</p>"
         f"{render_runtime_diagnosis_details(view.runtime_diagnosis)}"
+        f"{render_cluster_runtime_context_section(view.cluster_runtime_context)}"
         f"{render_runtime_signals(view)}"
         f"{render_cm_metrics_section(view.cm_metrics)}"
         f"{render_metadata_facts_section(view.metadata)}"

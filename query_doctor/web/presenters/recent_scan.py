@@ -8,6 +8,7 @@ from typing import Any
 from query_doctor.web.presenters.recent_scan_models import (
     RecentScanCaseDetailView,
     RecentScanCaseRowView,
+    RecentScanClusterRuntimeContextView,
     RecentScanCmMetricCorrelationView,
     RecentScanCmMetricSignalView,
     RecentScanCmMetricsView,
@@ -55,6 +56,7 @@ from query_doctor.web.presenters.recent_scan_metadata import (
     present_recent_scan_metadata,
 )
 from query_doctor.web.presenters.recent_scan_runtime import (
+    present_recent_scan_cluster_runtime_context,
     present_recent_scan_cm_metrics,
     present_recent_scan_runtime_diagnosis,
 )
@@ -156,6 +158,7 @@ def present_recent_scan_case_detail(
     metadata_facts: dict[str, Any] | None = None,
     cm_metrics_facts: dict[str, Any] | None = None,
     runtime_diagnosis_facts: dict[str, Any] | None = None,
+    cluster_runtime_context_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
@@ -222,6 +225,7 @@ def present_recent_scan_case_detail(
         metadata=present_recent_scan_metadata(case, metadata_facts),
         cm_metrics=present_recent_scan_cm_metrics(cm_metrics_facts),
         runtime_diagnosis=present_recent_scan_runtime_diagnosis(runtime_diagnosis_facts),
+        cluster_runtime_context=present_recent_scan_cluster_runtime_context(cluster_runtime_context_facts),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )

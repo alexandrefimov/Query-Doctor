@@ -11,6 +11,7 @@ from query_doctor.web.case_files import (
     expected_case_dir_for_query,
 )
 from query_doctor.web.details_facts import (
+    load_specific_query_cluster_runtime_context_facts,
     load_specific_query_cm_metrics_facts,
     load_specific_query_metadata_facts,
     load_specific_query_runtime_diagnosis_facts,
@@ -86,6 +87,7 @@ def render_specific_query_report_for_request(settings: WebSettings, query_id: st
         metadata_facts = load_specific_query_metadata_facts(case_dir)
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
+        cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
         return 404, render_page(
             settings,
             active_nav="query",
@@ -97,6 +99,7 @@ def render_specific_query_report_for_request(settings: WebSettings, query_id: st
                     metadata_facts,
                     cm_metrics_facts,
                     runtime_diagnosis_facts,
+                    cluster_runtime_context_facts,
                 )
             ],
         )

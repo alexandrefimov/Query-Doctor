@@ -138,6 +138,14 @@ class RecentScanRuntimeDiagnosisView:
 
 
 @dataclass(frozen=True)
+class RecentScanClusterRuntimeContextView:
+    unavailable: bool
+    summary_items: tuple[tuple[str, Any], ...]
+    signal_rollup_items: tuple[tuple[str, Any], ...]
+    limitations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any
@@ -162,5 +170,6 @@ class RecentScanCaseDetailView:
     metadata: RecentScanMetadataView
     cm_metrics: RecentScanCmMetricsView
     runtime_diagnosis: RecentScanRuntimeDiagnosisView
+    cluster_runtime_context: RecentScanClusterRuntimeContextView
     report_action: ReportActionView
     score_severity: str

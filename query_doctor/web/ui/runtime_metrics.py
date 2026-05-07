@@ -7,6 +7,7 @@ from typing import Any
 
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseDetailView,
+    RecentScanClusterRuntimeContextView,
     RecentScanCmMetricsView,
     RecentScanRuntimeDiagnosisView,
 )
@@ -66,6 +67,37 @@ def render_runtime_diagnosis_details(view: RecentScanRuntimeDiagnosisView) -> st
         "<thead><tr><th>Signal</th><th>Status</th><th>Interpretation</th><th>Evidence</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
+        "</div>"
+        "</details>"
+    )
+
+
+def render_cluster_runtime_context_section(view: RecentScanClusterRuntimeContextView) -> str:
+    if view.unavailable:
+        return ""
+    summary_rows = metadata_rows(list(view.summary_items))
+    rollup_rows = metadata_rows(list(view.signal_rollup_items))
+    limitations_html = ""
+    if view.limitations:
+        limitations_html = (
+            "<ul class=\"reason-list\">"
+            + "".join(
+                "<li class=\"reason-card\"><p>"
+                f"{escape_value(limitation)}"
+                "</p></li>"
+                for limitation in view.limitations
+            )
+            + "</ul>"
+        )
+    return (
+        "<details class=\"analysis-subdetails\" aria-label=\"Cluster runtime context\">"
+        "<summary>Cluster runtime context</summary>"
+        "<div class=\"report-body\">"
+        "<p>Python-owned runtime context summary derived from normalized CM Metrics Facts and CM Metrics Correlation. It explains coverage and signal strength without exposing raw metric series.</p>"
+        f"<div class=\"meta-list\">{summary_rows}</div>"
+        "<h3>Signal rollup</h3>"
+        f"<div class=\"meta-list\">{rollup_rows}</div>"
+        f"{limitations_html}"
         "</div>"
         "</details>"
     )

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from query_doctor.web.details_facts import (
+    load_specific_query_cluster_runtime_context_facts,
     load_specific_query_cm_metrics_facts,
     load_specific_query_metadata_facts,
     load_specific_query_runtime_diagnosis_facts,
@@ -37,6 +38,7 @@ def build_specific_query_detail_render_context(
     metadata_facts = load_specific_query_metadata_facts(case_dir)
     cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
     runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
+    cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
     report_state = load_specific_query_report_state(settings, query_id, case_dir, job_store, job=job)
     optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=query_id, job=job)
     trusted_report_text = load_validated_specific_query_report(case_dir) if report_state.get("trusted") else None
@@ -56,6 +58,7 @@ def build_specific_query_detail_render_context(
         "metadata_facts": metadata_facts,
         "cm_metrics_facts": cm_metrics_facts,
         "runtime_diagnosis_facts": runtime_diagnosis_facts,
+        "cluster_runtime_context_facts": cluster_runtime_context_facts,
         "report_state": report_state,
         "optimized_query_state": optimized_query_state,
         "trusted_report_text": trusted_report_text,

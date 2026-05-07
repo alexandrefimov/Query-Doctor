@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.web.presenters.recent_scan_models import (
+    RecentScanClusterRuntimeContextView,
     RecentScanCmMetricCorrelationView,
     RecentScanCmMetricSignalView,
     RecentScanCmMetricsView,
@@ -118,4 +119,56 @@ def present_recent_scan_runtime_diagnosis(
         summary=summary,
         guardrail=safe_display_value(runtime_diagnosis_facts.get("guardrail")),
         signals=signals,
+    )
+
+
+def present_recent_scan_cluster_runtime_context(
+    cluster_runtime_context_facts: dict[str, Any] | None,
+) -> RecentScanClusterRuntimeContextView:
+    if not cluster_runtime_context_facts:
+        return RecentScanClusterRuntimeContextView(
+            unavailable=True,
+            summary_items=(),
+            signal_rollup_items=(),
+            limitations=(),
+        )
+    summary = cluster_runtime_context_facts.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    rollup = cluster_runtime_context_facts.get("signal_rollup")
+    if not isinstance(rollup, dict):
+        rollup = {}
+    raw_limitations = cluster_runtime_context_facts.get("limitations")
+    limitations = raw_limitations if isinstance(raw_limitations, list) else []
+    summary_items = tuple(
+        (key, safe_display_value(summary.get(key)))
+        for key in (
+            "status",
+            "collection_status",
+            "coverage",
+            "metrics_profile",
+            "window_scope",
+            "limit_summary",
+            "scoring_contribution",
+            "guardrail",
+        )
+        if summary.get(key) is not None
+    )
+    signal_rollup_items = tuple(
+        (key, safe_display_value(rollup.get(key)))
+        for key in (
+            "observed_signals",
+            "correlated_signals",
+            "context_only_signals",
+            "unknown_signals",
+            "not_observed_signals",
+        )
+        if rollup.get(key) is not None
+    )
+    limitation_views = tuple(safe_display_text(item) for item in limitations if item is not None)
+    return RecentScanClusterRuntimeContextView(
+        unavailable=not bool(summary_items or signal_rollup_items or limitation_views),
+        summary_items=summary_items,
+        signal_rollup_items=signal_rollup_items,
+        limitations=limitation_views,
     )

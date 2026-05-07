@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.web.details_facts import (
+    load_batch_case_cluster_runtime_context_facts,
     load_batch_case_cm_metrics_facts,
     load_batch_case_metadata_facts,
     load_batch_case_runtime_diagnosis_facts,
@@ -41,6 +42,7 @@ def build_batch_case_detail_render_context(
     metadata_facts = load_batch_case_metadata_facts(settings, case)
     cm_metrics_facts = load_batch_case_cm_metrics_facts(settings, case)
     runtime_diagnosis_facts = load_batch_case_runtime_diagnosis_facts(settings, case)
+    cluster_runtime_context_facts = load_batch_case_cluster_runtime_context_facts(settings, case)
     report_state = load_batch_case_report_state(settings, case_id, case, job_store, job=job)
     artifact_dir = resolve_batch_case_report_dir(settings, case)
     optimized_query_state = load_optimized_query_state(artifact_dir, job_store, batch_case_id=case_id, job=job)
@@ -67,6 +69,7 @@ def build_batch_case_detail_render_context(
         "metadata_facts": metadata_facts,
         "cm_metrics_facts": cm_metrics_facts,
         "runtime_diagnosis_facts": runtime_diagnosis_facts,
+        "cluster_runtime_context_facts": cluster_runtime_context_facts,
         "report_state": report_state,
         "optimized_query_state": optimized_query_state,
         "trusted_report_text": trusted_report_text,

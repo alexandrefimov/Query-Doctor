@@ -76,6 +76,14 @@ def load_specific_query_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any
     return None
 
 
+def load_specific_query_cluster_runtime_context_facts(case_dir: Path) -> dict[str, Any] | None:
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_cluster_runtime_context_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_batch_case_metadata_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
@@ -115,6 +123,17 @@ def load_batch_case_runtime_diagnosis_facts(settings: WebSettings, case: dict[st
     return None
 
 
+def load_batch_case_cluster_runtime_context_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
+        return None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_cluster_runtime_context_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_batch_case_analysis_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
     try:
         facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
@@ -149,6 +168,18 @@ def load_case_analysis_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any]
     except (OSError, ValueError):
         return None
     return parse_runtime_diagnosis_facts(text)
+
+
+def load_case_analysis_cluster_runtime_context_facts(case_dir: Path) -> dict[str, Any] | None:
+    try:
+        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
+        facts_path.relative_to(case_dir)
+        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
+            return None
+        text = facts_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return None
+    return parse_cluster_runtime_context_facts(text)
 
 
 def load_batch_case_impala_context_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -405,6 +436,69 @@ def parse_runtime_diagnosis_facts(text: str) -> dict[str, Any] | None:
         "summary": summary.get("summary", "unknown"),
         "guardrail": summary.get("guardrail", ""),
         "signals": signals,
+    }
+
+
+def parse_cluster_runtime_context_facts(text: str) -> dict[str, Any] | None:
+    section = ""
+    summary: dict[str, str] = {}
+    signal_rollup: dict[str, str] = {}
+    limitations: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            section = "cluster_runtime_context" if line == "## Cluster Runtime Context" else ""
+            continue
+        if not section:
+            continue
+        if line.startswith("### "):
+            heading = line.removeprefix("###").strip()
+            if heading == "Signal rollup":
+                section = "cluster_runtime_rollup"
+            elif heading == "Cluster runtime limitations":
+                section = "cluster_runtime_limitations"
+            else:
+                section = "cluster_runtime_context"
+            continue
+        if not line.startswith("- "):
+            continue
+        bullet = line[2:].strip()
+        if section == "cluster_runtime_limitations":
+            if bullet:
+                limitations.append(clean_metadata_fact_value(bullet))
+            continue
+        if ": " not in bullet:
+            continue
+        key, value = bullet.split(": ", 1)
+        key = key.strip()
+        value = clean_metadata_fact_value(value)
+        if section == "cluster_runtime_rollup":
+            if key in {
+                "observed_signals",
+                "correlated_signals",
+                "context_only_signals",
+                "unknown_signals",
+                "not_observed_signals",
+            }:
+                signal_rollup[key] = value
+            continue
+        if key in {
+            "status",
+            "collection_status",
+            "coverage",
+            "metrics_profile",
+            "window_scope",
+            "limit_summary",
+            "scoring_contribution",
+            "guardrail",
+        }:
+            summary[key] = value
+    if not summary and not signal_rollup and not limitations:
+        return None
+    return {
+        "summary": summary,
+        "signal_rollup": signal_rollup,
+        "limitations": limitations[:8],
     }
 
 
