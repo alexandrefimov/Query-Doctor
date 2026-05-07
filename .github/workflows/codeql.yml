@@ -15,8 +15,24 @@ permissions:
   security-events: write
 
 jobs:
+  readiness:
+    name: CodeQL readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Report CodeQL enablement gate
+        run: |
+          if [ "${{ vars.ENABLE_CODEQL }}" = "true" ]; then
+            echo "CodeQL analysis is enabled for this repository."
+          else
+            echo "CodeQL workflow is installed but analysis is gated."
+            echo "Enable code scanning in repository settings, then set repository variable ENABLE_CODEQL=true."
+          fi
+
   analyze:
     name: CodeQL / Python
+    if: vars.ENABLE_CODEQL == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

@@ -58,9 +58,11 @@ gate:
 
 Package CI should build the source distribution and wheel, run metadata checks,
 install the wheel into a clean virtual environment, and smoke installed console
-scripts. Docs CI should catch broken local Markdown links before merge. CodeQL
-and Dependency Review should stay enabled on the public repository as security
-signals alongside Dependabot.
+scripts. Docs CI should catch broken local Markdown links before merge.
+Dependency Review should stay enabled on pull requests as a security signal
+alongside Dependabot. CodeQL is installed behind the `ENABLE_CODEQL=true`
+repository-variable gate; enable GitHub code scanning in repository settings
+before turning that variable on.
 
 The scheduled or manually dispatched full suite is the broader regression gate.
 The manually dispatched Release Gate workflow should mirror this checklist with
