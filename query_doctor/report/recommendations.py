@@ -230,16 +230,8 @@ def normalize_practical_recommendations(
             preserved.append(bullet)
             preserved_candidate_ids.add(candidate_id)
 
-    target_minimum = min(2, len(candidates))
     if not preserved:
         preserved = canonical_recommendation_bullets(candidates)
-    elif len(preserved) < target_minimum:
-        for candidate_id, candidate_text in candidates:
-            if candidate_id in preserved_candidate_ids:
-                continue
-            preserved.append(f"- {candidate_text}")
-            if len(preserved) >= target_minimum:
-                break
 
     normalized_section = [""] + preserved[:MAX_RECOMMENDATION_ITEMS]
     normalized = "\n".join(lines[: start + 1] + normalized_section + lines[end:])

@@ -97,12 +97,17 @@ def render_llm_actions_block(
         else render_post_button(report_action, report_view.button_label, disabled=report_button_disabled)
     )
     optimizer_action_html = render_optimizer_action_button(optimizer_status, optimizer_state, optimizer_action, optimizer_open)
-    combined_html = render_post_button(
-        combined_action,
-        "Generate report + optimizer",
-        disabled=combined_disabled,
-        primary=not combined_disabled,
-    )
+    combined_card_html = ""
+    if not combined_disabled:
+        combined_html = render_post_button(
+            combined_action,
+            "Generate report + optimizer",
+            primary=True,
+        )
+        combined_card_html = (
+            "<div class=\"llm-action-card llm-action-card--primary\"><strong>Full LLM pass</strong>"
+            f"{combined_html}</div>"
+        )
     notes: list[str] = []
     if not report_enabled:
         notes.append("LLM Report is available only for suspicious or bad queries.")
@@ -127,7 +132,7 @@ def render_llm_actions_block(
         "<div class=\"llm-action-grid\">"
         f"<div class=\"llm-action-card\"><strong>LLM Report</strong>{report_action_html}</div>"
         f"<div class=\"llm-action-card\"><strong>Query LLM optimizer</strong>{optimizer_action_html}</div>"
-        f"<div class=\"llm-action-card llm-action-card--primary\"><strong>Full LLM pass</strong>{combined_html}</div>"
+        f"{combined_card_html}"
         "</div>"
         f"{notes_html}"
         f"{report_status_html}"

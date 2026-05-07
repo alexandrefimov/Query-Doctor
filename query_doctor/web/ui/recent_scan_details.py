@@ -128,22 +128,29 @@ def render_batch_case_detail(
 
 
 def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
-    spill_text = "spill evidence observed" if view.has_spill else "no spill evidence observed"
-    stats_text = f"table stats {view.table_stats_status}" if view.table_stats_status is not None else "table stats not checked"
-    cm_metrics_text = "not collected" if view.cm_metrics.unavailable else "available"
-    cluster_runtime_text = view.runtime_verdict.title
-    items = (
+    items: list[tuple[str, Any]] = [
         ("user", view.user),
         ("score", score_badge_from_values(view.score, None, None, severity=view.score_severity)),
         ("duration", view.duration_sec),
         ("signals", view.signal_summary),
-        ("query optimization", candidate_overview_value(view.optimization_candidate, view.optimization_rank)),
-        ("stats refresh", candidate_overview_value(view.stats_candidate, view.stats_rank)),
-        ("CM metrics", cm_metrics_text),
-        ("cluster runtime", cluster_runtime_text),
-        ("spill", spill_text),
-        ("table stats", stats_text),
-    )
+    ]
+    if candidate_is_visible(view.optimization_candidate):
+        items.append(
+            (
+                "query optimization",
+                candidate_overview_value(view.optimization_candidate, view.optimization_rank),
+            )
+        )
+    if candidate_is_visible(view.stats_candidate):
+        items.append(("stats refresh", candidate_overview_value(view.stats_candidate, view.stats_rank)))
+    if not view.cm_metrics.unavailable:
+        items.append(("CM metrics", "available"))
+    if not view.cluster_runtime_context.unavailable:
+        items.append(("cluster runtime", view.runtime_verdict.title))
+    if view.has_spill:
+        items.append(("spill", "spill evidence observed"))
+    if is_visible_table_stats_status(view.table_stats_status):
+        items.append(("table stats", f"table stats {view.table_stats_status}"))
     cards = "".join(
         "<div class=\"case-overview-card\">"
         f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
@@ -187,12 +194,17 @@ def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
 
 
 def render_analysis_details(view: RecentScanCaseDetailView) -> str:
+    runtime_verdict_html = (
+        ""
+        if view.runtime_verdict.title == "Runtime context not collected"
+        else render_runtime_verdict(view.runtime_verdict)
+    )
     return (
         "<section id=\"findings\" class=\"panel docs-panel findings-panel\" aria-label=\"Findings\">"
         "<h1>Findings</h1>"
         "<div class=\"report-body\">"
         "<p class=\"helper\">Primary deterministic findings are open by default. They rely only on analyzer facts and are not root-cause claims without direct evidence.</p>"
-        f"{render_runtime_verdict(view.runtime_verdict)}"
+        f"{runtime_verdict_html}"
         f"{render_runtime_diagnosis_summary(view.runtime_diagnosis)}"
         f"{render_action_candidate_findings(view)}"
         f"{render_score_reason_explanations(view)}"
@@ -231,7 +243,7 @@ def render_case_detail_toc() -> str:
 
 
 def render_technical_details(view: RecentScanCaseDetailView) -> str:
-    fields = [(label, value) for label, value in view.technical_fields if is_meaningful_detail_value(value)]
+    fields = [(label, value) for label, value in view.technical_fields if is_meaningful_technical_detail_value(value)]
     if not fields:
         return ""
     rows = metadata_rows(fields)
@@ -303,6 +315,11 @@ def explain_score_reason(reason: Any) -> tuple[str, str]:
             text,
             "One or more backends may be tail candidates based on deterministic profile timing signals.",
         )
+    if "host-tail candidates" in lower:
+        return (
+            text,
+            "One or more backends may be tail candidates based on deterministic profile timing signals.",
+        )
     if "table stats row-count completeness" in lower:
         return (
             text,
@@ -321,7 +338,7 @@ def explain_score_reason(reason: Any) -> tuple[str, str]:
             "Metadata collection failed for this case. Runtime profile facts are still shown and ranked deterministically.",
         )
     return (
-        "Other deterministic reason",
+        "Additional deterministic signal",
         text,
     )
 
@@ -333,3 +350,14 @@ def is_meaningful_detail_value(value: Any) -> bool:
         return False
     text = str(value).strip().lower()
     return text not in {"", "unknown", "none", "not_run", "false"}
+
+
+def is_visible_table_stats_status(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return text not in {"", "unknown", "none", "not_checked", "not checked", "not_run", "false"}
+
+
+def is_meaningful_technical_detail_value(value: Any) -> bool:
+    if not is_meaningful_detail_value(value):
+        return False
+    return str(value).strip().lower() not in {"0", "0.0", "0s", "0.0s"}

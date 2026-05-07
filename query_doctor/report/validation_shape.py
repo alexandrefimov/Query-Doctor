@@ -74,9 +74,9 @@ def validate_recommendations_section(
     items = count_report_section_items(text, recommendations_heading)
     if items is None:
         return errors
-    if not 2 <= items <= MAX_RECOMMENDATION_ITEMS:
+    if not 1 <= items <= MAX_RECOMMENDATION_ITEMS:
         errors.append(
-            f"practical recommendations must contain 2-{MAX_RECOMMENDATION_ITEMS} concise items, found {items}"
+            f"practical recommendations must contain 1-{MAX_RECOMMENDATION_ITEMS} concise items, found {items}"
         )
 
     section_lines = extract_report_section_lines(text, recommendations_heading)

@@ -91,17 +91,8 @@ def normalize_optimizer_recommendations(
         preserved.append(f"- {body}")
         seen_candidate_ids.add(candidate_id)
 
-    target_minimum = min(2, len(candidates))
     if not preserved:
         preserved = canonical_recommendation_bullets(candidates)
-    elif len(preserved) < target_minimum:
-        for candidate_id, candidate_text in candidates:
-            if candidate_id in seen_candidate_ids:
-                continue
-            preserved.append(f"- {candidate_text}")
-            seen_candidate_ids.add(candidate_id)
-            if len(preserved) >= target_minimum:
-                break
 
     specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)
     return "\n".join(dedupe_preserve_order(specific + preserved)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS])

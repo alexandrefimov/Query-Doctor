@@ -188,14 +188,7 @@ def runtime_diagnosis_interpretation(value: Any) -> str:
 
 def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
     if view.unavailable:
-        return (
-            "<details class=\"analysis-subdetails\" aria-label=\"CM metrics\">"
-            "<summary>CM metrics</summary>"
-            "<div class=\"report-body\">"
-            "<p>CM metrics facts are not available for this case. Recent batch scans include this context only when bounded CM metrics collection is enabled.</p>"
-            "</div>"
-            "</details>"
-        )
+        return ""
     summary_rows = metadata_rows(list(view.summary_items))
     signal_rows = "".join(
         "<tr>"

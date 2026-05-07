@@ -385,7 +385,7 @@ When case_differentiators contains concrete operator IDs, ratios, memory values,
 
 Use only the Python-owned recommendation candidates from PYTHON-OWNED RECOMMENDATION CANDIDATES.
 {recommendation_language_instruction} You must not add a new action, diagnostic task, command, platform check, or optimization target that is absent from that candidate list.
-Write 2-5 concrete actions that can lead to optimization without asking the reader to perform open-ended investigation.
+Write 1-5 concrete actions that can lead to optimization without asking the reader to perform open-ended investigation. If only one Python-owned candidate is useful, write one item instead of padding this section with generic follow-up.
 {vague_recommendation_examples}
 Do not put SHOW TABLE STATS, SHOW COLUMN STATS, per-host checks, spill/scratch checks, admission pool checks, CM metrics/logs, profile counters, or evidence packages in "{recommendations_label}"; those belong only under "{next_checks_label}".
 If metadata stats are missing/incomplete/unknown but Cardinality anomalies is 0, the top-level action may mention approved stats maintenance only when that action appears in the Python-owned candidate list; it must not say stats explain the query problem or optimizer estimates.

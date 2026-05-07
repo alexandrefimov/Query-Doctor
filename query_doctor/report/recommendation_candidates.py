@@ -233,27 +233,7 @@ def recommendation_candidate_lines(facts_text: str, *, language: str = "ru") -> 
             ),
         )
 
-    if candidates and all(candidate_id != "rerun_after_change" for candidate_id, _ in candidates):
-        add(
-            "rerun_after_change",
-            _localized(
-                language,
-                "После изменения снять новый профиль и сравнить подтверждённые факты: "
-                "wall-clock, host-tail evidence, operator rows/memory и runtime metrics context.",
-                "After the change, capture a new profile and compare confirmed facts: wall-clock, "
-                "host-tail evidence, operator rows/memory, and runtime metrics context.",
-            ),
-        )
-
     if not candidates:
-        add(
-            "baseline",
-            _localized(
-                language,
-                "Использовать этот результат как baseline для сравнения с новым профилем после изменения запроса.",
-                "Treat this result as a baseline for comparison with a new profile after a query change.",
-            ),
-        )
         add(
             "no_shape_change",
             _localized(
@@ -262,14 +242,6 @@ def recommendation_candidate_lines(facts_text: str, *, language: str = "ru") -> 
                 "или рост intermediate rows.",
                 "Do not change SQL shape based on this profile: current facts do not show an expensive operator "
                 "or intermediate row growth.",
-            ),
-        )
-        add(
-            "rerun_after_change",
-            _localized(
-                language,
-                "Запускать дальнейшие изменения только если новый профиль покажет confirmed operator evidence.",
-                "Make further changes only if a new profile shows confirmed operator evidence.",
             ),
         )
 

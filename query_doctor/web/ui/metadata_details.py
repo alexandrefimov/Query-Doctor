@@ -53,12 +53,17 @@ def render_metadata_facts_body(
                 summary_items=view.summary_items,
                 tables=view.tables,
             )
-    rows = "\n".join(render_metadata_fact_table_row(table) for table in view.tables)
-    if not rows:
-        rows = (
-            "<tr><td colspan=\"12\" class=\"empty-cell\">"
-            "table-level metadata rows are not available; aggregate facts are shown above"
-            "</td></tr>"
+    table_html = ""
+    if view.tables:
+        rows = "\n".join(render_metadata_fact_table_row(table) for table in view.tables)
+        table_html = (
+            "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+            "<thead><tr>"
+            "<th>Table</th><th>Object</th><th>SHOW CREATE command</th><th>TABLE STATS command</th><th>COLUMN STATS command</th>"
+            "<th>Row-count stats</th><th>Column stats</th><th>Observed</th><th>Missing</th><th>Partitions</th><th>Format</th><th>Limitations</th>"
+            "</tr></thead>"
+            f"<tbody>{rows}</tbody>"
+            "</table></div>"
         )
     summary_rows = "".join(
         "<div class=\"meta-row\">"
@@ -83,13 +88,7 @@ def render_metadata_facts_body(
         f"{fallback_html}"
         f"{degraded_html}"
         f"<div class=\"meta-list\">{summary_rows}</div>"
-        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
-        "<thead><tr>"
-        "<th>Table</th><th>Object</th><th>SHOW CREATE command</th><th>TABLE STATS command</th><th>COLUMN STATS command</th>"
-        "<th>Row-count stats</th><th>Column stats</th><th>Observed</th><th>Missing</th><th>Partitions</th><th>Format</th><th>Limitations</th>"
-        "</tr></thead>"
-        f"<tbody>{rows}</tbody>"
-        "</table></div>"
+        f"{table_html}"
         "</div>"
         "</details>"
     )
