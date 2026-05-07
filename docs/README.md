@@ -43,6 +43,9 @@ roadmap as the current public baseline.
 - [contributor-architecture.md](contributor-architecture.md): contributor map
   for collectors, analyzer, report writer, optimizer, web UI, and trusted
   artifacts.
+- [development-practices.md](development-practices.md): maintainability,
+  module-size, test, dependency, and documentation practices for contributors
+  and coding agents.
 - [safety-contract.md](safety-contract.md): mandatory trust and redaction rules
   ([Русский](i18n/ru/safety-contract.md)).
 - [roadmap.md](roadmap.md): implemented scope, near-term work, and future seams.

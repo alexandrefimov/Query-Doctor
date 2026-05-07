@@ -84,8 +84,9 @@ query-doctor-collect-cm-profiles \
   --ca-bundle /path/to/company-ca.pem
 ```
 
-Root-level compatibility launchers may still work during migration, but new
-docs should use `query-doctor-*` console scripts.
+Root-level compatibility launchers have been removed. Use `query-doctor-*`
+console scripts, or `python -m query_doctor.cli.collect_cm_profiles` when
+running directly from a checkout without installed entry points.
 
 ## Safe Rollout Steps
 

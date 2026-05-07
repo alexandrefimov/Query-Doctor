@@ -7,13 +7,20 @@ import re
 from collections import Counter
 from collections.abc import Iterable
 
-from query_doctor.cli.report import (
-    canonical_recommendation_bullets,
-    recommendation_candidate_id_for_bullet,
-    recommendation_candidate_lines,
-)
 from query_doctor.optimizer.models import OptimizerRewriteRecipe, OptimizerRiskDecision
-from query_doctor.optimizer.recommendations import optimizer_specific_recommendation_bullets
+from query_doctor.optimizer.recommendation_output import (
+    MAX_OPTIMIZER_RECOMMENDATION_ITEMS,
+    MAX_RECOMMENDATIONS_BYTES,
+    UNSAFE_RECOMMENDATION_CTE_RE,
+    UNSAFE_RECOMMENDATION_SQL_LINE_RE,
+    UNSAFE_RECOMMENDATION_TOKENS,
+    extract_recommendations,
+    no_rewrite_recommendations,
+    normalize_optimizer_recommendations,
+    output_limit_no_rewrite_recommendations,
+    validate_optimizer_recommendations_text,
+    validation_failed_no_rewrite_recommendations,
+)
 from query_doctor.optimizer.source_sql import (
     QueryOptimizationError,
     enforce_text_size,
@@ -22,6 +29,14 @@ from query_doctor.optimizer.source_sql import (
     skip_quoted_text,
 )
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables, tokenize_sql
+from query_doctor.optimizer.sql_completeness import (
+    INCOMPLETE_TRAILING_CHARS,
+    INCOMPLETE_TRAILING_TOKENS,
+    complete_quoted_text_end,
+    lexical_sql_completeness,
+    sql_completeness_errors,
+    trim_statement_tokens_for_completeness,
+)
 from query_doctor.optimizer.sql_shape import (
     aggregate_input_projection_names,
     aggregate_projection_names,
@@ -30,7 +45,6 @@ from query_doctor.optimizer.sql_shape import (
     cte_definition_map,
     cte_name_signature,
     dedupe_preserve_order,
-    find_top_level_token,
     has_union_all,
     identifier_referenced,
     keyword_at,
@@ -55,26 +69,7 @@ from query_doctor.optimizer.sql_shape import (
 )
 
 
-UNSAFE_RECOMMENDATION_TOKENS = (
-    "```",
-    "profile_digest.md",
-    "cm_metadata.json",
-    "analysis_facts.md",
-    "diagnosis.md",
-    "diagnosis.partial.md",
-    "optimized_query.sql",
-    "optimized_query.validated.json",
-    "optimized_query.partial.txt",
-    "ollama",
-)
-UNSAFE_RECOMMENDATION_SQL_LINE_RE = re.compile(
-    r"^\s*(?:[-*]|\d+\.)?\s*"
-    r"(?:select|insert|create|drop|alter|refresh|invalidate|compute\s+stats|show|set|use)\b",
-    re.IGNORECASE | re.MULTILINE,
-)
-UNSAFE_RECOMMENDATION_CTE_RE = re.compile(r"\bwith\s+[A-Za-z_][\w$]*\s+as\b", re.IGNORECASE)
 MAX_DRAFT_SQL_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_DRAFT_SQL_BYTES", "262144"))
-MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTES", "65536"))
 SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*(?P<sql>.*?)```", re.IGNORECASE | re.DOTALL)
 TOP_LEVEL_SHAPE_KEYWORDS = ("GROUP", "ORDER")
 TOP_LEVEL_SET_OPERATORS = ("UNION", "EXCEPT", "INTERSECT")
@@ -94,33 +89,6 @@ CLAUSE_SIGNATURE_BOUNDARIES = (
     "CLUSTER",
 )
 JOIN_MODIFIER_KEYWORDS = {"LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS", "SEMI", "ANTI"}
-MAX_OPTIMIZER_RECOMMENDATION_ITEMS = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATION_ITEMS", "8"))
-INCOMPLETE_TRAILING_TOKENS = {
-    ",",
-    ".",
-    "(",
-    "AS",
-    "BY",
-    "FROM",
-    "JOIN",
-    "ON",
-    "USING",
-    "WHERE",
-    "AND",
-    "OR",
-    "GROUP",
-    "ORDER",
-    "HAVING",
-    "LIMIT",
-    "UNION",
-    "EXCEPT",
-    "INTERSECT",
-    "WITH",
-    "SELECT",
-}
-INCOMPLETE_TRAILING_CHARS = {",", ".", "(", "+", "-", "*", "/", "=", "<", ">"}
-
-
 def extract_draft_sql(generated: str) -> str:
     match = SQL_FENCE_RE.search(generated)
     if match:
@@ -135,143 +103,6 @@ def extract_draft_sql(generated: str) -> str:
         raise QueryOptimizationError("Optimized query draft is empty.")
     enforce_text_size(draft, MAX_DRAFT_SQL_BYTES)
     return draft
-
-
-def extract_recommendations(generated: str) -> str:
-    text = generated.strip()
-    errors = validate_optimizer_recommendations_text(text)
-    if errors:
-        raise QueryOptimizationError(errors[0])
-    return text
-
-
-def validate_optimizer_recommendations_text(text: str) -> list[str]:
-    stripped = text.strip()
-    if not stripped:
-        return ["Optimizer recommendations are empty."]
-    try:
-        enforce_text_size(stripped, MAX_RECOMMENDATIONS_BYTES)
-    except QueryOptimizationError as exc:
-        return [str(exc)]
-    lowered = stripped.lower()
-    if any(token in lowered for token in UNSAFE_RECOMMENDATION_TOKENS):
-        return ["Optimizer recommendations contain SQL-like or unsafe output."]
-    if UNSAFE_RECOMMENDATION_SQL_LINE_RE.search(stripped) or UNSAFE_RECOMMENDATION_CTE_RE.search(stripped):
-        return ["Optimizer recommendations contain SQL-like or unsafe output."]
-    if re.search(r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+", stripped):
-        return ["Optimizer recommendations contain browser-unsafe local path output."]
-    if re.search(r"(?<![\w/])/Users/[^\s<>'\"]+", stripped):
-        return ["Optimizer recommendations contain browser-unsafe local path output."]
-    if re.search(r"(?<![\w/])/var/folders/[^\s<>'\"]+", stripped):
-        return ["Optimizer recommendations contain browser-unsafe local path output."]
-    if re.search(r"(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+", stripped):
-        return ["Optimizer recommendations contain browser-unsafe local path output."]
-    return []
-
-
-def normalize_optimizer_recommendations(
-    generated: str,
-    facts_text: str,
-    risk_decision: OptimizerRiskDecision | None = None,
-    rewrite_recipe: OptimizerRewriteRecipe | None = None,
-) -> str:
-    text = extract_recommendations(generated)
-    candidates = recommendation_candidate_lines(facts_text)
-    preserved: list[str] = []
-    seen_candidate_ids: set[str] = set()
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", stripped):
-            continue
-        candidate_id = recommendation_candidate_id_for_bullet(stripped, candidates)
-        if candidate_id is None or candidate_id in seen_candidate_ids:
-            continue
-        body = re.sub(r"^\s*(?:[-*]|\d+\.)\s+", "", stripped).strip()
-        preserved.append(f"- {body}")
-        seen_candidate_ids.add(candidate_id)
-
-    target_minimum = min(2, len(candidates))
-    if not preserved:
-        preserved = canonical_recommendation_bullets(candidates)
-    elif len(preserved) < target_minimum:
-        for candidate_id, candidate_text in candidates:
-            if candidate_id in seen_candidate_ids:
-                continue
-            preserved.append(f"- {candidate_text}")
-            seen_candidate_ids.add(candidate_id)
-            if len(preserved) >= target_minimum:
-                break
-
-    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)
-    return "\n".join(dedupe_preserve_order(specific + preserved)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS])
-
-
-def no_rewrite_recommendations(
-    risk_decision: OptimizerRiskDecision,
-    facts_text: str,
-    rewrite_recipe: OptimizerRewriteRecipe | None = None,
-) -> str:
-    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "no material SQL change"
-    prefix = [
-        "- The model response passed validation but did not contain a material SQL rewrite, so no trusted optimized query is shown.",
-        f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
-    ]
-    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
-    ]
-    return "\n".join(
-        [
-            *prefix,
-            *specific,
-        ]
-    )
-
-
-def output_limit_no_rewrite_recommendations(
-    facts_text: str,
-    risk_decision: OptimizerRiskDecision,
-    rewrite_recipe: OptimizerRewriteRecipe | None = None,
-) -> str:
-    prefix = [
-        "- The model did not finish a complete SQL draft within the optimizer output-token budget, so no trusted optimized query is shown.",
-        "- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts.",
-    ]
-    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
-    ]
-    return "\n".join(
-        [
-            *prefix,
-            *specific,
-        ]
-    )
-
-
-def validation_failed_no_rewrite_recommendations(
-    errors: list[str],
-    risk_decision: OptimizerRiskDecision,
-    facts_text: str,
-    rewrite_recipe: OptimizerRewriteRecipe | None = None,
-) -> str:
-    categories = ", ".join(dedupe_preserve_order(errors)[:3]) or "deterministic validation rejected the draft"
-    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "rewrite validation failed"
-    prefix = [
-        "- The model could not write a SQL draft that passed deterministic validation, so no trusted optimized query is shown.",
-        f"- Validation category: {categories}.",
-        "- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts.",
-    ]
-    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
-    ]
-    if reasons:
-        specific = [f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.", *specific]
-        specific = specific[: max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))]
-    return "\n".join(
-        [
-            *prefix,
-            *specific,
-        ]
-    )
 
 
 def validate_draft_sql(
@@ -875,92 +706,8 @@ def sql_business_numeric_literal_counter(sql: str) -> Counter[str]:
     return Counter(values)
 
 
-def sql_completeness_errors(sql: str) -> list[str]:
-    stripped = sql.strip()
-    if not stripped:
-        return ["optimized draft is empty"]
-    errors: list[str] = []
-    lexical_errors, last_significant_char = lexical_sql_completeness(stripped)
-    errors.extend(lexical_errors)
-    if last_significant_char in INCOMPLETE_TRAILING_CHARS:
-        errors.append("optimized draft appears incomplete")
-    tokens = tokenize_sql(stripped)
-    if tokens:
-        statement_tokens = trim_statement_tokens_for_completeness(tokens)
-        if statement_tokens:
-            trailing = statement_tokens[-1].upper()
-            if trailing in INCOMPLETE_TRAILING_TOKENS:
-                errors.append("optimized draft appears incomplete")
-            if statement_tokens[0].upper() == "WITH" and find_top_level_token(statement_tokens, "SELECT", start=1) is None:
-                errors.append("optimized draft WITH query is missing its final SELECT")
-    return dedupe_preserve_order(errors)
-
-
-def trim_statement_tokens_for_completeness(tokens: list[str]) -> list[str]:
-    end = len(tokens) - 1
-    while end >= 0 and tokens[end] == ";":
-        end -= 1
-    return tokens[: end + 1]
-
-
-def lexical_sql_completeness(sql: str) -> tuple[list[str], str]:
-    errors: list[str] = []
-    depth = 0
-    index = 0
-    last_significant_char = ""
-    while index < len(sql):
-        if sql.startswith("--", index):
-            index = skip_line_comment_text(sql, index + 2)
-            continue
-        if sql.startswith("/*", index):
-            end = sql.find("*/", index + 2)
-            if end == -1:
-                errors.append("optimized draft has an unterminated block comment")
-                return errors, last_significant_char
-            index = end + 2
-            continue
-        char = sql[index]
-        if char in {"'", '"', "`"}:
-            end = complete_quoted_text_end(sql, index, char)
-            if end is None:
-                errors.append("optimized draft has an unterminated quoted string or identifier")
-                return errors, last_significant_char
-            last_significant_char = char
-            index = end
-            continue
-        if char == "(":
-            depth += 1
-            last_significant_char = char
-        elif char == ")":
-            depth -= 1
-            last_significant_char = char
-            if depth < 0:
-                errors.append("optimized draft has unbalanced parentheses")
-                depth = 0
-        elif not char.isspace() and char != ";":
-            last_significant_char = char
-        index += 1
-    if depth != 0:
-        errors.append("optimized draft has unbalanced parentheses")
-    return errors, last_significant_char
-
-
-def complete_quoted_text_end(sql: str, index: int, quote: str) -> int | None:
-    index += 1
-    while index < len(sql):
-        if sql[index] == quote:
-            if index + 1 < len(sql) and sql[index + 1] == quote:
-                index += 2
-                continue
-            return index + 1
-        index += 1
-    return None
-
-
 def normalized_trusted_draft_sql(draft_sql: str) -> str:
     stripped = draft_sql.rstrip()
     if not stripped.endswith(";"):
         stripped += ";"
     return stripped + "\n"
-
-

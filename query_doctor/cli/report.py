@@ -50,6 +50,13 @@ from query_doctor.report.markdown import (
     extract_markdown_subsection,
     strip_markdown_section,
 )
+from query_doctor.report.claim_validation import (
+    find_unsupported_metadata_claim_errors,
+    find_zero_cardinality_unsupported_claims,
+    has_unnegated_metadata_claim,
+    is_negated_metadata_claim,
+    is_negated_zero_cardinality_match,
+)
 from query_doctor.report.report_files import (
     move_failed_report_to_partial,
     partial_report_path,
@@ -57,6 +64,27 @@ from query_doctor.report.report_files import (
     report_header,
     resolve_case_file,
     write_failed_report_to_partial,
+)
+from query_doctor.report.safety_validation import (
+    REPORT_INTERNAL_FINGERPRINT_RE,
+    contains_raw_sql_like_text,
+    validate_report_html_safety,
+    validate_report_internal_fingerprints,
+)
+from query_doctor.report.text_postprocess import (
+    ZERO_CARDINALITY_NOT_SUPPORTED_BULLET,
+    move_misplaced_admin_bullets_into_admin_section,
+    move_misplaced_zero_cardinality_note,
+    normalize_report_headings,
+    remove_negative_caveats_from_short_summary,
+    remove_report_html_blocks,
+)
+from query_doctor.report.validation_shape import (
+    count_report_section_items,
+    extract_report_section_lines,
+    validate_recommendations_against_candidates,
+    validate_recommendations_section,
+    validate_unsupported_conclusions_slot,
 )
 from query_doctor.report.facts_appendix import (
     append_analyzer_facts_appendix,
@@ -146,18 +174,6 @@ from query_doctor.report.llm_client import (
 DEFAULT_VALIDATION_MODE = os.getenv("QD_REPORT_VALIDATION_MODE", "strict")
 MIN_REPORT_CHARS = int(os.getenv("QD_MIN_REPORT_CHARS", "900"))
 MIN_MARKDOWN_SECTIONS = int(os.getenv("QD_MIN_MARKDOWN_SECTIONS", "8"))
-REPORT_INTERNAL_FINGERPRINT_RE = re.compile(
-    r"^\s*>\s*(?:Source facts|Facts sha256|Model|Generated)\s*:|"
-    r"\b(?:qwen\d|llama\d|ollama|model requested|facts sha256|source facts filename)\b",
-    re.IGNORECASE,
-)
-RAW_HTML_TAG_RE = re.compile(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)(?:\s+[^>]*)?>")
-ALLOWED_REPORT_HTML_TAGS: set[str] = set()
-ADMIN_CHECK_BULLET_RE = re.compile(
-    r"^\s*[-*]\s+.*(?:per-host|spill|scratch|admission\s+pool|CM\s+metrics|CM\s+logs|"
-    r"profile\s+counters|write/RPC/HDFS|HDFS/RPC/write|host-specific\s+write|сч[её]тчик\w+\s+profile)",
-    re.IGNORECASE,
-)
 FACT_APPENDIX_MAX_ITEMS = 8
 SPILL_SCRATCH_REWRITE_RE = re.compile(r"\b(spill|scratch|спилл|спай[лл]|спила|спайла)\b", re.IGNORECASE)
 STORAGE_WORDING_RE = re.compile(
@@ -176,105 +192,9 @@ UNSUPPORTED_STATS_FRESHNESS_CLAIM_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
-UNSUPPORTED_METADATA_ROOT_CAUSE_RE = re.compile(
-    r"("
-    r"(?:причин\w+|проблем\w+)[^\n.]{0,80}(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)|"
-    r"(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)[^\n.]{0,80}(?:причин\w+|вызва\w+|сломал\w+)|"
-    r"(?:из-за|из\s+за)[^\n.]{0,80}(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)|"
-    r"статистик\w+\s+таблиц\w*\s+устарел\w*|"
-    r"metadata\s+proves\s+(?:the\s+)?root\s+cause|"
-    r"metadata[^\n.]{0,80}proves[^\n.]{0,80}(?:cause|root\s+cause)|"
-    r"root\s+cause[^\n.]{0,80}stale\s+stat(?:s|istics)|"
-    r"stale\s+stats?[^\n.]{0,80}(?:cause|root\s+cause)|"
-    r"stale\s+statistics[^\n.]{0,80}(?:cause|root\s+cause)"
-    r")",
-    re.IGNORECASE,
-)
-REQUIRED_COMPUTE_STATS_RE = re.compile(
-    r"("
-    r"(?:нужно|необходимо|требуется|надо|обязательно|следует)\s+[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
-    r"\b(?:run|execute|recompute)\b[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
-    r"\b(?:should|need(?:ed)?|must)\s+[^.\n]{0,80}\b(?:run|execute)\s+COMPUTE\s+STATS\b|"
-    r"\b(?:выполнить|запустить|пересчитать)\b[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
-    r"\bCOMPUTE\s+STATS\b[^.\n]{0,80}(?:required|must|need(?:ed)?|mandatory)"
-    r")",
-    re.IGNORECASE,
-)
-SQL_FENCE_START_RE = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})\s*(?P<lang>[A-Za-z0-9_-]*)\s*$")
-SQL_FENCE_END_RE = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})\s*$")
-SQL_IDENTIFIER_RE = (
-    r'(?:`[^`\n]+`|"[^"\n]+"|[A-Za-z_][\w$-]*)'
-    r'(?:\s*\.\s*(?:`[^`\n]+`|"[^"\n]+"|[A-Za-z_][\w$-]*)){0,2}'
-)
-SQL_IDENTIFIER_STRICT_RE = (
-    r'(?:`[^`\n]+`|"[^"\n]+"|[A-Za-z_][\w$-]*\s*\.\s*[A-Za-z_][\w$-]*'
-    r'(?:\s*\.\s*[A-Za-z_][\w$-]*)?)'
-)
-SQL_STATEMENT_BOUNDARY_RE = r"(?=\s*(?:$|[;.,)]|\n))"
-SQL_TABLE_FOLLOW_RE = (
-    r"(?=\s*(?:$|[;.,)]|\n|\bWHERE\b|\bJOIN\b|\bLEFT\b|\bRIGHT\b|\bINNER\b|\bFULL\b|"
-    r"\bGROUP\b|\bORDER\b|\bLIMIT\b|\bHAVING\b|\bUNION\b))"
-)
-RAW_SELECT_SQL_RE = re.compile(
-    rf"(?is)(?:^|[\n`(>:-])\s*SELECT\b(?=[\s\S]{{0,260}}\bFROM\b)"
-    rf"[\s\S]{{1,260}}\bFROM\s+{SQL_IDENTIFIER_RE}{SQL_TABLE_FOLLOW_RE}"
-)
-RAW_WITH_SQL_RE = re.compile(
-    rf"(?is)(?:^|[\n`(>:-])\s*WITH\s+{SQL_IDENTIFIER_RE}\s+AS\s*\(.{{0,800}}?\)\s*SELECT\s+"
-    rf".{{0,400}}?\bFROM\b\s+{SQL_IDENTIFIER_RE}{SQL_TABLE_FOLLOW_RE}"
-)
-RAW_MUTATING_SQL_RE = re.compile(
-    rf"(?is)(?:^|[\n`(>:-])\s*(?:"
-    rf"INSERT\s+INTO\s+{SQL_IDENTIFIER_RE}|"
-    rf"CREATE\s+TABLE\s+{SQL_IDENTIFIER_RE}|"
-    rf"DROP\s+TABLE\s+{SQL_IDENTIFIER_RE}|"
-    rf"ALTER\s+TABLE\s+{SQL_IDENTIFIER_RE}|"
-    rf"TRUNCATE\s+TABLE\s+{SQL_IDENTIFIER_RE}|"
-    rf"DELETE\s+FROM\s+{SQL_IDENTIFIER_RE}|"
-    rf"UPDATE\s+{SQL_IDENTIFIER_RE}\s+SET\b|"
-    rf"MERGE\s+INTO\s+{SQL_IDENTIFIER_RE}"
-    rf")"
-)
-RAW_SHOW_SQL_RE = re.compile(
-    rf"(?is)(?:^|[\n`(>:-])\s*"
-    rf"(?:SHOW\s+CREATE\s+TABLE|SHOW\s+TABLE\s+STATS|SHOW\s+COLUMN\s+STATS)\s+"
-    rf"{SQL_IDENTIFIER_STRICT_RE}{SQL_STATEMENT_BOUNDARY_RE}"
-)
-METADATA_CLAIM_NEGATION_RE = re.compile(
-    r"("
-    r"\bdo\s+not\b|"
-    r"\bnot\s+(?:proven|supported|required|the\s+root\s+cause)\b|"
-    r"\bno\s+evidence\b|"
-    r"\bнет\s+данн\w*|"
-    r"\bнет\s+сведен\w*|"
-    r"\bнет\s+признак\w*|"
-    r"\bнет\s+доказ\w*|"
-    r"\bнет\s+подтвержд\w*|"
-    r"\bнет\s+основан\w*\s+утвержд\w*|"
-    r"\bотсутств\w+\s+данн\w*|"
-    r"\bотсутств\w+\s+сведен\w*|"
-    r"\bотсутств\w+\s+признак\w*|"
-    r"\bотсутств\w+\s+доказ\w*|"
-    r"\bне\s+доказ\w*|"
-    r"\bне\s+подтвержд\w*|"
-    r"\bне\s+подтвержда\w*|"
-    r"\bне\s+явля\w*\s+причин\w*|"
-    r"\bне\s+требу\w*"
-    r")",
-    re.IGNORECASE,
-)
-METADATA_CLAIM_CONTRAST_RE = re.compile(
-    r"\b(?:but|however|still|nevertheless|yet|though|although|но|однако)\b",
-    re.IGNORECASE,
-)
-METADATA_CLAIM_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?]")
 STATS_FRESHNESS_MISSING_EVIDENCE = (
     "- Свежесть статистики таблиц/столбцов не подтверждена в analysis_facts.md; "
     "проверяйте ее только через read-only metadata."
-)
-ZERO_CARDINALITY_NOT_SUPPORTED_BULLET = (
-    "- В analysis_facts.md нет подтверждённой аномалии кардинальности; не заявляйте "
-    "недооценку кардинальности без соответствующего факта."
 )
 BACKEND_DATA_SKEW_SUPPORTED_NOTE = (
     "- Backend data skew поддержан analysis_facts.md: rows/records неравномерно распределены "
@@ -287,137 +207,6 @@ BACKEND_DATA_SKEW_UNSUPPORTED_NOTE = (
 SPILL_SCRATCH_SUPPORTED_NOTE = (
     "- В analysis_facts.md есть ненулевые spill/scratch metrics; это подтверждает наличие "
     "метрик, но не доказывает spill/scratch как причину без дополнительных фактов."
-)
-ZERO_CARDINALITY_UNSUPPORTED_CLAIMS = (
-    (
-        "cardinality underestimation",
-        re.compile(r"\bcardinality\s+underestimation\b", re.IGNORECASE),
-    ),
-    (
-        "underestimation of cardinality",
-        re.compile(r"\bunderestimation\s+of\s+cardinality\b", re.IGNORECASE),
-    ),
-    (
-        "underestimated cardinality",
-        re.compile(r"\bunderestimated\s+cardinality\b", re.IGNORECASE),
-    ),
-    (
-        "actual rows exceed estimates",
-        re.compile(
-            r"\bactual\s+rows\s+(?:exceed|exceeded|are\s+higher\s+than|were\s+higher\s+than)\s+(?:the\s+)?estimat",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "estimated rows too low",
-        re.compile(r"\bestimated\s+rows\s+(?:(?:are|were)\s+)?too\s+low\b", re.IGNORECASE),
-    ),
-    (
-        "estimates too low",
-        re.compile(
-            r"\b(?:estimates|row\s+estimates|optimizer\s+estimates)\s+(?:(?:are|were)\s+)?too\s+low\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "low estimates caused row growth",
-        re.compile(r"\blow\s+estimates?\s+caused\s+row\s+growth\b", re.IGNORECASE),
-    ),
-    (
-        "trace row growth from low estimates",
-        re.compile(r"\btrace\s+row\s+growth\s+from\s+low\s+estimates?\b", re.IGNORECASE),
-    ),
-    (
-        "optimizer row-estimate failure",
-        re.compile(
-            r"\b(?:optimizer\s+)?row[- ]estimate\s+failure\b|"
-            r"\boptimizer\s+estimat\w+[^.\n]{0,80}\b(?:failed|failure|wrong|bad)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "cardinality skew",
-        re.compile(r"\bcardinality\s+skew\b|перекос\s+кардинальност\w+", re.IGNORECASE),
-    ),
-    (
-        "stats are stale",
-        re.compile(r"\bstats\s+are\s+stale\b", re.IGNORECASE),
-    ),
-    (
-        "stale statistics",
-        re.compile(r"\bstale\s+statistics\b", re.IGNORECASE),
-    ),
-    (
-        "hot keys exist",
-        re.compile(r"\bhot\s+keys\s+exist\b", re.IGNORECASE),
-    ),
-    (
-        "skew is proven",
-        re.compile(r"\bskew\s+is\s+proven\b", re.IGNORECASE),
-    ),
-    (
-        "Russian cardinality underestimation",
-        re.compile(r"недооцен\w+\s+(?:количеств\w+\s+строк|строк|cardinality)", re.IGNORECASE),
-    ),
-    (
-        "Russian actual rows exceed estimates",
-        re.compile(
-            r"(?:фактическ\w+\s+)?(?:количеств\w+\s+)?строк[^\n.]{0,80}(?:превыш|больше|выше)[^\n.]{0,80}оцен",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Russian row estimates too low",
-        re.compile(
-            r"оцен\w+\s+(?:строк|количеств\w+\s+строк)[^\n.]{0,80}(?:слишком\s+низк|занижен)",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Russian facts show row underestimation",
-        re.compile(
-            r"факты\s+показывают[^\n.]{0,120}(?:строк[^\n.]{0,80}(?:больше|превыш|выше)[^\n.]{0,80}оцен|недооцен\w+)",
-            re.IGNORECASE,
-        ),
-    ),
-)
-ZERO_CARDINALITY_NEGATION_CONTEXT_RE = re.compile(
-    r"("
-    r"\bdo\s+not\s+claim\b|"
-    r"\bnot\s+supported\b|"
-    r"\bis\s+not\s+supported\b|"
-    r"\bis\s+not\s+established\b|"
-    r"\bnot\s+established\b|"
-    r"\bno\s+analyzer-supported\b|"
-    r"\bno\s+evidence\s+(?:of|that|for)\b|"
-    r"\bno\s+proof\s+(?:of|that|for)\b|"
-    r"\bno\s+single\b|"
-    r"\bnot\s+proven\b|"
-    r"\bdid\s+not\s+find\b|"
-    r"\bнет\s+доказ\w*|"
-    r"\bнет\s+данн\w*|"
-    r"\bнет\s+явн\w*\s+признак\w*|"
-    r"\bнет\s+подтвержд\w*|"
-    r"\bне\s+доказ\w*|"
-    r"\bне\s+подтверж\w*|"
-    r"\bне\s+поддерж\w*|"
-    r"\bне\s+явля\w*\s+подтверж\w*"
-    r")",
-    re.IGNORECASE,
-)
-ZERO_CARDINALITY_CONTRAST_RE = re.compile(
-    r"\b(?:but|however|still|nevertheless|yet|though|although)\b|\b(?:но|однако)\b",
-    re.IGNORECASE,
-)
-ZERO_CARDINALITY_CLAUSE_BREAK_RE = re.compile(r"[,;.!?]\s+")
-ZERO_CARDINALITY_CONTRASTED_CAUSE_RE = re.compile(
-    r"[,;]\s*(?:but|however|still|nevertheless|yet|though|although|но|однако)\b"
-    r"[^.!?\n]{0,120}\b(?:cause|root\s+cause|причин\w*)\b",
-    re.IGNORECASE,
-)
-ZERO_CARDINALITY_RUSSIAN_NEGATION_BRIDGE_RE = re.compile(
-    r"^\s*(?:(?:того|о\s+том),\s+что|,?\s*что)\b",
-    re.IGNORECASE,
 )
 FACTS_TABLE_OPERATOR_RE = re.compile(r"^\s*\|\s*(?P<operator>\d{2,}:[^|]+?)\s*\|")
 REPORT_OPERATOR_ID_RE = re.compile(r"\b(?P<operator>\d{2,}:[A-Z][A-Z _]+)")
@@ -1218,168 +1007,6 @@ def facts_include_referenced_tables(facts_text: str) -> bool:
     return False
 
 
-SHORT_SUMMARY_NEGATIVE_RE = re.compile(
-    r"(не\s+подтвержд|нет\s+подтвержд|не\s+доказан|не\s+обнаружил|not\s+supported|not\s+proven|missing|absent)",
-    re.IGNORECASE,
-)
-
-
-def remove_negative_caveats_from_short_summary(text: str) -> str:
-    lines = text.splitlines()
-    try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == SHORT_SUMMARY_HEADING)
-    except StopIteration:
-        return text
-    end = len(lines)
-    for index in range(start + 1, len(lines)):
-        if lines[index].startswith("## "):
-            end = index
-            break
-    section = lines[start:end]
-    cleaned = [
-        line
-        for line in section
-        if not (line.lstrip().startswith(("-", "*")) and SHORT_SUMMARY_NEGATIVE_RE.search(line))
-    ]
-    if len(cleaned) == len(section):
-        return text
-    return "\n".join(lines[:start] + cleaned + lines[end:])
-
-
-def move_misplaced_admin_bullets_into_admin_section(text: str) -> str:
-    lines = text.splitlines()
-    moved: list[str] = []
-    kept: list[str] = []
-    after_admin_details = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped == "<summary>Для администратора / платформенной команды</summary>":
-            after_admin_details = False
-        elif stripped == "</details>":
-            after_admin_details = True
-        if after_admin_details and ADMIN_CHECK_BULLET_RE.search(line):
-            moved.append(line.strip())
-            continue
-        kept.append(line)
-    if not moved:
-        return text
-    return insert_bullets_into_section("\n".join(kept), NEXT_CHECKS_HEADING, moved)
-
-
-def remove_report_html_blocks(text: str) -> str:
-    lines = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped in {"<details>", "</details>"}:
-            continue
-        if stripped.startswith("<summary>") and stripped.endswith("</summary>"):
-            continue
-        lines.append(line)
-    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
-
-
-def move_misplaced_zero_cardinality_note(text: str) -> str:
-    if ZERO_CARDINALITY_NOT_SUPPORTED_BULLET not in text or NOT_SUPPORTED_HEADING not in text:
-        return text
-    lines = text.splitlines()
-    cleaned: list[str] = []
-    removed = False
-    in_not_supported = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped == NOT_SUPPORTED_HEADING:
-            in_not_supported = True
-        elif stripped.startswith("## ") or stripped.startswith("### ") or stripped in {"<details>", "</details>"}:
-            in_not_supported = False
-        if stripped == ZERO_CARDINALITY_NOT_SUPPORTED_BULLET and not in_not_supported:
-            removed = True
-            continue
-        cleaned.append(line)
-    if not removed:
-        return text
-    return insert_bullets_into_section("\n".join(cleaned), NOT_SUPPORTED_HEADING, [ZERO_CARDINALITY_NOT_SUPPORTED_BULLET])
-
-
-def normalize_report_headings(text: str, replacements: dict[str, str]) -> str:
-    lines = []
-    for line in text.splitlines():
-        lines.append(replacements.get(line.strip(), line))
-    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
-
-
-def is_negated_zero_cardinality_match(line: str, match_start: int) -> bool:
-    suffix = line[match_start:]
-    next_break = ZERO_CARDINALITY_CLAUSE_BREAK_RE.search(suffix)
-    clause_end = match_start + next_break.start() if next_break else len(line)
-    clause = line[:clause_end]
-
-    match_text_prefix = clause[:match_start]
-    match_text_suffix = clause[match_start:]
-    negation_area = f"{match_text_prefix} {match_text_suffix[:120]}"
-
-    negations = list(ZERO_CARDINALITY_NEGATION_CONTEXT_RE.finditer(negation_area))
-    if not negations:
-        return False
-
-    after_negation = negation_area[negations[-1].end() :]
-    after_negation = ZERO_CARDINALITY_RUSSIAN_NEGATION_BRIDGE_RE.sub("", after_negation, count=1)
-    if ZERO_CARDINALITY_CLAUSE_BREAK_RE.search(after_negation):
-        return False
-    if ZERO_CARDINALITY_CONTRAST_RE.search(after_negation):
-        return False
-    if ZERO_CARDINALITY_CONTRASTED_CAUSE_RE.search(line[match_start:]):
-        return False
-    return True
-
-
-def find_zero_cardinality_unsupported_claims(report_text: str) -> list[str]:
-    labels: list[str] = []
-    seen: set[str] = set()
-    for line in report_text.splitlines():
-        for label, rx in ZERO_CARDINALITY_UNSUPPORTED_CLAIMS:
-            for match in rx.finditer(line):
-                if is_negated_zero_cardinality_match(line, match.start()):
-                    continue
-                if label not in seen:
-                    labels.append(label)
-                    seen.add(label)
-                break
-    return labels
-
-
-def find_unsupported_metadata_claim_errors(report_text: str) -> list[str]:
-    errors: list[str] = []
-    for line in report_text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if has_unnegated_metadata_claim(REQUIRED_COMPUTE_STATS_RE, stripped):
-            errors.append("report requires COMPUTE STATS without deterministic support")
-        elif has_unnegated_metadata_claim(UNSUPPORTED_METADATA_ROOT_CAUSE_RE, stripped):
-            errors.append("report makes unsupported metadata/stale-stats root-cause claim")
-    return errors
-
-
-def has_unnegated_metadata_claim(pattern: re.Pattern[str], line: str) -> bool:
-    return any(
-        not is_negated_metadata_claim(line, match.start(), match.end())
-        for match in pattern.finditer(line)
-    )
-
-
-def is_negated_metadata_claim(line: str, match_start: int, match_end: int | None = None) -> bool:
-    prefix = line[:match_start]
-    negation_matches = list(METADATA_CLAIM_NEGATION_RE.finditer(prefix))
-    if not negation_matches:
-        return False
-    latest_negation = negation_matches[-1]
-    negation_scope = line[latest_negation.end() : (match_end or match_start)]
-    return (
-        METADATA_CLAIM_SENTENCE_BOUNDARY_RE.search(negation_scope) is None
-        and METADATA_CLAIM_CONTRAST_RE.search(negation_scope) is None
-    )
-
-
 def validate_report_against_facts(report_text: str, facts_text: str) -> list[str]:
     errors: list[str] = []
     cardinality_count = facts_cardinality_anomaly_count(facts_text)
@@ -1560,180 +1187,6 @@ def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin
     text = move_misplaced_zero_cardinality_note(text)
     text = remove_report_html_blocks(text)
     return text
-
-
-def count_report_section_items(text: str, heading: str) -> int | None:
-    lines = text.splitlines()
-    try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == heading)
-    except StopIteration:
-        return None
-
-    section_lines: list[str] = []
-    for line in lines[start + 1 :]:
-        if line.startswith("## "):
-            break
-        section_lines.append(line)
-
-    bullet_count = sum(
-        1
-        for line in section_lines
-        if re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line)
-    )
-    if bullet_count:
-        return bullet_count
-
-    paragraph_count = 0
-    in_paragraph = False
-    for line in section_lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith(">"):
-            in_paragraph = False
-            continue
-        if not in_paragraph:
-            paragraph_count += 1
-            in_paragraph = True
-    return paragraph_count
-
-
-def extract_report_section_lines(text: str, heading: str) -> list[str]:
-    lines = text.splitlines()
-    try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == heading)
-    except StopIteration:
-        return []
-    section_lines: list[str] = []
-    for line in lines[start + 1 :]:
-        if line.startswith("## ") or line.strip() == "<details>":
-            break
-        section_lines.append(line)
-    return section_lines
-
-
-def validate_report_html_safety(text: str) -> list[str]:
-    errors: list[str] = []
-    for match in RAW_HTML_TAG_RE.finditer(text):
-        tag = match.group(1).lower()
-        if tag not in ALLOWED_REPORT_HTML_TAGS:
-            errors.append(f"report contains unsupported raw HTML tag: {tag}")
-            break
-    return errors
-
-
-def validate_report_internal_fingerprints(text: str) -> list[str]:
-    if any(REPORT_INTERNAL_FINGERPRINT_RE.search(line) for line in text.splitlines()):
-        return ["report contains browser-visible internal artifact/runtime fingerprint"]
-    return []
-
-
-def validate_recommendations_section(text: str) -> list[str]:
-    errors: list[str] = []
-    items = count_report_section_items(text, RECOMMENDATIONS_HEADING)
-    if items is None:
-        return errors
-    if not 2 <= items <= MAX_RECOMMENDATION_ITEMS:
-        errors.append(
-            f"practical recommendations must contain 2-{MAX_RECOMMENDATION_ITEMS} concise items, found {items}"
-        )
-
-    section_lines = extract_report_section_lines(text, RECOMMENDATIONS_HEADING)
-    for line in section_lines:
-        stripped = line.strip()
-        if not re.match(r"^(?:[-*]|\d+\.)\s+\S", stripped):
-            continue
-        if VAGUE_RECOMMENDATION_RE.search(stripped) or GENERIC_OPTIMIZE_RE.search(stripped):
-            errors.append("practical recommendations contain open-ended check/analyze/optimize wording")
-            break
-        if ADMIN_ONLY_RECOMMENDATION_RE.search(stripped):
-            errors.append("practical recommendations contain admin-only checks")
-            break
-    return errors
-
-
-def validate_recommendations_against_candidates(text: str, facts_text: str) -> list[str]:
-    candidates = recommendation_candidate_lines(facts_text)
-    section_lines = extract_report_section_lines(text, RECOMMENDATIONS_HEADING)
-    for line in section_lines:
-        stripped = line.strip()
-        if not re.match(r"^(?:[-*]|\d+\.)\s+\S", stripped):
-            continue
-        if has_unsupported_recommendation_topic(stripped, facts_text):
-            return ["practical recommendations include an action outside Python-owned candidates"]
-        if recommendation_candidate_id_for_bullet(stripped, candidates) is not None:
-            continue
-        return ["practical recommendations include an action outside Python-owned candidates"]
-    return []
-
-
-def validate_unsupported_conclusions_slot(text: str, facts_text: str) -> list[str]:
-    digest = build_report_contract_digest(facts_text)
-    unsupported = [
-        line[2:].strip()
-        for line in digest["unsupported_conclusions"]
-        if isinstance(line, str) and line.startswith("- ")
-    ]
-    if not unsupported:
-        return []
-
-    short_summary = "\n".join(extract_report_section_lines(text, SHORT_SUMMARY_HEADING)).lower()
-    for conclusion in unsupported:
-        normalized = conclusion.lower()
-        if normalized and normalized in short_summary:
-            return ["short summary contains unsupported conclusion that belongs in Что НЕ подтверждается фактами"]
-    return []
-
-
-def contains_raw_sql_like_text(text: str) -> bool:
-    # Trusted reports must not carry raw query text; callers report only the generic validation failure.
-    if _contains_raw_sql_statement(text):
-        return True
-
-    lines = text.splitlines()
-    in_fence = False
-    fence_marker = ""
-    fence_lang = ""
-    fence_lines: list[str] = []
-
-    for line in lines:
-        if not in_fence:
-            match = SQL_FENCE_START_RE.match(line)
-            if not match:
-                continue
-            in_fence = True
-            fence_marker = match.group("fence")
-            fence_lang = match.group("lang").lower()
-            fence_lines = []
-            if fence_lang == "sql":
-                return True
-            continue
-
-        end_match = SQL_FENCE_END_RE.match(line)
-        if end_match and end_match.group("fence")[0] == fence_marker[0]:
-            if not fence_lang and _contains_raw_sql_statement("\n".join(fence_lines)):
-                return True
-            in_fence = False
-            fence_marker = ""
-            fence_lang = ""
-            fence_lines = []
-            continue
-
-        fence_lines.append(line)
-
-    if in_fence and not fence_lang and _contains_raw_sql_statement("\n".join(fence_lines)):
-        return True
-    return False
-
-
-def _contains_raw_sql_statement(text: str) -> bool:
-    return any(
-        pattern.search(text)
-        for pattern in (
-            RAW_SELECT_SQL_RE,
-            RAW_WITH_SQL_RE,
-            RAW_MUTATING_SQL_RE,
-            RAW_SHOW_SQL_RE,
-        )
-    )
 
 
 def validate_report_text(

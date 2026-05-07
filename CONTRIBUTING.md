@@ -18,19 +18,38 @@ Read [docs/safety-contract.md](docs/safety-contract.md) before changing
 collection, analyzer facts, report validation, optimizer validation, browser
 display, config loading, or trusted artifacts.
 
+## Local Tooling
+
+Install the package with development tools when working on code:
+
+```bash
+python -m pip install -e ".[dev]"
+pre-commit install
+```
+
+The current ruff CI profile starts with correctness checks only. Formatting is
+available through pre-commit for touched Python files; broaden lint rules in a
+separate cleanup slice after existing findings are triaged.
+
 ## Development Workflow
 
 1. Keep changes small and focused.
 2. Prefer existing package modules and local helper APIs.
-3. Use packaged `query-doctor-*` entry points for new docs and smoke commands.
-4. Keep root-level `query_doctor_*.py` files as compatibility launchers unless
-   a dedicated migration slice removes them.
+3. Keep files reviewable. Avoid adding new large code files; when extending an
+   already large module, split along a real behavior boundary if the new code is
+   not part of the module's existing responsibility.
+4. Use packaged `query-doctor-*` entry points for new docs and smoke commands.
 5. Add focused tests for changed behavior and broader tests for safety-boundary
    changes.
+
+See [docs/development-practices.md](docs/development-practices.md) for the
+module-size, dependency, test, error-handling, and documentation practices used
+for review.
 
 Before committing:
 
 ```bash
+python -m ruff check query_doctor tests
 python3 -m pytest -q
 git diff --check
 query-doctor-demo-preflight

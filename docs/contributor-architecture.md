@@ -2,7 +2,9 @@
 
 This map helps contributors choose the right module before changing behavior.
 For the full architecture contract, see [architecture.md](architecture.md). For
-mandatory safety rules, see [safety-contract.md](safety-contract.md).
+mandatory safety rules, see [safety-contract.md](safety-contract.md). For
+module-size and engineering quality practices, see
+[development-practices.md](development-practices.md).
 
 ## System Shape
 
@@ -22,6 +24,12 @@ The implemented engine is Apache Impala only. Future engine/source-provider
 work should add narrow seams and fixtures, not fake runtime support.
 
 ## Where To Change Things
+
+Keep changes small enough to review. New production modules should normally be
+focused and modest in size; existing large modules should grow only when the
+change belongs to their current responsibility. If a change adds a new behavior
+family to a large module, extract a parser, presenter, validator,
+command-builder, or workflow helper instead.
 
 ### Collectors
 
