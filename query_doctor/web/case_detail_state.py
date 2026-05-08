@@ -7,6 +7,7 @@ from typing import Any
 from query_doctor.web.details_facts import (
     load_batch_case_cluster_runtime_context_facts,
     load_batch_case_cm_metrics_facts,
+    load_batch_case_evidence_quality_facts,
     load_batch_case_metadata_facts,
     load_batch_case_runtime_diagnosis_facts,
 )
@@ -40,6 +41,7 @@ def build_batch_case_detail_render_context(
     optimizer_validation_result: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     metadata_facts = load_batch_case_metadata_facts(settings, case)
+    evidence_quality_facts = load_batch_case_evidence_quality_facts(settings, case)
     cm_metrics_facts = load_batch_case_cm_metrics_facts(settings, case)
     runtime_diagnosis_facts = load_batch_case_runtime_diagnosis_facts(settings, case)
     cluster_runtime_context_facts = load_batch_case_cluster_runtime_context_facts(settings, case)
@@ -67,6 +69,7 @@ def build_batch_case_detail_render_context(
     )
     return {
         "metadata_facts": metadata_facts,
+        "evidence_quality_facts": evidence_quality_facts,
         "cm_metrics_facts": cm_metrics_facts,
         "runtime_diagnosis_facts": runtime_diagnosis_facts,
         "cluster_runtime_context_facts": cluster_runtime_context_facts,

@@ -14,6 +14,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanCmMetricsView,
     RecentScanMetadataTableView,
     RecentScanMetadataView,
+    RecentScanEvidenceQualityView,
     RecentScanRuntimeDiagnosisSignalView,
     RecentScanRuntimeDiagnosisView,
     RecentScanRuntimeVerdictView,
@@ -157,6 +158,7 @@ def present_recent_scan_case_detail(
     cm_metrics_facts: dict[str, Any] | None = None,
     runtime_diagnosis_facts: dict[str, Any] | None = None,
     cluster_runtime_context_facts: dict[str, Any] | None = None,
+    evidence_quality_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
@@ -228,8 +230,26 @@ def present_recent_scan_case_detail(
         runtime_diagnosis=runtime_diagnosis,
         cluster_runtime_context=cluster_runtime_context,
         runtime_verdict=present_recent_scan_runtime_verdict(cluster_runtime_context, runtime_diagnosis),
+        evidence_quality=present_recent_scan_evidence_quality(evidence_quality_facts),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
+    )
+
+
+def present_recent_scan_evidence_quality(evidence_quality_facts: dict[str, Any] | None) -> RecentScanEvidenceQualityView:
+    facts = evidence_quality_facts if isinstance(evidence_quality_facts, dict) else {}
+    strengths = facts.get("strengths") if isinstance(facts.get("strengths"), list) else []
+    limitations = facts.get("limitations") if isinstance(facts.get("limitations"), list) else []
+    score = safe_display_value(facts.get("score"))
+    level = safe_display_text(facts.get("level") or "")
+    safe_strengths = tuple(safe_display_text(item) for item in strengths if item is not None)
+    safe_limitations = tuple(safe_display_text(item) for item in limitations if item is not None)
+    return RecentScanEvidenceQualityView(
+        unavailable=not bool(score is not None or level or safe_strengths or safe_limitations),
+        score=score,
+        level=level,
+        strengths=safe_strengths,
+        limitations=safe_limitations,
     )
 
 

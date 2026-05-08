@@ -158,6 +158,15 @@ class RecentScanRuntimeVerdictView:
 
 
 @dataclass(frozen=True)
+class RecentScanEvidenceQualityView:
+    unavailable: bool
+    score: Any
+    level: str
+    strengths: tuple[str, ...]
+    limitations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any
@@ -184,5 +193,6 @@ class RecentScanCaseDetailView:
     runtime_diagnosis: RecentScanRuntimeDiagnosisView
     cluster_runtime_context: RecentScanClusterRuntimeContextView
     runtime_verdict: RecentScanRuntimeVerdictView
+    evidence_quality: RecentScanEvidenceQualityView
     report_action: ReportActionView
     score_severity: str

@@ -83,6 +83,7 @@ def render_batch_case_detail(
     cm_metrics_facts: dict[str, Any] | None = None,
     runtime_diagnosis_facts: dict[str, Any] | None = None,
     cluster_runtime_context_facts: dict[str, Any] | None = None,
+    evidence_quality_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
     optimized_query_state: dict[str, Any] | None = None,
@@ -102,6 +103,7 @@ def render_batch_case_detail(
         cm_metrics_facts,
         runtime_diagnosis_facts,
         cluster_runtime_context_facts,
+        evidence_quality_facts,
         report_state=report_state,
     )
     safe_workflow_title = html.escape(workflow_title)
@@ -218,6 +220,18 @@ def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
 
 
 def evidence_quality_label(view: RecentScanCaseDetailView) -> str:
+    if not view.evidence_quality.unavailable:
+        level = str(view.evidence_quality.level or "unknown").strip()
+        score = str(view.evidence_quality.score or "").strip()
+        label = {
+            "high": "High",
+            "medium": "Medium",
+            "low": "Low",
+        }.get(level.lower(), "Unknown")
+        if score:
+            return f"{label}: {score} analyzer evidence quality"
+        return f"{label}: analyzer evidence quality"
+
     statuses = {label: str(value or "").strip().lower() for label, value in view.status_fields}
     if statuses.get("collection") not in {"", "ok", "collected", "success"}:
         return "Incomplete: collection did not finish cleanly"

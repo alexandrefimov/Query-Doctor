@@ -8,6 +8,7 @@ from typing import Any
 from query_doctor.web.details_facts import (
     load_specific_query_cluster_runtime_context_facts,
     load_specific_query_cm_metrics_facts,
+    load_specific_query_evidence_quality_facts,
     load_specific_query_metadata_facts,
     load_specific_query_runtime_diagnosis_facts,
 )
@@ -36,6 +37,7 @@ def build_specific_query_detail_render_context(
     optimizer_validation_result: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     metadata_facts = load_specific_query_metadata_facts(case_dir)
+    evidence_quality_facts = load_specific_query_evidence_quality_facts(case_dir)
     cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
     runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
     cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
@@ -56,6 +58,7 @@ def build_specific_query_detail_render_context(
     )
     return {
         "metadata_facts": metadata_facts,
+        "evidence_quality_facts": evidence_quality_facts,
         "cm_metrics_facts": cm_metrics_facts,
         "runtime_diagnosis_facts": runtime_diagnosis_facts,
         "cluster_runtime_context_facts": cluster_runtime_context_facts,

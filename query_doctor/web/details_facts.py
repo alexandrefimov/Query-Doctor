@@ -60,6 +60,14 @@ def load_specific_query_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
     return fallback_facts
 
 
+def load_specific_query_evidence_quality_facts(case_dir: Path) -> dict[str, Any] | None:
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_evidence_quality_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_specific_query_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
     for artifact_dir in batch_case_artifact_dirs(case_dir):
         facts = load_case_analysis_cm_metrics_facts(artifact_dir)
@@ -99,6 +107,17 @@ def load_batch_case_metadata_facts(settings: WebSettings, case: dict[str, object
         if context_facts:
             return context_facts
     return fallback_facts
+
+
+def load_batch_case_evidence_quality_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
+        return None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_evidence_quality_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
 
 
 def load_batch_case_cm_metrics_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
@@ -144,6 +163,18 @@ def load_batch_case_analysis_metadata_facts(case_dir: Path) -> dict[str, Any] | 
     except (OSError, ValueError):
         return None
     return parse_table_metadata_context_facts(text)
+
+
+def load_case_analysis_evidence_quality_facts(case_dir: Path) -> dict[str, Any] | None:
+    try:
+        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
+        facts_path.relative_to(case_dir)
+        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
+            return None
+        text = facts_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return None
+    return parse_evidence_quality_facts(text)
 
 
 def load_case_analysis_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -282,6 +313,54 @@ def parse_table_metadata_context_facts(text: str) -> dict[str, Any] | None:
         "summary": summary,
         "tables": tables,
         "statement_counts": metadata_statement_counts(tables),
+    }
+
+
+def parse_evidence_quality_facts(text: str) -> dict[str, Any] | None:
+    section = ""
+    summary: dict[str, str] = {}
+    strengths: list[str] = []
+    limitations: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            section = "evidence_quality" if line == "## Evidence Quality" else ""
+            continue
+        if not section:
+            continue
+        if line.startswith("### "):
+            heading = line.removeprefix("###").strip().lower()
+            if heading == "strengths":
+                section = "evidence_quality_strengths"
+            elif heading == "limitations":
+                section = "evidence_quality_limitations"
+            else:
+                section = "evidence_quality"
+            continue
+        if not line.startswith("- "):
+            continue
+        bullet = line[2:].strip()
+        if section == "evidence_quality_strengths":
+            if bullet:
+                strengths.append(clean_metadata_fact_value(bullet))
+            continue
+        if section == "evidence_quality_limitations":
+            if bullet:
+                limitations.append(clean_metadata_fact_value(bullet))
+            continue
+        if ": " not in bullet:
+            continue
+        key, value = bullet.split(": ", 1)
+        key = key.strip()
+        if key in {"score", "level"}:
+            summary[key] = clean_metadata_fact_value(value)
+    if not summary and not strengths and not limitations:
+        return None
+    return {
+        "score": summary.get("score", ""),
+        "level": summary.get("level", ""),
+        "strengths": strengths[:8],
+        "limitations": limitations[:8],
     }
 
 
