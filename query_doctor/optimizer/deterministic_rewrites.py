@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from query_doctor.optimizer.models import CteDefinition, OptimizerRewriteRecipe
 from query_doctor.optimizer.rewrite_safety import (
@@ -63,6 +64,16 @@ SAFE_SINGLE_CTE_PREDICATE_KEYWORDS = {
     "TIMESTAMP",
     "TRUE",
 }
+
+
+@dataclass(frozen=True)
+class PredicatePushdownConjunctDecision:
+    conjunct: str
+    dequalified: str | None
+    copyable: bool
+    reason: str
+
+
 SAFE_SINGLE_CTE_PREDICATE_PUNCTUATION = {"(", ")", ",", ";"}
 UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS = ("HAVING", "LIMIT", "UNION", "EXCEPT", "INTERSECT")
 RELATION_ALIAS_BOUNDARIES = {
@@ -892,24 +903,91 @@ def copyable_final_where_predicates(
     cte_qualifiers: set[str],
     grouped_columns: set[str],
 ) -> tuple[str, ...]:
+    return tuple(
+        decision.dequalified
+        for decision in per_conjunct_pushdown_plan(
+            final_sql,
+            cte_body,
+            available_columns,
+            cte_qualifiers=cte_qualifiers,
+            grouped_columns=grouped_columns,
+        )
+        if decision.copyable and decision.dequalified is not None
+    )
+
+
+def per_conjunct_pushdown_plan(
+    final_sql: str,
+    cte_body: str,
+    available_columns: set[str],
+    *,
+    cte_qualifiers: set[str],
+    grouped_columns: set[str],
+) -> tuple[PredicatePushdownConjunctDecision, ...]:
+    """Classify top-level final-WHERE conjuncts independently for pushdown.
+
+    Each top-level `AND` conjunct is evaluated as an atomic copy candidate. A
+    conjunct is copyable only when it dequalifies entirely against the target
+    aliases and remains valid for the target projected columns.
+    """
     where_offset = find_top_level_keyword_offset(final_sql, ("WHERE",))
     if where_offset is None:
         return ()
     start = where_offset + len("WHERE")
     end = next_top_level_clause_offset(final_sql, start)
     existing_cte_predicates = sql_predicate_signature_counter(cte_body, "WHERE")
-    copyable: list[str] = []
-    for predicate in split_top_level_conjunct_fragments(final_sql[start:end]):
-        dequalified = dequalify_predicate_for_cte_aliases(predicate, cte_qualifiers, available_columns)
-        if dequalified and predicate_is_copyable_to_single_cte(dequalified, available_columns):
-            predicate_columns = predicate_column_references(dequalified, available_columns)
-            if grouped_columns and not predicate_columns <= grouped_columns:
-                continue
-            signature = sql_predicate_signature_counter(f"SELECT 1 WHERE {dequalified}", "WHERE")
-            if not signature or counter_is_subset(signature, existing_cte_predicates):
-                continue
-            copyable.append(dequalified)
-    return tuple(copyable)
+    decisions: list[PredicatePushdownConjunctDecision] = []
+    for conjunct in split_top_level_conjunct_fragments(final_sql[start:end]):
+        dequalified = dequalify_predicate_for_cte_aliases(conjunct, cte_qualifiers, available_columns)
+        if not dequalified:
+            decisions.append(
+                PredicatePushdownConjunctDecision(conjunct, None, False, "not_for_target")
+            )
+            continue
+        predicate_columns = predicate_column_references(dequalified, available_columns)
+        if predicate_columns is None:
+            decisions.append(
+                PredicatePushdownConjunctDecision(
+                    conjunct,
+                    dequalified,
+                    False,
+                    "unsupported_predicate",
+                )
+            )
+            continue
+        if grouped_columns and not predicate_columns <= grouped_columns:
+            decisions.append(
+                PredicatePushdownConjunctDecision(
+                    conjunct,
+                    dequalified,
+                    False,
+                    "not_grouped_column",
+                )
+            )
+            continue
+        signature = sql_predicate_signature_counter(f"SELECT 1 WHERE {dequalified}", "WHERE")
+        if not signature:
+            decisions.append(
+                PredicatePushdownConjunctDecision(
+                    conjunct,
+                    dequalified,
+                    False,
+                    "unsupported_signature",
+                )
+            )
+            continue
+        if counter_is_subset(signature, existing_cte_predicates):
+            decisions.append(
+                PredicatePushdownConjunctDecision(
+                    conjunct,
+                    dequalified,
+                    False,
+                    "already_present",
+                )
+            )
+            continue
+        decisions.append(PredicatePushdownConjunctDecision(conjunct, dequalified, True, "copyable"))
+    return tuple(decisions)
 
 
 def predicate_is_copyable_to_single_cte(predicate: str, available_columns: set[str]) -> bool:
