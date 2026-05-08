@@ -1,0 +1,75 @@
+# Test Matrix
+
+Last updated: 2026-05-08
+
+This matrix helps agents choose focused validation before broader tests. It is
+not a replacement for judgment: run more when a change crosses boundaries.
+
+Always run `git diff --check` before committing.
+
+## Quick Selection
+
+| Touched area | Read first | Focused validation |
+| --- | --- | --- |
+| `docs/**` only | `docs/README.md`, changed doc | `git diff --check` |
+| Active docs routing/baseline | `docs/codex-handoff.md`, `docs/code-map.md` | `python3 scripts/check_active_docs.py` |
+| `query_doctor/web/ui/**` | `docs/safety-contract.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_web_ui_home.py tests/test_web_ui_help.py tests/test_web_ui_readme.py` |
+| Web routes/jobs | `docs/codex-handoff.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_web_server.py tests/test_web_optimizer.py` |
+| Browser safety text | `docs/safety-contract.md` | `python3 -m pytest -q tests/test_web_display_safety.py tests/test_web_server.py` |
+| Trusted artifacts | `docs/code-audit.md`, `docs/query-optimizer-contract.md` | `python3 -m pytest -q tests/test_web_trusted_artifacts.py tests/test_web_optimizer.py` |
+| `query_doctor/report/**` | `docs/safety-contract.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_report_sanitizer.py tests/test_web_ui_report.py` |
+| Optimizer parser/validator | `docs/query-optimizer-contract.md` | `python3 -m pytest -q tests/test_query_optimizer.py tests/test_optimizer_sql.py` |
+| Optimizer recipes/fixtures | `docs/query-optimizer-contract.md`, `docs/model-bakeoff.md` | `python3 -m pytest -q tests/test_optimizer_sql.py tests/test_optimizer_benchmark_fixtures.py` |
+| Pasted-SQL optimizer web page | `docs/query-optimizer-contract.md`, `docs/safety-contract.md` | `python3 -m pytest -q tests/test_web_optimizer.py tests/test_query_optimizer.py` |
+| `query_doctor/cm/**` | `docs/safety-contract.md`, `docs/codex-handoff.md` | `python3 -m pytest -q tests/test_cm_*` |
+| Cloudera Manager metrics/events | `docs/codex-handoff.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_cm_* tests/test_analyzer_*` |
+| `query_doctor/impala/**` | `docs/safety-contract.md` | `python3 -m pytest -q tests/test_impala_* tests/test_metadata_*` |
+| Analyzer facts/scoring | `docs/code-audit.md`, `docs/analyzer-audit.md` | `python3 -m pytest -q tests/test_analyzer_cli.py tests/test_recent_*` |
+| Batch/recent scan | `docs/codex-handoff.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_batch_recent_cli.py tests/test_recent_* tests/test_web_server.py` |
+| CLI command building | `docs/development-practices.md` | `python3 -m pytest -q tests/test_cli_* tests/test_web_server.py` |
+| Config behavior | `docs/development-practices.md`, `docs/credentials.md` | `python3 -m pytest -q tests/test_config* tests/test_*config*` |
+| Agent tooling | `docs/agent-playbooks.md`, `docs/test-matrix.md` | `python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py` |
+
+If a listed test file does not exist in a future checkout, run the nearest
+existing focused tests and record the gap in the final note.
+
+## When To Run Full Pytest
+
+Run `python3 -m pytest` when:
+
+- a safety boundary moves;
+- trusted report or optimizer marker semantics change;
+- collector/analyzer/report/web contracts change together;
+- a shared helper used by several workflows changes;
+- focused tests fail in a way that suggests cross-module risk;
+- before a release or demo baseline if time allows.
+
+## Changelog Trigger
+
+Update `docs/changelog.md` for:
+
+- user-facing workflow changes;
+- safety/trust-boundary changes;
+- LLM report or optimizer behavior changes;
+- collector/analyzer behavior changes;
+- major documentation baseline changes.
+
+Do not add changelog entries for minor copy edits, CSS polish, tests, or
+internal refactors unless they change behavior or safety.
+
+## Browser Safety Checklist
+
+Any new browser-visible dynamic text must be checked for:
+
+- raw SQL;
+- raw profile text;
+- raw metadata;
+- local paths or `case_dir`;
+- raw artifact filenames;
+- subprocess output;
+- secrets or environment values;
+- model names or runtime internals;
+- unsupported root-cause wording.
+
+Prefer presenter/view-model helpers and `query_doctor.safety.browser_display`
+over ad hoc escaping.

@@ -29,7 +29,6 @@ from query_doctor.web.ui.recent_scan_groups import (
     filter_rows_by_query_group,
     filter_rows_by_spills,
     normalize_query_group,
-    optimizer_artifact_is_trusted,
     render_result_filters,
     sort_rows_for_query_group,
 )
@@ -187,8 +186,6 @@ def batch_result_empty_message(
         return "No bad queries were found in this scan. Check Suspicious, Optimization candidates, or Stats refresh candidates for lower-severity follow-up work."
     if active_group == "suspicious":
         return "No suspicious-only queries were found in this scan. Bad queries and action-candidate tabs may still contain follow-up work."
-    if active_group == "optimizer_ready":
-        return "No optimizer-ready cases have a trusted draft or trusted recommendations yet. Open an optimization candidate and run the Query LLM optimizer explicitly."
     if active_group == "optimization":
         return "No medium/high optimization candidates were found. Query Doctor did not identify a supported query-shape review opportunity in this scan."
     if active_group == "stats":
@@ -218,7 +215,7 @@ def render_batch_case_row(
         href = f"{details_base_path.rstrip('/')}/{html.escape(view.case_id, quote=True)}"
         row_attrs += f" data-href=\"{href}\" onclick=\"window.open(this.dataset.href,'_blank','noopener')\" tabindex=\"0\" onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();window.open(this.dataset.href,'_blank','noopener')}}\""
     normalized = normalize_query_group(query_group)
-    if normalized in {"optimizer_ready", "optimization"}:
+    if normalized == "optimization":
         cells = [
             compact_cell(rank),
             query_id_cell(view.query_id),

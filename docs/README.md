@@ -63,9 +63,14 @@ contracts when they conflict with the active baseline.
 - [contributor-architecture.md](contributor-architecture.md): contributor map
   for collectors, analyzer, report writer, optimizer, web UI, and trusted
   artifacts.
+- [code-map.md](code-map.md): practical lookup map for product surfaces,
+  ownership boundaries, and common change targets.
 - [development-practices.md](development-practices.md): maintainability,
   module-size, test, dependency, and documentation practices for contributors
   and coding agents.
+- [agent-playbooks.md](agent-playbooks.md): task-oriented playbooks for coding
+  agents.
+- [test-matrix.md](test-matrix.md): focused validation matrix by touched area.
 - [safety-contract.md](safety-contract.md): mandatory trust and redaction rules
   ([Russian](i18n/ru/safety-contract.md)).
 - [roadmap.md](roadmap.md): implemented scope, near-term work, and future seams.
@@ -104,6 +109,9 @@ should not be read as product user guides.
 - [codex-handoff.md](codex-handoff.md): current engineering baseline and
   operating rules for Codex agents.
 - [code-audit.md](code-audit.md): current implementation risks and follow-ups.
+- [agent-playbooks.md](agent-playbooks.md): practical task playbooks for agents.
+- [test-matrix.md](test-matrix.md): focused test selection for common changes.
+- [code-map.md](code-map.md): fast code ownership lookup for agents.
 - [project-audit.md](project-audit.md): concise product-level audit snapshot.
 - [analyzer-audit.md](analyzer-audit.md): analyzer-specific audit notes.
 - [root-compatibility-audit.md](root-compatibility-audit.md): completed root
@@ -125,3 +133,10 @@ When running directly from a checkout without installed console scripts, use
 `python -m query_doctor.cli.<command_module>`. Root-level compatibility
 launchers may exist in older releases, but current public docs should not use
 them.
+
+## Agent Tooling
+
+- `python3 scripts/agent_preflight.py`: classify changed paths and suggest
+  required reading, focused tests, changelog needs and safety notes.
+- `python3 scripts/check_active_docs.py`: check active docs for stale guidance,
+  missing local links and removed command references.

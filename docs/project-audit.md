@@ -14,8 +14,10 @@ active engineering audit. Use:
 
 ## Executive Summary
 
-Query Doctor is a local-first Apache Impala diagnostic product with three
-diagnosis entry points: Finished Queries, Running Queries, and Specific Query.
+Query Doctor is a local-first Apache Impala diagnostic product whose main UI
+entry point is Diagnose: Recent queries is the default batch triage mode,
+Running now is the lower-confidence live scan target, and Known Query ID is the
+secondary focused mode for one known Cloudera Manager query ID.
 The core product advantage is the fact boundary: Python extracts deterministic
 facts, while LLM features are explicit actions whose output is trusted only
 after validation.
@@ -26,10 +28,10 @@ with the safety contract as the project grows.
 
 ## Current Product
 
-- Finished Queries ranks completed Impala queries discovered from Cloudera
-  Manager.
-- Running Queries uses the same shape for live lower-confidence triage.
-- Specific Query analyzes one known Cloudera Manager query ID.
+- Diagnose / Recent queries ranks completed Impala queries discovered from
+  Cloudera Manager.
+- Diagnose / Running now uses the same shape for live lower-confidence triage.
+- Diagnose / Known Query ID analyzes one known Cloudera Manager query ID.
 - Details pages show deterministic findings, runtime context, Cloudera Manager
   metrics/events, metadata status, explicit LLM Report action, and explicit
   Query LLM optimizer action.

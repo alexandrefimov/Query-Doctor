@@ -147,8 +147,9 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
     if not isinstance(raw, dict):
         raise CMAdapterError("CM query summary item must be an object.")
 
+    source = raw_with_attributes(raw, query_summary_attributes(raw))
     query_id = normalize_optional_string(
-        first_present(raw, ("queryId", "query_id", "id"))
+        first_present(source, ("queryId", "query_id", "id"))
     )
     if not query_id:
         raise CMAdapterError("CM query summary is missing required query id.")
@@ -158,11 +159,13 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
         start_time=normalize_optional_string(first_present(raw, ("startTime", "start_time"))),
         end_time=normalize_optional_string(first_present(raw, ("endTime", "end_time"))),
         duration_ms=parse_duration_ms(raw),
-        status=normalize_optional_string(first_present(raw, ("status",))),
-        user=normalize_optional_string(first_present(raw, ("user", "username", "queryUser"))),
-        pool=normalize_optional_string(first_present(raw, ("pool", "poolName", "admissionPool"))),
+        status=normalize_optional_string(first_present(source, ("status", "query_status"))),
+        user=normalize_optional_string(first_present(source, ("user", "username", "queryUser"))),
+        pool=normalize_optional_string(
+            first_present(source, ("pool", "poolName", "admissionPool"))
+        ),
         query_type=normalize_optional_string(
-            first_present(raw, ("queryType", "query_type", "statementType", "statement_type"))
+            first_present(source, ("queryType", "query_type", "statementType", "statement_type"))
         ),
         statement=normalize_optional_string(
             first_present(
@@ -178,38 +181,54 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
                 ),
             )
         ),
-        query_state=normalize_optional_string(first_present(raw, ("queryState", "query_state", "state"))),
+        query_state=normalize_optional_string(
+            first_present(source, ("queryState", "query_state", "state"))
+        ),
         admission_result=normalize_optional_string(
-            first_present(raw, ("admissionResult", "admission_result", "admissionStatus", "admission_status"))
+            first_present(
+                source,
+                ("admissionResult", "admission_result", "admissionStatus", "admission_status"),
+            )
         ),
         admission_wait_ms=parse_optional_int_field(
-            raw,
-            ("admissionWaitMillis", "admissionWaitMs", "admission_wait_ms", "queuedTimeMillis", "queuedTimeMs"),
+            source,
+            (
+                "admissionWaitMillis",
+                "admissionWaitMs",
+                "admission_wait_ms",
+                "queuedTimeMillis",
+                "queuedTimeMs",
+            ),
             "admission_wait_ms",
         ),
         rows_produced=parse_optional_int_field(
-            raw,
+            source,
             ("rowsProduced", "rows_produced", "numRowsProduced", "num_rows_produced"),
             "rows_produced",
         ),
         bytes_read=parse_optional_int_field(
-            raw,
+            source,
             ("bytesRead", "bytes_read", "hdfsBytesRead", "hdfs_bytes_read"),
             "bytes_read",
         ),
         bytes_sent=parse_optional_int_field(
-            raw,
+            source,
             ("bytesSent", "bytes_sent", "totalBytesSent", "total_bytes_sent"),
             "bytes_sent",
         ),
         memory_aggregate_peak=parse_optional_int_field(
-            raw,
+            source,
             ("memoryAggregatePeak", "memory_aggregate_peak", "peakMemoryBytes", "peak_memory_bytes"),
             "memory_aggregate_peak",
         ),
         memory_per_node_peak=parse_optional_int_field(
-            raw,
-            ("memoryPerNodePeak", "memory_per_node_peak", "perNodePeakMemoryBytes", "per_node_peak_memory_bytes"),
+            source,
+            (
+                "memoryPerNodePeak",
+                "memory_per_node_peak",
+                "perNodePeakMemoryBytes",
+                "per_node_peak_memory_bytes",
+            ),
             "memory_per_node_peak",
         ),
     )
@@ -287,12 +306,49 @@ def first_present(raw: dict[str, object], names: tuple[str, ...]) -> object | No
     return None
 
 
+def query_summary_attributes(raw: dict[str, object]) -> dict[str, object]:
+    attributes = raw.get("attributes")
+    if isinstance(attributes, dict):
+        return dict(attributes)
+    if not isinstance(attributes, list):
+        return {}
+    parsed: dict[str, object] = {}
+    for item in attributes:
+        if not isinstance(item, dict):
+            continue
+        name = normalize_optional_string(first_present(item, ("name", "key")))
+        if not name:
+            continue
+        value = first_present(item, ("value", "values"))
+        if isinstance(value, list):
+            if value:
+                parsed[name] = value[0]
+            continue
+        if value is not None:
+            parsed[name] = value
+    return parsed
+
+
+def raw_with_attributes(
+    raw: dict[str, object],
+    attributes: dict[str, object],
+) -> dict[str, object]:
+    combined = dict(attributes)
+    combined.update({key: value for key, value in raw.items() if value is not None})
+    return combined
+
+
 def parse_duration_ms(raw: dict[str, object]) -> int | None:
-    duration_ms = first_present(raw, ("durationMillis", "durationMs", "duration_ms"))
+    attributes = query_summary_attributes(raw)
+    source = raw_with_attributes(raw, attributes)
+    duration_ms = first_present(
+        source,
+        ("durationMillis", "durationMs", "duration_ms", "queryDuration", "query_duration"),
+    )
     if duration_ms is not None:
         return parse_int_field(duration_ms, "duration_ms")
 
-    duration_sec = first_present(raw, ("durationSec", "duration_sec", "durationSeconds"))
+    duration_sec = first_present(source, ("durationSec", "duration_sec", "durationSeconds"))
     if duration_sec is not None:
         return int(parse_float_field(duration_sec, "duration_sec") * 1000)
 

@@ -276,7 +276,7 @@ def render_success_message(out_dir: Path) -> str:
             f"  query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary {summary_path}",
             "",
             "Open:",
-            "  http://127.0.0.1:8766/?query_group=optimizer_ready#recent-results",
+            "  http://127.0.0.1:8766/?query_group=optimization#recent-results",
             "  http://127.0.0.1:8766/?query_group=stats#recent-results",
         ]
     )

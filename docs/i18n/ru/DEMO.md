@@ -6,8 +6,9 @@
 сохраняет русскую companion-навигацию по локальному demo guide.
 
 `query-doctor-web` запускает небольшой localhost-only UI для Query Doctor.
-Текущие entry points: Finished Queries, Running Queries, Specific Query, details
-pages, Query Optimizer и explicit LLM actions.
+Текущая навигация строится вокруг Diagnose, Details pages, Help и explicit
+selected-case LLM actions. В Diagnose находятся Recent queries и вторичный
+режим Known Query ID.
 
 Это не production UI.
 
@@ -58,17 +59,24 @@ query-doctor-collect-cm-profiles \
   --ca-bundle ~/.qdcreds/cm-chain.pem
 ```
 
-## Основные страницы
+## Основные поверхности
 
-- **Finished Queries**: bounded scan завершенных Cloudera Manager (CM)
-  summaries, selected profile collection, deterministic ranking, no automatic
-  LLM reports.
-- **Running Queries**: тот же result shape для running queries.
-- **Specific Query**: один explicit CM query ID без automatic LLM.
+- **Diagnose / Recent queries**: bounded scan завершенных Cloudera Manager (CM)
+  summaries по умолчанию, selected profile collection, deterministic ranking,
+  no automatic LLM reports.
+- **Diagnose / Running now**: тот же result shape для running queries, без
+  date/hour filters и с lower-confidence live evidence.
+- **Diagnose / Known Query ID**: один explicit CM query ID без automatic LLM;
+  input очищается после submit, результат добавляется в Known Query ID analysis
+  table.
 - **Details**: deterministic details плюс explicit LLM Report / Query LLM
   optimizer actions.
-- **Query Optimizer**: parse/analyze only для одного safe `SELECT` /
-  `WITH ... SELECT`; pasted SQL не выполняется и не echo'ится после submit.
+- **Help**: workflow, safety boundaries и ссылки на GitHub documentation внутри
+  продукта.
+
+Direct route **Query Optimizer** остается read-only compatibility/safety-test
+surface для одного safe `SELECT` / `WITH ... SELECT`; pasted SQL не выполняется
+и не echo'ится после submit. Сейчас это не primary demo navigation item.
 
 ## Безопасность
 
@@ -77,7 +85,7 @@ query-doctor-collect-cm-profiles \
 - Не публикуйте этот сервер наружу.
 - Web forms не принимают CM URLs, credentials или local config contents.
 - Credentials остаются только в environment процесса web server.
-- Specific Query collection explicit и redacted.
+- Known Query ID collection explicit и redacted.
 - Raw profile text, raw SQL, raw CM JSON и credentials не должны появляться в
   UI, logs, docs или reports.
 

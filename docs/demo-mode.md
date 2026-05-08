@@ -18,12 +18,13 @@ query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary /tmp/query-doctor-
 Open:
 
 ```text
-http://127.0.0.1:8766/?query_group=optimizer_ready#recent-results
+http://127.0.0.1:8766/?query_group=optimization#recent-results
 ```
 
-The generated pack includes synthetic Finished Queries cases for:
+The generated pack includes synthetic Recent queries / Finished queries cases
+for:
 
-- optimizer-ready recommendations
+- optimizer recommendation outcomes
 - stats maintenance candidate evidence
 - rejected/untrusted optimizer draft behavior
 

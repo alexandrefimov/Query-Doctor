@@ -70,19 +70,12 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
     bad_count = sum(1 for row in rows if row.score_severity in {"failed", "high"})
     suspicious_count = sum(1 for row in rows if row.score_severity == "suspicious")
     optimization_count = sum(1 for row in rows if row.optimization_tier in {"high", "medium"})
-    optimizer_ready_count = sum(
-        1
-        for row in rows
-        if row.optimization_tier in {"high", "medium"}
-        and row.optimization_artifact_status in {"trusted_draft", "trusted_recommendations", "trusted_no_rewrite"}
-    )
     stats_count = sum(1 for row in rows if row.stats_tier in {"high", "medium"})
     metadata_count = sum(1 for row in rows if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"})
     header_items = (
         ("total", len(rows)),
         ("bad", bad_count),
         ("suspicious", suspicious_count),
-        ("optimizer-ready", optimizer_ready_count),
         ("optimization", optimization_count),
         ("stats", stats_count),
         ("analyzed", safe_display_value(summary.get("selected_count"))),

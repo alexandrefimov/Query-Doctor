@@ -14,6 +14,17 @@ def test_package_layout_renderers_are_available():
     assert callable(layout.render_client_script)
 
 
+def test_detail_job_polling_preserves_current_anchor():
+    from query_doctor.web.ui import layout
+
+    script = layout.render_client_script()
+
+    assert "function detailJobRedirectTarget(progressElement)" in script
+    assert "window.location.hash && target.indexOf('#') === -1" in script
+    assert "new URL(redirectTarget, window.location.href).href === window.location.href" in script
+    assert "window.location.reload()" in script
+
+
 def test_package_progress_renderers_are_available():
     from query_doctor.web.ui import progress
 
@@ -171,7 +182,7 @@ def test_recent_scan_default_empty_group_points_to_follow_up_tabs():
     assert "Suspicious queries <span>1</span>" in body
 
 
-def test_recent_scan_optimizer_ready_empty_group_explains_explicit_action():
+def test_recent_scan_optimizer_ready_group_is_removed():
     body = render_batch_summary(
         {
             "selected_count": 1,
@@ -197,8 +208,8 @@ def test_recent_scan_optimizer_ready_empty_group_explains_explicit_action():
         query_group="optimizer_ready",
     )
 
-    assert "No optimizer-ready cases have a trusted draft or trusted recommendations yet." in body
-    assert "run the Query LLM optimizer explicitly" in body
+    assert "Optimizer-ready" not in body
+    assert "No bad queries were found in this scan." in body
     assert "Optimization candidates <span>1</span>" in body
 
 

@@ -12,7 +12,6 @@ from query_doctor.web.trusted_artifacts import OPTIMIZER_STATUS_ORDER
 QUERY_GROUPS = {
     "bad": ("Bad queries", {"failed", "high"}),
     "suspicious": ("Suspicious queries", {"suspicious"}),
-    "optimizer_ready": ("Optimizer-ready", set()),
     "optimization": ("Optimization candidates", set()),
     "stats": ("Stats refresh candidates", set()),
 }
@@ -21,7 +20,7 @@ DEFAULT_QUERY_GROUP = "bad"
 
 def batch_table_columns(query_group: str) -> tuple[str, ...]:
     normalized = normalize_query_group(query_group)
-    if normalized in {"optimizer_ready", "optimization"}:
+    if normalized == "optimization":
         return (
             "Rank",
             "Query ID",
@@ -69,12 +68,6 @@ def filter_rows_by_query_group(
     query_group: str,
 ) -> tuple[RecentScanCaseRowView, ...]:
     normalized = normalize_query_group(query_group)
-    if normalized == "optimizer_ready":
-        return tuple(
-            row
-            for row in rows
-            if row.optimization_tier in {"high", "medium"} and optimizer_artifact_is_trusted(row.optimization_artifact_status)
-        )
     if normalized == "optimization":
         return tuple(row for row in rows if row.optimization_tier in {"high", "medium"})
     if normalized == "stats":
@@ -88,7 +81,7 @@ def sort_rows_for_query_group(
     query_group: str,
 ) -> tuple[RecentScanCaseRowView, ...]:
     normalized = normalize_query_group(query_group)
-    if normalized not in {"optimizer_ready", "optimization", "stats"}:
+    if normalized not in {"optimization", "stats"}:
         return rows
     if normalized == "stats":
         stats_tier_order = {"high": 4, "medium": 3, "low": 2, "unknown": 1, "not_likely": 0}
@@ -109,20 +102,6 @@ def sort_rows_for_query_group(
         )
     tier_order = {"high": 3, "medium": 2, "low": 1, "not_likely": 0}
     impact_order = {"high": 2, "medium": 1, "low": 0}
-    if normalized == "optimizer_ready":
-        return tuple(
-            sorted(
-                rows,
-                key=lambda row: (
-                    -OPTIMIZER_STATUS_ORDER.get(row.optimization_artifact_status, 0),
-                    -tier_order.get(row.optimization_tier, 0),
-                    -row.optimization_score,
-                    -impact_order.get(row.optimization_impact, 0),
-                    -numeric_value(row.duration_sec),
-                    row.rank,
-                ),
-            )
-        )
     return tuple(
         sorted(
             rows,
@@ -157,14 +136,7 @@ def render_query_group_switcher(
     rows_for_counts = filter_rows_by_spills(rows, only_with_spills=only_with_spills)
     counts = {
         key: (
-            sum(
-                1
-                for row in rows_for_counts
-                if row.optimization_tier in {"high", "medium"}
-                and optimizer_artifact_is_trusted(row.optimization_artifact_status)
-            )
-            if key == "optimizer_ready"
-            else sum(1 for row in rows_for_counts if row.optimization_tier in {"high", "medium"})
+            sum(1 for row in rows_for_counts if row.optimization_tier in {"high", "medium"})
             if key == "optimization"
             else sum(1 for row in rows_for_counts if row.stats_tier in {"high", "medium"})
             if key == "stats"
@@ -209,7 +181,3 @@ def render_spill_filter_toggle(active_group: str, *, only_with_spills: bool = Fa
         f"<span class=\"batch-spill-check\" aria-hidden=\"true\">{'✓' if only_with_spills else ''}</span>"
         "<span>Only queries with spills</span></a>"
     )
-
-
-def optimizer_artifact_is_trusted(value: Any) -> bool:
-    return OPTIMIZER_STATUS_ORDER.get(str(value or "unknown"), 0) >= 3

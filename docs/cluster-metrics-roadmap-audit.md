@@ -20,9 +20,9 @@ The current implementation already has the first safe version of this feature:
   default.
 - The batch CLI keeps CM metrics disabled by default and requires an explicit
   opt-in.
-- Finished and Running web scans enable bounded CM metrics by default for the
-  top ranked analyzed cases, with a default budget of 10 cases. Running Queries
-  keeps a smaller search window and summary limit.
+- Finished queries and Running now web scans enable bounded CM metrics by
+  default for the top ranked analyzed cases, with a default budget of 10 cases.
+  Running now keeps a smaller search window and summary limit.
 - Raw CM time-series responses are not written. The collector writes summarized
   `cm_timeseries_context.json` only.
 - Analyzer facts include:
@@ -357,8 +357,8 @@ Deliverables:
 - Keep tests that the report contract and normalization mention correlated
   cluster context when present and omit/limit unknown or context-only metrics
   appropriately.
-- Add a small real-case smoke checklist for Specific Query and Running Queries
-  with CM metrics enabled.
+- Add a small real-case smoke checklist for Known Query ID and Running now with
+  CM metrics enabled.
 
 Acceptance criteria:
 

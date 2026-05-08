@@ -21,8 +21,8 @@ The safe demo position is:
 
 Query Doctor has three separate surfaces:
 
-- Finished / Running / Specific Query: deterministic profile and metadata
-  analysis.
+- Diagnose: deterministic profile and metadata analysis through Recent queries,
+  Running now, or Known Query ID.
 - LLM Report: a validated narrative report for one selected case.
 - Query LLM optimizer: a details-page action that may produce a validated
   read-only draft or safe no-draft guidance.

@@ -161,8 +161,14 @@ def process_cases(
     repo_root: Path,
     progress: ProgressWriter,
 ) -> None:
+    collection_started = time.monotonic()
+    progress.emit(stage="profile_collection", status="started", total=len(cases), cm_jobs=config.cm_jobs)
     collect_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
+    progress.emit(stage="profile_collection", status="done", total=len(cases), seconds=elapsed_seconds(collection_started))
+    analysis_started = time.monotonic()
+    progress.emit(stage="analyzer_scoring", status="started", total=len(cases), jobs=config.jobs)
     analyze_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
+    progress.emit(stage="analyzer_scoring", status="done", total=len(cases), seconds=elapsed_seconds(analysis_started))
     refresh_top_cm_timeseries(config, cases, env=env, repo_root=repo_root, progress=progress)
 
 
@@ -259,6 +265,7 @@ def refresh_top_cm_timeseries(
         progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="no analyzed cases")
         return
     jobs = cm_timeseries_refresh_jobs(config, len(candidates))
+    started = time.monotonic()
     progress.emit(stage="cm_timeseries_refresh", status="started", total=len(candidates), jobs=jobs)
     if jobs == 1:
         for case in candidates:
@@ -284,7 +291,13 @@ def refresh_top_cm_timeseries(
             ]
             for future in as_completed(futures):
                 future.result()
-    progress.emit(stage="cm_timeseries_refresh", status="done", total=len(candidates), jobs=jobs)
+    progress.emit(
+        stage="cm_timeseries_refresh",
+        status="done",
+        total=len(candidates),
+        jobs=jobs,
+        seconds=elapsed_seconds(started),
+    )
 
 
 def cm_timeseries_refresh_jobs(config: BatchConfig, candidate_count: int) -> int:
@@ -450,6 +463,7 @@ def refresh_top_metadata(
         mark_metadata_not_requested(ranked)
         progress.emit(stage="metadata_refresh", status="skipped", reason="no bad or suspicious cases")
         return
+    started = time.monotonic()
     progress.emit(stage="metadata_refresh", status="started", total=len(candidates), metadata_jobs=config.metadata_jobs)
     if config.metadata_jobs == 1:
         for case in candidates:
@@ -464,7 +478,7 @@ def refresh_top_metadata(
                 future.result()
     refreshed_ids = {id(case) for case in candidates}
     mark_metadata_not_requested([case for case in cases if case.analysis_status == "ok" and id(case) not in refreshed_ids])
-    progress.emit(stage="metadata_refresh", status="done", total=len(candidates))
+    progress.emit(stage="metadata_refresh", status="done", total=len(candidates), seconds=elapsed_seconds(started))
 
 
 def refresh_case_metadata(
@@ -477,8 +491,10 @@ def refresh_case_metadata(
 ) -> CaseResult:
     case_id = f"case-{case.index:03d}"
     progress.emit(stage="metadata_refresh", case_id=case_id, status="started", triage_rank=case.triage_rank)
+    started = time.monotonic()
     run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode=config.metadata_mode)
     case.metadata_refreshed = True
+    seconds = elapsed_seconds(started)
     if case.analysis_status == "ok":
         score_case(case)
         progress.emit(
@@ -487,6 +503,7 @@ def refresh_case_metadata(
             status="done",
             metadata_status=case.metadata_status,
             score=case.score,
+            seconds=seconds,
         )
     else:
         progress.emit(
@@ -494,6 +511,7 @@ def refresh_case_metadata(
             case_id=case_id,
             status="failed",
             metadata_status=case.metadata_status,
+            seconds=seconds,
         )
     return case
 

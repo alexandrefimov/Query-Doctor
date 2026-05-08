@@ -33,24 +33,42 @@ def test_web_help_page_renders_curated_static_help():
     assert '<a class="nav-link nav-link--active" href="/help">Help</a>' in body
     assert "<h1>Help</h1>" in body
     assert "On this page" in body
+    assert "Quick start" in body
     assert "Workflows" in body
     assert "Query Doctor is a local-first Big Data Query Diagnostic Tool" in body
     assert "The implemented engine is Apache Impala only." in body
-    assert "Finished Queries" in body
+    assert "Recent queries" in body
+    assert "Finished queries" in body
+    assert "Known Query ID" in body
     assert "Collect CM metrics" in body
-    assert "Specific Query" in body
-    assert "Running Queries" in body
-    assert "Query Optimizer" in body
-    assert "Specific Query analysis" in body
+    assert "Running now" in body
+    assert "Query Optimizer" not in body
+    assert "Specific Query" not in body
+    assert "Known Query ID analysis" in body
     assert "LLM Report" in body
     assert "Query LLM optimizer" in body
     assert "Findings" in body
     assert "Evidence details" in body
+    assert 'href="/"' in body
+    assert 'href="#quick-start"' in body
     assert 'href="#results-table"' in body
     assert 'id="details-actions"' in body
+    assert 'id="github-docs"' in body
+    assert 'href="#common-questions"' in body
+    assert "GitHub documentation" in body
+    assert "Project README" in body
+    assert "Documentation index" in body
+    assert "Safety contract" in body
+    assert "Roadmap" in body
+    assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" in body
+    assert 'target="_blank" rel="noopener noreferrer"' in body
+    assert ".report-body a{color:var(--accent-strong);font-weight:650;text-decoration:underline;" in body
+    assert ".report-body a:hover,.report-body a:focus{color:var(--accent);" in body
     assert "Metadata" in body
+    assert "Metadata allowlist" in body
     assert "Validated reports" in body
-    assert "FAQ" in body
+    assert "Common questions" in body
+    assert "Future scope" in body
     assert "Web scans do not auto-run LLM reports or optimizer drafts." in body
     assert "draft workflow placeholder" not in body
     assert "Metadata top cases" not in body
@@ -64,8 +82,6 @@ def test_web_help_page_renders_curated_static_help():
     assert "Good queries" not in body
     assert "Only queries with spills" in body
     assert "Cases without triage severity" in body
-    assert "does not execute pasted SQL" in body
-    assert "does not echo pasted SQL back into the browser after submit" in body
     assert "partial content stays untrusted and hidden" in body
     assert "Metadata collection is explicit, bounded, read-only, and allowlisted." in body
     assert "SHOW CREATE TABLE" in body
@@ -103,6 +119,7 @@ def test_web_demo_guide_page_is_legacy_help_alias():
     assert "curated UI text for demonstrating Query Doctor" not in body
     assert "Workflows" in body
     assert "Details and LLM actions" in body
+    assert "GitHub documentation" in body
     assert "gpt55" not in body.lower()
     assert not any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in body)
     for forbidden in FORBIDDEN_HELP_STRINGS:
@@ -127,8 +144,11 @@ def test_web_help_route_serves_help_without_running_analysis():
 
     assert captured["status"] == 200
     assert "On this page" in captured["body"]
+    assert "Quick start" in captured["body"]
     assert "Workflows" in captured["body"]
     assert "The implemented engine is Apache Impala only." in captured["body"]
+    assert "GitHub documentation" in captured["body"]
+    assert "Common questions" in captured["body"]
     assert not any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in captured["body"])
 
 

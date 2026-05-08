@@ -240,23 +240,34 @@ def format_cm_timestamp(value: datetime) -> str:
 def build_cm_query_filter_expression(filters: CMQueryFilters) -> str | None:
     """Build a conservative CM filter expression for supported query params.
 
-    Duration predicates use the existing CM Impala query list ``filter`` request
+    Predicates use the existing CM Impala query list ``filter`` request
     parameter. CDH6-era CM docs show queryDuration with duration literals such
-    as ``queryDuration > 5s``. Client-side filtering remains a backstop after
-    bounded discovery.
+    as ``queryDuration > 5s`` and string attributes such as ``user``/``pool``.
+    Client-side filtering remains a backstop after bounded discovery.
     """
-    if not filters.server_duration_filter:
-        return None
     predicates: list[str] = []
-    if filters.min_duration_sec is not None and filters.min_duration_sec > 0:
+    if (
+        filters.server_duration_filter
+        and filters.min_duration_sec is not None
+        and filters.min_duration_sec > 0
+    ):
         predicates.append(
             f"{CM_QUERY_DURATION_FILTER_FIELD} > {duration_lower_bound_literal(filters.min_duration_sec)}"
         )
-    if filters.max_duration_sec is not None:
+    if filters.server_duration_filter and filters.max_duration_sec is not None:
         predicates.append(
             f"{CM_QUERY_DURATION_FILTER_FIELD} < {duration_upper_bound_literal(filters.max_duration_sec)}"
         )
+    if filters.user:
+        predicates.append(f"user = {cm_filter_string_literal(filters.user)}")
+    if filters.pool:
+        predicates.append(f"pool = {cm_filter_string_literal(filters.pool)}")
     return " AND ".join(predicates) if predicates else None
+
+
+def cm_filter_string_literal(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def duration_lower_bound_literal(seconds: float | int) -> str:

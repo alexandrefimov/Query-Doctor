@@ -150,15 +150,17 @@ Optimizer draft generator:
 - Partial drafts untrusted and hidden from browser-visible details.
 
 Local UI:
-- Показывает локальные workflows: Finished Queries, Running Queries, Specific
-  Query, details pages and Query Optimizer.
-- Finished Queries discovers CM summaries first, collects bounded selected
-  profiles, ranks deterministically and leaves report/optimizer generation
-  explicit per case.
-- Running Queries uses the same result shape for currently running queries.
-- Specific Query analyzes one known Query ID without automatic LLM and appends
+- Показывает локальные workflows: Diagnose, details pages, Help and explicit
+  selected-case LLM actions.
+- Recent queries is the default Diagnose mode: Finished queries discovers CM
+  summaries first, collects bounded selected profiles, ranks deterministically
+  and leaves report/optimizer generation explicit per case.
+- Running now uses the same result shape for currently running queries, with
+  lower-confidence live evidence.
+- Known Query ID analyzes one known Query ID without automatic LLM and appends
   results to its table.
-- Query Optimizer parses one safe SELECT/WITH statement locally, does not execute
+- Direct Query Optimizer route remains read-only for compatibility and safety
+  testing: it parses one safe SELECT/WITH statement locally, does not execute
   pasted SQL and does not render it back after submit.
 - Не является источником фактов.
 - Не включает broad unsafe collection or automatic web LLM batch reports.

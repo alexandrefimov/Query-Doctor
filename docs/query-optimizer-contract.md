@@ -62,7 +62,8 @@ Input:
 Execution:
 
 - only by explicit user action from a details page;
-- no automatic execution from Finished, Running, or Specific Query scans;
+- no automatic execution from Recent queries, Running now, or Known Query ID
+  scans;
 - no SQL execution against Impala or any other engine;
 - LLM receives local source SQL and deterministic facts, but browser output gets
   only validated trusted results;

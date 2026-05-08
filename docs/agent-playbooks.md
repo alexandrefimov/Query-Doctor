@@ -1,0 +1,241 @@
+# Agent Playbooks
+
+Last updated: 2026-05-08
+
+Use this file when you know the kind of change you are making and need the
+shortest safe path through the repository. For exact test selection, also use
+[test-matrix.md](test-matrix.md) or `python3 scripts/agent_preflight.py`.
+
+## Universal Preflight
+
+Before larger or safety-sensitive work:
+
+- read `AGENTS.md`;
+- read `docs/codex-handoff.md`;
+- use `docs/code-map.md` when you need to find the owner of a behavior quickly;
+- read `docs/code-audit.md` if the work touches web details, browser safety,
+  report validation, optimizer, collectors, config, or architecture;
+- run `git status --short --branch` and preserve unrelated user changes;
+- prefer existing package boundaries and helpers over new abstractions;
+- keep browser/report output raw-free.
+
+Always finish with `git diff --check`. Stage intended files explicitly.
+Run `python3 scripts/agent_preflight.py` when test selection is unclear.
+
+## Docs-Only
+
+Use for documentation wording, routing, index, roadmap, audit, or runbook work.
+
+Read:
+
+- `docs/README.md`;
+- `docs/codex-handoff.md`;
+- the doc being edited;
+- `docs/changelog.md` only when behavior, safety, workflow, or baseline changes
+  are significant.
+
+Watch for:
+
+- stale behavior claims;
+- old root wrapper commands;
+- unexpanded `CM` in user-facing sections where Cloudera Manager is not already
+  obvious;
+- historical notes presented as active contracts.
+
+Validate:
+
+- `git diff --check`;
+- `python3 scripts/check_active_docs.py` for active-doc routing or baseline
+  changes;
+- no full test suite unless browser-rendered help/UI text changed.
+
+## Web Details And UI
+
+Use for routes, page rendering, Details, Help, navigation, job status, or
+browser-visible text.
+
+Read:
+
+- `docs/codex-handoff.md`;
+- `docs/code-audit.md`;
+- `docs/safety-contract.md`;
+- relevant presenter/UI modules under `query_doctor/web/`.
+
+Typical files:
+
+- `query_doctor/web/routes*`;
+- `query_doctor/web/jobs.py`;
+- `query_doctor/web/presenters/`;
+- `query_doctor/web/ui/`;
+- `query_doctor/web/trusted_artifacts.py`.
+
+Rules:
+
+- do not render raw SQL, raw profiles, raw metadata, paths, artifact filenames,
+  subprocess output, model names, or runtime internals;
+- use presenter/view-model or `query_doctor.safety.browser_display` helpers for
+  dynamic text;
+- do not re-add arbitrary docs or artifact rendering in the browser;
+- keep LLM Report and Query LLM optimizer explicit user actions.
+
+Validate:
+
+- focused web route/UI tests for touched pages;
+- browser-safety tests for new dynamic text;
+- `git diff --check`.
+
+## Report And Validator
+
+Use for LLM Report prompts, normalization, sanitizer, validator, trusted report
+loading, or report facts.
+
+Read:
+
+- `docs/codex-handoff.md`;
+- `docs/code-audit.md`;
+- `docs/safety-contract.md`;
+- `query_doctor/report/` modules touched by the change.
+
+Rules:
+
+- Python-owned facts are the only trusted facts;
+- LLM wording must not add unsupported root causes;
+- validation should fail closed;
+- partial or rejected output must not become trusted browser output.
+
+Validate:
+
+- report sanitizer/normalizer tests;
+- report validator tests;
+- trusted artifact tests when marker or web-load behavior changes;
+- focused browser-safety tests if report text reaches UI differently.
+
+## Query Optimizer
+
+Use for pasted-SQL Query Optimizer, details-page Query LLM optimizer, recipes,
+SQL parsing, validation, fallback outcomes, or optimizer UI status.
+
+Read:
+
+- `docs/query-optimizer-contract.md`;
+- `docs/codex-handoff.md`;
+- `docs/code-audit.md`;
+- relevant `query_doctor/optimizer/` and `query_doctor/web/trusted_artifacts.py`
+  code.
+
+Rules:
+
+- never execute optimizer SQL;
+- do not echo pasted SQL after submit;
+- trust only validated drafts with current markers;
+- prefer trusted `no_rewrite` or recommendations-only over speculative SQL;
+- add Python-owned recipes only with specific fixtures and validation tests.
+
+Validate:
+
+- optimizer parser and validator tests;
+- recipe-specific accepted/rejected tests;
+- trust marker and stale artifact tests;
+- no-echo web tests for pasted SQL;
+- fixture bake-offs before prompt or model default changes.
+
+## Cloudera Manager Collection
+
+Use for Cloudera Manager query summaries, profiles, metrics, events, config, or
+source-provider behavior.
+
+Read:
+
+- `docs/codex-handoff.md`;
+- `docs/code-audit.md`;
+- `docs/safety-contract.md`;
+- relevant `query_doctor/cm/` modules.
+
+Rules:
+
+- collection is explicit, bounded, read-only, redacted, and safe by default;
+- Cloudera Manager metrics and events are runtime context, not standalone query
+  root-cause proof;
+- keep provider payloads out of browser/report output;
+- isolate version/profile differences behind provider/catalog seams.
+
+Validate:
+
+- Cloudera Manager client/config/collector tests for touched code;
+- metrics/events analyzer tests when facts change;
+- browser/report safety tests if new context is rendered.
+
+## Impala Metadata
+
+Use for table metadata collection, metadata digesting, Kerberos/shell execution,
+or analyzer metadata facts.
+
+Read:
+
+- `docs/codex-handoff.md`;
+- `docs/safety-contract.md`;
+- relevant `query_doctor/impala/` and analyzer metadata modules.
+
+Rules:
+
+- allow only approved read-only statements;
+- keep output bounded and redacted;
+- distinguish `not_requested`, `partial`, `failed`, and
+  `insufficient_metadata`;
+- do not present missing metadata as proof of stale stats or root cause.
+
+Validate:
+
+- Impala metadata allowlist/execution tests;
+- analyzer metadata fact tests;
+- stats-refresh candidate tests when scoring changes.
+
+## Analyzer And Scoring
+
+Use for profile parsing, facts, score reasons, action candidates, runtime
+diagnosis, metric/event correlation, or fact rendering.
+
+Read:
+
+- `docs/codex-handoff.md`;
+- `docs/code-audit.md`;
+- `docs/analyzer-audit.md` for deeper analyzer context when needed.
+
+Rules:
+
+- facts must distinguish observed, not observed, unknown, and limitation states;
+- duration alone is context, not root cause;
+- compare only comparable backend/fragment work;
+- do not treat cumulative thread counters as elapsed operator time without
+  direct support.
+
+Validate:
+
+- analyzer CLI/service/facts tests for touched behavior;
+- scoring/candidate tests when weights or thresholds change;
+- report validator tests when new claim types become visible.
+
+## Batch And Recent Scan
+
+Use for batch orchestration, candidate selection, top-case metadata/metrics,
+subprocess runners, and progress state.
+
+Read:
+
+- `docs/codex-handoff.md`;
+- `docs/code-audit.md`;
+- relevant `query_doctor/recent/`, `query_doctor/cli/batch_recent.py`, and web
+  job modules.
+
+Rules:
+
+- scans must not auto-run LLM reports or optimizer jobs;
+- keep metadata, metrics, events, analyzer, and report stages separately
+  bounded;
+- browser errors should be safe categories, not raw subprocess output or paths.
+
+Validate:
+
+- batch/recent candidate tests;
+- mocked subprocess timeout/failure tests;
+- web progress tests if stage rendering changes.

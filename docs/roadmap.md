@@ -12,9 +12,12 @@ is not a historical audit log. For engineering risks, use
 
 - Apache Impala is the only implemented SQL engine.
 - Cloudera Manager is the implemented query/profile/metrics/events source.
-- Finished Queries is the primary completed-query workflow.
-- Running Queries is a lower-confidence live workflow.
-- Specific Query is the secondary path for one known Cloudera Manager query ID.
+- Diagnose is the primary UI screen.
+- Recent queries is the default Diagnose mode.
+- Finished queries is the default completed-query scan target.
+- Running now is a lower-confidence live scan target inside Recent queries.
+- Known Query ID is the secondary Diagnose mode for one known Cloudera Manager
+  query ID.
 - Details pages show deterministic findings and explicit LLM Report / Query LLM
   optimizer actions.
 - Query Optimizer is a separate pasted-SQL parse/analyze workflow. It never
@@ -44,7 +47,8 @@ is not a historical audit log. For engineering risks, use
 
 ### 1. Details Usability And Evidence Flow
 
-Make Details efficient for Finished, Running, and Specific Query workflows.
+Make Details efficient for Recent queries, Running now, and Known Query ID
+workflows.
 
 - Keep deterministic findings first.
 - Make evidence quality, runtime context, Cloudera Manager metrics, Cloudera

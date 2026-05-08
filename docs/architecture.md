@@ -326,18 +326,20 @@ The details-page optimizer:
 
 The local UI:
 
-- exposes Finished Queries, Running Queries, Specific Query, details pages, and
-  Query Optimizer workflows;
-- discovers CM summaries first for Finished Queries, then collects bounded
-  selected profiles, ranks deterministically, and leaves report/optimizer
-  generation explicit per case;
+- exposes Diagnose, details pages, Help, and explicit selected-case LLM action
+  workflows;
+- uses Recent queries as the default Diagnose mode, discovers CM summaries for
+  Finished queries by default, then collects bounded selected profiles, ranks
+  deterministically, and leaves report/optimizer generation explicit per case;
 - can collect bounded Cloudera Manager metrics and events as runtime context for
   selected cases;
-- uses the same result shape for Running Queries;
-- analyzes one known Query ID for Specific Query without automatic LLM and
-  appends results to its table;
-- parses one safe SELECT/WITH statement locally for Query Optimizer, does not
-  execute pasted SQL, and does not render it back after submit;
+- uses the same result shape for Running now scans, with lower-confidence live
+  evidence;
+- analyzes one known Query ID in the Known Query ID Diagnose mode without
+  automatic LLM and appends results to its table;
+- keeps the direct Query Optimizer route read-only for compatibility and safety
+  testing; it parses one safe SELECT/WITH statement locally, does not execute
+  pasted SQL, and does not render it back after submit;
 - is not a source of facts;
 - does not include broad unsafe collection or automatic web LLM batch reports.
 

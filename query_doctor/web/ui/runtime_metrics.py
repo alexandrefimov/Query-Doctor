@@ -190,7 +190,17 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
     if view.unavailable:
         return ""
     summary_rows = metadata_rows(list(view.summary_items))
-    metric_rows = render_cm_metric_rows(view)
+    correlated_labels = cm_metric_correlated_labels(view)
+    correlated_rows = render_cm_metric_rows(
+        view,
+        labels=correlated_labels,
+        empty_message=cm_metric_correlated_empty_message(view),
+    )
+    all_metric_rows = render_cm_metric_rows(
+        view,
+        labels=cm_metric_all_labels(view),
+        empty_message="metric facts are not available",
+    )
     limitations_html = ""
     if view.limitations:
         limitations_html = (
@@ -211,22 +221,37 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         "Cloudera Manager observed; correlation shows whether profile evidence supports using that "
         "signal as query-specific follow-up context.</p>"
         f"<div class=\"meta-list\">{summary_rows}</div>"
+        "<h3>Correlated CM metric signals</h3>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr><th>Metric</th><th>Metric status</th><th>Metric basis</th>"
         "<th>Correlation</th><th>Strength</th><th>Interpretation</th></tr></thead>"
-        f"<tbody>{metric_rows}</tbody>"
+        f"<tbody>{correlated_rows}</tbody>"
         "</table></div>"
+        "<details class=\"compact-details\">"
+        "<summary>All collected CM metrics</summary>"
+        "<div class=\"compact-details-body\">"
+        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        "<thead><tr><th>Metric</th><th>Metric status</th><th>Metric basis</th>"
+        "<th>Correlation</th><th>Strength</th><th>Interpretation</th></tr></thead>"
+        f"<tbody>{all_metric_rows}</tbody>"
+        "</table></div>"
+        "</div>"
+        "</details>"
         f"{limitations_html}"
         "</div>"
         "</details>"
     )
 
 
-def render_cm_metric_rows(view: RecentScanCmMetricsView) -> str:
+def render_cm_metric_rows(
+    view: RecentScanCmMetricsView,
+    *,
+    labels: list[str] | None = None,
+    empty_message: str = "metric facts are not available",
+) -> str:
     signals_by_label = {signal.label: signal for signal in view.signals}
     correlations_by_label = {correlation.label: correlation for correlation in view.correlations}
-    labels = list(signals_by_label)
-    labels.extend(label for label in correlations_by_label if label not in signals_by_label)
+    selected_labels = labels if labels is not None else cm_metric_all_labels(view)
     rows = "".join(
         "<tr>"
         f"<td>{html.escape(label)}</td>"
@@ -245,12 +270,46 @@ def render_cm_metric_rows(view: RecentScanCmMetricsView) -> str:
             correlation_interpretation,
         ) in (
             cm_metric_row_values(label, signals_by_label.get(label), correlations_by_label.get(label))
-            for label in labels
+            for label in selected_labels
         )
     )
     if not rows:
-        return "<tr><td colspan=\"6\" class=\"empty-cell\">metric facts are not available</td></tr>"
+        return f"<tr><td colspan=\"6\" class=\"empty-cell\">{html.escape(empty_message)}</td></tr>"
     return rows
+
+
+def cm_metric_all_labels(view: RecentScanCmMetricsView) -> list[str]:
+    signals_by_label = {signal.label: signal for signal in view.signals}
+    correlations_by_label = {correlation.label: correlation for correlation in view.correlations}
+    labels = list(signals_by_label)
+    labels.extend(label for label in correlations_by_label if label not in signals_by_label)
+    return labels
+
+
+def cm_metric_correlated_labels(view: RecentScanCmMetricsView) -> list[str]:
+    return [
+        correlation.label
+        for correlation in view.correlations
+        if cm_metric_status_key(correlation.status) == "correlated"
+    ]
+
+
+def cm_metric_correlated_empty_message(view: RecentScanCmMetricsView) -> str:
+    context_only = sum(
+        1
+        for correlation in view.correlations
+        if cm_metric_status_key(correlation.status) == "context_only"
+    )
+    checked = len(cm_metric_all_labels(view))
+    if context_only:
+        return f"No CM metric signals correlated with profile evidence. {context_only} context-only signal(s), {checked} metric(s) checked."
+    if checked:
+        return f"No CM metric signals correlated with profile evidence. {checked} metric(s) checked."
+    return "No CM metric signals correlated with profile evidence."
+
+
+def cm_metric_status_key(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
 
 
 def cm_metric_row_values(

@@ -153,7 +153,6 @@ Expected result groups:
 
 - bad queries;
 - suspicious queries;
-- optimizer-ready outcomes;
 - optimization candidates;
 - statistics-maintenance candidates.
 

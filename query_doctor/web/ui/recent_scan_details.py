@@ -121,6 +121,7 @@ def render_batch_case_detail(
         f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
+        f"{render_evidence_action_guide(view)}"
         f"{render_analysis_details(view)}"
         f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result)}"
         "</section>"
@@ -191,6 +192,75 @@ def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
     )
 
 
+def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
+    cards = (
+        ("facts", evidence_facts_label(view)),
+        ("runtime context", evidence_runtime_label(view)),
+        ("metadata", evidence_metadata_label(view)),
+        ("next action", evidence_next_action_label(view)),
+    )
+    card_html = "".join(
+        "<div class=\"case-summary-card\">"
+        f"<span>{html.escape(label)}</span><strong>{escape_value(value)}</strong>"
+        "</div>"
+        for label, value in cards
+    )
+    return (
+        "<section id=\"evidence-guide\" class=\"case-overview\" aria-label=\"Evidence and action guide\">"
+        "<div class=\"section-heading\"><div>"
+        "<h2 class=\"section-title\">Evidence guide</h2>"
+        "<div class=\"section-kicker\">Quick read of evidence strength, context, and the safest next step.</div>"
+        "</div></div>"
+        f"<div class=\"case-summary-grid\">{card_html}</div>"
+        "</section>"
+    )
+
+
+def evidence_facts_label(view: RecentScanCaseDetailView) -> str:
+    severity_label = {
+        "failed": "Pipeline issue",
+        "high": "High review priority",
+        "suspicious": "Suspicious findings",
+        "clean": "No positive findings",
+    }.get(view.score_severity, "Review findings")
+    signal = str(view.signal_summary or "").strip()
+    if not signal:
+        return severity_label
+    return f"{severity_label}: {signal}"
+
+
+def evidence_runtime_label(view: RecentScanCaseDetailView) -> str:
+    title = str(view.runtime_verdict.title or "").strip()
+    if not title or title == "Runtime context not collected":
+        return "Not collected; use profile and metadata facts first"
+    return title
+
+
+def evidence_metadata_label(view: RecentScanCaseDetailView) -> str:
+    summary = dict(view.metadata.summary_items)
+    for key in ("metadata coverage", "stats coverage", "metadata command status"):
+        value = summary.get(key)
+        if is_meaningful_technical_detail_value(value):
+            return str(value)
+    if view.metadata.unavailable:
+        return view.metadata.fallback_note or "Not requested or unavailable"
+    return "Collected metadata available"
+
+
+def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
+    if candidate_is_visible(view.optimization_candidate):
+        return "Review query optimization candidate"
+    if candidate_is_visible(view.stats_candidate):
+        return "Check stats refresh candidate"
+    if view.score_severity == "failed":
+        return "Fix collection or analysis issue first"
+    if view.report_action.trusted:
+        return "Open validated LLM report"
+    if view.score_severity == "clean":
+        return "No LLM action needed unless investigating"
+    return "Review findings before explicit LLM action"
+
+
 def render_analysis_details(view: RecentScanCaseDetailView) -> str:
     runtime_verdict_html = (
         ""
@@ -232,6 +302,7 @@ def render_case_detail_toc() -> str:
         "<nav class=\"detail-toc-list\">"
         "<a href=\"#case-overview\" class=\"detail-toc-link\">Case overview</a>"
         "<a href=\"#pipeline-status\" class=\"detail-toc-link\">Pipeline status</a>"
+        "<a href=\"#evidence-guide\" class=\"detail-toc-link\">Evidence guide</a>"
         "<a href=\"#findings\" class=\"detail-toc-link\">Findings</a>"
         "<a href=\"#evidence-details\" class=\"detail-toc-link\">Evidence details</a>"
         "<a href=\"#llm-actions\" class=\"detail-toc-link\">LLM actions</a>"

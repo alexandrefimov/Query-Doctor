@@ -37,6 +37,10 @@ from query_doctor.web.ui.pages import render_page, render_query_page
 from query_doctor.web.ui.specific_query import render_specific_query_detail
 
 
+def detail_job_redirect_url(job_id: str) -> str:
+    return f"/jobs/{job_id}#llm-actions"
+
+
 def start_specific_query_report_job(
     query_id: str,
     settings: WebSettings,
@@ -110,7 +114,7 @@ def start_specific_query_report_job(
         daemon=True,
     )
     thread.start()
-    return 303, f"/jobs/{job.job_id}"
+    return 303, detail_job_redirect_url(job.job_id)
 
 
 def start_specific_query_optimized_query_job(
@@ -162,7 +166,7 @@ def start_specific_query_optimized_query_job(
         daemon=True,
     )
     thread.start()
-    return 303, f"/jobs/{job.job_id}"
+    return 303, detail_job_redirect_url(job.job_id)
 
 
 def start_specific_query_llm_actions_job(
@@ -197,7 +201,7 @@ def start_specific_query_llm_actions_job(
         daemon=True,
     )
     thread.start()
-    return 303, f"/jobs/{job.job_id}"
+    return 303, detail_job_redirect_url(job.job_id)
 
 
 def handle_specific_query_external_rewrite_validation(
