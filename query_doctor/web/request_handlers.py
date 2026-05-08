@@ -106,6 +106,7 @@ def run_analysis_job(
                 redact_identifiers,
                 settings,
                 progress=progress,
+                cancel_check=lambda: job_store.cancel_requested(job_id),
             )
         elif analysis_func is run_web_analysis:
             result = run_web_analysis(
@@ -114,9 +115,12 @@ def run_analysis_job(
                 redact_identifiers,
                 settings,
                 progress=progress,
+                cancel_check=lambda: job_store.cancel_requested(job_id),
             )
         else:
             result = analysis_func(query_id, report_mode, redact_identifiers, settings)
+        if job_store.cancel_requested(job_id):
+            return
         job_store.complete(job_id, result)
     except WebError as exc:
         job_store.fail(job_id, exc)

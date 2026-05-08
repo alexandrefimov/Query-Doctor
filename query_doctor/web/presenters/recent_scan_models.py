@@ -74,6 +74,7 @@ class ReportActionView:
     button_label: str
     button_disabled: bool
     show_open_link: bool
+    job_kind: str
 
 
 @dataclass(frozen=True)

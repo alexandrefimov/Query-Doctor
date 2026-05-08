@@ -29,6 +29,7 @@ from query_doctor.web.config import load_web_local_config, optional_config_strin
 from query_doctor.web.job_workers import REPORT_VALIDATION_EXIT_CODE, REPORT_VALIDATION_FAILURE_MESSAGE
 from query_doctor.web.models import WebError, WebQueryAnalysisResult, WebResult, WebSettings
 from query_doctor.web.subprocesses import (
+    CancelCheck,
     Runner,
     effective_subprocess_env,
     has_cm_credentials,
@@ -59,6 +60,7 @@ def run_web_analysis(
     *,
     runner: Runner = subprocess.run,
     progress: ProgressFunc | None = None,
+    cancel_check: CancelCheck | None = None,
 ) -> WebResult:
     update_progress(progress, 0)
     validated_query_id = validate_query_id(query_id)
@@ -80,6 +82,7 @@ def run_web_analysis(
             settings,
             runner,
             env=subprocess_env,
+            cancel_check=cancel_check,
         )
         case_source = "collected now"
 
@@ -91,7 +94,10 @@ def run_web_analysis(
         timeout_sec=settings.timeout_sec,
         runner=runner,
         env=subprocess_env,
+        cancel_check=cancel_check,
     )
+    if cancel_check is not None and cancel_check():
+        raise WebError("Analysis was stopped by the user.")
     if analyzed.returncode != 0:
         raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
 
@@ -102,7 +108,10 @@ def run_web_analysis(
         timeout_sec=settings.timeout_sec,
         runner=runner,
         env=subprocess_env,
+        cancel_check=cancel_check,
     )
+    if cancel_check is not None and cancel_check():
+        raise WebError("Analysis was stopped by the user.")
     update_progress(progress, 4)
     report_retry = False
     if reported.returncode == REPORT_VALIDATION_EXIT_CODE:
@@ -112,7 +121,10 @@ def run_web_analysis(
             timeout_sec=settings.timeout_sec,
             runner=runner,
             env=subprocess_env,
+            cancel_check=cancel_check,
         )
+        if cancel_check is not None and cancel_check():
+            raise WebError("Analysis was stopped by the user.")
         if retried.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(REPORT_VALIDATION_FAILURE_MESSAGE)
         if retried.returncode != 0:
@@ -151,6 +163,7 @@ def run_query_id_analysis(
     *,
     runner: Runner = subprocess.run,
     progress: ProgressFunc | None = None,
+    cancel_check: CancelCheck | None = None,
 ) -> WebQueryAnalysisResult:
     del report_mode
     update_progress(progress, 0)
@@ -167,7 +180,10 @@ def run_query_id_analysis(
         runner,
         subprocess_env,
         progress=progress,
+        cancel_check=cancel_check,
     )
+    if cancel_check is not None and cancel_check():
+        raise WebError("Analysis was stopped by the user.")
     collection_status = "ok"
     analysis_status = "ok"
 
@@ -195,6 +211,7 @@ def collect_case(
     runner: Runner,
     env: dict[str, str] | None = None,
     out_dir: Path | None = None,
+    cancel_check: CancelCheck | None = None,
 ) -> Path:
     config_username = None
     try:
@@ -230,7 +247,10 @@ def collect_case(
         timeout_sec=settings.timeout_sec,
         runner=runner,
         env=effective_subprocess_env(settings) if env is None else env,
+        cancel_check=cancel_check,
     )
+    if cancel_check is not None and cancel_check():
+        raise WebError("Analysis was stopped by the user.")
     if collected.returncode != 0:
         raise WebError(subprocess_failure_message("CM single-query collection", collected))
 
@@ -257,6 +277,7 @@ def collect_analyze_and_replace_query_case(
     runner: Runner,
     subprocess_env: dict[str, str],
     progress: ProgressFunc | None = None,
+    cancel_check: CancelCheck | None = None,
 ) -> Path:
     corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
     staging_root = corpus_dir / f".query-refresh-{uuid.uuid4().hex}"
@@ -270,6 +291,7 @@ def collect_analyze_and_replace_query_case(
             runner,
             env=subprocess_env,
             out_dir=staging_root,
+            cancel_check=cancel_check,
         )
         update_progress(progress, 2)
         analyzed = run_subprocess(
@@ -278,7 +300,10 @@ def collect_analyze_and_replace_query_case(
             timeout_sec=settings.timeout_sec,
             runner=runner,
             env=subprocess_env,
+            cancel_check=cancel_check,
         )
+        if cancel_check is not None and cancel_check():
+            raise WebError("Analysis was stopped by the user.")
         if analyzed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
         return replace_case_dir_after_success(case_dir, expected_case_dir)

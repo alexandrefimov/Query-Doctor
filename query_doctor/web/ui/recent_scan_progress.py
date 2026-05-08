@@ -290,6 +290,8 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 states["completed"] = "failed"
     if job_status == "failed" and states["completed"] != "done":
         states["completed"] = "failed"
+    if job_status == "cancelled" and states["completed"] != "done":
+        states["completed"] = "failed"
     if job_status == "ok":
         states["completed"] = "done"
         for key in ("discovery", "collection", "analysis", "summary"):

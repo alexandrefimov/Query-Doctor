@@ -112,7 +112,10 @@ def run_batch_job(
             timeout_sec=settings.timeout_sec,
             runner=runner,
             env=effective_subprocess_env(settings),
+            cancel_check=lambda: job_store.cancel_requested(job_id),
         )
+        if job_store.cancel_requested(job_id):
+            return
         if completed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor recent scan", completed))
         job_store.update_stage(job_id, 2)

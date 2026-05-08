@@ -256,6 +256,7 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
         button_label="Generating LLM report" if running else "Generate LLM report",
         button_disabled=running,
         show_open_link=trusted,
+        job_kind=safe_display_text(state.get("job_kind") or ""),
     )
 
 

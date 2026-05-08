@@ -55,6 +55,7 @@ from query_doctor.web.ui.running import render_running_queries_page
 AnalysisFunc = Callable[[str, str, bool, WebSettings], object]
 
 STATIC_POST_PATHS = {"/analyze", "/batch/run", "/running/run", "/optimizer", "/query-optimizer"}
+JOB_CANCEL_POST_RE = re.compile(r"/jobs/(?P<job_id>[0-9a-f]{32})/cancel")
 BATCH_CASE_POST_RE = re.compile(
     r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions)"
 )
@@ -135,6 +136,7 @@ def post_route_is_allowed(path: str) -> bool:
     parsed_path = urlparse(path).path
     return (
         parsed_path in STATIC_POST_PATHS
+        or JOB_CANCEL_POST_RE.fullmatch(parsed_path) is not None
         or BATCH_CASE_POST_RE.fullmatch(parsed_path) is not None
         or SPECIFIC_QUERY_POST_RE.fullmatch(parsed_path) is not None
     )
@@ -273,6 +275,19 @@ def route_post_request(
     runner: Runner = subprocess.run,
 ) -> WebRouteResponse | None:
     parsed = urlparse(path)
+    cancel_match = JOB_CANCEL_POST_RE.fullmatch(parsed.path)
+    if cancel_match:
+        job_id = cancel_match.group("job_id")
+        job = store.request_cancel(job_id)
+        if job is None:
+            return WebRouteResponse.html(
+                404,
+                render_batch_page(
+                    batch_page_settings(settings, store),
+                    error="Analysis job was not found.",
+                ),
+            )
+        return WebRouteResponse.redirect(f"/jobs/{job_id}")
     batch_action = route_batch_case_post(parsed.path, form, settings, store, runner=runner)
     if batch_action is not None:
         return batch_action

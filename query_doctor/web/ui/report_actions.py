@@ -42,7 +42,7 @@ def render_batch_case_report_action(
         )
     if view.status == "running":
         status_html = render_llm_report_progress(view)
-    elif view.status == "failed":
+    elif view.status in {"failed", "cancelled"}:
         status_html = render_llm_report_failure(view)
     else:
         status_html = ""
@@ -75,7 +75,7 @@ def render_batch_case_report_action(
 def render_llm_report_status(view: ReportActionView, trusted_report_html: SafeHtml | str | None) -> str:
     if view.status == "running":
         status_html = render_llm_report_progress(view)
-    elif view.status == "failed":
+    elif view.status in {"failed", "cancelled"}:
         status_html = render_llm_report_failure(view)
     else:
         status_html = ""
@@ -106,6 +106,13 @@ def render_llm_report_progress(view: ReportActionView) -> str:
             f" data-report-job-status-url=\"/jobs/{escaped_job_id}/status\""
             f" data-report-job-url=\"/jobs/{escaped_job_id}\""
         )
+        cancel_html = (
+            f"<form method=\"post\" action=\"/jobs/{escaped_job_id}/cancel\">"
+            "<button class=\"button danger\" type=\"submit\">Stop job</button>"
+            "</form>"
+        )
+    else:
+        cancel_html = ""
     steps = []
     for index, (label, _stage_labels) in enumerate(REPORT_PROGRESS_STEPS):
         if index < current_index:
@@ -136,7 +143,7 @@ def render_llm_report_progress(view: ReportActionView) -> str:
     return (
         f"<div class=\"report-progress\" aria-label=\"LLM report progress\"{status_attrs}>"
         f"<div class=\"progress-head\"><span class=\"progress-title\">Generating LLM report</span>"
-        f"<span class=\"progress-stage\">{html.escape(current_stage)}</span></div>"
+        f"<span class=\"progress-stage\">{html.escape(current_stage)}</span>{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
         "</div>"
@@ -171,17 +178,21 @@ def report_progress_percent(step_index: int) -> int:
 
 
 def render_llm_report_failure(view: ReportActionView) -> str:
+    cancelled = view.status == "cancelled"
     message = view.error if view.error not in {None, "", "unknown"} else "LLM report generation failed. Unsafe output is hidden."
+    title = "LLM report stopped" if cancelled else "LLM report failed"
+    label = "Stopped" if cancelled else "Error"
+    detail = "Stopped by user" if cancelled else "Unsafe output is hidden"
     return (
         "<div class=\"report-progress\" aria-label=\"LLM report progress\">"
-        "<div class=\"progress-head\"><span class=\"progress-title\">LLM report failed</span>"
-        f"<span class=\"progress-stage\">{html.escape(view.stage_label or 'Failed')}</span></div>"
+        f"<div class=\"progress-head\"><span class=\"progress-title\">{title}</span>"
+        f"<span class=\"progress-stage\">{html.escape(view.stage_label or ('Cancelled' if cancelled else 'Failed'))}</span></div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         "<span class=\"progress-fill\" style=\"width:100%\"></span>"
         "</div>"
         "<div class=\"batch-progress\"><div class=\"batch-progress-steps\">"
         "<div class=\"batch-progress-step batch-progress-step--failed\">"
-        "<strong>! Error</strong><span>Unsafe output is hidden</span></div>"
+        f"<strong>! {label}</strong><span>{detail}</span></div>"
         "</div></div>"
         f"<div class=\"error-card\" role=\"alert\">{escape_value(message)}</div>"
         "</div>"

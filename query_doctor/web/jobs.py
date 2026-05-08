@@ -89,6 +89,7 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             "kind": job.kind,
             "error": job.error,
             "result_html": job.result_html,
+            "cancel_requested": job.cancel_requested,
             "progress_html": render_batch_progress_panel(job.batch_progress_path, job.status)
             if job.kind in {"batch", "running"}
             else "",
@@ -285,6 +286,25 @@ class WebJobStore:
             job = self._jobs.get(job_id)
             return job.snapshot() if job is not None else None
 
+    def request_cancel(self, job_id: str) -> WebJobSnapshot | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            job.cancel_requested = True
+            if job.status == "running":
+                job.status = "cancelled"
+                job.stage_label = "Cancelled"
+                job.progress = 100
+                job.error = "Job stopped by user."
+                job.result_html = ""
+            return job.snapshot()
+
+    def cancel_requested(self, job_id: str) -> bool:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            return bool(job is not None and job.cancel_requested)
+
     def latest_batch_summary(self) -> Path | None:
         with self._lock:
             return self._latest_batch_summary
@@ -314,7 +334,7 @@ class WebJobStore:
     def complete(self, job_id: str, result: WebResult | WebQueryAnalysisResult) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
-            if job is None:
+            if job is None or job.status != "running":
                 return
             job.status = "ok"
             job.stage_label = WEB_STAGES[-1][1]
@@ -332,7 +352,7 @@ class WebJobStore:
     def complete_html(self, job_id: str, result_html: str) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
-            if job is None:
+            if job is None or job.status != "running":
                 return
             stages = stages_for_job_kind(job.kind)
             job.status = "ok"
@@ -344,7 +364,7 @@ class WebJobStore:
     def fail(self, job_id: str, error: object) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
-            if job is None:
+            if job is None or job.status != "running":
                 return
             job.status = "failed"
             job.stage_label = "Failed"

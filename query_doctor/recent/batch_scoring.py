@@ -97,6 +97,7 @@ def score_case(case: CaseResult) -> None:
     case.query_optimization_candidate = score_query_optimization_candidate(
         facts,
         duration_sec=case.duration_sec,
+        metadata_status=case.metadata_status,
         collection_status=case.collection_status,
         analysis_status=case.analysis_status,
         failure_category=case.failure_category,

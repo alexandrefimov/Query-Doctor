@@ -128,6 +128,7 @@ class WebJobSnapshot:
     batch_progress_path: Path | None = None
     batch_case_id: str | None = None
     batch_source: str = "batch"
+    cancel_requested: bool = False
 
 
 @dataclass
@@ -145,6 +146,7 @@ class WebJob:
     batch_progress_path: Path | None = None
     batch_case_id: str | None = None
     batch_source: str = "batch"
+    cancel_requested: bool = False
 
     def snapshot(self) -> WebJobSnapshot:
         return WebJobSnapshot(
@@ -161,4 +163,5 @@ class WebJob:
             batch_progress_path=self.batch_progress_path,
             batch_case_id=self.batch_case_id,
             batch_source=self.batch_source,
+            cancel_requested=self.cancel_requested,
         )

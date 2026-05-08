@@ -36,8 +36,8 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
         if job.status == "ok" or getattr(job, "kind", "") == "query"
         else ""
     )
-    error_html = html.escape(job.error) if job.status == "failed" else ""
-    error_hidden = "" if job.status == "failed" else " hidden"
+    error_html = html.escape(job.error) if job.status in {"failed", "cancelled"} else ""
+    error_hidden = "" if job.status in {"failed", "cancelled"} else " hidden"
     batch_progress_html = ""
     progress = job.progress
     if getattr(job, "kind", "") in {"batch", "running"}:
@@ -49,15 +49,25 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
         )
     if job.status == "ok":
         title = "Analysis complete"
+    elif job.status == "cancelled":
+        title = "Analysis stopped"
     elif job.status == "failed":
         title = "Analysis failed"
     else:
         title = "Analysis running"
+    cancel_html = ""
+    if job.status == "running":
+        cancel_html = (
+            f"<form method=\"post\" action=\"/jobs/{html.escape(job.job_id, quote=True)}/cancel\">"
+            "<button class=\"button danger\" type=\"submit\">Stop job</button>"
+            "</form>"
+        )
     return (
         f"<section class=\"panel progress-card\" data-job-status-url=\"/jobs/{html.escape(job.job_id)}"
         "/status\" aria-live=\"polite\">"
         f"<div class=\"progress-head\"><span class=\"progress-title\">{title}</span>"
-        f"<span id=\"job-stage\" class=\"progress-stage\">{html.escape(job.stage_label)}</span></div>"
+        f"<span id=\"job-stage\" class=\"progress-stage\">{html.escape(job.stage_label)}</span>"
+        f"{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         f"<span id=\"job-progress-fill\" class=\"progress-fill\" style=\"width:{progress}%\"></span>"
         "</div>"

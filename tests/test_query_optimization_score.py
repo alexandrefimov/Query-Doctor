@@ -83,7 +83,11 @@ def cardinality_only_facts() -> str:
 
 
 def test_expensive_query_with_scan_join_exchange_signal_is_high_candidate():
-    result = score_query_optimization_candidate(high_shape_facts(), duration_sec=120)
+    result = score_query_optimization_candidate(
+        high_shape_facts(),
+        duration_sec=120,
+        metadata_status="collected",
+    )
 
     assert result.tier == "high"
     assert result.impact == "high"
@@ -130,7 +134,87 @@ def test_cardinality_mismatch_alone_does_not_create_high_candidate():
 
 
 def test_cardinality_mismatch_with_join_evidence_increases_confidence():
-    result = score_query_optimization_candidate(high_shape_facts(), duration_sec=120)
+    result = score_query_optimization_candidate(
+        high_shape_facts(),
+        duration_sec=120,
+        metadata_status="collected",
+    )
 
     assert result.confidence in {"medium", "high"}
     assert result.score > score_query_optimization_candidate(cardinality_only_facts(), duration_sec=180).score
+
+
+def test_generic_join_guidance_does_not_create_join_expansion_reason():
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Summary
+
+- Cardinality anomalies: 4
+- Memory anomalies: 2
+
+## CM Query Context
+
+- status: succeeded
+- query_state: FINISHED
+- duration: 10.00m
+
+## Findings
+
+### Cardinality estimate errors [high]
+
+- Detected actual-vs-estimated row count mismatches. Worst parsed ratio: 13:AGGREGATE = 34207632x (68.42M actual vs 2 estimated).
+- Operators:
+- 13:AGGREGATE: time=4.98m, rows=68.42M vs est 2 (34207632x), mem=4.00 GiB vs est n/a (n/a)
+- 36:EXCHANGE: time=3.90m, rows=67.70M vs est 2 (33851468x), mem=13.70 MiB vs est n/a (n/a)
+
+## Action Cards
+
+### Card 1: Severe cardinality underestimation before high-cost operator
+
+- operator: 13:AGGREGATE
+- actual rows: 68.42M
+- estimated rows: 2
+- actual/estimated ratio: 34207632x
+- TotalBytesSent: 156.0 GiB
+- Check whether the query creates many-to-many JOIN amplification before SORT/ANALYTIC/AGGREGATE.
+"""
+
+    result = score_query_optimization_candidate(facts, duration_sec=600, metadata_status="not_requested")
+
+    assert "join row expansion or cardinality mismatch with join evidence" not in result.reasons
+    assert "cardinality mismatch needs query-shape evidence before stronger action" in result.reasons
+    assert "metadata was not collected, so stats-vs-query-shape split is unconfirmed" in result.counter_signals
+    assert result.confidence == "medium"
+
+
+def test_join_operator_ratio_creates_join_expansion_reason():
+    result = score_query_optimization_candidate(
+        high_shape_facts(),
+        duration_sec=120,
+        metadata_status="collected",
+    )
+
+    assert "join row expansion or cardinality mismatch with join evidence" in result.reasons
+
+
+def test_backend_data_skew_adds_distribution_review_context():
+    facts = high_shape_facts() + """
+
+## Backend / Host Tail Evidence
+
+### Summary
+
+- data skew: yes (F07: rows produced max/min ratio is 10.5x)
+- execution skew: no
+"""
+
+    result = score_query_optimization_candidate(
+        facts,
+        duration_sec=120,
+        metadata_status="collected",
+    )
+
+    assert "backend data skew supports distribution and hot-key review" in result.reasons
+    assert "data distribution" in result.suggested_review_areas
+    assert "hot keys" in result.suggested_review_areas

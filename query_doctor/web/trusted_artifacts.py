@@ -394,6 +394,8 @@ def load_batch_case_report_state(
         status = "partial_untrusted"
     if running_job is not None:
         status = "running"
+    elif job is not None and job.status == "cancelled" and job.kind in {"batch_report", "batch_llm_actions"}:
+        status = "cancelled"
     elif job is not None and job.status == "failed" and job.kind == "batch_report":
         status = "failed"
     elif job is not None and job.status == "failed" and job.kind == "batch_llm_actions" and not trusted:
@@ -404,8 +406,9 @@ def load_batch_case_report_state(
         "running": running_job is not None,
         "trusted": trusted,
         "partial": partial,
-        "error": job.error if job is not None and job.status == "failed" else "",
+        "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
         "job_id": report_job.job_id if report_job is not None else "",
+        "job_kind": report_job.kind if report_job is not None else "",
         "stage_label": report_job.stage_label if report_job is not None else "",
         "progress": report_job.progress if report_job is not None else 0,
     }
@@ -430,6 +433,8 @@ def load_specific_query_report_state(
         status = "partial_untrusted"
     if running_job is not None:
         status = "running"
+    elif job is not None and job.status == "cancelled" and job.kind in {"query_report", "query_llm_actions"}:
+        status = "cancelled"
     elif job is not None and job.status == "failed" and job.kind == "query_report":
         status = "failed"
     elif job is not None and job.status == "failed" and job.kind == "query_llm_actions" and not trusted:
@@ -440,8 +445,9 @@ def load_specific_query_report_state(
         "running": running_job is not None,
         "trusted": trusted,
         "partial": partial,
-        "error": job.error if job is not None and job.status == "failed" else "",
+        "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
         "job_id": report_job.job_id if report_job is not None else "",
+        "job_kind": report_job.kind if report_job is not None else "",
         "stage_label": report_job.stage_label if report_job is not None else "",
         "progress": report_job.progress if report_job is not None else 0,
     }
@@ -477,6 +483,13 @@ def load_optimized_query_state(
         status = "partial_untrusted"
     if running_job is not None:
         status = "running"
+    elif job is not None and job.status == "cancelled" and job.kind in {
+        "batch_optimized_query",
+        "query_optimized_query",
+        "batch_llm_actions",
+        "query_llm_actions",
+    }:
+        status = "cancelled"
     elif job is not None and job.status == "failed" and job.kind in {"batch_optimized_query", "query_optimized_query"}:
         status = "failed"
     elif (
@@ -500,8 +513,9 @@ def load_optimized_query_state(
         "risk_mode": marker.get("risk_mode") or "",
         "risk_reasons": marker.get("risk_reasons") if isinstance(marker.get("risk_reasons"), list) else [],
         "source_scope": marker.get("source_scope") or "",
-        "error": job.error if job is not None and job.status == "failed" else "",
+        "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
         "job_id": state_job.job_id if state_job is not None else "",
+        "job_kind": state_job.kind if state_job is not None else "",
         "stage_label": state_job.stage_label if state_job is not None else "",
         "progress": state_job.progress if state_job is not None else 0,
     }

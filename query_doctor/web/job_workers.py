@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.web.command_builders import (
@@ -48,7 +49,10 @@ def run_batch_case_report_job(
             timeout_sec=settings.timeout_sec,
             runner=runner,
             env=effective_subprocess_env(settings),
+            cancel_check=lambda: job_store.cancel_requested(job_id),
         )
+        if job_store.cancel_requested(job_id):
+            return
         job_store.update_stage(job_id, 2)
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
@@ -82,7 +86,10 @@ def run_specific_query_report_job(
             timeout_sec=settings.timeout_sec,
             runner=runner,
             env=effective_subprocess_env(settings),
+            cancel_check=lambda: job_store.cancel_requested(job_id),
         )
+        if job_store.cancel_requested(job_id):
+            return
         job_store.update_stage(job_id, 2)
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(
@@ -102,14 +109,24 @@ def run_specific_query_report_job(
         job_store.fail(job_id, "Unexpected report generation failure. Details are hidden because they may contain sensitive data.")
 
 
-def generate_validated_report_artifact(case_dir: Path, settings: WebSettings, runner: Runner, *, label: str) -> None:
+def generate_validated_report_artifact(
+    case_dir: Path,
+    settings: WebSettings,
+    runner: Runner,
+    *,
+    label: str,
+    cancel_check: Callable[[], bool] | None = None,
+) -> None:
     completed = run_subprocess(
         build_batch_case_report_command(case_dir, settings),
         cwd=settings.repo_dir,
         timeout_sec=settings.timeout_sec,
         runner=runner,
         env=effective_subprocess_env(settings),
+        cancel_check=cancel_check,
     )
+    if cancel_check is not None and cancel_check():
+        return
     if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
         raise WebError(
             "Report generation completed but validation rejected the output. "
@@ -123,14 +140,23 @@ def generate_validated_report_artifact(case_dir: Path, settings: WebSettings, ru
     write_batch_case_report_validation_marker(case_dir)
 
 
-def generate_validated_optimizer_artifact(case_dir: Path, settings: WebSettings, runner: Runner) -> None:
+def generate_validated_optimizer_artifact(
+    case_dir: Path,
+    settings: WebSettings,
+    runner: Runner,
+    *,
+    cancel_check: Callable[[], bool] | None = None,
+) -> None:
     completed = run_subprocess(
         build_optimized_query_command(case_dir, settings),
         cwd=settings.repo_dir,
         timeout_sec=settings.timeout_sec,
         runner=runner,
         env=effective_subprocess_env(settings),
+        cancel_check=cancel_check,
     )
+    if cancel_check is not None and cancel_check():
+        return
     if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
         raise WebError(
             "Optimized query draft was generated but failed deterministic validation. "
@@ -157,9 +183,19 @@ def run_llm_actions_job(
             settings,
             runner,
             label="Query Doctor selected case report generation",
+            cancel_check=lambda: job_store.cancel_requested(job_id),
         )
+        if job_store.cancel_requested(job_id):
+            return
         job_store.update_stage(job_id, 2)
-        generate_validated_optimizer_artifact(case_dir, settings, runner)
+        generate_validated_optimizer_artifact(
+            case_dir,
+            settings,
+            runner,
+            cancel_check=lambda: job_store.cancel_requested(job_id),
+        )
+        if job_store.cancel_requested(job_id):
+            return
         job_store.complete_html(job_id, f"LLM report and optimizer generated for {redact_browser_display_text(label)}.")
     except WebError as exc:
         job_store.fail(job_id, exc)
@@ -183,7 +219,10 @@ def run_optimized_query_job(
             timeout_sec=settings.timeout_sec,
             runner=runner,
             env=effective_subprocess_env(settings),
+            cancel_check=lambda: job_store.cancel_requested(job_id),
         )
+        if job_store.cancel_requested(job_id):
+            return
         job_store.update_stage(job_id, 2)
         if completed.returncode == REPORT_VALIDATION_EXIT_CODE:
             raise WebError(

@@ -29,6 +29,7 @@ def score_query_optimization_candidate(
     facts_text: str,
     *,
     duration_sec: float | None = None,
+    metadata_status: str = "not_observed",
     collection_status: str = "ok",
     analysis_status: str = "ok",
     failure_category: str | None = None,
@@ -42,6 +43,7 @@ def score_query_optimization_candidate(
         duration,
         collection_status=collection_status,
         analysis_status=analysis_status,
+        metadata_status=metadata_status,
         failure_category=failure_category,
         has_shape_evidence=opportunity_score > 0,
     )
@@ -220,6 +222,9 @@ def query_shape_opportunity_signals(facts: str) -> tuple[int, list[str], list[st
         score += 8
         reasons.append("network I/O context aligns with exchange evidence")
         review.extend(["exchange payload", "data movement"])
+    if score > 0 and backend_data_skew_evidence(facts):
+        reasons.append("backend data skew supports distribution and hot-key review")
+        review = ["data distribution", "hot keys", "join/distribution skew"] + review
     return min(100, score), reasons, review
 
 
@@ -229,6 +234,7 @@ def query_optimization_counter_signals(
     *,
     collection_status: str,
     analysis_status: str,
+    metadata_status: str,
     failure_category: str | None,
     has_shape_evidence: bool,
 ) -> tuple[list[str], float]:
@@ -262,6 +268,11 @@ def query_optimization_counter_signals(
     if "backend data skew" in lower and "large exchange" not in lower and not has_shape_evidence:
         signals.append("backend symptoms dominate without query-shape evidence")
         penalty *= 0.6
+    if (
+        cardinality_mismatch_count(facts) > 0
+        and not metadata_status_is_usable(metadata_status)
+    ):
+        signals.append("metadata was not collected, so stats-vs-query-shape split is unconfirmed")
     if metadata_stats_gap(facts) and cardinality_mismatch_count(facts) > 0:
         signals.append("some cardinality mismatch may also require statistics refresh")
     return dedupe_preserve_order(signals), penalty
@@ -282,14 +293,10 @@ def large_scan_waste_evidence(facts: str) -> bool:
 
 
 def join_row_expansion_evidence(facts: str) -> bool:
-    if not re.search(r"\b(?:HASH JOIN|JOIN)\b", facts, re.IGNORECASE):
-        return False
     lower = facts.lower()
-    if "severe cardinality underestimation before high-cost operator" in lower:
-        return True
     if "join row expansion" in lower or "join explosion" in lower:
         return True
-    ratio = max_ratio_value(facts, ("actual/estimated ratio",))
+    ratio = max_join_actual_estimated_ratio(facts)
     return ratio is not None and ratio >= 50 and cardinality_mismatch_count(facts) > 0
 
 
@@ -313,6 +320,64 @@ def memory_shape_evidence(facts: str) -> bool:
 
 def cardinality_mismatch_count(facts: str) -> int:
     return fact_int(scoring_section_text(facts, "## Summary"), "Cardinality anomalies") or 0
+
+
+def max_join_actual_estimated_ratio(facts: str) -> float | None:
+    values: list[float] = []
+    for line in join_operator_evidence_lines(section_text(facts, "## Findings")):
+        ratio = ratio_from_text(line)
+        if ratio is not None:
+            values.append(ratio)
+    for block in action_card_blocks(facts):
+        if not any(join_operator_line(line) for line in block.splitlines()):
+            continue
+        for value in fact_values(block, "actual/estimated ratio"):
+            ratio = ratio_from_text(value)
+            if ratio is not None:
+                values.append(ratio)
+    return max(values) if values else None
+
+
+def join_operator_evidence_lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if join_operator_line(line)]
+
+
+def join_operator_line(line: str) -> bool:
+    stripped = line.strip()
+    if re.search(r"^-\s*operator:\s*.*\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", stripped, re.IGNORECASE):
+        return True
+    return bool(re.search(r"^-\s*\d+:[^\n]*\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", stripped, re.IGNORECASE))
+
+
+def action_card_blocks(facts: str) -> list[str]:
+    section = section_text(facts, "## Action Cards")
+    if not section:
+        return []
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in section.splitlines():
+        if line.startswith("### ") and current:
+            blocks.append("\n".join(current))
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def ratio_from_text(value: str) -> float | None:
+    match = re.search(r"(\d+(?:\.\d+)?)x", value, re.IGNORECASE)
+    return float(match.group(1)) if match else None
+
+
+def backend_data_skew_evidence(facts: str) -> bool:
+    backend_facts = scoring_section_text(facts, "## Backend / Host Tail Evidence")
+    return any(value.strip().lower().startswith("yes") for value in fact_values(backend_facts, "data skew"))
+
+
+def metadata_status_is_usable(value: str) -> bool:
+    return str(value or "").strip().lower() in {"collected", "ok", "available", "done", "partial"}
 
 
 def metadata_stats_gap(facts: str) -> bool:

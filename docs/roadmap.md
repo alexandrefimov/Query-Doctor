@@ -63,23 +63,66 @@ Improve how runtime context supports diagnosis without overclaiming.
 
 - Show collection status, coverage, observed signals, correlated signals,
   context-only signals, and limitations.
+- Add an explicit evidence/confidence summary so Details and reports separate
+  strong analyzer-backed findings, plausible follow-up checks, context-only
+  runtime signals, and unknown or insufficient evidence.
 - Keep Cloudera Manager metrics and events as normalized analyzer facts.
 - Treat duration and runtime context as supporting evidence unless direct facts
   support a stronger claim.
 - Add more sanitized fixtures for long-running writer, scan, exchange,
   join-heavy, metrics, and events cases.
+- Add fingerprint and workload baseline comparisons so the analyzer can
+  distinguish chronic bad queries from regressions without exposing raw SQL.
+- Improve profile-to-plan mapping across fragments, operators, tables, joins,
+  exchanges, and write paths so findings point to the supported execution
+  location instead of a generic symptom.
+- Improve metadata/stats quality facts for stale or missing table stats, column
+  stats on join/filter columns, partition coverage, selectivity mismatch, and
+  stats-present-but-not-explanatory cases.
 
 ### 3. Query Optimizer Usefulness
 
 Keep optimizer trust strict while making useful outcomes more common.
 
+- Treat Optimization Candidate as a funnel, not a promise of SQL rewrite:
+  candidate detected, rewrite recipe detected, SQL draft safe to attempt,
+  trusted SQL draft produced.
+- Make user-visible optimizer states explain why a SQL draft was not produced:
+  no deterministic recipe, SQL shape over safety thresholds, CTE body validation
+  not proven, set-operation boundary, no material change, or trusted
+  recommendations-only.
+- Recent real-case batch testing showed that stats-available optimization
+  candidates can still produce zero trusted SQL drafts. The bottleneck was not
+  validation failure or missing table stats; it was insufficient Python-owned
+  proof for a safe rewrite, high-risk SQL shape, or no material LLM change.
 - Add anonymized real fixtures for long `WITH`, CTE-heavy,
   join/filter/projection-preservation, and model-discipline failure cases.
-- Add Python-owned recipes only where validation can prove the boundary.
+- Add Python-owned recipes only where validation can prove the boundary,
+  starting with narrower CTE predicate-pushdown cases.
+- Add CTE simplification recipes as separate proven transforms: inline only
+  single-use CTEs, remove pass-through CTE layers, use expanded CTE trees for
+  internal analysis when helpful, and treat multi-use CTE inlining as a
+  recommendations-only materialization or pre-aggregation hint unless Python
+  can prove duplication is safe and useful.
 - Prefer trusted `no_rewrite` or recommendations-only outcomes over
   speculative SQL drafts.
 - Use `scripts/compare_optimizer_models.py --fixture-corpus` before changing
   prompt strategy or model defaults.
+
+Near-term optimizer work should improve the conversion funnel in this order:
+
+1. Split optimistic labels such as SQL-draft attemptability into recipe
+   detection, safety eligibility, and actual trusted draft production.
+2. Deepen analyzer-owned CTE facts: dependency graph, consumer count, predicate
+   origin, boundary reasons, and pushdown eligibility.
+3. Add focused deterministic recipes for simple CTE rewrites before broadening
+   prompt freedom, including single-use CTE inline and pass-through CTE
+   elimination after dependency and projection checks exist.
+4. Distinguish stats present from stats useful by surfacing estimate mismatch,
+   missing column/partition coverage, and stats-present-but-not-primary
+   bottleneck facts.
+5. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
+   minimal diffs.
 
 ### 4. Metadata Selection Policy
 

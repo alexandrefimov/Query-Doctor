@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import subprocess
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -15,6 +17,8 @@ from query_doctor.web.models import WebError, WebSettings
 
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
+CancelCheck = Callable[[], bool]
+WEB_CANCELLED_RETURN_CODE = -15
 
 
 def run_subprocess(
@@ -24,8 +28,17 @@ def run_subprocess(
     timeout_sec: int,
     runner: Runner,
     env: dict[str, str] | None = None,
+    cancel_check: CancelCheck | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return runner(
+    if cancel_check is not None and runner is subprocess.run:
+        return run_cancellable_subprocess(
+            cmd,
+            cwd=cwd,
+            timeout_sec=timeout_sec,
+            env=env,
+            cancel_check=cancel_check,
+        )
+    completed = runner(
         cmd,
         cwd=str(cwd),
         env=env,
@@ -34,6 +47,65 @@ def run_subprocess(
         timeout=timeout_sec,
         check=False,
     )
+    if cancel_check is not None and cancel_check():
+        return subprocess.CompletedProcess(cmd, WEB_CANCELLED_RETURN_CODE, stdout="", stderr="")
+    return completed
+
+
+def run_cancellable_subprocess(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    timeout_sec: int,
+    env: dict[str, str] | None,
+    cancel_check: CancelCheck,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        cmd,
+        cwd=str(cwd),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=os.name == "posix",
+    )
+    deadline = time.monotonic() + timeout_sec
+    while True:
+        if cancel_check():
+            terminate_process_tree(process)
+            stdout, stderr = communicate_after_stop(process)
+            return subprocess.CompletedProcess(cmd, WEB_CANCELLED_RETURN_CODE, stdout=stdout, stderr=stderr)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            terminate_process_tree(process, force=True)
+            raise subprocess.TimeoutExpired(cmd, timeout_sec)
+        try:
+            stdout, stderr = process.communicate(timeout=min(0.2, remaining))
+            return subprocess.CompletedProcess(cmd, process.returncode, stdout=stdout, stderr=stderr)
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def terminate_process_tree(process: subprocess.Popen[str], *, force: bool = False) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
+        elif force:
+            process.kill()
+        else:
+            process.terminate()
+    except ProcessLookupError:
+        return
+
+
+def communicate_after_stop(process: subprocess.Popen[str]) -> tuple[str, str]:
+    try:
+        return process.communicate(timeout=2)
+    except subprocess.TimeoutExpired:
+        terminate_process_tree(process, force=True)
+        return process.communicate()
 
 
 def effective_subprocess_env(

@@ -194,6 +194,7 @@ def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
 
 def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
     cards = (
+        ("evidence quality", evidence_quality_label(view)),
         ("facts", evidence_facts_label(view)),
         ("runtime context", evidence_runtime_label(view)),
         ("metadata", evidence_metadata_label(view)),
@@ -209,11 +210,34 @@ def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
         "<section id=\"evidence-guide\" class=\"case-overview\" aria-label=\"Evidence and action guide\">"
         "<div class=\"section-heading\"><div>"
         "<h2 class=\"section-title\">Evidence guide</h2>"
-        "<div class=\"section-kicker\">Quick read of evidence strength, context, and the safest next step.</div>"
+        "<div class=\"section-kicker\">Quick read of evidence confidence, context, and the safest next step.</div>"
         "</div></div>"
         f"<div class=\"case-summary-grid\">{card_html}</div>"
         "</section>"
     )
+
+
+def evidence_quality_label(view: RecentScanCaseDetailView) -> str:
+    statuses = {label: str(value or "").strip().lower() for label, value in view.status_fields}
+    if statuses.get("collection") not in {"", "ok", "collected", "success"}:
+        return "Incomplete: collection did not finish cleanly"
+    if statuses.get("analysis") not in {"", "ok", "analyzed", "success"}:
+        return "Incomplete: analyzer facts are unavailable"
+
+    has_profile_findings = bool(view.score_reasons) and view.score_severity in {"failed", "high", "suspicious"}
+    runtime_title = str(view.runtime_verdict.title or "").strip()
+    metadata_available = not view.metadata.unavailable
+    if has_profile_findings and runtime_title == "Correlated runtime context":
+        return "Strong: analyzer findings plus correlated runtime context"
+    if has_profile_findings and metadata_available:
+        return "Strong: analyzer findings with metadata context"
+    if has_profile_findings:
+        return "Moderate: analyzer findings; supporting context is limited"
+    if runtime_title in {"Runtime context observed", "Correlated runtime context"}:
+        return "Limited: runtime context without profile-backed findings"
+    if view.score_severity == "clean":
+        return "Low: no positive deterministic findings"
+    return "Unknown: evidence is insufficient for a stronger verdict"
 
 
 def evidence_facts_label(view: RecentScanCaseDetailView) -> str:

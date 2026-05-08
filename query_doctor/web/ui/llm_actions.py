@@ -26,6 +26,13 @@ OPTIMIZED_QUERY_PROGRESS_STEPS = (
     ("Validating draft", {"Validating optimizer draft"}),
     ("Done", {"Done"}),
 )
+LLM_ACTIONS_JOB_KINDS = {"batch_llm_actions", "query_llm_actions"}
+LLM_ACTIONS_PROGRESS_STEPS = (
+    ("Checking case", {"Checking selected case", "Checking selected batch case"}),
+    ("Generating report", {"Generating validated report"}),
+    ("Generating optimizer draft", {"Generating optimizer draft"}),
+    ("Done", {"Done"}),
+)
 
 OPTIMIZER_OUTPUT_LABELS = {
     "sql_draft": "Validated SQL draft",
@@ -126,15 +133,23 @@ def render_llm_actions_block(
     if optimizer_status == "unavailable":
         notes.append("Source SQL is unavailable or outside the optimizer read-only scope for this case.")
     notes_html = f"<p class=\"helper\">{'<br>'.join(notes)}</p>" if notes else ""
-    report_status_html = render_llm_report_status(report_view, trusted_report_html)
-    optimizer_status_html = render_optimizer_status(
-        optimizer_state,
-        trusted_optimized_query=trusted_optimized_query,
-        trusted_optimizer_recommendations=trusted_optimizer_recommendations,
-        optimizer_manual_guidance=optimizer_manual_guidance,
-        optimizer_validation_action_url=optimizer_validation_action,
-        optimizer_validation_result=optimizer_validation_result,
-    )
+    combined_status = combined_llm_actions_job_status(report_view, optimizer_state)
+    if combined_status == "running":
+        report_status_html = render_llm_actions_job_progress(report_view, optimizer_state)
+        optimizer_status_html = ""
+    elif combined_status == "cancelled":
+        report_status_html = render_llm_actions_job_stopped(report_view, optimizer_state)
+        optimizer_status_html = ""
+    else:
+        report_status_html = render_llm_report_status(report_view, trusted_report_html)
+        optimizer_status_html = render_optimizer_status(
+            optimizer_state,
+            trusted_optimized_query=trusted_optimized_query,
+            trusted_optimizer_recommendations=trusted_optimizer_recommendations,
+            optimizer_manual_guidance=optimizer_manual_guidance,
+            optimizer_validation_action_url=optimizer_validation_action,
+            optimizer_validation_result=optimizer_validation_result,
+        )
     return (
         "<section id=\"llm-actions\" class=\"panel docs-panel\" aria-label=\"LLM actions\">"
         "<h1>LLM actions</h1>"
@@ -160,6 +175,124 @@ def render_post_button(action_url: str, label: str, *, disabled: bool = False, p
         f"<button class=\"{class_name}\" type=\"submit\"{disabled_attr}>{html.escape(label)}</button>"
         "</form>"
     )
+
+
+def combined_llm_actions_job_status(report_view: ReportActionView, optimizer_state: dict[str, Any]) -> str | None:
+    report_job_id = report_view.job_id
+    optimizer_job_id = str(optimizer_state.get("job_id") or "")
+    if not report_job_id or report_job_id != optimizer_job_id:
+        return None
+    report_kind = report_view.job_kind
+    optimizer_kind = str(optimizer_state.get("job_kind") or "")
+    if report_kind not in LLM_ACTIONS_JOB_KINDS and optimizer_kind not in LLM_ACTIONS_JOB_KINDS:
+        return None
+    report_status = str(report_view.status or "not_run")
+    optimizer_status = str(optimizer_state.get("status") or "not_run")
+    if report_status == "running" or optimizer_status == "running":
+        return "running"
+    if report_status == "cancelled" or optimizer_status == "cancelled":
+        return "cancelled"
+    return None
+
+
+def render_llm_actions_job_progress(report_view: ReportActionView, optimizer_state: dict[str, Any]) -> str:
+    current_stage = report_view.stage_label or str(optimizer_state.get("stage_label") or "Generating validated report")
+    progress_value = report_view.progress or numeric_value(optimizer_state.get("progress"))
+    current_index = llm_actions_progress_step_index(current_stage, progress_value)
+    progress = llm_actions_progress_percent(current_index)
+    escaped_job_id = html.escape(report_view.job_id, quote=True)
+    status_attrs = (
+        f" data-report-job-status-url=\"/jobs/{escaped_job_id}/status\""
+        f" data-report-job-url=\"/jobs/{escaped_job_id}\""
+    )
+    cancel_html = (
+        f"<form method=\"post\" action=\"/jobs/{escaped_job_id}/cancel\">"
+        "<button class=\"button danger\" type=\"submit\">Stop LLM actions</button>"
+        "</form>"
+    )
+    step_html = render_llm_actions_steps(current_stage, current_index)
+    return (
+        f"<div class=\"report-progress\" aria-label=\"LLM actions progress\"{status_attrs}>"
+        "<div class=\"progress-head\"><span class=\"progress-title\">Generating LLM report + optimizer</span>"
+        f"<span class=\"progress-stage\">{html.escape(current_stage)}</span>{cancel_html}</div>"
+        "<div class=\"progress-bar\" aria-hidden=\"true\">"
+        f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
+        "</div>"
+        f"<div class=\"batch-progress\"><div class=\"batch-progress-steps\">{step_html}</div></div>"
+        "</div>"
+    )
+
+
+def render_llm_actions_job_stopped(report_view: ReportActionView, optimizer_state: dict[str, Any]) -> str:
+    current_stage = report_view.stage_label or str(optimizer_state.get("stage_label") or "Cancelled")
+    message = report_view.error
+    if message in {None, "", "unknown"}:
+        message = optimizer_state.get("error") or "Job stopped by user."
+    return (
+        "<div class=\"report-progress\" aria-label=\"LLM actions progress\">"
+        "<div class=\"progress-head\"><span class=\"progress-title\">LLM actions stopped</span>"
+        f"<span class=\"progress-stage\">{html.escape(str(current_stage or 'Cancelled'))}</span></div>"
+        "<div class=\"progress-bar\" aria-hidden=\"true\">"
+        "<span class=\"progress-fill\" style=\"width:100%\"></span>"
+        "</div>"
+        "<div class=\"batch-progress\"><div class=\"batch-progress-steps\">"
+        "<div class=\"batch-progress-step batch-progress-step--failed\">"
+        "<strong>! Stopped</strong><span>Stopped by user</span></div>"
+        "</div></div>"
+        f"<div class=\"error-card\" role=\"alert\">{html.escape(str(message))}</div>"
+        "</div>"
+    )
+
+
+def render_llm_actions_steps(current_stage: str, current_index: int) -> str:
+    steps = []
+    for index, (label, _stage_labels) in enumerate(LLM_ACTIONS_PROGRESS_STEPS):
+        if index < current_index:
+            state_name = "done"
+            icon = "✓"
+            detail = "Done"
+        elif index == current_index:
+            state_name = "running"
+            icon = "…"
+            detail = current_stage
+        else:
+            state_name = "neutral"
+            icon = "−"
+            detail = "Pending"
+        steps.append(
+            "<div class=\"batch-progress-step batch-progress-step--{state}\">"
+            "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
+                state=html.escape(state_name),
+                icon=html.escape(icon),
+                label=html.escape(label),
+                detail=html.escape(detail),
+            )
+        )
+    return "".join(steps)
+
+
+def llm_actions_progress_step_index(stage_label: str, progress: int) -> int:
+    normalized = stage_label.strip().lower()
+    for index, (_label, stage_labels) in enumerate(LLM_ACTIONS_PROGRESS_STEPS):
+        if normalized in {label.lower() for label in stage_labels}:
+            return index
+    bounded_progress = max(0, min(100, int(progress)))
+    if bounded_progress >= 100:
+        return len(LLM_ACTIONS_PROGRESS_STEPS) - 1
+    if bounded_progress <= 0:
+        return 0
+    step_bucket = (bounded_progress - 1) // (100 // len(LLM_ACTIONS_PROGRESS_STEPS))
+    return max(0, min(len(LLM_ACTIONS_PROGRESS_STEPS) - 2, step_bucket))
+
+
+def llm_actions_progress_percent(step_index: int) -> int:
+    step_count = len(LLM_ACTIONS_PROGRESS_STEPS)
+    bounded_index = max(0, min(step_count - 1, step_index))
+    if step_count <= 1:
+        return 0
+    if bounded_index >= step_count - 1:
+        return 100
+    return int(round((bounded_index / step_count) * 100))
 
 
 def render_optimizer_action_button(
@@ -195,7 +328,7 @@ def render_optimizer_status(
     output_kind = str(state.get("output_kind") or "sql_draft")
     if status == "running":
         status_html = render_optimized_query_progress(state)
-    elif status == "failed":
+    elif status in {"failed", "cancelled"}:
         status_html = render_optimized_query_failure(state)
     elif status == "partial_untrusted":
         status_html = render_optimized_query_outcome(state)
@@ -374,7 +507,7 @@ def render_optimized_query_action(
         )
     if status == "running":
         status_html = render_optimized_query_progress(state)
-    elif status == "failed":
+    elif status in {"failed", "cancelled"}:
         status_html = render_optimized_query_failure(state)
     elif status == "partial_untrusted":
         status_html = render_optimized_query_outcome(state)
@@ -443,6 +576,13 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
             f" data-optimizer-job-status-url=\"/jobs/{escaped_job_id}/status\""
             f" data-optimizer-job-url=\"/jobs/{escaped_job_id}\""
         )
+        cancel_html = (
+            f"<form method=\"post\" action=\"/jobs/{escaped_job_id}/cancel\">"
+            "<button class=\"button danger\" type=\"submit\">Stop job</button>"
+            "</form>"
+        )
+    else:
+        cancel_html = ""
     steps = []
     for index, (label, _stage_labels) in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS):
         if index < current_index:
@@ -469,7 +609,7 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
     return (
         f"<div class=\"report-progress\" aria-label=\"Optimized query progress\"{status_attrs}>"
         "<div class=\"progress-head\"><span class=\"progress-title\">Generating Query LLM optimizer draft</span>"
-        f"<span class=\"progress-stage\">{html.escape(current_stage)}</span></div>"
+        f"<span class=\"progress-stage\">{html.escape(current_stage)}</span>{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
         "</div>"
@@ -622,17 +762,21 @@ def optimized_query_progress_percent(step_index: int) -> int:
 
 
 def render_optimized_query_failure(state: dict[str, Any]) -> str:
+    cancelled = str(state.get("status") or "") == "cancelled"
     message = str(state.get("error") or "Optimized query generation failed. Unsafe output is hidden.")
+    title = "Query LLM optimizer stopped" if cancelled else "Query LLM optimizer failed"
+    label = "Stopped" if cancelled else "Error"
+    detail = "Stopped by user" if cancelled else "Unsafe output is hidden"
     return (
         "<div class=\"report-progress\" aria-label=\"Optimized query progress\">"
-        "<div class=\"progress-head\"><span class=\"progress-title\">Query LLM optimizer failed</span>"
-        f"<span class=\"progress-stage\">{html.escape(str(state.get('stage_label') or 'Failed'))}</span></div>"
+        f"<div class=\"progress-head\"><span class=\"progress-title\">{title}</span>"
+        f"<span class=\"progress-stage\">{html.escape(str(state.get('stage_label') or ('Cancelled' if cancelled else 'Failed')))}</span></div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         "<span class=\"progress-fill\" style=\"width:100%\"></span>"
         "</div>"
         "<div class=\"batch-progress\"><div class=\"batch-progress-steps\">"
         "<div class=\"batch-progress-step batch-progress-step--failed\">"
-        "<strong>! Error</strong><span>Unsafe output is hidden</span></div>"
+        f"<strong>! {label}</strong><span>{detail}</span></div>"
         "</div></div>"
         f"<div class=\"error-card\" role=\"alert\">{html.escape(message)}</div>"
         "</div>"
