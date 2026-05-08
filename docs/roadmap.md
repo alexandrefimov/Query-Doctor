@@ -330,7 +330,10 @@ Near-term metadata/stats work:
 4. Continue calibrating high-confidence `case_primary_bottleneck` caps.
    Non-primary stats/query action candidate tiers are already capped to `low`
    for high-confidence primary bottlenecks.
-5. Improve partition and column stats detail from already-collected metadata:
+5. Use the batch-level `case_primary_bottleneck_distribution` in
+   `batch_summary.json`/Markdown to track unknown, mixed, not-classified, and
+   medium-or-better confidence rates across real-case batches.
+6. Improve partition and column stats detail from already-collected metadata:
    partition row-count coverage counts and join/filter column stats coverage,
    without exposing raw partition values or raw metadata output.
 

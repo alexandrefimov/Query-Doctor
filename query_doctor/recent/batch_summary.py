@@ -16,6 +16,17 @@ from query_doctor.recent.batch_models import BatchConfig, CaseResult, DiscoveryR
 from query_doctor.recent.query_optimization_score import query_optimization_sort_key
 from query_doctor.recent.stats_optimization_score import stats_optimization_sort_key
 
+PRIMARY_BOTTLENECK_LABELS = {
+    "stats",
+    "sql_shape",
+    "runtime_admission",
+    "runtime_skew",
+    "runtime_data_movement",
+    "mixed",
+    "unknown",
+}
+PRIMARY_BOTTLENECK_CONFIDENCES = {"high", "medium", "low"}
+
 
 def build_summary(
     config: BatchConfig,
@@ -34,6 +45,7 @@ def build_summary(
     inspected = discovery.summaries_inspected if discovery.summaries_inspected is not None else len(discovery.candidates)
     reason_counts = {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
     reason_sql_verb_counts = {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
+    primary_distribution = case_primary_bottleneck_distribution(cases)
     return {
         "mode": "recent-query-batch",
         "out": str(config.out),
@@ -69,6 +81,7 @@ def build_summary(
         "candidate_reason_counts": reason_counts,
         "candidate_reason_sql_verb_counts": reason_sql_verb_counts,
         "candidate_exclusion_count": 0 if discovery.scan_too_broad else max(0, inspected - selected_count),
+        "case_primary_bottleneck_distribution": primary_distribution,
         "top_reports": config.top_reports,
         "cm_jobs": config.cm_jobs,
         "jobs": config.jobs,
@@ -146,6 +159,51 @@ def rank_cases_for_stats_optimization(cases: list[CaseResult]) -> list[CaseResul
     for rank, case in enumerate(ranked, start=1):
         case.stats_optimization_rank = rank
     return ranked
+
+
+def case_primary_bottleneck_distribution(cases: list[CaseResult]) -> dict[str, object]:
+    label_counts: Counter[str] = Counter()
+    confidence_counts: Counter[str] = Counter()
+    classified = 0
+    for case in cases:
+        bottleneck = case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
+        label = str(bottleneck.get("label") or "").strip().lower()
+        confidence = str(bottleneck.get("confidence") or "").strip().lower()
+        if label in PRIMARY_BOTTLENECK_LABELS:
+            classified += 1
+            label_counts[label] += 1
+        else:
+            label_counts["not_classified"] += 1
+        if confidence in PRIMARY_BOTTLENECK_CONFIDENCES:
+            confidence_counts[confidence] += 1
+        else:
+            confidence_counts["unknown"] += 1
+    total = len(cases)
+    unknown_cases = label_counts.get("unknown", 0)
+    mixed_cases = label_counts.get("mixed", 0)
+    not_classified_cases = label_counts.get("not_classified", 0)
+    medium_or_better = confidence_counts.get("high", 0) + confidence_counts.get("medium", 0)
+    return {
+        "total_cases": total,
+        "classified_cases": classified,
+        "not_classified_cases": not_classified_cases,
+        "label_counts": dict(sorted(label_counts.items())),
+        "confidence_counts": dict(sorted(confidence_counts.items())),
+        "unknown_cases": unknown_cases,
+        "mixed_cases": mixed_cases,
+        "unknown_or_not_classified_cases": unknown_cases + not_classified_cases,
+        "medium_or_better_confidence_cases": medium_or_better,
+        "unknown_rate": ratio(unknown_cases, total),
+        "mixed_rate": ratio(mixed_cases, total),
+        "unknown_or_not_classified_rate": ratio(unknown_cases + not_classified_cases, total),
+        "medium_or_better_confidence_rate": ratio(medium_or_better, total),
+    }
+
+
+def ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
 
 
 def case_to_summary(case: CaseResult) -> dict[str, object]:
@@ -271,6 +329,30 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         lines.extend(["## Candidate Selection Breakdown", ""])
         for reason, count in reason_counts.items():
             lines.append(f"- {reason}: {count}")
+        lines.append("")
+    primary_distribution = summary.get("case_primary_bottleneck_distribution")
+    if isinstance(primary_distribution, dict):
+        label_counts = primary_distribution.get("label_counts")
+        confidence_counts = primary_distribution.get("confidence_counts")
+        lines.extend(
+            [
+                "## Primary Bottleneck Distribution",
+                "",
+                f"- classified cases: {primary_distribution.get('classified_cases', 0)} / {primary_distribution.get('total_cases', 0)}",
+                f"- unknown cases: {primary_distribution.get('unknown_cases', 0)} ({primary_distribution.get('unknown_rate', 0.0)})",
+                f"- mixed cases: {primary_distribution.get('mixed_cases', 0)} ({primary_distribution.get('mixed_rate', 0.0)})",
+                f"- not classified cases: {primary_distribution.get('not_classified_cases', 0)}",
+                f"- medium-or-better confidence cases: {primary_distribution.get('medium_or_better_confidence_cases', 0)} ({primary_distribution.get('medium_or_better_confidence_rate', 0.0)})",
+            ]
+        )
+        if isinstance(label_counts, dict) and label_counts:
+            rendered_labels = ", ".join(f"{label}={count}" for label, count in sorted(label_counts.items()))
+            lines.append(f"- labels: {rendered_labels}")
+        if isinstance(confidence_counts, dict) and confidence_counts:
+            rendered_confidences = ", ".join(
+                f"{label}={count}" for label, count in sorted(confidence_counts.items())
+            )
+            lines.append(f"- confidence: {rendered_confidences}")
         lines.append("")
     lines.extend(
         [
