@@ -1,6 +1,6 @@
 # Query Optimizer Contract
 
-Last reviewed: 2026-05-08
+Last reviewed: 2026-05-09
 
 This document is the active contract for both optimizer surfaces:
 
@@ -190,8 +190,10 @@ boundary.
   top-level `AND` conjuncts are evaluated independently. A conjunct may be
   copied only if it dequalifies entirely against the target CTE or derived-table
   aliases and projected columns. Conjuncts that reference foreign aliases or
-  unavailable columns must remain only in the downstream `WHERE`; the downstream
-  `WHERE` must not be removed, weakened, or rewritten.
+  unavailable columns must remain only in the downstream `WHERE`. Parenthesized
+  `AND` groups are decomposed only when the parentheses enclose the whole group;
+  other parenthesized expressions remain atomic. The downstream `WHERE` must not
+  be removed, weakened, or rewritten.
 
 Add new recipes only with focused fixtures and validation tests.
 

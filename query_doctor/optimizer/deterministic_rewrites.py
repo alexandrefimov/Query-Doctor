@@ -937,7 +937,7 @@ def per_conjunct_pushdown_plan(
     end = next_top_level_clause_offset(final_sql, start)
     existing_cte_predicates = sql_predicate_signature_counter(cte_body, "WHERE")
     decisions: list[PredicatePushdownConjunctDecision] = []
-    for conjunct in split_top_level_conjunct_fragments(final_sql[start:end]):
+    for conjunct in pushdown_conjunct_fragments(final_sql[start:end]):
         dequalified = dequalify_predicate_for_cte_aliases(conjunct, cte_qualifiers, available_columns)
         if not dequalified:
             decisions.append(
@@ -988,6 +988,28 @@ def per_conjunct_pushdown_plan(
             continue
         decisions.append(PredicatePushdownConjunctDecision(conjunct, dequalified, True, "copyable"))
     return tuple(decisions)
+
+
+def pushdown_conjunct_fragments(fragment: str) -> tuple[str, ...]:
+    conjuncts: list[str] = []
+    for conjunct in split_top_level_conjunct_fragments(fragment):
+        inner = outer_parenthesized_fragment(conjunct)
+        if inner is None:
+            conjuncts.append(conjunct)
+            continue
+        conjuncts.extend(pushdown_conjunct_fragments(inner))
+    return tuple(conjuncts)
+
+
+def outer_parenthesized_fragment(fragment: str) -> str | None:
+    stripped = fragment.strip()
+    if not stripped.startswith("("):
+        return None
+    close = matching_parenthesis_offset(stripped, 0)
+    if close != len(stripped) - 1:
+        return None
+    inner = stripped[1:close].strip()
+    return inner or None
 
 
 def predicate_is_copyable_to_single_cte(predicate: str, available_columns: set[str]) -> bool:

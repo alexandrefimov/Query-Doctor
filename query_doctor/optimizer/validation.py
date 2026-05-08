@@ -11,8 +11,8 @@ from query_doctor.optimizer.models import CteParseResult, OptimizerRewriteRecipe
 from query_doctor.optimizer.deterministic_rewrites import (
     copyable_final_where_predicates,
     cte_reference_aliases,
-    dequalify_predicate_for_cte_aliases,
     pass_through_cte_elimination_draft,
+    per_conjunct_pushdown_plan,
     simple_cte_filter_columns,
 )
 from query_doctor.optimizer.recommendation_output import (
@@ -485,10 +485,15 @@ def dequalified_downstream_where_predicate_counter(
     aliases = cte_reference_aliases(downstream_segment, cte_name)
     available_columns = set(projection.output_names)
     predicates: Counter[str] = Counter()
-    for predicate in all_predicate_signatures(downstream_segment, "WHERE"):
-        dequalified = dequalify_predicate_for_cte_aliases(predicate, aliases, available_columns)
-        if dequalified:
-            predicates.update(sql_predicate_signature_counter(f"SELECT 1 WHERE {dequalified}", "WHERE"))
+    for decision in per_conjunct_pushdown_plan(
+        downstream_segment,
+        source_segment,
+        available_columns,
+        cte_qualifiers=aliases,
+        grouped_columns=set(),
+    ):
+        if decision.copyable and decision.dequalified is not None:
+            predicates.update(sql_predicate_signature_counter(f"SELECT 1 WHERE {decision.dequalified}", "WHERE"))
     return predicates
 
 
