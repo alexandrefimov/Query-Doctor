@@ -22,6 +22,7 @@ from query_doctor.optimizer.recommendation_output import (
     UNSAFE_RECOMMENDATION_TOKENS,
     extract_recommendations,
     no_rewrite_recommendations,
+    no_supported_rewrite_recommendations,
     normalize_optimizer_recommendations,
     output_limit_no_rewrite_recommendations,
     validate_optimizer_recommendations_text,

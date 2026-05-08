@@ -45,6 +45,20 @@ def optimizer_mode_contract(
     if risk_decision.mode == "conservative_rewrite":
         reasons = ", ".join(risk_decision.reasons) or "risk_noted"
         if rewrite_recipe:
+            if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
+                return "\n".join(
+                    [
+                        "mode: conservative_rewrite",
+                        f"python_owned_reasons: {reasons}",
+                        f"python_owned_rewrite_recipe: {rewrite_recipe.recipe_id}",
+                        "rules:",
+                        "- A bounded structural rewrite is allowed only when it follows PYTHON-OWNED MANUAL REWRITE BULLETS.",
+                        "- Preserve the derived table alias and every physical table, JOIN predicate, WHERE filter, literal mapping, final output column, and final SELECT/window expression.",
+                        "- You may change the selected derived table body only for the named rewrite recipe.",
+                        "- Do not add, remove, reorder, or rewrite unrelated derived tables, CTEs, joins, set operations, or top-level clauses.",
+                        "- If the recipe cannot be applied exactly, return the original query with harmless formatting.",
+                    ]
+                )
             return "\n".join(
                 [
                     "mode: conservative_rewrite",

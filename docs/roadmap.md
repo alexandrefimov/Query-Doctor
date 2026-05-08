@@ -155,13 +155,16 @@ Completed baseline work:
   rejected for unbacked nested/CTE query-body changes. The next useful recipe
   work should target a repeated nested/derived-table transform only after
   analyzer facts can prove the boundary.
+- Prompt strategy now follows the same recipe boundary: SQL draft prompts are
+  used only for Python-owned recipes, while unsupported shapes skip LLM SQL
+  generation and return trusted `no_rewrite` guidance. Model bake-offs should
+  now measure recipe execution quality, not broad free-form rewrite ability.
 
 Remaining near-term optimizer work:
 
-1. Inspect the latest real optimizer benchmark outcomes before adding another
-   recipe: compare successful trusted SQL drafts, `no_material_change`
-   fallbacks, and validation failures to identify the smallest repeated safe
-   transform.
+1. Re-run the real optimizer benchmark after the prompt-route split and compare
+   trusted SQL drafts, deterministic no-recipe outcomes, recommendations-only
+   outcomes, and validation failures.
 2. Turn any repeated successful generic rewrite into an analyzer-owned fact plus
    Python-owned recipe only when validation can prove the boundary.
 3. Validate the expanded CTE facts against sanitized real fixtures and add only

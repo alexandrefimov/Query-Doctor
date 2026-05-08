@@ -16,7 +16,6 @@ from query_doctor.report.recommendation_candidates import recommendation_candida
 
 
 def build_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
-    candidates = recommendation_candidate_lines(facts_text, language="en")
     rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
     manual_bullets = optimizer_prompt_rewrite_bullets(facts_text, risk_decision, rewrite_recipe)
     mode_contract = optimizer_mode_contract(risk_decision, rewrite_recipe)
@@ -46,48 +45,24 @@ INPUT SQL BEGIN
 {source_sql}
 INPUT SQL END
 """.strip()
-    digest = build_optimizer_fact_digest(facts_text, risk_decision, rewrite_recipe)
-    shape_digest = build_sql_shape_digest(source_sql, risk_decision, rewrite_recipe)
-    candidate_lines = "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
-    manual_bullet_lines = "\n".join(f"- {bullet}" for bullet in manual_bullets)
+    mode_contract = optimizer_mode_contract(risk_decision, rewrite_recipe)
     return f"""
 You are a SQL rewrite assistant for Apache Impala.
-Return only one optimized SQL draft. No markdown explanation.
+Return only one complete SQL query. No markdown, no comments, no explanation.
 
 Safety and scope:
-- Input SQL is local sensitive context. Do not echo unrelated text.
 - Output must be exactly one read-only SELECT or WITH statement.
 - If the input came from INSERT or CTAS, optimize only the SELECT/WITH payload shown below.
 - Do not output INSERT, CREATE, DROP, ALTER, REFRESH, INVALIDATE, COMPUTE STATS, SHOW, SET, USE, or multiple statements.
 - Do not add physical tables that are absent from the input SQL.
-- Preserve query intent and output columns unless the Python-owned facts clearly support a narrower projection.
-- Use only Python-owned recommendation candidates and deterministic facts as rewrite guidance.
-- Prefer concrete operator/action-card guidance from the optimizer fact digest when deciding whether a rewrite is useful.
-- Use PYTHON-OWNED MANUAL REWRITE BULLETS as the concrete rewrite intent; do not invent other optimization goals.
-- Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive SQL changes.
-- Use Cluster Runtime Context only to understand coverage, context-only/correlated runtime signals, and triage scoring; it is not a speedup estimate or standalone SQL rewrite target.
+- Preserve output columns, table set, JOIN predicates, WHERE/HAVING/GROUP/ORDER/LIMIT scope, literals, and final window expressions.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
-- If a safe SQL rewrite is not supported, return the original query shape with only harmless formatting.
+- Runtime, metrics, and triage context are not SQL rewrite targets.
+- If no safe rewrite is directly obvious within these constraints, return the original query with harmless formatting.
 
 PYTHON-OWNED OPTIMIZER MODE BEGIN
 {mode_contract}
 PYTHON-OWNED OPTIMIZER MODE END
-
-PYTHON-OWNED RECOMMENDATION CANDIDATES BEGIN
-{candidate_lines}
-PYTHON-OWNED RECOMMENDATION CANDIDATES END
-
-PYTHON-OWNED MANUAL REWRITE BULLETS BEGIN
-{manual_bullet_lines}
-PYTHON-OWNED MANUAL REWRITE BULLETS END
-
-PYTHON-OWNED SQL SHAPE DIGEST BEGIN
-{json.dumps(shape_digest, ensure_ascii=False, indent=2, sort_keys=True)}
-PYTHON-OWNED SQL SHAPE DIGEST END
-
-PYTHON-OWNED OPTIMIZER FACT DIGEST BEGIN
-{json.dumps(digest, ensure_ascii=False, indent=2, sort_keys=True)}
-PYTHON-OWNED OPTIMIZER FACT DIGEST END
 
 INPUT SQL BEGIN
 {source_sql}

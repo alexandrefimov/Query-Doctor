@@ -138,6 +138,7 @@ from query_doctor.optimizer.validation import (
     has_non_inner_join_modifier,
     lexical_sql_completeness,
     no_rewrite_recommendations,
+    no_supported_rewrite_recommendations,
     normalize_optimizer_recommendations,
     normalized_trusted_draft_sql,
     output_limit_no_rewrite_recommendations,
@@ -334,15 +335,9 @@ def main(argv: list[str] | None = None) -> int:
         facts_text = facts_path.read_text(encoding="utf-8", errors="replace")
         risk_decision = decide_optimizer_risk_mode(source_sql.sql)
         rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql.sql, facts_text)
-        prompt = build_prompt(
-            source_sql=source_sql.sql,
-            facts_text=facts_text,
-            risk_decision=risk_decision,
-        )
         print(f"{PROGRESS_PREFIX} optimized query source: available", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimized query scope: {source_sql.scope}", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimizer risk mode: {risk_decision.mode}", file=sys.stderr)
-        print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
         if risk_decision.mode == "recommendations_only":
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_prompt = build_recommendations_prompt(
@@ -350,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text=facts_text,
                 risk_decision=risk_decision,
             )
+            print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
             response = stream_optimizer_response(
                 prompt=recommendations_prompt,
                 model=args.model,
@@ -406,6 +402,38 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 print(f"{PROGRESS_PREFIX} optimizer deterministic recipe draft done", file=sys.stderr)
                 return 0
+        if rewrite_recipe is None:
+            remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
+            recommendations_path = case_dir / RECOMMENDATIONS_NAME
+            recommendations_path.write_text(
+                no_supported_rewrite_recommendations(risk_decision, facts_text) + "\n",
+                encoding="utf-8",
+            )
+            write_recommendations_marker(
+                case_dir,
+                RECOMMENDATIONS_NAME,
+                source_sql=source_sql.sql,
+                facts_text=facts_text,
+                source_scope=source_sql.scope,
+                risk_decision=risk_decision,
+                rewrite_recipe=None,
+                output_kind="no_rewrite",
+                fallback_reason="no_python_owned_recipe",
+                generation_metadata={
+                    "generator": "deterministic_no_rewrite",
+                    "prompt_chars": 0,
+                    "source_sql_chars": len(source_sql.sql),
+                    "generated_chars": 0,
+                },
+            )
+            print(f"{PROGRESS_PREFIX} optimizer no supported rewrite recipe", file=sys.stderr)
+            return 0
+        prompt = build_prompt(
+            source_sql=source_sql.sql,
+            facts_text=facts_text,
+            risk_decision=risk_decision,
+        )
+        print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
         response = stream_optimizer_response(
             prompt=prompt,
             model=args.model,

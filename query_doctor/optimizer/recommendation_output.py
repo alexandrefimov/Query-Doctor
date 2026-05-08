@@ -119,6 +119,26 @@ def no_rewrite_recommendations(
     )
 
 
+def no_supported_rewrite_recommendations(
+    risk_decision: OptimizerRiskDecision,
+    facts_text: str,
+) -> str:
+    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "no Python-owned rewrite recipe"
+    prefix = [
+        "- Python did not detect a supported SQL rewrite recipe for this query shape, so no LLM SQL draft was requested.",
+        f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
+    ]
+    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, None)[
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+    ]
+    return "\n".join(
+        [
+            *prefix,
+            *specific,
+        ]
+    )
+
+
 def output_limit_no_rewrite_recommendations(
     facts_text: str,
     risk_decision: OptimizerRiskDecision,

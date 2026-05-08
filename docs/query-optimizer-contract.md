@@ -65,8 +65,9 @@ Execution:
 - no automatic execution from Recent queries, Running now, or Known Query ID
   scans;
 - no SQL execution against Impala or any other engine;
-- LLM receives local source SQL and deterministic facts, but browser output gets
-  only validated trusted results;
+- LLM receives local source SQL only for recommendations-only output or when
+  Python has detected a supported rewrite recipe that can be validated; browser
+  output gets only validated trusted results;
 - externally pasted rewrite candidates are validated in memory only, never
   executed, never persisted as raw artifacts, and never echoed back into browser
   output.
@@ -106,6 +107,9 @@ The trusted SQL path must reject:
 
 Validation is conservative and signature-based. It intentionally rejects
 safe-looking rewrites unless Python owns the safe transform.
+When no Python-owned recipe exists, the optimizer must not ask the LLM for a
+SQL draft; it should produce a trusted `no_rewrite` outcome with deterministic
+guidance instead.
 
 ## Recipe-Backed Exceptions
 
