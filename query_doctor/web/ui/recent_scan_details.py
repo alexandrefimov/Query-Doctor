@@ -200,6 +200,7 @@ def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
         ("facts", evidence_facts_label(view)),
         ("runtime context", evidence_runtime_label(view)),
         ("metadata", evidence_metadata_label(view)),
+        ("stats evidence", evidence_stats_label(view)),
         ("next action", evidence_next_action_label(view)),
     )
     card_html = "".join(
@@ -283,6 +284,39 @@ def evidence_metadata_label(view: RecentScanCaseDetailView) -> str:
     if view.metadata.unavailable:
         return view.metadata.fallback_note or "Not requested or unavailable"
     return "Collected metadata available"
+
+
+def evidence_stats_label(view: RecentScanCaseDetailView) -> str:
+    stats = view.stats_candidate
+    if candidate_is_visible(stats):
+        impact = candidate_title(stats.get("impact"))
+        confidence = candidate_title(stats.get("confidence"))
+        return f"Stats candidate: {impact} impact, {confidence} confidence"
+
+    table_stats_status = str(view.table_stats_status or "").strip().lower().replace("_", " ")
+    if table_stats_status in {"available", "ok", "collected", "complete"}:
+        return "Table stats available; no Medium/High stats candidate"
+    if table_stats_status in {"missing", "missing or incomplete", "not available", "partial"}:
+        return "Stats incomplete; no Medium/High stats candidate"
+
+    summary = dict(view.metadata.summary_items)
+    stats_coverage = summary.get("stats coverage")
+    if is_meaningful_technical_detail_value(stats_coverage):
+        return str(stats_coverage)
+    metadata_coverage = str(summary.get("metadata coverage") or "").strip().lower()
+    if view.metadata.unavailable or any(
+        marker in metadata_coverage
+        for marker in (
+            "not requested",
+            "not collected",
+            "collection failed",
+            "no table rows available",
+            "partial",
+            "unknown",
+        )
+    ):
+        return "Stats context limited by metadata coverage"
+    return "No Medium/High stats-refresh candidate"
 
 
 def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
