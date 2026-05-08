@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from query_doctor.optimizer.models import OptimizerRewriteRecipe
+import re
+from collections.abc import Callable
+
+from query_doctor.optimizer.models import CteDefinition, OptimizerRewriteRecipe
 from query_doctor.optimizer.rewrite_safety import (
     counter_is_subset,
     split_top_level_conjunct_fragments,
@@ -22,18 +25,24 @@ from query_doctor.optimizer.sql_fragments import (
     skip_sql_whitespace_and_comments,
 )
 from query_doctor.optimizer.sql_shape import (
+    aggregate_input_projection_names,
+    aggregate_projection_fragments,
+    count_distinct_key_names,
     cte_body_is_pass_through_layer,
     clause_signature,
     is_linear_cte_chain,
     main_select_has_distinct,
     next_top_level_clause_offset,
+    non_aggregate_projection_names,
     parse_with_query,
     projection_item_fragments,
     projection_name_for_fragment,
+    split_top_level_union_all_fragments,
     split_top_level_sql_fragments,
     top_level_keyword_count,
     top_level_join_signature,
     referenced_cte_names,
+    union_projection_names,
 )
 
 
@@ -84,6 +93,10 @@ def deterministic_recipe_draft(source_sql: str, rewrite_recipe: OptimizerRewrite
         return None
     if rewrite_recipe.recipe_id == "pass_through_cte_elimination":
         return pass_through_cte_elimination_draft(source_sql, rewrite_recipe)
+    if rewrite_recipe.recipe_id == "post_union_aggregate_pushdown":
+        return post_union_aggregate_pushdown_draft(source_sql, rewrite_recipe)
+    if rewrite_recipe.recipe_id == "final_union_distinct_rollup":
+        return final_union_distinct_rollup_draft(source_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
         return single_cte_predicate_pushdown_draft(source_sql)
     if rewrite_recipe.recipe_id == "linear_cte_predicate_pushdown":
@@ -253,6 +266,251 @@ def single_derived_table_predicate_pushdown_draft(source_sql: str) -> str | None
     if modified_body is None:
         return None
     return f"{source_sql[:parsed.body_start]}{modified_body.strip()}{source_sql[parsed.body_end:]}"
+
+
+def post_union_aggregate_pushdown_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None or any_cte_has_column_list(source_sql):
+        return None
+    union_cte, aggregate_cte = recipe_ctes(parsed.ctes, rewrite_recipe)
+    if union_cte is None or aggregate_cte is None:
+        return None
+    dimensions = non_aggregate_projection_names(aggregate_cte.body)
+    aggregate_fragments = aggregate_projection_fragments(aggregate_cte.body)
+    if not dimensions or not aggregate_fragments:
+        return None
+    branch_bodies = rollup_union_branches(
+        union_cte.body,
+        group_names=dimensions,
+        aggregate_fragments=aggregate_fragments,
+        output_names=union_projection_names(union_cte.body),
+    )
+    if branch_bodies is None:
+        return None
+    aggregate_body = rewrite_downstream_aggregate_body(aggregate_cte.body)
+    if aggregate_body is None:
+        return None
+    cte_bodies = {union_cte.name: "\n    UNION ALL\n".join(branch_bodies), aggregate_cte.name: aggregate_body}
+    return rebuild_with_cte_bodies(parsed.ctes, parsed.final_sql, cte_bodies)
+
+
+def final_union_distinct_rollup_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None or any_cte_has_column_list(source_sql):
+        return None
+    union_cte, _aggregate_cte = recipe_ctes(parsed.ctes, rewrite_recipe)
+    if union_cte is None:
+        return None
+    union_outputs = union_projection_names(union_cte.body)
+    dimensions = non_aggregate_projection_names(parsed.final_sql)
+    distinct_keys = count_distinct_key_names(parsed.final_sql)
+    passthrough_names = set(dimensions) | set(distinct_keys)
+    additive_inputs = aggregate_input_projection_names(parsed.final_sql, union_outputs, passthrough_names)
+    required_names = tuple(name for name in union_outputs if name in passthrough_names or name in set(additive_inputs))
+    if not required_names or not distinct_keys:
+        return None
+    aggregate_fragments = tuple(
+        fragment
+        for fragment in aggregate_projection_fragments(parsed.final_sql)
+        if (name := projection_name_for_fragment(fragment)) in set(additive_inputs)
+    )
+    branch_bodies = rollup_union_branches(
+        union_cte.body,
+        group_names=tuple(name for name in required_names if name not in set(additive_inputs)),
+        aggregate_fragments=aggregate_fragments,
+        output_names=union_outputs,
+        projected_names=required_names,
+    )
+    if branch_bodies is None:
+        return None
+    return rebuild_with_cte_bodies(parsed.ctes, parsed.final_sql, {union_cte.name: "\n    UNION ALL\n".join(branch_bodies)})
+
+
+def recipe_ctes(
+    ctes: tuple[CteDefinition, ...],
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> tuple[CteDefinition | None, CteDefinition | None]:
+    cte_map = {cte.name: cte for cte in ctes}
+    source_cte = cte_map.get(rewrite_recipe.source_cte or "")
+    aggregate_cte = cte_map.get(rewrite_recipe.aggregate_cte or "")
+    return source_cte, aggregate_cte
+
+
+def rollup_union_branches(
+    union_body: str,
+    *,
+    group_names: tuple[str, ...],
+    aggregate_fragments: tuple[str, ...],
+    output_names: tuple[str, ...],
+    projected_names: tuple[str, ...] | None = None,
+) -> list[str] | None:
+    branches = split_top_level_union_all_fragments(union_body)
+    if len(branches) < 2 or not output_names:
+        return None
+    projected_names = projected_names or tuple(group_names) + tuple(
+        name for fragment in aggregate_fragments if (name := projection_name_for_fragment(fragment))
+    )
+    branch_bodies: list[str] = []
+    for branch in branches:
+        if any(top_level_keyword_count(branch, keyword) for keyword in ("GROUP", "HAVING", "ORDER", "LIMIT", "UNION", "EXCEPT", "INTERSECT")):
+            return None
+        projection_map = branch_projection_expression_map(branch, output_names)
+        if projection_map is None:
+            return None
+        group_expressions: list[str] = []
+        projected_fragments: list[str] = []
+        aggregate_names = {name for fragment in aggregate_fragments if (name := projection_name_for_fragment(fragment))}
+        for name in projected_names:
+            if name in aggregate_names:
+                source_fragment = next(
+                    (fragment for fragment in aggregate_fragments if projection_name_for_fragment(fragment) == name),
+                    "",
+                )
+                expression = rewrite_aggregate_fragment_for_branch(source_fragment, projection_map)
+                if expression is None:
+                    return None
+                projected_fragments.append(expression)
+                continue
+            expression = projection_map.get(name)
+            if expression is None:
+                return None
+            group_expressions.append(expression)
+            projected_fragments.append(format_projection_expression(expression, name))
+        tail = branch_from_tail(branch)
+        if tail is None or not group_expressions:
+            return None
+        branch_bodies.append(
+            "SELECT "
+            + ",\n       ".join(projected_fragments)
+            + "\n"
+            + tail.strip()
+            + "\nGROUP BY "
+            + ", ".join(group_expressions)
+        )
+    return branch_bodies
+
+
+def branch_projection_expression_map(branch: str, output_names: tuple[str, ...]) -> dict[str, str] | None:
+    fragments = projection_item_fragments(branch)
+    if len(fragments) < len(output_names):
+        return None
+    expressions: dict[str, str] = {}
+    for name, fragment in zip(output_names, fragments):
+        expression = projection_expression(fragment)
+        if not expression:
+            return None
+        expressions[name] = expression
+    return expressions
+
+
+def projection_expression(fragment: str) -> str:
+    stripped = fragment.strip()
+    alias = projection_name_for_fragment(stripped)
+    if not alias:
+        return stripped
+    as_match = re.search(rf"(?is)\s+AS\s+{re.escape(alias)}\s*$", stripped)
+    if as_match:
+        return stripped[: as_match.start()].strip()
+    tokens = stripped.rsplit(None, 1)
+    if len(tokens) == 2 and tokens[1].lower() == alias.lower():
+        return tokens[0].strip()
+    return stripped
+
+
+def branch_from_tail(branch: str) -> str | None:
+    from_offset = find_top_level_keyword_offset(branch, ("FROM",))
+    if from_offset is None:
+        return None
+    return branch[from_offset:].rstrip()
+
+
+def rewrite_aggregate_fragment_for_branch(fragment: str, projection_map: dict[str, str]) -> str | None:
+    alias = projection_name_for_fragment(fragment)
+    if not alias:
+        return None
+    expression = replace_sum_inner_expression(fragment, lambda inner: rewrite_expression_identifiers(inner, projection_map))
+    if expression is None:
+        return None
+    return format_projection_expression(expression, alias)
+
+
+def rewrite_downstream_aggregate_body(aggregate_body: str) -> str | None:
+    projections: list[str] = []
+    for fragment in projection_item_fragments(aggregate_body):
+        if re.search(r"\b(?:sum|count|min|max|avg)\s*\(", fragment, re.IGNORECASE):
+            alias = projection_name_for_fragment(fragment)
+            if not alias:
+                return None
+            expression = replace_sum_inner_expression(fragment, lambda _inner: alias)
+            if expression is None:
+                return None
+            projections.append(format_projection_expression(expression, alias))
+        else:
+            projections.append(fragment.strip())
+    tail = branch_from_tail(aggregate_body)
+    if tail is None:
+        return None
+    return "SELECT " + ",\n       ".join(projections) + "\n" + tail.strip()
+
+
+def replace_sum_inner_expression(fragment: str, replacement: Callable[[str], str | None]) -> str | None:
+    lowered = fragment.lower()
+    sum_offset = lowered.find("sum")
+    if sum_offset < 0:
+        return None
+    open_offset = fragment.find("(", sum_offset)
+    if open_offset < 0:
+        return None
+    close_offset = matching_parenthesis_offset(fragment, open_offset)
+    if close_offset is None:
+        return None
+    inner = fragment[open_offset + 1 : close_offset].strip()
+    new_inner = replacement(inner)
+    if not new_inner:
+        return None
+    expression = f"{fragment[:open_offset + 1]}{new_inner}{fragment[close_offset:]}"
+    alias = projection_name_for_fragment(expression)
+    if alias:
+        expression = projection_expression(expression)
+    return expression.strip()
+
+
+def rewrite_expression_identifiers(expression: str, projection_map: dict[str, str]) -> str | None:
+    pieces: list[str] = []
+    index = 0
+    while index < len(expression):
+        char = expression[index]
+        if char in {"'", '"', "`"}:
+            end = skip_quoted_text(expression, index, char)
+            pieces.append(expression[index:end])
+            index = end
+            continue
+        if not (char.isalpha() or char == "_"):
+            pieces.append(char)
+            index += 1
+            continue
+        start = index
+        index += 1
+        while index < len(expression) and (expression[index].isalnum() or expression[index] in {"_", "$"}):
+            index += 1
+        name = expression[start:index]
+        pieces.append(projection_map.get(name.lower(), name))
+    return "".join(pieces).strip()
+
+
+def format_projection_expression(expression: str, output_name: str) -> str:
+    name = projection_name_for_fragment(expression)
+    if name == output_name:
+        return expression.strip()
+    return f"{expression.strip()} AS {output_name}"
+
+
+def rebuild_with_cte_bodies(ctes: tuple[CteDefinition, ...], final_sql: str, cte_bodies: dict[str, str]) -> str:
+    cte_blocks = [
+        f"{cte.name} AS (\n{cte_bodies.get(cte.name, cte.body).strip()}\n)"
+        for cte in ctes
+    ]
+    return "WITH " + ",\n".join(cte_blocks) + "\n" + final_sql.strip()
 
 
 def single_cte_predicate_pushdown_draft(source_sql: str) -> str | None:

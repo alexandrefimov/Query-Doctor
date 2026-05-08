@@ -128,6 +128,11 @@ Completed baseline work:
 - Stats Metadata Quality now covers row-estimate evidence, partition coverage,
   join/filter column stats relevance, and safe competing-bottleneck categories
   for stats-present-but-not-primary cases.
+- `post_union_aggregate_pushdown` and `final_union_distinct_rollup` are
+  validated Python-owned recipes with deterministic executors for the simplest
+  safe `UNION ALL` rollup forms: pre-aggregate every branch from existing
+  projections, preserve filters and final rollup shape, and rely on
+  recipe-specific validation before writing a trusted SQL draft.
 - `single_cte_predicate_pushdown` is a validated Python-owned recipe with a
   deterministic executor for the simplest safe filter-copy form, alongside the
   CTE DAG predicate-pushdown validation contract.

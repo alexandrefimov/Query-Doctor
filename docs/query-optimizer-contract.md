@@ -117,13 +117,18 @@ Recipe exceptions are allowed only when recipe-specific validation proves the
 boundary.
 
 - `post_union_aggregate_pushdown`: accepts CTE body changes for detected
-  `UNION ALL` detail CTEs followed by downstream aggregation. Validation must
-  preserve physical table set, source filters, join predicates, literals, final
-  output shape, CTE names, branch count, and aggregate rollup shape.
+  `UNION ALL` detail CTEs followed by downstream aggregation. Narrow
+  deterministic execution is allowed when every branch has simple named
+  projections and the downstream aggregate expressions can be mapped back to
+  those branch projections. Validation must preserve physical table set,
+  source filters, join predicates, literals, final output shape, CTE names,
+  branch count, and aggregate rollup shape.
 - `final_union_distinct_rollup`: accepts CTE body changes for detected
   `UNION ALL` detail CTEs feeding a final `COUNT(DISTINCT ...)` aggregate.
-  Validation must preserve the final aggregate query and pre-aggregate branches
-  to the CTE output grain plus distinct keys.
+  Narrow deterministic execution is allowed when branch projections can be
+  mapped to the CTE output order and additive final aggregate inputs can be
+  pre-aggregated in each branch. Validation must preserve the final aggregate
+  query and pre-aggregate branches to the CTE output grain plus distinct keys.
 - `pass_through_cte_elimination`: accepts removing one single-use pass-through
   CTE when it only selects simple columns from exactly one upstream CTE and is
   consumed directly by the final SELECT. Detection and deterministic execution
