@@ -148,6 +148,9 @@ Future direction:
 - keep engine and provider adapters thin until there is implemented behavior;
 - keep future engine work focused on Big Data SQL/lakehouse runtimes rather
   than generic OLTP database support;
+- follow [engine-expansion-plan.md](engine-expansion-plan.md) for the transition
+  order: Direct Impala profile source first, engine fact contract second, and a
+  second engine only after demand and Impala readiness signals;
 - treat query engine and storage/table-format context as orthogonal axes:
   engine adapters parse how a query ran, while storage context adapters publish
   bounded facts about HDFS, object storage, table formats or internal analytical
@@ -200,10 +203,10 @@ The collector:
 - writes generated local cases only under ignored corpus/output paths;
 - does not run the analyzer or report writer.
 
-Future profile acquisition should stay behind a small source-provider contract:
-discover query summaries, fetch one explicit profile, fetch safe query context,
-  fetch bounded runtime metrics when available, and fetch bounded event context
-  when available.
+Future profile acquisition should stay behind small source interfaces rather
+than one broad provider object: fetch one explicit profile and safe query
+context, discover bounded query summaries, fetch bounded runtime metrics when
+available, and fetch bounded event context when available.
 
 Current provider support:
 

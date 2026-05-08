@@ -186,6 +186,7 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         if case.stats_optimization_candidate
         else None,
         "stats_optimization_rank": case.stats_optimization_rank,
+        "case_primary_bottleneck": case.case_primary_bottleneck,
         "cardinality_anomaly_count": case.cardinality_anomaly_count,
         "memory_anomaly_count": case.memory_anomaly_count,
         "zero_row_estimate_gap_count": case.zero_row_estimate_gap_count,

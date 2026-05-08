@@ -304,6 +304,11 @@ def candidate_cell(tier: Any) -> str:
 
 def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUERY_GROUP) -> str:
     reason_html = f"<span>{escape_value(view.reason_text)}</span>" if view.reason_text else ""
+    primary_html = (
+        f"<span>Primary: {escape_value(view.primary_bottleneck.summary)}.</span>"
+        if not view.primary_bottleneck.unavailable
+        else ""
+    )
     normalized = normalize_query_group(query_group)
     detail_html = ""
     if normalized == "optimization":
@@ -318,6 +323,7 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
     return (
         "<td class=\"batch-cell--summary\">"
         f"<strong>{escape_value(view.signal_summary)}</strong>"
+        f"{primary_html}"
         f"{detail_html}"
         f"{reason_html}"
         "</td>"

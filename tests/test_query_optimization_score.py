@@ -218,3 +218,43 @@ def test_backend_data_skew_adds_distribution_review_context():
     assert "backend data skew supports distribution and hot-key review" in result.reasons
     assert "data distribution" in result.suggested_review_areas
     assert "hot keys" in result.suggested_review_areas
+
+
+def test_structured_cardinality_count_wins_over_rendered_summary_text():
+    result = score_query_optimization_candidate(
+        cardinality_only_facts().replace("- Cardinality anomalies: 5", "- Cardinality anomalies: 0"),
+        duration_sec=180,
+        metadata_status="not_requested",
+        analysis={
+            "cardinality_anomalies": [{"operator_name": "AGGREGATE"} for _ in range(5)],
+            "stats_metadata_quality": {
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported_by_metadata",
+            },
+        },
+    )
+
+    assert "cardinality mismatch needs query-shape evidence before stronger action" in result.reasons
+    assert "metadata was not collected, so stats-vs-query-shape split is unconfirmed" in result.counter_signals
+
+
+def test_structured_metadata_gap_wins_over_rendered_metadata_text():
+    result = score_query_optimization_candidate(
+        cardinality_only_facts().replace("missing/unknown", "available").replace(
+            "incomplete/unknown",
+            "complete",
+        ),
+        duration_sec=180,
+        metadata_status="collected",
+        analysis={
+            "cardinality_anomalies": [{"operator_name": "AGGREGATE"}],
+            "stats_metadata_quality": {
+                "status": "limited",
+                "stats_primary_bottleneck": "candidate_supported",
+                "tables_with_missing_table_stats": 1,
+                "tables_with_incomplete_column_stats": 0,
+            },
+        },
+    )
+
+    assert "some cardinality mismatch may also require statistics refresh" in result.counter_signals

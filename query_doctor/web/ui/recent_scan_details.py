@@ -150,6 +150,8 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
         items.append(("stats refresh", candidate_overview_value(view.stats_candidate, view.stats_rank)))
     if not view.cluster_runtime_context.unavailable:
         items.append(("cluster runtime", view.runtime_verdict.title))
+    if not view.primary_bottleneck.unavailable:
+        items.append(("primary bottleneck", view.primary_bottleneck.summary))
     if view.has_spill:
         items.append(("spill", "spill evidence observed"))
     if is_visible_table_stats_status(view.table_stats_status):
@@ -199,6 +201,7 @@ def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
 def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
     cards = (
         ("evidence quality", evidence_quality_label(view)),
+        ("primary bottleneck", primary_bottleneck_label(view)),
         ("facts", evidence_facts_label(view)),
         ("runtime context", evidence_runtime_label(view)),
         ("metadata", evidence_metadata_label(view)),
@@ -220,6 +223,15 @@ def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
         f"<div class=\"case-summary-grid\">{card_html}</div>"
         "</section>"
     )
+
+
+def primary_bottleneck_label(view: RecentScanCaseDetailView) -> str:
+    primary = view.primary_bottleneck
+    if primary.unavailable:
+        return "Not classified"
+    if primary.reason_summary:
+        return f"{primary.summary}: {primary.reason_summary}"
+    return primary.summary
 
 
 def evidence_quality_label(view: RecentScanCaseDetailView) -> str:
@@ -337,6 +349,21 @@ def stats_quality_label(view: RecentScanCaseDetailView) -> str:
 
 
 def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
+    primary = view.primary_bottleneck
+    if not primary.unavailable and primary.confidence == "high":
+        label = primary.label.lower()
+        if label == "stats":
+            return "Check stats refresh candidate first"
+        if label == "sql shape":
+            return "Review query-shape candidate first"
+        if label == "admission/runtime":
+            return "Review admission and pool runtime context first"
+        if label == "runtime skew":
+            return "Review runtime skew evidence before SQL or stats action"
+        if label == "data movement":
+            return "Review data-movement evidence before SQL or stats action"
+    if not primary.unavailable and primary.label == "Competing signals":
+        return "Review competing stats, SQL-shape, and runtime signals"
     if candidate_is_visible(view.optimization_candidate):
         rewrite_support = str(view.optimization_candidate.get("rewrite_support") or "").lower()
         if rewrite_support == "recipe_detected":

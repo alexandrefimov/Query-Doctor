@@ -105,6 +105,7 @@ class CaseResult:
     query_optimization_rank: int | None = None
     stats_optimization_candidate: StatsOptimizationCandidateScore | None = None
     stats_optimization_rank: int | None = None
+    case_primary_bottleneck: dict[str, object] | None = None
     cardinality_anomaly_count: int | None = None
     memory_anomaly_count: int | None = None
     zero_row_estimate_gap_count: int | None = None

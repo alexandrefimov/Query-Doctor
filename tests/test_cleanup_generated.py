@@ -32,6 +32,7 @@ def write_case(case_dir: Path) -> None:
     ]:
         (case_dir / name).write_text(f"{name}\n", encoding="utf-8")
     for name in [
+        "analysis.json",
         "analysis_facts.md",
         "report_user.md",
         "report_admin.md",
@@ -66,7 +67,7 @@ def test_dry_run_does_not_remove_files(tmp_path, capsys):
 
     output = capsys.readouterr().out
     assert result == 0
-    assert "Generated files matched: 6" in output
+    assert "Generated files matched: 7" in output
     assert "Files removed: 0" in output
     assert (case_dir / "analysis_facts.md").exists()
     assert (case_dir / "report_admin.md").exists()
@@ -83,9 +84,10 @@ def test_apply_removes_only_known_generated_files(tmp_path, capsys):
     output = capsys.readouterr().out
     assert result == 0
     assert "Removed:" in output
-    assert "Generated files matched: 6" in output
-    assert "Files removed: 6" in output
+    assert "Generated files matched: 7" in output
+    assert "Files removed: 7" in output
     for name in [
+        "analysis.json",
         "analysis_facts.md",
         "report_user.md",
         "report_admin.md",
@@ -122,7 +124,7 @@ def test_nested_generated_files_are_found_under_parent(tmp_path, capsys):
 
     output = capsys.readouterr().out
     assert result == 0
-    assert "Generated files matched: 12" in output
+    assert "Generated files matched: 14" in output
     assert "case-one" in output
     assert "case-two" in output
 
@@ -138,8 +140,8 @@ def test_multiple_input_paths_work(tmp_path, capsys):
 
     output = capsys.readouterr().out
     assert result == 0
-    assert "Generated files matched: 12" in output
-    assert "Files removed: 12" in output
+    assert "Generated files matched: 14" in output
+    assert "Files removed: 14" in output
     assert not (case_one / "analysis_facts.md").exists()
     assert not (case_two / "report_user.md").exists()
     assert (case_one / "profile_digest.md").exists()

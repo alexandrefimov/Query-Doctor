@@ -25,6 +25,7 @@ ACTIVE_DOCS = (
     "docs/test-matrix.md",
     "docs/safety-contract.md",
     "docs/architecture.md",
+    "docs/engine-expansion-plan.md",
     "docs/query-optimizer-contract.md",
     "docs/roadmap.md",
     "docs/development-practices.md",

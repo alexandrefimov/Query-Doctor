@@ -318,17 +318,18 @@ Make default metadata collection policy explicit and bounded.
 
 Near-term metadata/stats work:
 
-1. Refactor stats and query optimization scorers to consume structured analyzer
-   facts when available, keeping rendered markdown parsing only as a fallback.
+1. Finish replacing report-side stats/query-shape extractors with structured
+   analyzer facts where available. Recent stats and query optimization scorers
+   already prefer `analysis.json` and keep rendered markdown parsing only as a
+   fallback.
 2. Gate or remove `stats_possibly_stale` as a positive scoring signal until a
    direct staleness or metadata-divergence fact exists.
-3. Consume the informational Python-owned `case_primary_bottleneck` fact in
-   scorers and Details/Recent routing. It already uses the conservative labels
-   stats, sql_shape, runtime_admission, runtime_skew, runtime_data_movement,
-   mixed, and unknown.
-4. Use high-confidence `case_primary_bottleneck` to cap non-primary action
-   candidates instead of presenting stats and SQL rewrite as equally likely
-   primary actions.
+3. Continue calibrating `case_primary_bottleneck` presentation. Recent batch
+   summaries and Details pages already include safe label, confidence and
+   reason-category presentation when `analysis.json` is available.
+4. Continue calibrating high-confidence `case_primary_bottleneck` caps.
+   Non-primary stats/query action candidate tiers are already capped to `low`
+   for high-confidence primary bottlenecks.
 5. Improve partition and column stats detail from already-collected metadata:
    partition row-count coverage counts and join/filter column stats coverage,
    without exposing raw partition values or raw metadata output.
@@ -446,6 +447,19 @@ report coverage before being documented as supported.
 Do not add a second engine until Impala diagnosis is useful on real workloads.
 A practical readiness bar is `case_primary_bottleneck = unknown` below roughly
 20% on a representative real-case batch.
+
+Recommended expansion order is documented in
+[engine-expansion-plan.md](engine-expansion-plan.md):
+
+1. Direct Impala daemon profile source for one explicit known query, decoupling
+   the first non-Cloudera-Manager profile path before adding another engine.
+2. Engine fact contract refactor so analyzer services consume normalized
+   parser outputs rather than raw Impala profile internals.
+3. Second engine only after real design partner demand. Trino is the default
+   candidate to validate because of migration-path fit, but it is not a public
+   commitment.
+4. Prometheus-style metrics source after metrics-source contracts are stable.
+5. Storage/table-format facts after provider and engine boundaries stabilize.
 
 Storage and table-format context is a separate axis from query engines. Future
 context may cover HDFS, object storage, Apache Kudu, Apache Iceberg, Apache

@@ -5,12 +5,31 @@ from __future__ import annotations
 import re
 import json
 from collections import Counter
+from dataclasses import replace
+from typing import Any
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
 from query_doctor.recent.batch_models import CaseResult
 from query_doctor.recent.optimizer_rewrite_support import classify_optimizer_rewrite_support
-from query_doctor.recent.query_optimization_score import score_query_optimization_candidate
+from query_doctor.recent.query_optimization_score import (
+    dedupe_preserve_order,
+    score_query_optimization_candidate,
+)
 from query_doctor.recent.stats_optimization_score import score_stats_optimization_candidate
+
+HIGH_CONFIDENCE_PRIMARY_CAP_TIER = "low"
+QUERY_CAP_SIGNALS = {
+    "stats": "primary_bottleneck_is_stats; rewrite is secondary",
+    "runtime_admission": "primary_bottleneck_is_runtime_admission",
+    "runtime_skew": "primary_bottleneck_is_runtime_skew",
+    "runtime_data_movement": "primary_bottleneck_is_runtime_data_movement",
+}
+STATS_CAP_SIGNALS = {
+    "sql_shape": "primary_bottleneck_is_sql_shape; stats refresh unlikely primary",
+    "runtime_admission": "primary_bottleneck_is_runtime_admission",
+    "runtime_skew": "primary_bottleneck_is_runtime_skew",
+    "runtime_data_movement": "primary_bottleneck_is_runtime_data_movement",
+}
 
 
 def inspect_case_outputs(case: CaseResult) -> None:
@@ -83,6 +102,8 @@ def score_case(case: CaseResult) -> None:
     if not facts_path.exists():
         return
     facts = facts_path.read_text(encoding="utf-8", errors="replace")
+    analysis = load_analysis_json(case.actual_case_dir)
+    case.case_primary_bottleneck = case_primary_bottleneck_from_analysis(analysis)
     components = extract_scoring_components(facts)
     case.cardinality_anomaly_count = components["cardinality_anomaly_count"]
     case.memory_anomaly_count = components["memory_anomaly_count"]
@@ -101,11 +122,7 @@ def score_case(case: CaseResult) -> None:
         collection_status=case.collection_status,
         analysis_status=case.analysis_status,
         failure_category=case.failure_category,
-    )
-    case.optimizer_rewrite_support = classify_optimizer_rewrite_support(
-        case.actual_case_dir,
-        case.query_optimization_candidate,
-        facts,
+        analysis=analysis,
     )
     case.stats_optimization_candidate = score_stats_optimization_candidate(
         facts,
@@ -114,7 +131,77 @@ def score_case(case: CaseResult) -> None:
         collection_status=case.collection_status,
         analysis_status=case.analysis_status,
         failure_category=case.failure_category,
+        analysis=analysis,
     )
+    apply_primary_bottleneck_caps(case)
+    case.optimizer_rewrite_support = classify_optimizer_rewrite_support(
+        case.actual_case_dir,
+        case.query_optimization_candidate,
+        facts,
+    )
+
+
+def case_primary_bottleneck_from_analysis(analysis: dict[str, object] | None) -> dict[str, object] | None:
+    if not isinstance(analysis, dict):
+        return None
+    bottleneck = analysis.get("case_primary_bottleneck")
+    if not isinstance(bottleneck, dict):
+        return None
+    label = str(bottleneck.get("label") or "").strip()
+    confidence = str(bottleneck.get("confidence") or "").strip()
+    if not label or not confidence:
+        return None
+    reasons = bottleneck.get("reasons")
+    safe_reasons = [str(item) for item in reasons if item] if isinstance(reasons, (list, tuple)) else []
+    return {
+        "label": label,
+        "confidence": confidence,
+        "reasons": safe_reasons,
+    }
+
+
+def apply_primary_bottleneck_caps(case: CaseResult) -> None:
+    primary = case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
+    if str(primary.get("confidence") or "").lower() != "high":
+        return
+    label = str(primary.get("label") or "").lower()
+    if label in QUERY_CAP_SIGNALS and case.query_optimization_candidate is not None:
+        case.query_optimization_candidate = cap_candidate_tier(
+            case.query_optimization_candidate,
+            HIGH_CONFIDENCE_PRIMARY_CAP_TIER,
+            QUERY_CAP_SIGNALS[label],
+        )
+    if label in STATS_CAP_SIGNALS and case.stats_optimization_candidate is not None:
+        case.stats_optimization_candidate = cap_candidate_tier(
+            case.stats_optimization_candidate,
+            HIGH_CONFIDENCE_PRIMARY_CAP_TIER,
+            STATS_CAP_SIGNALS[label],
+        )
+
+
+def cap_candidate_tier(candidate: Any, max_tier: str, counter_signal: str) -> Any:
+    current_tier = str(getattr(candidate, "tier", "not_likely") or "not_likely")
+    capped_tier = lower_tier(current_tier, max_tier)
+    signals = tuple(dedupe_preserve_order([*getattr(candidate, "counter_signals", ()), counter_signal]))
+    return replace(candidate, tier=capped_tier, counter_signals=signals)
+
+
+def lower_tier(current: str, maximum: str) -> str:
+    order = {"not_likely": 0, "low": 1, "unknown": 1, "medium": 2, "high": 3}
+    current_key = str(current or "not_likely")
+    maximum_key = str(maximum or "not_likely")
+    return current_key if order.get(current_key, 0) <= order.get(maximum_key, 0) else maximum_key
+
+
+def load_analysis_json(case_dir) -> dict[str, object] | None:
+    analysis_path = case_dir / "analysis.json"
+    if not analysis_path.exists():
+        return None
+    try:
+        payload = json.loads(analysis_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -> tuple[int, list[str]]:

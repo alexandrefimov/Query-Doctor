@@ -55,14 +55,19 @@ def score_stats_optimization_candidate(
     collection_status: str = "ok",
     analysis_status: str = "ok",
     failure_category: str | None = None,
+    analysis: dict[str, object] | None = None,
 ) -> StatsOptimizationCandidateScore:
     facts = facts_text or ""
     duration = duration_sec if duration_sec is not None else duration_seconds_value(facts)
     impact_score, impact_reasons = stats_impact_signals(facts, duration)
-    metadata_score, metadata_reasons, metadata_kind = stats_metadata_evidence(facts, metadata_status=metadata_status)
-    important_column_evidence = important_column_stats_evidence(facts)
-    mismatch_score, mismatch_reasons = estimate_mismatch_evidence(facts)
-    planning_score, planning_reasons, review_areas = planning_dependent_evidence(facts)
+    metadata_score, metadata_reasons, metadata_kind = stats_metadata_evidence(
+        facts,
+        metadata_status=metadata_status,
+        analysis=analysis,
+    )
+    important_column_evidence = important_column_stats_evidence(facts, analysis=analysis)
+    mismatch_score, mismatch_reasons = estimate_mismatch_evidence(facts, analysis=analysis)
+    planning_score, planning_reasons, review_areas = planning_dependent_evidence(facts, analysis=analysis)
     counter_signals, penalty = stats_counter_signals(
         facts,
         duration,
@@ -215,12 +220,18 @@ def stats_metadata_evidence(
     facts: str,
     *,
     metadata_status: str,
+    analysis: dict[str, object] | None = None,
 ) -> tuple[int, list[str], set[str]]:
     score = 0
     reasons: list[str] = []
     kinds: set[str] = set()
-    table_values = [value.lower() for value in fact_values(facts, "table stats row-count completeness")]
-    column_values = [value.lower() for value in fact_values(facts, "column stats completeness")]
+    quality = analysis_dict(analysis, "stats_metadata_quality")
+    if quality is not None:
+        table_values = [str(quality.get("table_stats") or "").lower()]
+        column_values = [str(quality.get("column_stats") or "").lower()]
+    else:
+        table_values = [value.lower() for value in fact_values(facts, "table stats row-count completeness")]
+        column_values = [value.lower() for value in fact_values(facts, "column stats completeness")]
     if any(value in {"missing", "unknown", "missing/unknown", "not_available"} for value in table_values):
         score += 25
         reasons.append("missing or unknown table/partition row-count stats")
@@ -233,7 +244,7 @@ def stats_metadata_evidence(
         score += 20
         reasons.append("missing or incomplete column statistics")
         kinds.add("column")
-    if supported_stale_stats_evidence(facts):
+    if supported_stale_stats_evidence(facts, analysis=analysis):
         score += 15
         reasons.append("supported stale or incomplete stats evidence")
         kinds.add("stale")
@@ -242,14 +253,26 @@ def stats_metadata_evidence(
     return min(100, score), reasons, kinds
 
 
-def estimate_mismatch_evidence(facts: str) -> tuple[int, list[str]]:
+def estimate_mismatch_evidence(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
-    cardinality = cardinality_mismatch_count(facts)
-    zero_row = fact_int(scoring_section_text(facts, "## Summary"), "Zero/unknown row estimate gaps") or 0
-    memory = fact_int(scoring_section_text(facts, "## Summary"), "Memory anomalies") or 0
-    zero_memory = fact_int(scoring_section_text(facts, "## Summary"), "Zero/unknown memory estimate gaps") or 0
-    ratio = max_ratio_value(facts, ("actual/estimated ratio",))
+    cardinality = cardinality_mismatch_count(facts, analysis=analysis)
+    zero_row = analysis_list_count(analysis, "zero_row_estimate_gaps")
+    if zero_row is None:
+        zero_row = fact_int(scoring_section_text(facts, "## Summary"), "Zero/unknown row estimate gaps") or 0
+    memory = analysis_list_count(analysis, "memory_anomalies")
+    if memory is None:
+        memory = fact_int(scoring_section_text(facts, "## Summary"), "Memory anomalies") or 0
+    zero_memory = analysis_list_count(analysis, "zero_memory_estimate_gaps")
+    if zero_memory is None:
+        zero_memory = fact_int(scoring_section_text(facts, "## Summary"), "Zero/unknown memory estimate gaps") or 0
+    ratio = max_structured_ratio(analysis, "cardinality_anomalies")
+    if ratio is None and not analysis_has_list(analysis, "cardinality_anomalies"):
+        ratio = max_ratio_value(facts, ("actual/estimated ratio",))
     if ratio is not None and ratio >= 100:
         score += 25
         reasons.append("large estimated-vs-actual row mismatch")
@@ -271,13 +294,26 @@ def estimate_mismatch_evidence(facts: str) -> tuple[int, list[str]]:
     return min(100, score), reasons
 
 
-def planning_dependent_evidence(facts: str) -> tuple[int, list[str], list[str]]:
+def planning_dependent_evidence(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> tuple[int, list[str], list[str]]:
     score = 0
     reasons: list[str] = []
     review: list[str] = []
     lower = facts.lower()
-    has_join = bool(re.search(r"\b(?:HASH JOIN|JOIN)\b", facts, re.IGNORECASE))
-    has_shape_operator = bool(re.search(r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b", facts, re.IGNORECASE))
+    has_join = bool(re.search(r"\b(?:HASH JOIN|JOIN)\b", facts, re.IGNORECASE)) or any(
+        is_operator_name(operator, ("HASH JOIN", "JOIN"))
+        for operator in analysis_operators(analysis, "cardinality_anomalies")
+    )
+    has_shape_operator = bool(
+        re.search(r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b", facts, re.IGNORECASE)
+    ) or any(
+        is_operator_name(operator, ("HASH JOIN", "JOIN", "AGGREGATE", "SORT", "ANALYTIC", "DISTINCT"))
+        for key in ("cardinality_anomalies", "memory_anomalies")
+        for operator in analysis_operators(analysis, key)
+    )
     if "severe cardinality underestimation before high-cost operator" in lower and has_join:
         score += 25
         reasons.append("estimate mismatch before expensive hash join")
@@ -286,7 +322,7 @@ def planning_dependent_evidence(facts: str) -> tuple[int, list[str], list[str]]:
         score += 15
         reasons.append("estimate mismatch feeds join planning")
         review.extend(["join key column statistics", "filter column statistics"])
-    if large_exchange_evidence(facts):
+    if large_exchange_evidence(facts) or analysis_has_finding(analysis, "large_intermediate_or_exchange_traffic"):
         score += 18
         reasons.append("estimate mismatch may affect exchange or join distribution decisions")
         review.extend(["join distribution", "exchange volume", "join/filter column statistics"])
@@ -455,7 +491,13 @@ def stats_speed_benefit(tier: str, confidence: str, *, has_planning_symptom: boo
     return "unknown"
 
 
-def supported_stale_stats_evidence(facts: str) -> bool:
+def supported_stale_stats_evidence(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> bool:
+    if isinstance(analysis, dict):
+        return False
     lower = facts.lower()
     return (
         "stats_possibly_stale" in lower
@@ -464,7 +506,23 @@ def supported_stale_stats_evidence(facts: str) -> bool:
     )
 
 
-def important_column_stats_evidence(facts: str) -> bool:
+def important_column_stats_evidence(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> bool:
+    quality = analysis_dict(analysis, "stats_metadata_quality")
+    if quality is not None:
+        return (
+            numeric_value(quality.get("join_filter_columns_without_stats")) > 0
+            or str(quality.get("join_filter_column_relevance") or "").lower() in {"missing", "partial"}
+        )
+    sql_context = analysis_dict(analysis, "sql_column_context")
+    if sql_context is not None:
+        return (
+            numeric_value(sql_context.get("join_filter_columns_without_stats")) > 0
+            or str(sql_context.get("join_filter_column_relevance") or "").lower() in {"missing", "partial"}
+        )
     lower = facts.lower()
     return any(
         marker in lower
@@ -487,10 +545,64 @@ def is_generic_column_only_stats_evidence(
     return metadata_kind == {"column"} and not important_column_evidence
 
 
-def cardinality_mismatch_count(facts: str) -> int:
+def cardinality_mismatch_count(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> int:
     from query_doctor.recent.query_optimization_score import cardinality_mismatch_count as _count
 
-    return _count(facts)
+    return _count(facts, analysis=analysis)
+
+
+def analysis_dict(analysis: dict[str, object] | None, key: str) -> dict[str, object] | None:
+    if not isinstance(analysis, dict):
+        return None
+    value = analysis.get(key)
+    return value if isinstance(value, dict) else None
+
+
+def analysis_list_count(analysis: dict[str, object] | None, key: str) -> int | None:
+    if not isinstance(analysis, dict):
+        return None
+    value = analysis.get(key)
+    return len(value) if isinstance(value, list) else None
+
+
+def analysis_has_list(analysis: dict[str, object] | None, key: str) -> bool:
+    return isinstance(analysis, dict) and isinstance(analysis.get(key), list)
+
+
+def analysis_operators(analysis: dict[str, object] | None, key: str) -> list[dict[str, object]]:
+    if not isinstance(analysis, dict):
+        return []
+    value = analysis.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def max_structured_ratio(analysis: dict[str, object] | None, key: str) -> float | None:
+    values = [
+        numeric_value(operator.get("rows_actual_to_estimated_ratio"))
+        for operator in analysis_operators(analysis, key)
+    ]
+    values = [value for value in values if value > 0]
+    return max(values) if values else None
+
+
+def is_operator_name(operator: dict[str, object], markers: tuple[str, ...]) -> bool:
+    name = str(operator.get("operator_name") or "")
+    return any(marker in name.upper() for marker in markers)
+
+
+def analysis_has_finding(analysis: dict[str, object] | None, finding_id: str) -> bool:
+    if not isinstance(analysis, dict):
+        return False
+    findings = analysis.get("findings")
+    if not isinstance(findings, list):
+        return False
+    return any(isinstance(item, dict) and item.get("id") == finding_id for item in findings)
 
 
 def fact_int(facts: str, label: str) -> int | None:

@@ -7,6 +7,15 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class RecentScanPrimaryBottleneckView:
+    unavailable: bool
+    label: str
+    confidence: str
+    summary: str
+    reason_summary: str
+
+
+@dataclass(frozen=True)
 class RecentScanCaseRowView:
     rank: int
     case_id: str | None
@@ -47,6 +56,7 @@ class RecentScanCaseRowView:
     stats_summary: str
     stats_review_areas: str
     stats_required_confirmation: str
+    primary_bottleneck: RecentScanPrimaryBottleneckView
     score_value: float
     score_severity: str
     has_failure: bool
@@ -210,5 +220,6 @@ class RecentScanCaseDetailView:
     runtime_verdict: RecentScanRuntimeVerdictView
     evidence_quality: RecentScanEvidenceQualityView
     stats_quality: RecentScanStatsQualityView
+    primary_bottleneck: RecentScanPrimaryBottleneckView
     report_action: ReportActionView
     score_severity: str

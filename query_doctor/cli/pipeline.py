@@ -184,7 +184,8 @@ def main(
 
     call_runner_with_timeout(
         command_runner,
-        command_prefix(repo_dir, "analyze", backend=command_backend) + [str(case_dir)],
+        command_prefix(repo_dir, "analyze", backend=command_backend)
+        + [str(case_dir), "--json", str(case_dir / "analysis.json")],
         cwd=repo_dir,
         timeout_sec=ANALYZER_TIMEOUT_SEC,
     )
@@ -255,7 +256,8 @@ def main(
                 return 0
             call_runner_with_timeout(
                 command_runner,
-                command_prefix(repo_dir, "analyze", backend=command_backend) + [str(case_dir)],
+                command_prefix(repo_dir, "analyze", backend=command_backend)
+                + [str(case_dir), "--json", str(case_dir / "analysis.json")],
                 cwd=repo_dir,
                 timeout_sec=ANALYZER_TIMEOUT_SEC,
             )

@@ -47,6 +47,7 @@ Status legend:
 | [codex-handoff.md](codex-handoff.md) | active | Current agent baseline and safety-sensitive context. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
 | [architecture.md](architecture.md) | active | Current component boundaries and data flow. |
+| [engine-expansion-plan.md](engine-expansion-plan.md) | active | Future source-provider, engine, metrics, and storage expansion order. |
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |
 | [roadmap.md](roadmap.md) | active | Product direction, priorities, deferred work, and anti-features. |
 | [code-audit.md](code-audit.md) | active | Open engineering and safety risks. |

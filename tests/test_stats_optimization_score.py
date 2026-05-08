@@ -205,3 +205,67 @@ def test_without_metadata_collected_confidence_is_capped_and_need_is_cautious():
     assert result.tier == "unknown"
     assert result.confidence in {"low", "medium"}
     assert result.need_type == "insufficient_metadata"
+
+
+def test_structured_stats_metadata_wins_over_rendered_missing_stats_text():
+    analysis = {
+        "cardinality_anomalies": [],
+        "memory_anomalies": [],
+        "zero_row_estimate_gaps": [],
+        "zero_memory_estimate_gaps": [],
+        "stats_metadata_quality": {
+            "status": "available",
+            "table_stats": "available",
+            "column_stats": "complete",
+            "tables_with_missing_table_stats": 0,
+            "tables_with_incomplete_column_stats": 0,
+            "stats_primary_bottleneck": "not_supported",
+        },
+    }
+
+    result = score_stats_optimization_candidate(
+        stats_facts(),
+        duration_sec=120,
+        metadata_status="collected",
+        analysis=analysis,
+    )
+
+    assert result.need_type == "not_likely_stats_issue"
+    assert "missing or unknown table/partition row-count stats" not in result.reasons
+    assert "missing or incomplete column statistics" not in result.reasons
+    assert "large estimated-vs-actual row mismatch" not in result.reasons
+
+
+def test_structured_stats_candidate_wins_when_rendered_text_omits_metadata_gap():
+    analysis = {
+        "cardinality_anomalies": [
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 500},
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 100},
+            {"operator_name": "AGGREGATE", "rows_actual_to_estimated_ratio": 50},
+        ],
+        "memory_anomalies": [],
+        "zero_row_estimate_gaps": [],
+        "zero_memory_estimate_gaps": [],
+        "findings": [{"id": "large_intermediate_or_exchange_traffic"}],
+        "stats_metadata_quality": {
+            "status": "limited",
+            "table_stats": "missing/unknown",
+            "column_stats": "complete",
+            "tables_with_missing_table_stats": 1,
+            "tables_with_incomplete_column_stats": 0,
+            "stats_primary_bottleneck": "candidate_supported",
+            "join_filter_columns_without_stats": 0,
+            "join_filter_column_relevance": "covered",
+        },
+    }
+
+    result = score_stats_optimization_candidate(
+        stats_facts(table_stats="available", column_stats="complete"),
+        duration_sec=120,
+        metadata_status="collected",
+        analysis=analysis,
+    )
+
+    assert result.need_type == "table_stats"
+    assert "missing or unknown table/partition row-count stats" in result.reasons
+    assert "no missing or incomplete stats evidence" not in result.counter_signals

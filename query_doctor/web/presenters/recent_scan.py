@@ -14,6 +14,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanCmMetricsView,
     RecentScanMetadataTableView,
     RecentScanMetadataView,
+    RecentScanPrimaryBottleneckView,
     RecentScanEvidenceQualityView,
     RecentScanStatsQualityView,
     RecentScanRuntimeDiagnosisSignalView,
@@ -106,6 +107,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
     report_status = batch_report_status(case)
     optimization = query_optimization_candidate_view(case)
     stats_candidate = stats_optimization_candidate_view(case)
+    primary_bottleneck = present_case_primary_bottleneck(case)
     return RecentScanCaseRowView(
         rank=rank,
         case_id=batch_case_id(case),
@@ -151,6 +153,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         stats_summary=stats_candidate["summary"],
         stats_review_areas=stats_candidate["review_areas"],
         stats_required_confirmation=stats_candidate["required_confirmation"],
+        primary_bottleneck=primary_bottleneck,
         score_value=numeric_value(case.get("score")),
         score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
@@ -181,6 +184,7 @@ def present_recent_scan_case_detail(
     )
     optimization = query_optimization_candidate_view(case)
     stats_candidate = stats_optimization_candidate_view(case)
+    primary_bottleneck = present_case_primary_bottleneck(case)
     cm_metrics = present_recent_scan_cm_metrics(cm_metrics_facts)
     runtime_diagnosis = present_recent_scan_runtime_diagnosis(runtime_diagnosis_facts)
     cluster_runtime_context = present_recent_scan_cluster_runtime_context(cluster_runtime_context_facts)
@@ -240,9 +244,84 @@ def present_recent_scan_case_detail(
         runtime_verdict=present_recent_scan_runtime_verdict(cluster_runtime_context, runtime_diagnosis),
         evidence_quality=present_recent_scan_evidence_quality(evidence_quality_facts),
         stats_quality=present_recent_scan_stats_quality(stats_quality_facts),
+        primary_bottleneck=primary_bottleneck,
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )
+
+
+PRIMARY_BOTTLENECK_LABELS = {
+    "stats": "Stats",
+    "sql_shape": "SQL shape",
+    "runtime_admission": "Admission/runtime",
+    "runtime_skew": "Runtime skew",
+    "runtime_data_movement": "Data movement",
+    "mixed": "Competing signals",
+    "unknown": "Unknown",
+}
+
+PRIMARY_BOTTLENECK_REASON_LABELS = {
+    "stats_candidate_supported": "stats candidate supported",
+    "stats_not_primary": "stats not primary",
+    "large_intermediate_or_exchange_top_finding": "large exchange/intermediate traffic is top finding",
+    "execution_tail_top_finding": "execution tail is top finding",
+    "very_short_query_or_unknown_wall_clock": "very short query or unknown wall clock",
+    "no_primary_branch_supported": "no primary branch supported",
+    "competing_stats_and_non_stats": "competing stats and non-stats signals",
+    "competing_stats": "competing stats signal",
+    "competing_sql_shape": "competing SQL-shape signal",
+    "competing_runtime_data_movement": "competing data-movement signal",
+}
+
+
+def present_case_primary_bottleneck(case: dict[str, Any]) -> RecentScanPrimaryBottleneckView:
+    bottleneck = case.get("case_primary_bottleneck")
+    if not isinstance(bottleneck, dict):
+        return RecentScanPrimaryBottleneckView(
+            unavailable=True,
+            label="Not classified",
+            confidence="unknown",
+            summary="Not classified",
+            reason_summary="",
+        )
+    raw_label = str(bottleneck.get("label") or "unknown").strip().lower()
+    label_is_known = raw_label in PRIMARY_BOTTLENECK_LABELS
+    label = PRIMARY_BOTTLENECK_LABELS.get(raw_label, "Unknown")
+    raw_confidence = str(bottleneck.get("confidence") or "unknown").strip().lower()
+    confidence = raw_confidence if label_is_known and raw_confidence in {"high", "medium", "low"} else "unknown"
+    reasons = bottleneck.get("reasons")
+    safe_reasons = (
+        [primary_bottleneck_reason_label(item) for item in list(reasons)[:3]]
+        if isinstance(reasons, (list, tuple))
+        else []
+    )
+    reason_summary = "; ".join(reason for reason in safe_reasons if reason)
+    confidence_label = confidence.title() if confidence != "unknown" else "Unknown"
+    return RecentScanPrimaryBottleneckView(
+        unavailable=False,
+        label=label,
+        confidence=confidence,
+        summary=f"{label} ({confidence_label} confidence)",
+        reason_summary=reason_summary,
+    )
+
+
+def primary_bottleneck_reason_label(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    if text in PRIMARY_BOTTLENECK_REASON_LABELS:
+        return PRIMARY_BOTTLENECK_REASON_LABELS[text]
+    cardinality_match = re.fullmatch(r"cardinality_anomalies_(\d{1,4})", text)
+    if cardinality_match:
+        return f"{cardinality_match.group(1)} cardinality anomalies"
+    tail_match = re.fullmatch(r"tail_candidates_(\d{1,4})", text)
+    if tail_match:
+        return f"{tail_match.group(1)} tail candidates"
+    admission_match = re.fullmatch(r"admission_wait_share_(\d{1,3})pct", text)
+    if admission_match:
+        return f"admission wait share {admission_match.group(1)}%"
+    return "unrecognized reason category"
 
 
 def present_recent_scan_evidence_quality(evidence_quality_facts: dict[str, Any] | None) -> RecentScanEvidenceQualityView:

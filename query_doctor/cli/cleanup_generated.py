@@ -12,6 +12,7 @@ from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 GENERATED_PATTERNS = (
+    "analysis.json",
     "analysis_facts.md",
     "report_*.md",
     "diagnosis*.md",

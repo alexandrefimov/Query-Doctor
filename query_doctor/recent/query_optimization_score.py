@@ -33,11 +33,15 @@ def score_query_optimization_candidate(
     collection_status: str = "ok",
     analysis_status: str = "ok",
     failure_category: str | None = None,
+    analysis: dict[str, object] | None = None,
 ) -> QueryOptimizationCandidateScore:
     facts = facts_text or ""
     duration = duration_sec if duration_sec is not None else duration_seconds_value(facts)
     impact_score, impact_reasons = impact_signals(facts, duration)
-    opportunity_score, opportunity_reasons, review_areas = query_shape_opportunity_signals(facts)
+    opportunity_score, opportunity_reasons, review_areas = query_shape_opportunity_signals(
+        facts,
+        analysis=analysis,
+    )
     counter_signals, penalty_factor = query_optimization_counter_signals(
         facts,
         duration,
@@ -46,6 +50,7 @@ def score_query_optimization_candidate(
         metadata_status=metadata_status,
         failure_category=failure_category,
         has_shape_evidence=opportunity_score > 0,
+        analysis=analysis,
     )
 
     has_shape_evidence = opportunity_score > 0
@@ -185,7 +190,11 @@ def impact_signals(facts: str, duration_sec: float | None) -> tuple[int, list[st
     return min(100, score), reasons
 
 
-def query_shape_opportunity_signals(facts: str) -> tuple[int, list[str], list[str]]:
+def query_shape_opportunity_signals(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> tuple[int, list[str], list[str]]:
     lower = facts.lower()
     score = 0
     reasons: list[str] = []
@@ -194,11 +203,11 @@ def query_shape_opportunity_signals(facts: str) -> tuple[int, list[str], list[st
         score += 28
         reasons.append("large scan volume with comparatively small downstream row count")
         review.extend(["filter placement", "partition/filter scope", "projection pruning"])
-    if join_row_expansion_evidence(facts):
+    if join_row_expansion_evidence(facts, analysis=analysis):
         score += 30
         reasons.append("join row expansion or cardinality mismatch with join evidence")
         review.extend(["join keys and join cardinality", "filter placement", "pre-aggregation before join"])
-    elif cardinality_mismatch_count(facts) > 0:
+    elif cardinality_mismatch_count(facts, analysis=analysis) > 0:
         score += 10
         reasons.append("cardinality mismatch needs query-shape evidence before stronger action")
         review.extend(["statistics and join cardinality"])
@@ -237,6 +246,7 @@ def query_optimization_counter_signals(
     metadata_status: str,
     failure_category: str | None,
     has_shape_evidence: bool,
+    analysis: dict[str, object] | None = None,
 ) -> tuple[list[str], float]:
     lower = facts.lower()
     signals: list[str] = []
@@ -268,12 +278,10 @@ def query_optimization_counter_signals(
     if "backend data skew" in lower and "large exchange" not in lower and not has_shape_evidence:
         signals.append("backend symptoms dominate without query-shape evidence")
         penalty *= 0.6
-    if (
-        cardinality_mismatch_count(facts) > 0
-        and not metadata_status_is_usable(metadata_status)
-    ):
+    cardinality_count = cardinality_mismatch_count(facts, analysis=analysis)
+    if cardinality_count > 0 and not metadata_status_is_usable(metadata_status):
         signals.append("metadata was not collected, so stats-vs-query-shape split is unconfirmed")
-    if metadata_stats_gap(facts) and cardinality_mismatch_count(facts) > 0:
+    if metadata_stats_gap(facts, analysis=analysis) and cardinality_count > 0:
         signals.append("some cardinality mismatch may also require statistics refresh")
     return dedupe_preserve_order(signals), penalty
 
@@ -292,12 +300,16 @@ def large_scan_waste_evidence(facts: str) -> bool:
     return False
 
 
-def join_row_expansion_evidence(facts: str) -> bool:
+def join_row_expansion_evidence(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> bool:
     lower = facts.lower()
     if "join row expansion" in lower or "join explosion" in lower:
         return True
-    ratio = max_join_actual_estimated_ratio(facts)
-    return ratio is not None and ratio >= 50 and cardinality_mismatch_count(facts) > 0
+    ratio = max_join_actual_estimated_ratio(facts, analysis=analysis)
+    return ratio is not None and ratio >= 50 and cardinality_mismatch_count(facts, analysis=analysis) > 0
 
 
 def large_exchange_evidence(facts: str) -> bool:
@@ -318,12 +330,32 @@ def memory_shape_evidence(facts: str) -> bool:
     return "severe memory underestimation at high-memory operator" in facts.lower()
 
 
-def cardinality_mismatch_count(facts: str) -> int:
+def cardinality_mismatch_count(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> int:
+    structured = analysis_list_count(analysis, "cardinality_anomalies")
+    if structured is not None:
+        return structured
     return fact_int(scoring_section_text(facts, "## Summary"), "Cardinality anomalies") or 0
 
 
-def max_join_actual_estimated_ratio(facts: str) -> float | None:
+def max_join_actual_estimated_ratio(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> float | None:
     values: list[float] = []
+    structured_operators = analysis_operators(analysis, "cardinality_anomalies")
+    for operator in structured_operators:
+        if not is_join_operator_name(operator.get("operator_name")):
+            continue
+        ratio = numeric_value(operator.get("rows_actual_to_estimated_ratio"))
+        if ratio > 0:
+            values.append(ratio)
+    if analysis_has_list(analysis, "cardinality_anomalies"):
+        return max(values) if values else None
     for line in join_operator_evidence_lines(section_text(facts, "## Findings")):
         ratio = ratio_from_text(line)
         if ratio is not None:
@@ -347,6 +379,10 @@ def join_operator_line(line: str) -> bool:
     if re.search(r"^-\s*operator:\s*.*\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", stripped, re.IGNORECASE):
         return True
     return bool(re.search(r"^-\s*\d+:[^\n]*\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", stripped, re.IGNORECASE))
+
+
+def is_join_operator_name(value: object) -> bool:
+    return bool(re.search(r"\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", str(value or ""), re.IGNORECASE))
 
 
 def action_card_blocks(facts: str) -> list[str]:
@@ -380,7 +416,20 @@ def metadata_status_is_usable(value: str) -> bool:
     return str(value or "").strip().lower() in {"collected", "ok", "available", "done", "partial"}
 
 
-def metadata_stats_gap(facts: str) -> bool:
+def metadata_stats_gap(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> bool:
+    quality = analysis_dict(analysis, "stats_metadata_quality")
+    if quality is not None:
+        return (
+            str(quality.get("status") or "").lower() == "limited"
+            or numeric_value(quality.get("tables_with_missing_table_stats")) > 0
+            or numeric_value(quality.get("tables_with_incomplete_column_stats")) > 0
+            or str(quality.get("stats_primary_bottleneck") or "")
+            in {"candidate_supported", "mixed_candidate"}
+        )
     lower = facts.lower()
     return (
         "table stats row-count completeness: missing" in lower
@@ -549,6 +598,33 @@ def numeric_value(value: object) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def analysis_dict(analysis: dict[str, object] | None, key: str) -> dict[str, object] | None:
+    if not isinstance(analysis, dict):
+        return None
+    value = analysis.get(key)
+    return value if isinstance(value, dict) else None
+
+
+def analysis_list_count(analysis: dict[str, object] | None, key: str) -> int | None:
+    if not isinstance(analysis, dict):
+        return None
+    value = analysis.get(key)
+    return len(value) if isinstance(value, list) else None
+
+
+def analysis_has_list(analysis: dict[str, object] | None, key: str) -> bool:
+    return isinstance(analysis, dict) and isinstance(analysis.get(key), list)
+
+
+def analysis_operators(analysis: dict[str, object] | None, key: str) -> list[dict[str, object]]:
+    if not isinstance(analysis, dict):
+        return []
+    value = analysis.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
 
 
 def dedupe_preserve_order(items: list[str]) -> list[str]:
