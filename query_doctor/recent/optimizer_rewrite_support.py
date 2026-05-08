@@ -21,6 +21,7 @@ from query_doctor.recent.query_optimization_score import QueryOptimizationCandid
 RECIPE_LABELS = {
     "post_union_aggregate_pushdown": "SQL draft eligible",
     "final_union_distinct_rollup": "SQL draft eligible",
+    "pass_through_cte_elimination": "SQL draft eligible",
     "single_cte_predicate_pushdown": "SQL draft eligible",
     "single_derived_table_predicate_pushdown": "SQL draft eligible",
     "linear_cte_predicate_pushdown": "Rewrite recipe detected",
@@ -29,6 +30,7 @@ RECIPE_LABELS = {
 RECIPE_REASONS = {
     "post_union_aggregate_pushdown": "Python-owned UNION ALL aggregate recipe is available",
     "final_union_distinct_rollup": "Python-owned UNION ALL DISTINCT rollup recipe is available",
+    "pass_through_cte_elimination": "Pass-through CTE elimination recipe is available",
     "single_cte_predicate_pushdown": "Single CTE predicate pushdown recipe is available",
     "single_derived_table_predicate_pushdown": "Single derived table predicate pushdown recipe is available",
     "linear_cte_predicate_pushdown": "Linear CTE predicate pushdown recipe is available",
@@ -129,6 +131,7 @@ def classify_optimizer_rewrite_support(
         recipe_is_strictly_supported = recipe_id in {
             "post_union_aggregate_pushdown",
             "final_union_distinct_rollup",
+            "pass_through_cte_elimination",
             "single_cte_predicate_pushdown",
             "single_derived_table_predicate_pushdown",
         }

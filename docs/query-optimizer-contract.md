@@ -124,6 +124,14 @@ boundary.
   `UNION ALL` detail CTEs feeding a final `COUNT(DISTINCT ...)` aggregate.
   Validation must preserve the final aggregate query and pre-aggregate branches
   to the CTE output grain plus distinct keys.
+- `pass_through_cte_elimination`: accepts removing one single-use pass-through
+  CTE when it only selects simple columns from exactly one upstream CTE and is
+  consumed directly by the final SELECT. Detection and deterministic execution
+  require no filters, joins, aggregates, set operations, DISTINCT, ORDER BY, or
+  LIMIT in the removed CTE, no final SELECT joins or set operations, and no
+  final qualifier references to the removed CTE. Validation must preserve every
+  remaining CTE body, physical table set, final output shape, filters, literals,
+  and final SELECT expressions.
 - `single_cte_predicate_pushdown`: accepts copied WHERE predicates inside a
   single CTE consumed by the final SELECT. Detection and deterministic
   execution require a copyable downstream predicate that targets the CTE
@@ -181,8 +189,9 @@ Recent scan labels. It may record safe categories and counts only:
 
 These facts must not expose raw SQL fragments, raw CTE names, local paths, or
 artifact filenames in browser-visible output. Simplification facts are not SQL
-equivalence proof by themselves: pass-through elimination and CTE inlining need
-their own recipe-specific validation before a trusted draft can use them.
+equivalence proof by themselves: pass-through elimination is trusted only for
+the dedicated recipe above, and broader CTE inlining still needs its own
+recipe-specific validation before a trusted draft can use it.
 
 ## Derived Table Shape Facts
 

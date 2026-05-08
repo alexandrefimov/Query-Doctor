@@ -45,6 +45,20 @@ def optimizer_mode_contract(
     if risk_decision.mode == "conservative_rewrite":
         reasons = ", ".join(risk_decision.reasons) or "risk_noted"
         if rewrite_recipe:
+            if rewrite_recipe.recipe_id == "pass_through_cte_elimination":
+                return "\n".join(
+                    [
+                        "mode: conservative_rewrite",
+                        f"python_owned_reasons: {reasons}",
+                        f"python_owned_rewrite_recipe: {rewrite_recipe.recipe_id}",
+                        "rules:",
+                        "- A bounded structural rewrite is allowed only when it follows PYTHON-OWNED MANUAL REWRITE BULLETS.",
+                        "- You may remove only the named pass-through CTE and reconnect its single consumer to the named upstream CTE.",
+                        "- Preserve every remaining CTE body, physical table, JOIN predicate, WHERE filter, literal, final output column, and final SELECT expression.",
+                        "- Do not inline, reorder, rename, split, or modify unrelated CTEs.",
+                        "- If the recipe cannot be applied exactly, return the original query with harmless formatting.",
+                    ]
+                )
             if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
                 return "\n".join(
                     [

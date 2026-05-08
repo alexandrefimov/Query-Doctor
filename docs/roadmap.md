@@ -138,6 +138,10 @@ Completed baseline work:
   with a deterministic executor for the simplest safe nested-query form: copy
   an outer SELECT predicate into one simple top-level derived table while
   preserving the outer filter and validating the nested body separately.
+- `pass_through_cte_elimination` is a validated Python-owned recipe with a
+  deterministic executor for the simplest safe CTE simplification form: remove
+  one single-use pass-through CTE that only selects simple columns from one
+  upstream CTE and is consumed directly by the final SELECT.
 - A 9-case medium/high Optimization-candidate rerun after adding the
   derived-table recipe still produced zero trusted SQL drafts: the observed
   real derived-table shapes had no copyable top-level outer filter and were
@@ -170,9 +174,9 @@ Remaining near-term optimizer work:
 3. Validate the expanded CTE facts against sanitized real fixtures and add only
    missing analyzer-owned categories that block proof of specific future
    recipes.
-4. Add focused deterministic recipes for CTE simplification only after
-   recipe-specific validation exists, especially pass-through CTE elimination
-   and single-use CTE inlining.
+4. Add more focused deterministic recipes for CTE simplification only after
+   recipe-specific validation exists, especially single-use CTE inlining and
+   wider pass-through variants with aliases or downstream CTE consumers.
 5. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
    especially stats-present-but-not-primary cases and mixed stats/runtime
    bottleneck signals.

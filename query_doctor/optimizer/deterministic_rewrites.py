@@ -8,7 +8,12 @@ from query_doctor.optimizer.rewrite_safety import (
     split_top_level_conjunct_fragments,
     sql_predicate_signature_counter,
 )
-from query_doctor.optimizer.source_sql import find_top_level_keyword_offset, skip_quoted_text
+from query_doctor.optimizer.source_sql import (
+    find_top_level_keyword_offset,
+    skip_block_comment_text,
+    skip_line_comment_text,
+    skip_quoted_text,
+)
 from query_doctor.optimizer.sql import OptimizerSqlError, tokenize_sql
 from query_doctor.optimizer.sql_fragments import (
     keyword_at,
@@ -17,6 +22,7 @@ from query_doctor.optimizer.sql_fragments import (
     skip_sql_whitespace_and_comments,
 )
 from query_doctor.optimizer.sql_shape import (
+    cte_body_is_pass_through_layer,
     clause_signature,
     main_select_has_distinct,
     next_top_level_clause_offset,
@@ -26,6 +32,7 @@ from query_doctor.optimizer.sql_shape import (
     split_top_level_sql_fragments,
     top_level_keyword_count,
     top_level_join_signature,
+    referenced_cte_names,
 )
 
 
@@ -74,11 +81,145 @@ RELATION_ALIAS_BOUNDARIES = {
 def deterministic_recipe_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe | None) -> str | None:
     if rewrite_recipe is None:
         return None
+    if rewrite_recipe.recipe_id == "pass_through_cte_elimination":
+        return pass_through_cte_elimination_draft(source_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
         return single_cte_predicate_pushdown_draft(source_sql)
     if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
         return single_derived_table_predicate_pushdown_draft(source_sql)
     return None
+
+
+def pass_through_cte_elimination_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None or len(parsed.ctes) < 2:
+        return None
+    if any_cte_has_column_list(source_sql):
+        return None
+    removed_cte = rewrite_recipe.source_cte
+    upstream_cte = rewrite_recipe.aggregate_cte
+    if not removed_cte or not upstream_cte:
+        return None
+    names = tuple(cte.name for cte in parsed.ctes)
+    cte_map = {cte.name: cte for cte in parsed.ctes}
+    cte = cte_map.get(removed_cte)
+    if cte is None or upstream_cte not in cte_map:
+        return None
+    if referenced_cte_names(cte.body, names) != (upstream_cte,):
+        return None
+    if not cte_body_is_pass_through_layer(cte.body, names):
+        return None
+    if any(removed_cte in referenced_cte_names(candidate.body, names) for candidate in parsed.ctes):
+        return None
+    if referenced_cte_names(parsed.final_sql, names) != (removed_cte,):
+        return None
+    if top_level_join_signature(parsed.final_sql):
+        return None
+    if any(top_level_keyword_count(parsed.final_sql, keyword) for keyword in ("UNION", "EXCEPT", "INTERSECT")):
+        return None
+    if relation_qualifier_referenced(parsed.final_sql, removed_cte):
+        return None
+    final_sql = replace_top_level_relation_name(parsed.final_sql, removed_cte, upstream_cte)
+    if final_sql == parsed.final_sql:
+        return None
+    remaining = [candidate for candidate in parsed.ctes if candidate.name != removed_cte]
+    if not remaining:
+        return final_sql
+    cte_blocks = [f"{candidate.name} AS (\n{candidate.body.strip()}\n)" for candidate in remaining]
+    return "WITH " + ",\n".join(cte_blocks) + "\n" + final_sql.strip()
+
+
+def any_cte_has_column_list(source_sql: str) -> bool:
+    cursor = skip_sql_whitespace_and_comments(source_sql, 0)
+    if not keyword_at(source_sql, cursor, "WITH"):
+        return False
+    cursor = skip_sql_whitespace_and_comments(source_sql, cursor + len("WITH"))
+    while cursor < len(source_sql):
+        _name, cursor = read_sql_identifier(source_sql, cursor)
+        cursor = skip_sql_whitespace_and_comments(source_sql, cursor)
+        if cursor < len(source_sql) and source_sql[cursor] == "(":
+            return True
+        if not keyword_at(source_sql, cursor, "AS"):
+            return True
+        cursor = skip_sql_whitespace_and_comments(source_sql, cursor + len("AS"))
+        if cursor >= len(source_sql) or source_sql[cursor] != "(":
+            return True
+        close = matching_parenthesis_offset(source_sql, cursor)
+        if close is None:
+            return True
+        cursor = skip_sql_whitespace_and_comments(source_sql, close + 1)
+        if cursor < len(source_sql) and source_sql[cursor] == ",":
+            cursor = skip_sql_whitespace_and_comments(source_sql, cursor + 1)
+            continue
+        return False
+    return True
+
+
+def relation_qualifier_referenced(sql: str, identifier: str) -> bool:
+    target = identifier.lower()
+    index = 0
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(sql, index, char)
+            continue
+        name, end = read_sql_identifier(sql, index)
+        if not name:
+            index += 1
+            continue
+        cursor = skip_sql_whitespace_and_comments(sql, end)
+        if name == target and cursor < len(sql) and sql[cursor] == ".":
+            return True
+        index = end
+    return False
+
+
+def replace_top_level_relation_name(sql: str, old_name: str, new_name: str) -> str:
+    old = old_name.lower()
+    pieces: list[str] = []
+    index = 0
+    last = 0
+    depth = 0
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(sql, index, char)
+            continue
+        if char == "(":
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if depth == 0 and (keyword_at(sql, index, "FROM") or keyword_at(sql, index, "JOIN")):
+            cursor = skip_sql_whitespace_and_comments(sql, index + 4)
+            name_start = cursor
+            name, name_end = read_sql_identifier(sql, cursor)
+            if name == old:
+                pieces.append(sql[last:name_start])
+                pieces.append(new_name)
+                last = name_end
+                index = name_end
+                continue
+        index += 1
+    if not pieces:
+        return sql
+    pieces.append(sql[last:])
+    return "".join(pieces)
 
 
 def single_derived_table_predicate_pushdown_draft(source_sql: str) -> str | None:

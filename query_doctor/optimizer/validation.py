@@ -12,6 +12,7 @@ from query_doctor.optimizer.deterministic_rewrites import (
     copyable_final_where_predicates,
     cte_reference_aliases,
     dequalify_predicate_for_cte_aliases,
+    pass_through_cte_elimination_draft,
     simple_cte_filter_columns,
 )
 from query_doctor.optimizer.recommendation_output import (
@@ -149,7 +150,10 @@ def validate_draft_sql(
         if top_level_keyword_count(source_sql, operator) != top_level_keyword_count(draft_sql, operator):
             errors.append(f"optimized draft changes top-level {operator} shape")
     if cte_name_signature(source_sql) != cte_name_signature(draft_sql):
-        errors.append("optimized draft changes CTE shape")
+        if rewrite_recipe and rewrite_recipe.recipe_id == "pass_through_cte_elimination":
+            errors.extend(validate_pass_through_cte_elimination_rewrite(source_sql, draft_sql, rewrite_recipe))
+        else:
+            errors.append("optimized draft changes CTE shape")
     elif cte_name_signature(source_sql) and normalized_statement_signature(source_sql) != normalized_statement_signature(draft_sql):
         if rewrite_recipe:
             errors.extend(validate_recipe_backed_cte_rewrite(source_sql, draft_sql, rewrite_recipe))
@@ -210,6 +214,8 @@ def validate_recipe_backed_cte_rewrite(
         return validate_cte_dag_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
         return validate_single_derived_table_predicate_pushdown_rewrite(source_sql, draft_sql)
+    if rewrite_recipe.recipe_id == "pass_through_cte_elimination":
+        return validate_pass_through_cte_elimination_rewrite(source_sql, draft_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id != "post_union_aggregate_pushdown":
         return ["optimized draft changes CTE query body"]
     errors: list[str] = []
@@ -259,6 +265,36 @@ def validate_recipe_backed_cte_rewrite(
     if not counter_is_subset(sql_business_numeric_literal_counter(source_sql), sql_business_numeric_literal_counter(draft_sql)):
         errors.append("optimized draft violates rewrite recipe: source numeric literals changed")
     return errors
+
+
+def validate_pass_through_cte_elimination_rewrite(
+    source_sql: str,
+    draft_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> list[str]:
+    errors: list[str] = []
+    expected = pass_through_cte_elimination_draft(source_sql, rewrite_recipe)
+    if expected is None:
+        return ["optimized draft violates rewrite recipe: pass-through CTE shape is unsupported"]
+    source_parsed = parse_with_query(source_sql)
+    draft_parsed = parse_with_query(draft_sql)
+    if source_parsed is None or draft_parsed is None:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    source_names = tuple(cte.name for cte in source_parsed.ctes)
+    draft_names = tuple(cte.name for cte in draft_parsed.ctes)
+    expected_names = tuple(name for name in source_names if name != rewrite_recipe.source_cte)
+    if draft_names != expected_names:
+        errors.append("optimized draft violates rewrite recipe: only the pass-through CTE may be removed")
+    if rewrite_recipe.aggregate_cte not in draft_names:
+        errors.append("optimized draft violates rewrite recipe: upstream CTE is missing")
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+    source_ctes = cte_definition_map(source_sql)
+    draft_ctes = cte_definition_map(draft_sql)
+    errors.extend(validate_unrelated_cte_bodies_preserved(source_ctes, draft_ctes, {rewrite_recipe.source_cte}))
+    if normalized_statement_signature(expected) != normalized_statement_signature(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: draft does not match deterministic pass-through elimination")
+    return dedupe_preserve_order(errors)
 
 
 def validate_single_cte_predicate_pushdown_rewrite(source_sql: str, draft_sql: str) -> list[str]:

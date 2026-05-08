@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from query_doctor.optimizer.deterministic_rewrites import (
+    any_cte_has_column_list,
     copyable_final_where_predicates,
     cte_reference_aliases,
     simple_cte_filter_columns,
@@ -16,6 +17,7 @@ from query_doctor.optimizer.sql_shape import (
     analyze_derived_table_shape,
     clause_signature,
     count_distinct_key_names,
+    cte_body_is_pass_through_layer,
     final_distinct_rollup_aggregate_shape_is_supported,
     has_union_all,
     identifier_referenced,
@@ -27,6 +29,9 @@ from query_doctor.optimizer.sql_shape import (
     parse_top_level_derived_table,
     parse_with_query,
     post_union_aggregate_input_rollup_names,
+    referenced_cte_names,
+    top_level_join_signature,
+    top_level_keyword_count,
     union_projection_names,
 )
 
@@ -67,7 +72,7 @@ def detect_optimizer_rewrite_recipe(
                 return recipe
         cte_shape = analyze_cte_shape(source_sql)
         if cte_shape.predicate_pushdown_status != "candidate":
-            return None
+            return build_pass_through_cte_elimination_recipe_if_supported(source_sql)
         if cte_shape.graph_shape == "single_cte":
             if not single_cte_predicate_pushdown_has_candidate_predicate(parsed.ctes[0], parsed.final_sql):
                 return None
@@ -95,6 +100,55 @@ def detect_optimizer_rewrite_recipe(
     ):
         return None
     return build_single_derived_table_predicate_pushdown_recipe(derived.alias)
+
+
+def build_pass_through_cte_elimination_recipe_if_supported(source_sql: str) -> OptimizerRewriteRecipe | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None or len(parsed.ctes) < 2:
+        return None
+    if any_cte_has_column_list(source_sql):
+        return None
+    names = tuple(cte.name for cte in parsed.ctes)
+    final_refs = referenced_cte_names(parsed.final_sql, names)
+    if len(final_refs) != 1:
+        return None
+    candidate_name = final_refs[0]
+    if top_level_join_signature(parsed.final_sql):
+        return None
+    if any(top_level_keyword_count(parsed.final_sql, keyword) for keyword in ("UNION", "EXCEPT", "INTERSECT")):
+        return None
+    if any(candidate_name in referenced_cte_names(cte.body, names) for cte in parsed.ctes):
+        return None
+    candidate = next((cte for cte in parsed.ctes if cte.name == candidate_name), None)
+    if candidate is None or not cte_body_is_pass_through_layer(candidate.body, names):
+        return None
+    upstream_refs = referenced_cte_names(candidate.body, names)
+    if len(upstream_refs) != 1:
+        return None
+    return build_pass_through_cte_elimination_recipe(candidate.name, upstream_refs[0])
+
+
+def build_pass_through_cte_elimination_recipe(cte_name: str, upstream_cte: str) -> OptimizerRewriteRecipe:
+    prompt_bullets = (
+        "Use recipe pass_through_cte_elimination.",
+        f"Remove pass-through CTE {cte_name} and make the final SELECT read directly from CTE {upstream_cte}.",
+        "This recipe is valid only when the removed CTE selects simple columns from exactly one upstream CTE and has no filter, join, aggregate, set operation, DISTINCT, ORDER BY, or LIMIT boundary.",
+        "Preserve every remaining CTE body, physical table, JOIN predicate, WHERE filter, literal, final output column, and final SELECT expression.",
+        "Do not inline, reorder, rename, or modify any other CTE.",
+        "If the pass-through CTE cannot be removed exactly, return the original query with harmless formatting.",
+    )
+    safe_bullets = (
+        "- Recipe detected: a single-use pass-through CTE can be removed so the final SELECT reads directly from its upstream CTE.",
+        "- The trusted SQL draft is shown only if validation proves every remaining CTE, physical table, filter, literal, and final output expression is preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="pass_through_cte_elimination",
+        title="Remove a single-use pass-through CTE",
+        source_cte=cte_name,
+        aggregate_cte=upstream_cte,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
 
 
 def build_single_derived_table_predicate_pushdown_recipe(alias: str) -> OptimizerRewriteRecipe:
