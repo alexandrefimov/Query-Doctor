@@ -6,10 +6,10 @@ Last updated: 2026-05-08
 This is a product-level audit snapshot. It intentionally stays shorter than the
 active engineering audit. Use:
 
-- [code-audit.md](code-audit.md) for current implementation risks;
-- [codex-handoff.md](codex-handoff.md) for agent operating context;
-- [roadmap.md](roadmap.md) for active product direction;
-- [query-optimizer-contract.md](query-optimizer-contract.md) for optimizer trust
+- [../code-audit.md](../code-audit.md) for current implementation risks;
+- [../codex-handoff.md](../codex-handoff.md) for agent operating context;
+- [../roadmap.md](../roadmap.md) for active product direction;
+- [../query-optimizer-contract.md](../query-optimizer-contract.md) for optimizer trust
   rules.
 
 ## Executive Summary

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from query_doctor.analyzer.action_cards import DEFAULT_LARGE_BYTES_THRESHOLD, build_action_cards
+from query_doctor.analyzer.case_bottleneck import classify_case_primary_bottleneck
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_correlation
 from query_doctor.analyzer.cluster_runtime_context import build_cluster_runtime_context
 from query_doctor.analyzer.context_collection import (
@@ -20,6 +21,7 @@ from query_doctor.analyzer.context_collection import (
 )
 from query_doctor.analyzer.evidence_quality import build_evidence_quality
 from query_doctor.analyzer.facts_renderer import render_md
+from query_doctor.analyzer.metadata_renderer import stats_metadata_quality
 from query_doctor.analyzer.runtime_diagnosis import build_runtime_diagnosis
 from query_doctor.analyzer.service import analyze
 from query_doctor.analyzer.sql_sources import extract_default_database
@@ -99,6 +101,11 @@ def main(argv: list[str] | None = None) -> int:
         text,
         analysis["table_metadata_context"],
     )
+    analysis["stats_metadata_quality"] = stats_metadata_quality(
+        analysis["table_metadata_context"] or {},
+        analysis,
+    )
+    analysis["case_primary_bottleneck"] = classify_case_primary_bottleneck(analysis).to_dict()
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
     analysis["default_database"] = extract_default_database(text)
     analysis["cm_metrics_correlation"] = build_cm_metrics_correlation(analysis)

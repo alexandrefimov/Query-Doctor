@@ -1,5 +1,7 @@
 # Query Doctor Safety Contract
 
+Last reviewed: 2026-05-08
+
 Language: English | [Russian](i18n/ru/safety-contract.md)
 
 This file contains mandatory safety rules. Exact phrases such as `Do not weaken

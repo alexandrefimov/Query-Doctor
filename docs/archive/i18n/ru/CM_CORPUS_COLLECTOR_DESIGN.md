@@ -4,7 +4,7 @@
 
 Английская версия является канонической для публичного репозитория. Эта страница
 сохраняет русскую companion-версию design notes для read-only Cloudera Manager
-profile collector.
+profile collector и может отставать от английского источника.
 
 Архивная пометка: этот файл является design context для collector и generated
 local corpus workflow. Для текущей операторской и safety guidance используйте

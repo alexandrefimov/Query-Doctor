@@ -40,3 +40,44 @@ def test_find_failures_ignores_code_fences_and_external_links(tmp_path):
     )
 
     assert check_active_docs.find_failures([doc], tmp_path) == []
+
+
+def test_active_docs_require_review_header_and_status_index(tmp_path):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    index = docs_dir / "README.md"
+    active = tmp_path / "active.md"
+    active.write_text("# Active\n\nNo review header.\n", encoding="utf-8")
+    index.write_text(
+        "# Docs\n\n"
+        "Last reviewed: 2099-01-01\n\n"
+        "| Document | Status | Use |\n"
+        "| --- | --- | --- |\n"
+        "| [../active.md](../active.md) | active | test |\n",
+        encoding="utf-8",
+    )
+
+    original_active_docs = check_active_docs.ACTIVE_DOCS
+    check_active_docs.ACTIVE_DOCS = ("active.md", "docs/README.md")
+    try:
+        failures = check_active_docs.find_failures([active, index], tmp_path)
+    finally:
+        check_active_docs.ACTIVE_DOCS = original_active_docs
+
+    assert any(
+        "active doc missing Last reviewed/Last updated header" in failure
+        for failure in failures
+    )
+
+
+def test_i18n_copy_requires_existing_english_source(tmp_path):
+    localized_dir = tmp_path / "docs" / "i18n" / "ru"
+    localized_dir.mkdir(parents=True)
+    localized = localized_dir / "missing.md"
+    localized.write_text("# Missing\n", encoding="utf-8")
+
+    failures = check_active_docs.find_i18n_failures(tmp_path)
+
+    assert failures == [
+        "docs/i18n/ru/missing.md: English source is missing: docs/missing.md"
+    ]

@@ -23,6 +23,21 @@ It defines trust boundaries. It is not a roadmap or model bake-off log.
 - Unsupported or risky rewrites should become trusted `no_rewrite` or
   recommendations-only outcomes, not browser-visible partial drafts.
 
+## LLM Role
+
+The optimizer route is not an LLM SQL-writer contract.
+
+- Trusted SQL drafts are produced by Python-owned deterministic executors for
+  supported recipes and accepted only after deterministic validation.
+- The LLM may produce recommendation wording, explanation wording, and
+  engineering-review hints from validated facts.
+- The LLM must not be the source of a trusted SQL draft. If model text contains
+  SQL, it remains untrusted unless the supported Python-owned recipe and
+  validator prove the same bounded transform.
+- Unsupported SQL shapes should not be sent through a free-form SQL rewrite
+  path. They should become trusted `no_rewrite` or recommendations-only
+  outcomes.
+
 ## Pasted-SQL Query Optimizer
 
 Input:
@@ -171,6 +186,12 @@ boundary.
 - Recipe WHERE validation compares `UNION ALL` branches independently and
   allows only added transitive `BETWEEN` filters proven from inner-join equality
   predicates in the same branch.
+- Per-conjunct predicate-pushdown contract: for all predicate-pushdown recipes,
+  top-level `AND` conjuncts are evaluated independently. A conjunct may be
+  copied only if it dequalifies entirely against the target CTE or derived-table
+  aliases and projected columns. Conjuncts that reference foreign aliases or
+  unavailable columns must remain only in the downstream `WHERE`; the downstream
+  `WHERE` must not be removed, weakened, or rewritten.
 
 Add new recipes only with focused fixtures and validation tests.
 
@@ -293,8 +314,14 @@ Details must not show:
 
 ## Current Limitations
 
+- Query Doctor diagnoses expensive Impala query behavior first. SQL rewrite is
+  a narrow validated outcome, not the primary product value.
 - This is not a general SQL equivalence engine.
 - Recipe coverage is intentionally narrow.
+- Broad real-workload `safe_to_attempt` rates may be low because expensive SQL
+  is often not safely rewriteable under the current Python-owned recipe
+  contract. Treat that as recipe coverage data, not automatically as a model
+  regression.
 - Local model quality does not predict optimizer rewrite quality; use optimizer
   bake-off fixtures before changing model defaults.
 - Many safe product outcomes will be recommendations-only or no-rewrite until

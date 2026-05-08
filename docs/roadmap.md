@@ -2,6 +2,10 @@
 
 Last updated: 2026-05-08
 
+Required reading before any PR: hard rules in `AGENTS.md`, Product Direction,
+Safety Baseline, and the Near-Term Priorities section relevant to the touched
+area. Other sections are reference.
+
 This roadmap tracks active product direction. It is not a support matrix and it
 is not a historical audit log. For engineering risks, use
 [code-audit.md](code-audit.md). For architecture boundaries, use
@@ -28,6 +32,48 @@ is not a historical audit log. For engineering risks, use
   analyzer-supported hypotheses, but they are not standalone root-cause proof.
 - Synthetic Demo Mode is local-only and must not contact Cloudera Manager,
   Impala, Ollama, or the network.
+
+## Product Direction
+
+Query Doctor should be positioned and developed as a diagnostic product first,
+not as an "AI SQL optimizer" whose primary promise is automatic SQL rewriting.
+
+- The primary product value is explaining why expensive Impala workloads are
+  slow, with explicit evidence quality and conservative action routing.
+- A trusted SQL draft is a useful outcome only when Python-owned facts,
+  deterministic execution, and validation prove the rewrite boundary. It is not
+  the flagship success metric.
+- The main success metrics should be diagnosis coverage, primary-bottleneck
+  coverage, evidence quality, reproducible workload impact, and action outcome
+  learning.
+- The LLM's durable role is report wording, recommendation wording, and
+  engineering review support. It should not be treated as the trusted SQL writer
+  for supported optimizer recipes.
+- Marketing, demos, and benchmarks should lead with evidence-backed diagnosis:
+  stats vs SQL shape vs runtime/admission/skew/data movement vs unknown, then
+  show SQL rewrites only for recipe-backed cases.
+
+## Success Metrics
+
+Primary diagnosis metrics:
+
+- `case_primary_bottleneck` has medium-or-better confidence on at least 70% of
+  representative real-case batches.
+- `case_primary_bottleneck = unknown` is below 30% for normal Impala diagnosis
+  work, and below roughly 20% before adding another SQL engine.
+- Evidence quality improves over time through deterministic facts, metadata
+  coverage, workload baselines, and action outcome history rather than through
+  stronger wording.
+
+Optimizer-specific metrics:
+
+- `trusted_sql_draft_rate` is measured only on recipe-supported or
+  draft-ready cases, not on all expensive candidates.
+- On recipe-supported cases, trusted SQL draft production should be at least
+  80% and `partial_untrusted_rate` should stay below 5%.
+- A low `safe_to_attempt` rate on broad real Impala workloads is acceptable
+  when no Python-owned recipe can prove the transform. It should be measured as
+  recipe coverage, not as model failure.
 
 ## Safety Baseline
 
@@ -80,10 +126,40 @@ Improve how runtime context supports diagnosis without overclaiming.
   stats on join/filter columns, partition coverage, selectivity mismatch, and
   real-fixture validation for stats-present-but-not-explanatory cases.
 
+Short-term workload-level diagnostics:
+
+- Promote similar-query fingerprinting from a future idea to near-term
+  diagnostic work. Group repeated query shapes by raw-free normalized
+  signatures and show aggregate count, runtime, p95, scan, spill, memory, pool,
+  and trend signals without exposing SQL.
+- Add workload baseline and regression detection for query fingerprints, so
+  chronic expensive shapes and recent slowdowns are separated before choosing
+  stats, SQL-shape, or runtime actions.
+- Add minimal action outcome tracking: manually record whether a recommendation
+  was applied and whether the observed runtime, score, or failure rate changed.
+  This is needed to learn which recommendation families are useful in practice.
+
 ### 3. Query Optimizer Usefulness
 
 Keep optimizer trust strict while making useful outcomes more common.
 
+- Keep expensive production queries as the primary optimizer target. Do not
+  optimize for easy low-value rewrites just because they are easier to draft.
+  The product value comes from diagnosing and improving costly workload shapes.
+- Treat trusted SQL drafts as one optimizer outcome, not the only successful
+  outcome for expensive queries. A useful optimizer result may be a validated
+  SQL rewrite, a stats action, a query-shape recommendation, a data/layout
+  recommendation, or a clear "needs deeper facts" limitation.
+- Separate "expensive" from "rewriteable": duration, exchange volume, scan
+  volume, skew, and cardinality anomalies identify potential value, but they do
+  not prove a safe automatic SQL rewrite exists.
+- Add a rewriteability taxonomy alongside optimization score: expensive query,
+  likely stats problem, likely query-shape problem, currently Python-draftable,
+  promising new recipe family, and human-review-only.
+- Do not use random production-query hunting as the main demo strategy. A
+  credible demo should use a reproducible expensive workload shape with
+  analyzer evidence, deterministic recipe coverage, and production evidence
+  that the shape occurs.
 - Develop optimizer work as facts-first recipes: analyzer-owned facts should
   first prove predicate origin, projection mapping, CTE boundaries,
   stats-vs-query context, and competing bottlenecks; only then should a narrow
@@ -113,96 +189,123 @@ Keep optimizer trust strict while making useful outcomes more common.
   speculative SQL drafts.
 - Use `scripts/compare_optimizer_models.py --fixture-corpus` before changing
   prompt strategy or model defaults.
+- Recognize the current strategic limit: LLM-as-SQL-writer is not reliable for
+  expensive production queries under strict validation. Use the LLM primarily
+  for wording, review, and candidate recipe design unless Python-owned facts and
+  validation already define the rewrite boundary.
+- For recipe-supported cases, Python should produce the trusted SQL draft.
+  Calling the LLM as a second SQL writer on that path should be treated as
+  latency/cost and bug surface unless it is explicitly limited to wording or
+  human-readable explanation.
+- Current external review diagnosis: the bottleneck is Python-rule coverage and
+  candidate selection, not model quality, prompts, the validator, or table
+  stats. Real cases are selected for cost, while supported recipes still assume
+  textbook projection, predicate, qualifier, and CTE/UNION shapes.
+- Follow-up code review found that the shared predicate-pushdown helpers
+  already evaluate top-level `AND` conjuncts independently. The near-term work
+  is to formalize and harden that contract with tests, inspectable helper
+  output, clearer validation messages, and support for parenthesized `AND`
+  groups; it is not a new recipe family.
+- Keep the validator strict. Improving SQL draft yield should come from richer
+  analyzer facts, per-shape deterministic executors, and recipe-aware selection,
+  not from loosening validation.
 
-Completed baseline work:
-
-- Recent scan labels now separate rewrite recipe detection, draft eligibility,
-  and actual trusted draft production.
-- CTE shape facts now cover graph category, consumer counts, downstream-filter
-  eligibility, predicate-origin category, predicate-path category,
-  projection-contract category, projection-preservation category and counts,
-  single-use/pass-through counts, and boundary categories.
-- Recent scan Optimization candidates now display safe optimizer fact summaries
-  and guardrails from rewrite-support classification without exposing SQL or
-  CTE names.
-- Stats Metadata Quality now covers row-estimate evidence, partition coverage,
-  join/filter column stats relevance, and safe competing-bottleneck categories
-  for stats-present-but-not-primary cases.
-- `post_union_aggregate_pushdown` and `final_union_distinct_rollup` are
-  validated Python-owned recipes with deterministic executors for the simplest
-  safe `UNION ALL` rollup forms: pre-aggregate every branch from existing
-  projections, preserve filters and final rollup shape, and rely on
-  recipe-specific validation before writing a trusted SQL draft.
-- `single_cte_predicate_pushdown` is a validated Python-owned recipe with a
-  deterministic executor for the simplest safe filter-copy form, alongside the
-  CTE DAG predicate-pushdown validation contract.
-- `linear_cte_predicate_pushdown` is a validated Python-owned recipe with a
-  deterministic executor for the simplest safe chain form: copy final SELECT
-  predicates into the first CTE when every CTE in the chain preserves the
-  referenced columns and the final filter remains in place.
-- `cte_dag_predicate_pushdown` is a validated Python-owned recipe with a
-  deterministic executor for the simplest safe DAG form: copy a final SELECT
-  predicate into one leaf CTE only when lineage through simple projections and
-  UNION branches proves that leaf owns the filtered output column.
-- Single-CTE predicate-pushdown detection now requires a copyable downstream
-  predicate targeting the CTE output, so filters on unrelated joined aliases do
-  not inflate the recipe funnel.
-- `single_derived_table_predicate_pushdown` is a validated Python-owned recipe
-  with a deterministic executor for the simplest safe nested-query form: copy
-  an outer SELECT predicate into one simple top-level derived table while
-  preserving the outer filter and validating the nested body separately.
-- `pass_through_cte_elimination` is a validated Python-owned recipe with a
-  deterministic executor for the simplest safe CTE simplification form: remove
-  one single-use pass-through CTE that only selects simple columns from one
-  upstream CTE and is consumed directly by the final SELECT.
-- A 9-case medium/high Optimization-candidate rerun after adding the
-  derived-table recipe still produced zero trusted SQL drafts: the observed
-  real derived-table shapes had no copyable top-level outer filter and were
-  blocked by aggregate, set-operation, window, or non-simple projection
-  boundaries. The recipe is useful as a safe supported shape, but the next real
-  conversion work needs deeper facts for aggregate derived tables.
-- A post-merge 48-hour batch rerun confirmed that recipe detection improved,
-  including two `single_cte_predicate_pushdown` candidates, but trusted SQL
-  draft yield stayed at zero for the top stats-available candidates because the
-  LLM returned no material rewrite or cases stayed behind recommendations-only
-  guardrails.
-- A follow-up 9-case medium/high Optimization-candidate rerun after stricter
-  draft validation produced trusted outcomes for every case but zero trusted
-  SQL drafts: six outputs were no-material-change fallbacks and three were
-  rejected for unbacked nested/CTE query-body changes. The next useful recipe
-  work should target a repeated nested/derived-table transform only after
-  analyzer facts can prove the boundary.
-- Prompt strategy now follows the same recipe boundary: SQL draft prompts are
-  used only for Python-owned recipes, while unsupported shapes skip LLM SQL
-  generation and return trusted `no_rewrite` guidance. Model bake-offs should
-  now measure recipe execution quality, not broad free-form rewrite ability.
+The completed optimizer recipe baseline is tracked in
+[changelog.md](changelog.md). This roadmap lists remaining direction, not
+completed implementation inventory.
 
 Remaining near-term optimizer work:
 
-1. Re-run the real optimizer benchmark after the prompt-route split and compare
+1. Add the rewriteability taxonomy to analyzer output, batch summaries, and
+   Details so expensive-but-not-draftable queries are not confused with failed
+   optimizer cases. The operational buckets should be: safe material draft,
+   recipe detected but deterministic draft unavailable, recipe-adjacent shape,
+   stats-likely, human-review-only, and not rewriteable.
+2. Add recipe-aware candidate selection for demo and benchmark runs. Rank
+   `safe_to_attempt` cases first by impact, then `recipe_detected_no_draft`
+   cases as recipe backlog, then recipe-adjacent engineering targets. Do not
+   silently fall through to expensive-but-unrewriteable cases when evaluating
+   SQL draft quality.
+3. Formalize and harden the existing per-conjunct predicate-pushdown contract
+   across `single_cte_predicate_pushdown`, `linear_cte_predicate_pushdown`,
+   `cte_dag_predicate_pushdown`, and `single_derived_table_predicate_pushdown`.
+   Add tests proving mixed safe/unsafe aliases, joins, `BETWEEN`, `IN`,
+   `IS NULL`, grouped CTEs, derived tables, existing inner `WHERE` append, and
+   no-copy cases. Add parenthesized `AND`-group handling as the only first-step
+   behavior expansion.
+4. Target new recipes at expensive ETL patterns rather than low-value small
+   queries: partition-limited `INSERT OVERWRITE ... anti-join staging UNION ALL
+   staging`, large-fact joins to small distinct key sets, wider post-UNION
+   rollups, pre-aggregation before exchange, and repeated-scan / redundant CTE
+   shapes.
+5. Add narrow expression-projection predicate pushdown only after per-conjunct
+   pushdown lands. The first version should allow only deterministic scalar
+   projection expressions with no aggregate/window/subquery inputs and should
+   substitute output aliases back to exact source expressions under validation.
+6. Extend UNION ALL branch predicate pushdown after branch lineage facts can
+   prove which branch owns the filtered output column. Validation must preserve
+   branch count/order/schema and keep untouched branches byte-equivalent.
+7. Treat `pre_aggregate_join_input` as a larger follow-up project, not the next
+   quick recipe: additive measure proof, join-key/group-key containment, outer
+   joins, `AVG`, and `COUNT(DISTINCT ...)` make this high value but high risk.
+8. Re-run the real optimizer benchmark after the prompt-route split and compare
    trusted SQL drafts, deterministic no-recipe outcomes, recommendations-only
    outcomes, and validation failures.
-2. Turn any repeated successful generic rewrite into an analyzer-owned fact plus
+9. Turn any repeated successful generic rewrite into an analyzer-owned fact plus
    Python-owned recipe only when validation can prove the boundary.
-3. Validate the expanded CTE facts against sanitized real fixtures and add only
+10. Validate the expanded CTE facts against sanitized real fixtures and add only
    missing analyzer-owned categories that block proof of specific future
    recipes.
-4. Add more focused deterministic recipes for CTE simplification only after
+11. Add more focused deterministic recipes for CTE simplification only after
    recipe-specific validation exists, especially single-use CTE inlining and
    wider pass-through variants with aliases or downstream CTE consumers.
-5. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
+12. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
    especially stats-present-but-not-primary cases and mixed stats/runtime
    bottleneck signals.
-6. Use repeated real-case batches to measure the full optimizer funnel after
+13. Use repeated real-case batches to measure the full optimizer funnel after
    each facts or recipe change: optimization candidate, stats/query context,
    recipe detected, safe to attempt, trusted draft, and no-draft reason.
-7. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
+14. Automate the optimizer funnel against fixture and sanitized real corpora
+   outside the normal fast CI path. Each run should produce a raw-free
+   `funnel.json` with candidate, recipe-detected, draft-ready, trusted-draft,
+   no-rewrite, recommendations-only, and failure counts, and alert on material
+   regressions.
+15. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
    minimal diffs.
+
+Stop condition for the trusted SQL-draft direction:
+
+- After per-conjunct hardening plus parenthesized `AND`-group support,
+  expression-projection pushdown, and UNION ALL branch pushdown are implemented
+  and tested, a fresh 200+ case medium/high batch still has a `safe_to_attempt`
+  rate below roughly 5%.
+- Recipe-adjacent backlog is not materially larger than safe-draft cases,
+  meaning real workloads are structurally outside the conservative recipe
+  surface rather than merely under-implemented.
+- `deterministic_draft_unavailable` does not drop materially after the new
+  facts/recipes, with unsupported reasons still dominated by aggregate,
+  window, join, or set-operation boundaries the product should not cross.
+- Blind review or re-collection cannot show a meaningful difference between
+  trusted drafts and originals.
+
+If these hold, the optimizer should retreat from trusted SQL draft production
+as a central product promise and focus on evidence-backed recommendations,
+stats/query-shape classification, and a DBA-facing recipe feasibility funnel.
 
 ### 4. Metadata Selection Policy
 
 Make default metadata collection policy explicit and bounded.
 
+- Treat stats/metadata diagnosis as a first-class optimizer routing input, not
+  just report context. Expensive cases should be separated into stats-primary,
+  SQL-shape-primary, runtime-primary, mixed, and unknown before choosing a SQL
+  rewrite, stats action, or runtime follow-up path.
+- Prefer structured analyzer facts over rendered `analysis_facts.md` wording in
+  scoring. Markdown text remains a compatibility fallback, not the source of
+  truth for stats/query-shape classification.
+- Do not claim stale stats without direct structured evidence. Until freshness
+  or partition-divergence facts exist, "stats present but estimates still wrong"
+  should be phrased as an unknown or non-primary stats signal, not as staleness.
 - Prioritize high-severity analyzed cases.
 - Include top medium/high Optimization candidates and suspicious cases where
   cardinality, memory, stats, or query-shape candidates need metadata to avoid
@@ -212,6 +315,42 @@ Make default metadata collection policy explicit and bounded.
   exceed bounds.
 - Show `not_requested`, `partial`, `failed`, and `insufficient_metadata` as
   distinct user-facing states.
+
+Near-term metadata/stats work:
+
+1. Refactor stats and query optimization scorers to consume structured analyzer
+   facts when available, keeping rendered markdown parsing only as a fallback.
+2. Gate or remove `stats_possibly_stale` as a positive scoring signal until a
+   direct staleness or metadata-divergence fact exists.
+3. Consume the informational Python-owned `case_primary_bottleneck` fact in
+   scorers and Details/Recent routing. It already uses the conservative labels
+   stats, sql_shape, runtime_admission, runtime_skew, runtime_data_movement,
+   mixed, and unknown.
+4. Use high-confidence `case_primary_bottleneck` to cap non-primary action
+   candidates instead of presenting stats and SQL rewrite as equally likely
+   primary actions.
+5. Improve partition and column stats detail from already-collected metadata:
+   partition row-count coverage counts and join/filter column stats coverage,
+   without exposing raw partition values or raw metadata output.
+
+Stop condition for stats diagnosis without EXPLAIN or reruns:
+
+- After structured scoring, stale-signal gating, `case_primary_bottleneck`,
+  partition coverage counts, and join/filter column stats coverage land,
+  `case_primary_bottleneck = unknown` remains above roughly 30% on a sanitized
+  100+ real-case batch.
+- Mixed stats and SQL-shape/runtime rate remains above roughly 40%, meaning the
+  analyzer cannot order likely causes from direct profile and bounded metadata
+  facts alone.
+- Blind reviewer agreement with `case_primary_bottleneck` is no better than
+  chance on a held-out reviewer-labelled set of at least 30 cases.
+- Re-collection after a user-applied stats action does not materially change
+  cardinality anomalies, top estimated-row gaps, or
+  `stats_metadata_quality.stats_primary_bottleneck`.
+
+If two or more of these hold, stats diagnosis should retreat to follow-up-check
+wording: no high-confidence stats primary label and no high-tier stats action
+without EXPLAIN, rerun, or stronger direct metadata evidence.
 
 ### 5. Agent-Friendly Documentation
 
@@ -224,53 +363,78 @@ Keep active docs short enough to be read before implementation.
 - `docs/roadmap.md`: this active plan.
 - `docs/changelog.md`: significant behavior, safety, workflow, and baseline
   changes only.
+- `docs/README.md`: document status index. Every listed document should be
+  marked `active`, `reference`, or `archived`.
+- `docs/agent-playbook.md`: change-type routing for required reading, focused
+  tests, and documentation updates.
 
 Historical planning detail should stay out of active docs unless it changes a
 current decision.
+
+Documentation cleanup priorities:
+
+1. Keep historical release, collector, and audit notes under `docs/archive/` or
+   behind explicit `reference` labels. Do not re-promote archived material as a
+   behavior contract without updating `docs/README.md`.
+2. Keep `docs/code-audit.md` and `docs/analyzer-audit.md` as the only active
+   audit files. Older audit snapshots should be references or archive material.
+3. Keep `docs/safety-contract.md` as the canonical safety document. Security
+   overview and roadmap safety sections should link to it instead of redefining
+   the contract.
+4. Keep `docs/changelog.md` as completed-work history. Do not add completed
+   implementation inventories to the roadmap; when a roadmap item is closed,
+   move the significant result to the changelog.
 
 ## Medium-Term Work
 
 - Evidence Quality Score expansion: reuse analyzer-owned confidence in reports
   and add more structured limitations for incomplete metadata/runtime evidence.
-- Baseline Comparison: compare query fingerprints against recent history to
-  separate chronic bad queries from regressions.
-- Similar Query Clustering: group repeated query shapes without exposing raw
-  SQL; show aggregate runtime, scan, spill, memory, pool, and count signals.
 - Host Tail Diagnostics: correlate profile backend-tail evidence with bounded
   host/daemon metrics and repeated-host patterns.
 - Admission And Pool Context: add safe facts for queue wait, pool saturation,
   concurrent load, and admission pressure.
-- Recommendation Outcome Tracking: record whether actions were applied and
-  whether runtime, score, or failure rate improved.
 - Action Catalog: map deterministic recommendation types to local runbooks,
   owner hints, and expected validation signals.
+- Evidence-grade reporting: classify report confidence as bronze, silver, or
+  gold based on deterministic facts coverage, metadata coverage, workload
+  baseline availability, and action outcome history.
 - Safer local job history/status persistence for UI sessions.
 - Focused package splits where feature work touches mixed responsibilities.
 
-## Future Seams
+## Deferred
 
-These are not current support.
+These are not current support. Revisit them only when the listed signal is met.
 
 ### Source Providers
 
-- Cloudera Manager version adapter for newer Cloudera Manager response shapes
-  and metric catalogs.
-- Direct Impala daemon profile provider for one explicit query profile on
-  non-Cloudera Manager deployments.
-- Prometheus-style metrics provider with allowlisted queries, fixed windows,
-  response-size limits, and normalized facts.
-- Prepared event/log provider for structured cluster events, health alerts, or
-  summarized log indexes.
-- Hive Metastore metadata backend only through allowlisted parameterized
-  read-only queries over known schema tables and strict output bounds.
+- Cloudera Manager version adapter: revisit when real deployments expose newer
+  response shapes or metric catalogs that current collectors cannot parse.
+- Direct Impala daemon profile provider: revisit when users need one explicit
+  query profile without Cloudera Manager and the provider can remain
+  read-only, bounded, and raw-free in browser output.
+- Prometheus-style metrics provider: revisit when cluster operators have
+  allowlisted queries, fixed windows, response-size limits, and a normalized
+  fact contract.
+- Prepared event/log provider: revisit when event or log sources can provide
+  structured cluster events, health alerts, or summarized indexes without raw
+  log exposure.
+- Hive Metastore metadata backend: revisit only through allowlisted
+  parameterized read-only queries over known schema tables and strict output
+  bounds.
 
 ### Diagnostic Products
 
 - Cluster Doctor as a separate explicit user-run cluster/service/workload window
-  diagnostic product. Query Doctor may consume only normalized Python-owned
-  context from it.
+  diagnostic product. Revisit when per-query diagnosis needs cluster-level
+  normalized context often enough that a separate product mode is clearer than
+  adding more Details sections. Query Doctor may consume only normalized
+  Python-owned context from it.
 - Workload-level views by query fingerprint, pool, user, table set, and time
-  window.
+  window. Revisit after raw-free fingerprint aggregation and baseline storage
+  are implemented locally.
+- Pool/admission diagnostics as an analyzer-owned layer with safe facts for
+  pool pressure, queue wait, and concurrent load. This should be a separate
+  diagnosis path from per-query SQL-shape analysis.
 
 ### Engines And Storage
 
@@ -278,6 +442,10 @@ Future Big Data SQL/lakehouse engine candidates include Trino, Spark SQL,
 StarRocks, Apache Doris, ClickHouse, and Dremio. They require engine-specific
 collectors, parsers, metadata allowlists, validators, browser safety tests, and
 report coverage before being documented as supported.
+
+Do not add a second engine until Impala diagnosis is useful on real workloads.
+A practical readiness bar is `case_primary_bottleneck = unknown` below roughly
+20% on a representative real-case batch.
 
 Storage and table-format context is a separate axis from query engines. Future
 context may cover HDFS, object storage, Apache Kudu, Apache Iceberg, Apache
@@ -313,15 +481,23 @@ Good future split boundaries:
 - Impala metadata allowlist, Kerberos/cache handling, shell/protocol execution,
   workflow orchestration, digesting, and analyzer integration.
 
-## Non-Goals For Now
+## Out Of Scope And Anti-Features
 
-- Runtime engine selector.
+These are not deferred backlog items. They require a product-direction change
+or a new safety contract before they return.
+
+- AI Copilot UX. The product favors validated facts and explicit rejection over
+  speculative suggestions; a Copilot flow would invert that trust contract.
+- Auto-fix mode. Query Doctor must not execute user SQL or apply generated SQL.
+- Generic SQL execution or OLTP database support.
+- Runtime engine selector before engine-specific collectors, parsers,
+  metadata allowlists, validators, browser-safety tests, and report coverage
+  exist.
 - Claiming support for engines without tests.
-- Generic OLTP database support.
-- Plugin framework.
+- Plugin framework before the Impala product is useful end to end.
 - Broad package reorganization mixed with feature work.
-- Executing user SQL.
-- Auto-running LLM reports from scans.
+- Confidence-score inflation. High-certainty wording without high-confidence
+  evidence is a silent trust failure.
 - Exposing raw SQL, raw profiles, raw metadata, local paths, secrets, model
   names, runtime internals, or raw artifact filenames in browser-visible output
   or trusted reports.

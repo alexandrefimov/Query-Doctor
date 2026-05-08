@@ -7,10 +7,10 @@ collector. It covers local generated corpus inputs for regression and smoke
 testing, not production runtime behavior.
 
 Archived status: this note preserves the original single-query Cloudera Manager
-collector rollout. For current operator workflows, use [credentials.md](credentials.md),
-[local-smoke.md](local-smoke.md), [DEMO.md](DEMO.md), and
-[roadmap.md](roadmap.md). Do not treat the historical rollout sequence below as
-the current Recent scan or web workflow.
+collector rollout. For current operator workflows, use
+[credentials.md](../credentials.md), [local-smoke.md](../local-smoke.md),
+[DEMO.md](../DEMO.md), and [roadmap.md](../roadmap.md). Do not treat the
+historical rollout sequence below as the current Recent scan or web workflow.
 
 ## Current State
 

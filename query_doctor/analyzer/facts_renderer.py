@@ -77,6 +77,22 @@ def render_summary(analysis: dict[str, Any]) -> list[str]:
     ]
 
 
+def render_primary_bottleneck(analysis: dict[str, Any]) -> list[str]:
+    bottleneck = analysis.get("case_primary_bottleneck")
+    if not isinstance(bottleneck, dict):
+        return []
+    reasons = [str(item) for item in bottleneck.get("reasons") or [] if item]
+    return [
+        "## Primary Bottleneck",
+        "",
+        f"- label: {bottleneck.get('label') or 'unknown'}",
+        f"- confidence: {bottleneck.get('confidence') or 'low'}",
+        f"- reasons: {', '.join(reasons) if reasons else 'none'}",
+        "- guardrail: Python-derived routing label; supporting facts remain in the detailed sections below.",
+        "",
+    ]
+
+
 def render_action_cards(analysis: dict[str, Any]) -> list[str]:
     lines = ["## Action Cards", ""]
     cards = analysis.get("action_cards") or []
@@ -305,6 +321,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines.append("")
 
     lines += render_summary(analysis)
+    lines += render_primary_bottleneck(analysis)
     lines += render_query_wall_clock(analysis)
     lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)

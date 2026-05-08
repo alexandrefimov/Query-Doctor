@@ -73,7 +73,8 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
 
 def render_stats_metadata_quality(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("table_metadata_context") or {}
-    quality = stats_metadata_quality(context, analysis)
+    quality = analysis.get("stats_metadata_quality")
+    quality = quality if isinstance(quality, dict) else stats_metadata_quality(context, analysis)
     lines = ["## Stats Metadata Quality", ""]
     for key in (
         "status",

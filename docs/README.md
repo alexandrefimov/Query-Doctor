@@ -1,145 +1,75 @@
 # Query Doctor Documentation
 
+Last reviewed: 2026-05-08
+
 Language: English | [Russian](i18n/ru/README.md)
 
-This directory contains both current user/developer documentation and internal
-engineering history. The files below are grouped by intended audience so public
-readers do not need to infer which documents are active.
+This directory contains the current Query Doctor documentation plus a small
+archive of historical planning notes. English is the canonical language for
+public documentation. Russian copies are best-effort companion translations; if
+they conflict with the English source, the English document wins.
 
-## Language Policy
+## Hard Rules Summary
 
-English is the canonical language for public documentation. New public-facing
-docs should be English-first. Russian may be added as a localized companion
-under `docs/i18n/ru/` for long operator-facing or demo-oriented text, but it
-should link back to the canonical English source.
+- Python/analyzer owns facts; LLM owns wording only.
+- Query Doctor never executes user SQL or optimizer draft SQL.
+- Browser-visible UI and trusted reports must not expose raw SQL, raw profiles,
+  raw metadata, local paths, `case_dir`, subprocess output, secrets, model
+  names, runtime internals, or raw artifact filenames.
+- Trusted SQL drafts require a Python-owned recipe, deterministic execution,
+  and strict validation.
+- Metadata collection must stay read-only, allowlisted, bounded, explicit, and
+  redacted.
 
-Historical and internal documents may still contain Russian while they are being
-cleaned up. Treat the README, this index, safety contract, architecture docs and
-roadmap as the current public baseline.
-
-## Current Baseline For Agents
-
-Coding agents should treat [../README.md](../README.md), this index,
-[codex-handoff.md](codex-handoff.md), [code-audit.md](code-audit.md),
-[safety-contract.md](safety-contract.md), [architecture.md](architecture.md),
-[query-optimizer-contract.md](query-optimizer-contract.md), [roadmap.md](roadmap.md)
-and [development-practices.md](development-practices.md) as the active
-implementation baseline. Historical planning notes, localized companion pages
-and older changelog entries are useful context, but they are not behavior
-contracts when they conflict with the active baseline.
+See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 
 ## Start Here
 
-- [../README.md](../README.md): concise project overview, install, workflows,
-  safety model, and current public status.
-- [local-smoke.md](local-smoke.md): local validation workflows and smoke checks
-  ([Russian](i18n/ru/local-smoke.md)).
-- [credentials.md](credentials.md): local credential layout and secret handling
-  ([Russian](i18n/ru/credentials.md)).
-- [demo-preflight.md](demo-preflight.md): deterministic demo/release preflight.
-- [security-model.md](security-model.md): public security and privacy overview.
-- [public-release-readiness.md](public-release-readiness.md): practical P0/P1/P2
-  checklist for making the repository public.
-- [release-checklist.md](release-checklist.md): release and visibility-change
-  checklist for maintainers.
-- [community-starter-issues.md](community-starter-issues.md): curated public
-  issue backlog for maintainers.
+- [../README.md](../README.md): public project overview and workflows.
+- [codex-handoff.md](codex-handoff.md): current agent working baseline.
+- [safety-contract.md](safety-contract.md): canonical trust and redaction
+  contract.
 
-## Licensing
+## Document Status Index
 
-- [../LICENSE](../LICENSE): public `AGPL-3.0-or-later` license.
-- [../COMMERCIAL-LICENSE.md](../COMMERCIAL-LICENSE.md): commercial licensing
-  note for proprietary, hosted, embedded, or enterprise use cases.
-- [../CONTRIBUTING.md](../CONTRIBUTING.md): contribution rules, including the
-  dual-licensing contribution model.
-- [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md): community conduct and
-  sensitive-data discussion rules.
+Status legend:
 
-## Architecture And Safety
+- `active`: current contract or required working guidance.
+- `reference`: useful supporting material, not the first source of truth.
+- `archived`: history, older planning, or demo/release notes; do not use as a
+  behavior contract.
 
-- [architecture.md](architecture.md): current and future component boundary
-  diagrams
-  ([Russian](i18n/ru/architecture.md)).
-- [contributor-architecture.md](contributor-architecture.md): contributor map
-  for collectors, analyzer, report writer, optimizer, web UI, and trusted
-  artifacts.
-- [code-map.md](code-map.md): practical lookup map for product surfaces,
-  ownership boundaries, and common change targets.
-- [development-practices.md](development-practices.md): maintainability,
-  module-size, test, dependency, and documentation practices for contributors
-  and coding agents.
-- [agent-playbooks.md](agent-playbooks.md): task-oriented playbooks for coding
-  agents.
-- [test-matrix.md](test-matrix.md): focused validation matrix by touched area.
-- [safety-contract.md](safety-contract.md): mandatory trust and redaction rules
-  ([Russian](i18n/ru/safety-contract.md)).
-- [roadmap.md](roadmap.md): implemented scope, near-term work, and future seams.
-- [query-optimizer-contract.md](query-optimizer-contract.md): Query Optimizer
-  and details-page LLM optimizer trust boundary.
-- [cluster-doctor-contract.md](cluster-doctor-contract.md): future Cluster
-  Doctor architecture seam and raw-free context artifacts.
+| Document | Status | Use |
+| --- | --- | --- |
+| [../README.md](../README.md) | active | Public overview and workflows. |
+| [../AGENTS.md](../AGENTS.md) | active | Hard rules for coding agents. |
+| [README.md](README.md) | active | Documentation status index. |
+| [codex-handoff.md](codex-handoff.md) | active | Current agent baseline and safety-sensitive context. |
+| [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
+| [architecture.md](architecture.md) | active | Current component boundaries and data flow. |
+| [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |
+| [roadmap.md](roadmap.md) | active | Product direction, priorities, deferred work, and anti-features. |
+| [code-audit.md](code-audit.md) | active | Open engineering and safety risks. |
+| [analyzer-audit.md](analyzer-audit.md) | active | Analyzer-specific risks and implementation order. |
+| [agent-playbook.md](agent-playbook.md) | active | Change-type routing for agents. |
+| [test-matrix.md](test-matrix.md) | active | Focused validation matrix. |
+| [code-map.md](code-map.md) | active | Code ownership lookup. |
+| [development-practices.md](development-practices.md) | active | Engineering quality practices. |
+| [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [local-smoke.md](local-smoke.md) | reference | Local validation workflows. |
+| [credentials.md](credentials.md) | reference | Local credential layout and secret handling. |
+| [security-model.md](security-model.md) | reference | Public security/privacy overview; defer to `safety-contract.md` for rules. |
+| [public-release-readiness.md](public-release-readiness.md) | reference | Public-release checklist. |
+| [release-checklist.md](release-checklist.md) | reference | Maintainer release checklist. |
+| [community-starter-issues.md](community-starter-issues.md) | reference | Curated public issue backlog. |
+| [contributor-architecture.md](contributor-architecture.md) | reference | Contributor map; defer to `architecture.md` and `code-map.md` for current boundaries. |
+| [cluster-doctor-contract.md](cluster-doctor-contract.md) | reference | Future Cluster Doctor seam. |
+| [model-bakeoff.md](model-bakeoff.md) | reference | Local model route protocol and historical decisions. |
+| [demo-mode.md](demo-mode.md) | reference | Synthetic demo pack generation. |
+| [DEMO.md](DEMO.md) | reference | Demo talk track. |
+| [demo-preflight.md](demo-preflight.md) | reference | Demo/release preflight. |
+| [demo-cases.md](demo-cases.md) | reference | Demo case notes. |
+| [demo-data-engineer-brief.md](demo-data-engineer-brief.md) | reference | Data-engineer demo brief. |
 
-## Operations And Demo Guides
-
-- [DEMO.md](DEMO.md): current web demo notes and talk track
-  ([Russian](i18n/ru/DEMO.md)).
-- [demo-mode.md](demo-mode.md): synthetic demo pack generation.
-- [demo-cases.md](demo-cases.md): demo case notes.
-- [demo-data-engineer-brief.md](demo-data-engineer-brief.md): deeper demo brief
-  for data engineers.
-- [model-bakeoff.md](model-bakeoff.md): local model compatibility and bake-off
-  notes ([Russian](i18n/ru/model-bakeoff.md)).
-
-## Archived Collector And Metrics Design
-
-- [CM_COLLECTION_ENABLEMENT_PLAN.md](CM_COLLECTION_ENABLEMENT_PLAN.md):
-  archived Cloudera Manager collection rollout notes. Use current collector
-  code, [safety-contract.md](safety-contract.md), and [roadmap.md](roadmap.md)
-  for active behavior.
-  ([Russian](i18n/ru/CM_COLLECTION_ENABLEMENT_PLAN.md)).
-- [CM_CORPUS_COLLECTOR_DESIGN.md](CM_CORPUS_COLLECTOR_DESIGN.md): Cloudera
-  Manager (CM) corpus collector design history. Use
-  [codex-handoff.md](codex-handoff.md) for current agent guidance.
-  ([Russian](i18n/ru/CM_CORPUS_COLLECTOR_DESIGN.md)).
-- [cluster-metrics-roadmap-audit.md](cluster-metrics-roadmap-audit.md):
-  metrics roadmap audit and signal taxonomy history.
-
-## Internal Audits And Handoff
-
-These files are mainly for maintainers and coding agents. They are useful but
-should not be read as product user guides.
-
-- [codex-handoff.md](codex-handoff.md): current engineering baseline and
-  operating rules for Codex agents.
-- [code-audit.md](code-audit.md): current implementation risks and follow-ups.
-- [agent-playbooks.md](agent-playbooks.md): practical task playbooks for agents.
-- [test-matrix.md](test-matrix.md): focused test selection for common changes.
-- [code-map.md](code-map.md): fast code ownership lookup for agents.
-- [project-audit.md](project-audit.md): concise product-level audit snapshot.
-- [analyzer-audit.md](analyzer-audit.md): analyzer-specific audit notes.
-- [root-compatibility-audit.md](root-compatibility-audit.md): completed root
-  script removal and supported package command/import mappings.
-
-## Historical Planning
-
-These documents contain useful history, but current behavior should be checked
-against the README, roadmap, safety contract, and architecture docs first.
-
-- [MVP.md](MVP.md): archived MVP note with links to the current baseline docs.
-- [changelog.md](changelog.md): significant product, safety, workflow, and
-  documentation baseline changes.
-
-## Command Convention
-
-Current documentation should prefer packaged `query-doctor-*` console scripts.
-When running directly from a checkout without installed console scripts, use
-`python -m query_doctor.cli.<command_module>`. Root-level compatibility
-launchers may exist in older releases, but current public docs should not use
-them.
-
-## Agent Tooling
-
-- `python3 scripts/agent_preflight.py`: classify changed paths and suggest
-  required reading, focused tests, changelog needs and safety notes.
-- `python3 scripts/check_active_docs.py`: check active docs for stale guidance,
-  missing local links and removed command references.
+Archived documents live under [archive/](archive/) and are kept for history
+only.

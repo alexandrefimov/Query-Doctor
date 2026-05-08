@@ -1,5 +1,7 @@
 # Query Doctor Architecture
 
+Last reviewed: 2026-05-08
+
 Language: English | [Russian](i18n/ru/architecture.md)
 
 Query Doctor keeps fact extraction deterministic. LLMs may write report wording
@@ -328,6 +330,9 @@ The local UI:
 
 - exposes Diagnose, details pages, Help, and explicit selected-case LLM action
   workflows;
+- is implemented as server-rendered Python HTML with shared CSS and small
+  vanilla JavaScript helpers; there is no JavaScript build pipeline or SPA
+  framework in the current baseline;
 - uses Recent queries as the default Diagnose mode, discovers CM summaries for
   Finished queries by default, then collects bounded selected profiles, ranks
   deterministically, and leaves report/optimizer generation explicit per case;
@@ -342,6 +347,16 @@ The local UI:
   pasted SQL, and does not render it back after submit;
 - is not a source of facts;
 - does not include broad unsafe collection or automatic web LLM batch reports.
+
+Keep the server-rendered UI as the default architecture. It matches the
+local-first workflow and keeps Python presenters close to the browser safety
+boundary. A React or other client-app migration is not a goal by itself. Treat it
+as future work only when a specific surface needs substantial client-side state,
+such as complex in-browser filtering, multi-job live progress, graph/timeline
+visualization, comparison workflows, or a richer optimizer editor. Any such
+migration must first define narrow safe JSON/view-model contracts, preserve the
+raw-free browser boundary, add focused browser-safety tests, and justify the new
+Node/build dependency in the dependency policy.
 
 See [roadmap.md](roadmap.md) for planned UI cleanup and architecture direction.
 The current implementation remains Impala-only.

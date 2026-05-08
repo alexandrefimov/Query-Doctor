@@ -101,7 +101,7 @@ RULES: tuple[Rule, ...] = (
         patterns=(
             "scripts/agent_preflight.py",
             "scripts/check_active_docs.py",
-            "docs/agent-playbooks.md",
+            "docs/agent-playbook.md",
             "docs/test-matrix.md",
             "docs/code-map.md",
             "tests/fixtures/README.md",

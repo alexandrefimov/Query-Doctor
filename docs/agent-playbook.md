@@ -1,4 +1,4 @@
-# Agent Playbooks
+# Agent Playbook
 
 Last updated: 2026-05-08
 
@@ -21,6 +21,17 @@ Before larger or safety-sensitive work:
 
 Always finish with `git diff --check`. Stage intended files explicitly.
 Run `python3 scripts/agent_preflight.py` when test selection is unclear.
+
+## Change Routing Table
+
+| Change type | Read first | Run | Update | Tests required |
+| --- | --- | --- | --- | --- |
+| Optimizer recipe or validator | `docs/query-optimizer-contract.md`, `docs/code-audit.md`, touched optimizer modules | focused optimizer parser/validator tests; fixture bake-off for prompt/model changes | optimizer contract when recipe IDs or trust rules change; changelog for behavior/safety changes | recipe detection, deterministic draft, validation accept/reject, stale trust marker, no browser echo when relevant |
+| Analyzer fact or scoring | `docs/analyzer-audit.md`, `docs/code-audit.md`, touched analyzer/scoring modules | focused analyzer/scoring tests | analyzer audit when fact contract or risk changes; changelog for user-visible diagnosis changes | fixture coverage, confidence/limitation checks, browser/report safety if facts render |
+| Browser route or Details UI | `docs/safety-contract.md`, `docs/code-audit.md`, touched web presenters/routes | focused web route/presenter tests | code audit if trust boundary changes; changelog for workflow changes | redaction/no-raw-output regressions and job-state tests |
+| Report writer or validator | `docs/safety-contract.md`, `docs/code-audit.md`, touched report modules | report sanitizer/validator tests | safety/optimizer/report contract docs when trust rules change | unsupported-root-cause rejection, hidden partial output, trusted marker behavior |
+| Collector or metadata | `docs/safety-contract.md`, `docs/codex-handoff.md`, touched provider modules | collector/config/allowlist tests | safety or roadmap docs when collection contract changes | bounded read-only behavior, redaction, failure-state rendering |
+| Docs-only baseline | `docs/README.md`, `docs/codex-handoff.md`, target doc | `python3 scripts/check_active_docs.py`; `git diff --check` | changelog only for significant baseline/workflow/safety changes | no full suite unless browser-rendered docs/help changed |
 
 ## Docs-Only
 

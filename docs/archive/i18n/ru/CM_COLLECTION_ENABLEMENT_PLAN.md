@@ -4,7 +4,7 @@
 
 Английская версия является канонической для публичного репозитория. Эта страница
 сохраняет русскую companion-версию rollout checklist для read-only Cloudera
-Manager profile collector.
+Manager profile collector и может отставать от английского источника.
 
 Архивный статус: эта заметка сохраняет исходный rollout single-query
 Cloudera Manager collector. Для текущих операторских workflow используйте

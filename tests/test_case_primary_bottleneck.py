@@ -1,0 +1,229 @@
+from query_doctor.analyzer.case_bottleneck import classify_case_primary_bottleneck
+from query_doctor.analyzer.facts_renderer import render_primary_bottleneck
+
+
+def analysis_fixture(**overrides):
+    base = {
+        "query_wall_clock": {
+            "duration_ms": 10_000,
+            "confidence": "high",
+        },
+        "cm_query_context": {},
+        "backend_tail": {},
+        "findings": [],
+        "cardinality_anomalies": [],
+        "stats_metadata_quality": {
+            "status": "unavailable",
+            "stats_primary_bottleneck": "unknown",
+            "non_stats_bottleneck_categories": "none",
+        },
+    }
+    base.update(overrides)
+    return base
+
+
+def anomaly(count: int) -> list[dict[str, str]]:
+    return [{"label": f"op-{index}"} for index in range(count)]
+
+
+def test_runtime_admission_dominates_wall_clock():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(cm_query_context={"admission_wait_ms": 8_000})
+    )
+
+    assert result.label == "runtime_admission"
+    assert result.confidence == "high"
+    assert result.reasons == ("admission_wait_share_80pct",)
+
+
+def test_runtime_skew_requires_top_execution_tail_finding():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            top_elapsed_finding_id="host_execution_tail_suspected",
+            backend_tail={
+                "execution_skew": "yes",
+                "execution_tail_candidate_count": 2,
+            },
+        )
+    )
+
+    assert result.label == "runtime_skew"
+    assert result.confidence == "high"
+    assert "execution_tail_top_finding" in result.reasons
+
+
+def test_runtime_skew_uses_elapsed_ranking_not_finding_order():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            backend_tail={
+                "execution_skew": "yes",
+                "execution_tail_candidate_count": 1,
+                "execution_tail_candidates": [{"worst_value": 20_000}],
+            },
+            findings=[
+                {
+                    "id": "cardinality_estimate_errors",
+                    "operators": [{"time_ms": 2_000}],
+                },
+                {"id": "host_execution_tail_suspected"},
+            ],
+        )
+    )
+
+    assert result.label == "runtime_skew"
+    assert result.confidence == "high"
+
+
+def test_stats_primary_when_metadata_gap_and_anomalies_have_no_competing_signals():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(4),
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "stats"
+    assert result.confidence == "high"
+    assert result.reasons == ("stats_candidate_supported", "cardinality_anomalies_4")
+
+
+def test_stats_candidate_with_competing_non_stats_signal_becomes_mixed():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(4),
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "backend_data_skew",
+            },
+        )
+    )
+
+    assert result.label == "mixed"
+    assert result.confidence == "medium"
+    assert result.reasons == ("competing_stats_and_non_stats",)
+
+
+def test_mixed_candidate_is_not_overridden_by_data_movement_top_finding():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(4),
+            top_operators_by_time=[{"operator_name": "EXCHANGE", "time_ms": 8_000}],
+            findings=[{"id": "large_intermediate_or_exchange_traffic"}],
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "mixed_candidate",
+                "non_stats_bottleneck_categories": "exchange_or_data_movement",
+            },
+        )
+    )
+
+    assert result.label == "mixed"
+    assert result.confidence == "medium"
+
+
+def test_sql_shape_high_requires_metadata_and_anomaly_pattern():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(5),
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported_by_metadata",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "sql_shape"
+    assert result.confidence == "high"
+
+
+def test_sql_shape_confidence_is_low_without_metadata():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(5),
+            stats_metadata_quality={
+                "status": "unavailable",
+                "stats_primary_bottleneck": "not_supported_by_metadata",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "sql_shape"
+    assert result.confidence == "low"
+
+
+def test_data_movement_is_fallback_after_stats_and_sql_shape_do_not_match():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            top_operators_by_time=[
+                {"operator_name": "EXCHANGE", "time_ms": 7_000},
+                {"operator_name": "SCAN HDFS", "time_ms": 1_000},
+            ],
+            findings=[
+                {"id": "cardinality_estimate_errors", "operators": [{"time_ms": 500}]},
+                {"id": "large_intermediate_or_exchange_traffic"},
+            ],
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "exchange_or_data_movement",
+            },
+        )
+    )
+
+    assert result.label == "runtime_data_movement"
+    assert result.confidence == "medium"
+
+
+def test_very_short_query_returns_unknown():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 3_000, "confidence": "high"},
+            cardinality_anomalies=anomaly(10),
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("very_short_query_or_unknown_wall_clock",)
+
+
+def test_wall_clock_confidence_caps_inferred_confidence():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 10_000, "confidence": "medium"},
+            cardinality_anomalies=anomaly(5),
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported_by_metadata",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "sql_shape"
+    assert result.confidence == "medium"
+
+
+def test_render_primary_bottleneck_is_raw_free():
+    lines = render_primary_bottleneck(
+        {
+            "case_primary_bottleneck": {
+                "label": "stats",
+                "confidence": "high",
+                "reasons": ("stats_candidate_supported", "cardinality_anomalies_4"),
+            }
+        }
+    )
+    text = "\n".join(lines)
+
+    assert "## Primary Bottleneck" in text
+    assert "stats_candidate_supported" in text
+    assert "db." not in text
+    assert "/tmp/" not in text

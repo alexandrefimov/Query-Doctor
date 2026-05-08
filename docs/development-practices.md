@@ -1,5 +1,7 @@
 # Development Practices
 
+Last reviewed: 2026-05-08
+
 This document records the engineering practices that keep Query Doctor
 maintainable as it grows. It complements the mandatory safety rules in
 [safety-contract.md](safety-contract.md) and the module map in

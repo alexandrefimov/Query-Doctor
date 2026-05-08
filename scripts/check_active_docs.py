@@ -7,6 +7,7 @@ import argparse
 import re
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -20,19 +21,23 @@ ACTIVE_DOCS = (
     "docs/codex-handoff.md",
     "docs/code-audit.md",
     "docs/code-map.md",
-    "docs/agent-playbooks.md",
+    "docs/agent-playbook.md",
     "docs/test-matrix.md",
     "docs/safety-contract.md",
     "docs/architecture.md",
     "docs/query-optimizer-contract.md",
     "docs/roadmap.md",
     "docs/development-practices.md",
-    "docs/project-audit.md",
+    "docs/analyzer-audit.md",
+    "docs/changelog.md",
 )
 
 IGNORED_SCHEMES = {"http", "https", "mailto", "tel", "app"}
 INLINE_LINK_RE = re.compile(r"!?\[[^\]]*]\(([^)\n]+)\)")
 REFERENCE_LINK_RE = re.compile(r"^\s*\[[^\]]+]:\s+(.+?)\s*$")
+REVIEWED_RE = re.compile(r"^Last (?:reviewed|updated):\s+(\d{4}-\d{2}-\d{2})\s*$", re.IGNORECASE)
+STATUS_ROW_RE = re.compile(r"^\|\s*\[[^\]]+]\(([^)]+)\)\s*\|\s*(active|reference|archived)\s*\|", re.IGNORECASE)
+MAX_ACTIVE_DOC_AGE_DAYS = 90
 
 
 @dataclass(frozen=True)
@@ -52,7 +57,7 @@ STALE_PATTERNS = (
 
 
 def active_doc_paths(root: Path = ROOT) -> list[Path]:
-    return [root / rel for rel in ACTIVE_DOCS if (root / rel).is_file()]
+    return [root / rel for rel in ACTIVE_DOCS]
 
 
 def is_fence(line: str) -> bool:
@@ -98,10 +103,81 @@ def iter_doc_lines(path: Path):
             yield lineno, line
 
 
+def reviewed_date(path: Path) -> date | None:
+    for line in path.read_text(encoding="utf-8").splitlines()[:8]:
+        match = REVIEWED_RE.match(line)
+        if match:
+            return date.fromisoformat(match.group(1))
+    return None
+
+
+def status_index_active_docs(root: Path = ROOT) -> set[str]:
+    index = root / "docs" / "README.md"
+    if not index.is_file():
+        return set()
+    active: set[str] = set()
+    for _, line in iter_doc_lines(index):
+        match = STATUS_ROW_RE.match(line)
+        if not match or match.group(2).lower() != "active":
+            continue
+        target = extract_target(match.group(1))
+        resolved = resolve_target(index, target, root)
+        if resolved is not None:
+            active.add(str(resolved.relative_to(root)))
+    return active
+
+
+def localized_source_path(localized: Path, root: Path = ROOT) -> Path:
+    rel = localized.relative_to(root)
+    parts = rel.parts
+    marker = ("i18n", "ru")
+    for index in range(len(parts) - 1):
+        if tuple(parts[index : index + 2]) == marker:
+            base_parts = parts[:index]
+            return root.joinpath(*base_parts, parts[-1])
+    return root / rel.name
+
+
+def find_i18n_failures(root: Path = ROOT) -> list[str]:
+    failures: list[str] = []
+    for localized in sorted((root / "docs").glob("**/i18n/ru/*.md")):
+        source = localized_source_path(localized, root)
+        if not source.is_file():
+            failures.append(
+                f"{localized.relative_to(root)}: English source is missing: {source.relative_to(root)}"
+            )
+    return failures
+
+
 def find_failures(paths: list[Path], root: Path = ROOT) -> list[str]:
     failures: list[str] = []
+    today = date.today()
+    active_rels = {str(Path(rel)) for rel in ACTIVE_DOCS}
+    status_active_rels = status_index_active_docs(root)
+    if status_active_rels and status_active_rels != active_rels:
+        missing_from_index = sorted(active_rels - status_active_rels)
+        missing_from_config = sorted(status_active_rels - active_rels)
+        if missing_from_index:
+            failures.append(
+                "docs/README.md: active docs missing from status index: "
+                f"{', '.join(missing_from_index)}"
+            )
+        if missing_from_config:
+            failures.append(
+                "scripts/check_active_docs.py: ACTIVE_DOCS missing status-index active docs: "
+                f"{', '.join(missing_from_config)}"
+            )
     for path in paths:
         rel_path = path.relative_to(root)
+        if not path.is_file():
+            failures.append(f"{rel_path}: active doc is missing")
+            continue
+        if str(rel_path) in active_rels:
+            last_reviewed = reviewed_date(path)
+            if last_reviewed is None:
+                failures.append(f"{rel_path}: active doc missing Last reviewed/Last updated header")
+            elif (today - last_reviewed).days > MAX_ACTIVE_DOC_AGE_DAYS:
+                failures.append(f"{rel_path}: active doc review is older than {MAX_ACTIVE_DOC_AGE_DAYS} days")
         for lineno, line in iter_doc_lines(path):
             for stale in STALE_PATTERNS:
                 if stale.pattern.search(line):
@@ -119,6 +195,8 @@ def find_failures(paths: list[Path], root: Path = ROOT) -> list[str]:
                 resolved = resolve_target(path, target, root)
                 if resolved is not None and not resolved.exists():
                     failures.append(f"{rel_path}:{lineno}: missing local link target: {target}")
+    if paths == active_doc_paths(root):
+        failures.extend(find_i18n_failures(root))
     return failures
 
 
@@ -147,7 +225,7 @@ def main() -> int:
         for failure in failures:
             print(failure, file=sys.stderr)
         return 1
-    print(f"Checked {len(paths)} active docs.")
+    print(f"Checked {len(paths)} docs.")
     return 0
 
 
