@@ -149,9 +149,12 @@ boundary.
   outer output shape; added predicates must already exist in the outer SELECT
   or as a derived-alias-qualified equivalent.
 - `linear_cte_predicate_pushdown`: accepts copied WHERE predicates earlier in a
-  single-chain CTE graph. Validation must preserve CTE order, dependency edges,
-  physical table set, projections, joins, literals, all original filters, and
-  final output shape; added predicates must already exist downstream.
+  single-chain CTE graph. Narrow deterministic execution is allowed when each
+  CTE in the chain preserves simple projected columns and a final SELECT
+  predicate references columns preserved by every CTE in the chain. Validation
+  must preserve CTE order, dependency edges, physical table set, projections,
+  joins, literals, all original filters, and final output shape; added
+  predicates must already exist downstream.
 - `cte_dag_predicate_pushdown`: accepts copied WHERE predicates earlier in an
   acyclic fan-out/fan-in or UNION-assembly CTE graph. Validation must preserve
   CTE order, dependency edges, UNION branch shape, physical table set,

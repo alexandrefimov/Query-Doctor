@@ -24,6 +24,7 @@ from query_doctor.optimizer.sql_fragments import (
 from query_doctor.optimizer.sql_shape import (
     cte_body_is_pass_through_layer,
     clause_signature,
+    is_linear_cte_chain,
     main_select_has_distinct,
     next_top_level_clause_offset,
     parse_with_query,
@@ -85,6 +86,8 @@ def deterministic_recipe_draft(source_sql: str, rewrite_recipe: OptimizerRewrite
         return pass_through_cte_elimination_draft(source_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
         return single_cte_predicate_pushdown_draft(source_sql)
+    if rewrite_recipe.recipe_id == "linear_cte_predicate_pushdown":
+        return linear_cte_predicate_pushdown_draft(source_sql)
     if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
         return single_derived_table_predicate_pushdown_draft(source_sql)
     return None
@@ -283,6 +286,53 @@ def single_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
     if modified_body is None:
         return None
     return f"WITH {cte.name} AS (\n{modified_body.strip()}\n)\n{parsed.final_sql.strip()}"
+
+
+def linear_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None or len(parsed.ctes) < 2:
+        return None
+    if any_cte_has_column_list(source_sql):
+        return None
+    if not is_linear_cte_chain(source_sql):
+        return None
+    if referenced_cte_names(parsed.final_sql, tuple(cte.name for cte in parsed.ctes)) != (parsed.ctes[-1].name,):
+        return None
+    if top_level_join_signature(parsed.final_sql):
+        return None
+    first_cte = parsed.ctes[0]
+    if main_select_has_distinct(first_cte.body) or top_level_join_signature(first_cte.body):
+        return None
+    if any(top_level_keyword_count(first_cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+        return None
+    available_columns_by_cte = [simple_cte_filter_columns(cte.body) for cte in parsed.ctes]
+    if any(not columns for columns in available_columns_by_cte):
+        return None
+    grouped_columns = simple_group_by_columns(first_cte.body)
+    if clause_signature(first_cte.body, "GROUP") and not grouped_columns:
+        return None
+    predicates = copyable_final_where_predicates(
+        parsed.final_sql,
+        first_cte.body,
+        available_columns_by_cte[0],
+        cte_qualifiers=cte_reference_aliases(parsed.final_sql, parsed.ctes[-1].name),
+        grouped_columns=grouped_columns,
+    )
+    filtered_predicates: list[str] = []
+    for predicate in predicates:
+        predicate_columns = predicate_column_references(predicate, available_columns_by_cte[0])
+        if predicate_columns is None:
+            continue
+        if all(predicate_columns <= columns for columns in available_columns_by_cte):
+            filtered_predicates.append(predicate)
+    if not filtered_predicates:
+        return None
+    modified_first_body = add_where_predicates_to_cte_body(first_cte.body, tuple(filtered_predicates))
+    if modified_first_body is None:
+        return None
+    cte_blocks = [f"{first_cte.name} AS (\n{modified_first_body.strip()}\n)"]
+    cte_blocks.extend(f"{cte.name} AS (\n{cte.body.strip()}\n)" for cte in parsed.ctes[1:])
+    return "WITH " + ",\n".join(cte_blocks) + "\n" + parsed.final_sql.strip()
 
 
 def first_cte_has_column_list(source_sql: str) -> bool:

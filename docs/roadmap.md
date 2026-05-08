@@ -130,7 +130,11 @@ Completed baseline work:
   for stats-present-but-not-primary cases.
 - `single_cte_predicate_pushdown` is a validated Python-owned recipe with a
   deterministic executor for the simplest safe filter-copy form, alongside the
-  existing linear CTE and CTE DAG predicate-pushdown validation contracts.
+  CTE DAG predicate-pushdown validation contract.
+- `linear_cte_predicate_pushdown` is a validated Python-owned recipe with a
+  deterministic executor for the simplest safe chain form: copy final SELECT
+  predicates into the first CTE when every CTE in the chain preserves the
+  referenced columns and the final filter remains in place.
 - Single-CTE predicate-pushdown detection now requires a copyable downstream
   predicate targeting the CTE output, so filters on unrelated joined aliases do
   not inflate the recipe funnel.
