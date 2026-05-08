@@ -128,7 +128,7 @@ def detail_stats_need_label(value: Any) -> str:
         "table_stats": "table/partition stats",
         "column_stats": "column stats",
         "table_and_column_stats": "table/partition stats first, then column stats",
-        "stats_possibly_stale": "possibly stale stats",
+        "stats_possibly_stale": "stats freshness unknown",
         "insufficient_metadata": "insufficient metadata",
         "not_likely_stats_issue": "not likely a stats issue",
     }

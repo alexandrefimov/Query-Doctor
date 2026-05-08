@@ -144,6 +144,20 @@ def test_cardinality_mismatch_without_metadata_support_does_not_create_high():
     assert "no missing or incomplete stats evidence" in result.counter_signals
 
 
+def test_legacy_stale_stats_text_does_not_promote_stats_candidate():
+    facts = (
+        stats_facts(table_stats="available", column_stats="complete")
+        + "\n- stats_possibly_stale: supported stale stats evidence\n"
+    )
+
+    result = score_stats_optimization_candidate(facts, duration_sec=120, metadata_status="collected")
+
+    assert result.need_type == "not_likely_stats_issue"
+    assert result.tier in {"low", "not_likely"}
+    assert "supported stale or incomplete stats evidence" not in result.reasons
+    assert "no missing or incomplete stats evidence" in result.counter_signals
+
+
 def test_cardinality_mismatch_with_missing_stats_and_spill_can_be_high():
     facts = stats_facts() + "\n- spill/scratch evidence: supported\n"
 

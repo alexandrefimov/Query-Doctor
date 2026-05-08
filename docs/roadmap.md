@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-08
+Last updated: 2026-05-09
 
 Required reading before any PR: hard rules in `AGENTS.md`, Product Direction,
 Safety Baseline, and the Near-Term Priorities section relevant to the touched
@@ -322,8 +322,9 @@ Near-term metadata/stats work:
    analyzer facts where available. Recent stats and query optimization scorers
    already prefer `analysis.json` and keep rendered markdown parsing only as a
    fallback.
-2. Gate or remove `stats_possibly_stale` as a positive scoring signal until a
-   direct staleness or metadata-divergence fact exists.
+2. Continue treating stats freshness as unknown unless a future direct
+   staleness or metadata-divergence fact exists. Recent scoring no longer uses
+   `stats_possibly_stale` rendered text as positive evidence.
 3. Continue calibrating `case_primary_bottleneck` presentation. Recent batch
    summaries and Details pages already include safe label, confidence and
    reason-category presentation when `analysis.json` is available.

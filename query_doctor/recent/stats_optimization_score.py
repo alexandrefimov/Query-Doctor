@@ -244,10 +244,6 @@ def stats_metadata_evidence(
         score += 20
         reasons.append("missing or incomplete column statistics")
         kinds.add("column")
-    if supported_stale_stats_evidence(facts, analysis=analysis):
-        score += 15
-        reasons.append("supported stale or incomplete stats evidence")
-        kinds.add("stale")
     if str(metadata_status).lower() not in USABLE_METADATA_STATUSES and not kinds:
         kinds.add("insufficient")
     return min(100, score), reasons, kinds
@@ -411,7 +407,6 @@ def classify_stats_need(
             return "not_likely_stats_issue", "low", "low"
     table = "table" in metadata_kind
     column = "column" in metadata_kind
-    stale = "stale" in metadata_kind
     table_need = "critical" if table and has_mismatch and has_planning_symptom else "high" if table else "low"
     column_need = (
         "critical"
@@ -426,8 +421,6 @@ def classify_stats_need(
         return "table_stats", table_need, column_need
     if column:
         return "column_stats", table_need, column_need
-    if stale:
-        return "stats_possibly_stale", "medium", "medium"
     return "not_likely_stats_issue", table_need, column_need
 
 
@@ -489,21 +482,6 @@ def stats_speed_benefit(tier: str, confidence: str, *, has_planning_symptom: boo
     if tier == "low":
         return "low"
     return "unknown"
-
-
-def supported_stale_stats_evidence(
-    facts: str,
-    *,
-    analysis: dict[str, object] | None = None,
-) -> bool:
-    if isinstance(analysis, dict):
-        return False
-    lower = facts.lower()
-    return (
-        "stats_possibly_stale" in lower
-        or "stats possibly stale" in lower
-        or "supported stale" in lower
-    )
 
 
 def important_column_stats_evidence(
