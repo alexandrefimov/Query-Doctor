@@ -30,6 +30,10 @@ COMMAND_SPECS = MappingProxyType(
             module="query_doctor.cli.collect_cm_profiles",
             console_script="query-doctor-collect-cm-profiles",
         ),
+        "cm_events": CommandSpec(
+            module="query_doctor.cli.cm_events",
+            console_script="query-doctor-cm-events",
+        ),
         "collect_impala_context": CommandSpec(
             module="query_doctor.cli.collect_impala_context",
             console_script="query-doctor-collect-impala-context",

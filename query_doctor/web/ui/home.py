@@ -2,30 +2,18 @@
 
 from __future__ import annotations
 
-import html
+from query_doctor.web.ui.recent_scan_form import render_known_query_form
 
 
 def render_run_panel(*, query_id: str, report_mode: str) -> str:
-    query_value = html.escape(query_id, quote=True)
     return (
-        "<section class=\"panel run-panel\" id=\"run\" aria-label=\"Specific Query diagnosis\">"
+        "<section class=\"panel run-panel\" id=\"run\" aria-label=\"Known Query ID diagnosis\">"
         "<div class=\"section-heading\"><div>"
-        "<h1 class=\"section-title\">Specific Query</h1>"
-        "<div class=\"section-kicker\">Analyze one explicit finished Impala query by Query ID.</div>"
+        "<h1 class=\"section-title\">Known Query ID</h1>"
+        "<div class=\"section-kicker\">Analyze one explicit Impala query by Query ID.</div>"
         "</div></div>"
-        "<form id=\"analyze-form\" class=\"run-form\" method=\"post\" action=\"/analyze\">"
-        "<div class=\"scope-line\" aria-label=\"Specific query analysis scope\">"
-        "<strong>Scope:</strong> one Query ID → profile collection or reuse → deterministic analyzer facts → automatic metadata"
-        "</div>"
-        "<div class=\"run-main-row\">"
-        "<div class=\"field\">"
-        "<div class=\"label-row\"><label for=\"query_id\">Query ID</label></div>"
-        f"<input class=\"input\" id=\"query_id\" name=\"query_id\" type=\"text\" value=\"{query_value}\" "
-        "autocomplete=\"off\" required placeholder=\"fa469f95f6fb7286:ea9f070d00000000\">"
-        "</div>"
-        "<button class=\"run-button\" type=\"submit\">Run</button>"
-        "</div>"
-        "</form></section>"
+        f"{render_known_query_form(query_id=query_id)}"
+        "</section>"
     )
 
 

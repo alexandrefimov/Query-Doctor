@@ -20,6 +20,8 @@ from query_doctor.web.form_helpers import (
 from query_doctor.web.models import (
     BATCH_CM_INSPECT_LIMIT_MAX,
     WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
+    WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
+    WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
     BatchRunConfig,
     WebError,
     WebSettings,
@@ -30,6 +32,8 @@ from query_doctor.web.models import (
 
 BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority"}
 BATCH_METADATA_TOP_LIMIT_MAX = 200
+BATCH_CM_TIMESERIES_TOP_LIMIT_MAX = 200
+BATCH_CM_EVENTS_MAX_EVENTS_MAX = 200
 BATCH_JOBS_MAX = 100
 BATCH_FULL_JOBS_MAX = 4
 BATCH_CM_JOBS_MAX = 100
@@ -116,8 +120,21 @@ def parse_batch_run_config(
     metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
+    collect_cm_events = bool(first_form_value(form, "collect_cm_events"))
+    cm_events_max_events = parse_positive_form_int(
+        form,
+        "cm_events_max_events",
+        default=WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
+        maximum=BATCH_CM_EVENTS_MAX_EVENTS_MAX,
+    )
     collect_cm_timeseries = bool(first_form_value(form, "collect_cm_timeseries"))
     cm_metrics_profile = parse_cm_metrics_profile(form)
+    cm_timeseries_top_limit = parse_non_negative_form_int(
+        form,
+        "cm_timeseries_top_limit",
+        default=WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
+        maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
+    )
     return BatchRunConfig(
         recent_window_minutes=recent_window_minutes,
         scan_date=scan_date,
@@ -139,8 +156,11 @@ def parse_batch_run_config(
         query_type="",
         include_failed=True,
         include_running=False,
+        collect_cm_events=collect_cm_events,
+        cm_events_max_events=cm_events_max_events,
         collect_cm_timeseries=collect_cm_timeseries,
         cm_metrics_profile=cm_metrics_profile,
+        cm_timeseries_top_limit=cm_timeseries_top_limit,
     )
 
 
@@ -164,7 +184,19 @@ def parse_running_run_config(
         maximum=min(BATCH_CM_JOBS_MAX, BATCH_JOBS_MAX),
     )
     metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
+    cm_events_max_events = parse_positive_form_int(
+        form,
+        "cm_events_max_events",
+        default=WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
+        maximum=BATCH_CM_EVENTS_MAX_EVENTS_MAX,
+    )
     cm_metrics_profile = parse_cm_metrics_profile(form)
+    cm_timeseries_top_limit = parse_non_negative_form_int(
+        form,
+        "cm_timeseries_top_limit",
+        default=WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
+        maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
+    )
     return BatchRunConfig(
         recent_window_minutes=WEB_RUNNING_SCAN_WINDOW_MINUTES,
         from_time=None,
@@ -185,8 +217,11 @@ def parse_running_run_config(
         include_failed=False,
         include_running=True,
         only_running=True,
+        collect_cm_events=True,
+        cm_events_max_events=cm_events_max_events,
         collect_cm_timeseries=True,
         cm_metrics_profile=cm_metrics_profile,
+        cm_timeseries_top_limit=cm_timeseries_top_limit,
     )
 
 
@@ -202,7 +237,11 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "order",
         "parallelism",
         "metadata_jobs",
+        "collect_cm_events",
+        "cm_events_max_events",
+        "collect_cm_timeseries",
         "cm_metrics_profile",
+        "cm_timeseries_top_limit",
         "user",
         "pool",
     ):
@@ -223,7 +262,11 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "order": config.order,
         "parallelism": str(config.parallelism),
         "metadata_jobs": str(config.metadata_jobs),
+        "collect_cm_events": config.collect_cm_events,
+        "cm_events_max_events": str(config.cm_events_max_events),
+        "collect_cm_timeseries": config.collect_cm_timeseries,
         "cm_metrics_profile": config.cm_metrics_profile,
+        "cm_timeseries_top_limit": str(config.cm_timeseries_top_limit),
         "user": config.user,
         "pool": config.pool,
     }
@@ -298,8 +341,18 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         cmd.append("--include-running")
     if config.only_running:
         cmd.append("--only-running")
+    if config.collect_cm_events:
+        cmd.extend(["--collect-cm-events", "--cm-events-max-events", str(config.cm_events_max_events)])
     if config.collect_cm_timeseries:
-        cmd.extend(["--collect-cm-timeseries", "--cm-metrics-profile", config.cm_metrics_profile])
+        cmd.extend(
+            [
+                "--collect-cm-timeseries",
+                "--cm-metrics-profile",
+                config.cm_metrics_profile,
+                "--cm-timeseries-top-limit",
+                str(config.cm_timeseries_top_limit),
+            ]
+        )
     if metadata_enabled:
         append_web_metadata_args(cmd, settings)
     if config.jobs > BATCH_FULL_JOBS_MAX:

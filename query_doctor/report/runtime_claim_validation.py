@@ -11,6 +11,7 @@ from query_doctor.report.facts_extractors import (
     backend_write_path_is_supported,
     cm_metric_context_only,
     facts_has_backend_tail_evidence,
+    facts_have_cluster_event_context,
     facts_have_spill_scratch_evidence,
     parse_backend_tail_summary,
 )
@@ -167,6 +168,25 @@ CM_NETWORK_WORD_RE = re.compile(r"\b(?:network\s+I/O|network\s+io|сетев\w+\
 CM_CONTEXT_ONLY_SAFE_NOTE = (
     "- CM metrics context-only: наблюдаемый runtime signal не считается причиной без matching profile evidence."
 )
+CLUSTER_EVENT_CONTEXT_WORD_RE = re.compile(
+    r"\b(?:CM\s+events?|Cluster\s+Event\s+Context|event\s+context|service\s+restart|restart\s+event|"
+    r"daemon\s+error|catalog\s+error|metastore\s+error|disk\s+capacity|HDFS\s+event|YARN\s+event|"
+    r"auth(?:entication)?\s+failure|log\s+event|audit\s+event|health\s+event|"
+    r"эвент\w*|событи\w+\s+CM|событи\w+\s+Cloudera\s+Manager|рестарт\w*|ошибк\w+\s+daemon|"
+    r"ошибк\w+\s+catalog|ошибк\w+\s+metastore|заполнени\w+\s+диск\w*)\b",
+    re.IGNORECASE,
+)
+CLUSTER_EVENT_CAUSAL_RE = re.compile(
+    r"\b(?:caused?|root\s+cause|proof|proves?|proven|confirmed\s+cause|bottleneck|primary\s+source|"
+    r"причин\w*|доказ\w*|доказыва\w*|подтвержд\w*\s+причин\w*|узк\w+\s+мест\w*)\b",
+    re.IGNORECASE,
+)
+CLUSTER_EVENT_SAFE_CONTEXT_RE = re.compile(
+    r"\b(?:not\s+(?:proof|proven|standalone|causal)|not\s+a\s+cause|context|follow-up|check|"
+    r"проверк\w*|проверить|контекст\w*|не\s+доказ\w*|не\s+явля\w+ся\s+причин\w*|"
+    r"не\s+самостоятельн\w+\s+доказ\w*)\b",
+    re.IGNORECASE,
+)
 CAUSE_WORD_RE = re.compile(r"\b(?:cause|root\s+cause|причин\w*)\b", re.IGNORECASE)
 PRIMARY_BOTTLENECK_OVERCLAIM_RE = re.compile(
     r"("
@@ -303,6 +323,19 @@ def find_cm_context_only_claim_errors(report_text: str, facts_text: str) -> list
             errors.append("CM network context-only signal is described as causal")
             break
     return errors
+
+
+def find_cluster_event_context_claim_errors(report_text: str, facts_text: str) -> list[str]:
+    if not facts_have_cluster_event_context(facts_text):
+        return []
+    for line in report_text.splitlines():
+        if (
+            CLUSTER_EVENT_CONTEXT_WORD_RE.search(line)
+            and CLUSTER_EVENT_CAUSAL_RE.search(line)
+            and not CLUSTER_EVENT_SAFE_CONTEXT_RE.search(line)
+        ):
+            return ["CM event context is described as causal"]
+    return []
 
 
 def line_has_primary_bottleneck_overclaim(line: str) -> bool:

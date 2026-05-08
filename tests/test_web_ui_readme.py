@@ -19,7 +19,8 @@ def test_web_readme_page_uses_curated_help_instead_of_repository_readme(tmp_path
 
     assert '<a class="brand" href="/" aria-label="Query Doctor home">' in body
     assert '<a class="nav-link" href="/">Recent scan</a>' in body
-    assert '<a class="nav-link" href="/query">Specific Query</a>' in body
+    assert 'href="/optimizer">Query Optimizer</a>' not in body
+    assert 'href="/query">Specific Query</a>' not in body
     assert '<a class="nav-link nav-link--active" href="/help">Help</a>' in body
     assert "<h1>README.md</h1>" not in body
     assert "<h1>Local README</h1>" not in body

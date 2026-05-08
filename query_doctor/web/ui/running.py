@@ -15,6 +15,7 @@ from query_doctor.web.ui.recent_scan_form import (
     render_running_scan_framing_note,
 )
 from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE
+from query_doctor.web.models import WEB_CM_EVENTS_MAX_EVENTS_DEFAULT, WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT
 from query_doctor.web.ui.pages import render_page
 from query_doctor.web.ui.progress import render_job_panel
 from query_doctor.web.ui.recent_scan import render_batch_card
@@ -100,11 +101,25 @@ def render_running_queries_run_panel(
             config_key="recent_metadata_jobs",
             fallback=WEB_RECENT_SCAN_DEFAULTS["metadata_jobs"],
         ),
+        "cm_events_max_events": form_or_config_value(
+            form_values,
+            "cm_events_max_events",
+            config_values=local_config,
+            config_key="recent_cm_events_max_events",
+            fallback=str(WEB_CM_EVENTS_MAX_EVENTS_DEFAULT),
+        ),
         "cm_metrics_profile": form_or_config_value(
             form_values,
             "cm_metrics_profile",
             config_values=local_config,
             fallback=DEFAULT_CM_METRICS_PROFILE,
+        ),
+        "cm_timeseries_top_limit": form_or_config_value(
+            form_values,
+            "cm_timeseries_top_limit",
+            config_values=local_config,
+            config_key="recent_cm_timeseries_top_limit",
+            fallback=str(WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT),
         ),
         "user": form_or_config_value(form_values, "user", config_values=local_config, config_key="recent_user"),
         "pool": form_or_config_value(form_values, "pool", config_values=local_config, config_key="recent_pool"),
@@ -129,7 +144,7 @@ def render_running_queries_run_panel(
         f"{metadata_note_html}"
         "<div class=\"scope-line\" aria-label=\"Running query collection scope\">"
         "<strong>Scope:</strong> current running CM summaries → analyzable profiles → ranked cases → automatic metadata for top bad/suspicious cases · no auto LLM. "
-        "CM metrics are always collected by default for this bounded running scan."
+        "CM events and CM metrics are collected by default as bounded runtime context."
         "</div>"
         f"{render_running_scan_framing_note()}"
         "<div class=\"batch-form-sections\">"
@@ -144,7 +159,9 @@ def render_running_queries_run_panel(
         "<div class=\"batch-form-grid\">"
         f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for CM profile downloads and local analysis. Hard cap: 100.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
+        f"{render_batch_number_field('cm_events_max_events', 'CM events max events', value('cm_events_max_events'), help_text='Maximum Cloudera Manager Events records to summarize once for the running scan window. Hard cap: 200.')}"
         f"{render_cm_metrics_profile_select(value('cm_metrics_profile'))}"
+        f"{render_batch_number_field('cm_timeseries_top_limit', 'CM metrics top cases', value('cm_timeseries_top_limit'), required=False, help_text='Maximum top ranked analyzed running cases that receive bounded Cloudera Manager time-series summaries. Default: 10. Use 0 to skip metrics refresh.')}"
         "</div>"
         "</fieldset>"
         "</div>"

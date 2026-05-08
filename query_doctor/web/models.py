@@ -20,6 +20,8 @@ DEFAULT_METADATA_PROTOCOL = "beeswax"
 DEFAULT_METADATA_TIMEOUT_SEC = 30
 BATCH_CM_INSPECT_LIMIT_MAX = 5000
 WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT = 70
+WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT = 10
+WEB_CM_EVENTS_MAX_EVENTS_DEFAULT = 50
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -104,8 +106,11 @@ class BatchRunConfig:
     include_failed: bool = True
     include_running: bool = False
     only_running: bool = False
-    collect_cm_timeseries: bool = False
+    collect_cm_events: bool = True
+    cm_events_max_events: int = WEB_CM_EVENTS_MAX_EVENTS_DEFAULT
+    collect_cm_timeseries: bool = True
     cm_metrics_profile: str = DEFAULT_CM_METRICS_PROFILE
+    cm_timeseries_top_limit: int = WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT
 
 
 @dataclass(frozen=True)

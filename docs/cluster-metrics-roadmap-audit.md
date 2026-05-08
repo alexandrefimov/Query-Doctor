@@ -18,10 +18,11 @@ The current implementation already has the first safe version of this feature:
 - Cloudera Manager (CM) is the only implemented metrics source provider.
 - Explicit single-query collection gathers bounded CM time-series summaries by
   default.
-- Recent batch collection keeps CM metrics disabled by default and requires an
-  explicit opt-in.
-- Running Queries enables bounded CM metrics by default with a smaller search
-  window and summary limit.
+- The batch CLI keeps CM metrics disabled by default and requires an explicit
+  opt-in.
+- Finished and Running web scans enable bounded CM metrics by default for the
+  top ranked analyzed cases, with a default budget of 10 cases. Running Queries
+  keeps a smaller search window and summary limit.
 - Raw CM time-series responses are not written. The collector writes summarized
   `cm_timeseries_context.json` only.
 - Analyzer facts include:

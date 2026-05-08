@@ -156,9 +156,10 @@ Recommended source order:
 Current implementation slice:
 
 - `query-doctor-cm-events` / `python -m query_doctor.cli.cm_events` provides a
-  small read-only CM Events MVP outside the web UI. It queries bounded CM event
-  summaries, normalizes severity and event categories, emits safe signal
-  counts, and can write sanitized JSON.
+  small read-only CM Events collector. It queries bounded CM event summaries,
+  normalizes severity and event categories, emits safe signal counts, and can
+  write sanitized JSON. Recent scan may invoke it once per scan window and show
+  only raw-free cluster context status in the web UI.
 - `query_doctor.cluster.event_context` builds the first stable raw-free
   `cluster_event_context.json` artifact from the normalized CM Events summary.
   The artifact is schema-versioned, whitelists exported fields, and is intended

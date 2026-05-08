@@ -18,6 +18,10 @@ MAX_CM_INSPECT_LIMIT = 5000
 MAX_RAW_CM_SUMMARY_SCAN_LIMIT = 20000
 MAX_TRIAGE_PROFILE_LIMIT = 5000
 MAX_METADATA_TOP_LIMIT = 200
+DEFAULT_CM_TIMESERIES_TOP_LIMIT = 10
+MAX_CM_TIMESERIES_TOP_LIMIT = 200
+DEFAULT_CM_EVENTS_MAX_EVENTS = 50
+MAX_CM_EVENTS_MAX_EVENTS = 200
 BAD_METADATA_REFRESH_LIMIT = 50
 SUSPICIOUS_METADATA_REFRESH_LIMIT = 20
 SUSPICIOUS_METADATA_PROMOTION_SCORE_FLOOR = 23
@@ -136,6 +140,16 @@ def build_batch_config(
         config_values.get("recent_metadata_top_limit"),
         default=0,
     )
+    cm_timeseries_top_limit = first_int(
+        args.cm_timeseries_top_limit,
+        config_values.get("recent_cm_timeseries_top_limit"),
+        default=DEFAULT_CM_TIMESERIES_TOP_LIMIT,
+    )
+    cm_events_max_events = first_int(
+        args.cm_events_max_events,
+        config_values.get("recent_cm_events_max_events"),
+        default=DEFAULT_CM_EVENTS_MAX_EVENTS,
+    )
     recent_window_minutes = first_int(
         args.recent_window_minutes,
         config_values.get("recent_window_minutes"),
@@ -158,6 +172,10 @@ def build_batch_config(
         raise ValueError("--triage-profile-limit must be <= --cm-inspect-limit")
     if metadata_top_limit > MAX_METADATA_TOP_LIMIT:
         raise ValueError(f"--metadata-top-limit must be <= {MAX_METADATA_TOP_LIMIT}")
+    if cm_timeseries_top_limit > MAX_CM_TIMESERIES_TOP_LIMIT:
+        raise ValueError(f"--cm-timeseries-top-limit must be <= {MAX_CM_TIMESERIES_TOP_LIMIT}")
+    if cm_events_max_events > MAX_CM_EVENTS_MAX_EVENTS:
+        raise ValueError(f"--cm-events-max-events must be <= {MAX_CM_EVENTS_MAX_EVENTS}")
     cm_jobs = first_int(args.cm_jobs, config_values.get("recent_cm_jobs"), default=args.jobs)
     metadata_jobs = first_int(args.metadata_jobs, config_values.get("recent_metadata_jobs"), default=5)
     validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
@@ -231,8 +249,15 @@ def build_batch_config(
             config_values.get("max_profile_bytes"),
             default=cm_profiles.DEFAULT_MAX_PROFILE_BYTES,
         ),
+        collect_cm_events=first_bool(
+            args.collect_cm_events,
+            config_values.get("recent_collect_cm_events"),
+            default=False,
+        ),
+        cm_events_max_events=cm_events_max_events,
         collect_cm_timeseries=first_bool(
             args.collect_cm_timeseries,
+            config_values.get("recent_collect_cm_timeseries"),
             config_values.get("collect_cm_timeseries"),
             default=False,
         ),
@@ -244,6 +269,7 @@ def build_batch_config(
                 cm_profiles.DEFAULT_CM_METRICS_PROFILE,
             )
         ),
+        cm_timeseries_top_limit=cm_timeseries_top_limit,
         cm_timeseries_padding_sec=first_int(
             args.cm_timeseries_padding_sec,
             config_values.get("cm_timeseries_padding_sec"),

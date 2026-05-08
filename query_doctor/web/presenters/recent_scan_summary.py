@@ -64,6 +64,7 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
         parts.append(
             f"Metadata budget: up to {safe_display_text(summary.get('metadata_top_limit'))} bad/suspicious cases"
         )
+    parts.extend(cluster_context_scope_parts(summary))
     if summary.get("query_type_filter") is not None:
         parts.append(f"Query type: {query_type_filter_label(summary.get('query_type_filter'))}")
     if summary.get("only_running"):
@@ -85,6 +86,25 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
         )
     parts.extend(candidate_selection_scope_parts(summary))
     return tuple(parts)
+
+
+def cluster_context_scope_parts(summary: dict[str, Any]) -> list[str]:
+    if not summary.get("collect_cm_events"):
+        return ["CM events: not requested"]
+    context = summary.get("cluster_context")
+    if not isinstance(context, dict):
+        return ["CM events: unavailable"]
+    status = safe_display_text(context.get("status") or "inconclusive")
+    signal_counts = context.get("signal_counts")
+    signal_total = 0
+    if isinstance(signal_counts, dict):
+        for value in signal_counts.values():
+            count = numeric_count(value)
+            if count:
+                signal_total += count
+    if signal_total:
+        return [f"CM events: {status}, signals {safe_display_text(signal_total)}"]
+    return [f"CM events: {status}"]
 
 
 def candidate_selection_scope_parts(summary: dict[str, Any]) -> list[str]:

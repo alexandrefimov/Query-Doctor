@@ -361,6 +361,8 @@ Engineering interpretation rules:
 - CM Metrics Facts statuses mean exactly: observed = bounded runtime context signal, not_observed = checked below threshold, unknown = unavailable or insufficient facts.
 - Use Cluster Runtime Context only as a compact Python-owned summary of CM metrics coverage, correlated/context-only signal rollup, limitations, and bounded triage score contribution.
 - Cluster Runtime Context scoring contribution explains why the deterministic triage score changed; it is not a performance-speedup estimate and not causal proof.
+- Use Cluster Event Context only as a Python-owned raw-free CM Events summary. CM event signals are cluster/service context and follow-up checks, not standalone root-cause proof.
+- Do not claim service restarts, daemon errors, catalog errors, metastore issues, disk capacity events, HDFS/YARN events, authentication failures, or CM Events caused this query unless analysis_facts.md explicitly contains direct causal correlation.
 - Do not state CPU, memory, daemon, network, HDFS, or cluster pressure as a root cause from CM metrics alone.
 - Mention observed CM metrics in "{short_summary_label}" only when they are useful confirmed context for this query; keep not_observed and unknown metric statuses out of the short summary.
 - Put unknown/not_observed CM metric limitations under "{not_supported_label}" or "{next_checks_label}", not in the short summary.
@@ -421,6 +423,7 @@ Python-owned slot contract:
 - Use "case_differentiators" to make "{short_summary_label}" specific to this query: prefer concrete operator IDs, ratios, memory values, top Action Card/Finding titles, and safe totals/counts that distinguish this case from other reports.
 - Use "evidence_groups" to organize "{detailed_label}" into readable narrative. You may explain why a supported signal matters, but do not add new facts or causes.
 - Use "cm_metrics" only as Python-owned bounded runtime context. Do not derive metrics claims from other sections.
+- Use "cluster_event_context" only as Python-owned bounded CM Events context. Put event-driven checks under "{next_checks_label}", not as recommendations unless the candidate list contains that action target.
 - Use "unsupported_conclusions" only under "{not_supported_label}".
 - Use "action_card_titles", "finding_titles", "summary", "totals", and "evidence_flags" to choose what is worth mentioning.
 - Do not introduce a user-facing fact, unsupported conclusion, or action target that is absent from the digest or deterministic facts.

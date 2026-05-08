@@ -40,6 +40,22 @@ def test_build_cm_events_request_rejects_query_injection():
         events.build_cm_events_request(request)
 
 
+def test_build_cm_events_request_accepts_explicit_time_window():
+    request = events.CMEventsRequest(
+        from_time="2026-05-06T09:00:00Z",
+        to_time="2026-05-06T10:00:00Z",
+        now=datetime(2026, 5, 6, 12, 0, tzinfo=timezone.utc),
+    )
+
+    _path, params = events.build_cm_events_request(request)
+
+    query = params["query"]
+    assert "timeReceived=ge=2026-05-06T09:00:00Z" in query
+    assert "timeReceived=lt=2026-05-06T10:00:00Z" in query
+    summary = events.summarize_cm_events_response({"items": []}, request)
+    assert summary["window"]["window_minutes"] == 60
+
+
 def test_summarize_cm_events_excludes_raw_event_content():
     raw = {
         "items": [
@@ -108,6 +124,23 @@ def test_summarize_cm_events_filters_severity_after_bounded_fetch():
 
     assert summary["event_count"] == 1
     assert summary["severity_counts"] == {"warning": 1}
+
+
+def test_default_cm_events_severities_include_informational():
+    raw = {
+        "items": [
+            {
+                "category": "LOG_EVENT",
+                "severity": "INFORMATIONAL",
+                "content": "impalad informational event",
+            }
+        ]
+    }
+
+    summary = events.summarize_cm_events_response(raw, events.CMEventsRequest())
+
+    assert summary["event_count"] == 1
+    assert summary["severity_counts"] == {"informational": 1}
 
 
 def test_empty_cm_events_response_is_clean_context():

@@ -190,28 +190,7 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
     if view.unavailable:
         return ""
     summary_rows = metadata_rows(list(view.summary_items))
-    signal_rows = "".join(
-        "<tr>"
-        f"<td>{html.escape(signal.label)}</td>"
-        f"<td>{cm_metric_status_badge(signal.status)}</td>"
-        f"<td>{escape_value(signal.basis)}</td>"
-        "</tr>"
-        for signal in view.signals
-    )
-    if not signal_rows:
-        signal_rows = "<tr><td colspan=\"3\" class=\"empty-cell\">metric signals are not available</td></tr>"
-    correlation_rows = "".join(
-        "<tr>"
-        f"<td>{html.escape(correlation.label)}</td>"
-        f"<td>{cm_metric_status_badge(correlation.status)}</td>"
-        f"<td>{escape_value(correlation.metric_status)}</td>"
-        f"<td>{escape_value(correlation.strength)}</td>"
-        f"<td>{escape_value(cm_metric_interpretation(correlation.interpretation))}</td>"
-        "</tr>"
-        for correlation in view.correlations
-    )
-    if not correlation_rows:
-        correlation_rows = "<tr><td colspan=\"5\" class=\"empty-cell\">metric correlations are not available</td></tr>"
+    metric_rows = render_cm_metric_rows(view)
     limitations_html = ""
     if view.limitations:
         limitations_html = (
@@ -228,19 +207,69 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         "<details class=\"analysis-subdetails\" aria-label=\"CM metrics\">"
         "<summary>CM metrics</summary>"
         "<div class=\"report-body\">"
-        "<p>Deterministic CM metric facts for the query runtime window. Observed signals provide runtime context, but do not prove root cause by themselves.</p>"
+        "<p>Deterministic CM metric facts for the query runtime window. Metric status shows what "
+        "Cloudera Manager observed; correlation shows whether profile evidence supports using that "
+        "signal as query-specific follow-up context.</p>"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
-        "<thead><tr><th>Metric</th><th>Status</th><th>Basis</th></tr></thead>"
-        f"<tbody>{signal_rows}</tbody>"
-        "</table></div>"
-        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
-        "<thead><tr><th>Metric</th><th>Correlation</th><th>Metric status</th><th>Strength</th><th>Interpretation</th></tr></thead>"
-        f"<tbody>{correlation_rows}</tbody>"
+        "<thead><tr><th>Metric</th><th>Metric status</th><th>Metric basis</th>"
+        "<th>Correlation</th><th>Strength</th><th>Interpretation</th></tr></thead>"
+        f"<tbody>{metric_rows}</tbody>"
         "</table></div>"
         f"{limitations_html}"
         "</div>"
         "</details>"
+    )
+
+
+def render_cm_metric_rows(view: RecentScanCmMetricsView) -> str:
+    signals_by_label = {signal.label: signal for signal in view.signals}
+    correlations_by_label = {correlation.label: correlation for correlation in view.correlations}
+    labels = list(signals_by_label)
+    labels.extend(label for label in correlations_by_label if label not in signals_by_label)
+    rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(label)}</td>"
+        f"<td>{cm_metric_status_badge(metric_status)}</td>"
+        f"<td>{escape_value(metric_basis)}</td>"
+        f"<td>{cm_metric_status_badge(correlation_status)}</td>"
+        f"<td>{escape_value(correlation_strength)}</td>"
+        f"<td>{escape_value(cm_metric_interpretation(correlation_interpretation))}</td>"
+        "</tr>"
+        for (
+            label,
+            metric_status,
+            metric_basis,
+            correlation_status,
+            correlation_strength,
+            correlation_interpretation,
+        ) in (
+            cm_metric_row_values(label, signals_by_label.get(label), correlations_by_label.get(label))
+            for label in labels
+        )
+    )
+    if not rows:
+        return "<tr><td colspan=\"6\" class=\"empty-cell\">metric facts are not available</td></tr>"
+    return rows
+
+
+def cm_metric_row_values(
+    label: str,
+    signal: Any,
+    correlation: Any,
+) -> tuple[str, Any, Any, Any, Any, Any]:
+    metric_status = signal.status if signal is not None else getattr(correlation, "metric_status", None)
+    metric_basis = signal.basis if signal is not None else None
+    correlation_status = correlation.status if correlation is not None else "not evaluated"
+    correlation_strength = correlation.strength if correlation is not None else ""
+    correlation_interpretation = correlation.interpretation if correlation is not None else ""
+    return (
+        label,
+        metric_status,
+        metric_basis,
+        correlation_status,
+        correlation_strength,
+        correlation_interpretation,
     )
 
 

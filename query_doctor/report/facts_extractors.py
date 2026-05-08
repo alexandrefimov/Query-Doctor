@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from query_doctor.report.contract import (
+    CLUSTER_EVENT_CONTEXT_HEADING,
     CLUSTER_RUNTIME_CONTEXT_HEADING,
     CM_METRICS_CORRELATION_HEADING,
     CM_METRICS_FACTS_HEADING,
@@ -379,6 +380,62 @@ def cluster_runtime_context_report_evidence_bullet(facts_text: str) -> str | Non
     if scoring:
         parts.append("scoring: " + scoring)
     return "- " + "; ".join(parts) + ". Treat this as runtime follow-up context, not standalone root-cause proof."
+
+
+def cluster_event_context_summary(facts_text: str) -> dict[str, str]:
+    lines = extract_markdown_section(facts_text, CLUSTER_EVENT_CONTEXT_HEADING)
+    if not lines:
+        return {}
+
+    summary: dict[str, str] = {}
+    for label in (
+        "status",
+        "available",
+        "source_status",
+        "window_scope",
+        "signal_counts",
+        "guardrail",
+    ):
+        value = first_bullet_value(lines, label)
+        if value is not None:
+            summary[label] = value
+    return summary
+
+
+def facts_have_cluster_event_context(facts_text: str) -> bool:
+    summary = cluster_event_context_summary(facts_text)
+    return bool(summary) and summary.get("available") == "yes"
+
+
+def cluster_event_context_points(facts_text: str) -> list[str]:
+    summary = cluster_event_context_summary(facts_text)
+    points: list[str] = []
+    for label in ("status", "source_status", "window_scope", "signal_counts"):
+        value = summary.get(label)
+        if value and value not in {"none", "unknown"}:
+            points.append(f"{label}: {value}")
+    return points[:FACT_APPENDIX_MAX_ITEMS]
+
+
+def cluster_event_context_report_evidence_bullet(facts_text: str) -> str | None:
+    summary = cluster_event_context_summary(facts_text)
+    if summary.get("available") != "yes":
+        return None
+    parts = ["CM event context collected"]
+    status = summary.get("status")
+    if status:
+        parts.append(f"status={status}")
+    signal_counts = summary.get("signal_counts")
+    if signal_counts and signal_counts != "none":
+        parts.append(f"signals: {signal_counts}")
+    source_status = summary.get("source_status")
+    if source_status and source_status != "none":
+        parts.append(f"sources: {source_status}")
+    return (
+        "- "
+        + "; ".join(parts)
+        + ". Treat CM Events as follow-up context, not standalone root-cause proof."
+    )
 
 
 def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:

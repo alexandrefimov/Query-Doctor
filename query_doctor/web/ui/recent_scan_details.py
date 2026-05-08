@@ -143,14 +143,12 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
         )
     if candidate_is_visible(view.stats_candidate):
         items.append(("stats refresh", candidate_overview_value(view.stats_candidate, view.stats_rank)))
-    if not view.cm_metrics.unavailable:
-        items.append(("CM metrics", "available"))
     if not view.cluster_runtime_context.unavailable:
         items.append(("cluster runtime", view.runtime_verdict.title))
     if view.has_spill:
         items.append(("spill", "spill evidence observed"))
     if is_visible_table_stats_status(view.table_stats_status):
-        items.append(("table stats", f"table stats {view.table_stats_status}"))
+        items.append(("table stats", f"table stats {overview_table_stats_label(view.table_stats_status)}"))
     cards = "".join(
         "<div class=\"case-overview-card\">"
         f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
@@ -355,6 +353,15 @@ def is_meaningful_detail_value(value: Any) -> bool:
 def is_visible_table_stats_status(value: Any) -> bool:
     text = str(value or "").strip().lower()
     return text not in {"", "unknown", "none", "not_checked", "not checked", "not_run", "false"}
+
+
+def overview_table_stats_label(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("_", " ")
+    if text == "missing or incomplete":
+        return "missing/incomplete"
+    if text == "not available":
+        return "not available"
+    return text or "unknown"
 
 
 def is_meaningful_technical_detail_value(value: Any) -> bool:

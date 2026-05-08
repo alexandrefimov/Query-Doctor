@@ -49,7 +49,7 @@ def test_web_handler_renders_mocked_analysis_result_without_raw_html():
     )
 
     assert status == 200
-    assert "Specific Query analysis" in body
+    assert "Known Query ID analysis" in body
     assert "Deterministic analyzer result for one explicit Impala Query ID." in body
     assert "analysis only" not in body
     assert "This page does not render raw SQL" not in body

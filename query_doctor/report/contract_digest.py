@@ -10,6 +10,8 @@ from query_doctor.report.facts_extractors import (
     backend_data_skew_is_supported,
     backend_has_proven_tail,
     backend_summary_value,
+    cluster_event_context_points,
+    cluster_event_context_summary,
     cluster_runtime_context_points,
     cluster_runtime_context_summary,
     cm_metrics_correlation_points,
@@ -133,6 +135,17 @@ def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[s
         points.append(
             "Cluster Runtime Context is a Python-owned runtime summary "
             f"({suffix}); use it for evidence framing, not root-cause proof."
+        )
+    cluster_events = cluster_event_context_summary(facts_text)
+    cluster_event_status = cluster_events.get("status")
+    cluster_event_counts = cluster_events.get("signal_counts")
+    if cluster_events.get("available") == "yes":
+        suffix = f"status={cluster_event_status or 'unknown'}"
+        if cluster_event_counts and cluster_event_counts != "none":
+            suffix += f"; signals={cluster_event_counts}"
+        points.append(
+            "Cluster Event Context contains bounded CM Events summary "
+            f"({suffix}); use it for follow-up checks, not root-cause proof."
         )
     if not points:
         points.append("Parsed facts do not select a confirmed optimization target; use this report as a baseline.")
@@ -265,6 +278,11 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
     cluster_context = cluster_runtime_context_summary(facts_text)
     if cluster_context.get("scoring_contribution"):
         differentiators.append(f"Cluster runtime scoring: {cluster_context['scoring_contribution']}")
+    cluster_events = cluster_event_context_summary(facts_text)
+    if cluster_events.get("status"):
+        differentiators.append(f"Cluster event context status: {cluster_events['status']}")
+    if cluster_events.get("signal_counts"):
+        differentiators.append(f"Cluster event signals: {cluster_events['signal_counts']}")
 
     return differentiators[:FACT_APPENDIX_MAX_ITEMS]
 
@@ -283,6 +301,7 @@ def evidence_groups(facts_text: str) -> dict[str, list[str]]:
     cm_metric_points = cm_metrics_observed_points(facts_text)
     cm_metric_correlation_points = cm_metrics_correlation_points(facts_text)
     cluster_context_points = cluster_runtime_context_points(facts_text)
+    cluster_event_points = cluster_event_context_points(facts_text)
     if action_cards:
         groups["action_cards"] = action_cards
     if findings:
@@ -293,6 +312,8 @@ def evidence_groups(facts_text: str) -> dict[str, list[str]]:
         groups["cm_metrics_correlation"] = cm_metric_correlation_points
     if cluster_context_points:
         groups["cluster_runtime_context"] = cluster_context_points
+    if cluster_event_points:
+        groups["cluster_event_context"] = cluster_event_points
     if unsupported:
         groups["unsupported"] = unsupported
     return groups
@@ -313,6 +334,7 @@ def build_report_contract_digest(facts_text: str, *, language: str = "ru") -> di
     cm_metrics = cm_metrics_facts_summary(facts_text)
     cm_metrics_correlation = cm_metrics_correlation_summary(facts_text)
     cluster_runtime_context = cluster_runtime_context_summary(facts_text)
+    cluster_event_context = cluster_event_context_summary(facts_text)
     return {
         "summary": {
             label: first_bullet_value(summary_lines, label)
@@ -341,6 +363,7 @@ def build_report_contract_digest(facts_text: str, *, language: str = "ru") -> di
         "cm_metrics": cm_metrics,
         "cm_metrics_correlation": cm_metrics_correlation,
         "cluster_runtime_context": cluster_runtime_context,
+        "cluster_event_context": cluster_event_context,
         "evidence_quality": {
             label: first_bullet_value(evidence_quality_lines, label)
             for label in ("score", "level")

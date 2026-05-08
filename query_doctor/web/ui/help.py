@@ -46,8 +46,7 @@ def render_help_content() -> str:
 <ul>
 <li>Use <strong>Finished Queries</strong> first when you want to scan completed queries in a selected Cloudera Manager hour.</li>
 <li>Use <strong>Running Queries</strong> when you want to inspect queries that are running now.</li>
-<li>Use <strong>Specific Query</strong> when you already know one Query ID and want a focused diagnosis.</li>
-<li>Use <strong>Query Optimizer</strong> for safe read-only review of a pasted SELECT/WITH statement before runtime profile evidence exists.</li>
+<li>Use <strong>Known Query ID</strong> on the main diagnosis screen when you already know one Query ID and want a focused diagnosis.</li>
 <li><strong>LLM Report</strong> and <strong>Query LLM optimizer</strong> run only after an explicit action on a selected details page.</li>
 </ul>
 
@@ -58,27 +57,23 @@ def render_help_content() -> str:
 <li><strong>Scan date</strong> and <strong>Scan Hour</strong> select one Cloudera Manager summary hour from today or the previous two days.</li>
 <li><strong>Minimum duration</strong>, <strong>Username</strong>, and <strong>Resource pool</strong> narrow the summary set before profile collection.</li>
 <li><strong>Parallelism</strong> controls profile fetch and local analysis. <strong>Metadata parallelism</strong> separately bounds read-only metadata collection.</li>
+<li><strong>Collect CM events</strong> gathers one bounded Cloudera Manager Events context for the scan window. Events are cluster context, not standalone proof for a query.</li>
 <li>Results are grouped as <strong>Bad queries</strong>, <strong>Suspicious queries</strong>, <strong>Optimization candidates</strong>, and <strong>Stats refresh candidates</strong>.</li>
 <li><strong>Optimization candidates</strong> are deterministic query-shape review opportunities. They do not promise speedup and do not execute SQL.</li>
 <li><strong>Stats refresh candidates</strong> require metadata evidence, estimate mismatch, and planning-sensitive runtime symptoms. They still require EXPLAIN comparison and a comparable rerun.</li>
 <li><strong>Only queries with spills</strong> is a display filter over analyzed results; it does not change scan parameters.</li>
-<li><strong>Collect CM metrics</strong> enables bounded Cloudera Manager time-series summaries. It is disabled by default for Finished Queries.</li>
+<li><strong>Collect CM metrics</strong> enables bounded Cloudera Manager time-series summaries for the top ranked analyzed cases. The default budget is 10 cases.</li>
 </ul>
 </details>
 
 <details>
 <summary>Running Queries</summary>
-<p>Running Queries uses the same result and details shape as Finished Queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. CM metrics are enabled by default and collected in a bounded mode for the scan window.</p>
+<p>Running Queries uses the same result and details shape as Finished Queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. CM events and CM metrics are enabled by default as bounded runtime context.</p>
 </details>
 
 <details>
-<summary>Specific Query</summary>
-<p>Specific Query is for one known Query ID. The page has only a Query ID field and a Run button. It collects and analyzes one query without automatic LLM execution, clears the input after submit, and appends the result to the Specific Query analysis table.</p>
-</details>
-
-<details>
-<summary>Query Optimizer</summary>
-<p>Query Optimizer accepts exactly one safe SELECT/WITH statement, validates it before table extraction and metadata collection, does not execute pasted SQL, and does not echo pasted SQL back into the browser after submit. It is not an LLM chat surface and not an automatic rewrite engine.</p>
+<summary>Known Query ID</summary>
+<p>Known Query ID is a mode on the main diagnosis screen for one known Query ID. It has only a Query ID field and a Run button. It collects and analyzes one query without automatic LLM execution, clears the input after submit, and appends the result to the Known Query ID analysis table.</p>
 </details>
 
 <h2 id="results-table">Results table</h2>
@@ -134,10 +129,8 @@ def render_help_content() -> str:
 <p>Metadata collection is bounded. It can be disabled, unavailable, limited to top cases, or stopped by safety limits. Profile-based findings still remain usable.</p>
 <h3>Why does Finished Queries not generate reports automatically?</h3>
 <p>To avoid mass LLM execution and trusted-looking output without a selected case. Report generation remains an explicit user action.</p>
-<h3>Why does Query Optimizer clear the field after submit?</h3>
-<p>To avoid echoing pasted SQL back into the browser. Results are built from safe extracted facts and limitations.</p>
 <h3>Can Query Doctor execute optimized SQL?</h3>
-<p>No. Query Optimizer is parse/analyze only. Benchmarks must be separate explicit read-only checks outside the UI workflow.</p>
+<p>No. Details-page optimizer drafts are never executed by Query Doctor. Benchmarks must be separate explicit read-only checks outside the UI workflow.</p>
 <h3>Does a stats gap mean stats caused the slowdown?</h3>
 <p>No. Treat it as a stats refresh candidate only when metadata gaps, estimate mismatch, and planning-sensitive runtime symptoms line up. Confirmation requires EXPLAIN comparison and a comparable rerun.</p>
 <h3>Does CM metrics context prove root cause?</h3>
@@ -165,7 +158,7 @@ def render_demo_guide_content() -> str:
 <summary>On this page</summary>
 <ul>
 <li><a href="#demo-model">Mental model</a></li>
-<li><a href="#demo-specific-path">Specific Query path</a></li>
+<li><a href="#demo-specific-path">Known Query ID path</a></li>
 <li><a href="#demo-profile">Profile signals</a></li>
 <li><a href="#demo-triage">Triage score</a></li>
 <li><a href="#demo-optimization">Optimization candidates</a></li>
@@ -190,8 +183,8 @@ def render_demo_guide_content() -> str:
 </details>
 
 <details>
-<summary id="demo-specific-path">Specific Query path</summary>
-<p><strong>Specific Query</strong> is the clearest end-to-end demo path for one known Query ID. It shows the trust chain from bounded collection to deterministic analysis, metadata, validated report, and optimizer fallback.</p>
+<summary id="demo-specific-path">Known Query ID path</summary>
+<p><strong>Known Query ID</strong> is the clearest end-to-end demo path for one known Query ID. It shows the trust chain from bounded collection to deterministic analysis, metadata, validated report, and optimizer fallback.</p>
 <ul>
 <li><strong>Collection:</strong> one matching query summary/profile is collected into a staged local case with redaction enabled.</li>
 <li><strong>Analyzer:</strong> deterministic facts are extracted from collected profile and safe context.</li>
@@ -266,7 +259,7 @@ def render_demo_guide_content() -> str:
 <h3>Why does UI hide raw SQL?</h3>
 <p>Browser UI shows safe summaries. Raw SQL can contain sensitive business logic, table names, or literals.</p>
 <h3>Can Query Doctor execute optimized SQL?</h3>
-<p>No. Query Optimizer is parse/analyze only. Any benchmark must be an explicit read-only check outside the UI workflow.</p>
+<p>No. Details-page optimizer drafts are never executed by Query Doctor. Any benchmark must be an explicit read-only check outside the UI workflow.</p>
 <h3>How should I read Confidence?</h3>
 <p>Confidence is evidence completeness and absence of counter-signals, not guaranteed speedup.</p>
 <h3>What wording should I avoid?</h3>

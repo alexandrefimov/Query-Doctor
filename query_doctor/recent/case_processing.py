@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
+from uuid import uuid4
 
 from query_doctor.cli.commands import command_prefix, command_spec
 from query_doctor.recent.batch_config import elapsed_seconds, format_seconds
@@ -29,6 +32,62 @@ METADATA_ANALYSIS_TIMEOUT_SEC = 1800
 REPORT_TIMEOUT_SEC = 2400
 DEFAULT_SUBPROCESS_TIMEOUT_SEC = 900
 SUBPROCESS_TIMEOUT_RETURN_CODE = 124
+MAX_CM_TIMESERIES_REFRESH_JOBS = 5
+
+
+def collect_scan_cm_events(
+    config: BatchConfig,
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+) -> tuple[dict[str, object] | None, str | None]:
+    if not config.collect_cm_events:
+        progress.emit(stage="cm_events", status="skipped", reason="collect_cm_events=false")
+        return None, None
+    started = time.monotonic()
+    progress.emit(stage="cm_events", status="started", max_events=config.cm_events_max_events)
+    cluster_context_path = config.out / "cluster_context.json"
+    cluster_event_context_path = config.out / "cluster_event_context.json"
+    cmd = command_prefix(repo_root, "cm_events") + [
+        "--max-events",
+        str(config.cm_events_max_events),
+        "--cluster-event-context-json",
+        str(cluster_event_context_path),
+        "--cluster-context-json",
+        str(cluster_context_path),
+    ]
+    if config.only_running or not (config.from_time and config.to_time):
+        cmd.extend(["--window-minutes", str(config.recent_window_minutes)])
+    else:
+        cmd.extend(["--from-time", config.from_time, "--to-time", config.to_time])
+    append_cm_config_args(cmd, config)
+    result = run_subprocess(cmd, cwd=repo_root, env=env)
+    context = read_cluster_context_json(cluster_context_path)
+    if context is None:
+        progress.emit(stage="cm_events", status="failed", seconds=elapsed_seconds(started))
+        return None, "CM Events context was requested but no safe cluster context was produced."
+    status = "done" if result.returncode == 0 else "partial"
+    progress.emit(
+        stage="cm_events",
+        status=status,
+        product_status=context.get("status"),
+        seconds=elapsed_seconds(started),
+    )
+    warning = None
+    if result.returncode != 0:
+        warning = "CM Events context was partial or unavailable; query analysis continued without treating events as proof."
+    return context, warning
+
+
+def read_cluster_context_json(path: Path) -> dict[str, object] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
 
 
 def collect_case_profile(
@@ -37,22 +96,26 @@ def collect_case_profile(
     *,
     env: dict[str, str],
     repo_root: Path,
+    collect_cm_timeseries: bool | None = None,
+    out_dir: Path | None = None,
 ) -> None:
     started = time.monotonic()
     try:
-        case.wrapper_dir.mkdir(parents=True, exist_ok=True)
+        target_out_dir = out_dir or case.wrapper_dir
+        target_out_dir.mkdir(parents=True, exist_ok=True)
         cmd = command_prefix(repo_root, "collect_cm") + [
             "--query-id",
             case.query_id,
             "--out",
-            str(case.wrapper_dir),
+            str(target_out_dir),
             "--redact",
             "--limit",
             "1",
             "--max-profile-bytes",
             str(config.max_profile_bytes),
         ]
-        if config.collect_cm_timeseries:
+        include_cm_timeseries = config.collect_cm_timeseries if collect_cm_timeseries is None else collect_cm_timeseries
+        if include_cm_timeseries:
             cmd.extend(
                 [
                     "--collect-cm-timeseries",
@@ -78,13 +141,14 @@ def collect_case_profile(
                 case.collection_status = "failed"
                 case.failure_category = "profile_collection_failed"
             return
-        profile_paths = sorted(case.wrapper_dir.rglob("profile_digest.md"))
+        profile_paths = sorted(target_out_dir.rglob("profile_digest.md"))
         if not profile_paths:
             case.collection_status = "failed"
             case.failure_category = "profile_digest_missing"
             return
         case.collection_status = "ok"
-        case.actual_case_dir = profile_paths[0].parent
+        if out_dir is None:
+            case.actual_case_dir = profile_paths[0].parent
     finally:
         case.cm_collect_seconds = elapsed_seconds(started)
 
@@ -99,6 +163,7 @@ def process_cases(
 ) -> None:
     collect_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
     analyze_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
+    refresh_top_cm_timeseries(config, cases, env=env, repo_root=repo_root, progress=progress)
 
 
 def collect_cases(
@@ -156,7 +221,7 @@ def collect_case_for_batch(
 ) -> CaseResult:
     case_id = f"case-{case.index:03d}"
     progress.emit(stage="case", case_id=case_id, status="collection_started")
-    collect_case_profile(config, case, env=env, repo_root=repo_root)
+    collect_case_profile(config, case, env=env, repo_root=repo_root, collect_cm_timeseries=False)
     if case.collection_status != "ok":
         progress.emit(
             stage="case",
@@ -167,6 +232,119 @@ def collect_case_for_batch(
         )
         return case
     progress.emit(stage="case", case_id=case_id, status="collection_done", seconds=case.cm_collect_seconds)
+    return case
+
+
+def refresh_top_cm_timeseries(
+    config: BatchConfig,
+    cases: list[CaseResult],
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+) -> None:
+    if not config.collect_cm_timeseries:
+        progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="collect_cm_timeseries=false")
+        return
+    if config.cm_timeseries_top_limit <= 0:
+        progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="cm_timeseries_top_limit=0")
+        return
+    ranked = [
+        case
+        for case in sorted(cases, key=batch_ranking_key)
+        if case.collection_status == "ok" and case.analysis_status == "ok" and case.actual_case_dir is not None
+    ]
+    candidates = ranked[: config.cm_timeseries_top_limit]
+    if not candidates:
+        progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="no analyzed cases")
+        return
+    jobs = cm_timeseries_refresh_jobs(config, len(candidates))
+    progress.emit(stage="cm_timeseries_refresh", status="started", total=len(candidates), jobs=jobs)
+    if jobs == 1:
+        for case in candidates:
+            refresh_case_cm_timeseries(
+                config,
+                case,
+                env=env,
+                repo_root=repo_root,
+                progress=progress,
+            )
+    else:
+        with ThreadPoolExecutor(max_workers=jobs) as executor:
+            futures = [
+                executor.submit(
+                    refresh_case_cm_timeseries,
+                    config,
+                    case,
+                    env=env,
+                    repo_root=repo_root,
+                    progress=progress,
+                )
+                for case in candidates
+            ]
+            for future in as_completed(futures):
+                future.result()
+    progress.emit(stage="cm_timeseries_refresh", status="done", total=len(candidates), jobs=jobs)
+
+
+def cm_timeseries_refresh_jobs(config: BatchConfig, candidate_count: int) -> int:
+    if candidate_count <= 1:
+        return 1
+    return max(1, min(candidate_count, config.cm_jobs, MAX_CM_TIMESERIES_REFRESH_JOBS))
+
+
+def refresh_case_cm_timeseries(
+    config: BatchConfig,
+    case: CaseResult,
+    *,
+    env: dict[str, str],
+    repo_root: Path,
+    progress: ProgressWriter,
+) -> CaseResult:
+    case_id = f"case-{case.index:03d}"
+    if case.actual_case_dir is None:
+        progress.emit(stage="cm_timeseries_refresh", case_id=case_id, status="failed", reason="case_dir_missing")
+        return case
+    refresh_dir = case.wrapper_dir / f".cm-timeseries-refresh-{uuid4().hex}"
+    progress.emit(stage="cm_timeseries_refresh", case_id=case_id, status="started")
+    started = time.monotonic()
+    try:
+        refresh_case = replace(case, wrapper_dir=refresh_dir, actual_case_dir=None)
+        collect_case_profile(
+            config,
+            refresh_case,
+            env=env,
+            repo_root=repo_root,
+            collect_cm_timeseries=True,
+            out_dir=refresh_dir,
+        )
+        context_paths = sorted(refresh_dir.rglob("cm_timeseries_context.json"))
+        if case.cm_collect_seconds is None:
+            case.cm_collect_seconds = refresh_case.cm_collect_seconds
+        elif refresh_case.cm_collect_seconds is not None:
+            case.cm_collect_seconds = round(case.cm_collect_seconds + refresh_case.cm_collect_seconds, 3)
+        if refresh_case.collection_status == "ok" and context_paths:
+            target = case.actual_case_dir / "cm_timeseries_context.json"
+            shutil.copyfile(context_paths[0], target)
+            run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode="off")
+            if case.analysis_status == "ok":
+                score_case(case)
+            progress.emit(
+                stage="cm_timeseries_refresh",
+                case_id=case_id,
+                status="done",
+                seconds=elapsed_seconds(started),
+                score=case.score,
+            )
+        else:
+            progress.emit(
+                stage="cm_timeseries_refresh",
+                case_id=case_id,
+                status="failed",
+                seconds=elapsed_seconds(started),
+            )
+    finally:
+        shutil.rmtree(refresh_dir, ignore_errors=True)
     return case
 
 

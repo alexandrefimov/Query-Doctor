@@ -7,11 +7,11 @@ hostnames, principals, paths, query text, or provider event ids.
 
 from __future__ import annotations
 
-import re
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 from query_doctor.cm.client import (
@@ -35,7 +35,7 @@ DEFAULT_CM_EVENTS_MAX_EVENTS = 50
 MAX_CM_EVENTS_WINDOW_MINUTES = 24 * 60
 MAX_CM_EVENTS_MAX_EVENTS = 200
 DEFAULT_MAX_CM_EVENTS_BYTES = 1 * 1024 * 1024
-DEFAULT_CM_EVENT_SEVERITIES = ("critical", "important", "warning")
+DEFAULT_CM_EVENT_SEVERITIES = ("critical", "important", "warning", "informational")
 CM_EVENT_SEVERITY_CHOICES = ("critical", "important", "warning", "informational")
 CM_EVENT_CATEGORY_CHOICES = (
     "ACTIVITY_EVENT",
@@ -56,6 +56,8 @@ class CMEventsRequest:
     severities: tuple[str, ...] = DEFAULT_CM_EVENT_SEVERITIES
     categories: tuple[str, ...] = ()
     alerts_only: bool = False
+    from_time: str | None = None
+    to_time: str | None = None
     now: datetime | None = field(default=None, repr=False, compare=False)
 
 
@@ -75,6 +77,15 @@ def validate_cm_events_request(request: CMEventsRequest) -> CMEventsRequest:
         raise CMAdapterError("CM events request requires at least one severity.")
     categories = tuple(normalize_event_category(value) for value in request.categories)
     service = normalize_query_value(request.service, "service") if request.service else None
+    from_time = normalize_optional_string(request.from_time)
+    to_time = normalize_optional_string(request.to_time)
+    if bool(from_time) != bool(to_time):
+        raise CMAdapterError("CM events from_time and to_time must be provided together.")
+    if from_time and to_time:
+        from_time = validate_cm_events_time_bound(from_time, "from_time")
+        to_time = validate_cm_events_time_bound(to_time, "to_time")
+        if from_time >= to_time:
+            raise CMAdapterError("CM events to_time must be later than from_time.")
     return CMEventsRequest(
         window_minutes=request.window_minutes,
         max_events=request.max_events,
@@ -82,13 +93,18 @@ def validate_cm_events_request(request: CMEventsRequest) -> CMEventsRequest:
         severities=dedupe_preserve_order(severities),
         categories=dedupe_preserve_order(categories),
         alerts_only=request.alerts_only,
+        from_time=from_time,
+        to_time=to_time,
         now=request.now,
     )
 
 
 def build_cm_events_request(request: CMEventsRequest) -> tuple[str, dict[str, object]]:
     config = validate_cm_events_request(request)
-    from_time, to_time = cm_time_window_minutes(config.window_minutes, now=config.now)
+    if config.from_time and config.to_time:
+        from_time, to_time = config.from_time, config.to_time
+    else:
+        from_time, to_time = cm_time_window_minutes(config.window_minutes, now=config.now)
     constraints = [
         f"timeReceived=ge={from_time}",
         f"timeReceived=lt={to_time}",
@@ -320,14 +336,32 @@ def classify_product_status(signals: list[dict[str, object]], event_count: int, 
 
 
 def safe_window_summary(request: CMEventsRequest) -> dict[str, object]:
+    window_minutes = request.window_minutes
+    if request.from_time and request.to_time:
+        window_minutes = explicit_window_minutes(request.from_time, request.to_time)
     return {
-        "window_minutes": request.window_minutes,
+        "window_minutes": window_minutes,
         "max_events": request.max_events,
         "service_scope": "configured" if request.service else "not_set",
         "severity_filter": list(request.severities),
         "category_filter": list(request.categories),
         "alerts_only": request.alerts_only,
     }
+
+
+def validate_cm_events_time_bound(value: str, field_name: str) -> str:
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise CMAdapterError(f"CM events {field_name} must be formatted as YYYY-MM-DDTHH:MM:SSZ.") from exc
+    return value
+
+
+def explicit_window_minutes(from_time: str, to_time: str) -> int:
+    start = datetime.strptime(from_time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    end = datetime.strptime(to_time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    seconds = max(0.0, (end - start).total_seconds())
+    return max(1, int((seconds + 59) // 60))
 
 
 def normalize_event_severity(value: object, *, allow_unknown: bool = False) -> str:

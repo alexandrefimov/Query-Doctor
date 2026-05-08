@@ -71,20 +71,31 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         "summaries_inspected": None,
         "candidates_selected": None,
         "duration_filter": None,
+        "cm_events_status": None,
+        "cm_events_product_status": None,
+        "cm_events_seconds": None,
         "collection_done": 0,
         "collection_failed": 0,
         "analysis_done": 0,
         "analysis_started": 0,
         "analysis_failed": 0,
         "failed": 0,
+        "cm_metrics_total": None,
+        "cm_metrics_done": 0,
+        "cm_metrics_failed": 0,
+        "cm_metrics_active": 0,
+        "cm_metrics_jobs": None,
+        "cm_metrics_skip_reason": None,
         "metadata_total": None,
         "metadata_done": 0,
         "metadata_skip_reason": None,
     }
     states = {
         "discovery": "pending",
+        "cm_events": "pending",
         "collection": "pending",
         "analysis": "pending",
+        "cm_metrics": "pending",
         "metadata": "pending",
         "summary": "pending",
         "completed": "pending",
@@ -106,6 +117,8 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
             if status == "started":
                 counters["total"] = numeric_count(event.get("total"))
                 counters["jobs"] = event.get("jobs")
+                if states["cm_events"] == "pending":
+                    states["cm_events"] = "skipped"
                 states["collection"] = "running"
             elif status == "done":
                 states["collection"] = "done"
@@ -130,19 +143,57 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                     counters["analysis_failed"] += 1
         elif stage == "summary":
             if status == "started":
+                if states["cm_events"] == "running":
+                    states["cm_events"] = "done"
+                elif states["cm_events"] == "pending":
+                    states["cm_events"] = "skipped"
                 states["collection"] = "done"
                 states["analysis"] = "done"
                 if states["metadata"] == "running":
                     states["metadata"] = "done"
+                if states["cm_metrics"] == "running":
+                    states["cm_metrics"] = "done"
+                elif states["cm_metrics"] == "pending":
+                    states["cm_metrics"] = "skipped"
                 states["summary"] = "running"
             elif status == "done":
                 states["summary"] = "done"
+        elif stage == "cm_timeseries_refresh":
+            if status == "started":
+                if states["collection"] != "failed":
+                    states["collection"] = "done"
+                if states["analysis"] != "failed":
+                    states["analysis"] = "done"
+                states["cm_metrics"] = "running"
+                if not event.get("case_id"):
+                    counters["cm_metrics_total"] = numeric_count(event.get("total"))
+                    counters["cm_metrics_jobs"] = event.get("jobs")
+                else:
+                    counters["cm_metrics_active"] += 1
+            elif status == "done":
+                if event.get("case_id"):
+                    counters["cm_metrics_done"] += 1
+                    counters["cm_metrics_active"] = max(0, counters["cm_metrics_active"] - 1)
+                else:
+                    states["cm_metrics"] = "done"
+                    if event.get("jobs") is not None:
+                        counters["cm_metrics_jobs"] = event.get("jobs")
+            elif status == "failed":
+                counters["cm_metrics_failed"] += 1
+                counters["cm_metrics_active"] = max(0, counters["cm_metrics_active"] - 1)
+            elif status == "skipped":
+                states["cm_metrics"] = "skipped"
+                counters["cm_metrics_skip_reason"] = event.get("reason")
         elif stage == "metadata_refresh":
             if status == "started":
                 if states["collection"] != "failed":
                     states["collection"] = "done"
                 if states["analysis"] != "failed":
                     states["analysis"] = "done"
+                if states["cm_metrics"] == "running":
+                    states["cm_metrics"] = "done"
+                elif states["cm_metrics"] == "pending":
+                    states["cm_metrics"] = "skipped"
                 states["metadata"] = "running"
                 if not event.get("case_id"):
                     counters["metadata_total"] = numeric_count(event.get("total"))
@@ -156,12 +207,36 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
             elif status == "skipped":
                 states["metadata"] = "skipped"
                 counters["metadata_skip_reason"] = event.get("reason")
+        elif stage == "cm_events":
+            counters["cm_events_status"] = status
+            if event.get("seconds") is not None:
+                counters["cm_events_seconds"] = event.get("seconds")
+            if event.get("product_status") is not None:
+                counters["cm_events_product_status"] = event.get("product_status")
+            if status == "started":
+                states["cm_events"] = "running"
+            elif status == "done":
+                states["cm_events"] = "done"
+            elif status == "partial":
+                states["cm_events"] = "done"
+            elif status == "failed":
+                states["cm_events"] = "failed"
+            elif status == "skipped":
+                states["cm_events"] = "skipped"
         elif stage == "batch":
             if status == "done":
                 states["completed"] = "done"
                 states["summary"] = "done"
+                if states["cm_events"] == "running":
+                    states["cm_events"] = "done"
+                elif states["cm_events"] == "pending":
+                    states["cm_events"] = "skipped"
                 states["collection"] = "done"
                 states["analysis"] = "done"
+                if states["cm_metrics"] == "running":
+                    states["cm_metrics"] = "done"
+                elif states["cm_metrics"] == "pending":
+                    states["cm_metrics"] = "skipped"
                 if states["metadata"] == "running":
                     states["metadata"] = "done"
                 elif states["metadata"] == "pending":
@@ -175,13 +250,19 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         for key in ("discovery", "collection", "analysis", "summary"):
             if states[key] in {"pending", "running"}:
                 states[key] = "done"
+        if states["cm_events"] in {"pending", "running"}:
+            states["cm_events"] = "skipped"
+        if states["cm_metrics"] in {"pending", "running"}:
+            states["cm_metrics"] = "skipped"
         if states["metadata"] in {"pending", "running"}:
             states["metadata"] = "skipped"
     total = numeric_count(counters["total"])
     if total:
-        if counters["collection_done"] + counters["collection_failed"] >= total and states["collection"] != "failed":
+        collection_complete = counters["collection_done"] + counters["collection_failed"] >= total
+        if collection_complete and states["collection"] != "failed":
             states["collection"] = "done"
-        if counters["analysis_done"] + counters["analysis_failed"] >= total and states["analysis"] != "failed":
+        analysis_complete = counters["analysis_done"] + counters["analysis_failed"] >= total
+        if analysis_complete and states["analysis"] != "failed":
             states["analysis"] = "done"
     processed = counters["analysis_done"] + counters["failed"]
     metrics = []
@@ -200,11 +281,29 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
     return {
         "steps": [
             progress_step("CM discovery", states["discovery"], discovery_detail(counters)),
-            progress_step("Profile collection", states["collection"], case_detail(counters, "collection_done")),
-            progress_step("Analyzer scoring", states["analysis"], case_detail(counters, "analysis_done")),
+            progress_step("CM events", states["cm_events"], cm_events_detail(counters)),
+            progress_step(
+                "Profile collection",
+                states["collection"],
+                case_detail(counters, "collection_done"),
+            ),
+            progress_step(
+                "Analyzer scoring",
+                states["analysis"],
+                case_detail(counters, "analysis_done"),
+            ),
+            progress_step("CM metrics", states["cm_metrics"], cm_metrics_detail(counters)),
             progress_step("Metadata refresh", states["metadata"], metadata_detail(counters)),
-            progress_step("Ranking / summary", states["summary"], "summary written" if states["summary"] == "done" else "waiting"),
-            progress_step("Completed", states["completed"], "batch done" if states["completed"] == "done" else "waiting"),
+            progress_step(
+                "Ranking / summary",
+                states["summary"],
+                "summary written" if states["summary"] == "done" else "waiting",
+            ),
+            progress_step(
+                "Completed",
+                states["completed"],
+                "batch done" if states["completed"] == "done" else "waiting",
+            ),
         ],
         "metrics": metrics,
     }
@@ -220,6 +319,41 @@ def metadata_detail(counters: dict[str, Any]) -> str:
     if not total:
         return "not requested"
     return f"{done}/{total} refreshed"
+
+
+def cm_metrics_detail(counters: dict[str, Any]) -> str:
+    if counters.get("cm_metrics_skip_reason"):
+        return str(counters["cm_metrics_skip_reason"])
+    total = counters.get("cm_metrics_total")
+    done = counters.get("cm_metrics_done", 0)
+    failed = counters.get("cm_metrics_failed", 0)
+    if total is None:
+        return "not requested yet"
+    if not total:
+        return "not requested"
+    suffix = ""
+    if counters.get("cm_metrics_active"):
+        suffix = f", {counters['cm_metrics_active']} active"
+    elif counters.get("cm_metrics_jobs"):
+        suffix = f", jobs {counters['cm_metrics_jobs']}"
+    if failed:
+        suffix = f", {failed} failed"
+    return f"{done}/{total} refreshed{suffix}"
+
+
+def cm_events_detail(counters: dict[str, Any]) -> str:
+    product_status = counters.get("cm_events_product_status")
+    seconds = counters.get("cm_events_seconds")
+    if product_status:
+        if seconds is not None:
+            return f"{product_status}, {seconds}s"
+        return str(product_status)
+    status = counters.get("cm_events_status")
+    if status == "skipped":
+        return "not requested"
+    if status:
+        return str(status)
+    return "waiting"
 
 
 def progress_step(label: str, state: str, detail: str) -> dict[str, str]:

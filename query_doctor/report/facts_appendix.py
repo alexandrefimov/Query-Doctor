@@ -52,6 +52,15 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
     backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
     backend_normalized_lines = extract_markdown_subsection(backend_lines, "### Normalized tail candidates")
     backend_candidates_lines = extract_markdown_subsection(backend_lines, "### Host tail candidates")
+    cluster_event_lines = extract_markdown_section(facts_text, "## Cluster Event Context")
+    cluster_event_signal_lines = extract_markdown_subsection(
+        cluster_event_lines,
+        "### CM event signal rollup",
+    )
+    cluster_event_next_check_lines = extract_markdown_subsection(
+        cluster_event_lines,
+        "### CM event next checks",
+    )
     referenced_table_lines = extract_markdown_section(facts_text, "## Referenced Tables")
     table_metadata_lines = extract_markdown_section(facts_text, "## Table Metadata Context")
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
@@ -137,6 +146,36 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
                 lines.append(
                     f"- ... {remaining_candidates} more candidate lines omitted from appendix."
                 )
+
+    if cluster_event_lines:
+        lines.extend(["", "### Cluster Event Context"])
+        for label in (
+            "status",
+            "available",
+            "source_status",
+            "window_scope",
+            "signal_counts",
+            "guardrail",
+        ):
+            append_fact_bullet(lines, label, first_bullet_value(cluster_event_lines, label))
+        signal_excerpt, remaining_signals = limited_nonempty_lines(
+            [line for line in cluster_event_signal_lines if line.lstrip().startswith("- ")],
+            limit=FACT_APPENDIX_MAX_ITEMS,
+        )
+        if signal_excerpt:
+            lines.extend(["", "#### CM event signal rollup"])
+            lines.extend(signal_excerpt)
+            if remaining_signals:
+                lines.append(f"- ... {remaining_signals} more CM event signal lines omitted")
+        check_excerpt, remaining_checks = limited_nonempty_lines(
+            [line for line in cluster_event_next_check_lines if line.lstrip().startswith("- ")],
+            limit=FACT_APPENDIX_MAX_ITEMS,
+        )
+        if check_excerpt:
+            lines.extend(["", "#### CM event next checks"])
+            lines.extend(check_excerpt)
+            if remaining_checks:
+                lines.append(f"- ... {remaining_checks} more CM event checks omitted")
 
     if referenced_table_lines:
         table_excerpt, remaining_tables = limited_nonempty_lines(

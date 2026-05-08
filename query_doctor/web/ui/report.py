@@ -73,15 +73,15 @@ def render_report_header(result: Any) -> str:
     )
     return (
         "<section class=\"panel report-header\" aria-label=\"Report header\">"
-        "<div class=\"breadcrumb\"><a href=\"/query\">Specific Query</a><span>/</span><span>validated diagnosis</span></div>"
+        "<div class=\"breadcrumb\"><a href=\"/query\">Known Query ID</a><span>/</span><span>validated diagnosis</span></div>"
         "<div class=\"report-title-row\"><div>"
-        "<h1>Specific Query diagnosis</h1>"
+        "<h1>Known Query ID diagnosis</h1>"
         "<div class=\"report-subtitle\">Validated report for one explicit Impala Query ID.</div>"
         "<div class=\"query-line\">"
         f"<span>Query ID:</span><code>{escape_report_value(result.query_id)}</code>"
         "<span>Report:</span><code>validated</code>"
         "</div></div></div>"
-        "<div class=\"case-overview\" aria-label=\"Specific Query result overview\">"
+        "<div class=\"case-overview\" aria-label=\"Known Query ID result overview\">"
         f"<div class=\"case-overview-grid\">{overview}</div>"
         "</div>"
         "<div class=\"status-strip\" aria-label=\"Report status\">"

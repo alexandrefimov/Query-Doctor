@@ -11,6 +11,7 @@ from query_doctor.analyzer.action_cards import DEFAULT_LARGE_BYTES_THRESHOLD, bu
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_correlation
 from query_doctor.analyzer.cluster_runtime_context import build_cluster_runtime_context
 from query_doctor.analyzer.context_collection import (
+    collect_cluster_context,
     collect_cm_query_context,
     collect_cm_timeseries_context,
     collect_impala_context,
@@ -89,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     analysis = analyze(text, args, cm_query_context=cm_query_context)
     analysis["cm_query_context"] = cm_query_context
     analysis["cm_timeseries_context"] = collect_cm_timeseries_context(digest_path.parent)
+    analysis["cluster_context"] = collect_cluster_context(digest_path.parent)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)

@@ -38,10 +38,10 @@ def test_web_help_page_renders_curated_static_help():
     assert "The implemented engine is Apache Impala only." in body
     assert "Finished Queries" in body
     assert "Collect CM metrics" in body
-    assert "Specific Query" in body
+    assert "Known Query ID" in body
     assert "Running Queries" in body
-    assert "Query Optimizer" in body
-    assert "Specific Query analysis" in body
+    assert "Query Optimizer" not in body
+    assert "Known Query ID analysis" in body
     assert "LLM Report" in body
     assert "Query LLM optimizer" in body
     assert "Findings" in body
@@ -64,8 +64,8 @@ def test_web_help_page_renders_curated_static_help():
     assert "Good queries" not in body
     assert "Only queries with spills" in body
     assert "Cases without triage severity" in body
-    assert "does not execute pasted SQL" in body
-    assert "does not echo pasted SQL back into the browser after submit" in body
+    assert "does not execute pasted SQL" not in body
+    assert "does not echo pasted SQL back into the browser after submit" not in body
     assert "partial content stays untrusted and hidden" in body
     assert "Metadata collection is explicit, bounded, read-only, and allowlisted." in body
     assert "SHOW CREATE TABLE" in body
@@ -103,7 +103,7 @@ def test_web_demo_guide_renders_curated_english_demo_page():
     assert "<details>\n<summary>On this page</summary>" in body
     assert "curated UI text for demonstrating Query Doctor" in body
     assert "deterministic scoring" in body
-    assert "Specific Query path" in body
+    assert "Known Query ID path" in body
     assert "bounded collection" in body
     assert "Analyzer" in body
     assert "CM metrics correlation" in body

@@ -57,6 +57,8 @@ class CMEventsCliConfig:
     ca_bundle: str | None
     insecure_skip_verify: bool
     window_minutes: int
+    from_time: str | None
+    to_time: str | None
     max_events: int
     severities: tuple[str, ...]
     categories: tuple[str, ...]
@@ -94,6 +96,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"Look back this many minutes. Default: {DEFAULT_CM_EVENTS_WINDOW_MINUTES}.",
     )
     parser.add_argument(
+        "--from-time",
+        help="Explicit CM event window start, formatted as YYYY-MM-DDTHH:MM:SSZ.",
+    )
+    parser.add_argument(
+        "--to-time",
+        help="Explicit CM event window end, formatted as YYYY-MM-DDTHH:MM:SSZ.",
+    )
+    parser.add_argument(
         "--max-events",
         type=positive_int,
         help=f"Maximum CM events to summarize. Default: {DEFAULT_CM_EVENTS_MAX_EVENTS}; hard cap: {MAX_CM_EVENTS_MAX_EVENTS}.",
@@ -104,7 +114,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=CM_EVENT_SEVERITY_CHOICES,
         help=(
             "CM event severity to include. May be repeated. "
-            "Default: critical, important, warning."
+            "Default: critical, important, warning, informational."
         ),
     )
     parser.add_argument(
@@ -208,6 +218,10 @@ def build_config(
         raise ConfigError(
             f"--window-minutes must be <= {MAX_CM_EVENTS_WINDOW_MINUTES}."
         )
+    from_time = args.from_time.strip() if args.from_time else None
+    to_time = args.to_time.strip() if args.to_time else None
+    if bool(from_time) != bool(to_time):
+        raise ConfigError("--from-time and --to-time must be provided together.")
     max_events = int_setting(
         "cm_events_max_events",
         cli_value=args.max_events,
@@ -265,6 +279,8 @@ def build_config(
             default=False,
         ),
         window_minutes=window_minutes,
+        from_time=from_time,
+        to_time=to_time,
         max_events=max_events,
         severities=tuple(args.severity or DEFAULT_CM_EVENT_SEVERITIES),
         categories=tuple(args.category or ()),
@@ -314,6 +330,8 @@ def cm_events_request_from_config(config: CMEventsCliConfig) -> CMEventsRequest:
         severities=config.severities,
         categories=config.categories,
         alerts_only=config.alerts_only,
+        from_time=config.from_time,
+        to_time=config.to_time,
     )
 
 
@@ -323,6 +341,8 @@ def print_dry_run_plan(config: CMEventsCliConfig) -> None:
     print(f"Cluster scope: {'configured' if config.cluster else 'not set'}")
     print(f"Service scope: {'configured' if config.service else 'not set'}")
     print(f"Window minutes: {config.window_minutes}")
+    if config.from_time and config.to_time:
+        print("Explicit event window: configured")
     print(f"Max events: {config.max_events}")
     print("Severity filter: " + ", ".join(config.severities))
     print("Category filter: " + (", ".join(config.categories) if config.categories else "<any>"))
@@ -358,6 +378,8 @@ def run_cm_events(
     print(f"Cluster scope: {'configured' if config.cluster else 'not set'}")
     print(f"Service scope: {'configured' if config.service else 'not set'}")
     print(f"Window minutes: {config.window_minutes}")
+    if config.from_time and config.to_time:
+        print("Explicit event window: configured")
     print(f"Max events: {config.max_events}")
     print(f"Availability: {context.get('status')}")
     print(f"Product status: {context.get('product_status')}")

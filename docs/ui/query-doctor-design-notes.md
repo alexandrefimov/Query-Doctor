@@ -17,11 +17,9 @@ operational scanning.
 
 Current UI centers:
 
-- Recent scan, with Finished queries as the default target and Running now as a
-  lower-confidence live target;
-- Specific Query;
-- details-page deterministic analysis and explicit LLM actions;
-- pasted-query Query Optimizer.
+- Diagnose queries, with Recent queries as the default target and Known Query ID
+  as the secondary focused mode;
+- details-page deterministic analysis and explicit LLM actions.
 
 Core principles:
 
@@ -114,10 +112,15 @@ Avoid large colorful status pills.
 
 ## Current Page Map
 
-### Recent Scan
+### Diagnose Queries
 
-Primary scan page. It discovers Cloudera Manager (CM) Impala query summaries,
-applies filters, collects bounded selected profiles, runs deterministic
+Primary diagnosis page. It contains two modes:
+
+- Recent queries, the default scan workflow;
+- Known Query ID, the focused workflow for one explicit Query ID.
+
+Recent queries discovers Cloudera Manager (CM) Impala query summaries, applies
+filters, collects bounded selected profiles, runs deterministic
 analyzer/metadata work, ranks cases and lets the user open details.
 
 Finished queries are the default target because completed runtime profiles carry
@@ -131,11 +134,17 @@ optimizer actions are explicit details-page actions only.
 
 Expected controls:
 
+- diagnosis target: Recent queries / Known Query ID;
 - scan target: Finished queries / Running now;
 - scan date and scan hour;
 - duration, user and pool filters;
 - advanced settings for parallelism, metadata parallelism and CM metrics;
 - display-only filters over analyzed results.
+
+Known Query ID mode shows only Query ID and Run. It collects and analyzes one
+explicit case without automatic LLM, clears the input after submit, and appends
+the result to the Known Query ID analysis table. The compatibility URL `/query`
+may open this mode, but it should not appear as a separate top-level nav item.
 
 Scan date and scan hour are shown only for Finished queries. Running now has no
 date/hour controls.
@@ -159,12 +168,6 @@ toward triage language:
 
 The underlying grouping predicates may remain server-owned and deterministic.
 Do not let label changes alter analyzer facts or safety semantics.
-
-### Specific Query
-
-Analyzes one explicit CM query ID without automatic LLM. The input clears after
-submit, and each successful analysis is appended to the Specific Query analysis
-table. Row click opens details.
 
 ### Details
 
@@ -195,8 +198,12 @@ traceability, but they should not crowd out the decision path.
 
 ### Query Optimizer
 
-Deterministic review for pasted query text before there is a runtime profile. It
-is not profile diagnosis and not the details-page Query LLM optimizer.
+Deterministic review for pasted query text before there is a runtime profile.
+This standalone page is intentionally hidden from top navigation while the main
+workflow centers on profile-backed diagnosis and details-page optimizer actions.
+The direct route may remain for compatibility and safety testing, but the UI
+should not promote it as a peer workflow. It is not profile diagnosis and not
+the details-page Query LLM optimizer.
 
 Allowed wording:
 
@@ -374,7 +381,7 @@ UI tests should assert:
 - primary workflows are reachable;
 - normal forms do not expose raw artifact overrides;
 - trusted reports are rendered only after validation;
-- submitted query text is not echoed after Query Optimizer submit;
+- submitted query text is not echoed after direct Query Optimizer route submit;
 - LLM actions are explicit and not automatic;
 - missing artifacts are not shown as available;
 - partial/unavailable evidence is displayed honestly;

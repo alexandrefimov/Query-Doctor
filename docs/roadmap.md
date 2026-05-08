@@ -31,7 +31,8 @@ engines or workflows already work.
 - Cloudera Manager (CM) Events has a small read-only CLI MVP and can emit a
   schema-versioned, raw-free `cluster_event_context.json` artifact plus an
   aggregate `cluster_context.json` artifact for the future Cluster Doctor
-  contract. This is not yet a Cluster Doctor web workflow or report path.
+  contract. Recent scan can collect that bounded context for its scan window,
+  but this is not yet a Cluster Doctor web workflow or report path.
 
 ## Safety baseline
 

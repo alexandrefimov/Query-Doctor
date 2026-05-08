@@ -19,11 +19,13 @@ from query_doctor.cli.commands import command_prefix
 from query_doctor.engines import get_default_engine_adapter
 from query_doctor.recent.batch_config import (
     MAX_CM_INSPECT_LIMIT,
+    MAX_CM_EVENTS_MAX_EVENTS,
     MAX_CM_JOBS,
     MAX_HIGH_JOBS,
     MAX_JOBS,
     MAX_METADATA_JOBS,
     MAX_METADATA_TOP_LIMIT,
+    MAX_CM_TIMESERIES_TOP_LIMIT,
     MAX_RAW_CM_SUMMARY_SCAN_LIMIT,
     MAX_TRIAGE_PROFILE_LIMIT,
     METADATA_MODE_CHOICES,
@@ -90,6 +92,7 @@ from query_doctor.recent import case_processing as batch_case_processing
 from query_doctor.recent.command_args import append_cm_config_args, append_metadata_args
 from query_doctor.recent.case_processing import (
     analyze_case_for_batch,
+    collect_scan_cm_events,
     analyze_cases,
     collect_case_for_batch,
     collect_case_profile,
@@ -232,10 +235,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
     )
     parser.add_argument(
+        "--collect-cm-events",
+        action="store_true",
+        default=None,
+        help="Collect one bounded Cloudera Manager Events context for the scan window.",
+    )
+    parser.add_argument(
+        "--cm-events-max-events",
+        type=positive_int,
+        help=(
+            "Maximum CM Events records to summarize for the scan window. "
+            f"Hard cap: {MAX_CM_EVENTS_MAX_EVENTS}. Default: 50."
+        ),
+    )
+    parser.add_argument(
         "--collect-cm-timeseries",
         action="store_true",
         default=None,
-        help="Collect bounded allowlisted CM time-series summaries for each collected case.",
+        help="Collect bounded allowlisted CM time-series summaries for top ranked collected cases.",
+    )
+    parser.add_argument(
+        "--cm-timeseries-top-limit",
+        type=non_negative_int,
+        help=(
+            "Maximum top ranked analyzed cases that may receive CM time-series summaries. "
+            f"Hard cap: {MAX_CM_TIMESERIES_TOP_LIMIT}. Default: 10."
+        ),
     )
     parser.add_argument(
         "--cm-metrics-profile",
@@ -352,6 +377,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     discovery_started: float | None = None
     discovery_seconds: float | None = None
     discovery_failed = False
+    cluster_context: dict[str, object] | None = None
     try:
         discovery_started = time.monotonic()
         progress.emit(stage="discovery", status="started")
@@ -397,6 +423,14 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     try:
         if not config.discover_only:
             batch_case_processing.run_subprocess = run_subprocess
+            cluster_context, cm_events_warning = collect_scan_cm_events(
+                config,
+                env=env,
+                repo_root=repo_root,
+                progress=progress,
+            )
+            if cm_events_warning:
+                warnings.append(cm_events_warning)
             print(f"[batch] CM jobs: {config.cm_jobs}")
             print(f"[batch] analyzer jobs: {config.jobs}")
             print(f"[batch] metadata jobs: {config.metadata_jobs}")
@@ -432,6 +466,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             warnings,
             discovery_seconds=discovery_seconds,
             discovery_failed=discovery_failed,
+            cluster_context=cluster_context,
             total_seconds=total_seconds,
         )
         write_batch_outputs(config.out, summary)

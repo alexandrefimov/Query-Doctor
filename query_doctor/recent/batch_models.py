@@ -34,8 +34,11 @@ class BatchConfig:
     pool: str | None
     query_type: str | None
     max_profile_bytes: int
+    collect_cm_events: bool
+    cm_events_max_events: int
     collect_cm_timeseries: bool
     cm_metrics_profile: str
+    cm_timeseries_top_limit: int
     cm_timeseries_padding_sec: int
     max_timeseries_bytes: int
     max_timeseries_points: int

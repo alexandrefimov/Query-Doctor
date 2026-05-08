@@ -52,6 +52,7 @@ ALLOWED_CONFIG_KEYS = {
     "query_type",
     "recent_include_failed",
     "recent_include_running",
+    "recent_collect_cm_timeseries",
     "recent_limit",
     "recent_max_duration_sec",
     "recent_min_duration_sec",
@@ -61,8 +62,11 @@ ALLOWED_CONFIG_KEYS = {
     "recent_parallelism",
     "recent_cm_jobs",
     "recent_cm_summary_limit",
+    "recent_collect_cm_events",
+    "recent_cm_events_max_events",
     "recent_metadata_jobs",
     "recent_metadata_top_limit",
+    "recent_cm_timeseries_top_limit",
     "recent_profile_analysis_limit",
     "recent_select",
     "recent_user",
@@ -250,6 +254,7 @@ def normalize_config_value(key: str, value: object) -> object:
             "recent_limit",
             "recent_parallelism",
             "recent_cm_jobs",
+            "recent_cm_events_max_events",
             "recent_cm_summary_limit",
             "recent_metadata_jobs",
             "recent_profile_analysis_limit",
@@ -263,8 +268,8 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         if key == "min_duration_sec":
             raise ConfigError("Config field min_duration_sec must be a non-negative integer.")
-        if key == "recent_metadata_top_limit":
-            raise ConfigError("Config field recent_metadata_top_limit must be a non-negative integer.")
+        if key in {"recent_metadata_top_limit", "recent_cm_timeseries_top_limit"}:
+            raise ConfigError(f"Config field {key} must be a non-negative integer.")
         if key == "krb5ccname":
             raise ConfigError("Config field krb5ccname must be a non-empty string.")
         if key == "metadata_timeout_sec":
@@ -332,6 +337,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "recent_limit",
         "recent_parallelism",
         "recent_cm_jobs",
+        "recent_cm_events_max_events",
         "recent_cm_summary_limit",
         "recent_metadata_jobs",
         "recent_profile_analysis_limit",
@@ -345,9 +351,9 @@ def normalize_config_value(key: str, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         return value
-    if key == "recent_metadata_top_limit":
+    if key in {"recent_metadata_top_limit", "recent_cm_timeseries_top_limit"}:
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise ConfigError("Config field recent_metadata_top_limit must be a non-negative integer.")
+            raise ConfigError(f"Config field {key} must be a non-negative integer.")
         return value
     if key == "cm_timeseries_padding_sec":
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -369,6 +375,8 @@ def normalize_config_value(key: str, value: object) -> object:
     if key in {
         "insecure_skip_verify",
         "collect_cm_timeseries",
+        "recent_collect_cm_events",
+        "recent_collect_cm_timeseries",
         "recent_include_failed",
         "recent_include_running",
         "redact",

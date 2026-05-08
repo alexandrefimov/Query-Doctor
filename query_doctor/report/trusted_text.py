@@ -19,6 +19,7 @@ from query_doctor.report.estimate_validation import (
 )
 from query_doctor.report.facts_extractors import (
     backend_has_proven_tail,
+    cluster_event_context_report_evidence_bullet,
     cluster_runtime_context_report_evidence_bullet,
     cm_metrics_correlation_summary,
     cm_metrics_report_evidence_bullet,
@@ -46,6 +47,7 @@ from query_doctor.report.runtime_claim_validation import (
     STATS_FRESHNESS_MISSING_EVIDENCE,
     facts_have_admission_or_pool_evidence,
     find_backend_tail_claim_errors,
+    find_cluster_event_context_claim_errors,
     find_cm_context_only_claim_errors,
     find_primary_bottleneck_overclaim_errors,
     find_spill_scratch_claim_errors,
@@ -232,6 +234,7 @@ def validate_report_against_facts(report_text: str, facts_text: str, *, language
     errors.extend(find_unsafe_operator_time_wording(report_text, facts_text))
     errors.extend(find_backend_tail_claim_errors(report_text, facts_text))
     errors.extend(find_spill_scratch_claim_errors(report_text, facts_text))
+    errors.extend(find_cluster_event_context_claim_errors(report_text, facts_text))
     errors.extend(find_cm_context_only_claim_errors(report_text, facts_text))
     errors.extend(find_primary_bottleneck_overclaim_errors(report_text))
     errors.extend(find_unsupported_metadata_claim_errors(report_text))
@@ -317,6 +320,9 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "", *, langua
     cluster_runtime_bullet = cluster_runtime_context_report_evidence_bullet(facts_text)
     if cluster_runtime_bullet:
         text = insert_bullets_into_section(text, contract.evidence_heading, [cluster_runtime_bullet])
+    cluster_event_bullet = cluster_event_context_report_evidence_bullet(facts_text)
+    if cluster_event_bullet:
+        text = insert_bullets_into_section(text, contract.evidence_heading, [cluster_event_bullet])
     admin_bullet_rules: list[tuple[str, tuple[str, ...]]] = []
     if facts_has_backend_tail_evidence(facts_text):
         admin_bullet_rules.extend(

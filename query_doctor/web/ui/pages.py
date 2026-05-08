@@ -35,7 +35,7 @@ def render_page(
     result: Any | None = None,
     job: Any | None = None,
     error: object | None = None,
-    active_nav: str = "query",
+    active_nav: str = "batch",
     extra_sections: list[str] | None = None,
     show_run_panel: bool = True,
 ) -> str:
@@ -97,15 +97,27 @@ def render_query_page(
     job: Any | None = None,
     error: object | None = None,
 ) -> str:
+    run_disabled = bool(job is not None and getattr(job, "status", "") == "running")
+    sections = [
+        render_batch_run_panel(
+            settings,
+            {"diagnosis_target": "query"},
+            run_disabled=run_disabled,
+            query_id=query_id,
+            diagnosis_target="query",
+        )
+    ]
+    if error is not None:
+        sections.append(render_error_panel(error))
+    if job is not None:
+        sections.append(render_job_panel(job))
+    if result is not None:
+        sections.extend(render_query_output(result))
     return render_page(
         settings,
-        query_id=query_id,
-        report_mode=report_mode,
-        result=result,
-        job=job,
-        error=error,
-        active_nav="query",
-        show_run_panel=True,
+        active_nav="batch",
+        show_run_panel=False,
+        extra_sections=sections,
     )
 
 

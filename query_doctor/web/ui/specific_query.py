@@ -1,4 +1,4 @@
-"""Specific Query deterministic analysis rendering helpers."""
+"""Known Query ID deterministic analysis rendering helpers."""
 
 from __future__ import annotations
 
@@ -38,8 +38,8 @@ def render_specific_query_result(result: Any) -> list[str]:
 def render_specific_query_results(cases: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> list[str]:
     rows = "".join(render_specific_query_row(case) for case in cases)
     return [
-        "<section class=\"panel batch-panel\" aria-label=\"Specific Query analysis result\">",
-        "<div class=\"batch-head\"><div><h1>Specific Query analysis</h1>"
+        "<section class=\"panel batch-panel\" aria-label=\"Known Query ID analysis result\">",
+        "<div class=\"batch-head\"><div><h1>Known Query ID analysis</h1>"
         "<p>Deterministic analyzer result for one explicit Impala Query ID. No LLM report is generated.</p></div></div>",
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">",
         "<thead><tr>",
@@ -112,10 +112,10 @@ def render_specific_query_detail(
     optimizer_validation_url = specific_query_validate_rewrite_href(query_id)
     llm_actions_url = specific_query_llm_actions_href(query_id)
     return (
-        "<section class=\"panel batch-panel\" aria-label=\"Specific Query details\">"
-        "<div class=\"breadcrumb\"><a href=\"/query\">Specific Query</a><span>/</span>"
+        "<section class=\"panel batch-panel\" aria-label=\"Known Query ID details\">"
+        "<div class=\"breadcrumb\"><a href=\"/query\">Known Query ID</a><span>/</span>"
         f"<span>{escaped_query_id}</span></div>"
-        "<div class=\"batch-head\"><div><h1>Specific Query details</h1>"
+        "<div class=\"batch-head\"><div><h1>Known Query ID details</h1>"
         "<p>Deterministic facts for one analyzed query.</p></div></div>"
         f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"

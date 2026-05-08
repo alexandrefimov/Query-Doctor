@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,16 @@ from query_doctor.analyzer.context_files import (
 )
 from query_doctor.analyzer.scalars import fmt_duration, numeric_context_value
 from query_doctor.analyzer.sql_sources import extract_referenced_tables_from_sql, sql_inputs_for_case
+from query_doctor.cluster.context import MAX_CONTEXT_SOURCES
+from query_doctor.cluster.event_context import (
+    ALLOWED_CONTEXT_STATUSES,
+    ALLOWED_PRODUCT_STATUSES,
+    safe_count_map,
+    safe_limitations,
+    safe_signals,
+    safe_token,
+    safe_window,
+)
 
 
 def build_query_wall_clock(
@@ -108,6 +119,9 @@ CM_QUERY_CONTEXT_FIELDS = (
     "memory_aggregate_peak",
     "memory_per_node_peak",
 )
+UNSAFE_CLUSTER_TEXT_RE = re.compile(
+    r"(/[^ \n\t]+|[A-Za-z]:\\|https?://|RAW_[A-Z0-9_]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)"
+)
 
 
 def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
@@ -161,3 +175,98 @@ def collect_cm_timeseries_context(case_dir: Path) -> dict[str, Any] | None:
             if isinstance(warning, str)
         ][:5],
     }
+
+
+def find_cluster_context_path(case_dir: Path) -> Path | None:
+    """Find a safe aggregate cluster context next to a case or its batch root."""
+
+    parent_candidates = [case_dir]
+    parent_candidates.extend(parent for index, parent in enumerate(case_dir.parents) if index < 6)
+    for parent in parent_candidates:
+        candidate = parent / "cluster_context.json"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def collect_cluster_context(case_dir: Path) -> dict[str, Any] | None:
+    context_path = find_cluster_context_path(case_dir)
+    if context_path is None:
+        return None
+    try:
+        raw = json.loads(context_path.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return {
+            "available": False,
+            "status": "inconclusive",
+            "error": "failed to parse cluster context",
+        }
+    if not isinstance(raw, dict):
+        return {
+            "available": False,
+            "status": "inconclusive",
+            "error": "cluster context is not an object",
+        }
+    return sanitize_cluster_context(raw)
+
+
+def sanitize_cluster_context(raw: dict[str, Any]) -> dict[str, Any]:
+    """Whitelist the aggregate cluster context before it enters analyzer facts."""
+
+    status = safe_token(raw.get("status"), default="inconclusive")
+    if status not in ALLOWED_PRODUCT_STATUSES:
+        status = "inconclusive"
+    signals = safe_signals(raw.get("signals"))
+    return {
+        "available": bool(raw.get("available")),
+        "status": status,
+        "product": safe_token(raw.get("product"), default="cluster_doctor"),
+        "sources": sanitize_cluster_sources(raw.get("sources")),
+        "window": safe_window(raw.get("window")),
+        "signal_counts": safe_count_map(raw.get("signal_counts")),
+        "signals": signals,
+        "limitations": safe_limitations(raw.get("limitations")),
+        "next_checks": safe_cluster_next_checks(raw.get("next_checks")),
+        "guardrail": (
+            "Cluster context is a deterministic raw-free summary. "
+            "It can guide operational checks, not prove root cause."
+        ),
+    }
+
+
+def sanitize_cluster_sources(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    sources: list[dict[str, Any]] = []
+    for raw_source in value[:MAX_CONTEXT_SOURCES]:
+        if not isinstance(raw_source, dict):
+            continue
+        source = safe_token(raw_source.get("source"), default="")
+        if not source:
+            continue
+        status = safe_token(raw_source.get("status"), default="unknown")
+        if status not in ALLOWED_CONTEXT_STATUSES:
+            status = "unknown"
+        product_status = safe_token(raw_source.get("product_status"), default="inconclusive")
+        if product_status not in ALLOWED_PRODUCT_STATUSES:
+            product_status = "inconclusive"
+        sources.append(
+            {
+                "source": source,
+                "available": bool(raw_source.get("available")),
+                "status": status,
+                "product_status": product_status,
+            }
+        )
+    return sources
+
+
+def safe_cluster_next_checks(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    checks: list[str] = []
+    for raw_item in value[:8]:
+        item = str(raw_item).strip()
+        if 0 < len(item) <= 180 and not UNSAFE_CLUSTER_TEXT_RE.search(item):
+            checks.append(item)
+    return list(dict.fromkeys(checks))
