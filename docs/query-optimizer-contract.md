@@ -161,10 +161,13 @@ boundary.
   joins, literals, all original filters, and final output shape; added
   predicates must already exist downstream.
 - `cte_dag_predicate_pushdown`: accepts copied WHERE predicates earlier in an
-  acyclic fan-out/fan-in or UNION-assembly CTE graph. Validation must preserve
-  CTE order, dependency edges, UNION branch shape, physical table set,
-  projections, joins, literals, all original filters, and final output shape;
-  added predicates must already exist downstream on the same dependency path.
+  acyclic fan-out/fan-in or UNION-assembly CTE graph. Narrow deterministic
+  execution is allowed when a final SELECT predicate can be traced through
+  simple projections and UNION branches to one leaf CTE output column.
+  Validation must preserve CTE order, dependency edges, UNION branch shape,
+  physical table set, projections, joins, literals, all original filters, and
+  final output shape; added predicates must already exist downstream on the
+  same dependency path.
 - Recipe WHERE validation compares `UNION ALL` branches independently and
   allows only added transitive `BETWEEN` filters proven from inner-join equality
   predicates in the same branch.

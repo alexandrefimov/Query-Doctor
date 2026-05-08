@@ -140,6 +140,10 @@ Completed baseline work:
   deterministic executor for the simplest safe chain form: copy final SELECT
   predicates into the first CTE when every CTE in the chain preserves the
   referenced columns and the final filter remains in place.
+- `cte_dag_predicate_pushdown` is a validated Python-owned recipe with a
+  deterministic executor for the simplest safe DAG form: copy a final SELECT
+  predicate into one leaf CTE only when lineage through simple projections and
+  UNION branches proves that leaf owns the filtered output column.
 - Single-CTE predicate-pushdown detection now requires a copyable downstream
   predicate targeting the CTE output, so filters on unrelated joined aliases do
   not inflate the recipe funnel.

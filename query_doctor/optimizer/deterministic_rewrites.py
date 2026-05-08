@@ -30,6 +30,7 @@ from query_doctor.optimizer.sql_shape import (
     count_distinct_key_names,
     cte_body_is_pass_through_layer,
     clause_signature,
+    is_cte_dag_predicate_pushdown_candidate,
     is_linear_cte_chain,
     main_select_has_distinct,
     next_top_level_clause_offset,
@@ -101,6 +102,8 @@ def deterministic_recipe_draft(source_sql: str, rewrite_recipe: OptimizerRewrite
         return single_cte_predicate_pushdown_draft(source_sql)
     if rewrite_recipe.recipe_id == "linear_cte_predicate_pushdown":
         return linear_cte_predicate_pushdown_draft(source_sql)
+    if rewrite_recipe.recipe_id == "cte_dag_predicate_pushdown":
+        return cte_dag_predicate_pushdown_draft(source_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
         return single_derived_table_predicate_pushdown_draft(source_sql)
     return None
@@ -591,6 +594,205 @@ def linear_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
     cte_blocks = [f"{first_cte.name} AS (\n{modified_first_body.strip()}\n)"]
     cte_blocks.extend(f"{cte.name} AS (\n{cte.body.strip()}\n)" for cte in parsed.ctes[1:])
     return "WITH " + ",\n".join(cte_blocks) + "\n" + parsed.final_sql.strip()
+
+
+LineageRef = tuple[str, str]
+
+
+def cte_dag_predicate_pushdown_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None or len(parsed.ctes) < 2:
+        return None
+    if any_cte_has_column_list(source_sql):
+        return None
+    if not is_cte_dag_predicate_pushdown_candidate(source_sql):
+        return None
+    names = tuple(cte.name for cte in parsed.ctes)
+    final_cte_name = rewrite_recipe.source_cte
+    if not final_cte_name or referenced_cte_names(parsed.final_sql, names) != (final_cte_name,):
+        return None
+    final_cte = {cte.name: cte for cte in parsed.ctes}.get(final_cte_name)
+    if final_cte is None:
+        return None
+    lineage_maps = cte_output_lineage_maps(parsed.ctes)
+    final_lineage = lineage_maps.get(final_cte.name)
+    if not final_lineage:
+        return None
+    final_columns = set(final_lineage)
+    predicates = copyable_final_where_predicates(
+        parsed.final_sql,
+        final_cte.body,
+        final_columns,
+        cte_qualifiers=cte_reference_aliases(parsed.final_sql, final_cte.name),
+        grouped_columns=set(),
+    )
+    if not predicates:
+        return None
+    cte_by_name = {cte.name: cte for cte in parsed.ctes}
+    predicates_by_cte: dict[str, list[str]] = {}
+    for predicate in predicates:
+        predicate_columns = predicate_column_references(predicate, final_columns)
+        if predicate_columns is None:
+            continue
+        lineage_refs: dict[str, LineageRef] = {}
+        for column in predicate_columns:
+            lineage = final_lineage.get(column)
+            if lineage is None or len(lineage) != 1:
+                lineage_refs = {}
+                break
+            lineage_refs[column] = next(iter(lineage))
+        if not lineage_refs:
+            continue
+        source_ctes = {cte_name for cte_name, _column in lineage_refs.values()}
+        if len(source_ctes) != 1:
+            continue
+        source_cte_name = next(iter(source_ctes))
+        source_cte = cte_by_name.get(source_cte_name)
+        if source_cte is None or referenced_cte_names(source_cte.body, names):
+            continue
+        source_columns = simple_cte_filter_columns(source_cte.body)
+        if not source_columns:
+            continue
+        source_column_map = {column: source_column for column, (_cte_name, source_column) in lineage_refs.items()}
+        rewritten_predicate = rewrite_expression_identifiers(predicate, source_column_map)
+        if rewritten_predicate is None:
+            continue
+        rewritten_columns = predicate_column_references(rewritten_predicate, source_columns)
+        if rewritten_columns is None:
+            continue
+        grouped_columns = simple_group_by_columns(source_cte.body)
+        if clause_signature(source_cte.body, "GROUP") and not rewritten_columns <= grouped_columns:
+            continue
+        if main_select_has_distinct(source_cte.body) or top_level_join_signature(source_cte.body):
+            continue
+        if any(top_level_keyword_count(source_cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+            continue
+        signature = sql_predicate_signature_counter(f"SELECT 1 WHERE {rewritten_predicate}", "WHERE")
+        if not signature or counter_is_subset(signature, sql_predicate_signature_counter(source_cte.body, "WHERE")):
+            continue
+        predicates_by_cte.setdefault(source_cte_name, []).append(rewritten_predicate)
+    if not predicates_by_cte:
+        return None
+    cte_bodies: dict[str, str] = {}
+    for cte_name, cte_predicates in predicates_by_cte.items():
+        modified_body = add_where_predicates_to_cte_body(cte_by_name[cte_name].body, tuple(cte_predicates))
+        if modified_body is None:
+            return None
+        cte_bodies[cte_name] = modified_body
+    return rebuild_with_cte_bodies(parsed.ctes, parsed.final_sql, cte_bodies)
+
+
+def cte_output_lineage_maps(ctes: tuple[CteDefinition, ...]) -> dict[str, dict[str, set[LineageRef]]]:
+    names = tuple(cte.name for cte in ctes)
+    lineage_maps: dict[str, dict[str, set[LineageRef]]] = {}
+    for cte in ctes:
+        branches = split_top_level_union_all_fragments(cte.body)
+        if len(branches) > 1:
+            lineage = union_cte_output_lineage(cte, branches, names, lineage_maps)
+        else:
+            lineage = select_output_lineage(cte, cte.body, names, lineage_maps)
+        lineage_maps[cte.name] = lineage
+    return lineage_maps
+
+
+def union_cte_output_lineage(
+    cte: CteDefinition,
+    branches: tuple[str, ...],
+    names: tuple[str, ...],
+    lineage_maps: dict[str, dict[str, set[LineageRef]]],
+) -> dict[str, set[LineageRef]]:
+    output_names = union_projection_names(cte.body)
+    if not output_names:
+        return {}
+    branch_lineages: list[dict[str, set[LineageRef]]] = []
+    for branch in branches:
+        fragments = projection_item_fragments(branch)
+        if len(fragments) < len(output_names):
+            return {}
+        alias_map = cte_relation_alias_map(branch, names)
+        branch_lineage: dict[str, set[LineageRef]] = {}
+        for output_name, fragment in zip(output_names, fragments):
+            lineage = projection_lineage(fragment, cte.name, alias_map, lineage_maps)
+            if lineage:
+                branch_lineage[output_name] = lineage
+        branch_lineages.append(branch_lineage)
+    combined: dict[str, set[LineageRef]] = {}
+    for output_name in output_names:
+        first = branch_lineages[0].get(output_name)
+        if first is None:
+            continue
+        if all(branch.get(output_name) == first for branch in branch_lineages[1:]):
+            combined[output_name] = first
+    return combined
+
+
+def select_output_lineage(
+    cte: CteDefinition,
+    sql: str,
+    names: tuple[str, ...],
+    lineage_maps: dict[str, dict[str, set[LineageRef]]],
+) -> dict[str, set[LineageRef]]:
+    alias_map = cte_relation_alias_map(sql, names)
+    lineage: dict[str, set[LineageRef]] = {}
+    for fragment in projection_item_fragments(sql):
+        output_name = projection_name_for_fragment(fragment)
+        if not output_name:
+            continue
+        refs = projection_lineage(fragment, cte.name, alias_map, lineage_maps)
+        if refs:
+            lineage[output_name] = refs
+    return lineage
+
+
+def projection_lineage(
+    fragment: str,
+    cte_name: str,
+    alias_map: dict[str, str],
+    lineage_maps: dict[str, dict[str, set[LineageRef]]],
+) -> set[LineageRef] | None:
+    expression = projection_expression(fragment)
+    try:
+        tokens = tokenize_sql(expression)
+    except OptimizerSqlError:
+        return None
+    if len(tokens) == 1:
+        column = tokens[0].lower()
+        if not alias_map:
+            return {(cte_name, column)}
+        if len(set(alias_map.values())) == 1:
+            upstream_cte = next(iter(alias_map.values()))
+            return lineage_maps.get(upstream_cte, {}).get(column)
+        matches = [
+            refs
+            for upstream_cte in set(alias_map.values())
+            if (refs := lineage_maps.get(upstream_cte, {}).get(column))
+        ]
+        return matches[0] if len(matches) == 1 else None
+    if len(tokens) == 3 and tokens[1] == ".":
+        upstream_cte = alias_map.get(tokens[0].lower())
+        if upstream_cte is None:
+            return None
+        return lineage_maps.get(upstream_cte, {}).get(tokens[2].lower())
+    return None
+
+
+def cte_relation_alias_map(sql: str, cte_names: tuple[str, ...]) -> dict[str, str]:
+    known = set(cte_names)
+    tokens = tokenize_sql(sql)
+    aliases: dict[str, str] = {}
+    for index, token in enumerate(tokens[:-1]):
+        if token.upper() not in {"FROM", "JOIN"}:
+            continue
+        cte_name = tokens[index + 1].lower()
+        if cte_name not in known:
+            continue
+        aliases[cte_name] = cte_name
+        alias_index = index + 2
+        if alias_index < len(tokens) and tokens[alias_index].upper() == "AS":
+            alias_index += 1
+        if alias_index < len(tokens) and tokens[alias_index].upper() not in RELATION_ALIAS_BOUNDARIES:
+            aliases[tokens[alias_index].lower()] = cte_name
+    return aliases
 
 
 def first_cte_has_column_list(source_sql: str) -> bool:
