@@ -262,6 +262,10 @@ def build_cm_query_filter_expression(filters: CMQueryFilters) -> str | None:
         predicates.append(f"user = {cm_filter_string_literal(filters.user)}")
     if filters.pool:
         predicates.append(f"pool = {cm_filter_string_literal(filters.pool)}")
+    if filters.query_type:
+        predicates.append(f"query_type = {cm_filter_string_literal(filters.query_type)}")
+    if filters.executing is not None:
+        predicates.append(f"executing = {str(filters.executing).lower()}")
     return " AND ".join(predicates) if predicates else None
 
 

@@ -196,6 +196,7 @@ class CMQueryFilters:
     status: str = "all"
     query_id: str | None = None
     query_type: str | None = None
+    executing: bool | None = None
     page_size: int | None = None
 
     def as_log_dict(self) -> dict[str, object]:
@@ -212,6 +213,7 @@ class CMQueryFilters:
             "status": self.status,
             "query_id": self.query_id,
             "query_type": self.query_type,
+            "executing": self.executing,
         }
         if self.since_minutes is not None:
             values["since_minutes"] = self.since_minutes

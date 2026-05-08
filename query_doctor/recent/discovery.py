@@ -41,6 +41,7 @@ def build_recent_filters(config: BatchConfig) -> cm_profiles.CMQueryFilters:
         status="all",
         query_id=None,
         query_type=config.query_type,
+        executing=True if config.only_running else (None if config.include_running else False),
     )
 
 

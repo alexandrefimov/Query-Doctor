@@ -348,6 +348,7 @@ def build_recent_query_filters(config: CollectorConfig) -> CMQueryFilters:
         status="all",
         query_id=None,
         query_type=config.query_type,
+        executing=None if config.recent_include_running else False,
     )
 
 
