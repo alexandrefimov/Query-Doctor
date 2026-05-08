@@ -97,6 +97,8 @@ from query_doctor.optimizer.sql_shape import (
     has_union_all,
     identifier_name_referenced,
     identifier_referenced,
+    is_cte_dag_predicate_pushdown_candidate,
+    is_linear_cte_chain,
     keyword_at,
     keyword_count_any_depth,
     lower_sql_outside_quoted_text,
@@ -275,7 +277,11 @@ def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
     set_operator_count = sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS)
     if cte_count:
         conservative_reasons.append("cte_body_validation_not_proven")
-    if cte_count > RECOMMENDATIONS_ONLY_CTE_THRESHOLD:
+    if (
+        cte_count > RECOMMENDATIONS_ONLY_CTE_THRESHOLD
+        and not is_linear_cte_chain(source_sql)
+        and not is_cte_dag_predicate_pushdown_candidate(source_sql)
+    ):
         recommendations_only_reasons.append("too_many_ctes_for_safe_rewrite")
     if join_count > RECOMMENDATIONS_ONLY_JOIN_THRESHOLD:
         recommendations_only_reasons.append("too_many_top_level_joins_for_safe_rewrite")

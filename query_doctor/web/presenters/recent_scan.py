@@ -129,6 +129,9 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         optimization_impact=optimization["impact"],
         optimization_confidence=optimization["confidence"],
         optimization_artifact_status=safe_display_text(case.get("_optimizer_artifact_status") or "unknown"),
+        optimizer_rewrite_support=optimization["rewrite_support"],
+        optimizer_rewrite_support_label=optimization["rewrite_support_label"],
+        optimizer_rewrite_support_reason=optimization["rewrite_support_reason"],
         optimization_summary=optimization["summary"],
         optimization_review_areas=optimization["review_areas"],
         stats_tier=stats_candidate["tier"],
@@ -281,15 +284,61 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         if isinstance(counter_signals, list)
         else []
     )
+    rewrite_support = optimizer_rewrite_support_view(case)
     return {
         "tier": tier,
         "score": score,
         "impact": impact,
         "confidence": confidence,
+        **rewrite_support,
         "summary": "; ".join(safe_reasons),
         "review_areas": "; ".join(safe_review),
         "counter_signals": "; ".join(safe_counter_signals),
     }
+
+
+def optimizer_rewrite_support_view(case: dict[str, Any]) -> dict[str, str]:
+    support = case.get("optimizer_rewrite_support")
+    support = support if isinstance(support, dict) else {}
+    status = safe_optimizer_rewrite_support_status(support.get("status"))
+    label = safe_optimizer_rewrite_support_label(status, support.get("label"))
+    reason = safe_optimizer_rewrite_support_reason(support.get("reason"))
+    return {
+        "rewrite_support": status,
+        "rewrite_support_label": label,
+        "rewrite_support_reason": reason,
+    }
+
+
+def safe_optimizer_rewrite_support_status(value: Any) -> str:
+    status = str(value or "unknown").strip().lower()
+    allowed = {
+        "sql_draft_supported",
+        "sql_draft_attemptable",
+        "guidance_only",
+        "source_unavailable",
+        "not_candidate",
+        "unknown",
+    }
+    return status if status in allowed else "unknown"
+
+
+def safe_optimizer_rewrite_support_label(status: str, value: Any) -> str:
+    labels = {
+        "sql_draft_supported": "SQL draft supported",
+        "sql_draft_attemptable": "SQL draft attemptable",
+        "guidance_only": "Guidance only",
+        "source_unavailable": "Source unavailable",
+        "not_candidate": "Not an optimization candidate",
+        "unknown": "Unknown",
+    }
+    text = safe_optimization_display_text(value)
+    return text if text and status != "unknown" else labels.get(status, "Unknown")
+
+
+def safe_optimizer_rewrite_support_reason(value: Any) -> str:
+    text = safe_optimization_display_text(value)
+    return text or "No trusted rewrite-support classification is available"
 
 
 def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:

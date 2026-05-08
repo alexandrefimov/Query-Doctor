@@ -8,6 +8,7 @@ from collections import Counter
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
 from query_doctor.recent.batch_models import CaseResult
+from query_doctor.recent.optimizer_rewrite_support import classify_optimizer_rewrite_support
 from query_doctor.recent.query_optimization_score import score_query_optimization_candidate
 from query_doctor.recent.stats_optimization_score import score_stats_optimization_candidate
 
@@ -99,6 +100,11 @@ def score_case(case: CaseResult) -> None:
         collection_status=case.collection_status,
         analysis_status=case.analysis_status,
         failure_category=case.failure_category,
+    )
+    case.optimizer_rewrite_support = classify_optimizer_rewrite_support(
+        case.actual_case_dir,
+        case.query_optimization_candidate,
+        facts,
     )
     case.stats_optimization_candidate = score_stats_optimization_candidate(
         facts,

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from query_doctor.cli import collect_cm_profiles as cm_profiles
+    from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
     from query_doctor.recent.query_optimization_score import QueryOptimizationCandidateScore
     from query_doctor.recent.stats_optimization_score import StatsOptimizationCandidateScore
 
@@ -100,6 +101,7 @@ class CaseResult:
     score: int = 0
     score_reasons: list[str] = field(default_factory=list)
     query_optimization_candidate: QueryOptimizationCandidateScore | None = None
+    optimizer_rewrite_support: OptimizerRewriteSupport | None = None
     query_optimization_rank: int | None = None
     stats_optimization_candidate: StatsOptimizationCandidateScore | None = None
     stats_optimization_rank: int | None = None

@@ -249,6 +249,11 @@ def evidence_metadata_label(view: RecentScanCaseDetailView) -> str:
 
 def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
     if candidate_is_visible(view.optimization_candidate):
+        rewrite_support = str(view.optimization_candidate.get("rewrite_support") or "").lower()
+        if rewrite_support == "guidance_only":
+            return "Review query optimization guidance"
+        if rewrite_support == "source_unavailable":
+            return "Collect safe source SQL before optimizer run"
         return "Review query optimization candidate"
     if candidate_is_visible(view.stats_candidate):
         return "Check stats refresh candidate"

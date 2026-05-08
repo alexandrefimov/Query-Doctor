@@ -224,6 +224,11 @@ def render_batch_case_row(
             candidate_cell(view.optimization_tier),
             compact_cell(view.optimization_impact.title()),
             compact_cell(view.optimization_confidence.title()),
+            optimizer_rewrite_support_cell(
+                view.optimizer_rewrite_support,
+                view.optimizer_rewrite_support_label,
+                view.optimizer_rewrite_support_reason,
+            ),
             optimizer_next_action_cell(view.optimization_artifact_status),
             reason_cell(view.optimization_review_areas or "review query shape"),
             summary_cell(view, query_group=normalized),
@@ -351,6 +356,32 @@ def optimizer_next_action_view(value: Any) -> tuple[str, str, str]:
     }
     label, class_name = labels.get(status, labels["unknown"])
     return label, class_name, optimizer_artifact_status_label(status)
+
+
+def optimizer_rewrite_support_cell(status: Any, label: Any, reason: Any) -> str:
+    display_label, class_name, title = optimizer_rewrite_support_view(status, label, reason)
+    return (
+        "<td class=\"batch-cell--compact\">"
+        f"<span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(title)}\">"
+        f"{escape_value(display_label)}</span></td>"
+    )
+
+
+def optimizer_rewrite_support_view(status: Any, label: Any, reason: Any) -> tuple[str, str, str]:
+    normalized = str(status or "unknown").strip().lower()
+    fallback_labels = {
+        "sql_draft_supported": ("SQL supported", "batch-status--ok"),
+        "sql_draft_attemptable": ("SQL attemptable", "batch-status--warning"),
+        "guidance_only": ("Guidance only", "batch-status--neutral"),
+        "source_unavailable": ("No source", "batch-status--neutral"),
+        "not_candidate": ("Not candidate", "batch-status--neutral"),
+        "unknown": ("Unknown", "batch-status--neutral"),
+    }
+    fallback_label, class_name = fallback_labels.get(normalized, fallback_labels["unknown"])
+    title_label = str(label or fallback_label).strip() or fallback_label
+    title_reason = str(reason or "").strip()
+    title = f"{title_label}: {title_reason}" if title_reason else title_label
+    return fallback_label, class_name, title
 
 
 def stats_next_action_label(value: Any) -> str:

@@ -15,6 +15,7 @@ def render_action_candidate_findings(view: RecentScanCaseDetailView) -> str:
     if candidate_is_visible(optimization):
         rank_text = candidate_rank_text(view.optimization_rank)
         counter_text = candidate_counter_signal_text(optimization)
+        rewrite_support_text = optimizer_rewrite_support_text(optimization)
         cards.append(
             action_candidate_card(
                 f"Query optimization candidate: {candidate_title(optimization.get('tier'))}",
@@ -23,6 +24,7 @@ def render_action_candidate_findings(view: RecentScanCaseDetailView) -> str:
                     f"{rank_text}"
                     f"Impact: {candidate_title(optimization.get('impact'))}. "
                     f"Confidence: {candidate_title(optimization.get('confidence'))}. "
+                    f"{rewrite_support_text}"
                     f"Why: {optimization.get('summary') or 'query-shape evidence'}. "
                     f"Review first: {optimization.get('review_areas') or 'query shape'}."
                     f"{counter_text}"
@@ -88,6 +90,16 @@ def candidate_counter_signal_text(candidate: dict[str, Any]) -> str:
     if not counter_signals:
         return ""
     return f" Counter-signals: {escape_value(counter_signals)}."
+
+
+def optimizer_rewrite_support_text(candidate: dict[str, Any]) -> str:
+    label = str(candidate.get("rewrite_support_label") or "").strip()
+    reason = str(candidate.get("rewrite_support_reason") or "").strip()
+    if not label:
+        return ""
+    if reason:
+        return f"Rewrite support: {label} ({reason}). "
+    return f"Rewrite support: {label}. "
 
 
 def candidate_title(value: Any) -> str:

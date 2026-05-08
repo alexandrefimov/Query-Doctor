@@ -44,6 +44,16 @@ OPTIMIZER_FALLBACK_LABELS = {
     "no_material_change": "No material rewrite",
     "output_budget": "Output budget reached",
 }
+OPTIMIZER_RISK_REASON_LABELS = {
+    "cte_body_validation_not_proven": "CTE body equivalence is not proven by deterministic validation",
+    "too_many_ctes_for_safe_rewrite": "CTE count exceeds the safe SQL-draft threshold",
+    "too_many_top_level_joins_for_safe_rewrite": "Top-level join count exceeds the safe SQL-draft threshold",
+    "sql_payload_too_large_for_safe_rewrite": "SQL payload is too large for a trusted draft",
+    "many_ctes": "Multiple CTEs require conservative validation",
+    "many_top_level_joins": "Many top-level joins require conservative validation",
+    "long_sql_payload": "Long SQL payload requires conservative validation",
+    "set_operations": "Set operations require conservative validation",
+}
 
 
 def render_llm_actions_block(
@@ -519,10 +529,12 @@ def render_optimized_query_outcome(state: dict[str, Any]) -> str:
         return ""
 
     items = []
+    risk_reasons = "; ".join(optimizer_risk_reason_labels(state.get("risk_reasons")))
     for label, value in (
         ("Outcome", optimizer_output_label(output_kind)),
         ("Source scope", optimizer_source_scope_label(str(state.get("source_scope") or ""))),
         ("Risk mode", optimizer_risk_label(str(state.get("risk_mode") or ""))),
+        ("Guardrails", risk_reasons),
         ("Reason", optimizer_fallback_label(str(state.get("fallback_reason") or ""))),
         ("Manual validation", manual_validation),
     ):
@@ -553,6 +565,17 @@ def optimizer_risk_label(value: str) -> str:
 
 def optimizer_fallback_label(value: str) -> str:
     return OPTIMIZER_FALLBACK_LABELS.get(value, humanize_optimizer_token(value))
+
+
+def optimizer_risk_reason_labels(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    labels: list[str] = []
+    for value in values:
+        label = OPTIMIZER_RISK_REASON_LABELS.get(str(value), "Additional deterministic risk guardrail")
+        if label not in labels:
+            labels.append(label)
+    return labels
 
 
 def humanize_optimizer_token(value: str) -> str:

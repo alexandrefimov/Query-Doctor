@@ -120,6 +120,15 @@ boundary.
   `UNION ALL` detail CTEs feeding a final `COUNT(DISTINCT ...)` aggregate.
   Validation must preserve the final aggregate query and pre-aggregate branches
   to the CTE output grain plus distinct keys.
+- `linear_cte_predicate_pushdown`: accepts copied WHERE predicates earlier in a
+  single-chain CTE graph. Validation must preserve CTE order, dependency edges,
+  physical table set, projections, joins, literals, all original filters, and
+  final output shape; added predicates must already exist downstream.
+- `cte_dag_predicate_pushdown`: accepts copied WHERE predicates earlier in an
+  acyclic fan-out/fan-in or UNION-assembly CTE graph. Validation must preserve
+  CTE order, dependency edges, UNION branch shape, physical table set,
+  projections, joins, literals, all original filters, and final output shape;
+  added predicates must already exist downstream on the same dependency path.
 - Recipe WHERE validation compares `UNION ALL` branches independently and
   allows only added transitive `BETWEEN` filters proven from inner-join equality
   predicates in the same branch.
@@ -172,6 +181,8 @@ Details may show safe optimizer status fields:
 - source scope category, such as read-only statement, INSERT payload, or CTAS
   payload;
 - risk mode, such as rewrite allowed or conservative;
+- human-readable deterministic guardrail reasons, such as CTE body equivalence
+  not being proven or SQL shape exceeding safe draft thresholds;
 - validation outcome category;
 - trusted output kind, such as SQL draft, recommendations-only, or no-rewrite.
 

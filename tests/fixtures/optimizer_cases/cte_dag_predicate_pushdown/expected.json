@@ -1,0 +1,12 @@
+{
+  "case_id": "cte_dag_predicate_pushdown",
+  "expected_output_kind": "sql_draft",
+  "expected_recipe": "cte_dag_predicate_pushdown",
+  "expected_risk_mode": "conservative_rewrite",
+  "expected_risk_reasons": [
+    "cte_body_validation_not_proven",
+    "many_ctes"
+  ],
+  "expect_material_change": true,
+  "expect_validation_errors": []
+}

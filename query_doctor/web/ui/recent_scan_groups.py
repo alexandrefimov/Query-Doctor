@@ -29,6 +29,7 @@ def batch_table_columns(query_group: str) -> tuple[str, ...]:
             "Candidate",
             "Impact",
             "Confidence",
+            "Rewrite support",
             "Next action",
             "Review scope",
             "Summary",

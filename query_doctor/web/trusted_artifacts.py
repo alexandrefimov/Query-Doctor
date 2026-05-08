@@ -498,6 +498,7 @@ def load_optimized_query_state(
         "output_kind": marker.get("output_kind") or "sql_draft",
         "fallback_reason": marker.get("fallback_reason") or "",
         "risk_mode": marker.get("risk_mode") or "",
+        "risk_reasons": marker.get("risk_reasons") if isinstance(marker.get("risk_reasons"), list) else [],
         "source_scope": marker.get("source_scope") or "",
         "error": job.error if job is not None and job.status == "failed" else "",
         "job_id": state_job.job_id if state_job is not None else "",

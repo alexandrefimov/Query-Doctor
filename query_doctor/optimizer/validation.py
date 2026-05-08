@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+from collections import Counter
 from collections.abc import Iterable
 
-from query_doctor.optimizer.models import OptimizerRewriteRecipe, OptimizerRiskDecision
+from query_doctor.optimizer.models import CteParseResult, OptimizerRewriteRecipe, OptimizerRiskDecision
 from query_doctor.optimizer.recommendation_output import (
     MAX_OPTIMIZER_RECOMMENDATION_ITEMS,
     MAX_RECOMMENDATIONS_BYTES,
@@ -43,6 +44,8 @@ from query_doctor.optimizer.sql_shape import (
     dedupe_preserve_order,
     has_union_all,
     identifier_referenced,
+    is_cte_dag_predicate_pushdown_candidate,
+    is_linear_cte_chain,
     keyword_count_any_depth,
     main_select_has_distinct,
     non_aggregate_projection_names,
@@ -53,6 +56,7 @@ from query_doctor.optimizer.sql_shape import (
     projection_item_fragments,
     projection_name_for_fragment,
     projection_signature,
+    referenced_cte_names,
     split_top_level_union_all_fragments,
     sql_has_keyword,
     table_names,
@@ -184,6 +188,10 @@ def validate_recipe_backed_cte_rewrite(
     # Recipe-backed rewrites are the narrow Python-owned exception to the default CTE-body freeze.
     if rewrite_recipe.recipe_id == "final_union_distinct_rollup":
         return validate_final_union_distinct_rollup_rewrite(source_sql, draft_sql, rewrite_recipe)
+    if rewrite_recipe.recipe_id == "linear_cte_predicate_pushdown":
+        return validate_linear_cte_predicate_pushdown_rewrite(source_sql, draft_sql)
+    if rewrite_recipe.recipe_id == "cte_dag_predicate_pushdown":
+        return validate_cte_dag_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id != "post_union_aggregate_pushdown":
         return ["optimized draft changes CTE query body"]
     errors: list[str] = []
@@ -232,6 +240,153 @@ def validate_recipe_backed_cte_rewrite(
         errors.append("optimized draft violates rewrite recipe: source string literals changed")
     if not counter_is_subset(sql_business_numeric_literal_counter(source_sql), sql_business_numeric_literal_counter(draft_sql)):
         errors.append("optimized draft violates rewrite recipe: source numeric literals changed")
+    return errors
+
+
+def validate_linear_cte_predicate_pushdown_rewrite(source_sql: str, draft_sql: str) -> list[str]:
+    errors: list[str] = []
+    source_parsed = parse_with_query(source_sql)
+    draft_parsed = parse_with_query(draft_sql)
+    if source_parsed is None or draft_parsed is None:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    source_names = tuple(cte.name for cte in source_parsed.ctes)
+    draft_names = tuple(cte.name for cte in draft_parsed.ctes)
+    if source_names != draft_names:
+        return ["optimized draft violates rewrite recipe: CTE order changed"]
+    if not is_linear_cte_chain(source_sql) or not is_linear_cte_chain(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: CTE dependency chain changed")
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+
+    source_segments = cte_validation_segments(source_parsed)
+    draft_segments = cte_validation_segments(draft_parsed)
+    errors.extend(validate_cte_predicate_pushdown_segments(source_parsed, source_segments, draft_segments))
+    return dedupe_preserve_order(errors)
+
+
+def validate_cte_dag_predicate_pushdown_rewrite(source_sql: str, draft_sql: str) -> list[str]:
+    errors: list[str] = []
+    source_parsed = parse_with_query(source_sql)
+    draft_parsed = parse_with_query(draft_sql)
+    if source_parsed is None or draft_parsed is None:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    source_names = tuple(cte.name for cte in source_parsed.ctes)
+    draft_names = tuple(cte.name for cte in draft_parsed.ctes)
+    if source_names != draft_names:
+        return ["optimized draft violates rewrite recipe: CTE order changed"]
+    if not is_cte_dag_predicate_pushdown_candidate(source_sql) or not is_cte_dag_predicate_pushdown_candidate(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: CTE dependency DAG changed")
+    if cte_dependency_signature(source_parsed) != cte_dependency_signature(draft_parsed):
+        errors.append("optimized draft violates rewrite recipe: CTE dependency edges changed")
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+
+    source_segments = cte_validation_segments(source_parsed)
+    draft_segments = cte_validation_segments(draft_parsed)
+    errors.extend(validate_cte_predicate_pushdown_segments(source_parsed, source_segments, draft_segments))
+    return dedupe_preserve_order(errors)
+
+
+def cte_validation_segments(parsed: CteParseResult) -> list[tuple[str, str]]:
+    return [(cte.name, cte.body) for cte in parsed.ctes] + [("final SELECT", parsed.final_sql)]
+
+
+def cte_dependency_signature(parsed: CteParseResult) -> tuple[tuple[str, ...], ...]:
+    names = tuple(cte.name for cte in parsed.ctes)
+    refs = [referenced_cte_names(cte.body, names) for cte in parsed.ctes]
+    refs.append(referenced_cte_names(parsed.final_sql, names))
+    return tuple(refs)
+
+
+def cte_downstream_segment_indexes(parsed: CteParseResult) -> list[set[int]]:
+    names = tuple(cte.name for cte in parsed.ctes)
+    name_indexes = {name: index for index, name in enumerate(names)}
+    final_index = len(names)
+    edges: list[set[int]] = [set() for _ in range(final_index + 1)]
+    for index, cte in enumerate(parsed.ctes):
+        for ref in referenced_cte_names(cte.body, names):
+            edges[name_indexes[ref]].add(index)
+    for ref in referenced_cte_names(parsed.final_sql, names):
+        edges[name_indexes[ref]].add(final_index)
+    downstream: list[set[int]] = []
+    for index in range(final_index + 1):
+        seen: set[int] = set()
+        stack = list(edges[index])
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            stack.extend(edges[current])
+        downstream.append(seen)
+    return downstream
+
+
+def validate_cte_predicate_pushdown_segments(
+    source_parsed: CteParseResult,
+    source_segments: list[tuple[str, str]],
+    draft_segments: list[tuple[str, str]],
+) -> list[str]:
+    errors: list[str] = []
+    source_predicates = [sql_predicate_signature_counter(segment_sql, "WHERE") for _, segment_sql in source_segments]
+    downstream_indexes = cte_downstream_segment_indexes(source_parsed)
+    for index, ((segment_name, source_segment), (_, draft_segment)) in enumerate(zip(source_segments, draft_segments)):
+        errors.extend(validate_cte_segment_shape_preserved_except_where(source_segment, draft_segment, segment_name))
+        draft_predicates = sql_predicate_signature_counter(draft_segment, "WHERE")
+        if not counter_is_subset(source_predicates[index], draft_predicates):
+            errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
+            continue
+        extra_predicates = draft_predicates - source_predicates[index]
+        if not extra_predicates:
+            continue
+        allowed_predicates: Counter[str] = Counter()
+        for downstream_index in downstream_indexes[index]:
+            allowed_predicates.update(source_predicates[downstream_index])
+        if not counter_is_subset(extra_predicates, allowed_predicates):
+            errors.append("optimized draft violates rewrite recipe: added WHERE predicate was not copied from downstream")
+    return errors
+
+
+def validate_cte_segment_shape_preserved_except_where(
+    source_segment: str,
+    draft_segment: str,
+    segment_name: str,
+) -> list[str]:
+    errors: list[str] = []
+    if main_select_has_distinct(source_segment) != main_select_has_distinct(draft_segment):
+        errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes DISTINCT shape")
+    for keyword in TOP_LEVEL_SHAPE_KEYWORDS:
+        if top_level_keyword_count(source_segment, keyword) != top_level_keyword_count(draft_segment, keyword):
+            errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes {keyword} shape")
+    for operator in TOP_LEVEL_SET_OPERATORS:
+        if top_level_keyword_count(source_segment, operator) != top_level_keyword_count(draft_segment, operator):
+            errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes {operator} shape")
+    if top_level_join_signature(source_segment) != top_level_join_signature(draft_segment):
+        errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes JOIN shape")
+    if top_level_join_condition_signature(source_segment) != top_level_join_condition_signature(draft_segment):
+        errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes JOIN predicates")
+    for keyword in ("GROUP", "HAVING", "ORDER", "LIMIT"):
+        if clause_signature(source_segment, keyword) != clause_signature(draft_segment, keyword):
+            errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes {keyword} expression")
+    source_projection = projection_signature(source_segment)
+    draft_projection = projection_signature(draft_segment)
+    if source_projection and draft_projection:
+        if source_projection.count != draft_projection.count:
+            errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes projection count")
+        elif (
+            len(source_projection.output_names) == source_projection.count
+            and len(draft_projection.output_names) == draft_projection.count
+            and source_projection.output_names != draft_projection.output_names
+        ):
+            errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes projection names")
+    source_projection_expression = projection_expression_signature(source_segment)
+    draft_projection_expression = projection_expression_signature(draft_segment)
+    if (
+        source_projection_expression
+        and draft_projection_expression
+        and source_projection_expression != draft_projection_expression
+    ):
+        errors.append(f"optimized draft violates rewrite recipe: {segment_name} changes projection expressions")
     return errors
 
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from collections import Counter
+
 from query_doctor.optimizer.models import CteDefinition, CteParseResult, ProjectionSignature
 from query_doctor.optimizer.source_sql import find_top_level_keyword_offset
 from query_doctor.optimizer.sql import (
@@ -115,6 +117,53 @@ def cte_definition_map(sql: str) -> dict[str, str]:
     if parsed is None:
         return {}
     return {definition.name: definition.body for definition in parsed.ctes}
+
+
+def referenced_cte_names(sql: str, cte_names: tuple[str, ...]) -> tuple[str, ...]:
+    known = set(cte_names)
+    if not known:
+        return ()
+    refs = [token.lower() for token in extract_statement_tokens(sql) if token.lower() in known]
+    return tuple(dedupe_preserve_order(refs))
+
+
+def is_linear_cte_chain(sql: str) -> bool:
+    parsed = parse_with_query(sql)
+    if parsed is None or len(parsed.ctes) < 2:
+        return False
+    names = tuple(definition.name for definition in parsed.ctes)
+    for index, definition in enumerate(parsed.ctes):
+        refs = referenced_cte_names(definition.body, names)
+        expected = () if index == 0 else (names[index - 1],)
+        if refs != expected:
+            return False
+    return referenced_cte_names(parsed.final_sql, names) == (names[-1],)
+
+
+def is_cte_dag_predicate_pushdown_candidate(sql: str) -> bool:
+    parsed = parse_with_query(sql)
+    if parsed is None or len(parsed.ctes) < 2 or is_linear_cte_chain(sql):
+        return False
+    names = tuple(definition.name for definition in parsed.ctes)
+    name_indexes = {name: index for index, name in enumerate(names)}
+    fanout: Counter[str] = Counter()
+    has_fanin = False
+    has_union = False
+    for index, definition in enumerate(parsed.ctes):
+        refs = referenced_cte_names(definition.body, names)
+        if any(name_indexes[ref] >= index for ref in refs):
+            return False
+        has_fanin = has_fanin or len(refs) > 1
+        has_union = has_union or has_union_all(definition.body)
+        fanout.update(refs)
+    final_refs = referenced_cte_names(parsed.final_sql, names)
+    if not final_refs:
+        return False
+    fanout.update(final_refs)
+    has_fanout = any(count > 1 for count in fanout.values())
+    if any(fanout[name] == 0 for name in names):
+        return False
+    return has_fanin or has_fanout or has_union
 
 
 def top_level_join_signature(sql: str) -> tuple[tuple[str, ...], ...]:

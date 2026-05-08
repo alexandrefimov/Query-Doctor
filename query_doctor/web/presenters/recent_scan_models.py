@@ -31,6 +31,9 @@ class RecentScanCaseRowView:
     optimization_impact: str
     optimization_confidence: str
     optimization_artifact_status: str
+    optimizer_rewrite_support: str
+    optimizer_rewrite_support_label: str
+    optimizer_rewrite_support_reason: str
     optimization_summary: str
     optimization_review_areas: str
     stats_tier: str

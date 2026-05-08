@@ -11,6 +11,8 @@ from query_doctor.optimizer.sql_shape import (
     final_distinct_rollup_aggregate_shape_is_supported,
     has_union_all,
     identifier_referenced,
+    is_cte_dag_predicate_pushdown_candidate,
+    is_linear_cte_chain,
     keyword_count_any_depth,
     non_aggregate_projection_names,
     parse_with_query,
@@ -54,6 +56,10 @@ def detect_optimizer_rewrite_recipe(
         recipe = build_final_union_distinct_rollup_recipe(union_cte, parsed.final_sql)
         if recipe:
             return recipe
+    if is_linear_cte_chain(source_sql):
+        return build_linear_cte_predicate_pushdown_recipe(parsed.ctes[0])
+    if is_cte_dag_predicate_pushdown_candidate(source_sql):
+        return build_cte_dag_predicate_pushdown_recipe(parsed.ctes[-1])
     return None
 
 
@@ -101,6 +107,57 @@ def build_post_union_aggregate_pushdown_recipe(
         prompt_bullets=prompt_bullets,
         safe_bullets=safe_bullets,
     )
+
+
+def build_linear_cte_predicate_pushdown_recipe(first_cte: CteDefinition) -> OptimizerRewriteRecipe:
+    prompt_bullets = (
+        "Use recipe linear_cte_predicate_pushdown.",
+        "The CTE dependency graph is a single chain; preserve every CTE name, order, dependency edge, and final output column.",
+        "You may add a WHERE predicate only by copying an exact predicate that already appears in a downstream WHERE clause.",
+        "Do not invent partition filters, date ranges, null checks, status filters, or other predicates that are not already present downstream.",
+        "Keep the original downstream WHERE predicate in place; do not remove or weaken filters.",
+        "Do not change JOIN predicates, JOIN types, GROUP BY, HAVING, ORDER BY, LIMIT, projection expressions, physical tables, literals, or final SELECT shape.",
+        "If no predicate can be safely copied earlier, return the original query with harmless formatting.",
+    )
+    safe_bullets = (
+        "- Recipe detected: a linear CTE chain may benefit from copying existing downstream filters earlier in the chain.",
+        "- A trusted SQL draft is shown only if validation proves CTE order/dependencies, projections, tables, joins, literals, and all original filters are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="linear_cte_predicate_pushdown",
+        title="Copy downstream filters earlier in a linear CTE chain",
+        source_cte=first_cte.name,
+        aggregate_cte=None,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
+
+
+def build_cte_dag_predicate_pushdown_recipe(final_cte: CteDefinition) -> OptimizerRewriteRecipe:
+    prompt_bullets = (
+        "Use recipe cte_dag_predicate_pushdown.",
+        "The CTE dependency graph is an acyclic DAG with fan-out, fan-in, or UNION assembly; preserve every CTE name, order, dependency edge, and final output column.",
+        "You may add a WHERE predicate only by copying an exact predicate that already appears in a downstream WHERE clause on the same dependency path.",
+        "Do not invent partition filters, date ranges, null checks, status filters, or other predicates that are not already present downstream.",
+        "Keep every original downstream WHERE predicate in place; do not remove, weaken, rewrite, or replace filters.",
+        "For UNION ALL assembly CTEs, preserve branch count, branch order, branch projections, and UNION ALL operators exactly.",
+        "Do not add new predicates, remove predicates, change JOIN predicates, JOIN types, GROUP BY, HAVING, ORDER BY, LIMIT, projection expressions, physical tables, literals, or final SELECT shape.",
+        "If no predicate can be safely copied earlier, return the original query with harmless formatting.",
+    )
+    safe_bullets = (
+        "- Recipe detected: a CTE DAG with fan-out/fan-in or UNION assembly may benefit from copying existing downstream filters into earlier CTE branches.",
+        "- A trusted SQL draft is shown only if validation proves CTE order/dependencies, UNION shape, projections, tables, joins, literals, and all original filters are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="cte_dag_predicate_pushdown",
+        title="Copy downstream filters earlier in a CTE DAG",
+        source_cte=final_cte.name,
+        aggregate_cte=None,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
+
+
 def build_final_union_distinct_rollup_recipe(
     union_cte: CteDefinition,
     final_sql: str,

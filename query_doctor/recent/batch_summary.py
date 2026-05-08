@@ -178,6 +178,9 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "query_optimization_candidate": case.query_optimization_candidate.to_dict()
         if case.query_optimization_candidate
         else None,
+        "optimizer_rewrite_support": case.optimizer_rewrite_support.to_dict()
+        if case.optimizer_rewrite_support
+        else None,
         "query_optimization_rank": case.query_optimization_rank,
         "stats_optimization_candidate": case.stats_optimization_candidate.to_dict()
         if case.stats_optimization_candidate
