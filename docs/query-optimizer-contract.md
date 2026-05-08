@@ -204,6 +204,12 @@ equivalence proof by themselves: pass-through elimination is trusted only for
 the dedicated recipe above, and broader CTE inlining still needs its own
 recipe-specific validation before a trusted draft can use it.
 
+Recent scan may label a recipe as SQL-draft-ready only after the corresponding
+Python-owned deterministic executor can construct a material draft in memory and
+that draft passes recipe validation. Recipe detection without a constructible
+validated draft must remain draft-unavailable or recommendations-only context,
+not `safe_to_attempt`.
+
 ## Derived Table Shape Facts
 
 Derived-table shape analysis is an analyzer-owned support layer for the narrow

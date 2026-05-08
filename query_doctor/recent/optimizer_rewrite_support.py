@@ -10,11 +10,14 @@ from query_doctor.cli.optimize_query import (
     extract_optimizable_source_sql,
     read_source_sql,
 )
+from query_doctor.optimizer.deterministic_rewrites import deterministic_recipe_draft
 from query_doctor.optimizer.recipes import detect_optimizer_rewrite_recipe
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 from query_doctor.optimizer.sql_shape import analyze_cte_shape
 from query_doctor.optimizer.sql_shape import analyze_derived_table_shape
+from query_doctor.optimizer.sql_shape import draft_has_material_change
 from query_doctor.optimizer.source_sql import QueryOptimizationError
+from query_doctor.optimizer.validation import validate_draft_sql
 from query_doctor.recent.query_optimization_score import QueryOptimizationCandidateScore
 
 
@@ -135,6 +138,45 @@ def classify_optimizer_rewrite_support(
             "single_cte_predicate_pushdown",
             "single_derived_table_predicate_pushdown",
         }
+        deterministic_draft = deterministic_recipe_draft(source_sql.sql, recipe)
+        deterministic_errors = (
+            validate_draft_sql(source_sql.sql, deterministic_draft, recipe)
+            if deterministic_draft
+            else ()
+        )
+        if (
+            not deterministic_draft
+            or deterministic_errors
+            or not draft_has_material_change(source_sql.sql, deterministic_draft)
+        ):
+            return OptimizerRewriteSupport(
+                status="draft_disabled",
+                label="Recipe detected; draft unavailable",
+                reason=(
+                    f"{recipe_reason}; deterministic recipe execution could not construct "
+                    "a material SQL draft for this concrete SQL shape"
+                ),
+                risk_mode=risk.mode,
+                risk_reasons=tuple(risk.reasons),
+                recipe_id=recipe_id,
+                recipe_detected=True,
+                draft_eligibility="deterministic_draft_unavailable",
+                draft_eligibility_label="Deterministic draft unavailable",
+                cte_count=cte_shape.cte_count,
+                cte_graph_shape=cte_shape.graph_shape,
+                cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
+                cte_simplification_status=cte_shape.simplification_status,
+                cte_predicate_origin_status=cte_shape.predicate_origin_status,
+                cte_predicate_path_status=cte_shape.predicate_path_status,
+                cte_projection_contract_status=cte_shape.projection_contract_status,
+                cte_projection_preservation_status=cte_shape.projection_preservation_status,
+                cte_simple_projection_count=cte_shape.simple_projection_cte_count,
+                cte_expression_projection_count=cte_shape.expression_projection_cte_count,
+                cte_single_use_count=cte_shape.single_use_cte_count,
+                cte_pass_through_count=cte_shape.pass_through_cte_count,
+                cte_boundary_reasons=cte_shape.boundary_reasons,
+                **derived_shape_kwargs(derived_shape),
+            )
         return OptimizerRewriteSupport(
             status="sql_draft_supported" if recipe_is_strictly_supported else "recipe_detected",
             label=RECIPE_LABELS.get(recipe_id, "SQL draft attemptable"),
