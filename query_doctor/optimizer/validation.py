@@ -9,8 +9,10 @@ from collections.abc import Iterable
 
 from query_doctor.optimizer.models import CteParseResult, OptimizerRewriteRecipe, OptimizerRiskDecision
 from query_doctor.optimizer.deterministic_rewrites import (
+    copyable_final_where_predicates,
     cte_reference_aliases,
     dequalify_predicate_for_cte_aliases,
+    simple_cte_filter_columns,
 )
 from query_doctor.optimizer.recommendation_output import (
     MAX_OPTIMIZER_RECOMMENDATION_ITEMS,
@@ -41,6 +43,7 @@ from query_doctor.optimizer.sql_completeness import (
 from query_doctor.optimizer.sql_shape import (
     aggregate_input_projection_names,
     aggregate_projection_names,
+    analyze_derived_table_shape,
     clause_signature,
     count_distinct_key_names,
     cte_definition_map,
@@ -56,6 +59,7 @@ from query_doctor.optimizer.sql_shape import (
     non_aggregate_projection_names,
     normalized_statement_signature,
     parse_with_query,
+    parse_top_level_derived_table,
     post_union_aggregate_input_rollup_names,
     projection_expression_signature,
     projection_item_fragments,
@@ -150,6 +154,8 @@ def validate_draft_sql(
             errors.extend(validate_recipe_backed_cte_rewrite(source_sql, draft_sql, rewrite_recipe))
         else:
             errors.append("optimized draft changes CTE query body")
+    if rewrite_recipe and rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
+        errors.extend(validate_single_derived_table_predicate_pushdown_rewrite(source_sql, draft_sql))
     if rewrite_recipe is None and nested_query_signatures(source_sql) != nested_query_signatures(draft_sql):
         errors.append("optimized draft changes nested query body")
     if top_level_join_signature(source_sql) != top_level_join_signature(draft_sql):
@@ -201,6 +207,8 @@ def validate_recipe_backed_cte_rewrite(
         return validate_linear_cte_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id == "cte_dag_predicate_pushdown":
         return validate_cte_dag_predicate_pushdown_rewrite(source_sql, draft_sql)
+    if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
+        return validate_single_derived_table_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id != "post_union_aggregate_pushdown":
         return ["optimized draft changes CTE query body"]
     errors: list[str] = []
@@ -316,6 +324,48 @@ def validate_cte_dag_predicate_pushdown_rewrite(source_sql: str, draft_sql: str)
     source_segments = cte_validation_segments(source_parsed)
     draft_segments = cte_validation_segments(draft_parsed)
     errors.extend(validate_cte_predicate_pushdown_segments(source_parsed, source_segments, draft_segments))
+    return dedupe_preserve_order(errors)
+
+
+def validate_single_derived_table_predicate_pushdown_rewrite(source_sql: str, draft_sql: str) -> list[str]:
+    errors: list[str] = []
+    source_derived = parse_top_level_derived_table(source_sql)
+    draft_derived = parse_top_level_derived_table(draft_sql)
+    if source_derived is None or draft_derived is None:
+        return ["optimized draft violates rewrite recipe: required derived table is missing"]
+    if analyze_derived_table_shape(source_sql).predicate_pushdown_status != "candidate":
+        errors.append("optimized draft violates rewrite recipe: source derived-table shape is unsupported")
+    if analyze_derived_table_shape(draft_sql).predicate_pushdown_status != "candidate":
+        errors.append("optimized draft violates rewrite recipe: draft derived-table shape is unsupported")
+    if source_derived.alias != draft_derived.alias:
+        errors.append("optimized draft violates rewrite recipe: derived table alias changed")
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+    errors.extend(
+        validate_cte_segment_shape_preserved_except_where(
+            source_derived.body,
+            draft_derived.body,
+            "derived table",
+        )
+    )
+    source_predicates = sql_predicate_signature_counter(source_derived.body, "WHERE")
+    draft_predicates = sql_predicate_signature_counter(draft_derived.body, "WHERE")
+    if not counter_is_subset(source_predicates, draft_predicates):
+        errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
+    extra_predicates = draft_predicates - source_predicates
+    if extra_predicates:
+        available_columns = simple_cte_filter_columns(source_derived.body)
+        allowed_predicates: Counter[str] = Counter()
+        for predicate in copyable_final_where_predicates(
+            source_sql,
+            source_derived.body,
+            available_columns,
+            cte_qualifiers={source_derived.alias},
+            grouped_columns=set(),
+        ):
+            allowed_predicates.update(sql_predicate_signature_counter(f"SELECT 1 WHERE {predicate}", "WHERE"))
+        if not counter_is_subset(extra_predicates, allowed_predicates):
+            errors.append("optimized draft violates rewrite recipe: added WHERE predicate was not copied from downstream")
     return dedupe_preserve_order(errors)
 
 

@@ -58,6 +58,26 @@ class CteShapeFacts:
 
 
 @dataclass(frozen=True)
+class DerivedTableParseResult:
+    body: str
+    alias: str
+    body_start: int
+    body_end: int
+    relation_end: int
+    from_clause_end: int
+
+
+@dataclass(frozen=True)
+class DerivedTableShapeFacts:
+    derived_table_count: int
+    predicate_pushdown_status: str
+    predicate_origin_status: str
+    projection_preservation_status: str
+    has_downstream_filter: bool
+    boundary_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class OptimizerRewriteRecipe:
     recipe_id: str
     title: str

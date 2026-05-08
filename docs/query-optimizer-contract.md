@@ -127,6 +127,15 @@ boundary.
   final CTE reference, physical table set, projections, joins, literals, all
   original filters, and final output shape; added predicates must already exist
   in the final SELECT or as a CTE-alias-qualified downstream equivalent.
+- `single_derived_table_predicate_pushdown`: accepts copied WHERE predicates
+  inside one top-level derived table consumed by the outer SELECT. Detection
+  and deterministic execution require a copyable outer predicate that targets
+  the derived-table output, simple projection preservation, and no joins,
+  aggregates, set operations, window functions, DISTINCT, ORDER BY, or LIMIT in
+  the derived table body. Validation must preserve the derived-table alias,
+  physical table set, projections, joins, literals, all original filters, and
+  outer output shape; added predicates must already exist in the outer SELECT
+  or as a derived-alias-qualified equivalent.
 - `linear_cte_predicate_pushdown`: accepts copied WHERE predicates earlier in a
   single-chain CTE graph. Validation must preserve CTE order, dependency edges,
   physical table set, projections, joins, literals, all original filters, and
@@ -170,6 +179,26 @@ These facts must not expose raw SQL fragments, raw CTE names, local paths, or
 artifact filenames in browser-visible output. Simplification facts are not SQL
 equivalence proof by themselves: pass-through elimination and CTE inlining need
 their own recipe-specific validation before a trusted draft can use them.
+
+## Derived Table Shape Facts
+
+Derived-table shape analysis is an analyzer-owned support layer for the narrow
+derived-table predicate-pushdown recipe. It may record safe categories and
+counts only:
+
+- derived-table count;
+- predicate-pushdown eligibility such as candidate, no downstream filter, or
+  unsupported shape;
+- predicate-origin category such as outer SELECT filter or no downstream
+  filter;
+- projection-preservation category such as simple projections, named
+  expression projections, or unknown projection preservation;
+- boundary categories such as nested-body validation required, outer
+  join/multiple relations, aggregate, set operation, window, DISTINCT,
+  ORDER/LIMIT, outer join, or non-simple projection.
+
+These facts must not expose raw SQL fragments, derived-table aliases, local
+paths, or artifact filenames in browser-visible output.
 
 ## Trust Marker
 

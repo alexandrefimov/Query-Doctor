@@ -76,7 +76,39 @@ def deterministic_recipe_draft(source_sql: str, rewrite_recipe: OptimizerRewrite
         return None
     if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
         return single_cte_predicate_pushdown_draft(source_sql)
+    if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
+        return single_derived_table_predicate_pushdown_draft(source_sql)
     return None
+
+
+def single_derived_table_predicate_pushdown_draft(source_sql: str) -> str | None:
+    from query_doctor.optimizer.sql_shape import parse_top_level_derived_table
+
+    parsed = parse_top_level_derived_table(source_sql)
+    if parsed is None:
+        return None
+    if main_select_has_distinct(parsed.body) or top_level_join_signature(parsed.body):
+        return None
+    if any(top_level_keyword_count(parsed.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+        return None
+    if any(top_level_keyword_count(parsed.body, keyword) for keyword in ("GROUP", "ORDER")):
+        return None
+    available_columns = simple_cte_filter_columns(parsed.body)
+    if not available_columns:
+        return None
+    predicates = copyable_final_where_predicates(
+        source_sql,
+        parsed.body,
+        available_columns,
+        cte_qualifiers={parsed.alias},
+        grouped_columns=set(),
+    )
+    if not predicates:
+        return None
+    modified_body = add_where_predicates_to_cte_body(parsed.body, predicates)
+    if modified_body is None:
+        return None
+    return f"{source_sql[:parsed.body_start]}{modified_body.strip()}{source_sql[parsed.body_end:]}"
 
 
 def single_cte_predicate_pushdown_draft(source_sql: str) -> str | None:

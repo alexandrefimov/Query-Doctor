@@ -104,6 +104,7 @@ from query_doctor.optimizer.sql_shape import (
     lower_sql_outside_quoted_text,
     main_select_has_distinct,
     matching_parenthesis_offset,
+    nested_query_signatures,
     non_aggregate_projection_names,
     normalize_sql_signature_fragment,
     normalized_statement_signature,
@@ -277,6 +278,8 @@ def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
     set_operator_count = sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS)
     if cte_count:
         conservative_reasons.append("cte_body_validation_not_proven")
+    if not cte_count and nested_query_signatures(source_sql):
+        conservative_reasons.append("nested_query_body_validation_not_proven")
     if (
         cte_count > RECOMMENDATIONS_ONLY_CTE_THRESHOLD
         and not cte_predicate_pushdown_shape_is_candidate(source_sql)

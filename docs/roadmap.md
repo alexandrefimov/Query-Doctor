@@ -134,11 +134,27 @@ Completed baseline work:
 - Single-CTE predicate-pushdown detection now requires a copyable downstream
   predicate targeting the CTE output, so filters on unrelated joined aliases do
   not inflate the recipe funnel.
+- `single_derived_table_predicate_pushdown` is a validated Python-owned recipe
+  with a deterministic executor for the simplest safe nested-query form: copy
+  an outer SELECT predicate into one simple top-level derived table while
+  preserving the outer filter and validating the nested body separately.
+- A 9-case medium/high Optimization-candidate rerun after adding the
+  derived-table recipe still produced zero trusted SQL drafts: the observed
+  real derived-table shapes had no copyable top-level outer filter and were
+  blocked by aggregate, set-operation, window, or non-simple projection
+  boundaries. The recipe is useful as a safe supported shape, but the next real
+  conversion work needs deeper facts for aggregate derived tables.
 - A post-merge 48-hour batch rerun confirmed that recipe detection improved,
   including two `single_cte_predicate_pushdown` candidates, but trusted SQL
   draft yield stayed at zero for the top stats-available candidates because the
   LLM returned no material rewrite or cases stayed behind recommendations-only
   guardrails.
+- A follow-up 9-case medium/high Optimization-candidate rerun after stricter
+  draft validation produced trusted outcomes for every case but zero trusted
+  SQL drafts: six outputs were no-material-change fallbacks and three were
+  rejected for unbacked nested/CTE query-body changes. The next useful recipe
+  work should target a repeated nested/derived-table transform only after
+  analyzer facts can prove the boundary.
 
 Remaining near-term optimizer work:
 

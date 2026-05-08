@@ -1,0 +1,11 @@
+{
+  "case_id": "single_derived_table_predicate_pushdown",
+  "expected_output_kind": "sql_draft",
+  "expected_recipe": "single_derived_table_predicate_pushdown",
+  "expected_risk_mode": "conservative_rewrite",
+  "expected_risk_reasons": [
+    "nested_query_body_validation_not_proven"
+  ],
+  "expect_material_change": true,
+  "expect_validation_errors": []
+}

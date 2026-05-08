@@ -5,8 +5,16 @@ from __future__ import annotations
 import re
 
 from collections import Counter
+from collections.abc import Callable
 
-from query_doctor.optimizer.models import CteDefinition, CteParseResult, CteShapeFacts, ProjectionSignature
+from query_doctor.optimizer.models import (
+    CteDefinition,
+    CteParseResult,
+    CteShapeFacts,
+    DerivedTableParseResult,
+    DerivedTableShapeFacts,
+    ProjectionSignature,
+)
 from query_doctor.optimizer.source_sql import find_top_level_keyword_offset
 from query_doctor.optimizer.sql import (
     OptimizerSqlError,
@@ -267,6 +275,99 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
 
 def cte_predicate_pushdown_shape_is_candidate(sql: str) -> bool:
     return analyze_cte_shape(sql).predicate_pushdown_status == "candidate"
+
+
+def parse_top_level_derived_table(sql: str) -> DerivedTableParseResult | None:
+    from_offset = find_top_level_keyword_offset(sql, ("FROM",))
+    if from_offset is None:
+        return None
+    cursor = skip_sql_whitespace_and_comments(sql, from_offset + len("FROM"))
+    if cursor >= len(sql) or sql[cursor] != "(":
+        return None
+    close = matching_parenthesis_offset(sql, cursor)
+    if close is None:
+        return None
+    body = sql[cursor + 1 : close].strip()
+    body_cursor = skip_sql_whitespace_and_comments(body, 0)
+    if not (keyword_at(body, body_cursor, "SELECT") or keyword_at(body, body_cursor, "WITH")):
+        return None
+    alias_cursor = skip_sql_whitespace_and_comments(sql, close + 1)
+    if keyword_at(sql, alias_cursor, "AS"):
+        alias_cursor = skip_sql_whitespace_and_comments(sql, alias_cursor + len("AS"))
+    alias, relation_end = read_sql_identifier(sql, alias_cursor)
+    if not alias:
+        return None
+    from_clause_end = next_top_level_clause_offset(sql, from_offset + len("FROM"))
+    return DerivedTableParseResult(
+        body=body,
+        alias=alias.lower(),
+        body_start=cursor + 1,
+        body_end=close,
+        relation_end=relation_end,
+        from_clause_end=from_clause_end,
+    )
+
+
+def analyze_derived_table_shape(sql: str) -> DerivedTableShapeFacts:
+    parsed = parse_top_level_derived_table(sql)
+    if parsed is None:
+        return DerivedTableShapeFacts(
+            derived_table_count=0,
+            predicate_pushdown_status="no_derived_table",
+            predicate_origin_status="no_derived_table",
+            projection_preservation_status="no_derived_table",
+            has_downstream_filter=False,
+            boundary_reasons=(),
+        )
+    has_downstream_filter = clause_signature(sql, "WHERE") is not None
+    boundary_reasons = derived_table_boundary_reasons(sql, parsed)
+    projection_status = cte_projection_preservation_status(parsed.body)
+    return DerivedTableShapeFacts(
+        derived_table_count=1,
+        predicate_pushdown_status=derived_table_predicate_pushdown_status(
+            has_downstream_filter=has_downstream_filter,
+            boundary_reasons=boundary_reasons,
+        ),
+        predicate_origin_status="outer_select_filter" if has_downstream_filter else "no_downstream_filter",
+        projection_preservation_status=projection_status,
+        has_downstream_filter=has_downstream_filter,
+        boundary_reasons=boundary_reasons,
+    )
+
+
+def derived_table_predicate_pushdown_status(
+    *,
+    has_downstream_filter: bool,
+    boundary_reasons: tuple[str, ...],
+) -> str:
+    if not has_downstream_filter:
+        return "blocked_no_downstream_filter"
+    blocking = set(boundary_reasons) - {"nested_body_validation_required"}
+    if blocking:
+        return "blocked_unsupported_shape"
+    return "candidate"
+
+
+def derived_table_boundary_reasons(sql: str, parsed: DerivedTableParseResult) -> tuple[str, ...]:
+    reasons: list[str] = ["nested_body_validation_required"]
+    from_tail = sql[parsed.relation_end : parsed.from_clause_end]
+    if "," in from_tail or top_level_join_signature(sql):
+        reasons.append("outer_join_or_multiple_relations")
+    if main_select_has_distinct(parsed.body):
+        reasons.append("distinct_boundary")
+    if any(top_level_keyword_count(parsed.body, keyword) for keyword in ("GROUP", "HAVING")):
+        reasons.append("aggregate_boundary")
+    if cte_body_has_set_boundary(parsed.body):
+        reasons.append("set_operation_boundary")
+    if cte_body_has_window_boundary(parsed.body):
+        reasons.append("window_boundary")
+    if cte_body_has_outer_join_boundary(parsed.body):
+        reasons.append("outer_join_boundary")
+    if any(top_level_keyword_count(parsed.body, keyword) for keyword in ("ORDER", "LIMIT")):
+        reasons.append("ordering_or_limit_boundary")
+    if cte_projection_preservation_status(parsed.body) != "simple_projection_preserved":
+        reasons.append("projection_not_simple")
+    return tuple(dedupe_preserve_order(reasons))
 
 
 def cte_graph_shape(
@@ -530,7 +631,31 @@ def normalized_material_signature(sql: str) -> str:
 
 
 def normalized_projection_alias_as_insensitive_signature(signature: str) -> str:
-    return re.sub(r"\bas (?=[a-z_][\w$]*(?:,| from\b|$))", "", signature)
+    return rewrite_unquoted_signature_segments(signature, normalize_material_signature_segment)
+
+
+def normalize_material_signature_segment(segment: str) -> str:
+    segment = re.sub(r"\s*\.\s*", ".", segment)
+    return re.sub(r"\bas (?=[a-z_][\w$]*(?:,| from\b|$))", "", segment)
+
+
+def rewrite_unquoted_signature_segments(signature: str, rewrite: Callable[[str], str]) -> str:
+    result: list[str] = []
+    index = 0
+    while index < len(signature):
+        next_quote = min(
+            (offset for quote in ("'", '"', "`") if (offset := signature.find(quote, index)) != -1),
+            default=-1,
+        )
+        if next_quote == -1:
+            result.append(rewrite(signature[index:]))
+            break
+        result.append(rewrite(signature[index:next_quote]))
+        quote = signature[next_quote]
+        end = skip_quoted_text(signature, next_quote, quote)
+        result.append(signature[next_quote:end])
+        index = end
+    return "".join(result)
 
 
 def nested_query_signatures(sql: str) -> tuple[str, ...]:

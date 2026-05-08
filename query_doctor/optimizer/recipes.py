@@ -13,6 +13,7 @@ from query_doctor.optimizer.recommendations import facts_have_finding, optimizer
 from query_doctor.optimizer.sql_shape import (
     aggregate_input_projection_names,
     aggregate_projection_names,
+    analyze_derived_table_shape,
     clause_signature,
     count_distinct_key_names,
     final_distinct_rollup_aggregate_shape_is_supported,
@@ -23,6 +24,7 @@ from query_doctor.optimizer.sql_shape import (
     is_linear_cte_chain,
     keyword_count_any_depth,
     non_aggregate_projection_names,
+    parse_top_level_derived_table,
     parse_with_query,
     post_union_aggregate_input_rollup_names,
     union_projection_names,
@@ -33,49 +35,90 @@ def detect_optimizer_rewrite_recipe(
     source_sql: str,
     facts_text: str,
 ) -> OptimizerRewriteRecipe | None:
-    parsed = parse_with_query(source_sql)
-    if parsed is None:
-        return None
     if not optimizer_action_cards(facts_text) and not facts_have_finding(facts_text, "Large intermediate"):
         return None
-    for union_cte in parsed.ctes:
-        if not has_union_all(union_cte.body):
-            continue
-        for aggregate_cte in parsed.ctes:
-            if aggregate_cte.name == union_cte.name:
+    parsed = parse_with_query(source_sql)
+    if parsed is not None:
+        for union_cte in parsed.ctes:
+            if not has_union_all(union_cte.body):
                 continue
-            if not identifier_referenced(aggregate_cte.body, union_cte.name):
+            for aggregate_cte in parsed.ctes:
+                if aggregate_cte.name == union_cte.name:
+                    continue
+                if not identifier_referenced(aggregate_cte.body, union_cte.name):
+                    continue
+                if keyword_count_any_depth(aggregate_cte.body, "GROUP") == 0:
+                    continue
+                if not aggregate_projection_names(aggregate_cte.body):
+                    continue
+                if not identifier_referenced(parsed.final_sql, aggregate_cte.name):
+                    continue
+                return build_post_union_aggregate_pushdown_recipe(union_cte, aggregate_cte)
+            if not identifier_referenced(parsed.final_sql, union_cte.name):
                 continue
-            if keyword_count_any_depth(aggregate_cte.body, "GROUP") == 0:
+            if keyword_count_any_depth(parsed.final_sql, "GROUP") == 0:
                 continue
-            if not aggregate_projection_names(aggregate_cte.body):
+            if not aggregate_projection_names(parsed.final_sql):
                 continue
-            if not identifier_referenced(parsed.final_sql, aggregate_cte.name):
+            if not count_distinct_key_names(parsed.final_sql):
                 continue
-            return build_post_union_aggregate_pushdown_recipe(union_cte, aggregate_cte)
-        if not identifier_referenced(parsed.final_sql, union_cte.name):
-            continue
-        if keyword_count_any_depth(parsed.final_sql, "GROUP") == 0:
-            continue
-        if not aggregate_projection_names(parsed.final_sql):
-            continue
-        if not count_distinct_key_names(parsed.final_sql):
-            continue
-        recipe = build_final_union_distinct_rollup_recipe(union_cte, parsed.final_sql)
-        if recipe:
-            return recipe
-    cte_shape = analyze_cte_shape(source_sql)
-    if cte_shape.predicate_pushdown_status != "candidate":
-        return None
-    if cte_shape.graph_shape == "single_cte":
-        if not single_cte_predicate_pushdown_has_candidate_predicate(parsed.ctes[0], parsed.final_sql):
+            recipe = build_final_union_distinct_rollup_recipe(union_cte, parsed.final_sql)
+            if recipe:
+                return recipe
+        cte_shape = analyze_cte_shape(source_sql)
+        if cte_shape.predicate_pushdown_status != "candidate":
             return None
-        return build_single_cte_predicate_pushdown_recipe(parsed.ctes[0])
-    if is_linear_cte_chain(source_sql):
-        return build_linear_cte_predicate_pushdown_recipe(parsed.ctes[0])
-    if is_cte_dag_predicate_pushdown_candidate(source_sql):
-        return build_cte_dag_predicate_pushdown_recipe(parsed.ctes[-1])
-    return None
+        if cte_shape.graph_shape == "single_cte":
+            if not single_cte_predicate_pushdown_has_candidate_predicate(parsed.ctes[0], parsed.final_sql):
+                return None
+            return build_single_cte_predicate_pushdown_recipe(parsed.ctes[0])
+        if is_linear_cte_chain(source_sql):
+            return build_linear_cte_predicate_pushdown_recipe(parsed.ctes[0])
+        if is_cte_dag_predicate_pushdown_candidate(source_sql):
+            return build_cte_dag_predicate_pushdown_recipe(parsed.ctes[-1])
+        return None
+    derived_shape = analyze_derived_table_shape(source_sql)
+    if derived_shape.predicate_pushdown_status != "candidate":
+        return None
+    derived = parse_top_level_derived_table(source_sql)
+    if derived is None:
+        return None
+    available_columns = simple_cte_filter_columns(derived.body)
+    if not available_columns:
+        return None
+    if not copyable_final_where_predicates(
+        source_sql,
+        derived.body,
+        available_columns,
+        cte_qualifiers={derived.alias},
+        grouped_columns=set(),
+    ):
+        return None
+    return build_single_derived_table_predicate_pushdown_recipe(derived.alias)
+
+
+def build_single_derived_table_predicate_pushdown_recipe(alias: str) -> OptimizerRewriteRecipe:
+    prompt_bullets = (
+        "Use recipe single_derived_table_predicate_pushdown.",
+        "The query has one top-level derived table consumed by the outer SELECT; preserve the derived-table alias and outer output column contract.",
+        "You may add a WHERE predicate inside the derived table only by copying an exact predicate that already appears in the outer SELECT WHERE clause.",
+        "Do not invent partition filters, date ranges, null checks, status filters, or other predicates that are not already present downstream.",
+        "Keep the original outer SELECT WHERE predicate in place; do not remove or weaken filters.",
+        "Do not change JOIN predicates, JOIN types, GROUP BY, HAVING, ORDER BY, LIMIT, projection expressions, physical tables, literals, or outer SELECT shape.",
+        "If no predicate can be safely copied into the derived table, return the original query with harmless formatting.",
+    )
+    safe_bullets = (
+        "- Recipe detected: a single derived table may benefit from copying outer SELECT filters into the derived table body.",
+        "- A trusted SQL draft is shown only if validation proves projections, tables, joins, literals, outer output shape, and all original filters are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="single_derived_table_predicate_pushdown",
+        title="Copy outer filters into a single derived table",
+        source_cte=alias,
+        aggregate_cte=None,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
 
 
 def single_cte_predicate_pushdown_has_candidate_predicate(

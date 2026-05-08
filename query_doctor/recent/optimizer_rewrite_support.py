@@ -13,6 +13,7 @@ from query_doctor.cli.optimize_query import (
 from query_doctor.optimizer.recipes import detect_optimizer_rewrite_recipe
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 from query_doctor.optimizer.sql_shape import analyze_cte_shape
+from query_doctor.optimizer.sql_shape import analyze_derived_table_shape
 from query_doctor.optimizer.source_sql import QueryOptimizationError
 from query_doctor.recent.query_optimization_score import QueryOptimizationCandidateScore
 
@@ -21,6 +22,7 @@ RECIPE_LABELS = {
     "post_union_aggregate_pushdown": "SQL draft eligible",
     "final_union_distinct_rollup": "SQL draft eligible",
     "single_cte_predicate_pushdown": "SQL draft eligible",
+    "single_derived_table_predicate_pushdown": "SQL draft eligible",
     "linear_cte_predicate_pushdown": "Rewrite recipe detected",
     "cte_dag_predicate_pushdown": "Rewrite recipe detected",
 }
@@ -28,6 +30,7 @@ RECIPE_REASONS = {
     "post_union_aggregate_pushdown": "Python-owned UNION ALL aggregate recipe is available",
     "final_union_distinct_rollup": "Python-owned UNION ALL DISTINCT rollup recipe is available",
     "single_cte_predicate_pushdown": "Single CTE predicate pushdown recipe is available",
+    "single_derived_table_predicate_pushdown": "Single derived table predicate pushdown recipe is available",
     "linear_cte_predicate_pushdown": "Linear CTE predicate pushdown recipe is available",
     "cte_dag_predicate_pushdown": "CTE DAG predicate pushdown recipe is available",
 }
@@ -57,6 +60,11 @@ class OptimizerRewriteSupport:
     cte_single_use_count: int = 0
     cte_pass_through_count: int = 0
     cte_boundary_reasons: tuple[str, ...] = ()
+    derived_table_count: int = 0
+    derived_predicate_pushdown_status: str = "no_derived_table"
+    derived_predicate_origin_status: str = "no_derived_table"
+    derived_projection_preservation_status: str = "no_derived_table"
+    derived_boundary_reasons: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -87,6 +95,7 @@ def classify_optimizer_rewrite_support(
 
     risk = decide_optimizer_risk_mode(source_sql.sql)
     cte_shape = analyze_cte_shape(source_sql.sql)
+    derived_shape = analyze_derived_table_shape(source_sql.sql)
     recipe = detect_optimizer_rewrite_recipe(source_sql.sql, facts_text)
     if recipe is not None:
         recipe_id = recipe.recipe_id
@@ -115,11 +124,13 @@ def classify_optimizer_rewrite_support(
                 cte_single_use_count=cte_shape.single_use_cte_count,
                 cte_pass_through_count=cte_shape.pass_through_cte_count,
                 cte_boundary_reasons=cte_shape.boundary_reasons,
+                **derived_shape_kwargs(derived_shape),
             )
         recipe_is_strictly_supported = recipe_id in {
             "post_union_aggregate_pushdown",
             "final_union_distinct_rollup",
             "single_cte_predicate_pushdown",
+            "single_derived_table_predicate_pushdown",
         }
         return OptimizerRewriteSupport(
             status="sql_draft_supported" if recipe_is_strictly_supported else "recipe_detected",
@@ -148,6 +159,7 @@ def classify_optimizer_rewrite_support(
             cte_single_use_count=cte_shape.single_use_cte_count,
             cte_pass_through_count=cte_shape.pass_through_cte_count,
             cte_boundary_reasons=cte_shape.boundary_reasons,
+            **derived_shape_kwargs(derived_shape),
         )
     if risk.mode == "recommendations_only":
         return OptimizerRewriteSupport(
@@ -171,11 +183,17 @@ def classify_optimizer_rewrite_support(
             cte_single_use_count=cte_shape.single_use_cte_count,
             cte_pass_through_count=cte_shape.pass_through_cte_count,
             cte_boundary_reasons=cte_shape.boundary_reasons,
+            **derived_shape_kwargs(derived_shape),
         )
     return OptimizerRewriteSupport(
         status="guidance_only",
         label="Guidance only",
-        reason=no_recipe_reason(cte_shape.cte_count, cte_shape.predicate_pushdown_status),
+        reason=no_recipe_reason(
+            cte_shape.cte_count,
+            cte_shape.predicate_pushdown_status,
+            derived_shape.derived_table_count,
+            derived_shape.predicate_pushdown_status,
+        ),
         risk_mode=risk.mode,
         risk_reasons=tuple(risk.reasons),
         draft_eligibility="no_recipe",
@@ -193,6 +211,7 @@ def classify_optimizer_rewrite_support(
         cte_single_use_count=cte_shape.single_use_cte_count,
         cte_pass_through_count=cte_shape.pass_through_cte_count,
         cte_boundary_reasons=cte_shape.boundary_reasons,
+        **derived_shape_kwargs(derived_shape),
     )
 
 
@@ -208,7 +227,32 @@ def source_unavailable_support(reason: str) -> OptimizerRewriteSupport:
     )
 
 
-def no_recipe_reason(cte_count: int, cte_predicate_pushdown_status: str) -> str:
+def derived_shape_kwargs(derived_shape) -> dict[str, object]:
+    return {
+        "derived_table_count": derived_shape.derived_table_count,
+        "derived_predicate_pushdown_status": derived_shape.predicate_pushdown_status,
+        "derived_predicate_origin_status": derived_shape.predicate_origin_status,
+        "derived_projection_preservation_status": derived_shape.projection_preservation_status,
+        "derived_boundary_reasons": derived_shape.boundary_reasons,
+    }
+
+
+def no_recipe_reason(
+    cte_count: int,
+    cte_predicate_pushdown_status: str,
+    derived_table_count: int = 0,
+    derived_predicate_pushdown_status: str = "no_derived_table",
+) -> str:
+    if derived_table_count > 0:
+        labels = {
+            "blocked_no_downstream_filter": "derived-table predicate pushdown has no outer filter to copy inward",
+            "blocked_unsupported_shape": "derived-table shape is outside current safe predicate-pushdown support",
+            "no_derived_table": "No derived-table rewrite shape is present",
+        }
+        suffix = labels.get(derived_predicate_pushdown_status)
+        if suffix:
+            return f"No Python-owned SQL rewrite recipe is available; {suffix}"
+        return "No Python-owned SQL rewrite recipe is available for this derived-table shape"
     if cte_count <= 0:
         return "No Python-owned SQL rewrite recipe is available for this shape"
     labels = {

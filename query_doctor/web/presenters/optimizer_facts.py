@@ -13,6 +13,10 @@ def optimizer_rewrite_support_fact_summary(support: dict[str, Any]) -> str:
     if cte_count:
         suffix = "CTE" if cte_count == 1 else "CTEs"
         parts.append(f"{cte_count} {suffix}")
+    derived_count = numeric_count(support.get("derived_table_count"))
+    if derived_count:
+        suffix = "derived table" if derived_count == 1 else "derived tables"
+        parts.append(f"{derived_count} {suffix}")
     parts.extend(
         label
         for label in (
@@ -31,6 +35,14 @@ def optimizer_rewrite_support_fact_summary(support: dict[str, Any]) -> str:
             optimizer_token_label(
                 support.get("cte_projection_preservation_status"),
                 OPTIMIZER_CTE_PROJECTION_PRESERVATION_LABELS,
+            ),
+            optimizer_token_label(
+                support.get("derived_predicate_origin_status"),
+                OPTIMIZER_DERIVED_PREDICATE_ORIGIN_LABELS,
+            ),
+            optimizer_token_label(
+                support.get("derived_projection_preservation_status"),
+                OPTIMIZER_DERIVED_PROJECTION_PRESERVATION_LABELS,
             ),
         )
         if label
@@ -61,6 +73,13 @@ def optimizer_rewrite_support_guardrail_summary(support: dict[str, Any]) -> str:
             label
             for reason in reasons[:4]
             if (label := optimizer_token_label(reason, OPTIMIZER_CTE_BOUNDARY_LABELS))
+        )
+    derived_reasons = support.get("derived_boundary_reasons")
+    if isinstance(derived_reasons, (list, tuple)):
+        parts.extend(
+            label
+            for reason in derived_reasons[:4]
+            if (label := optimizer_token_label(reason, OPTIMIZER_DERIVED_BOUNDARY_LABELS))
         )
     if not parts:
         return ""
@@ -121,6 +140,19 @@ OPTIMIZER_CTE_PROJECTION_PRESERVATION_LABELS = {
     "no_cte": "no CTE projection",
 }
 
+OPTIMIZER_DERIVED_PREDICATE_ORIGIN_LABELS = {
+    "outer_select_filter": "outer SELECT filter",
+    "no_downstream_filter": "no outer filter",
+    "no_derived_table": "no derived-table predicate origin",
+}
+
+OPTIMIZER_DERIVED_PROJECTION_PRESERVATION_LABELS = {
+    "simple_projection_preserved": "simple derived-table projections",
+    "named_expression_projection": "derived-table expression projection",
+    "unknown_projection_preservation": "unknown derived-table projection",
+    "no_derived_table": "no derived-table projection",
+}
+
 OPTIMIZER_CTE_SIMPLIFICATION_LABELS = {
     "pass_through_candidate": "pass-through simplification candidate",
     "single_use_candidate": "single-use simplification candidate",
@@ -142,4 +174,16 @@ OPTIMIZER_CTE_BOUNDARY_LABELS = {
     "unsupported_graph": "unsupported CTE graph",
     "unsupported_reference_order": "unsupported CTE reference order",
     "disconnected": "disconnected CTE graph",
+}
+
+OPTIMIZER_DERIVED_BOUNDARY_LABELS = {
+    "nested_body_validation_required": "nested body validation required",
+    "outer_join_or_multiple_relations": "outer query has joins or multiple relations",
+    "distinct_boundary": "DISTINCT boundary",
+    "aggregate_boundary": "aggregate boundary",
+    "set_operation_boundary": "set-operation boundary",
+    "window_boundary": "window boundary",
+    "outer_join_boundary": "outer join boundary",
+    "ordering_or_limit_boundary": "ORDER/LIMIT boundary",
+    "projection_not_simple": "non-simple derived projection",
 }
