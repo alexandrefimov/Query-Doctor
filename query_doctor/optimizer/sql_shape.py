@@ -180,6 +180,8 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
             graph_shape="no_cte",
             predicate_pushdown_status="no_cte",
             simplification_status="no_cte",
+            predicate_origin_status="no_cte",
+            projection_contract_status="no_cte",
             has_downstream_filter=False,
             boundary_reasons=(),
         )
@@ -235,6 +237,8 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
             pass_through_cte_count=pass_through_cte_count,
             graph_shape=graph_shape,
         ),
+        predicate_origin_status=cte_predicate_origin_status(parsed),
+        projection_contract_status=cte_projection_contract_status(parsed),
         has_downstream_filter=has_downstream_filter,
         boundary_reasons=boundary_reasons,
     )
@@ -271,6 +275,28 @@ def cte_shape_has_downstream_filter(parsed: CteParseResult) -> bool:
         if clause_signature(definition.body, "WHERE"):
             return True
     return False
+
+
+def cte_predicate_origin_status(parsed: CteParseResult) -> str:
+    final_filter = clause_signature(parsed.final_sql, "WHERE") is not None
+    cte_filter_count = sum(1 for definition in parsed.ctes[1:] if clause_signature(definition.body, "WHERE"))
+    if final_filter and cte_filter_count:
+        return "mixed_downstream_filters"
+    if final_filter:
+        return "final_select_filter"
+    if cte_filter_count:
+        return "downstream_cte_filter"
+    return "no_downstream_filter"
+
+
+def cte_projection_contract_status(parsed: CteParseResult) -> str:
+    signatures = [projection_signature(definition.body) for definition in parsed.ctes]
+    signatures.append(projection_signature(parsed.final_sql))
+    if any(signature is None for signature in signatures):
+        return "unknown_projection_contract"
+    if all(signature and len(signature.output_names) == signature.count for signature in signatures):
+        return "named_projection_contract"
+    return "partial_projection_contract"
 
 
 def cte_predicate_pushdown_status(graph_shape: str, *, has_downstream_filter: bool) -> str:

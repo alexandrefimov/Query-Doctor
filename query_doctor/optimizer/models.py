@@ -47,6 +47,8 @@ class CteShapeFacts:
     graph_shape: str
     predicate_pushdown_status: str
     simplification_status: str
+    predicate_origin_status: str
+    projection_contract_status: str
     has_downstream_filter: bool
     boundary_reasons: tuple[str, ...]
 

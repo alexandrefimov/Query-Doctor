@@ -325,8 +325,9 @@ def evidence_stats_label(view: RecentScanCaseDetailView) -> str:
 
 def stats_quality_label(view: RecentScanCaseDetailView) -> str:
     status = str(view.stats_quality.status or "").strip().lower()
+    stats_context = str(view.stats_quality.stats_context or "").strip().lower()
     interpretation = str(view.stats_quality.interpretation or "").strip()
-    if status == "available":
+    if status == "available" and stats_context != "stats_present_with_row_estimate_evidence":
         return "Stats quality available"
     if interpretation:
         return interpretation

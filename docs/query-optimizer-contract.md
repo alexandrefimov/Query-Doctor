@@ -153,6 +153,10 @@ Recent scan labels. It may record safe categories and counts only:
   single-use/pass-through counts;
 - predicate-pushdown eligibility such as candidate, no downstream filter, or
   unsupported graph;
+- predicate-origin category such as final SELECT filter, downstream CTE filter,
+  mixed downstream filters, or no downstream filter;
+- projection-contract category such as named, partial, or unknown projection
+  contract;
 - simplification eligibility such as pass-through candidate or single-use
   candidate;
 - boundary categories such as aggregate, set operation, window, outer join,

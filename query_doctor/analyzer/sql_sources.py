@@ -25,6 +25,47 @@ SQL_FROM_STOP_WORDS = {
     "distribute",
     "sort",
 }
+SQL_ALIAS_STOP_WORDS = SQL_FROM_STOP_WORDS | {
+    "as",
+    "join",
+    "left",
+    "right",
+    "full",
+    "inner",
+    "outer",
+    "cross",
+    "semi",
+    "anti",
+    "where",
+}
+SQL_ON_STOP_WORDS = {
+    "join",
+    "left",
+    "right",
+    "full",
+    "inner",
+    "outer",
+    "cross",
+    "semi",
+    "anti",
+    "where",
+    "group",
+    "having",
+    "order",
+    "limit",
+    "union",
+    "except",
+    "intersect",
+}
+SQL_WHERE_STOP_WORDS = {
+    "group",
+    "having",
+    "order",
+    "limit",
+    "union",
+    "except",
+    "intersect",
+}
 
 
 def normalize_sql(sql: str) -> str:
@@ -322,6 +363,102 @@ def extract_referenced_tables_from_sql(sql: str) -> list[str]:
         index += 1
 
     return sorted(tables, key=lambda value: value.lower())
+
+
+def extract_join_filter_column_references_from_sql(sql: str) -> list[tuple[str, str]]:
+    tokens = sql_tokens(strip_sql_comments_and_strings(sql))
+    cte_names = extract_cte_names_from_tokens(tokens)
+    alias_to_table = table_aliases_from_tokens(tokens, cte_names)
+    references: set[tuple[str, str]] = set()
+    clause = ""
+    index = 0
+    while index + 2 < len(tokens):
+        token = tokens[index]
+        lower = token.lower()
+        if lower == "on":
+            clause = "join"
+            index += 1
+            continue
+        if lower == "where":
+            clause = "filter"
+            index += 1
+            continue
+        if clause == "join" and lower in SQL_ON_STOP_WORDS:
+            clause = ""
+            continue
+        if clause == "filter" and lower in SQL_WHERE_STOP_WORDS:
+            clause = ""
+            continue
+        if clause and is_sql_identifier(token) and tokens[index + 1] == "." and is_sql_identifier(tokens[index + 2]):
+            qualifier = normalize_sql_identifier_part(token)
+            column = normalize_sql_identifier_part(tokens[index + 2])
+            table = alias_to_table.get(str(qualifier or "").lower())
+            if table and column:
+                references.add((table, column))
+            index += 3
+            continue
+        index += 1
+    return sorted(references, key=lambda item: (item[0].lower(), item[1].lower()))
+
+
+def table_aliases_from_tokens(tokens: list[str], cte_names: set[str]) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    index = 0
+    in_from_list = False
+    expect_table = False
+    while index < len(tokens):
+        token = tokens[index]
+        lower = token.lower()
+        if token in (")", ";") or lower in SQL_FROM_STOP_WORDS:
+            in_from_list = False
+            expect_table = False
+        elif lower == "from":
+            in_from_list = True
+            expect_table = True
+            index += 1
+            continue
+        elif lower == "join":
+            expect_table = True
+            index += 1
+            continue
+        elif in_from_list and token == ",":
+            expect_table = True
+            index += 1
+            continue
+
+        if expect_table:
+            if token == "(":
+                expect_table = False
+                in_from_list = False
+                index += 1
+                continue
+            table, next_index = parse_table_identifier(tokens, index)
+            if table:
+                if table.lower() not in cte_names and not is_function_reference(tokens, index, next_index):
+                    register_table_aliases(aliases, table, tokens, next_index)
+                expect_table = False
+                index = next_index
+                continue
+            expect_table = False
+        index += 1
+    return aliases
+
+
+def register_table_aliases(aliases: dict[str, str], table: str, tokens: list[str], index: int) -> None:
+    aliases[table.lower()] = table
+    unqualified = table.rsplit(".", 1)[-1].lower()
+    aliases.setdefault(unqualified, table)
+    alias_index = index
+    if alias_index < len(tokens) and tokens[alias_index].lower() == "as":
+        alias_index += 1
+    if alias_index >= len(tokens):
+        return
+    alias_token = tokens[alias_index]
+    if not is_sql_identifier(alias_token) or alias_token.lower() in SQL_ALIAS_STOP_WORDS:
+        return
+    alias = normalize_sql_identifier_part(alias_token)
+    if alias:
+        aliases[alias.lower()] = table
 
 
 def sql_inputs_for_case(case_dir: Path, profile_text: str) -> list[str]:

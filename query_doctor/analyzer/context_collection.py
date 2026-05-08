@@ -15,7 +15,11 @@ from query_doctor.analyzer.context_files import (
     rel_path,
 )
 from query_doctor.analyzer.scalars import fmt_duration, numeric_context_value
-from query_doctor.analyzer.sql_sources import extract_referenced_tables_from_sql, sql_inputs_for_case
+from query_doctor.analyzer.sql_sources import (
+    extract_join_filter_column_references_from_sql,
+    extract_referenced_tables_from_sql,
+    sql_inputs_for_case,
+)
 from query_doctor.cluster.context import MAX_CONTEXT_SOURCES
 from query_doctor.cluster.event_context import (
     ALLOWED_CONTEXT_STATUSES,
@@ -74,6 +78,77 @@ def collect_referenced_tables(case_dir: Path, profile_text: str) -> list[str]:
     for sql in sql_inputs_for_case(case_dir, profile_text):
         tables.update(extract_referenced_tables_from_sql(sql))
     return sorted(tables, key=lambda value: value.lower())
+
+
+def collect_sql_column_context(
+    case_dir: Path,
+    profile_text: str,
+    table_metadata_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    references: set[tuple[str, str]] = set()
+    for sql in sql_inputs_for_case(case_dir, profile_text):
+        references.update(extract_join_filter_column_references_from_sql(sql))
+    metadata = metadata_columns_by_table(table_metadata_context or {})
+    observed = len(references)
+    if not references:
+        return {
+            "status": "unknown",
+            "join_filter_columns_observed": 0,
+            "join_filter_columns_with_stats": 0,
+            "join_filter_columns_without_stats": 0,
+            "join_filter_partition_columns": 0,
+            "join_filter_column_relevance": "unknown",
+        }
+
+    with_stats = 0
+    partition_columns = 0
+    for table, column in references:
+        table_key = table.lower()
+        column_key = column.lower()
+        table_metadata = metadata.get(table_key, {})
+        if column_key in table_metadata.get("column_stats", set()):
+            with_stats += 1
+        if column_key in table_metadata.get("partition_columns", set()):
+            partition_columns += 1
+    without_stats = max(0, observed - with_stats)
+    if with_stats == observed:
+        relevance = "covered"
+    elif with_stats > 0:
+        relevance = "partial"
+    else:
+        relevance = "missing"
+    return {
+        "status": "available",
+        "join_filter_columns_observed": observed,
+        "join_filter_columns_with_stats": with_stats,
+        "join_filter_columns_without_stats": without_stats,
+        "join_filter_partition_columns": partition_columns,
+        "join_filter_column_relevance": relevance,
+    }
+
+
+def metadata_columns_by_table(context: dict[str, Any]) -> dict[str, dict[str, set[str]]]:
+    tables = context.get("tables")
+    if not isinstance(tables, list):
+        return {}
+    result: dict[str, dict[str, set[str]]] = {}
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        table_name = str(table.get("table") or "").strip().lower()
+        if not table_name:
+            continue
+        result[table_name] = {
+            "column_stats": normalized_name_set(table.get("column_stats_columns")),
+            "partition_columns": normalized_name_set(table.get("partition_columns")),
+        }
+    return result
+
+
+def normalized_name_set(values: Any) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    return {str(value or "").strip().lower() for value in values if str(value or "").strip()}
 
 
 def collect_impala_context(case_dir: Path) -> dict[str, Any] | None:

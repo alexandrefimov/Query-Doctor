@@ -172,6 +172,9 @@ class RecentScanStatsQualityView:
     status: str
     table_stats: str
     column_stats: str
+    row_estimate_evidence: str
+    partition_coverage: str
+    stats_context: str
     interpretation: str
     guardrail: str
 

@@ -116,7 +116,7 @@ def render_help_content() -> str:
 
 <details>
 <summary>Details-page Query LLM optimizer</summary>
-<p>The details-page optimizer uses server-owned source scope from the analyzed case. Python classifies risk, selects a mode or recipe, the LLM assembles a draft, and Python validates read-only scope, table set, filters, joins, projection shape, result shape, and recipe-specific invariants before any SQL draft is trusted.</p>
+<p>The details-page optimizer uses server-owned source scope from the analyzed case. Python classifies risk, selects a mode or recipe, may execute a narrow deterministic recipe patch, otherwise asks the LLM to assemble a draft, and then validates read-only scope, table set, filters, joins, projection shape, result shape, and recipe-specific invariants before any SQL draft is trusted.</p>
 <p>If validation fails, Query Doctor can show trusted recommendations-only or no-rewrite guidance instead of an unsafe draft.</p>
 </details>
 

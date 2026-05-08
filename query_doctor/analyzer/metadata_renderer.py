@@ -5,6 +5,19 @@ from __future__ import annotations
 from typing import Any
 
 
+NON_STATS_BOTTLENECK_FINDINGS = {
+    "large_intermediate_or_exchange_traffic": "exchange_or_data_movement",
+    "spill_or_scratch_io": "spill_or_scratch",
+    "hdfs_or_storage_bottleneck": "storage_or_hdfs",
+    "host_execution_tail_suspected": "backend_execution_tail",
+    "backend_write_path_anomaly": "backend_write_path",
+    "codegen_bottleneck": "codegen",
+    "join_bottleneck": "query_shape",
+    "sort_bottleneck": "query_shape",
+    "analytic_bottleneck": "query_shape",
+}
+
+
 def availability_label(item: dict[str, Any]) -> str:
     return "available" if item.get("available") else "missing"
 
@@ -60,7 +73,7 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
 
 def render_stats_metadata_quality(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("table_metadata_context") or {}
-    quality = stats_metadata_quality(context)
+    quality = stats_metadata_quality(context, analysis)
     lines = ["## Stats Metadata Quality", ""]
     for key in (
         "status",
@@ -68,6 +81,20 @@ def render_stats_metadata_quality(analysis: dict[str, Any]) -> list[str]:
         "column_stats",
         "tables_with_missing_table_stats",
         "tables_with_incomplete_column_stats",
+        "row_estimate_evidence",
+        "row_estimate_issue_count",
+        "partition_coverage",
+        "partitioned_tables",
+        "partitioned_tables_with_missing_table_stats",
+        "join_filter_column_relevance",
+        "join_filter_columns_observed",
+        "join_filter_columns_with_stats",
+        "join_filter_columns_without_stats",
+        "join_filter_partition_columns",
+        "non_stats_bottleneck_signals",
+        "non_stats_bottleneck_categories",
+        "stats_primary_bottleneck",
+        "stats_context",
         "interpretation",
         "guardrail",
     ):
@@ -76,8 +103,13 @@ def render_stats_metadata_quality(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
-def stats_metadata_quality(context: dict[str, Any]) -> dict[str, Any]:
+def stats_metadata_quality(context: dict[str, Any], analysis: dict[str, Any] | None = None) -> dict[str, Any]:
     tables = [table for table in context.get("tables") or [] if isinstance(table, dict)]
+    analysis_facts = analysis if isinstance(analysis, dict) else {}
+    row_estimate_issue_count = len(analysis_facts.get("cardinality_anomalies") or []) + len(
+        analysis_facts.get("zero_row_estimate_gaps") or []
+    )
+    row_estimate_evidence = "observed" if row_estimate_issue_count > 0 else "not_observed"
     if not tables:
         return {
             "status": "unavailable",
@@ -85,6 +117,20 @@ def stats_metadata_quality(context: dict[str, Any]) -> dict[str, Any]:
             "column_stats": "not_checked",
             "tables_with_missing_table_stats": 0,
             "tables_with_incomplete_column_stats": 0,
+            "row_estimate_evidence": row_estimate_evidence,
+            "row_estimate_issue_count": row_estimate_issue_count,
+            "partition_coverage": "unknown",
+            "partitioned_tables": 0,
+            "partitioned_tables_with_missing_table_stats": 0,
+            "join_filter_column_relevance": "unknown",
+            "join_filter_columns_observed": 0,
+            "join_filter_columns_with_stats": 0,
+            "join_filter_columns_without_stats": 0,
+            "join_filter_partition_columns": 0,
+            "non_stats_bottleneck_signals": 0,
+            "non_stats_bottleneck_categories": "none",
+            "stats_primary_bottleneck": "unknown",
+            "stats_context": "metadata_unavailable",
             "interpretation": "Metadata was not collected; stats quality is unknown.",
             "guardrail": "Stats quality is follow-up evidence, not a standalone root cause.",
         }
@@ -97,19 +143,75 @@ def stats_metadata_quality(context: dict[str, Any]) -> dict[str, Any]:
     )
     table_stats = aggregate_stats_status(table_values, good_value="available")
     column_stats = aggregate_stats_status(column_values, good_value="complete")
+    partitioned_tables = sum(1 for table in tables if has_partition_columns(table))
+    partitioned_tables_with_missing_table_stats = sum(
+        1
+        for table, value in zip(tables, table_values)
+        if has_partition_columns(table) and value in {"missing/unknown", "missing", "unknown"}
+    )
+    partition_coverage = partition_stats_coverage(
+        partitioned_tables,
+        partitioned_tables_with_missing_table_stats,
+        table_stats,
+    )
+    sql_column_context = analysis_facts.get("sql_column_context") if isinstance(analysis_facts, dict) else {}
+    sql_column_context = sql_column_context if isinstance(sql_column_context, dict) else {}
+    join_filter_relevance = str(sql_column_context.get("join_filter_column_relevance") or "unknown")
+    join_filter_columns_observed = int_value(sql_column_context.get("join_filter_columns_observed"))
+    join_filter_columns_with_stats = int_value(sql_column_context.get("join_filter_columns_with_stats"))
+    join_filter_columns_without_stats = int_value(sql_column_context.get("join_filter_columns_without_stats"))
+    join_filter_partition_columns = int_value(sql_column_context.get("join_filter_partition_columns"))
+    non_stats_categories = non_stats_bottleneck_categories(analysis_facts)
+    non_stats_signal_count = len(non_stats_categories)
+    non_stats_category_label = ", ".join(non_stats_categories) if non_stats_categories else "none"
 
     if table_stats == "not_applicable" and column_stats == "not_applicable":
         status = "not_applicable"
         interpretation = "Referenced metadata is not physical-table stats evidence."
+        stats_context = "not_physical_table_stats"
+        stats_primary_bottleneck = "not_applicable"
     elif missing_table_stats or incomplete_column_stats:
         status = "limited"
-        interpretation = "Metadata shows missing or incomplete stats coverage."
+        if row_estimate_issue_count > 0:
+            stats_context = "stats_gap_with_row_estimate_evidence"
+            if non_stats_signal_count:
+                stats_primary_bottleneck = "mixed_candidate"
+                interpretation = (
+                    "Missing or incomplete stats coverage aligns with row-estimate mismatch evidence, "
+                    "but competing non-stats bottleneck signals are also present."
+                )
+            else:
+                stats_primary_bottleneck = "candidate_supported"
+                interpretation = "Missing or incomplete stats coverage aligns with row-estimate mismatch evidence."
+        else:
+            stats_context = "stats_gap_without_row_estimate_evidence"
+            interpretation = "Metadata shows missing or incomplete stats coverage."
+            stats_primary_bottleneck = "not_supported"
     elif table_stats == "available" and column_stats == "complete":
         status = "available"
-        interpretation = "Collected metadata shows available table stats and complete column stats."
+        if row_estimate_issue_count > 0:
+            stats_context = "stats_present_with_row_estimate_evidence"
+            if non_stats_signal_count:
+                stats_primary_bottleneck = "not_primary_supported"
+                interpretation = (
+                    "Stats are present, and competing non-stats bottleneck signals are supported; "
+                    "prioritize those findings before treating stats as primary."
+                )
+            else:
+                stats_primary_bottleneck = "not_supported_by_metadata"
+                interpretation = (
+                    "Stats are present, but row-estimate mismatch evidence remains; "
+                    "stats may not be the primary explanation."
+                )
+        else:
+            stats_context = "stats_available_no_row_estimate_evidence"
+            interpretation = "Collected metadata shows available table stats and complete column stats."
+            stats_primary_bottleneck = "not_supported"
     else:
         status = "unknown"
+        stats_context = "stats_quality_unknown"
         interpretation = "Collected metadata does not give a complete stats-quality classification."
+        stats_primary_bottleneck = "unknown"
 
     return {
         "status": status,
@@ -117,6 +219,20 @@ def stats_metadata_quality(context: dict[str, Any]) -> dict[str, Any]:
         "column_stats": column_stats,
         "tables_with_missing_table_stats": missing_table_stats,
         "tables_with_incomplete_column_stats": incomplete_column_stats,
+        "row_estimate_evidence": row_estimate_evidence,
+        "row_estimate_issue_count": row_estimate_issue_count,
+        "partition_coverage": partition_coverage,
+        "partitioned_tables": partitioned_tables,
+        "partitioned_tables_with_missing_table_stats": partitioned_tables_with_missing_table_stats,
+        "join_filter_column_relevance": join_filter_relevance,
+        "join_filter_columns_observed": join_filter_columns_observed,
+        "join_filter_columns_with_stats": join_filter_columns_with_stats,
+        "join_filter_columns_without_stats": join_filter_columns_without_stats,
+        "join_filter_partition_columns": join_filter_partition_columns,
+        "non_stats_bottleneck_signals": non_stats_signal_count,
+        "non_stats_bottleneck_categories": non_stats_category_label,
+        "stats_primary_bottleneck": stats_primary_bottleneck,
+        "stats_context": stats_context,
         "interpretation": interpretation,
         "guardrail": "Stats quality is follow-up evidence, not a standalone root cause.",
     }
@@ -148,6 +264,62 @@ def aggregate_stats_status(values: list[str], *, good_value: str) -> str:
     if any(value in {"missing/unknown", "missing", "unknown", "incomplete/unknown", "incomplete"} for value in values):
         return "incomplete_or_unknown"
     return "mixed"
+
+
+def has_partition_columns(table: dict[str, Any]) -> bool:
+    partitions = table.get("partition_columns")
+    if not isinstance(partitions, list):
+        return False
+    return any(str(column or "").strip().lower() not in {"", "unknown", "none"} for column in partitions)
+
+
+def partition_stats_coverage(partitioned_tables: int, missing_partitioned_table_stats: int, table_stats: str) -> str:
+    if partitioned_tables == 0:
+        return "not_observed"
+    if missing_partitioned_table_stats > 0:
+        return "limited"
+    if table_stats == "available":
+        return "available"
+    return "unknown"
+
+
+def non_stats_bottleneck_categories(analysis: dict[str, Any]) -> tuple[str, ...]:
+    categories: list[str] = []
+    for finding in analysis.get("findings") or []:
+        if not isinstance(finding, dict):
+            continue
+        category = NON_STATS_BOTTLENECK_FINDINGS.get(str(finding.get("id") or ""))
+        if category:
+            categories.append(category)
+
+    backend_tail = analysis.get("backend_tail")
+    if isinstance(backend_tail, dict):
+        if str(backend_tail.get("data_skew") or "").strip().lower() == "yes":
+            categories.append("backend_data_skew")
+        if int_value(backend_tail.get("execution_tail_candidate_count")) > 0:
+            categories.append("backend_execution_tail")
+        if int_value(backend_tail.get("write_path_tail_candidate_count")) > 0:
+            categories.append("backend_write_path")
+
+    return tuple(dedupe_preserve_order(categories))
+
+
+def dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def int_value(value: Any) -> int:
+    try:
+        return max(0, int(float(str(value).strip())))
+    except (TypeError, ValueError):
+        return 0
 
 
 def render_impala_context(analysis: dict[str, Any]) -> list[str]:

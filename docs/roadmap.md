@@ -78,12 +78,16 @@ Improve how runtime context supports diagnosis without overclaiming.
   location instead of a generic symptom.
 - Improve metadata/stats quality facts for stale or missing table stats, column
   stats on join/filter columns, partition coverage, selectivity mismatch, and
-  stats-present-but-not-explanatory cases.
+  real-fixture validation for stats-present-but-not-explanatory cases.
 
 ### 3. Query Optimizer Usefulness
 
 Keep optimizer trust strict while making useful outcomes more common.
 
+- Develop optimizer work as facts-first recipes: analyzer-owned facts should
+  first prove predicate origin, projection mapping, CTE boundaries,
+  stats-vs-query context, and competing bottlenecks; only then should a narrow
+  Python-owned recipe produce a trusted SQL draft.
 - Treat Optimization Candidate as a funnel, not a promise of SQL rewrite:
   candidate detected, rewrite recipe detected, SQL draft safe to attempt,
   trusted SQL draft produced.
@@ -97,8 +101,9 @@ Keep optimizer trust strict while making useful outcomes more common.
   proof for a safe rewrite, high-risk SQL shape, or no material LLM change.
 - Add anonymized real fixtures for long `WITH`, CTE-heavy,
   join/filter/projection-preservation, and model-discipline failure cases.
-- Add Python-owned recipes only where validation can prove the boundary,
-  starting with narrower CTE predicate-pushdown cases.
+- Add Python-owned recipes only where analyzer facts and validation can prove
+  the boundary; avoid prompt-only rewrite freedom when the analyzer cannot
+  explain the transformation.
 - Add CTE simplification recipes as separate proven transforms: inline only
   single-use CTEs, remove pass-through CTE layers, use expanded CTE trees for
   internal analysis when helpful, and treat multi-use CTE inlining as a
@@ -114,9 +119,17 @@ Completed baseline work:
 - Recent scan labels now separate rewrite recipe detection, draft eligibility,
   and actual trusted draft production.
 - CTE shape facts now cover graph category, consumer counts, downstream-filter
-  eligibility, single-use/pass-through counts, and boundary categories.
-- `single_cte_predicate_pushdown` is a validated Python-owned recipe alongside
-  the existing linear CTE and CTE DAG predicate-pushdown recipes.
+  eligibility, predicate-origin category, projection-contract category,
+  single-use/pass-through counts, and boundary categories.
+- Stats Metadata Quality now covers row-estimate evidence, partition coverage,
+  join/filter column stats relevance, and safe competing-bottleneck categories
+  for stats-present-but-not-primary cases.
+- `single_cte_predicate_pushdown` is a validated Python-owned recipe with a
+  deterministic executor for the simplest safe filter-copy form, alongside the
+  existing linear CTE and CTE DAG predicate-pushdown validation contracts.
+- Single-CTE predicate-pushdown detection now requires a copyable downstream
+  predicate targeting the CTE output, so filters on unrelated joined aliases do
+  not inflate the recipe funnel.
 - A post-merge 48-hour batch rerun confirmed that recipe detection improved,
   including two `single_cte_predicate_pushdown` candidates, but trusted SQL
   draft yield stayed at zero for the top stats-available candidates because the
@@ -125,17 +138,17 @@ Completed baseline work:
 
 Remaining near-term optimizer work:
 
-1. Add Python-owned deterministic patch generation for the simplest
-   predicate-pushdown recipes, starting with `single_cte_predicate_pushdown`, so
-   recipe execution does not depend on the LLM making a mechanical rewrite.
-2. Deepen CTE facts for predicate origin and projection-preservation checks so
+1. Deepen CTE facts for predicate origin and projection-preservation checks so
    future recipes can avoid broad SQL-equivalence assumptions.
-3. Add focused deterministic recipes for CTE simplification only after
+2. Add focused deterministic recipes for CTE simplification only after
    recipe-specific validation exists, especially pass-through CTE elimination
    and single-use CTE inlining.
-4. Extend analyzer-owned stats-evidence facts with estimate mismatch,
-   join/filter column coverage, partition coverage, and
-   stats-present-but-not-primary bottleneck categories.
+3. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
+   especially stats-present-but-not-primary cases and mixed stats/runtime
+   bottleneck signals.
+4. Use repeated real-case batches to measure the full optimizer funnel after
+   each facts or recipe change: optimization candidate, stats/query context,
+   recipe detected, safe to attempt, trusted draft, and no-draft reason.
 5. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
    minimal diffs.
 

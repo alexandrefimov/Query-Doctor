@@ -20,7 +20,7 @@ from query_doctor.recent.query_optimization_score import QueryOptimizationCandid
 RECIPE_LABELS = {
     "post_union_aggregate_pushdown": "SQL draft eligible",
     "final_union_distinct_rollup": "SQL draft eligible",
-    "single_cte_predicate_pushdown": "Rewrite recipe detected",
+    "single_cte_predicate_pushdown": "SQL draft eligible",
     "linear_cte_predicate_pushdown": "Rewrite recipe detected",
     "cte_dag_predicate_pushdown": "Rewrite recipe detected",
 }
@@ -48,6 +48,8 @@ class OptimizerRewriteSupport:
     cte_graph_shape: str = "no_cte"
     cte_predicate_pushdown_status: str = "no_cte"
     cte_simplification_status: str = "no_cte"
+    cte_predicate_origin_status: str = "no_cte"
+    cte_projection_contract_status: str = "no_cte"
     cte_single_use_count: int = 0
     cte_pass_through_count: int = 0
     cte_boundary_reasons: tuple[str, ...] = ()
@@ -100,11 +102,17 @@ def classify_optimizer_rewrite_support(
                 cte_graph_shape=cte_shape.graph_shape,
                 cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
                 cte_simplification_status=cte_shape.simplification_status,
+                cte_predicate_origin_status=cte_shape.predicate_origin_status,
+                cte_projection_contract_status=cte_shape.projection_contract_status,
                 cte_single_use_count=cte_shape.single_use_cte_count,
                 cte_pass_through_count=cte_shape.pass_through_cte_count,
                 cte_boundary_reasons=cte_shape.boundary_reasons,
             )
-        recipe_is_strictly_supported = recipe_id in {"post_union_aggregate_pushdown", "final_union_distinct_rollup"}
+        recipe_is_strictly_supported = recipe_id in {
+            "post_union_aggregate_pushdown",
+            "final_union_distinct_rollup",
+            "single_cte_predicate_pushdown",
+        }
         return OptimizerRewriteSupport(
             status="sql_draft_supported" if recipe_is_strictly_supported else "recipe_detected",
             label=RECIPE_LABELS.get(recipe_id, "SQL draft attemptable"),
@@ -123,6 +131,8 @@ def classify_optimizer_rewrite_support(
             cte_graph_shape=cte_shape.graph_shape,
             cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
             cte_simplification_status=cte_shape.simplification_status,
+            cte_predicate_origin_status=cte_shape.predicate_origin_status,
+            cte_projection_contract_status=cte_shape.projection_contract_status,
             cte_single_use_count=cte_shape.single_use_cte_count,
             cte_pass_through_count=cte_shape.pass_through_cte_count,
             cte_boundary_reasons=cte_shape.boundary_reasons,
@@ -140,6 +150,8 @@ def classify_optimizer_rewrite_support(
             cte_graph_shape=cte_shape.graph_shape,
             cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
             cte_simplification_status=cte_shape.simplification_status,
+            cte_predicate_origin_status=cte_shape.predicate_origin_status,
+            cte_projection_contract_status=cte_shape.projection_contract_status,
             cte_single_use_count=cte_shape.single_use_cte_count,
             cte_pass_through_count=cte_shape.pass_through_cte_count,
             cte_boundary_reasons=cte_shape.boundary_reasons,
@@ -156,6 +168,8 @@ def classify_optimizer_rewrite_support(
         cte_graph_shape=cte_shape.graph_shape,
         cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
         cte_simplification_status=cte_shape.simplification_status,
+        cte_predicate_origin_status=cte_shape.predicate_origin_status,
+        cte_projection_contract_status=cte_shape.projection_contract_status,
         cte_single_use_count=cte_shape.single_use_cte_count,
         cte_pass_through_count=cte_shape.pass_through_cte_count,
         cte_boundary_reasons=cte_shape.boundary_reasons,

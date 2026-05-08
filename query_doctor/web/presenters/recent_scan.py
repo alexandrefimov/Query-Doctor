@@ -261,13 +261,28 @@ def present_recent_scan_stats_quality(stats_quality_facts: dict[str, Any] | None
     status = safe_display_text(facts.get("status") or "")
     table_stats = safe_display_text(facts.get("table_stats") or "")
     column_stats = safe_display_text(facts.get("column_stats") or "")
+    row_estimate_evidence = safe_display_text(facts.get("row_estimate_evidence") or "")
+    partition_coverage = safe_display_text(facts.get("partition_coverage") or "")
+    stats_context = safe_display_text(facts.get("stats_context") or "")
     interpretation = safe_display_text(facts.get("interpretation") or "")
     guardrail = safe_display_text(facts.get("guardrail") or "")
     return RecentScanStatsQualityView(
-        unavailable=not bool(status or table_stats or column_stats or interpretation or guardrail),
+        unavailable=not bool(
+            status
+            or table_stats
+            or column_stats
+            or row_estimate_evidence
+            or partition_coverage
+            or stats_context
+            or interpretation
+            or guardrail
+        ),
         status=status,
         table_stats=table_stats,
         column_stats=column_stats,
+        row_estimate_evidence=row_estimate_evidence,
+        partition_coverage=partition_coverage,
+        stats_context=stats_context,
         interpretation=interpretation,
         guardrail=guardrail,
     )

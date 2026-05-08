@@ -16,6 +16,7 @@ from query_doctor.analyzer.context_collection import (
     collect_cm_timeseries_context,
     collect_impala_context,
     collect_referenced_tables,
+    collect_sql_column_context,
 )
 from query_doctor.analyzer.evidence_quality import build_evidence_quality
 from query_doctor.analyzer.facts_renderer import render_md
@@ -93,6 +94,11 @@ def main(argv: list[str] | None = None) -> int:
     analysis["cluster_context"] = collect_cluster_context(digest_path.parent)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
+    analysis["sql_column_context"] = collect_sql_column_context(
+        digest_path.parent,
+        text,
+        analysis["table_metadata_context"],
+    )
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
     analysis["default_database"] = extract_default_database(text)
     analysis["cm_metrics_correlation"] = build_cm_metrics_correlation(analysis)
