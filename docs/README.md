@@ -20,13 +20,13 @@ roadmap as the current public baseline.
 ## Current Baseline For Agents
 
 Coding agents should treat [../README.md](../README.md), this index,
+[codex-handoff.md](codex-handoff.md), [code-audit.md](code-audit.md),
 [safety-contract.md](safety-contract.md), [architecture.md](architecture.md),
-[roadmap.md](roadmap.md), [development-practices.md](development-practices.md)
-and [codex-handoff.md](codex-handoff.md) as the active implementation baseline.
-[code-audit.md](code-audit.md) tracks current risks and follow-ups. Historical
-planning notes, localized companion pages and older changelog entries are useful
-context, but they are not behavior contracts when they conflict with the active
-baseline.
+[query-optimizer-contract.md](query-optimizer-contract.md), [roadmap.md](roadmap.md)
+and [development-practices.md](development-practices.md) as the active
+implementation baseline. Historical planning notes, localized companion pages
+and older changelog entries are useful context, but they are not behavior
+contracts when they conflict with the active baseline.
 
 ## Start Here
 
@@ -103,8 +103,8 @@ should not be read as product user guides.
 
 - [codex-handoff.md](codex-handoff.md): current engineering baseline and
   operating rules for Codex agents.
-- [code-audit.md](code-audit.md): implementation audit and open follow-ups.
-- [project-audit.md](project-audit.md): broader project audit.
+- [code-audit.md](code-audit.md): current implementation risks and follow-ups.
+- [project-audit.md](project-audit.md): concise product-level audit snapshot.
 - [analyzer-audit.md](analyzer-audit.md): analyzer-specific audit notes.
 - [root-compatibility-audit.md](root-compatibility-audit.md): completed root
   script removal and supported package command/import mappings.

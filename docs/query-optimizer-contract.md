@@ -1,24 +1,27 @@
 # Query Optimizer Contract
 
-Last reviewed: 2026-05-07
+Last reviewed: 2026-05-08
 
-This document defines the current Query Doctor optimizer boundaries. It covers
-both optimizer surfaces:
+This document is the active contract for both optimizer surfaces:
 
 - Query Optimizer: pasted-SQL parse/analyze workflow.
 - Query LLM optimizer: explicit details-page action for server-owned analyzed
   cases.
 
-## Shared safety rules
+It defines trust boundaries. It is not a roadmap or model bake-off log.
+
+## Shared Safety Rules
 
 - Query Doctor never executes optimizer input SQL.
 - Pasted SQL must not be echoed back after submit.
 - Browser-visible output must not expose raw source SQL, raw profiles, raw
   metadata, local paths, `case_dir`, subprocess output, secrets, model/runtime
   internals, or raw artifact filenames.
-- Python owns facts, source extraction, validation, trust markers, and allowed
-  recommendation targets.
+- Python owns facts, source extraction, validation, trust markers, risk
+  classification, and allowed recommendation targets.
 - LLM output is never trusted because of prompt instructions alone.
+- Unsupported or risky rewrites should become trusted `no_rewrite` or
+  recommendations-only outcomes, not browser-visible partial drafts.
 
 ## Pasted-SQL Query Optimizer
 
@@ -44,14 +47,15 @@ Forbidden browser output:
 
 - submitted SQL text after POST;
 - raw metadata output;
-- local collection paths or generated artifact filenames.
+- local collection paths or generated artifact filenames;
+- parser/runtime internals or subprocess output.
 
-## Details-page Query LLM optimizer
+## Details-Page Query LLM Optimizer
 
 Input:
 
 - a server-owned analyzed case;
-- source SQL resolved from allowed case sources;
+- source SQL resolved only from allowed case sources;
 - source may be a read-only `SELECT` / `WITH` statement or a SELECT/WITH payload
   extracted from supported `INSERT ... SELECT` or `CREATE TABLE AS SELECT`.
 
@@ -61,31 +65,29 @@ Execution:
 - no automatic execution from Finished, Running, or Specific Query scans;
 - no SQL execution against Impala or any other engine;
 - LLM receives local source SQL and deterministic facts, but browser output gets
-  only validated trusted results.
-- if a user pastes an externally rewritten SQL draft for validation, the server
-  validates it in memory only, never executes it, never persists it as a raw
-  artifact, and never echoes it back into browser output.
+  only validated trusted results;
+- externally pasted rewrite candidates are validated in memory only, never
+  executed, never persisted as raw artifacts, and never echoed back into browser
+  output.
 
 Allowed trusted result:
 
-- one read-only `SELECT` or `WITH` draft;
-- or a recommendations-only / no-rewrite outcome when Python decides a trusted
-  SQL draft is too risky or not materially useful;
-- no markdown explanation in the draft artifact;
-- shown in browser only after deterministic validation and marker verification.
+- one read-only `SELECT` or `WITH` draft; or
+- a recommendations-only / no-rewrite outcome when Python decides a trusted SQL
+  draft is too risky, too unsupported, too long, or not materially useful.
 
 Rejected or unsafe result:
 
 - partial draft is hidden;
-- unvalidated output is not rendered as trusted;
-- validation failure should produce safe status text, not raw draft text or raw
-  subprocess output.
-- externally pasted validation candidates are not rendered back to the browser;
-  only safe pass/fail categories may be shown.
+- raw LLM output is hidden;
+- validation failure produces safe status text, not raw draft text or raw
+  subprocess output;
+- externally pasted validation candidates produce safe pass/fail categories
+  only.
 
-## Draft validation
+## Draft Validation
 
-Current validator must reject:
+The trusted SQL path must reject:
 
 - non-SELECT/WITH output;
 - multiple statements;
@@ -93,73 +95,37 @@ Current validator must reject:
 - added physical tables;
 - removed `WHERE`, `HAVING`, or `LIMIT` scope;
 - changed `DISTINCT`;
-- changed top-level `WHERE`, `GROUP`, `HAVING`, `ORDER` or `LIMIT` expression
-  signatures;
+- changed top-level `WHERE`, `GROUP`, `HAVING`, `ORDER`, or `LIMIT`
+  expression signatures;
 - changed top-level `JOIN ... ON` condition signatures;
 - changed top-level set-operation, CTE, or JOIN shape;
 - changed output projection count or known output names;
 - changed output projection expression signatures;
 - SQL outside the supported optimizer parser scope.
 
-Recipe-backed exceptions:
+Validation is conservative and signature-based. It intentionally rejects
+safe-looking rewrites unless Python owns the safe transform.
 
-- `post_union_aggregate_pushdown`: accepts CTE body changes only for a detected
-  `UNION ALL` detail CTE followed by a downstream aggregate CTE. Validation
-  preserves the physical table set, source filters, join predicates, literals,
-  final output shape, CTE names, branch count and aggregate rollup shape.
-- `final_union_distinct_rollup`: accepts CTE body changes only for a detected
-  `UNION ALL` detail CTE feeding a final `COUNT(DISTINCT ...)` aggregate.
-  Validation preserves the final aggregate query and pre-aggregates branches to
-  the CTE output grain plus distinct keys.
-- `post_union_aggregate_pushdown` accepts two equivalent branch shapes: direct
-  branch-level downstream measures, or a conservative branch-input rollup where
-  additive inputs are aggregated in each branch and the downstream aggregate CTE
-  remains unchanged.
-- Recipe WHERE validation compares `UNION ALL` branches independently and allows
-  only added transitive `BETWEEN` filters that are proven from inner-join equality
+## Recipe-Backed Exceptions
+
+Recipe exceptions are allowed only when recipe-specific validation proves the
+boundary.
+
+- `post_union_aggregate_pushdown`: accepts CTE body changes for detected
+  `UNION ALL` detail CTEs followed by downstream aggregation. Validation must
+  preserve physical table set, source filters, join predicates, literals, final
+  output shape, CTE names, branch count, and aggregate rollup shape.
+- `final_union_distinct_rollup`: accepts CTE body changes for detected
+  `UNION ALL` detail CTEs feeding a final `COUNT(DISTINCT ...)` aggregate.
+  Validation must preserve the final aggregate query and pre-aggregate branches
+  to the CTE output grain plus distinct keys.
+- Recipe WHERE validation compares `UNION ALL` branches independently and
+  allows only added transitive `BETWEEN` filters proven from inner-join equality
   predicates in the same branch.
 
-Known limitations:
+Add new recipes only with focused fixtures and validation tests.
 
-- Validation is conservative and signature-based. It rejects changes inside
-  top-level clauses and projections unless Python owns a specific safe
-  transform. It still does not prove general SQL equivalence.
-- Recipe coverage is intentionally narrow. Unsupported shapes should produce a
-  trusted recommendations-only or no-rewrite outcome rather than a speculative
-  SQL draft.
-
-## Current optimizer issues
-
-The current trusted path is useful for two validated recipe classes, but it is
-not a general SQL equivalence engine. Known current issues:
-
-- SQL rewrite quality is uneven without recipe guidance. In the current
-  recipe-backed top-candidate sample, `qwen3-coder:30b` produced trusted SQL
-  drafts for the two supported recipe shapes, while other top cases still fell
-  back to trusted recommendations-only or no-rewrite outcomes.
-- Output length was a real failure mode for long `WITH` queries. This is now
-  mitigated by the optimizer-specific `QD_OPTIMIZER_NUM_PREDICT` budget
-  defaulting to `4096` and by converting Ollama `done_reason=length` into a
-  trusted no-rewrite outcome instead of a hidden partial SQL validation failure.
-- Shorter failed drafts are not primarily a length problem. Remaining failures
-  are usually unsupported rewrite shapes or model-discipline failures such as
-  adding CTEs, changing CTE names, or changing top-level `GROUP BY` expressions
-  despite prompt constraints.
-- `rewrite_allowed` remains too broad for some CTE-preservation cases. Until a
-  Python-owned recipe exists, validator rejection or recommendations-only is the
-  correct trust boundary.
-- The validator rejects safe-looking rewrites that are not proven equivalent by
-  normalized signatures. This is intentional for trust, but it limits optimizer
-  usefulness until safe Python-owned transforms are added.
-- The first committed anonymized optimizer benchmark corpus exists under
-  `tests/fixtures/optimizer_cases/`. It covers trusted SQL drafts, validation
-  rejection, no-material-change/no-rewrite and recommendations-only outcomes.
-  It is a baseline corpus, not complete optimizer coverage.
-- Report-writer model quality does not predict optimizer rewrite quality. Query
-  LLM optimizer needs its own bake-off metrics: trusted SQL draft rate,
-  no-rewrite/recommendations rate, partial-untrusted rate, and latency.
-
-## Trust marker
+## Trust Marker
 
 The details-page optimized draft is trusted only when all of these are true:
 
@@ -172,138 +138,45 @@ The details-page optimized draft is trusted only when all of these are true:
 - marker source SQL hash and source scope match the current extracted source;
 - current draft still parses as supported read-only SELECT/WITH SQL.
 
-Legacy/minimal optimizer markers are not trusted.
+Legacy or minimal optimizer markers are not trusted.
 
-## Fallback policy
+For trusted non-SQL outcomes, the marker must bind the same facts/source scope
+and identify the outcome kind. Stale SQL draft artifacts must not be treated as
+trusted under recommendations-only or no-rewrite markers.
+
+## Fallback Policy
 
 Current behavior:
 
 - low-risk case and validator passes: show validated optimized draft;
 - high-risk case: show no trusted SQL draft and provide deterministic
   recommendations-only fallback;
-- no-benefit case: show no trusted SQL draft and provide a `no_rewrite` outcome
-  explaining that no material SQL change was validated;
-- output-budget truncation: show no trusted SQL draft and provide a trusted
-  `no_rewrite` outcome explaining that generation reached the optimizer output
-  token budget;
-- validation rejection for a completed draft: show no trusted SQL draft and
-  provide a trusted no-rewrite/recommendations outcome when Python can explain
-  the rejection safely;
+- no-benefit case: show no trusted SQL draft and provide a `no_rewrite` outcome;
+- output-budget truncation: show no trusted SQL draft and provide trusted
+  `no_rewrite`;
+- completed draft rejected by validation: show no trusted SQL draft and provide
+  trusted no-rewrite or recommendations when Python can explain the rejection
+  safely;
 - always hide partial drafts and raw LLM output;
-- if an LLM optimizer draft fails deterministic validation, details may show
-  Python-owned manual rewrite guidance and an external rewrite validation form;
-- the manual rewrite block stays hidden for not-run, trusted SQL draft,
-  recommendations-only, output-budget and no-material-change outcomes;
-- external rewrite validation must return only safe categories such as read-only
+- manual rewrite guidance may appear only when it is Python-owned and browser
+  safe;
+- external rewrite validation returns only safe categories such as read-only
   scope passed, table set changed, filter scope changed, JOIN conditions
   changed, projection changed, incomplete SQL, or no material rewrite.
 
-## Test obligations
+## Browser Display Rules
 
-Optimizer changes should include focused tests for:
+Details may show safe optimizer status fields:
 
-- marker hash/schema/mode/source binding;
-- stale draft, changed facts, and changed source invalidating trust;
-- predicate weakening and changed predicate literals;
-- changed `JOIN ... ON` conditions;
-- changed output expression semantics with unchanged aliases;
-- no browser echo of pasted SQL after Query Optimizer POST;
-- hidden partial drafts and safe failure messages.
+- source scope category, such as read-only statement, INSERT payload, or CTAS
+  payload;
+- risk mode, such as rewrite allowed or conservative;
+- validation outcome category;
+- trusted output kind, such as SQL draft, recommendations-only, or no-rewrite.
 
-## Implementation roadmap
+Details must not show:
 
-### Phase 1. Marker trust chain
-
-Status: done.
-
-Outcome:
-
-- optimizer validation marker is bound to the validated draft hash;
-- marker is bound to deterministic facts hash;
-- marker is bound to extracted source SQL hash and source scope;
-- marker carries schema version and strict validation mode;
-- web trust check rejects legacy/minimal markers;
-- web trust check invalidates stale draft, changed facts, and changed source SQL.
-
-### Phase 2. Semantic validator hardening
-
-Status: implemented for top-level normalized signatures; future work is adding
-specific Python-owned safe transforms instead of broadening prompt permission.
-
-Goal:
-
-- make validator reject dangerous semantic changes inside otherwise preserved
-  SQL shape.
-
-Tests first:
-
-- changed `WHERE` literal is rejected;
-- removed conjunct from `WHERE` is rejected even when `WHERE` remains;
-- changed `HAVING` expression or literal is rejected;
-- changed `LIMIT` value is rejected;
-- changed top-level `JOIN ... ON` condition is rejected;
-- changed projection expression is rejected even when output alias stays the
-  same.
-
-Current implementation:
-
-- normalized clause signatures for top-level `WHERE`, `GROUP`, `HAVING`,
-  `ORDER`, and `LIMIT`;
-- top-level JOIN signature plus `ON` condition signature;
-- conservative projection expression signatures;
-- exact normalized signature matches unless Python owns a specific safe
-  transform.
-
-### Phase 3. Recommendations-only fallback
-
-Status: implemented for high-risk shapes, no-benefit drafts, output-budget
-truncation and completed validation failures. These paths produce trusted
-recommendations-only or no-rewrite outcomes instead of browser-visible partial
-SQL drafts.
-
-Goal:
-
-- make optimizer useful when a trusted SQL draft is unsafe or too risky.
-
-Target behavior:
-
-- low-risk source and validator passed: show trusted optimized draft;
-- conservative mode, high-risk source, no-benefit output, output-budget
-  truncation, or validator rejection: do not show SQL draft;
-- show deterministic optimizer recommendations derived from analyzer facts and
-  metadata facts;
-- keep partial draft and raw LLM output hidden;
-- use safe browser status text without raw artifact names, paths, model/runtime
-  internals, or raw source SQL.
-
-Remaining implementation target:
-
-- keep recommendations Python-owned; LLM may phrase only after deterministic
-  candidate selection;
-- add more recipe-specific safe recommendation categories as additional rewrite
-  patterns are discovered.
-
-### Phase 4. Details UI status
-
-Status: partially implemented. Details pages show source scope, risk mode and
-output kind for trusted outcomes; they still do not expose detailed validation
-rejection categories in browser-safe wording.
-
-Goal:
-
-- make the details-page Query LLM optimizer block explain what happened without
-  exposing unsafe internals.
-
-Visible safe fields:
-
-- source scope: read-only statement, insert payload, or CTAS payload;
-- optimizer mode: rewrite allowed or conservative;
-- validation outcome: passed, rejected, recommendations-only, or failed;
-- trusted output state: draft available or recommendations only.
-
-Forbidden fields:
-
-- source SQL;
+- source SQL unless it is the trusted validated draft itself;
 - partial draft;
 - raw LLM text;
 - local paths;
@@ -311,63 +184,30 @@ Forbidden fields:
 - model/runtime internals;
 - subprocess output.
 
-### Phase 5. Optimizer benchmark fixtures
+## Current Limitations
 
-Status: first committed anonymized fixture corpus exists under
-`tests/fixtures/optimizer_cases/`, and
-`scripts/compare_optimizer_models.py --fixture-corpus` can run repeatable
-offline expected-outcome checks.
+- This is not a general SQL equivalence engine.
+- Recipe coverage is intentionally narrow.
+- Local model quality does not predict optimizer rewrite quality; use optimizer
+  bake-off fixtures before changing model defaults.
+- Many safe product outcomes will be recommendations-only or no-rewrite until
+  more Python-owned recipes exist.
+- `tests/fixtures/optimizer_cases/` is a baseline corpus, not complete coverage.
 
-Goal:
+## Test Obligations
 
-- grow the fixture set so future optimizer changes stay cheap to test;
-- keep model replacement decisions separate from report-writer bake-offs.
+Optimizer changes should include focused tests for the touched boundary:
 
-Fixture set:
+- marker schema/mode/hash/source binding;
+- stale draft, changed facts, and changed source invalidating trust;
+- predicate weakening and changed predicate literals;
+- changed `JOIN ... ON` conditions;
+- changed output expression semantics with unchanged aliases;
+- recipe-specific accepted and rejected shapes;
+- stale SQL cleanup for non-SQL outcomes;
+- recommendation text safety in writer and web-load paths;
+- no browser echo after Query Optimizer POST;
+- hidden partial drafts and safe failure messages.
 
-- recipe-backed trusted SQL draft cases;
-- validation rejection cases;
-- no-material-change/no-rewrite cases;
-- recommendations-only high-risk cases;
-- future additions for simple SELECT, SELECT with WHERE/LIMIT, JOIN with ON,
-  INSERT/CTAS payloads, and more CTE-heavy edge cases.
-
-Each fixture should define:
-
-- expected source scope;
-- expected risk mode;
-- expected validator result;
-- expected fallback behavior;
-- browser safety expectations where applicable.
-
-### Phase 6. Prompt tuning after validators
-
-Status: active. Recipe-backed prompts are intentionally minimal: instruction,
-Python-owned rewrite bullets and source SQL. Broader prompts still use compact
-fact/shape digests and deterministic manual bullets.
-
-Goal:
-
-- improve LLM usefulness only after Python validation and fallback behavior are
-  strong enough.
-
-Rules:
-
-- prompts may improve wording and formatting;
-- prompts must not become the trust boundary;
-- Python-owned facts and deterministic recommendation candidates remain the
-  source of truth;
-- if a requested SQL rewrite cannot be validated deterministically, use
-  recommendations-only fallback.
-
-### Phase 7. Broader cleanup
-
-Status: planned.
-
-After optimizer safety stabilizes:
-
-- close browser artifact filename redaction gaps;
-- remove or sanitize legacy details-rendering dict overloads;
-- consolidate report and optimizer trusted-artifact checks;
-- continue splitting large package web modules into smaller route, job, command,
-  case resolution, and trusted-artifact modules.
+For model or prompt changes, also run repeatable fixture bake-offs with
+`scripts/compare_optimizer_models.py --fixture-corpus`.

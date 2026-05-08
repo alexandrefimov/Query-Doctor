@@ -1,218 +1,99 @@
-# Query Doctor project audit
+# Query Doctor Project Audit
 
 Date: 2026-05-04
-Last updated: 2026-05-06
+Last updated: 2026-05-08
 
-This document records the current engineering audit for Query Doctor. It is a
-planning and status document, not a support matrix. The implemented engine is
-Apache Impala only.
+This is a product-level audit snapshot. It intentionally stays shorter than the
+active engineering audit. Use:
 
-## Executive summary
+- [code-audit.md](code-audit.md) for current implementation risks;
+- [codex-handoff.md](codex-handoff.md) for agent operating context;
+- [roadmap.md](roadmap.md) for active product direction;
+- [query-optimizer-contract.md](query-optimizer-contract.md) for optimizer trust
+  rules.
 
-Query Doctor is now a local-first Impala diagnostic product with three diagnosis
-entry points: Finished Queries, Running Queries and Specific Query. The core
-strength is the fact boundary: Python extracts deterministic facts, while LLM
-features are explicit actions whose output is trusted only after validation.
+## Executive Summary
 
-The largest current risk is not basic diagnosis coverage; it is keeping LLM
-features useful without letting them invent facts or rewrite SQL beyond the
-validated scope. Query LLM optimizer fallback behavior now exists for high-risk,
-no-benefit, output-budget and explainable validation-rejection cases; the next
-most valuable work is broader Python-owned rewrite recipes, optimizer web-load
-hardening, stale-artifact cleanup, and documentation alignment.
+Query Doctor is a local-first Apache Impala diagnostic product with three
+diagnosis entry points: Finished Queries, Running Queries, and Specific Query.
+The core product advantage is the fact boundary: Python extracts deterministic
+facts, while LLM features are explicit actions whose output is trusted only
+after validation.
 
-## Current product
+The largest current product risks are optimizer usefulness, evidence clarity on
+Details pages, real-case fixture coverage, and keeping documentation aligned
+with the safety contract as the project grows.
 
-- Finished Queries is the primary workflow for completed-query triage.
-- Running Queries uses the same analysis shape for queries running now.
-- Specific Query analyzes one known Query ID and appends each run to a result
-  table.
-- Details pages show safe deterministic analysis details and explicit actions
-  for LLM Report and Query LLM optimizer.
-- Query Optimizer is a separate pasted-SQL review page. It accepts only one safe
-  SELECT/WITH statement, does not execute it and does not echo the pasted SQL
-  after submit.
-- Metadata collection is optional, bounded, read-only, redacted and allowlisted.
-- Browser-visible UI and trusted reports must not expose raw SQL, raw profiles,
-  raw metadata, local paths, subprocess output, secrets, runtime internals or raw
-  artifact filenames.
+## Current Product
+
+- Finished Queries ranks completed Impala queries discovered from Cloudera
+  Manager.
+- Running Queries uses the same shape for live lower-confidence triage.
+- Specific Query analyzes one known Cloudera Manager query ID.
+- Details pages show deterministic findings, runtime context, Cloudera Manager
+  metrics/events, metadata status, explicit LLM Report action, and explicit
+  Query LLM optimizer action.
+- Query Optimizer is a separate pasted-SQL review page. It accepts one safe
+  `SELECT` or `WITH` statement, never executes it, and does not echo submitted
+  SQL after submit.
+- Metadata collection is bounded, read-only, redacted, allowlisted, and
+  explicit.
 
 ## Strengths
 
-- The safety contract is explicit and testable: analyzer owns facts, LLM owns
-  wording or a candidate draft within Python-owned boundaries.
-- Recent scan is operationally useful: it ranks many cases without automatic LLM
-  calls and lets the user choose the case that deserves deeper work.
-- The UI now separates operational diagnosis, pasted-SQL review and details-page
-  LLM actions instead of mixing them into one chat-like surface.
-- Metadata collection stays narrow and read-only. It can improve context without
-  creating an execution path.
-- LLM Report rendering is explicit and validated. Partial or rejected reports
-  stay hidden from trusted UI output.
-- Query LLM optimizer drafts are guarded by deterministic SQL validation:
-  read-only output, preserved result shape, preserved filters and preserved
-  table scope.
-- The current test suite covers web safety, optimizer parsing, report
-  validation, collectors, config and recent-scan presentation.
-- Real-case optimizer validation has already found product issues in source SQL
-  extraction and draft risk handling, and those fixes are now part of the code.
+- The safety contract is clear: analyzer owns facts, LLM owns wording or a
+  candidate draft inside Python-owned boundaries.
+- Recent scan is operationally useful without automatic LLM calls.
+- LLM Report output is normalized and validated before trusted rendering.
+- Query LLM optimizer has strict marker, source, facts, draft, and validation
+  checks.
+- Trusted non-SQL optimizer outcomes make high-risk/no-benefit/unsupported
+  cases useful without showing partial drafts.
+- Cloudera Manager metrics and events are treated as normalized context, not raw
+  browser/report material.
+- The package layout now has stable ownership boundaries for collectors,
+  analyzer, report, optimizer, recent scan, web, and safety code.
 
-## Weaknesses and risks
+## Risks
 
-- Query LLM optimizer quality is still uneven for CTE-heavy and structurally
-  complex cases. Validation correctly rejects unsafe drafts, and the user now
-  gets trusted no-rewrite/recommendations fallback when Python can explain the
-  outcome, but useful SQL draft coverage remains narrow.
-- Conservative prompt mode reduces risk, but prompts alone are not a complete
-  control. Meaningful SQL rewrites should keep moving toward Python-owned
-  recipes with extra validation instead of broad prompt-only permission.
-- The web server still owns too many responsibilities. That raises the cost of
-  UI changes and makes safety review slower.
-- Historical docs and prototype notes can drift from current behavior. Current
-  safety guidance must stay concentrated in AGENTS, handoff, safety contract,
-  README, roadmap and Help.
-- Metadata facts are useful but intentionally limited. Reports and optimizer
-  guidance must keep saying "supported by available facts" instead of implying a
-  complete cluster diagnosis.
-- There is no stable anonymized benchmark corpus for optimizer draft acceptance
-  and usefulness. Current real-case checks are valuable but manual.
-- The UI relies on safe presenter/view-model boundaries. Any future shortcut
-  that passes raw domain data directly to templates would be a safety regression.
-- Multi-engine support is still only an architecture direction. Adding runtime
-  selectors before engine-specific collectors, parsers and validators would be
-  misleading.
-- Deployment-source support is currently Cloudera Manager (CM) based and
-  validated against local CM 6.2.1 behavior. Newer CM versions, direct Impala
-  daemon profile collection and Prometheus metrics need explicit provider
-  contracts before implementation.
-- Metrics and logs are natural next diagnostic signals, but they need their own
-  source/provider and analyzer contracts. A future complex report should combine
-  normalized facts, not raw logs or raw metric series.
-- The highest-value analytical gaps are evidence confidence, historical
-  baselines, repeated-query clustering, host-tail correlation and outcome
-  tracking. These should be deterministic product signals, not LLM judgments.
+- Optimizer trusted SQL draft coverage is still narrow; more Python-owned
+  recipes and real fixtures are needed.
+- Details pages can become noisy unless evidence, limitations, and actions stay
+  grouped around user decisions.
+- Legacy Details dict rendering paths can drift from presenter safety if reused.
+- Runtime context can be overinterpreted if wording turns Cloudera Manager
+  metrics/events into root causes without supporting analyzer facts.
+- The project needs more sanitized real fixtures for analyzer, runtime context,
+  and optimizer failure modes.
+- Multi-engine, non-Cloudera Manager source providers, Prometheus, logs, and
+  Cluster Doctor remain future seams, not current support.
+- Active docs can drift as features land; stale guidance is a real agent risk.
 
-## Planned features
+## Active Product Priorities
 
-Near term:
+1. Improve Details usability and evidence flow.
+2. Improve runtime context quality and limitations wording.
+3. Expand optimizer fixtures and narrow Python-owned recipes.
+4. Clarify default metadata selection policy.
+5. Keep active docs concise and aligned with implementation.
 
-- Add Evidence Quality Score so reports can distinguish strong evidence from
-  incomplete evidence.
-- Design Baseline Comparison and Similar Query Clustering around normalized
-  query fingerprints.
-- Convert completed Query LLM optimizer validation rejections into deterministic
-  no-rewrite or recommendations-only outcomes when Python can explain the
-  rejection safely.
-- Build a small anonymized optimizer benchmark set from representative query
-  shapes and run it in focused tests or local smoke scripts.
-- Run optimizer-specific model bake-offs before changing the optimizer default;
-  report-writer pass-rate is not a reliable proxy for SQL rewrite quality.
-- Continue prompt tuning for practical, low-noise reports and optimizer output,
-  but keep validation as the trust boundary.
-- Finish documentation cleanup for remaining historical notes and make current
-  docs clearly discoverable.
+## Validation Notes
 
-Mid term:
+For product-facing behavior changes, run focused tests for the touched workflow
+before broader suites:
 
-- Continue splitting large package web modules into smaller route/job/presenter
-  modules where it reduces safety review cost.
-- Add an Impala source-provider seam so CM API collection, future direct Impala
-  daemon profile collection and future Prometheus metrics can evolve without
-  changing analyzer/report/browser safety contracts.
-- Define a multi-signal facts model for profile, metadata, metrics and log
-  analyzers, including confidence/status labels and limitations.
-- Correlate host-tail profile evidence with bounded metrics and repeated-host
-  patterns across cases.
-- Add Recommendation Outcome Tracking so practical actions can be evaluated
-  against before/after runtime, score and failure changes.
-- Expand deterministic optimizer recommendations so the LLM has less room to
-  invent and more Python-owned guidance to phrase.
-- Add safer job history/status persistence for local UI sessions.
-- Improve operational smoke scripts for Finished, Running, Specific, report and
-  optimizer flows.
-- Consider richer metadata signals only with an explicit allowlist, bounded
-  output, redaction and tests.
+- web/details changes: web route/rendering and browser-safety tests;
+- report changes: sanitizer, validator, normalization, marker, and trusted
+  artifact tests;
+- optimizer changes: parser, recipe, validator, trust marker, fallback, and
+  no-echo tests;
+- collector/analyzer changes: Cloudera Manager, Impala metadata, metrics,
+  events, profile analyzer, and facts rendering tests;
+- docs-only changes: `git diff --check`.
 
-Long term:
+## Current Recommendation
 
-- Evolve toward a Big Data SQL/lakehouse diagnostic core with engine-specific
-  collectors, metadata providers, parsers and recommendation modules.
-- Evolve toward broader operational diagnostics where prepared metrics and logs
-  from Hadoop ecosystem services can be summarized deterministically and used in
-  a single complex report.
-- Maintain an anonymized benchmark corpus for analyzer, report and optimizer
-  quality checks.
-- Add new Big Data SQL/lakehouse engines only after their read-only collection
-  contract, metadata allowlist, analyzer facts, browser safety tests and
-  validators exist.
-
-## Documentation status
-
-Current docs to treat as active guidance:
-
-- `AGENTS.md`
-- `docs/codex-handoff.md`
-- `docs/safety-contract.md`
-- `README.md`
-- `docs/roadmap.md`
-- `docs/architecture.md`
-- Russian Help page in `query_doctor.web.ui.help`
-
-Historical design notes and prototype docs are useful context, but they are not
-the current safety contract unless the active docs above say so.
-
-## Optimizer status
-
-Pasted-SQL Query Optimizer remains intentionally narrow: one safe SELECT/WITH,
-parse/analyze only, no SQL execution and no browser echo of the pasted text.
-
-Details-page Query LLM optimizer is broader because the source comes from a
-server-owned analyzed case. It can use a read-only SELECT/WITH statement or a
-SELECT/WITH payload extracted from INSERT/CTAS statements. The generated draft
-must still be a read-only SELECT/WITH statement and must pass deterministic
-validation before it is shown as trusted output.
-
-Current optimizer risk modes:
-
-- `rewrite_allowed` for simpler cases.
-- `conservative_rewrite` for structurally risky cases.
-- `recommendations_only` for cases where preserving semantics is too risky for
-  an LLM-generated SQL draft.
-- `no_rewrite` for no-benefit drafts and output-budget truncation.
-
-Current optimizer problems:
-
-- local SQL rewrite coverage is still narrow: after recipe updates,
-  `qwen3-coder:30b` produced trusted outcomes on the top-10 local sample, but
-  only 2 of those outcomes were trusted SQL drafts;
-- `qwen3-coder:30b-a3b-q8_0` passed the two recipe-backed local smoke cases but
-  is slower, so replacement/default choice still needs optimizer-specific
-  bake-off data;
-- completed validation rejections can now become deterministic no-rewrite /
-  recommendations outcomes when Python can explain them safely;
-- the first committed anonymized optimizer fixture corpus exists under
-  `tests/fixtures/optimizer_cases/`, but it should grow with more real
-  long-WITH, join/filter/projection-preservation and model-failure cases.
-
-## Validation notes
-
-Recent focused validation has covered:
-
-- CM profile collector and source SQL extraction.
-- Query Optimizer parser and validator behavior.
-- Details-page optimized-query routes.
-- Report and web display safety in focused suites.
-- `git diff --check` after implementation work.
-
-For docs-only changes, `git diff --check` is usually enough unless the Help page
-or browser-rendered strings change. When Help changes, run the focused Help UI
-tests.
-
-## Recommended next actions
-
-1. Add an anonymized optimizer benchmark set.
-2. Run optimizer-specific model bake-offs for replacement candidates.
-3. Convert completed optimizer validation rejections into safe deterministic
-   no-rewrite/recommendations outcomes where possible.
-4. Continue reducing web server responsibility size.
-5. Keep active docs updated as part of each safety-sensitive feature.
+Continue feature work, but keep every new browser-visible or report-visible
+signal behind deterministic facts and explicit safety/display boundaries. Avoid
+expanding LLM or external-collection surfaces faster than the validator,
+fixtures, and docs can support.

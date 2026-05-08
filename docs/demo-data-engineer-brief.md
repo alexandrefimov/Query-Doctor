@@ -1,6 +1,7 @@
-# Query Doctor data-engineer demo brief
+# Query Doctor Data-Engineer Demo Brief
 
 Date: 2026-05-06
+Last updated: 2026-05-08
 
 This brief is for a data-engineer demo discussion. It explains how Query Doctor
 prioritizes cases and which deterministic facts support the UI labels. It is
@@ -52,6 +53,7 @@ signals such as:
 - bounded metadata facts about table/partition row-count stats and column
   stats;
 - bounded CM runtime metrics and whether they correlate with profile evidence.
+- bounded Cloudera Manager Events context near the query window.
 
 Important caveat: runtime counter context is not automatically wall-clock time.
 Cumulative thread, CPU, wait and codegen counters are context unless the facts
@@ -194,6 +196,19 @@ Examples:
 Context-only metrics must not drive optimizer actions by themselves and must not
 be phrased as root causes.
 
+## Cloudera Manager Events
+
+Cloudera Manager Events are cluster/service context around the query window.
+They are useful for follow-up questions such as:
+
+- did service health change near the query;
+- were there admission, memory, daemon, host, or node signals nearby;
+- does the event window support or contradict a profile-backed hypothesis.
+
+Events should be shown as bounded Cluster Event Context. They do not prove a
+query root cause by themselves, and they must not replace profile/analyzer
+evidence.
+
 ## Metadata
 
 Current Impala metadata collection is bounded and read-only. The allowlist is
@@ -267,8 +282,8 @@ Avoid saying:
 
 Point to the visible deterministic reasons: score reasons, impact/confidence,
 wall-clock, estimate mismatches, host-tail evidence, spill/scratch evidence,
-metadata status, or correlated CM metrics. Do not infer a cause that is not in
-the facts.
+metadata status, correlated CM metrics, or bounded Cloudera Manager Events
+context. Do not infer a cause that is not in the facts.
 
 **Why not show raw SQL?**
 
@@ -300,6 +315,11 @@ comparison and comparable rerun.
 Only when correlated with profile evidence, and even then they are runtime
 context unless deterministic facts support a specific causal claim.
 
+**Are Cloudera Manager Events root-cause evidence?**
+
+No by themselves. They are bounded cluster/service context and follow-up
+signals unless deterministic analyzer facts support the same claim.
+
 **What does Confidence mean?**
 
 Confidence is about evidence completeness and counter-signals, not certainty of
@@ -320,6 +340,7 @@ Prefer:
 - "candidate"
 - "supported by parsed facts"
 - "correlated runtime context"
+- "bounded event context"
 - "review first"
 - "required confirmation"
 - "validated draft"

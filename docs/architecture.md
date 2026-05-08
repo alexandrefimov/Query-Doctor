@@ -15,6 +15,7 @@ flowchart TD
         CM[Cloudera Manager summaries and profiles]
         ImpalaMeta[Allowlisted Impala metadata]
         CMMetrics[Bounded Cloudera Manager time-series summaries]
+        CMEvents[Bounded Cloudera Manager events]
     end
 
     subgraph Local["Local Query Doctor runtime"]
@@ -44,6 +45,7 @@ flowchart TD
     CM --> Collector
     ImpalaMeta --> Collector
     CMMetrics --> Collector
+    CMEvents --> Collector
     Collector --> CaseStore
     CaseStore --> Analyzer
     Analyzer --> Facts
@@ -68,6 +70,8 @@ Current support is intentionally narrow:
 - Cloudera Manager summaries and profiles are the implemented profile source.
 - Cloudera Manager (CM) time-series support is bounded and summarized before
   becoming facts.
+- Cloudera Manager events support is bounded and summarized before becoming
+  Cluster Event Context.
 - Impala metadata collection is explicit, read-only, and allowlisted.
 - Reports and details-page optimizer drafts run only after an explicit
   selected-case action.
@@ -83,7 +87,7 @@ before they become product behavior.
 ```mermaid
 flowchart TD
     subgraph Providers["Roadmap source-provider seams"]
-        CMProvider[Cloudera Manager profiles and metrics]
+        CMProvider[Cloudera Manager profiles, metrics and events]
         ImpalaDaemon[Direct Impala profile endpoint]
         PromProvider[Prometheus-style metrics]
         EventProvider[Prepared log/event summaries]
@@ -196,7 +200,8 @@ The collector:
 
 Future profile acquisition should stay behind a small source-provider contract:
 discover query summaries, fetch one explicit profile, fetch safe query context,
-and fetch bounded runtime metrics when available.
+  fetch bounded runtime metrics when available, and fetch bounded event context
+  when available.
 
 Current provider support:
 
@@ -217,25 +222,31 @@ Planned provider seams:
   future metrics provider for non-CM clusters. Prometheus integration needs a
   bounded query allowlist, fixed time windows, response-size limits, and
   summarized facts only.
+- Events seam: keep Cloudera Manager events as the current event source for
+  bounded cluster context. Future prepared log/event providers must publish
+  normalized counts, categories, affected safe scopes and limitations, not raw
+  log lines or raw provider payloads.
 
 ### Diagnostic Signal Seam
 
-Profiles, metadata, metrics, and logs are separate diagnostic signal families.
-Each family can have its own source providers and deterministic analyzer before
-facts enter the shared report contract.
+Profiles, metadata, metrics, events, and future logs are separate diagnostic
+signal families. Each family can have its own source providers and
+deterministic analyzer before facts enter the shared report contract.
 
 - Profile analyzer: implemented today for Impala runtime profiles.
 - Metadata analyzer: implemented through bounded Impala metadata context.
-- Metrics analyzer: partially started through bounded CM time-series summaries;
+- Metrics analyzer: implemented through bounded CM time-series summaries;
   future providers may read pre-aggregated metrics from CM/Prometheus or compute
   safe aggregates locally from bounded raw responses.
-- Log analyzer: planned only. It should prefer prepared log indexes or
-  structured log stores when available and fall back to bounded local parsing
-  only with explicit allowlists, time windows, redaction, and tests.
+- Event analyzer: started through bounded Cloudera Manager Events context.
+  Future log analyzers should prefer prepared log indexes or structured log
+  stores when available and fall back to bounded local parsing only with
+  explicit allowlists, time windows, redaction, and tests.
 
 Cross-signal correlation belongs in Python-owned facts, not in LLM inference.
-The LLM may phrase a complex report only after profile, metrics, logs, and
-metadata analyzers publish normalized facts with confidence/status fields.
+The LLM may phrase a complex report only after profile, metadata, metrics,
+events, and future log analyzers publish normalized facts with confidence/status
+fields.
 
 Future Cluster Doctor work should follow
 [cluster-doctor-contract.md](cluster-doctor-contract.md): keep it as a separate
@@ -253,8 +264,8 @@ The analyzer:
   evidence, referenced tables, and optional table metadata facts when present;
 - reads local metadata context when present and adds
   `## Table Metadata Context`;
-- may later add safe metrics, event, or cluster facts only after source
-  providers have bounded collection contracts and tests;
+- may add safe metrics, event, or cluster facts only through bounded collection
+  contracts and normalized analyzer facts;
 - does not call Cloudera Manager, the LLM runtime, or the report writer.
 
 ### Report Writer
@@ -265,17 +276,17 @@ The report writer:
 - uses an LLM for narrative wording, not fact discovery;
 - must not infer facts from raw profile text, SQL, local config, or external
   context;
-- may eventually render a multi-signal diagnosis, but only from normalized
-  Python-owned facts produced by profile, metadata, metrics, and log analyzers;
+- may render a multi-signal diagnosis, but only from normalized Python-owned
+  facts produced by profile, metadata, metrics, event, and future log analyzers;
 - generates trusted LLM reports within one fact boundary;
 - writes localized user-facing narrative sections for summary,
   recommendations, detailed findings, and follow-up checks;
 - deterministically appends a localized analyzer facts appendix from the facts
   artifact;
-- excludes `## Table Metadata Context` and `## CM Time-Series Context` from the
-  LLM prompt today;
-- passes only curated metadata digest and normalized `## CM Metrics Facts` to
-  the LLM;
+- excludes raw metadata, raw time-series, and raw event context from the LLM
+  prompt;
+- passes only curated metadata digest, normalized `## CM Metrics Facts`, and
+  bounded Cluster Event Context to the LLM/report boundary;
 - buffers raw LLM output and writes final reports only after normalization,
   sanitization, narrative validation, appendix append, and final validation.
 
@@ -320,6 +331,8 @@ The local UI:
 - discovers CM summaries first for Finished Queries, then collects bounded
   selected profiles, ranks deterministically, and leaves report/optimizer
   generation explicit per case;
+- can collect bounded Cloudera Manager metrics and events as runtime context for
+  selected cases;
 - uses the same result shape for Running Queries;
 - analyzes one known Query ID for Specific Query without automatic LLM and
   appends results to its table;

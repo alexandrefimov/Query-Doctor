@@ -85,6 +85,9 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert '<input type="radio" name="mode" value="admin" checked>' not in body
     assert ".segmented label:focus-within" not in body
     assert ".segmented input:checked+span,.segmented input:checked+label{color:#fff;background:var(--accent);" in body
+    assert ".segmented label{min-width:58px;display:grid;place-items:stretch;" in body
+    assert ".segmented span{display:grid;place-items:center;width:100%;height:100%;" in body
+    assert ".manual-inputs-hidden{display:none!important}" in body
     assert body.index('id="query_id"') < body.index('<button class="run-button" type="submit">Run</button>')
     assert "Локальный демо-сервер: только явный Query ID" not in body
     assert "Validated before render" not in body
@@ -217,13 +220,12 @@ def test_web_home_page_links_brand_and_readme_navigation():
     body = module.render_page(settings)
 
     assert '<a class="brand" href="/" aria-label="Query Doctor home">' in body
-    assert '<a class="nav-link nav-link--active" href="/">Recent scan</a>' in body
+    assert '<a class="nav-link nav-link--active" href="/">Diagnose</a>' in body
     assert 'href="/optimizer">Query Optimizer</a>' not in body
     assert 'href="/query">Specific Query</a>' not in body
     assert 'href="/running">Running Queries</a>' not in body
-    assert '<a class="nav-link" href="/demo">Demo guide</a>' in body
     assert '<a class="nav-link" href="/help">Help</a>' in body
-    assert body.index('href="/">Recent scan</a>') < body.index('href="/demo">Demo guide</a>')
-    assert body.index('href="/demo">Demo guide</a>') < body.index('href="/help">Help</a>')
+    assert "Demo guide" not in body
+    assert body.index('href="/">Diagnose</a>') < body.index('href="/help">Help</a>')
     assert '<a class="nav-link" href="/readme">README</a>' not in body
     assert "Settings" not in body
