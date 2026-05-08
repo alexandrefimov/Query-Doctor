@@ -334,8 +334,9 @@ Near-term metadata/stats work:
    `batch_summary.json`/Markdown to track unknown, mixed, not-classified, and
    medium-or-better confidence rates across real-case batches.
 6. Improve partition and column stats detail from already-collected metadata:
-   partition row-count coverage counts and join/filter column stats coverage,
-   without exposing raw partition values or raw metadata output.
+   partition row-count coverage counts are now parsed from `SHOW TABLE STATS`;
+   remaining work is join/filter column stats coverage, without exposing raw
+   partition values or raw metadata output.
 
 Stop condition for stats diagnosis without EXPLAIN or reruns:
 

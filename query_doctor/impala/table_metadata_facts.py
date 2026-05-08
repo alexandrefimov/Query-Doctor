@@ -15,6 +15,13 @@ STATEMENTS = (
 )
 UNKNOWN_MARKERS = {"", "-1", "null", "unknown", "n/a"}
 SIZE_VALUE_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)\b", re.I)
+COLUMN_STATS_STATUS_KEYS = (
+    "column_stats_complete_columns",
+    "column_stats_ndv_missing_columns",
+    "column_stats_size_missing_columns",
+    "column_stats_all_missing_columns",
+)
+COLUMN_STATS_STATUS_VALUES = ("complete", "ndv_missing", "size_missing", "all_missing")
 
 
 def collect_table_metadata_context(case_dir: Path) -> dict[str, Any]:
@@ -119,10 +126,19 @@ def empty_table_context(table: str) -> dict[str, Any]:
         "table_rows": "unknown",
         "table_stats_row_count_completeness": "not_available",
         "table_size": "unknown",
+        "partition_count": 0,
+        "partitions_with_known_row_count": 0,
+        "partitions_with_unknown_row_count": 0,
+        "partitions_with_zero_row_count": 0,
         "column_stats_columns_observed": "unknown",
         "column_stats_missing_markers": "unknown",
         "column_stats_completeness": "not_available",
         "column_stats_columns": [],
+        "column_stats_per_column": {},
+        "column_stats_complete_columns": 0,
+        "column_stats_ndv_missing_columns": 0,
+        "column_stats_size_missing_columns": 0,
+        "column_stats_all_missing_columns": 0,
         "file_format": "unknown",
         "partition_columns": [],
     }
@@ -158,6 +174,9 @@ def apply_not_applicable_result(table_context: dict[str, Any], statement: str) -
         table_context["column_stats_columns_observed"] = 0
         table_context["column_stats_missing_markers"] = 0
         table_context["column_stats_completeness"] = "not_available"
+        table_context["column_stats_per_column"] = {}
+        for key in COLUMN_STATS_STATUS_KEYS:
+            table_context[key] = 0
 
 
 def parse_pipe_table(text: str) -> tuple[list[str], list[list[str]]]:
@@ -165,11 +184,15 @@ def parse_pipe_table(text: str) -> tuple[list[str], list[list[str]]]:
     rows: list[list[str]] = []
     for line in pipe_lines:
         cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if cells:
+        if cells and not is_separator_row(cells):
             rows.append(cells)
     if len(rows) < 2:
         return [], []
     return rows[0], rows[1:]
+
+
+def is_separator_row(row: list[str]) -> bool:
+    return all(re.fullmatch(r":?-{2,}:?", cell.strip()) for cell in row if cell.strip())
 
 
 def normalized_header(value: str) -> str:
@@ -188,15 +211,22 @@ def parse_table_stats(text: str) -> dict[str, Any]:
     headers, rows = parse_pipe_table(text)
     if headers and rows:
         header_map = {normalized_header(header): index for index, header in enumerate(headers)}
-        row = rows[0]
         rows_index = first_present(header_map, ("rows", "numrows"))
         size_index = first_present(header_map, ("size", "totalsize", "bytes"))
-        if rows_index is not None and rows_index < len(row):
-            rows_value, completeness = parse_row_count_token(row[rows_index])
+        total_row = first_total_row(rows, rows_index)
+        table_level_row = total_row or (rows[0] if rows_index == 0 else None)
+        if rows_index is not None:
+            facts.update(parse_partition_row_counts(rows, rows_index))
+        if table_level_row is not None and rows_index is not None and rows_index < len(table_level_row):
+            rows_value, completeness = parse_row_count_token(table_level_row[rows_index])
             facts["table_rows"] = rows_value
             facts["table_stats_row_count_completeness"] = completeness
-        if size_index is not None and size_index < len(row):
-            size = row[size_index].strip()
+        elif facts.get("partition_count", 0) > 0:
+            facts["table_stats_row_count_completeness"] = (
+                "available" if facts.get("partitions_with_unknown_row_count", 0) == 0 else "missing/unknown"
+            )
+        if table_level_row is not None and size_index is not None and size_index < len(table_level_row):
+            size = table_level_row[size_index].strip()
             if size and size.lower() not in UNKNOWN_MARKERS:
                 facts["table_size"] = size
 
@@ -216,6 +246,47 @@ def parse_table_stats(text: str) -> dict[str, Any]:
     return facts
 
 
+def first_total_row(rows: list[list[str]], rows_index: int | None) -> list[str] | None:
+    if rows_index is None or rows_index <= 0:
+        return None
+    for row in rows:
+        if is_total_stats_row(row, rows_index):
+            return row
+    return None
+
+
+def is_total_stats_row(row: list[str], rows_index: int) -> bool:
+    partition_cells = row[:rows_index]
+    return any(str(cell or "").strip().lower() in {"total", "totals"} for cell in partition_cells)
+
+
+def parse_partition_row_counts(rows: list[list[str]], rows_index: int) -> dict[str, int]:
+    if rows_index <= 0:
+        return {}
+    partition_rows = [
+        row
+        for row in rows
+        if rows_index < len(row) and not is_total_stats_row(row, rows_index)
+    ]
+    known = 0
+    unknown = 0
+    zero = 0
+    for row in partition_rows:
+        value, completeness = parse_row_count_token(row[rows_index])
+        if completeness == "available" and isinstance(value, int):
+            known += 1
+            if value == 0:
+                zero += 1
+        else:
+            unknown += 1
+    return {
+        "partition_count": len(partition_rows),
+        "partitions_with_known_row_count": known,
+        "partitions_with_unknown_row_count": unknown,
+        "partitions_with_zero_row_count": zero,
+    }
+
+
 def first_present(mapping: dict[str, int], keys: tuple[str, ...]) -> int | None:
     for key in keys:
         if key in mapping:
@@ -231,11 +302,29 @@ def parse_column_stats(text: str) -> dict[str, Any]:
     name_index = first_present(header_map, ("column", "name", "columnname"))
     columns: list[str] = []
     missing_markers = 0
+    per_column: dict[str, str] = {}
+    status_counts = {status: 0 for status in COLUMN_STATS_STATUS_VALUES}
+    ndv_indices = column_stats_indices(header_map, ("ndv", "numdvs", "numdistinctvalues", "distinctvalues"))
+    size_indices = column_stats_indices(header_map, ("maxsize", "avgsize", "maxbytes", "avgbytes"))
+    excluded_metric_indices = column_stats_indices(
+        header_map,
+        ("column", "name", "columnname", "type", "datatype", "comment", "comments"),
+    )
+    metric_indices = [index for index in range(len(headers)) if index not in excluded_metric_indices]
     for row in rows:
         if name_index is not None and name_index < len(row):
             column = row[name_index].strip()
             if column and column.lower() not in UNKNOWN_MARKERS:
                 columns.append(column)
+                status = classify_column_stats_row(
+                    row,
+                    ndv_indices=ndv_indices,
+                    size_indices=size_indices,
+                    metric_indices=metric_indices,
+                )
+                status_counts[status] += 1
+                if len(per_column) < 20:
+                    per_column[column] = status
         missing_markers += sum(1 for cell in row if cell.strip().lower() in UNKNOWN_MARKERS)
     return {
         "column_stats_columns_observed": len(rows),
@@ -244,7 +333,37 @@ def parse_column_stats(text: str) -> dict[str, Any]:
             "complete" if rows and missing_markers == 0 else "incomplete/unknown"
         ),
         "column_stats_columns": columns[:20],
+        "column_stats_per_column": per_column,
+        "column_stats_complete_columns": status_counts["complete"],
+        "column_stats_ndv_missing_columns": status_counts["ndv_missing"],
+        "column_stats_size_missing_columns": status_counts["size_missing"],
+        "column_stats_all_missing_columns": status_counts["all_missing"],
     }
+
+
+def column_stats_indices(header_map: dict[str, int], keys: tuple[str, ...]) -> set[int]:
+    return {index for key, index in header_map.items() if key in keys}
+
+
+def classify_column_stats_row(
+    row: list[str],
+    *,
+    ndv_indices: set[int],
+    size_indices: set[int],
+    metric_indices: list[int],
+) -> str:
+    present_metric_indices = [index for index in metric_indices if index < len(row)]
+    if present_metric_indices and all(is_unknown_marker(row[index]) for index in present_metric_indices):
+        return "all_missing"
+    if any(index < len(row) and is_unknown_marker(row[index]) for index in ndv_indices):
+        return "ndv_missing"
+    if any(index < len(row) and is_unknown_marker(row[index]) for index in size_indices):
+        return "size_missing"
+    return "complete"
+
+
+def is_unknown_marker(value: str) -> bool:
+    return value.strip().lower() in UNKNOWN_MARKERS
 
 
 def parse_show_create(text: str) -> dict[str, Any]:

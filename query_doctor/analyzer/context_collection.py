@@ -31,6 +31,8 @@ from query_doctor.cluster.event_context import (
     safe_window,
 )
 
+COLUMN_STATS_JOIN_FILTER_STATUSES = ("complete", "ndv_missing", "size_missing", "all_missing", "unknown")
+
 
 def build_query_wall_clock(
     totals: dict[str, dict[str, Any] | None],
@@ -96,17 +98,25 @@ def collect_sql_column_context(
             "join_filter_columns_observed": 0,
             "join_filter_columns_with_stats": 0,
             "join_filter_columns_without_stats": 0,
+            "join_filter_columns_with_complete_stats": 0,
+            "join_filter_columns_with_ndv_missing_stats": 0,
+            "join_filter_columns_with_size_missing_stats": 0,
+            "join_filter_columns_with_all_missing_stats": 0,
+            "join_filter_columns_with_unknown_stats": 0,
             "join_filter_partition_columns": 0,
             "join_filter_column_relevance": "unknown",
         }
 
     with_stats = 0
     partition_columns = 0
+    status_counts = {status: 0 for status in COLUMN_STATS_JOIN_FILTER_STATUSES}
     for table, column in references:
         table_key = table.lower()
         column_key = column.lower()
         table_metadata = metadata.get(table_key, {})
-        if column_key in table_metadata.get("column_stats", set()):
+        column_status = join_filter_column_stats_status(table_metadata, column_key)
+        status_counts[column_status] += 1
+        if column_status == "complete":
             with_stats += 1
         if column_key in table_metadata.get("partition_columns", set()):
             partition_columns += 1
@@ -122,12 +132,17 @@ def collect_sql_column_context(
         "join_filter_columns_observed": observed,
         "join_filter_columns_with_stats": with_stats,
         "join_filter_columns_without_stats": without_stats,
+        "join_filter_columns_with_complete_stats": status_counts["complete"],
+        "join_filter_columns_with_ndv_missing_stats": status_counts["ndv_missing"],
+        "join_filter_columns_with_size_missing_stats": status_counts["size_missing"],
+        "join_filter_columns_with_all_missing_stats": status_counts["all_missing"],
+        "join_filter_columns_with_unknown_stats": status_counts["unknown"],
         "join_filter_partition_columns": partition_columns,
         "join_filter_column_relevance": relevance,
     }
 
 
-def metadata_columns_by_table(context: dict[str, Any]) -> dict[str, dict[str, set[str]]]:
+def metadata_columns_by_table(context: dict[str, Any]) -> dict[str, dict[str, Any]]:
     tables = context.get("tables")
     if not isinstance(tables, list):
         return {}
@@ -140,6 +155,7 @@ def metadata_columns_by_table(context: dict[str, Any]) -> dict[str, dict[str, se
             continue
         result[table_name] = {
             "column_stats": normalized_name_set(table.get("column_stats_columns")),
+            "column_stats_per_column": normalized_status_map(table.get("column_stats_per_column")),
             "partition_columns": normalized_name_set(table.get("partition_columns")),
         }
     return result
@@ -149,6 +165,28 @@ def normalized_name_set(values: Any) -> set[str]:
     if not isinstance(values, list):
         return set()
     return {str(value or "").strip().lower() for value in values if str(value or "").strip()}
+
+
+def normalized_status_map(values: Any) -> dict[str, str]:
+    if not isinstance(values, dict):
+        return {}
+    allowed = {"complete", "ndv_missing", "size_missing", "all_missing"}
+    result: dict[str, str] = {}
+    for key, value in values.items():
+        column = str(key or "").strip().lower()
+        status = str(value or "").strip().lower()
+        if column and status in allowed:
+            result[column] = status
+    return result
+
+
+def join_filter_column_stats_status(table_metadata: dict[str, Any], column_key: str) -> str:
+    per_column = table_metadata.get("column_stats_per_column")
+    if isinstance(per_column, dict) and column_key in per_column:
+        return str(per_column[column_key])
+    if column_key in table_metadata.get("column_stats", set()):
+        return "complete"
+    return "unknown"
 
 
 def collect_impala_context(case_dir: Path) -> dict[str, Any] | None:

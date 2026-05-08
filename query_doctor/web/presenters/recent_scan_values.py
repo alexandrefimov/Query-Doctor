@@ -34,6 +34,13 @@ def metadata_fact_limitations(table: dict[str, Any], statements: dict[str, Any])
     object_type = str(table.get("object type") or "unknown")
     table_stats = str(table.get("table stats row-count completeness") or "unknown")
     column_stats = str(table.get("column stats completeness") or "unknown")
+    partition_count = numeric_count(table.get("partition count"))
+    known_partitions = numeric_count(table.get("partitions with known row count"))
+    unknown_partitions = numeric_count(table.get("partitions with unknown row count"))
+    zero_partitions = numeric_count(table.get("partitions with zero row count"))
+    ndv_missing_columns = numeric_count(table.get("column stats NDV-missing columns"))
+    size_missing_columns = numeric_count(table.get("column stats size-missing columns"))
+    all_missing_columns = numeric_count(table.get("column stats all-missing columns"))
     if object_type == "view":
         limitations.append("view metadata stats not applicable")
     for statement, status in statements.items():
@@ -42,8 +49,23 @@ def metadata_fact_limitations(table: dict[str, Any], statements: dict[str, Any])
             limitations.append(f"{statement}: {status_text}")
     if table_stats not in {"available", "unknown"}:
         limitations.append(f"row-count stats: {safe_display_text(table_stats)}")
-    if column_stats not in {"available", "unknown"}:
+    if partition_count > 0:
+        limitations.append(
+            "partition row counts: "
+            f"{known_partitions}/{partition_count} known, "
+            f"{unknown_partitions} unknown, {zero_partitions} zero"
+        )
+    if column_stats not in {"available", "complete", "unknown"}:
         limitations.append(f"column stats: {safe_display_text(column_stats)}")
+    column_status_parts = []
+    if ndv_missing_columns:
+        column_status_parts.append(f"{ndv_missing_columns} NDV missing")
+    if size_missing_columns:
+        column_status_parts.append(f"{size_missing_columns} size missing")
+    if all_missing_columns:
+        column_status_parts.append(f"{all_missing_columns} all missing")
+    if column_status_parts:
+        limitations.append("column stats detail: " + ", ".join(column_status_parts))
     return "; ".join(limitations) if limitations else "none observed"
 
 
