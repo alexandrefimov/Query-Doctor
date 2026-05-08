@@ -58,6 +58,98 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_stats_metadata_quality(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("table_metadata_context") or {}
+    quality = stats_metadata_quality(context)
+    lines = ["## Stats Metadata Quality", ""]
+    for key in (
+        "status",
+        "table_stats",
+        "column_stats",
+        "tables_with_missing_table_stats",
+        "tables_with_incomplete_column_stats",
+        "interpretation",
+        "guardrail",
+    ):
+        lines.append(f"- {key}: {quality[key]}")
+    lines.append("")
+    return lines
+
+
+def stats_metadata_quality(context: dict[str, Any]) -> dict[str, Any]:
+    tables = [table for table in context.get("tables") or [] if isinstance(table, dict)]
+    if not tables:
+        return {
+            "status": "unavailable",
+            "table_stats": "not_checked",
+            "column_stats": "not_checked",
+            "tables_with_missing_table_stats": 0,
+            "tables_with_incomplete_column_stats": 0,
+            "interpretation": "Metadata was not collected; stats quality is unknown.",
+            "guardrail": "Stats quality is follow-up evidence, not a standalone root cause.",
+        }
+
+    table_values = [stats_value(table.get("table_stats_row_count_completeness")) for table in tables]
+    column_values = [stats_value(table.get("column_stats_completeness")) for table in tables]
+    missing_table_stats = sum(1 for value in table_values if value in {"missing/unknown", "missing", "unknown"})
+    incomplete_column_stats = sum(
+        1 for value in column_values if value in {"incomplete/unknown", "incomplete", "unknown"}
+    )
+    table_stats = aggregate_stats_status(table_values, good_value="available")
+    column_stats = aggregate_stats_status(column_values, good_value="complete")
+
+    if table_stats == "not_applicable" and column_stats == "not_applicable":
+        status = "not_applicable"
+        interpretation = "Referenced metadata is not physical-table stats evidence."
+    elif missing_table_stats or incomplete_column_stats:
+        status = "limited"
+        interpretation = "Metadata shows missing or incomplete stats coverage."
+    elif table_stats == "available" and column_stats == "complete":
+        status = "available"
+        interpretation = "Collected metadata shows available table stats and complete column stats."
+    else:
+        status = "unknown"
+        interpretation = "Collected metadata does not give a complete stats-quality classification."
+
+    return {
+        "status": status,
+        "table_stats": table_stats,
+        "column_stats": column_stats,
+        "tables_with_missing_table_stats": missing_table_stats,
+        "tables_with_incomplete_column_stats": incomplete_column_stats,
+        "interpretation": interpretation,
+        "guardrail": "Stats quality is follow-up evidence, not a standalone root cause.",
+    }
+
+
+def stats_value(value: Any) -> str:
+    text = str(value or "unknown").strip().lower().replace(" ", "_")
+    aliases = {
+        "not/available": "not_available",
+        "not_available": "not_available",
+        "not/applicable": "not_applicable",
+        "not_applicable": "not_applicable",
+        "missing_unknown": "missing/unknown",
+        "incomplete_unknown": "incomplete/unknown",
+    }
+    return aliases.get(text, text)
+
+
+def aggregate_stats_status(values: list[str], *, good_value: str) -> str:
+    if not values:
+        return "unknown"
+    unique = set(values)
+    if unique <= {"not_available", "not_applicable"}:
+        return "not_applicable"
+    if unique == {good_value}:
+        return good_value
+    if unique <= {good_value, "not_available", "not_applicable"}:
+        return "mixed"
+    if any(value in {"missing/unknown", "missing", "unknown", "incomplete/unknown", "incomplete"} for value in values):
+        return "incomplete_or_unknown"
+    return "mixed"
+
+
 def render_impala_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("impala_context")
     if not context:

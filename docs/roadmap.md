@@ -63,9 +63,9 @@ Improve how runtime context supports diagnosis without overclaiming.
 
 - Show collection status, coverage, observed signals, correlated signals,
   context-only signals, and limitations.
-- Add an explicit evidence/confidence summary so Details and reports separate
-  strong analyzer-backed findings, plausible follow-up checks, context-only
-  runtime signals, and unknown or insufficient evidence.
+- Keep the explicit Evidence guide current so Details separate strong
+  analyzer-backed findings, plausible follow-up checks, context-only runtime
+  signals, unknown evidence, metadata coverage, and stats evidence.
 - Keep Cloudera Manager metrics and events as normalized analyzer facts.
 - Treat duration and runtime context as supporting evidence unless direct facts
   support a stronger claim.
@@ -109,18 +109,33 @@ Keep optimizer trust strict while making useful outcomes more common.
 - Use `scripts/compare_optimizer_models.py --fixture-corpus` before changing
   prompt strategy or model defaults.
 
-Near-term optimizer work should improve the conversion funnel in this order:
+Completed baseline work:
 
-1. Split optimistic labels such as SQL-draft attemptability into recipe
-   detection, safety eligibility, and actual trusted draft production.
-2. Deepen analyzer-owned CTE facts: dependency graph, consumer count, predicate
-   origin, boundary reasons, and pushdown eligibility.
-3. Add focused deterministic recipes for simple CTE rewrites before broadening
-   prompt freedom, including single-use CTE inline and pass-through CTE
-   elimination after dependency and projection checks exist.
-4. Distinguish stats present from stats useful by surfacing estimate mismatch,
-   missing column/partition coverage, and stats-present-but-not-primary
-   bottleneck facts.
+- Recent scan labels now separate rewrite recipe detection, draft eligibility,
+  and actual trusted draft production.
+- CTE shape facts now cover graph category, consumer counts, downstream-filter
+  eligibility, single-use/pass-through counts, and boundary categories.
+- `single_cte_predicate_pushdown` is a validated Python-owned recipe alongside
+  the existing linear CTE and CTE DAG predicate-pushdown recipes.
+- A post-merge 48-hour batch rerun confirmed that recipe detection improved,
+  including two `single_cte_predicate_pushdown` candidates, but trusted SQL
+  draft yield stayed at zero for the top stats-available candidates because the
+  LLM returned no material rewrite or cases stayed behind recommendations-only
+  guardrails.
+
+Remaining near-term optimizer work:
+
+1. Add Python-owned deterministic patch generation for the simplest
+   predicate-pushdown recipes, starting with `single_cte_predicate_pushdown`, so
+   recipe execution does not depend on the LLM making a mechanical rewrite.
+2. Deepen CTE facts for predicate origin and projection-preservation checks so
+   future recipes can avoid broad SQL-equivalence assumptions.
+3. Add focused deterministic recipes for CTE simplification only after
+   recipe-specific validation exists, especially pass-through CTE elimination
+   and single-use CTE inlining.
+4. Extend analyzer-owned stats-evidence facts with estimate mismatch,
+   join/filter column coverage, partition coverage, and
+   stats-present-but-not-primary bottleneck categories.
 5. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
    minimal diffs.
 
@@ -154,8 +169,8 @@ current decision.
 
 ## Medium-Term Work
 
-- Evidence Quality Score: separate confidence from severity so reports can
-  distinguish strong findings from incomplete evidence.
+- Evidence Quality Score expansion: reuse analyzer-owned confidence in reports
+  and add more structured limitations for incomplete metadata/runtime evidence.
 - Baseline Comparison: compare query fingerprints against recent history to
   separate chronic bad queries from regressions.
 - Similar Query Clustering: group repeated query shapes without exposing raw

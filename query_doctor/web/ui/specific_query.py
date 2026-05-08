@@ -88,6 +88,7 @@ def render_specific_query_detail(
     runtime_diagnosis_facts: dict[str, Any] | None = None,
     cluster_runtime_context_facts: dict[str, Any] | None = None,
     evidence_quality_facts: dict[str, Any] | None = None,
+    stats_quality_facts: dict[str, Any] | None = None,
     report_state: dict[str, Any] | None = None,
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_html: SafeHtml | str | None = None,
@@ -107,6 +108,7 @@ def render_specific_query_detail(
         runtime_diagnosis_facts,
         cluster_runtime_context_facts,
         evidence_quality_facts,
+        stats_quality_facts,
         report_state=report_state,
     )
     escaped_query_id = html.escape(query_id)

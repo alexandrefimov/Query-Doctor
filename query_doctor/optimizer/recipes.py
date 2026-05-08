@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+from query_doctor.optimizer.deterministic_rewrites import (
+    copyable_final_where_predicates,
+    cte_reference_aliases,
+    simple_cte_filter_columns,
+    simple_group_by_columns,
+)
 from query_doctor.optimizer.models import CteDefinition, OptimizerRewriteRecipe
 from query_doctor.optimizer.recommendations import facts_have_finding, optimizer_action_cards
 from query_doctor.optimizer.sql_shape import (
     aggregate_input_projection_names,
     aggregate_projection_names,
+    clause_signature,
     count_distinct_key_names,
     final_distinct_rollup_aggregate_shape_is_supported,
     has_union_all,
     identifier_referenced,
+    analyze_cte_shape,
     is_cte_dag_predicate_pushdown_candidate,
     is_linear_cte_chain,
     keyword_count_any_depth,
@@ -56,11 +64,63 @@ def detect_optimizer_rewrite_recipe(
         recipe = build_final_union_distinct_rollup_recipe(union_cte, parsed.final_sql)
         if recipe:
             return recipe
+    cte_shape = analyze_cte_shape(source_sql)
+    if cte_shape.predicate_pushdown_status != "candidate":
+        return None
+    if cte_shape.graph_shape == "single_cte":
+        if not single_cte_predicate_pushdown_has_candidate_predicate(parsed.ctes[0], parsed.final_sql):
+            return None
+        return build_single_cte_predicate_pushdown_recipe(parsed.ctes[0])
     if is_linear_cte_chain(source_sql):
         return build_linear_cte_predicate_pushdown_recipe(parsed.ctes[0])
     if is_cte_dag_predicate_pushdown_candidate(source_sql):
         return build_cte_dag_predicate_pushdown_recipe(parsed.ctes[-1])
     return None
+
+
+def single_cte_predicate_pushdown_has_candidate_predicate(
+    cte: CteDefinition,
+    final_sql: str,
+) -> bool:
+    available_columns = simple_cte_filter_columns(cte.body)
+    if not available_columns:
+        return False
+    grouped_columns = simple_group_by_columns(cte.body)
+    if clause_signature(cte.body, "GROUP") and not grouped_columns:
+        return False
+    return bool(
+        copyable_final_where_predicates(
+            final_sql,
+            cte.body,
+            available_columns,
+            cte_qualifiers=cte_reference_aliases(final_sql, cte.name),
+            grouped_columns=grouped_columns,
+        )
+    )
+
+
+def build_single_cte_predicate_pushdown_recipe(first_cte: CteDefinition) -> OptimizerRewriteRecipe:
+    prompt_bullets = (
+        "Use recipe single_cte_predicate_pushdown.",
+        "The query has one CTE consumed by the final SELECT; preserve the CTE name and final output column contract.",
+        "You may add a WHERE predicate inside the CTE only by copying an exact predicate that already appears in the final SELECT WHERE clause.",
+        "Do not invent partition filters, date ranges, null checks, status filters, or other predicates that are not already present downstream.",
+        "Keep the original final SELECT WHERE predicate in place; do not remove or weaken filters.",
+        "Do not change JOIN predicates, JOIN types, GROUP BY, HAVING, ORDER BY, LIMIT, projection expressions, physical tables, literals, or final SELECT shape.",
+        "If no predicate can be safely copied into the CTE, return the original query with harmless formatting.",
+    )
+    safe_bullets = (
+        "- Recipe detected: a single CTE may benefit from copying final SELECT filters into the CTE body.",
+        "- A trusted SQL draft is shown only if validation proves CTE name, projections, tables, joins, literals, final output shape, and all original filters are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="single_cte_predicate_pushdown",
+        title="Copy final filters into a single CTE",
+        source_cte=first_cte.name,
+        aggregate_cte=None,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
 
 
 def build_post_union_aggregate_pushdown_recipe(

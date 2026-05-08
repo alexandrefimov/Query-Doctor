@@ -120,6 +120,13 @@ boundary.
   `UNION ALL` detail CTEs feeding a final `COUNT(DISTINCT ...)` aggregate.
   Validation must preserve the final aggregate query and pre-aggregate branches
   to the CTE output grain plus distinct keys.
+- `single_cte_predicate_pushdown`: accepts copied WHERE predicates inside a
+  single CTE consumed by the final SELECT. Detection and deterministic
+  execution require a copyable downstream predicate that targets the CTE
+  output, not another joined relation. Validation must preserve the CTE name,
+  final CTE reference, physical table set, projections, joins, literals, all
+  original filters, and final output shape; added predicates must already exist
+  in the final SELECT or as a CTE-alias-qualified downstream equivalent.
 - `linear_cte_predicate_pushdown`: accepts copied WHERE predicates earlier in a
   single-chain CTE graph. Validation must preserve CTE order, dependency edges,
   physical table set, projections, joins, literals, all original filters, and
@@ -134,6 +141,27 @@ boundary.
   predicates in the same branch.
 
 Add new recipes only with focused fixtures and validation tests.
+
+## CTE Shape Facts
+
+CTE shape analysis is an analyzer-owned support layer for recipe detection and
+Recent scan labels. It may record safe categories and counts only:
+
+- graph category such as single CTE, linear chain, CTE DAG, disconnected, or
+  unsupported reference order;
+- dependency edge count, final-reference count, max consumer count, and
+  single-use/pass-through counts;
+- predicate-pushdown eligibility such as candidate, no downstream filter, or
+  unsupported graph;
+- simplification eligibility such as pass-through candidate or single-use
+  candidate;
+- boundary categories such as aggregate, set operation, window, outer join,
+  multi-consumer, fan-in, and CTE-body-validation-not-proven.
+
+These facts must not expose raw SQL fragments, raw CTE names, local paths, or
+artifact filenames in browser-visible output. Simplification facts are not SQL
+equivalence proof by themselves: pass-through elimination and CTE inlining need
+their own recipe-specific validation before a trusted draft can use them.
 
 ## Trust Marker
 

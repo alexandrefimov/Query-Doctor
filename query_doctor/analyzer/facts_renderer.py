@@ -12,6 +12,7 @@ from query_doctor.analyzer.cm_metrics_renderer import (
 )
 from query_doctor.analyzer.metadata_renderer import (
     render_impala_context,
+    render_stats_metadata_quality,
     render_table_metadata_context,
 )
 from query_doctor.analyzer.runtime_renderer import (
@@ -325,6 +326,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_cluster_event_context(analysis)
     lines += render_runtime_diagnosis(analysis)
     lines += render_table_metadata_context(analysis)
+    lines += render_stats_metadata_quality(analysis)
     lines += render_impala_context(analysis)
     lines += render_backend_tail_evidence(analysis)
     lines += render_action_cards(analysis)

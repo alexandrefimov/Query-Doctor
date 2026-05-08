@@ -8,6 +8,10 @@ from collections import Counter
 from collections.abc import Iterable
 
 from query_doctor.optimizer.models import CteParseResult, OptimizerRewriteRecipe, OptimizerRiskDecision
+from query_doctor.optimizer.deterministic_rewrites import (
+    cte_reference_aliases,
+    dequalify_predicate_for_cte_aliases,
+)
 from query_doctor.optimizer.recommendation_output import (
     MAX_OPTIMIZER_RECOMMENDATION_ITEMS,
     MAX_RECOMMENDATIONS_BYTES,
@@ -188,6 +192,8 @@ def validate_recipe_backed_cte_rewrite(
     # Recipe-backed rewrites are the narrow Python-owned exception to the default CTE-body freeze.
     if rewrite_recipe.recipe_id == "final_union_distinct_rollup":
         return validate_final_union_distinct_rollup_rewrite(source_sql, draft_sql, rewrite_recipe)
+    if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
+        return validate_single_cte_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id == "linear_cte_predicate_pushdown":
         return validate_linear_cte_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id == "cte_dag_predicate_pushdown":
@@ -241,6 +247,29 @@ def validate_recipe_backed_cte_rewrite(
     if not counter_is_subset(sql_business_numeric_literal_counter(source_sql), sql_business_numeric_literal_counter(draft_sql)):
         errors.append("optimized draft violates rewrite recipe: source numeric literals changed")
     return errors
+
+
+def validate_single_cte_predicate_pushdown_rewrite(source_sql: str, draft_sql: str) -> list[str]:
+    errors: list[str] = []
+    source_parsed = parse_with_query(source_sql)
+    draft_parsed = parse_with_query(draft_sql)
+    if source_parsed is None or draft_parsed is None:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    source_names = tuple(cte.name for cte in source_parsed.ctes)
+    draft_names = tuple(cte.name for cte in draft_parsed.ctes)
+    if len(source_names) != 1 or source_names != draft_names:
+        return ["optimized draft violates rewrite recipe: CTE order changed"]
+    if referenced_cte_names(source_parsed.final_sql, source_names) != source_names:
+        errors.append("optimized draft violates rewrite recipe: final SELECT no longer reads the source CTE")
+    if referenced_cte_names(draft_parsed.final_sql, draft_names) != draft_names:
+        errors.append("optimized draft violates rewrite recipe: final SELECT no longer reads the source CTE")
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+
+    source_segments = cte_validation_segments(source_parsed)
+    draft_segments = cte_validation_segments(draft_parsed)
+    errors.extend(validate_cte_predicate_pushdown_segments(source_parsed, source_segments, draft_segments))
+    return dedupe_preserve_order(errors)
 
 
 def validate_linear_cte_predicate_pushdown_rewrite(source_sql: str, draft_sql: str) -> list[str]:
@@ -342,9 +371,35 @@ def validate_cte_predicate_pushdown_segments(
         allowed_predicates: Counter[str] = Counter()
         for downstream_index in downstream_indexes[index]:
             allowed_predicates.update(source_predicates[downstream_index])
+            allowed_predicates.update(
+                dequalified_downstream_where_predicate_counter(
+                    source_segments[downstream_index][1],
+                    cte_name=segment_name,
+                    source_segment=source_segment,
+                )
+            )
         if not counter_is_subset(extra_predicates, allowed_predicates):
             errors.append("optimized draft violates rewrite recipe: added WHERE predicate was not copied from downstream")
     return errors
+
+
+def dequalified_downstream_where_predicate_counter(
+    downstream_segment: str,
+    *,
+    cte_name: str,
+    source_segment: str,
+) -> Counter[str]:
+    projection = projection_signature(source_segment)
+    if projection is None or not projection.output_names:
+        return Counter()
+    aliases = cte_reference_aliases(downstream_segment, cte_name)
+    available_columns = set(projection.output_names)
+    predicates: Counter[str] = Counter()
+    for predicate in all_predicate_signatures(downstream_segment, "WHERE"):
+        dequalified = dequalify_predicate_for_cte_aliases(predicate, aliases, available_columns)
+        if dequalified:
+            predicates.update(sql_predicate_signature_counter(f"SELECT 1 WHERE {dequalified}", "WHERE"))
+    return predicates
 
 
 def validate_cte_segment_shape_preserved_except_where(

@@ -6,7 +6,7 @@ import re
 
 from collections import Counter
 
-from query_doctor.optimizer.models import CteDefinition, CteParseResult, ProjectionSignature
+from query_doctor.optimizer.models import CteDefinition, CteParseResult, CteShapeFacts, ProjectionSignature
 from query_doctor.optimizer.source_sql import find_top_level_keyword_offset
 from query_doctor.optimizer.sql import (
     OptimizerSqlError,
@@ -21,6 +21,7 @@ from query_doctor.optimizer.sql_fragments import (
     dedupe_preserve_order,
     extract_statement_tokens,
     find_top_level_token,
+    is_simple_column_reference,
     keyword_at,
     lower_sql_outside_quoted_text,
     matching_parenthesis_offset,
@@ -164,6 +165,217 @@ def is_cte_dag_predicate_pushdown_candidate(sql: str) -> bool:
     if any(fanout[name] == 0 for name in names):
         return False
     return has_fanin or has_fanout or has_union
+
+
+def analyze_cte_shape(sql: str) -> CteShapeFacts:
+    parsed = parse_with_query(sql)
+    if parsed is None:
+        return CteShapeFacts(
+            cte_count=0,
+            dependency_edge_count=0,
+            final_ref_count=0,
+            max_consumer_count=0,
+            single_use_cte_count=0,
+            pass_through_cte_count=0,
+            graph_shape="no_cte",
+            predicate_pushdown_status="no_cte",
+            simplification_status="no_cte",
+            has_downstream_filter=False,
+            boundary_reasons=(),
+        )
+    names = tuple(definition.name for definition in parsed.ctes)
+    name_indexes = {name: index for index, name in enumerate(names)}
+    consumer_counts: Counter[str] = Counter()
+    dependency_edge_count = 0
+    has_forward_or_self_reference = False
+    has_fanin = False
+    for index, definition in enumerate(parsed.ctes):
+        refs = referenced_cte_names(definition.body, names)
+        dependency_edge_count += len(refs)
+        consumer_counts.update(refs)
+        has_fanin = has_fanin or len(refs) > 1
+        has_forward_or_self_reference = has_forward_or_self_reference or any(name_indexes[ref] >= index for ref in refs)
+    final_refs = referenced_cte_names(parsed.final_sql, names)
+    consumer_counts.update(final_refs)
+    max_consumer_count = max(consumer_counts.values(), default=0)
+    single_use_cte_count = sum(1 for name in names if consumer_counts[name] == 1)
+    pass_through_cte_count = sum(
+        1
+        for definition in parsed.ctes
+        if cte_body_is_pass_through_layer(definition.body, names)
+    )
+    graph_shape = cte_graph_shape(
+        sql,
+        names=names,
+        consumer_counts=consumer_counts,
+        has_forward_or_self_reference=has_forward_or_self_reference,
+    )
+    has_downstream_filter = cte_shape_has_downstream_filter(parsed)
+    boundary_reasons = cte_shape_boundary_reasons(
+        parsed,
+        graph_shape=graph_shape,
+        has_downstream_filter=has_downstream_filter,
+        max_consumer_count=max_consumer_count,
+        has_fanin=has_fanin,
+    )
+    return CteShapeFacts(
+        cte_count=len(parsed.ctes),
+        dependency_edge_count=dependency_edge_count,
+        final_ref_count=len(final_refs),
+        max_consumer_count=max_consumer_count,
+        single_use_cte_count=single_use_cte_count,
+        pass_through_cte_count=pass_through_cte_count,
+        graph_shape=graph_shape,
+        predicate_pushdown_status=cte_predicate_pushdown_status(
+            graph_shape,
+            has_downstream_filter=has_downstream_filter,
+        ),
+        simplification_status=cte_simplification_status(
+            single_use_cte_count=single_use_cte_count,
+            pass_through_cte_count=pass_through_cte_count,
+            graph_shape=graph_shape,
+        ),
+        has_downstream_filter=has_downstream_filter,
+        boundary_reasons=boundary_reasons,
+    )
+
+
+def cte_predicate_pushdown_shape_is_candidate(sql: str) -> bool:
+    return analyze_cte_shape(sql).predicate_pushdown_status == "candidate"
+
+
+def cte_graph_shape(
+    sql: str,
+    *,
+    names: tuple[str, ...],
+    consumer_counts: Counter[str],
+    has_forward_or_self_reference: bool,
+) -> str:
+    if has_forward_or_self_reference:
+        return "unsupported_reference_order"
+    if any(consumer_counts[name] == 0 for name in names):
+        return "disconnected"
+    if len(names) == 1:
+        return "single_cte"
+    if is_linear_cte_chain(sql):
+        return "linear_chain"
+    if is_cte_dag_predicate_pushdown_candidate(sql):
+        return "cte_dag"
+    return "unsupported_graph"
+
+
+def cte_shape_has_downstream_filter(parsed: CteParseResult) -> bool:
+    if clause_signature(parsed.final_sql, "WHERE"):
+        return True
+    for definition in parsed.ctes[1:]:
+        if clause_signature(definition.body, "WHERE"):
+            return True
+    return False
+
+
+def cte_predicate_pushdown_status(graph_shape: str, *, has_downstream_filter: bool) -> str:
+    if graph_shape == "no_cte":
+        return "no_cte"
+    if not has_downstream_filter:
+        return "blocked_no_downstream_filter"
+    if graph_shape in {"single_cte", "linear_chain", "cte_dag"}:
+        return "candidate"
+    return "blocked_unsupported_graph"
+
+
+def cte_simplification_status(
+    *,
+    single_use_cte_count: int,
+    pass_through_cte_count: int,
+    graph_shape: str,
+) -> str:
+    if graph_shape == "no_cte":
+        return "no_cte"
+    if graph_shape in {"disconnected", "unsupported_reference_order"}:
+        return "blocked_unsupported_graph"
+    if pass_through_cte_count > 0:
+        return "pass_through_candidate"
+    if single_use_cte_count > 0:
+        return "single_use_candidate"
+    return "no_simplification_candidate"
+
+
+def cte_body_is_pass_through_layer(sql: str, cte_names: tuple[str, ...]) -> bool:
+    refs = referenced_cte_names(sql, cte_names)
+    if len(refs) != 1:
+        return False
+    if main_select_has_distinct(sql):
+        return False
+    if top_level_join_signature(sql):
+        return False
+    for keyword in ("WHERE", "GROUP", "HAVING", "ORDER", "LIMIT", "UNION", "EXCEPT", "INTERSECT"):
+        if top_level_keyword_count(sql, keyword) > 0:
+            return False
+    projection_items = projection_item_fragments(sql)
+    if not projection_items:
+        return False
+    for item in projection_items:
+        try:
+            tokens = tokenize_sql(item)
+        except OptimizerSqlError:
+            return False
+        if not is_simple_column_reference(tokens):
+            return False
+    return True
+
+
+def cte_shape_boundary_reasons(
+    parsed: CteParseResult,
+    *,
+    graph_shape: str,
+    has_downstream_filter: bool,
+    max_consumer_count: int,
+    has_fanin: bool,
+) -> tuple[str, ...]:
+    reasons: list[str] = ["cte_body_validation_not_proven"]
+    if not has_downstream_filter:
+        reasons.append("no_downstream_filter_for_pushdown")
+    if graph_shape in {"disconnected", "unsupported_graph", "unsupported_reference_order"}:
+        reasons.append(graph_shape)
+    if max_consumer_count > 1:
+        reasons.append("multi_consumer_cte")
+    pass_through_cte_count = sum(
+        1
+        for definition in parsed.ctes
+        if cte_body_is_pass_through_layer(definition.body, tuple(cte.name for cte in parsed.ctes))
+    )
+    if pass_through_cte_count:
+        reasons.append("pass_through_cte")
+    if has_fanin:
+        reasons.append("fanin_cte_graph")
+    if any(cte_body_has_aggregate_boundary(definition.body) for definition in parsed.ctes):
+        reasons.append("aggregate_boundary")
+    if any(cte_body_has_set_boundary(definition.body) for definition in parsed.ctes):
+        reasons.append("set_operation_boundary")
+    if any(cte_body_has_window_boundary(definition.body) for definition in parsed.ctes):
+        reasons.append("window_boundary")
+    if any(cte_body_has_outer_join_boundary(definition.body) for definition in parsed.ctes):
+        reasons.append("outer_join_boundary")
+    return tuple(dedupe_preserve_order(reasons))
+
+
+def cte_body_has_aggregate_boundary(sql: str) -> bool:
+    return top_level_keyword_count(sql, "GROUP") > 0 or top_level_keyword_count(sql, "HAVING") > 0
+
+
+def cte_body_has_set_boundary(sql: str) -> bool:
+    return any(top_level_keyword_count(sql, keyword) > 0 for keyword in ("UNION", "EXCEPT", "INTERSECT"))
+
+
+def cte_body_has_window_boundary(sql: str) -> bool:
+    return bool(re.search(r"\bover\s*\(", lower_sql_outside_quoted_text(sql), re.IGNORECASE))
+
+
+def cte_body_has_outer_join_boundary(sql: str) -> bool:
+    return any(
+        any(modifier in {"LEFT", "RIGHT", "FULL"} for modifier in signature)
+        for signature in top_level_join_signature(sql)
+    )
 
 
 def top_level_join_signature(sql: str) -> tuple[tuple[str, ...], ...]:

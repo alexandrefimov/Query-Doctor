@@ -167,6 +167,16 @@ class RecentScanEvidenceQualityView:
 
 
 @dataclass(frozen=True)
+class RecentScanStatsQualityView:
+    unavailable: bool
+    status: str
+    table_stats: str
+    column_stats: str
+    interpretation: str
+    guardrail: str
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any
@@ -194,5 +204,6 @@ class RecentScanCaseDetailView:
     cluster_runtime_context: RecentScanClusterRuntimeContextView
     runtime_verdict: RecentScanRuntimeVerdictView
     evidence_quality: RecentScanEvidenceQualityView
+    stats_quality: RecentScanStatsQualityView
     report_action: ReportActionView
     score_severity: str

@@ -33,6 +33,7 @@ from query_doctor.optimizer.artifacts import (
     write_marker,
     write_recommendations_marker,
 )
+from query_doctor.optimizer.deterministic_rewrites import deterministic_recipe_draft
 from query_doctor.optimizer.prompts import build_prompt, build_recommendations_prompt
 from query_doctor.optimizer.recommendations import (
     action_card_recommendation_bullet,
@@ -87,6 +88,7 @@ from query_doctor.optimizer.sql_shape import (
     clean_projection_identifier,
     clause_signature,
     count_distinct_key_names,
+    cte_predicate_pushdown_shape_is_candidate,
     cte_definition_map,
     cte_name_signature,
     dedupe_preserve_order,
@@ -97,8 +99,6 @@ from query_doctor.optimizer.sql_shape import (
     has_union_all,
     identifier_name_referenced,
     identifier_referenced,
-    is_cte_dag_predicate_pushdown_candidate,
-    is_linear_cte_chain,
     keyword_at,
     keyword_count_any_depth,
     lower_sql_outside_quoted_text,
@@ -279,8 +279,7 @@ def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
         conservative_reasons.append("cte_body_validation_not_proven")
     if (
         cte_count > RECOMMENDATIONS_ONLY_CTE_THRESHOLD
-        and not is_linear_cte_chain(source_sql)
-        and not is_cte_dag_predicate_pushdown_candidate(source_sql)
+        and not cte_predicate_pushdown_shape_is_candidate(source_sql)
     ):
         recommendations_only_reasons.append("too_many_ctes_for_safe_rewrite")
     if join_count > RECOMMENDATIONS_ONLY_JOIN_THRESHOLD:
@@ -378,6 +377,32 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"{PROGRESS_PREFIX} optimizer recommendations done", file=sys.stderr)
             return 0
+        deterministic_draft = deterministic_recipe_draft(source_sql.sql, rewrite_recipe)
+        if deterministic_draft:
+            errors = validate_draft_sql(source_sql.sql, deterministic_draft, rewrite_recipe)
+            if not errors and draft_has_material_change(source_sql.sql, deterministic_draft):
+                output_name = Path(args.out).name
+                if output_name != args.out:
+                    raise QueryOptimizationError("Output must be a filename inside the case directory.")
+                output_path = case_dir / output_name
+                output_path.write_text(normalized_trusted_draft_sql(deterministic_draft), encoding="utf-8")
+                write_marker(
+                    case_dir,
+                    output_name,
+                    source_sql=source_sql.sql,
+                    facts_text=facts_text,
+                    source_scope=source_sql.scope,
+                    risk_decision=risk_decision,
+                    rewrite_recipe=rewrite_recipe,
+                    generation_metadata={
+                        "generator": "deterministic_recipe",
+                        "prompt_chars": 0,
+                        "source_sql_chars": len(source_sql.sql),
+                        "generated_chars": len(deterministic_draft),
+                    },
+                )
+                print(f"{PROGRESS_PREFIX} optimizer deterministic recipe draft done", file=sys.stderr)
+                return 0
         response = stream_optimizer_response(
             prompt=prompt,
             model=args.model,

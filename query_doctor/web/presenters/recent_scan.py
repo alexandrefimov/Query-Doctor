@@ -15,6 +15,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanMetadataTableView,
     RecentScanMetadataView,
     RecentScanEvidenceQualityView,
+    RecentScanStatsQualityView,
     RecentScanRuntimeDiagnosisSignalView,
     RecentScanRuntimeDiagnosisView,
     RecentScanRuntimeVerdictView,
@@ -159,6 +160,7 @@ def present_recent_scan_case_detail(
     runtime_diagnosis_facts: dict[str, Any] | None = None,
     cluster_runtime_context_facts: dict[str, Any] | None = None,
     evidence_quality_facts: dict[str, Any] | None = None,
+    stats_quality_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
@@ -231,6 +233,7 @@ def present_recent_scan_case_detail(
         cluster_runtime_context=cluster_runtime_context,
         runtime_verdict=present_recent_scan_runtime_verdict(cluster_runtime_context, runtime_diagnosis),
         evidence_quality=present_recent_scan_evidence_quality(evidence_quality_facts),
+        stats_quality=present_recent_scan_stats_quality(stats_quality_facts),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )
@@ -250,6 +253,23 @@ def present_recent_scan_evidence_quality(evidence_quality_facts: dict[str, Any] 
         level=level,
         strengths=safe_strengths,
         limitations=safe_limitations,
+    )
+
+
+def present_recent_scan_stats_quality(stats_quality_facts: dict[str, Any] | None) -> RecentScanStatsQualityView:
+    facts = stats_quality_facts if isinstance(stats_quality_facts, dict) else {}
+    status = safe_display_text(facts.get("status") or "")
+    table_stats = safe_display_text(facts.get("table_stats") or "")
+    column_stats = safe_display_text(facts.get("column_stats") or "")
+    interpretation = safe_display_text(facts.get("interpretation") or "")
+    guardrail = safe_display_text(facts.get("guardrail") or "")
+    return RecentScanStatsQualityView(
+        unavailable=not bool(status or table_stats or column_stats or interpretation or guardrail),
+        status=status,
+        table_stats=table_stats,
+        column_stats=column_stats,
+        interpretation=interpretation,
+        guardrail=guardrail,
     )
 
 
@@ -336,6 +356,8 @@ def safe_optimizer_rewrite_support_status(value: Any) -> str:
     allowed = {
         "sql_draft_supported",
         "sql_draft_attemptable",
+        "recipe_detected",
+        "draft_disabled",
         "guidance_only",
         "source_unavailable",
         "not_candidate",
@@ -346,14 +368,18 @@ def safe_optimizer_rewrite_support_status(value: Any) -> str:
 
 def safe_optimizer_rewrite_support_label(status: str, value: Any) -> str:
     labels = {
-        "sql_draft_supported": "SQL draft supported",
-        "sql_draft_attemptable": "SQL draft attemptable",
+        "sql_draft_supported": "SQL draft eligible",
+        "sql_draft_attemptable": "Rewrite recipe detected",
+        "recipe_detected": "Rewrite recipe detected",
+        "draft_disabled": "Recipe detected; draft disabled",
         "guidance_only": "Guidance only",
         "source_unavailable": "Source unavailable",
         "not_candidate": "Not an optimization candidate",
         "unknown": "Unknown",
     }
     text = safe_optimization_display_text(value)
+    if status == "sql_draft_attemptable" and text.lower() == "sql draft attemptable":
+        return labels[status]
     return text if text and status != "unknown" else labels.get(status, "Unknown")
 
 

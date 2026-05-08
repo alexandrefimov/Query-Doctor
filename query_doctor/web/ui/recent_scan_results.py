@@ -370,8 +370,10 @@ def optimizer_rewrite_support_cell(status: Any, label: Any, reason: Any) -> str:
 def optimizer_rewrite_support_view(status: Any, label: Any, reason: Any) -> tuple[str, str, str]:
     normalized = str(status or "unknown").strip().lower()
     fallback_labels = {
-        "sql_draft_supported": ("SQL supported", "batch-status--ok"),
-        "sql_draft_attemptable": ("SQL attemptable", "batch-status--warning"),
+        "sql_draft_supported": ("SQL eligible", "batch-status--ok"),
+        "sql_draft_attemptable": ("Recipe found", "batch-status--warning"),
+        "recipe_detected": ("Recipe found", "batch-status--warning"),
+        "draft_disabled": ("Draft disabled", "batch-status--neutral"),
         "guidance_only": ("Guidance only", "batch-status--neutral"),
         "source_unavailable": ("No source", "batch-status--neutral"),
         "not_candidate": ("Not candidate", "batch-status--neutral"),

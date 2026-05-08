@@ -84,6 +84,7 @@ def render_batch_case_detail(
     runtime_diagnosis_facts: dict[str, Any] | None = None,
     cluster_runtime_context_facts: dict[str, Any] | None = None,
     evidence_quality_facts: dict[str, Any] | None = None,
+    stats_quality_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
     optimized_query_state: dict[str, Any] | None = None,
@@ -104,6 +105,7 @@ def render_batch_case_detail(
         runtime_diagnosis_facts,
         cluster_runtime_context_facts,
         evidence_quality_facts,
+        stats_quality_facts,
         report_state=report_state,
     )
     safe_workflow_title = html.escape(workflow_title)
@@ -293,12 +295,14 @@ def evidence_stats_label(view: RecentScanCaseDetailView) -> str:
         confidence = candidate_title(stats.get("confidence"))
         return f"Stats candidate: {impact} impact, {confidence} confidence"
 
+    if not view.stats_quality.unavailable:
+        return stats_quality_label(view)
+
     table_stats_status = str(view.table_stats_status or "").strip().lower().replace("_", " ")
     if table_stats_status in {"available", "ok", "collected", "complete"}:
         return "Table stats available; no Medium/High stats candidate"
     if table_stats_status in {"missing", "missing or incomplete", "not available", "partial"}:
         return "Stats incomplete; no Medium/High stats candidate"
-
     summary = dict(view.metadata.summary_items)
     stats_coverage = summary.get("stats coverage")
     if is_meaningful_technical_detail_value(stats_coverage):
@@ -319,9 +323,25 @@ def evidence_stats_label(view: RecentScanCaseDetailView) -> str:
     return "No Medium/High stats-refresh candidate"
 
 
+def stats_quality_label(view: RecentScanCaseDetailView) -> str:
+    status = str(view.stats_quality.status or "").strip().lower()
+    interpretation = str(view.stats_quality.interpretation or "").strip()
+    if status == "available":
+        return "Stats quality available"
+    if interpretation:
+        return interpretation
+    if status:
+        return f"Stats quality {status.replace('_', ' ')}"
+    return "Stats quality unknown"
+
+
 def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
     if candidate_is_visible(view.optimization_candidate):
         rewrite_support = str(view.optimization_candidate.get("rewrite_support") or "").lower()
+        if rewrite_support == "recipe_detected":
+            return "Run optimizer to validate the detected rewrite recipe"
+        if rewrite_support == "draft_disabled":
+            return "Review optimizer guidance; SQL draft is disabled by guardrails"
         if rewrite_support == "guidance_only":
             return "Review query optimization guidance"
         if rewrite_support == "source_unavailable":

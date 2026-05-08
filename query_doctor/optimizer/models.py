@@ -37,6 +37,21 @@ class CteParseResult:
 
 
 @dataclass(frozen=True)
+class CteShapeFacts:
+    cte_count: int
+    dependency_edge_count: int
+    final_ref_count: int
+    max_consumer_count: int
+    single_use_cte_count: int
+    pass_through_cte_count: int
+    graph_shape: str
+    predicate_pushdown_status: str
+    simplification_status: str
+    has_downstream_filter: bool
+    boundary_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class OptimizerRewriteRecipe:
     recipe_id: str
     title: str

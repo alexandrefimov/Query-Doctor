@@ -45,6 +45,7 @@ Current cases:
 | --- | --- |
 | `post_union_aggregate_pushdown/` | Trusted recipe draft for post-UNION aggregate pushdown. |
 | `final_union_distinct_rollup/` | Trusted recipe draft for final UNION DISTINCT rollup. |
+| `single_cte_predicate_pushdown/` | Trusted recipe draft for copying a final SELECT filter into one CTE. |
 | `no_material_change/` | Trusted no-rewrite outcome when draft has no material change. |
 | `recommendations_only_complex_cte/` | Recommendations-only fallback for unsupported complex CTE shape. |
 | `recommendations_only_many_joins/` | Recommendations-only fallback for excessive join complexity. |

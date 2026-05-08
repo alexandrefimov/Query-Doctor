@@ -68,6 +68,14 @@ def load_specific_query_evidence_quality_facts(case_dir: Path) -> dict[str, Any]
     return None
 
 
+def load_specific_query_stats_quality_facts(case_dir: Path) -> dict[str, Any] | None:
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_stats_quality_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_specific_query_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
     for artifact_dir in batch_case_artifact_dirs(case_dir):
         facts = load_case_analysis_cm_metrics_facts(artifact_dir)
@@ -115,6 +123,17 @@ def load_batch_case_evidence_quality_facts(settings: WebSettings, case: dict[str
         return None
     for artifact_dir in batch_case_artifact_dirs(case_dir):
         facts = load_case_analysis_evidence_quality_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
+def load_batch_case_stats_quality_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
+        return None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_stats_quality_facts(artifact_dir)
         if facts:
             return facts
     return None
@@ -175,6 +194,18 @@ def load_case_analysis_evidence_quality_facts(case_dir: Path) -> dict[str, Any] 
     except (OSError, ValueError):
         return None
     return parse_evidence_quality_facts(text)
+
+
+def load_case_analysis_stats_quality_facts(case_dir: Path) -> dict[str, Any] | None:
+    try:
+        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
+        facts_path.relative_to(case_dir)
+        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
+            return None
+        text = facts_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return None
+    return parse_stats_quality_facts(text)
 
 
 def load_case_analysis_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -362,6 +393,34 @@ def parse_evidence_quality_facts(text: str) -> dict[str, Any] | None:
         "strengths": strengths[:8],
         "limitations": limitations[:8],
     }
+
+
+def parse_stats_quality_facts(text: str) -> dict[str, Any] | None:
+    in_section = False
+    summary: dict[str, str] = {}
+    allowed = {
+        "status",
+        "table_stats",
+        "column_stats",
+        "tables_with_missing_table_stats",
+        "tables_with_incomplete_column_stats",
+        "interpretation",
+        "guardrail",
+    }
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            in_section = line == "## Stats Metadata Quality"
+            continue
+        if not in_section or not line.startswith("- ") or ": " not in line:
+            continue
+        key, value = line[2:].split(": ", 1)
+        key = key.strip()
+        if key in allowed:
+            summary[key] = clean_metadata_fact_value(value)
+    if not summary:
+        return None
+    return summary
 
 
 def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:

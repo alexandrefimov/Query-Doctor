@@ -10,6 +10,7 @@ from query_doctor.web.details_facts import (
     load_batch_case_evidence_quality_facts,
     load_batch_case_metadata_facts,
     load_batch_case_runtime_diagnosis_facts,
+    load_batch_case_stats_quality_facts,
 )
 from query_doctor.web.jobs import WebJobSnapshot, WebJobStore
 from query_doctor.web.models import WebSettings
@@ -42,6 +43,7 @@ def build_batch_case_detail_render_context(
 ) -> dict[str, Any]:
     metadata_facts = load_batch_case_metadata_facts(settings, case)
     evidence_quality_facts = load_batch_case_evidence_quality_facts(settings, case)
+    stats_quality_facts = load_batch_case_stats_quality_facts(settings, case)
     cm_metrics_facts = load_batch_case_cm_metrics_facts(settings, case)
     runtime_diagnosis_facts = load_batch_case_runtime_diagnosis_facts(settings, case)
     cluster_runtime_context_facts = load_batch_case_cluster_runtime_context_facts(settings, case)
@@ -70,6 +72,7 @@ def build_batch_case_detail_render_context(
     return {
         "metadata_facts": metadata_facts,
         "evidence_quality_facts": evidence_quality_facts,
+        "stats_quality_facts": stats_quality_facts,
         "cm_metrics_facts": cm_metrics_facts,
         "runtime_diagnosis_facts": runtime_diagnosis_facts,
         "cluster_runtime_context_facts": cluster_runtime_context_facts,
