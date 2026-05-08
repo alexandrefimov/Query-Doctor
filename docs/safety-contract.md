@@ -85,8 +85,8 @@ contents, or real production profile text.
   internals.
 - Dynamic browser-visible text should use the shared browser display redaction
   policy before rendering.
-- Web Recent scan must not auto-run LLM reports; validated report generation is
-  explicit for one selected case.
+- Web Recent scan must not auto-run LLM reports or optimizer jobs. Validated
+  report and Query LLM optimizer generation are explicit for one selected case.
 - Details-page Query LLM optimizer must render only a validated read-only draft,
   safe recommendations/no-rewrite guidance, validation-failure-only external
   rewrite validation categories, and safe status fields. Partial drafts, raw

@@ -90,16 +90,19 @@ contracts when they conflict with the active baseline.
 - [model-bakeoff.md](model-bakeoff.md): local model compatibility and bake-off
   notes ([Russian](i18n/ru/model-bakeoff.md)).
 
-## Collector And Metrics Design
+## Archived Collector And Metrics Design
 
 - [CM_COLLECTION_ENABLEMENT_PLAN.md](CM_COLLECTION_ENABLEMENT_PLAN.md):
-  archived Cloudera Manager collection rollout notes
+  archived Cloudera Manager collection rollout notes. Use current collector
+  code, [safety-contract.md](safety-contract.md), and [roadmap.md](roadmap.md)
+  for active behavior.
   ([Russian](i18n/ru/CM_COLLECTION_ENABLEMENT_PLAN.md)).
 - [CM_CORPUS_COLLECTOR_DESIGN.md](CM_CORPUS_COLLECTOR_DESIGN.md): Cloudera
-  Manager (CM) corpus collector design history and current safety constraints
+  Manager (CM) corpus collector design history. Use
+  [codex-handoff.md](codex-handoff.md) for current agent guidance.
   ([Russian](i18n/ru/CM_CORPUS_COLLECTOR_DESIGN.md)).
 - [cluster-metrics-roadmap-audit.md](cluster-metrics-roadmap-audit.md):
-  metrics roadmap audit and signal taxonomy.
+  metrics roadmap audit and signal taxonomy history.
 
 ## Internal Audits And Handoff
 

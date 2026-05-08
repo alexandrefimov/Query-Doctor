@@ -48,7 +48,11 @@ class CteShapeFacts:
     predicate_pushdown_status: str
     simplification_status: str
     predicate_origin_status: str
+    predicate_path_status: str
     projection_contract_status: str
+    projection_preservation_status: str
+    simple_projection_cte_count: int
+    expression_projection_cte_count: int
     has_downstream_filter: bool
     boundary_reasons: tuple[str, ...]
 

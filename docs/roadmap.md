@@ -119,8 +119,12 @@ Completed baseline work:
 - Recent scan labels now separate rewrite recipe detection, draft eligibility,
   and actual trusted draft production.
 - CTE shape facts now cover graph category, consumer counts, downstream-filter
-  eligibility, predicate-origin category, projection-contract category,
+  eligibility, predicate-origin category, predicate-path category,
+  projection-contract category, projection-preservation category and counts,
   single-use/pass-through counts, and boundary categories.
+- Recent scan Optimization candidates now display safe optimizer fact summaries
+  and guardrails from rewrite-support classification without exposing SQL or
+  CTE names.
 - Stats Metadata Quality now covers row-estimate evidence, partition coverage,
   join/filter column stats relevance, and safe competing-bottleneck categories
   for stats-present-but-not-primary cases.
@@ -138,18 +142,25 @@ Completed baseline work:
 
 Remaining near-term optimizer work:
 
-1. Deepen CTE facts for predicate origin and projection-preservation checks so
-   future recipes can avoid broad SQL-equivalence assumptions.
-2. Add focused deterministic recipes for CTE simplification only after
+1. Inspect the latest real optimizer benchmark outcomes before adding another
+   recipe: compare successful trusted SQL drafts, `no_material_change`
+   fallbacks, and validation failures to identify the smallest repeated safe
+   transform.
+2. Turn any repeated successful generic rewrite into an analyzer-owned fact plus
+   Python-owned recipe only when validation can prove the boundary.
+3. Validate the expanded CTE facts against sanitized real fixtures and add only
+   missing analyzer-owned categories that block proof of specific future
+   recipes.
+4. Add focused deterministic recipes for CTE simplification only after
    recipe-specific validation exists, especially pass-through CTE elimination
    and single-use CTE inlining.
-3. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
+5. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
    especially stats-present-but-not-primary cases and mixed stats/runtime
    bottleneck signals.
-4. Use repeated real-case batches to measure the full optimizer funnel after
+6. Use repeated real-case batches to measure the full optimizer funnel after
    each facts or recipe change: optimization candidate, stats/query context,
    recipe detected, safe to attempt, trusted draft, and no-draft reason.
-5. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
+7. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
    minimal diffs.
 
 ### 4. Metadata Selection Policy
@@ -157,8 +168,9 @@ Remaining near-term optimizer work:
 Make default metadata collection policy explicit and bounded.
 
 - Prioritize high-severity analyzed cases.
-- Include suspicious cases where cardinality, memory, stats, or optimization
-  candidates need metadata to avoid misleading conclusions.
+- Include top medium/high Optimization candidates and suspicious cases where
+  cardinality, memory, stats, or query-shape candidates need metadata to avoid
+  misleading conclusions.
 - Avoid default metadata collection for clean/short queries, admin statements,
   failed/cancelled cases without useful execution evidence, and cases that
   exceed bounds.

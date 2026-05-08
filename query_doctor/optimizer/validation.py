@@ -52,6 +52,7 @@ from query_doctor.optimizer.sql_shape import (
     is_linear_cte_chain,
     keyword_count_any_depth,
     main_select_has_distinct,
+    nested_query_signatures,
     non_aggregate_projection_names,
     normalized_statement_signature,
     parse_with_query,
@@ -149,6 +150,8 @@ def validate_draft_sql(
             errors.extend(validate_recipe_backed_cte_rewrite(source_sql, draft_sql, rewrite_recipe))
         else:
             errors.append("optimized draft changes CTE query body")
+    if rewrite_recipe is None and nested_query_signatures(source_sql) != nested_query_signatures(draft_sql):
+        errors.append("optimized draft changes nested query body")
     if top_level_join_signature(source_sql) != top_level_join_signature(draft_sql):
         errors.append("optimized draft changes top-level JOIN shape")
     if top_level_join_condition_signature(source_sql) != top_level_join_condition_signature(draft_sql):

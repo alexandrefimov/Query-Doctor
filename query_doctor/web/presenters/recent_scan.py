@@ -22,6 +22,10 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanSummaryView,
     ReportActionView,
 )
+from query_doctor.web.presenters.optimizer_facts import (
+    optimizer_rewrite_support_fact_summary,
+    optimizer_rewrite_support_guardrail_summary,
+)
 from query_doctor.web.presenters.recent_scan_summary import (
     CANDIDATE_REASON_LABELS,
     candidate_reason_label,
@@ -134,6 +138,8 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         optimizer_rewrite_support=optimization["rewrite_support"],
         optimizer_rewrite_support_label=optimization["rewrite_support_label"],
         optimizer_rewrite_support_reason=optimization["rewrite_support_reason"],
+        optimizer_fact_summary=optimization["rewrite_support_facts"],
+        optimizer_guardrail_summary=optimization["rewrite_support_guardrails"],
         optimization_summary=optimization["summary"],
         optimization_review_areas=optimization["review_areas"],
         stats_tier=stats_candidate["tier"],
@@ -363,6 +369,8 @@ def optimizer_rewrite_support_view(case: dict[str, Any]) -> dict[str, str]:
         "rewrite_support": status,
         "rewrite_support_label": label,
         "rewrite_support_reason": reason,
+        "rewrite_support_facts": optimizer_rewrite_support_fact_summary(support),
+        "rewrite_support_guardrails": optimizer_rewrite_support_guardrail_summary(support),
     }
 
 

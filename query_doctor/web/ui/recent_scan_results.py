@@ -230,7 +230,7 @@ def render_batch_case_row(
                 view.optimizer_rewrite_support_reason,
             ),
             optimizer_next_action_cell(view.optimization_artifact_status),
-            reason_cell(view.optimization_review_areas or "review query shape"),
+            reason_cell(optimizer_review_scope_text(view)),
             summary_cell(view, query_group=normalized),
         ]
     elif normalized == "stats":
@@ -308,7 +308,9 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
     detail_html = ""
     if normalized == "optimization":
         why = f"Why: {view.optimization_summary}" if view.optimization_summary else "Why: query-shape evidence"
-        detail_html = f"<span>{escape_value(why)}.</span>"
+        facts = f" Facts: {view.optimizer_fact_summary}." if view.optimizer_fact_summary else ""
+        guardrails = f" Guardrails: {view.optimizer_guardrail_summary}." if view.optimizer_guardrail_summary else ""
+        detail_html = f"<span>{escape_value(why)}.{escape_value(facts)}{escape_value(guardrails)}</span>"
     elif normalized == "stats":
         why = f"Why: {view.stats_summary}" if view.stats_summary else "Why: stats-planning evidence"
         review = f" Review: {view.stats_review_areas}" if view.stats_review_areas else ""
@@ -320,6 +322,19 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
         f"{reason_html}"
         "</td>"
     )
+
+
+def optimizer_review_scope_text(view: RecentScanCaseRowView) -> str:
+    if not view.optimizer_fact_summary and not view.optimizer_guardrail_summary:
+        return view.optimization_review_areas or "Review query shape"
+    parts = []
+    if view.optimization_review_areas:
+        parts.append(f"Review: {view.optimization_review_areas}")
+    if view.optimizer_fact_summary:
+        parts.append(f"Facts: {view.optimizer_fact_summary}")
+    if view.optimizer_guardrail_summary:
+        parts.append(f"Guardrails: {view.optimizer_guardrail_summary}")
+    return ". ".join(parts) or "Review query shape"
 
 
 def stats_need_label(value: Any) -> str:

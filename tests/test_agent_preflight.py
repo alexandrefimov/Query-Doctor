@@ -60,6 +60,15 @@ def test_render_report_handles_no_matches():
     assert "git diff --check" in report
 
 
+def test_analyzer_recent_rule_uses_existing_focused_tests():
+    rules = agent_preflight.matching_rules(["query_doctor/recent/batch_scoring.py"])
+    report = agent_preflight.render_report(["query_doctor/recent/batch_scoring.py"], rules)
+
+    assert "tests/test_batch_recent_cli.py" in report
+    assert "tests/test_web_ui_recent_scan.py" in report
+    assert "tests/test_recent_*" not in report
+
+
 def test_unique_ordered_keeps_first_occurrence():
     assert agent_preflight.unique_ordered(["a", "b", "a", "c"]) == ["a", "b", "c"]
 

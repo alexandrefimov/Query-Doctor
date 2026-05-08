@@ -181,7 +181,11 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
             predicate_pushdown_status="no_cte",
             simplification_status="no_cte",
             predicate_origin_status="no_cte",
+            predicate_path_status="no_cte",
             projection_contract_status="no_cte",
+            projection_preservation_status="no_cte",
+            simple_projection_cte_count=0,
+            expression_projection_cte_count=0,
             has_downstream_filter=False,
             boundary_reasons=(),
         )
@@ -220,6 +224,10 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
         max_consumer_count=max_consumer_count,
         has_fanin=has_fanin,
     )
+    projection_statuses = [
+        cte_projection_preservation_status(definition.body)
+        for definition in parsed.ctes
+    ]
     return CteShapeFacts(
         cte_count=len(parsed.ctes),
         dependency_edge_count=dependency_edge_count,
@@ -238,7 +246,20 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
             graph_shape=graph_shape,
         ),
         predicate_origin_status=cte_predicate_origin_status(parsed),
+        predicate_path_status=cte_predicate_path_status(
+            parsed,
+            graph_shape=graph_shape,
+        ),
         projection_contract_status=cte_projection_contract_status(parsed),
+        projection_preservation_status=aggregate_projection_preservation_status(
+            projection_statuses
+        ),
+        simple_projection_cte_count=sum(
+            1 for status in projection_statuses if status == "simple_projection_preserved"
+        ),
+        expression_projection_cte_count=sum(
+            1 for status in projection_statuses if status == "named_expression_projection"
+        ),
         has_downstream_filter=has_downstream_filter,
         boundary_reasons=boundary_reasons,
     )
@@ -297,6 +318,51 @@ def cte_projection_contract_status(parsed: CteParseResult) -> str:
     if all(signature and len(signature.output_names) == signature.count for signature in signatures):
         return "named_projection_contract"
     return "partial_projection_contract"
+
+
+def cte_predicate_path_status(parsed: CteParseResult, *, graph_shape: str) -> str:
+    origin = cte_predicate_origin_status(parsed)
+    if origin in {"no_cte", "no_downstream_filter"}:
+        return origin
+    if origin == "mixed_downstream_filters":
+        return "mixed_dependency_paths"
+    if graph_shape in {"single_cte", "linear_chain"}:
+        return "single_dependency_path"
+    if graph_shape == "cte_dag":
+        return "dag_dependency_path"
+    return "unsupported_dependency_path"
+
+
+def cte_projection_preservation_status(sql: str) -> str:
+    items = projection_item_fragments(sql)
+    if not items:
+        return "unknown_projection_preservation"
+    has_expression = False
+    for item in items:
+        name = projection_name_for_fragment(item)
+        if not name:
+            return "unknown_projection_preservation"
+        try:
+            tokens = tokenize_sql(item)
+        except OptimizerSqlError:
+            return "unknown_projection_preservation"
+        if not is_simple_column_reference(tokens):
+            has_expression = True
+    if has_expression:
+        return "named_expression_projection"
+    return "simple_projection_preserved"
+
+
+def aggregate_projection_preservation_status(statuses: list[str]) -> str:
+    if not statuses:
+        return "no_cte"
+    if any(status == "unknown_projection_preservation" for status in statuses):
+        return "unknown_projection_preservation"
+    if all(status == "simple_projection_preserved" for status in statuses):
+        return "simple_projection_preserved"
+    if any(status == "named_expression_projection" for status in statuses):
+        return "named_expression_projection"
+    return "unknown_projection_preservation"
 
 
 def cte_predicate_pushdown_status(graph_shape: str, *, has_downstream_filter: bool) -> str:
@@ -452,7 +518,48 @@ def projection_expression_signature(sql: str) -> tuple[str, ...] | None:
     items = split_top_level_sql_fragments(projection, ",")
     if not items:
         return None
-    return tuple(normalize_sql_signature_fragment(item) for item in items)
+    return tuple(normalize_projection_item_signature(item) for item in items)
+
+
+def normalize_projection_item_signature(fragment: str) -> str:
+    return normalized_projection_alias_as_insensitive_signature(normalize_sql_signature_fragment(fragment))
+
+
+def normalized_material_signature(sql: str) -> str:
+    return normalized_projection_alias_as_insensitive_signature(normalized_statement_signature(sql))
+
+
+def normalized_projection_alias_as_insensitive_signature(signature: str) -> str:
+    return re.sub(r"\bas (?=[a-z_][\w$]*(?:,| from\b|$))", "", signature)
+
+
+def nested_query_signatures(sql: str) -> tuple[str, ...]:
+    signatures: list[str] = []
+    index = 0
+    while index < len(sql):
+        if sql.startswith("--", index):
+            index = skip_line_comment_text(sql, index + 2)
+            continue
+        if sql.startswith("/*", index):
+            index = skip_block_comment_text(sql, index + 2)
+            continue
+        char = sql[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(sql, index, char)
+            continue
+        if char == "(":
+            close = matching_parenthesis_offset(sql, index)
+            if close is None:
+                index += 1
+                continue
+            fragment = sql[index + 1 : close].strip()
+            cursor = skip_sql_whitespace_and_comments(fragment, 0)
+            if keyword_at(fragment, cursor, "SELECT") or keyword_at(fragment, cursor, "WITH"):
+                signatures.append(normalized_material_signature(fragment))
+                index = close + 1
+                continue
+        index += 1
+    return tuple(signatures)
 
 
 def clause_signature(sql: str, keyword: str) -> str | None:
@@ -703,4 +810,4 @@ def post_union_aggregate_input_rollup_names(source_union_body: str, source_aggre
 
 
 def draft_has_material_change(source_sql: str, draft_sql: str) -> bool:
-    return normalized_statement_signature(source_sql) != normalized_statement_signature(draft_sql)
+    return normalized_material_signature(source_sql) != normalized_material_signature(draft_sql)

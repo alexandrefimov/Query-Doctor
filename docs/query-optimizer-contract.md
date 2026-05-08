@@ -155,8 +155,12 @@ Recent scan labels. It may record safe categories and counts only:
   unsupported graph;
 - predicate-origin category such as final SELECT filter, downstream CTE filter,
   mixed downstream filters, or no downstream filter;
+- predicate-path category such as single dependency path, DAG dependency path,
+  mixed dependency paths, or unsupported dependency path;
 - projection-contract category such as named, partial, or unknown projection
   contract;
+- projection-preservation category and counts for simple projections,
+  named-expression projections, or unknown projection preservation;
 - simplification eligibility such as pass-through candidate or single-use
   candidate;
 - boundary categories such as aggregate, set operation, window, outer join,

@@ -82,7 +82,9 @@ RULES: tuple[Rule, ...] = (
         name="Analyzer / recent scan",
         patterns=("query_doctor/analyzer/**", "query_doctor/recent/**", "tests/test_analyzer*.py", "tests/test_recent*.py"),
         read=("docs/codex-handoff.md", "docs/code-audit.md", "docs/analyzer-audit.md"),
-        tests=("python3 -m pytest -q tests/test_analyzer_cli.py tests/test_recent_*",),
+        tests=(
+            "python3 -m pytest -q tests/test_analyzer_cli.py tests/test_batch_recent_cli.py tests/test_web_ui_recent_scan.py tests/test_web_ui_recent_scan_presenter.py",
+        ),
         changelog="yes, for analyzer facts, scoring, or candidate behavior changes",
         notes=("Duration and runtime context are not root-cause proof by themselves.",),
     ),

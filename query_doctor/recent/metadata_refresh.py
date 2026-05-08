@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from query_doctor.recent.batch_config import (
     BAD_METADATA_REFRESH_LIMIT,
+    QUERY_OPTIMIZATION_METADATA_REFRESH_LIMIT,
     SUSPICIOUS_METADATA_PROMOTION_SCORE_FLOOR,
     SUSPICIOUS_METADATA_REFRESH_LIMIT,
 )
 from query_doctor.recent.batch_models import BatchConfig, CaseResult
 from query_doctor.recent.batch_summary import batch_ranking_key, case_score_severity
+from query_doctor.recent.query_optimization_score import IMPACT_ORDER, TIER_ORDER
 
 
 def rank_cases_for_metadata(cases: list[CaseResult]) -> list[CaseResult]:
@@ -54,16 +56,55 @@ def select_metadata_refresh_candidates(ranked_cases: list[CaseResult], limit: in
     if limit <= 0:
         return []
     remaining = limit
+    selected: list[CaseResult] = []
+    selected_ids: set[int] = set()
+
     bad_limit = min(BAD_METADATA_REFRESH_LIMIT, remaining)
     bad = [case for case in ranked_cases if case_score_severity(case) == "high"][:bad_limit]
+    selected.extend(bad)
+    selected_ids.update(id(case) for case in bad)
     remaining -= len(bad)
+
+    query_optimization_limit = min(QUERY_OPTIMIZATION_METADATA_REFRESH_LIMIT, remaining)
+    query_optimization = [
+        case
+        for case in sorted(ranked_cases, key=query_optimization_metadata_key)
+        if id(case) not in selected_ids and metadata_query_optimization_candidate(case)
+    ][:query_optimization_limit]
+    selected.extend(query_optimization)
+    selected_ids.update(id(case) for case in query_optimization)
+    remaining -= len(query_optimization)
+
     suspicious_limit = min(SUSPICIOUS_METADATA_REFRESH_LIMIT, remaining)
     suspicious = [
         case
         for case in ranked_cases
-        if case_score_severity(case) == "suspicious" and suspicious_can_be_promoted_by_metadata(case)
+        if id(case) not in selected_ids
+        and case_score_severity(case) == "suspicious"
+        and suspicious_can_be_promoted_by_metadata(case)
     ][:suspicious_limit]
-    return bad + suspicious
+    selected.extend(suspicious)
+    return selected
+
+
+def metadata_query_optimization_candidate(case: CaseResult) -> bool:
+    candidate = case.query_optimization_candidate
+    return candidate is not None and candidate.tier in {"high", "medium"}
+
+
+def query_optimization_metadata_key(case: CaseResult) -> tuple[object, ...]:
+    candidate = case.query_optimization_candidate
+    if candidate is None:
+        return (0, 0, 0, 0.0, 999999, case.query_id)
+    triage_rank = case.triage_rank if case.triage_rank is not None else 999999
+    return (
+        -TIER_ORDER.get(candidate.tier, 0),
+        -candidate.score,
+        -IMPACT_ORDER.get(candidate.impact, 0),
+        -(case.duration_sec or 0.0),
+        triage_rank,
+        case.query_id,
+    )
 
 
 def suspicious_can_be_promoted_by_metadata(case: CaseResult) -> bool:
