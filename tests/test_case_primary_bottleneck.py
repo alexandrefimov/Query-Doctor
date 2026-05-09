@@ -158,6 +158,50 @@ def test_sql_shape_confidence_is_low_without_metadata():
     assert result.confidence == "low"
 
 
+def test_join_top_finding_routes_to_sql_shape_without_stats_signal():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            findings=[
+                {
+                    "id": "join_bottleneck",
+                    "operators": [{"time_ms": 8_000}],
+                }
+            ],
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "query_shape",
+            },
+        )
+    )
+
+    assert result.label == "sql_shape"
+    assert result.confidence == "medium"
+    assert result.reasons == ("join_top_finding",)
+
+
+def test_sort_top_finding_routes_to_sql_shape_without_stats_signal():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            findings=[
+                {
+                    "id": "sort_bottleneck",
+                    "operators": [{"time_ms": 8_000}],
+                }
+            ],
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "query_shape",
+            },
+        )
+    )
+
+    assert result.label == "sql_shape"
+    assert result.confidence == "medium"
+    assert result.reasons == ("sort_top_finding",)
+
+
 def test_data_movement_is_fallback_after_stats_and_sql_shape_do_not_match():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
@@ -211,7 +255,7 @@ def test_storage_or_hdfs_runtime_diagnosis_can_route_medium_primary():
         analysis_fixture(
             findings=[
                 {
-                    "id": "join_bottleneck",
+                    "id": "memory_estimate_errors",
                     "operators": [],
                 },
                 {

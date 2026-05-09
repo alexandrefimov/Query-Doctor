@@ -12,6 +12,11 @@ CARDINALITY_ANOMALY_HIGH_COUNT = 3
 EXECUTION_TAIL_MIN_CANDIDATES = 1
 DATA_MOVEMENT_FINDING_ID = "large_intermediate_or_exchange_traffic"
 STORAGE_FINDING_ID = "hdfs_or_storage_bottleneck"
+QUERY_SHAPE_FINDING_IDS = {
+    "analytic_bottleneck",
+    "join_bottleneck",
+    "sort_bottleneck",
+}
 
 CONFIDENCE_ORDER = {"low": 1, "medium": 2, "high": 3}
 
@@ -71,6 +76,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     elapsed_top_finding = top_finding_id(analysis)
     is_data_movement_top = elapsed_top_finding == DATA_MOVEMENT_FINDING_ID
     is_storage_top = elapsed_top_finding == STORAGE_FINDING_ID
+    is_query_shape_top = elapsed_top_finding in QUERY_SHAPE_FINDING_IDS
     storage_runtime_diagnosis_supported = runtime_diagnosis_supports_storage(analysis)
 
     stats_signal = stats_primary == "candidate_supported" and has_anomaly
@@ -84,6 +90,12 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         "not_primary_supported",
         "not_supported_by_metadata",
     }
+    query_shape_supports_primary = (
+        is_query_shape_top
+        and not stats_signal
+        and not sql_supports_primary
+        and not stats_competing_signal
+    )
     data_movement_supports_primary = (
         is_data_movement_top
         and not stats_signal
@@ -101,7 +113,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         name
         for name, supported in (
             ("stats", stats_supports_primary),
-            ("sql_shape", sql_supports_primary),
+            ("sql_shape", sql_supports_primary or query_shape_supports_primary),
             ("runtime_data_movement", data_movement_supports_primary),
             ("runtime_storage", runtime_storage_supports_primary),
         )
@@ -232,6 +244,9 @@ def primary_reasons(primary: str, analysis: dict[str, Any]) -> tuple[str, ...]:
     if primary == "stats":
         return ("stats_candidate_supported", f"cardinality_anomalies_{cardinality_count}")
     if primary == "sql_shape":
+        query_shape_reason = query_shape_top_reason(analysis)
+        if query_shape_reason:
+            return (query_shape_reason,)
         return ("stats_not_primary", f"cardinality_anomalies_{cardinality_count}")
     if primary == "runtime_data_movement":
         return ("large_intermediate_or_exchange_top_finding",)
@@ -251,6 +266,17 @@ def metadata_status_from_analysis(analysis: dict[str, Any]) -> str:
     if status in {"unknown"}:
         return "partial"
     return "not_observed"
+
+
+def query_shape_top_reason(analysis: dict[str, Any]) -> str:
+    finding_id = top_finding_id(analysis)
+    if finding_id == "join_bottleneck":
+        return "join_top_finding"
+    if finding_id == "sort_bottleneck":
+        return "sort_top_finding"
+    if finding_id == "analytic_bottleneck":
+        return "analytic_top_finding"
+    return ""
 
 
 def category_set(value: Any) -> set[str]:
