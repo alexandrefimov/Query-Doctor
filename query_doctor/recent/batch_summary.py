@@ -67,6 +67,7 @@ def build_summary(
     reason_sql_verb_counts = {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
     primary_distribution = case_primary_bottleneck_distribution(cases)
     rewriteability_distribution = optimizer_rewriteability_distribution(cases)
+    optimizer_funnel_summary = optimizer_funnel(cases, rewriteability_distribution)
     return {
         "mode": "recent-query-batch",
         "out": str(config.out),
@@ -104,6 +105,7 @@ def build_summary(
         "candidate_exclusion_count": 0 if discovery.scan_too_broad else max(0, inspected - selected_count),
         "case_primary_bottleneck_distribution": primary_distribution,
         "optimizer_rewriteability_distribution": rewriteability_distribution,
+        "optimizer_funnel": optimizer_funnel_summary,
         "top_reports": config.top_reports,
         "cm_jobs": config.cm_jobs,
         "jobs": config.jobs,
@@ -310,6 +312,61 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     }
 
 
+def optimizer_funnel(
+    cases: list[CaseResult],
+    rewriteability_distribution: dict[str, object] | None = None,
+) -> dict[str, object]:
+    distribution = rewriteability_distribution or optimizer_rewriteability_distribution(cases)
+    bucket_counts = distribution.get("bucket_counts")
+    bucket_counts = bucket_counts if isinstance(bucket_counts, dict) else {}
+    candidate_cases = int(distribution.get("optimization_candidate_cases") or 0)
+    recipe_detected_cases = 0
+    draft_ready_cases = 0
+    draft_disabled_by_threshold_cases = 0
+    source_unavailable_cases = 0
+    for case in cases:
+        support = case.optimizer_rewrite_support
+        if support is None:
+            continue
+        if support.recipe_detected:
+            recipe_detected_cases += 1
+        if support.draft_eligibility == "safe_to_attempt":
+            draft_ready_cases += 1
+        elif support.draft_eligibility == "disabled_by_safety_thresholds":
+            draft_disabled_by_threshold_cases += 1
+        elif support.draft_eligibility == "source_unavailable":
+            source_unavailable_cases += 1
+    no_draft_cases = int(distribution.get("recipe_detected_no_draft_cases") or 0)
+    adjacent_cases = int(distribution.get("recipe_adjacent_shape_cases") or 0)
+    stats_likely_cases = int(distribution.get("stats_likely_cases") or 0)
+    human_review_cases = int(distribution.get("human_review_only_cases") or 0)
+    not_rewriteable_cases = int(bucket_counts.get("not_rewriteable") or 0)
+    unknown_cases = int(bucket_counts.get("unknown") or 0)
+    return {
+        "total_cases": len(cases),
+        "optimization_candidate_cases": candidate_cases,
+        "recipe_detected_cases": recipe_detected_cases,
+        "draft_ready_cases": draft_ready_cases,
+        "trusted_sql_draft_produced_cases": 0,
+        "trusted_sql_draft_produced_note": (
+            "Recent batch scans classify draft readiness only; trusted SQL drafts "
+            "are produced later by explicit selected-case optimizer actions."
+        ),
+        "recipe_detected_no_draft_cases": no_draft_cases,
+        "recipe_adjacent_shape_cases": adjacent_cases,
+        "draft_disabled_by_safety_threshold_cases": draft_disabled_by_threshold_cases,
+        "source_unavailable_cases": source_unavailable_cases,
+        "stats_likely_cases": stats_likely_cases,
+        "human_review_only_cases": human_review_cases,
+        "not_rewriteable_cases": not_rewriteable_cases,
+        "unknown_cases": unknown_cases,
+        "recipe_detected_rate": ratio(recipe_detected_cases, candidate_cases),
+        "draft_ready_rate": ratio(draft_ready_cases, candidate_cases),
+        "trusted_sql_draft_produced_rate": 0.0,
+        "recipe_backlog_rate": ratio(no_draft_cases + adjacent_cases, candidate_cases),
+    }
+
+
 def normalize_no_draft_class(value: object) -> str:
     no_draft_class = str(value or "other").strip().lower()
     return no_draft_class if no_draft_class in NO_DRAFT_CLASSES else "other"
@@ -417,6 +474,12 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         json.dumps(summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    optimizer_funnel_summary = summary.get("optimizer_funnel")
+    if isinstance(optimizer_funnel_summary, dict):
+        (out / "optimizer_funnel.json").write_text(
+            json.dumps(optimizer_funnel_summary, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     lines = [
         "# Query Doctor Recent Batch Summary",
         "",
@@ -564,6 +627,25 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
             )
             lines.append(f"- no-draft CTE predicate decisions: {rendered_decisions}")
         lines.append("")
+    optimizer_funnel_summary = summary.get("optimizer_funnel")
+    if isinstance(optimizer_funnel_summary, dict):
+        lines.extend(
+            [
+                "## Optimizer Funnel",
+                "",
+                f"- optimization candidate cases: {optimizer_funnel_summary.get('optimization_candidate_cases', 0)} / {optimizer_funnel_summary.get('total_cases', 0)}",
+                f"- recipe detected cases: {optimizer_funnel_summary.get('recipe_detected_cases', 0)} ({optimizer_funnel_summary.get('recipe_detected_rate', 0.0)})",
+                f"- draft-ready cases: {optimizer_funnel_summary.get('draft_ready_cases', 0)} ({optimizer_funnel_summary.get('draft_ready_rate', 0.0)})",
+                f"- trusted SQL draft produced cases: {optimizer_funnel_summary.get('trusted_sql_draft_produced_cases', 0)} ({optimizer_funnel_summary.get('trusted_sql_draft_produced_rate', 0.0)})",
+                f"- recipe backlog cases: {optimizer_funnel_summary.get('recipe_detected_no_draft_cases', 0)} no-draft, {optimizer_funnel_summary.get('recipe_adjacent_shape_cases', 0)} adjacent ({optimizer_funnel_summary.get('recipe_backlog_rate', 0.0)})",
+                f"- human review only cases: {optimizer_funnel_summary.get('human_review_only_cases', 0)}",
+                f"- stats-likely cases: {optimizer_funnel_summary.get('stats_likely_cases', 0)}",
+                f"- not rewriteable cases: {optimizer_funnel_summary.get('not_rewriteable_cases', 0)}",
+                f"- unknown cases: {optimizer_funnel_summary.get('unknown_cases', 0)}",
+                f"- note: {optimizer_funnel_summary.get('trusted_sql_draft_produced_note', '')}",
+                "",
+            ]
+        )
     lines.extend(
         [
             "| case | query id | duration sec | collection | analysis | metadata | score | facts | report | timings sec |",

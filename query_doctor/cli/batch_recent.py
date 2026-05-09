@@ -85,6 +85,7 @@ from query_doctor.recent.batch_summary import (
     case_primary_bottleneck_distribution,
     case_score_severity,
     case_to_summary,
+    optimizer_funnel,
     optimizer_rewriteability_distribution,
     rank_cases_for_query_optimization,
     rank_cases_for_stats_optimization,
