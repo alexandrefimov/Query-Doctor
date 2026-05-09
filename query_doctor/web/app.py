@@ -23,7 +23,7 @@ RequestIdFactory = Callable[[], str]
 LOCAL_REQUEST_HOSTS = {"127.0.0.1", "localhost", "::1"}
 SECURITY_HEADERS = (
     ("X-Content-Type-Options", "nosniff"),
-    ("Referrer-Policy", "no-referrer"),
+    ("Referrer-Policy", "same-origin"),
     ("X-Frame-Options", "DENY"),
     ("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()"),
     (
@@ -105,6 +105,72 @@ def explicit_request_host_port(value: str | None) -> int | None:
     return port if 0 < port <= 65535 else None
 
 
+def forwarded_host_values(value: str | None) -> tuple[str, ...]:
+    if value is None or not value.strip():
+        return ()
+    return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def forwarded_port_values(value: str | None) -> tuple[int, ...]:
+    if value is None or not value.strip():
+        return ()
+    ports: list[int] = []
+    for part in value.split(","):
+        raw_port = part.strip()
+        if not raw_port.isdigit():
+            continue
+        port = int(raw_port)
+        if 0 < port <= 65535:
+            ports.append(port)
+    return tuple(ports)
+
+
+def forwarded_header_host_values(value: str | None) -> tuple[str, ...]:
+    if value is None or not value.strip():
+        return ()
+    hosts: list[str] = []
+    for element in value.split(","):
+        for field in element.split(";"):
+            key, separator, raw_field_value = field.strip().partition("=")
+            if separator != "=" or key.strip().lower() != "host":
+                continue
+            field_value = raw_field_value.strip()
+            if len(field_value) >= 2 and field_value[0] == field_value[-1] == '"':
+                field_value = field_value[1:-1]
+            if field_value:
+                hosts.append(field_value)
+    return tuple(hosts)
+
+
+def local_web_allowed_ports(
+    settings: WebSettings,
+    *,
+    request_host_value: str | None = None,
+    forwarded_host_value: str | None = None,
+    forwarded_port_value: str | None = None,
+    forwarded_header_value: str | None = None,
+) -> set[int]:
+    allowed_ports = {settings.port}
+    if not request_host_allowed(request_host_value, settings):
+        return allowed_ports
+    request_host_port = explicit_request_host_port(request_host_value)
+    if request_host_port is not None:
+        allowed_ports.add(request_host_port)
+    forwarded_ports = forwarded_port_values(forwarded_port_value)
+    for forwarded_host in (
+        *forwarded_host_values(forwarded_host_value),
+        *forwarded_header_host_values(forwarded_header_value),
+    ):
+        if not request_host_allowed(forwarded_host, settings):
+            continue
+        forwarded_port = explicit_request_host_port(forwarded_host)
+        if forwarded_port is not None:
+            allowed_ports.add(forwarded_port)
+        else:
+            allowed_ports.update(forwarded_ports)
+    return allowed_ports
+
+
 def request_host_allowed(value: str | None, settings: WebSettings) -> bool:
     if settings.allow_nonlocal_web_bind:
         return True
@@ -123,12 +189,25 @@ def request_origin_allowed(
     settings: WebSettings,
     *,
     request_host_value: str | None = None,
+    forwarded_host_value: str | None = None,
+    forwarded_port_value: str | None = None,
+    forwarded_header_value: str | None = None,
+    referer_value: str | None = None,
 ) -> bool:
     if value is None or not value.strip():
         return True
     if settings.allow_nonlocal_web_bind:
         return True
     origin = value.strip()
+    allowed_ports = local_web_allowed_ports(
+        settings,
+        request_host_value=request_host_value,
+        forwarded_host_value=forwarded_host_value,
+        forwarded_port_value=forwarded_port_value,
+        forwarded_header_value=forwarded_header_value,
+    )
+    if origin == "null":
+        return request_url_allowed_for_local_web(referer_value, settings, allowed_ports=allowed_ports)
     if any(char.isspace() for char in origin):
         return False
     parsed = urlsplit(origin)
@@ -143,16 +222,38 @@ def request_origin_allowed(
         origin_port = parsed.port
     except ValueError:
         return False
-    allowed_port = (
-        explicit_request_host_port(request_host_value)
-        if request_host_allowed(request_host_value, settings)
-        else None
-    )
-    if allowed_port is None:
-        allowed_port = settings.port
-    if origin_port is not None and origin_port != allowed_port:
+    if origin_port is not None and origin_port not in allowed_ports:
         return False
     return request_host_allowed(origin_host, settings)
+
+
+def request_url_allowed_for_local_web(value: str | None, settings: WebSettings, *, allowed_ports: set[int]) -> bool:
+    if value is None or not value.strip():
+        return False
+    if any(char.isspace() for char in value):
+        return False
+    parsed = urlsplit(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    if parsed.username or parsed.password:
+        return False
+    try:
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return False
+    if port is not None and port not in allowed_ports:
+        return False
+    return request_host_allowed(host, settings)
+
+
+def _safe_header_value_for_log(value: str | None, *, max_chars: int = 180) -> str:
+    if value is None:
+        return "<missing>"
+    safe = "".join(char if 32 <= ord(char) < 127 else "?" for char in value.strip())
+    if len(safe) > max_chars:
+        return safe[:max_chars] + "..."
+    return safe or "<empty>"
 
 
 def make_handler(
@@ -262,7 +363,19 @@ def make_handler(
             headers = getattr(self, "headers", {})
             origin_value = headers.get("Origin") if hasattr(headers, "get") else None
             host_value = headers.get("Host") if hasattr(headers, "get") else None
-            return request_origin_allowed(origin_value, settings, request_host_value=host_value)
+            forwarded_host_value = headers.get("X-Forwarded-Host") if hasattr(headers, "get") else None
+            forwarded_port_value = headers.get("X-Forwarded-Port") if hasattr(headers, "get") else None
+            forwarded_header_value = headers.get("Forwarded") if hasattr(headers, "get") else None
+            referer_value = headers.get("Referer") if hasattr(headers, "get") else None
+            return request_origin_allowed(
+                origin_value,
+                settings,
+                request_host_value=host_value,
+                forwarded_host_value=forwarded_host_value,
+                forwarded_port_value=forwarded_port_value,
+                forwarded_header_value=forwarded_header_value,
+                referer_value=referer_value,
+            )
 
         def write_rejected_host_response(self) -> None:
             error = WebError("Refusing request Host header outside the local web allowlist.")
@@ -270,6 +383,24 @@ def make_handler(
 
         def write_rejected_origin_response(self) -> None:
             error = WebError("Refusing POST Origin outside the local web allowlist.")
+            headers = getattr(self, "headers", {})
+            origin_value = headers.get("Origin") if hasattr(headers, "get") else None
+            host_value = headers.get("Host") if hasattr(headers, "get") else None
+            forwarded_host_value = headers.get("X-Forwarded-Host") if hasattr(headers, "get") else None
+            forwarded_port_value = headers.get("X-Forwarded-Port") if hasattr(headers, "get") else None
+            forwarded_header_value = headers.get("Forwarded") if hasattr(headers, "get") else None
+            referer_value = headers.get("Referer") if hasattr(headers, "get") else None
+            print(
+                "[Query Doctor web] rejected POST Origin "
+                f"request_id={self.request_id()} "
+                f"host={_safe_header_value_for_log(host_value)} "
+                f"origin={_safe_header_value_for_log(origin_value)} "
+                f"referer={_safe_header_value_for_log(referer_value)} "
+                f"x_forwarded_host={_safe_header_value_for_log(forwarded_host_value)} "
+                f"x_forwarded_port={_safe_header_value_for_log(forwarded_port_value)} "
+                f"forwarded={_safe_header_value_for_log(forwarded_header_value)}",
+                file=sys.stderr,
+            )
             self.write_html(403, render_page(settings, active_nav="batch", error=error))
 
         def request_id(self) -> str:

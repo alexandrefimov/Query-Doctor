@@ -14,7 +14,7 @@ SECURITY_HEADERS = {
     "cache-control": "no-store",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
-    "referrer-policy": "no-referrer",
+    "referrer-policy": "same-origin",
 }
 STATIC_ASSETS = {
     "/static/app.css": ("text/css; charset=utf-8", "color-scheme:light"),

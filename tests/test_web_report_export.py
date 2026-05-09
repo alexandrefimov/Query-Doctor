@@ -73,7 +73,7 @@ def test_trusted_batch_report_download_returns_markdown_headers_and_redacted_bod
     assert headers["Cache-Control"] == "no-store"
     assert headers["X-Content-Type-Options"] == "nosniff"
     assert headers["X-Frame-Options"] == "DENY"
-    assert headers["Referrer-Policy"] == "no-referrer"
+    assert headers["Referrer-Policy"] == "same-origin"
     assert int(headers["Content-Length"]) == len(body)
     text = body.decode("utf-8")
     assert "Validated body with [local case path hidden] hidden." in text
