@@ -249,7 +249,7 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
     cm_correlated_signals = components["cm_metrics_correlated_signals"] or 0
     if cm_correlated_signals > 0:
         score += min(6, cm_correlated_signals * 2)
-        reasons.append(f"CM metrics correlated signals: {cm_correlated_signals}")
+        reasons.append(f"Runtime metrics correlated signals: {cm_correlated_signals}")
     if metadata_status == "failed" or has_metadata_error_status(facts):
         score += 3
         reasons.append("metadata collection failed for referenced table")

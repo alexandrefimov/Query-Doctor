@@ -76,7 +76,7 @@ def render_help_content() -> str:
 
 <details>
 <summary>Running now</summary>
-<p>Running now uses the same result and details shape as Finished queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. Profiles can be incomplete until a query finishes, so findings can be lower-confidence than completed-query analysis. CM events and CM metrics are enabled by default as bounded runtime context.</p>
+<p>Running now uses the same result and details shape as Finished queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. Profiles can be incomplete until a query finishes, so findings can be lower-confidence than completed-query analysis. CM events and runtime metrics are enabled by default as bounded runtime context.</p>
 </details>
 
 <details>
@@ -105,7 +105,7 @@ def render_help_content() -> str:
 </details>
 
 <h2 id="details-actions">Details and LLM actions</h2>
-<p>Details shows a browser-safe summary for one analyzed query. <strong>Findings</strong> are open by default. <strong>Evidence details</strong> keep runtime, metadata, CM metrics, and technical signals available without turning the first screen into a low-level evidence dump.</p>
+<p>Details shows a browser-safe summary for one analyzed query. <strong>Findings</strong> are open by default. <strong>Evidence details</strong> keep runtime, metadata, runtime metrics, and technical signals available without turning the first screen into a low-level evidence dump.</p>
 <p><strong>LLM actions</strong> contains explicit buttons for LLM Report, Query LLM optimizer, and combined report + optimizer execution. Outputs are rendered only after deterministic validation. If validation rejects generated output, partial content stays untrusted and hidden.</p>
 
 <details>
@@ -173,8 +173,8 @@ def render_help_content() -> str:
 <p>No. Treat it as a stats refresh candidate only when metadata gaps, estimate mismatch, and planning-sensitive runtime symptoms line up. Confirmation requires EXPLAIN comparison and a comparable rerun.</p>
 </details>
 <details>
-<summary>Does CM metrics context prove root cause?</summary>
-<p>Usually no. CM metrics are bounded runtime context. They become stronger only when correlated with deterministic profile evidence.</p>
+<summary>Does runtime metrics context prove root cause?</summary>
+<p>Usually no. Runtime metrics are bounded context. They become stronger only when correlated with deterministic profile evidence.</p>
 </details>
 
 <details>

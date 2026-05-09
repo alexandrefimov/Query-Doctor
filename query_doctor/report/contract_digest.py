@@ -267,14 +267,14 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
         break
 
     if cm_metrics.get("coverage"):
-        differentiators.append(f"CM metrics coverage: {cm_metrics['coverage']}")
+        differentiators.append(f"Runtime metrics coverage: {cm_metrics['coverage']}")
     for point in cm_metrics_observed_points(facts_text):
-        differentiators.append(f"CM metric signal: {point}")
+        differentiators.append(f"Runtime metric signal: {point}")
     cm_correlation = cm_metrics_correlation_summary(facts_text)
     if cm_correlation.get("correlated_signals"):
-        differentiators.append(f"CM metrics correlated signals: {cm_correlation['correlated_signals']}")
+        differentiators.append(f"Runtime metrics correlated signals: {cm_correlation['correlated_signals']}")
     for point in cm_metrics_correlation_points(facts_text):
-        differentiators.append(f"CM metric correlation: {point}")
+        differentiators.append(f"Runtime metric correlation: {point}")
     cluster_context = cluster_runtime_context_summary(facts_text)
     if cluster_context.get("scoring_contribution"):
         differentiators.append(f"Cluster runtime scoring: {cluster_context['scoring_contribution']}")

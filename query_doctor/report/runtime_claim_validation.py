@@ -166,7 +166,7 @@ CM_CONTEXT_ONLY_CAUSAL_RE = re.compile(
 CM_DAEMON_MEMORY_WORD_RE = re.compile(r"\b(?:daemon\s+memory|памят\w+\s+демон\w+|рост\s+памят\w+)\b", re.IGNORECASE)
 CM_NETWORK_WORD_RE = re.compile(r"\b(?:network\s+I/O|network\s+io|сетев\w+\s+I/O|сеть|сети|сетев\w+)\b", re.IGNORECASE)
 CM_CONTEXT_ONLY_SAFE_NOTE = (
-    "- CM metrics context-only: наблюдаемый runtime signal не считается причиной без matching profile evidence."
+    "- Runtime metrics context-only: наблюдаемый runtime signal не считается причиной без matching profile evidence."
 )
 CLUSTER_EVENT_CONTEXT_WORD_RE = re.compile(
     r"\b(?:CM\s+events?|Cluster\s+Event\s+Context|event\s+context|service\s+restart|restart\s+event|"

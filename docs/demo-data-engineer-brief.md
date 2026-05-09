@@ -52,7 +52,7 @@ signals such as:
   and scans;
 - bounded metadata facts about table/partition row-count stats and column
   stats;
-- bounded CM runtime metrics and whether they correlate with profile evidence.
+- bounded runtime metrics and whether they correlate with profile evidence.
 - bounded Cloudera Manager Events context near the query window.
 
 Important caveat: runtime counter context is not automatically wall-clock time.
@@ -75,7 +75,7 @@ positive contributions are:
 | Long-running query with execution tail | `+8` when duration is at least 30 minutes |
 | Backend data skew evidence | `+2` |
 | Severe backend data skew ratio | `+8` |
-| CM metrics correlated signals | `+2` each, capped at `+6` |
+| Runtime metrics correlated signals | `+2` each, capped at `+6` |
 | Metadata collection failed for referenced table | `+3` |
 | Missing/unknown table row-count stats | `+2` |
 | Incomplete/unknown column stats | `+1` |
@@ -180,9 +180,9 @@ Current confirmation requirements:
 Use this phrasing in the demo: metadata can support a stats-refresh candidate,
 but metadata alone is not a root cause.
 
-## CM metrics
+## Runtime metrics
 
-CM metrics are runtime context. They become stronger only when correlated with
+Runtime metrics are bounded context. They become stronger only when correlated with
 profile evidence.
 
 Examples:
@@ -282,7 +282,7 @@ Avoid saying:
 
 Point to the visible deterministic reasons: score reasons, impact/confidence,
 wall-clock, estimate mismatches, host-tail evidence, spill/scratch evidence,
-metadata status, correlated CM metrics, or bounded Cloudera Manager Events
+metadata status, correlated runtime metrics, or bounded Cloudera Manager Events
 context. Do not infer a cause that is not in the facts.
 
 **Why not show raw SQL?**
@@ -310,7 +310,7 @@ No. The candidate requires a chain: stats gap, estimate mismatch and
 planning-sensitive runtime symptoms. Confirmation still requires EXPLAIN
 comparison and comparable rerun.
 
-**Are CM metrics root-cause evidence?**
+**Are runtime metrics root-cause evidence?**
 
 Only when correlated with profile evidence, and even then they are runtime
 context unless deterministic facts support a specific causal claim.

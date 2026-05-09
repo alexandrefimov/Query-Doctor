@@ -214,21 +214,21 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
             + "</ul>"
         )
     return (
-        "<details class=\"analysis-subdetails\" aria-label=\"CM metrics\">"
-        "<summary>CM metrics</summary>"
+        "<details class=\"analysis-subdetails\" aria-label=\"Runtime metrics\">"
+        "<summary>Runtime metrics</summary>"
         "<div class=\"report-body\">"
-        "<p>Deterministic CM metric facts for the query runtime window. Metric status shows what "
-        "Cloudera Manager observed; correlation shows whether profile evidence supports using that "
-        "signal as query-specific follow-up context.</p>"
+        "<p>Deterministic runtime metric facts for the query runtime window. Source values come from "
+        "bounded Cloudera Manager time-series summaries; correlation shows whether profile evidence "
+        "supports using that signal as query-specific follow-up context.</p>"
         f"<div class=\"meta-list\">{summary_rows}</div>"
-        "<h3>Correlated CM metric signals</h3>"
+        "<h3>Correlated runtime metric signals</h3>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr><th>Metric</th><th>Metric status</th><th>Metric basis</th>"
         "<th>Correlation</th><th>Strength</th><th>Interpretation</th></tr></thead>"
         f"<tbody>{correlated_rows}</tbody>"
         "</table></div>"
         "<details class=\"compact-details\">"
-        "<summary>All collected CM metrics</summary>"
+        "<summary>All collected runtime metrics</summary>"
         "<div class=\"compact-details-body\">"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr><th>Metric</th><th>Metric status</th><th>Metric basis</th>"
@@ -302,10 +302,10 @@ def cm_metric_correlated_empty_message(view: RecentScanCmMetricsView) -> str:
     )
     checked = len(cm_metric_all_labels(view))
     if context_only:
-        return f"No CM metric signals correlated with profile evidence. {context_only} context-only signal(s), {checked} metric(s) checked."
+        return f"No runtime metric signals correlated with profile evidence. {context_only} context-only signal(s), {checked} metric(s) checked."
     if checked:
-        return f"No CM metric signals correlated with profile evidence. {checked} metric(s) checked."
-    return "No CM metric signals correlated with profile evidence."
+        return f"No runtime metric signals correlated with profile evidence. {checked} metric(s) checked."
+    return "No runtime metric signals correlated with profile evidence."
 
 
 def cm_metric_status_key(value: Any) -> str:

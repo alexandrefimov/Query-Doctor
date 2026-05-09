@@ -386,8 +386,8 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "", *, langua
         admin_bullet_rules.append(
             (
                 localized(
-                    "- Сопоставить CM Metrics Correlation с profile evidence: correlated signals использовать только как runtime context, context-only metrics не считать root cause.",
-                    "- Compare CM Metrics Correlation with profile evidence: use correlated signals only as runtime context and do not treat context-only metrics as root cause.",
+                    "- Сопоставить Runtime Metrics Correlation с profile evidence: correlated signals использовать только как runtime context, context-only metrics не считать root cause.",
+                    "- Compare Runtime Metrics Correlation with profile evidence: use correlated signals only as runtime context and do not treat context-only metrics as root cause.",
                 ),
                 (r"correlated\s+signals.*runtime\s+context|context-only\s+metrics.*root\s+cause",),
             )

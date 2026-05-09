@@ -105,7 +105,7 @@ def present_recent_scan_runtime_diagnosis(
             status=safe_display_value(signal.get("status")),
             interpretation=safe_display_value(signal.get("interpretation")),
             evidence=tuple(
-                safe_display_text(item)
+                _runtime_metrics_display_value(safe_display_text(item))
                 for item in (signal.get("evidence") if isinstance(signal.get("evidence"), list) else [])
                 if item is not None
             ),
@@ -142,7 +142,7 @@ def present_recent_scan_cluster_runtime_context(
     raw_limitations = cluster_runtime_context_facts.get("limitations")
     limitations = raw_limitations if isinstance(raw_limitations, list) else []
     summary_items = tuple(
-        (key, safe_display_value(summary.get(key)))
+        (key, _runtime_metrics_display_value(safe_display_value(summary.get(key))))
         for key in (
             "status",
             "collection_status",
@@ -166,12 +166,25 @@ def present_recent_scan_cluster_runtime_context(
         )
         if rollup.get(key) is not None
     )
-    limitation_views = tuple(safe_display_text(item) for item in limitations if item is not None)
+    limitation_views = tuple(
+        _runtime_metrics_display_value(safe_display_text(item))
+        for item in limitations
+        if item is not None
+    )
     return RecentScanClusterRuntimeContextView(
         unavailable=not bool(summary_items or signal_rollup_items or limitation_views),
         summary_items=summary_items,
         signal_rollup_items=signal_rollup_items,
         limitations=limitation_views,
+    )
+
+
+def _runtime_metrics_display_value(value: str) -> str:
+    return (
+        value.replace("CM metric signal(s)", "runtime metric signal(s)")
+        .replace("CM metric signals", "runtime metric signals")
+        .replace("CM metrics", "Runtime metrics")
+        .replace("CM metric", "Runtime metric")
     )
 
 

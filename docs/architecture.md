@@ -290,7 +290,7 @@ The report writer:
   artifact;
 - excludes raw metadata, raw time-series, and raw event context from the LLM
   prompt;
-- passes only curated metadata digest, normalized `## CM Metrics Facts`, and
+- passes only curated metadata digest, normalized `## Runtime Metrics Facts`, and
   bounded Cluster Event Context to the LLM/report boundary;
 - buffers raw LLM output and writes final reports only after normalization,
   sanitization, narrative validation, appendix append, and final validation.

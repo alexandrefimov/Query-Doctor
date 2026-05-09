@@ -90,7 +90,7 @@ Safety and scope:
 - Use only Python-owned recommendation candidates and deterministic facts.
 - Every trusted bullet must map to PYTHON-OWNED RECOMMENDATION CANDIDATES or specific Action Card context; unsupported bullets will be discarded.
 - Prefer concrete Action Card operator IDs and safe plan-level advice from the optimizer fact digest.
-- Use CM Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive recommendations.
+- Use Runtime Metrics Correlation only when status is correlated; context_only or observed-only metrics must not drive recommendations.
 - Use Cluster Runtime Context only to frame runtime evidence and scoring; context-only signals must remain follow-up checks, not rewrite targets.
 - Do not invent table names, column names, join keys, filters, partitions, or business rules.
 - Prefer concrete actions such as collecting stats, reducing projected columns, narrowing filters, splitting a risky query, or reviewing join shape only when supported by facts.

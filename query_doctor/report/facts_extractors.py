@@ -396,7 +396,7 @@ def cluster_runtime_context_report_evidence_bullet(facts_text: str) -> str | Non
         parts.append(f"context-only signals: {context_only}")
     scoring = summary.get("scoring_contribution")
     if scoring:
-        parts.append("scoring: " + scoring)
+        parts.append("scoring: " + runtime_metrics_display_text(scoring))
     return "- " + "; ".join(parts) + ". Treat this as runtime follow-up context, not standalone root-cause proof."
 
 
@@ -461,7 +461,7 @@ def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
     correlation_summary = cm_metrics_correlation_summary(facts_text)
     if facts_summary.get("status") not in {"available", "partial"}:
         return None
-    parts = ["CM metrics collected"]
+    parts = ["Runtime metrics collected"]
     coverage = facts_summary.get("coverage")
     if coverage:
         parts.append(coverage)
@@ -508,6 +508,15 @@ def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
     if limit_points:
         parts.append("limitations: " + "; ".join(limit_points))
     return "- " + "; ".join(parts) + ". Metrics are runtime context unless Runtime Metrics Correlation marks them as correlated."
+
+
+def runtime_metrics_display_text(value: str) -> str:
+    return (
+        value.replace("CM metric signal(s)", "runtime metric signal(s)")
+        .replace("CM metric signals", "runtime metric signals")
+        .replace("CM metrics", "Runtime metrics")
+        .replace("CM metric", "Runtime metric")
+    )
 
 
 def cm_metrics_signal_observed(facts_text: str, key: str) -> bool:

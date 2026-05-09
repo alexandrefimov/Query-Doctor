@@ -40,7 +40,7 @@ def runtime_diagnosis_metric_evidence(analysis: dict[str, Any], key: str) -> lis
     correlation_status = signal.get("correlation_status")
     if metric_status or correlation_status:
         evidence.append(
-            f"CM Metrics Correlation: {key}={correlation_status or 'unknown'} "
+            f"Runtime Metrics Correlation: {key}={correlation_status or 'unknown'} "
             f"(metric={metric_status or 'unknown'}, strength={signal.get('strength') or 'unknown'})."
         )
     if signal.get("basis"):

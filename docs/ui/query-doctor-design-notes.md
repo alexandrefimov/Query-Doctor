@@ -187,7 +187,7 @@ The target Details shape is an evidence/action console:
 - Decision summary: severity, evidence state, top supported finding and next
   action.
 - Action candidates: optimizer, stats refresh and runtime follow-up cards.
-- Evidence coverage: profile, metadata, CM metrics, runtime context and
+- Evidence coverage: profile, metadata, runtime metrics, runtime context and
   limitations.
 - Generated outputs: validated report and Query LLM optimizer outcome.
 
@@ -294,7 +294,7 @@ contracts remain the source of facts.
 
    Rework details around the flow from deterministic finding to evidence,
    limitation and next action. This can use existing safe view models first:
-   case overview, action candidates, metadata facts, CM metrics facts, runtime
+   case overview, action candidates, metadata facts, runtime metrics facts, runtime
    diagnosis, cluster runtime context and trusted artifact state.
 
    Do not add new diagnostic claims in the renderer. If a field is not owned by

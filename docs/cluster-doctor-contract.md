@@ -360,12 +360,12 @@ Phase 0: contract only.
 
 Phase 1: shared runtime-context contract.
 
-Status: implemented for Query Doctor CM metrics facts, CM Metrics Correlation,
+Status: implemented for Query Doctor Runtime Metrics Facts, Runtime Metrics Correlation,
 `Cluster Runtime Context`, `Runtime Diagnosis`, report prompt/validation, and
 Details rendering. This is still Query Doctor runtime context, not a standalone
 Cluster Doctor workflow.
 
-- Normalize current CM metrics facts into a `Cluster Runtime Context` section.
+- Normalize current runtime metrics facts into a `Cluster Runtime Context` section.
 - Preserve existing CM collection behavior and browser safety.
 - Add focused analyzer/report/UI tests for status, coverage, correlation, and
   overclaim rejection.

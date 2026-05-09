@@ -394,7 +394,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         1 for query in queries if query.get("status") not in {"ok", "no_data"}
     )
     limitations = [
-        "CM metrics are bounded query-window context signals, not standalone proof of cause.",
+        "Runtime metrics are bounded query-window context signals, not standalone proof of cause.",
         "Raw metric points and per-point times are intentionally excluded from trusted analysis facts.",
         "Memory pressure remains unknown until a safe capacity or limit metric is available.",
     ]

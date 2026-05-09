@@ -135,7 +135,7 @@ def render_cm_metrics_correlation(analysis: dict[str, Any]) -> list[str]:
         lines.append(f"- coverage: {correlation['coverage']}")
     lines.append(f"- correlated_signals: {correlation.get('correlated_signals', 0)}")
     lines.append(f"- context_only_signals: {correlation.get('context_only_signals', 0)}")
-    lines.append(f"- guardrail: {correlation.get('guardrail', 'CM metrics are context only.')}")
+    lines.append(f"- guardrail: {correlation.get('guardrail', 'Runtime metrics are context only.')}")
     lines.append("")
 
     signals = correlation.get("signals") or []

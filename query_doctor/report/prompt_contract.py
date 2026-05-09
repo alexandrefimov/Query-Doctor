@@ -363,9 +363,9 @@ Engineering interpretation rules:
 - Cluster Runtime Context scoring contribution explains why the deterministic triage score changed; it is not a performance-speedup estimate and not causal proof.
 - Use Cluster Event Context only as a Python-owned raw-free CM Events summary. CM event signals are cluster/service context and follow-up checks, not standalone root-cause proof.
 - Do not claim service restarts, daemon errors, catalog errors, metastore issues, disk capacity events, HDFS/YARN events, authentication failures, or CM Events caused this query unless analysis_facts.md explicitly contains direct causal correlation.
-- Do not state CPU, memory, daemon, network, HDFS, or cluster pressure as a root cause from CM metrics alone.
-- Mention observed CM metrics in "{short_summary_label}" only when they are useful confirmed context for this query; keep not_observed and unknown metric statuses out of the short summary.
-- Put unknown/not_observed CM metric limitations under "{not_supported_label}" or "{next_checks_label}", not in the short summary.
+- Do not state CPU, memory, daemon, network, HDFS, or cluster pressure as a root cause from runtime metrics alone.
+- Mention observed runtime metrics in "{short_summary_label}" only when they are useful confirmed context for this query; keep not_observed and unknown metric statuses out of the short summary.
+- Put unknown/not_observed runtime metric limitations under "{not_supported_label}" or "{next_checks_label}", not in the short summary.
 
 The final markdown file is assembled by the wrapper with only:
 # Query Doctor Report

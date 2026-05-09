@@ -109,7 +109,7 @@ Report writer:
   не должен писать эту appendix-секцию.
 - Сейчас намеренно исключает `## Table Metadata Context` и
   `## CM Time-Series Context` из prompt LLM.
-- Передает LLM curated metadata digest и нормализованные `## CM Metrics Facts`;
+- Передает LLM curated metadata digest и нормализованные `## Runtime Metrics Facts`;
   детальные context-секции остаются только в Python-generated
   `## Факты анализатора`.
 - Буферизует raw LLM output. Финальный report пишется только после
