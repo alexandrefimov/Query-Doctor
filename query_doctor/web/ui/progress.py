@@ -6,7 +6,7 @@ import html
 from typing import Any
 
 from query_doctor.web.job_progress import WEB_STAGES, progress_view_for_job
-from query_doctor.web.ui.recent_scan_progress import batch_progress_percent, render_batch_progress_panel
+from query_doctor.web.ui.recent_scan_progress import batch_progress_view_payload, render_batch_progress_panel
 
 
 def render_pending_progress_panel() -> str:
@@ -31,15 +31,21 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
     error_html = html.escape(job.error) if job.status in {"failed", "cancelled"} else ""
     error_hidden = "" if job.status in {"failed", "cancelled"} else " hidden"
     batch_progress_html = ""
-    progress = job.progress
+    current_stage = ""
+    progress_percent = 0
     if getattr(job, "kind", "") in {"batch", "running"}:
-        progress = batch_progress_percent(getattr(job, "batch_progress_path", None), job.status)
+        progress_payload = batch_progress_view_payload(getattr(job, "batch_progress_path", None), job.status)
+        current_stage = str(progress_payload["current_stage"])
+        progress_percent = int(progress_payload["percent"])
         batch_progress_html = (
             "<div id=\"batch-progress-slot\">"
             f"{render_batch_progress_panel(getattr(job, 'batch_progress_path', None), job.status)}"
             "</div>"
         )
-    progress_view = progress_view_for_job(getattr(job, "kind", "query"), job.stage_label, progress)
+    else:
+        progress_view = progress_view_for_job(getattr(job, "kind", "query"), job.stage_label, job.progress)
+        current_stage = progress_view.current_stage
+        progress_percent = progress_view.percent
     if job.status == "ok":
         title = "Analysis complete"
     elif job.status == "cancelled":
@@ -59,10 +65,10 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
         f"<section class=\"panel progress-card\" data-job-status-url=\"/jobs/{html.escape(job.job_id)}"
         "/status\" aria-live=\"polite\">"
         f"<div class=\"progress-head\"><span class=\"progress-title\">{title}</span>"
-        f"<span id=\"job-stage\" class=\"progress-stage\">{html.escape(progress_view.current_stage)}</span>"
+        f"<span id=\"job-stage\" class=\"progress-stage\">{html.escape(current_stage)}</span>"
         f"{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
-        f"<span id=\"job-progress-fill\" class=\"progress-fill\" style=\"width:{progress_view.percent}%\"></span>"
+        f"<span id=\"job-progress-fill\" class=\"progress-fill\" style=\"width:{progress_percent}%\"></span>"
         "</div>"
         f"{batch_progress_html}"
         f"<div id=\"job-error-slot\" class=\"error-card\" role=\"alert\"{error_hidden}>{error_html}</div>"

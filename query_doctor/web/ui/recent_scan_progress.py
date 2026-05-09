@@ -11,8 +11,7 @@ from query_doctor.web.presenters.recent_scan import numeric_count
 
 
 def render_batch_progress_panel(progress_path: Path | None, job_status: str = "running") -> str:
-    events = read_batch_progress_events(progress_path)
-    summary = summarize_batch_progress(events, job_status=job_status)
+    summary = batch_progress_summary(progress_path, job_status)
     steps = "".join(
         "<div class=\"batch-progress-step batch-progress-step--{state}\">"
         "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
@@ -37,14 +36,60 @@ def render_batch_progress_panel(progress_path: Path | None, job_status: str = "r
 
 
 def batch_progress_percent(progress_path: Path | None, job_status: str = "running") -> int:
+    return batch_progress_percent_from_summary(batch_progress_summary(progress_path, job_status))
+
+
+def batch_progress_summary(progress_path: Path | None, job_status: str = "running") -> dict[str, Any]:
     events = read_batch_progress_events(progress_path)
-    summary = summarize_batch_progress(events, job_status=job_status)
+    return summarize_batch_progress(events, job_status=job_status)
+
+
+def batch_progress_percent_from_summary(summary: dict[str, Any]) -> int:
     steps = summary["steps"]
     if not steps:
         return 0
     complete_states = {"done", "skipped"}
     completed = sum(1 for step in steps if step.get("state") in complete_states)
     return round(completed * 100 / len(steps))
+
+
+def batch_progress_view_payload(progress_path: Path | None, job_status: str = "running") -> dict[str, object]:
+    summary = batch_progress_summary(progress_path, job_status)
+    steps = summary["steps"]
+    current_index = batch_progress_current_step_index(steps)
+    current_stage = str(steps[current_index]["label"]) if steps else "Batch progress"
+    return {
+        "current_stage": current_stage,
+        "current_index": current_index,
+        "percent": batch_progress_percent_from_summary(summary),
+        "steps": [batch_progress_step_payload(step) for step in steps],
+    }
+
+
+def batch_progress_current_step_index(steps: list[dict[str, str]]) -> int:
+    if not steps:
+        return 0
+    for state in ("failed", "running"):
+        for index, step in enumerate(steps):
+            if step.get("state") == state:
+                return index
+    for index, step in enumerate(steps):
+        if step.get("state") == "pending":
+            return index
+    return len(steps) - 1
+
+
+def batch_progress_step_payload(step: dict[str, str]) -> dict[str, str]:
+    state = step.get("state", "pending")
+    if state == "pending":
+        state = "neutral"
+    icon = "−" if state == "neutral" else step.get("icon", "·")
+    return {
+        "label": str(step.get("label", "")),
+        "state": state,
+        "icon": icon,
+        "detail": str(step.get("detail", "")),
+    }
 
 
 def read_batch_progress_events(progress_path: Path | None) -> list[dict[str, Any]]:

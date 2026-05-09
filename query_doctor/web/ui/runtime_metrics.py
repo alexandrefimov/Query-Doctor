@@ -96,15 +96,6 @@ def render_cluster_runtime_context_section(view: RecentScanClusterRuntimeContext
         return ""
     summary_rows = metadata_rows(cluster_runtime_summary_items(view))
     rollup_rows = metadata_rows(list(view.signal_rollup_items))
-    limitations = visible_runtime_limitations(view.limitations)
-    limitations_html = ""
-    if limitations:
-        limitations_html = (
-            "<h3>Limitations</h3>"
-            "<ul class=\"compact-list\">"
-            + "".join(f"<li>{escape_value(limitation)}</li>" for limitation in limitations)
-            + "</ul>"
-        )
     return (
         "<details class=\"analysis-subdetails\" aria-label=\"Cluster runtime context\">"
         "<summary>Cluster runtime context</summary>"
@@ -112,7 +103,6 @@ def render_cluster_runtime_context_section(view: RecentScanClusterRuntimeContext
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<h3>Signal rollup</h3>"
         f"<div class=\"meta-list\">{rollup_rows}</div>"
-        f"{limitations_html}"
         "</div>"
         "</details>"
     )
@@ -196,15 +186,6 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         labels=cm_metric_all_labels(view),
         empty_message="metric facts are not available",
     )
-    limitations = visible_runtime_limitations(view.limitations)
-    limitations_html = ""
-    if limitations:
-        limitations_html = (
-            "<h3>Limitations</h3>"
-            "<ul class=\"compact-list\">"
-            + "".join(f"<li>{escape_value(limitation)}</li>" for limitation in limitations)
-            + "</ul>"
-        )
     return (
         "<details class=\"analysis-subdetails\" aria-label=\"Runtime metrics\">"
         "<summary>Runtime metrics</summary>"
@@ -226,7 +207,6 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         "</table></div>"
         "</div>"
         "</details>"
-        f"{limitations_html}"
         "</div>"
         "</details>"
     )
@@ -235,20 +215,6 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
 def cluster_runtime_summary_items(view: RecentScanClusterRuntimeContextView) -> list[tuple[str, Any]]:
     low_value_labels = {"guardrail", "limit_summary", "window_scope"}
     return [(label, value) for label, value in view.summary_items if str(label) not in low_value_labels]
-
-
-def visible_runtime_limitations(limitations: tuple[str, ...]) -> tuple[str, ...]:
-    generic_markers = (
-        "not standalone proof",
-        "not standalone root-cause proof",
-        "raw metric points",
-        "bounded query-window context signals",
-    )
-    return tuple(
-        limitation
-        for limitation in limitations
-        if not any(marker in limitation.lower() for marker in generic_markers)
-    )
 
 
 def render_cm_metric_rows(

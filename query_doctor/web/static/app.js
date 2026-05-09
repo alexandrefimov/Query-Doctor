@@ -313,7 +313,24 @@ document.addEventListener('DOMContentLoaded', function () {
   var resultSlot = document.getElementById('job-result-slot');
   var errorSlot = document.getElementById('job-error-slot');
   var title = jobPanel.querySelector('.progress-title');
-  var batchRunButton = document.querySelector('#batch-form button[type="submit"], #running-form button[type="submit"]');
+  function runButtonsForJobKind(kind) {
+    var selector = '';
+    if (kind === 'batch') {
+      selector = '#batch-form button[type="submit"]';
+    } else if (kind === 'running') {
+      selector = '#running-form button[type="submit"]';
+    } else if (kind === 'query') {
+      selector = '#analyze-form button[type="submit"]';
+    }
+    return selector ? Array.prototype.slice.call(document.querySelectorAll(selector)) : [];
+  }
+  function restoreRunButtons(kind) {
+    var label = kind === 'query' ? 'Run' : 'Run scan';
+    runButtonsForJobKind(kind).forEach(function (button) {
+      button.disabled = false;
+      button.textContent = label;
+    });
+  }
   function poll() {
     fetch(jobPanel.getAttribute('data-job-status-url'), {cache: 'no-store'})
       .then(function (response) { return response.json(); })
@@ -326,10 +343,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (runningProgressSlot) { runningProgressSlot.innerHTML = data.progress_html || ''; }
         if (data.status === 'ok') {
           if (title) { title.textContent = 'Analysis complete'; }
-          if ((data.kind === 'batch' || data.kind === 'running') && batchRunButton) {
-            batchRunButton.disabled = false;
-            batchRunButton.textContent = 'Run scan';
-          }
+          restoreRunButtons(data.kind);
           if (resultSlot && !resultSlot.querySelector('#recent-results')) {
             resultSlot.innerHTML = data.result_html || '';
           }
@@ -337,10 +351,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (data.status === 'failed' || data.status === 'cancelled') {
           if (title) { title.textContent = data.status === 'cancelled' ? 'Analysis stopped' : 'Analysis failed'; }
-          if ((data.kind === 'batch' || data.kind === 'running') && batchRunButton) {
-            batchRunButton.disabled = false;
-            batchRunButton.textContent = 'Run scan';
-          }
+          restoreRunButtons(data.kind);
           if (errorSlot) {
             errorSlot.hidden = false;
             errorSlot.textContent = data.error || (data.status === 'cancelled' ? 'Job stopped by user.' : 'Analysis failed.');

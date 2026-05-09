@@ -172,10 +172,17 @@ def render_case_overview_card_value(card: RecentScanCaseOverviewCardView) -> str
 
 
 def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
-    return render_case_status_summary_view(present_recent_scan_status_summary(view))
+    return render_case_status_summary_view(
+        present_recent_scan_status_summary(view),
+        technical_details_html=render_technical_details(view),
+    )
 
 
-def render_case_status_summary_view(view: RecentScanStatusSummaryView) -> str:
+def render_case_status_summary_view(
+    view: RecentScanStatusSummaryView,
+    *,
+    technical_details_html: str = "",
+) -> str:
     cards = "".join(
         "<div class=\"case-summary-card\">"
         f"<span>{html.escape(card.label)}</span><strong>{render_case_status_card_value(card)}</strong>"
@@ -185,6 +192,7 @@ def render_case_status_summary_view(view: RecentScanStatusSummaryView) -> str:
     return (
         "<section id=\"pipeline-status\" aria-label=\"Pipeline status\">"
         f"<div class=\"case-summary-grid\">{cards}</div>"
+        f"{technical_details_html}"
         "</section>"
     )
 
@@ -244,7 +252,6 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         f"{render_runtime_signals(view)}"
         f"{render_cm_metrics_section(view.cm_metrics)}"
         f"{render_metadata_facts_section(view.metadata)}"
-        f"{render_technical_details(view)}"
         "</div>"
         "</details>"
         "</div>"
@@ -393,7 +400,7 @@ def render_technical_details_view(view: RecentScanTechnicalDetailsView) -> str:
     rows = metadata_rows(list(view.fields))
     return (
         "<details class=\"analysis-subdetails technical-details\">"
-        "<summary>Technical details</summary>"
+        "<summary>Pipeline timings</summary>"
         f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
         "</details>"
     )

@@ -18,7 +18,7 @@ from query_doctor.web.job_progress import (
     OPTIMIZED_QUERY_STAGES,
     WEB_STAGES,
     progress_view_for_job,
-    progress_view_payload,
+    progress_view_payload as job_progress_view_payload,
 )
 from query_doctor.web.models import (
     WebJob,
@@ -27,7 +27,11 @@ from query_doctor.web.models import (
     WebResult,
     batch_progress_path,
 )
-from query_doctor.web.ui.recent_scan_progress import batch_progress_percent, render_batch_progress_panel
+from query_doctor.web.ui.recent_scan_progress import (
+    batch_progress_percent,
+    batch_progress_view_payload,
+    render_batch_progress_panel,
+)
 from query_doctor.web.ui.report import render_result
 from query_doctor.web.ui.specific_query import render_specific_query_result, render_specific_query_results
 
@@ -70,16 +74,17 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             "result_html": "",
         }
     else:
-        progress = (
-            batch_progress_percent(job.batch_progress_path, job.status)
-            if job.kind in {"batch", "running"}
-            else job.progress
-        )
+        if job.kind in {"batch", "running"}:
+            progress_view = batch_progress_view_payload(job.batch_progress_path, job.status)
+            progress = progress_view["percent"]
+        else:
+            progress = job.progress
+            progress_view = job_progress_view_payload(progress_view_for_job(job.kind, job.stage_label, progress))
         payload = {
             "status": job.status,
             "stage": job.stage_label,
             "progress": progress,
-            "progress_view": progress_view_payload(progress_view_for_job(job.kind, job.stage_label, progress)),
+            "progress_view": progress_view,
             "kind": job.kind,
             "error": job.error,
             "result_html": job.result_html,
