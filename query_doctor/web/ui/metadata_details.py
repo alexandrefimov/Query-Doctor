@@ -10,7 +10,6 @@ from query_doctor.web.presenters.recent_scan import (
     RecentScanMetadataView,
     metadata_fact_limitations as present_metadata_fact_limitations,
     numeric_value,
-    present_recent_scan_metadata,
     safe_display_text,
     safe_statement_statuses,
 )
@@ -76,25 +75,8 @@ def render_metadata_facts_view(view: RecentScanMetadataView) -> str:
 
 
 def render_metadata_facts_body(
-    metadata_view_or_case: RecentScanMetadataView | dict[str, Any],
-    statement_counts: dict[Any, Any] | None = None,
-    tables: list[Any] | None = None,
-    fallback_note: str = "",
+    view: RecentScanMetadataView,
 ) -> str:
-    if isinstance(metadata_view_or_case, RecentScanMetadataView):
-        view = metadata_view_or_case
-    else:
-        view = present_recent_scan_metadata(
-            metadata_view_or_case,
-            {"statement_counts": statement_counts or {}, "tables": tables or []},
-        )
-        if fallback_note:
-            view = RecentScanMetadataView(
-                unavailable=view.unavailable,
-                fallback_note=safe_display_text(fallback_note),
-                summary_items=view.summary_items,
-                tables=view.tables,
-            )
     return render_metadata_facts_view(view)
 
 
@@ -156,14 +138,6 @@ def metadata_score_reasons(case: dict[str, Any]) -> list[str]:
         if any(marker in lower for marker in ("metadata", "stats", "statistic")):
             result.append(text)
     return result
-
-
-def render_metadata_fact_table_row(table: dict[str, Any] | RecentScanMetadataTableView) -> str:
-    if isinstance(table, RecentScanMetadataTableView):
-        view = table
-    else:
-        view = present_recent_scan_metadata({"metadata_status": "unknown"}, {"tables": [table]}).tables[0]
-    return render_metadata_fact_table_row_view(view)
 
 
 def render_metadata_fact_table_row_view(view: RecentScanMetadataTableView) -> str:

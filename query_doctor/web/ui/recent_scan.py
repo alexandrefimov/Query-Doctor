@@ -27,7 +27,6 @@ from query_doctor.web.ui.metadata_details import (
     metadata_fact_limitations,
     metadata_score_reasons,
     metadata_statement_counts_summary,
-    render_metadata_fact_table_row,
     render_metadata_fact_table_row_view,
     render_metadata_facts_body,
     render_metadata_facts_section,

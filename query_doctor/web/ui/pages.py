@@ -16,6 +16,7 @@ from query_doctor.web.ui.layout import (
 )
 from query_doctor.web.ui.markdown import render_details_inline_report_html, render_report_markdown_html
 from query_doctor.web.presenters.recent_scan import present_recent_scan_case_detail
+from query_doctor.web.ui.llm_actions import present_optimized_query_action
 from query_doctor.web.ui.progress import render_job_panel
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
 from query_doctor.web.ui.recent_scan_details import render_recent_scan_case_detail_view
@@ -191,7 +192,7 @@ def render_batch_case_detail_page(
     sections = [
         render_recent_scan_case_detail_view(
             view,
-            optimized_query_state=optimized_query_state,
+            optimized_query_state=present_optimized_query_action(optimized_query_state),
             trusted_report_html=trusted_report_html,
             trusted_optimized_query=trusted_optimized_query,
             trusted_optimizer_recommendations=trusted_optimizer_recommendations,

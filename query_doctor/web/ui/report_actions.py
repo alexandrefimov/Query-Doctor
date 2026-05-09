@@ -3,27 +3,26 @@
 from __future__ import annotations
 
 import html
-from typing import Any
 
 from query_doctor.web.job_progress import (
     REPORT_PROGRESS_STEPS,
     JobProgressView,
     build_indexed_progress_view,
 )
-from query_doctor.web.presenters.recent_scan import ReportActionView, present_report_action
+from query_doctor.web.presenters.recent_scan import ReportActionView
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
 
 
 def render_batch_case_report_action(
     case_id: str,
-    report_state: dict[str, Any] | ReportActionView | None,
+    report_view: ReportActionView,
     *,
     action_url: str | None = None,
     open_url: str | None = None,
     report_enabled: bool = True,
     trusted_report_html: SafeHtml | str | None = None,
 ) -> str:
-    view = report_state if isinstance(report_state, ReportActionView) else present_report_action(report_state)
+    view = report_view
     escaped_case_id = html.escape(case_id, quote=True)
     disabled = " disabled" if view.button_disabled or not report_enabled else ""
     form_action = html.escape(action_url or f"/batch/case/{escaped_case_id}/report", quote=True)

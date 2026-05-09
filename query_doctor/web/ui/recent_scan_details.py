@@ -35,11 +35,9 @@ from query_doctor.web.ui.action_candidates import (
     render_action_candidate_findings,
 )
 from query_doctor.web.ui.llm_actions import (
+    OptimizedQueryActionView,
+    present_optimized_query_action,
     render_llm_actions_block,
-    render_optimized_query_action,
-    render_optimized_query_failure,
-    render_optimized_query_progress,
-    render_safe_markdown_paragraphs,
 )
 from query_doctor.web.ui.metadata_details import (
     render_metadata_facts_section,
@@ -74,7 +72,7 @@ def render_batch_case_detail(
     stats_quality_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
-    optimized_query_state: dict[str, Any] | None = None,
+    optimized_query_state: dict[str, Any] | OptimizedQueryActionView | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
@@ -97,7 +95,7 @@ def render_batch_case_detail(
     )
     return render_recent_scan_case_detail_view(
         view,
-        optimized_query_state=optimized_query_state,
+        optimized_query_state=present_optimized_query_action(optimized_query_state),
         trusted_report_html=trusted_report_html,
         trusted_optimized_query=trusted_optimized_query,
         trusted_optimizer_recommendations=trusted_optimizer_recommendations,
@@ -112,7 +110,7 @@ def render_batch_case_detail(
 def render_recent_scan_case_detail_view(
     view: RecentScanCaseDetailView,
     *,
-    optimized_query_state: dict[str, Any] | None = None,
+    optimized_query_state: OptimizedQueryActionView | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
