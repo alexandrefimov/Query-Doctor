@@ -28,6 +28,15 @@
   "redact": true,
   "redact_identifiers": false,
 
+  "query_profile_source": "cm",
+  "impala_profile_hosts": [
+    "impalad-worker-1.example.com",
+    "impalad-worker-2.example.com"
+  ],
+  "impala_profile_port": 25000,
+  "impala_profile_scheme": "http",
+  "impala_profile_timeout_sec": 15,
+
   "recent_limit": 20,
   "recent_select": 5,
   "recent_window_minutes": 60,

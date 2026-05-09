@@ -38,6 +38,10 @@ COMMAND_SPECS = MappingProxyType(
             module="query_doctor.cli.collect_impala_context",
             console_script="query-doctor-collect-impala-context",
         ),
+        "collect_impala_profile": CommandSpec(
+            module="query_doctor.cli.collect_impala_profile",
+            console_script="query-doctor-collect-impala-profile",
+        ),
         "optimize_query": CommandSpec(
             module="query_doctor.cli.optimize_query",
             console_script="query-doctor-optimize-query",

@@ -10,11 +10,15 @@ from query_doctor.cli import collect_cm_profiles as cm_collector
 from query_doctor.config.contract import load_and_validate_config
 from query_doctor.web.models import (
     DEFAULT_HOST,
+    DEFAULT_IMPALA_PROFILE_PORT,
+    DEFAULT_IMPALA_PROFILE_SCHEME,
+    DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     DEFAULT_METADATA_AUTH,
     DEFAULT_METADATA_PROTOCOL,
     DEFAULT_METADATA_TIMEOUT_SEC,
     DEFAULT_OPTIMIZER_MODEL,
     DEFAULT_PORT,
+    DEFAULT_QUERY_PROFILE_SOURCE,
     WebError,
     WebSettings,
 )
@@ -44,6 +48,10 @@ def validate_bind_host(host: str, *, allow_nonlocal_web_bind: bool) -> None:
 
 def metadata_configured(settings: WebSettings) -> bool:
     return bool(settings.metadata_coordinator)
+
+
+def impala_profile_source_configured(settings: WebSettings) -> bool:
+    return settings.query_profile_source == "impala" and bool(settings.impala_profile_hosts)
 
 
 def resolve_web_config_path(config_path: str | Path | None, *, cwd: Path) -> Path:
@@ -89,6 +97,18 @@ def validate_web_startup_config(
         return []
     env = os.environ if env is None else env
     config_values = load_web_local_config(config_path, cwd=cwd)
+    query_profile_source = first_string_value(
+        optional_config_string(config_values, "query_profile_source"),
+        DEFAULT_QUERY_PROFILE_SOURCE,
+    )
+    if query_profile_source == "impala":
+        hosts = optional_config_string_list(config_values, "impala_profile_hosts")
+        if not hosts:
+            raise WebError(
+                "Missing required Impala startup setting(s): impala_profile_hosts. "
+                "Provide one or more impalad web hosts in local config."
+            )
+        return []
     missing: list[str] = []
     if not first_string_value(optional_config_string(config_values, "cm_url"), env.get("CM_URL")):
         missing.append("cm_url")
@@ -140,6 +160,13 @@ def optional_config_bool(config_values: dict[str, object], key: str) -> bool | N
     return value if isinstance(value, bool) else None
 
 
+def optional_config_string_list(config_values: dict[str, object], key: str) -> tuple[str, ...]:
+    value = config_values.get(key)
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return tuple(item for item in value if item)
+    return ()
+
+
 def first_string_value(*values: str | None) -> str | None:
     for value in values:
         if value:
@@ -189,6 +216,27 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
         ),
         timeout_sec=args.timeout_sec,
         batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
+        query_profile_source=first_string_value(
+            optional_config_string(config_values, "query_profile_source"),
+            DEFAULT_QUERY_PROFILE_SOURCE,
+        )
+        or DEFAULT_QUERY_PROFILE_SOURCE,
+        impala_profile_hosts=optional_config_string_list(config_values, "impala_profile_hosts"),
+        impala_profile_port=first_int_value(
+            optional_config_int(config_values, "impala_profile_port"),
+            default=DEFAULT_IMPALA_PROFILE_PORT,
+        )
+        or DEFAULT_IMPALA_PROFILE_PORT,
+        impala_profile_scheme=first_string_value(
+            optional_config_string(config_values, "impala_profile_scheme"),
+            DEFAULT_IMPALA_PROFILE_SCHEME,
+        )
+        or DEFAULT_IMPALA_PROFILE_SCHEME,
+        impala_profile_timeout_sec=first_int_value(
+            optional_config_int(config_values, "impala_profile_timeout_sec"),
+            default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+        )
+        or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
         metadata_coordinator=first_string_value(
             args.metadata_coordinator,
             optional_config_string(config_values, "metadata_coordinator"),

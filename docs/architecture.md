@@ -69,7 +69,10 @@ flowchart TD
 Current support is intentionally narrow:
 
 - Apache Impala is the only implemented query engine.
-- Cloudera Manager summaries and profiles are the implemented profile source.
+- Cloudera Manager summaries and profiles are the implemented Recent queries
+  source.
+- Direct Impala daemon profile endpoints are supported only for one explicit
+  Known Query ID. They do not provide discovery, metrics, or events.
 - Cloudera Manager (CM) time-series support is bounded and summarized before
   becoming facts.
 - Cloudera Manager events support is bounded and summarized before becoming
@@ -211,6 +214,7 @@ available, and fetch bounded event context when available.
 Current provider support:
 
 - Cloudera Manager API, tested against CM 6.2.1 behavior.
+- Direct Impala daemon profile endpoint for one explicit Known Query ID.
 
 Planned provider seams:
 
@@ -218,10 +222,9 @@ Planned provider seams:
   normalization, and time-series tsquery allowlists so newer CM versions can be
   added with fixtures and safety tests instead of changing analyzer/UI
   contracts.
-- Non-CM Impala seam: collect profiles directly from Impala daemon debug/profile
-  endpoints for clusters without Cloudera Manager. This must stay explicit,
-  bounded, read-only, redacted, and single-query oriented before any batch
-  workflow uses it.
+- Non-CM Impala seam: direct Impala daemon debug/profile collection exists only
+  for one explicit Known Query ID. It must stay explicit, bounded, read-only,
+  redacted, and single-query oriented before any batch workflow uses it.
 - Metrics seam: keep metrics source separate from profile source. Cloudera
   Manager time-series is the current implementation; Prometheus is the likely
   future metrics provider for non-CM clusters. Prometheus integration needs a
@@ -344,7 +347,9 @@ The local UI:
 - uses the same result shape for Running now scans, with lower-confidence live
   evidence;
 - analyzes one known Query ID in the Known Query ID Diagnose mode without
-  automatic LLM and appends results to its table;
+  automatic LLM and appends results to its table. This path can collect via
+  Cloudera Manager or direct Impala daemon profile endpoints, depending on
+  local config;
 - keeps the direct Query Optimizer route read-only for compatibility and safety
   testing; it parses one safe SELECT/WITH statement locally, does not execute
   pasted SQL, and does not render it back after submit;

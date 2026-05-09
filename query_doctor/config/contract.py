@@ -23,6 +23,8 @@ STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
 RECENT_ORDER_CHOICES = ("recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority")
 METADATA_AUTH_CHOICES = ("kerberos",)
 METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
+QUERY_PROFILE_SOURCE_CHOICES = ("cm", "impala")
+IMPALA_PROFILE_SCHEME_CHOICES = ("http", "https")
 
 ALLOWED_CONFIG_KEYS = {
     "ca_bundle",
@@ -33,6 +35,10 @@ ALLOWED_CONFIG_KEYS = {
     "cm_metrics_profile",
     "cm_timeseries_padding_sec",
     "host",
+    "impala_profile_hosts",
+    "impala_profile_port",
+    "impala_profile_scheme",
+    "impala_profile_timeout_sec",
     "insecure_skip_verify",
     "krb5ccname",
     "limit",
@@ -49,6 +55,7 @@ ALLOWED_CONFIG_KEYS = {
     "service",
     "since_hours",
     "status",
+    "query_profile_source",
     "query_type",
     "recent_include_failed",
     "recent_include_running",
@@ -248,6 +255,8 @@ def validate_config_fields(values: Mapping[object, object]) -> None:
 def normalize_config_value(key: str, value: object) -> object:
     if value is None:
         if key in {
+            "impala_profile_port",
+            "impala_profile_timeout_sec",
             "since_hours",
             "limit",
             "max_profile_bytes",
@@ -290,6 +299,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "cm_metrics_profile",
         "cm_url",
         "host",
+        "impala_profile_scheme",
         "optimizer_model",
         "out",
         "pool",
@@ -300,6 +310,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "recent_user",
         "service",
         "status",
+        "query_profile_source",
         "user",
         "username",
         "metadata_auth",
@@ -314,6 +325,16 @@ def normalize_config_value(key: str, value: object) -> object:
         if key == "status" and normalized not in STATUS_CHOICES:
             raise ConfigError(
                 f"Config field status must be one of: {', '.join(STATUS_CHOICES)}."
+            )
+        if key == "query_profile_source" and normalized not in QUERY_PROFILE_SOURCE_CHOICES:
+            raise ConfigError(
+                "Config field query_profile_source must be one of: "
+                f"{', '.join(QUERY_PROFILE_SOURCE_CHOICES)}."
+            )
+        if key == "impala_profile_scheme" and normalized not in IMPALA_PROFILE_SCHEME_CHOICES:
+            raise ConfigError(
+                "Config field impala_profile_scheme must be one of: "
+                f"{', '.join(IMPALA_PROFILE_SCHEME_CHOICES)}."
             )
         if key == "recent_order" and normalized not in RECENT_ORDER_CHOICES:
             raise ConfigError(
@@ -334,6 +355,8 @@ def normalize_config_value(key: str, value: object) -> object:
         "max_profile_bytes",
         "max_timeseries_bytes",
         "max_timeseries_points",
+        "impala_profile_port",
+        "impala_profile_timeout_sec",
         "recent_limit",
         "recent_parallelism",
         "recent_cm_jobs",
@@ -351,6 +374,22 @@ def normalize_config_value(key: str, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")
         return value
+    if key == "impala_profile_hosts":
+        if isinstance(value, str):
+            hosts = [item.strip() for item in value.split(",")]
+        elif isinstance(value, list):
+            hosts = [item.strip() for item in value if isinstance(item, str)]
+            if len(hosts) != len(value):
+                raise ConfigError("Config field impala_profile_hosts must contain strings only.")
+        else:
+            raise ConfigError("Config field impala_profile_hosts must be a list of strings.")
+        hosts = [host for host in hosts if host]
+        for host in hosts:
+            if any(ord(ch) < 32 or ord(ch) == 127 for ch in host):
+                raise ConfigError("Config field impala_profile_hosts must not contain control characters.")
+            if any(marker in host for marker in ("/", "\\", "@", "?", "#")):
+                raise ConfigError("Config field impala_profile_hosts must contain hostnames or host:port only.")
+        return hosts
     if key in {"recent_metadata_top_limit", "recent_cm_timeseries_top_limit"}:
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ConfigError(f"Config field {key} must be a non-negative integer.")

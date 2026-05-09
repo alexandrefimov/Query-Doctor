@@ -15,13 +15,15 @@ is not a historical audit log. For engineering risks, use
 ## Current Scope
 
 - Apache Impala is the only implemented SQL engine.
-- Cloudera Manager is the implemented query/profile/metrics/events source.
+- Cloudera Manager is the implemented query discovery, profile, metrics, and
+  events source for Recent queries.
+- Direct Impala daemon profile collection is supported only for one explicit
+  Known Query ID. It does not provide discovery, metrics, or events.
 - Diagnose is the primary UI screen.
 - Recent queries is the default Diagnose mode.
 - Finished queries is the default completed-query scan target.
 - Running now is a lower-confidence live scan target inside Recent queries.
-- Known Query ID is the secondary Diagnose mode for one known Cloudera Manager
-  query ID.
+- Known Query ID is the secondary Diagnose mode for one known Impala query ID.
 - Details pages show deterministic findings and explicit LLM Report / Query LLM
   optimizer actions.
 - Query Optimizer is a separate pasted-SQL parse/analyze workflow. It never
@@ -171,8 +173,8 @@ real Impala workloads:
 
 - Thin source-family interfaces over real existing paths: `ProfileSource`,
   `QueryDiscoverySource`, `MetricsSource`, and `EventSource`.
-- Direct Impala daemon profile source for one explicit known query, with no
-  discovery, metrics, or events in the first version.
+- Direct Impala daemon profile source follow-up: add source provenance and
+  provider-neutral context labels for the explicit Known Query ID path.
 - Prometheus-style metrics source after metrics facts are keyed by
   `signal_id`.
 - Engine profile-fact contract refactor before adding any second SQL engine.
@@ -644,11 +646,10 @@ These are not current support. Revisit them only when the listed signal is met.
   over rewriting working collectors for tidiness.
 - Cloudera Manager version adapter: revisit when real deployments expose newer
   response shapes or metric catalogs that current collectors cannot parse.
-- Direct Impala daemon profile provider: revisit after canonical context names,
-  provenance, and `ProfileSource` are in place, when users need one explicit
-  query profile without Cloudera Manager. The first version should provide only
-  known-query profile fetching and must remain read-only, bounded, redacted,
-  and raw-free in browser output.
+- Direct Impala daemon profile provider: first explicit Known Query ID profile
+  fetching is implemented. Follow-up work should add source provenance,
+  provider-neutral context labels, and real fixture coverage before broadening
+  beyond single-query profile fetching.
 - Prometheus-style metrics provider: revisit after metrics facts consume
   catalog `signal_id`s rather than Cloudera Manager query IDs, and only when
   cluster operators have allowlisted queries, fixed windows, response-size
@@ -688,8 +689,8 @@ A practical readiness bar is `case_primary_bottleneck = unknown` below roughly
 Recommended expansion order is documented in
 [engine-expansion-plan.md](engine-expansion-plan.md):
 
-1. Direct Impala daemon profile source for one explicit known query, decoupling
-   the first non-Cloudera-Manager profile path before adding another engine.
+1. Harden the direct Impala daemon profile source with provenance,
+   provider-neutral context labels, and real fixture coverage.
 2. Engine fact contract refactor so analyzer services consume normalized
    parser outputs rather than raw Impala profile internals.
 3. Second engine only after real design partner demand. Trino is the default

@@ -42,6 +42,10 @@ MISSING_CM_CREDENTIALS_MESSAGE = (
     "CM credentials were not found in the web server environment. Start the "
     "server from a terminal where CM_USERNAME/CM_PASSWORD or CM_TOKEN is set."
 )
+MISSING_IMPALA_PROFILE_SOURCE_MESSAGE = (
+    "Impala profile source is not configured for this web session. Add "
+    "impala_profile_hosts to the local config or switch query_profile_source back to cm."
+)
 ProgressFunc = Callable[[int], None]
 
 
@@ -221,25 +225,49 @@ def collect_case(
         )
     except cm_collector.ConfigError:
         config_username = None
-    if not has_cm_credentials(username=config_username):
-        raise WebError(MISSING_CM_CREDENTIALS_MESSAGE)
-
     collection_out_dir = out_dir if out_dir is not None else settings.corpus_dir
-    collector_cmd = command_prefix(settings.repo_dir, "collect_cm") + [
-        "--config",
-        str(settings.config),
-        "--query-id",
-        validated_query_id,
-        "--limit",
-        "1",
-        "--redact",
-        "--out",
-        str(collection_out_dir),
-    ]
-    if redact_identifiers:
-        collector_cmd.append("--redact-identifiers")
-    if settings.max_profile_bytes is not None:
-        collector_cmd.extend(["--max-profile-bytes", str(settings.max_profile_bytes)])
+    if settings.query_profile_source == "impala":
+        if not settings.impala_profile_hosts:
+            raise WebError(MISSING_IMPALA_PROFILE_SOURCE_MESSAGE)
+        collector_stage = "Impala daemon single-query profile collection"
+        collector_cmd = command_prefix(settings.repo_dir, "collect_impala_profile") + [
+            "--query-id",
+            validated_query_id,
+            "--redact",
+            "--out",
+            str(collection_out_dir),
+            "--port",
+            str(settings.impala_profile_port),
+            "--scheme",
+            settings.impala_profile_scheme,
+            "--timeout-sec",
+            str(settings.impala_profile_timeout_sec),
+        ]
+        for host in settings.impala_profile_hosts:
+            collector_cmd.extend(["--host", host])
+        if settings.max_profile_bytes is not None:
+            collector_cmd.extend(["--max-profile-bytes", str(settings.max_profile_bytes)])
+        if redact_identifiers:
+            collector_cmd.append("--redact-identifiers")
+    else:
+        if not has_cm_credentials(username=config_username):
+            raise WebError(MISSING_CM_CREDENTIALS_MESSAGE)
+        collector_stage = "CM single-query collection"
+        collector_cmd = command_prefix(settings.repo_dir, "collect_cm") + [
+            "--config",
+            str(settings.config),
+            "--query-id",
+            validated_query_id,
+            "--limit",
+            "1",
+            "--redact",
+            "--out",
+            str(collection_out_dir),
+        ]
+        if redact_identifiers:
+            collector_cmd.append("--redact-identifiers")
+        if settings.max_profile_bytes is not None:
+            collector_cmd.extend(["--max-profile-bytes", str(settings.max_profile_bytes)])
 
     collected = run_subprocess(
         collector_cmd,
@@ -252,7 +280,7 @@ def collect_case(
     if cancel_check is not None and cancel_check():
         raise WebError("Analysis was stopped by the user.")
     if collected.returncode != 0:
-        raise WebError(subprocess_failure_message("CM single-query collection", collected))
+        raise WebError(subprocess_failure_message(collector_stage, collected))
 
     case_dir = parse_output_case_dir(collected.stdout)
     if not case_dir.is_absolute():
