@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.web.display_safety import sanitize_browser_error_text
@@ -46,6 +48,9 @@ LLM_ACTIONS_STAGES = (
     (2, "Generating optimizer draft", 72),
     (3, "Done", 100),
 )
+TERMINAL_JOB_STATUSES = {"ok", "failed", "cancelled"}
+DEFAULT_TERMINAL_JOB_TTL_SEC = 6 * 60 * 60
+DEFAULT_MAX_TERMINAL_JOBS = 100
 
 
 def sanitize_job_error(value: object) -> str:
@@ -98,11 +103,20 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
 
 
 class WebJobStore:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        terminal_job_ttl_sec: float = DEFAULT_TERMINAL_JOB_TTL_SEC,
+        max_terminal_jobs: int = DEFAULT_MAX_TERMINAL_JOBS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._jobs: dict[str, WebJob] = {}
         self._query_results: list[dict[str, object]] = []
         self._latest_batch_summary: Path | None = None
         self._latest_running_summary: Path | None = None
+        self._terminal_job_ttl_sec = max(0.0, float(terminal_job_ttl_sec))
+        self._max_terminal_jobs = max(0, int(max_terminal_jobs))
+        self._clock = clock
         self._lock = threading.Lock()
 
     def create(self, query_id: str, report_mode: str) -> WebJobSnapshot:
@@ -118,7 +132,7 @@ class WebJobStore:
                 progress=stage[2],
                 result_html=prior_result_html,
             )
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def create_batch(self, form_values: dict[str, object] | None = None) -> WebJobSnapshot:
@@ -136,7 +150,7 @@ class WebJobStore:
             batch_progress_path=batch_progress_path(job_id),
         )
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def create_running_batch(self, form_values: dict[str, object] | None = None) -> WebJobSnapshot:
@@ -154,7 +168,7 @@ class WebJobStore:
             batch_progress_path=batch_progress_path(job_id),
         )
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def create_batch_report(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
@@ -171,7 +185,7 @@ class WebJobStore:
             batch_source=source,
         )
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def create_query_report(self, query_id: str) -> WebJobSnapshot:
@@ -186,7 +200,7 @@ class WebJobStore:
             kind="query_report",
         )
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def create_batch_optimized_query(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
@@ -203,7 +217,7 @@ class WebJobStore:
             batch_source=source,
         )
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def create_query_optimized_query(self, query_id: str) -> WebJobSnapshot:
@@ -218,7 +232,7 @@ class WebJobStore:
             kind="query_optimized_query",
         )
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def create_batch_llm_actions(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
@@ -235,7 +249,7 @@ class WebJobStore:
             batch_source=source,
         )
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def create_query_llm_actions(self, query_id: str) -> WebJobSnapshot:
@@ -250,11 +264,12 @@ class WebJobStore:
             kind="query_llm_actions",
         )
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._store_job_locked(job)
             return job.snapshot()
 
     def running_batch_report(self, case_id: str) -> WebJobSnapshot | None:
         with self._lock:
+            self._prune_locked()
             for job in self._jobs.values():
                 if job.kind in {"batch_report", "batch_llm_actions"} and job.batch_case_id == case_id and job.status == "running":
                     return job.snapshot()
@@ -262,6 +277,7 @@ class WebJobStore:
 
     def running_query_report(self, query_id: str) -> WebJobSnapshot | None:
         with self._lock:
+            self._prune_locked()
             for job in self._jobs.values():
                 if job.kind in {"query_report", "query_llm_actions"} and job.query_id == query_id and job.status == "running":
                     return job.snapshot()
@@ -269,6 +285,7 @@ class WebJobStore:
 
     def running_batch_optimized_query(self, case_id: str) -> WebJobSnapshot | None:
         with self._lock:
+            self._prune_locked()
             for job in self._jobs.values():
                 if job.kind in {"batch_optimized_query", "batch_llm_actions"} and job.batch_case_id == case_id and job.status == "running":
                     return job.snapshot()
@@ -276,6 +293,7 @@ class WebJobStore:
 
     def running_query_optimized_query(self, query_id: str) -> WebJobSnapshot | None:
         with self._lock:
+            self._prune_locked()
             for job in self._jobs.values():
                 if job.kind in {"query_optimized_query", "query_llm_actions"} and job.query_id == query_id and job.status == "running":
                     return job.snapshot()
@@ -283,11 +301,13 @@ class WebJobStore:
 
     def get(self, job_id: str) -> WebJobSnapshot | None:
         with self._lock:
+            self._prune_locked()
             job = self._jobs.get(job_id)
             return job.snapshot() if job is not None else None
 
     def request_cancel(self, job_id: str) -> WebJobSnapshot | None:
         with self._lock:
+            self._prune_locked()
             job = self._jobs.get(job_id)
             if job is None:
                 return None
@@ -298,10 +318,12 @@ class WebJobStore:
                 job.progress = 100
                 job.error = "Job stopped by user."
                 job.result_html = ""
+            job.updated_at = self._now()
             return job.snapshot()
 
     def cancel_requested(self, job_id: str) -> bool:
         with self._lock:
+            self._prune_locked()
             job = self._jobs.get(job_id)
             return bool(job is not None and job.cancel_requested)
 
@@ -323,6 +345,7 @@ class WebJobStore:
 
     def update_stage(self, job_id: str, stage_index: int) -> None:
         with self._lock:
+            self._prune_locked()
             job = self._jobs.get(job_id)
             if job is None or job.status != "running":
                 return
@@ -330,9 +353,11 @@ class WebJobStore:
             stage = stages[stage_index]
             job.stage_label = stage[1]
             job.progress = stage[2]
+            job.updated_at = self._now()
 
     def complete(self, job_id: str, result: WebResult | WebQueryAnalysisResult) -> None:
         with self._lock:
+            self._prune_locked()
             job = self._jobs.get(job_id)
             if job is None or job.status != "running":
                 return
@@ -348,9 +373,12 @@ class WebJobStore:
             else:
                 job.result_html = "\n".join(render_query_analysis_output(result))
             job.error = ""
+            job.updated_at = self._now()
+            self._prune_locked()
 
     def complete_html(self, job_id: str, result_html: str) -> None:
         with self._lock:
+            self._prune_locked()
             job = self._jobs.get(job_id)
             if job is None or job.status != "running":
                 return
@@ -360,9 +388,12 @@ class WebJobStore:
             job.progress = stages[-1][2]
             job.result_html = result_html
             job.error = ""
+            job.updated_at = self._now()
+            self._prune_locked()
 
     def fail(self, job_id: str, error: object) -> None:
         with self._lock:
+            self._prune_locked()
             job = self._jobs.get(job_id)
             if job is None or job.status != "running":
                 return
@@ -370,3 +401,38 @@ class WebJobStore:
             job.stage_label = "Failed"
             job.progress = 100
             job.error = sanitize_job_error(error)
+            job.updated_at = self._now()
+            self._prune_locked()
+
+    def _store_job_locked(self, job: WebJob) -> None:
+        now = self._now()
+        self._prune_locked(now)
+        job.created_at = now
+        job.updated_at = now
+        self._jobs[job.job_id] = job
+
+    def _prune_locked(self, now: float | None = None) -> None:
+        current = self._now() if now is None else now
+        if self._terminal_job_ttl_sec >= 0:
+            expired = [
+                job_id
+                for job_id, job in self._jobs.items()
+                if job.status in TERMINAL_JOB_STATUSES and current - job.updated_at > self._terminal_job_ttl_sec
+            ]
+            for job_id in expired:
+                self._jobs.pop(job_id, None)
+        if self._max_terminal_jobs <= 0:
+            return
+        terminal_jobs = [
+            (job.updated_at, job_id)
+            for job_id, job in self._jobs.items()
+            if job.status in TERMINAL_JOB_STATUSES
+        ]
+        excess_count = len(terminal_jobs) - self._max_terminal_jobs
+        if excess_count <= 0:
+            return
+        for _updated_at, job_id in sorted(terminal_jobs)[:excess_count]:
+            self._jobs.pop(job_id, None)
+
+    def _now(self) -> float:
+        return float(self._clock())

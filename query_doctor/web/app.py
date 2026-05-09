@@ -6,7 +6,7 @@ import subprocess
 import sys
 from http.server import BaseHTTPRequestHandler
 from typing import BinaryIO, Callable
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebError, WebSettings
@@ -23,6 +23,7 @@ SECURITY_HEADERS = (
     ("X-Content-Type-Options", "nosniff"),
     ("Referrer-Policy", "no-referrer"),
     ("X-Frame-Options", "DENY"),
+    ("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()"),
     (
         "Content-Security-Policy",
         "default-src 'self'; "
@@ -90,6 +91,31 @@ def request_host_allowed(value: str | None, settings: WebSettings) -> bool:
     return host in allowed_hosts
 
 
+def request_origin_allowed(value: str | None, settings: WebSettings) -> bool:
+    if value is None or not value.strip():
+        return True
+    if settings.allow_nonlocal_web_bind:
+        return True
+    origin = value.strip()
+    if any(char.isspace() for char in origin):
+        return False
+    parsed = urlsplit(origin)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    if parsed.username or parsed.password:
+        return False
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        return False
+    try:
+        origin_host = parsed.hostname
+        origin_port = parsed.port
+    except ValueError:
+        return False
+    if origin_port is not None and origin_port != settings.port:
+        return False
+    return request_host_allowed(origin_host, settings)
+
+
 def make_handler(
     settings: WebSettings,
     analysis_func: AnalysisFunc = run_query_id_analysis,
@@ -112,6 +138,9 @@ def make_handler(
         def do_POST(self) -> None:
             if not self.request_host_is_allowed():
                 self.write_rejected_host_response()
+                return
+            if not self.request_origin_is_allowed():
+                self.write_rejected_origin_response()
                 return
             if not post_route_is_allowed(self.path):
                 self.send_error(404)
@@ -185,9 +214,18 @@ def make_handler(
             host_value = headers.get("Host") if hasattr(headers, "get") else None
             return request_host_allowed(host_value, settings)
 
+        def request_origin_is_allowed(self) -> bool:
+            headers = getattr(self, "headers", {})
+            origin_value = headers.get("Origin") if hasattr(headers, "get") else None
+            return request_origin_allowed(origin_value, settings)
+
         def write_rejected_host_response(self) -> None:
             error = WebError("Refusing request Host header outside the local web allowlist.")
             self.write_html(400, render_page(settings, active_nav="batch", error=error))
+
+        def write_rejected_origin_response(self) -> None:
+            error = WebError("Refusing POST Origin outside the local web allowlist.")
+            self.write_html(403, render_page(settings, active_nav="batch", error=error))
 
         def send_security_headers(self) -> None:
             if getattr(self, "_query_doctor_security_headers_sent", False):

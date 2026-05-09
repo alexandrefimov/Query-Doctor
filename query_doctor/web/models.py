@@ -147,6 +147,8 @@ class WebJob:
     batch_case_id: str | None = None
     batch_source: str = "batch"
     cancel_requested: bool = False
+    created_at: float = 0.0
+    updated_at: float = 0.0
 
     def snapshot(self) -> WebJobSnapshot:
         return WebJobSnapshot(

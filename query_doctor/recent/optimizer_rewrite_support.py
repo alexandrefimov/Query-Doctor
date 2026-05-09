@@ -99,10 +99,12 @@ PREDICATE_NOT_COPYABLE_DECISIONS = {
     "not_for_target_mixed_target_foreign_qualifier",
     "not_for_target_unavailable_column",
     "unsupported_predicate",
+    "unsupported_predicate_function_call",
     "unsupported_predicate_no_column_reference",
     "unsupported_predicate_parse_failed",
     "unsupported_predicate_qualified_reference",
     "unsupported_predicate_token",
+    "unsupported_predicate_unavailable_unqualified_column",
     "unsupported_predicate_unknown_identifier",
     "unsupported_signature",
 }

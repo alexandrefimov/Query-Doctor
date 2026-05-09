@@ -1549,7 +1549,7 @@ def predicate_column_reference_result(
     if "." in tokens:
         return PredicateColumnReferenceResult(set(), "unsupported_predicate_qualified_reference")
     column_references: set[str] = set()
-    for token in tokens:
+    for index, token in enumerate(tokens):
         upper = token.upper()
         lower = token.lower()
         if token in SAFE_SINGLE_CTE_PREDICATE_PUNCTUATION:
@@ -1561,12 +1561,20 @@ def predicate_column_reference_result(
             continue
         if upper in SAFE_SINGLE_CTE_PREDICATE_KEYWORDS:
             continue
-        if upper.isalpha():
-            return PredicateColumnReferenceResult(set(), "unsupported_predicate_unknown_identifier")
+        if predicate_token_is_identifier_like(token):
+            if index + 1 < len(tokens) and tokens[index + 1] == "(":
+                return PredicateColumnReferenceResult(set(), "unsupported_predicate_function_call")
+            return PredicateColumnReferenceResult(set(), "unsupported_predicate_unavailable_unqualified_column")
         return PredicateColumnReferenceResult(set(), "unsupported_predicate_token")
     if not column_references:
         return PredicateColumnReferenceResult(set(), "unsupported_predicate_no_column_reference")
     return PredicateColumnReferenceResult(column_references)
+
+
+def predicate_token_is_identifier_like(token: str) -> bool:
+    if not token or not (token[0].isalpha() or token[0] == "_"):
+        return False
+    return all(char.isalnum() or char in {"_", "$"} for char in token)
 
 
 def dequalify_predicate_for_cte_aliases(
