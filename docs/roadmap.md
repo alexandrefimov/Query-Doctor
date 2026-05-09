@@ -121,6 +121,70 @@ Planning summary:
   until a concrete shared-deploy design exists. Prefer present-day safety
   boundaries that would also be correct later.
 
+## Priority Bands
+
+Use these bands when choosing work. The numbered Near-Term sections below stay
+as domain backlogs; the priority band decides what should be pulled first when
+items compete.
+
+### P0 - Safety And Contracts
+
+Do first when touched, because these items protect the trust boundary or unlock
+multiple later changes:
+
+- Browser and trusted-report safety: typed raw-free view models, presenter-owned
+  display strings, consolidated trusted artifact access, export of validated
+  safe Markdown, and browser-safety tests for any new dynamic Details content.
+- Local web hardening: package-owned static assets, tighter Content Security
+  Policy, local POST origin/host checks, no-store/security headers, and bounded
+  local job cleanup.
+- Report and optimizer trust contracts: validator allowlists, trusted artifact
+  predicates, marker validation, no-echo behavior, and strict
+  recommendations-only or `no_rewrite` fallbacks.
+- Provider-neutral analyzer contracts for the current Cloudera Manager path:
+  canonical context keys/headings, legacy `cm_*` fallbacks, metrics reads by
+  abstract `signal_id`, and per-case source provenance.
+
+### P1 - Diagnostic Quality
+
+Pull next, because these improve the core product value on current Impala and
+Cloudera Manager deployments:
+
+- Details evidence flow: deterministic findings first, concise evidence
+  quality, limitations, runtime context, metadata status, and action routing.
+- Runtime-context quality: collection coverage, observed and correlated
+  signals, admission/pool context, host-tail diagnostics, and sanitized real
+  fixtures.
+- Metadata and stats diagnosis: structured stats/query-shape facts, partition
+  and join/filter column coverage, bottleneck calibration, and unknown-rate
+  measurement on real batches.
+- Workload-level diagnosis: raw-free fingerprint grouping, baseline/regression
+  detection, and action outcome tracking.
+- Optimizer usefulness: rewriteability taxonomy, recipe-aware candidate
+  selection, per-conjunct predicate-pushdown hardening, narrow Python-owned
+  recipes, and optimizer funnel measurement.
+
+### P2 - Expansion Readiness
+
+Do after P0 contracts are stable and P1 diagnostic quality is useful enough on
+real Impala workloads:
+
+- Thin source-family interfaces over real existing paths: `ProfileSource`,
+  `QueryDiscoverySource`, `MetricsSource`, and `EventSource`.
+- Direct Impala daemon profile source for one explicit known query, with no
+  discovery, metrics, or events in the first version.
+- Prometheus-style metrics source after metrics facts are keyed by
+  `signal_id`.
+- Engine profile-fact contract refactor before adding any second SQL engine.
+- Storage/table-format facts only after provider and engine boundaries
+  stabilize.
+
+### Deferred - Not Current Support
+
+Keep these out of implementation plans until their explicit readiness signal is
+met: shared deployment, multi-tenancy, a second SQL engine, plugin framework,
+generic SQL execution, broad package reorganization, and fake adapters.
+
 ## Near-Term Priorities
 
 ### 1. Local Web Hardening And Team Workflow
@@ -216,6 +280,29 @@ Short-term workload-level diagnostics:
 - Add minimal action outcome tracking: manually record whether a recommendation
   was applied and whether the observed runtime, score, or failure rate changed.
   This is needed to learn which recommendation families are useful in practice.
+
+Provider-neutral runtime context cleanup:
+
+- Treat source identity as data, not analyzer schema. Add canonical
+  `query_context`, `metrics_context`, `metrics_facts`, and
+  `metrics_correlation` keys/headings with explicit source labels. Keep
+  existing `cm_*` keys, headings, and artifacts as legacy load fallbacks during
+  migration.
+- Update report-validator heading allowlists atomically with any heading rename
+  and add a snapshot test for rendered `analysis_facts.md`, so the trusted
+  report contract cannot drift silently.
+- Move metrics analyzer reads from Cloudera Manager time-series query IDs to
+  abstract catalog `signal_id`s. The Cloudera Manager collector should write
+  both `signal_id` and source-specific IDs so old corpora can be loaded through
+  a catalog-backed compatibility path.
+- Add per-case provenance for engine, profile, metrics, events, and metadata
+  sources, either in `analysis.json` or a small `provenance.json`. Use it for
+  raw-free UI/report coverage wording and explicit `none`, `unavailable`, or
+  partial-coverage limitations.
+- Introduce source-family interfaces only when they wrap real current paths:
+  `ProfileSource`, `QueryDiscoverySource`, `MetricsSource`, and `EventSource`,
+  with Cloudera Manager wrappers over existing helpers. Avoid one broad
+  provider object, fake implementations, or placeholder packages.
 
 ### 4. Query Optimizer Usefulness
 
@@ -506,14 +593,20 @@ These are not current support. Revisit them only when the listed signal is met.
 
 ### Source Providers
 
+- Cloudera Manager remains the reference implementation for source-provider
+  boundaries. Prefer thin wrappers around existing `query_doctor/cm` helpers
+  over rewriting working collectors for tidiness.
 - Cloudera Manager version adapter: revisit when real deployments expose newer
   response shapes or metric catalogs that current collectors cannot parse.
-- Direct Impala daemon profile provider: revisit when users need one explicit
-  query profile without Cloudera Manager and the provider can remain
-  read-only, bounded, and raw-free in browser output.
-- Prometheus-style metrics provider: revisit when cluster operators have
-  allowlisted queries, fixed windows, response-size limits, and a normalized
-  fact contract.
+- Direct Impala daemon profile provider: revisit after canonical context names,
+  provenance, and `ProfileSource` are in place, when users need one explicit
+  query profile without Cloudera Manager. The first version should provide only
+  known-query profile fetching and must remain read-only, bounded, redacted,
+  and raw-free in browser output.
+- Prometheus-style metrics provider: revisit after metrics facts consume
+  catalog `signal_id`s rather than Cloudera Manager query IDs, and only when
+  cluster operators have allowlisted queries, fixed windows, response-size
+  limits, and a normalized fact contract.
 - Prepared event/log provider: revisit when event or log sources can provide
   structured cluster events, health alerts, or summarized indexes without raw
   log exposure.

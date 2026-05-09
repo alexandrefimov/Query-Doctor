@@ -434,7 +434,14 @@ def direct_cte_lineage_failure_reasons(
             return (f"{prefix}_union_output_names_unavailable",)
         if any(len(projection_item_fragments(branch)) < len(output_names) for branch in branches):
             return (f"{prefix}_union_projection_mismatch",)
-        return (f"{prefix}_union_branch_mismatch",)
+        return union_lineage_failure_reasons(
+            cte,
+            branches,
+            output_names,
+            names,
+            lineage_maps,
+            prefix=prefix,
+        )
     fragments = projection_item_fragments(cte.body)
     if not fragments:
         return (f"{prefix}_projection_unavailable",)
@@ -450,6 +457,57 @@ def direct_cte_lineage_failure_reasons(
     if reason_counts:
         return tuple(reason for reason, _count in reason_counts.most_common())
     return (f"{prefix}_non_simple_projection",)
+
+
+def union_lineage_failure_reasons(
+    cte: CteDefinition,
+    branches: tuple[str, ...],
+    output_names: tuple[str, ...],
+    names: tuple[str, ...],
+    lineage_maps: dict[str, dict[str, set[LineageRef]]],
+    *,
+    prefix: str,
+) -> tuple[str, ...]:
+    reason_counts: Counter[str] = Counter()
+    branch_lineages: list[dict[str, set[LineageRef]]] = []
+    for branch in branches:
+        fragments = projection_item_fragments(branch)
+        alias_map = cte_relation_alias_map(branch, names)
+        branch_lineage: dict[str, set[LineageRef]] = {}
+        for output_name, fragment in zip(output_names, fragments):
+            lineage = projection_lineage(fragment, cte.name, alias_map, lineage_maps)
+            if lineage:
+                branch_lineage[output_name] = lineage
+                continue
+            reason_counts[
+                projection_lineage_failure_reason(
+                    fragment,
+                    alias_map,
+                    lineage_maps,
+                    prefix=f"{prefix}_union_branch",
+                )
+            ] += 1
+        branch_lineages.append(branch_lineage)
+    if reason_counts:
+        return tuple(reason for reason, _count in reason_counts.most_common())
+
+    mismatched_outputs = 0
+    unavailable_outputs = 0
+    for output_name in output_names:
+        first = branch_lineages[0].get(output_name)
+        if first is None:
+            unavailable_outputs += 1
+            continue
+        remaining = [branch.get(output_name) for branch in branch_lineages[1:]]
+        if any(refs is None for refs in remaining):
+            unavailable_outputs += 1
+        elif any(refs != first for refs in remaining):
+            mismatched_outputs += 1
+    if mismatched_outputs:
+        return (f"{prefix}_union_branch_lineage_mismatch",)
+    if unavailable_outputs:
+        return (f"{prefix}_union_branch_lineage_unavailable",)
+    return (f"{prefix}_union_branch_mismatch",)
 
 
 def projection_lineage_failure_reason(
