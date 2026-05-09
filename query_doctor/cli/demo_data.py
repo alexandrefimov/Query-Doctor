@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from query_doctor.case_metadata import legacy_cm_metadata_path, query_metadata_path
 from query_doctor.cli.batch_recent import prepare_batch_output_dir
 from query_doctor.cli.optimize_query import (
     OptimizerRiskDecision,
@@ -172,17 +173,16 @@ def write_demo_case(out_dir: Path, spec: DemoCaseSpec) -> None:
         synthetic_profile_digest(spec),
         encoding="utf-8",
     )
-    write_json(
-        case_dir / "cm_metadata.json",
-        {
-            "query_id": spec.query_id,
-            "user": spec.user,
-            "duration_sec": spec.duration_sec,
-            "query_type": "QUERY",
-            "redacted": True,
-            "synthetic": True,
-        },
-    )
+    metadata = {
+        "query_id": spec.query_id,
+        "user": spec.user,
+        "duration_sec": spec.duration_sec,
+        "query_type": "QUERY",
+        "redacted": True,
+        "synthetic": True,
+    }
+    write_json(query_metadata_path(case_dir), metadata)
+    write_json(legacy_cm_metadata_path(case_dir), metadata)
     (case_dir / "collection_warnings.txt").write_text("synthetic demo case\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text(spec.facts_text, encoding="utf-8")
     (case_dir / "original_query.sql").write_text(spec.source_sql + "\n", encoding="utf-8")

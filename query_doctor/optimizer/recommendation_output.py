@@ -19,6 +19,7 @@ from query_doctor.optimizer.sql_shape import dedupe_preserve_order
 UNSAFE_RECOMMENDATION_TOKENS = (
     "```",
     "profile_digest.md",
+    "query_metadata.json",
     "cm_metadata.json",
     "analysis_facts.md",
     "diagnosis.md",

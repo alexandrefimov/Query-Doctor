@@ -20,6 +20,7 @@ def write_case(case_dir: Path) -> None:
     case_dir.mkdir(parents=True)
     for name in [
         "profile_digest.md",
+        "query_metadata.json",
         "cm_metadata.json",
         "collection_warnings.txt",
         "profile.txt",
@@ -98,6 +99,7 @@ def test_apply_removes_only_known_generated_files(tmp_path, capsys):
         assert not (case_dir / name).exists()
     for name in [
         "profile_digest.md",
+        "query_metadata.json",
         "cm_metadata.json",
         "collection_warnings.txt",
         "profile.txt",
@@ -145,6 +147,7 @@ def test_multiple_input_paths_work(tmp_path, capsys):
     assert not (case_one / "analysis_facts.md").exists()
     assert not (case_two / "report_user.md").exists()
     assert (case_one / "profile_digest.md").exists()
+    assert (case_two / "query_metadata.json").exists()
     assert (case_two / "cm_metadata.json").exists()
 
 

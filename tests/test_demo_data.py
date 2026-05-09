@@ -94,7 +94,7 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
     assert "demo-stats-0002" in stats_html
     assert str(out_dir) not in optimization_html
     assert str(out_dir) not in stats_html
-    for forbidden in ("profile_digest.md", "analysis_facts.md", "cm_metadata.json"):
+    for forbidden in ("profile_digest.md", "analysis_facts.md", "query_metadata.json", "cm_metadata.json"):
         assert forbidden not in optimization_html
         assert forbidden not in stats_html
 

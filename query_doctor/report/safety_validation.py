@@ -7,7 +7,8 @@ import re
 
 REPORT_INTERNAL_FINGERPRINT_RE = re.compile(
     r"^\s*>\s*(?:Source facts|Facts sha256|Model|Generated)\s*:|"
-    r"\b(?:qwen\d|llama\d|ollama|model requested|facts sha256|source facts filename)\b",
+    r"\b(?:query_metadata\.json|cm_metadata\.json|qwen\d|llama\d|ollama|"
+    r"model requested|facts sha256|source facts filename)\b",
     re.IGNORECASE,
 )
 CYRILLIC_TEXT_RE = re.compile(r"[\u0400-\u04FF]")

@@ -55,6 +55,7 @@ CONFIG_PATHS = (
 
 RAW_ARTIFACT_TOKENS = (
     "profile_digest.md",
+    "query_metadata.json",
     "cm_metadata.json",
     "collection_warnings.txt",
     "analysis_facts.md",

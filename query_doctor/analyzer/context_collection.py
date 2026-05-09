@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from query_doctor.case_metadata import existing_query_metadata_path
 from query_doctor.analyzer.context_files import (
     context_file_status,
     context_table_file_status,
@@ -243,15 +244,15 @@ UNSAFE_CLUSTER_TEXT_RE = re.compile(
 
 
 def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
-    metadata_path = case_dir / "cm_metadata.json"
-    if not metadata_path.exists():
+    metadata_path = existing_query_metadata_path(case_dir)
+    if metadata_path is None:
         return None
     try:
         raw = json.loads(metadata_path.read_text(encoding="utf-8", errors="replace"))
     except (json.JSONDecodeError, OSError):
-        return {"available": False, "error": "failed to parse CM metadata"}
+        return {"available": False, "error": "failed to parse query metadata"}
     if not isinstance(raw, dict):
-        return {"available": False, "error": "CM metadata is not an object"}
+        return {"available": False, "error": "query metadata is not an object"}
 
     context = {
         field: raw.get(field)

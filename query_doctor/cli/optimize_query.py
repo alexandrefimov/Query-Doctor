@@ -188,6 +188,7 @@ from query_doctor.report.llm_client import (
 UNSAFE_RECOMMENDATION_TOKENS = (
     "```",
     "profile_digest.md",
+    "query_metadata.json",
     "cm_metadata.json",
     "analysis_facts.md",
     "diagnosis.md",

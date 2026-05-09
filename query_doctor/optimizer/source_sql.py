@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from query_doctor.case_metadata import existing_query_metadata_path
 from query_doctor.optimizer.sql import OptimizerSqlError, tokenize_sql, validate_optimizer_sql_tokens
 
 
@@ -33,8 +34,8 @@ def read_source_sql(case_dir: Path) -> str:
         path = case_dir / name
         if path.is_file():
             return read_bounded_text(path, MAX_SOURCE_SQL_BYTES)
-    metadata_path = case_dir / "cm_metadata.json"
-    if metadata_path.is_file():
+    metadata_path = existing_query_metadata_path(case_dir)
+    if metadata_path is not None:
         try:
             payload = json.loads(metadata_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:

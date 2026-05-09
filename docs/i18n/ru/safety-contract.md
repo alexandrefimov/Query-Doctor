@@ -50,6 +50,7 @@ Generated/sensitive/local outputs must not be committed:
 - `*.partial`
 - local Cloudera Manager (CM) config
 - real CM profile material
+- `query_metadata.json`
 - `impala_context.md` / `impala_context.json`
 
 Никогда не коммитьте raw hostnames, IPs, users, emails, tokens, cookies,

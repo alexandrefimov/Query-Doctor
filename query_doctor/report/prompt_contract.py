@@ -309,7 +309,7 @@ Use only facts provided below.
 The PYTHON-OWNED REPORT CONTRACT DIGEST is the authoritative slot contract for the report.
 Use the longer deterministic facts only for wording details that support that contract.
 When the digest and longer deterministic facts appear to conflict, follow the digest for report slot selection.
-Do not parse or infer anything from profile_digest.md, profile.txt, raw profiles, SQL text, or external knowledge.
+Do not parse or infer anything from profile_digest.md, profile.txt, query_metadata.json, cm_metadata.json, raw profiles, SQL text, or external knowledge.
 Do not invent metrics, operator IDs, root causes, timings, row counts, memory values, table names, columns, or SQL rewrites.
 If something is not present in facts, say it is not supported by parsed evidence.
 Preserve the "What is NOT supported" conclusions.

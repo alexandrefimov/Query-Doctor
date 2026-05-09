@@ -8,6 +8,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 
+from query_doctor.case_metadata import legacy_cm_metadata_path, query_metadata_path
 from query_doctor.cm.client import (
     build_cm_query_filter_expression,
     effective_query_summary_page_size,
@@ -135,7 +136,8 @@ def write_collected_case(
 
     case_dir.mkdir(parents=True, exist_ok=False)
     (case_dir / "profile_digest.md").write_text(digest_text, encoding="utf-8")
-    (case_dir / "cm_metadata.json").write_text(metadata_text, encoding="utf-8")
+    query_metadata_path(case_dir).write_text(metadata_text, encoding="utf-8")
+    legacy_cm_metadata_path(case_dir).write_text(metadata_text, encoding="utf-8")
     if cm_timeseries_context is not None:
         timeseries_text = json.dumps(cm_timeseries_context, indent=2, sort_keys=True) + "\n"
         (case_dir / "cm_timeseries_context.json").write_text(timeseries_text, encoding="utf-8")
