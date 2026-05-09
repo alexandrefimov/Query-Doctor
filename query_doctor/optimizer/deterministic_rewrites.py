@@ -204,9 +204,32 @@ def cte_predicate_pushdown_draft_diagnostics(
             decision_reasons.extend(single_decisions)
     if any(clause_signature(cte.body, "WHERE") is not None for cte in parsed.ctes[1:]):
         reasons.append("downstream_cte_filter_present")
+        reasons.extend(downstream_cte_filter_reasons(parsed.ctes))
     if clause_signature(parsed.final_sql, "WHERE") is None:
         reasons.append("final_filter_absent")
     return tuple(dedupe_preserve_order(reasons)), tuple(decision_reasons)
+
+
+def downstream_cte_filter_reasons(ctes: tuple[CteDefinition, ...]) -> tuple[str, ...]:
+    names = tuple(cte.name for cte in ctes)
+    reasons: list[str] = []
+    for cte in ctes[1:]:
+        if clause_signature(cte.body, "WHERE") is None:
+            continue
+        refs = referenced_cte_names(cte.body, names)
+        if not refs:
+            reasons.append("downstream_cte_filter_without_cte_reference")
+            continue
+        alias_map = cte_relation_alias_map(cte.body, names)
+        if not alias_map:
+            reasons.append("downstream_cte_filter_without_cte_relation_alias")
+        if top_level_join_signature(cte.body):
+            reasons.append("downstream_cte_filter_join_boundary")
+        if main_select_has_distinct(cte.body):
+            reasons.append("downstream_cte_filter_distinct_boundary")
+        if any(top_level_keyword_count(cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+            reasons.append("downstream_cte_filter_unsupported_clause_boundary")
+    return tuple(dedupe_preserve_order(reasons))
 
 
 def single_cte_pushdown_draft_diagnostics(
