@@ -5,16 +5,8 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from query_doctor.web.job_progress import WEB_STAGES
 from query_doctor.web.ui.recent_scan_progress import batch_progress_percent, render_batch_progress_panel
-
-
-WEB_STAGES = (
-    (0, "Checking Query ID", 4),
-    (1, "Collecting or reusing profile", 24),
-    (2, "Analyzing profile", 62),
-    (3, "Preparing deterministic result", 86),
-    (4, "Done", 100),
-)
 
 
 def render_pending_progress_panel() -> str:

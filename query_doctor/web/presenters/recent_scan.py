@@ -32,6 +32,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanTechnicalDetailsView,
     ReportActionView,
 )
+from query_doctor.web.job_progress import JobProgressView
 from query_doctor.web.presenters.optimizer_facts import (
     optimizer_rewrite_support_fact_summary,
     optimizer_rewrite_support_guardrail_summary,
@@ -407,6 +408,9 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
     running = bool(state.get("running"))
     trusted = bool(state.get("trusted"))
     partial_untrusted = bool(state.get("partial") and not trusted)
+    progress_view = state.get("progress_view")
+    if not isinstance(progress_view, JobProgressView):
+        progress_view = None
     return ReportActionView(
         status=status,
         running=running,
@@ -425,6 +429,7 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
         button_disabled=running,
         show_open_link=trusted,
         job_kind=safe_display_text(state.get("job_kind") or ""),
+        progress_view=progress_view,
     )
 
 

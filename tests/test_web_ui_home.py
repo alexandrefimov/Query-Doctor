@@ -37,6 +37,22 @@ def test_detail_job_polling_preserves_current_anchor():
     assert "window.location.reload()" in script
 
 
+def test_detail_job_polling_applies_progress_view():
+    from query_doctor.web.ui import layout
+
+    script = layout.render_client_script()
+
+    assert "function escapeHtml(value)" in script
+    assert 'replace(/[&<>"\']/g' in script
+    assert "function safeProgressStepState(value)" in script
+    assert "function applyProgressView(progressElement, progressView, fallbackStage, fallbackProgress)" in script
+    assert "progressElement.querySelector('.progress-stage')" in script
+    assert "progressElement.querySelector('.progress-fill')" in script
+    assert "progressElement.querySelector('.batch-progress-steps')" in script
+    assert "batch-progress-step--' + stepState" in script
+    assert "applyProgressView(progressElement, data.progress_view, data.stage, data.progress)" in script
+
+
 def test_package_progress_renderers_are_available():
     from query_doctor.web.ui import progress
 

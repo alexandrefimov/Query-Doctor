@@ -5,16 +5,15 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from query_doctor.web.job_progress import (
+    REPORT_PROGRESS_STEPS,
+    JobProgressView,
+    build_progress_view,
+    indexed_progress_percent,
+    progress_step_index,
+)
 from query_doctor.web.presenters.recent_scan import ReportActionView, present_report_action
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
-
-
-REPORT_PROGRESS_STEPS = (
-    ("Checking case", {"Checking selected batch case"}),
-    ("Generating report", {"Generating validated report"}),
-    ("Validating result", {"Validating result"}),
-    ("Done", {"Done"}),
-)
 
 
 def render_batch_case_report_action(
@@ -97,8 +96,9 @@ def render_llm_report_status(view: ReportActionView, trusted_report_html: SafeHt
 def render_llm_report_progress(view: ReportActionView) -> str:
     current_stage = view.stage_label or "Generating report"
     progress_value = int(view.progress)
-    current_index = report_progress_step_index(current_stage, progress_value)
-    progress = report_progress_percent(current_index)
+    progress_view = view.progress_view if view.job_kind in {"batch_report", "query_report"} else None
+    progress_view = progress_view or build_progress_view(REPORT_PROGRESS_STEPS, current_stage, progress_value, default_index=1)
+    current_stage = progress_view.current_stage
     status_attrs = ""
     if view.job_id:
         escaped_job_id = html.escape(view.job_id, quote=True)
@@ -113,68 +113,38 @@ def render_llm_report_progress(view: ReportActionView) -> str:
         )
     else:
         cancel_html = ""
-    steps = []
-    for index, (label, _stage_labels) in enumerate(REPORT_PROGRESS_STEPS):
-        if index < current_index:
-            state = "done"
-            icon = "✓"
-            detail = "Done"
-        elif index == current_index:
-            state = "running"
-            icon = "…"
-            detail = current_stage
-        else:
-            state = "neutral"
-            icon = "−"
-            detail = "Pending"
-        steps.append(
-            (
-                state,
-                "<div class=\"batch-progress-step batch-progress-step--{state}\">"
-                "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
-                    state=html.escape(state),
-                    icon=html.escape(icon),
-                    label=html.escape(label),
-                    detail=html.escape(detail),
-                ),
-            )
-        )
-    step_html = "".join(step_html for _state, step_html in steps)
+    step_html = render_progress_steps(progress_view)
     return (
         f"<div class=\"report-progress\" aria-label=\"LLM report progress\"{status_attrs}>"
         f"<div class=\"progress-head\"><span class=\"progress-title\">Generating LLM report</span>"
         f"<span class=\"progress-stage\">{html.escape(current_stage)}</span>{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
-        f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
+        f"<span class=\"progress-fill\" style=\"width:{progress_view.percent}%\"></span>"
         "</div>"
         f"<div class=\"batch-progress\"><div class=\"batch-progress-steps\">{step_html}</div></div>"
         "</div>"
     )
 
 
+def render_progress_steps(progress_view: JobProgressView) -> str:
+    return "".join(
+        "<div class=\"batch-progress-step batch-progress-step--{state}\">"
+        "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
+            state=html.escape(step.state),
+            icon=html.escape(step.icon),
+            label=html.escape(step.label),
+            detail=html.escape(step.detail),
+        )
+        for step in progress_view.steps
+    )
+
+
 def report_progress_step_index(stage_label: str, progress: int | None = None) -> int:
-    normalized = stage_label.strip().lower()
-    for index, (_label, stage_labels) in enumerate(REPORT_PROGRESS_STEPS):
-        if normalized in {label.lower() for label in stage_labels}:
-            return index
-    if progress is None or progress <= 0:
-        return 1
-    bounded_progress = max(0, min(100, int(progress)))
-    if bounded_progress >= 100:
-        return len(REPORT_PROGRESS_STEPS) - 1
-    if bounded_progress <= 0:
-        return 1
-    return max(1, min(len(REPORT_PROGRESS_STEPS) - 2, (bounded_progress - 1) // (100 // len(REPORT_PROGRESS_STEPS))))
+    return progress_step_index(REPORT_PROGRESS_STEPS, stage_label, progress, default_index=1)
 
 
 def report_progress_percent(step_index: int) -> int:
-    step_count = len(REPORT_PROGRESS_STEPS)
-    bounded_index = max(0, min(step_count - 1, step_index))
-    if step_count <= 1:
-        return 0
-    if bounded_index >= step_count - 1:
-        return 100
-    return int(round((bounded_index / step_count) * 100))
+    return indexed_progress_percent(REPORT_PROGRESS_STEPS, step_index)
 
 
 def render_llm_report_failure(view: ReportActionView) -> str:

@@ -5,6 +5,15 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from query_doctor.web.job_progress import (
+    JobProgressView,
+    LLM_ACTIONS_PROGRESS_STEPS,
+    OPTIMIZED_QUERY_PROGRESS_STEPS,
+    build_indexed_progress_view,
+    build_progress_view,
+    indexed_progress_percent,
+    progress_step_index,
+)
 from query_doctor.web.presenters.recent_scan import (
     ReportActionView,
     numeric_value,
@@ -12,27 +21,15 @@ from query_doctor.web.presenters.recent_scan import (
 )
 from query_doctor.web.ui.html_helpers import SafeHtml
 from query_doctor.web.ui.report_actions import (
-    REPORT_PROGRESS_STEPS,
     render_batch_case_report_action,
     render_llm_report_failure,
     render_llm_report_progress,
     render_llm_report_status,
+    render_progress_steps,
     report_progress_percent,
     report_progress_step_index,
 )
-OPTIMIZED_QUERY_PROGRESS_STEPS = (
-    ("Checking source SQL", {"Checking source SQL"}),
-    ("Generating draft", {"Generating optimizer draft"}),
-    ("Validating draft", {"Validating optimizer draft"}),
-    ("Done", {"Done"}),
-)
 LLM_ACTIONS_JOB_KINDS = {"batch_llm_actions", "query_llm_actions"}
-LLM_ACTIONS_PROGRESS_STEPS = (
-    ("Checking case", {"Checking selected case", "Checking selected batch case"}),
-    ("Generating report", {"Generating validated report"}),
-    ("Generating optimizer draft", {"Generating optimizer draft"}),
-    ("Done", {"Done"}),
-)
 
 OPTIMIZER_OUTPUT_LABELS = {
     "sql_draft": "Validated SQL draft",
@@ -202,8 +199,10 @@ def combined_llm_actions_job_status(report_view: ReportActionView, optimizer_sta
 def render_llm_actions_job_progress(report_view: ReportActionView, optimizer_state: dict[str, Any]) -> str:
     current_stage = report_view.stage_label or str(optimizer_state.get("stage_label") or "Generating validated report")
     progress_value = report_view.progress or numeric_value(optimizer_state.get("progress"))
-    current_index = llm_actions_progress_step_index(current_stage, progress_value)
-    progress = llm_actions_progress_percent(current_index)
+    progress_view = report_view.progress_view or progress_view_from_state(optimizer_state)
+    if progress_view is None:
+        progress_view = build_progress_view(LLM_ACTIONS_PROGRESS_STEPS, current_stage, progress_value, default_index=0)
+    current_stage = progress_view.current_stage
     escaped_job_id = html.escape(report_view.job_id, quote=True)
     status_attrs = (
         f" data-report-job-status-url=\"/jobs/{escaped_job_id}/status\""
@@ -214,13 +213,13 @@ def render_llm_actions_job_progress(report_view: ReportActionView, optimizer_sta
         "<button class=\"button danger\" type=\"submit\">Stop LLM actions</button>"
         "</form>"
     )
-    step_html = render_llm_actions_steps(current_stage, current_index)
+    step_html = render_progress_steps(progress_view)
     return (
         f"<div class=\"report-progress\" aria-label=\"LLM actions progress\"{status_attrs}>"
         "<div class=\"progress-head\"><span class=\"progress-title\">Generating LLM report + optimizer</span>"
         f"<span class=\"progress-stage\">{html.escape(current_stage)}</span>{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
-        f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
+        f"<span class=\"progress-fill\" style=\"width:{progress_view.percent}%\"></span>"
         "</div>"
         f"<div class=\"batch-progress\"><div class=\"batch-progress-steps\">{step_html}</div></div>"
         "</div>"
@@ -249,54 +248,15 @@ def render_llm_actions_job_stopped(report_view: ReportActionView, optimizer_stat
 
 
 def render_llm_actions_steps(current_stage: str, current_index: int) -> str:
-    steps = []
-    for index, (label, _stage_labels) in enumerate(LLM_ACTIONS_PROGRESS_STEPS):
-        if index < current_index:
-            state_name = "done"
-            icon = "✓"
-            detail = "Done"
-        elif index == current_index:
-            state_name = "running"
-            icon = "…"
-            detail = current_stage
-        else:
-            state_name = "neutral"
-            icon = "−"
-            detail = "Pending"
-        steps.append(
-            "<div class=\"batch-progress-step batch-progress-step--{state}\">"
-            "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
-                state=html.escape(state_name),
-                icon=html.escape(icon),
-                label=html.escape(label),
-                detail=html.escape(detail),
-            )
-        )
-    return "".join(steps)
+    return render_progress_steps(build_indexed_progress_view(LLM_ACTIONS_PROGRESS_STEPS, current_stage, current_index))
 
 
 def llm_actions_progress_step_index(stage_label: str, progress: int) -> int:
-    normalized = stage_label.strip().lower()
-    for index, (_label, stage_labels) in enumerate(LLM_ACTIONS_PROGRESS_STEPS):
-        if normalized in {label.lower() for label in stage_labels}:
-            return index
-    bounded_progress = max(0, min(100, int(progress)))
-    if bounded_progress >= 100:
-        return len(LLM_ACTIONS_PROGRESS_STEPS) - 1
-    if bounded_progress <= 0:
-        return 0
-    step_bucket = (bounded_progress - 1) // (100 // len(LLM_ACTIONS_PROGRESS_STEPS))
-    return max(0, min(len(LLM_ACTIONS_PROGRESS_STEPS) - 2, step_bucket))
+    return progress_step_index(LLM_ACTIONS_PROGRESS_STEPS, stage_label, progress, default_index=0)
 
 
 def llm_actions_progress_percent(step_index: int) -> int:
-    step_count = len(LLM_ACTIONS_PROGRESS_STEPS)
-    bounded_index = max(0, min(step_count - 1, step_index))
-    if step_count <= 1:
-        return 0
-    if bounded_index >= step_count - 1:
-        return 100
-    return int(round((bounded_index / step_count) * 100))
+    return indexed_progress_percent(LLM_ACTIONS_PROGRESS_STEPS, step_index)
 
 
 def render_optimizer_action_button(
@@ -570,8 +530,10 @@ def render_optimized_query_action(
 def render_optimized_query_progress(state: dict[str, Any]) -> str:
     current_stage = str(state.get("stage_label") or "Generating optimizer draft")
     progress_value = numeric_value(state.get("progress"))
-    current_index = optimized_query_progress_step_index(current_stage, progress_value)
-    progress = optimized_query_progress_percent(current_index)
+    progress_view = progress_view_from_state(state)
+    if progress_view is None:
+        progress_view = build_progress_view(OPTIMIZED_QUERY_PROGRESS_STEPS, current_stage, progress_value, default_index=0)
+    current_stage = progress_view.current_stage
     status_attrs = ""
     job_id = str(state.get("job_id") or "")
     if job_id:
@@ -587,37 +549,15 @@ def render_optimized_query_progress(state: dict[str, Any]) -> str:
         )
     else:
         cancel_html = ""
-    steps = []
-    for index, (label, _stage_labels) in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS):
-        if index < current_index:
-            state_name = "done"
-            icon = "✓"
-            detail = "Done"
-        elif index == current_index:
-            state_name = "running"
-            icon = "…"
-            detail = current_stage
-        else:
-            state_name = "neutral"
-            icon = "−"
-            detail = "Pending"
-        steps.append(
-            "<div class=\"batch-progress-step batch-progress-step--{state}\">"
-            "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
-                state=html.escape(state_name),
-                icon=html.escape(icon),
-                label=html.escape(label),
-                detail=html.escape(detail),
-            )
-        )
+    step_html = render_progress_steps(progress_view)
     return (
         f"<div class=\"report-progress\" aria-label=\"Optimized query progress\"{status_attrs}>"
         "<div class=\"progress-head\"><span class=\"progress-title\">Generating Query LLM optimizer draft</span>"
         f"<span class=\"progress-stage\">{html.escape(current_stage)}</span>{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
-        f"<span class=\"progress-fill\" style=\"width:{progress}%\"></span>"
+        f"<span class=\"progress-fill\" style=\"width:{progress_view.percent}%\"></span>"
         "</div>"
-        f"<div class=\"batch-progress\"><div class=\"batch-progress-steps\">{''.join(steps)}</div></div>"
+        f"<div class=\"batch-progress\"><div class=\"batch-progress-steps\">{step_html}</div></div>"
         "</div>"
     )
 
@@ -743,26 +683,16 @@ def render_safe_markdown_paragraphs(text: str) -> str:
 
 
 def optimized_query_progress_step_index(stage_label: str, progress: int) -> int:
-    normalized = stage_label.strip().lower()
-    for index, (_label, stage_labels) in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS):
-        if normalized in {label.lower() for label in stage_labels}:
-            return index
-    bounded_progress = max(0, min(100, int(progress)))
-    if bounded_progress <= 0:
-        return 0
-    if bounded_progress >= 100:
-        return len(OPTIMIZED_QUERY_PROGRESS_STEPS) - 1
-    return max(0, min(len(OPTIMIZED_QUERY_PROGRESS_STEPS) - 2, (bounded_progress - 1) // (100 // len(OPTIMIZED_QUERY_PROGRESS_STEPS))))
+    return progress_step_index(OPTIMIZED_QUERY_PROGRESS_STEPS, stage_label, progress, default_index=0)
 
 
 def optimized_query_progress_percent(step_index: int) -> int:
-    step_count = len(OPTIMIZED_QUERY_PROGRESS_STEPS)
-    bounded_index = max(0, min(step_count - 1, step_index))
-    if step_count <= 1:
-        return 0
-    if bounded_index >= step_count - 1:
-        return 100
-    return int(round((bounded_index / step_count) * 100))
+    return indexed_progress_percent(OPTIMIZED_QUERY_PROGRESS_STEPS, step_index)
+
+
+def progress_view_from_state(state: dict[str, Any]) -> JobProgressView | None:
+    progress_view = state.get("progress_view")
+    return progress_view if isinstance(progress_view, JobProgressView) else None
 
 
 def render_optimized_query_failure(state: dict[str, Any]) -> str:

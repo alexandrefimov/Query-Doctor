@@ -233,6 +233,51 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     return target;
   }
+  function escapeHtml(value) {
+    var htmlEscapes = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+      return htmlEscapes[char];
+    });
+  }
+  function safeProgressStepState(value) {
+    var state = String(value || 'neutral');
+    return ['done', 'running', 'neutral', 'failed', 'skipped'].indexOf(state) >= 0 ? state : 'neutral';
+  }
+  function renderProgressViewSteps(progressView) {
+    if (!progressView || !Array.isArray(progressView.steps)) {
+      return '';
+    }
+    return progressView.steps.map(function (step) {
+      var stepState = safeProgressStepState(step && step.state);
+      return '<div class="batch-progress-step batch-progress-step--' + stepState + '">'
+        + '<strong>' + escapeHtml(step && step.icon) + ' ' + escapeHtml(step && step.label) + '</strong>'
+        + '<span>' + escapeHtml(step && step.detail) + '</span></div>';
+    }).join('');
+  }
+  function clampedProgressPercent(value) {
+    return String(Math.max(0, Math.min(100, Number(value) || 0))) + '%';
+  }
+  function applyProgressView(progressElement, progressView, fallbackStage, fallbackProgress) {
+    if (!progressElement) {
+      return;
+    }
+    var stageElement = progressElement.querySelector('.progress-stage');
+    var fillElement = progressElement.querySelector('.progress-fill');
+    var stepsElement = progressElement.querySelector('.batch-progress-steps');
+    var nextStage = progressView && progressView.current_stage ? progressView.current_stage : fallbackStage;
+    var nextProgress = progressView && typeof progressView.percent === 'number'
+      ? progressView.percent
+      : fallbackProgress;
+    if (stageElement && nextStage != null) {
+      stageElement.textContent = String(nextStage);
+    }
+    if (fillElement) {
+      fillElement.style.width = clampedProgressPercent(nextProgress);
+    }
+    if (stepsElement && progressView && Array.isArray(progressView.steps)) {
+      stepsElement.innerHTML = renderProgressViewSteps(progressView);
+    }
+  }
   function pollDetailJobProgress(progressElement) {
     var statusUrl = detailJobStatusUrl(progressElement);
     if (!statusUrl) {
@@ -241,6 +286,7 @@ document.addEventListener('DOMContentLoaded', function () {
     fetch(statusUrl, {cache: 'no-store'})
       .then(function (response) { return response.json(); })
       .then(function (data) {
+        applyProgressView(progressElement, data.progress_view, data.stage, data.progress);
         if (data.status === 'ok' || data.status === 'failed' || data.status === 'cancelled') {
           var redirectTarget = detailJobRedirectTarget(progressElement);
           if (new URL(redirectTarget, window.location.href).href === window.location.href) {
@@ -272,8 +318,10 @@ document.addEventListener('DOMContentLoaded', function () {
     fetch(jobPanel.getAttribute('data-job-status-url'), {cache: 'no-store'})
       .then(function (response) { return response.json(); })
       .then(function (data) {
-        if (stage) { stage.textContent = data.stage || ''; }
-        if (fill) { fill.style.width = String(data.progress || 0) + '%'; }
+        var progressView = data.progress_view || {};
+        var nextProgress = typeof progressView.percent === 'number' ? progressView.percent : data.progress;
+        if (stage) { stage.textContent = progressView.current_stage || data.stage || ''; }
+        if (fill) { fill.style.width = clampedProgressPercent(nextProgress); }
         var runningProgressSlot = document.getElementById('batch-progress-slot');
         if (runningProgressSlot) { runningProgressSlot.innerHTML = data.progress_html || ''; }
         if (data.status === 'ok') {

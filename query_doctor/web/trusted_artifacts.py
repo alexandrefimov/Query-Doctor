@@ -29,6 +29,7 @@ from query_doctor.web.command_builders import (
     WEB_REPORT_VALIDATION_MODE,
 )
 from query_doctor.web.models import WebJobSnapshot, WebSettings
+from query_doctor.web.job_progress import JobProgressView, progress_view_for_job
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 
 
@@ -498,6 +499,7 @@ def load_batch_case_report_state(
     elif job is not None and job.status == "failed" and job.kind == "batch_llm_actions" and not trusted:
         status = "failed"
     report_job = running_job if running_job is not None else job
+    progress_view = progress_view_from_snapshot(report_job)
     return {
         "status": status,
         "running": running_job is not None,
@@ -508,6 +510,7 @@ def load_batch_case_report_state(
         "job_kind": report_job.kind if report_job is not None else "",
         "stage_label": report_job.stage_label if report_job is not None else "",
         "progress": report_job.progress if report_job is not None else 0,
+        "progress_view": progress_view,
     }
 
 
@@ -537,6 +540,7 @@ def load_specific_query_report_state(
     elif job is not None and job.status == "failed" and job.kind == "query_llm_actions" and not trusted:
         status = "failed"
     report_job = running_job if running_job is not None else job
+    progress_view = progress_view_from_snapshot(report_job)
     return {
         "status": status,
         "running": running_job is not None,
@@ -547,6 +551,7 @@ def load_specific_query_report_state(
         "job_kind": report_job.kind if report_job is not None else "",
         "stage_label": report_job.stage_label if report_job is not None else "",
         "progress": report_job.progress if report_job is not None else 0,
+        "progress_view": progress_view,
     }
 
 
@@ -599,6 +604,7 @@ def load_optimized_query_state(
     ):
         status = "failed"
     state_job = running_job if running_job is not None else job
+    progress_view = progress_view_from_snapshot(state_job)
     return {
         "status": status,
         "running": running_job is not None,
@@ -615,7 +621,14 @@ def load_optimized_query_state(
         "job_kind": state_job.kind if state_job is not None else "",
         "stage_label": state_job.stage_label if state_job is not None else "",
         "progress": state_job.progress if state_job is not None else 0,
+        "progress_view": progress_view,
     }
+
+
+def progress_view_from_snapshot(job: WebJobSnapshot | None) -> JobProgressView | None:
+    if job is None:
+        return None
+    return progress_view_for_job(job.kind, job.stage_label, job.progress)
 
 
 def decorate_cases_with_optimizer_artifact_status(summary: dict[str, Any]) -> dict[str, Any]:

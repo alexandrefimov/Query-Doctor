@@ -11,6 +11,15 @@ from typing import Callable
 
 from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.web.display_safety import sanitize_browser_error_text
+from query_doctor.web.job_progress import (
+    BATCH_REPORT_STAGES,
+    BATCH_STAGES,
+    LLM_ACTIONS_STAGES,
+    OPTIMIZED_QUERY_STAGES,
+    WEB_STAGES,
+    progress_view_for_job,
+    progress_view_payload,
+)
 from query_doctor.web.models import (
     WebJob,
     WebJobSnapshot,
@@ -18,36 +27,11 @@ from query_doctor.web.models import (
     WebResult,
     batch_progress_path,
 )
-from query_doctor.web.ui.progress import WEB_STAGES
 from query_doctor.web.ui.recent_scan_progress import batch_progress_percent, render_batch_progress_panel
 from query_doctor.web.ui.report import render_result
 from query_doctor.web.ui.specific_query import render_specific_query_result, render_specific_query_results
 
 
-BATCH_STAGES = (
-    (0, "Checking recent scan parameters", 4),
-    (1, "Running recent scan", 24),
-    (2, "Reading batch_summary.json", 86),
-    (3, "Done", 100),
-)
-BATCH_REPORT_STAGES = (
-    (0, "Checking selected batch case", 8),
-    (1, "Generating validated report", 62),
-    (2, "Validating result", 88),
-    (3, "Done", 100),
-)
-OPTIMIZED_QUERY_STAGES = (
-    (0, "Checking source SQL", 8),
-    (1, "Generating optimizer draft", 45),
-    (2, "Validating optimizer draft", 88),
-    (3, "Done", 100),
-)
-LLM_ACTIONS_STAGES = (
-    (0, "Checking selected case", 6),
-    (1, "Generating validated report", 38),
-    (2, "Generating optimizer draft", 72),
-    (3, "Done", 100),
-)
 TERMINAL_JOB_STATUSES = {"ok", "failed", "cancelled"}
 DEFAULT_TERMINAL_JOB_TTL_SEC = 6 * 60 * 60
 DEFAULT_MAX_TERMINAL_JOBS = 100
@@ -81,16 +65,21 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             "status": "failed",
             "stage": "Not found",
             "progress": 100,
+            "progress_view": None,
             "error": "Analysis job was not found.",
             "result_html": "",
         }
     else:
+        progress = (
+            batch_progress_percent(job.batch_progress_path, job.status)
+            if job.kind in {"batch", "running"}
+            else job.progress
+        )
         payload = {
             "status": job.status,
             "stage": job.stage_label,
-            "progress": batch_progress_percent(job.batch_progress_path, job.status)
-            if job.kind in {"batch", "running"}
-            else job.progress,
+            "progress": progress,
+            "progress_view": progress_view_payload(progress_view_for_job(job.kind, job.stage_label, progress)),
             "kind": job.kind,
             "error": job.error,
             "result_html": job.result_html,

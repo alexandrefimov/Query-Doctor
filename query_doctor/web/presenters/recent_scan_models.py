@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from query_doctor.web.job_progress import JobProgressView
+
 
 @dataclass(frozen=True)
 class RecentScanPrimaryBottleneckView:
@@ -89,6 +91,7 @@ class ReportActionView:
     button_disabled: bool
     show_open_link: bool
     job_kind: str
+    progress_view: JobProgressView | None = None
 
 
 @dataclass(frozen=True)
