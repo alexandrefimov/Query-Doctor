@@ -19,6 +19,7 @@ from query_doctor.impala.profile_source import (
     DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     fetch_impala_profile_text,
 )
+from query_doctor.impala.daemon_identity import fetch_impala_daemon_identity, identity_metadata
 from query_doctor.safety.redaction import sanitize_adapter_error_message
 
 
@@ -103,6 +104,18 @@ def main(
             if profile_statement:
                 summary = replace(summary, statement=profile_statement)
                 profile_metadata_warnings.append("Impala profile text statement metadata collected")
+        identity_kwargs = {
+            "hosts": args.host,
+            "port": args.port,
+            "scheme": args.scheme,
+            "timeout_sec": args.timeout_sec,
+        }
+        if opener is not None:
+            identity_kwargs["opener"] = opener
+        try:
+            identity = fetch_impala_daemon_identity(**identity_kwargs)
+        except CMClientError:
+            identity = None
         warnings = [
             "collected by Query Doctor direct Impala profile collector",
             "source query id preserved",
@@ -112,6 +125,8 @@ def main(
             "analyzer/report were not run automatically",
         ]
         warnings.extend(profile_metadata_warnings)
+        if identity is None:
+            warnings.append("Impala daemon identity unavailable")
         case_dir = write_collected_case(
             args.out,
             summary,
@@ -119,6 +134,7 @@ def main(
             extra_metadata={
                 "profile_source": "impala_daemon",
                 "profile_source_label": "Impala daemon profile endpoint",
+                **identity_metadata(identity),
             },
             warnings=warnings,
             redact=True,

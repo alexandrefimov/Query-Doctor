@@ -69,6 +69,12 @@ PRESERVED_METADATA_KEYS = {
     "duration_sec",
     "status",
     "query_type",
+    "impala_daemon_product",
+    "impala_daemon_version",
+    "impala_daemon_version_label",
+    "impala_daemon_build_type",
+    "impala_daemon_server_mode",
+    "impala_daemon_local_catalog_mode",
 }
 USER_METADATA_KEYS = {"user", "username", "effective_user", "connected_user", "delegated_user"}
 POOL_METADATA_KEYS = {"pool", "admission_pool", "queue"}

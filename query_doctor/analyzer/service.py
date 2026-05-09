@@ -31,6 +31,7 @@ from query_doctor.analyzer.profile_signals import (
     find_matching_lines,
     find_nonzero_spill_metric_lines,
 )
+from query_doctor.analyzer.profile_format import build_profile_format_facts
 from query_doctor.analyzer.profile_text import normalize_profile_text
 from query_doctor.analyzer.runtime_counters import (
     build_runtime_counter_context,
@@ -69,6 +70,7 @@ def analyze(
 ) -> dict[str, Any]:
     text = normalize_profile_text(text)
     operators = parse_operators(text)
+    profile_format = build_profile_format_facts(text, cm_query_context)
     backend_tail = build_backend_tail_analysis(parse_backend_host_facts(text))
     runtime_counter_context = build_runtime_counter_context(text)
     totals = {
@@ -471,6 +473,7 @@ def analyze(
         },
         "totals": totals,
         "query_wall_clock": query_wall_clock,
+        "profile_format": profile_format,
         "backend_tail": backend_tail,
         "runtime_counter_context": runtime_counter_context,
         "operators": [op_to_json(op) for op in operators],

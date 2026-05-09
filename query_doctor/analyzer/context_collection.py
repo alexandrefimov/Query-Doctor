@@ -237,6 +237,12 @@ CM_QUERY_CONTEXT_FIELDS = (
     "bytes_sent",
     "memory_aggregate_peak",
     "memory_per_node_peak",
+    "impala_daemon_product",
+    "impala_daemon_version",
+    "impala_daemon_version_label",
+    "impala_daemon_build_type",
+    "impala_daemon_server_mode",
+    "impala_daemon_local_catalog_mode",
 )
 UNSAFE_CLUSTER_TEXT_RE = re.compile(
     r"(/[^ \n\t]+|[A-Za-z]:\\|https?://|RAW_[A-Z0-9_]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)"

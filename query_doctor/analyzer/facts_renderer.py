@@ -93,6 +93,50 @@ def render_primary_bottleneck(analysis: dict[str, Any]) -> list[str]:
     ]
 
 
+def render_profile_format(analysis: dict[str, Any]) -> list[str]:
+    profile = analysis.get("profile_format")
+    if not isinstance(profile, dict):
+        return []
+    features = profile.get("features") if isinstance(profile.get("features"), dict) else {}
+    lines = ["## Profile Format", ""]
+    lines.append(f"- family: {profile.get('profile_family') or 'unknown'}")
+    lines.append(f"- source: {profile.get('source_label') or profile.get('profile_source') or 'unknown'}")
+    lines.append(f"- distribution: {profile.get('impala_distribution') or 'unknown'}")
+    lines.append(f"- version: {profile.get('impala_version') or 'unknown'}")
+    if profile.get("impala_build_type"):
+        lines.append(f"- build_type: {profile['impala_build_type']}")
+    if profile.get("daemon_server_mode"):
+        lines.append(f"- daemon_server_mode: {profile['daemon_server_mode']}")
+    if profile.get("daemon_local_catalog_mode") is not None:
+        value = "yes" if profile.get("daemon_local_catalog_mode") else "no"
+        lines.append(f"- daemon_local_catalog_mode: {value}")
+    lines.append(f"- layout: {profile.get('layout') or 'unknown'}")
+    lines.append(f"- compatibility: {profile.get('compatibility') or 'unknown'}")
+    lines.append(
+        "- sections: "
+        f"summary={'yes' if features.get('summary') else 'no'}, "
+        f"plan={'yes' if features.get('plan') else 'no'}, "
+        f"exec_summary={'yes' if features.get('exec_summary_table') else 'no'}, "
+        f"query_timeline={'yes' if features.get('query_timeline') else 'no'}"
+    )
+    lines.append(
+        "- raw_profile_features: "
+        f"runtime_nodes={features.get('runtime_node_count', 0)}, "
+        f"fragments={features.get('fragment_section_count', 0)}, "
+        f"instances={features.get('fragment_instance_count', 0)}, "
+        f"lifecycle_headers={'yes' if features.get('fragment_instance_lifecycle') else 'no'}"
+    )
+    lines.append(
+        "- resource_sections: "
+        f"admission={'yes' if features.get('admission') else 'no'}, "
+        f"backend_startup_latencies={'yes' if features.get('backend_startup_latencies') else 'no'}, "
+        f"per_node_peak_memory={'yes' if features.get('per_node_peak_memory') else 'no'}, "
+        f"per_host_fragment_instances={'yes' if features.get('per_host_fragment_instances') else 'no'}"
+    )
+    lines.append("")
+    return lines
+
+
 def render_action_cards(analysis: dict[str, Any]) -> list[str]:
     lines = ["## Action Cards", ""]
     cards = analysis.get("action_cards") or []
@@ -322,6 +366,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
 
     lines += render_summary(analysis)
     lines += render_primary_bottleneck(analysis)
+    lines += render_profile_format(analysis)
     lines += render_query_wall_clock(analysis)
     lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)
