@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from query_doctor.recent.batch_config import (
     BAD_METADATA_REFRESH_LIMIT,
-    QUERY_OPTIMIZATION_METADATA_REFRESH_LIMIT,
     SUSPICIOUS_METADATA_PROMOTION_SCORE_FLOOR,
     SUSPICIOUS_METADATA_REFRESH_LIMIT,
 )
@@ -69,12 +68,11 @@ def select_metadata_refresh_candidates(ranked_cases: list[CaseResult], limit: in
     selected_ids.update(id(case) for case in bad)
     remaining -= len(bad)
 
-    query_optimization_limit = min(QUERY_OPTIMIZATION_METADATA_REFRESH_LIMIT, remaining)
     query_optimization = [
         case
         for case in sorted(ranked_cases, key=query_optimization_metadata_key)
         if id(case) not in selected_ids and metadata_query_optimization_candidate(case)
-    ][:query_optimization_limit]
+    ][:remaining]
     selected.extend(query_optimization)
     selected_ids.update(id(case) for case in query_optimization)
     remaining -= len(query_optimization)
