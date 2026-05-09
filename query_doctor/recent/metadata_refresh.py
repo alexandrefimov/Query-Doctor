@@ -10,7 +10,11 @@ from query_doctor.recent.batch_config import (
 )
 from query_doctor.recent.batch_models import BatchConfig, CaseResult
 from query_doctor.recent.batch_summary import batch_ranking_key, case_score_severity
-from query_doctor.recent.query_optimization_score import IMPACT_ORDER, TIER_ORDER
+from query_doctor.recent.query_optimization_score import (
+    IMPACT_ORDER,
+    TIER_ORDER,
+    optimizer_rewriteability_rank,
+)
 
 
 def rank_cases_for_metadata(cases: list[CaseResult]) -> list[CaseResult]:
@@ -95,10 +99,15 @@ def metadata_query_optimization_candidate(case: CaseResult) -> bool:
 def query_optimization_metadata_key(case: CaseResult) -> tuple[object, ...]:
     candidate = case.query_optimization_candidate
     if candidate is None:
-        return (0, 0, 0, 0.0, 999999, case.query_id)
+        return (0, 0, 0, 0, 0.0, 999999, case.query_id)
     triage_rank = case.triage_rank if case.triage_rank is not None else 999999
     return (
         -TIER_ORDER.get(candidate.tier, 0),
+        -optimizer_rewriteability_rank(
+            case.optimizer_rewrite_support.to_dict()
+            if case.optimizer_rewrite_support is not None
+            else None
+        ),
         -candidate.score,
         -IMPACT_ORDER.get(candidate.impact, 0),
         -(case.duration_sec or 0.0),
