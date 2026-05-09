@@ -81,6 +81,12 @@ class DeterministicDraftDiagnostics:
     cte_pushdown_conjunct_decision_reasons: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class PredicateColumnReferenceResult:
+    columns: set[str]
+    reason: str | None = None
+
+
 SAFE_SINGLE_CTE_PREDICATE_PUNCTUATION = {"(", ")", ",", ";"}
 UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS = ("HAVING", "LIMIT", "UNION", "EXCEPT", "INTERSECT")
 RELATION_ALIAS_BOUNDARIES = {
@@ -1453,18 +1459,18 @@ def per_conjunct_pushdown_plan(
                 )
             )
             continue
-        predicate_columns = predicate_column_references(dequalified, available_columns)
-        if predicate_columns is None:
+        predicate_reference = predicate_column_reference_result(dequalified, available_columns)
+        if predicate_reference.reason is not None:
             decisions.append(
                 PredicatePushdownConjunctDecision(
                     conjunct,
                     dequalified,
                     False,
-                    "unsupported_predicate",
+                    predicate_reference.reason,
                 )
             )
             continue
-        if grouped_columns and not predicate_columns <= grouped_columns:
+        if grouped_columns and not predicate_reference.columns <= grouped_columns:
             decisions.append(
                 PredicatePushdownConjunctDecision(
                     conjunct,
@@ -1526,12 +1532,22 @@ def predicate_is_copyable_to_single_cte(predicate: str, available_columns: set[s
 
 
 def predicate_column_references(predicate: str, available_columns: set[str]) -> set[str] | None:
+    result = predicate_column_reference_result(predicate, available_columns)
+    if result.reason is not None:
+        return None
+    return result.columns
+
+
+def predicate_column_reference_result(
+    predicate: str,
+    available_columns: set[str],
+) -> PredicateColumnReferenceResult:
     try:
         tokens = tokenize_sql(predicate)
     except OptimizerSqlError:
-        return None
+        return PredicateColumnReferenceResult(set(), "unsupported_predicate_parse_failed")
     if "." in tokens:
-        return None
+        return PredicateColumnReferenceResult(set(), "unsupported_predicate_qualified_reference")
     column_references: set[str] = set()
     for token in tokens:
         upper = token.upper()
@@ -1545,8 +1561,12 @@ def predicate_column_references(predicate: str, available_columns: set[str]) -> 
             continue
         if upper in SAFE_SINGLE_CTE_PREDICATE_KEYWORDS:
             continue
-        return None
-    return column_references or None
+        if upper.isalpha():
+            return PredicateColumnReferenceResult(set(), "unsupported_predicate_unknown_identifier")
+        return PredicateColumnReferenceResult(set(), "unsupported_predicate_token")
+    if not column_references:
+        return PredicateColumnReferenceResult(set(), "unsupported_predicate_no_column_reference")
+    return PredicateColumnReferenceResult(column_references)
 
 
 def dequalify_predicate_for_cte_aliases(
