@@ -8,22 +8,6 @@ artifact names.
 
 ## Good First Issues
 
-### Add README Screenshot Update Notes
-
-Labels: `good first issue`, `documentation`, `web-ui`
-
-Document how maintainers can regenerate
-`docs/assets/query-doctor-synthetic-demo.png` from the synthetic demo pack after
-UI layout changes. The note should use `query-doctor-demo` and
-`query-doctor-web` commands only, and it must mention that generated demo output
-stays outside the repository.
-
-Acceptance criteria:
-
-- The maintainer note lives in an existing public docs page.
-- Commands use synthetic demo data only.
-- No private local paths are hardcoded.
-
 ### Split One Focused Web Presenter Test
 
 Labels: `good first issue`, `tests`, `web-ui`, `refactor`
