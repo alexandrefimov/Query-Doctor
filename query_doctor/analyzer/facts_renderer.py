@@ -24,7 +24,7 @@ from query_doctor.analyzer.runtime_renderer import (
     render_runtime_counter_context,
     render_runtime_diagnosis,
 )
-from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration
+from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio
 
 
 def md_escape(value: str) -> str:
@@ -133,6 +133,59 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
         f"per_node_peak_memory={'yes' if features.get('per_node_peak_memory') else 'no'}, "
         f"per_host_fragment_instances={'yes' if features.get('per_host_fragment_instances') else 'no'}"
     )
+    lines.append("")
+    return lines
+
+
+def render_profile_resource_facts(analysis: dict[str, Any]) -> list[str]:
+    resources = analysis.get("profile_resources")
+    if not isinstance(resources, dict) or not resources.get("available"):
+        return []
+    startup = resources.get("backend_startup_latencies")
+    if not isinstance(startup, dict):
+        startup = {}
+    fragments = resources.get("fragment_instances_per_host")
+    if not isinstance(fragments, dict):
+        fragments = {}
+    memory = resources.get("per_node_peak_memory")
+    if not isinstance(memory, dict):
+        memory = {}
+
+    lines = ["## Profile Resource Facts", ""]
+    lines.append("- guardrail: resource profile facts are deterministic context, not root-cause proof by themselves.")
+    lines.append(f"- admission_result: {resources.get('admission_result') or 'unknown'}")
+
+    if startup.get("available"):
+        percentiles = startup.get("percentiles") if isinstance(startup.get("percentiles"), dict) else {}
+        lines.append(
+            "- backend_startup_latencies: "
+            f"count={startup.get('count', 0)}, "
+            f"sum={fmt_duration(startup.get('sum_ms'))}, "
+            f"min={fmt_duration(startup.get('min_ms'))}, "
+            f"max={fmt_duration(startup.get('max_ms'))}, "
+            f"p50={fmt_duration(percentiles.get('p50_ms'))}, "
+            f"p95={fmt_duration(percentiles.get('p95_ms'))}"
+        )
+
+    if fragments.get("available"):
+        lines.append(
+            "- fragment_instances_per_host: "
+            f"hosts={fragments.get('count', 0)}, "
+            f"total={int(fragments.get('total') or 0)}, "
+            f"min={int(fragments.get('min') or 0)}, "
+            f"max={int(fragments.get('max') or 0)}, "
+            f"max_min_ratio={fmt_ratio(fragments.get('ratio'))}"
+        )
+
+    if memory.get("available"):
+        lines.append(
+            "- per_node_peak_memory: "
+            f"hosts={memory.get('count', 0)}, "
+            f"min={fmt_bytes(memory.get('min'))}, "
+            f"max={fmt_bytes(memory.get('max'))}, "
+            f"max_min_ratio={fmt_ratio(memory.get('ratio'))}"
+        )
+
     lines.append("")
     return lines
 
@@ -367,6 +420,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_summary(analysis)
     lines += render_primary_bottleneck(analysis)
     lines += render_profile_format(analysis)
+    lines += render_profile_resource_facts(analysis)
     lines += render_query_wall_clock(analysis)
     lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)
