@@ -84,6 +84,27 @@ def normalized_request_host(value: str | None) -> str | None:
     return host.lower().rstrip(".")
 
 
+def explicit_request_host_port(value: str | None) -> int | None:
+    if value is None or not value.strip():
+        return None
+    host = value.strip()
+    port_value = ""
+    if host.startswith("["):
+        closing = host.find("]")
+        if closing == -1:
+            return None
+        remainder = host[closing + 1 :]
+        if not remainder.startswith(":"):
+            return None
+        port_value = remainder[1:]
+    elif host.count(":") == 1:
+        _, port_value = host.rsplit(":", 1)
+    if not port_value or not port_value.isdigit():
+        return None
+    port = int(port_value)
+    return port if 0 < port <= 65535 else None
+
+
 def request_host_allowed(value: str | None, settings: WebSettings) -> bool:
     if settings.allow_nonlocal_web_bind:
         return True
@@ -97,7 +118,12 @@ def request_host_allowed(value: str | None, settings: WebSettings) -> bool:
     return host in allowed_hosts
 
 
-def request_origin_allowed(value: str | None, settings: WebSettings) -> bool:
+def request_origin_allowed(
+    value: str | None,
+    settings: WebSettings,
+    *,
+    request_host_value: str | None = None,
+) -> bool:
     if value is None or not value.strip():
         return True
     if settings.allow_nonlocal_web_bind:
@@ -117,7 +143,14 @@ def request_origin_allowed(value: str | None, settings: WebSettings) -> bool:
         origin_port = parsed.port
     except ValueError:
         return False
-    if origin_port is not None and origin_port != settings.port:
+    allowed_port = (
+        explicit_request_host_port(request_host_value)
+        if request_host_allowed(request_host_value, settings)
+        else None
+    )
+    if allowed_port is None:
+        allowed_port = settings.port
+    if origin_port is not None and origin_port != allowed_port:
         return False
     return request_host_allowed(origin_host, settings)
 
@@ -228,7 +261,8 @@ def make_handler(
         def request_origin_is_allowed(self) -> bool:
             headers = getattr(self, "headers", {})
             origin_value = headers.get("Origin") if hasattr(headers, "get") else None
-            return request_origin_allowed(origin_value, settings)
+            host_value = headers.get("Host") if hasattr(headers, "get") else None
+            return request_origin_allowed(origin_value, settings, request_host_value=host_value)
 
         def write_rejected_host_response(self) -> None:
             error = WebError("Refusing request Host header outside the local web allowlist.")
