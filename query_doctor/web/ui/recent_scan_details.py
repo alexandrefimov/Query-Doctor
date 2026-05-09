@@ -138,7 +138,6 @@ def render_recent_scan_case_detail_view(
         f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
-        f"{render_evidence_action_guide(view)}"
         f"{render_case_analysis_summary(view)}"
         f"{render_analysis_details(view)}"
         f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result)}"
@@ -230,7 +229,6 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<section id=\"findings\" class=\"panel docs-panel findings-panel\" aria-label=\"Findings\">"
         "<h1>Findings</h1>"
         "<div class=\"report-body\">"
-        "<p class=\"helper\">Primary deterministic findings are open by default. They rely only on analyzer facts and are not root-cause claims without direct evidence.</p>"
         f"{runtime_verdict_html}"
         f"{render_runtime_diagnosis_summary(view.runtime_diagnosis)}"
         f"{render_action_candidate_findings(view)}"
@@ -241,7 +239,6 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         "<details class=\"panel docs-panel analysis-details\" aria-label=\"Evidence details\">"
         "<summary>Evidence details</summary>"
         "<div class=\"report-body analysis-details-body\">"
-        "<p class=\"helper\">Detailed deterministic facts are available for checking findings. They stay collapsed so the first screen remains diagnostic.</p>"
         f"{render_runtime_diagnosis_details(view.runtime_diagnosis)}"
         f"{render_cluster_runtime_context_section(view.cluster_runtime_context)}"
         f"{render_runtime_signals(view)}"
@@ -261,7 +258,6 @@ def render_case_detail_toc() -> str:
         "<nav class=\"detail-toc-list\">"
         "<a href=\"#case-overview\" class=\"detail-toc-link\">Case overview</a>"
         "<a href=\"#pipeline-status\" class=\"detail-toc-link\">Pipeline status</a>"
-        "<a href=\"#evidence-guide\" class=\"detail-toc-link\">Evidence guide</a>"
         "<a href=\"#analysis-summary\" class=\"detail-toc-link\">Analysis summary</a>"
         "<a href=\"#findings\" class=\"detail-toc-link\">Findings</a>"
         "<a href=\"#evidence-details\" class=\"detail-toc-link\">Evidence details</a>"
@@ -273,8 +269,11 @@ def render_case_detail_toc() -> str:
 
 def render_case_analysis_summary(view: RecentScanCaseDetailView) -> str:
     fields = [
+        ("evidence quality", case_evidence_guide_value(view, "evidence quality")),
+        ("facts", case_evidence_guide_value(view, "facts")),
         ("primary bottleneck", case_primary_bottleneck_summary(view)),
         ("optimizer outcome", case_optimizer_outcome_summary(view)),
+        ("stats evidence", case_evidence_guide_value(view, "stats evidence")),
         ("stats candidate", case_stats_candidate_summary(view)),
         ("runtime context", case_runtime_context_summary(view)),
         ("metadata coverage", case_metadata_coverage_summary(view)),
@@ -289,6 +288,14 @@ def render_case_analysis_summary(view: RecentScanCaseDetailView) -> str:
         f"<div class=\"meta-list\">{metadata_rows(fields)}</div>"
         "</section>"
     )
+
+
+def case_evidence_guide_value(view: RecentScanCaseDetailView, label: str) -> str:
+    guide = present_recent_scan_evidence_guide(view)
+    for card in guide.cards:
+        if card.label == label:
+            return card.value
+    return "Unknown"
 
 
 def case_primary_bottleneck_summary(view: RecentScanCaseDetailView) -> str:

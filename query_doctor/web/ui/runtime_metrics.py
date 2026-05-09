@@ -79,9 +79,8 @@ def render_runtime_diagnosis_details(view: RecentScanRuntimeDiagnosisView) -> st
         "<details class=\"analysis-subdetails\" aria-label=\"Runtime diagnosis\">"
         "<summary>Runtime diagnosis</summary>"
         "<div class=\"report-body\">"
-        "<p>Python-owned runtime hypothesis summary. It can point to follow-up areas, but does not convert correlated metrics into standalone root-cause proof.</p>"
         "<div class=\"meta-list\">"
-        f"{metadata_rows([('status', view.status), ('summary', view.summary), ('guardrail', view.guardrail)])}"
+        f"{metadata_rows([('status', view.status), ('summary', view.summary)])}"
         "</div>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
         "<thead><tr><th>Signal</th><th>Status</th><th>Interpretation</th><th>Evidence</th></tr></thead>"
@@ -95,25 +94,21 @@ def render_runtime_diagnosis_details(view: RecentScanRuntimeDiagnosisView) -> st
 def render_cluster_runtime_context_section(view: RecentScanClusterRuntimeContextView) -> str:
     if view.unavailable:
         return ""
-    summary_rows = metadata_rows(list(view.summary_items))
+    summary_rows = metadata_rows(cluster_runtime_summary_items(view))
     rollup_rows = metadata_rows(list(view.signal_rollup_items))
+    limitations = visible_runtime_limitations(view.limitations)
     limitations_html = ""
-    if view.limitations:
+    if limitations:
         limitations_html = (
-            "<ul class=\"reason-list\">"
-            + "".join(
-                "<li class=\"reason-card\"><p>"
-                f"{escape_value(limitation)}"
-                "</p></li>"
-                for limitation in view.limitations
-            )
+            "<h3>Limitations</h3>"
+            "<ul class=\"compact-list\">"
+            + "".join(f"<li>{escape_value(limitation)}</li>" for limitation in limitations)
             + "</ul>"
         )
     return (
         "<details class=\"analysis-subdetails\" aria-label=\"Cluster runtime context\">"
         "<summary>Cluster runtime context</summary>"
         "<div class=\"report-body\">"
-        "<p>Python-owned runtime context summary derived from normalized Runtime Metrics Facts and Runtime Metrics Correlation. It explains coverage and signal strength without exposing raw metric series.</p>"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<h3>Signal rollup</h3>"
         f"<div class=\"meta-list\">{rollup_rows}</div>"
@@ -201,25 +196,19 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         labels=cm_metric_all_labels(view),
         empty_message="metric facts are not available",
     )
+    limitations = visible_runtime_limitations(view.limitations)
     limitations_html = ""
-    if view.limitations:
+    if limitations:
         limitations_html = (
-            "<ul class=\"reason-list\">"
-            + "".join(
-                "<li class=\"reason-card\"><p>"
-                f"{html.escape(limitation)}"
-                "</p></li>"
-                for limitation in view.limitations
-            )
+            "<h3>Limitations</h3>"
+            "<ul class=\"compact-list\">"
+            + "".join(f"<li>{escape_value(limitation)}</li>" for limitation in limitations)
             + "</ul>"
         )
     return (
         "<details class=\"analysis-subdetails\" aria-label=\"Runtime metrics\">"
         "<summary>Runtime metrics</summary>"
         "<div class=\"report-body\">"
-        "<p>Deterministic runtime metric facts for the query runtime window. Source values come from "
-        "bounded Cloudera Manager time-series summaries; correlation shows whether profile evidence "
-        "supports using that signal as query-specific follow-up context.</p>"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<h3>Correlated runtime metric signals</h3>"
         "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
@@ -240,6 +229,25 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         f"{limitations_html}"
         "</div>"
         "</details>"
+    )
+
+
+def cluster_runtime_summary_items(view: RecentScanClusterRuntimeContextView) -> list[tuple[str, Any]]:
+    low_value_labels = {"guardrail", "limit_summary", "window_scope"}
+    return [(label, value) for label, value in view.summary_items if str(label) not in low_value_labels]
+
+
+def visible_runtime_limitations(limitations: tuple[str, ...]) -> tuple[str, ...]:
+    generic_markers = (
+        "not standalone proof",
+        "not standalone root-cause proof",
+        "raw metric points",
+        "bounded query-window context signals",
+    )
+    return tuple(
+        limitation
+        for limitation in limitations
+        if not any(marker in limitation.lower() for marker in generic_markers)
     )
 
 

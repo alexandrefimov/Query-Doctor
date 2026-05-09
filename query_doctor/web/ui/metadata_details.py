@@ -25,7 +25,6 @@ def render_metadata_facts_section(view: RecentScanMetadataView) -> str:
             "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
             "<summary>Metadata facts</summary>"
             "<div class=\"report-body\"><p>metadata facts are not available</p>"
-            "<p>Only deterministic analyzer facts are shown here.</p>"
             f"{degraded_html}</div>"
             "</details>"
         )
@@ -62,9 +61,6 @@ def render_metadata_facts_view(view: RecentScanMetadataView) -> str:
         "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
         "<summary>Metadata facts</summary>"
         "<div class=\"report-body\">"
-        "<p>Deterministic table-level metadata facts. Missing or incomplete stats are limitations/checks, not root causes.</p>"
-        "<p><code>ok</code> for SHOW commands means the metadata command completed successfully; "
-        "stats coverage is evaluated separately in Row-count stats and Column stats.</p>"
         f"{fallback_html}"
         f"{degraded_html}"
         f"<div class=\"meta-list\">{summary_rows}</div>"

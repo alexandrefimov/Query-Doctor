@@ -299,9 +299,10 @@ Improve how runtime context supports diagnosis without overclaiming.
 
 - Show collection status, coverage, observed signals, correlated signals,
   context-only signals, and limitations.
-- Keep the explicit Evidence guide current so Details separate strong
+- Keep the explicit Details Analysis summary current so Details separate strong
   analyzer-backed findings, plausible follow-up checks, context-only runtime
-  signals, unknown evidence, metadata coverage, and stats evidence.
+  signals, unknown evidence, metadata coverage, and stats evidence without
+  duplicating the same triage cards in multiple visible blocks.
 - Keep Cloudera Manager metrics and events as normalized analyzer facts.
 - Treat duration and runtime context as supporting evidence unless direct facts
   support a stronger claim.

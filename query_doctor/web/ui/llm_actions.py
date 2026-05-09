@@ -309,10 +309,10 @@ def render_optimizer_action_button(
     if status == "generated":
         return f"<a class=\"button\" href=\"{open_url}\">Open Query LLM optimizer draft</a>"
     if status == "unavailable":
-        return "<button class=\"button\" type=\"button\" disabled>Generate Query LLM optimizer draft</button>"
+        return "<button class=\"button\" type=\"button\" disabled>Run Query LLM optimizer</button>"
     if status == "running":
-        return "<button class=\"button\" type=\"button\" disabled>Generating Query LLM optimizer draft</button>"
-    return render_post_button(action_url, "Generate Query LLM optimizer draft")
+        return "<button class=\"button\" type=\"button\" disabled>Running Query LLM optimizer</button>"
+    return render_post_button(action_url, "Run Query LLM optimizer")
 
 
 def render_optimizer_status(
@@ -502,13 +502,13 @@ def render_optimized_query_action(
     elif status == "generated":
         action_html = f"<a class=\"button\" href=\"{open_href}\">Open Query LLM optimizer draft</a>"
     elif status == "unavailable":
-        action_html = "<button class=\"button\" type=\"button\" disabled>Generate Query LLM optimizer draft</button>"
+        action_html = "<button class=\"button\" type=\"button\" disabled>Run Query LLM optimizer</button>"
     elif status == "running":
-        action_html = "<button class=\"button\" type=\"button\" disabled>Generating Query LLM optimizer draft</button>"
+        action_html = "<button class=\"button\" type=\"button\" disabled>Running Query LLM optimizer</button>"
     else:
         action_html = (
             f"<form method=\"post\" action=\"{form_action}\">"
-            "<button class=\"button\" type=\"submit\">Generate Query LLM optimizer draft</button>"
+            "<button class=\"button\" type=\"submit\">Run Query LLM optimizer</button>"
             "</form>"
         )
     if status == "running":
@@ -592,7 +592,7 @@ def render_optimized_query_progress(view: OptimizedQueryActionView) -> str:
     step_html = render_progress_steps(progress_view)
     return (
         f"<div class=\"report-progress\" aria-label=\"Optimized query progress\"{status_attrs}>"
-        "<div class=\"progress-head\"><span class=\"progress-title\">Generating Query LLM optimizer draft</span>"
+        "<div class=\"progress-head\"><span class=\"progress-title\">Running Query LLM optimizer</span>"
         f"<span class=\"progress-stage\">{html.escape(current_stage)}</span>{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
         f"<span class=\"progress-fill\" style=\"width:{progress_view.percent}%\"></span>"

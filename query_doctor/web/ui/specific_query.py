@@ -14,10 +14,10 @@ from query_doctor.web.ui.llm_actions import (
 )
 from query_doctor.web.ui.recent_scan_details import (
     render_analysis_details,
+    render_case_analysis_summary,
     render_case_detail_toc,
     render_case_detail_overview,
     render_case_status_summary,
-    render_evidence_action_guide,
 )
 from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_case_detail,
@@ -125,7 +125,7 @@ def render_specific_query_detail(
         f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
-        f"{render_evidence_action_guide(view)}"
+        f"{render_case_analysis_summary(view)}"
         f"{render_analysis_details(view)}"
         f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result)}"
         "</section>"
