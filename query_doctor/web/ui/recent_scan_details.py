@@ -14,17 +14,12 @@ from query_doctor.web.presenters.recent_scan import (
     RecentScanStatusCardView,
     RecentScanStatusSummaryView,
     RecentScanTechnicalDetailsView,
-    batch_case_display_report_status,
-    batch_report_status,
-    case_has_failure,
-    numeric_value,
     present_recent_scan_case_overview,
     present_recent_scan_case_detail,
     present_recent_scan_score_reason,
     present_recent_scan_score_reasons,
     present_recent_scan_status_summary,
     present_recent_scan_technical_details,
-    safe_display_value,
 )
 from query_doctor.web.presenters.recent_scan_evidence import (
     evidence_facts_label as presenter_evidence_facts_label,
@@ -40,14 +35,9 @@ from query_doctor.web.presenters.recent_scan_evidence import (
 from query_doctor.web.presenters.recent_scan_models import RecentScanEvidenceGuideView
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
-    badge_html,
-    compact_cell,
-    display_score,
     escape_value,
     metadata_rows,
-    reason_cell,
     report_badge,
-    score_badge,
     score_badge_from_values,
     status_badge,
 )
@@ -74,12 +64,10 @@ from query_doctor.web.ui.metadata_details import (
     render_metadata_facts_view,
 )
 from query_doctor.web.ui.report_actions import (
-    render_batch_case_report_action,
     render_llm_report_failure,
     render_llm_report_progress,
 )
 from query_doctor.web.ui.runtime_metrics import (
-    cm_metric_interpretation,
     render_cluster_runtime_context_section,
     render_cm_metrics_section,
     render_runtime_diagnosis_details,

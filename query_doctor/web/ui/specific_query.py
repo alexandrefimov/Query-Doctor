@@ -6,15 +6,14 @@ import html
 from typing import Any
 from urllib.parse import quote
 
+from query_doctor.web.ui.html_helpers import SafeHtml, compact_cell
+from query_doctor.web.ui.llm_actions import render_llm_actions_block
 from query_doctor.web.ui.recent_scan_details import (
-    SafeHtml,
-    compact_cell,
     render_analysis_details,
     render_case_detail_toc,
     render_case_detail_overview,
     render_case_status_summary,
     render_evidence_action_guide,
-    render_llm_actions_block,
 )
 from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_case_detail,

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from query_doctor.web.ui.recent_scan_details import (
+from query_doctor.web.ui.html_helpers import (
     SafeHtml,
     compact_cell,
     display_score,
