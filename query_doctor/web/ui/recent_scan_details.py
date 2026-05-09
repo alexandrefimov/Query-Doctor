@@ -16,6 +16,17 @@ from query_doctor.web.presenters.recent_scan import (
     safe_display_value,
     safe_display_text,
 )
+from query_doctor.web.presenters.recent_scan_evidence import (
+    evidence_facts_label as presenter_evidence_facts_label,
+    evidence_metadata_label as presenter_evidence_metadata_label,
+    evidence_next_action_label as presenter_evidence_next_action_label,
+    evidence_quality_label as presenter_evidence_quality_label,
+    evidence_runtime_label as presenter_evidence_runtime_label,
+    evidence_stats_label as presenter_evidence_stats_label,
+    present_recent_scan_evidence_guide,
+    primary_bottleneck_label as presenter_primary_bottleneck_label,
+    stats_quality_label as presenter_stats_quality_label,
+)
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
     badge_html,
@@ -35,7 +46,6 @@ from query_doctor.web.ui.action_candidates import (
     candidate_is_visible,
     candidate_overview_value,
     candidate_rank_text,
-    candidate_title,
     detail_stats_need_label,
     render_action_candidate_findings,
 )
@@ -200,20 +210,12 @@ def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
 
 
 def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
-    cards = (
-        ("evidence quality", evidence_quality_label(view)),
-        ("primary bottleneck", primary_bottleneck_label(view)),
-        ("facts", evidence_facts_label(view)),
-        ("runtime context", evidence_runtime_label(view)),
-        ("metadata", evidence_metadata_label(view)),
-        ("stats evidence", evidence_stats_label(view)),
-        ("next action", evidence_next_action_label(view)),
-    )
+    guide = present_recent_scan_evidence_guide(view)
     card_html = "".join(
         "<div class=\"case-summary-card\">"
-        f"<span>{html.escape(label)}</span><strong>{escape_value(value)}</strong>"
+        f"<span>{html.escape(card.label)}</span><strong>{escape_value(card.value)}</strong>"
         "</div>"
-        for label, value in cards
+        for card in guide.cards
     )
     return (
         "<section id=\"evidence-guide\" class=\"case-overview\" aria-label=\"Evidence and action guide\">"
@@ -227,164 +229,35 @@ def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
 
 
 def primary_bottleneck_label(view: RecentScanCaseDetailView) -> str:
-    primary = view.primary_bottleneck
-    if primary.unavailable:
-        return "Not classified"
-    if primary.reason_summary:
-        return f"{primary.summary}: {primary.reason_summary}"
-    return primary.summary
+    return presenter_primary_bottleneck_label(view)
 
 
 def evidence_quality_label(view: RecentScanCaseDetailView) -> str:
-    if not view.evidence_quality.unavailable:
-        level = str(view.evidence_quality.level or "unknown").strip()
-        score = str(view.evidence_quality.score or "").strip()
-        label = {
-            "high": "High",
-            "medium": "Medium",
-            "low": "Low",
-        }.get(level.lower(), "Unknown")
-        if score:
-            return f"{label}: {score} analyzer evidence quality"
-        return f"{label}: analyzer evidence quality"
-
-    statuses = {label: str(value or "").strip().lower() for label, value in view.status_fields}
-    if statuses.get("collection") not in {"", "ok", "collected", "success"}:
-        return "Incomplete: collection did not finish cleanly"
-    if statuses.get("analysis") not in {"", "ok", "analyzed", "success"}:
-        return "Incomplete: analyzer facts are unavailable"
-
-    has_profile_findings = bool(view.score_reasons) and view.score_severity in {"failed", "high", "suspicious"}
-    runtime_title = str(view.runtime_verdict.title or "").strip()
-    metadata_available = not view.metadata.unavailable
-    if has_profile_findings and runtime_title == "Correlated runtime context":
-        return "Strong: analyzer findings plus correlated runtime context"
-    if has_profile_findings and metadata_available:
-        return "Strong: analyzer findings with metadata context"
-    if has_profile_findings:
-        return "Moderate: analyzer findings; supporting context is limited"
-    if runtime_title in {"Runtime context observed", "Correlated runtime context"}:
-        return "Limited: runtime context without profile-backed findings"
-    if view.score_severity == "clean":
-        return "Low: no positive deterministic findings"
-    return "Unknown: evidence is insufficient for a stronger verdict"
+    return presenter_evidence_quality_label(view)
 
 
 def evidence_facts_label(view: RecentScanCaseDetailView) -> str:
-    severity_label = {
-        "failed": "Pipeline issue",
-        "high": "High review priority",
-        "suspicious": "Suspicious findings",
-        "clean": "No positive findings",
-    }.get(view.score_severity, "Review findings")
-    signal = str(view.signal_summary or "").strip()
-    if not signal:
-        return severity_label
-    return f"{severity_label}: {signal}"
+    return presenter_evidence_facts_label(view)
 
 
 def evidence_runtime_label(view: RecentScanCaseDetailView) -> str:
-    title = str(view.runtime_verdict.title or "").strip()
-    if not title or title == "Runtime context not collected":
-        return "Not collected; use profile and metadata facts first"
-    return title
+    return presenter_evidence_runtime_label(view)
 
 
 def evidence_metadata_label(view: RecentScanCaseDetailView) -> str:
-    summary = dict(view.metadata.summary_items)
-    for key in ("metadata coverage", "stats coverage", "metadata command status"):
-        value = summary.get(key)
-        if is_meaningful_technical_detail_value(value):
-            return str(value)
-    if view.metadata.unavailable:
-        return view.metadata.fallback_note or "Not requested or unavailable"
-    return "Collected metadata available"
+    return presenter_evidence_metadata_label(view)
 
 
 def evidence_stats_label(view: RecentScanCaseDetailView) -> str:
-    stats = view.stats_candidate
-    if candidate_is_visible(stats):
-        impact = candidate_title(stats.get("impact"))
-        confidence = candidate_title(stats.get("confidence"))
-        return f"Stats candidate: {impact} impact, {confidence} confidence"
-
-    if not view.stats_quality.unavailable:
-        return stats_quality_label(view)
-
-    table_stats_status = str(view.table_stats_status or "").strip().lower().replace("_", " ")
-    if table_stats_status in {"available", "ok", "collected", "complete"}:
-        return "Table stats available; no Medium/High stats candidate"
-    if table_stats_status in {"missing", "missing or incomplete", "not available", "partial"}:
-        return "Stats incomplete; no Medium/High stats candidate"
-    summary = dict(view.metadata.summary_items)
-    stats_coverage = summary.get("stats coverage")
-    if is_meaningful_technical_detail_value(stats_coverage):
-        return str(stats_coverage)
-    metadata_coverage = str(summary.get("metadata coverage") or "").strip().lower()
-    if view.metadata.unavailable or any(
-        marker in metadata_coverage
-        for marker in (
-            "not requested",
-            "not collected",
-            "collection failed",
-            "no table rows available",
-            "partial",
-            "unknown",
-        )
-    ):
-        return "Stats context limited by metadata coverage"
-    return "No Medium/High stats-refresh candidate"
+    return presenter_evidence_stats_label(view)
 
 
 def stats_quality_label(view: RecentScanCaseDetailView) -> str:
-    status = str(view.stats_quality.status or "").strip().lower()
-    stats_context = str(view.stats_quality.stats_context or "").strip().lower()
-    interpretation = str(view.stats_quality.interpretation or "").strip()
-    if status == "available" and stats_context != "stats_present_with_row_estimate_evidence":
-        return "Stats quality available"
-    if interpretation:
-        return interpretation
-    if status:
-        return f"Stats quality {status.replace('_', ' ')}"
-    return "Stats quality unknown"
+    return presenter_stats_quality_label(view)
 
 
 def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
-    primary = view.primary_bottleneck
-    if not primary.unavailable and primary.confidence == "high":
-        label = primary.label.lower()
-        if label == "stats":
-            return "Check stats refresh candidate first"
-        if label == "sql shape":
-            return "Review query-shape candidate first"
-        if label == "admission/runtime":
-            return "Review admission and pool runtime context first"
-        if label == "runtime skew":
-            return "Review runtime skew evidence before SQL or stats action"
-        if label == "data movement":
-            return "Review data-movement evidence before SQL or stats action"
-    if not primary.unavailable and primary.label == "Competing signals":
-        return "Review competing stats, SQL-shape, and runtime signals"
-    if candidate_is_visible(view.optimization_candidate):
-        rewrite_support = str(view.optimization_candidate.get("rewrite_support") or "").lower()
-        if rewrite_support == "recipe_detected":
-            return "Run optimizer to validate the detected rewrite recipe"
-        if rewrite_support == "draft_disabled":
-            return "Review optimizer guidance; SQL draft is disabled by guardrails"
-        if rewrite_support == "guidance_only":
-            return "Review query optimization guidance"
-        if rewrite_support == "source_unavailable":
-            return "Collect safe source SQL before optimizer run"
-        return "Review query optimization candidate"
-    if candidate_is_visible(view.stats_candidate):
-        return "Check stats refresh candidate"
-    if view.score_severity == "failed":
-        return "Fix collection or analysis issue first"
-    if view.report_action.trusted:
-        return "Open validated LLM report"
-    if view.score_severity == "clean":
-        return "No LLM action needed unless investigating"
-    return "Review findings before explicit LLM action"
+    return presenter_evidence_next_action_label(view)
 
 
 def render_analysis_details(view: RecentScanCaseDetailView) -> str:

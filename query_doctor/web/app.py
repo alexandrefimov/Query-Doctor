@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import uuid
 from http.server import BaseHTTPRequestHandler
 from typing import BinaryIO, Callable
 from urllib.parse import parse_qs, urlsplit
@@ -18,6 +19,7 @@ from query_doctor.web.ui.pages import render_page
 
 MAX_WEB_POST_BODY_BYTES = 320 * 1024
 AnalysisFunc = Callable[[str, str, bool, WebSettings], object]
+RequestIdFactory = Callable[[], str]
 LOCAL_REQUEST_HOSTS = {"127.0.0.1", "localhost", "::1"}
 SECURITY_HEADERS = (
     ("X-Content-Type-Options", "nosniff"),
@@ -36,6 +38,10 @@ SECURITY_HEADERS = (
         "frame-ancestors 'none'",
     ),
 )
+
+
+def new_request_id() -> str:
+    return uuid.uuid4().hex
 
 
 def parse_post_content_length(value: str | None) -> int:
@@ -121,11 +127,13 @@ def make_handler(
     analysis_func: AnalysisFunc = run_query_id_analysis,
     job_store: WebJobStore | None = None,
     runner: Runner = subprocess.run,
+    request_id_factory: RequestIdFactory = new_request_id,
 ) -> type[BaseHTTPRequestHandler]:
     store = job_store or WebJobStore()
 
     class QueryDoctorWebHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            self.request_id()
             if not self.request_host_is_allowed():
                 self.write_rejected_host_response()
                 return
@@ -136,6 +144,7 @@ def make_handler(
             self.send_error(404)
 
         def do_POST(self) -> None:
+            self.request_id()
             if not self.request_host_is_allowed():
                 self.write_rejected_host_response()
                 return
@@ -172,6 +181,7 @@ def make_handler(
                 self.send_response(response.status)
                 self.send_header("Location", response.location)
                 self.send_header("Cache-Control", "no-store")
+                self.send_request_id_header()
                 self.send_security_headers()
                 self.end_headers()
                 return
@@ -202,6 +212,7 @@ def make_handler(
                 self.send_header("Content-Disposition", f'attachment; filename="{download_filename}"')
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(payload)))
+            self.send_request_id_header()
             self.send_security_headers()
             self.end_headers()
             self.wfile.write(payload)
@@ -227,6 +238,19 @@ def make_handler(
             error = WebError("Refusing POST Origin outside the local web allowlist.")
             self.write_html(403, render_page(settings, active_nav="batch", error=error))
 
+        def request_id(self) -> str:
+            current = getattr(self, "_query_doctor_request_id", None)
+            if current is None:
+                current = request_id_factory()
+                self._query_doctor_request_id = current
+            return current
+
+        def send_request_id_header(self) -> None:
+            if getattr(self, "_query_doctor_request_id_header_sent", False):
+                return
+            self.send_header("X-Request-ID", self.request_id())
+            self._query_doctor_request_id_header_sent = True
+
         def send_security_headers(self) -> None:
             if getattr(self, "_query_doctor_security_headers_sent", False):
                 return
@@ -235,10 +259,14 @@ def make_handler(
             self._query_doctor_security_headers_sent = True
 
         def end_headers(self) -> None:
+            self.send_request_id_header()
             self.send_security_headers()
             super().end_headers()
 
         def log_message(self, fmt: str, *args: object) -> None:
-            print(f"[Query Doctor web] {self.address_string()} {fmt % args}", file=sys.stderr)
+            print(
+                f"[Query Doctor web] {self.address_string()} request_id={self.request_id()} {fmt % args}",
+                file=sys.stderr,
+            )
 
     return QueryDoctorWebHandler

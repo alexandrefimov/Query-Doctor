@@ -20,11 +20,7 @@ from query_doctor.web.optimizer_validation import (
     optimizer_manual_rewrite_allowed,
 )
 from query_doctor.web.trusted_artifacts import (
-    load_optimized_query_state,
-    load_specific_query_report_state,
-    load_validated_optimized_query,
-    load_validated_optimizer_recommendations,
-    load_validated_specific_query_report,
+    load_specific_query_trusted_detail_artifacts,
 )
 
 
@@ -43,18 +39,14 @@ def build_specific_query_detail_render_context(
     cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
     runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
     cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
-    report_state = load_specific_query_report_state(settings, query_id, case_dir, job_store, job=job)
-    optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=query_id, job=job)
-    trusted_report_text = load_validated_specific_query_report(case_dir) if report_state.get("trusted") else None
-    trusted_optimized_query = load_validated_optimized_query(case_dir) if optimized_query_state.get("trusted") else None
-    trusted_optimizer_recommendations = (
-        load_validated_optimizer_recommendations(case_dir) if optimized_query_state.get("trusted") else None
-    )
+    artifacts = load_specific_query_trusted_detail_artifacts(settings, query_id, case_dir, job_store, job=job)
+    report_state = artifacts.report_state
+    optimized_query_state = artifacts.optimized_query_state
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")
     optimizer_guidance = (
         None
-        if trusted_optimized_query
-        or trusted_optimizer_recommendations
+        if artifacts.trusted_optimized_query
+        or artifacts.trusted_optimizer_recommendations
         or not optimizer_manual_rewrite_allowed(optimized_query_state)
         else optimizer_manual_guidance(case_dir, reason=manual_guidance_reason)
     )
@@ -67,9 +59,9 @@ def build_specific_query_detail_render_context(
         "cluster_runtime_context_facts": cluster_runtime_context_facts,
         "report_state": report_state,
         "optimized_query_state": optimized_query_state,
-        "trusted_report_text": trusted_report_text,
-        "trusted_optimized_query": trusted_optimized_query,
-        "trusted_optimizer_recommendations": trusted_optimizer_recommendations,
+        "trusted_report_text": artifacts.trusted_report_text,
+        "trusted_optimized_query": artifacts.trusted_optimized_query,
+        "trusted_optimizer_recommendations": artifacts.trusted_optimizer_recommendations,
         "optimizer_manual_guidance": optimizer_guidance,
         "optimizer_validation_result": optimizer_validation_result,
     }

@@ -185,6 +185,52 @@ Keep these out of implementation plans until their explicit readiness signal is
 met: shared deployment, multi-tenancy, a second SQL engine, plugin framework,
 generic SQL execution, broad package reorganization, and fake adapters.
 
+## Next Pull Queue
+
+This is the short ordered queue for the next roadmap pulls. Pull a different
+item first only when the touched area has a direct P0 safety or contract risk.
+
+1. Move one high-value Details path to typed raw-free view models and keep
+   browser-safety tests around every dynamic field.
+2. Consolidate Details and report UI artifact access behind
+   `query_doctor.web.trusted_artifacts`.
+3. Rename runtime-context analyzer/report keys and headings to canonical
+   provider-neutral names, with legacy `cm_*` load fallbacks and
+   report-validator snapshot coverage in the same change.
+4. Move metrics facts and correlation reads from Cloudera Manager query IDs to
+   abstract catalog `signal_id`s.
+5. Add per-case source provenance for engine, profile, metrics, events, and
+   metadata, then use it for safe coverage and limitation wording.
+6. Add optimizer rewriteability taxonomy to analyzer output, batch summaries,
+   and Details so expensive-but-not-draftable queries are not treated as failed
+   optimizer cases.
+7. Continue replacing report-side stats/query-shape extraction with structured
+   analyzer facts and validate the result on real sanitized batches.
+
+## Dependency And Readiness Rules
+
+Use these rules to keep roadmap work ordered. They override local convenience
+when a tempting implementation would skip a contract boundary.
+
+- Provider decoupling order is fixed: canonical context keys/headings,
+  report-validator snapshots, metrics by `signal_id`, per-case provenance,
+  thin source-family interfaces, Direct Impala daemon profile source, then
+  Prometheus-style metrics source.
+- P2 provider work must not start until the P0 provider-neutral contracts it
+  depends on are in place. Do not add placeholder provider packages while the
+  only real implementation is still Cloudera Manager.
+- A second SQL engine must wait until Impala diagnosis is useful on real
+  workloads, with `case_primary_bottleneck = unknown` below roughly 20% on a
+  representative real-case batch and an engine profile-fact contract already in
+  place.
+- Shared deployment work must wait for an explicit shared-deploy product
+  decision, a real design partner, and a design for authentication, ownership,
+  audit, persistence, and operational support.
+- Keep P0 narrow. An item belongs in P0 only when it protects browser/report
+  safety, validation/trust contracts, no-echo/raw-free behavior, or a schema
+  boundary that unlocks several later changes. Product-quality improvements
+  without that contract effect belong in P1.
+
 ## Near-Term Priorities
 
 ### 1. Local Web Hardening And Team Workflow

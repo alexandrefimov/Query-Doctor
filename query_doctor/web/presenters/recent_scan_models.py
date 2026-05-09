@@ -194,6 +194,17 @@ class RecentScanStatsQualityView:
 
 
 @dataclass(frozen=True)
+class RecentScanEvidenceGuideCardView:
+    label: str
+    value: str
+
+
+@dataclass(frozen=True)
+class RecentScanEvidenceGuideView:
+    cards: tuple[RecentScanEvidenceGuideCardView, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any

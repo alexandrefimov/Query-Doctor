@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,16 @@ OPTIMIZER_STATUS_ORDER = {
     "partial_untrusted": 0,
     "unknown": 0,
 }
+
+
+@dataclass(frozen=True)
+class TrustedDetailArtifacts:
+    artifact_dir: Path | None
+    report_state: dict[str, object]
+    optimized_query_state: dict[str, object]
+    trusted_report_text: str | None
+    trusted_optimized_query: str | None
+    trusted_optimizer_recommendations: str | None
 
 
 def optimizer_artifact_status_for_case(case: dict[str, Any]) -> str:
@@ -338,6 +349,57 @@ def load_validated_optimizer_recommendations(case_dir: Path) -> str | None:
     if validate_optimizer_recommendations_text(recommendations):
         return None
     return recommendations
+
+
+def load_batch_case_trusted_detail_artifacts(
+    settings: WebSettings,
+    case_id: str,
+    case: dict[str, object],
+    job_store: Any,
+    *,
+    job: WebJobSnapshot | None = None,
+) -> TrustedDetailArtifacts:
+    report_state = load_batch_case_report_state(settings, case_id, case, job_store, job=job)
+    artifact_dir = resolve_batch_case_report_dir(settings, case)
+    optimized_query_state = load_optimized_query_state(artifact_dir, job_store, batch_case_id=case_id, job=job)
+    return TrustedDetailArtifacts(
+        artifact_dir=artifact_dir,
+        report_state=report_state,
+        optimized_query_state=optimized_query_state,
+        trusted_report_text=load_validated_batch_case_report(settings, case) if report_state.get("trusted") else None,
+        trusted_optimized_query=(
+            load_validated_optimized_query(artifact_dir)
+            if artifact_dir is not None and optimized_query_state.get("trusted")
+            else None
+        ),
+        trusted_optimizer_recommendations=(
+            load_validated_optimizer_recommendations(artifact_dir)
+            if artifact_dir is not None and optimized_query_state.get("trusted")
+            else None
+        ),
+    )
+
+
+def load_specific_query_trusted_detail_artifacts(
+    settings: WebSettings,
+    query_id: str,
+    case_dir: Path,
+    job_store: Any,
+    *,
+    job: WebJobSnapshot | None = None,
+) -> TrustedDetailArtifacts:
+    report_state = load_specific_query_report_state(settings, query_id, case_dir, job_store, job=job)
+    optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=query_id, job=job)
+    return TrustedDetailArtifacts(
+        artifact_dir=case_dir,
+        report_state=report_state,
+        optimized_query_state=optimized_query_state,
+        trusted_report_text=load_validated_specific_query_report(case_dir) if report_state.get("trusted") else None,
+        trusted_optimized_query=load_validated_optimized_query(case_dir) if optimized_query_state.get("trusted") else None,
+        trusted_optimizer_recommendations=(
+            load_validated_optimizer_recommendations(case_dir) if optimized_query_state.get("trusted") else None
+        ),
+    )
 
 
 def case_has_safe_source_sql(case_dir: Path) -> bool:
