@@ -9,6 +9,8 @@ from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio, nu
 
 
 PROFILE_BACKEND_STARTUP_PLAUSIBLE_MS = 5_000.0
+PROFILE_TIMING_PHASE_PLAUSIBLE_MS = 10_000.0
+PROFILE_UNREGISTER_PLAUSIBLE_MS = 60_000.0
 
 
 def runtime_diagnosis_signal(
@@ -171,6 +173,110 @@ def runtime_diagnosis_profile_resource_signal(analysis: dict[str, Any]) -> dict[
     )
 
 
+def timing_phase_value(phases: dict[str, Any], key: str) -> float | None:
+    return numeric_profile_value(phases.get(key))
+
+
+def timing_event_max(events: dict[str, Any], key: str) -> float | None:
+    item = events.get(key)
+    if not isinstance(item, dict):
+        return None
+    return numeric_profile_value(item.get("max_ms"))
+
+
+def runtime_diagnosis_profile_timing_signal(analysis: dict[str, Any]) -> dict[str, Any]:
+    timings = analysis.get("profile_timings")
+    timings = timings if isinstance(timings, dict) else {}
+    if not timings.get("available"):
+        return runtime_diagnosis_signal(
+            "profile_timing_phases",
+            "Profile timing phases",
+            "unknown",
+            "Profile timing sections were not available in the deterministic facts.",
+            [],
+        )
+
+    query_timeline = timings.get("query_timeline")
+    query_timeline = query_timeline if isinstance(query_timeline, dict) else {}
+    phases = query_timeline.get("phase_durations")
+    phases = phases if isinstance(phases, dict) else {}
+    lifecycle = timings.get("fragment_lifecycle")
+    lifecycle = lifecycle if isinstance(lifecycle, dict) else {}
+    lifecycle_events = lifecycle.get("events")
+    lifecycle_events = lifecycle_events if isinstance(lifecycle_events, dict) else {}
+
+    planning_ms = timing_phase_value(phases, "planning_ms")
+    admission_ms = timing_phase_value(phases, "admission_ms")
+    backend_start_ms = timing_phase_value(phases, "backend_start_ms")
+    rows_available_ms = timing_phase_value(phases, "rows_available_ms")
+    fetch_ms = timing_phase_value(phases, "fetch_ms")
+    unregister_ms = timing_phase_value(phases, "unregister_ms")
+    open_max_ms = timing_event_max(lifecycle_events, "open_finished")
+    first_batch_max_ms = timing_event_max(lifecycle_events, "first_batch_produced")
+    exec_internal_max_ms = timing_event_max(lifecycle_events, "exec_internal_finished")
+
+    evidence = [
+        "Profile Timing Facts: query_timeline "
+        f"duration={fmt_duration(numeric_profile_value(query_timeline.get('duration_ms')))}, "
+        f"events={int(numeric_profile_value(query_timeline.get('event_count')) or 0)}.",
+        "Profile Timing Facts: query_timeline_phases "
+        f"planning={fmt_duration(planning_ms)}, "
+        f"admission={fmt_duration(admission_ms)}, "
+        f"backend_start={fmt_duration(backend_start_ms)}, "
+        f"rows_available={fmt_duration(rows_available_ms)}, "
+        f"fetch={fmt_duration(fetch_ms)}, "
+        f"unregister={fmt_duration(unregister_ms)}.",
+    ]
+    if lifecycle.get("available"):
+        evidence.append(
+            "Profile Timing Facts: fragment_lifecycle "
+            f"instances={int(numeric_profile_value(lifecycle.get('instance_count')) or 0)}, "
+            f"open_max={fmt_duration(open_max_ms)}, "
+            f"first_batch_max={fmt_duration(first_batch_max_ms)}, "
+            f"exec_internal_max={fmt_duration(exec_internal_max_ms)}."
+        )
+
+    plausible_labels: list[str] = []
+    for label, value in (
+        ("planning", planning_ms),
+        ("admission", admission_ms),
+        ("backend_start", backend_start_ms),
+        ("rows_available", rows_available_ms),
+        ("fetch", fetch_ms),
+        ("fragment_open", open_max_ms),
+        ("fragment_first_batch", first_batch_max_ms),
+        ("fragment_exec_internal", exec_internal_max_ms),
+    ):
+        if value is not None and value >= PROFILE_TIMING_PHASE_PLAUSIBLE_MS:
+            plausible_labels.append(label)
+    if unregister_ms is not None and unregister_ms >= PROFILE_UNREGISTER_PLAUSIBLE_MS:
+        plausible_labels.append("unregister")
+
+    if plausible_labels:
+        return runtime_diagnosis_signal(
+            "profile_timing_phases",
+            "Profile timing phases",
+            "plausible_follow_up",
+            (
+                "Profile timing phases show large elapsed segments that are plausible follow-up hypotheses. "
+                f"Investigate {', '.join(plausible_labels[:4])} with comparable query profiles and bounded "
+                "runtime context before treating timing as a cause."
+            ),
+            evidence,
+        )
+
+    return runtime_diagnosis_signal(
+        "profile_timing_phases",
+        "Profile timing phases",
+        "context_only",
+        (
+            "Profile timing phases were available, but no parsed query-timeline or lifecycle phase was large "
+            "enough to become a standalone follow-up hypothesis."
+        ),
+        evidence,
+    )
+
+
 def numeric_profile_value(value: Any) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
@@ -317,11 +423,13 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
         )
     )
     signals.append(runtime_diagnosis_profile_resource_signal(analysis))
+    signals.append(runtime_diagnosis_profile_timing_signal(analysis))
 
     plausible = [signal for signal in signals if signal.get("status") == "plausible_follow_up"]
     if plausible:
         primary = plausible[0]
-        summary = f"{primary['title']} is the strongest plausible follow-up hypothesis from deterministic facts."
+        verb = "are" if str(primary.get("title") or "").endswith("phases") else "is"
+        summary = f"{primary['title']} {verb} the strongest plausible follow-up hypothesis from deterministic facts."
         status = "available"
     else:
         summary = "No single runtime environment hypothesis is supported as likely by the deterministic facts."
