@@ -338,6 +338,31 @@ def render_backend_tail_evidence(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_source_provenance(analysis: dict[str, Any]) -> list[str]:
+    provenance = analysis.get("source_provenance")
+    if not isinstance(provenance, dict):
+        return []
+    items = [item for item in provenance.get("items") or [] if isinstance(item, dict)]
+    if not items:
+        return []
+
+    lines = ["## Source Provenance", ""]
+    guardrail = provenance.get("guardrail")
+    if guardrail:
+        lines.append(f"- guardrail: {guardrail}")
+    for item in items:
+        kind = item.get("kind") or "source"
+        status = item.get("status") or "unknown"
+        label = item.get("label") or "unknown"
+        coverage = item.get("coverage") or "unknown"
+        lines.append(f"- {kind}: {status}; source={label}; coverage={coverage}")
+        limitations = [str(value) for value in item.get("limitations") or [] if value]
+        for limitation in limitations[:3]:
+            lines.append(f"  - limitation: {limitation}")
+    lines.append("")
+    return lines
+
+
 def render_verbose_evidence(analysis: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     if analysis.get("stats_evidence_lines"):
@@ -421,6 +446,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_primary_bottleneck(analysis)
     lines += render_profile_format(analysis)
     lines += render_profile_resource_facts(analysis)
+    lines += render_source_provenance(analysis)
     lines += render_query_wall_clock(analysis)
     lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)

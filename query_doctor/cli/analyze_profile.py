@@ -24,6 +24,7 @@ from query_doctor.analyzer.facts_renderer import render_md
 from query_doctor.analyzer.metadata_renderer import stats_metadata_quality
 from query_doctor.analyzer.runtime_diagnosis import build_runtime_diagnosis
 from query_doctor.analyzer.service import analyze
+from query_doctor.analyzer.source_provenance import build_source_provenance
 from query_doctor.analyzer.sql_sources import extract_default_database
 from query_doctor.impala.table_metadata_facts import collect_table_metadata_context
 
@@ -110,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     analysis["default_database"] = extract_default_database(text)
     analysis["cm_metrics_correlation"] = build_cm_metrics_correlation(analysis)
     analysis["cluster_runtime_context"] = build_cluster_runtime_context(analysis)
+    analysis["source_provenance"] = build_source_provenance(analysis)
     analysis["runtime_diagnosis"] = build_runtime_diagnosis(analysis)
     analysis["action_cards"] = build_action_cards(analysis)
     analysis["evidence_quality"] = build_evidence_quality(analysis)
