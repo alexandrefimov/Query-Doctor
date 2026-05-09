@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from web_server_test_support import load_web_module
+from query_doctor.web.ui import layout
 from query_doctor.web.ui.recent_scan_results import render_batch_summary
 
 
@@ -13,6 +14,8 @@ def test_package_layout_renderers_are_available():
     assert callable(layout.render_app_header)
     assert callable(layout.render_design_toggle)
     assert callable(layout.render_client_script)
+    assert callable(layout.render_static_stylesheet_link)
+    assert callable(layout.render_script_link)
 
 
 def test_detail_job_polling_preserves_current_anchor():
@@ -59,6 +62,7 @@ def test_web_render_page_contains_reference_local_ui_shell():
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
 
     body = module.render_page(settings)
+    styles = layout.render_shared_styles()
 
     assert "impala-query-doctor" in body
     assert "Impala query performance diagnostics" in body
@@ -82,14 +86,29 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "Kerberos: unknown/not checked" not in body
     assert "Metadata collector: CLI only" not in body
     assert ".hero-card:after" not in body
-    assert "color-scheme:light" in body
-    assert "html[data-theme=dark]" in body
-    assert "--bg:#eef2f6" in body
-    assert "--bg:#0f1419" in body
-    assert "html[data-design=classic]{--bg:#f7f8fa" in body
-    assert "html[data-theme=dark][data-design=classic]{--bg:#101418" in body
+    assert '<link rel="stylesheet" href="/static/app.css">' in body
+    assert '<script src="/static/theme-bootstrap.js"></script>' in body
+    assert '<script src="/static/app.js"></script>' in body
+    assert "<style>" not in body
+    assert "color-scheme:light" not in body
+    assert "color-scheme:light" in styles
+    assert "html[data-theme=dark]" in styles
+    assert "--bg:#eef2f6" in styles
+    assert "--bg:#0f1419" in styles
+    assert "html[data-design=classic]{--bg:#f7f8fa" in styles
+    assert "html[data-theme=dark][data-design=classic]{--bg:#101418" in styles
+    assert "html[data-design=command]{--bg:#eef4f1" in styles
+    assert "html[data-theme=dark][data-design=command]{--bg:#101314" in styles
+    assert "html[data-design=review]{--bg:#f2f4f3" in styles
+    assert "html[data-design=classic] .page{max-width:1240px;padding:20px 28px 48px}" in styles
+    assert "html[data-design=command] .page{max-width:1240px;padding:20px 28px 48px}" in styles
+    assert "html[data-design=review] .page{max-width:1240px;padding:20px 28px 48px}" in styles
+    assert "html[data-design=classic] .app-header{padding:10px 12px;border:1px solid transparent;border-radius:0;background:transparent;box-shadow:none;margin-bottom:16px}" in styles
+    assert "html[data-design=review] .app-header{padding:10px 12px}" in styles
+    assert "html[data-design=classic] .brand-mark{width:32px;height:32px;" in styles
+    assert "html[data-design=classic] .top-nav{gap:2px;padding:2px;" in styles
     assert "max-height:66vh" not in body
-    assert "overflow-wrap:anywhere" in body
+    assert "overflow-wrap:anywhere" in styles
     assert "Интеллектуальный анализ Impala-запросов по Query ID" not in body
     assert "Mode" not in body
     assert "Редактировать идентификаторы" not in body
@@ -97,11 +116,11 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert '<button class="run-button" type="submit">Run</button>' in body
     assert 'name="mode"' not in body
     assert '<input type="radio" name="mode" value="admin" checked>' not in body
-    assert ".segmented label:focus-within" not in body
-    assert ".segmented input:checked+span,.segmented input:checked+label{color:#fff;background:var(--accent);" in body
-    assert ".segmented label{min-width:58px;display:grid;place-items:stretch;" in body
-    assert ".segmented span{display:grid;place-items:center;width:100%;height:100%;" in body
-    assert ".manual-inputs-hidden{display:none!important}" in body
+    assert ".segmented label:focus-within" not in styles
+    assert ".segmented input:checked+span,.segmented input:checked+label{color:#fff;background:var(--accent);" in styles
+    assert ".segmented label{min-width:58px;display:grid;place-items:stretch;" in styles
+    assert ".segmented span{display:grid;place-items:center;width:100%;height:100%;" in styles
+    assert ".manual-inputs-hidden{display:none!important}" in styles
     assert body.index('id="query_id"') < body.index('<button class="run-button" type="submit">Run</button>')
     assert "Локальный демо-сервер: только явный Query ID" not in body
     assert "Validated before render" not in body
@@ -126,7 +145,8 @@ def test_web_render_page_sets_brand_favicon():
     assert '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,' in body
     assert "%3Cpath%20d%3D%22M5%2012h3l2-5%204%2010%202-5h3%22%2F%3E" in body
     assert body.index("<title>impala-query-doctor</title>") < body.index('rel="icon"')
-    assert body.index('rel="icon"') < body.index("<style>")
+    assert body.index('rel="icon"') < body.index('src="/static/theme-bootstrap.js"')
+    assert body.index('src="/static/theme-bootstrap.js"') < body.index('href="/static/app.css"')
 
 
 def test_web_render_page_contains_theme_toggle():
@@ -134,18 +154,27 @@ def test_web_render_page_contains_theme_toggle():
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
 
     body = module.render_page(settings)
+    styles = layout.render_shared_styles()
+    scripts = layout.read_static_asset_text("theme-bootstrap.js") + layout.render_client_script()
 
     assert 'id="theme-toggle"' in body
     assert 'aria-label="Switch to dark theme"' in body
-    assert "query-doctor-theme" in body
-    assert "prefers-color-scheme: dark" in body
-    assert "Switch to light theme" in body
-    assert ".theme-toggle,.design-toggle{display:inline-grid;place-items:center;width:32px;height:32px;border:1px solid var(--border-strong)" in body
-    assert "background:var(--control);color:var(--accent-strong)" in body
-    assert "html[data-theme=dark] .theme-toggle,html[data-theme=dark] .design-toggle{border-color:var(--border-strong);background:var(--control);color:var(--accent-strong)" in body
-    assert ".theme-icon-light,.design-icon-classic{display:none}.theme-icon-dark,.design-icon-serious{display:block}" in body
-    assert "html[data-theme=dark] .theme-icon-light{display:block}" in body
-    assert "html[data-theme=dark] .theme-icon-dark{display:none}" in body
+    assert "query-doctor-theme" in scripts
+    assert "prefers-color-scheme: dark" in scripts
+    assert "Switch to light theme" in scripts
+    assert ".theme-toggle,.design-toggle{display:inline-grid;place-items:center;width:34px;height:34px;min-width:34px;flex:0 0 34px;border:1px solid var(--border-strong)" in styles
+    assert "background:var(--control);color:var(--accent-strong)" in styles
+    assert "html[data-theme=dark] .theme-toggle,html[data-theme=dark] .design-toggle{border-color:var(--border-strong);background:var(--control);color:var(--accent-strong)" in styles
+    assert ".theme-toggle svg,.design-toggle svg{width:18px;height:18px}" in styles
+    assert (
+        ".theme-toggle .theme-icon-light,"
+        ".design-toggle .design-icon-classic,"
+        ".design-toggle .design-icon-command,"
+        ".design-toggle .design-icon-review{display:none}"
+    ) in styles
+    assert ".theme-toggle .theme-icon-dark,.design-toggle .design-icon-serious{display:block}" in styles
+    assert "html[data-theme=dark] .theme-toggle .theme-icon-light{display:block}" in styles
+    assert "html[data-theme=dark] .theme-toggle .theme-icon-dark{display:none}" in styles
 
 
 def test_web_render_page_contains_design_toggle():
@@ -153,14 +182,26 @@ def test_web_render_page_contains_design_toggle():
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
 
     body = module.render_page(settings)
+    styles = layout.render_shared_styles()
+    scripts = layout.render_client_script()
 
     assert 'id="design-toggle"' in body
     assert 'aria-label="Switch to classic design"' in body
-    assert "query-doctor-design" in body
-    assert "data-design" in body
-    assert "Switch to serious design" in body
-    assert ".design-icon-classic{display:block}" in body
-    assert ".design-icon-serious{display:none}" in body
+    assert "query-doctor-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
+    assert "data-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
+    assert "Switch to command design" in scripts
+    assert "Switch to review design" in scripts
+    assert (
+        "html[data-design=classic] .design-toggle .design-icon-classic,"
+        "html[data-design=command] .design-toggle .design-icon-command,"
+        "html[data-design=review] .design-toggle .design-icon-review{display:block}"
+    ) in styles
+    assert (
+        "html[data-design=classic] .design-toggle .design-icon-serious,"
+        "html[data-design=command] .design-toggle .design-icon-serious,"
+        "html[data-design=review] .design-toggle .design-icon-serious{display:none}"
+    ) in styles
+    assert "['serious', 'classic', 'command', 'review']" in scripts
     assert body.index('id="design-toggle"') < body.index('id="theme-toggle"')
 
 
@@ -169,12 +210,13 @@ def test_web_render_page_contains_optimizer_copy_handler():
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
 
     body = module.render_page(settings)
+    script = layout.render_client_script()
 
-    assert "data-copy-optimized-query" in body
-    assert "data-optimized-query-block" in body
-    assert "navigator.clipboard.writeText" in body
-    assert "fallbackCopyCode" in body
-    assert "Copy query" in body
+    assert "data-copy-optimized-query" in script
+    assert "data-optimized-query-block" in script
+    assert "navigator.clipboard.writeText" in script
+    assert "fallbackCopyCode" in script
+    assert "Copy query" in script
 
 
 def test_recent_scan_default_empty_group_points_to_follow_up_tabs():

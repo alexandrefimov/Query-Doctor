@@ -27,8 +27,8 @@ SECURITY_HEADERS = (
         "Content-Security-Policy",
         "default-src 'self'; "
         "img-src 'self' data:; "
-        "style-src 'self' 'unsafe-inline'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self'; "
+        "script-src 'self'; "
         "connect-src 'self'; "
         "base-uri 'none'; "
         "form-action 'self'; "
@@ -148,8 +148,10 @@ def make_handler(
                 return
             if response.content_type.startswith("application/json"):
                 self.write_json(response.status, response.body)
-            else:
+            elif response.content_type.startswith("text/html"):
                 self.write_html(response.status, response.body)
+            else:
+                self.write_body(response.status, response.body, response.content_type)
 
         def write_body(self, status: int, body: str, content_type: str) -> None:
             payload = body.encode("utf-8")

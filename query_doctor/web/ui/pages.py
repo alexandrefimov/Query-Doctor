@@ -9,9 +9,9 @@ from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.ui.home import render_no_reports_note, render_run_panel, render_trust_strip
 from query_doctor.web.ui.layout import (
     render_app_header,
-    render_client_script,
     render_favicon_link,
-    render_shared_styles,
+    render_script_link,
+    render_static_stylesheet_link,
     render_theme_bootstrap_script,
 )
 from query_doctor.web.ui.markdown import render_details_inline_report_html, render_report_markdown_html
@@ -48,10 +48,8 @@ def render_page(
         "<title>impala-query-doctor</title>",
         render_favicon_link(),
         render_theme_bootstrap_script(),
-        "<style>",
-        render_shared_styles(),
-        "</style>",
-        render_client_script(),
+        render_static_stylesheet_link(),
+        render_script_link(),
         "</head>",
         "<body>",
         "<main class=\"page\" id=\"top\">",

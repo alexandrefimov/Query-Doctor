@@ -67,5 +67,6 @@ setup(
     long_description_content_type="text/markdown",
     python_requires=">=3.9",
     packages=find_packages(include=["query_doctor*"]),
+    package_data={"query_doctor.web.static": ["*.css", "*.js"]},
     entry_points={"console_scripts": CONSOLE_SCRIPTS},
 )

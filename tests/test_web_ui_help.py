@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from web_server_test_support import load_web_module
+from query_doctor.web.ui import layout
 
 
 FORBIDDEN_HELP_STRINGS = (
@@ -29,6 +30,7 @@ def test_web_help_page_renders_curated_static_help():
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
 
     body = module.render_help_page(settings)
+    styles = layout.render_shared_styles()
 
     assert '<a class="nav-link nav-link--active" href="/help">Help</a>' in body
     assert "<h1>Help</h1>" in body
@@ -62,8 +64,8 @@ def test_web_help_page_renders_curated_static_help():
     assert "Roadmap" in body
     assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" in body
     assert 'target="_blank" rel="noopener noreferrer"' in body
-    assert ".report-body a{color:var(--accent-strong);font-weight:650;text-decoration:underline;" in body
-    assert ".report-body a:hover,.report-body a:focus{color:var(--accent);" in body
+    assert ".report-body a{color:var(--accent-strong);font-weight:650;text-decoration:underline;" in styles
+    assert ".report-body a:hover,.report-body a:focus{color:var(--accent);" in styles
     assert "Metadata" in body
     assert "Metadata allowlist" in body
     assert "Validated reports" in body

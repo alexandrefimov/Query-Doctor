@@ -71,6 +71,9 @@ Documentation = "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/R
 [tool.setuptools.packages.find]
 include = ["query_doctor*"]
 
+[tool.setuptools.package-data]
+"query_doctor.web.static" = ["*.css", "*.js"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py39"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 from dataclasses import dataclass
+from importlib.resources import files
 from typing import Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -55,6 +56,11 @@ from query_doctor.web.ui.running import render_running_queries_page
 AnalysisFunc = Callable[[str, str, bool, WebSettings], object]
 
 STATIC_POST_PATHS = {"/analyze", "/batch/run", "/running/run", "/optimizer", "/query-optimizer"}
+STATIC_ASSETS = {
+    "/static/app.css": ("app.css", "text/css; charset=utf-8"),
+    "/static/app.js": ("app.js", "application/javascript; charset=utf-8"),
+    "/static/theme-bootstrap.js": ("theme-bootstrap.js", "application/javascript; charset=utf-8"),
+}
 JOB_CANCEL_POST_RE = re.compile(r"/jobs/(?P<job_id>[0-9a-f]{32})/cancel")
 BATCH_CASE_POST_RE = re.compile(
     r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions)"
@@ -100,6 +106,9 @@ def route_get_request(
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
             ),
         )
+    static_response = route_static_asset_get(parsed.path)
+    if static_response is not None:
+        return static_response
     batch_detail = route_batch_detail_get(parsed.path, settings, store)
     if batch_detail is not None:
         return batch_detail
@@ -130,6 +139,15 @@ def route_get_request(
     if job_response is not None:
         return job_response
     return None
+
+
+def route_static_asset_get(path: str) -> WebRouteResponse | None:
+    asset = STATIC_ASSETS.get(path)
+    if asset is None:
+        return None
+    filename, content_type = asset
+    body = files("query_doctor.web.static").joinpath(filename).read_text(encoding="utf-8")
+    return WebRouteResponse(status=200, body=body, content_type=content_type)
 
 
 def post_route_is_allowed(path: str) -> bool:

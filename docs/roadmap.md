@@ -89,9 +89,71 @@ Optimizer-specific metrics:
 - Query Optimizer and Query LLM optimizer must stay read-only and
   validation-gated.
 
+## Web UI And Deployment Direction
+
+- Keep the web UI server-rendered by Python with small vanilla JavaScript
+  helpers. A React, SPA, or other client-app migration is not a roadmap goal by
+  itself because it expands the browser trust boundary and adds a build/runtime
+  dependency that local-first users do not need.
+- Treat a richer client application as future work only for a specific
+  state-heavy surface, such as complex in-browser filtering, graph or timeline
+  visualization, comparison workflows, or a richer optimizer editor. Such work
+  must first define raw-free JSON/view-model contracts, preserve no-echo rules
+  for pasted SQL, add browser-safety tests, and justify the dependency.
+- Supported deployment is single-user local-first: the process runs under the
+  user's own Cloudera Manager and Kerberos context and stores artifacts locally.
+  Shared network deployment is not supported by the current architecture.
+- Non-local or shared deployment must remain an explicit "if you must" path
+  until there is a real design partner. It needs corporate TLS/auth, trusted
+  reverse-proxy boundaries, per-user job/artifact ownership, audit, persistence,
+  and operational support before it becomes a product surface.
+- Improve team usage through local-first patterns before building
+  multi-tenancy: pinned versions, shared report repositories, CI-driven
+  `query-doctor-batch-recent` runs, jumpboxes or remote devboxes, and shared
+  internal LLM endpoints.
+- Enterprise/commercial boundaries, if they are added later, should cover
+  shared-deploy operations such as SSO, RBAC, artifact storage, audit export,
+  centralized LLM quotas, Helm/reference deploy, and support. Safety,
+  validation, diagnostic quality, and the single-user local workflow stay in
+  core.
+
 ## Near-Term Priorities
 
-### 1. Details Usability And Evidence Flow
+### 1. Local Web Hardening And Team Workflow
+
+Make the local web UI easier to maintain and safer to operate without turning
+it into a shared service.
+
+- Extract CSS and JavaScript from `query_doctor/web/ui/layout.py` into
+  package-owned static assets served by the local web server with explicit
+  content types. Preserve the early theme/design bootstrap behavior and keep
+  browser-safety rendering tests around the change.
+- Tighten Content Security Policy after static assets land by removing
+  `'unsafe-inline'` from script/style policy where practical. Keep existing
+  no-store caching, local Host allowlist, and security headers current; add
+  missing low-cost headers such as `Permissions-Policy` when useful.
+- Add a lightweight POST origin/host check for local web requests. Treat full
+  CSRF token machinery as deferred until a non-local or shared deployment path
+  is explicitly designed.
+- Document supported deployment in README or SECURITY guidance:
+  single-user, local-first, behind the user's own Cloudera Manager credentials.
+  Call out that binding the current server as a shared corporate service is not
+  supported.
+- Document team usage patterns before building multi-tenancy: shared reports
+  repository, CI scheduled batch scans, shared internal LLM endpoint, team
+  jumpbox or remote devbox, and version pinning.
+- Add a browser action to export a validated report as safe Markdown for Jira,
+  Confluence, or a shared reports repository. It must only expose trusted
+  report content and must not reveal local paths, raw artifact filenames, raw
+  SQL, profiles, metadata, or subprocess output.
+- Verify and document case deep links such as `/batch/case/<id>` for users who
+  open the same `batch_summary.json`; keep request paths unable to choose local
+  files.
+- Add bounded TTL cleanup for the in-memory web job store as local reliability
+  work. Do not turn it into a multi-user ACL or persistence project without an
+  explicit shared-deploy decision.
+
+### 2. Details Usability And Evidence Flow
 
 Make Details efficient for Recent queries, Running now, and Known Query ID
 workflows.
@@ -103,7 +165,7 @@ workflows.
 - Keep all dynamic browser text behind presenter/display safety helpers.
 - Do not render raw artifacts or arbitrary docs in the browser.
 
-### 2. Runtime Context Quality
+### 3. Runtime Context Quality
 
 Improve how runtime context supports diagnosis without overclaiming.
 
@@ -139,7 +201,7 @@ Short-term workload-level diagnostics:
   was applied and whether the observed runtime, score, or failure rate changed.
   This is needed to learn which recommendation families are useful in practice.
 
-### 3. Query Optimizer Usefulness
+### 4. Query Optimizer Usefulness
 
 Keep optimizer trust strict while making useful outcomes more common.
 
@@ -292,7 +354,7 @@ If these hold, the optimizer should retreat from trusted SQL draft production
 as a central product promise and focus on evidence-backed recommendations,
 stats/query-shape classification, and a DBA-facing recipe feasibility funnel.
 
-### 4. Metadata Selection Policy
+### 5. Metadata Selection Policy
 
 Make default metadata collection policy explicit and bounded.
 
@@ -358,7 +420,7 @@ If two or more of these hold, stats diagnosis should retreat to follow-up-check
 wording: no high-confidence stats primary label and no high-tier stats action
 without EXPLAIN, rerun, or stronger direct metadata evidence.
 
-### 5. Agent-Friendly Documentation
+### 6. Agent-Friendly Documentation
 
 Keep active docs short enough to be read before implementation.
 
@@ -410,6 +472,21 @@ Documentation cleanup priorities:
 ## Deferred
 
 These are not current support. Revisit them only when the listed signal is met.
+
+### Shared Deploy And Enterprise
+
+- Multi-tenant web service, OIDC/SAML auth, RBAC, identity-bound job store,
+  shared artifact storage, centralized audit export, centralized LLM quota and
+  cost attribution, WSGI/gunicorn/waitress runtime, and Helm/k8s deployment are
+  deferred until there is an explicit shared-deploy product decision and a real
+  design partner.
+- A reference corporate deployment guide can be documented earlier as an
+  "if you must" path, but it should state the required external controls:
+  corporate TLS, trusted reverse proxy, authentication, single-tenant or
+  team-scoped instances, safe credential ownership, and operational support.
+- Do not sell or separate safety, validation, browser redaction, or diagnostic
+  quality into an enterprise-only tier. Commercial-only boundaries may cover
+  shared-deploy operations and support, not the safety contract.
 
 ### Source Providers
 
