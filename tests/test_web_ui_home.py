@@ -246,6 +246,16 @@ def test_web_render_page_contains_optimizer_copy_handler():
     assert "Copy query" in script
 
 
+def test_web_static_script_contains_csp_safe_row_navigation_handler():
+    script = layout.render_client_script()
+
+    assert "[data-href]" in script
+    assert "rowNavigationTarget" in script
+    assert "window.open(row.getAttribute('data-href'), '_blank', 'noopener')" in script
+    assert "onclick=" not in script
+    assert "onkeydown=" not in script
+
+
 def test_recent_scan_default_empty_group_points_to_follow_up_tabs():
     body = render_batch_summary(
         {

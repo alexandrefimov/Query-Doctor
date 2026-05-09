@@ -57,12 +57,7 @@ def render_specific_query_row(case: dict[str, Any]) -> str:
     row_attrs = "class=\"batch-row\""
     details_href = specific_query_details_href(case.get("query_id"))
     if details_href:
-        row_attrs += (
-            f" data-href=\"{details_href}\" onclick=\"window.open(this.dataset.href,'_blank','noopener')\""
-            " tabindex=\"0\""
-            " onkeydown=\"if(event.key==='Enter'||event.key===' ')"
-            "{event.preventDefault();window.open(this.dataset.href,'_blank','noopener')}\""
-        )
+        row_attrs += f" data-href=\"{details_href}\" tabindex=\"0\""
     cells = [
         query_id_cell(view.query_id),
         score_cell(view),

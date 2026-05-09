@@ -213,7 +213,7 @@ def render_batch_case_row(
     row_attrs = f"class=\"{row_class}\""
     if view.case_id:
         href = f"{details_base_path.rstrip('/')}/{html.escape(view.case_id, quote=True)}"
-        row_attrs += f" data-href=\"{href}\" onclick=\"window.open(this.dataset.href,'_blank','noopener')\" tabindex=\"0\" onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();window.open(this.dataset.href,'_blank','noopener')}}\""
+        row_attrs += f" data-href=\"{href}\" tabindex=\"0\""
     normalized = normalize_query_group(query_group)
     if normalized == "optimization":
         cells = [

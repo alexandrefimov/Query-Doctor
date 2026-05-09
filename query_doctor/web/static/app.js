@@ -91,6 +91,35 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     fallbackCopyCode(code) ? copied() : failed();
   });
+  function rowNavigationTarget(event) {
+    if (!event.target.closest) {
+      return null;
+    }
+    if (event.target.closest('a, button, input, select, textarea, summary, details, form')) {
+      return null;
+    }
+    var row = event.target.closest('[data-href]');
+    return row && row.getAttribute('data-href') ? row : null;
+  }
+  function openRowDetails(row) {
+    window.open(row.getAttribute('data-href'), '_blank', 'noopener');
+  }
+  document.addEventListener('click', function (event) {
+    var row = rowNavigationTarget(event);
+    if (row) {
+      openRowDetails(row);
+    }
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    var row = rowNavigationTarget(event);
+    if (row) {
+      event.preventDefault();
+      openRowDetails(row);
+    }
+  });
   function fallbackCopyCode(code) {
     if (!document.createRange || !window.getSelection || !document.execCommand) {
       return false;
