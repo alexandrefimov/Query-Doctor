@@ -740,6 +740,7 @@ def post_union_aggregate_pushdown_draft(source_sql: str, rewrite_recipe: Optimiz
         return None
     dimensions = non_aggregate_projection_names(aggregate_cte.body)
     aggregate_fragments = aggregate_projection_fragments(aggregate_cte.body)
+    group_expression_map = non_aggregate_projection_expression_map(aggregate_cte.body)
     if not dimensions or not aggregate_fragments:
         return None
     branch_bodies = rollup_union_branches(
@@ -747,6 +748,7 @@ def post_union_aggregate_pushdown_draft(source_sql: str, rewrite_recipe: Optimiz
         group_names=dimensions,
         aggregate_fragments=aggregate_fragments,
         output_names=union_projection_names(union_cte.body),
+        group_expression_map=group_expression_map,
     )
     if branch_bodies is None:
         return None
@@ -806,6 +808,7 @@ def rollup_union_branches(
     aggregate_fragments: tuple[str, ...],
     output_names: tuple[str, ...],
     projected_names: tuple[str, ...] | None = None,
+    group_expression_map: dict[str, str] | None = None,
 ) -> list[str] | None:
     branches = split_top_level_union_all_fragments(union_body)
     if len(branches) < 2 or not output_names:
@@ -836,20 +839,24 @@ def rollup_union_branches(
                 continue
             expression = projection_map.get(name)
             if expression is None:
-                return None
+                group_expression = (group_expression_map or {}).get(name)
+                if not group_expression:
+                    return None
+                expression = rewrite_expression_identifiers(group_expression, projection_map)
+                if expression is None:
+                    return None
             group_expressions.append(expression)
             projected_fragments.append(format_projection_expression(expression, name))
         tail = branch_from_tail(branch)
-        if tail is None or not group_expressions:
+        if tail is None and find_top_level_keyword_offset(branch, ("FROM",)) is not None:
             return None
-        branch_bodies.append(
-            "SELECT "
-            + ",\n       ".join(projected_fragments)
-            + "\n"
-            + tail.strip()
-            + "\nGROUP BY "
-            + ", ".join(group_expressions)
-        )
+        if not group_expressions:
+            return None
+        branch_sql = "SELECT " + ",\n       ".join(projected_fragments)
+        if tail:
+            branch_sql += "\n" + tail.strip()
+        branch_sql += "\nGROUP BY " + ", ".join(group_expressions)
+        branch_bodies.append(branch_sql)
     return branch_bodies
 
 
@@ -863,6 +870,20 @@ def branch_projection_expression_map(branch: str, output_names: tuple[str, ...])
         if not expression:
             return None
         expressions[name] = expression
+    return expressions
+
+
+def non_aggregate_projection_expression_map(sql: str) -> dict[str, str]:
+    expressions: dict[str, str] = {}
+    for fragment in projection_item_fragments(sql):
+        if re.search(r"\b(?:sum|count|min|max|avg)\s*\(", fragment, re.IGNORECASE):
+            continue
+        name = projection_name_for_fragment(fragment)
+        if not name:
+            continue
+        expression = projection_expression(fragment)
+        if expression:
+            expressions[name] = expression
     return expressions
 
 
@@ -891,7 +912,21 @@ def rewrite_aggregate_fragment_for_branch(fragment: str, projection_map: dict[st
     alias = projection_name_for_fragment(fragment)
     if not alias:
         return None
-    expression = replace_sum_inner_expression(fragment, lambda inner: rewrite_expression_identifiers(inner, projection_map))
+    lowered = fragment.lower()
+    if re.search(r"\bcount\s*\(\s*distinct\b", lowered, re.IGNORECASE):
+        return None
+    if re.search(r"\bsum\s*\(", lowered, re.IGNORECASE):
+        expression = replace_sum_inner_expression(
+            fragment,
+            lambda inner: rewrite_expression_identifiers(inner, projection_map),
+        )
+    elif re.search(r"\bcount\s*\(", lowered, re.IGNORECASE):
+        expression = replace_count_inner_expression(
+            fragment,
+            lambda inner: rewrite_count_inner_expression(inner, projection_map),
+        )
+    else:
+        return None
     if expression is None:
         return None
     return format_projection_expression(expression, alias)
@@ -904,7 +939,21 @@ def rewrite_downstream_aggregate_body(aggregate_body: str) -> str | None:
             alias = projection_name_for_fragment(fragment)
             if not alias:
                 return None
-            expression = replace_sum_inner_expression(fragment, lambda _inner: alias)
+            lowered = fragment.lower()
+            if re.search(r"\bsum\s*\(", lowered, re.IGNORECASE):
+                expression = replace_sum_inner_expression(fragment, lambda _inner: alias)
+            elif re.search(r"\bcount\s*\(", lowered, re.IGNORECASE) and not re.search(
+                r"\bcount\s*\(\s*distinct\b",
+                lowered,
+                re.IGNORECASE,
+            ):
+                expression = replace_count_inner_expression(
+                    fragment,
+                    lambda _inner: alias,
+                    function_name="SUM",
+                )
+            else:
+                return None
             if expression is None:
                 return None
             projections.append(format_projection_expression(expression, alias))
@@ -917,11 +966,30 @@ def rewrite_downstream_aggregate_body(aggregate_body: str) -> str | None:
 
 
 def replace_sum_inner_expression(fragment: str, replacement: Callable[[str], str | None]) -> str | None:
+    return replace_aggregate_inner_expression(fragment, "sum", replacement)
+
+
+def replace_count_inner_expression(
+    fragment: str,
+    replacement: Callable[[str], str | None],
+    *,
+    function_name: str = "COUNT",
+) -> str | None:
+    return replace_aggregate_inner_expression(fragment, "count", replacement, function_name=function_name)
+
+
+def replace_aggregate_inner_expression(
+    fragment: str,
+    source_function: str,
+    replacement: Callable[[str], str | None],
+    *,
+    function_name: str | None = None,
+) -> str | None:
     lowered = fragment.lower()
-    sum_offset = lowered.find("sum")
-    if sum_offset < 0:
+    function_offset = lowered.find(source_function.lower())
+    if function_offset < 0:
         return None
-    open_offset = fragment.find("(", sum_offset)
+    open_offset = fragment.find("(", function_offset)
     if open_offset < 0:
         return None
     close_offset = matching_parenthesis_offset(fragment, open_offset)
@@ -931,11 +999,23 @@ def replace_sum_inner_expression(fragment: str, replacement: Callable[[str], str
     new_inner = replacement(inner)
     if not new_inner:
         return None
-    expression = f"{fragment[:open_offset + 1]}{new_inner}{fragment[close_offset:]}"
+    output_function = function_name or fragment[function_offset:open_offset].strip()
+    expression = f"{fragment[:function_offset]}{output_function}({new_inner}){fragment[close_offset + 1:]}"
     alias = projection_name_for_fragment(expression)
     if alias:
         expression = projection_expression(expression)
     return expression.strip()
+
+
+def rewrite_count_inner_expression(inner: str, projection_map: dict[str, str]) -> str | None:
+    stripped = inner.strip()
+    if not stripped:
+        return None
+    if stripped == "*" or re.fullmatch(r"\d+", stripped):
+        return stripped
+    if stripped.lower().startswith("distinct"):
+        return None
+    return rewrite_expression_identifiers(stripped, projection_map)
 
 
 def rewrite_expression_identifiers(expression: str, projection_map: dict[str, str]) -> str | None:

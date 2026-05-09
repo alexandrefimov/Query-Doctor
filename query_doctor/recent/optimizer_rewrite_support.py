@@ -189,6 +189,59 @@ def classify_optimizer_rewrite_support(
     if recipe is not None:
         recipe_id = recipe.recipe_id
         recipe_reason = RECIPE_REASONS.get(recipe_id, "Python-owned rewrite recipe is available")
+        recipe_is_strictly_supported = recipe_id in {
+            "post_union_aggregate_pushdown",
+            "final_union_distinct_rollup",
+            "pass_through_cte_elimination",
+            "single_cte_predicate_pushdown",
+            "single_cte_projection_alias_predicate_pushdown",
+            "single_derived_table_predicate_pushdown",
+        }
+        deterministic_draft = deterministic_recipe_draft(source_sql.sql, recipe)
+        deterministic_errors = (
+            validate_draft_sql(source_sql.sql, deterministic_draft, recipe)
+            if deterministic_draft
+            else ()
+        )
+        material_change = (
+            draft_has_material_change(source_sql.sql, deterministic_draft)
+            if deterministic_draft
+            else False
+        )
+        if (
+            recipe_is_strictly_supported
+            and deterministic_draft
+            and not deterministic_errors
+            and material_change
+        ):
+            return OptimizerRewriteSupport(
+                status="sql_draft_supported",
+                label=RECIPE_LABELS.get(recipe_id, "SQL draft attemptable"),
+                reason=recipe_reason,
+                risk_mode=risk.mode,
+                risk_reasons=tuple(risk.reasons),
+                recipe_id=recipe_id,
+                recipe_detected=True,
+                draft_eligibility="safe_to_attempt",
+                draft_eligibility_label="Safe to attempt with validation",
+                **rewriteability_kwargs("safe_material_draft"),
+                cte_count=cte_shape.cte_count,
+                cte_graph_shape=cte_shape.graph_shape,
+                cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
+                cte_simplification_status=cte_shape.simplification_status,
+                cte_predicate_origin_status=cte_shape.predicate_origin_status,
+                cte_predicate_path_status=cte_shape.predicate_path_status,
+                cte_projection_contract_status=cte_shape.projection_contract_status,
+                cte_projection_preservation_status=cte_shape.projection_preservation_status,
+                cte_simple_projection_count=cte_shape.simple_projection_cte_count,
+                cte_expression_projection_count=cte_shape.expression_projection_cte_count,
+                cte_single_use_count=cte_shape.single_use_cte_count,
+                cte_pass_through_count=cte_shape.pass_through_cte_count,
+                cte_union_branch_count=cte_shape.union_branch_count,
+                cte_union_branch_filter_status=cte_shape.union_branch_filter_status,
+                cte_boundary_reasons=cte_shape.boundary_reasons,
+                **derived_shape_kwargs(derived_shape),
+            )
         if risk.mode == "recommendations_only":
             return OptimizerRewriteSupport(
                 status="draft_disabled",
@@ -218,25 +271,6 @@ def classify_optimizer_rewrite_support(
                 cte_boundary_reasons=cte_shape.boundary_reasons,
                 **derived_shape_kwargs(derived_shape),
             )
-        recipe_is_strictly_supported = recipe_id in {
-            "post_union_aggregate_pushdown",
-            "final_union_distinct_rollup",
-            "pass_through_cte_elimination",
-            "single_cte_predicate_pushdown",
-            "single_cte_projection_alias_predicate_pushdown",
-            "single_derived_table_predicate_pushdown",
-        }
-        deterministic_draft = deterministic_recipe_draft(source_sql.sql, recipe)
-        deterministic_errors = (
-            validate_draft_sql(source_sql.sql, deterministic_draft, recipe)
-            if deterministic_draft
-            else ()
-        )
-        material_change = (
-            draft_has_material_change(source_sql.sql, deterministic_draft)
-            if deterministic_draft
-            else False
-        )
         draft_diagnostics = deterministic_recipe_draft_diagnostics(
             source_sql.sql,
             recipe,
@@ -295,12 +329,10 @@ def classify_optimizer_rewrite_support(
                 **derived_shape_kwargs(derived_shape),
             )
         return OptimizerRewriteSupport(
-            status="sql_draft_supported" if recipe_is_strictly_supported else "recipe_detected",
+            status="recipe_detected",
             label=RECIPE_LABELS.get(recipe_id, "SQL draft attemptable"),
             reason=(
-                recipe_reason
-                if recipe_is_strictly_supported
-                else f"{recipe_reason}; an explicit optimizer run and validation are still required"
+                f"{recipe_reason}; an explicit optimizer run and validation are still required"
             ),
             risk_mode=risk.mode,
             risk_reasons=tuple(risk.reasons),

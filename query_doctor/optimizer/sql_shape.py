@@ -930,9 +930,8 @@ def projection_item_fragments(sql: str) -> list[str]:
     if select_offset is None:
         return []
     from_offset = find_top_level_keyword_offset(sql, ("FROM",), start=select_offset + len("SELECT"))
-    if from_offset is None:
-        return []
-    return split_top_level_sql_fragments(sql[select_offset + len("SELECT") : from_offset], ",")
+    projection_end = from_offset if from_offset is not None else len(sql)
+    return split_top_level_sql_fragments(sql[select_offset + len("SELECT") : projection_end], ",")
 
 
 def projection_name_for_fragment(fragment: str) -> str | None:

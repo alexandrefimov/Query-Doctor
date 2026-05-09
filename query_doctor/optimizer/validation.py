@@ -35,7 +35,7 @@ from query_doctor.optimizer.source_sql import (
     QueryOptimizationError,
     enforce_text_size,
 )
-from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
+from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables, tokenize_sql
 from query_doctor.optimizer.sql_completeness import (
     INCOMPLETE_TRAILING_CHARS,
     INCOMPLETE_TRAILING_TOKENS,
@@ -266,7 +266,12 @@ def validate_recipe_backed_cte_rewrite(
         errors.append("optimized draft violates rewrite recipe: source JOIN predicates changed")
     if not counter_is_subset(sql_string_literal_counter(source_sql), sql_string_literal_counter(draft_sql)):
         errors.append("optimized draft violates rewrite recipe: source string literals changed")
-    if not counter_is_subset(sql_business_numeric_literal_counter(source_sql), sql_business_numeric_literal_counter(draft_sql)):
+    if not post_union_numeric_literals_preserved(
+        source_sql,
+        draft_sql,
+        source_union_body,
+        source_aggregate_body,
+    ):
         errors.append("optimized draft violates rewrite recipe: source numeric literals changed")
     return errors
 
@@ -642,6 +647,55 @@ def validate_unrelated_cte_bodies_preserved(
         if normalized_statement_signature(source_body) != normalized_statement_signature(draft_body):
             errors.append("optimized draft violates rewrite recipe: unrelated CTE body changed")
     return dedupe_preserve_order(errors)
+
+
+def post_union_numeric_literals_preserved(
+    source_sql: str,
+    draft_sql: str,
+    source_union_body: str,
+    source_aggregate_body: str,
+) -> bool:
+    removable = post_union_detail_projection_numeric_literal_counter(
+        source_union_body,
+        source_aggregate_body,
+    )
+    expected = sql_business_numeric_literal_counter(source_sql) - removable
+    return counter_is_subset(expected, sql_business_numeric_literal_counter(draft_sql))
+
+
+def post_union_detail_projection_numeric_literal_counter(
+    source_union_body: str,
+    source_aggregate_body: str,
+) -> Counter[str]:
+    output_names = union_projection_names(source_union_body)
+    if not output_names:
+        return Counter()
+    required_names = post_union_required_source_projection_names(
+        source_aggregate_body,
+        output_names,
+    )
+    removable: Counter[str] = Counter()
+    for branch in split_top_level_union_all_fragments(source_union_body):
+        for output_name, fragment in zip(output_names, projection_item_fragments(branch)):
+            if output_name in required_names:
+                continue
+            removable.update(sql_business_numeric_literal_counter(fragment))
+    return removable
+
+
+def post_union_required_source_projection_names(
+    source_aggregate_body: str,
+    output_names: tuple[str, ...],
+) -> set[str]:
+    available = {name.lower() for name in output_names}
+    required: set[str] = set()
+    for fragment in projection_item_fragments(source_aggregate_body):
+        try:
+            tokens = {token.lower() for token in tokenize_sql(fragment)}
+        except OptimizerSqlError:
+            continue
+        required.update(name for name in available if name in tokens)
+    return required
 
 
 def validate_post_union_aggregate_branch_shape(

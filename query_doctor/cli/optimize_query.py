@@ -338,6 +338,32 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PROGRESS_PREFIX} optimized query source: available", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimized query scope: {source_sql.scope}", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimizer risk mode: {risk_decision.mode}", file=sys.stderr)
+        deterministic_draft = deterministic_recipe_draft(source_sql.sql, rewrite_recipe)
+        if deterministic_draft:
+            errors = validate_draft_sql(source_sql.sql, deterministic_draft, rewrite_recipe)
+            if not errors and draft_has_material_change(source_sql.sql, deterministic_draft):
+                output_name = Path(args.out).name
+                if output_name != args.out:
+                    raise QueryOptimizationError("Output must be a filename inside the case directory.")
+                output_path = case_dir / output_name
+                output_path.write_text(normalized_trusted_draft_sql(deterministic_draft), encoding="utf-8")
+                write_marker(
+                    case_dir,
+                    output_name,
+                    source_sql=source_sql.sql,
+                    facts_text=facts_text,
+                    source_scope=source_sql.scope,
+                    risk_decision=risk_decision,
+                    rewrite_recipe=rewrite_recipe,
+                    generation_metadata={
+                        "generator": "deterministic_recipe",
+                        "prompt_chars": 0,
+                        "source_sql_chars": len(source_sql.sql),
+                        "generated_chars": len(deterministic_draft),
+                    },
+                )
+                print(f"{PROGRESS_PREFIX} optimizer deterministic recipe draft done", file=sys.stderr)
+                return 0
         if risk_decision.mode == "recommendations_only":
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_prompt = build_recommendations_prompt(
@@ -376,32 +402,6 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"{PROGRESS_PREFIX} optimizer recommendations done", file=sys.stderr)
             return 0
-        deterministic_draft = deterministic_recipe_draft(source_sql.sql, rewrite_recipe)
-        if deterministic_draft:
-            errors = validate_draft_sql(source_sql.sql, deterministic_draft, rewrite_recipe)
-            if not errors and draft_has_material_change(source_sql.sql, deterministic_draft):
-                output_name = Path(args.out).name
-                if output_name != args.out:
-                    raise QueryOptimizationError("Output must be a filename inside the case directory.")
-                output_path = case_dir / output_name
-                output_path.write_text(normalized_trusted_draft_sql(deterministic_draft), encoding="utf-8")
-                write_marker(
-                    case_dir,
-                    output_name,
-                    source_sql=source_sql.sql,
-                    facts_text=facts_text,
-                    source_scope=source_sql.scope,
-                    risk_decision=risk_decision,
-                    rewrite_recipe=rewrite_recipe,
-                    generation_metadata={
-                        "generator": "deterministic_recipe",
-                        "prompt_chars": 0,
-                        "source_sql_chars": len(source_sql.sql),
-                        "generated_chars": len(deterministic_draft),
-                    },
-                )
-                print(f"{PROGRESS_PREFIX} optimizer deterministic recipe draft done", file=sys.stderr)
-                return 0
         if rewrite_recipe is None:
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
