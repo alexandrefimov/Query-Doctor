@@ -11,6 +11,7 @@ def test_package_layout_renderers_are_available():
     assert callable(layout.render_favicon_link)
     assert callable(layout.render_shared_styles)
     assert callable(layout.render_app_header)
+    assert callable(layout.render_design_toggle)
     assert callable(layout.render_client_script)
 
 
@@ -83,8 +84,10 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert ".hero-card:after" not in body
     assert "color-scheme:light" in body
     assert "html[data-theme=dark]" in body
-    assert "--bg:#f7f8fa" in body
-    assert "--bg:#101418" in body
+    assert "--bg:#eef2f6" in body
+    assert "--bg:#0f1419" in body
+    assert "html[data-design=classic]{--bg:#f7f8fa" in body
+    assert "html[data-theme=dark][data-design=classic]{--bg:#101418" in body
     assert "max-height:66vh" not in body
     assert "overflow-wrap:anywhere" in body
     assert "Интеллектуальный анализ Impala-запросов по Query ID" not in body
@@ -137,12 +140,28 @@ def test_web_render_page_contains_theme_toggle():
     assert "query-doctor-theme" in body
     assert "prefers-color-scheme: dark" in body
     assert "Switch to light theme" in body
-    assert ".theme-toggle{display:inline-grid;place-items:center;width:36px;height:36px;border:1px solid #455260" in body
-    assert "background:#12181e;color:#8cd4e6" in body
-    assert "html[data-theme=dark] .theme-toggle{border-color:#c8d2df;background:#fff;color:#0f5268" in body
-    assert ".theme-icon-light{display:none}.theme-icon-dark{display:block}" in body
+    assert ".theme-toggle,.design-toggle{display:inline-grid;place-items:center;width:32px;height:32px;border:1px solid var(--border-strong)" in body
+    assert "background:var(--control);color:var(--accent-strong)" in body
+    assert "html[data-theme=dark] .theme-toggle,html[data-theme=dark] .design-toggle{border-color:var(--border-strong);background:var(--control);color:var(--accent-strong)" in body
+    assert ".theme-icon-light,.design-icon-classic{display:none}.theme-icon-dark,.design-icon-serious{display:block}" in body
     assert "html[data-theme=dark] .theme-icon-light{display:block}" in body
     assert "html[data-theme=dark] .theme-icon-dark{display:none}" in body
+
+
+def test_web_render_page_contains_design_toggle():
+    module = load_web_module()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+    body = module.render_page(settings)
+
+    assert 'id="design-toggle"' in body
+    assert 'aria-label="Switch to classic design"' in body
+    assert "query-doctor-design" in body
+    assert "data-design" in body
+    assert "Switch to serious design" in body
+    assert ".design-icon-classic{display:block}" in body
+    assert ".design-icon-serious{display:none}" in body
+    assert body.index('id="design-toggle"') < body.index('id="theme-toggle"')
 
 
 def test_web_render_page_contains_optimizer_copy_handler():

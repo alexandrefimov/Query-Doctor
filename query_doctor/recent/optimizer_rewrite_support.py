@@ -26,6 +26,7 @@ RECIPE_LABELS = {
     "final_union_distinct_rollup": "SQL draft eligible",
     "pass_through_cte_elimination": "SQL draft eligible",
     "single_cte_predicate_pushdown": "SQL draft eligible",
+    "single_cte_projection_alias_predicate_pushdown": "SQL draft eligible",
     "single_derived_table_predicate_pushdown": "SQL draft eligible",
     "linear_cte_predicate_pushdown": "Rewrite recipe detected",
     "cte_dag_predicate_pushdown": "Rewrite recipe detected",
@@ -35,6 +36,7 @@ RECIPE_REASONS = {
     "final_union_distinct_rollup": "Python-owned UNION ALL DISTINCT rollup recipe is available",
     "pass_through_cte_elimination": "Pass-through CTE elimination recipe is available",
     "single_cte_predicate_pushdown": "Single CTE predicate pushdown recipe is available",
+    "single_cte_projection_alias_predicate_pushdown": "Single CTE projection-alias predicate pushdown recipe is available",
     "single_derived_table_predicate_pushdown": "Single derived table predicate pushdown recipe is available",
     "linear_cte_predicate_pushdown": "Linear CTE predicate pushdown recipe is available",
     "cte_dag_predicate_pushdown": "CTE DAG predicate pushdown recipe is available",
@@ -154,6 +156,7 @@ def classify_optimizer_rewrite_support(
             "final_union_distinct_rollup",
             "pass_through_cte_elimination",
             "single_cte_predicate_pushdown",
+            "single_cte_projection_alias_predicate_pushdown",
             "single_derived_table_predicate_pushdown",
         }
         deterministic_draft = deterministic_recipe_draft(source_sql.sql, recipe)

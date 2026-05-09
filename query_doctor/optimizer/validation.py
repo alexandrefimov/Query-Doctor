@@ -13,6 +13,8 @@ from query_doctor.optimizer.deterministic_rewrites import (
     cte_reference_aliases,
     pass_through_cte_elimination_draft,
     per_conjunct_pushdown_plan,
+    projection_alias_pushdown_predicates,
+    projection_alias_source_column_map,
     simple_cte_filter_columns,
 )
 from query_doctor.optimizer.recommendation_output import (
@@ -208,6 +210,8 @@ def validate_recipe_backed_cte_rewrite(
         return validate_final_union_distinct_rollup_rewrite(source_sql, draft_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
         return validate_single_cte_predicate_pushdown_rewrite(source_sql, draft_sql)
+    if rewrite_recipe.recipe_id == "single_cte_projection_alias_predicate_pushdown":
+        return validate_single_cte_projection_alias_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id == "linear_cte_predicate_pushdown":
         return validate_linear_cte_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id == "cte_dag_predicate_pushdown":
@@ -317,6 +321,49 @@ def validate_single_cte_predicate_pushdown_rewrite(source_sql: str, draft_sql: s
     source_segments = cte_validation_segments(source_parsed)
     draft_segments = cte_validation_segments(draft_parsed)
     errors.extend(validate_cte_predicate_pushdown_segments(source_parsed, source_segments, draft_segments))
+    return dedupe_preserve_order(errors)
+
+
+def validate_single_cte_projection_alias_predicate_pushdown_rewrite(source_sql: str, draft_sql: str) -> list[str]:
+    errors: list[str] = []
+    source_parsed = parse_with_query(source_sql)
+    draft_parsed = parse_with_query(draft_sql)
+    if source_parsed is None or draft_parsed is None:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    source_names = tuple(cte.name for cte in source_parsed.ctes)
+    draft_names = tuple(cte.name for cte in draft_parsed.ctes)
+    if len(source_names) != 1 or source_names != draft_names:
+        return ["optimized draft violates rewrite recipe: CTE order changed"]
+    if referenced_cte_names(source_parsed.final_sql, source_names) != source_names:
+        errors.append("optimized draft violates rewrite recipe: final SELECT no longer reads the source CTE")
+    if referenced_cte_names(draft_parsed.final_sql, draft_names) != draft_names:
+        errors.append("optimized draft violates rewrite recipe: final SELECT no longer reads the source CTE")
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+
+    source_cte = source_parsed.ctes[0]
+    draft_cte = draft_parsed.ctes[0]
+    errors.extend(validate_cte_segment_shape_preserved_except_where(source_cte.body, draft_cte.body, source_cte.name))
+    errors.extend(validate_cte_segment_shape_preserved_except_where(source_parsed.final_sql, draft_parsed.final_sql, "final SELECT"))
+    if sql_predicate_signature_counter(source_parsed.final_sql, "WHERE") != sql_predicate_signature_counter(draft_parsed.final_sql, "WHERE"):
+        errors.append("optimized draft violates rewrite recipe: final SELECT WHERE predicates changed")
+    source_predicates = sql_predicate_signature_counter(source_cte.body, "WHERE")
+    draft_predicates = sql_predicate_signature_counter(draft_cte.body, "WHERE")
+    if not counter_is_subset(source_predicates, draft_predicates):
+        errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
+    extra_predicates = draft_predicates - source_predicates
+    if extra_predicates:
+        alias_map = projection_alias_source_column_map(source_cte.body)
+        allowed_predicates: Counter[str] = Counter()
+        for predicate in projection_alias_pushdown_predicates(
+            source_parsed.final_sql,
+            source_cte.body,
+            alias_map,
+            cte_qualifiers=cte_reference_aliases(source_parsed.final_sql, source_cte.name),
+        ):
+            allowed_predicates.update(sql_predicate_signature_counter(f"SELECT 1 WHERE {predicate}", "WHERE"))
+        if not counter_is_subset(extra_predicates, allowed_predicates):
+            errors.append("optimized draft violates rewrite recipe: added WHERE predicate was not copied through a projection alias")
     return dedupe_preserve_order(errors)
 
 

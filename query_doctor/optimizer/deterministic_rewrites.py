@@ -111,6 +111,8 @@ def deterministic_recipe_draft(source_sql: str, rewrite_recipe: OptimizerRewrite
         return final_union_distinct_rollup_draft(source_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
         return single_cte_predicate_pushdown_draft(source_sql)
+    if rewrite_recipe.recipe_id == "single_cte_projection_alias_predicate_pushdown":
+        return single_cte_projection_alias_predicate_pushdown_draft(source_sql)
     if rewrite_recipe.recipe_id == "linear_cte_predicate_pushdown":
         return linear_cte_predicate_pushdown_draft(source_sql)
     if rewrite_recipe.recipe_id == "cte_dag_predicate_pushdown":
@@ -560,6 +562,36 @@ def single_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
     return f"WITH {cte.name} AS (\n{modified_body.strip()}\n)\n{parsed.final_sql.strip()}"
 
 
+def single_cte_projection_alias_predicate_pushdown_draft(source_sql: str) -> str | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None or len(parsed.ctes) != 1:
+        return None
+    if first_cte_has_column_list(source_sql):
+        return None
+    cte = parsed.ctes[0]
+    if main_select_has_distinct(cte.body) or top_level_join_signature(cte.body):
+        return None
+    if any(top_level_keyword_count(cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+        return None
+    if clause_signature(cte.body, "GROUP"):
+        return None
+    alias_map = projection_alias_source_column_map(cte.body)
+    if not alias_map:
+        return None
+    predicates = projection_alias_pushdown_predicates(
+        parsed.final_sql,
+        cte.body,
+        alias_map,
+        cte_qualifiers=cte_reference_aliases(parsed.final_sql, cte.name),
+    )
+    if not predicates:
+        return None
+    modified_body = add_where_predicates_to_cte_body(cte.body, predicates)
+    if modified_body is None:
+        return None
+    return f"WITH {cte.name} AS (\n{modified_body.strip()}\n)\n{parsed.final_sql.strip()}"
+
+
 def linear_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
     parsed = parse_with_query(source_sql)
     if parsed is None or len(parsed.ctes) < 2:
@@ -605,6 +637,58 @@ def linear_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
     cte_blocks = [f"{first_cte.name} AS (\n{modified_first_body.strip()}\n)"]
     cte_blocks.extend(f"{cte.name} AS (\n{cte.body.strip()}\n)" for cte in parsed.ctes[1:])
     return "WITH " + ",\n".join(cte_blocks) + "\n" + parsed.final_sql.strip()
+
+
+def projection_alias_pushdown_predicates(
+    final_sql: str,
+    cte_body: str,
+    alias_map: dict[str, str],
+    *,
+    cte_qualifiers: set[str],
+) -> tuple[str, ...]:
+    alias_columns = set(alias_map)
+    source_columns = set(alias_map.values()) | simple_cte_filter_columns(cte_body)
+    predicates: list[str] = []
+    existing_cte_predicates = sql_predicate_signature_counter(cte_body, "WHERE")
+    for predicate in copyable_final_where_predicates(
+        final_sql,
+        cte_body,
+        alias_columns,
+        cte_qualifiers=cte_qualifiers,
+        grouped_columns=set(),
+    ):
+        rewritten = rewrite_expression_identifiers(predicate, alias_map)
+        if rewritten is None:
+            continue
+        rewritten_columns = predicate_column_references(rewritten, source_columns)
+        if rewritten_columns is None or not rewritten_columns <= source_columns:
+            continue
+        signature = sql_predicate_signature_counter(f"SELECT 1 WHERE {rewritten}", "WHERE")
+        if not signature or counter_is_subset(signature, existing_cte_predicates):
+            continue
+        predicates.append(rewritten)
+    return tuple(predicates)
+
+
+def projection_alias_source_column_map(cte_body: str) -> dict[str, str]:
+    alias_map: dict[str, str] = {}
+    for fragment in projection_item_fragments(cte_body):
+        output_name = projection_name_for_fragment(fragment)
+        if not output_name:
+            continue
+        expression = projection_expression(fragment)
+        try:
+            tokens = tokenize_sql(expression)
+        except OptimizerSqlError:
+            return {}
+        if len(tokens) != 1:
+            continue
+        source_column = tokens[0].lower()
+        if not source_column[:1].isalpha() or tokens[0].upper() in SAFE_SINGLE_CTE_PREDICATE_KEYWORDS:
+            continue
+        if source_column != output_name:
+            alias_map[output_name] = source_column
+    return alias_map
 
 
 LineageRef = tuple[str, str]

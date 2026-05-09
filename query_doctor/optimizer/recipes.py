@@ -6,6 +6,8 @@ from query_doctor.optimizer.deterministic_rewrites import (
     any_cte_has_column_list,
     copyable_final_where_predicates,
     cte_reference_aliases,
+    projection_alias_pushdown_predicates,
+    projection_alias_source_column_map,
     simple_cte_filter_columns,
     simple_group_by_columns,
 )
@@ -75,6 +77,8 @@ def detect_optimizer_rewrite_recipe(
             return build_pass_through_cte_elimination_recipe_if_supported(source_sql)
         if cte_shape.graph_shape == "single_cte":
             if not single_cte_predicate_pushdown_has_candidate_predicate(parsed.ctes[0], parsed.final_sql):
+                if single_cte_projection_alias_predicate_pushdown_has_candidate_predicate(parsed.ctes[0], parsed.final_sql):
+                    return build_single_cte_projection_alias_predicate_pushdown_recipe(parsed.ctes[0])
                 return None
             return build_single_cte_predicate_pushdown_recipe(parsed.ctes[0])
         if is_linear_cte_chain(source_sql):
@@ -213,6 +217,49 @@ def build_single_cte_predicate_pushdown_recipe(first_cte: CteDefinition) -> Opti
     return OptimizerRewriteRecipe(
         recipe_id="single_cte_predicate_pushdown",
         title="Copy final filters into a single CTE",
+        source_cte=first_cte.name,
+        aggregate_cte=None,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
+
+
+def single_cte_projection_alias_predicate_pushdown_has_candidate_predicate(
+    cte: CteDefinition,
+    final_sql: str,
+) -> bool:
+    if clause_signature(cte.body, "GROUP"):
+        return False
+    alias_map = projection_alias_source_column_map(cte.body)
+    if not alias_map:
+        return False
+    return bool(
+        projection_alias_pushdown_predicates(
+            final_sql,
+            cte.body,
+            alias_map,
+            cte_qualifiers=cte_reference_aliases(final_sql, cte.name),
+        )
+    )
+
+
+def build_single_cte_projection_alias_predicate_pushdown_recipe(first_cte: CteDefinition) -> OptimizerRewriteRecipe:
+    prompt_bullets = (
+        "Use recipe single_cte_projection_alias_predicate_pushdown.",
+        "The query has one CTE consumed by the final SELECT; preserve the CTE name and final output column contract.",
+        "You may add a WHERE predicate inside the CTE only by copying a final SELECT predicate after replacing a projected output alias with the exact source column used by that CTE projection.",
+        "Only simple projection aliases such as source_column AS output_alias are in scope; do not substitute functions, arithmetic, casts, aggregates, windows, subqueries, or qualified expressions.",
+        "Keep the original final SELECT WHERE predicate in place; do not remove or weaken filters.",
+        "Do not change JOIN predicates, JOIN types, GROUP BY, HAVING, ORDER BY, LIMIT, projection expressions, physical tables, literals, or final SELECT shape.",
+        "If no predicate can be safely copied through a projection alias, return the original query with harmless formatting.",
+    )
+    safe_bullets = (
+        "- Recipe detected: a single CTE may benefit from copying a final SELECT filter through a simple projection alias.",
+        "- A trusted SQL draft is shown only if validation proves the alias maps to one source column and all original filters, projections, tables, literals, and output shape are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="single_cte_projection_alias_predicate_pushdown",
+        title="Copy final filters through a simple CTE projection alias",
         source_cte=first_cte.name,
         aggregate_cte=None,
         prompt_bullets=prompt_bullets,

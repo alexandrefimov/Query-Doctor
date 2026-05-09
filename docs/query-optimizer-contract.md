@@ -159,6 +159,16 @@ boundary.
   final CTE reference, physical table set, projections, joins, literals, all
   original filters, and final output shape; added predicates must already exist
   in the final SELECT or as a CTE-alias-qualified downstream equivalent.
+- `single_cte_projection_alias_predicate_pushdown`: accepts copied WHERE
+  predicates inside a single CTE consumed by the final SELECT when a downstream
+  predicate targets a CTE output alias that maps to exactly one unqualified
+  source column in the CTE projection. Detection and deterministic execution
+  reject functions, casts, arithmetic, aggregates, windows, subqueries,
+  qualified source expressions, grouped CTEs, joins, and CTE column lists.
+  Validation must preserve the CTE name, final CTE reference, physical table
+  set, projections, joins, literals, all original filters, and final output
+  shape; added predicates must be the downstream predicate with that output
+  alias replaced by the exact projected source column.
 - `single_derived_table_predicate_pushdown`: accepts copied WHERE predicates
   inside one top-level derived table consumed by the outer SELECT. Detection
   and deterministic execution require a copyable outer predicate that targets
