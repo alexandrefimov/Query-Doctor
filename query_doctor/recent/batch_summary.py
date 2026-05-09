@@ -14,6 +14,7 @@ from query_doctor.recent.batch_config import (
     duration_filter_label,
 )
 from query_doctor.recent.batch_models import BatchConfig, CaseResult, DiscoveryResult
+from query_doctor.recent.query_optimization_score import optimizer_adjacent_actionability
 from query_doctor.recent.query_optimization_score import query_optimization_sort_key
 from query_doctor.recent.stats_optimization_score import stats_optimization_sort_key
 
@@ -244,6 +245,7 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     adjacent_cte_boundary_reason_counts: Counter[str] = Counter()
     adjacent_derived_predicate_pushdown_counts: Counter[str] = Counter()
     adjacent_derived_boundary_reason_counts: Counter[str] = Counter()
+    adjacent_actionability_counts: Counter[str] = Counter()
     optimization_candidate_count = 0
     for case in cases:
         support = case.optimizer_rewrite_support
@@ -278,6 +280,8 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
                 }
             )
         elif normalized_bucket == "recipe_adjacent_shape":
+            adjacent_actionability = optimizer_adjacent_actionability(support.to_dict())
+            adjacent_actionability_counts[adjacent_actionability] += 1
             adjacent_cte_graph_counts[normalize_adjacent_label(support.cte_graph_shape)] += 1
             adjacent_cte_predicate_pushdown_counts[
                 normalize_adjacent_label(support.cte_predicate_pushdown_status)
@@ -295,6 +299,9 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     safe_material_draft = bucket_counts.get("safe_material_draft", 0)
     no_draft = bucket_counts.get("recipe_detected_no_draft", 0)
     recipe_adjacent = bucket_counts.get("recipe_adjacent_shape", 0)
+    adjacent_actionable = adjacent_actionability_counts.get("actionable", 0)
+    adjacent_structural = adjacent_actionability_counts.get("structural_boundary", 0)
+    adjacent_other = adjacent_actionability_counts.get("other", 0)
     stats_likely = bucket_counts.get("stats_likely", 0)
     human_review = bucket_counts.get("human_review_only", 0)
     return {
@@ -328,6 +335,10 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
             sorted(no_draft_cte_pushdown_decision_counts.items())
         ),
         "recipe_adjacent_shape_cases": recipe_adjacent,
+        "recipe_adjacent_actionable_cases": adjacent_actionable,
+        "recipe_adjacent_structural_boundary_cases": adjacent_structural,
+        "recipe_adjacent_other_cases": adjacent_other,
+        "recipe_adjacent_actionability_counts": dict(sorted(adjacent_actionability_counts.items())),
         "recipe_adjacent_cte_graph_counts": dict(sorted(adjacent_cte_graph_counts.items())),
         "recipe_adjacent_cte_predicate_pushdown_counts": dict(
             sorted(adjacent_cte_predicate_pushdown_counts.items())
@@ -345,6 +356,8 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "human_review_only_cases": human_review,
         "safe_material_draft_rate": ratio(safe_material_draft, total),
         "recipe_backlog_rate": ratio(no_draft + recipe_adjacent, total),
+        "recipe_backlog_actionable_cases": no_draft + adjacent_actionable,
+        "recipe_backlog_actionable_rate": ratio(no_draft + adjacent_actionable, total),
         "stats_likely_rate": ratio(stats_likely, total),
         "human_review_only_rate": ratio(human_review, total),
     }
@@ -376,6 +389,9 @@ def optimizer_funnel(
             source_unavailable_cases += 1
     no_draft_cases = int(distribution.get("recipe_detected_no_draft_cases") or 0)
     adjacent_cases = int(distribution.get("recipe_adjacent_shape_cases") or 0)
+    adjacent_actionable_cases = int(distribution.get("recipe_adjacent_actionable_cases") or 0)
+    adjacent_structural_cases = int(distribution.get("recipe_adjacent_structural_boundary_cases") or 0)
+    adjacent_other_cases = int(distribution.get("recipe_adjacent_other_cases") or 0)
     stats_likely_cases = int(distribution.get("stats_likely_cases") or 0)
     human_review_cases = int(distribution.get("human_review_only_cases") or 0)
     not_rewriteable_cases = int(bucket_counts.get("not_rewriteable") or 0)
@@ -392,6 +408,9 @@ def optimizer_funnel(
         ),
         "recipe_detected_no_draft_cases": no_draft_cases,
         "recipe_adjacent_shape_cases": adjacent_cases,
+        "recipe_adjacent_actionable_cases": adjacent_actionable_cases,
+        "recipe_adjacent_structural_boundary_cases": adjacent_structural_cases,
+        "recipe_adjacent_other_cases": adjacent_other_cases,
         "draft_disabled_by_safety_threshold_cases": draft_disabled_by_threshold_cases,
         "source_unavailable_cases": source_unavailable_cases,
         "stats_likely_cases": stats_likely_cases,
@@ -402,6 +421,8 @@ def optimizer_funnel(
         "draft_ready_rate": ratio(draft_ready_cases, candidate_cases),
         "trusted_sql_draft_produced_rate": 0.0,
         "recipe_backlog_rate": ratio(no_draft_cases + adjacent_cases, candidate_cases),
+        "recipe_backlog_actionable_cases": no_draft_cases + adjacent_actionable_cases,
+        "recipe_backlog_actionable_rate": ratio(no_draft_cases + adjacent_actionable_cases, candidate_cases),
     }
 
 
@@ -597,6 +618,7 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"- optimization candidate cases: {rewriteability_distribution.get('optimization_candidate_cases', 0)} / {rewriteability_distribution.get('total_cases', 0)}",
                 f"- safe material draft cases: {rewriteability_distribution.get('safe_material_draft_cases', 0)} ({rewriteability_distribution.get('safe_material_draft_rate', 0.0)})",
                 f"- recipe backlog cases: {rewriteability_distribution.get('recipe_detected_no_draft_cases', 0)} no-draft, {rewriteability_distribution.get('recipe_adjacent_shape_cases', 0)} adjacent ({rewriteability_distribution.get('recipe_backlog_rate', 0.0)})",
+                f"- actionable recipe backlog cases: {rewriteability_distribution.get('recipe_backlog_actionable_cases', 0)} ({rewriteability_distribution.get('recipe_backlog_actionable_rate', 0.0)})",
                 f"- stats-likely cases: {rewriteability_distribution.get('stats_likely_cases', 0)} ({rewriteability_distribution.get('stats_likely_rate', 0.0)})",
                 f"- human-review-only cases: {rewriteability_distribution.get('human_review_only_cases', 0)} ({rewriteability_distribution.get('human_review_only_rate', 0.0)})",
             ]
@@ -676,6 +698,12 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"{reason}={count}" for reason, count in sorted(no_draft_decisions.items())
             )
             lines.append(f"- no-draft CTE predicate decisions: {rendered_decisions}")
+        adjacent_actionability = rewriteability_distribution.get("recipe_adjacent_actionability_counts")
+        if isinstance(adjacent_actionability, dict) and adjacent_actionability:
+            rendered_actionability = ", ".join(
+                f"{label}={count}" for label, count in sorted(adjacent_actionability.items())
+            )
+            lines.append(f"- adjacent actionability: {rendered_actionability}")
         adjacent_cte_graphs = rewriteability_distribution.get("recipe_adjacent_cte_graph_counts")
         if isinstance(adjacent_cte_graphs, dict) and adjacent_cte_graphs:
             rendered_graphs = ", ".join(
@@ -726,6 +754,7 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"- draft-ready cases: {optimizer_funnel_summary.get('draft_ready_cases', 0)} ({optimizer_funnel_summary.get('draft_ready_rate', 0.0)})",
                 f"- trusted SQL draft produced cases: {optimizer_funnel_summary.get('trusted_sql_draft_produced_cases', 0)} ({optimizer_funnel_summary.get('trusted_sql_draft_produced_rate', 0.0)})",
                 f"- recipe backlog cases: {optimizer_funnel_summary.get('recipe_detected_no_draft_cases', 0)} no-draft, {optimizer_funnel_summary.get('recipe_adjacent_shape_cases', 0)} adjacent ({optimizer_funnel_summary.get('recipe_backlog_rate', 0.0)})",
+                f"- actionable recipe backlog cases: {optimizer_funnel_summary.get('recipe_backlog_actionable_cases', 0)} ({optimizer_funnel_summary.get('recipe_backlog_actionable_rate', 0.0)})",
                 f"- human review only cases: {optimizer_funnel_summary.get('human_review_only_cases', 0)}",
                 f"- stats-likely cases: {optimizer_funnel_summary.get('stats_likely_cases', 0)}",
                 f"- not rewriteable cases: {optimizer_funnel_summary.get('not_rewriteable_cases', 0)}",

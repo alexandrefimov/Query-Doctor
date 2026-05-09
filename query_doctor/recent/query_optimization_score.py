@@ -18,6 +18,22 @@ REWRITEABILITY_ORDER = {
     "not_rewriteable": 0,
     "unknown": 0,
 }
+ADJACENT_ACTIONABLE_STATUSES = {"candidate"}
+ADJACENT_ACTIONABLE_SIMPLIFICATION_STATUSES = {"pass_through_candidate", "single_use_candidate"}
+ADJACENT_STRUCTURAL_BOUNDARY_REASONS = {
+    "aggregate_boundary",
+    "no_downstream_filter_for_pushdown",
+    "outer_join_boundary",
+    "outer_join_or_multiple_relations",
+    "projection_not_simple",
+    "set_operation_boundary",
+    "unsupported_graph",
+    "window_boundary",
+}
+ADJACENT_STRUCTURAL_STATUSES = {
+    "blocked_no_downstream_filter",
+    "blocked_unsupported_graph",
+}
 
 
 @dataclass(frozen=True)
@@ -115,6 +131,8 @@ def query_optimization_sort_key(case_summary: dict[str, object]) -> tuple[object
 def optimizer_rewriteability_rank(support: object) -> int:
     support = support if isinstance(support, dict) else {}
     bucket = str(support.get("rewriteability_bucket") or "").strip().lower()
+    if bucket == "recipe_adjacent_shape" and optimizer_adjacent_actionability(support) != "actionable":
+        return REWRITEABILITY_ORDER["human_review_only"]
     if bucket in REWRITEABILITY_ORDER:
         return REWRITEABILITY_ORDER[bucket]
     draft_eligibility = str(support.get("draft_eligibility") or "").strip().lower()
@@ -128,6 +146,39 @@ def optimizer_rewriteability_rank(support: object) -> int:
     if status in {"draft_disabled", "guidance_only", "source_unavailable"}:
         return REWRITEABILITY_ORDER["human_review_only"]
     return REWRITEABILITY_ORDER["unknown"]
+
+
+def optimizer_adjacent_actionability(support: object) -> str:
+    support = support if isinstance(support, dict) else {}
+    bucket = str(support.get("rewriteability_bucket") or "").strip().lower()
+    if bucket != "recipe_adjacent_shape":
+        return "not_applicable"
+    cte_status = str(support.get("cte_predicate_pushdown_status") or "").strip().lower()
+    derived_status = str(support.get("derived_predicate_pushdown_status") or "").strip().lower()
+    simplification_status = str(support.get("cte_simplification_status") or "").strip().lower()
+    boundary_reasons = adjacent_boundary_reason_set(support.get("cte_boundary_reasons"))
+    boundary_reasons.update(adjacent_boundary_reason_set(support.get("derived_boundary_reasons")))
+    has_actionable_shape = (
+        cte_status in ADJACENT_ACTIONABLE_STATUSES
+        or derived_status in ADJACENT_ACTIONABLE_STATUSES
+        or simplification_status in ADJACENT_ACTIONABLE_SIMPLIFICATION_STATUSES
+    )
+    has_structural_boundary = bool(boundary_reasons & ADJACENT_STRUCTURAL_BOUNDARY_REASONS)
+    if cte_status in ADJACENT_STRUCTURAL_STATUSES or (
+        derived_status in ADJACENT_STRUCTURAL_STATUSES and cte_status in {"", "no_cte"}
+    ):
+        has_structural_boundary = True
+    if has_structural_boundary:
+        return "structural_boundary"
+    if has_actionable_shape:
+        return "actionable"
+    return "other"
+
+
+def adjacent_boundary_reason_set(value: object) -> set[str]:
+    if not isinstance(value, (list, tuple, set)):
+        return set()
+    return {str(reason).strip().lower() for reason in value if str(reason).strip()}
 
 
 def candidate_tier(score: int, *, has_shape_evidence: bool, counter_signals: list[str]) -> str:

@@ -1,3 +1,5 @@
+from query_doctor.recent.query_optimization_score import optimizer_adjacent_actionability
+from query_doctor.recent.query_optimization_score import optimizer_rewriteability_rank
 from query_doctor.recent.query_optimization_score import score_query_optimization_candidate
 
 
@@ -96,6 +98,22 @@ def test_expensive_query_with_scan_join_exchange_signal_is_high_candidate():
     assert "join row expansion or cardinality mismatch with join evidence" in result.reasons
     assert "large exchange volume before downstream processing" in result.reasons
     assert "join keys and join cardinality" in result.suggested_review_areas
+
+
+def test_structural_recipe_adjacent_shapes_rank_below_actionable_adjacent_shapes():
+    actionable = {
+        "rewriteability_bucket": "recipe_adjacent_shape",
+        "cte_predicate_pushdown_status": "candidate",
+    }
+    structural = {
+        "rewriteability_bucket": "recipe_adjacent_shape",
+        "cte_predicate_pushdown_status": "blocked_no_downstream_filter",
+        "cte_boundary_reasons": ["no_downstream_filter_for_pushdown"],
+    }
+
+    assert optimizer_adjacent_actionability(actionable) == "actionable"
+    assert optimizer_adjacent_actionability(structural) == "structural_boundary"
+    assert optimizer_rewriteability_rank(actionable) > optimizer_rewriteability_rank(structural)
 
 
 def test_expensive_query_without_shape_signal_is_at_most_low():
