@@ -113,6 +113,18 @@ RELATION_ALIAS_BOUNDARIES = {
 }
 
 
+RISK_THRESHOLD_BYPASS_RECIPE_IDS = frozenset(
+    {
+        "post_union_aggregate_pushdown",
+        "final_union_distinct_rollup",
+        "pass_through_cte_elimination",
+        "single_cte_predicate_pushdown",
+        "single_cte_projection_alias_predicate_pushdown",
+        "single_derived_table_predicate_pushdown",
+    }
+)
+
+
 def deterministic_recipe_draft(
     source_sql: str,
     rewrite_recipe: OptimizerRewriteRecipe | None,

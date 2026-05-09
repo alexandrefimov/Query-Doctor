@@ -33,7 +33,10 @@ from query_doctor.optimizer.artifacts import (
     write_marker,
     write_recommendations_marker,
 )
-from query_doctor.optimizer.deterministic_rewrites import deterministic_recipe_draft
+from query_doctor.optimizer.deterministic_rewrites import (
+    RISK_THRESHOLD_BYPASS_RECIPE_IDS,
+    deterministic_recipe_draft,
+)
 from query_doctor.optimizer.prompts import build_prompt, build_recommendations_prompt
 from query_doctor.optimizer.recommendations import (
     action_card_recommendation_bullet,
@@ -339,8 +342,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PROGRESS_PREFIX} optimized query source: available", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimized query scope: {source_sql.scope}", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimizer risk mode: {risk_decision.mode}", file=sys.stderr)
+        recipe_can_bypass_risk_threshold = bool(
+            rewrite_recipe
+            and rewrite_recipe.recipe_id in RISK_THRESHOLD_BYPASS_RECIPE_IDS
+        )
         deterministic_draft = deterministic_recipe_draft(source_sql.sql, rewrite_recipe)
-        if deterministic_draft:
+        if deterministic_draft and (
+            risk_decision.mode != "recommendations_only" or recipe_can_bypass_risk_threshold
+        ):
             errors = validate_draft_sql(source_sql.sql, deterministic_draft, rewrite_recipe)
             if not errors and draft_has_material_change(source_sql.sql, deterministic_draft):
                 output_name = Path(args.out).name

@@ -12,6 +12,7 @@ from query_doctor.cli.optimize_query import (
     read_source_sql,
 )
 from query_doctor.optimizer.deterministic_rewrites import (
+    RISK_THRESHOLD_BYPASS_RECIPE_IDS,
     deterministic_recipe_draft,
     deterministic_recipe_draft_diagnostics,
 )
@@ -189,14 +190,7 @@ def classify_optimizer_rewrite_support(
     if recipe is not None:
         recipe_id = recipe.recipe_id
         recipe_reason = RECIPE_REASONS.get(recipe_id, "Python-owned rewrite recipe is available")
-        recipe_is_strictly_supported = recipe_id in {
-            "post_union_aggregate_pushdown",
-            "final_union_distinct_rollup",
-            "pass_through_cte_elimination",
-            "single_cte_predicate_pushdown",
-            "single_cte_projection_alias_predicate_pushdown",
-            "single_derived_table_predicate_pushdown",
-        }
+        recipe_is_strictly_supported = recipe_id in RISK_THRESHOLD_BYPASS_RECIPE_IDS
         deterministic_draft = deterministic_recipe_draft(source_sql.sql, recipe)
         deterministic_errors = (
             validate_draft_sql(source_sql.sql, deterministic_draft, recipe)
