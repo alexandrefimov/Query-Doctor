@@ -278,6 +278,10 @@ def linear_cte_pushdown_draft_diagnostics(
         reasons.append("unsupported_cte_graph")
     if not parsed.ctes:
         return tuple(reasons), ()
+    if referenced_cte_names(parsed.final_sql, tuple(cte.name for cte in parsed.ctes)) != (parsed.ctes[-1].name,):
+        reasons.append("final_cte_reference_boundary")
+    if top_level_join_signature(parsed.final_sql):
+        reasons.append("final_select_join_boundary")
     first_cte = parsed.ctes[0]
     reasons.extend(cte_body_draft_blocking_reasons(first_cte.body, "source_cte"))
     available_columns_by_cte = [simple_cte_filter_columns(cte.body) for cte in parsed.ctes]
@@ -326,6 +330,9 @@ def cte_dag_pushdown_draft_diagnostics(
         reasons.append("unsupported_cte_graph")
     final_cte_name = rewrite_recipe.source_cte
     cte_by_name = {cte.name: cte for cte in parsed.ctes}
+    final_refs = referenced_cte_names(parsed.final_sql, tuple(cte.name for cte in parsed.ctes))
+    if final_cte_name and final_refs != (final_cte_name,):
+        reasons.append("final_cte_reference_boundary")
     final_cte = cte_by_name.get(final_cte_name or "")
     if final_cte is None:
         reasons.append("final_cte_not_found")

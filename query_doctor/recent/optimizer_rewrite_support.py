@@ -86,6 +86,7 @@ SHAPE_BOUNDARY_REASONS = {
     "target_cte_no_simple_projection_columns",
     "target_cte_group_not_simple",
     "source_cte_group_not_simple",
+    "final_cte_reference_boundary",
 }
 PREDICATE_NOT_COPYABLE_REASONS = {
     "no_copyable_predicate",

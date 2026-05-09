@@ -439,7 +439,7 @@ def cluster_event_context_report_evidence_bullet(facts_text: str) -> str | None:
     summary = cluster_event_context_summary(facts_text)
     if summary.get("available") != "yes":
         return None
-    parts = ["CM event context collected"]
+    parts = ["Cluster event context collected"]
     status = summary.get("status")
     if status:
         parts.append(f"status={status}")
@@ -452,7 +452,7 @@ def cluster_event_context_report_evidence_bullet(facts_text: str) -> str | None:
     return (
         "- "
         + "; ".join(parts)
-        + ". Treat CM Events as follow-up context, not standalone root-cause proof."
+        + ". Treat Cluster Event Context as follow-up context, not standalone root-cause proof."
     )
 
 

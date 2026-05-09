@@ -49,6 +49,15 @@ SAFE_LIMITATION_TEXT = {
     "CM events were bounded by max_events.",
     "Severity filtering is applied after bounded CM fetch for CM 6.x compatibility.",
 }
+DISPLAY_LIMITATION_TEXT = {
+    "CM events are prepared event summaries, not standalone root-cause proof.": (
+        "Cluster event context contains prepared event summaries, not standalone root-cause proof."
+    ),
+    "CM may have more matching events than the bounded max_events limit.": (
+        "The event provider may have more matching events than the bounded max_events limit."
+    ),
+    "CM events were bounded by max_events.": "Cluster event context was bounded by max_events.",
+}
 
 
 def build_cluster_event_context(cm_events_context: Mapping[str, object]) -> dict[str, object]:
@@ -157,10 +166,10 @@ def safe_limitations(value: object) -> list[str]:
     for raw_item in value[:MAX_CLUSTER_EVENT_LIMITATIONS]:
         item = str(raw_item)
         if item in SAFE_LIMITATION_TEXT:
-            limitations.append(item)
+            limitations.append(DISPLAY_LIMITATION_TEXT.get(item, item))
             continue
         if item.startswith("CM events were unavailable:"):
-            limitations.append("CM events were unavailable from the configured provider.")
+            limitations.append("Cluster event context was unavailable from the configured provider.")
             continue
         if UNSAFE_LIMITATION_RE.search(item):
             limitations.append("A provider limitation was omitted because it contained raw details.")

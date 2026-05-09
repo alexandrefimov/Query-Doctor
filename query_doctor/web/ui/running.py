@@ -144,7 +144,7 @@ def render_running_queries_run_panel(
         f"{metadata_note_html}"
         "<div class=\"scope-line\" aria-label=\"Running query collection scope\">"
         "<strong>Scope:</strong> current running CM summaries → analyzable profiles → ranked cases → automatic metadata for top bad/suspicious cases · no auto LLM. "
-        "CM events and runtime metrics are collected by default as bounded runtime context."
+        "Cluster event context and runtime metrics are collected by default as bounded runtime context."
         "</div>"
         f"{render_running_scan_framing_note()}"
         "<div class=\"batch-form-sections\">"

@@ -328,7 +328,7 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
     return {
         "steps": [
             progress_step("CM discovery", states["discovery"], discovery_detail(counters)),
-            progress_step("CM Events context", states["cm_events"], cm_events_detail(counters)),
+            progress_step("Cluster event context", states["cm_events"], cm_events_detail(counters)),
             progress_step(
                 "Profile collection",
                 states["collection"],

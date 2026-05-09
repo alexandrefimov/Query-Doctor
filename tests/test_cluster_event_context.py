@@ -82,7 +82,7 @@ def test_cluster_event_context_keeps_stable_safe_schema():
             }
         ],
         "limitations": [
-            "CM events are prepared event summaries, not standalone root-cause proof.",
+            "Cluster event context contains prepared event summaries, not standalone root-cause proof.",
             "A provider limitation was omitted because it contained raw details.",
         ],
         "guardrail": (
@@ -109,7 +109,7 @@ def test_cluster_event_context_unavailable_is_inconclusive():
     assert context["available"] is False
     assert context["status"] == "unavailable"
     assert context["product_status"] == "inconclusive"
-    assert context["limitations"] == ["CM events were unavailable from the configured provider."]
+    assert context["limitations"] == ["Cluster event context was unavailable from the configured provider."]
 
 
 def test_cluster_event_context_safe_empty_text_passes():

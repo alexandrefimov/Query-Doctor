@@ -76,7 +76,7 @@ def render_help_content() -> str:
 
 <details>
 <summary>Running now</summary>
-<p>Running now uses the same result and details shape as Finished queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. Profiles can be incomplete until a query finishes, so findings can be lower-confidence than completed-query analysis. CM events and runtime metrics are enabled by default as bounded runtime context.</p>
+<p>Running now uses the same result and details shape as Finished queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. Profiles can be incomplete until a query finishes, so findings can be lower-confidence than completed-query analysis. Cluster event context and runtime metrics are enabled by default as bounded runtime context.</p>
 </details>
 
 <details>

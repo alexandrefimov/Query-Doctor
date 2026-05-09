@@ -90,10 +90,10 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
 
 def cluster_context_scope_parts(summary: dict[str, Any]) -> list[str]:
     if not summary.get("collect_cm_events"):
-        return ["CM events: not requested"]
+        return ["Cluster event context: not requested"]
     context = summary.get("cluster_context")
     if not isinstance(context, dict):
-        return ["CM events: unavailable"]
+        return ["Cluster event context: unavailable"]
     status = safe_display_text(context.get("status") or "inconclusive")
     signal_counts = context.get("signal_counts")
     signal_total = 0
@@ -103,8 +103,8 @@ def cluster_context_scope_parts(summary: dict[str, Any]) -> list[str]:
             if count:
                 signal_total += count
     if signal_total:
-        return [f"CM events: {status}, signals {safe_display_text(signal_total)}"]
-    return [f"CM events: {status}"]
+        return [f"Cluster event context: {status}, signals {safe_display_text(signal_total)}"]
+    return [f"Cluster event context: {status}"]
 
 
 def candidate_selection_scope_parts(summary: dict[str, Any]) -> list[str]:

@@ -19,7 +19,7 @@ def test_web_running_page_renders_without_scan_window_fields_and_with_bounds_not
     assert "Scan date" not in body
     assert "Scan Hour" not in body
     assert (
-        "CM events and runtime metrics are collected by default as bounded runtime context."
+        "Cluster event context and runtime metrics are collected by default as bounded runtime context."
         in body
     )
     assert 'name="cm_timeseries_top_limit" type="number" min="0" step="1" value="10"' in body
@@ -54,7 +54,7 @@ def test_web_running_route_renders_page():
     assert "Running Queries" in captured["body"]
     assert "current running CM summaries" in captured["body"]
     assert (
-        "CM events and runtime metrics are collected by default as bounded runtime context."
+        "Cluster event context and runtime metrics are collected by default as bounded runtime context."
         in captured["body"]
     )
     assert "Live snapshot:" in captured["body"]

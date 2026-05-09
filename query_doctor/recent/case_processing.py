@@ -66,7 +66,7 @@ def collect_scan_cm_events(
     context = read_cluster_context_json(cluster_context_path)
     if context is None:
         progress.emit(stage="cm_events", status="failed", seconds=elapsed_seconds(started))
-        return None, "CM Events context was requested but no safe cluster context was produced."
+        return None, "Cluster event context was requested but no safe cluster context was produced."
     status = "done" if result.returncode == 0 else "partial"
     progress.emit(
         stage="cm_events",
@@ -76,7 +76,7 @@ def collect_scan_cm_events(
     )
     warning = None
     if result.returncode != 0:
-        warning = "CM Events context was partial or unavailable; query analysis continued without treating events as proof."
+        warning = "Cluster event context was partial or unavailable; query analysis continued without treating events as proof."
     return context, warning
 
 

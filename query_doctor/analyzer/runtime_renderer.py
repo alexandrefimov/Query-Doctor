@@ -207,11 +207,11 @@ def render_cluster_event_context(analysis: dict[str, Any]) -> list[str]:
     lines.append(f"- source_status: {format_cluster_event_sources(context.get('sources'))}")
     lines.append(f"- window_scope: {format_cluster_event_window(context.get('window'))}")
     lines.append(f"- signal_counts: {format_cluster_event_counts(context.get('signal_counts'))}")
-    guardrail = context.get("guardrail") or "CM Events are context only, not root-cause proof."
+    guardrail = context.get("guardrail") or "Cluster event context is context only, not root-cause proof."
     lines.append(f"- guardrail: {guardrail}")
     lines.append("")
 
-    lines.extend(["### CM event signal rollup", ""])
+    lines.extend(["### Cluster event signal rollup", ""])
     signals = [signal for signal in context.get("signals") or [] if isinstance(signal, dict)]
     if signals:
         for signal in signals[:8]:
@@ -229,7 +229,7 @@ def render_cluster_event_context(analysis: dict[str, Any]) -> list[str]:
     lines.append("")
 
     next_checks = [str(item) for item in context.get("next_checks") or [] if item]
-    lines.extend(["### CM event next checks", ""])
+    lines.extend(["### Cluster event next checks", ""])
     if next_checks:
         for item in next_checks[:8]:
             lines.append(f"- {md_escape(item)}")
@@ -238,7 +238,7 @@ def render_cluster_event_context(analysis: dict[str, Any]) -> list[str]:
     lines.append("")
 
     limitations = [str(item) for item in context.get("limitations") or [] if item]
-    lines.extend(["### CM event limitations", ""])
+    lines.extend(["### Cluster event limitations", ""])
     if limitations:
         for item in limitations[:8]:
             lines.append(f"- {md_escape(item)}")

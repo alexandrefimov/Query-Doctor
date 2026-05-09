@@ -144,7 +144,7 @@ def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[s
         if cluster_event_counts and cluster_event_counts != "none":
             suffix += f"; signals={cluster_event_counts}"
         points.append(
-            "Cluster Event Context contains bounded CM Events summary "
+            "Cluster Event Context contains bounded event summary "
             f"({suffix}); use it for follow-up checks, not root-cause proof."
         )
     if not points:
