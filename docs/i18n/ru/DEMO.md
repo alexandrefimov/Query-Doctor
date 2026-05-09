@@ -67,9 +67,10 @@ query-doctor-collect-cm-profiles \
   no automatic LLM reports.
 - **Diagnose / Running now**: тот же result shape для running queries, без
   date/hour filters и с lower-confidence live evidence.
-- **Diagnose / Known Query ID**: один explicit CM query ID без automatic LLM;
-  input очищается после submit, результат добавляется в Known Query ID analysis
-  table.
+- **Diagnose / Known Query ID**: один explicit Impala query ID без automatic
+  LLM; по умолчанию используется Cloudera Manager, либо direct Impala daemon
+  profile endpoints при соответствующем local config. Input очищается после
+  submit, результат добавляется в Known Query ID analysis table.
 - **Details**: deterministic details плюс explicit LLM Report / Query LLM
   optimizer actions.
 - **Help**: workflow, safety boundaries и ссылки на GitHub documentation внутри
@@ -86,7 +87,8 @@ surface для одного safe `SELECT` / `WITH ... SELECT`; pasted SQL не �
 - Не публикуйте этот сервер наружу.
 - Web forms не принимают CM URLs, credentials или local config contents.
 - Credentials остаются только в environment процесса web server.
-- Known Query ID collection explicit и redacted.
+- Known Query ID collection explicit и redacted; direct Impala mode does not
+  discover queries, collect metrics/events, or execute SQL.
 - Raw profile text, raw SQL, raw CM JSON и credentials не должны появляться в
   UI, logs, docs или reports.
 
