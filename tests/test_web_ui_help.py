@@ -4,6 +4,10 @@ from web_server_test_support import load_web_module
 from query_doctor.web.ui import layout
 
 
+def compact_css(css: str) -> str:
+    return "".join(css.split())
+
+
 FORBIDDEN_HELP_STRINGS = (
     "profile.txt",
     "query.sql",
@@ -64,8 +68,12 @@ def test_web_help_page_renders_curated_static_help():
     assert "Roadmap" in body
     assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" in body
     assert 'target="_blank" rel="noopener noreferrer"' in body
-    assert ".report-body a{color:var(--accent-strong);font-weight:650;text-decoration:underline;" in styles
-    assert ".report-body a:hover,.report-body a:focus{color:var(--accent);" in styles
+    compact_styles = compact_css(styles)
+    assert (
+        compact_css(".report-body a{color:var(--accent-strong);font-weight:650;text-decoration:underline;")
+        in compact_styles
+    )
+    assert compact_css(".report-body a:hover,.report-body a:focus{color:var(--accent);") in compact_styles
     assert "Metadata" in body
     assert "Metadata allowlist" in body
     assert "Validated reports" in body

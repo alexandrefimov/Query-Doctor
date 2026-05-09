@@ -151,12 +151,26 @@ def make_handler(
             elif response.content_type.startswith("text/html"):
                 self.write_html(response.status, response.body)
             else:
-                self.write_body(response.status, response.body, response.content_type)
+                self.write_body(
+                    response.status,
+                    response.body,
+                    response.content_type,
+                    download_filename=response.download_filename,
+                )
 
-        def write_body(self, status: int, body: str, content_type: str) -> None:
+        def write_body(
+            self,
+            status: int,
+            body: str,
+            content_type: str,
+            *,
+            download_filename: str | None = None,
+        ) -> None:
             payload = body.encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", content_type)
+            if download_filename is not None:
+                self.send_header("Content-Disposition", f'attachment; filename="{download_filename}"')
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(payload)))
             self.send_security_headers()

@@ -5,6 +5,14 @@ from query_doctor.web.ui import layout
 from query_doctor.web.ui.recent_scan_results import render_batch_summary
 
 
+def compact_css(css: str) -> str:
+    return "".join(css.split())
+
+
+def assert_css_contains(styles: str, snippet: str) -> None:
+    assert compact_css(snippet) in compact_css(styles)
+
+
 def test_package_layout_renderers_are_available():
     from query_doctor.web.ui import layout
 
@@ -95,18 +103,23 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "html[data-theme=dark]" in styles
     assert "--bg:#eef2f6" in styles
     assert "--bg:#0f1419" in styles
-    assert "html[data-design=classic]{--bg:#f7f8fa" in styles
-    assert "html[data-theme=dark][data-design=classic]{--bg:#101418" in styles
-    assert "html[data-design=command]{--bg:#eef4f1" in styles
-    assert "html[data-theme=dark][data-design=command]{--bg:#101314" in styles
-    assert "html[data-design=review]{--bg:#f2f4f3" in styles
-    assert "html[data-design=classic] .page{max-width:1240px;padding:20px 28px 48px}" in styles
-    assert "html[data-design=command] .page{max-width:1240px;padding:20px 28px 48px}" in styles
-    assert "html[data-design=review] .page{max-width:1240px;padding:20px 28px 48px}" in styles
-    assert "html[data-design=classic] .app-header{padding:10px 12px;border:1px solid transparent;border-radius:0;background:transparent;box-shadow:none;margin-bottom:16px}" in styles
-    assert "html[data-design=review] .app-header{padding:10px 12px}" in styles
-    assert "html[data-design=classic] .brand-mark{width:32px;height:32px;" in styles
-    assert "html[data-design=classic] .top-nav{gap:2px;padding:2px;" in styles
+    assert_css_contains(styles, "html[data-design=classic]{--bg:#f7f8fa")
+    assert_css_contains(styles, "html[data-theme=dark][data-design=classic]{--bg:#101418")
+    assert_css_contains(styles, "html[data-design=command]{--bg:#eef4f1")
+    assert_css_contains(styles, "html[data-theme=dark][data-design=command]{--bg:#101314")
+    assert_css_contains(styles, "html[data-design=review]{--bg:#f2f4f3")
+    assert_css_contains(styles, "html[data-design=classic] .page{max-width:1240px;padding:20px 28px 48px}")
+    assert_css_contains(styles, "html[data-design=command] .page{max-width:1240px;padding:20px 28px 48px}")
+    assert_css_contains(styles, "html[data-design=review] .page{max-width:1240px;padding:20px 28px 48px}")
+    assert_css_contains(
+        styles,
+        "html[data-design=classic] .app-header{padding:10px 12px;"
+        "border:1px solid transparent;border-radius:0;background:transparent;"
+        "box-shadow:none;margin-bottom:16px}",
+    )
+    assert_css_contains(styles, "html[data-design=review] .app-header{padding:10px 12px}")
+    assert_css_contains(styles, "html[data-design=classic] .brand-mark{width:32px;height:32px;")
+    assert_css_contains(styles, "html[data-design=classic] .top-nav{gap:2px;padding:2px;")
     assert "max-height:66vh" not in body
     assert "overflow-wrap:anywhere" in styles
     assert "Интеллектуальный анализ Impala-запросов по Query ID" not in body
@@ -117,10 +130,13 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert 'name="mode"' not in body
     assert '<input type="radio" name="mode" value="admin" checked>' not in body
     assert ".segmented label:focus-within" not in styles
-    assert ".segmented input:checked+span,.segmented input:checked+label{color:#fff;background:var(--accent);" in styles
-    assert ".segmented label{min-width:58px;display:grid;place-items:stretch;" in styles
-    assert ".segmented span{display:grid;place-items:center;width:100%;height:100%;" in styles
-    assert ".manual-inputs-hidden{display:none!important}" in styles
+    assert_css_contains(
+        styles,
+        ".segmented input:checked+span,.segmented input:checked+label{color:#fff;background:var(--accent);",
+    )
+    assert_css_contains(styles, ".segmented label{min-width:58px;display:grid;place-items:stretch;")
+    assert_css_contains(styles, ".segmented span{display:grid;place-items:center;width:100%;height:100%;")
+    assert_css_contains(styles, ".manual-inputs-hidden{display:none!important}")
     assert body.index('id="query_id"') < body.index('<button class="run-button" type="submit">Run</button>')
     assert "Локальный демо-сервер: только явный Query ID" not in body
     assert "Validated before render" not in body
@@ -162,19 +178,28 @@ def test_web_render_page_contains_theme_toggle():
     assert "query-doctor-theme" in scripts
     assert "prefers-color-scheme: dark" in scripts
     assert "Switch to light theme" in scripts
-    assert ".theme-toggle,.design-toggle{display:inline-grid;place-items:center;width:34px;height:34px;min-width:34px;flex:0 0 34px;border:1px solid var(--border-strong)" in styles
-    assert "background:var(--control);color:var(--accent-strong)" in styles
-    assert "html[data-theme=dark] .theme-toggle,html[data-theme=dark] .design-toggle{border-color:var(--border-strong);background:var(--control);color:var(--accent-strong)" in styles
-    assert ".theme-toggle svg,.design-toggle svg{width:18px;height:18px}" in styles
-    assert (
+    assert_css_contains(
+        styles,
+        ".theme-toggle,.design-toggle{display:inline-grid;place-items:center;width:34px;"
+        "height:34px;min-width:34px;flex:0 0 34px;border:1px solid var(--border-strong)",
+    )
+    assert_css_contains(styles, "background:var(--control);color:var(--accent-strong)")
+    assert_css_contains(
+        styles,
+        "html[data-theme=dark] .theme-toggle,html[data-theme=dark] .design-toggle{"
+        "border-color:var(--border-strong);background:var(--control);color:var(--accent-strong)",
+    )
+    assert_css_contains(styles, ".theme-toggle svg,.design-toggle svg{width:18px;height:18px}")
+    assert_css_contains(
+        styles,
         ".theme-toggle .theme-icon-light,"
         ".design-toggle .design-icon-classic,"
         ".design-toggle .design-icon-command,"
         ".design-toggle .design-icon-review{display:none}"
-    ) in styles
-    assert ".theme-toggle .theme-icon-dark,.design-toggle .design-icon-serious{display:block}" in styles
-    assert "html[data-theme=dark] .theme-toggle .theme-icon-light{display:block}" in styles
-    assert "html[data-theme=dark] .theme-toggle .theme-icon-dark{display:none}" in styles
+    )
+    assert_css_contains(styles, ".theme-toggle .theme-icon-dark,.design-toggle .design-icon-serious{display:block}")
+    assert_css_contains(styles, "html[data-theme=dark] .theme-toggle .theme-icon-light{display:block}")
+    assert_css_contains(styles, "html[data-theme=dark] .theme-toggle .theme-icon-dark{display:none}")
 
 
 def test_web_render_page_contains_design_toggle():
@@ -191,16 +216,18 @@ def test_web_render_page_contains_design_toggle():
     assert "data-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
     assert "Switch to command design" in scripts
     assert "Switch to review design" in scripts
-    assert (
+    assert_css_contains(
+        styles,
         "html[data-design=classic] .design-toggle .design-icon-classic,"
         "html[data-design=command] .design-toggle .design-icon-command,"
         "html[data-design=review] .design-toggle .design-icon-review{display:block}"
-    ) in styles
-    assert (
+    )
+    assert_css_contains(
+        styles,
         "html[data-design=classic] .design-toggle .design-icon-serious,"
         "html[data-design=command] .design-toggle .design-icon-serious,"
         "html[data-design=review] .design-toggle .design-icon-serious{display:none}"
-    ) in styles
+    )
     assert "['serious', 'classic', 'command', 'review']" in scripts
     assert body.index('id="design-toggle"') < body.index('id="theme-toggle"')
 

@@ -24,10 +24,11 @@ from query_doctor.web.case_detail_context import (
     running_detail_kwargs,
     running_page_settings,
 )
+from query_doctor.web.case_files import expected_case_dir_for_query
 from query_doctor.web.form_helpers import first_form_value, form_flag_enabled
 from query_doctor.web.jobs import WebJobStore, render_job_status_json
-from query_doctor.web.models import WebJobSnapshot, WebSettings
-from query_doctor.web.query_analysis import run_query_id_analysis
+from query_doctor.web.models import WebError, WebJobSnapshot, WebSettings
+from query_doctor.web.query_analysis import run_query_id_analysis, validate_query_id
 from query_doctor.web.request_handlers import handle_optimizer_request, start_analyze_job
 from query_doctor.web.specific_query_actions import (
     handle_specific_query_external_rewrite_validation,
@@ -40,7 +41,10 @@ from query_doctor.web.specific_query_pages import (
     render_specific_query_report_for_request,
 )
 from query_doctor.web.subprocesses import Runner
-from query_doctor.web.trusted_artifacts import load_validated_batch_case_report
+from query_doctor.web.trusted_artifacts import (
+    load_validated_batch_case_report,
+    load_validated_specific_query_report,
+)
 from query_doctor.web.ui.help import render_demo_guide_page, render_help_page
 from query_doctor.web.ui.optimizer import render_optimizer_page
 from query_doctor.web.ui.pages import (
@@ -61,6 +65,8 @@ STATIC_ASSETS = {
     "/static/app.js": ("app.js", "application/javascript; charset=utf-8"),
     "/static/theme-bootstrap.js": ("theme-bootstrap.js", "application/javascript; charset=utf-8"),
 }
+REPORT_DOWNLOAD_CONTENT_TYPE = "text/markdown; charset=utf-8"
+REPORT_DOWNLOAD_ID_RE = re.compile(r"[^a-zA-Z0-9_-]")
 JOB_CANCEL_POST_RE = re.compile(r"/jobs/(?P<job_id>[0-9a-f]{32})/cancel")
 BATCH_CASE_POST_RE = re.compile(
     r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions)"
@@ -76,6 +82,7 @@ class WebRouteResponse:
     body: str
     content_type: str = "text/html; charset=utf-8"
     location: str | None = None
+    download_filename: str | None = None
 
     @classmethod
     def html(cls, status: int, body: str) -> "WebRouteResponse":
@@ -86,8 +93,22 @@ class WebRouteResponse:
         return cls(status=status, body=body, content_type="application/json; charset=utf-8")
 
     @classmethod
+    def markdown_download(cls, filename: str, body: str) -> "WebRouteResponse":
+        return cls(
+            status=200,
+            body=body,
+            content_type=REPORT_DOWNLOAD_CONTENT_TYPE,
+            download_filename=filename,
+        )
+
+    @classmethod
     def redirect(cls, location: str) -> "WebRouteResponse":
         return cls(status=303, body="", location=location)
+
+
+def report_download_filename(source_id: str) -> str:
+    short_id = REPORT_DOWNLOAD_ID_RE.sub("", source_id)[:8] or "report"
+    return f"query-doctor-report-{short_id}.md"
 
 
 def route_get_request(
@@ -169,7 +190,10 @@ def route_batch_detail_get(
         ("/batch", resolve_case_detail_settings, dict),
         ("/running", resolve_running_case_detail_settings, running_detail_kwargs),
     ):
-        match = re.fullmatch(rf"{prefix}/case/(?P<case_id>[^/]+)(?P<suffix>/report|/optimized-query)?", path)
+        match = re.fullmatch(
+            rf"{prefix}/case/(?P<case_id>[^/]+)(?P<suffix>/report|/report\.md|/optimized-query)?",
+            path,
+        )
         if not match:
             continue
         case_id = match.group("case_id")
@@ -189,6 +213,14 @@ def route_batch_detail_get(
                 200,
                 render_batch_case_report_page(effective_settings, case_id, case, report_text),
             )
+        if suffix == "/report.md":
+            report_text = load_validated_batch_case_report(effective_settings, case)
+            if report_text is None:
+                return WebRouteResponse.html(
+                    404,
+                    render_batch_case_detail_for_request(effective_settings, case_id, case, store, **detail_kwargs),
+                )
+            return WebRouteResponse.markdown_download(report_download_filename(case_id), report_text)
         return WebRouteResponse.html(
             200,
             render_batch_case_detail_for_request(effective_settings, case_id, case, store, **detail_kwargs),
@@ -201,15 +233,30 @@ def route_specific_detail_get(
     settings: WebSettings,
     store: WebJobStore,
 ) -> WebRouteResponse | None:
-    match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)(?P<suffix>/report|/optimized-query)?", path)
+    match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)(?P<suffix>/report|/report\.md|/optimized-query)?", path)
     if not match:
         return None
     query_id = unquote(match.group("query_id"))
     if match.group("suffix") == "/report":
         status, body = render_specific_query_report_for_request(settings, query_id)
+    elif match.group("suffix") == "/report.md":
+        return route_specific_query_report_markdown(settings, query_id)
     else:
         status, body = render_specific_query_detail_for_request(settings, query_id, store)
     return WebRouteResponse.html(status, body)
+
+
+def route_specific_query_report_markdown(settings: WebSettings, query_id: str) -> WebRouteResponse:
+    try:
+        validated_query_id = validate_query_id(query_id)
+        case_dir = expected_case_dir_for_query(validated_query_id, settings)
+    except WebError as exc:
+        return WebRouteResponse.html(400, render_query_page(settings, query_id=query_id, error=exc))
+    report_text = load_validated_specific_query_report(case_dir)
+    if report_text is None:
+        message = WebError("Validated report is not available for this query.")
+        return WebRouteResponse.html(404, render_query_page(settings, query_id=validated_query_id, error=message))
+    return WebRouteResponse.markdown_download(report_download_filename(validated_query_id), report_text)
 
 
 def route_job_get(

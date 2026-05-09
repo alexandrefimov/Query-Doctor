@@ -968,20 +968,46 @@ def linear_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
     grouped_columns = simple_group_by_columns(first_cte.body)
     if clause_signature(first_cte.body, "GROUP") and not grouped_columns:
         return None
-    predicates = copyable_final_where_predicates(
-        parsed.final_sql,
-        first_cte.body,
-        available_columns_by_cte[0],
-        cte_qualifiers=cte_reference_aliases(parsed.final_sql, parsed.ctes[-1].name),
-        grouped_columns=grouped_columns,
-    )
+    candidate_predicates: list[tuple[str, int]] = [
+        (predicate, len(parsed.ctes))
+        for predicate in copyable_final_where_predicates(
+            parsed.final_sql,
+            first_cte.body,
+            available_columns_by_cte[0],
+            cte_qualifiers=cte_reference_aliases(parsed.final_sql, parsed.ctes[-1].name),
+            grouped_columns=grouped_columns,
+        )
+    ]
+    for index, downstream_cte in enumerate(parsed.ctes[1:], start=1):
+        if top_level_join_signature(downstream_cte.body):
+            continue
+        upstream_name = parsed.ctes[index - 1].name
+        candidate_predicates.extend(
+            (predicate, index)
+            for predicate in copyable_final_where_predicates(
+                downstream_cte.body,
+                first_cte.body,
+                available_columns_by_cte[0],
+                cte_qualifiers=cte_reference_aliases(downstream_cte.body, upstream_name),
+                grouped_columns=grouped_columns,
+            )
+        )
     filtered_predicates: list[str] = []
-    for predicate in predicates:
+    seen_predicate_signatures: set[tuple[tuple[str, int], ...]] = set()
+    for predicate, path_length in candidate_predicates:
         predicate_columns = predicate_column_references(predicate, available_columns_by_cte[0])
         if predicate_columns is None:
             continue
-        if all(predicate_columns <= columns for columns in available_columns_by_cte):
-            filtered_predicates.append(predicate)
+        if not all(predicate_columns <= columns for columns in available_columns_by_cte[:path_length]):
+            continue
+        signature = sql_predicate_signature_counter(f"SELECT 1 WHERE {predicate}", "WHERE")
+        if not signature:
+            continue
+        signature_key = tuple(sorted(signature.items()))
+        if signature_key in seen_predicate_signatures:
+            continue
+        seen_predicate_signatures.add(signature_key)
+        filtered_predicates.append(predicate)
     if not filtered_predicates:
         return None
     modified_first_body = add_where_predicates_to_cte_body(first_cte.body, tuple(filtered_predicates))

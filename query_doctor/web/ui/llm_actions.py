@@ -71,6 +71,7 @@ def render_llm_actions_block(
     report_enabled: bool = True,
     report_action_url: str | None = None,
     report_open_url: str | None = None,
+    report_export_url: str | None = None,
     optimizer_action_url: str | None = None,
     optimizer_open_url: str | None = None,
     optimizer_validation_url: str | None = None,
@@ -86,6 +87,7 @@ def render_llm_actions_block(
     escaped_case_id = html.escape(case_id, quote=True)
     report_action = html.escape(report_action_url or f"/batch/case/{escaped_case_id}/report", quote=True)
     report_open = html.escape(report_open_url or f"/batch/case/{escaped_case_id}/report", quote=True)
+    report_export = html.escape(report_export_url or f"/batch/case/{escaped_case_id}/report.md", quote=True)
     optimizer_action = html.escape(
         optimizer_action_url or f"/batch/case/{escaped_case_id}/optimized-query",
         quote=True,
@@ -108,11 +110,13 @@ def render_llm_actions_block(
         or optimizer_button_disabled
         or (report_view.show_open_link and optimizer_status == "generated")
     )
-    report_action_html = (
-        f"<a class=\"button\" href=\"{report_open}\">Open full report</a>"
-        if report_view.show_open_link
-        else render_post_button(report_action, report_view.button_label, disabled=report_button_disabled)
-    )
+    if report_view.show_open_link:
+        report_action_html = (
+            f"<a class=\"button\" href=\"{report_open}\">Open full report</a>"
+            f"<a class=\"button\" href=\"{report_export}\" download>Export as Markdown</a>"
+        )
+    else:
+        report_action_html = render_post_button(report_action, report_view.button_label, disabled=report_button_disabled)
     optimizer_action_html = render_optimizer_action_button(optimizer_status, optimizer_state, optimizer_action, optimizer_open)
     combined_card_html = ""
     if not combined_disabled:
