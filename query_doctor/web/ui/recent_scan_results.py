@@ -122,6 +122,7 @@ def render_batch_summary(
     scan_details = render_batch_scan_details(summary)
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
+    optimizer_funnel_note = render_optimizer_funnel_note(view.header_items)
     switcher = render_result_filters(view.rows, active_group, only_with_spills=only_with_spills)
     escaped_title = html.escape(title)
     aria_label = html.escape(title.lower())
@@ -131,6 +132,7 @@ def render_batch_summary(
         f"<div><h1>{escaped_title}</h1></div>"
         "</div>"
         f"<div class=\"batch-metrics\">{header}</div>"
+        f"{optimizer_funnel_note}"
         f"{scan_details}"
         f"{empty_note}"
         f"{warning_note}"
@@ -153,6 +155,19 @@ def render_batch_scan_details(summary: dict[str, Any]) -> str:
         return ""
     items = "".join(f"<span>{html.escape(part)}</span>" for part in parts)
     return f"<div class=\"batch-detail-grid\" aria-label=\"Scan details\">{items}</div>"
+
+
+def render_optimizer_funnel_note(header_items: tuple[tuple[str, Any], ...]) -> str:
+    metrics = {str(label): numeric_count(value) for label, value in header_items}
+    if metrics.get("optimization", 0) <= 0:
+        return ""
+    return (
+        "<div class=\"batch-note\"><strong>Optimizer funnel:</strong> "
+        "draft-ready means a trusted SQL draft shape was detected; "
+        "recipe backlog means a supported or adjacent recipe shape needs follow-up; "
+        "review-only means no trusted SQL draft shape was detected, so use Review scope "
+        "for manual query-shape analysis.</div>"
+    )
 
 
 def render_batch_empty_note(summary: dict[str, Any]) -> str:
@@ -404,6 +419,8 @@ def optimizer_rewrite_support_view(status: Any, label: Any, reason: Any) -> tupl
     title_label = str(label or fallback_label).strip() or fallback_label
     if title_label.lower() == "human review only":
         fallback_label = "Human review"
+    if title_label.lower() == "review guidance only":
+        fallback_label = "Review only"
     title_reason = str(reason or "").strip()
     title = f"{title_label}: {title_reason}" if title_reason else title_label
     return fallback_label, class_name, title

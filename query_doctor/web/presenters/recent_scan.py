@@ -104,6 +104,9 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
     bad_count = sum(1 for row in rows if row.score_severity in {"failed", "high"})
     suspicious_count = sum(1 for row in rows if row.score_severity == "suspicious")
     optimization_count = sum(1 for row in rows if row.optimization_tier in {"high", "medium"})
+    optimizer_draft_ready_count, optimizer_recipe_backlog_count, optimizer_review_only_count = (
+        optimizer_funnel_header_counts(rows)
+    )
     stats_count = sum(1 for row in rows if row.stats_tier in {"high", "medium"})
     metadata_count = sum(1 for row in rows if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"})
     header_items = (
@@ -111,6 +114,9 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
         ("bad", bad_count),
         ("suspicious", suspicious_count),
         ("optimization", optimization_count),
+        ("draft-ready", optimizer_draft_ready_count),
+        ("recipe backlog", optimizer_recipe_backlog_count),
+        ("review-only", optimizer_review_only_count),
         ("stats", stats_count),
         ("analyzed", safe_display_value(summary.get("selected_count"))),
         ("CM inspected", safe_display_value(summary.get("summaries_inspected"))),
@@ -123,6 +129,28 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
         empty_message=recent_scan_empty_message(summary, case_count=len(rows)),
         warning_messages=recent_scan_warning_messages(summary),
     )
+
+
+def optimizer_funnel_header_counts(rows: tuple[RecentScanCaseRowView, ...]) -> tuple[int, int, int]:
+    candidates = tuple(row for row in rows if row.optimization_tier in {"high", "medium"})
+    draft_ready = sum(
+        1
+        for row in candidates
+        if row.optimizer_rewriteability_bucket == "safe_material_draft"
+        or row.optimizer_rewrite_support == "sql_draft_supported"
+        or row.optimization_artifact_status == "trusted_draft"
+    )
+    recipe_backlog = sum(
+        1
+        for row in candidates
+        if row.optimizer_rewriteability_bucket in {"recipe_detected_no_draft", "recipe_adjacent_shape"}
+    )
+    review_only = sum(
+        1
+        for row in candidates
+        if row.optimizer_rewriteability_bucket in {"not_rewriteable", "human_review_only"}
+    )
+    return draft_ready, recipe_backlog, review_only
 
 
 def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanCaseRowView:
@@ -535,6 +563,8 @@ def safe_optimizer_rewrite_support_label(
     }
     if bucket == "human_review_only" and status in {"draft_disabled", "guidance_only"}:
         return "Human review only"
+    if bucket == "not_rewriteable" and status == "guidance_only":
+        return "Review guidance only"
     text = safe_optimization_display_text(value)
     if status == "sql_draft_attemptable" and text.lower() == "sql draft attemptable":
         return labels[status]
@@ -550,6 +580,8 @@ def safe_optimizer_rewrite_support_reason(
     eligibility = str(draft_eligibility or "").strip().lower()
     if bucket == "human_review_only" and eligibility == "disabled_by_safety_thresholds":
         return "Trusted SQL draft disabled by safety and validation guardrails"
+    if bucket == "not_rewriteable":
+        return "No trusted SQL draft shape detected; use the review areas for manual query-shape review"
     text = safe_optimization_display_text(value)
     return text or "No trusted rewrite-support classification is available"
 
