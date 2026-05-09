@@ -341,17 +341,12 @@ def load_validated_optimizer_recommendations(case_dir: Path) -> str | None:
 
 
 def case_has_safe_source_sql(case_dir: Path) -> bool:
-    for name in ("original_query.sql", "query.sql", "sql.sql"):
-        path = case_dir / name
-        if path.is_file():
-            try:
-                source = extract_optimizable_source_sql(
-                    path.read_text(encoding="utf-8", errors="replace")
-                )
-                extract_referenced_tables(source.sql)
-                return True
-            except (OSError, OptimizerSqlError, QueryOptimizationError):
-                return False
+    try:
+        source = extract_optimizable_source_sql(read_source_sql(case_dir))
+        extract_referenced_tables(source.sql)
+        return True
+    except (OSError, OptimizerSqlError, QueryOptimizationError):
+        pass
     metadata_path = case_dir / "cm_metadata.json"
     if not metadata_path.is_file():
         return False

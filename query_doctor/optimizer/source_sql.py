@@ -24,7 +24,12 @@ class OptimizableSourceSql:
 
 
 def read_source_sql(case_dir: Path) -> str:
-    for name in ("original_query.sql", "query.sql", "sql.sql"):
+    for name in (
+        "original_query.sql",
+        "query.sql",
+        "sql.sql",
+        "impala_context/original_query.sql",
+    ):
         path = case_dir / name
         if path.is_file():
             return read_bounded_text(path, MAX_SOURCE_SQL_BYTES)
