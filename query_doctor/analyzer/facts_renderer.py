@@ -229,6 +229,57 @@ def render_profile_resource_facts(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_profile_timing_facts(analysis: dict[str, Any]) -> list[str]:
+    timings = analysis.get("profile_timings")
+    if not isinstance(timings, dict) or not timings.get("available"):
+        return []
+
+    lines = ["## Profile Timing Facts", ""]
+    lines.append(
+        f"- guardrail: {timings.get('guardrail') or 'profile timing facts are deterministic context only'}"
+    )
+    query_timeline = timings.get("query_timeline")
+    if isinstance(query_timeline, dict) and query_timeline.get("available"):
+        lines.append(
+            "- query_timeline: "
+            f"duration={fmt_duration(query_timeline.get('duration_ms'))}, "
+            f"events={query_timeline.get('event_count', 0)}"
+        )
+        phases = query_timeline.get("phase_durations")
+        if isinstance(phases, dict):
+            lines.append(
+                "- query_timeline_phases: "
+                f"planning={fmt_duration(phases.get('planning_ms'))}, "
+                f"admission={fmt_duration(phases.get('admission_ms'))}, "
+                f"backend_start={fmt_duration(phases.get('backend_start_ms'))}, "
+                f"rows_available={fmt_duration(phases.get('rows_available_ms'))}, "
+                f"fetch={fmt_duration(phases.get('fetch_ms'))}, "
+                f"unregister={fmt_duration(phases.get('unregister_ms'))}"
+            )
+
+    lifecycle = timings.get("fragment_lifecycle")
+    if isinstance(lifecycle, dict) and lifecycle.get("available"):
+        timeline = lifecycle.get("timeline") if isinstance(lifecycle.get("timeline"), dict) else {}
+        lines.append(
+            "- fragment_lifecycle: "
+            f"instances={lifecycle.get('instance_count', 0)}, "
+            f"timeline_max={fmt_duration(timeline.get('max_ms'))}"
+        )
+        events = lifecycle.get("events") if isinstance(lifecycle.get("events"), dict) else {}
+        for key in ("prepare_finished", "open_finished", "first_batch_produced", "exec_internal_finished"):
+            item = events.get(key)
+            if not isinstance(item, dict) or not item.get("available"):
+                continue
+            lines.append(
+                f"- fragment_lifecycle_{key}: "
+                f"count={item.get('count', 0)}, "
+                f"min={fmt_duration(item.get('min_ms'))}, "
+                f"max={fmt_duration(item.get('max_ms'))}"
+            )
+    lines.append("")
+    return lines
+
+
 def render_action_cards(analysis: dict[str, Any]) -> list[str]:
     lines = ["## Action Cards", ""]
     cards = analysis.get("action_cards") or []
@@ -485,6 +536,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_primary_bottleneck(analysis)
     lines += render_profile_format(analysis)
     lines += render_profile_resource_facts(analysis)
+    lines += render_profile_timing_facts(analysis)
     lines += render_source_provenance(analysis)
     lines += render_query_wall_clock(analysis)
     lines += render_runtime_counter_context(analysis)

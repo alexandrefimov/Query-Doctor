@@ -34,6 +34,7 @@ from query_doctor.analyzer.profile_signals import (
 from query_doctor.analyzer.profile_format import build_profile_format_facts
 from query_doctor.analyzer.profile_resources import build_profile_resource_facts
 from query_doctor.analyzer.profile_text import normalize_profile_text
+from query_doctor.analyzer.profile_timings import build_profile_timing_facts
 from query_doctor.analyzer.runtime_counters import (
     build_runtime_counter_context,
     extract_query_timeline_duration_ms,
@@ -73,6 +74,7 @@ def analyze(
     operators = parse_operators(text)
     profile_format = build_profile_format_facts(text, cm_query_context)
     profile_resources = build_profile_resource_facts(text)
+    profile_timings = build_profile_timing_facts(text)
     backend_tail = build_backend_tail_analysis(parse_backend_host_facts(text))
     runtime_counter_context = build_runtime_counter_context(text)
     totals = {
@@ -477,6 +479,7 @@ def analyze(
         "query_wall_clock": query_wall_clock,
         "profile_format": profile_format,
         "profile_resources": profile_resources,
+        "profile_timings": profile_timings,
         "backend_tail": backend_tail,
         "runtime_counter_context": runtime_counter_context,
         "operators": [op_to_json(op) for op in operators],
