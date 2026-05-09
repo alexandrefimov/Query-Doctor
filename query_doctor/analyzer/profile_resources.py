@@ -21,6 +21,18 @@ PER_NODE_PEAK_MEMORY_RE = re.compile(
     r"^\s*Per Node Peak Memory Usage\s*:\s*(?P<value>.+?)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+PER_NODE_BYTES_READ_RE = re.compile(
+    r"^\s*Per Node Bytes Read\s*:\s*(?P<value>.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+PER_NODE_USER_TIME_RE = re.compile(
+    r"^\s*Per Node User Time\s*:\s*(?P<value>.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+PER_NODE_SYSTEM_TIME_RE = re.compile(
+    r"^\s*Per Node System Time\s*:\s*(?P<value>.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 HOST_VALUE_RE = re.compile(r"(?P<host>[A-Za-z0-9_.:-]+)\((?P<value>[^)]+)\)")
 COUNT_RE = re.compile(r"\bCount\s*:\s*(?P<value>\d[\d,]*)\b", re.IGNORECASE)
 SUM_RE = re.compile(r"\bsum\s*:\s*(?P<value>[^,]+)", re.IGNORECASE)
@@ -88,6 +100,15 @@ def parse_size_pairs(value: str) -> list[float]:
     return sizes
 
 
+def parse_duration_pairs(value: str) -> list[float]:
+    durations: list[float] = []
+    for match in HOST_VALUE_RE.finditer(value):
+        parsed = extract_first_duration_ms(match.group("value"))
+        if parsed is not None:
+            durations.append(parsed)
+    return durations
+
+
 def parse_backend_startup_latencies(value: str) -> dict[str, Any]:
     result: dict[str, Any] = {"available": True}
     count_match = COUNT_RE.search(value)
@@ -114,12 +135,26 @@ def build_profile_resource_facts(text: str) -> dict[str, Any]:
     backend_match = BACKEND_STARTUP_RE.search(text)
     fragment_match = FRAGMENT_INSTANCES_RE.search(text)
     memory_match = PER_NODE_PEAK_MEMORY_RE.search(text)
+    bytes_read_match = PER_NODE_BYTES_READ_RE.search(text)
+    user_time_match = PER_NODE_USER_TIME_RE.search(text)
+    system_time_match = PER_NODE_SYSTEM_TIME_RE.search(text)
 
     fragment_counts = parse_count_pairs(fragment_match.group("value")) if fragment_match else []
     memory_values = parse_size_pairs(memory_match.group("value")) if memory_match else []
+    bytes_read_values = parse_size_pairs(bytes_read_match.group("value")) if bytes_read_match else []
+    user_time_values = parse_duration_pairs(user_time_match.group("value")) if user_time_match else []
+    system_time_values = parse_duration_pairs(system_time_match.group("value")) if system_time_match else []
 
     facts: dict[str, Any] = {
-        "available": bool(admission_match or backend_match or fragment_counts or memory_values),
+        "available": bool(
+            admission_match
+            or backend_match
+            or fragment_counts
+            or memory_values
+            or bytes_read_values
+            or user_time_values
+            or system_time_values
+        ),
         "admission_result": safe_admission_result(admission_match.group("value")) if admission_match else "unknown",
         "backend_startup_latencies": (
             parse_backend_startup_latencies(backend_match.group("value"))
@@ -133,6 +168,18 @@ def build_profile_resource_facts(text: str) -> dict[str, Any]:
         "per_node_peak_memory": {
             "available": bool(memory_values),
             **numeric_summary(memory_values),
+        },
+        "per_node_bytes_read": {
+            "available": bool(bytes_read_values),
+            **numeric_summary(bytes_read_values),
+        },
+        "per_node_user_time": {
+            "available": bool(user_time_values),
+            **numeric_summary(user_time_values),
+        },
+        "per_node_system_time": {
+            "available": bool(system_time_values),
+            **numeric_summary(system_time_values),
         },
     }
     return facts

@@ -131,6 +131,9 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
         f"admission={'yes' if features.get('admission') else 'no'}, "
         f"backend_startup_latencies={'yes' if features.get('backend_startup_latencies') else 'no'}, "
         f"per_node_peak_memory={'yes' if features.get('per_node_peak_memory') else 'no'}, "
+        f"per_node_bytes_read={'yes' if features.get('per_node_bytes_read') else 'no'}, "
+        f"per_node_user_time={'yes' if features.get('per_node_user_time') else 'no'}, "
+        f"per_node_system_time={'yes' if features.get('per_node_system_time') else 'no'}, "
         f"per_host_fragment_instances={'yes' if features.get('per_host_fragment_instances') else 'no'}"
     )
     lines.append("")
@@ -150,6 +153,15 @@ def render_profile_resource_facts(analysis: dict[str, Any]) -> list[str]:
     memory = resources.get("per_node_peak_memory")
     if not isinstance(memory, dict):
         memory = {}
+    bytes_read = resources.get("per_node_bytes_read")
+    if not isinstance(bytes_read, dict):
+        bytes_read = {}
+    user_time = resources.get("per_node_user_time")
+    if not isinstance(user_time, dict):
+        user_time = {}
+    system_time = resources.get("per_node_system_time")
+    if not isinstance(system_time, dict):
+        system_time = {}
 
     lines = ["## Profile Resource Facts", ""]
     lines.append("- guardrail: resource profile facts are deterministic context, not root-cause proof by themselves.")
@@ -184,6 +196,33 @@ def render_profile_resource_facts(analysis: dict[str, Any]) -> list[str]:
             f"min={fmt_bytes(memory.get('min'))}, "
             f"max={fmt_bytes(memory.get('max'))}, "
             f"max_min_ratio={fmt_ratio(memory.get('ratio'))}"
+        )
+
+    if bytes_read.get("available"):
+        lines.append(
+            "- per_node_bytes_read: "
+            f"hosts={bytes_read.get('count', 0)}, "
+            f"min={fmt_bytes(bytes_read.get('min'))}, "
+            f"max={fmt_bytes(bytes_read.get('max'))}, "
+            f"max_min_ratio={fmt_ratio(bytes_read.get('ratio'))}"
+        )
+
+    if user_time.get("available"):
+        lines.append(
+            "- per_node_user_time: "
+            f"hosts={user_time.get('count', 0)}, "
+            f"min={fmt_duration(user_time.get('min'))}, "
+            f"max={fmt_duration(user_time.get('max'))}, "
+            f"max_min_ratio={fmt_ratio(user_time.get('ratio'))}"
+        )
+
+    if system_time.get("available"):
+        lines.append(
+            "- per_node_system_time: "
+            f"hosts={system_time.get('count', 0)}, "
+            f"min={fmt_duration(system_time.get('min'))}, "
+            f"max={fmt_duration(system_time.get('max'))}, "
+            f"max_min_ratio={fmt_ratio(system_time.get('ratio'))}"
         )
 
     lines.append("")

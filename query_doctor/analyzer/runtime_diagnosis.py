@@ -90,9 +90,18 @@ def runtime_diagnosis_profile_resource_signal(analysis: dict[str, Any]) -> dict[
     fragments = fragments if isinstance(fragments, dict) else {}
     memory = resources.get("per_node_peak_memory")
     memory = memory if isinstance(memory, dict) else {}
+    bytes_read = resources.get("per_node_bytes_read")
+    bytes_read = bytes_read if isinstance(bytes_read, dict) else {}
+    user_time = resources.get("per_node_user_time")
+    user_time = user_time if isinstance(user_time, dict) else {}
+    system_time = resources.get("per_node_system_time")
+    system_time = system_time if isinstance(system_time, dict) else {}
     startup_max_ms = numeric_profile_value(startup.get("max_ms"))
     fragment_ratio = numeric_profile_value(fragments.get("ratio"))
     memory_ratio = numeric_profile_value(memory.get("ratio"))
+    bytes_read_ratio = numeric_profile_value(bytes_read.get("ratio"))
+    user_time_ratio = numeric_profile_value(user_time.get("ratio"))
+    system_time_ratio = numeric_profile_value(system_time.get("ratio"))
 
     evidence = [f"Profile Resource Facts: admission_result={admission_result}."]
     if startup.get("available"):
@@ -108,6 +117,24 @@ def runtime_diagnosis_profile_resource_signal(analysis: dict[str, Any]) -> dict[
             "Profile Resource Facts: per_node_peak_memory "
             f"hosts={int(numeric_profile_value(memory.get('count')) or 0)}, "
             f"max_min_ratio={fmt_ratio(memory_ratio)}."
+        )
+    if bytes_read.get("available"):
+        evidence.append(
+            "Profile Resource Facts: per_node_bytes_read "
+            f"hosts={int(numeric_profile_value(bytes_read.get('count')) or 0)}, "
+            f"max_min_ratio={fmt_ratio(bytes_read_ratio)}."
+        )
+    if user_time.get("available"):
+        evidence.append(
+            "Profile Resource Facts: per_node_user_time "
+            f"hosts={int(numeric_profile_value(user_time.get('count')) or 0)}, "
+            f"max_min_ratio={fmt_ratio(user_time_ratio)}."
+        )
+    if system_time.get("available"):
+        evidence.append(
+            "Profile Resource Facts: per_node_system_time "
+            f"hosts={int(numeric_profile_value(system_time.get('count')) or 0)}, "
+            f"max_min_ratio={fmt_ratio(system_time_ratio)}."
         )
 
     if admission_result in {"queued", "rejected"}:
@@ -138,7 +165,7 @@ def runtime_diagnosis_profile_resource_signal(analysis: dict[str, Any]) -> dict[
         "context_only",
         (
             "Profile resource facts were available, but admission, startup latency, fragment balance, and "
-            "per-node memory balance did not establish a runtime-resource bottleneck by themselves."
+            "per-node memory/read/time balance did not establish a runtime-resource bottleneck by themselves."
         ),
         evidence,
     )
