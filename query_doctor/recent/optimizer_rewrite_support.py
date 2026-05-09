@@ -39,6 +39,15 @@ RECIPE_REASONS = {
     "linear_cte_predicate_pushdown": "Linear CTE predicate pushdown recipe is available",
     "cte_dag_predicate_pushdown": "CTE DAG predicate pushdown recipe is available",
 }
+REWRITEABILITY_LABELS = {
+    "safe_material_draft": "Safe material draft",
+    "recipe_detected_no_draft": "Recipe detected, no draft",
+    "recipe_adjacent_shape": "Recipe-adjacent shape",
+    "stats_likely": "Stats likely",
+    "human_review_only": "Human review only",
+    "not_rewriteable": "Not rewriteable",
+    "unknown": "Unknown",
+}
 
 
 @dataclass(frozen=True)
@@ -52,6 +61,8 @@ class OptimizerRewriteSupport:
     recipe_detected: bool = False
     draft_eligibility: str = "unknown"
     draft_eligibility_label: str = "Unknown"
+    rewriteability_bucket: str = "unknown"
+    rewriteability_label: str = "Unknown"
     cte_count: int = 0
     cte_graph_shape: str = "no_cte"
     cte_predicate_pushdown_status: str = "no_cte"
@@ -79,8 +90,13 @@ def classify_optimizer_rewrite_support(
     case_dir: Path | None,
     candidate: QueryOptimizationCandidateScore | None,
     facts_text: str,
+    *,
+    primary_bottleneck: dict[str, object] | None = None,
+    stats_candidate: object | None = None,
 ) -> OptimizerRewriteSupport:
+    stats_likely = case_is_stats_likely(primary_bottleneck, stats_candidate)
     if candidate is None or candidate.tier not in {"high", "medium"}:
+        bucket = "stats_likely" if stats_likely else "not_rewriteable"
         return OptimizerRewriteSupport(
             status="not_candidate",
             label="Not an optimization candidate",
@@ -89,6 +105,7 @@ def classify_optimizer_rewrite_support(
             risk_reasons=(),
             draft_eligibility="not_candidate",
             draft_eligibility_label="Not an optimization candidate",
+            **rewriteability_kwargs(bucket),
         )
     if case_dir is None:
         return source_unavailable_support("Case artifacts are unavailable")
@@ -116,6 +133,7 @@ def classify_optimizer_rewrite_support(
                 recipe_detected=True,
                 draft_eligibility="disabled_by_safety_thresholds",
                 draft_eligibility_label="Draft disabled by safety thresholds",
+                **rewriteability_kwargs("stats_likely" if stats_likely else "human_review_only"),
                 cte_count=cte_shape.cte_count,
                 cte_graph_shape=cte_shape.graph_shape,
                 cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
@@ -162,6 +180,7 @@ def classify_optimizer_rewrite_support(
                 recipe_detected=True,
                 draft_eligibility="deterministic_draft_unavailable",
                 draft_eligibility_label="Deterministic draft unavailable",
+                **rewriteability_kwargs("recipe_detected_no_draft"),
                 cte_count=cte_shape.cte_count,
                 cte_graph_shape=cte_shape.graph_shape,
                 cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
@@ -191,6 +210,7 @@ def classify_optimizer_rewrite_support(
             recipe_detected=True,
             draft_eligibility="safe_to_attempt",
             draft_eligibility_label="Safe to attempt with validation",
+            **rewriteability_kwargs("safe_material_draft"),
             cte_count=cte_shape.cte_count,
             cte_graph_shape=cte_shape.graph_shape,
             cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
@@ -215,6 +235,7 @@ def classify_optimizer_rewrite_support(
             risk_reasons=tuple(risk.reasons),
             draft_eligibility="disabled_by_safety_thresholds",
             draft_eligibility_label="Draft disabled by safety thresholds",
+            **rewriteability_kwargs("stats_likely" if stats_likely else "human_review_only"),
             cte_count=cte_shape.cte_count,
             cte_graph_shape=cte_shape.graph_shape,
             cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
@@ -243,6 +264,14 @@ def classify_optimizer_rewrite_support(
         risk_reasons=tuple(risk.reasons),
         draft_eligibility="no_recipe",
         draft_eligibility_label="No deterministic rewrite recipe",
+        **rewriteability_kwargs(
+            no_recipe_rewriteability_bucket(
+                stats_likely=stats_likely,
+                cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
+                cte_simplification_status=cte_shape.simplification_status,
+                derived_predicate_pushdown_status=derived_shape.predicate_pushdown_status,
+            )
+        ),
         cte_count=cte_shape.cte_count,
         cte_graph_shape=cte_shape.graph_shape,
         cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
@@ -269,7 +298,47 @@ def source_unavailable_support(reason: str) -> OptimizerRewriteSupport:
         risk_reasons=(),
         draft_eligibility="source_unavailable",
         draft_eligibility_label="Source unavailable",
+        **rewriteability_kwargs("human_review_only"),
     )
+
+
+def rewriteability_kwargs(bucket: str) -> dict[str, str]:
+    normalized = bucket if bucket in REWRITEABILITY_LABELS else "unknown"
+    return {
+        "rewriteability_bucket": normalized,
+        "rewriteability_label": REWRITEABILITY_LABELS[normalized],
+    }
+
+
+def case_is_stats_likely(
+    primary_bottleneck: dict[str, object] | None,
+    stats_candidate: object | None,
+) -> bool:
+    primary = primary_bottleneck if isinstance(primary_bottleneck, dict) else {}
+    label = str(primary.get("label") or "").strip().lower()
+    confidence = str(primary.get("confidence") or "").strip().lower()
+    if label == "stats" and confidence in {"high", "medium"}:
+        return True
+    stats_tier = str(getattr(stats_candidate, "tier", "") or "").strip().lower()
+    return stats_tier in {"high", "medium"}
+
+
+def no_recipe_rewriteability_bucket(
+    *,
+    stats_likely: bool,
+    cte_predicate_pushdown_status: str,
+    cte_simplification_status: str,
+    derived_predicate_pushdown_status: str,
+) -> str:
+    if stats_likely:
+        return "stats_likely"
+    if (
+        cte_predicate_pushdown_status == "candidate"
+        or derived_predicate_pushdown_status == "candidate"
+        or cte_simplification_status in {"pass_through_candidate", "single_use_candidate"}
+    ):
+        return "recipe_adjacent_shape"
+    return "not_rewriteable"
 
 
 def derived_shape_kwargs(derived_shape) -> dict[str, object]:

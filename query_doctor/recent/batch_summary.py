@@ -26,6 +26,15 @@ PRIMARY_BOTTLENECK_LABELS = {
     "unknown",
 }
 PRIMARY_BOTTLENECK_CONFIDENCES = {"high", "medium", "low"}
+REWRITEABILITY_BUCKETS = {
+    "safe_material_draft",
+    "recipe_detected_no_draft",
+    "recipe_adjacent_shape",
+    "stats_likely",
+    "human_review_only",
+    "not_rewriteable",
+    "unknown",
+}
 
 
 def build_summary(
@@ -46,6 +55,7 @@ def build_summary(
     reason_counts = {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
     reason_sql_verb_counts = {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
     primary_distribution = case_primary_bottleneck_distribution(cases)
+    rewriteability_distribution = optimizer_rewriteability_distribution(cases)
     return {
         "mode": "recent-query-batch",
         "out": str(config.out),
@@ -82,6 +92,7 @@ def build_summary(
         "candidate_reason_sql_verb_counts": reason_sql_verb_counts,
         "candidate_exclusion_count": 0 if discovery.scan_too_broad else max(0, inspected - selected_count),
         "case_primary_bottleneck_distribution": primary_distribution,
+        "optimizer_rewriteability_distribution": rewriteability_distribution,
         "top_reports": config.top_reports,
         "cm_jobs": config.cm_jobs,
         "jobs": config.jobs,
@@ -197,6 +208,40 @@ def case_primary_bottleneck_distribution(cases: list[CaseResult]) -> dict[str, o
         "mixed_rate": ratio(mixed_cases, total),
         "unknown_or_not_classified_rate": ratio(unknown_cases + not_classified_cases, total),
         "medium_or_better_confidence_rate": ratio(medium_or_better, total),
+    }
+
+
+def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, object]:
+    bucket_counts: Counter[str] = Counter()
+    optimization_candidate_count = 0
+    for case in cases:
+        support = case.optimizer_rewrite_support
+        if support is None:
+            bucket_counts["unknown"] += 1
+            continue
+        if support.status != "not_candidate":
+            optimization_candidate_count += 1
+        bucket = str(support.rewriteability_bucket or "unknown").strip().lower()
+        bucket_counts[bucket if bucket in REWRITEABILITY_BUCKETS else "unknown"] += 1
+    total = len(cases)
+    safe_material_draft = bucket_counts.get("safe_material_draft", 0)
+    no_draft = bucket_counts.get("recipe_detected_no_draft", 0)
+    recipe_adjacent = bucket_counts.get("recipe_adjacent_shape", 0)
+    stats_likely = bucket_counts.get("stats_likely", 0)
+    human_review = bucket_counts.get("human_review_only", 0)
+    return {
+        "total_cases": total,
+        "optimization_candidate_cases": optimization_candidate_count,
+        "bucket_counts": dict(sorted(bucket_counts.items())),
+        "safe_material_draft_cases": safe_material_draft,
+        "recipe_detected_no_draft_cases": no_draft,
+        "recipe_adjacent_shape_cases": recipe_adjacent,
+        "stats_likely_cases": stats_likely,
+        "human_review_only_cases": human_review,
+        "safe_material_draft_rate": ratio(safe_material_draft, total),
+        "recipe_backlog_rate": ratio(no_draft + recipe_adjacent, total),
+        "stats_likely_rate": ratio(stats_likely, total),
+        "human_review_only_rate": ratio(human_review, total),
     }
 
 
@@ -353,6 +398,24 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"{label}={count}" for label, count in sorted(confidence_counts.items())
             )
             lines.append(f"- confidence: {rendered_confidences}")
+        lines.append("")
+    rewriteability_distribution = summary.get("optimizer_rewriteability_distribution")
+    if isinstance(rewriteability_distribution, dict):
+        bucket_counts = rewriteability_distribution.get("bucket_counts")
+        lines.extend(
+            [
+                "## Optimizer Rewriteability Distribution",
+                "",
+                f"- optimization candidate cases: {rewriteability_distribution.get('optimization_candidate_cases', 0)} / {rewriteability_distribution.get('total_cases', 0)}",
+                f"- safe material draft cases: {rewriteability_distribution.get('safe_material_draft_cases', 0)} ({rewriteability_distribution.get('safe_material_draft_rate', 0.0)})",
+                f"- recipe backlog cases: {rewriteability_distribution.get('recipe_detected_no_draft_cases', 0)} no-draft, {rewriteability_distribution.get('recipe_adjacent_shape_cases', 0)} adjacent ({rewriteability_distribution.get('recipe_backlog_rate', 0.0)})",
+                f"- stats-likely cases: {rewriteability_distribution.get('stats_likely_cases', 0)} ({rewriteability_distribution.get('stats_likely_rate', 0.0)})",
+                f"- human-review-only cases: {rewriteability_distribution.get('human_review_only_cases', 0)} ({rewriteability_distribution.get('human_review_only_rate', 0.0)})",
+            ]
+        )
+        if isinstance(bucket_counts, dict) and bucket_counts:
+            rendered_buckets = ", ".join(f"{bucket}={count}" for bucket, count in sorted(bucket_counts.items()))
+            lines.append(f"- buckets: {rendered_buckets}")
         lines.append("")
     lines.extend(
         [

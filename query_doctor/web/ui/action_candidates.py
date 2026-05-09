@@ -95,9 +95,12 @@ def candidate_counter_signal_text(candidate: dict[str, Any]) -> str:
 def optimizer_rewrite_support_text(candidate: dict[str, Any]) -> str:
     label = str(candidate.get("rewrite_support_label") or "").strip()
     reason = str(candidate.get("rewrite_support_reason") or "").strip()
+    rewriteability = str(candidate.get("rewriteability_label") or "").strip()
     facts = str(candidate.get("rewrite_support_facts") or "").strip()
     guardrails = str(candidate.get("rewrite_support_guardrails") or "").strip()
     context = ""
+    if rewriteability and rewriteability.lower() != "unknown":
+        context += f" Rewriteability: {rewriteability}."
     if facts:
         context += f" Facts: {facts}."
     if guardrails:

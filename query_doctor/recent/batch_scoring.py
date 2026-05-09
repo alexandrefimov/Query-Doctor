@@ -138,6 +138,8 @@ def score_case(case: CaseResult) -> None:
         case.actual_case_dir,
         case.query_optimization_candidate,
         facts,
+        primary_bottleneck=case.case_primary_bottleneck,
+        stats_candidate=case.stats_optimization_candidate,
     )
 
 

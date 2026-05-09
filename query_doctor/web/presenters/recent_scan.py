@@ -448,6 +448,8 @@ def optimizer_rewrite_support_view(case: dict[str, Any]) -> dict[str, str]:
         "rewrite_support": status,
         "rewrite_support_label": label,
         "rewrite_support_reason": reason,
+        "rewriteability_bucket": safe_optimizer_rewriteability_bucket(support.get("rewriteability_bucket")),
+        "rewriteability_label": safe_optimizer_rewriteability_label(support.get("rewriteability_label")),
         "rewrite_support_facts": optimizer_rewrite_support_fact_summary(support),
         "rewrite_support_guardrails": optimizer_rewrite_support_guardrail_summary(support),
     }
@@ -488,6 +490,25 @@ def safe_optimizer_rewrite_support_label(status: str, value: Any) -> str:
 def safe_optimizer_rewrite_support_reason(value: Any) -> str:
     text = safe_optimization_display_text(value)
     return text or "No trusted rewrite-support classification is available"
+
+
+def safe_optimizer_rewriteability_bucket(value: Any) -> str:
+    bucket = str(value or "unknown").strip().lower()
+    allowed = {
+        "safe_material_draft",
+        "recipe_detected_no_draft",
+        "recipe_adjacent_shape",
+        "stats_likely",
+        "human_review_only",
+        "not_rewriteable",
+        "unknown",
+    }
+    return bucket if bucket in allowed else "unknown"
+
+
+def safe_optimizer_rewriteability_label(value: Any) -> str:
+    text = safe_optimization_display_text(value)
+    return text or "Unknown"
 
 
 def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
