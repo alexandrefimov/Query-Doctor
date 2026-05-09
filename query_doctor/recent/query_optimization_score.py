@@ -9,6 +9,15 @@ from dataclasses import asdict, dataclass
 TIER_ORDER = {"high": 3, "medium": 2, "low": 1, "not_likely": 0}
 IMPACT_ORDER = {"high": 2, "medium": 1, "low": 0}
 CONFIDENCE_ORDER = {"high": 2, "medium": 1, "low": 0}
+REWRITEABILITY_ORDER = {
+    "safe_material_draft": 5,
+    "recipe_detected_no_draft": 4,
+    "recipe_adjacent_shape": 3,
+    "stats_likely": 2,
+    "human_review_only": 1,
+    "not_rewriteable": 0,
+    "unknown": 0,
+}
 
 
 @dataclass(frozen=True)
@@ -90,8 +99,10 @@ def query_optimization_sort_key(case_summary: dict[str, object]) -> tuple[object
     score = numeric_value(candidate.get("score"))
     duration = numeric_value(case_summary.get("duration_sec"))
     triage_rank = numeric_value(case_summary.get("triage_rank"))
+    rewriteability_rank = optimizer_rewriteability_rank(case_summary.get("optimizer_rewrite_support"))
     return (
         -TIER_ORDER.get(tier, 0),
+        -rewriteability_rank,
         -score,
         -IMPACT_ORDER.get(impact, 0),
         -duration,
@@ -99,6 +110,24 @@ def query_optimization_sort_key(case_summary: dict[str, object]) -> tuple[object
         str(case_summary.get("query_id") or ""),
         numeric_value(case_summary.get("case_index")),
     )
+
+
+def optimizer_rewriteability_rank(support: object) -> int:
+    support = support if isinstance(support, dict) else {}
+    bucket = str(support.get("rewriteability_bucket") or "").strip().lower()
+    if bucket in REWRITEABILITY_ORDER:
+        return REWRITEABILITY_ORDER[bucket]
+    draft_eligibility = str(support.get("draft_eligibility") or "").strip().lower()
+    if draft_eligibility == "safe_to_attempt":
+        return REWRITEABILITY_ORDER["safe_material_draft"]
+    if draft_eligibility == "deterministic_draft_unavailable":
+        return REWRITEABILITY_ORDER["recipe_detected_no_draft"]
+    status = str(support.get("status") or "").strip().lower()
+    if status in {"sql_draft_supported", "sql_draft_attemptable", "recipe_detected"}:
+        return REWRITEABILITY_ORDER["safe_material_draft"]
+    if status in {"draft_disabled", "guidance_only", "source_unavailable"}:
+        return REWRITEABILITY_ORDER["human_review_only"]
+    return REWRITEABILITY_ORDER["unknown"]
 
 
 def candidate_tier(score: int, *, has_shape_evidence: bool, counter_signals: list[str]) -> str:

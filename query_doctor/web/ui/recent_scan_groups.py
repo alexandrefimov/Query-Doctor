@@ -9,6 +9,15 @@ from query_doctor.web.presenters.recent_scan import RecentScanCaseRowView, numer
 from query_doctor.web.trusted_artifacts import OPTIMIZER_STATUS_ORDER
 
 
+REWRITEABILITY_ORDER = {
+    "safe_material_draft": 5,
+    "recipe_detected_no_draft": 4,
+    "recipe_adjacent_shape": 3,
+    "stats_likely": 2,
+    "human_review_only": 1,
+    "not_rewriteable": 0,
+    "unknown": 0,
+}
 QUERY_GROUPS = {
     "bad": ("Bad queries", {"failed", "high"}),
     "suspicious": ("Suspicious queries", {"suspicious"}),
@@ -108,6 +117,7 @@ def sort_rows_for_query_group(
             rows,
             key=lambda row: (
                 -tier_order.get(row.optimization_tier, 0),
+                -REWRITEABILITY_ORDER.get(row.optimizer_rewriteability_bucket, 0),
                 -row.optimization_score,
                 -impact_order.get(row.optimization_impact, 0),
                 -OPTIMIZER_STATUS_ORDER.get(row.optimization_artifact_status, 0),

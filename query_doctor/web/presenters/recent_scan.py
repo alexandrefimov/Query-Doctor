@@ -140,6 +140,8 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         optimizer_rewrite_support=optimization["rewrite_support"],
         optimizer_rewrite_support_label=optimization["rewrite_support_label"],
         optimizer_rewrite_support_reason=optimization["rewrite_support_reason"],
+        optimizer_rewriteability_bucket=optimization["rewriteability_bucket"],
+        optimizer_rewriteability_label=optimization["rewriteability_label"],
         optimizer_fact_summary=optimization["rewrite_support_facts"],
         optimizer_guardrail_summary=optimization["rewrite_support_guardrails"],
         optimization_summary=optimization["summary"],
