@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from query_doctor.optimizer.models import CteDefinition, OptimizerRewriteRecipe
@@ -74,6 +74,12 @@ class PredicatePushdownConjunctDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class DeterministicDraftDiagnostics:
+    reasons: tuple[str, ...]
+    cte_pushdown_conjunct_decision_reasons: tuple[str, ...] = ()
+
+
 SAFE_SINGLE_CTE_PREDICATE_PUNCTUATION = {"(", ")", ",", ";"}
 UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS = ("HAVING", "LIMIT", "UNION", "EXCEPT", "INTERSECT")
 RELATION_ALIAS_BOUNDARIES = {
@@ -100,7 +106,10 @@ RELATION_ALIAS_BOUNDARIES = {
 }
 
 
-def deterministic_recipe_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe | None) -> str | None:
+def deterministic_recipe_draft(
+    source_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe | None,
+) -> str | None:
     if rewrite_recipe is None:
         return None
     if rewrite_recipe.recipe_id == "pass_through_cte_elimination":
@@ -120,6 +129,217 @@ def deterministic_recipe_draft(source_sql: str, rewrite_recipe: OptimizerRewrite
     if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
         return single_derived_table_predicate_pushdown_draft(source_sql)
     return None
+
+
+def deterministic_recipe_draft_diagnostics(
+    source_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe | None,
+    *,
+    deterministic_draft: str | None,
+    validation_errors: Iterable[str] = (),
+    material_change: bool | None = None,
+) -> DeterministicDraftDiagnostics:
+    reasons: list[str] = []
+    if rewrite_recipe is None:
+        reasons.append("no_recipe")
+        return DeterministicDraftDiagnostics(tuple(reasons))
+    if deterministic_draft is None:
+        reasons.append("no_deterministic_draft")
+    elif tuple(validation_errors):
+        reasons.append("validation_rejected")
+    elif material_change is False:
+        reasons.append("no_material_change")
+    if rewrite_recipe.recipe_id not in {
+        "single_cte_predicate_pushdown",
+        "single_cte_projection_alias_predicate_pushdown",
+        "linear_cte_predicate_pushdown",
+        "cte_dag_predicate_pushdown",
+    }:
+        return DeterministicDraftDiagnostics(tuple(dedupe_preserve_order(reasons)))
+    cte_reasons, cte_decisions = cte_predicate_pushdown_draft_diagnostics(
+        source_sql,
+        rewrite_recipe,
+    )
+    return DeterministicDraftDiagnostics(
+        tuple(dedupe_preserve_order((*reasons, *cte_reasons))),
+        tuple(cte_decisions),
+    )
+
+
+def cte_predicate_pushdown_draft_diagnostics(
+    source_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    parsed = parse_with_query(source_sql)
+    if parsed is None:
+        return ("cte_parse_failed",), ()
+    reasons: list[str] = []
+    decision_reasons: list[str] = []
+    if any_cte_has_column_list(source_sql):
+        reasons.append("cte_column_list")
+    if rewrite_recipe.recipe_id == "linear_cte_predicate_pushdown":
+        linear_reasons, linear_decisions = linear_cte_pushdown_draft_diagnostics(
+            source_sql,
+            parsed,
+        )
+        reasons.extend(linear_reasons)
+        decision_reasons.extend(linear_decisions)
+    elif rewrite_recipe.recipe_id == "cte_dag_predicate_pushdown":
+        dag_reasons, dag_decisions = cte_dag_pushdown_draft_diagnostics(
+            source_sql,
+            parsed,
+            rewrite_recipe,
+        )
+        reasons.extend(dag_reasons)
+        decision_reasons.extend(dag_decisions)
+    else:
+        cte = parsed.ctes[0] if parsed.ctes else None
+        if cte is not None:
+            single_reasons, single_decisions = single_cte_pushdown_draft_diagnostics(
+                parsed.final_sql,
+                cte.body,
+            )
+            reasons.extend(single_reasons)
+            decision_reasons.extend(single_decisions)
+    if any(clause_signature(cte.body, "WHERE") is not None for cte in parsed.ctes[1:]):
+        reasons.append("downstream_cte_filter_present")
+    if clause_signature(parsed.final_sql, "WHERE") is None:
+        reasons.append("final_filter_absent")
+    return tuple(dedupe_preserve_order(reasons)), tuple(decision_reasons)
+
+
+def single_cte_pushdown_draft_diagnostics(
+    final_sql: str,
+    cte_body: str,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    reasons = cte_body_draft_blocking_reasons(cte_body, "target_cte")
+    available_columns = simple_cte_filter_columns(cte_body)
+    if not available_columns:
+        reasons.append("target_cte_no_simple_projection_columns")
+    grouped_columns = simple_group_by_columns(cte_body)
+    if clause_signature(cte_body, "GROUP") and not grouped_columns:
+        reasons.append("target_cte_group_not_simple")
+    decisions = (
+        per_conjunct_pushdown_plan(
+            final_sql,
+            cte_body,
+            available_columns,
+            cte_qualifiers=set(),
+            grouped_columns=grouped_columns,
+        )
+        if available_columns
+        else ()
+    )
+    decision_reasons = tuple(decision.reason for decision in decisions)
+    if decisions and not any(decision.copyable for decision in decisions):
+        reasons.append("no_copyable_predicate")
+    if not decisions and clause_signature(final_sql, "WHERE") is not None:
+        reasons.append("no_predicate_decisions")
+    return tuple(dedupe_preserve_order(reasons)), decision_reasons
+
+
+def linear_cte_pushdown_draft_diagnostics(
+    source_sql: str,
+    parsed,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    reasons: list[str] = []
+    decision_reasons: list[str] = []
+    if not is_linear_cte_chain(source_sql):
+        reasons.append("unsupported_cte_graph")
+    if not parsed.ctes:
+        return tuple(reasons), ()
+    first_cte = parsed.ctes[0]
+    reasons.extend(cte_body_draft_blocking_reasons(first_cte.body, "source_cte"))
+    available_columns_by_cte = [simple_cte_filter_columns(cte.body) for cte in parsed.ctes]
+    if any(not columns for columns in available_columns_by_cte):
+        reasons.append("cte_no_simple_projection_columns")
+    grouped_columns = simple_group_by_columns(first_cte.body)
+    if clause_signature(first_cte.body, "GROUP") and not grouped_columns:
+        reasons.append("source_cte_group_not_simple")
+    if available_columns_by_cte and available_columns_by_cte[0]:
+        decision_reasons.extend(
+            decision.reason
+            for decision in per_conjunct_pushdown_plan(
+                parsed.final_sql,
+                first_cte.body,
+                available_columns_by_cte[0],
+                cte_qualifiers=cte_reference_aliases(parsed.final_sql, parsed.ctes[-1].name),
+                grouped_columns=grouped_columns,
+            )
+        )
+        for index, cte in enumerate(parsed.ctes[1:], start=1):
+            if clause_signature(cte.body, "WHERE") is None:
+                continue
+            upstream_name = parsed.ctes[index - 1].name
+            decision_reasons.extend(
+                decision.reason
+                for decision in per_conjunct_pushdown_plan(
+                    cte.body,
+                    first_cte.body,
+                    available_columns_by_cte[0],
+                    cte_qualifiers=cte_reference_aliases(cte.body, upstream_name),
+                    grouped_columns=grouped_columns,
+                )
+            )
+    if decision_reasons and "copyable" not in decision_reasons:
+        reasons.append("no_copyable_predicate")
+    return tuple(dedupe_preserve_order(reasons)), tuple(decision_reasons)
+
+
+def cte_dag_pushdown_draft_diagnostics(
+    source_sql: str,
+    parsed,
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    reasons: list[str] = []
+    if not is_cte_dag_predicate_pushdown_candidate(source_sql):
+        reasons.append("unsupported_cte_graph")
+    final_cte_name = rewrite_recipe.source_cte
+    cte_by_name = {cte.name: cte for cte in parsed.ctes}
+    final_cte = cte_by_name.get(final_cte_name or "")
+    if final_cte is None:
+        reasons.append("final_cte_not_found")
+        return tuple(dedupe_preserve_order(reasons)), ()
+    lineage_maps = cte_output_lineage_maps(parsed.ctes)
+    final_lineage = lineage_maps.get(final_cte.name)
+    if not final_lineage:
+        reasons.append("final_cte_lineage_unavailable")
+        return tuple(dedupe_preserve_order(reasons)), ()
+    decisions = per_conjunct_pushdown_plan(
+        parsed.final_sql,
+        final_cte.body,
+        set(final_lineage),
+        cte_qualifiers=cte_reference_aliases(parsed.final_sql, final_cte.name),
+        grouped_columns=set(),
+    )
+    decision_reasons = tuple(decision.reason for decision in decisions)
+    if decision_reasons and "copyable" not in decision_reasons:
+        reasons.append("no_copyable_predicate")
+    if not decisions and clause_signature(parsed.final_sql, "WHERE") is not None:
+        reasons.append("no_predicate_decisions")
+    return tuple(dedupe_preserve_order(reasons)), decision_reasons
+
+
+def cte_body_draft_blocking_reasons(cte_body: str, prefix: str) -> list[str]:
+    reasons: list[str] = []
+    if main_select_has_distinct(cte_body):
+        reasons.append(f"{prefix}_distinct_boundary")
+    if top_level_join_signature(cte_body):
+        reasons.append(f"{prefix}_join_boundary")
+    if any(top_level_keyword_count(cte_body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+        reasons.append(f"{prefix}_unsupported_clause_boundary")
+    return reasons
+
+
+def dedupe_preserve_order(items: Iterable[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return tuple(result)
 
 
 def pass_through_cte_elimination_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:

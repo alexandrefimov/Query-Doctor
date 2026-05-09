@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from collections import Counter
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from query_doctor.cli.optimize_query import (
@@ -10,7 +11,10 @@ from query_doctor.cli.optimize_query import (
     extract_optimizable_source_sql,
     read_source_sql,
 )
-from query_doctor.optimizer.deterministic_rewrites import deterministic_recipe_draft
+from query_doctor.optimizer.deterministic_rewrites import (
+    deterministic_recipe_draft,
+    deterministic_recipe_draft_diagnostics,
+)
 from query_doctor.optimizer.recipes import detect_optimizer_rewrite_recipe
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 from query_doctor.optimizer.sql_shape import analyze_cte_shape
@@ -36,8 +40,12 @@ RECIPE_REASONS = {
     "final_union_distinct_rollup": "Python-owned UNION ALL DISTINCT rollup recipe is available",
     "pass_through_cte_elimination": "Pass-through CTE elimination recipe is available",
     "single_cte_predicate_pushdown": "Single CTE predicate pushdown recipe is available",
-    "single_cte_projection_alias_predicate_pushdown": "Single CTE projection-alias predicate pushdown recipe is available",
-    "single_derived_table_predicate_pushdown": "Single derived table predicate pushdown recipe is available",
+    "single_cte_projection_alias_predicate_pushdown": (
+        "Single CTE projection-alias predicate pushdown recipe is available"
+    ),
+    "single_derived_table_predicate_pushdown": (
+        "Single derived table predicate pushdown recipe is available"
+    ),
     "linear_cte_predicate_pushdown": "Linear CTE predicate pushdown recipe is available",
     "cte_dag_predicate_pushdown": "CTE DAG predicate pushdown recipe is available",
 }
@@ -65,6 +73,8 @@ class OptimizerRewriteSupport:
     draft_eligibility_label: str = "Unknown"
     rewriteability_bucket: str = "unknown"
     rewriteability_label: str = "Unknown"
+    draft_unavailable_reasons: tuple[str, ...] = ()
+    cte_pushdown_conjunct_decision_counts: dict[str, int] = field(default_factory=dict)
     cte_count: int = 0
     cte_graph_shape: str = "no_cte"
     cte_predicate_pushdown_status: str = "no_cte"
@@ -169,10 +179,22 @@ def classify_optimizer_rewrite_support(
             if deterministic_draft
             else ()
         )
+        material_change = (
+            draft_has_material_change(source_sql.sql, deterministic_draft)
+            if deterministic_draft
+            else False
+        )
+        draft_diagnostics = deterministic_recipe_draft_diagnostics(
+            source_sql.sql,
+            recipe,
+            deterministic_draft=deterministic_draft,
+            validation_errors=deterministic_errors,
+            material_change=material_change,
+        )
         if (
             not deterministic_draft
             or deterministic_errors
-            or not draft_has_material_change(source_sql.sql, deterministic_draft)
+            or not material_change
         ):
             return OptimizerRewriteSupport(
                 status="draft_disabled",
@@ -188,6 +210,14 @@ def classify_optimizer_rewrite_support(
                 draft_eligibility="deterministic_draft_unavailable",
                 draft_eligibility_label="Deterministic draft unavailable",
                 **rewriteability_kwargs("recipe_detected_no_draft"),
+                draft_unavailable_reasons=draft_diagnostics.reasons,
+                cte_pushdown_conjunct_decision_counts=dict(
+                    sorted(
+                        Counter(
+                            draft_diagnostics.cte_pushdown_conjunct_decision_reasons
+                        ).items()
+                    )
+                ),
                 cte_count=cte_shape.cte_count,
                 cte_graph_shape=cte_shape.graph_shape,
                 cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,

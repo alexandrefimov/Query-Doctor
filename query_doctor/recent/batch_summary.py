@@ -213,6 +213,10 @@ def case_primary_bottleneck_distribution(cases: list[CaseResult]) -> dict[str, o
 
 def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, object]:
     bucket_counts: Counter[str] = Counter()
+    no_draft_recipe_counts: Counter[str] = Counter()
+    no_draft_eligibility_counts: Counter[str] = Counter()
+    no_draft_reason_counts: Counter[str] = Counter()
+    no_draft_cte_pushdown_decision_counts: Counter[str] = Counter()
     optimization_candidate_count = 0
     for case in cases:
         support = case.optimizer_rewrite_support
@@ -222,7 +226,23 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         if support.status != "not_candidate":
             optimization_candidate_count += 1
         bucket = str(support.rewriteability_bucket or "unknown").strip().lower()
-        bucket_counts[bucket if bucket in REWRITEABILITY_BUCKETS else "unknown"] += 1
+        normalized_bucket = bucket if bucket in REWRITEABILITY_BUCKETS else "unknown"
+        bucket_counts[normalized_bucket] += 1
+        if normalized_bucket == "recipe_detected_no_draft":
+            recipe_id = str(support.recipe_id or "unknown_recipe").strip() or "unknown_recipe"
+            eligibility = str(support.draft_eligibility or "unknown").strip() or "unknown"
+            no_draft_recipe_counts[recipe_id] += 1
+            no_draft_eligibility_counts[eligibility] += 1
+            no_draft_reason_counts.update(
+                str(reason) for reason in support.draft_unavailable_reasons
+            )
+            no_draft_cte_pushdown_decision_counts.update(
+                {
+                    str(reason): count
+                    for reason, count in support.cte_pushdown_conjunct_decision_counts.items()
+                    if isinstance(count, int) and count > 0
+                }
+            )
     total = len(cases)
     safe_material_draft = bucket_counts.get("safe_material_draft", 0)
     no_draft = bucket_counts.get("recipe_detected_no_draft", 0)
@@ -235,6 +255,16 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "bucket_counts": dict(sorted(bucket_counts.items())),
         "safe_material_draft_cases": safe_material_draft,
         "recipe_detected_no_draft_cases": no_draft,
+        "recipe_detected_no_draft_recipe_counts": dict(sorted(no_draft_recipe_counts.items())),
+        "recipe_detected_no_draft_eligibility_counts": dict(
+            sorted(no_draft_eligibility_counts.items())
+        ),
+        "recipe_detected_no_draft_reason_counts": dict(
+            sorted(no_draft_reason_counts.items())
+        ),
+        "recipe_detected_no_draft_cte_pushdown_decision_counts": dict(
+            sorted(no_draft_cte_pushdown_decision_counts.items())
+        ),
         "recipe_adjacent_shape_cases": recipe_adjacent,
         "stats_likely_cases": stats_likely,
         "human_review_only_cases": human_review,
@@ -416,6 +446,36 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         if isinstance(bucket_counts, dict) and bucket_counts:
             rendered_buckets = ", ".join(f"{bucket}={count}" for bucket, count in sorted(bucket_counts.items()))
             lines.append(f"- buckets: {rendered_buckets}")
+        no_draft_recipes = rewriteability_distribution.get("recipe_detected_no_draft_recipe_counts")
+        if isinstance(no_draft_recipes, dict) and no_draft_recipes:
+            rendered_recipes = ", ".join(
+                f"{recipe}={count}" for recipe, count in sorted(no_draft_recipes.items())
+            )
+            lines.append(f"- no-draft recipes: {rendered_recipes}")
+        no_draft_eligibility = rewriteability_distribution.get(
+            "recipe_detected_no_draft_eligibility_counts"
+        )
+        if isinstance(no_draft_eligibility, dict) and no_draft_eligibility:
+            rendered_eligibility = ", ".join(
+                f"{label}={count}" for label, count in sorted(no_draft_eligibility.items())
+            )
+            lines.append(f"- no-draft eligibility: {rendered_eligibility}")
+        no_draft_reasons = rewriteability_distribution.get(
+            "recipe_detected_no_draft_reason_counts"
+        )
+        if isinstance(no_draft_reasons, dict) and no_draft_reasons:
+            rendered_reasons = ", ".join(
+                f"{reason}={count}" for reason, count in sorted(no_draft_reasons.items())
+            )
+            lines.append(f"- no-draft reasons: {rendered_reasons}")
+        no_draft_decisions = rewriteability_distribution.get(
+            "recipe_detected_no_draft_cte_pushdown_decision_counts"
+        )
+        if isinstance(no_draft_decisions, dict) and no_draft_decisions:
+            rendered_decisions = ", ".join(
+                f"{reason}={count}" for reason, count in sorted(no_draft_decisions.items())
+            )
+            lines.append(f"- no-draft CTE predicate decisions: {rendered_decisions}")
         lines.append("")
     lines.extend(
         [
