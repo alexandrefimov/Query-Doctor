@@ -239,6 +239,11 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     no_draft_class_recipe_reason_counts: dict[str, dict[str, Counter[str]]] = {}
     no_draft_reason_counts: Counter[str] = Counter()
     no_draft_cte_pushdown_decision_counts: Counter[str] = Counter()
+    adjacent_cte_graph_counts: Counter[str] = Counter()
+    adjacent_cte_predicate_pushdown_counts: Counter[str] = Counter()
+    adjacent_cte_boundary_reason_counts: Counter[str] = Counter()
+    adjacent_derived_predicate_pushdown_counts: Counter[str] = Counter()
+    adjacent_derived_boundary_reason_counts: Counter[str] = Counter()
     optimization_candidate_count = 0
     for case in cases:
         support = case.optimizer_rewrite_support
@@ -271,6 +276,20 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
                     for reason, count in support.cte_pushdown_conjunct_decision_counts.items()
                     if isinstance(count, int) and count > 0
                 }
+            )
+        elif normalized_bucket == "recipe_adjacent_shape":
+            adjacent_cte_graph_counts[normalize_adjacent_label(support.cte_graph_shape)] += 1
+            adjacent_cte_predicate_pushdown_counts[
+                normalize_adjacent_label(support.cte_predicate_pushdown_status)
+            ] += 1
+            adjacent_cte_boundary_reason_counts.update(
+                normalize_adjacent_label(reason) for reason in support.cte_boundary_reasons
+            )
+            adjacent_derived_predicate_pushdown_counts[
+                normalize_adjacent_label(support.derived_predicate_pushdown_status)
+            ] += 1
+            adjacent_derived_boundary_reason_counts.update(
+                normalize_adjacent_label(reason) for reason in support.derived_boundary_reasons
             )
     total = len(cases)
     safe_material_draft = bucket_counts.get("safe_material_draft", 0)
@@ -309,6 +328,19 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
             sorted(no_draft_cte_pushdown_decision_counts.items())
         ),
         "recipe_adjacent_shape_cases": recipe_adjacent,
+        "recipe_adjacent_cte_graph_counts": dict(sorted(adjacent_cte_graph_counts.items())),
+        "recipe_adjacent_cte_predicate_pushdown_counts": dict(
+            sorted(adjacent_cte_predicate_pushdown_counts.items())
+        ),
+        "recipe_adjacent_cte_boundary_reason_counts": dict(
+            sorted(adjacent_cte_boundary_reason_counts.items())
+        ),
+        "recipe_adjacent_derived_predicate_pushdown_counts": dict(
+            sorted(adjacent_derived_predicate_pushdown_counts.items())
+        ),
+        "recipe_adjacent_derived_boundary_reason_counts": dict(
+            sorted(adjacent_derived_boundary_reason_counts.items())
+        ),
         "stats_likely_cases": stats_likely,
         "human_review_only_cases": human_review,
         "safe_material_draft_rate": ratio(safe_material_draft, total),
@@ -381,6 +413,15 @@ def normalize_no_draft_class(value: object) -> str:
 def normalize_no_draft_recipe_id(value: object) -> str:
     recipe_id = str(value or "unknown_recipe").strip()
     return recipe_id if recipe_id in NO_DRAFT_RECIPE_IDS else "unknown_recipe"
+
+
+def normalize_adjacent_label(value: object) -> str:
+    label = str(value or "unknown").strip().lower()
+    if not label:
+        return "unknown"
+    if all(character.isalnum() or character == "_" for character in label):
+        return label
+    return "other"
 
 
 def ratio(numerator: int, denominator: int) -> float:
@@ -635,6 +676,44 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"{reason}={count}" for reason, count in sorted(no_draft_decisions.items())
             )
             lines.append(f"- no-draft CTE predicate decisions: {rendered_decisions}")
+        adjacent_cte_graphs = rewriteability_distribution.get("recipe_adjacent_cte_graph_counts")
+        if isinstance(adjacent_cte_graphs, dict) and adjacent_cte_graphs:
+            rendered_graphs = ", ".join(
+                f"{label}={count}" for label, count in sorted(adjacent_cte_graphs.items())
+            )
+            lines.append(f"- adjacent CTE graphs: {rendered_graphs}")
+        adjacent_cte_statuses = rewriteability_distribution.get(
+            "recipe_adjacent_cte_predicate_pushdown_counts"
+        )
+        if isinstance(adjacent_cte_statuses, dict) and adjacent_cte_statuses:
+            rendered_statuses = ", ".join(
+                f"{label}={count}" for label, count in sorted(adjacent_cte_statuses.items())
+            )
+            lines.append(f"- adjacent CTE predicate status: {rendered_statuses}")
+        adjacent_cte_boundaries = rewriteability_distribution.get(
+            "recipe_adjacent_cte_boundary_reason_counts"
+        )
+        if isinstance(adjacent_cte_boundaries, dict) and adjacent_cte_boundaries:
+            rendered_boundaries = ", ".join(
+                f"{reason}={count}" for reason, count in sorted(adjacent_cte_boundaries.items())
+            )
+            lines.append(f"- adjacent CTE boundary reasons: {rendered_boundaries}")
+        adjacent_derived_statuses = rewriteability_distribution.get(
+            "recipe_adjacent_derived_predicate_pushdown_counts"
+        )
+        if isinstance(adjacent_derived_statuses, dict) and adjacent_derived_statuses:
+            rendered_statuses = ", ".join(
+                f"{label}={count}" for label, count in sorted(adjacent_derived_statuses.items())
+            )
+            lines.append(f"- adjacent derived predicate status: {rendered_statuses}")
+        adjacent_derived_boundaries = rewriteability_distribution.get(
+            "recipe_adjacent_derived_boundary_reason_counts"
+        )
+        if isinstance(adjacent_derived_boundaries, dict) and adjacent_derived_boundaries:
+            rendered_boundaries = ", ".join(
+                f"{reason}={count}" for reason, count in sorted(adjacent_derived_boundaries.items())
+            )
+            lines.append(f"- adjacent derived boundary reasons: {rendered_boundaries}")
         lines.append("")
     optimizer_funnel_summary = summary.get("optimizer_funnel")
     if isinstance(optimizer_funnel_summary, dict):
