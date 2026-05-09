@@ -1,6 +1,6 @@
 # Query Optimizer Contract
 
-Last reviewed: 2026-05-09
+Last reviewed: 2026-05-10
 
 This document is the active contract for both optimizer surfaces:
 
@@ -37,6 +37,59 @@ The optimizer route is not an LLM SQL-writer contract.
 - Unsupported SQL shapes should not be sent through a free-form SQL rewrite
   path. They should become trusted `no_rewrite` or recommendations-only
   outcomes.
+
+## Optimizer Trust Flow
+
+This diagram shows the trust boundary. Recipe-specific rules below remain the
+source of detail for what a Python-owned executor may construct and validate.
+
+```mermaid
+flowchart TD
+    subgraph Sources["Allowed source paths"]
+        Pasted[Pasted Query Optimizer SQL]
+        CaseSource[Server-owned analyzed case source]
+    end
+
+    subgraph PythonFacts["Python-owned facts and routing"]
+        Scope[Read-only scope validation]
+        Shape[Parser and shape facts]
+        Rewriteability[Rewriteability taxonomy]
+        Risk[Risk and materiality decision]
+    end
+
+    subgraph DraftPaths["Outcome construction"]
+        Recipe[Python-owned recipe executor]
+        LLM[LLM wording or untrusted draft text]
+        NoDraft[Recommendations-only or no-rewrite]
+    end
+
+    subgraph TrustGate["Deterministic trust gate"]
+        Validator[Strict SQL and result-shape validation]
+        Marker[Trust marker binds facts, source, and output]
+    end
+
+    subgraph Browser["Browser-safe result"]
+        TrustedDraft[Trusted SQL draft]
+        TrustedNoDraft[Trusted recommendations or no-rewrite]
+        SafeFailure[Safe failure category]
+    end
+
+    Pasted --> Scope
+    CaseSource --> Scope
+    Scope --> Shape
+    Shape --> Rewriteability
+    Rewriteability --> Risk
+    Risk -->|supported recipe| Recipe
+    Risk -->|unsupported or too risky| NoDraft
+    Risk -->|wording only| LLM
+    Recipe --> Validator
+    LLM -. untrusted until validation .-> Validator
+    Validator -->|pass| Marker
+    Marker --> TrustedDraft
+    NoDraft --> Marker
+    Marker --> TrustedNoDraft
+    Validator -->|reject| SafeFailure
+```
 
 ## Pasted-SQL Query Optimizer
 

@@ -197,6 +197,58 @@ bounded inputs, Python-owned analyzers create facts, LLMs phrase those facts
 only after an explicit action, and validators decide what can be rendered or
 stored as trusted output.
 
+## Analyzer Flow
+
+This is the contract-level analyzer flow. Individual Impala profile parsers,
+metric adapters, event summarizers, and presenter helpers stay implementation
+details so the diagram remains reviewable.
+
+```mermaid
+flowchart LR
+    subgraph Inputs["Bounded local inputs"]
+        Profile[Redacted profile digest]
+        QueryMeta[Safe query metadata]
+        TableMeta[Allowlisted table metadata]
+        MetricInput[Bounded metric summaries]
+        EventInput[Bounded event summaries]
+    end
+
+    subgraph AnalyzerFlow["Python-owned analyzer"]
+        Parsers[Profile and context parsers]
+        Facts[Raw-free analyzer facts]
+        Runtime[Runtime Diagnosis signals]
+        Actions[Action candidates and limitations]
+    end
+
+    subgraph SafeOutputs["Safe downstream outputs"]
+        Details[Details view models]
+        ReportFacts[Trusted report fact appendix]
+        Recent[Recent scan ranking]
+        OptimizerSignals[Optimizer candidate signals]
+        SafeBoundary[Browser and trusted report boundary]
+    end
+
+    Blocked[Raw SQL, raw profiles, raw metadata, local paths]:::blocked
+
+    Profile --> Parsers
+    QueryMeta --> Parsers
+    TableMeta --> Parsers
+    MetricInput --> Parsers
+    EventInput --> Parsers
+    Parsers --> Facts
+    Facts --> Runtime
+    Runtime --> Actions
+    Facts --> Details
+    Facts --> ReportFacts
+    Actions --> Recent
+    Actions --> OptimizerSignals
+    Details --> SafeBoundary
+    ReportFacts --> SafeBoundary
+    Blocked -. blocked .-> SafeBoundary
+
+    classDef blocked fill:#fbeaea,stroke:#9a2a2a,color:#3a1010;
+```
+
 ## Components
 
 ### Collector
