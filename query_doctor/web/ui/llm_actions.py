@@ -40,9 +40,11 @@ OPTIMIZER_SOURCE_SCOPE_LABELS = {
     "read_only_statement": "Read-only statement",
 }
 OPTIMIZER_FALLBACK_LABELS = {
+    "no_python_owned_recipe": "No supported Python-owned rewrite recipe",
     "validation_failed": "Draft failed deterministic validation",
     "no_material_change": "No material rewrite",
-    "output_budget": "Output budget reached",
+    "output_limit": "Optimizer output limit reached",
+    "output_budget": "Optimizer output limit reached",
 }
 OPTIMIZER_RISK_REASON_LABELS = {
     "cte_body_validation_not_proven": "CTE body equivalence is not proven by deterministic validation",
@@ -339,6 +341,7 @@ def render_optimizer_status(
     draft_html = render_optimizer_trusted_output(
         status,
         output_kind,
+        fallback_reason=view.fallback_reason,
         trusted_optimized_query=trusted_optimized_query,
         trusted_optimizer_recommendations=trusted_optimizer_recommendations,
     )
@@ -367,6 +370,7 @@ def render_optimizer_trusted_output(
     status: str,
     output_kind: str,
     *,
+    fallback_reason: str = "",
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
 ) -> str:
@@ -381,7 +385,7 @@ def render_optimizer_trusted_output(
     if status == "generated" and trusted_optimizer_recommendations:
         if output_kind == "no_rewrite":
             summary = "Query LLM optimizer outcome"
-            helper = "Deterministic checks classified the safe outcome as no rewrite needed."
+            helper = no_rewrite_recommendations_helper(fallback_reason)
         else:
             summary = "Query LLM optimizer recommendations"
             helper = "Deterministic risk checks skipped SQL rewrite; review the recommendations instead."
@@ -545,7 +549,7 @@ def render_optimized_query_action(
     elif status == "generated" and trusted_optimizer_recommendations:
         if output_kind == "no_rewrite":
             summary = "Query LLM optimizer outcome"
-            helper = "Deterministic checks classified the safe outcome as no rewrite needed."
+            helper = no_rewrite_recommendations_helper(view.fallback_reason)
         else:
             summary = "Query LLM optimizer recommendations"
             helper = "Deterministic risk checks skipped SQL rewrite; review the recommendations instead."
@@ -620,19 +624,9 @@ def render_optimized_query_outcome(view: OptimizedQueryActionView) -> str:
         role = "alert"
         manual_validation = "Available" if view.source_available else "Unavailable"
     elif status == "generated" and output_kind == "no_rewrite":
-        if view.fallback_reason == "validation_failed":
-            title = "No trusted rewrite"
-            summary = (
-                "A generated draft was rejected by deterministic validation. "
-                "The page shows safe guidance instead of exposing the rejected SQL."
-            )
-            card_class = "error-card"
-            role = "alert"
-        else:
-            title = "No rewrite needed"
-            summary = "The optimizer produced a trusted no-rewrite outcome with safe guidance for review."
-            card_class = "success-card"
-            role = "status"
+        title, summary, is_error = no_rewrite_outcome_copy(view.fallback_reason)
+        card_class = "error-card" if is_error else "success-card"
+        role = "alert" if is_error else "status"
     elif status == "generated" and output_kind == "recommendations_only":
         title = "Recommendations only"
         summary = (
@@ -689,6 +683,56 @@ def optimizer_risk_label(value: str) -> str:
 
 def optimizer_fallback_label(value: str) -> str:
     return OPTIMIZER_FALLBACK_LABELS.get(value, humanize_optimizer_token(value))
+
+
+def no_rewrite_outcome_copy(fallback_reason: str) -> tuple[str, str, bool]:
+    if fallback_reason == "validation_failed":
+        return (
+            "No trusted rewrite",
+            (
+                "A generated draft was rejected by deterministic validation. "
+                "The page shows safe guidance instead of exposing the rejected SQL."
+            ),
+            True,
+        )
+    if fallback_reason == "no_material_change":
+        return (
+            "No material rewrite",
+            "The optimizer did not produce a SQL draft with a material, validated change.",
+            False,
+        )
+    if fallback_reason == "no_python_owned_recipe":
+        return (
+            "No supported rewrite recipe",
+            (
+                "Python did not find a supported deterministic rewrite recipe, "
+                "so no trusted SQL draft is shown."
+            ),
+            False,
+        )
+    if fallback_reason in {"output_limit", "output_budget"}:
+        return (
+            "Optimizer output limit reached",
+            "The optimizer did not complete a trusted SQL draft within the output budget.",
+            True,
+        )
+    return (
+        "No trusted rewrite",
+        "The optimizer did not produce a trusted SQL draft; review the safe outcome reason below.",
+        False,
+    )
+
+
+def no_rewrite_recommendations_helper(fallback_reason: str) -> str:
+    if fallback_reason == "validation_failed":
+        return "A draft was rejected by deterministic validation; safe guidance is shown instead."
+    if fallback_reason == "no_material_change":
+        return "The optimizer did not find a material validated SQL change; safe guidance is shown instead."
+    if fallback_reason == "no_python_owned_recipe":
+        return "No supported deterministic rewrite recipe was found; safe guidance is shown instead."
+    if fallback_reason in {"output_limit", "output_budget"}:
+        return "The optimizer reached its output budget before a trusted draft was available."
+    return "No trusted SQL draft was produced; safe guidance is shown instead."
 
 
 def optimizer_risk_reason_labels(values: tuple[str, ...]) -> list[str]:
