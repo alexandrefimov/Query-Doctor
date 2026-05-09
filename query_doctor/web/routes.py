@@ -42,8 +42,9 @@ from query_doctor.web.specific_query_pages import (
 )
 from query_doctor.web.subprocesses import Runner
 from query_doctor.web.trusted_artifacts import (
-    load_validated_batch_case_report,
-    load_validated_specific_query_report,
+    load_batch_case_trusted_report_artifact,
+    load_specific_query_trusted_report_artifact,
+    trusted_report_download_filename,
 )
 from query_doctor.web.ui.help import render_demo_guide_page, render_help_page
 from query_doctor.web.ui.optimizer import render_optimizer_page
@@ -66,7 +67,6 @@ STATIC_ASSETS = {
     "/static/theme-bootstrap.js": ("theme-bootstrap.js", "application/javascript; charset=utf-8"),
 }
 REPORT_DOWNLOAD_CONTENT_TYPE = "text/markdown; charset=utf-8"
-REPORT_DOWNLOAD_ID_RE = re.compile(r"[^a-zA-Z0-9_-]")
 JOB_CANCEL_POST_RE = re.compile(r"/jobs/(?P<job_id>[0-9a-f]{32})/cancel")
 BATCH_CASE_POST_RE = re.compile(
     r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions)"
@@ -107,8 +107,7 @@ class WebRouteResponse:
 
 
 def report_download_filename(source_id: str) -> str:
-    short_id = REPORT_DOWNLOAD_ID_RE.sub("", source_id)[:8] or "report"
-    return f"query-doctor-report-{short_id}.md"
+    return trusted_report_download_filename(source_id)
 
 
 def route_get_request(
@@ -203,24 +202,24 @@ def route_batch_detail_get(
         detail_kwargs = kwargs_factory()
         suffix = match.group("suffix") or ""
         if suffix == "/report":
-            report_text = load_validated_batch_case_report(effective_settings, case)
-            if report_text is None:
+            report = load_batch_case_trusted_report_artifact(effective_settings, case_id, case)
+            if report is None:
                 return WebRouteResponse.html(
                     404,
                     render_batch_case_detail_for_request(effective_settings, case_id, case, store, **detail_kwargs),
                 )
             return WebRouteResponse.html(
                 200,
-                render_batch_case_report_page(effective_settings, case_id, case, report_text),
+                render_batch_case_report_page(effective_settings, case_id, case, report.text),
             )
         if suffix == "/report.md":
-            report_text = load_validated_batch_case_report(effective_settings, case)
-            if report_text is None:
+            report = load_batch_case_trusted_report_artifact(effective_settings, case_id, case)
+            if report is None:
                 return WebRouteResponse.html(
                     404,
                     render_batch_case_detail_for_request(effective_settings, case_id, case, store, **detail_kwargs),
                 )
-            return WebRouteResponse.markdown_download(report_download_filename(case_id), report_text)
+            return WebRouteResponse.markdown_download(report.download_filename, report.text)
         return WebRouteResponse.html(
             200,
             render_batch_case_detail_for_request(effective_settings, case_id, case, store, **detail_kwargs),
@@ -252,11 +251,11 @@ def route_specific_query_report_markdown(settings: WebSettings, query_id: str) -
         case_dir = expected_case_dir_for_query(validated_query_id, settings)
     except WebError as exc:
         return WebRouteResponse.html(400, render_query_page(settings, query_id=query_id, error=exc))
-    report_text = load_validated_specific_query_report(case_dir)
-    if report_text is None:
+    report = load_specific_query_trusted_report_artifact(validated_query_id, case_dir)
+    if report is None:
         message = WebError("Validated report is not available for this query.")
         return WebRouteResponse.html(404, render_query_page(settings, query_id=validated_query_id, error=message))
-    return WebRouteResponse.markdown_download(report_download_filename(validated_query_id), report_text)
+    return WebRouteResponse.markdown_download(report.download_filename, report.text)
 
 
 def route_job_get(

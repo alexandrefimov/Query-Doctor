@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,7 @@ OPTIMIZER_STATUS_ORDER = {
     "partial_untrusted": 0,
     "unknown": 0,
 }
+REPORT_DOWNLOAD_ID_RE = re.compile(r"[^a-zA-Z0-9_-]")
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,18 @@ class TrustedDetailArtifacts:
     trusted_report_text: str | None
     trusted_optimized_query: str | None
     trusted_optimizer_recommendations: str | None
+
+
+@dataclass(frozen=True)
+class TrustedReportArtifact:
+    source_id: str
+    text: str
+    download_filename: str
+
+
+def trusted_report_download_filename(source_id: str) -> str:
+    short_id = REPORT_DOWNLOAD_ID_RE.sub("", source_id)[:8] or "report"
+    return f"query-doctor-report-{short_id}.md"
 
 
 def optimizer_artifact_status_for_case(case: dict[str, Any]) -> str:
@@ -322,6 +336,32 @@ def load_validated_specific_query_report(case_dir: Path) -> str | None:
         return None
     case_path = str(case_dir)
     return report_text.replace(case_path, "[local case path hidden]") if case_path else report_text
+
+
+def load_batch_case_trusted_report_artifact(
+    settings: WebSettings,
+    case_id: str,
+    case: dict[str, object],
+) -> TrustedReportArtifact | None:
+    report_text = load_validated_batch_case_report(settings, case)
+    if report_text is None:
+        return None
+    return TrustedReportArtifact(
+        source_id=case_id,
+        text=report_text,
+        download_filename=trusted_report_download_filename(case_id),
+    )
+
+
+def load_specific_query_trusted_report_artifact(query_id: str, case_dir: Path) -> TrustedReportArtifact | None:
+    report_text = load_validated_specific_query_report(case_dir)
+    if report_text is None:
+        return None
+    return TrustedReportArtifact(
+        source_id=query_id,
+        text=report_text,
+        download_filename=trusted_report_download_filename(query_id),
+    )
 
 
 def load_validated_optimized_query(case_dir: Path) -> str | None:

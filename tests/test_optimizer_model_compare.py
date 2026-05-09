@@ -73,11 +73,16 @@ def test_dry_run_writes_optimizer_summary_without_raw_paths(tmp_path):
     assert result == 0
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     summary_md = (out_dir / "summary.md").read_text(encoding="utf-8")
+    funnel = json.loads((out_dir / "optimizer_funnel.json").read_text(encoding="utf-8"))
     assert summary["optimizer_num_predict"] == 4096
     assert summary["results"][0]["status"] == "dry_run"
+    assert summary["optimizer_funnel"] == funnel
+    assert funnel["dry_run_runs"] == 1
+    assert funnel["trusted_sql_draft_runs"] == 0
     assert str(tmp_path) not in json.dumps(summary)
     assert str(tmp_path) not in summary_md
     assert "## Model Summary" in summary_md
+    assert "## Optimizer Funnel" in summary_md
 
 
 def test_cases_file_dry_run_resolves_case_ids_without_raw_paths(tmp_path):
@@ -144,6 +149,24 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert all(item["matched_expected_outcome"] is True for item in results)
     aggregate = summary["aggregates"]["by_model"]["qwen3-coder:30b-a3b-q8_0"]
     assert aggregate["expected_outcome_match_rate"] == 1.0
+    funnel = summary["optimizer_funnel"]
+    assert funnel["total_runs"] == 13
+    assert funnel["dry_run_runs"] == 13
+    assert funnel["trusted_outcome_runs"] == 0
+    assert funnel["expected_matched_runs"] == 13
+    assert funnel["expected_match_rate"] == 1.0
+    assert funnel["expected_output_kind_counts"] == {
+        "no_rewrite": 1,
+        "recommendations_only": 2,
+        "sql_draft": 7,
+        "validation_rejected": 3,
+    }
+    assert funnel["offline_output_kind_counts"] == {
+        "no_rewrite": 1,
+        "recommendations_only": 2,
+        "sql_draft": 7,
+        "validation_rejected": 3,
+    }
     by_case = summary["aggregates"]["by_case"]
     assert len(by_case) == 13
     assert by_case["optimizer_cases:cte_dag_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
@@ -190,6 +213,7 @@ def test_summary_markdown_renders_model_case_and_mismatch_sections():
     markdown = module.render_summary_markdown(payload)
 
     assert "## Model Summary" in markdown
+    assert "## Optimizer Funnel" in markdown
     assert "## Case Summary" in markdown
     assert "## Mismatched Expected Outcomes" in markdown
     assert "optimizer_cases:case-a" in markdown
@@ -227,6 +251,60 @@ def test_aggregate_metrics_include_case_level_expected_mismatches():
     assert case_summary["expected_outcome_match_rate"] == 0.5
     assert case_summary["models"]["model-a"]["expected_outcome_match_rate"] == 1.0
     assert case_summary["models"]["model-b"]["expected_outcome_match_rate"] == 0.0
+
+
+def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
+    module = load_compare_module()
+    results = [
+        {
+            "status": "ok",
+            "output_kind": "sql_draft",
+            "expected_output_kind": "sql_draft",
+            "offline_output_kind": "sql_draft",
+            "matched_expected_outcome": True,
+        },
+        {
+            "status": "ok",
+            "output_kind": "no_rewrite",
+            "fallback_reason": "validation_failed",
+            "expected_output_kind": "validation_rejected",
+            "offline_output_kind": "validation_rejected",
+            "matched_expected_outcome": True,
+        },
+        {
+            "status": "ok",
+            "output_kind": "recommendations_only",
+            "expected_output_kind": "recommendations_only",
+            "offline_output_kind": "recommendations_only",
+            "matched_expected_outcome": False,
+        },
+        {
+            "status": "validation_failed",
+            "output_kind": "partial_untrusted",
+        },
+        {
+            "status": "dry_run",
+            "output_kind": "",
+        },
+    ]
+
+    funnel = module.build_optimizer_funnel(results)
+
+    assert funnel["total_runs"] == 5
+    assert funnel["trusted_outcome_runs"] == 3
+    assert funnel["trusted_sql_draft_runs"] == 1
+    assert funnel["trusted_no_rewrite_runs"] == 1
+    assert funnel["trusted_recommendations_runs"] == 1
+    assert funnel["partial_untrusted_runs"] == 1
+    assert funnel["dry_run_runs"] == 1
+    assert funnel["error_runs"] == 1
+    assert funnel["validation_failed_fallback_runs"] == 1
+    assert funnel["expected_outcome_runs"] == 3
+    assert funnel["expected_matched_runs"] == 2
+    assert funnel["trusted_outcome_rate"] == 0.6
+    assert funnel["trusted_sql_draft_rate"] == 0.2
+    assert funnel["partial_untrusted_rate"] == 0.2
+    assert funnel["expected_match_rate"] == 0.6667
 
 
 def test_fixture_case_copy_materializes_source_sql_for_optimizer_cli(tmp_path):

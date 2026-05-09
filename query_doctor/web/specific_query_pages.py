@@ -20,7 +20,7 @@ from query_doctor.web.jobs import WebJobSnapshot, WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.query_analysis import validate_query_id
 from query_doctor.web.specific_query_state import build_specific_query_detail_render_context
-from query_doctor.web.trusted_artifacts import load_validated_specific_query_report
+from query_doctor.web.trusted_artifacts import load_specific_query_trusted_report_artifact
 from query_doctor.web.ui.markdown import render_report_markdown_html
 from query_doctor.web.ui.pages import render_page, render_query_page
 from query_doctor.web.ui.specific_query import render_specific_query_detail
@@ -82,8 +82,8 @@ def render_specific_query_report_for_request(settings: WebSettings, query_id: st
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)
-    report_text = load_validated_specific_query_report(case_dir)
-    if report_text is None:
+    report = load_specific_query_trusted_report_artifact(validated_query_id, case_dir)
+    if report is None:
         metadata_facts = load_specific_query_metadata_facts(case_dir)
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
@@ -103,7 +103,7 @@ def render_specific_query_report_for_request(settings: WebSettings, query_id: st
                 )
             ],
         )
-    return 200, render_specific_query_report_page(settings, validated_query_id, case, report_text)
+    return 200, render_specific_query_report_page(settings, validated_query_id, case, report.text)
 
 
 def render_specific_query_report_page(

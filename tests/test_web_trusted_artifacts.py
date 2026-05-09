@@ -11,6 +11,8 @@ from query_doctor.web.jobs import WebJobStore
 def test_trusted_artifacts_exposes_optimizer_artifact_status_helpers():
     assert trusted_artifacts.optimizer_artifact_status_for_case({}) == "unknown"
     assert trusted_artifacts.OPTIMIZER_STATUS_ORDER["trusted_draft"] > trusted_artifacts.OPTIMIZER_STATUS_ORDER["not_run"]
+    assert trusted_artifacts.trusted_report_download_filename("abc:def$$$") == "query-doctor-report-abcdef.md"
+    assert trusted_artifacts.trusted_report_download_filename("$$$") == "query-doctor-report-report.md"
 
 
 def write_optimizer_marker(case_dir, *, source_sql, draft_name="optimized_query.sql", source_scope="read_only_statement"):
@@ -77,6 +79,56 @@ def test_optimizer_artifact_status_uses_strict_trust_check_for_draft_sql_safety(
 
     assert not trusted_artifacts.optimized_query_validated_exists(case_dir)
     assert trusted_artifacts.optimizer_artifact_status_for_dir(case_dir) == "partial_untrusted"
+
+
+def test_trusted_report_artifacts_include_text_and_safe_download_name(tmp_path):
+    batch_case_dir = tmp_path / "cases" / "case-001"
+    specific_case_dir = tmp_path / "specific"
+    batch_case_dir.mkdir(parents=True)
+    specific_case_dir.mkdir()
+    for case_dir in (batch_case_dir, specific_case_dir):
+        (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
+        (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+        write_trusted_report(case_dir, f"# Report\n\nsafe body from {case_dir}\n")
+
+    batch_artifact = trusted_artifacts.load_batch_case_trusted_report_artifact(
+        batch_settings(tmp_path, batch_case_dir),
+        "case:001$$$",
+        {"case_index": 1, "query_id": "abc", "case_dir": str(batch_case_dir)},
+    )
+    specific_artifact = trusted_artifacts.load_specific_query_trusted_report_artifact(
+        "abc:def$$$",
+        specific_case_dir,
+    )
+
+    assert batch_artifact is not None
+    assert batch_artifact.source_id == "case:001$$$"
+    assert batch_artifact.download_filename == "query-doctor-report-case001.md"
+    assert "[local case path hidden]" in batch_artifact.text
+    assert str(batch_case_dir) not in batch_artifact.text
+    assert specific_artifact is not None
+    assert specific_artifact.source_id == "abc:def$$$"
+    assert specific_artifact.download_filename == "query-doctor-report-abcdef.md"
+    assert "[local case path hidden]" in specific_artifact.text
+    assert str(specific_case_dir) not in specific_artifact.text
+
+
+def test_trusted_report_artifacts_hide_stale_report_text(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    write_trusted_report(case_dir, "# Report\n\nsafe body\n")
+    (case_dir / "diagnosis.md").write_text("# Report\n\nchanged after validation\n", encoding="utf-8")
+
+    assert (
+        trusted_artifacts.load_batch_case_trusted_report_artifact(
+            batch_settings(tmp_path, case_dir),
+            "case-001",
+            {"case_index": 1, "query_id": "abc", "case_dir": str(case_dir)},
+        )
+        is None
+    )
+    assert trusted_artifacts.load_specific_query_trusted_report_artifact("abc", case_dir) is None
 
 
 def test_batch_case_trusted_detail_artifacts_loads_only_validated_outputs(tmp_path):

@@ -154,7 +154,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--out-dir",
         type=Path,
         default=Path("/tmp/query-doctor-optimizer-bakeoff"),
-        help="Output directory for copied cases, summary.json and summary.md.",
+        help="Output directory for copied cases, summary.json, summary.md, and optimizer_funnel.json.",
     )
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
     parser.add_argument("--keep-alive", default=DEFAULT_KEEP_ALIVE)
@@ -482,6 +482,76 @@ def build_aggregates(results: list[dict[str, Any]]) -> dict[str, Any]:
     return {"by_model": rendered, "by_case": render_case_aggregates(by_case)}
 
 
+def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
+    status_counts: defaultdict[str, int] = defaultdict(int)
+    output_kind_counts: defaultdict[str, int] = defaultdict(int)
+    fallback_reason_counts: defaultdict[str, int] = defaultdict(int)
+    expected_output_kind_counts: defaultdict[str, int] = defaultdict(int)
+    offline_output_kind_counts: defaultdict[str, int] = defaultdict(int)
+    expected_outcome_runs = 0
+    expected_matched_runs = 0
+    for result in results:
+        status = str(result.get("status") or "unknown")
+        output_kind = str(result.get("output_kind") or "none")
+        fallback_reason = str(result.get("fallback_reason") or "none")
+        expected_output_kind = str(result.get("expected_output_kind") or "")
+        offline_output_kind = str(result.get("offline_output_kind") or "")
+        status_counts[status] += 1
+        output_kind_counts[output_kind] += 1
+        fallback_reason_counts[fallback_reason] += 1
+        if expected_output_kind:
+            expected_output_kind_counts[expected_output_kind] += 1
+        if offline_output_kind:
+            offline_output_kind_counts[offline_output_kind] += 1
+        if "matched_expected_outcome" in result:
+            expected_outcome_runs += 1
+            if result.get("matched_expected_outcome") is True:
+                expected_matched_runs += 1
+    total_runs = len(results)
+    trusted_runs = status_counts.get("ok", 0)
+    trusted_sql_draft_runs = output_kind_counts.get("sql_draft", 0)
+    trusted_no_rewrite_runs = output_kind_counts.get("no_rewrite", 0)
+    trusted_recommendations_runs = output_kind_counts.get("recommendations_only", 0)
+    partial_untrusted_runs = output_kind_counts.get("partial_untrusted", 0)
+    dry_run_runs = status_counts.get("dry_run", 0)
+    error_runs = status_counts.get("error", 0) + status_counts.get("validation_failed", 0)
+    return {
+        "total_runs": total_runs,
+        "trusted_outcome_runs": trusted_runs,
+        "trusted_sql_draft_runs": trusted_sql_draft_runs,
+        "trusted_no_rewrite_runs": trusted_no_rewrite_runs,
+        "trusted_recommendations_runs": trusted_recommendations_runs,
+        "partial_untrusted_runs": partial_untrusted_runs,
+        "dry_run_runs": dry_run_runs,
+        "error_runs": error_runs,
+        "validation_failed_fallback_runs": sum(
+            1
+            for result in results
+            if result.get("output_kind") == "no_rewrite"
+            and result.get("fallback_reason") == "validation_failed"
+        ),
+        "expected_outcome_runs": expected_outcome_runs,
+        "expected_matched_runs": expected_matched_runs,
+        "trusted_outcome_rate": ratio(trusted_runs, total_runs),
+        "trusted_sql_draft_rate": ratio(trusted_sql_draft_runs, total_runs),
+        "partial_untrusted_rate": ratio(partial_untrusted_runs, total_runs),
+        "expected_match_rate": ratio(expected_matched_runs, expected_outcome_runs)
+        if expected_outcome_runs
+        else None,
+        "status_counts": dict(sorted(status_counts.items())),
+        "output_kind_counts": dict(sorted(output_kind_counts.items())),
+        "fallback_reason_counts": dict(sorted(fallback_reason_counts.items())),
+        "expected_output_kind_counts": dict(sorted(expected_output_kind_counts.items())),
+        "offline_output_kind_counts": dict(sorted(offline_output_kind_counts.items())),
+    }
+
+
+def ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
 def update_result_bucket(bucket: dict[str, Any], result: dict[str, Any]) -> None:
     bucket["runs"] += 1
     bucket["status_counts"][str(result.get("status") or "unknown")] += 1
@@ -547,6 +617,12 @@ def write_summary_outputs(out_dir: Path, payload: dict[str, Any]) -> None:
         json.dumps(payload, indent=2, sort_keys=True),
         encoding="utf-8",
     )
+    optimizer_funnel = payload.get("optimizer_funnel")
+    if isinstance(optimizer_funnel, dict):
+        (out_dir / "optimizer_funnel.json").write_text(
+            json.dumps(optimizer_funnel, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
     (out_dir / "summary.md").write_text(render_summary_markdown(payload), encoding="utf-8")
 
 
@@ -602,6 +678,33 @@ def render_summary_markdown(payload: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "## Optimizer Funnel",
+            "",
+        ]
+    )
+    optimizer_funnel = payload.get("optimizer_funnel")
+    if isinstance(optimizer_funnel, dict):
+        lines.extend(
+            [
+                f"- trusted outcome runs: {optimizer_funnel.get('trusted_outcome_runs', 0)} / {optimizer_funnel.get('total_runs', 0)} ({optimizer_funnel.get('trusted_outcome_rate', 0.0)})",
+                f"- trusted SQL draft runs: {optimizer_funnel.get('trusted_sql_draft_runs', 0)} ({optimizer_funnel.get('trusted_sql_draft_rate', 0.0)})",
+                f"- trusted no-rewrite runs: {optimizer_funnel.get('trusted_no_rewrite_runs', 0)}",
+                f"- trusted recommendations-only runs: {optimizer_funnel.get('trusted_recommendations_runs', 0)}",
+                f"- partial untrusted runs: {optimizer_funnel.get('partial_untrusted_runs', 0)} ({optimizer_funnel.get('partial_untrusted_rate', 0.0)})",
+                f"- validation-failed fallback runs: {optimizer_funnel.get('validation_failed_fallback_runs', 0)}",
+                f"- dry-run runs: {optimizer_funnel.get('dry_run_runs', 0)}",
+                f"- error runs: {optimizer_funnel.get('error_runs', 0)}",
+                f"- expected match runs: {optimizer_funnel.get('expected_matched_runs', 0)} / {optimizer_funnel.get('expected_outcome_runs', 0)} ({format_rate(optimizer_funnel.get('expected_match_rate'))})",
+                f"- output counts: {format_counts(optimizer_funnel.get('output_kind_counts'))}",
+                f"- expected output counts: {format_counts(optimizer_funnel.get('expected_output_kind_counts'))}",
+                f"- offline output counts: {format_counts(optimizer_funnel.get('offline_output_kind_counts'))}",
+                "",
+            ]
+        )
+    else:
+        lines.extend(["- unavailable", ""])
+    lines.extend(
+        [
             "## Case Summary",
             "",
             "| case | expected | runs | expected match | status counts | output counts |",
@@ -705,6 +808,7 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "results": results,
                         "aggregates": build_aggregates(results),
+                        "optimizer_funnel": build_optimizer_funnel(results),
                         "optimizer_num_predict": args.optimizer_num_predict,
                     },
                 )
