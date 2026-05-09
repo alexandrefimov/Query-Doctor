@@ -1,4 +1,4 @@
-"""Cluster runtime context derived from safe CM metric summaries."""
+"""Cluster runtime context derived from safe runtime metric summaries."""
 
 from __future__ import annotations
 
@@ -69,9 +69,9 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
             "unknown_signals": [],
             "not_observed_signals": [],
             "scoring_contribution": (
-                "none; CM metrics were not collected, so they cannot contribute to runtime triage scoring"
+                "none; runtime metrics were not collected, so they cannot contribute to runtime triage scoring"
             ),
-            "limitations": ["CM metrics context was not collected for this case."],
+            "limitations": ["Runtime metrics context was not collected for this case."],
             "guardrail": (
                 "Cluster runtime context is deterministic follow-up context only, not standalone root-cause proof."
             ),
@@ -111,11 +111,11 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
     score_points = min(6, correlated_count * 2)
     if correlated_count:
         scoring = (
-            f"+{score_points} triage score points from {correlated_count} correlated CM metric signal(s), "
+            f"+{score_points} triage score points from {correlated_count} correlated runtime metric signal(s), "
             "capped at +6; context-only, unknown and not_observed signals do not add score"
         )
     else:
-        scoring = "none; only correlated CM metric signals can add bounded runtime triage score"
+        scoring = "none; only correlated runtime metric signals can add bounded runtime triage score"
 
     limitations = [str(item) for item in metrics.get("limitations") or [] if item]
     if correlation.get("guardrail"):

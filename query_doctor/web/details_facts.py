@@ -481,12 +481,15 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
     }
     current_correlation_key = ""
     limitations: list[str] = []
+    facts_headings = {"## Runtime Metrics Facts", "## CM Metrics Facts"}
+    correlation_headings = {"## Runtime Metrics Correlation", "## CM Metrics Correlation"}
+    limitation_headings = {"Runtime metrics limitations", "CM metrics limitations"}
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if line.startswith("## "):
-            if line == "## CM Metrics Facts":
+            if line in facts_headings:
                 section = "facts"
-            elif line == "## CM Metrics Correlation":
+            elif line in correlation_headings:
                 section = "correlation"
             else:
                 section = ""
@@ -496,7 +499,8 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
         if not section:
             continue
         if line.startswith("### "):
-            in_limitations = section == "facts" and line == "### CM metrics limitations"
+            heading = line.removeprefix("###").strip()
+            in_limitations = section == "facts" and heading in limitation_headings
             continue
         if not line.startswith("- "):
             continue

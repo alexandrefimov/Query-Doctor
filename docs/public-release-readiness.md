@@ -35,8 +35,9 @@ baseline in place:
   report language selection.
 - Public packaging metadata, release checklist, contributor docs, security
   reporting, code of conduct, Dependabot, and CI matrix coverage are present.
-- CI runs deterministic safety checks on pull requests and main, and runs the
-  broader test suite on schedule or manual dispatch.
+- CI runs deterministic safety checks on pull requests and main, including a
+  current-tree public-release scan, and runs the broader test suite on schedule
+  or manual dispatch.
 - Additional public-quality automation covers package build/install smoke,
   local Markdown link checks, CodeQL readiness, Dependency Review, and a manual
   release-gate workflow.

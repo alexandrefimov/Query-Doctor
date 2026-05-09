@@ -279,7 +279,11 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
     summary_facts = scoring_section_text(facts, "## Summary")
     backend_facts = scoring_section_text(facts, "## Backend / Host Tail Evidence")
     cm_query_facts = scoring_section_text(facts, "## CM Query Context")
-    cm_correlation_facts = scoring_section_text(facts, "## CM Metrics Correlation")
+    cm_correlation_facts = first_scoring_section_text(
+        facts,
+        "## Runtime Metrics Correlation",
+        "## CM Metrics Correlation",
+    )
     host_tail_candidates = fact_int(backend_facts, "host tail candidates")
     if host_tail_candidates is None:
         host_tail_candidates = normalized_tail_candidate_count(backend_facts)
@@ -432,6 +436,16 @@ def scoring_section_text(text: str, heading: str) -> str:
     section = section_text(text, heading)
     if section:
         return section
+    if text.lstrip().startswith("## ") or "\n## " in text:
+        return ""
+    return text
+
+
+def first_scoring_section_text(text: str, *headings: str) -> str:
+    for heading in headings:
+        section = section_text(text, heading)
+        if section:
+            return section
     if text.lstrip().startswith("## ") or "\n## " in text:
         return ""
     return text

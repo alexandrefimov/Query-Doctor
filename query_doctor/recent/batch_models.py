@@ -77,6 +77,12 @@ class DiscoveryResult:
     server_filter_expression: str | None
     summaries_inspected: int | None = None
     scan_too_broad: bool = False
+    raw_summary_scan_cap_hit: bool = False
+    time_sharded: bool = False
+    time_shard_count: int = 0
+    time_shard_minutes: int | None = None
+    time_shard_min_minutes: int | None = None
+    time_shard_scan_limit_warning_count: int = 0
 
 
 @dataclass

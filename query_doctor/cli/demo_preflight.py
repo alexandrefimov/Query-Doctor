@@ -261,6 +261,8 @@ def public_release_match_is_allowed(label: str, value: str) -> bool:
     if label == "private local user path":
         return lowered.startswith(("/users/demo", "/users/example", "/home/demo", "/home/example"))
     if label == "embedded URL credentials":
+        if re.fullmatch(r"https?://user:pass@(?:localhost|127\.0\.0\.1)(?::\d+)?", lowered):
+            return True
         return ".example." in lowered or "example.com" in lowered
     if label == "authorization token":
         return "secret" in lowered or "<redacted>" in lowered

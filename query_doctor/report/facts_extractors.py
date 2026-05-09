@@ -10,6 +10,8 @@ from query_doctor.report.contract import (
     CM_METRICS_CORRELATION_HEADING,
     CM_METRICS_FACTS_HEADING,
     CM_TIMESERIES_CONTEXT_HEADING,
+    RUNTIME_METRICS_CORRELATION_HEADING,
+    RUNTIME_METRICS_FACTS_HEADING,
     TABLE_METADATA_CONTEXT_HEADING,
 )
 from query_doctor.report.markdown import extract_markdown_section, strip_markdown_section
@@ -18,6 +20,14 @@ from query_doctor.report.markdown import extract_markdown_section, strip_markdow
 FACT_APPENDIX_MAX_ITEMS = 8
 FACTS_TABLE_OPERATOR_RE = re.compile(r"^\s*\|\s*(?P<operator>\d{2,}:[^|]+?)\s*\|")
 BACKEND_SUMMARY_RE = re.compile(r"^\s*[-*]\s*(?P<key>[^:]+):\s*(?P<value>.+?)\s*$")
+
+
+def extract_first_markdown_section(facts_text: str, *headings: str) -> list[str]:
+    for heading in headings:
+        lines = extract_markdown_section(facts_text, heading)
+        if lines:
+            return lines
+    return []
 
 
 def facts_text_for_model_prompt(facts_text: str) -> str:
@@ -239,7 +249,11 @@ def facts_have_large_intermediate_or_exchange(facts_text: str) -> bool:
 
 
 def cm_metrics_facts_summary(facts_text: str) -> dict[str, str]:
-    lines = extract_markdown_section(facts_text, CM_METRICS_FACTS_HEADING)
+    lines = extract_first_markdown_section(
+        facts_text,
+        RUNTIME_METRICS_FACTS_HEADING,
+        CM_METRICS_FACTS_HEADING,
+    )
     if not lines:
         return {}
 
@@ -280,7 +294,11 @@ def cm_metrics_observed_points(facts_text: str) -> list[str]:
 
 
 def cm_metrics_correlation_summary(facts_text: str) -> dict[str, str]:
-    lines = extract_markdown_section(facts_text, CM_METRICS_CORRELATION_HEADING)
+    lines = extract_first_markdown_section(
+        facts_text,
+        RUNTIME_METRICS_CORRELATION_HEADING,
+        CM_METRICS_CORRELATION_HEADING,
+    )
     if not lines:
         return {}
 
@@ -475,7 +493,13 @@ def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
             spread_points.append(f"{label} top/peer={match.group('ratio')}x")
     if spread_points:
         parts.append("series spread: " + ", ".join(spread_points[:3]))
-    facts_lines = "\n".join(extract_markdown_section(facts_text, CM_METRICS_FACTS_HEADING))
+    facts_lines = "\n".join(
+        extract_first_markdown_section(
+            facts_text,
+            RUNTIME_METRICS_FACTS_HEADING,
+            CM_METRICS_FACTS_HEADING,
+        )
+    )
     limit_points: list[str] = []
     if "CM metrics were truncated for:" in facts_lines:
         limit_points.append("some metric summaries were truncated by collection limits")
@@ -483,7 +507,7 @@ def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
         limit_points.append("some allowlisted metrics were unavailable")
     if limit_points:
         parts.append("limitations: " + "; ".join(limit_points))
-    return "- " + "; ".join(parts) + ". Metrics are runtime context unless CM Metrics Correlation marks them as correlated."
+    return "- " + "; ".join(parts) + ". Metrics are runtime context unless Runtime Metrics Correlation marks them as correlated."
 
 
 def cm_metrics_signal_observed(facts_text: str, key: str) -> bool:

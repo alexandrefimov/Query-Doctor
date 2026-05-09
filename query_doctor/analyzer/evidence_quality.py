@@ -62,15 +62,15 @@ def build_evidence_quality(analysis: dict[str, Any]) -> dict[str, Any]:
         coverage = f"{metrics.get('ok_metrics')}/{metrics.get('total_metrics')} metrics ok, {metrics.get('total_points')} points"
         if status == "available":
             score += 15
-            strengths.append(f"CM metrics coverage: {coverage}")
+            strengths.append(f"runtime metrics coverage: {coverage}")
         elif status == "partial":
             score += 8
-            strengths.append(f"partial CM metrics coverage: {coverage}")
-            limitations.append("CM metrics coverage is partial")
+            strengths.append(f"partial runtime metrics coverage: {coverage}")
+            limitations.append("runtime metrics coverage is partial")
         else:
-            limitations.append("CM metrics are unavailable")
+            limitations.append("runtime metrics are unavailable")
     else:
-        limitations.append("CM metrics context is unavailable")
+        limitations.append("runtime metrics context is unavailable")
 
     metadata = analysis.get("table_metadata_context") or {}
     metadata_status = metadata.get("table_metadata_facts")

@@ -79,7 +79,7 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
         return []
 
     facts = build_cm_metrics_facts(context)
-    lines = ["## CM Metrics Facts", ""]
+    lines = ["## Runtime Metrics Facts", ""]
     lines.append(f"- status: {facts['status']}")
     if context.get("metrics_profile"):
         lines.append(f"- metrics_profile: {context.get('metrics_profile')}")
@@ -117,7 +117,7 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
 
     limitations = facts.get("limitations") or []
     if limitations:
-        lines.extend(["### CM metrics limitations", ""])
+        lines.extend(["### Runtime metrics limitations", ""])
         for limitation in limitations:
             lines.append(f"- {limitation}")
         lines.append("")
@@ -129,7 +129,7 @@ def render_cm_metrics_correlation(analysis: dict[str, Any]) -> list[str]:
     if not correlation:
         return []
 
-    lines = ["## CM Metrics Correlation", ""]
+    lines = ["## Runtime Metrics Correlation", ""]
     lines.append(f"- status: {correlation.get('status', 'unknown')}")
     if correlation.get("coverage"):
         lines.append(f"- coverage: {correlation['coverage']}")
@@ -140,7 +140,7 @@ def render_cm_metrics_correlation(analysis: dict[str, Any]) -> list[str]:
 
     signals = correlation.get("signals") or []
     if not signals:
-        lines.append("- No CM metric signals were available for correlation.")
+        lines.append("- No runtime metric signals were available for correlation.")
         lines.append("")
         return lines
 

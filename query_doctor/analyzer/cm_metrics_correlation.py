@@ -62,7 +62,7 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "unavailable",
             "signals": [],
-            "guardrail": "CM metrics context was not collected for this case.",
+            "guardrail": "Runtime metrics context was not collected for this case.",
         }
 
     facts = build_cm_metrics_facts(context)
@@ -70,7 +70,7 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": facts["status"],
             "signals": [],
-            "guardrail": "CM metrics are unavailable and do not affect analysis scoring or actions.",
+            "guardrail": "Runtime metrics are unavailable and do not affect analysis scoring or actions.",
         }
 
     memory_support = has_memory_profile_evidence(analysis)
@@ -213,7 +213,10 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
         "signals": signals,
         "correlated_signals": correlated,
         "context_only_signals": context_only,
-        "guardrail": "CM metrics can strengthen profile-supported evidence, but they are not standalone root-cause proof.",
+        "guardrail": (
+            "Runtime metrics can strengthen profile-supported evidence, but they are not standalone "
+            "root-cause proof."
+        ),
     }
 
 
@@ -230,6 +233,6 @@ def correlated_cm_metric_line(analysis: dict[str, Any], key: str) -> str | None:
     if not signal or signal.get("correlation_status") != "correlated":
         return None
     return (
-        f"CM metrics correlation: {signal['title']} is correlated "
+        f"Runtime metrics correlation: {signal['title']} is correlated "
         f"({signal['strength']}); {signal['interpretation']}"
     )

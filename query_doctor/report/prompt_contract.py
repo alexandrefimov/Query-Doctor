@@ -357,9 +357,9 @@ Engineering interpretation rules:
 - Treat skew and spill only as established causes if the facts explicitly contain skew evidence or non-zero spill/scratch metrics.
 - If skew/spill evidence is absent, mention them only under "Follow-up checks".
 - If analysis_facts.md contains a Spill or scratch I/O finding, do not say spill/scratch evidence is absent; say non-zero spill/scratch metric evidence exists and keep causal wording separate.
-- Use CM Metrics Facts as the only metrics interpretation source. Do not infer from CM Time-Series Context or raw aggregates.
-- CM Metrics Facts statuses mean exactly: observed = bounded runtime context signal, not_observed = checked below threshold, unknown = unavailable or insufficient facts.
-- Use Cluster Runtime Context only as a compact Python-owned summary of CM metrics coverage, correlated/context-only signal rollup, limitations, and bounded triage score contribution.
+- Use Runtime Metrics Facts as the only metrics interpretation source. Do not infer from CM Time-Series Context or raw aggregates.
+- Runtime Metrics Facts statuses mean exactly: observed = bounded runtime context signal, not_observed = checked below threshold, unknown = unavailable or insufficient facts.
+- Use Cluster Runtime Context only as a compact Python-owned summary of runtime metrics coverage, correlated/context-only signal rollup, limitations, and bounded triage score contribution.
 - Cluster Runtime Context scoring contribution explains why the deterministic triage score changed; it is not a performance-speedup estimate and not causal proof.
 - Use Cluster Event Context only as a Python-owned raw-free CM Events summary. CM event signals are cluster/service context and follow-up checks, not standalone root-cause proof.
 - Do not claim service restarts, daemon errors, catalog errors, metastore issues, disk capacity events, HDFS/YARN events, authentication failures, or CM Events caused this query unless analysis_facts.md explicitly contains direct causal correlation.

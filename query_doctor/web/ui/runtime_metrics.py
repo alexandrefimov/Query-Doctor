@@ -113,7 +113,7 @@ def render_cluster_runtime_context_section(view: RecentScanClusterRuntimeContext
         "<details class=\"analysis-subdetails\" aria-label=\"Cluster runtime context\">"
         "<summary>Cluster runtime context</summary>"
         "<div class=\"report-body\">"
-        "<p>Python-owned runtime context summary derived from normalized CM Metrics Facts and CM Metrics Correlation. It explains coverage and signal strength without exposing raw metric series.</p>"
+        "<p>Python-owned runtime context summary derived from normalized Runtime Metrics Facts and Runtime Metrics Correlation. It explains coverage and signal strength without exposing raw metric series.</p>"
         f"<div class=\"meta-list\">{summary_rows}</div>"
         "<h3>Signal rollup</h3>"
         f"<div class=\"meta-list\">{rollup_rows}</div>"

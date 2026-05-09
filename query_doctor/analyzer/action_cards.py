@@ -141,8 +141,10 @@ def make_action_card(
         admin_actions.append("Check whether admission pool memory limits were hit.")
     if total_sent.get("bytes") and total_sent["bytes"] >= large_bytes_threshold:
         admin_actions.append("Check whether exchange volume matches TotalBytesSent.")
-    if any(item.startswith("CM metrics correlation:") for item in evidence):
-        admin_actions.append("Use CM metrics only as correlated runtime context, not as standalone root-cause proof.")
+    if any(item.startswith("Runtime metrics correlation:") for item in evidence):
+        admin_actions.append(
+            "Use runtime metrics only as correlated runtime context, not as standalone root-cause proof."
+        )
 
     tables = context_referenced_tables(analysis)
     user_actions: list[str] = []

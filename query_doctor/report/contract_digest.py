@@ -103,7 +103,7 @@ def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[s
         )
     for point in cm_metrics_observed_points(facts_text):
         points.append(
-            f"CM Metrics Facts contain an observed context signal: {point}. "
+            f"Runtime Metrics Facts contain an observed context signal: {point}. "
             "Use it as bounded runtime context, not as standalone root cause."
         )
     cm_correlation = cm_metrics_correlation_summary(facts_text)
@@ -111,12 +111,12 @@ def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[s
     context_only_signals = cm_correlation.get("context_only_signals")
     if correlated_signals and correlated_signals != "0":
         points.append(
-            f"CM Metrics Correlation contains {correlated_signals} correlated runtime context signal(s); "
+            f"Runtime Metrics Correlation contains {correlated_signals} correlated runtime context signal(s); "
             "these may strengthen profile-supported evidence, not standalone root-cause claims."
         )
     elif context_only_signals and context_only_signals != "0":
         points.append(
-            f"CM Metrics Correlation contains {context_only_signals} context-only signal(s); "
+            f"Runtime Metrics Correlation contains {context_only_signals} context-only signal(s); "
             "keep them out of root-cause wording and SQL optimizer actions."
         )
     cluster_context = cluster_runtime_context_summary(facts_text)
