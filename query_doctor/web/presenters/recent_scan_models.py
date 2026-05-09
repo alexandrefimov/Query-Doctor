@@ -205,6 +205,17 @@ class RecentScanEvidenceGuideView:
 
 
 @dataclass(frozen=True)
+class RecentScanScoreReasonView:
+    title: str
+    explanation: str
+
+
+@dataclass(frozen=True)
+class RecentScanScoreReasonsView:
+    reasons: tuple[RecentScanScoreReasonView, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any

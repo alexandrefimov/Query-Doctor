@@ -20,6 +20,8 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanRuntimeDiagnosisSignalView,
     RecentScanRuntimeDiagnosisView,
     RecentScanRuntimeVerdictView,
+    RecentScanScoreReasonView,
+    RecentScanScoreReasonsView,
     RecentScanSummaryView,
     ReportActionView,
 )
@@ -69,6 +71,11 @@ from query_doctor.web.presenters.recent_scan_runtime import (
     present_recent_scan_runtime_diagnosis,
     present_recent_scan_runtime_verdict,
 )
+from query_doctor.web.presenters.recent_scan_score_reasons import (
+    present_recent_scan_score_reason,
+    present_recent_scan_score_reasons,
+)
+
 
 def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryView:
     cases = summary.get("cases")
