@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-09
+Last updated: 2026-05-10
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -19,6 +19,10 @@ is not a historical audit log. For engineering risks, use
   events source for Recent queries.
 - Direct Impala daemon profile collection is supported only for one explicit
   Known Query ID. It does not provide discovery, metrics, or events.
+- Direct Impala profile-only diagnosis now extracts raw-free profile format,
+  source provenance, resource balance, per-node read/user/system time, Query
+  Timeline, and fragment lifecycle timing facts, and can use profile resource
+  and timing signals in Runtime Diagnosis.
 - Diagnose is the primary UI screen.
 - Recent queries is the default Diagnose mode.
 - Finished queries is the default completed-query scan target.
@@ -32,6 +36,8 @@ is not a historical audit log. For engineering risks, use
   redacted.
 - Cloudera Manager metrics and events are runtime context. They can strengthen
   analyzer-supported hypotheses, but they are not standalone root-cause proof.
+- Prometheus-style metrics and prepared event/log sources are future optional
+  context, not required for current profile-only direct Impala diagnosis.
 - Synthetic Demo Mode is local-only and must not contact Cloudera Manager,
   Impala, Ollama, or the network.
 
@@ -145,7 +151,8 @@ multiple later changes:
   recommendations-only or `no_rewrite` fallbacks.
 - Provider-neutral analyzer contracts for the current Cloudera Manager path:
   canonical context keys/headings, legacy `cm_*` fallbacks, metrics reads by
-  abstract `signal_id`, and per-case source provenance.
+  abstract `signal_id`, source provenance coverage wording, and legacy-safe
+  compatibility.
 
 ### P1 - Diagnostic Quality
 
@@ -157,6 +164,9 @@ Cloudera Manager deployments:
 - Runtime-context quality: collection coverage, observed and correlated
   signals, admission/pool context, host-tail diagnostics, and sanitized real
   fixtures.
+- Direct Impala profile-only quality: sanitized real fixtures for fresh daemon
+  profile layouts, profile resource/timing action cards, and safe limitation
+  wording when metrics, events, or metadata are unavailable.
 - Metadata and stats diagnosis: structured stats/query-shape facts, partition
   and join/filter column coverage, bottleneck calibration, and unknown-rate
   measurement on real batches.
@@ -173,8 +183,9 @@ real Impala workloads:
 
 - Thin source-family interfaces over real existing paths: `ProfileSource`,
   `QueryDiscoverySource`, `MetricsSource`, and `EventSource`.
-- Direct Impala daemon profile source follow-up: add source provenance and
-  provider-neutral context labels for the explicit Known Query ID path.
+- Direct Impala daemon profile source follow-up: add real fixture coverage,
+  profile-only action cards, and a normalized engine fact contract before
+  broadening beyond explicit Known Query ID profile fetching.
 - Prometheus-style metrics source after metrics facts are keyed by
   `signal_id`.
 - Engine profile-fact contract refactor before adding any second SQL engine.
@@ -201,8 +212,9 @@ item first only when the touched area has a direct P0 safety or contract risk.
    report-validator snapshot coverage in the same change.
 4. Move metrics facts and correlation reads from Cloudera Manager query IDs to
    abstract catalog `signal_id`s.
-5. Add per-case source provenance for engine, profile, metrics, events, and
-   metadata, then use it for safe coverage and limitation wording.
+5. Use source provenance for safe Details/report coverage and limitation
+   wording, including explicit direct Impala `none` coverage for metrics,
+   events, and metadata.
 6. Add optimizer rewriteability taxonomy to analyzer output, batch summaries,
    and Details so expensive-but-not-draftable queries are not treated as failed
    optimizer cases.
@@ -344,10 +356,9 @@ Provider-neutral runtime context cleanup:
   abstract catalog `signal_id`s. The Cloudera Manager collector should write
   both `signal_id` and source-specific IDs so old corpora can be loaded through
   a catalog-backed compatibility path.
-- Add per-case provenance for engine, profile, metrics, events, and metadata
-  sources, either in `analysis.json` or a small `provenance.json`. Use it for
-  raw-free UI/report coverage wording and explicit `none`, `unavailable`, or
-  partial-coverage limitations.
+- Use analyzer source provenance for raw-free UI/report coverage wording and
+  explicit `none`, `unavailable`, or partial-coverage limitations. Keep any
+  later persistence or snapshot contract changes narrow and compatibility-safe.
 - Introduce source-family interfaces only when they wrap real current paths:
   `ProfileSource`, `QueryDiscoverySource`, `MetricsSource`, and `EventSource`,
   with Cloudera Manager wrappers over existing helpers. Avoid one broad
@@ -647,10 +658,11 @@ These are not current support. Revisit them only when the listed signal is met.
   over rewriting working collectors for tidiness.
 - Cloudera Manager version adapter: revisit when real deployments expose newer
   response shapes or metric catalogs that current collectors cannot parse.
-- Direct Impala daemon profile provider: first explicit Known Query ID profile
-  fetching is implemented. Follow-up work should add source provenance,
-  provider-neutral context labels, and real fixture coverage before broadening
-  beyond single-query profile fetching.
+- Direct Impala daemon profile provider: explicit Known Query ID profile
+  fetching, source provenance, provider-neutral profile context labels, profile
+  resource facts, and profile timing facts are implemented. Follow-up work
+  should add real fixture coverage, profile-only action cards, and a normalized
+  engine fact contract before broadening beyond single-query profile fetching.
 - Prometheus-style metrics provider: revisit after metrics facts consume
   catalog `signal_id`s rather than Cloudera Manager query IDs, and only when
   cluster operators have allowlisted queries, fixed windows, response-size
@@ -690,8 +702,8 @@ A practical readiness bar is `case_primary_bottleneck = unknown` below roughly
 Recommended expansion order is documented in
 [engine-expansion-plan.md](engine-expansion-plan.md):
 
-1. Harden the direct Impala daemon profile source with provenance,
-   provider-neutral context labels, and real fixture coverage.
+1. Harden the direct Impala daemon profile source with sanitized real fixture
+   coverage, profile-only action cards, and normalized engine fact contracts.
 2. Engine fact contract refactor so analyzer services consume normalized
    parser outputs rather than raw Impala profile internals.
 3. Second engine only after real design partner demand. Trino is the default

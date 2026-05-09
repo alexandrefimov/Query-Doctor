@@ -26,9 +26,11 @@ Cloudera Manager (CM) profile / profile_digest.md
   -> local UI
 ```
 
-The implemented collection path is currently validated against the local
-Cloudera Manager 6.2.1 environment. Treat newer Cloudera Manager versions and
-non-Cloudera Impala deployments as future source-provider work, not as current
+The implemented Recent collection path is currently validated against the local
+Cloudera Manager 6.2.1 environment. Direct Impala daemon profile collection is
+current support only for one explicit Known Query ID, without discovery,
+metrics, or events. Treat newer Cloudera Manager versions and broader
+non-Cloudera Impala workflows as future source-provider work, not as current
 support.
 
 ## Компоненты
@@ -50,9 +52,10 @@ Future collector source seam:
   state normalization, and time-series tsquery allowlists so newer CM versions
   can be added with fixtures and safety tests instead of changing analyzer/UI
   contracts.
-- Planned non-CM Impala seam: collect profiles directly from Impala daemon
-  debug/profile endpoints for clusters without Cloudera Manager. This must stay
-  explicit, bounded, read-only, redacted, and single-query oriented before any
+- Current non-CM Impala seam: direct Impala daemon debug/profile collection
+  exists only for one explicit Known Query ID. It must stay explicit, bounded,
+  read-only, redacted, and single-query oriented; follow-up work should improve
+  fixtures, profile-only action cards, and normalized engine facts before any
   batch workflow uses it.
 - Planned metrics seam: keep metrics source separate from profile source.
   Cloudera Manager time-series is the current implementation; Prometheus is the
@@ -85,7 +88,9 @@ Future diagnostic signal seam:
 
 Analyzer:
 - Читает `profile_digest.md`.
-- Извлекает deterministic facts в `analysis_facts.md`.
+- Извлекает deterministic facts в `analysis_facts.md`, включая Profile Format,
+  Source Provenance, Profile Resource Facts и Profile Timing Facts для свежих
+  Impala profiles.
 - Пишет operator summaries, anomaly counts, action cards, backend/host evidence,
   referenced tables и optional table metadata facts, если они есть.
 - Читает local `impala_context.json`, если он есть, и добавляет

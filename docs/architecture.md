@@ -1,6 +1,6 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-05-08
+Last reviewed: 2026-05-10
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
@@ -15,6 +15,7 @@ path.
 flowchart TD
     subgraph External["External read-only sources"]
         CM[Cloudera Manager summaries and profiles]
+        ImpalaDaemon[Direct Impala daemon profile endpoint]
         ImpalaMeta[Allowlisted Impala metadata]
         CMMetrics[Bounded Cloudera Manager time-series summaries]
         CMEvents[Bounded Cloudera Manager events]
@@ -45,6 +46,7 @@ flowchart TD
     end
 
     CM --> Collector
+    ImpalaDaemon --> Collector
     ImpalaMeta --> Collector
     CMMetrics --> Collector
     CMEvents --> Collector
@@ -73,6 +75,8 @@ Current support is intentionally narrow:
   source.
 - Direct Impala daemon profile endpoints are supported only for one explicit
   Known Query ID. They do not provide discovery, metrics, or events.
+- Direct Impala profile analysis publishes raw-free Profile Format, Source
+  Provenance, Profile Resource Facts, and Profile Timing Facts.
 - Cloudera Manager (CM) time-series support is bounded and summarized before
   becoming facts.
 - Cloudera Manager events support is bounded and summarized before becoming
@@ -214,7 +218,8 @@ available, and fetch bounded event context when available.
 Current provider support:
 
 - Cloudera Manager API, tested against CM 6.2.1 behavior.
-- Direct Impala daemon profile endpoint for one explicit Known Query ID.
+- Direct Impala daemon profile endpoint for one explicit Known Query ID, with
+  profile-only source provenance, resource facts, and timing facts.
 
 Planned provider seams:
 
@@ -224,7 +229,9 @@ Planned provider seams:
   contracts.
 - Non-CM Impala seam: direct Impala daemon debug/profile collection exists only
   for one explicit Known Query ID. It must stay explicit, bounded, read-only,
-  redacted, and single-query oriented before any batch workflow uses it.
+  redacted, and single-query oriented; follow-up work should improve fixtures,
+  profile-only action cards, and normalized engine facts before any batch
+  workflow uses it.
 - Metrics seam: keep metrics source separate from profile source. Cloudera
   Manager time-series is the current implementation; Prometheus is the likely
   future metrics provider for non-CM clusters. Prometheus integration needs a
