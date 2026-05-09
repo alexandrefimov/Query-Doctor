@@ -81,3 +81,30 @@ def test_i18n_copy_requires_existing_english_source(tmp_path):
     assert failures == [
         "docs/i18n/ru/missing.md: English source is missing: docs/missing.md"
     ]
+
+
+def test_current_docs_require_status_index_entry(tmp_path):
+    docs_dir = tmp_path / "docs"
+    notes_dir = docs_dir / "ui"
+    notes_dir.mkdir(parents=True)
+    index = docs_dir / "README.md"
+    index.write_text(
+        "# Docs\n\n"
+        "Last reviewed: 2099-01-01\n\n"
+        "| Document | Status | Use |\n"
+        "| --- | --- | --- |\n"
+        "| [README.md](README.md) | active | index |\n",
+        encoding="utf-8",
+    )
+    (notes_dir / "notes.md").write_text("# Notes\n", encoding="utf-8")
+
+    original_active_docs = check_active_docs.ACTIVE_DOCS
+    check_active_docs.ACTIVE_DOCS = ("docs/README.md",)
+    try:
+        failures = check_active_docs.find_failures([index], tmp_path)
+    finally:
+        check_active_docs.ACTIVE_DOCS = original_active_docs
+
+    assert failures == [
+        "docs/README.md: current docs missing from status index: docs/ui/notes.md"
+    ]

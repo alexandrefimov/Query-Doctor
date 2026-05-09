@@ -18,6 +18,7 @@ ACTIVE_DOCS = (
     "README.md",
     "AGENTS.md",
     "docs/README.md",
+    "docs/agent-quickstart.md",
     "docs/codex-handoff.md",
     "docs/code-audit.md",
     "docs/code-map.md",
@@ -112,20 +113,39 @@ def reviewed_date(path: Path) -> date | None:
     return None
 
 
-def status_index_active_docs(root: Path = ROOT) -> set[str]:
+def status_index_docs(root: Path = ROOT) -> dict[str, str]:
     index = root / "docs" / "README.md"
     if not index.is_file():
-        return set()
-    active: set[str] = set()
+        return {}
+    docs: dict[str, str] = {}
     for _, line in iter_doc_lines(index):
         match = STATUS_ROW_RE.match(line)
-        if not match or match.group(2).lower() != "active":
+        if not match:
             continue
+        status = match.group(2).lower()
         target = extract_target(match.group(1))
         resolved = resolve_target(index, target, root)
         if resolved is not None:
-            active.add(str(resolved.relative_to(root)))
-    return active
+            docs[str(resolved.relative_to(root))] = status
+    return docs
+
+
+def status_index_active_docs(root: Path = ROOT) -> set[str]:
+    return {rel for rel, status in status_index_docs(root).items() if status == "active"}
+
+
+def current_doc_paths(root: Path = ROOT) -> set[str]:
+    docs_root = root / "docs"
+    if not docs_root.is_dir():
+        return set()
+    current: set[str] = set()
+    for path in docs_root.glob("**/*.md"):
+        rel = path.relative_to(root)
+        parts = rel.parts
+        if len(parts) > 1 and parts[1] in {"archive", "i18n"}:
+            continue
+        current.add(str(rel))
+    return current
 
 
 def localized_source_path(localized: Path, root: Path = ROOT) -> Path:
@@ -154,6 +174,7 @@ def find_failures(paths: list[Path], root: Path = ROOT) -> list[str]:
     failures: list[str] = []
     today = date.today()
     active_rels = {str(Path(rel)) for rel in ACTIVE_DOCS}
+    status_rels = status_index_docs(root)
     status_active_rels = status_index_active_docs(root)
     if status_active_rels and status_active_rels != active_rels:
         missing_from_index = sorted(active_rels - status_active_rels)
@@ -167,6 +188,13 @@ def find_failures(paths: list[Path], root: Path = ROOT) -> list[str]:
             failures.append(
                 "scripts/check_active_docs.py: ACTIVE_DOCS missing status-index active docs: "
                 f"{', '.join(missing_from_config)}"
+            )
+    if status_rels:
+        missing_from_index = sorted(current_doc_paths(root) - set(status_rels))
+        if missing_from_index:
+            failures.append(
+                "docs/README.md: current docs missing from status index: "
+                f"{', '.join(missing_from_index)}"
             )
     for path in paths:
         rel_path = path.relative_to(root)

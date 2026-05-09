@@ -2,9 +2,9 @@
 
 Last updated: 2026-05-09
 
-Required reading before any PR: hard rules in `AGENTS.md`, Product Direction,
-Safety Baseline, and the Near-Term Priorities section relevant to the touched
-area. Other sections are reference.
+Required reading before any PR: hard rules in `AGENTS.md`,
+`docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
+section relevant to the touched area. Other sections are reference.
 
 This roadmap tracks active product direction. It is not a support matrix and it
 is not a historical audit log. For engineering risks, use
@@ -77,17 +77,16 @@ Optimizer-specific metrics:
 
 ## Safety Baseline
 
-- Python/analyzer owns facts.
-- LLM owns wording only.
-- Raw LLM output is untrusted until validation accepts it.
-- Browser-visible UI and trusted reports must not expose raw SQL, raw profiles,
-  raw metadata, local paths, `case_dir`, subprocess output, secrets, model
-  names, runtime internals, or raw artifact filenames.
-- External collection must remain explicit, bounded, read-only, redacted, and
-  safe by default.
-- Web scans must not auto-run LLM reports or optimizer jobs.
-- Query Optimizer and Query LLM optimizer must stay read-only and
-  validation-gated.
+The canonical safety contract lives in [safety-contract.md](safety-contract.md).
+Roadmap work must not weaken that contract.
+
+Planning summary:
+
+- Python/analyzer owns facts; LLM owns wording only.
+- Browser and trusted report output must stay raw-free.
+- External collection stays explicit, bounded, read-only, redacted, and safe by
+  default.
+- Report and optimizer generation stays explicit and validation-gated.
 
 ## Web UI And Deployment Direction
 

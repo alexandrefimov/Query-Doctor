@@ -16,5 +16,8 @@ For current state, see the [docs status index](../README.md).
   historical Cloudera Manager collection rollout notes.
 - [CM_CORPUS_COLLECTOR_DESIGN.md](CM_CORPUS_COLLECTOR_DESIGN.md): historical
   Cloudera Manager corpus collector design.
+- [web-strategy-discussion-2026-05-09.md](web-strategy-discussion-2026-05-09.md):
+  archived working notes from the Web UI and deployment strategy discussion;
+  accepted direction now lives in `../roadmap.md`.
 
 Localized archived companion pages live under [i18n/ru/](i18n/ru/).

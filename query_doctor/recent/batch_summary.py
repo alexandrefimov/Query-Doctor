@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
+from query_doctor.recent.optimizer_rewrite_support import RECIPE_LABELS
 from query_doctor.recent.batch_config import (
     MAX_CM_INSPECT_LIMIT,
     MAX_RAW_CM_SUMMARY_SCAN_LIMIT,
@@ -44,6 +45,7 @@ NO_DRAFT_CLASSES = {
     "predicate_not_copyable",
     "other",
 }
+NO_DRAFT_RECIPE_IDS = set(RECIPE_LABELS) | {"unknown_recipe"}
 
 
 def build_summary(
@@ -225,6 +227,7 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     no_draft_recipe_counts: Counter[str] = Counter()
     no_draft_eligibility_counts: Counter[str] = Counter()
     no_draft_class_counts: Counter[str] = Counter()
+    no_draft_class_recipe_counts: dict[str, Counter[str]] = {}
     no_draft_reason_counts: Counter[str] = Counter()
     no_draft_cte_pushdown_decision_counts: Counter[str] = Counter()
     optimization_candidate_count = 0
@@ -239,14 +242,13 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         normalized_bucket = bucket if bucket in REWRITEABILITY_BUCKETS else "unknown"
         bucket_counts[normalized_bucket] += 1
         if normalized_bucket == "recipe_detected_no_draft":
-            recipe_id = str(support.recipe_id or "unknown_recipe").strip() or "unknown_recipe"
+            recipe_id = normalize_no_draft_recipe_id(support.recipe_id)
             eligibility = str(support.draft_eligibility or "unknown").strip() or "unknown"
+            no_draft_class = normalize_no_draft_class(support.draft_unavailable_class)
             no_draft_recipe_counts[recipe_id] += 1
             no_draft_eligibility_counts[eligibility] += 1
-            no_draft_class = str(support.draft_unavailable_class or "other").strip().lower()
-            no_draft_class_counts[
-                no_draft_class if no_draft_class in NO_DRAFT_CLASSES else "other"
-            ] += 1
+            no_draft_class_counts[no_draft_class] += 1
+            no_draft_class_recipe_counts.setdefault(no_draft_class, Counter())[recipe_id] += 1
             no_draft_reason_counts.update(
                 str(reason) for reason in support.draft_unavailable_reasons
             )
@@ -276,6 +278,10 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "recipe_detected_no_draft_class_counts": dict(
             sorted(no_draft_class_counts.items())
         ),
+        "recipe_detected_no_draft_class_recipe_counts": {
+            no_draft_class: dict(sorted(recipe_counts.items()))
+            for no_draft_class, recipe_counts in sorted(no_draft_class_recipe_counts.items())
+        },
         "recipe_detected_no_draft_reason_counts": dict(
             sorted(no_draft_reason_counts.items())
         ),
@@ -290,6 +296,16 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "stats_likely_rate": ratio(stats_likely, total),
         "human_review_only_rate": ratio(human_review, total),
     }
+
+
+def normalize_no_draft_class(value: object) -> str:
+    no_draft_class = str(value or "other").strip().lower()
+    return no_draft_class if no_draft_class in NO_DRAFT_CLASSES else "other"
+
+
+def normalize_no_draft_recipe_id(value: object) -> str:
+    recipe_id = str(value or "unknown_recipe").strip()
+    return recipe_id if recipe_id in NO_DRAFT_RECIPE_IDS else "unknown_recipe"
 
 
 def ratio(numerator: int, denominator: int) -> float:
@@ -488,6 +504,21 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"{label}={count}" for label, count in sorted(no_draft_classes.items())
             )
             lines.append(f"- no-draft classes: {rendered_classes}")
+        no_draft_class_recipes = rewriteability_distribution.get(
+            "recipe_detected_no_draft_class_recipe_counts"
+        )
+        if isinstance(no_draft_class_recipes, dict) and no_draft_class_recipes:
+            rendered_class_recipes = "; ".join(
+                f"{label}: "
+                + ", ".join(
+                    f"{recipe}={count}"
+                    for recipe, count in sorted(recipe_counts.items())
+                )
+                for label, recipe_counts in sorted(no_draft_class_recipes.items())
+                if isinstance(recipe_counts, dict) and recipe_counts
+            )
+            if rendered_class_recipes:
+                lines.append(f"- no-draft classes by recipe: {rendered_class_recipes}")
         if isinstance(no_draft_reasons, dict) and no_draft_reasons:
             rendered_reasons = ", ".join(
                 f"{reason}={count}" for reason, count in sorted(no_draft_reasons.items())

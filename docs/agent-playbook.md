@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-05-08
+Last updated: 2026-05-09
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -11,6 +11,7 @@ shortest safe path through the repository. For exact test selection, also use
 Before larger or safety-sensitive work:
 
 - read `AGENTS.md`;
+- read `docs/agent-quickstart.md` for the short current read path;
 - read `docs/codex-handoff.md`;
 - use `docs/code-map.md` when you need to find the owner of a behavior quickly;
 - read `docs/code-audit.md` if the work touches web details, browser safety,

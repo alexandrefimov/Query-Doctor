@@ -49,7 +49,24 @@ def test_render_report_deduplicates_docs_and_always_includes_diff_check():
     assert "- Trusted artifacts" in report
     assert report.count("docs/code-audit.md") == 1
     assert "- `git diff --check`" in report
+    assert "Start with the listed focused validation" in report
     assert "Status badges and loading must share the same strict trust predicate." in report
+
+
+def test_render_report_calls_out_docs_only_scope():
+    rules = agent_preflight.matching_rules(["docs/roadmap.md"])
+    report = agent_preflight.render_report(["docs/roadmap.md"], rules)
+
+    assert "Validation scope:" in report
+    assert "Full pytest is not needed for docs-only changes" in report
+
+
+def test_render_report_calls_out_agent_tooling_scope():
+    rules = agent_preflight.matching_rules(["scripts/agent_preflight.py"])
+    report = agent_preflight.render_report(["scripts/agent_preflight.py"], rules)
+
+    assert "Full pytest is not usually needed for agent docs/tooling" in report
+    assert "Web, optimizer, report, collector, and analyzer suites are not needed" in report
 
 
 def test_render_report_handles_no_matches():

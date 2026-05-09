@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-05-08
+Last reviewed: 2026-05-09
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -26,6 +26,7 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 ## Start Here
 
 - [../README.md](../README.md): public project overview and workflows.
+- [agent-quickstart.md](agent-quickstart.md): shortest safe path for agents.
 - [codex-handoff.md](codex-handoff.md): current agent working baseline.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
@@ -44,6 +45,7 @@ Status legend:
 | [../README.md](../README.md) | active | Public overview and workflows. |
 | [../AGENTS.md](../AGENTS.md) | active | Hard rules for coding agents. |
 | [README.md](README.md) | active | Documentation status index. |
+| [agent-quickstart.md](agent-quickstart.md) | active | Shortest safe agent read path and validation bias. |
 | [codex-handoff.md](codex-handoff.md) | active | Current agent baseline and safety-sensitive context. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
 | [architecture.md](architecture.md) | active | Current component boundaries and data flow. |
@@ -64,6 +66,7 @@ Status legend:
 | [release-checklist.md](release-checklist.md) | reference | Maintainer release checklist. |
 | [community-starter-issues.md](community-starter-issues.md) | reference | Curated public issue backlog. |
 | [contributor-architecture.md](contributor-architecture.md) | reference | Contributor map; defer to `architecture.md` and `code-map.md` for current boundaries. |
+| [ui/query-doctor-design-notes.md](ui/query-doctor-design-notes.md) | reference | Internal localhost UI visual direction; not a behavior contract. |
 | [cluster-doctor-contract.md](cluster-doctor-contract.md) | reference | Future Cluster Doctor seam. |
 | [model-bakeoff.md](model-bakeoff.md) | reference | Local model route protocol and historical decisions. |
 | [demo-mode.md](demo-mode.md) | reference | Synthetic demo pack generation. |

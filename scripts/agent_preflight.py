@@ -179,6 +179,38 @@ def unique_ordered(items: Iterable[str]) -> list[str]:
     return result
 
 
+def validation_scope_notes(rules: Sequence[Rule]) -> list[str]:
+    names = {rule.name for rule in rules}
+    notes = [
+        "Start with the listed focused validation; run full `python3 -m pytest` "
+        "only for shared helpers, trust-boundary moves, cross-workflow behavior, "
+        "or focused failures."
+    ]
+    if names == {"Docs"}:
+        notes.append(
+            "Full pytest is not needed for docs-only changes unless "
+            "browser-rendered Help/UI text changed."
+        )
+    elif names <= {"Docs", "Agent tooling"}:
+        notes.append(
+            "Full pytest is not usually needed for agent docs/tooling; run the "
+            "listed agent tests and doc checks."
+        )
+    if names == {"Agent tooling"}:
+        notes.append(
+            "Web, optimizer, report, collector, and analyzer suites are not "
+            "needed unless their routing rules changed."
+        )
+    if "Web UI / routes" in names and not (
+        names & {"Trusted artifacts", "Report", "Optimizer"}
+    ):
+        notes.append(
+            "Optimizer and report suites are not needed unless the UI change "
+            "reaches those trust boundaries."
+        )
+    return unique_ordered(notes)
+
+
 def render_report(paths: Sequence[str], rules: Sequence[Rule]) -> str:
     lines: list[str] = ["Agent preflight", ""]
     if paths:
@@ -206,6 +238,10 @@ def render_report(paths: Sequence[str], rules: Sequence[Rule]) -> str:
         tests.append("git diff --check")
     lines.append("Suggested validation:")
     lines.extend(f"- `{test}`" for test in tests)
+    lines.append("")
+
+    lines.append("Validation scope:")
+    lines.extend(f"- {note}" for note in validation_scope_notes(rules))
     lines.append("")
 
     lines.append("Changelog:")
