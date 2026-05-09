@@ -116,6 +116,11 @@ Optimizer-specific metrics:
   centralized LLM quotas, Helm/reference deploy, and support. Safety,
   validation, diagnostic quality, and the single-user local workflow stay in
   core.
+- Future-compatible web work must have immediate local-first value. Do not add
+  speculative tenant scaffolding such as `actor`, `tenant_id`,
+  `deployment_mode`, actor-scoped job-store APIs, or persistent shared stores
+  until a concrete shared-deploy design exists. Prefer present-day safety
+  boundaries that would also be correct later.
 
 ## Near-Term Priorities
 
@@ -152,6 +157,18 @@ it into a shared service.
 - Add bounded TTL cleanup for the in-memory web job store as local reliability
   work. Do not turn it into a multi-user ACL or persistence project without an
   explicit shared-deploy decision.
+- Move browser rendering toward typed raw-free view models. Render functions
+  should gradually accept presenter-owned dataclasses with safe primitive
+  fields or `SafeHtml`, rather than raw case/facts dictionaries. Start with one
+  high-value page such as batch case Details, prove the pattern with tests, and
+  avoid broad migration churn.
+- Consolidate trusted artifact access behind `query_doctor.web.trusted_artifacts`
+  where UI code still reaches into case files directly. The motivation is
+  today's browser/report safety and reviewability; a future shared-deploy ACL
+  can wrap that boundary later.
+- Add lightweight request/job trace IDs for correlating local web logs,
+  background jobs, and subprocess outcomes. Do not add actor or deployment-mode
+  fields until an actual identity source is selected.
 
 ### 2. Details Usability And Evidence Flow
 

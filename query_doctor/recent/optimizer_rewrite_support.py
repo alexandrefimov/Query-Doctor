@@ -58,6 +58,44 @@ REWRITEABILITY_LABELS = {
     "not_rewriteable": "Not rewriteable",
     "unknown": "Unknown",
 }
+NO_DRAFT_CLASS_LABELS = {
+    "validation_or_materiality": "Validation or materiality",
+    "cte_lineage_limit": "CTE lineage limit",
+    "downstream_cte_filter": "Downstream CTE filter",
+    "missing_final_filter": "Missing final filter",
+    "shape_boundary": "Shape boundary",
+    "predicate_not_copyable": "Predicate not copyable",
+    "other": "Other",
+    "not_applicable": "Not applicable",
+}
+LINEAGE_LIMIT_REASONS = {
+    "final_cte_lineage_unavailable",
+    "final_cte_not_found",
+    "unsupported_cte_graph",
+    "cte_parse_failed",
+}
+SHAPE_BOUNDARY_REASON_SUFFIXES = (
+    "_boundary",
+    "_unsupported_clause_boundary",
+    "_distinct_boundary",
+    "_join_boundary",
+)
+SHAPE_BOUNDARY_REASONS = {
+    "cte_column_list",
+    "cte_no_simple_projection_columns",
+    "target_cte_no_simple_projection_columns",
+    "target_cte_group_not_simple",
+    "source_cte_group_not_simple",
+}
+PREDICATE_NOT_COPYABLE_REASONS = {
+    "no_copyable_predicate",
+    "no_predicate_decisions",
+}
+PREDICATE_NOT_COPYABLE_DECISIONS = {
+    "not_for_target",
+    "unsupported_predicate",
+    "unsupported_signature",
+}
 
 
 @dataclass(frozen=True)
@@ -74,6 +112,8 @@ class OptimizerRewriteSupport:
     rewriteability_bucket: str = "unknown"
     rewriteability_label: str = "Unknown"
     draft_unavailable_reasons: tuple[str, ...] = ()
+    draft_unavailable_class: str = "not_applicable"
+    draft_unavailable_class_label: str = "Not applicable"
     cte_pushdown_conjunct_decision_counts: dict[str, int] = field(default_factory=dict)
     cte_count: int = 0
     cte_graph_shape: str = "no_cte"
@@ -196,6 +236,10 @@ def classify_optimizer_rewrite_support(
             or deterministic_errors
             or not material_change
         ):
+            no_draft_class = classify_draft_unavailable_class(
+                draft_diagnostics.reasons,
+                draft_diagnostics.cte_pushdown_conjunct_decision_reasons,
+            )
             return OptimizerRewriteSupport(
                 status="draft_disabled",
                 label="Recipe detected; draft unavailable",
@@ -211,6 +255,8 @@ def classify_optimizer_rewrite_support(
                 draft_eligibility_label="Deterministic draft unavailable",
                 **rewriteability_kwargs("recipe_detected_no_draft"),
                 draft_unavailable_reasons=draft_diagnostics.reasons,
+                draft_unavailable_class=no_draft_class,
+                draft_unavailable_class_label=NO_DRAFT_CLASS_LABELS[no_draft_class],
                 cte_pushdown_conjunct_decision_counts=dict(
                     sorted(
                         Counter(
@@ -353,6 +399,33 @@ def rewriteability_kwargs(bucket: str) -> dict[str, str]:
         "rewriteability_bucket": normalized,
         "rewriteability_label": REWRITEABILITY_LABELS[normalized],
     }
+
+
+def classify_draft_unavailable_class(
+    reasons: tuple[str, ...] | list[str],
+    cte_pushdown_conjunct_decision_reasons: tuple[str, ...] | list[str] = (),
+) -> str:
+    reason_set = {str(reason).strip().lower() for reason in reasons if str(reason).strip()}
+    decision_set = {
+        str(reason).strip().lower()
+        for reason in cte_pushdown_conjunct_decision_reasons
+        if str(reason).strip()
+    }
+    if reason_set & {"validation_rejected", "no_material_change"}:
+        return "validation_or_materiality"
+    if reason_set & LINEAGE_LIMIT_REASONS:
+        return "cte_lineage_limit"
+    if "downstream_cte_filter_present" in reason_set:
+        return "downstream_cte_filter"
+    if "final_filter_absent" in reason_set:
+        return "missing_final_filter"
+    if reason_set & SHAPE_BOUNDARY_REASONS or any(
+        reason.endswith(SHAPE_BOUNDARY_REASON_SUFFIXES) for reason in reason_set
+    ):
+        return "shape_boundary"
+    if reason_set & PREDICATE_NOT_COPYABLE_REASONS or decision_set & PREDICATE_NOT_COPYABLE_DECISIONS:
+        return "predicate_not_copyable"
+    return "other"
 
 
 def case_is_stats_likely(
