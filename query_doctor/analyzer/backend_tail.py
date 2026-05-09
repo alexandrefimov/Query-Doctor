@@ -190,11 +190,11 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
 
         header_match = BACKEND_HEADER_RE.match(line)
         if header_match:
-            finish_current()
             header = header_match.group("header") or ""
             host = extract_host_from_text(header)
-            fragment = extract_fragment_from_text(header)
             if host:
+                finish_current()
+                fragment = extract_fragment_from_text(header)
                 current = BackendHostFact(
                     host=host,
                     fragment_instance=fragment,
@@ -203,11 +203,7 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
                 )
                 current_header_indent = line_indent(line)
                 current_child_indent = None
-            else:
-                current = None
-                current_header_indent = None
-                current_child_indent = None
-            continue
+                continue
 
         if current is None:
             continue
