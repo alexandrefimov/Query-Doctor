@@ -15,12 +15,13 @@ from query_doctor.web.ui.layout import (
     render_theme_bootstrap_script,
 )
 from query_doctor.web.ui.markdown import render_details_inline_report_html, render_report_markdown_html
+from query_doctor.web.presenters.recent_scan import present_recent_scan_case_detail
 from query_doctor.web.ui.progress import render_job_panel
 from query_doctor.web.ui.recent_scan import (
     SafeHtml,
     escape_value,
     render_batch_card,
-    render_batch_case_detail,
+    render_recent_scan_case_detail_view,
     render_batch_run_panel,
 )
 from query_doctor.web.ui.report import render_result
@@ -179,17 +180,20 @@ def render_batch_case_detail_page(
         if trusted_report_text
         else None
     )
+    view = present_recent_scan_case_detail(
+        case_id,
+        case,
+        metadata_facts,
+        cm_metrics_facts,
+        runtime_diagnosis_facts,
+        cluster_runtime_context_facts,
+        evidence_quality_facts,
+        stats_quality_facts,
+        report_state=report_state,
+    )
     sections = [
-        render_batch_case_detail(
-            case_id,
-            case,
-            metadata_facts,
-            cm_metrics_facts,
-            runtime_diagnosis_facts,
-            cluster_runtime_context_facts,
-            evidence_quality_facts,
-            stats_quality_facts,
-            report_state=report_state,
+        render_recent_scan_case_detail_view(
+            view,
             optimized_query_state=optimized_query_state,
             trusted_report_html=trusted_report_html,
             trusted_optimized_query=trusted_optimized_query,

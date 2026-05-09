@@ -30,32 +30,13 @@ def render_metadata_facts_section(view: RecentScanMetadataView) -> str:
             f"{degraded_html}</div>"
             "</details>"
         )
-    return render_metadata_facts_body(metadata_view)
+    return render_metadata_facts_view(metadata_view)
 
 
-def render_metadata_facts_body(
-    metadata_view_or_case: RecentScanMetadataView | dict[str, Any],
-    statement_counts: dict[Any, Any] | None = None,
-    tables: list[Any] | None = None,
-    fallback_note: str = "",
-) -> str:
-    if isinstance(metadata_view_or_case, RecentScanMetadataView):
-        view = metadata_view_or_case
-    else:
-        view = present_recent_scan_metadata(
-            metadata_view_or_case,
-            {"statement_counts": statement_counts or {}, "tables": tables or []},
-        )
-        if fallback_note:
-            view = RecentScanMetadataView(
-                unavailable=view.unavailable,
-                fallback_note=safe_display_text(fallback_note),
-                summary_items=view.summary_items,
-                tables=view.tables,
-            )
+def render_metadata_facts_view(view: RecentScanMetadataView) -> str:
     table_html = ""
     if view.tables:
-        rows = "\n".join(render_metadata_fact_table_row(table) for table in view.tables)
+        rows = "\n".join(render_metadata_fact_table_row_view(table) for table in view.tables)
         table_html = (
             "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
             "<thead><tr>"
@@ -92,6 +73,29 @@ def render_metadata_facts_body(
         "</div>"
         "</details>"
     )
+
+
+def render_metadata_facts_body(
+    metadata_view_or_case: RecentScanMetadataView | dict[str, Any],
+    statement_counts: dict[Any, Any] | None = None,
+    tables: list[Any] | None = None,
+    fallback_note: str = "",
+) -> str:
+    if isinstance(metadata_view_or_case, RecentScanMetadataView):
+        view = metadata_view_or_case
+    else:
+        view = present_recent_scan_metadata(
+            metadata_view_or_case,
+            {"statement_counts": statement_counts or {}, "tables": tables or []},
+        )
+        if fallback_note:
+            view = RecentScanMetadataView(
+                unavailable=view.unavailable,
+                fallback_note=safe_display_text(fallback_note),
+                summary_items=view.summary_items,
+                tables=view.tables,
+            )
+    return render_metadata_facts_view(view)
 
 
 def metadata_degraded_note(view: RecentScanMetadataView) -> str:
@@ -159,6 +163,10 @@ def render_metadata_fact_table_row(table: dict[str, Any] | RecentScanMetadataTab
         view = table
     else:
         view = present_recent_scan_metadata({"metadata_status": "unknown"}, {"tables": [table]}).tables[0]
+    return render_metadata_fact_table_row_view(view)
+
+
+def render_metadata_fact_table_row_view(view: RecentScanMetadataTableView) -> str:
     cells = [
         reason_cell(view.table),
         compact_cell(view.object_type),
