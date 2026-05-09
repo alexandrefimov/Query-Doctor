@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from query_doctor.analyzer.cm_metrics import cm_metric_correlation_signal
-from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, numeric_context_value
+from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio, numeric_context_value
+
+
+PROFILE_BACKEND_STARTUP_PLAUSIBLE_MS = 5_000.0
 
 
 def runtime_diagnosis_signal(
@@ -66,6 +69,90 @@ def runtime_diagnosis_counter_evidence(analysis: dict[str, Any]) -> list[str]:
             f"Runtime counter {counter.get('counter') or 'unknown'} max={counter.get('duration_human') or 'unknown'}."
         )
     return evidence
+
+
+def runtime_diagnosis_profile_resource_signal(analysis: dict[str, Any]) -> dict[str, Any]:
+    resources = analysis.get("profile_resources")
+    resources = resources if isinstance(resources, dict) else {}
+    if not resources.get("available"):
+        return runtime_diagnosis_signal(
+            "profile_resource_balance",
+            "Profile resource balance",
+            "unknown",
+            "Profile resource sections were not available in the deterministic facts.",
+            [],
+        )
+
+    admission_result = str(resources.get("admission_result") or "unknown")
+    startup = resources.get("backend_startup_latencies")
+    startup = startup if isinstance(startup, dict) else {}
+    fragments = resources.get("fragment_instances_per_host")
+    fragments = fragments if isinstance(fragments, dict) else {}
+    memory = resources.get("per_node_peak_memory")
+    memory = memory if isinstance(memory, dict) else {}
+    startup_max_ms = numeric_profile_value(startup.get("max_ms"))
+    fragment_ratio = numeric_profile_value(fragments.get("ratio"))
+    memory_ratio = numeric_profile_value(memory.get("ratio"))
+
+    evidence = [f"Profile Resource Facts: admission_result={admission_result}."]
+    if startup.get("available"):
+        evidence.append(f"Profile Resource Facts: backend_startup_max={fmt_duration(startup_max_ms)}.")
+    if fragments.get("available"):
+        evidence.append(
+            "Profile Resource Facts: fragment_instances_per_host "
+            f"hosts={int(numeric_profile_value(fragments.get('count')) or 0)}, "
+            f"max_min_ratio={fmt_ratio(fragment_ratio)}."
+        )
+    if memory.get("available"):
+        evidence.append(
+            "Profile Resource Facts: per_node_peak_memory "
+            f"hosts={int(numeric_profile_value(memory.get('count')) or 0)}, "
+            f"max_min_ratio={fmt_ratio(memory_ratio)}."
+        )
+
+    if admission_result in {"queued", "rejected"}:
+        return runtime_diagnosis_signal(
+            "profile_resource_balance",
+            "Profile resource balance",
+            "plausible_follow_up",
+            (
+                "Profile admission evidence indicates queueing or rejection. Validate pool limits, queued "
+                "query count, and admission-control metrics before treating this as the cause."
+            ),
+            evidence,
+        )
+    if startup_max_ms is not None and startup_max_ms >= PROFILE_BACKEND_STARTUP_PLAUSIBLE_MS:
+        return runtime_diagnosis_signal(
+            "profile_resource_balance",
+            "Profile resource balance",
+            "plausible_follow_up",
+            (
+                "Backend startup latency is large enough to be a plausible follow-up hypothesis. Validate "
+                "daemon health, scheduler latency, and comparable query startup behavior."
+            ),
+            evidence,
+        )
+    return runtime_diagnosis_signal(
+        "profile_resource_balance",
+        "Profile resource balance",
+        "context_only",
+        (
+            "Profile resource facts were available, but admission, startup latency, fragment balance, and "
+            "per-node memory balance did not establish a runtime-resource bottleneck by themselves."
+        ),
+        evidence,
+    )
+
+
+def numeric_profile_value(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
@@ -202,6 +289,7 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
             cpu_evidence,
         )
     )
+    signals.append(runtime_diagnosis_profile_resource_signal(analysis))
 
     plausible = [signal for signal in signals if signal.get("status") == "plausible_follow_up"]
     if plausible:
