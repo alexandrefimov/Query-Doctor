@@ -139,6 +139,7 @@ def render_recent_scan_case_detail_view(
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
         f"{render_evidence_action_guide(view)}"
+        f"{render_case_analysis_summary(view)}"
         f"{render_analysis_details(view)}"
         f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result)}"
         "</section>"
@@ -261,12 +262,118 @@ def render_case_detail_toc() -> str:
         "<a href=\"#case-overview\" class=\"detail-toc-link\">Case overview</a>"
         "<a href=\"#pipeline-status\" class=\"detail-toc-link\">Pipeline status</a>"
         "<a href=\"#evidence-guide\" class=\"detail-toc-link\">Evidence guide</a>"
+        "<a href=\"#analysis-summary\" class=\"detail-toc-link\">Analysis summary</a>"
         "<a href=\"#findings\" class=\"detail-toc-link\">Findings</a>"
         "<a href=\"#evidence-details\" class=\"detail-toc-link\">Evidence details</a>"
         "<a href=\"#llm-actions\" class=\"detail-toc-link\">LLM actions</a>"
         "</nav>"
         "</section>"
     )
+
+
+def render_case_analysis_summary(view: RecentScanCaseDetailView) -> str:
+    fields = [
+        ("primary bottleneck", case_primary_bottleneck_summary(view)),
+        ("optimizer outcome", case_optimizer_outcome_summary(view)),
+        ("stats candidate", case_stats_candidate_summary(view)),
+        ("runtime context", case_runtime_context_summary(view)),
+        ("metadata coverage", case_metadata_coverage_summary(view)),
+        ("next action", case_next_action_summary(view)),
+    ]
+    return (
+        "<section id=\"analysis-summary\" class=\"case-overview\" aria-label=\"Analysis summary\">"
+        "<div class=\"section-heading\"><div>"
+        "<h2 class=\"section-title\">Analysis summary</h2>"
+        "<div class=\"section-kicker\">Safe deterministic triage for this case. This is not raw SQL or a root-cause claim.</div>"
+        "</div></div>"
+        f"<div class=\"meta-list\">{metadata_rows(fields)}</div>"
+        "</section>"
+    )
+
+
+def case_primary_bottleneck_summary(view: RecentScanCaseDetailView) -> str:
+    primary = view.primary_bottleneck
+    if primary.unavailable:
+        return "Not classified"
+    if primary.reason_summary:
+        return f"{primary.summary}: {primary.reason_summary}"
+    return primary.summary
+
+
+def case_optimizer_outcome_summary(view: RecentScanCaseDetailView) -> str:
+    candidate = view.optimization_candidate
+    if not detail_candidate_is_visible(candidate):
+        return "No Medium/High query optimization candidate"
+    tier = detail_title(candidate.get("tier"))
+    score = candidate.get("score")
+    bucket = str(candidate.get("rewriteability_bucket") or "").strip().lower()
+    support_label = str(candidate.get("rewrite_support_label") or "Unknown").strip()
+    review = str(candidate.get("review_areas") or "query shape").strip()
+    if bucket == "not_rewriteable":
+        return f"{tier} / {score}: review-only; no trusted SQL draft shape detected. Review {review}."
+    if bucket == "human_review_only":
+        return f"{tier} / {score}: manual guidance only; SQL draft disabled by guardrails. Review {review}."
+    if bucket == "safe_material_draft":
+        return f"{tier} / {score}: draft-ready; {support_label}."
+    if bucket in {"recipe_detected_no_draft", "recipe_adjacent_shape"}:
+        return f"{tier} / {score}: recipe backlog; {support_label}. Review {review}."
+    return f"{tier} / {score}: {support_label}. Review {review}."
+
+
+def case_stats_candidate_summary(view: RecentScanCaseDetailView) -> str:
+    candidate = view.stats_candidate
+    if not detail_candidate_is_visible(candidate):
+        return "No Medium/High stats refresh candidate"
+    tier = detail_title(candidate.get("tier"))
+    score = candidate.get("score")
+    need = str(candidate.get("need_type") or "unknown").replace("_", " ")
+    confidence = detail_title(candidate.get("confidence"))
+    review = str(candidate.get("review_areas") or "stats evidence").strip()
+    return f"{tier} / {score}: {need}; {confidence} confidence. Review {review}."
+
+
+def case_runtime_context_summary(view: RecentScanCaseDetailView) -> str:
+    title = str(view.runtime_verdict.title or "").strip()
+    if not title or title == "Runtime context not collected":
+        return "Runtime context not collected"
+    return f"{title}: {view.runtime_verdict.summary}"
+
+
+def case_metadata_coverage_summary(view: RecentScanCaseDetailView) -> str:
+    summary = dict(view.metadata.summary_items)
+    for key in ("metadata coverage", "stats coverage", "metadata command status", "metadata status"):
+        value = summary.get(key)
+        if detail_is_meaningful_value(value):
+            return str(value)
+    if view.metadata.unavailable:
+        return view.metadata.fallback_note or "Metadata not available"
+    return "Collected metadata available"
+
+
+def case_next_action_summary(view: RecentScanCaseDetailView) -> str:
+    guide = present_recent_scan_evidence_guide(view)
+    for card in guide.cards:
+        if card.label == "next action":
+            return card.value
+    return "Review findings before explicit LLM action"
+
+
+def detail_candidate_is_visible(candidate: dict[str, Any]) -> bool:
+    return str(candidate.get("tier") or "").lower() in {"high", "medium"}
+
+
+def detail_title(value: Any) -> str:
+    text = str(value or "unknown").replace("_", " ").strip()
+    return text.title() if text else "Unknown"
+
+
+def detail_is_meaningful_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if value is False:
+        return False
+    text = str(value).strip().lower()
+    return text not in {"", "unknown", "none", "not_run", "not checked", "false"}
 
 
 def render_technical_details(view: RecentScanCaseDetailView) -> str:

@@ -80,6 +80,7 @@ def optimizer_rewrite_support_text(candidate: dict[str, Any]) -> str:
     label = str(candidate.get("rewrite_support_label") or "").strip()
     reason = str(candidate.get("rewrite_support_reason") or "").strip()
     rewriteability = str(candidate.get("rewriteability_label") or "").strip()
+    rewriteability_bucket = str(candidate.get("rewriteability_bucket") or "").strip().lower()
     facts = str(candidate.get("rewrite_support_facts") or "").strip()
     guardrails = str(candidate.get("rewrite_support_guardrails") or "").strip()
     context = ""
@@ -89,6 +90,15 @@ def optimizer_rewrite_support_text(candidate: dict[str, Any]) -> str:
         context += f" Facts: {facts}."
     if guardrails:
         context += f" Guardrails: {guardrails}."
+    if rewriteability_bucket == "not_rewriteable":
+        reason_text = f" Reason: {reason}." if reason else ""
+        return (
+            "No trusted SQL draft will be generated for this case by the current deterministic optimizer; "
+            f"use the Review first areas for manual query-shape analysis.{reason_text}{context} "
+        )
+    if rewriteability_bucket == "human_review_only":
+        reason_text = f" Reason: {reason}." if reason else ""
+        return f"SQL draft is disabled by guardrails; use manual optimizer guidance.{reason_text}{context} "
     if not label:
         return context.strip() + (" " if context else "")
     if reason:
