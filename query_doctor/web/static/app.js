@@ -24,12 +24,10 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
   function setDesign(design) {
-    var designOrder = ['serious', 'classic', 'command', 'review'];
+    var designOrder = ['serious', 'command'];
     var designLabels = {
-      serious: 'Switch to serious design',
-      classic: 'Switch to classic design',
-      command: 'Switch to command design',
-      review: 'Switch to review design'
+      serious: 'Switch to blue design',
+      command: 'Switch to green design'
     };
     var nextDesign = designOrder.indexOf(design) >= 0 ? design : 'serious';
     document.documentElement.setAttribute('data-design', nextDesign);
@@ -37,8 +35,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (toggle) {
       var currentIndex = designOrder.indexOf(nextDesign);
       var followingDesign = designOrder[(currentIndex + 1) % designOrder.length];
-      var label = designLabels[followingDesign] || designLabels.classic;
-      toggle.setAttribute('aria-pressed', nextDesign === 'serious' ? 'false' : 'true');
+      var label = designLabels[followingDesign] || designLabels.serious;
+      toggle.setAttribute('aria-pressed', nextDesign === 'command' ? 'true' : 'false');
       toggle.setAttribute('aria-label', label);
       toggle.setAttribute('title', label);
     }
@@ -47,10 +45,10 @@ document.addEventListener('DOMContentLoaded', function () {
   if (designToggle) {
     setDesign(document.documentElement.getAttribute('data-design'));
     designToggle.addEventListener('click', function () {
-      var designOrder = ['serious', 'classic', 'command', 'review'];
+      var designOrder = ['serious', 'command'];
       var currentDesign = document.documentElement.getAttribute('data-design');
       var currentIndex = designOrder.indexOf(currentDesign);
-      var nextDesign = designOrder[(currentIndex + 1) % designOrder.length];
+      var nextDesign = designOrder[(currentIndex >= 0 ? currentIndex + 1 : 0) % designOrder.length];
       setDesign(nextDesign);
       try {
         window.localStorage.setItem('query-doctor-design', nextDesign);

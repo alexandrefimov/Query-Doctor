@@ -119,23 +119,12 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "html[data-theme=dark]" in styles
     assert "--bg:#eef2f6" in styles
     assert "--bg:#0f1419" in styles
-    assert_css_contains(styles, "html[data-design=classic]{--bg:#f7f8fa")
-    assert_css_contains(styles, "html[data-theme=dark][data-design=classic]{--bg:#101418")
     assert_css_contains(styles, "html[data-design=command]{--bg:#eef4f1")
     assert_css_contains(styles, "html[data-theme=dark][data-design=command]{--bg:#101314")
-    assert_css_contains(styles, "html[data-design=review]{--bg:#f2f4f3")
-    assert_css_contains(styles, "html[data-design=classic] .page{max-width:1240px;padding:20px 28px 48px}")
     assert_css_contains(styles, "html[data-design=command] .page{max-width:1240px;padding:20px 28px 48px}")
-    assert_css_contains(styles, "html[data-design=review] .page{max-width:1240px;padding:20px 28px 48px}")
-    assert_css_contains(
-        styles,
-        "html[data-design=classic] .app-header{padding:10px 12px;"
-        "border:1px solid transparent;border-radius:0;background:transparent;"
-        "box-shadow:none;margin-bottom:16px}",
-    )
-    assert_css_contains(styles, "html[data-design=review] .app-header{padding:10px 12px}")
-    assert_css_contains(styles, "html[data-design=classic] .brand-mark{width:32px;height:32px;")
-    assert_css_contains(styles, "html[data-design=classic] .top-nav{gap:2px;padding:2px;")
+    assert "html[data-design=classic]" not in styles
+    assert "html[data-design=review]" not in styles
+    assert "design-icon-review" not in styles
     assert "max-height:66vh" not in body
     assert "overflow-wrap:anywhere" in styles
     assert "Интеллектуальный анализ Impala-запросов по Query ID" not in body
@@ -209,11 +198,10 @@ def test_web_render_page_contains_theme_toggle():
     assert_css_contains(
         styles,
         ".theme-toggle .theme-icon-light,"
-        ".design-toggle .design-icon-classic,"
-        ".design-toggle .design-icon-command,"
-        ".design-toggle .design-icon-review{display:none}"
+        ".design-toggle .design-icon-serious,"
+        ".design-toggle .design-icon-command{display:none}"
     )
-    assert_css_contains(styles, ".theme-toggle .theme-icon-dark,.design-toggle .design-icon-serious{display:block}")
+    assert_css_contains(styles, ".theme-toggle .theme-icon-dark{display:block}")
     assert_css_contains(styles, "html[data-theme=dark] .theme-toggle .theme-icon-light{display:block}")
     assert_css_contains(styles, "html[data-theme=dark] .theme-toggle .theme-icon-dark{display:none}")
 
@@ -227,24 +215,26 @@ def test_web_render_page_contains_design_toggle():
     scripts = layout.render_client_script()
 
     assert 'id="design-toggle"' in body
-    assert 'aria-label="Switch to classic design"' in body
+    assert 'aria-label="Switch to green design"' in body
     assert "query-doctor-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
     assert "data-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
-    assert "Switch to command design" in scripts
-    assert "Switch to review design" in scripts
+    assert "['serious', 'command']" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
+    assert "document.documentElement.setAttribute('data-design', 'serious')" in layout.read_static_asset_text(
+        "theme-bootstrap.js"
+    )
+    assert "Switch to blue design" in scripts
+    assert "Switch to green design" in scripts
     assert_css_contains(
         styles,
-        "html[data-design=classic] .design-toggle .design-icon-classic,"
-        "html[data-design=command] .design-toggle .design-icon-command,"
-        "html[data-design=review] .design-toggle .design-icon-review{display:block}"
+        "html[data-design=serious] .design-toggle .design-icon-serious,"
+        "html[data-design=command] .design-toggle .design-icon-command{display:block}"
     )
-    assert_css_contains(
-        styles,
-        "html[data-design=classic] .design-toggle .design-icon-serious,"
-        "html[data-design=command] .design-toggle .design-icon-serious,"
-        "html[data-design=review] .design-toggle .design-icon-serious{display:none}"
-    )
-    assert "['serious', 'classic', 'command', 'review']" in scripts
+    assert "Switch to classic design" not in scripts
+    assert "Switch to command design" not in scripts
+    assert "Switch to review design" not in scripts
+    assert "['serious', 'classic', 'command', 'review']" not in scripts
+    assert "design-icon-classic" not in body
+    assert "design-icon-review" not in body
     assert body.index('id="design-toggle"') < body.index('id="theme-toggle"')
 
 
