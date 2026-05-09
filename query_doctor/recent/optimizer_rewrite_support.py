@@ -93,6 +93,11 @@ PREDICATE_NOT_COPYABLE_REASONS = {
 }
 PREDICATE_NOT_COPYABLE_DECISIONS = {
     "not_for_target",
+    "not_for_target_foreign_qualifier",
+    "not_for_target_foreign_qualifier_only",
+    "not_for_target_malformed_qualified_reference",
+    "not_for_target_mixed_target_foreign_qualifier",
+    "not_for_target_unavailable_column",
     "unsupported_predicate",
     "unsupported_signature",
 }

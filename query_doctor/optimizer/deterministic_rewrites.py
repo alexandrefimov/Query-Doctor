@@ -1438,10 +1438,19 @@ def per_conjunct_pushdown_plan(
     existing_cte_predicates = sql_predicate_signature_counter(cte_body, "WHERE")
     decisions: list[PredicatePushdownConjunctDecision] = []
     for conjunct in pushdown_conjunct_fragments(final_sql[start:end]):
-        dequalified = dequalify_predicate_for_cte_aliases(conjunct, cte_qualifiers, available_columns)
+        dequalified, dequalify_failure_reason = dequalify_predicate_for_cte_aliases_with_reason(
+            conjunct,
+            cte_qualifiers,
+            available_columns,
+        )
         if not dequalified:
             decisions.append(
-                PredicatePushdownConjunctDecision(conjunct, None, False, "not_for_target")
+                PredicatePushdownConjunctDecision(
+                    conjunct,
+                    None,
+                    False,
+                    dequalify_failure_reason or "not_for_target",
+                )
             )
             continue
         predicate_columns = predicate_column_references(dequalified, available_columns)
@@ -1545,6 +1554,19 @@ def dequalify_predicate_for_cte_aliases(
     cte_qualifiers: set[str],
     available_columns: set[str],
 ) -> str | None:
+    dequalified, _reason = dequalify_predicate_for_cte_aliases_with_reason(
+        predicate,
+        cte_qualifiers,
+        available_columns,
+    )
+    return dequalified
+
+
+def dequalify_predicate_for_cte_aliases_with_reason(
+    predicate: str,
+    cte_qualifiers: set[str],
+    available_columns: set[str],
+) -> tuple[str | None, str | None]:
     pieces: list[str] = []
     index = 0
     while index < len(predicate):
@@ -1573,17 +1595,62 @@ def dequalify_predicate_for_cte_aliases(
         while second_start < len(predicate) and predicate[second_start].isspace():
             second_start += 1
         if second_start >= len(predicate) or not (predicate[second_start].isalpha() or predicate[second_start] == "_"):
-            return None
+            return None, "not_for_target_malformed_qualified_reference"
         second_end = second_start + 1
         while second_end < len(predicate) and (predicate[second_end].isalnum() or predicate[second_end] in {"_", "$"}):
             second_end += 1
         qualifier = predicate[first_start:first_end].lower()
         column = predicate[second_start:second_end].lower()
-        if qualifier not in cte_qualifiers or column not in available_columns:
-            return None
+        if qualifier not in cte_qualifiers:
+            if predicate_has_target_qualified_reference(predicate, cte_qualifiers, available_columns):
+                return None, "not_for_target_mixed_target_foreign_qualifier"
+            return None, "not_for_target_foreign_qualifier_only"
+        if column not in available_columns:
+            return None, "not_for_target_unavailable_column"
         pieces.append(column)
         index = second_end
-    return "".join(pieces).strip()
+    return "".join(pieces).strip(), None
+
+
+def predicate_has_target_qualified_reference(
+    predicate: str,
+    cte_qualifiers: set[str],
+    available_columns: set[str],
+) -> bool:
+    index = 0
+    while index < len(predicate):
+        char = predicate[index]
+        if char in {"'", '"', "`"}:
+            index = skip_quoted_text(predicate, index, char)
+            continue
+        if not (char.isalpha() or char == "_"):
+            index += 1
+            continue
+        first_start = index
+        first_end = index + 1
+        while first_end < len(predicate) and (predicate[first_end].isalnum() or predicate[first_end] in {"_", "$"}):
+            first_end += 1
+        dot_cursor = first_end
+        while dot_cursor < len(predicate) and predicate[dot_cursor].isspace():
+            dot_cursor += 1
+        if dot_cursor >= len(predicate) or predicate[dot_cursor] != ".":
+            index = first_end
+            continue
+        second_start = dot_cursor + 1
+        while second_start < len(predicate) and predicate[second_start].isspace():
+            second_start += 1
+        if second_start >= len(predicate) or not (predicate[second_start].isalpha() or predicate[second_start] == "_"):
+            index = second_start
+            continue
+        second_end = second_start + 1
+        while second_end < len(predicate) and (predicate[second_end].isalnum() or predicate[second_end] in {"_", "$"}):
+            second_end += 1
+        qualifier = predicate[first_start:first_end].lower()
+        column = predicate[second_start:second_end].lower()
+        if qualifier in cte_qualifiers and column in available_columns:
+            return True
+        index = second_end
+    return False
 
 
 def add_where_predicates_to_cte_body(cte_body: str, predicates: tuple[str, ...]) -> str | None:
