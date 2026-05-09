@@ -126,6 +126,20 @@ When no Python-owned recipe exists, the optimizer must not ask the LLM for a
 SQL draft; it should produce a trusted `no_rewrite` outcome with deterministic
 guidance instead.
 
+## Shape Facts
+
+Shape facts are deterministic, raw-free categories. Browser-visible summaries
+may show counts and labels, but not CTE names, branch SQL, predicates, source
+paths, or parser artifacts.
+
+- CTE `UNION ALL` branch-filter facts may expose only the branch count and one
+  of: candidate for all branches, candidate for a single branch, ambiguous
+  branch lineage, unsupported branch projection, no filtered union output, no
+  final filter, or no `UNION ALL`.
+- These facts are discovery and ranking inputs only. They do not authorize a
+  SQL draft unless a Python-owned recipe and validator are added for the exact
+  transform.
+
 ## Recipe-Backed Exceptions
 
 Recipe exceptions are allowed only when recipe-specific validation proves the

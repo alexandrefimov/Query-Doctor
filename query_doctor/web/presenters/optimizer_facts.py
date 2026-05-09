@@ -17,6 +17,10 @@ def optimizer_rewrite_support_fact_summary(support: dict[str, Any]) -> str:
     if derived_count:
         suffix = "derived table" if derived_count == 1 else "derived tables"
         parts.append(f"{derived_count} {suffix}")
+    union_branch_count = numeric_count(support.get("cte_union_branch_count"))
+    if union_branch_count:
+        suffix = "UNION branch" if union_branch_count == 1 else "UNION branches"
+        parts.append(f"{union_branch_count} {suffix}")
     parts.extend(
         label
         for label in (
@@ -35,6 +39,10 @@ def optimizer_rewrite_support_fact_summary(support: dict[str, Any]) -> str:
             optimizer_token_label(
                 support.get("cte_projection_preservation_status"),
                 OPTIMIZER_CTE_PROJECTION_PRESERVATION_LABELS,
+            ),
+            optimizer_token_label(
+                support.get("cte_union_branch_filter_status"),
+                OPTIMIZER_CTE_UNION_BRANCH_FILTER_LABELS,
             ),
             optimizer_token_label(
                 support.get("derived_predicate_origin_status"),
@@ -138,6 +146,16 @@ OPTIMIZER_CTE_PROJECTION_PRESERVATION_LABELS = {
     "named_expression_projection": "named expression projection",
     "unknown_projection_preservation": "unknown projection preservation",
     "no_cte": "no CTE projection",
+}
+
+OPTIMIZER_CTE_UNION_BRANCH_FILTER_LABELS = {
+    "candidate_all_branches": "UNION branch filter candidate",
+    "candidate_single_branch": "single-branch filter candidate",
+    "ambiguous_branch_lineage": "ambiguous UNION branch lineage",
+    "unsupported_branch_projection": "unsupported UNION branch projection",
+    "no_filtered_union_output": "no filtered UNION output",
+    "no_final_filter": "no final filter for UNION branches",
+    "no_union_all": "",
 }
 
 OPTIMIZER_DERIVED_PREDICATE_ORIGIN_LABELS = {

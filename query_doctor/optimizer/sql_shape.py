@@ -232,6 +232,10 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
         max_consumer_count=max_consumer_count,
         has_fanin=has_fanin,
     )
+    union_branch_count, union_branch_filter_status = cte_union_branch_filter_facts(
+        parsed,
+        names,
+    )
     projection_statuses = [
         cte_projection_preservation_status(definition.body)
         for definition in parsed.ctes
@@ -270,6 +274,8 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
         ),
         has_downstream_filter=has_downstream_filter,
         boundary_reasons=boundary_reasons,
+        union_branch_count=union_branch_count,
+        union_branch_filter_status=union_branch_filter_status,
     )
 
 
@@ -515,6 +521,146 @@ def cte_body_is_pass_through_layer(sql: str, cte_names: tuple[str, ...]) -> bool
         if not is_simple_column_reference(tokens):
             return False
     return True
+
+
+def cte_union_branch_filter_facts(
+    parsed: CteParseResult,
+    names: tuple[str, ...],
+) -> tuple[int, str]:
+    final_refs = referenced_cte_names(parsed.final_sql, names)
+    if len(final_refs) != 1:
+        return 0, "no_union_all"
+    final_cte = next(
+        (definition for definition in parsed.ctes if definition.name == final_refs[0]),
+        None,
+    )
+    if final_cte is None:
+        return 0, "no_union_all"
+    branches = split_top_level_union_all_fragments(final_cte.body)
+    if len(branches) <= 1:
+        return 0, "no_union_all"
+    output_names = union_projection_names(final_cte.body)
+    if not output_names:
+        return len(branches), "unsupported_branch_projection"
+    if clause_signature(parsed.final_sql, "WHERE") is None:
+        return len(branches), "no_final_filter"
+    filtered_outputs = where_referenced_output_names(parsed.final_sql, set(output_names))
+    if not filtered_outputs:
+        return len(branches), "no_filtered_union_output"
+    statuses = [
+        union_output_branch_filter_status(branches, output_names, output_name)
+        for output_name in filtered_outputs
+    ]
+    if "candidate_single_branch" in statuses:
+        return len(branches), "candidate_single_branch"
+    if "candidate_all_branches" in statuses:
+        return len(branches), "candidate_all_branches"
+    if "ambiguous_branch_lineage" in statuses:
+        return len(branches), "ambiguous_branch_lineage"
+    return len(branches), "unsupported_branch_projection"
+
+
+def where_referenced_output_names(sql: str, output_names: set[str]) -> tuple[str, ...]:
+    where_offset = find_top_level_keyword_offset(sql, ("WHERE",))
+    if where_offset is None:
+        return ()
+    end = next_top_level_clause_offset(sql, where_offset + len("WHERE"))
+    try:
+        tokens = tokenize_sql(sql[where_offset + len("WHERE") : end])
+    except OptimizerSqlError:
+        return ()
+    names = [
+        token.lower()
+        for token in tokens
+        if token.lower() in output_names
+    ]
+    return tuple(dedupe_preserve_order(names))
+
+
+def union_output_branch_filter_status(
+    branches: tuple[str, ...],
+    output_names: tuple[str, ...],
+    output_name: str,
+) -> str:
+    try:
+        position = output_names.index(output_name)
+    except ValueError:
+        return "unsupported_branch_projection"
+    simple_branch_count = 0
+    constant_branch_count = 0
+    for branch in branches:
+        fragments = projection_item_fragments(branch)
+        if position >= len(fragments):
+            return "unsupported_branch_projection"
+        projection_kind = union_branch_projection_kind(fragments[position])
+        if projection_kind == "simple_column":
+            simple_branch_count += 1
+        elif projection_kind == "constant":
+            constant_branch_count += 1
+        else:
+            return "unsupported_branch_projection"
+    branch_count = len(branches)
+    if simple_branch_count == branch_count:
+        return "candidate_all_branches"
+    if simple_branch_count == 1 and constant_branch_count == branch_count - 1:
+        return "candidate_single_branch"
+    return "ambiguous_branch_lineage"
+
+
+def union_branch_projection_kind(fragment: str) -> str:
+    tokens = projection_expression_tokens(fragment)
+    if not tokens:
+        return "constant"
+    if expression_tokens_are_simple_column(tokens):
+        return "simple_column"
+    if expression_tokens_are_constant(tokens):
+        return "constant"
+    return "unsupported"
+
+
+def projection_expression_tokens(fragment: str) -> list[str]:
+    try:
+        tokens = tokenize_sql(fragment)
+    except OptimizerSqlError:
+        return []
+    depth = 0
+    expression_tokens: list[str] = []
+    for token in tokens:
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+        if depth == 0 and token.upper() == "AS":
+            return expression_tokens
+        expression_tokens.append(token)
+    if len(expression_tokens) >= 2:
+        possible_alias = clean_projection_identifier(expression_tokens[-1])
+        previous = expression_tokens[:-1]
+        if possible_alias and (
+            expression_tokens_are_simple_column(previous)
+            or expression_tokens_are_constant(previous)
+        ):
+            return previous
+    return expression_tokens
+
+
+def expression_tokens_are_simple_column(tokens: list[str]) -> bool:
+    if not is_simple_column_reference(tokens):
+        return False
+    return all(
+        not token.isdigit() and token.upper() not in SQL_CONSTANT_TOKENS
+        for token in tokens
+        if token != "."
+    )
+
+
+SQL_CONSTANT_TOKENS = {"NULL", "TRUE", "FALSE", "DATE", "TIMESTAMP"}
+
+
+def expression_tokens_are_constant(tokens: list[str]) -> bool:
+    if not tokens:
+        return True
+    return all(token.isdigit() or token.upper() in SQL_CONSTANT_TOKENS for token in tokens)
 
 
 def cte_shape_boundary_reasons(

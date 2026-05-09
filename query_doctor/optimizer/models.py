@@ -55,6 +55,8 @@ class CteShapeFacts:
     expression_projection_cte_count: int
     has_downstream_filter: bool
     boundary_reasons: tuple[str, ...]
+    union_branch_count: int = 0
+    union_branch_filter_status: str = "no_union_all"
 
 
 @dataclass(frozen=True)

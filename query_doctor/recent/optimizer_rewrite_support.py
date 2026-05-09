@@ -77,6 +77,8 @@ class OptimizerRewriteSupport:
     cte_expression_projection_count: int = 0
     cte_single_use_count: int = 0
     cte_pass_through_count: int = 0
+    cte_union_branch_count: int = 0
+    cte_union_branch_filter_status: str = "no_union_all"
     cte_boundary_reasons: tuple[str, ...] = ()
     derived_table_count: int = 0
     derived_predicate_pushdown_status: str = "no_derived_table"
@@ -148,6 +150,8 @@ def classify_optimizer_rewrite_support(
                 cte_expression_projection_count=cte_shape.expression_projection_cte_count,
                 cte_single_use_count=cte_shape.single_use_cte_count,
                 cte_pass_through_count=cte_shape.pass_through_cte_count,
+                cte_union_branch_count=cte_shape.union_branch_count,
+                cte_union_branch_filter_status=cte_shape.union_branch_filter_status,
                 cte_boundary_reasons=cte_shape.boundary_reasons,
                 **derived_shape_kwargs(derived_shape),
             )
@@ -196,6 +200,8 @@ def classify_optimizer_rewrite_support(
                 cte_expression_projection_count=cte_shape.expression_projection_cte_count,
                 cte_single_use_count=cte_shape.single_use_cte_count,
                 cte_pass_through_count=cte_shape.pass_through_cte_count,
+                cte_union_branch_count=cte_shape.union_branch_count,
+                cte_union_branch_filter_status=cte_shape.union_branch_filter_status,
                 cte_boundary_reasons=cte_shape.boundary_reasons,
                 **derived_shape_kwargs(derived_shape),
             )
@@ -226,6 +232,8 @@ def classify_optimizer_rewrite_support(
             cte_expression_projection_count=cte_shape.expression_projection_cte_count,
             cte_single_use_count=cte_shape.single_use_cte_count,
             cte_pass_through_count=cte_shape.pass_through_cte_count,
+            cte_union_branch_count=cte_shape.union_branch_count,
+            cte_union_branch_filter_status=cte_shape.union_branch_filter_status,
             cte_boundary_reasons=cte_shape.boundary_reasons,
             **derived_shape_kwargs(derived_shape),
         )
@@ -251,6 +259,8 @@ def classify_optimizer_rewrite_support(
             cte_expression_projection_count=cte_shape.expression_projection_cte_count,
             cte_single_use_count=cte_shape.single_use_cte_count,
             cte_pass_through_count=cte_shape.pass_through_cte_count,
+            cte_union_branch_count=cte_shape.union_branch_count,
+            cte_union_branch_filter_status=cte_shape.union_branch_filter_status,
             cte_boundary_reasons=cte_shape.boundary_reasons,
             **derived_shape_kwargs(derived_shape),
         )
@@ -287,6 +297,8 @@ def classify_optimizer_rewrite_support(
         cte_expression_projection_count=cte_shape.expression_projection_cte_count,
         cte_single_use_count=cte_shape.single_use_cte_count,
         cte_pass_through_count=cte_shape.pass_through_cte_count,
+        cte_union_branch_count=cte_shape.union_branch_count,
+        cte_union_branch_filter_status=cte_shape.union_branch_filter_status,
         cte_boundary_reasons=cte_shape.boundary_reasons,
         **derived_shape_kwargs(derived_shape),
     )
