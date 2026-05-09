@@ -17,13 +17,10 @@ from query_doctor.web.ui.layout import (
 from query_doctor.web.ui.markdown import render_details_inline_report_html, render_report_markdown_html
 from query_doctor.web.presenters.recent_scan import present_recent_scan_case_detail
 from query_doctor.web.ui.progress import render_job_panel
-from query_doctor.web.ui.recent_scan import (
-    SafeHtml,
-    escape_value,
-    render_batch_card,
-    render_recent_scan_case_detail_view,
-    render_batch_run_panel,
-)
+from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
+from query_doctor.web.ui.recent_scan_details import render_recent_scan_case_detail_view
+from query_doctor.web.ui.recent_scan_form import render_batch_run_panel
+from query_doctor.web.ui.recent_scan_results import render_batch_card
 from query_doctor.web.ui.report import render_result
 from query_doctor.web.ui.specific_query import render_specific_query_result
 

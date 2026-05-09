@@ -27,7 +27,7 @@ from query_doctor.web.subprocesses import (
 )
 from query_doctor.web.ui.running import render_running_queries_page
 from query_doctor.web.ui.pages import render_batch_page
-from query_doctor.web.ui.recent_scan import render_batch_card
+from query_doctor.web.ui.recent_scan_results import render_batch_card
 
 
 def sanitize_for_display(value: object) -> str:

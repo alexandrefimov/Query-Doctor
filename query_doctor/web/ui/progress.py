@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from query_doctor.web.ui.recent_scan import batch_progress_percent, render_batch_progress_panel
+from query_doctor.web.ui.recent_scan_progress import batch_progress_percent, render_batch_progress_panel
 
 
 WEB_STAGES = (

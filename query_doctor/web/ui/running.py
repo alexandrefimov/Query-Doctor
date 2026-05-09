@@ -18,7 +18,7 @@ from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE
 from query_doctor.web.models import WEB_CM_EVENTS_MAX_EVENTS_DEFAULT, WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT
 from query_doctor.web.ui.pages import render_page
 from query_doctor.web.ui.progress import render_job_panel
-from query_doctor.web.ui.recent_scan import render_batch_card
+from query_doctor.web.ui.recent_scan_results import render_batch_card
 
 
 def render_running_queries_page(

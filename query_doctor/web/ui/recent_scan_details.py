@@ -21,17 +21,7 @@ from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_status_summary,
     present_recent_scan_technical_details,
 )
-from query_doctor.web.presenters.recent_scan_evidence import (
-    evidence_facts_label as presenter_evidence_facts_label,
-    evidence_metadata_label as presenter_evidence_metadata_label,
-    evidence_next_action_label as presenter_evidence_next_action_label,
-    evidence_quality_label as presenter_evidence_quality_label,
-    evidence_runtime_label as presenter_evidence_runtime_label,
-    evidence_stats_label as presenter_evidence_stats_label,
-    present_recent_scan_evidence_guide,
-    primary_bottleneck_label as presenter_primary_bottleneck_label,
-    stats_quality_label as presenter_stats_quality_label,
-)
+from query_doctor.web.presenters.recent_scan_evidence import present_recent_scan_evidence_guide
 from query_doctor.web.presenters.recent_scan_models import RecentScanEvidenceGuideView
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
@@ -43,7 +33,6 @@ from query_doctor.web.ui.html_helpers import (
 )
 from query_doctor.web.ui.action_candidates import (
     render_action_candidate_findings,
-    render_action_candidate_findings_view,
 )
 from query_doctor.web.ui.llm_actions import (
     render_llm_actions_block,
@@ -53,15 +42,7 @@ from query_doctor.web.ui.llm_actions import (
     render_safe_markdown_paragraphs,
 )
 from query_doctor.web.ui.metadata_details import (
-    has_metadata_aggregate_facts,
-    metadata_fact_limitations,
-    metadata_score_reasons,
-    metadata_statement_counts_summary,
-    render_metadata_fact_table_row,
-    render_metadata_fact_table_row_view,
-    render_metadata_facts_body,
     render_metadata_facts_section,
-    render_metadata_facts_view,
 )
 from query_doctor.web.ui.report_actions import (
     render_llm_report_failure,
@@ -238,38 +219,6 @@ def render_evidence_action_guide_view(view: RecentScanEvidenceGuideView) -> str:
         f"<div class=\"case-summary-grid\">{card_html}</div>"
         "</section>"
     )
-
-
-def primary_bottleneck_label(view: RecentScanCaseDetailView) -> str:
-    return presenter_primary_bottleneck_label(view)
-
-
-def evidence_quality_label(view: RecentScanCaseDetailView) -> str:
-    return presenter_evidence_quality_label(view)
-
-
-def evidence_facts_label(view: RecentScanCaseDetailView) -> str:
-    return presenter_evidence_facts_label(view)
-
-
-def evidence_runtime_label(view: RecentScanCaseDetailView) -> str:
-    return presenter_evidence_runtime_label(view)
-
-
-def evidence_metadata_label(view: RecentScanCaseDetailView) -> str:
-    return presenter_evidence_metadata_label(view)
-
-
-def evidence_stats_label(view: RecentScanCaseDetailView) -> str:
-    return presenter_evidence_stats_label(view)
-
-
-def stats_quality_label(view: RecentScanCaseDetailView) -> str:
-    return presenter_stats_quality_label(view)
-
-
-def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
-    return presenter_evidence_next_action_label(view)
 
 
 def render_analysis_details(view: RecentScanCaseDetailView) -> str:

@@ -19,7 +19,7 @@ from query_doctor.web.models import (
     batch_progress_path,
 )
 from query_doctor.web.ui.progress import WEB_STAGES
-from query_doctor.web.ui.recent_scan import batch_progress_percent, render_batch_progress_panel
+from query_doctor.web.ui.recent_scan_progress import batch_progress_percent, render_batch_progress_panel
 from query_doctor.web.ui.report import render_result
 from query_doctor.web.ui.specific_query import render_specific_query_result, render_specific_query_results
 
