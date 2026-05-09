@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from query_doctor.web.job_progress import WEB_STAGES
+from query_doctor.web.job_progress import WEB_STAGES, progress_view_for_job
 from query_doctor.web.ui.recent_scan_progress import batch_progress_percent, render_batch_progress_panel
 
 
@@ -39,6 +39,7 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
             f"{render_batch_progress_panel(getattr(job, 'batch_progress_path', None), job.status)}"
             "</div>"
         )
+    progress_view = progress_view_for_job(getattr(job, "kind", "query"), job.stage_label, progress)
     if job.status == "ok":
         title = "Analysis complete"
     elif job.status == "cancelled":
@@ -58,10 +59,10 @@ def render_job_panel(job: Any, *, result_html_override: str | None = None) -> st
         f"<section class=\"panel progress-card\" data-job-status-url=\"/jobs/{html.escape(job.job_id)}"
         "/status\" aria-live=\"polite\">"
         f"<div class=\"progress-head\"><span class=\"progress-title\">{title}</span>"
-        f"<span id=\"job-stage\" class=\"progress-stage\">{html.escape(job.stage_label)}</span>"
+        f"<span id=\"job-stage\" class=\"progress-stage\">{html.escape(progress_view.current_stage)}</span>"
         f"{cancel_html}</div>"
         "<div class=\"progress-bar\" aria-hidden=\"true\">"
-        f"<span id=\"job-progress-fill\" class=\"progress-fill\" style=\"width:{progress}%\"></span>"
+        f"<span id=\"job-progress-fill\" class=\"progress-fill\" style=\"width:{progress_view.percent}%\"></span>"
         "</div>"
         f"{batch_progress_html}"
         f"<div id=\"job-error-slot\" class=\"error-card\" role=\"alert\"{error_hidden}>{error_html}</div>"

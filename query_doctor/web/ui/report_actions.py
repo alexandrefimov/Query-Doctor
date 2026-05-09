@@ -8,9 +8,7 @@ from typing import Any
 from query_doctor.web.job_progress import (
     REPORT_PROGRESS_STEPS,
     JobProgressView,
-    build_progress_view,
-    indexed_progress_percent,
-    progress_step_index,
+    build_indexed_progress_view,
 )
 from query_doctor.web.presenters.recent_scan import ReportActionView, present_report_action
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
@@ -94,10 +92,12 @@ def render_llm_report_status(view: ReportActionView, trusted_report_html: SafeHt
 
 
 def render_llm_report_progress(view: ReportActionView) -> str:
-    current_stage = view.stage_label or "Generating report"
-    progress_value = int(view.progress)
     progress_view = view.progress_view if view.job_kind in {"batch_report", "query_report"} else None
-    progress_view = progress_view or build_progress_view(REPORT_PROGRESS_STEPS, current_stage, progress_value, default_index=1)
+    progress_view = progress_view or build_indexed_progress_view(
+        REPORT_PROGRESS_STEPS,
+        "Generating validated report",
+        1,
+    )
     current_stage = progress_view.current_stage
     status_attrs = ""
     if view.job_id:
@@ -137,14 +137,6 @@ def render_progress_steps(progress_view: JobProgressView) -> str:
         )
         for step in progress_view.steps
     )
-
-
-def report_progress_step_index(stage_label: str, progress: int | None = None) -> int:
-    return progress_step_index(REPORT_PROGRESS_STEPS, stage_label, progress, default_index=1)
-
-
-def report_progress_percent(step_index: int) -> int:
-    return indexed_progress_percent(REPORT_PROGRESS_STEPS, step_index)
 
 
 def render_llm_report_failure(view: ReportActionView) -> str:

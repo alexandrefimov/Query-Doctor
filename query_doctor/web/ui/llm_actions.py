@@ -10,13 +10,9 @@ from query_doctor.web.job_progress import (
     LLM_ACTIONS_PROGRESS_STEPS,
     OPTIMIZED_QUERY_PROGRESS_STEPS,
     build_indexed_progress_view,
-    build_progress_view,
-    indexed_progress_percent,
-    progress_step_index,
 )
 from query_doctor.web.presenters.recent_scan import (
     ReportActionView,
-    numeric_value,
     present_report_action,
 )
 from query_doctor.web.ui.html_helpers import SafeHtml
@@ -26,8 +22,6 @@ from query_doctor.web.ui.report_actions import (
     render_llm_report_progress,
     render_llm_report_status,
     render_progress_steps,
-    report_progress_percent,
-    report_progress_step_index,
 )
 LLM_ACTIONS_JOB_KINDS = {"batch_llm_actions", "query_llm_actions"}
 
@@ -197,11 +191,9 @@ def combined_llm_actions_job_status(report_view: ReportActionView, optimizer_sta
 
 
 def render_llm_actions_job_progress(report_view: ReportActionView, optimizer_state: dict[str, Any]) -> str:
-    current_stage = report_view.stage_label or str(optimizer_state.get("stage_label") or "Generating validated report")
-    progress_value = report_view.progress or numeric_value(optimizer_state.get("progress"))
     progress_view = report_view.progress_view or progress_view_from_state(optimizer_state)
     if progress_view is None:
-        progress_view = build_progress_view(LLM_ACTIONS_PROGRESS_STEPS, current_stage, progress_value, default_index=0)
+        progress_view = build_indexed_progress_view(LLM_ACTIONS_PROGRESS_STEPS, "Checking selected case", 0)
     current_stage = progress_view.current_stage
     escaped_job_id = html.escape(report_view.job_id, quote=True)
     status_attrs = (
@@ -245,18 +237,6 @@ def render_llm_actions_job_stopped(report_view: ReportActionView, optimizer_stat
         f"<div class=\"error-card\" role=\"alert\">{html.escape(str(message))}</div>"
         "</div>"
     )
-
-
-def render_llm_actions_steps(current_stage: str, current_index: int) -> str:
-    return render_progress_steps(build_indexed_progress_view(LLM_ACTIONS_PROGRESS_STEPS, current_stage, current_index))
-
-
-def llm_actions_progress_step_index(stage_label: str, progress: int) -> int:
-    return progress_step_index(LLM_ACTIONS_PROGRESS_STEPS, stage_label, progress, default_index=0)
-
-
-def llm_actions_progress_percent(step_index: int) -> int:
-    return indexed_progress_percent(LLM_ACTIONS_PROGRESS_STEPS, step_index)
 
 
 def render_optimizer_action_button(
@@ -528,11 +508,9 @@ def render_optimized_query_action(
 
 
 def render_optimized_query_progress(state: dict[str, Any]) -> str:
-    current_stage = str(state.get("stage_label") or "Generating optimizer draft")
-    progress_value = numeric_value(state.get("progress"))
     progress_view = progress_view_from_state(state)
     if progress_view is None:
-        progress_view = build_progress_view(OPTIMIZED_QUERY_PROGRESS_STEPS, current_stage, progress_value, default_index=0)
+        progress_view = build_indexed_progress_view(OPTIMIZED_QUERY_PROGRESS_STEPS, "Checking source SQL", 0)
     current_stage = progress_view.current_stage
     status_attrs = ""
     job_id = str(state.get("job_id") or "")
@@ -680,14 +658,6 @@ def render_safe_markdown_paragraphs(text: str) -> str:
         else:
             rendered.append(f"<p>{html.escape(line)}</p>")
     return "".join(rendered)
-
-
-def optimized_query_progress_step_index(stage_label: str, progress: int) -> int:
-    return progress_step_index(OPTIMIZED_QUERY_PROGRESS_STEPS, stage_label, progress, default_index=0)
-
-
-def optimized_query_progress_percent(step_index: int) -> int:
-    return indexed_progress_percent(OPTIMIZED_QUERY_PROGRESS_STEPS, step_index)
 
 
 def progress_view_from_state(state: dict[str, Any]) -> JobProgressView | None:
