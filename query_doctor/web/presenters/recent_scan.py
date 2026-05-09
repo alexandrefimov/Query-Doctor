@@ -6,7 +6,11 @@ import re
 from typing import Any
 
 from query_doctor.web.presenters.recent_scan_models import (
+    RecentScanActionCandidateCardView,
+    RecentScanActionCandidatesView,
     RecentScanCaseDetailView,
+    RecentScanCaseOverviewCardView,
+    RecentScanCaseOverviewView,
     RecentScanCaseRowView,
     RecentScanClusterRuntimeContextView,
     RecentScanCmMetricCorrelationView,
@@ -22,7 +26,10 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanRuntimeVerdictView,
     RecentScanScoreReasonView,
     RecentScanScoreReasonsView,
+    RecentScanStatusCardView,
+    RecentScanStatusSummaryView,
     RecentScanSummaryView,
+    RecentScanTechnicalDetailsView,
     ReportActionView,
 )
 from query_doctor.web.presenters.optimizer_facts import (
@@ -65,6 +72,12 @@ from query_doctor.web.presenters.recent_scan_metadata import (
     present_metadata_table,
     present_recent_scan_metadata,
 )
+from query_doctor.web.presenters.recent_scan_action_candidates import (
+    present_recent_scan_action_candidates,
+)
+from query_doctor.web.presenters.recent_scan_overview import (
+    present_recent_scan_case_overview,
+)
 from query_doctor.web.presenters.recent_scan_runtime import (
     present_recent_scan_cluster_runtime_context,
     present_recent_scan_cm_metrics,
@@ -74,6 +87,12 @@ from query_doctor.web.presenters.recent_scan_runtime import (
 from query_doctor.web.presenters.recent_scan_score_reasons import (
     present_recent_scan_score_reason,
     present_recent_scan_score_reasons,
+)
+from query_doctor.web.presenters.recent_scan_status import (
+    present_recent_scan_status_summary,
+)
+from query_doctor.web.presenters.recent_scan_technical import (
+    present_recent_scan_technical_details,
 )
 
 

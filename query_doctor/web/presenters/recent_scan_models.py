@@ -216,6 +216,48 @@ class RecentScanScoreReasonsView:
 
 
 @dataclass(frozen=True)
+class RecentScanStatusCardView:
+    label: str
+    value: Any
+    value_kind: str
+
+
+@dataclass(frozen=True)
+class RecentScanStatusSummaryView:
+    cards: tuple[RecentScanStatusCardView, ...]
+
+
+@dataclass(frozen=True)
+class RecentScanCaseOverviewCardView:
+    label: str
+    value: Any
+    value_kind: str
+    severity: str = ""
+
+
+@dataclass(frozen=True)
+class RecentScanCaseOverviewView:
+    query_id: Any
+    cards: tuple[RecentScanCaseOverviewCardView, ...]
+
+
+@dataclass(frozen=True)
+class RecentScanActionCandidateCardView:
+    title: str
+    body: str
+
+
+@dataclass(frozen=True)
+class RecentScanActionCandidatesView:
+    cards: tuple[RecentScanActionCandidateCardView, ...]
+
+
+@dataclass(frozen=True)
+class RecentScanTechnicalDetailsView:
+    fields: tuple[tuple[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RecentScanCaseDetailView:
     case_id: str
     query_id: Any

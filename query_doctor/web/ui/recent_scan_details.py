@@ -7,15 +7,23 @@ from typing import Any
 
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseDetailView,
+    RecentScanCaseOverviewCardView,
+    RecentScanCaseOverviewView,
     RecentScanScoreReasonView,
     RecentScanScoreReasonsView,
+    RecentScanStatusCardView,
+    RecentScanStatusSummaryView,
+    RecentScanTechnicalDetailsView,
     batch_case_display_report_status,
     batch_report_status,
     case_has_failure,
     numeric_value,
+    present_recent_scan_case_overview,
     present_recent_scan_case_detail,
     present_recent_scan_score_reason,
     present_recent_scan_score_reasons,
+    present_recent_scan_status_summary,
+    present_recent_scan_technical_details,
     safe_display_value,
 )
 from query_doctor.web.presenters.recent_scan_evidence import (
@@ -29,6 +37,7 @@ from query_doctor.web.presenters.recent_scan_evidence import (
     primary_bottleneck_label as presenter_primary_bottleneck_label,
     stats_quality_label as presenter_stats_quality_label,
 )
+from query_doctor.web.presenters.recent_scan_models import RecentScanEvidenceGuideView
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
     badge_html,
@@ -43,13 +52,8 @@ from query_doctor.web.ui.html_helpers import (
     status_badge,
 )
 from query_doctor.web.ui.action_candidates import (
-    action_candidate_card,
-    candidate_counter_signal_text,
-    candidate_is_visible,
-    candidate_overview_value,
-    candidate_rank_text,
-    detail_stats_need_label,
     render_action_candidate_findings,
+    render_action_candidate_findings_view,
 )
 from query_doctor.web.ui.llm_actions import (
     render_llm_actions_block,
@@ -175,34 +179,15 @@ def render_recent_scan_case_detail_view(
 
 
 def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
-    items: list[tuple[str, Any]] = [
-        ("user", view.user),
-        ("score", score_badge_from_values(view.score, None, None, severity=view.score_severity)),
-        ("duration", view.duration_sec),
-        ("signals", view.signal_summary),
-    ]
-    if candidate_is_visible(view.optimization_candidate):
-        items.append(
-            (
-                "query optimization",
-                candidate_overview_value(view.optimization_candidate, view.optimization_rank),
-            )
-        )
-    if candidate_is_visible(view.stats_candidate):
-        items.append(("stats refresh", candidate_overview_value(view.stats_candidate, view.stats_rank)))
-    if not view.cluster_runtime_context.unavailable:
-        items.append(("cluster runtime", view.runtime_verdict.title))
-    if not view.primary_bottleneck.unavailable:
-        items.append(("primary bottleneck", view.primary_bottleneck.summary))
-    if view.has_spill:
-        items.append(("spill", "spill evidence observed"))
-    if is_visible_table_stats_status(view.table_stats_status):
-        items.append(("table stats", f"table stats {overview_table_stats_label(view.table_stats_status)}"))
+    return render_case_detail_overview_view(present_recent_scan_case_overview(view))
+
+
+def render_case_detail_overview_view(view: RecentScanCaseOverviewView) -> str:
     cards = "".join(
         "<div class=\"case-overview-card\">"
-        f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
+        f"<span>{html.escape(card.label)}</span><strong>{render_case_overview_card_value(card)}</strong>"
         "</div>"
-        for label, value in items
+        for card in view.cards
     )
     return (
         "<section id=\"case-overview\" class=\"case-overview\" aria-label=\"Case overview\">"
@@ -213,25 +198,22 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
     )
 
 
+def render_case_overview_card_value(card: RecentScanCaseOverviewCardView) -> str:
+    if card.value_kind == "score":
+        return score_badge_from_values(card.value, None, None, severity=card.severity)
+    return escape_value(card.value)
+
+
 def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
-    fields = [
-        item
-        for item in view.status_fields
-        if item[0] in {"collection", "analysis", "metadata", "report"}
-    ]
-    rendered_fields: list[tuple[str, Any]] = []
-    for label, value in fields:
-        if label in {"collection", "analysis", "metadata"}:
-            rendered_fields.append((label, status_badge(value)))
-        elif label == "report":
-            rendered_fields.append(("LLM report", report_badge(str(value))))
-        else:
-            rendered_fields.append((label, value))
+    return render_case_status_summary_view(present_recent_scan_status_summary(view))
+
+
+def render_case_status_summary_view(view: RecentScanStatusSummaryView) -> str:
     cards = "".join(
         "<div class=\"case-summary-card\">"
-        f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
+        f"<span>{html.escape(card.label)}</span><strong>{render_case_status_card_value(card)}</strong>"
         "</div>"
-        for label, value in rendered_fields
+        for card in view.cards
     )
     return (
         "<section id=\"pipeline-status\" aria-label=\"Pipeline status\">"
@@ -240,13 +222,24 @@ def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
     )
 
 
+def render_case_status_card_value(card: RecentScanStatusCardView) -> str:
+    if card.value_kind == "status":
+        return status_badge(card.value)
+    if card.value_kind == "report":
+        return report_badge(str(card.value))
+    return escape_value(card.value)
+
+
 def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
-    guide = present_recent_scan_evidence_guide(view)
+    return render_evidence_action_guide_view(present_recent_scan_evidence_guide(view))
+
+
+def render_evidence_action_guide_view(view: RecentScanEvidenceGuideView) -> str:
     card_html = "".join(
         "<div class=\"case-summary-card\">"
         f"<span>{html.escape(card.label)}</span><strong>{escape_value(card.value)}</strong>"
         "</div>"
-        for card in guide.cards
+        for card in view.cards
     )
     return (
         "<section id=\"evidence-guide\" class=\"case-overview\" aria-label=\"Evidence and action guide\">"
@@ -342,10 +335,13 @@ def render_case_detail_toc() -> str:
 
 
 def render_technical_details(view: RecentScanCaseDetailView) -> str:
-    fields = [(label, value) for label, value in view.technical_fields if is_meaningful_technical_detail_value(value)]
-    if not fields:
+    return render_technical_details_view(present_recent_scan_technical_details(view))
+
+
+def render_technical_details_view(view: RecentScanTechnicalDetailsView) -> str:
+    if not view.fields:
         return ""
-    rows = metadata_rows(fields)
+    rows = metadata_rows(list(view.fields))
     return (
         "<details class=\"analysis-subdetails technical-details\">"
         "<summary>Technical details</summary>"
@@ -385,32 +381,3 @@ def render_score_reason_card_view(reason: RecentScanScoreReasonView) -> str:
 def explain_score_reason(reason: Any) -> tuple[str, str]:
     view = present_recent_scan_score_reason(reason)
     return view.title, view.explanation
-
-
-def is_meaningful_detail_value(value: Any) -> bool:
-    if value is None:
-        return False
-    if value is False:
-        return False
-    text = str(value).strip().lower()
-    return text not in {"", "unknown", "none", "not_run", "false"}
-
-
-def is_visible_table_stats_status(value: Any) -> bool:
-    text = str(value or "").strip().lower()
-    return text not in {"", "unknown", "none", "not_checked", "not checked", "not_run", "false"}
-
-
-def overview_table_stats_label(value: Any) -> str:
-    text = str(value or "").strip().lower().replace("_", " ")
-    if text == "missing or incomplete":
-        return "missing/incomplete"
-    if text == "not available":
-        return "not available"
-    return text or "unknown"
-
-
-def is_meaningful_technical_detail_value(value: Any) -> bool:
-    if not is_meaningful_detail_value(value):
-        return False
-    return str(value).strip().lower() not in {"0", "0.0", "0s", "0.0s"}

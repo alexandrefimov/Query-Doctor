@@ -5,56 +5,28 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from query_doctor.web.presenters.recent_scan import RecentScanCaseDetailView
+from query_doctor.web.presenters.recent_scan import (
+    RecentScanActionCandidateCardView,
+    RecentScanActionCandidatesView,
+    RecentScanCaseDetailView,
+    present_recent_scan_action_candidates,
+)
 from query_doctor.web.ui.html_helpers import escape_value
 
 
 def render_action_candidate_findings(view: RecentScanCaseDetailView) -> str:
-    cards: list[str] = []
-    optimization = view.optimization_candidate
-    if candidate_is_visible(optimization):
-        rank_text = candidate_rank_text(view.optimization_rank)
-        counter_text = candidate_counter_signal_text(optimization)
-        rewrite_support_text = optimizer_rewrite_support_text(optimization)
-        cards.append(
-            action_candidate_card(
-                f"Query optimization candidate: {candidate_title(optimization.get('tier'))}",
-                (
-                    f"Score: {escape_value(optimization.get('score'))}/100. "
-                    f"{rank_text}"
-                    f"Impact: {candidate_title(optimization.get('impact'))}. "
-                    f"Confidence: {candidate_title(optimization.get('confidence'))}. "
-                    f"{rewrite_support_text}"
-                    f"Why: {optimization.get('summary') or 'query-shape evidence'}. "
-                    f"Review first: {optimization.get('review_areas') or 'query shape'}."
-                    f"{counter_text}"
-                ),
-            )
-        )
-    stats = view.stats_candidate
-    if candidate_is_visible(stats):
-        rank_text = candidate_rank_text(view.stats_rank)
-        counter_text = candidate_counter_signal_text(stats)
-        cards.append(
-            action_candidate_card(
-                "Stats re"
-                f"fresh candidate: {candidate_title(stats.get('tier'))}",
-                (
-                    f"Score: {escape_value(stats.get('score'))}/100. "
-                    f"{rank_text}"
-                    f"Need: {detail_stats_need_label(stats.get('need_type'))}. "
-                    f"Speed benefit: {candidate_title(stats.get('speed_benefit'))}. "
-                    f"Confidence: {candidate_title(stats.get('confidence'))}. "
-                    f"Why: {stats.get('summary') or 'stats-planning evidence'}. "
-                    f"Review first: {stats.get('review_areas') or 'stats evidence'}. "
-                    f"Confirm: {stats.get('required_confirmation') or 'compare EXPLAIN and rerun under comparable load'}."
-                    f"{counter_text}"
-                ),
-            )
-        )
-    if not cards:
+    return render_action_candidate_findings_view(present_recent_scan_action_candidates(view))
+
+
+def render_action_candidate_findings_view(view: RecentScanActionCandidatesView) -> str:
+    if not view.cards:
         return ""
-    return "<ul class=\"reason-list action-candidate-list\">" + "".join(cards) + "</ul>"
+    cards = "".join(render_action_candidate_card_view(card) for card in view.cards)
+    return f"<ul class=\"reason-list action-candidate-list\">{cards}</ul>"
+
+
+def render_action_candidate_card_view(card: RecentScanActionCandidateCardView) -> str:
+    return action_candidate_card(card.title, card.body)
 
 
 def candidate_is_visible(candidate: dict[str, Any]) -> bool:
