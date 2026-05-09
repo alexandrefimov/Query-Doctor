@@ -21,7 +21,7 @@ from query_doctor.web.models import (
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost"}
+LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 def positive_int(value: str) -> int:

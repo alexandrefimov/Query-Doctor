@@ -18,6 +18,23 @@ from query_doctor.web.ui.pages import render_page
 
 MAX_WEB_POST_BODY_BYTES = 320 * 1024
 AnalysisFunc = Callable[[str, str, bool, WebSettings], object]
+LOCAL_REQUEST_HOSTS = {"127.0.0.1", "localhost", "::1"}
+SECURITY_HEADERS = (
+    ("X-Content-Type-Options", "nosniff"),
+    ("Referrer-Policy", "no-referrer"),
+    ("X-Frame-Options", "DENY"),
+    (
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; "
+        "base-uri 'none'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'",
+    ),
+)
 
 
 def parse_post_content_length(value: str | None) -> int:
@@ -44,6 +61,35 @@ def read_bounded_post_form(
     return parse_qs(raw_body.decode("utf-8", errors="replace"), keep_blank_values=True)
 
 
+def normalized_request_host(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    host = value.strip()
+    if any(char.isspace() for char in host) or "/" in host or "@" in host:
+        return ""
+    if host.startswith("["):
+        closing = host.find("]")
+        if closing == -1:
+            return ""
+        return host[1:closing].lower()
+    if host.count(":") == 1:
+        host = host.split(":", 1)[0]
+    return host.lower().rstrip(".")
+
+
+def request_host_allowed(value: str | None, settings: WebSettings) -> bool:
+    if settings.allow_nonlocal_web_bind:
+        return True
+    host = normalized_request_host(value)
+    if host is None:
+        return True
+    allowed_hosts = set(LOCAL_REQUEST_HOSTS)
+    bind_host = normalized_request_host(settings.host)
+    if bind_host and bind_host not in {"0.0.0.0", "::"}:
+        allowed_hosts.add(bind_host)
+    return host in allowed_hosts
+
+
 def make_handler(
     settings: WebSettings,
     analysis_func: AnalysisFunc = run_query_id_analysis,
@@ -54,6 +100,9 @@ def make_handler(
 
     class QueryDoctorWebHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            if not self.request_host_is_allowed():
+                self.write_rejected_host_response()
+                return
             response = route_get_request(self.path, settings, store)
             if response is not None:
                 self.write_route_response(response)
@@ -61,6 +110,9 @@ def make_handler(
             self.send_error(404)
 
         def do_POST(self) -> None:
+            if not self.request_host_is_allowed():
+                self.write_rejected_host_response()
+                return
             if not post_route_is_allowed(self.path):
                 self.send_error(404)
                 return
@@ -91,6 +143,7 @@ def make_handler(
                 self.send_response(response.status)
                 self.send_header("Location", response.location)
                 self.send_header("Cache-Control", "no-store")
+                self.send_security_headers()
                 self.end_headers()
                 return
             if response.content_type.startswith("application/json"):
@@ -104,11 +157,32 @@ def make_handler(
             self.send_header("Content-Type", content_type)
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(payload)))
+            self.send_security_headers()
             self.end_headers()
             self.wfile.write(payload)
 
         def write_json(self, status: int, body: str) -> None:
             self.write_body(status, body, "application/json; charset=utf-8")
+
+        def request_host_is_allowed(self) -> bool:
+            headers = getattr(self, "headers", {})
+            host_value = headers.get("Host") if hasattr(headers, "get") else None
+            return request_host_allowed(host_value, settings)
+
+        def write_rejected_host_response(self) -> None:
+            error = WebError("Refusing request Host header outside the local web allowlist.")
+            self.write_html(400, render_page(settings, active_nav="batch", error=error))
+
+        def send_security_headers(self) -> None:
+            if getattr(self, "_query_doctor_security_headers_sent", False):
+                return
+            for name, value in SECURITY_HEADERS:
+                self.send_header(name, value)
+            self._query_doctor_security_headers_sent = True
+
+        def end_headers(self) -> None:
+            self.send_security_headers()
+            super().end_headers()
 
         def log_message(self, fmt: str, *args: object) -> None:
             print(f"[Query Doctor web] {self.address_string()} {fmt % args}", file=sys.stderr)
