@@ -484,13 +484,18 @@ def optimizer_rewrite_support_view(case: dict[str, Any]) -> dict[str, str]:
     support = case.get("optimizer_rewrite_support")
     support = support if isinstance(support, dict) else {}
     status = safe_optimizer_rewrite_support_status(support.get("status"))
-    label = safe_optimizer_rewrite_support_label(status, support.get("label"))
-    reason = safe_optimizer_rewrite_support_reason(support.get("reason"))
+    bucket = safe_optimizer_rewriteability_bucket(support.get("rewriteability_bucket"))
+    label = safe_optimizer_rewrite_support_label(status, support.get("label"), bucket=bucket)
+    reason = safe_optimizer_rewrite_support_reason(
+        support.get("reason"),
+        bucket=bucket,
+        draft_eligibility=support.get("draft_eligibility"),
+    )
     return {
         "rewrite_support": status,
         "rewrite_support_label": label,
         "rewrite_support_reason": reason,
-        "rewriteability_bucket": safe_optimizer_rewriteability_bucket(support.get("rewriteability_bucket")),
+        "rewriteability_bucket": bucket,
         "rewriteability_label": safe_optimizer_rewriteability_label(support.get("rewriteability_label")),
         "rewrite_support_facts": optimizer_rewrite_support_fact_summary(support),
         "rewrite_support_guardrails": optimizer_rewrite_support_guardrail_summary(support),
@@ -512,7 +517,12 @@ def safe_optimizer_rewrite_support_status(value: Any) -> str:
     return status if status in allowed else "unknown"
 
 
-def safe_optimizer_rewrite_support_label(status: str, value: Any) -> str:
+def safe_optimizer_rewrite_support_label(
+    status: str,
+    value: Any,
+    *,
+    bucket: str = "unknown",
+) -> str:
     labels = {
         "sql_draft_supported": "SQL draft eligible",
         "sql_draft_attemptable": "Rewrite recipe detected",
@@ -523,13 +533,23 @@ def safe_optimizer_rewrite_support_label(status: str, value: Any) -> str:
         "not_candidate": "Not an optimization candidate",
         "unknown": "Unknown",
     }
+    if bucket == "human_review_only" and status in {"draft_disabled", "guidance_only"}:
+        return "Human review only"
     text = safe_optimization_display_text(value)
     if status == "sql_draft_attemptable" and text.lower() == "sql draft attemptable":
         return labels[status]
     return text if text and status != "unknown" else labels.get(status, "Unknown")
 
 
-def safe_optimizer_rewrite_support_reason(value: Any) -> str:
+def safe_optimizer_rewrite_support_reason(
+    value: Any,
+    *,
+    bucket: str = "unknown",
+    draft_eligibility: Any = None,
+) -> str:
+    eligibility = str(draft_eligibility or "").strip().lower()
+    if bucket == "human_review_only" and eligibility == "disabled_by_safety_thresholds":
+        return "Trusted SQL draft disabled by safety and validation guardrails"
     text = safe_optimization_display_text(value)
     return text or "No trusted rewrite-support classification is available"
 

@@ -89,6 +89,13 @@ def optimizer_rewrite_support_guardrail_summary(support: dict[str, Any]) -> str:
             for reason in derived_reasons[:4]
             if (label := optimizer_token_label(reason, OPTIMIZER_DERIVED_BOUNDARY_LABELS))
         )
+    risk_reasons = support.get("risk_reasons")
+    if isinstance(risk_reasons, (list, tuple)):
+        parts.extend(
+            label
+            for reason in risk_reasons[:5]
+            if (label := optimizer_token_label(reason, OPTIMIZER_RISK_REASON_LABELS))
+        )
     if not parts:
         return ""
     return "; ".join(parts[:5])
@@ -192,6 +199,18 @@ OPTIMIZER_CTE_BOUNDARY_LABELS = {
     "unsupported_graph": "unsupported CTE graph",
     "unsupported_reference_order": "unsupported CTE reference order",
     "disconnected": "disconnected CTE graph",
+}
+
+OPTIMIZER_RISK_REASON_LABELS = {
+    "cte_body_validation_not_proven": "CTE body validation not proven",
+    "nested_query_body_validation_not_proven": "nested query body validation not proven",
+    "sql_payload_too_large_for_safe_rewrite": "SQL payload too large for safe rewrite",
+    "too_many_ctes_for_safe_rewrite": "too many CTEs for safe rewrite",
+    "too_many_top_level_joins_for_safe_rewrite": "too many top-level joins for safe rewrite",
+    "long_sql_payload": "long SQL payload",
+    "many_ctes": "many CTEs",
+    "many_top_level_joins": "many top-level joins",
+    "set_operations": "set operations",
 }
 
 OPTIMIZER_DERIVED_BOUNDARY_LABELS = {

@@ -402,6 +402,8 @@ def optimizer_rewrite_support_view(status: Any, label: Any, reason: Any) -> tupl
     }
     fallback_label, class_name = fallback_labels.get(normalized, fallback_labels["unknown"])
     title_label = str(label or fallback_label).strip() or fallback_label
+    if title_label.lower() == "human review only":
+        fallback_label = "Human review"
     title_reason = str(reason or "").strip()
     title = f"{title_label}: {title_reason}" if title_reason else title_label
     return fallback_label, class_name, title

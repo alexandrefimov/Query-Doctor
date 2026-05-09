@@ -112,6 +112,17 @@ NO_DRAFT_CLASSES = {
     "other",
 }
 NO_DRAFT_RECIPE_IDS = set(RECIPE_LABELS) | {"unknown_recipe"}
+HUMAN_REVIEW_RISK_REASONS = {
+    "cte_body_validation_not_proven",
+    "long_sql_payload",
+    "many_ctes",
+    "many_top_level_joins",
+    "nested_query_body_validation_not_proven",
+    "set_operations",
+    "sql_payload_too_large_for_safe_rewrite",
+    "too_many_ctes_for_safe_rewrite",
+    "too_many_top_level_joins_for_safe_rewrite",
+}
 
 
 def build_summary(
@@ -470,6 +481,9 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     adjacent_derived_predicate_pushdown_counts: Counter[str] = Counter()
     adjacent_derived_boundary_reason_counts: Counter[str] = Counter()
     adjacent_actionability_counts: Counter[str] = Counter()
+    human_review_status_counts: Counter[str] = Counter()
+    human_review_eligibility_counts: Counter[str] = Counter()
+    human_review_risk_reason_counts: Counter[str] = Counter()
     optimization_candidate_count = 0
     for case in cases:
         support = case.optimizer_rewrite_support
@@ -520,6 +534,12 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
             ] += 1
             adjacent_derived_boundary_reason_counts.update(
                 normalize_adjacent_label(reason) for reason in support.derived_boundary_reasons
+            )
+        elif normalized_bucket == "human_review_only":
+            human_review_status_counts[normalize_adjacent_label(support.status)] += 1
+            human_review_eligibility_counts[normalize_adjacent_label(support.draft_eligibility)] += 1
+            human_review_risk_reason_counts.update(
+                normalize_human_review_risk_reason(reason) for reason in support.risk_reasons
             )
     total = len(cases)
     safe_material_draft = bucket_counts.get("safe_material_draft", 0)
@@ -591,6 +611,13 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         ),
         "stats_likely_cases": stats_likely,
         "human_review_only_cases": human_review,
+        "human_review_only_status_counts": dict(sorted(human_review_status_counts.items())),
+        "human_review_only_draft_eligibility_counts": dict(
+            sorted(human_review_eligibility_counts.items())
+        ),
+        "human_review_only_risk_reason_counts": dict(
+            sorted(human_review_risk_reason_counts.items())
+        ),
         "safe_material_draft_rate": ratio(safe_material_draft, total),
         "recipe_backlog_rate": ratio(no_draft + recipe_adjacent, total),
         "recipe_backlog_actionable_cases": no_draft_actionable + adjacent_actionable,
@@ -697,6 +724,11 @@ def normalize_adjacent_label(value: object) -> str:
     if all(character.isalnum() or character == "_" for character in label):
         return label
     return "other"
+
+
+def normalize_human_review_risk_reason(value: object) -> str:
+    label = normalize_adjacent_label(value)
+    return label if label in HUMAN_REVIEW_RISK_REASONS else "other"
 
 
 def ratio(numerator: int, denominator: int) -> float:
@@ -908,6 +940,22 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         if isinstance(bucket_counts, dict) and bucket_counts:
             rendered_buckets = ", ".join(f"{bucket}={count}" for bucket, count in sorted(bucket_counts.items()))
             lines.append(f"- buckets: {rendered_buckets}")
+        human_review_reasons = rewriteability_distribution.get(
+            "human_review_only_risk_reason_counts"
+        )
+        if isinstance(human_review_reasons, dict) and human_review_reasons:
+            rendered_reasons = ", ".join(
+                f"{reason}={count}" for reason, count in sorted(human_review_reasons.items())
+            )
+            lines.append(f"- human-review guardrails: {rendered_reasons}")
+        human_review_eligibility = rewriteability_distribution.get(
+            "human_review_only_draft_eligibility_counts"
+        )
+        if isinstance(human_review_eligibility, dict) and human_review_eligibility:
+            rendered_eligibility = ", ".join(
+                f"{label}={count}" for label, count in sorted(human_review_eligibility.items())
+            )
+            lines.append(f"- human-review draft eligibility: {rendered_eligibility}")
         no_draft_recipes = rewriteability_distribution.get("recipe_detected_no_draft_recipe_counts")
         if isinstance(no_draft_recipes, dict) and no_draft_recipes:
             rendered_recipes = ", ".join(
