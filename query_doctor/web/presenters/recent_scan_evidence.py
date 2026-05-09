@@ -162,6 +162,8 @@ def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
             return "Review runtime skew evidence before SQL or stats action"
         if label == "data movement":
             return "Review data-movement evidence before SQL or stats action"
+        if label == "storage/hdfs":
+            return "Review storage and HDFS evidence before SQL or stats action"
     if not primary.unavailable and primary.label == "Competing signals":
         return "Review competing stats, SQL-shape, and runtime signals"
     if _candidate_is_visible(view.optimization_candidate):

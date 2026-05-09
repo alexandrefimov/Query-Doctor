@@ -10,6 +10,8 @@ WALL_CLOCK_MIN_FOR_CLASSIFICATION_SEC = 5.0
 CARDINALITY_ANOMALY_MIN_COUNT = 1
 CARDINALITY_ANOMALY_HIGH_COUNT = 3
 EXECUTION_TAIL_MIN_CANDIDATES = 1
+DATA_MOVEMENT_FINDING_ID = "large_intermediate_or_exchange_traffic"
+STORAGE_FINDING_ID = "hdfs_or_storage_bottleneck"
 
 CONFIDENCE_ORDER = {"low": 1, "medium": 2, "high": 3}
 
@@ -66,7 +68,10 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     non_stats_categories = category_set(stats_quality.get("non_stats_bottleneck_categories"))
     cardinality_count = len(analysis.get("cardinality_anomalies") or [])
     has_anomaly = cardinality_count >= CARDINALITY_ANOMALY_MIN_COUNT
-    is_data_movement_top = top_finding_id(analysis) == "large_intermediate_or_exchange_traffic"
+    elapsed_top_finding = top_finding_id(analysis)
+    is_data_movement_top = elapsed_top_finding == DATA_MOVEMENT_FINDING_ID
+    is_storage_top = elapsed_top_finding == STORAGE_FINDING_ID
+    storage_runtime_diagnosis_supported = runtime_diagnosis_supports_storage(analysis)
 
     stats_signal = stats_primary == "candidate_supported" and has_anomaly
     stats_competing_signal = (
@@ -85,6 +90,12 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         and not sql_supports_primary
         and not stats_competing_signal
     )
+    runtime_storage_supports_primary = (
+        (is_storage_top or storage_runtime_diagnosis_supported)
+        and not stats_signal
+        and not sql_supports_primary
+        and not stats_competing_signal
+    )
 
     primary_candidates = [
         name
@@ -92,6 +103,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
             ("stats", stats_supports_primary),
             ("sql_shape", sql_supports_primary),
             ("runtime_data_movement", data_movement_supports_primary),
+            ("runtime_storage", runtime_storage_supports_primary),
         )
         if supported
     ]
@@ -150,6 +162,13 @@ def top_finding_id(analysis: dict[str, Any]) -> str:
     return ""
 
 
+def runtime_diagnosis_supports_storage(analysis: dict[str, Any]) -> bool:
+    diagnosis = analysis.get("runtime_diagnosis")
+    diagnosis = diagnosis if isinstance(diagnosis, dict) else {}
+    summary = str(diagnosis.get("summary") or "").strip().lower()
+    return "storage/hdfs" in summary and "strongest plausible" in summary
+
+
 def finding_elapsed_ms(finding: dict[str, Any], analysis: dict[str, Any]) -> float:
     finding_id = str(finding.get("id") or "")
     if finding_id == "host_execution_tail_suspected":
@@ -201,6 +220,8 @@ def primary_confidence(primary: str, analysis: dict[str, Any], wall_clock_confid
             level = "low"
     elif primary == "runtime_data_movement":
         level = "medium"
+    elif primary == "runtime_storage":
+        level = "medium"
     else:
         level = "medium"
     return min_confidence(level, wall_clock_confidence)
@@ -214,6 +235,10 @@ def primary_reasons(primary: str, analysis: dict[str, Any]) -> tuple[str, ...]:
         return ("stats_not_primary", f"cardinality_anomalies_{cardinality_count}")
     if primary == "runtime_data_movement":
         return ("large_intermediate_or_exchange_top_finding",)
+    if primary == "runtime_storage":
+        if not top_finding_id(analysis) == STORAGE_FINDING_ID and runtime_diagnosis_supports_storage(analysis):
+            return ("storage_or_hdfs_runtime_diagnosis",)
+        return ("storage_or_hdfs_top_finding",)
     return (f"{primary}_supported",)
 
 

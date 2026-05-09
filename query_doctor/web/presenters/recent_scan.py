@@ -285,6 +285,7 @@ PRIMARY_BOTTLENECK_LABELS = {
     "runtime_admission": "Admission/runtime",
     "runtime_skew": "Runtime skew",
     "runtime_data_movement": "Data movement",
+    "runtime_storage": "Storage/HDFS",
     "mixed": "Competing signals",
     "unknown": "Unknown",
 }
@@ -293,6 +294,8 @@ PRIMARY_BOTTLENECK_REASON_LABELS = {
     "stats_candidate_supported": "stats candidate supported",
     "stats_not_primary": "stats not primary",
     "large_intermediate_or_exchange_top_finding": "large exchange/intermediate traffic is top finding",
+    "storage_or_hdfs_top_finding": "storage/HDFS is top finding",
+    "storage_or_hdfs_runtime_diagnosis": "storage/HDFS runtime diagnosis",
     "execution_tail_top_finding": "execution tail is top finding",
     "very_short_query_or_unknown_wall_clock": "very short query or unknown wall clock",
     "no_primary_branch_supported": "no primary branch supported",
@@ -300,6 +303,7 @@ PRIMARY_BOTTLENECK_REASON_LABELS = {
     "competing_stats": "competing stats signal",
     "competing_sql_shape": "competing SQL-shape signal",
     "competing_runtime_data_movement": "competing data-movement signal",
+    "competing_runtime_storage": "competing storage/HDFS signal",
 }
 
 

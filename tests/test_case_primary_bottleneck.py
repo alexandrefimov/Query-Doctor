@@ -181,6 +181,85 @@ def test_data_movement_is_fallback_after_stats_and_sql_shape_do_not_match():
     assert result.confidence == "medium"
 
 
+def test_storage_or_hdfs_is_fallback_after_stats_and_sql_shape_do_not_match():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            findings=[
+                {
+                    "id": "hdfs_or_storage_bottleneck",
+                    "operators": [{"time_ms": 7_000}],
+                }
+            ],
+            top_operators_by_time=[
+                {"operator_name": "HDFS SCAN", "time_ms": 7_000},
+            ],
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "storage_or_hdfs",
+            },
+        )
+    )
+
+    assert result.label == "runtime_storage"
+    assert result.confidence == "medium"
+    assert result.reasons == ("storage_or_hdfs_top_finding",)
+
+
+def test_storage_or_hdfs_runtime_diagnosis_can_route_medium_primary():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            findings=[
+                {
+                    "id": "join_bottleneck",
+                    "operators": [],
+                },
+                {
+                    "id": "hdfs_or_storage_bottleneck",
+                    "operators": [],
+                }
+            ],
+            runtime_diagnosis={
+                "summary": (
+                    "Storage/HDFS path is the strongest plausible follow-up "
+                    "hypothesis from deterministic facts."
+                )
+            },
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "storage_or_hdfs",
+            },
+        )
+    )
+
+    assert result.label == "runtime_storage"
+    assert result.confidence == "medium"
+    assert result.reasons == ("storage_or_hdfs_runtime_diagnosis",)
+
+
+def test_mixed_candidate_is_not_overridden_by_storage_top_finding():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(2),
+            findings=[
+                {
+                    "id": "hdfs_or_storage_bottleneck",
+                    "operators": [{"time_ms": 7_000}],
+                }
+            ],
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "mixed_candidate",
+                "non_stats_bottleneck_categories": "storage_or_hdfs",
+            },
+        )
+    )
+
+    assert result.label == "mixed"
+    assert result.confidence == "medium"
+
+
 def test_very_short_query_returns_unknown():
     result = classify_case_primary_bottleneck(
         analysis_fixture(

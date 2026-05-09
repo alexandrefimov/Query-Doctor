@@ -24,6 +24,7 @@ ACTIVE_DOCS = (
     "docs/code-map.md",
     "docs/agent-playbook.md",
     "docs/test-matrix.md",
+    "docs/validation-log.md",
     "docs/safety-contract.md",
     "docs/architecture.md",
     "docs/engine-expansion-plan.md",

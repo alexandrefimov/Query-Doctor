@@ -25,10 +25,74 @@ PRIMARY_BOTTLENECK_LABELS = {
     "runtime_admission",
     "runtime_skew",
     "runtime_data_movement",
+    "runtime_storage",
     "mixed",
     "unknown",
 }
 PRIMARY_BOTTLENECK_CONFIDENCES = {"high", "medium", "low"}
+UNKNOWN_FINDING_IDS = {
+    "analytic_bottleneck",
+    "cardinality_estimate_errors",
+    "hdfs_or_storage_bottleneck",
+    "host_execution_tail_suspected",
+    "join_bottleneck",
+    "large_intermediate_or_exchange_traffic",
+    "memory_estimate_errors",
+    "sort_bottleneck",
+}
+UNKNOWN_OPERATOR_CATEGORIES = {
+    "AGGREGATE",
+    "ANALYTIC",
+    "EXCHANGE",
+    "HASH JOIN",
+    "HDFS SCAN",
+    "NESTED LOOP JOIN",
+    "SCAN",
+    "SORT",
+    "UNION",
+}
+UNKNOWN_LIMITATION_LABELS = {
+    "runtime_metrics_unavailable",
+    "table_metadata_unavailable",
+    "backend_per_host_metrics_unavailable",
+    "backend_metrics_not_comparable",
+}
+UNKNOWN_METADATA_STATUS_LABELS = {
+    "collected",
+    "failed",
+    "not_observed",
+    "partial",
+    "skipped",
+}
+UNKNOWN_OPTIMIZATION_TIER_LABELS = {
+    "high",
+    "medium",
+    "low",
+    "not_likely",
+    "unknown",
+}
+UNKNOWN_EVIDENCE_QUALITY_LABELS = {
+    "high",
+    "medium",
+    "low",
+    "unknown",
+}
+UNKNOWN_STATS_PRIMARY_LABELS = {
+    "candidate_supported",
+    "mixed_candidate",
+    "not_applicable",
+    "not_supported",
+    "not_primary_supported",
+    "not_supported_by_metadata",
+    "unknown",
+}
+UNKNOWN_STATS_CONTEXT_LABELS = {
+    "metadata_unavailable",
+    "not_physical_table_stats",
+    "stats_gap_without_row_estimate_evidence",
+    "stats_present_with_row_estimate_evidence",
+    "unknown",
+}
 REWRITEABILITY_BUCKETS = {
     "safe_material_draft",
     "recipe_detected_no_draft",
@@ -68,6 +132,7 @@ def build_summary(
     reason_counts = {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
     reason_sql_verb_counts = {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
     primary_distribution = case_primary_bottleneck_distribution(cases)
+    primary_unknown_breakdown = case_primary_unknown_breakdown(cases)
     rewriteability_distribution = optimizer_rewriteability_distribution(cases)
     optimizer_funnel_summary = optimizer_funnel(cases, rewriteability_distribution)
     return {
@@ -112,6 +177,7 @@ def build_summary(
         "candidate_reason_sql_verb_counts": reason_sql_verb_counts,
         "candidate_exclusion_count": 0 if discovery.scan_too_broad else max(0, inspected - selected_count),
         "case_primary_bottleneck_distribution": primary_distribution,
+        "case_primary_unknown_breakdown": primary_unknown_breakdown,
         "optimizer_rewriteability_distribution": rewriteability_distribution,
         "optimizer_funnel": optimizer_funnel_summary,
         "top_reports": config.top_reports,
@@ -230,6 +296,162 @@ def case_primary_bottleneck_distribution(cases: list[CaseResult]) -> dict[str, o
         "unknown_or_not_classified_rate": ratio(unknown_cases + not_classified_cases, total),
         "medium_or_better_confidence_rate": ratio(medium_or_better, total),
     }
+
+
+def case_primary_unknown_breakdown(cases: list[CaseResult]) -> dict[str, object]:
+    metadata_status_counts: Counter[str] = Counter()
+    query_tier_counts: Counter[str] = Counter()
+    stats_tier_counts: Counter[str] = Counter()
+    duration_bucket_counts: Counter[str] = Counter()
+    score_severity_counts: Counter[str] = Counter()
+    finding_id_counts: Counter[str] = Counter()
+    top_time_operator_counts: Counter[str] = Counter()
+    evidence_quality_level_counts: Counter[str] = Counter()
+    evidence_limitation_counts: Counter[str] = Counter()
+    runtime_diagnosis_counts: Counter[str] = Counter()
+    stats_primary_counts: Counter[str] = Counter()
+    stats_context_counts: Counter[str] = Counter()
+    analysis_json_cases = 0
+    unknown_cases = [case for case in cases if case_primary_label(case) == "unknown"]
+    for case in unknown_cases:
+        metadata_status_counts[known_or_other(case.metadata_status, UNKNOWN_METADATA_STATUS_LABELS)] += 1
+        query_tier_counts[
+            known_or_other(candidate_tier(case.query_optimization_candidate), UNKNOWN_OPTIMIZATION_TIER_LABELS)
+        ] += 1
+        stats_tier_counts[
+            known_or_other(candidate_tier(case.stats_optimization_candidate), UNKNOWN_OPTIMIZATION_TIER_LABELS)
+        ] += 1
+        duration_bucket_counts[duration_bucket(case.duration_sec)] += 1
+        score_severity_counts[case_score_severity(case)] += 1
+        analysis = load_case_analysis(case)
+        if not isinstance(analysis, dict):
+            continue
+        analysis_json_cases += 1
+        for finding in analysis.get("findings") or []:
+            if isinstance(finding, dict):
+                finding_id_counts[known_or_other(finding.get("id"), UNKNOWN_FINDING_IDS)] += 1
+        top_operator = first_operator_name(analysis.get("top_operators_by_time"))
+        top_time_operator_counts[operator_category(top_operator)] += 1
+        evidence_quality = analysis.get("evidence_quality")
+        if isinstance(evidence_quality, dict):
+            evidence_quality_level_counts[
+                known_or_other(evidence_quality.get("level"), UNKNOWN_EVIDENCE_QUALITY_LABELS)
+            ] += 1
+            for limitation in evidence_quality.get("limitations") or []:
+                evidence_limitation_counts[known_or_other(limitation, UNKNOWN_LIMITATION_LABELS)] += 1
+        runtime_diagnosis = analysis.get("runtime_diagnosis")
+        if isinstance(runtime_diagnosis, dict):
+            runtime_diagnosis_counts[runtime_diagnosis_bucket(runtime_diagnosis.get("summary"))] += 1
+        stats_quality = analysis.get("stats_metadata_quality")
+        if isinstance(stats_quality, dict):
+            stats_primary_counts[
+                known_or_other(stats_quality.get("stats_primary_bottleneck"), UNKNOWN_STATS_PRIMARY_LABELS)
+            ] += 1
+            stats_context_counts[
+                known_or_other(stats_quality.get("stats_context"), UNKNOWN_STATS_CONTEXT_LABELS)
+            ] += 1
+    return {
+        "total_cases": len(unknown_cases),
+        "analysis_json_cases": analysis_json_cases,
+        "metadata_status_counts": sorted_counter(metadata_status_counts),
+        "query_optimization_tier_counts": sorted_counter(query_tier_counts),
+        "stats_optimization_tier_counts": sorted_counter(stats_tier_counts),
+        "duration_bucket_counts": sorted_counter(duration_bucket_counts),
+        "score_severity_counts": sorted_counter(score_severity_counts),
+        "finding_id_counts": sorted_counter(finding_id_counts),
+        "top_time_operator_counts": sorted_counter(top_time_operator_counts),
+        "evidence_quality_level_counts": sorted_counter(evidence_quality_level_counts),
+        "evidence_limitation_counts": sorted_counter(evidence_limitation_counts),
+        "runtime_diagnosis_summary_counts": sorted_counter(runtime_diagnosis_counts),
+        "stats_primary_bottleneck_counts": sorted_counter(stats_primary_counts),
+        "stats_context_counts": sorted_counter(stats_context_counts),
+    }
+
+
+def case_primary_label(case: CaseResult) -> str:
+    bottleneck = case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
+    return str(bottleneck.get("label") or "").strip().lower()
+
+
+def candidate_tier(candidate: object | None) -> object:
+    return getattr(candidate, "tier", None)
+
+
+def load_case_analysis(case: CaseResult) -> dict[str, object] | None:
+    if case.actual_case_dir is None:
+        return None
+    analysis_path = case.actual_case_dir / "analysis.json"
+    if not analysis_path.exists():
+        return None
+    try:
+        payload = json.loads(analysis_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def safe_counter_label(value: object, *, default: str = "unknown") -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return default
+    safe = "".join(character if character.isalnum() or character == "_" else "_" for character in text)
+    safe = "_".join(part for part in safe.split("_") if part)
+    return safe or default
+
+
+def known_or_other(value: object, known_values: set[str]) -> str:
+    label = safe_counter_label(value)
+    return label if label in known_values else "other"
+
+
+def duration_bucket(duration_sec: float | None) -> str:
+    if duration_sec is None:
+        return "unknown"
+    if duration_sec < 60:
+        return "lt_60s"
+    if duration_sec < 120:
+        return "60_120s"
+    if duration_sec < 200:
+        return "120_200s"
+    if duration_sec < 600:
+        return "200_600s"
+    return "600s_plus"
+
+
+def first_operator_name(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    for item in value:
+        if isinstance(item, dict) and item.get("operator_name"):
+            return str(item["operator_name"])
+    return ""
+
+
+def operator_category(operator_name: str) -> str:
+    name = operator_name.upper()
+    for category in sorted(UNKNOWN_OPERATOR_CATEGORIES, key=len, reverse=True):
+        if category in name:
+            return category
+    return "OTHER" if name else "UNKNOWN"
+
+
+def runtime_diagnosis_bucket(summary: object) -> str:
+    text = str(summary or "").strip().lower()
+    if not text:
+        return "unknown"
+    if "hdfs" in text or "storage" in text:
+        return "storage_or_hdfs"
+    if "admission" in text:
+        return "admission"
+    if "skew" in text or "tail" in text:
+        return "skew_or_tail"
+    if "no single" in text:
+        return "no_single_runtime_hypothesis"
+    return "other"
+
+
+def sorted_counter(counter: Counter[str]) -> dict[str, int]:
+    return dict(sorted(counter.items(), key=lambda item: (-item[1], item[0])))
 
 
 def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, object]:
@@ -639,6 +861,34 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"{label}={count}" for label, count in sorted(confidence_counts.items())
             )
             lines.append(f"- confidence: {rendered_confidences}")
+        lines.append("")
+    unknown_breakdown = summary.get("case_primary_unknown_breakdown")
+    if isinstance(unknown_breakdown, dict) and unknown_breakdown.get("total_cases", 0):
+        lines.extend(
+            [
+                "## Primary Unknown Breakdown",
+                "",
+                f"- unknown cases: {unknown_breakdown.get('total_cases', 0)}",
+                f"- analysis JSON cases: {unknown_breakdown.get('analysis_json_cases', 0)}",
+            ]
+        )
+        for label, key in (
+            ("metadata", "metadata_status_counts"),
+            ("duration buckets", "duration_bucket_counts"),
+            ("score severity", "score_severity_counts"),
+            ("query optimization tiers", "query_optimization_tier_counts"),
+            ("top findings", "finding_id_counts"),
+            ("top time operators", "top_time_operator_counts"),
+            ("evidence quality", "evidence_quality_level_counts"),
+            ("evidence limitations", "evidence_limitation_counts"),
+            ("runtime diagnosis", "runtime_diagnosis_summary_counts"),
+            ("stats primary", "stats_primary_bottleneck_counts"),
+            ("stats context", "stats_context_counts"),
+        ):
+            counts = unknown_breakdown.get(key)
+            if isinstance(counts, dict) and counts:
+                rendered_counts = ", ".join(f"{item}={count}" for item, count in counts.items())
+                lines.append(f"- {label}: {rendered_counts}")
         lines.append("")
     rewriteability_distribution = summary.get("optimizer_rewriteability_distribution")
     if isinstance(rewriteability_distribution, dict):

@@ -56,6 +56,7 @@ Status legend:
 | [analyzer-audit.md](analyzer-audit.md) | active | Analyzer-specific risks and implementation order. |
 | [agent-playbook.md](agent-playbook.md) | active | Change-type routing for agents. |
 | [test-matrix.md](test-matrix.md) | active | Focused validation matrix. |
+| [validation-log.md](validation-log.md) | active | Notable local validation runs and outcomes. |
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |

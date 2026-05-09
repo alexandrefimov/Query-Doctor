@@ -23,12 +23,14 @@ QUERY_CAP_SIGNALS = {
     "runtime_admission": "primary_bottleneck_is_runtime_admission",
     "runtime_skew": "primary_bottleneck_is_runtime_skew",
     "runtime_data_movement": "primary_bottleneck_is_runtime_data_movement",
+    "runtime_storage": "primary_bottleneck_is_runtime_storage",
 }
 STATS_CAP_SIGNALS = {
     "sql_shape": "primary_bottleneck_is_sql_shape; stats refresh unlikely primary",
     "runtime_admission": "primary_bottleneck_is_runtime_admission",
     "runtime_skew": "primary_bottleneck_is_runtime_skew",
     "runtime_data_movement": "primary_bottleneck_is_runtime_data_movement",
+    "runtime_storage": "primary_bottleneck_is_runtime_storage",
 }
 
 

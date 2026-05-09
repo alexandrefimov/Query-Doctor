@@ -83,6 +83,7 @@ from query_doctor.recent.batch_summary import (
     candidate_reason_counts,
     candidate_reason_sql_verb_counts,
     case_primary_bottleneck_distribution,
+    case_primary_unknown_breakdown,
     case_score_severity,
     case_to_summary,
     optimizer_funnel,
