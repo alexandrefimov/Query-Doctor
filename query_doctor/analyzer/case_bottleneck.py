@@ -56,6 +56,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
 
     backend = analysis.get("backend_tail") if isinstance(analysis.get("backend_tail"), dict) else {}
     execution_tail_count = int_value(backend.get("execution_tail_candidate_count"))
+    backend_data_skew_detected = str(backend.get("data_skew") or "").strip().lower() == "yes"
     if (
         str(backend.get("execution_skew") or "").strip().lower() == "yes"
         and execution_tail_count >= EXECUTION_TAIL_MIN_CANDIDATES
@@ -102,6 +103,16 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         and not sql_supports_primary
         and not stats_competing_signal
     )
+    backend_data_skew_supports_primary = (
+        backend_data_skew_detected
+        and not is_query_shape_top
+        and not is_data_movement_top
+        and not is_storage_top
+        and not storage_runtime_diagnosis_supported
+        and not stats_signal
+        and not sql_supports_primary
+        and not stats_competing_signal
+    )
     runtime_storage_supports_primary = (
         (is_storage_top or storage_runtime_diagnosis_supported)
         and not stats_signal
@@ -114,6 +125,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         for name, supported in (
             ("stats", stats_supports_primary),
             ("sql_shape", sql_supports_primary or query_shape_supports_primary),
+            ("runtime_skew", backend_data_skew_supports_primary),
             ("runtime_data_movement", data_movement_supports_primary),
             ("runtime_storage", runtime_storage_supports_primary),
         )
@@ -250,6 +262,8 @@ def primary_reasons(primary: str, analysis: dict[str, Any]) -> tuple[str, ...]:
         return ("stats_not_primary", f"cardinality_anomalies_{cardinality_count}")
     if primary == "runtime_data_movement":
         return ("large_intermediate_or_exchange_top_finding",)
+    if primary == "runtime_skew":
+        return ("backend_data_skew_detected",)
     if primary == "runtime_storage":
         if not top_finding_id(analysis) == STORAGE_FINDING_ID and runtime_diagnosis_supports_storage(analysis):
             return ("storage_or_hdfs_runtime_diagnosis",)

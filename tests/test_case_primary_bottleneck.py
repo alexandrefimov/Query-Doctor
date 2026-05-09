@@ -74,6 +74,54 @@ def test_runtime_skew_uses_elapsed_ranking_not_finding_order():
     assert result.confidence == "high"
 
 
+def test_backend_data_skew_routes_to_medium_runtime_skew():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            backend_tail={
+                "data_skew": "yes",
+                "execution_skew": "unknown",
+                "execution_tail_candidate_count": 0,
+            },
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "backend_data_skew",
+            },
+        )
+    )
+
+    assert result.label == "runtime_skew"
+    assert result.confidence == "medium"
+    assert result.reasons == ("backend_data_skew_detected",)
+
+
+def test_backend_data_skew_does_not_override_query_shape_top_finding():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            backend_tail={
+                "data_skew": "yes",
+                "execution_skew": "unknown",
+                "execution_tail_candidate_count": 0,
+            },
+            findings=[
+                {
+                    "id": "join_bottleneck",
+                    "operators": [{"time_ms": 8_000}],
+                }
+            ],
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "query_shape,backend_data_skew",
+            },
+        )
+    )
+
+    assert result.label == "sql_shape"
+    assert result.confidence == "medium"
+    assert result.reasons == ("join_top_finding",)
+
+
 def test_stats_primary_when_metadata_gap_and_anomalies_have_no_competing_signals():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
