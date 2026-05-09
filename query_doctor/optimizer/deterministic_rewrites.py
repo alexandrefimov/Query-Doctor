@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -327,20 +328,129 @@ def cte_lineage_unavailable_reasons(
     lineage_maps: dict[str, dict[str, set[LineageRef]]],
 ) -> tuple[str, ...]:
     names = tuple(cte.name for cte in ctes)
+    cte_by_name = {cte.name: cte for cte in ctes}
     upstream_refs = referenced_cte_names(final_cte.body, names)
-    if upstream_refs and any(not lineage_maps.get(ref) for ref in upstream_refs):
-        return ("final_cte_lineage_upstream_unavailable",)
-    branches = split_top_level_union_all_fragments(final_cte.body)
+    upstream_reasons: list[str] = []
+    for ref in upstream_refs:
+        if lineage_maps.get(ref):
+            continue
+        upstream_reasons.extend(
+            cte_lineage_failure_reasons(
+                ref,
+                cte_by_name,
+                names,
+                lineage_maps,
+                prefix="final_cte_lineage_upstream",
+                seen={final_cte.name},
+            )
+        )
+    if upstream_reasons:
+        return tuple(dedupe_preserve_order(upstream_reasons))
+    return cte_lineage_failure_reasons(
+        final_cte.name,
+        cte_by_name,
+        names,
+        lineage_maps,
+        prefix="final_cte_lineage",
+        seen=set(),
+    )
+
+
+def cte_lineage_failure_reasons(
+    cte_name: str,
+    cte_by_name: dict[str, CteDefinition],
+    names: tuple[str, ...],
+    lineage_maps: dict[str, dict[str, set[LineageRef]]],
+    *,
+    prefix: str,
+    seen: set[str],
+) -> tuple[str, ...]:
+    cte = cte_by_name.get(cte_name)
+    if cte is None:
+        return (f"{prefix}_cte_not_found",)
+    if cte.name in seen:
+        return (f"{prefix}_reference_cycle",)
+    next_seen = {*seen, cte.name}
+    upstream_refs = referenced_cte_names(cte.body, names)
+    upstream_reasons: list[str] = []
+    for ref in upstream_refs:
+        if lineage_maps.get(ref):
+            continue
+        upstream_reasons.extend(
+            cte_lineage_failure_reasons(
+                ref,
+                cte_by_name,
+                names,
+                lineage_maps,
+                prefix=prefix,
+                seen=next_seen,
+            )
+        )
+    if upstream_reasons:
+        return tuple(dedupe_preserve_order(upstream_reasons))
+    return direct_cte_lineage_failure_reasons(cte, names, lineage_maps, prefix=prefix)
+
+
+def direct_cte_lineage_failure_reasons(
+    cte: CteDefinition,
+    names: tuple[str, ...],
+    lineage_maps: dict[str, dict[str, set[LineageRef]]],
+    *,
+    prefix: str,
+) -> tuple[str, ...]:
+    branches = split_top_level_union_all_fragments(cte.body)
     if len(branches) > 1:
-        output_names = union_projection_names(final_cte.body)
+        output_names = union_projection_names(cte.body)
         if not output_names:
-            return ("final_cte_lineage_union_output_names_unavailable",)
+            return (f"{prefix}_union_output_names_unavailable",)
         if any(len(projection_item_fragments(branch)) < len(output_names) for branch in branches):
-            return ("final_cte_lineage_union_projection_mismatch",)
-        return ("final_cte_lineage_union_branch_mismatch",)
-    if not projection_item_fragments(final_cte.body):
-        return ("final_cte_lineage_projection_unavailable",)
-    return ("final_cte_lineage_non_simple_projection",)
+            return (f"{prefix}_union_projection_mismatch",)
+        return (f"{prefix}_union_branch_mismatch",)
+    fragments = projection_item_fragments(cte.body)
+    if not fragments:
+        return (f"{prefix}_projection_unavailable",)
+    alias_map = cte_relation_alias_map(cte.body, names)
+    reason_counts: Counter[str] = Counter()
+    for fragment in fragments:
+        if not projection_name_for_fragment(fragment):
+            reason_counts[f"{prefix}_projection_output_name_unavailable"] += 1
+            continue
+        reason_counts[
+            projection_lineage_failure_reason(fragment, alias_map, lineage_maps, prefix=prefix)
+        ] += 1
+    if reason_counts:
+        return tuple(reason for reason, _count in reason_counts.most_common())
+    return (f"{prefix}_non_simple_projection",)
+
+
+def projection_lineage_failure_reason(
+    fragment: str,
+    alias_map: dict[str, str],
+    lineage_maps: dict[str, dict[str, set[LineageRef]]],
+    *,
+    prefix: str,
+) -> str:
+    expression = projection_expression(fragment)
+    try:
+        tokens = tokenize_sql(expression)
+    except OptimizerSqlError:
+        return f"{prefix}_projection_parse_failed"
+    if len(tokens) == 1:
+        if alias_map:
+            column = tokens[0].lower()
+            if any(column in lineage_maps.get(upstream_cte, {}) for upstream_cte in set(alias_map.values())):
+                return f"{prefix}_ambiguous_projection"
+            return f"{prefix}_upstream_column_unavailable"
+        return f"{prefix}_unknown"
+    if len(tokens) == 3 and tokens[1] == ".":
+        qualifier = tokens[0].lower()
+        upstream_cte = alias_map.get(qualifier)
+        if upstream_cte is None:
+            return f"{prefix}_qualified_physical_projection"
+        if tokens[2].lower() not in lineage_maps.get(upstream_cte, {}):
+            return f"{prefix}_upstream_column_unavailable"
+        return f"{prefix}_ambiguous_projection"
+    return f"{prefix}_non_simple_projection"
 
 
 def cte_body_draft_blocking_reasons(cte_body: str, prefix: str) -> list[str]:
@@ -1107,8 +1217,11 @@ def projection_lineage(
         ]
         return matches[0] if len(matches) == 1 else None
     if len(tokens) == 3 and tokens[1] == ".":
-        upstream_cte = alias_map.get(tokens[0].lower())
+        qualifier = tokens[0].lower()
+        upstream_cte = alias_map.get(qualifier)
         if upstream_cte is None:
+            if not alias_map:
+                return {(cte_name, tokens[2].lower())}
             return None
         return lineage_maps.get(upstream_cte, {}).get(tokens[2].lower())
     return None
@@ -1153,13 +1266,25 @@ def simple_cte_filter_columns(cte_body: str) -> set[str]:
     columns: set[str] = set()
     for fragment in projection_item_fragments(cte_body):
         try:
-            tokens = tokenize_sql(fragment)
+            name = simple_projection_output_column(fragment)
         except OptimizerSqlError:
             return set()
-        name = projection_name_for_fragment(fragment)
-        if len(tokens) == 1 and name and tokens[0].lower() == name:
+        if name:
             columns.add(name)
     return columns
+
+
+def simple_projection_output_column(fragment: str) -> str | None:
+    name = projection_name_for_fragment(fragment)
+    if not name:
+        return None
+    expression = projection_expression(fragment)
+    tokens = tokenize_sql(expression)
+    if len(tokens) == 1 and tokens[0].lower() == name:
+        return name
+    if len(tokens) == 3 and tokens[1] == "." and tokens[2].lower() == name:
+        return name
+    return None
 
 
 def simple_group_by_columns(cte_body: str) -> set[str]:
@@ -1194,11 +1319,10 @@ def simple_cte_filter_columns_in_order(cte_body: str) -> list[str]:
     columns: list[str] = []
     for fragment in projection_item_fragments(cte_body):
         try:
-            tokens = tokenize_sql(fragment)
+            name = simple_projection_output_column(fragment)
         except OptimizerSqlError:
             return []
-        name = projection_name_for_fragment(fragment)
-        if len(tokens) == 1 and name and tokens[0].lower() == name:
+        if name:
             columns.append(name)
         else:
             columns.append("")
