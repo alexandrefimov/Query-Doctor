@@ -228,6 +228,7 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     no_draft_eligibility_counts: Counter[str] = Counter()
     no_draft_class_counts: Counter[str] = Counter()
     no_draft_class_recipe_counts: dict[str, Counter[str]] = {}
+    no_draft_class_recipe_reason_counts: dict[str, dict[str, Counter[str]]] = {}
     no_draft_reason_counts: Counter[str] = Counter()
     no_draft_cte_pushdown_decision_counts: Counter[str] = Counter()
     optimization_candidate_count = 0
@@ -249,9 +250,13 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
             no_draft_eligibility_counts[eligibility] += 1
             no_draft_class_counts[no_draft_class] += 1
             no_draft_class_recipe_counts.setdefault(no_draft_class, Counter())[recipe_id] += 1
-            no_draft_reason_counts.update(
-                str(reason) for reason in support.draft_unavailable_reasons
-            )
+            no_draft_reasons = tuple(str(reason) for reason in support.draft_unavailable_reasons)
+            no_draft_reason_counts.update(no_draft_reasons)
+            class_recipe_reason_counts = no_draft_class_recipe_reason_counts.setdefault(
+                no_draft_class,
+                {},
+            ).setdefault(recipe_id, Counter())
+            class_recipe_reason_counts.update(no_draft_reasons)
             no_draft_cte_pushdown_decision_counts.update(
                 {
                     str(reason): count
@@ -281,6 +286,13 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "recipe_detected_no_draft_class_recipe_counts": {
             no_draft_class: dict(sorted(recipe_counts.items()))
             for no_draft_class, recipe_counts in sorted(no_draft_class_recipe_counts.items())
+        },
+        "recipe_detected_no_draft_class_recipe_reason_counts": {
+            no_draft_class: {
+                recipe_id: dict(sorted(reason_counts.items()))
+                for recipe_id, reason_counts in sorted(recipe_counts.items())
+            }
+            for no_draft_class, recipe_counts in sorted(no_draft_class_recipe_reason_counts.items())
         },
         "recipe_detected_no_draft_reason_counts": dict(
             sorted(no_draft_reason_counts.items())
@@ -519,6 +531,25 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
             )
             if rendered_class_recipes:
                 lines.append(f"- no-draft classes by recipe: {rendered_class_recipes}")
+        no_draft_class_recipe_reasons = rewriteability_distribution.get(
+            "recipe_detected_no_draft_class_recipe_reason_counts"
+        )
+        if isinstance(no_draft_class_recipe_reasons, dict) and no_draft_class_recipe_reasons:
+            rendered_class_recipe_reasons = "; ".join(
+                f"{label}/{recipe}: "
+                + ", ".join(
+                    f"{reason}={count}"
+                    for reason, count in sorted(reason_counts.items())
+                )
+                for label, recipe_counts in sorted(no_draft_class_recipe_reasons.items())
+                if isinstance(recipe_counts, dict)
+                for recipe, reason_counts in sorted(recipe_counts.items())
+                if isinstance(reason_counts, dict) and reason_counts
+            )
+            if rendered_class_recipe_reasons:
+                lines.append(
+                    f"- no-draft class/recipe reasons: {rendered_class_recipe_reasons}"
+                )
         if isinstance(no_draft_reasons, dict) and no_draft_reasons:
             rendered_reasons = ", ".join(
                 f"{reason}={count}" for reason, count in sorted(no_draft_reasons.items())

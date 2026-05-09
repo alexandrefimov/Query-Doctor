@@ -413,7 +413,9 @@ def classify_draft_unavailable_class(
     }
     if reason_set & {"validation_rejected", "no_material_change"}:
         return "validation_or_materiality"
-    if reason_set & LINEAGE_LIMIT_REASONS:
+    if reason_set & LINEAGE_LIMIT_REASONS or any(
+        reason.startswith("final_cte_lineage_") for reason in reason_set
+    ):
         return "cte_lineage_limit"
     if "downstream_cte_filter_present" in reason_set:
         return "downstream_cte_filter"

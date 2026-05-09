@@ -304,6 +304,7 @@ def cte_dag_pushdown_draft_diagnostics(
     final_lineage = lineage_maps.get(final_cte.name)
     if not final_lineage:
         reasons.append("final_cte_lineage_unavailable")
+        reasons.extend(cte_lineage_unavailable_reasons(final_cte, parsed.ctes, lineage_maps))
         return tuple(dedupe_preserve_order(reasons)), ()
     decisions = per_conjunct_pushdown_plan(
         parsed.final_sql,
@@ -318,6 +319,28 @@ def cte_dag_pushdown_draft_diagnostics(
     if not decisions and clause_signature(parsed.final_sql, "WHERE") is not None:
         reasons.append("no_predicate_decisions")
     return tuple(dedupe_preserve_order(reasons)), decision_reasons
+
+
+def cte_lineage_unavailable_reasons(
+    final_cte: CteDefinition,
+    ctes: tuple[CteDefinition, ...],
+    lineage_maps: dict[str, dict[str, set[LineageRef]]],
+) -> tuple[str, ...]:
+    names = tuple(cte.name for cte in ctes)
+    upstream_refs = referenced_cte_names(final_cte.body, names)
+    if upstream_refs and any(not lineage_maps.get(ref) for ref in upstream_refs):
+        return ("final_cte_lineage_upstream_unavailable",)
+    branches = split_top_level_union_all_fragments(final_cte.body)
+    if len(branches) > 1:
+        output_names = union_projection_names(final_cte.body)
+        if not output_names:
+            return ("final_cte_lineage_union_output_names_unavailable",)
+        if any(len(projection_item_fragments(branch)) < len(output_names) for branch in branches):
+            return ("final_cte_lineage_union_projection_mismatch",)
+        return ("final_cte_lineage_union_branch_mismatch",)
+    if not projection_item_fragments(final_cte.body):
+        return ("final_cte_lineage_projection_unavailable",)
+    return ("final_cte_lineage_non_simple_projection",)
 
 
 def cte_body_draft_blocking_reasons(cte_body: str, prefix: str) -> list[str]:
