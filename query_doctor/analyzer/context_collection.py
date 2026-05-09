@@ -32,6 +32,8 @@ from query_doctor.cluster.event_context import (
 )
 
 COLUMN_STATS_JOIN_FILTER_STATUSES = ("complete", "ndv_missing", "size_missing", "all_missing", "unknown")
+IMPALA_DAEMON_PROFILE_SOURCE = "impala_daemon"
+IMPALA_DAEMON_PROFILE_SOURCE_LABEL = "Impala daemon profile endpoint"
 
 
 def build_query_wall_clock(
@@ -41,10 +43,13 @@ def build_query_wall_clock(
 ) -> dict[str, Any]:
     cm_duration_ms = numeric_context_value(cm_query_context or {}, "duration_ms")
     if cm_duration_ms is not None and cm_duration_ms > 0:
+        source = "CM Query Context"
+        if (cm_query_context or {}).get("profile_source") == IMPALA_DAEMON_PROFILE_SOURCE:
+            source = IMPALA_DAEMON_PROFILE_SOURCE_LABEL
         return {
             "duration_ms": cm_duration_ms,
             "duration_human": fmt_duration(cm_duration_ms),
-            "source": "CM Query Context",
+            "source": source,
             "confidence": "high",
         }
 
@@ -253,6 +258,9 @@ def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
         for field in CM_QUERY_CONTEXT_FIELDS
         if raw.get(field) is not None
     }
+    if raw.get("profile_source") == IMPALA_DAEMON_PROFILE_SOURCE:
+        context["profile_source"] = IMPALA_DAEMON_PROFILE_SOURCE
+        context["source_label"] = IMPALA_DAEMON_PROFILE_SOURCE_LABEL
     context["available"] = bool(context)
     return context
 

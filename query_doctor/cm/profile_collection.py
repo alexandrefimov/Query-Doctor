@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -92,6 +92,7 @@ def write_collected_case(
     *,
     profile_digest_text: str,
     cm_timeseries_context: dict[str, object] | None = None,
+    extra_metadata: Mapping[str, object] | None = None,
     warnings: Iterable[str] = (),
     secrets: Iterable[str] = (),
     redact: bool = False,
@@ -108,6 +109,8 @@ def write_collected_case(
         raise OutputError(f"Refusing to overwrite existing case directory: {case_dir}")
 
     metadata = cm_query_summary_metadata(summary)
+    if extra_metadata:
+        metadata.update({key: value for key, value in extra_metadata.items() if value is not None})
     digest_text = profile_digest_text
     if redact:
         metadata = redact_metadata(

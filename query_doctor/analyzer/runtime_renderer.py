@@ -16,7 +16,9 @@ def render_cm_query_context(analysis: dict[str, Any]) -> list[str]:
     if not context:
         return []
 
-    lines = ["## CM Query Context", ""]
+    is_direct_impala = context.get("profile_source") == "impala_daemon"
+    heading = "## Query Profile Context" if is_direct_impala else "## CM Query Context"
+    lines = [heading, ""]
     if not context.get("available"):
         lines.append("- available: no")
         if context.get("error"):
@@ -25,6 +27,8 @@ def render_cm_query_context(analysis: dict[str, Any]) -> list[str]:
         return lines
 
     lines.append("- available: yes")
+    if is_direct_impala:
+        lines.append(f"- source: {context.get('source_label') or 'Impala daemon profile endpoint'}")
     for field in ("query_id", "status", "query_state", "query_type", "pool", "start_time", "end_time"):
         value = context.get(field)
         if value is not None:

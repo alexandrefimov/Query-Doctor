@@ -94,6 +94,10 @@ def main(
         result = fetch_impala_profile_text(**fetch_kwargs)
         summary = CMQuerySummary(query_id=result.query_id)
         summary, profile_metadata_warnings = merge_profile_summary_metadata(summary, result.profile_text)
+        profile_metadata_warnings = [
+            warning.replace("CM profile text", "Impala profile text")
+            for warning in profile_metadata_warnings
+        ]
         if not summary.statement:
             profile_statement = extract_statement_from_profile_text(result.profile_text)
             if profile_statement:
@@ -112,6 +116,10 @@ def main(
             args.out,
             summary,
             profile_digest_text=result.profile_text,
+            extra_metadata={
+                "profile_source": "impala_daemon",
+                "profile_source_label": "Impala daemon profile endpoint",
+            },
             warnings=warnings,
             redact=True,
             redact_identifiers=args.redact_identifiers,
