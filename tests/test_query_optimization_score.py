@@ -1,4 +1,5 @@
 from query_doctor.recent.query_optimization_score import optimizer_adjacent_actionability
+from query_doctor.recent.query_optimization_score import optimizer_no_draft_actionability
 from query_doctor.recent.query_optimization_score import optimizer_rewriteability_rank
 from query_doctor.recent.query_optimization_score import score_query_optimization_candidate
 
@@ -114,6 +115,30 @@ def test_structural_recipe_adjacent_shapes_rank_below_actionable_adjacent_shapes
     assert optimizer_adjacent_actionability(actionable) == "actionable"
     assert optimizer_adjacent_actionability(structural) == "structural_boundary"
     assert optimizer_rewriteability_rank(actionable) > optimizer_rewriteability_rank(structural)
+
+
+def test_structural_no_draft_cases_rank_below_actionable_no_draft_cases():
+    actionable = {
+        "rewriteability_bucket": "recipe_detected_no_draft",
+        "draft_unavailable_class": "predicate_not_copyable",
+        "draft_unavailable_reasons": ["no_copyable_predicate"],
+    }
+    structural = {
+        "rewriteability_bucket": "recipe_detected_no_draft",
+        "draft_unavailable_class": "shape_boundary",
+        "draft_unavailable_reasons": ["final_select_join_boundary"],
+    }
+    validation = {
+        "rewriteability_bucket": "recipe_detected_no_draft",
+        "draft_unavailable_class": "validation_or_materiality",
+        "draft_unavailable_reasons": ["validation_rejected"],
+    }
+
+    assert optimizer_no_draft_actionability(actionable) == "actionable"
+    assert optimizer_no_draft_actionability(structural) == "structural_boundary"
+    assert optimizer_no_draft_actionability(validation) == "validation_or_materiality"
+    assert optimizer_rewriteability_rank(actionable) > optimizer_rewriteability_rank(structural)
+    assert optimizer_rewriteability_rank(actionable) > optimizer_rewriteability_rank(validation)
 
 
 def test_expensive_query_without_shape_signal_is_at_most_low():

@@ -15,6 +15,7 @@ from query_doctor.recent.batch_config import (
 )
 from query_doctor.recent.batch_models import BatchConfig, CaseResult, DiscoveryResult
 from query_doctor.recent.query_optimization_score import optimizer_adjacent_actionability
+from query_doctor.recent.query_optimization_score import optimizer_no_draft_actionability
 from query_doctor.recent.query_optimization_score import query_optimization_sort_key
 from query_doctor.recent.stats_optimization_score import stats_optimization_sort_key
 
@@ -240,6 +241,7 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     no_draft_class_recipe_reason_counts: dict[str, dict[str, Counter[str]]] = {}
     no_draft_reason_counts: Counter[str] = Counter()
     no_draft_cte_pushdown_decision_counts: Counter[str] = Counter()
+    no_draft_actionability_counts: Counter[str] = Counter()
     adjacent_cte_graph_counts: Counter[str] = Counter()
     adjacent_cte_predicate_pushdown_counts: Counter[str] = Counter()
     adjacent_cte_boundary_reason_counts: Counter[str] = Counter()
@@ -261,9 +263,11 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
             recipe_id = normalize_no_draft_recipe_id(support.recipe_id)
             eligibility = str(support.draft_eligibility or "unknown").strip() or "unknown"
             no_draft_class = normalize_no_draft_class(support.draft_unavailable_class)
+            no_draft_actionability = optimizer_no_draft_actionability(support.to_dict())
             no_draft_recipe_counts[recipe_id] += 1
             no_draft_eligibility_counts[eligibility] += 1
             no_draft_class_counts[no_draft_class] += 1
+            no_draft_actionability_counts[no_draft_actionability] += 1
             no_draft_class_recipe_counts.setdefault(no_draft_class, Counter())[recipe_id] += 1
             no_draft_reasons = tuple(str(reason) for reason in support.draft_unavailable_reasons)
             no_draft_reason_counts.update(no_draft_reasons)
@@ -298,6 +302,10 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     total = len(cases)
     safe_material_draft = bucket_counts.get("safe_material_draft", 0)
     no_draft = bucket_counts.get("recipe_detected_no_draft", 0)
+    no_draft_actionable = no_draft_actionability_counts.get("actionable", 0)
+    no_draft_structural = no_draft_actionability_counts.get("structural_boundary", 0)
+    no_draft_validation = no_draft_actionability_counts.get("validation_or_materiality", 0)
+    no_draft_other = no_draft_actionability_counts.get("other", 0)
     recipe_adjacent = bucket_counts.get("recipe_adjacent_shape", 0)
     adjacent_actionable = adjacent_actionability_counts.get("actionable", 0)
     adjacent_structural = adjacent_actionability_counts.get("structural_boundary", 0)
@@ -310,6 +318,13 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "bucket_counts": dict(sorted(bucket_counts.items())),
         "safe_material_draft_cases": safe_material_draft,
         "recipe_detected_no_draft_cases": no_draft,
+        "recipe_detected_no_draft_actionable_cases": no_draft_actionable,
+        "recipe_detected_no_draft_structural_boundary_cases": no_draft_structural,
+        "recipe_detected_no_draft_validation_or_materiality_cases": no_draft_validation,
+        "recipe_detected_no_draft_other_cases": no_draft_other,
+        "recipe_detected_no_draft_actionability_counts": dict(
+            sorted(no_draft_actionability_counts.items())
+        ),
         "recipe_detected_no_draft_recipe_counts": dict(sorted(no_draft_recipe_counts.items())),
         "recipe_detected_no_draft_eligibility_counts": dict(
             sorted(no_draft_eligibility_counts.items())
@@ -356,8 +371,8 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "human_review_only_cases": human_review,
         "safe_material_draft_rate": ratio(safe_material_draft, total),
         "recipe_backlog_rate": ratio(no_draft + recipe_adjacent, total),
-        "recipe_backlog_actionable_cases": no_draft + adjacent_actionable,
-        "recipe_backlog_actionable_rate": ratio(no_draft + adjacent_actionable, total),
+        "recipe_backlog_actionable_cases": no_draft_actionable + adjacent_actionable,
+        "recipe_backlog_actionable_rate": ratio(no_draft_actionable + adjacent_actionable, total),
         "stats_likely_rate": ratio(stats_likely, total),
         "human_review_only_rate": ratio(human_review, total),
     }
@@ -388,6 +403,16 @@ def optimizer_funnel(
         elif support.draft_eligibility == "source_unavailable":
             source_unavailable_cases += 1
     no_draft_cases = int(distribution.get("recipe_detected_no_draft_cases") or 0)
+    no_draft_actionable_cases = int(
+        distribution.get("recipe_detected_no_draft_actionable_cases") or 0
+    )
+    no_draft_structural_cases = int(
+        distribution.get("recipe_detected_no_draft_structural_boundary_cases") or 0
+    )
+    no_draft_validation_cases = int(
+        distribution.get("recipe_detected_no_draft_validation_or_materiality_cases") or 0
+    )
+    no_draft_other_cases = int(distribution.get("recipe_detected_no_draft_other_cases") or 0)
     adjacent_cases = int(distribution.get("recipe_adjacent_shape_cases") or 0)
     adjacent_actionable_cases = int(distribution.get("recipe_adjacent_actionable_cases") or 0)
     adjacent_structural_cases = int(distribution.get("recipe_adjacent_structural_boundary_cases") or 0)
@@ -407,6 +432,10 @@ def optimizer_funnel(
             "are produced later by explicit selected-case optimizer actions."
         ),
         "recipe_detected_no_draft_cases": no_draft_cases,
+        "recipe_detected_no_draft_actionable_cases": no_draft_actionable_cases,
+        "recipe_detected_no_draft_structural_boundary_cases": no_draft_structural_cases,
+        "recipe_detected_no_draft_validation_or_materiality_cases": no_draft_validation_cases,
+        "recipe_detected_no_draft_other_cases": no_draft_other_cases,
         "recipe_adjacent_shape_cases": adjacent_cases,
         "recipe_adjacent_actionable_cases": adjacent_actionable_cases,
         "recipe_adjacent_structural_boundary_cases": adjacent_structural_cases,
@@ -421,8 +450,11 @@ def optimizer_funnel(
         "draft_ready_rate": ratio(draft_ready_cases, candidate_cases),
         "trusted_sql_draft_produced_rate": 0.0,
         "recipe_backlog_rate": ratio(no_draft_cases + adjacent_cases, candidate_cases),
-        "recipe_backlog_actionable_cases": no_draft_cases + adjacent_actionable_cases,
-        "recipe_backlog_actionable_rate": ratio(no_draft_cases + adjacent_actionable_cases, candidate_cases),
+        "recipe_backlog_actionable_cases": no_draft_actionable_cases + adjacent_actionable_cases,
+        "recipe_backlog_actionable_rate": ratio(
+            no_draft_actionable_cases + adjacent_actionable_cases,
+            candidate_cases,
+        ),
     }
 
 
@@ -646,6 +678,14 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         no_draft_classes = rewriteability_distribution.get(
             "recipe_detected_no_draft_class_counts"
         )
+        no_draft_actionability = rewriteability_distribution.get(
+            "recipe_detected_no_draft_actionability_counts"
+        )
+        if isinstance(no_draft_actionability, dict) and no_draft_actionability:
+            rendered_actionability = ", ".join(
+                f"{label}={count}" for label, count in sorted(no_draft_actionability.items())
+            )
+            lines.append(f"- no-draft actionability: {rendered_actionability}")
         if isinstance(no_draft_classes, dict) and no_draft_classes:
             rendered_classes = ", ".join(
                 f"{label}={count}" for label, count in sorted(no_draft_classes.items())

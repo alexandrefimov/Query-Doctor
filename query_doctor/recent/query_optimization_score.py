@@ -34,6 +34,18 @@ ADJACENT_STRUCTURAL_STATUSES = {
     "blocked_no_downstream_filter",
     "blocked_unsupported_graph",
 }
+NO_DRAFT_ACTIONABLE_CLASSES = {"downstream_cte_filter", "predicate_not_copyable"}
+NO_DRAFT_STRUCTURAL_CLASSES = {
+    "cte_lineage_limit",
+    "missing_final_filter",
+    "shape_boundary",
+}
+NO_DRAFT_VALIDATION_CLASSES = {"validation_or_materiality"}
+NO_DRAFT_STRUCTURAL_REASONS = {
+    "downstream_cte_filter_join_boundary",
+    "downstream_cte_filter_without_cte_reference",
+    "final_filter_absent",
+}
 
 
 @dataclass(frozen=True)
@@ -133,6 +145,8 @@ def optimizer_rewriteability_rank(support: object) -> int:
     bucket = str(support.get("rewriteability_bucket") or "").strip().lower()
     if bucket == "recipe_adjacent_shape" and optimizer_adjacent_actionability(support) != "actionable":
         return REWRITEABILITY_ORDER["human_review_only"]
+    if bucket == "recipe_detected_no_draft" and optimizer_no_draft_actionability(support) != "actionable":
+        return REWRITEABILITY_ORDER["human_review_only"]
     if bucket in REWRITEABILITY_ORDER:
         return REWRITEABILITY_ORDER[bucket]
     draft_eligibility = str(support.get("draft_eligibility") or "").strip().lower()
@@ -171,6 +185,26 @@ def optimizer_adjacent_actionability(support: object) -> str:
     if has_structural_boundary:
         return "structural_boundary"
     if has_actionable_shape:
+        return "actionable"
+    return "other"
+
+
+def optimizer_no_draft_actionability(support: object) -> str:
+    support = support if isinstance(support, dict) else {}
+    bucket = str(support.get("rewriteability_bucket") or "").strip().lower()
+    if bucket != "recipe_detected_no_draft":
+        return "not_applicable"
+    no_draft_class = str(support.get("draft_unavailable_class") or "other").strip().lower()
+    reasons = adjacent_boundary_reason_set(support.get("draft_unavailable_reasons"))
+    has_structural_reason = bool(reasons & NO_DRAFT_STRUCTURAL_REASONS) or any(
+        reason.endswith("_boundary") or reason.startswith("final_cte_lineage_")
+        for reason in reasons
+    )
+    if has_structural_reason or no_draft_class in NO_DRAFT_STRUCTURAL_CLASSES:
+        return "structural_boundary"
+    if no_draft_class in NO_DRAFT_VALIDATION_CLASSES:
+        return "validation_or_materiality"
+    if no_draft_class in NO_DRAFT_ACTIONABLE_CLASSES:
         return "actionable"
     return "other"
 
