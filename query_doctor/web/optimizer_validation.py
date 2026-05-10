@@ -18,6 +18,7 @@ from query_doctor.cli.optimize_query import (
     validate_draft_sql,
     validate_optimizer_recommendations_text,
 )
+from query_doctor.web.trusted_artifacts import load_case_analyzer_facts_text
 
 
 EXTERNAL_REWRITE_SQL_FIELD = "rewritten_sql"
@@ -25,7 +26,10 @@ MAX_EXTERNAL_REWRITE_SQL_BYTES = 256 * 1024
 
 
 def read_analysis_facts_text(case_dir: Path) -> str:
-    return (case_dir / "analysis_facts.md").read_text(encoding="utf-8", errors="replace")
+    facts_text = load_case_analyzer_facts_text(case_dir)
+    if facts_text is None:
+        raise QueryOptimizationError("Analyzer facts are unavailable for optimizer validation.")
+    return facts_text
 
 
 def optimizer_manual_guidance(case_dir: Path | None, *, reason: str = "no_trusted_draft") -> str | None:
