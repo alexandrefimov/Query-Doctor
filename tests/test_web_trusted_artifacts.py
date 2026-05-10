@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from query_doctor.web import trusted_artifacts
 from query_doctor.web.jobs import WebJobStore
 
@@ -247,8 +249,10 @@ def test_trusted_report_artifacts_reject_report_symlink_outside_case_dir(tmp_pat
     outside_report.write_text("# Report\n\noutside body\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
     (case_dir / "diagnosis.md").symlink_to(outside_report)
-    trusted_artifacts.write_batch_case_report_validation_marker(case_dir)
 
+    assert not trusted_artifacts.case_has_batch_report_output(case_dir)
+    with pytest.raises(ValueError, match="case-contained report"):
+        trusted_artifacts.write_batch_case_report_validation_marker(case_dir)
     assert not trusted_artifacts.batch_case_validated_report_exists(case_dir)
     assert trusted_artifacts.load_specific_query_trusted_report_artifact("abc", case_dir) is None
 

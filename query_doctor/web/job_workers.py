@@ -20,6 +20,7 @@ from query_doctor.web.subprocesses import (
     subprocess_failure_message,
 )
 from query_doctor.web.trusted_artifacts import (
+    case_has_batch_report_output,
     optimized_query_validated_exists,
     write_batch_case_report_validation_marker,
 )
@@ -61,8 +62,7 @@ def run_batch_case_report_job(
             )
         if completed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor batch case report generation", completed))
-        report_path = case_dir / BATCH_REPORT_NAME
-        if not report_path.is_file():
+        if not case_has_batch_report_output(case_dir):
             raise WebError("Report generation completed but the validated report was not created.")
         write_batch_case_report_validation_marker(case_dir)
         job_store.complete_html(job_id, f"Validated report generated for {case_id}.")
@@ -98,8 +98,7 @@ def run_specific_query_report_job(
             )
         if completed.returncode != 0:
             raise WebError(subprocess_failure_message("Query Doctor specific query report generation", completed))
-        report_path = case_dir / BATCH_REPORT_NAME
-        if not report_path.is_file():
+        if not case_has_batch_report_output(case_dir):
             raise WebError("Report generation completed but the validated report was not created.")
         write_batch_case_report_validation_marker(case_dir)
         job_store.complete_html(job_id, f"Validated report generated for {redact_browser_display_text(query_id)}.")
@@ -134,8 +133,7 @@ def generate_validated_report_artifact(
         )
     if completed.returncode != 0:
         raise WebError(subprocess_failure_message(label, completed))
-    report_path = case_dir / BATCH_REPORT_NAME
-    if not report_path.is_file():
+    if not case_has_batch_report_output(case_dir):
         raise WebError("Report generation completed but the validated report was not created.")
     write_batch_case_report_validation_marker(case_dir)
 

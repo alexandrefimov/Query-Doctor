@@ -390,13 +390,21 @@ def batch_case_validated_report_exists(case_dir: Path, case: dict[str, object] |
     return True
 
 
+def case_has_batch_report_output(case_dir: Path) -> bool:
+    return _case_has_relative_file(case_dir, BATCH_REPORT_NAME)
+
+
 def write_batch_case_report_validation_marker(case_dir: Path) -> None:
+    report_path = _case_relative_file_path(case_dir, BATCH_REPORT_NAME)
+    facts_path = _case_relative_file_path(case_dir, "analysis_facts.md")
+    if report_path is None or facts_path is None:
+        raise ValueError("Trusted report marker requires case-contained report and analyzer facts.")
     marker = {
         "report": BATCH_REPORT_NAME,
         "validated": True,
         "validation_mode": WEB_REPORT_VALIDATION_MODE,
-        "report_sha256": file_sha256(case_dir / BATCH_REPORT_NAME),
-        "facts_sha256": file_sha256(case_dir / "analysis_facts.md"),
+        "report_sha256": file_sha256(report_path),
+        "facts_sha256": file_sha256(facts_path),
         "source": "query_doctor_web_server batch case report action",
     }
     (case_dir / BATCH_REPORT_VALIDATION_MARKER).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
