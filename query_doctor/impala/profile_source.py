@@ -27,6 +27,18 @@ PROFILE_NOT_FOUND_MARKERS = (
     "Invalid query id",
     "No profile available",
 )
+PROFILE_CONTENT_MARKERS = (
+    "query runtime profile",
+    "query timeline",
+    "planner timeline",
+    "impala query profile",
+)
+PROFILE_STRUCTURAL_MARKERS = (
+    "plan:",
+    "fragment ",
+    "fragment_instance_id",
+    "query state:",
+)
 PRE_RE = re.compile(r"<pre[^>]*>(?P<body>.*?)</pre>", re.IGNORECASE | re.DOTALL)
 TAG_RE = re.compile(r"<[^>]+>")
 
@@ -115,15 +127,17 @@ def fetch_impala_profile_text(
         except CMClientError as exc:
             last_error = str(exc)
             continue
-        if any(marker in text for marker in PROFILE_NOT_FOUND_MARKERS):
+        if profile_response_is_not_found(text):
             last_error = "profile was not found on one impalad endpoint"
             continue
-        if text.strip():
+        if profile_text_looks_like_runtime_profile(text):
             return ImpalaProfileFetchResult(
                 query_id=validate_cm_query_id_path_segment(query_id),
                 profile_text=text,
                 attempted_endpoints=attempted,
             )
+        if text.strip():
+            last_error = "profile endpoint returned non-profile content"
     raise CMAdapterError(
         "Impala profile was not found on the configured impalad endpoints. "
         f"Attempted endpoints: {attempted}. Last safe error: {last_error}."
@@ -156,3 +170,17 @@ def extract_profile_text_from_response(text: str) -> str:
     if "<html" in text[:512].lower() or "<body" in text[:512].lower():
         return html.unescape(TAG_RE.sub("\n", text)).strip() + "\n"
     return text
+
+
+def profile_response_is_not_found(text: str) -> bool:
+    normalized = text.lower()
+    return any(marker.lower() in normalized for marker in PROFILE_NOT_FOUND_MARKERS)
+
+
+def profile_text_looks_like_runtime_profile(text: str) -> bool:
+    normalized = text[:8192].lower()
+    if any(marker in normalized for marker in PROFILE_CONTENT_MARKERS):
+        return True
+    if "query id:" in normalized and any(marker in normalized for marker in PROFILE_STRUCTURAL_MARKERS):
+        return True
+    return False
