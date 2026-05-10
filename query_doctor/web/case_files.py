@@ -53,7 +53,9 @@ def build_query_id_summary_case(
 
 
 def read_case_metadata(case_dir: Path) -> dict[str, object]:
-    metadata_path = case_dir / "cm_metadata.json"
+    metadata_path = case_relative_file_path(case_dir, "cm_metadata.json")
+    if metadata_path is None:
+        return {}
     try:
         payload = json.loads(metadata_path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
@@ -70,7 +72,9 @@ def case_metadata_string(metadata: dict[str, object], key: str) -> str | None:
 
 
 def read_profile_summary_fields(case_dir: Path) -> dict[str, str]:
-    profile_path = case_dir / "profile_digest.md"
+    profile_path = case_relative_file_path(case_dir, "profile_digest.md")
+    if profile_path is None:
+        return {}
     try:
         with profile_path.open(encoding="utf-8", errors="replace") as handle:
             text = handle.read(PROFILE_SUMMARY_READ_CHARS)
@@ -118,7 +122,7 @@ def remove_path(path: Path) -> None:
 
 def replace_case_dir_after_success(staged_case_dir: Path, expected_case_dir: Path) -> Path:
     ensure_complete_existing_case(staged_case_dir)
-    if not (staged_case_dir / "analysis_facts.md").is_file():
+    if case_relative_file_path(staged_case_dir, "analysis_facts.md") is None:
         raise WebError("Analyzer output was not created.")
 
     expected_case_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -157,12 +161,22 @@ def ensure_complete_existing_case(case_dir: Path) -> None:
             "Existing Query ID case is incomplete. "
             "Re-run analysis to regenerate required artifacts."
         )
-    missing = [name for name in COLLECTED_CASE_FILES if not (case_dir / name).is_file()]
+    missing = [name for name in COLLECTED_CASE_FILES if case_relative_file_path(case_dir, name) is None]
     if missing:
         raise WebError(
             "Existing Query ID case is incomplete. "
             "Re-run analysis to regenerate required artifacts."
         )
+
+
+def case_relative_file_path(case_dir: Path, name: str) -> Path | None:
+    try:
+        resolved_case_dir = case_dir.resolve(strict=True)
+        path = (resolved_case_dir / name).resolve(strict=True)
+        path.relative_to(resolved_case_dir)
+    except (OSError, ValueError):
+        return None
+    return path if path.is_file() else None
 
 
 def parse_output_case_dir(stdout: str) -> Path:

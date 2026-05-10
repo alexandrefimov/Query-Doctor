@@ -12,6 +12,7 @@ from query_doctor.cli.commands import command_prefix
 
 from query_doctor.web.case_files import (
     build_query_id_summary_case,
+    case_relative_file_path,
     ensure_complete_existing_case,
     expected_case_dir_for_query,
     parse_facts_summary,
@@ -137,9 +138,9 @@ def run_web_analysis(
     elif reported.returncode != 0:
         raise WebError(subprocess_failure_message("Query Doctor report generation", reported))
 
-    facts_path = case_dir / "analysis_facts.md"
-    report_path = case_dir / report_name
-    if not facts_path.exists() or not report_path.exists():
+    facts_path = case_relative_file_path(case_dir, "analysis_facts.md")
+    report_path = case_relative_file_path(case_dir, report_name)
+    if facts_path is None or report_path is None:
         raise WebError("Analyzer/report output was not created.")
 
     facts_text = facts_path.read_text(encoding="utf-8", errors="replace")
