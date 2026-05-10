@@ -62,9 +62,98 @@ class TrustedReportArtifact:
     download_filename: str
 
 
+@dataclass(frozen=True)
+class ReportEvidenceCategory:
+    label: str
+
+
+@dataclass(frozen=True)
+class ReportEvidenceCompleteness:
+    label: str
+    state: str
+
+
+@dataclass(frozen=True)
+class ReportEvidenceInventory:
+    categories: tuple[ReportEvidenceCategory, ...]
+    completeness: tuple[ReportEvidenceCompleteness, ...]
+    profile_evidence_state: str
+    analyzer_facts_state: str
+
+
+@dataclass(frozen=True)
+class CaseImpalaContextArtifact:
+    case_dir: Path
+    context_path: Path
+    payload: dict[str, Any]
+
+
+REPORT_ARTIFACT_CANDIDATES = (
+    ("Profile digest", ("profile_digest.md",)),
+    ("Profile text", ("profile.txt",)),
+    ("Profile JSON", ("profile.json",)),
+    ("SQL", ("sql.sql",)),
+    ("SQL", ("query.sql",)),
+    ("SQL", ("original_query.sql",)),
+    ("EXPLAIN", ("explain.txt",)),
+    ("Analyzer facts", ("analysis_facts.md",)),
+    ("Diagnosis", (BATCH_REPORT_NAME,)),
+    ("Impala metadata", ("impala_context.md",)),
+    ("Impala metadata JSON", ("impala_context.json",)),
+    ("CM query details", ("cm_query_details.json",)),
+    ("CM metadata", ("cm_metadata.json",)),
+    ("Collection warnings", ("collection_warnings.txt",)),
+)
+REPORT_EVIDENCE_COMPLETENESS_GROUPS = (
+    ("Profile", ("profile_digest.md", "profile.txt", "profile.json")),
+    ("SQL", ("sql.sql", "query.sql", "original_query.sql")),
+    ("EXPLAIN", ("explain.txt",)),
+    ("Metadata", ("impala_context.md", "impala_context.json")),
+    ("Host metrics", ()),
+)
+
+
 def trusted_report_download_filename(source_id: str) -> str:
     short_id = REPORT_DOWNLOAD_ID_RE.sub("", source_id)[:8] or "report"
     return f"query-doctor-report-{short_id}.md"
+
+
+def report_evidence_inventory(case_dir: Path) -> ReportEvidenceInventory:
+    categories = tuple(
+        ReportEvidenceCategory(label)
+        for label, names in REPORT_ARTIFACT_CANDIDATES
+        if any((case_dir / name).is_file() for name in names)
+    )
+    completeness = tuple(
+        ReportEvidenceCompleteness(
+            label,
+            "available" if names and any((case_dir / name).is_file() for name in names) else "not collected",
+        )
+        for label, names in REPORT_EVIDENCE_COMPLETENESS_GROUPS
+    )
+    return ReportEvidenceInventory(
+        categories=categories,
+        completeness=completeness,
+        profile_evidence_state=(
+            "available" if _case_has_any_artifact(case_dir, ("profile_digest.md", "profile.txt", "profile.json"))
+            else "not observed"
+        ),
+        analyzer_facts_state="available" if (case_dir / "analysis_facts.md").is_file() else "not observed",
+    )
+
+
+def _case_has_any_artifact(case_dir: Path, names: tuple[str, ...]) -> bool:
+    return any(_case_has_relative_file(case_dir, name) for name in names)
+
+
+def _case_has_relative_file(case_dir: Path, name: str) -> bool:
+    try:
+        resolved_case_dir = case_dir.resolve(strict=True)
+        path = (resolved_case_dir / name).resolve(strict=True)
+        path.relative_to(resolved_case_dir)
+    except (OSError, ValueError):
+        return False
+    return path.is_file()
 
 
 def optimizer_artifact_status_for_case(case: dict[str, Any]) -> str:
@@ -171,10 +260,54 @@ def batch_case_artifact_dirs(case_dir: Path) -> list[Path]:
 
 
 def batch_case_artifact_dir_has_safe_facts(case_dir: Path) -> bool:
-    return any(
-        (case_dir / name).is_file()
-        for name in ("analysis_facts.md", "impala_context.json")
-    ) or (case_dir / "impala_context" / "impala_context.json").is_file()
+    return case_has_analyzer_facts(case_dir) or case_has_impala_context_artifact(case_dir)
+
+
+def case_has_analyzer_facts(case_dir: Path) -> bool:
+    return _case_has_relative_file(case_dir, "analysis_facts.md")
+
+
+def case_has_impala_context_artifact(case_dir: Path) -> bool:
+    return _case_has_any_artifact(case_dir, ("impala_context.json", "impala_context/impala_context.json"))
+
+
+def load_case_analyzer_facts_text(case_dir: Path, *, max_bytes: int | None = None) -> str | None:
+    try:
+        resolved_case_dir = case_dir.resolve(strict=True)
+        facts_path = (resolved_case_dir / "analysis_facts.md").resolve(strict=True)
+        facts_path.relative_to(resolved_case_dir)
+        if max_bytes is not None and facts_path.stat().st_size > max_bytes:
+            return None
+        return facts_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return None
+
+
+def load_case_impala_context_artifact(
+    case_dir: Path,
+    *,
+    max_bytes: int | None = None,
+) -> CaseImpalaContextArtifact | None:
+    try:
+        resolved_case_dir = case_dir.resolve(strict=True)
+    except OSError:
+        return None
+    for name in ("impala_context.json", "impala_context/impala_context.json"):
+        try:
+            context_path = (resolved_case_dir / name).resolve(strict=True)
+            context_path.relative_to(resolved_case_dir)
+            if max_bytes is not None and context_path.stat().st_size > max_bytes:
+                return None
+            payload = json.loads(context_path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            return CaseImpalaContextArtifact(
+                case_dir=resolved_case_dir,
+                context_path=context_path,
+                payload=payload,
+            )
+    return None
 
 
 def optimizer_artifact_status_for_dir(case_dir: Path) -> str:

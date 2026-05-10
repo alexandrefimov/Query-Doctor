@@ -20,7 +20,7 @@ from query_doctor.web.jobs import WebJobSnapshot, WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.query_analysis import validate_query_id
 from query_doctor.web.specific_query_state import build_specific_query_detail_render_context
-from query_doctor.web.trusted_artifacts import load_specific_query_trusted_report_artifact
+from query_doctor.web.trusted_artifacts import case_has_analyzer_facts, load_specific_query_trusted_report_artifact
 from query_doctor.web.ui.markdown import render_report_markdown_html
 from query_doctor.web.ui.pages import render_page, render_query_page
 from query_doctor.web.ui.specific_query import render_specific_query_detail
@@ -44,7 +44,7 @@ def render_specific_query_detail_for_request(
     except WebError:
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
-    if not (case_dir / "analysis_facts.md").is_file():
+    if not case_has_analyzer_facts(case_dir):
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)

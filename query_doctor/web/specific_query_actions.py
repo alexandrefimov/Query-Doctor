@@ -29,6 +29,7 @@ from query_doctor.web.query_analysis import validate_query_id
 from query_doctor.web.specific_query_pages import render_specific_query_detail_for_request
 from query_doctor.web.subprocesses import Runner
 from query_doctor.web.trusted_artifacts import (
+    case_has_analyzer_facts,
     case_has_safe_source_sql,
     load_optimized_query_state,
     load_specific_query_report_state,
@@ -58,7 +59,7 @@ def start_specific_query_report_job(
     except WebError:
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
-    if not (case_dir / "analysis_facts.md").is_file():
+    if not case_has_analyzer_facts(case_dir):
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)

@@ -21,8 +21,14 @@ from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_status_summary,
     present_recent_scan_technical_details,
 )
+from query_doctor.web.presenters.recent_scan_analysis_summary import (
+    present_recent_scan_analysis_summary,
+)
 from query_doctor.web.presenters.recent_scan_evidence import present_recent_scan_evidence_guide
-from query_doctor.web.presenters.recent_scan_models import RecentScanEvidenceGuideView
+from query_doctor.web.presenters.recent_scan_models import (
+    RecentScanAnalysisSummaryView,
+    RecentScanEvidenceGuideView,
+)
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
     escape_value,
@@ -275,17 +281,11 @@ def render_case_detail_toc() -> str:
 
 
 def render_case_analysis_summary(view: RecentScanCaseDetailView) -> str:
-    fields = [
-        ("evidence quality", case_evidence_guide_value(view, "evidence quality")),
-        ("facts", case_evidence_guide_value(view, "facts")),
-        ("primary bottleneck", case_primary_bottleneck_summary(view)),
-        ("optimizer outcome", case_optimizer_outcome_summary(view)),
-        ("stats evidence", case_evidence_guide_value(view, "stats evidence")),
-        ("stats candidate", case_stats_candidate_summary(view)),
-        ("runtime context", case_runtime_context_summary(view)),
-        ("metadata coverage", case_metadata_coverage_summary(view)),
-        ("next action", case_next_action_summary(view)),
-    ]
+    return render_case_analysis_summary_view(present_recent_scan_analysis_summary(view))
+
+
+def render_case_analysis_summary_view(view: RecentScanAnalysisSummaryView) -> str:
+    fields = [(row.label, row.value) for row in view.rows]
     return (
         "<section id=\"analysis-summary\" class=\"case-overview\" aria-label=\"Analysis summary\">"
         "<div class=\"section-heading\"><div>"
@@ -295,99 +295,6 @@ def render_case_analysis_summary(view: RecentScanCaseDetailView) -> str:
         f"<div class=\"meta-list\">{metadata_rows(fields)}</div>"
         "</section>"
     )
-
-
-def case_evidence_guide_value(view: RecentScanCaseDetailView, label: str) -> str:
-    guide = present_recent_scan_evidence_guide(view)
-    for card in guide.cards:
-        if card.label == label:
-            return card.value
-    return "Unknown"
-
-
-def case_primary_bottleneck_summary(view: RecentScanCaseDetailView) -> str:
-    primary = view.primary_bottleneck
-    if primary.unavailable:
-        return "Not classified"
-    if primary.reason_summary:
-        return f"{primary.summary}: {primary.reason_summary}"
-    return primary.summary
-
-
-def case_optimizer_outcome_summary(view: RecentScanCaseDetailView) -> str:
-    candidate = view.optimization_candidate
-    if not detail_candidate_is_visible(candidate):
-        return "No Medium/High query optimization candidate"
-    tier = detail_title(candidate.get("tier"))
-    score = candidate.get("score")
-    bucket = str(candidate.get("rewriteability_bucket") or "").strip().lower()
-    support_label = str(candidate.get("rewrite_support_label") or "Unknown").strip()
-    review = str(candidate.get("review_areas") or "query shape").strip()
-    if bucket == "not_rewriteable":
-        return f"{tier} / {score}: review-only; no trusted SQL draft shape detected. Review {review}."
-    if bucket == "human_review_only":
-        return f"{tier} / {score}: manual guidance only; SQL draft disabled by guardrails. Review {review}."
-    if bucket == "safe_material_draft":
-        return f"{tier} / {score}: draft-ready; {support_label}."
-    if bucket in {"recipe_detected_no_draft", "recipe_adjacent_shape"}:
-        return f"{tier} / {score}: recipe backlog; {support_label}. Review {review}."
-    return f"{tier} / {score}: {support_label}. Review {review}."
-
-
-def case_stats_candidate_summary(view: RecentScanCaseDetailView) -> str:
-    candidate = view.stats_candidate
-    if not detail_candidate_is_visible(candidate):
-        return "No Medium/High stats refresh candidate"
-    tier = detail_title(candidate.get("tier"))
-    score = candidate.get("score")
-    need = str(candidate.get("need_type") or "unknown").replace("_", " ")
-    confidence = detail_title(candidate.get("confidence"))
-    review = str(candidate.get("review_areas") or "stats evidence").strip()
-    return f"{tier} / {score}: {need}; {confidence} confidence. Review {review}."
-
-
-def case_runtime_context_summary(view: RecentScanCaseDetailView) -> str:
-    title = str(view.runtime_verdict.title or "").strip()
-    if not title or title == "Runtime context not collected":
-        return "Runtime context not collected"
-    return f"{title}: {view.runtime_verdict.summary}"
-
-
-def case_metadata_coverage_summary(view: RecentScanCaseDetailView) -> str:
-    summary = dict(view.metadata.summary_items)
-    for key in ("metadata coverage", "stats coverage", "metadata command status", "metadata status"):
-        value = summary.get(key)
-        if detail_is_meaningful_value(value):
-            return str(value)
-    if view.metadata.unavailable:
-        return view.metadata.fallback_note or "Metadata not available"
-    return "Collected metadata available"
-
-
-def case_next_action_summary(view: RecentScanCaseDetailView) -> str:
-    guide = present_recent_scan_evidence_guide(view)
-    for card in guide.cards:
-        if card.label == "next action":
-            return card.value
-    return "Review findings before explicit LLM action"
-
-
-def detail_candidate_is_visible(candidate: dict[str, Any]) -> bool:
-    return str(candidate.get("tier") or "").lower() in {"high", "medium"}
-
-
-def detail_title(value: Any) -> str:
-    text = str(value or "unknown").replace("_", " ").strip()
-    return text.title() if text else "Unknown"
-
-
-def detail_is_meaningful_value(value: Any) -> bool:
-    if value is None:
-        return False
-    if value is False:
-        return False
-    text = str(value).strip().lower()
-    return text not in {"", "unknown", "none", "not_run", "not checked", "false"}
 
 
 def render_technical_details(view: RecentScanCaseDetailView) -> str:

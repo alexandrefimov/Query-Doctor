@@ -208,6 +208,17 @@ class RecentScanEvidenceGuideView:
 
 
 @dataclass(frozen=True)
+class RecentScanAnalysisSummaryRowView:
+    label: str
+    value: str
+
+
+@dataclass(frozen=True)
+class RecentScanAnalysisSummaryView:
+    rows: tuple[RecentScanAnalysisSummaryRowView, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanScoreReasonView:
     title: str
     explanation: str

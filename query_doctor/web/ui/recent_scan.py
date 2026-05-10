@@ -35,6 +35,7 @@ from query_doctor.web.ui.metadata_details import (
 from query_doctor.web.ui.recent_scan_details import (
     explain_score_reason,
     render_batch_case_detail,
+    render_case_analysis_summary_view,
     render_case_detail_overview_view,
     render_case_status_summary,
     render_case_status_summary_view,

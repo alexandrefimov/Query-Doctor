@@ -15,6 +15,78 @@ def test_trusted_artifacts_exposes_optimizer_artifact_status_helpers():
     assert trusted_artifacts.trusted_report_download_filename("$$$") == "query-doctor-report-report.md"
 
 
+def test_report_evidence_inventory_returns_safe_categories_without_filenames(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    (case_dir / "impala_context.json").write_text("{}\n", encoding="utf-8")
+
+    inventory = trusted_artifacts.report_evidence_inventory(case_dir)
+
+    category_labels = tuple(category.label for category in inventory.categories)
+    completeness = {item.label: item.state for item in inventory.completeness}
+    assert "Profile digest" in category_labels
+    assert "Analyzer facts" in category_labels
+    assert "Impala metadata JSON" in category_labels
+    assert completeness["Profile"] == "available"
+    assert completeness["SQL"] == "not collected"
+    assert completeness["Metadata"] == "available"
+    assert inventory.profile_evidence_state == "available"
+    assert inventory.analyzer_facts_state == "available"
+    assert "profile_digest.md" not in repr(inventory)
+    assert "analysis_facts.md" not in repr(inventory)
+    assert str(case_dir) not in repr(inventory)
+
+
+def test_case_has_analyzer_facts_hides_raw_filename_contract(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+
+    assert trusted_artifacts.case_has_analyzer_facts(case_dir) is False
+
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+
+    assert trusted_artifacts.case_has_analyzer_facts(case_dir) is True
+
+
+def test_load_case_analyzer_facts_text_is_bounded_and_path_safe(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+
+    assert trusted_artifacts.load_case_analyzer_facts_text(case_dir) == "FACTS\n"
+    assert trusted_artifacts.load_case_analyzer_facts_text(case_dir, max_bytes=4) is None
+
+    missing_dir = tmp_path / "missing"
+    assert trusted_artifacts.load_case_analyzer_facts_text(missing_dir) is None
+
+
+def test_load_case_impala_context_artifact_is_bounded_and_path_safe(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "impala_context.json").write_text('{"tables": ["db.safe_table"]}\n', encoding="utf-8")
+
+    artifact = trusted_artifacts.load_case_impala_context_artifact(case_dir)
+
+    assert artifact is not None
+    assert artifact.case_dir == case_dir.resolve()
+    assert artifact.context_path == (case_dir / "impala_context.json").resolve()
+    assert artifact.payload == {"tables": ["db.safe_table"]}
+    assert trusted_artifacts.case_has_impala_context_artifact(case_dir) is True
+    assert trusted_artifacts.load_case_impala_context_artifact(case_dir, max_bytes=4) is None
+
+    unsafe_case_dir = tmp_path / "unsafe-case"
+    unsafe_case_dir.mkdir()
+    outside_context = tmp_path / "outside.json"
+    outside_context.write_text('{"tables": ["db.outside"]}\n', encoding="utf-8")
+    (unsafe_case_dir / "impala_context.json").symlink_to(outside_context)
+    assert trusted_artifacts.case_has_impala_context_artifact(unsafe_case_dir) is False
+    assert trusted_artifacts.load_case_impala_context_artifact(unsafe_case_dir) is None
+
+    assert trusted_artifacts.load_case_impala_context_artifact(tmp_path / "missing") is None
+
+
 def write_optimizer_marker(case_dir, *, source_sql, draft_name="optimized_query.sql", source_scope="read_only_statement"):
     marker = {
         "draft": draft_name,

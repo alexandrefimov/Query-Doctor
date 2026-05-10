@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
@@ -10,7 +9,12 @@ from typing import Any
 from query_doctor.impala import table_metadata_facts
 
 from query_doctor.web.models import WebSettings
-from query_doctor.web.trusted_artifacts import batch_case_artifact_dirs, resolve_batch_case_dir
+from query_doctor.web.trusted_artifacts import (
+    batch_case_artifact_dirs,
+    load_case_analyzer_facts_text,
+    load_case_impala_context_artifact,
+    resolve_batch_case_dir,
+)
 
 
 MAX_METADATA_FACTS_BYTES = 512 * 1024
@@ -181,95 +185,57 @@ def load_batch_case_cluster_runtime_context_facts(settings: WebSettings, case: d
 
 
 def load_batch_case_analysis_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
-    try:
-        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
-        facts_path.relative_to(case_dir)
-        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
-            return None
-        text = facts_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
         return None
     return parse_table_metadata_context_facts(text)
 
 
 def load_case_analysis_evidence_quality_facts(case_dir: Path) -> dict[str, Any] | None:
-    try:
-        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
-        facts_path.relative_to(case_dir)
-        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
-            return None
-        text = facts_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
         return None
     return parse_evidence_quality_facts(text)
 
 
 def load_case_analysis_stats_quality_facts(case_dir: Path) -> dict[str, Any] | None:
-    try:
-        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
-        facts_path.relative_to(case_dir)
-        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
-            return None
-        text = facts_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
         return None
     return parse_stats_quality_facts(text)
 
 
 def load_case_analysis_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
-    try:
-        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
-        facts_path.relative_to(case_dir)
-        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
-            return None
-        text = facts_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
         return None
     return parse_cm_metrics_facts(text)
 
 
 def load_case_analysis_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
-    try:
-        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
-        facts_path.relative_to(case_dir)
-        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
-            return None
-        text = facts_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
         return None
     return parse_runtime_diagnosis_facts(text)
 
 
 def load_case_analysis_cluster_runtime_context_facts(case_dir: Path) -> dict[str, Any] | None:
-    try:
-        facts_path = (case_dir / "analysis_facts.md").resolve(strict=True)
-        facts_path.relative_to(case_dir)
-        if facts_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
-            return None
-        text = facts_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
         return None
     return parse_cluster_runtime_context_facts(text)
 
 
 def load_batch_case_impala_context_facts(case_dir: Path) -> dict[str, Any] | None:
-    for candidate in (
-        case_dir / "impala_context.json",
-        case_dir / "impala_context" / "impala_context.json",
-    ):
-        try:
-            context_path = candidate.resolve(strict=True)
-            context_path.relative_to(case_dir)
-            if context_path.stat().st_size > MAX_METADATA_FACTS_BYTES:
-                return None
-            payload = json.loads(context_path.read_text(encoding="utf-8", errors="replace"))
-        except (OSError, ValueError, json.JSONDecodeError):
-            continue
-        if not isinstance(payload, dict):
-            continue
-        context = table_metadata_facts.context_from_payload(payload, context_path, case_dir)
-        return convert_table_metadata_context_for_web(context)
-    return None
+    artifact = load_case_impala_context_artifact(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if artifact is None:
+        return None
+    context = table_metadata_facts.context_from_payload(
+        artifact.payload,
+        artifact.context_path,
+        artifact.case_dir,
+    )
+    return convert_table_metadata_context_for_web(context)
 
 
 def convert_table_metadata_context_for_web(context: dict[str, Any]) -> dict[str, Any] | None:

@@ -4,35 +4,17 @@ from __future__ import annotations
 
 import html
 import re
-from pathlib import Path
 from typing import Any
 
 from query_doctor.report.language_contract import EN_REPORT_CONTRACT, RU_REPORT_CONTRACT
 from query_doctor.safety.browser_display import redact_browser_display_text
+from query_doctor.web.trusted_artifacts import ReportEvidenceInventory, report_evidence_inventory
 from query_doctor.web.ui.markdown import render_report_markdown_html
-
-
-ARTIFACT_CANDIDATES = (
-    ("Profile digest", "profile_digest.md"),
-    ("Profile text", "profile.txt"),
-    ("Profile JSON", "profile.json"),
-    ("SQL", "sql.sql"),
-    ("SQL", "query.sql"),
-    ("SQL", "original_query.sql"),
-    ("EXPLAIN", "explain.txt"),
-    ("Analyzer facts", "analysis_facts.md"),
-    ("Diagnosis", "diagnosis.md"),
-    ("Impala metadata", "impala_context.md"),
-    ("Impala metadata JSON", "impala_context.json"),
-    ("CM query details", "cm_query_details.json"),
-    ("CM metadata", "cm_metadata.json"),
-    ("Collection warnings", "collection_warnings.txt"),
-)
 
 
 def render_result(result: Any) -> list[str]:
     headings = extract_markdown_headings(result.report_text)
-    artifacts = existing_artifacts(result.case_dir)
+    inventory = report_evidence_inventory(result.case_dir)
     has_facts = has_analyzer_facts_section(result.report_text)
     return [
         render_report_header(result),
@@ -46,7 +28,7 @@ def render_result(result: Any) -> list[str]:
         "</div>",
         "</details>",
         "</div>",
-        render_report_sidebar(result, headings=headings, artifacts=artifacts, has_facts=has_facts),
+        render_report_sidebar(result, headings=headings, inventory=inventory, has_facts=has_facts),
         "</section>",
     ]
 
@@ -109,16 +91,16 @@ def render_report_sidebar(
     result: Any,
     *,
     headings: list[tuple[str, str]],
-    artifacts: list[tuple[str, str]],
+    inventory: ReportEvidenceInventory,
     has_facts: bool,
 ) -> str:
     return (
         "<aside class=\"side-panel\" aria-label=\"Report side panel\">"
         + render_toc_card(headings)
         + render_report_metadata_card(result, has_facts)
-        + render_evidence_card(result.case_dir)
-        + render_artifacts_card(artifacts)
-        + render_pipeline_card(result, artifacts)
+        + render_evidence_card(inventory)
+        + render_artifacts_card(inventory)
+        + render_pipeline_card(result, inventory)
         + "</aside>"
     )
 
@@ -152,44 +134,35 @@ def render_report_metadata_card(result: Any, has_facts: bool) -> str:
     )
 
 
-def render_evidence_card(case_dir: Path) -> str:
-    states = [
-        ("Profile", file_state(case_dir, ("profile_digest.md", "profile.txt", "profile.json"))),
-        ("SQL", file_state(case_dir, ("sql.sql", "query.sql", "original_query.sql"))),
-        ("EXPLAIN", file_state(case_dir, ("explain.txt",))),
-        ("Metadata", file_state(case_dir, ("impala_context.md", "impala_context.json"))),
-        ("Host metrics", "not collected"),
-    ]
+def render_evidence_card(inventory: ReportEvidenceInventory) -> str:
     rows = "".join(
-        f"<div class=\"meta-row\"><span>{html.escape(label)}</span>{render_state_badge(state)}</div>"
-        for label, state in states
+        f"<div class=\"meta-row\"><span>{html.escape(item.label)}</span>{render_state_badge(item.state)}</div>"
+        for item in inventory.completeness
     )
     return f"<section class=\"panel side-card\"><h2>Evidence completeness</h2><div class=\"meta-list\">{rows}</div></section>"
 
 
-def render_artifacts_card(artifacts: list[tuple[str, str]]) -> str:
-    if not artifacts:
+def render_artifacts_card(inventory: ReportEvidenceInventory) -> str:
+    if not inventory.categories:
         return (
             "<section class=\"panel side-card\"><h2>Evidence categories</h2>"
             "<p class=\"helper\">No recognized safe evidence categories are available.</p></section>"
         )
     items = "".join(
         "<div class=\"artifact-item\"><span>"
-        f"{html.escape(label)}</span>"
+        f"{html.escape(item.label)}</span>"
         "<span class=\"badge green\">available</span></div>"
-        for label, _filename in artifacts
+        for item in inventory.categories
     )
     return f"<section class=\"panel side-card\"><h2>Evidence categories</h2><div class=\"artifact-list\">{items}</div></section>"
 
 
-def render_pipeline_card(result: Any, artifacts: list[tuple[str, str]]) -> str:
-    profile_state = "available" if any(name.startswith("profile") for _, name in artifacts) else "not observed"
-    facts_state = "available" if any(name == "analysis_facts.md" for _, name in artifacts) else "not observed"
+def render_pipeline_card(result: Any, inventory: ReportEvidenceInventory) -> str:
     return (
         "<section class=\"panel side-card\"><h2>Pipeline</h2><div class=\"timeline\">"
         f"{render_timeline_item('Case source', result.case_source)}"
-        f"{render_timeline_item('Profile evidence', profile_state)}"
-        f"{render_timeline_item('Analyzer facts', facts_state)}"
+        f"{render_timeline_item('Profile evidence', inventory.profile_evidence_state)}"
+        f"{render_timeline_item('Analyzer facts', inventory.analyzer_facts_state)}"
         f"{render_timeline_item('Report validation', 'PASS')}"
         "</div></section>"
     )
@@ -203,18 +176,10 @@ def render_timeline_item(label: str, value: str) -> str:
     )
 
 
-def file_state(case_dir: Path, names: tuple[str, ...]) -> str:
-    return "available" if any((case_dir / name).is_file() for name in names) else "not collected"
-
-
 def render_state_badge(state: str) -> str:
     if state == "available":
         return "<span class=\"badge green\">available</span>"
     return f"<span class=\"badge gray\">{html.escape(state)}</span>"
-
-
-def existing_artifacts(case_dir: Path) -> list[tuple[str, str]]:
-    return [(label, filename) for label, filename in ARTIFACT_CANDIDATES if (case_dir / filename).is_file()]
 
 
 def escape_report_value(value: Any) -> str:
