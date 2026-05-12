@@ -31,7 +31,7 @@ def metadata_refresh_candidates(config: BatchConfig, cases: list[CaseResult]) ->
     if metadata_refresh_skip_reason(config, ranked) is not None:
         mark_metadata_not_requested(ranked)
         return []
-    candidates = select_metadata_refresh_candidates(ranked, config.metadata_top_limit)
+    candidates = select_metadata_refresh_candidates_for_config(config, ranked)
     refreshed_ids = {id(case) for case in candidates}
     mark_metadata_not_requested([case for case in ranked if id(case) not in refreshed_ids])
     return candidates
@@ -55,7 +55,20 @@ def mark_metadata_not_requested(cases: list[CaseResult]) -> None:
             case.metadata_status = "not_requested"
 
 
-def select_metadata_refresh_candidates(ranked_cases: list[CaseResult], limit: int) -> list[CaseResult]:
+def select_metadata_refresh_candidates_for_config(config: BatchConfig, ranked_cases: list[CaseResult]) -> list[CaseResult]:
+    return select_metadata_refresh_candidates(
+        ranked_cases,
+        config.metadata_top_limit,
+        include_remaining=config.query_profile_source == "impala",
+    )
+
+
+def select_metadata_refresh_candidates(
+    ranked_cases: list[CaseResult],
+    limit: int,
+    *,
+    include_remaining: bool = False,
+) -> list[CaseResult]:
     if limit <= 0:
         return []
     remaining = limit
@@ -86,6 +99,12 @@ def select_metadata_refresh_candidates(ranked_cases: list[CaseResult], limit: in
         and suspicious_can_be_promoted_by_metadata(case)
     ][:suspicious_limit]
     selected.extend(suspicious)
+    selected_ids.update(id(case) for case in suspicious)
+    remaining -= len(suspicious)
+
+    if include_remaining and remaining > 0:
+        selected.extend([case for case in ranked_cases if id(case) not in selected_ids][:remaining])
+
     return selected
 
 
