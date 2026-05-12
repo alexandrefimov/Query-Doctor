@@ -1,0 +1,278 @@
+"""Bounded Impala daemon query discovery from debug web endpoints."""
+
+from __future__ import annotations
+
+import json
+import re
+import urllib.error
+import urllib.request
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
+
+from query_doctor.cm.models import CMAdapterError, CMClientError, CMQuerySummary
+from query_doctor.cm.profile_parsing import format_cm_timestamp
+from query_doctor.impala.profile_source import (
+    DEFAULT_IMPALA_PROFILE_PORT,
+    DEFAULT_IMPALA_PROFILE_SCHEME,
+    DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+    UrlOpener,
+    normalize_impala_profile_hosts,
+    normalize_impala_profile_scheme,
+)
+
+
+DEFAULT_MAX_QUERY_LIST_BYTES = 5 * 1024 * 1024
+IMPALA_QUERY_LIST_PATHS = ("/queries?json", "/queries?json=true")
+QUERY_ID_RE = re.compile(r"\b[0-9a-f]{16}:[0-9a-f]{16}\b", re.IGNORECASE)
+HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+@dataclass(frozen=True)
+class ImpalaQueryDiscoveryResult:
+    summaries: list[CMQuerySummary]
+    warnings: list[str]
+    attempted_endpoints: int
+
+
+def impala_query_list_urls(
+    hosts: Iterable[str],
+    *,
+    port: int = DEFAULT_IMPALA_PROFILE_PORT,
+    scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME,
+) -> tuple[str, ...]:
+    normalized_scheme = normalize_impala_profile_scheme(scheme)
+    urls: list[str] = []
+    for host in normalize_impala_profile_hosts(tuple(hosts)):
+        netloc = host if ":" in host else f"{host}:{port}"
+        for path in IMPALA_QUERY_LIST_PATHS:
+            urls.append(f"{normalized_scheme}://{netloc}{path}")
+    return tuple(urls)
+
+
+def fetch_impala_query_summaries(
+    *,
+    hosts: Iterable[str],
+    port: int = DEFAULT_IMPALA_PROFILE_PORT,
+    scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME,
+    timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+    max_query_list_bytes: int = DEFAULT_MAX_QUERY_LIST_BYTES,
+    opener: UrlOpener = urllib.request.urlopen,
+) -> ImpalaQueryDiscoveryResult:
+    urls = impala_query_list_urls(hosts, port=port, scheme=scheme)
+    if not urls:
+        raise CMAdapterError("Impala query discovery requires at least one impalad host.")
+
+    summaries_by_query_id: dict[str, CMQuerySummary] = {}
+    warnings: list[str] = []
+    attempted = 0
+    successful = 0
+    for url in urls:
+        attempted += 1
+        try:
+            payload = fetch_impala_query_list_url(
+                url,
+                timeout_sec=timeout_sec,
+                max_query_list_bytes=max_query_list_bytes,
+                opener=opener,
+            )
+        except CMClientError:
+            continue
+        successful += 1
+        for summary in parse_impala_query_list_payload(payload):
+            summaries_by_query_id.setdefault(summary.query_id, summary)
+    if successful == 0:
+        raise CMAdapterError(
+            "Impala query discovery did not find a readable query list on the configured impalad endpoints. "
+            f"Attempted endpoints: {attempted}."
+        )
+    if not summaries_by_query_id:
+        warnings.append("Impala daemon query discovery returned no query summaries.")
+    return ImpalaQueryDiscoveryResult(
+        summaries=list(summaries_by_query_id.values()),
+        warnings=warnings,
+        attempted_endpoints=attempted,
+    )
+
+
+def fetch_impala_query_list_url(
+    url: str,
+    *,
+    timeout_sec: int,
+    max_query_list_bytes: int,
+    opener: UrlOpener,
+) -> Any:
+    request = urllib.request.Request(url, headers={"Accept": "application/json,text/plain"})
+    try:
+        with opener(request, timeout=timeout_sec) as response:
+            raw = response.read(max_query_list_bytes + 1)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise CMClientError("Impala query list endpoint request failed safely.") from exc
+    if len(raw) > max_query_list_bytes:
+        raise CMClientError("Impala query list endpoint response exceeded the configured byte limit.")
+    text = raw.decode("utf-8", errors="replace")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise CMClientError("Impala query list endpoint did not return JSON.") from exc
+
+
+def parse_impala_query_list_payload(payload: Any) -> list[CMQuerySummary]:
+    entries = list(iter_query_entries(payload))
+    summaries: list[CMQuerySummary] = []
+    for entry, default_status in entries:
+        summary = parse_impala_query_entry(entry, default_status=default_status)
+        if summary is not None:
+            summaries.append(summary)
+    return summaries
+
+
+def iter_query_entries(payload: Any) -> Iterable[tuple[dict[str, Any], str | None]]:
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                yield item, None
+        return
+    if not isinstance(payload, dict):
+        return
+    for key, value in payload.items():
+        if isinstance(value, list) and key_is_query_collection(key):
+            default_status = default_status_for_collection_key(key)
+            for item in value:
+                if isinstance(item, dict):
+                    yield item, default_status
+    for wrapper_key in ("queries", "query_info", "queryInfo", "queryLocations"):
+        value = payload.get(wrapper_key)
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    yield item, None
+        elif isinstance(value, dict):
+            yield from iter_query_entries(value)
+
+
+def key_is_query_collection(key: str) -> bool:
+    normalized = key.lower()
+    return "quer" in normalized and isinstance(key, str)
+
+
+def default_status_for_collection_key(key: str) -> str | None:
+    normalized = key.lower()
+    if any(marker in normalized for marker in ("in_flight", "inflight", "running", "active")):
+        return "running"
+    if any(marker in normalized for marker in ("completed", "complete", "finished")):
+        return "finished"
+    return None
+
+
+def parse_impala_query_entry(raw: dict[str, Any], *, default_status: str | None) -> CMQuerySummary | None:
+    query_id = normalize_string(first_present(raw, ("query_id", "queryId", "id", "query-id")))
+    if not query_id:
+        query_id = extract_query_id_from_strings(raw)
+    if not query_id:
+        return None
+    start_time = normalize_impala_timestamp(
+        first_present(raw, ("start_time", "startTime", "start_time_utc", "startTimeUtc", "start"))
+    )
+    end_time = normalize_impala_timestamp(
+        first_present(raw, ("end_time", "endTime", "end_time_utc", "endTimeUtc", "end"))
+    )
+    status = normalize_string(first_present(raw, ("status", "state", "query_state", "queryState"))) or default_status
+    return CMQuerySummary(
+        query_id=query_id,
+        start_time=start_time,
+        end_time=end_time,
+        duration_ms=parse_duration_ms(raw),
+        status=status,
+        user=normalize_string(first_present(raw, ("user", "username", "effective_user", "effectiveUser"))),
+        pool=normalize_string(first_present(raw, ("pool", "pool_name", "poolName", "request_pool", "requestPool"))),
+        query_type=normalize_string(
+            first_present(raw, ("query_type", "queryType", "stmt_type", "stmtType", "statementType"))
+        )
+        or "QUERY",
+        statement=normalize_statement(first_present(raw, ("stmt", "statement", "query", "sql", "stmt_text", "stmtText"))),
+        query_state=normalize_string(first_present(raw, ("query_state", "queryState", "state"))) or status,
+    )
+
+
+def first_present(raw: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in raw:
+            return raw[key]
+    return None
+
+
+def normalize_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def normalize_statement(value: Any) -> str | None:
+    text = normalize_string(value)
+    if text is None:
+        return None
+    return HTML_TAG_RE.sub(" ", text)
+
+
+def extract_query_id_from_strings(raw: dict[str, Any]) -> str | None:
+    for value in raw.values():
+        if not isinstance(value, str):
+            continue
+        match = QUERY_ID_RE.search(value)
+        if match:
+            return match.group(0)
+    return None
+
+
+def parse_duration_ms(raw: dict[str, Any]) -> int | None:
+    for key in (
+        "duration_ms",
+        "durationMillis",
+        "duration_millis",
+        "duration",
+        "duration_sec",
+        "durationSeconds",
+    ):
+        if key not in raw:
+            continue
+        value = raw[key]
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            multiplier = 1000 if "sec" in key.lower() else 1
+            return max(0, int(float(value) * multiplier))
+        parsed = parse_duration_text(str(value))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def parse_duration_text(value: str) -> int | None:
+    text = value.strip().lower()
+    if not text:
+        return None
+    match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)\s*(ms|millis|milliseconds|s|sec|secs|seconds|m|min|mins|minutes)?", text)
+    if not match:
+        return None
+    number = float(match.group(1))
+    unit = match.group(2) or "ms"
+    if unit.startswith("m") and unit != "ms":
+        number *= 60_000
+    elif unit.startswith("s"):
+        number *= 1000
+    return max(0, int(number))
+
+
+def normalize_impala_timestamp(value: Any) -> str | None:
+    text = normalize_string(value)
+    if text is None:
+        return None
+    normalized = text.replace("T", " ").replace("Z", "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            parsed = datetime.strptime(normalized, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        return format_cm_timestamp(parsed)
+    return text

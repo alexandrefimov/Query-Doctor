@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class BatchConfig:
     out: Path
-    cm_url: str
-    cluster: str
-    service: str
+    cm_url: str | None
+    cluster: str | None
+    service: str | None
     cm_username: str | None
     ca_bundle: str | None
     verify_tls: bool
@@ -67,6 +67,11 @@ class BatchConfig:
     from_time: str | None = None
     to_time: str | None = None
     only_running: bool = False
+    query_profile_source: str = "cm"
+    impala_profile_hosts: tuple[str, ...] = ()
+    impala_profile_port: int = 25000
+    impala_profile_scheme: str = "http"
+    impala_profile_timeout_sec: int = 15
 
 
 @dataclass

@@ -75,6 +75,23 @@ def append_web_cm_args(cmd: list[str], settings: WebSettings) -> None:
         cmd.append("--insecure-skip-verify")
 
 
+def append_web_impala_profile_args(cmd: list[str], settings: WebSettings) -> None:
+    cmd.extend(
+        [
+            "--query-profile-source",
+            "impala",
+            "--impala-profile-port",
+            str(settings.impala_profile_port),
+            "--impala-profile-scheme",
+            settings.impala_profile_scheme,
+            "--impala-profile-timeout-sec",
+            str(settings.impala_profile_timeout_sec),
+        ]
+    )
+    for host in settings.impala_profile_hosts:
+        cmd.extend(["--impala-profile-host", host])
+
+
 def build_analyzer_command(case_dir: Path, settings: WebSettings) -> list[str]:
     return command_prefix(settings.repo_dir, "pipeline") + [
         str(case_dir),

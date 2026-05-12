@@ -16,13 +16,17 @@
       "metadata_coordinator": "impala-prod-coordinator.example.com:21000"
     },
     {
-      "id": "stage",
-      "label": "Staging",
-      "cm_url": "https://cm-stage.example.com:7183/",
-      "cluster": "stage_cluster",
-      "service": "impala",
-      "cm_metrics_profile": "cm6",
-      "metadata_coordinator": "impala-stage-coordinator.example.com:21000"
+      "id": "direct-impala",
+      "label": "Direct Impala",
+      "query_profile_source": "impala",
+      "impala_profile_hosts": [
+        "impalad-worker-1.example.com",
+        "impalad-worker-2.example.com"
+      ],
+      "impala_profile_port": 25000,
+      "impala_profile_scheme": "http",
+      "impala_profile_timeout_sec": 15,
+      "metadata_coordinator": "impala-coordinator.example.com:21000"
     }
   ],
   "ca_bundle": "~/.qdcreds/cm-chain.pem",

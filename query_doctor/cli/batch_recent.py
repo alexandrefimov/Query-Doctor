@@ -113,10 +113,14 @@ from query_doctor.recent.discovery import (
     build_recent_filters,
     classify_duration_filter_mode,
     discover_candidates as discover_candidates_impl,
+    discovery_window_bounds,
     make_cm_http_client,
     matching_candidate_limit_hit,
     raw_cm_summary_scan_limit,
 )
+from query_doctor.cm.profile_parsing import parse_cm_timestamp
+from query_doctor.cm.query_discovery import is_running_query_summary
+from query_doctor.impala.query_discovery import fetch_impala_query_summaries
 from query_doctor.recent.progress import ProgressWriter
 from query_doctor.recent.query_optimization_score import (
     QueryOptimizationCandidateScore,
@@ -180,6 +184,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--service", help="Impala service name.")
     parser.add_argument("--ca-bundle", help="PEM CA bundle for verified CM TLS connections.")
     parser.add_argument("--insecure-skip-verify", action="store_true", default=None)
+    parser.add_argument(
+        "--query-profile-source",
+        choices=("cm", "impala"),
+        help="Discovery/profile source. cm uses Cloudera Manager; impala uses direct impalad debug web endpoints.",
+    )
+    parser.add_argument(
+        "--impala-profile-host",
+        dest="impala_profile_hosts",
+        action="append",
+        default=[],
+        help="impalad debug web host or host:port for direct Impala discovery/profile collection.",
+    )
+    parser.add_argument("--impala-profile-port", type=positive_int)
+    parser.add_argument("--impala-profile-scheme", choices=("http", "https"))
+    parser.add_argument("--impala-profile-timeout-sec", type=positive_int)
     parser.add_argument(
         "--out",
         help="Dedicated query-doctor-* output directory under /tmp or the system temp directory.",
@@ -497,7 +516,70 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
 
 
 def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> DiscoveryResult:
+    if config.query_profile_source == "impala":
+        result = fetch_impala_query_summaries(
+            hosts=config.impala_profile_hosts,
+            port=config.impala_profile_port,
+            scheme=config.impala_profile_scheme,
+            timeout_sec=config.impala_profile_timeout_sec,
+        )
+        summaries = filter_impala_summaries_for_window(config, result.summaries)
+        candidates = cm_profiles.select_recent_query_candidates(
+            summaries,
+            select_limit=config.triage_profile_limit,
+            include_failed=config.include_failed,
+            include_running=config.include_running or config.only_running,
+            only_running=config.only_running,
+            user=config.user,
+            pool=config.pool,
+            query_type=config.query_type,
+            min_duration_sec=config.min_duration_sec,
+            max_duration_sec=config.max_duration_sec,
+            order=config.order,
+        )
+        if matching_candidate_limit_hit(candidates):
+            return DiscoveryResult(
+                candidates=[],
+                warnings=[
+                    *result.warnings,
+                    f"More than {config.triage_profile_limit} query summaries matched the current filters. Narrow the scan window or filters and run again.",
+                ],
+                duration_filter_mode="client-side",
+                server_filter_expression="impala-daemon-query-list",
+                summaries_inspected=len(summaries),
+                scan_too_broad=True,
+            )
+        return DiscoveryResult(
+            candidates=candidates,
+            warnings=result.warnings,
+            duration_filter_mode="client-side",
+            server_filter_expression="impala-daemon-query-list",
+            summaries_inspected=len(summaries),
+        )
     return discover_candidates_impl(config, env=env, make_client=make_cm_http_client)
+
+
+def filter_impala_summaries_for_window(
+    config: BatchConfig,
+    summaries: list[cm_profiles.CMQuerySummary],
+) -> list[cm_profiles.CMQuerySummary]:
+    if config.only_running:
+        return summaries
+    start, end = discovery_window_bounds(config)
+    filtered: list[cm_profiles.CMQuerySummary] = []
+    for summary in summaries:
+        if is_running_query_summary(summary):
+            continue
+        timestamp = summary.end_time or summary.start_time
+        if not timestamp:
+            continue
+        try:
+            parsed = parse_cm_timestamp(timestamp)
+        except Exception:  # noqa: BLE001 - malformed daemon timestamps are ignored for bounded discovery.
+            continue
+        if start <= parsed < end:
+            filtered.append(summary)
+    return filtered
 
 
 if __name__ == "__main__":

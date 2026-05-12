@@ -42,6 +42,9 @@ def collect_scan_cm_events(
     repo_root: Path,
     progress: ProgressWriter,
 ) -> tuple[dict[str, object] | None, str | None]:
+    if config.query_profile_source != "cm":
+        progress.emit(stage="cm_events", status="skipped", reason="query_profile_source=impala")
+        return None, None
     if not config.collect_cm_events:
         progress.emit(stage="cm_events", status="skipped", reason="collect_cm_events=false")
         return None, None
@@ -103,35 +106,54 @@ def collect_case_profile(
     try:
         target_out_dir = out_dir or case.wrapper_dir
         target_out_dir.mkdir(parents=True, exist_ok=True)
-        cmd = command_prefix(repo_root, "collect_cm") + [
-            "--query-id",
-            case.query_id,
-            "--out",
-            str(target_out_dir),
-            "--redact",
-            "--limit",
-            "1",
-            "--max-profile-bytes",
-            str(config.max_profile_bytes),
-        ]
-        include_cm_timeseries = config.collect_cm_timeseries if collect_cm_timeseries is None else collect_cm_timeseries
-        if include_cm_timeseries:
-            cmd.extend(
-                [
-                    "--collect-cm-timeseries",
-                    "--cm-metrics-profile",
-                    config.cm_metrics_profile,
-                    "--cm-timeseries-padding-sec",
-                    str(config.cm_timeseries_padding_sec),
-                    "--max-timeseries-bytes",
-                    str(config.max_timeseries_bytes),
-                    "--max-timeseries-points",
-                    str(config.max_timeseries_points),
-                ]
-            )
+        if config.query_profile_source == "impala":
+            cmd = command_prefix(repo_root, "collect_impala_profile") + [
+                "--query-id",
+                case.query_id,
+                "--out",
+                str(target_out_dir),
+                "--redact",
+                "--max-profile-bytes",
+                str(config.max_profile_bytes),
+                "--port",
+                str(config.impala_profile_port),
+                "--scheme",
+                config.impala_profile_scheme,
+                "--timeout-sec",
+                str(config.impala_profile_timeout_sec),
+            ]
+            for host in config.impala_profile_hosts:
+                cmd.extend(["--host", host])
         else:
-            cmd.append("--no-collect-cm-timeseries")
-        append_cm_config_args(cmd, config)
+            cmd = command_prefix(repo_root, "collect_cm") + [
+                "--query-id",
+                case.query_id,
+                "--out",
+                str(target_out_dir),
+                "--redact",
+                "--limit",
+                "1",
+                "--max-profile-bytes",
+                str(config.max_profile_bytes),
+            ]
+            include_cm_timeseries = config.collect_cm_timeseries if collect_cm_timeseries is None else collect_cm_timeseries
+            if include_cm_timeseries:
+                cmd.extend(
+                    [
+                        "--collect-cm-timeseries",
+                        "--cm-metrics-profile",
+                        config.cm_metrics_profile,
+                        "--cm-timeseries-padding-sec",
+                        str(config.cm_timeseries_padding_sec),
+                        "--max-timeseries-bytes",
+                        str(config.max_timeseries_bytes),
+                        "--max-timeseries-points",
+                        str(config.max_timeseries_points),
+                    ]
+                )
+            else:
+                cmd.append("--no-collect-cm-timeseries")
+            append_cm_config_args(cmd, config)
         result = run_subprocess(cmd, cwd=repo_root, env=env)
         if result.returncode != 0:
             if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
@@ -249,6 +271,9 @@ def refresh_top_cm_timeseries(
     repo_root: Path,
     progress: ProgressWriter,
 ) -> None:
+    if config.query_profile_source != "cm":
+        progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="query_profile_source=impala")
+        return
     if not config.collect_cm_timeseries:
         progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="collect_cm_timeseries=false")
         return

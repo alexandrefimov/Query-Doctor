@@ -11,6 +11,13 @@ from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
 from query_doctor.config.contract import merge_kerberos_cache_env
+from query_doctor.impala.profile_source import (
+    DEFAULT_IMPALA_PROFILE_PORT,
+    DEFAULT_IMPALA_PROFILE_SCHEME,
+    DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+    normalize_impala_profile_hosts,
+    normalize_impala_profile_scheme,
+)
 from query_doctor.recent.batch_models import BatchConfig
 
 
@@ -89,7 +96,16 @@ def build_batch_config(
     cwd: Path,
     repo_root: Path,
 ) -> BatchConfig:
-    use_repo_default = not any((args.cm_url, args.cluster, args.service, args.ca_bundle))
+    use_repo_default = not any(
+        (
+            args.cm_url,
+            args.cluster,
+            args.service,
+            args.ca_bundle,
+            getattr(args, "query_profile_source", None),
+            getattr(args, "impala_profile_hosts", None),
+        )
+    )
     default_config_path = None
     if not args.config:
         default_config_path = cm_profiles.discover_default_local_config(
@@ -114,15 +130,46 @@ def build_batch_config(
         # implicit local config in the current working directory.
         config_values = {}
         effective_config_path = None
+    query_profile_source = first_string(
+        getattr(args, "query_profile_source", None),
+        config_values.get("query_profile_source"),
+        "cm",
+    ) or "cm"
+    if query_profile_source not in {"cm", "impala"}:
+        raise ValueError("--query-profile-source must be one of: cm, impala")
     cm_url = first_string(args.cm_url, env.get("CM_URL"), config_values.get("cm_url"))
     cluster = first_string(args.cluster, config_values.get("cluster"))
     service = first_string(args.service, config_values.get("service"))
-    if not cm_url:
-        raise ValueError("Missing --cm-url, CM_URL, or local config cm_url.")
-    if not cluster:
-        raise ValueError("Missing --cluster or local config cluster.")
-    if not service:
-        raise ValueError("Missing --service or local config service.")
+    impala_profile_hosts = normalize_impala_profile_hosts(
+        first_string_tuple(getattr(args, "impala_profile_hosts", None), config_values.get("impala_profile_hosts"))
+    )
+    impala_profile_port = first_int(
+        getattr(args, "impala_profile_port", None),
+        config_values.get("impala_profile_port"),
+        default=DEFAULT_IMPALA_PROFILE_PORT,
+    )
+    impala_profile_scheme = normalize_impala_profile_scheme(
+        first_string(
+            getattr(args, "impala_profile_scheme", None),
+            config_values.get("impala_profile_scheme"),
+            DEFAULT_IMPALA_PROFILE_SCHEME,
+        )
+    )
+    impala_profile_timeout_sec = first_int(
+        getattr(args, "impala_profile_timeout_sec", None),
+        config_values.get("impala_profile_timeout_sec"),
+        default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+    )
+    if query_profile_source == "cm":
+        if not cm_url:
+            raise ValueError("Missing --cm-url, CM_URL, or local config cm_url.")
+        if not cluster:
+            raise ValueError("Missing --cluster or local config cluster.")
+        if not service:
+            raise ValueError("Missing --service or local config service.")
+    else:
+        if not impala_profile_hosts:
+            raise ValueError("Impala query discovery requires --impala-profile-host or local config impala_profile_hosts.")
 
     cm_inspect_limit = first_int(
         args.cm_inspect_limit,
@@ -150,6 +197,20 @@ def build_batch_config(
         config_values.get("recent_cm_events_max_events"),
         default=DEFAULT_CM_EVENTS_MAX_EVENTS,
     )
+    collect_cm_events = first_bool(
+        args.collect_cm_events,
+        config_values.get("recent_collect_cm_events"),
+        default=False,
+    )
+    collect_cm_timeseries = first_bool(
+        args.collect_cm_timeseries,
+        config_values.get("recent_collect_cm_timeseries"),
+        config_values.get("collect_cm_timeseries"),
+        default=False,
+    )
+    if query_profile_source == "impala":
+        collect_cm_events = False
+        collect_cm_timeseries = False
     recent_window_minutes = first_int(
         args.recent_window_minutes,
         config_values.get("recent_window_minutes"),
@@ -223,9 +284,9 @@ def build_batch_config(
 
     return BatchConfig(
         out=out,
-        cm_url=str(cm_url),
-        cluster=str(cluster),
-        service=str(service),
+        cm_url=str(cm_url) if cm_url else None,
+        cluster=str(cluster) if cluster else None,
+        service=str(service) if service else None,
         cm_username=first_string(env.get("CM_USERNAME"), config_values.get("username")),
         ca_bundle=ca_bundle,
         verify_tls=not insecure_skip_verify,
@@ -249,18 +310,9 @@ def build_batch_config(
             config_values.get("max_profile_bytes"),
             default=cm_profiles.DEFAULT_MAX_PROFILE_BYTES,
         ),
-        collect_cm_events=first_bool(
-            args.collect_cm_events,
-            config_values.get("recent_collect_cm_events"),
-            default=False,
-        ),
+        collect_cm_events=collect_cm_events,
         cm_events_max_events=cm_events_max_events,
-        collect_cm_timeseries=first_bool(
-            args.collect_cm_timeseries,
-            config_values.get("recent_collect_cm_timeseries"),
-            config_values.get("collect_cm_timeseries"),
-            default=False,
-        ),
+        collect_cm_timeseries=collect_cm_timeseries,
         cm_metrics_profile=cm_profiles.validate_cm_metrics_profile(
             first_string(
                 args.cm_metrics_profile,
@@ -314,6 +366,11 @@ def build_batch_config(
         config_path=effective_config_path,
         progress_jsonl=progress_jsonl,
         krb5ccname=first_string(config_values.get("krb5ccname")),
+        query_profile_source=query_profile_source,
+        impala_profile_hosts=impala_profile_hosts,
+        impala_profile_port=int(impala_profile_port or DEFAULT_IMPALA_PROFILE_PORT),
+        impala_profile_scheme=impala_profile_scheme,
+        impala_profile_timeout_sec=int(impala_profile_timeout_sec or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC),
     )
 
 
@@ -346,6 +403,21 @@ def first_string(*values: object) -> str | None:
         if normalized:
             return normalized
     return None
+
+
+def first_string_tuple(*values: object) -> tuple[str, ...]:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            items = tuple(item.strip() for item in value.split(",") if item.strip())
+        elif isinstance(value, (list, tuple)):
+            items = tuple(str(item).strip() for item in value if str(item).strip())
+        else:
+            items = (str(value).strip(),)
+        if items:
+            return items
+    return ()
 
 
 def first_int(*values: object, default: int | None) -> int | None:
@@ -470,7 +542,7 @@ def path_is_relative_to(path: Path, parent: Path) -> bool:
 
 
 def preflight(config: BatchConfig, *, env: dict[str, str], repo_root: Path) -> None:
-    if not (env.get("CM_PASSWORD") or env.get("CM_TOKEN")):
+    if config.query_profile_source == "cm" and not (env.get("CM_PASSWORD") or env.get("CM_TOKEN")):
         raise ValueError("CM auth env is not set in this execution environment.")
     if config.metadata_mode != "off" and config.metadata_coordinator:
         if not env.get("KRB5CCNAME"):

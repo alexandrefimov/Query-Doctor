@@ -12,8 +12,13 @@ from query_doctor.web.cluster_selection import (
     selected_cluster_key_from_mapping,
     settings_for_cluster_key,
 )
-from query_doctor.web.command_builders import append_web_cm_args, append_web_metadata_args, display_float
-from query_doctor.web.config import metadata_configured
+from query_doctor.web.command_builders import (
+    append_web_cm_args,
+    append_web_impala_profile_args,
+    append_web_metadata_args,
+    display_float,
+)
+from query_doctor.web.config import impala_profile_source_configured, metadata_configured
 from query_doctor.web.form_helpers import (
     first_form_value,
     parse_cm_metrics_profile,
@@ -305,7 +310,10 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
 
 def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
     settings = settings_for_cluster_key(settings, config.cluster_key)
-    if settings.clusters or any((settings.cm_url, settings.cm_cluster, settings.cm_service)):
+    if settings.query_profile_source == "impala":
+        if not impala_profile_source_configured(settings):
+            raise WebError("Selected cluster is missing impalad host settings for direct Impala discovery.")
+    elif settings.clusters or any((settings.cm_url, settings.cm_cluster, settings.cm_service)):
         require_cm_cluster_settings(settings)
     if config.metadata_top_limit > 0:
         if not metadata_configured(settings):
@@ -354,7 +362,11 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         "--progress-jsonl",
         str(progress_path),
     ]
-    append_web_cm_args(cmd, settings)
+    direct_impala_source = settings.query_profile_source == "impala"
+    if direct_impala_source:
+        append_web_impala_profile_args(cmd, settings)
+    else:
+        append_web_cm_args(cmd, settings)
     if config.only_running:
         cmd.extend(["--recent-window-minutes", str(config.recent_window_minutes)])
     else:
@@ -377,9 +389,9 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         cmd.append("--include-running")
     if config.only_running:
         cmd.append("--only-running")
-    if config.collect_cm_events:
+    if config.collect_cm_events and not direct_impala_source:
         cmd.extend(["--collect-cm-events", "--cm-events-max-events", str(config.cm_events_max_events)])
-    if config.collect_cm_timeseries:
+    if config.collect_cm_timeseries and not direct_impala_source:
         cmd.extend(
             [
                 "--collect-cm-timeseries",
