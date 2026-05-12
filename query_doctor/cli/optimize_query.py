@@ -36,6 +36,7 @@ from query_doctor.optimizer.artifacts import (
 from query_doctor.optimizer.deterministic_rewrites import (
     RISK_THRESHOLD_BYPASS_RECIPE_IDS,
     deterministic_recipe_draft,
+    deterministic_recipe_draft_diagnostics,
 )
 from query_doctor.optimizer.defaults import DEFAULT_OPTIMIZER_MODEL
 from query_doctor.optimizer.prompts import build_prompt, build_recommendations_prompt
@@ -137,6 +138,7 @@ from query_doctor.optimizer.validation import (
     all_predicate_signatures,
     complete_quoted_text_end,
     counter_is_subset,
+    deterministic_draft_unavailable_recommendations,
     extract_draft_sql,
     extract_recommendations,
     has_non_inner_join_modifier,
@@ -375,6 +377,43 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 print(f"{PROGRESS_PREFIX} optimizer deterministic recipe draft done", file=sys.stderr)
                 return 0
+        if rewrite_recipe is not None and deterministic_draft is None and risk_decision.mode != "recommendations_only":
+            diagnostics = deterministic_recipe_draft_diagnostics(
+                source_sql.sql,
+                rewrite_recipe,
+                deterministic_draft=deterministic_draft,
+            )
+            remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
+            recommendations_path = case_dir / RECOMMENDATIONS_NAME
+            recommendations_path.write_text(
+                deterministic_draft_unavailable_recommendations(risk_decision, facts_text, rewrite_recipe) + "\n",
+                encoding="utf-8",
+            )
+            generation_metadata: dict[str, object] = {
+                "generator": "deterministic_no_rewrite",
+                "prompt_chars": 0,
+                "source_sql_chars": len(source_sql.sql),
+                "generated_chars": 0,
+                "deterministic_draft_reasons": list(diagnostics.reasons),
+            }
+            if diagnostics.cte_pushdown_conjunct_decision_reasons:
+                generation_metadata["cte_pushdown_conjunct_decision_reasons"] = list(
+                    diagnostics.cte_pushdown_conjunct_decision_reasons
+                )
+            write_recommendations_marker(
+                case_dir,
+                RECOMMENDATIONS_NAME,
+                source_sql=source_sql.sql,
+                facts_text=facts_text,
+                source_scope=source_sql.scope,
+                risk_decision=risk_decision,
+                rewrite_recipe=rewrite_recipe,
+                output_kind="no_rewrite",
+                fallback_reason="deterministic_draft_unavailable",
+                generation_metadata=generation_metadata,
+            )
+            print(f"{PROGRESS_PREFIX} optimizer deterministic draft unavailable", file=sys.stderr)
+            return 0
         if risk_decision.mode == "recommendations_only":
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_prompt = build_recommendations_prompt(

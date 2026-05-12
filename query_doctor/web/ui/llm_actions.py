@@ -41,6 +41,7 @@ OPTIMIZER_SOURCE_SCOPE_LABELS = {
 }
 OPTIMIZER_FALLBACK_LABELS = {
     "no_python_owned_recipe": "No supported Python-owned rewrite recipe",
+    "deterministic_draft_unavailable": "Deterministic draft unavailable",
     "validation_failed": "Draft failed deterministic validation",
     "no_material_change": "No material rewrite",
     "output_limit": "Optimizer output limit reached",
@@ -710,6 +711,15 @@ def no_rewrite_outcome_copy(fallback_reason: str) -> tuple[str, str, bool]:
             ),
             False,
         )
+    if fallback_reason == "deterministic_draft_unavailable":
+        return (
+            "Deterministic draft unavailable",
+            (
+                "Python found a supported rewrite recipe but could not construct "
+                "a deterministic draft for this exact shape, so safe guidance is shown."
+            ),
+            False,
+        )
     if fallback_reason in {"output_limit", "output_budget"}:
         return (
             "Optimizer output limit reached",
@@ -730,6 +740,8 @@ def no_rewrite_recommendations_helper(fallback_reason: str) -> str:
         return "The optimizer did not find a material validated SQL change; safe guidance is shown instead."
     if fallback_reason == "no_python_owned_recipe":
         return "No supported deterministic rewrite recipe was found; safe guidance is shown instead."
+    if fallback_reason == "deterministic_draft_unavailable":
+        return "A supported recipe was found, but Python could not construct a deterministic draft for this shape."
     if fallback_reason in {"output_limit", "output_budget"}:
         return "The optimizer reached its output budget before a trusted draft was available."
     return "No trusted SQL draft was produced; safe guidance is shown instead."

@@ -29,6 +29,10 @@ The optimizer route is not an LLM SQL-writer contract.
 
 - Trusted SQL drafts are produced by Python-owned deterministic executors for
   supported recipes and accepted only after deterministic validation.
+- If a supported recipe is detected but the Python-owned deterministic executor
+  cannot construct a draft for the exact query shape, the optimizer records a
+  trusted `no_rewrite` outcome with safe guidance instead of asking the LLM for
+  a SQL draft.
 - The LLM may produce recommendation wording, explanation wording, and
   engineering-review hints from validated facts.
 - The LLM must not be the source of a trusted SQL draft. If model text contains

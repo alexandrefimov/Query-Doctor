@@ -23,6 +23,7 @@ from query_doctor.optimizer.recommendation_output import (
     UNSAFE_RECOMMENDATION_CTE_RE,
     UNSAFE_RECOMMENDATION_SQL_LINE_RE,
     UNSAFE_RECOMMENDATION_TOKENS,
+    deterministic_draft_unavailable_recommendations,
     extract_recommendations,
     no_rewrite_recommendations,
     no_supported_rewrite_recommendations,
