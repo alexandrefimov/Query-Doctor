@@ -512,7 +512,8 @@ code,.technical,.mono {
 }
 
 .diagnosis-cluster-control {
-  max-width:340px
+  width:260px;
+  max-width:100%
 }
 
 .field {
@@ -740,9 +741,13 @@ code,.technical,.mono {
   gap:12px
 }
 
-.batch-form .input {
+.batch-run-panel .input {
   height:32px;
   padding:0 10px
+}
+
+.scan-target-segmented {
+  width:100%
 }
 
 .batch-form .run-button {
@@ -2261,6 +2266,10 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
 }
 
 .mode-control,.run-button {
+  width:100%
+}
+
+.diagnosis-cluster-control {
   width:100%
 }
 
