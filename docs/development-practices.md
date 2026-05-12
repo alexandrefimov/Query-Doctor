@@ -1,6 +1,6 @@
 # Development Practices
 
-Last reviewed: 2026-05-12
+Last reviewed: 2026-05-13
 
 This document records the engineering practices that keep Query Doctor
 maintainable as it grows. It complements the mandatory safety rules in
@@ -17,9 +17,8 @@ tests. The weaker areas are maintainability and repeatability:
   validation, and Cloudera Manager (CM) collection;
 - several test files have become broad scenario buckets instead of focused
   behavior contracts;
-- linting and pre-commit automation now have a conservative baseline, but the
-  project still needs a later cleanup slice before broad style rules or strict
-  type-checking can be enforced;
+- ruff check and ruff format now have an enforced baseline through pre-commit,
+  but strict type-checking and broader style rules remain future cleanup;
 - many safety rules live in docs and tests, so new contributors need a concise
   quality checklist before changing behavior;
 - dependency policy is implicit rather than documented.
@@ -102,8 +101,10 @@ scripts/local_gate.sh
 
 The gate runs agent preflight, staged public-safety checks, whitespace checks,
 active-doc checks, Markdown link checks, ruff correctness checks, full pytest,
-demo preflight, and synthetic demo generation. Set `PUBLIC_RELEASE=1` to add
-the slower public-release tracked-tree and history scan:
+demo preflight, and synthetic demo generation. Run `pre-commit run --all-files`
+when you also need the full hook set, including `ruff format --check`.
+Set `PUBLIC_RELEASE=1` to add the slower public-release tracked-tree and
+history scan:
 
 ```bash
 PUBLIC_RELEASE=1 scripts/local_gate.sh

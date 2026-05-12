@@ -1,11 +1,12 @@
 # Engine Expansion Plan
 
-Last reviewed: 2026-05-12
+Last reviewed: 2026-05-13
 
 This document records the transition plan for future source-provider and engine
 work. It does not change current support: Query Doctor is still Apache Impala
-only, and Cloudera Manager is still the implemented query/profile/metrics/events
-source.
+only. Cloudera Manager is the full query/profile/metrics/events source, while
+direct Impala daemon collection and optional Prometheus runtime metrics are
+implemented only for the bounded workflows described below.
 
 The goal is to avoid doing provider decoupling, engine abstraction, new metrics
 sources, and a second engine in one step. Each phase below has its own stop
@@ -16,8 +17,10 @@ enough on real workloads.
 
 - `query_doctor/engines/` is a thin metadata seam, not a full parser or analyzer
   abstraction.
-- Current collection is coupled to Cloudera Manager for query discovery,
-  profile collection, metrics, and events.
+- Current full collection is coupled to Cloudera Manager for query discovery,
+  profile collection, metrics, and events. Direct Impala daemon collection now
+  supports bounded Recent, Running, and Known Query ID profile workflows without
+  Cloudera Manager events.
 - Current profile parsing and many analyzer facts are Impala-profile specific.
 - Impala metadata collection is already mostly separate from Cloudera Manager,
   but it remains Impala-specific.
@@ -46,12 +49,14 @@ below roughly 20% on a representative real Impala batch, as stated in
 
 First expand away from Cloudera Manager, not away from Impala.
 
-The first Direct Impala slice should be intentionally narrow:
+The first Direct Impala slice is intentionally narrow and implemented:
 
+- support bounded Recent and Running query-list/profile collection from Impala
+  daemon debug endpoints;
 - support one explicit known query/profile fetch from an Impala daemon
   debug/profile endpoint;
-- support optional explicit Prometheus runtime metrics for that same known
-  query window;
+- support optional explicit Prometheus runtime metrics for configured direct
+  Impala workflow windows;
 - stay read-only, bounded, redacted, and explicit;
 - keep browser and trusted-report output raw-free;
 - support enterprise auth requirements, including Kerberos, before claiming the
@@ -67,16 +72,18 @@ Use small source interfaces instead of one large provider object:
 - `EventSource`: publish normalized bounded event facts.
 
 Cloudera Manager can implement all four over time. Direct Impala currently
-implements the one-query profile source and an optional Prometheus
-`MetricsSource`; it still does not implement discovery or events.
+implements bounded query discovery/profile collection and can use an optional
+Prometheus `MetricsSource`; it still does not implement events.
 
 Do not add event/log providers or a second engine in this phase.
 Do not rewrite `query_doctor/cm/` for neatness; wrap existing behavior only as
 far as needed to create a tested boundary.
 
-Done means at least one real non-Cloudera-Manager Impala deployment can diagnose
-one known query safely, with optional bounded Prometheus runtime metrics,
-fixtures, and browser/report safety tests.
+Done for the current baseline means at least one real non-Cloudera-Manager
+Impala deployment can diagnose bounded Recent/Running queries and one known
+query safely, with optional bounded Prometheus runtime metrics, fixtures, and
+browser/report safety tests. Follow-up hardening should add more sanitized
+real fixtures and profile action cards before broader provider claims.
 
 ## Phase 2: Engine Fact Contract
 
@@ -128,9 +135,9 @@ engine has real fixtures, safety coverage, and working diagnosis paths.
 ## Phase 4: Prometheus Metrics Source Expansion
 
 Prometheus-style metrics are a metrics-source expansion, not an engine
-expansion. The first slice is implemented for direct Impala Known Query ID
-diagnosis. Broader expansion, such as batch workflows or additional metric
-profiles, can run in parallel with second-engine work only if the provider
+expansion. The first slice is implemented for configured direct Impala
+workflows. Broader expansion, such as additional metric profiles or non-Impala
+providers, can run in parallel with second-engine work only if the provider
 interfaces from Phase 1 are stable.
 
 Requirements:

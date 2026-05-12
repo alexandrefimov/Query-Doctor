@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -15,11 +15,12 @@ is not a historical audit log. For engineering risks, use
 ## Current Scope
 
 - Apache Impala is the only implemented SQL engine.
-- Cloudera Manager is the implemented query discovery, profile, metrics, and
-  events source for Recent queries.
-- Direct Impala daemon profile collection is supported only for one explicit
-  Known Query ID. It does not provide discovery or events. It can optionally
-  collect bounded Prometheus runtime metrics when explicitly configured.
+- Cloudera Manager is the full implemented query discovery, profile, metrics,
+  and events source for Recent queries.
+- Direct Impala daemon collection supports bounded Recent scans, Running scans,
+  and one explicit Known Query ID through daemon query-list/profile endpoints.
+  It does not provide Cloudera Manager events. It can optionally collect
+  bounded Prometheus runtime metrics when explicitly configured.
 - Direct Impala diagnosis now extracts raw-free profile format,
   source provenance, resource balance, per-node read/user/system time, Query
   Timeline, and fragment lifecycle timing facts, and can use profile resource
@@ -37,8 +38,8 @@ is not a historical audit log. For engineering risks, use
   redacted.
 - Cloudera Manager metrics and events are runtime context. They can strengthen
   analyzer-supported hypotheses, but they are not standalone root-cause proof.
-- Prometheus runtime metrics are optional context for direct Impala Known Query
-  ID diagnosis. Prepared event/log sources remain future optional context.
+- Prometheus runtime metrics are optional context for configured direct Impala
+  workflows. Prepared event/log sources remain future optional context.
 - Synthetic Demo Mode is local-only and must not contact Cloudera Manager,
   Impala, Ollama, or the network.
 
@@ -184,11 +185,12 @@ real Impala workloads:
 
 - Thin source-family interfaces over real existing paths: `ProfileSource`,
   `QueryDiscoverySource`, `MetricsSource`, and `EventSource`.
-- Direct Impala daemon profile source follow-up: add real fixture coverage,
-  profile action cards, and a normalized engine fact contract before broadening
-  beyond explicit Known Query ID profile fetching.
+- Direct Impala daemon source follow-up: add real fixture coverage, profile
+  action cards, and a normalized engine fact contract before broadening beyond
+  the current bounded Recent/Running/Known Query ID workflows.
 - Prometheus-style metrics source follow-up: add sanitized real Ambari/Hadoop
-  fixtures and additional allowlisted profiles as needed.
+  fixtures, strengthen direct Impala workflow coverage, and add additional
+  allowlisted metric profiles only with tests.
 - Engine profile-fact contract refactor before adding any second SQL engine.
 - Storage/table-format facts only after provider and engine boundaries
   stabilize.
@@ -214,8 +216,8 @@ item first only when the touched area has a direct P0 safety or contract risk.
 4. Move metrics facts and correlation reads from Cloudera Manager query IDs to
    abstract catalog `signal_id`s.
 5. Use source provenance for safe Details/report coverage and limitation
-   wording, including explicit direct Impala `none` coverage for metrics,
-   events, and metadata.
+   wording, including explicit direct Impala coverage for profile, optional
+   Prometheus metrics, unavailable events, and metadata status.
 6. Analyze the 7 recipe-detected/no-draft and 13 recipe-adjacent structural
    boundary cases from the fresh Cloudera Manager `QUERY >=60s` sample, then
    decide whether a narrow deterministic recipe, safer structural explanation,
@@ -230,8 +232,8 @@ when a tempting implementation would skip a contract boundary.
 
 - Provider decoupling order is fixed: canonical context keys/headings,
   report-validator snapshots, metrics by `signal_id`, per-case provenance,
-  thin source-family interfaces, Direct Impala daemon profile source, then
-  Prometheus-style metrics source.
+  and thin source-family interfaces over the current Cloudera Manager, direct
+  Impala, and Prometheus paths before broader provider expansion.
 - P2 provider work must not start until the P0 provider-neutral contracts it
   depends on are in place. Do not add placeholder provider packages while the
   only real implementation is still Cloudera Manager.
@@ -639,22 +641,24 @@ These are not current support. Revisit them only when the listed signal is met.
   quality into an enterprise-only tier. Commercial-only boundaries may cover
   shared-deploy operations and support, not the safety contract.
 
-### Source Providers
+### Source Provider Expansion
 
+- Current source support is described in Current Scope. The items below are
+  follow-up expansion work, not permission to claim broader provider support.
 - Cloudera Manager remains the reference implementation for source-provider
   boundaries. Prefer thin wrappers around existing `query_doctor/cm` helpers
   over rewriting working collectors for tidiness.
 - Cloudera Manager version adapter: revisit when real deployments expose newer
   response shapes or metric catalogs that current collectors cannot parse.
-- Direct Impala daemon profile provider: explicit Known Query ID profile
-  fetching, source provenance, provider-neutral profile context labels, profile
-  resource facts, and profile timing facts are implemented. Follow-up work
-  should add real fixture coverage, profile action cards, and a normalized
-  engine fact contract before broadening beyond single-query profile fetching.
-- Prometheus-style metrics provider: implemented for explicit direct Impala
-  Known Query ID runtime context with allowlisted PromQL, fixed windows,
-  response-size limits, and normalized facts only. Follow-up work should add
-  sanitized Ambari/Hadoop fixtures and broaden profiles only with tests.
+- Direct Impala daemon provider: bounded Recent, Running, and Known Query ID
+  collection, source provenance, provider-neutral profile context labels,
+  profile resource facts, and profile timing facts are implemented. Follow-up
+  work should add real fixture coverage, profile action cards, and a normalized
+  engine fact contract before broadening provider behavior.
+- Prometheus-style metrics provider: implemented as optional direct Impala
+  runtime context with allowlisted PromQL, fixed windows, response-size limits,
+  and normalized facts only. Follow-up work should add sanitized Ambari/Hadoop
+  fixtures and broaden metric profiles only with tests.
 - Prepared event/log provider: revisit when event or log sources can provide
   structured cluster events, health alerts, or summarized indexes without raw
   log exposure.
@@ -690,7 +694,7 @@ A practical readiness bar is `case_primary_bottleneck = unknown` below roughly
 Recommended expansion order is documented in
 [engine-expansion-plan.md](engine-expansion-plan.md):
 
-1. Harden the direct Impala daemon profile source and Prometheus metrics source
+1. Harden the current direct Impala daemon source and Prometheus metrics source
    with sanitized real fixture coverage, profile action cards, and normalized
    engine fact contracts.
 2. Engine fact contract refactor so analyzer services consume normalized

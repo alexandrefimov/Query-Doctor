@@ -1,7 +1,7 @@
 # Query Doctor Data-Engineer Demo Brief
 
 Date: 2026-05-06
-Last updated: 2026-05-08
+Last updated: 2026-05-13
 
 This brief is for a data-engineer demo discussion. It explains how Query Doctor
 prioritizes cases and which deterministic facts support the UI labels. It is
@@ -29,8 +29,10 @@ Query Doctor has three separate surfaces:
 
 The demo should make this order clear:
 
-1. Cloudera Manager (CM) summaries identify bounded query candidates.
-2. Selected profiles are collected and redacted.
+1. Cloudera Manager (CM) summaries or configured direct Impala daemon query
+   lists identify bounded query candidates.
+2. Selected profiles are collected and redacted from Cloudera Manager or direct
+   Impala daemon profile endpoints.
 3. The analyzer creates normalized facts.
 4. Recent scan ranks cases from those facts.
 5. Metadata is collected only when explicitly enabled and bounded.
@@ -52,7 +54,8 @@ signals such as:
   and scans;
 - bounded metadata facts about table/partition row-count stats and column
   stats;
-- bounded runtime metrics and whether they correlate with profile evidence.
+- bounded runtime metrics from Cloudera Manager or configured Prometheus and
+  whether they correlate with profile evidence.
 - bounded Cloudera Manager Events context near the query window.
 
 Important caveat: runtime counter context is not automatically wall-clock time.

@@ -1,6 +1,6 @@
 # Query Doctor Safety Contract
 
-Last reviewed: 2026-05-08
+Last reviewed: 2026-05-13
 
 Language: English | [Russian](i18n/ru/safety-contract.md)
 
@@ -105,9 +105,10 @@ contents, or real production profile text.
 - Cluster Doctor must stay read-only: it may recommend checks or operational
   follow-up, but must not execute service control, configuration changes, data
   changes, or remediation automation.
-- Future providers such as Cloudera Manager, Prometheus, prepared metric stores,
-  or log/event stores must be explicit, bounded, read-only, allowlisted,
-  redacted, and tested before their facts enter reports or browser UI.
+- Current and future providers, including Cloudera Manager, direct Impala,
+  Prometheus, prepared metric stores, or log/event stores, must be explicit,
+  bounded, read-only, allowlisted where applicable, redacted, and tested before
+  their facts enter reports or browser UI.
 - Future log/event support must consume prepared event summaries only. Raw log
   lines, stack traces, raw alert text, principals, usernames, query text, and
   raw parser payloads must not enter browser-visible UI, trusted reports, or LLM

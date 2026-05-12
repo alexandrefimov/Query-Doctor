@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-05-09
+Last updated: 2026-05-13
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -23,7 +23,9 @@ Before larger or safety-sensitive work:
 - keep browser/report output raw-free.
 
 Always finish with `git diff --check`. Use `scripts/local_gate.sh` before
-broad handoff or release work when time permits. Stage intended files
+broad handoff or release work when time permits, and `pre-commit run --all-files`
+before public-sharing cleanup so ruff check, ruff format, whitespace, staged
+public-safety, and Markdown link hooks run together. Stage intended files
 explicitly. Run `python3 scripts/agent_preflight.py` when test selection is
 unclear.
 
@@ -63,6 +65,9 @@ Validate:
 - `git diff --check`;
 - `python3 scripts/check_active_docs.py` for active-doc routing or baseline
   changes;
+- `python3 scripts/check_markdown_links.py` for public docs index or link
+  changes;
+- `pre-commit run --all-files` before public-sharing or release cleanup;
 - no full test suite unless browser-rendered help/UI text changed.
 
 ## Web Details And UI

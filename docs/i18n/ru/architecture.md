@@ -1,5 +1,7 @@
 # Архитектура Query Doctor
 
+Last reviewed: 2026-05-13
+
 Язык: [English](../../architecture.md) | Русский
 
 Английская версия является канонической для публичного репозитория. Эта страница
@@ -26,12 +28,14 @@ Cloudera Manager (CM) profile / profile_digest.md
   -> local UI
 ```
 
-The implemented Recent collection path is currently validated against the local
-Cloudera Manager 6.2.1 environment. Direct Impala daemon profile collection is
-current support only for one explicit Known Query ID, without discovery,
-metrics, or events. Treat newer Cloudera Manager versions and broader
-non-Cloudera Impala workflows as future source-provider work, not as current
-support.
+The Cloudera Manager Recent collection path is currently validated against the
+local Cloudera Manager 6.2.1 environment. Direct Impala daemon collection now
+supports bounded Recent, Running, and one explicit Known Query ID workflow
+through daemon query-list/profile endpoints. Direct Impala does not provide
+Cloudera Manager events, but it can use optional bounded Prometheus runtime
+metrics when explicitly configured. Treat newer Cloudera Manager versions,
+broader non-Cloudera provider behavior, and prepared event/log sources as
+future source-provider work, not as automatic support.
 
 ## Компоненты
 
@@ -52,16 +56,16 @@ Future collector source seam:
   state normalization, and time-series tsquery allowlists so newer CM versions
   can be added with fixtures and safety tests instead of changing analyzer/UI
   contracts.
-- Current non-CM Impala seam: direct Impala daemon debug/profile collection
-  exists only for one explicit Known Query ID. It must stay explicit, bounded,
-  read-only, redacted, and single-query oriented; follow-up work should improve
-  fixtures, profile-only action cards, and normalized engine facts before any
-  batch workflow uses it.
-- Planned metrics seam: keep metrics source separate from profile source.
-  Cloudera Manager time-series is the current implementation; Prometheus is the
-  likely future metrics provider for non-CM clusters. Prometheus integration
-  needs a bounded query allowlist, fixed time windows, response-size limits, and
-  summarized facts only.
+- Current non-CM Impala seam: direct Impala daemon debug query-list/profile
+  collection exists for bounded Recent, Running, and one explicit Known Query
+  ID. It must stay explicit, bounded, read-only, redacted, and source-limited;
+  follow-up work should improve fixtures, profile-only action cards, and
+  normalized engine facts before broader provider claims.
+- Metrics seam: keep metrics source separate from profile source. Cloudera
+  Manager time-series is the full Cloudera Manager implementation; Prometheus
+  is the optional implemented metrics provider for configured direct Impala
+  workflows. It uses a bounded query allowlist, fixed time windows,
+  response-size limits, and summarized facts only.
 
 Future diagnostic signal seam:
 - Treat profiles, metadata, metrics, and logs as separate diagnostic signal
@@ -95,8 +99,8 @@ Analyzer:
   referenced tables и optional table metadata facts, если они есть.
 - Читает local `impala_context.json`, если он есть, и добавляет
   `## Table Metadata Context`.
-- Future analyzers may add safe metrics/log/cluster facts, but only after their
-  source providers have bounded collection contracts and tests.
+- Analyzer may add safe metrics/event/cluster facts only from bounded source
+  provider contracts and normalized analyzer facts.
 - Не вызывает Cloudera Manager, Ollama или report writer.
 
 Report writer:
@@ -164,7 +168,9 @@ Local UI:
 - Running now uses the same result shape for currently running queries, with
   lower-confidence live evidence.
 - Known Query ID analyzes one known Query ID without automatic LLM and appends
-  results to its table.
+  results to its table. Depending on local config it can use Cloudera Manager
+  or direct Impala daemon profile endpoints, with optional bounded Prometheus
+  runtime metrics for direct Impala.
 - Direct Query Optimizer route remains read-only for compatibility and safety
   testing: it parses one safe SELECT/WITH statement locally, does not execute
   pasted SQL and does not render it back after submit.

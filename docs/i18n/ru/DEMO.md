@@ -1,5 +1,7 @@
 # Локальный UI demo Query Doctor
 
+Last reviewed: 2026-05-13
+
 Язык: [English](../../DEMO.md) | Русский
 
 Английская версия является канонической для публичного репозитория. Эта страница
@@ -87,8 +89,10 @@ surface для одного safe `SELECT` / `WITH ... SELECT`; pasted SQL не �
 - Не публикуйте этот сервер наружу.
 - Web forms не принимают CM URLs, credentials или local config contents.
 - Credentials остаются только в environment процесса web server.
-- Known Query ID collection explicit и redacted; direct Impala mode does not
-  discover queries, collect metrics/events, or execute SQL.
+- Known Query ID collection explicit и redacted. Direct Impala Known Query ID
+  не выполняет SQL и не собирает Cloudera Manager events. Direct Impala
+  Recent/Running может читать bounded daemon query-list endpoints, а
+  Prometheus runtime metrics доступны только как optional bounded context.
 - Raw profile text, raw SQL, raw CM JSON и credentials не должны появляться в
   UI, logs, docs или reports.
 

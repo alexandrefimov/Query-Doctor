@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-05-09
+Last reviewed: 2026-05-13
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -30,6 +30,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [codex-handoff.md](codex-handoff.md): current agent working baseline.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
+- [release-checklist.md](release-checklist.md): final release and visibility
+  change checks, including public docs, local gates, and CI parity.
 
 ## Document Status Index
 

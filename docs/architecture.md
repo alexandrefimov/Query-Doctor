@@ -1,6 +1,6 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-05-12
+Last reviewed: 2026-05-13
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
@@ -15,9 +15,10 @@ path.
 flowchart TD
     subgraph External["External read-only sources"]
         CM[Cloudera Manager summaries and profiles]
-        ImpalaDaemon[Direct Impala daemon profile endpoint]
+        ImpalaDaemon[Direct Impala daemon query-list and profile endpoints]
         ImpalaMeta[Allowlisted Impala metadata]
         CMMetrics[Bounded Cloudera Manager time-series summaries]
+        PromMetrics[Bounded Prometheus runtime summaries]
         CMEvents[Bounded Cloudera Manager events]
     end
 
@@ -49,6 +50,7 @@ flowchart TD
     ImpalaDaemon --> Collector
     ImpalaMeta --> Collector
     CMMetrics --> Collector
+    PromMetrics --> Collector
     CMEvents --> Collector
     Collector --> CaseStore
     CaseStore --> Analyzer
@@ -71,11 +73,12 @@ flowchart TD
 Current support is intentionally narrow:
 
 - Apache Impala is the only implemented query engine.
-- Cloudera Manager summaries and profiles are the implemented Recent queries
-  source.
-- Direct Impala daemon profile endpoints are supported only for one explicit
-  Known Query ID. They do not provide discovery or events; optional Prometheus
-  runtime metrics can be collected only when explicitly configured.
+- Cloudera Manager summaries, profiles, metrics, and events are the full
+  implemented Recent queries source.
+- Direct Impala daemon query-list and profile endpoints support bounded Recent
+  scans, Running scans, and one explicit Known Query ID. They do not provide
+  Cloudera Manager events; optional Prometheus runtime metrics can be collected
+  only when explicitly configured.
 - Direct Impala profile analysis publishes raw-free Profile Format, Source
   Provenance, Profile Resource Facts, and Profile Timing Facts.
 - Cloudera Manager (CM) and Prometheus time-series support is bounded and
@@ -98,8 +101,8 @@ fixtures, safety tests, and public docs before they become product behavior.
 flowchart TD
     subgraph Providers["Roadmap source-provider seams"]
         CMProvider[Cloudera Manager profiles, metrics and events]
-        ImpalaDaemon[Direct Impala profile endpoint]
-        PromProvider[Prometheus metrics for Known Query ID]
+        ImpalaDaemon[Direct Impala query-list/profile endpoints]
+        PromProvider[Prometheus metrics for direct Impala workflows]
         EventProvider[Prepared log/event summaries]
         LakehouseProvider[Future Big Data SQL/lakehouse providers]
         StorageProvider[Future storage and table-format context]
@@ -188,10 +191,12 @@ Cloudera Manager profile summary
   -> local UI
 ```
 
-The implemented collection path is currently validated against the local
-Cloudera Manager 6.2.1 environment. Treat newer Cloudera Manager versions and
-non-Cloudera Impala deployments as future source-provider work, not as current
-support.
+The Cloudera Manager collection path is currently validated against the local
+Cloudera Manager 6.2.1 environment. Direct Impala daemon collection is also
+implemented for bounded Recent, Running, and Known Query ID workflows when
+configured. Treat newer Cloudera Manager versions, broader non-Cloudera
+provider behavior, and prepared event/log sources as future source-provider
+work, not as automatic support.
 
 The same boundary applies to every workflow: collectors and parsers prepare
 bounded inputs, Python-owned analyzers create facts, LLMs phrase those facts
@@ -257,23 +262,23 @@ flowchart LR
 The collector:
 
 - performs explicit, bounded, read-only profile collection from Cloudera
-  Manager;
+  Manager or configured direct Impala daemon endpoints;
 - requires redaction for real collection;
 - keeps analyzer-useful counters and stable safe host aliases;
 - writes generated local cases only under ignored corpus/output paths;
 - does not run the analyzer or report writer.
 
-Future profile acquisition should stay behind small source interfaces rather
-than one broad provider object: fetch one explicit profile and safe query
-context, discover bounded query summaries, fetch bounded runtime metrics when
-available, and fetch bounded event context when available.
+Profile acquisition should stay behind small source interfaces rather than one
+broad provider object: fetch explicit profiles and safe query context, discover
+bounded query summaries, fetch bounded runtime metrics when available, and fetch
+bounded event context when available.
 
 Current provider support:
 
 - Cloudera Manager API, tested against CM 6.2.1 behavior.
-- Direct Impala daemon profile endpoint for one explicit Known Query ID, with
-  source provenance, resource facts, timing facts, and optional explicit
-  Prometheus runtime metrics.
+- Direct Impala daemon query-list/profile endpoints for bounded Recent,
+  Running, and one explicit Known Query ID, with source provenance, resource
+  facts, timing facts, and optional explicit Prometheus runtime metrics.
 
 Provider seams:
 
@@ -281,16 +286,16 @@ Provider seams:
   normalization, and time-series tsquery allowlists so newer CM versions can be
   added with fixtures and safety tests instead of changing analyzer/UI
   contracts.
-- Non-CM Impala seam: direct Impala daemon debug/profile collection exists only
-  for one explicit Known Query ID. It must stay explicit, bounded, read-only,
-  redacted, and single-query oriented; follow-up work should improve fixtures,
-  profile action cards, and normalized engine facts before any batch workflow
-  uses it.
+- Non-CM Impala seam: direct Impala daemon debug query-list/profile collection
+  exists for bounded Recent, Running, and one explicit Known Query ID. It must
+  stay explicit, bounded, read-only, redacted, and source-limited; follow-up
+  work should improve fixtures, profile action cards, and normalized engine
+  facts before broadening provider behavior.
 - Metrics seam: keep metrics source separate from profile source. Cloudera
-  Manager time-series is the Recent scan implementation. Prometheus is an
-  implemented optional metrics provider for direct Impala Known Query ID cases.
-  It uses a bounded query allowlist, fixed time windows, response-size limits,
-  and summarized facts only.
+  Manager time-series is the full Cloudera Manager Recent scan implementation.
+  Prometheus is an implemented optional metrics provider for configured direct
+  Impala workflows. It uses a bounded query allowlist, fixed time windows,
+  response-size limits, and summarized facts only.
 - Events seam: keep Cloudera Manager events as the current event source for
   bounded cluster context. Future prepared log/event providers must publish
   normalized counts, categories, affected safe scopes and limitations, not raw
@@ -400,11 +405,12 @@ The local UI:
 - is implemented as server-rendered Python HTML with shared CSS and small
   vanilla JavaScript helpers; there is no JavaScript build pipeline or SPA
   framework in the current baseline;
-- uses Recent queries as the default Diagnose mode, discovers CM summaries for
-  Finished queries by default, then collects bounded selected profiles, ranks
+- uses Recent queries as the default Diagnose mode, discovers Cloudera Manager
+  summaries for Finished queries by default or direct Impala daemon query lists
+  when configured, then collects bounded selected profiles, ranks
   deterministically, and leaves report/optimizer generation explicit per case;
-- can collect bounded Cloudera Manager metrics and events as runtime context for
-  selected cases;
+- can collect bounded Cloudera Manager metrics/events or configured Prometheus
+  runtime metrics as runtime context for selected cases;
 - uses the same result shape for Running now scans, with lower-confidence live
   evidence;
 - analyzes one known Query ID in the Known Query ID Diagnose mode without

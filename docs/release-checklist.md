@@ -29,6 +29,7 @@ git diff --check
 python scripts/check_active_docs.py
 python scripts/check_markdown_links.py
 python -m ruff check query_doctor tests
+python -m ruff format --check query_doctor tests scripts
 python -m pytest -q
 python -m query_doctor.cli.demo_preflight --public-release
 python -m query_doctor.cli.demo_data --out "$DEMO_OUT" --overwrite
@@ -51,7 +52,7 @@ gate:
 
 - deterministic whitespace checks;
 - public-release preflight;
-- ruff correctness checks;
+- ruff correctness and format checks;
 - local Markdown link checks for repository docs;
 - focused browser, report, optimizer, and demo safety tests;
 - synthetic demo pack generation;
@@ -81,7 +82,7 @@ Confirm public docs state only implemented behavior:
 - Direct Impala daemon collection supports bounded Recent and Running scans
   plus one explicit Known Query ID, without Cloudera Manager events.
 - Prometheus runtime metrics are optional bounded context for explicitly
-  configured direct Impala Known Query ID collection.
+  configured direct Impala workflows.
 - Broader engine support and Cluster Doctor product workflows are roadmap seams
   only.
 - Query Optimizer is read-only and does not execute pasted query text.

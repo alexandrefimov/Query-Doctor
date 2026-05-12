@@ -8,17 +8,24 @@ scope.
 ## P0 Before Public Visibility
 
 - Clean working tree.
-- Local release gate passes from a clean checkout: ruff, full pytest,
+- Local release gate passes from a clean checkout: staged public-safety checks,
+  active-doc checks, Markdown link checks, ruff, full pytest,
   `git diff --check`, public-release preflight, and synthetic demo pack smoke.
+- `pre-commit run --all-files` passes before the public branch handoff,
+  including ruff format checks.
 - Git history has been reviewed for secrets, raw production query text, profiles,
   query IDs, hostnames, users, local paths, generated reports, and real config.
 - README quickstart works from a fresh virtual environment.
 - GitHub CI is green on the public default branch.
 - Public docs state current support honestly: Query Doctor is a Big Data query
   diagnostic tool focused today on Apache Impala workloads; Apache Impala is the
-  only implemented engine; current Cloudera Manager collection is validated
-  against the local CM 6.2.1 environment; and future Big Data
-  engines/providers/Cluster Doctor are roadmap seams only.
+  only implemented engine; Cloudera Manager is the full Recent
+  discovery/profile/metrics/events source validated against the local CM 6.2.1
+  environment; direct Impala supports bounded Recent, Running, and Known Query
+  ID workflows without Cloudera Manager events; optional Prometheus runtime
+  metrics are bounded direct Impala context; and future Big Data engines,
+  broader providers, prepared event/log sources, and Cluster Doctor are roadmap
+  seams only.
 - Public docs use English as canonical language, with Russian pages only as
   localized companions under `docs/i18n/ru/`.
 - No generated cases, reports, profiles, metadata outputs, local configs,
@@ -26,7 +33,7 @@ scope.
 
 ## Current Snapshot
 
-As of 2026-05-07, the public-readiness branch has the main best-practice
+As of 2026-05-13, the public-readiness branch has the main best-practice
 baseline in place:
 
 - Canonical public docs and default browser-visible copy are English.
@@ -35,12 +42,16 @@ baseline in place:
   report language selection.
 - Public packaging metadata, release checklist, contributor docs, security
   reporting, code of conduct, Dependabot, and CI matrix coverage are present.
+- Agent instructions, roadmap, architecture docs, release docs, and Russian
+  companion pages are aligned with the current direct Impala and Prometheus
+  baseline.
 - CI runs deterministic safety checks on pull requests and main, including a
   current-tree public-release scan, and runs the broader test suite on schedule
   or manual dispatch.
 - Additional public-quality automation covers package build/install smoke,
   local Markdown link checks, CodeQL readiness, Dependency Review, and a manual
-  release-gate workflow.
+  release-gate workflow. Pre-commit also enforces ruff check, ruff format,
+  staged public-safety checks, whitespace, and Markdown links.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample
   cases and an English trusted demo report by default.
 
