@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-10
+Last updated: 2026-05-12
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -18,8 +18,9 @@ is not a historical audit log. For engineering risks, use
 - Cloudera Manager is the implemented query discovery, profile, metrics, and
   events source for Recent queries.
 - Direct Impala daemon profile collection is supported only for one explicit
-  Known Query ID. It does not provide discovery, metrics, or events.
-- Direct Impala profile-only diagnosis now extracts raw-free profile format,
+  Known Query ID. It does not provide discovery or events. It can optionally
+  collect bounded Prometheus runtime metrics when explicitly configured.
+- Direct Impala diagnosis now extracts raw-free profile format,
   source provenance, resource balance, per-node read/user/system time, Query
   Timeline, and fragment lifecycle timing facts, and can use profile resource
   and timing signals in Runtime Diagnosis.
@@ -36,8 +37,8 @@ is not a historical audit log. For engineering risks, use
   redacted.
 - Cloudera Manager metrics and events are runtime context. They can strengthen
   analyzer-supported hypotheses, but they are not standalone root-cause proof.
-- Prometheus-style metrics and prepared event/log sources are future optional
-  context, not required for current profile-only direct Impala diagnosis.
+- Prometheus runtime metrics are optional context for direct Impala Known Query
+  ID diagnosis. Prepared event/log sources remain future optional context.
 - Synthetic Demo Mode is local-only and must not contact Cloudera Manager,
   Impala, Ollama, or the network.
 
@@ -164,9 +165,9 @@ Cloudera Manager deployments:
 - Runtime-context quality: collection coverage, observed and correlated
   signals, admission/pool context, host-tail diagnostics, and sanitized real
   fixtures.
-- Direct Impala profile-only quality: sanitized real fixtures for fresh daemon
-  profile layouts, profile resource/timing action cards, and safe limitation
-  wording when metrics, events, or metadata are unavailable.
+- Direct Impala quality: sanitized real fixtures for fresh daemon profile
+  layouts, Prometheus metric coverage, profile resource/timing action cards,
+  and safe limitation wording when metrics, events, or metadata are unavailable.
 - Metadata and stats diagnosis: structured stats/query-shape facts, partition
   and join/filter column coverage, bottleneck calibration, and unknown-rate
   measurement on real batches.
@@ -184,10 +185,10 @@ real Impala workloads:
 - Thin source-family interfaces over real existing paths: `ProfileSource`,
   `QueryDiscoverySource`, `MetricsSource`, and `EventSource`.
 - Direct Impala daemon profile source follow-up: add real fixture coverage,
-  profile-only action cards, and a normalized engine fact contract before
-  broadening beyond explicit Known Query ID profile fetching.
-- Prometheus-style metrics source after metrics facts are keyed by
-  `signal_id`.
+  profile action cards, and a normalized engine fact contract before broadening
+  beyond explicit Known Query ID profile fetching.
+- Prometheus-style metrics source follow-up: add sanitized real Ambari/Hadoop
+  fixtures and additional allowlisted profiles as needed.
 - Engine profile-fact contract refactor before adding any second SQL engine.
 - Storage/table-format facts only after provider and engine boundaries
   stabilize.
@@ -661,12 +662,12 @@ These are not current support. Revisit them only when the listed signal is met.
 - Direct Impala daemon profile provider: explicit Known Query ID profile
   fetching, source provenance, provider-neutral profile context labels, profile
   resource facts, and profile timing facts are implemented. Follow-up work
-  should add real fixture coverage, profile-only action cards, and a normalized
+  should add real fixture coverage, profile action cards, and a normalized
   engine fact contract before broadening beyond single-query profile fetching.
-- Prometheus-style metrics provider: revisit after metrics facts consume
-  catalog `signal_id`s rather than Cloudera Manager query IDs, and only when
-  cluster operators have allowlisted queries, fixed windows, response-size
-  limits, and a normalized fact contract.
+- Prometheus-style metrics provider: implemented for explicit direct Impala
+  Known Query ID runtime context with allowlisted PromQL, fixed windows,
+  response-size limits, and normalized facts only. Follow-up work should add
+  sanitized Ambari/Hadoop fixtures and broaden profiles only with tests.
 - Prepared event/log provider: revisit when event or log sources can provide
   structured cluster events, health alerts, or summarized indexes without raw
   log exposure.
@@ -702,14 +703,16 @@ A practical readiness bar is `case_primary_bottleneck = unknown` below roughly
 Recommended expansion order is documented in
 [engine-expansion-plan.md](engine-expansion-plan.md):
 
-1. Harden the direct Impala daemon profile source with sanitized real fixture
-   coverage, profile-only action cards, and normalized engine fact contracts.
+1. Harden the direct Impala daemon profile source and Prometheus metrics source
+   with sanitized real fixture coverage, profile action cards, and normalized
+   engine fact contracts.
 2. Engine fact contract refactor so analyzer services consume normalized
    parser outputs rather than raw Impala profile internals.
 3. Second engine only after real design partner demand. Trino is the default
    candidate to validate because of migration-path fit, but it is not a public
    commitment.
-4. Prometheus-style metrics source after metrics-source contracts are stable.
+4. Broaden Prometheus-style metrics profiles only after the first direct Impala
+   metrics contract is stable.
 5. Storage/table-format facts after provider and engine boundaries stabilize.
 
 Storage and table-format context is a separate axis from query engines. Future

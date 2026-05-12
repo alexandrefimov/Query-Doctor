@@ -76,6 +76,16 @@ def safe_cm_metric_id(value: Any) -> str:
     return text if SAFE_CM_METRIC_ID_RE.fullmatch(text) else "metric"
 
 
+def runtime_metrics_source_label(context: dict[str, Any]) -> str:
+    source = str(context.get("source") or "").strip().lower()
+    source_label = str(context.get("source_label") or "").strip()
+    if source == "prometheus" or source_label == "Prometheus runtime metrics":
+        return "Prometheus metrics"
+    if source == "cm_timeseries" or source_label == "Cloudera Manager time-series metrics":
+        return "CM metrics"
+    return "Runtime metrics"
+
+
 def cm_metric_availability_detail(context: dict[str, Any], metric_ids: tuple[str, ...]) -> str:
     details: list[str] = []
     for metric_id in metric_ids:
@@ -272,7 +282,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
 
     daemon_memory_pressure = cm_signal(
         "unknown",
-        "daemon memory capacity or limit is not part of the current safe CM metrics contract",
+        "daemon memory capacity or limit is not part of the current safe runtime metrics contract",
     )
 
     disk_max = max_metric_value(disk_metrics, "max")
@@ -393,6 +403,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     unavailable_metric_count = sum(
         1 for query in queries if query.get("status") not in {"ok", "no_data"}
     )
+    source_label = runtime_metrics_source_label(context)
     limitations = [
         "Runtime metrics are bounded query-window context signals, not standalone proof of cause.",
         "Raw metric points and per-point times are intentionally excluded from trusted analysis facts.",
@@ -407,23 +418,25 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             parts.append(f"max_points_per_query={max_points}")
         if max_bytes is not None:
             parts.append(f"max_response_bytes={max_bytes}")
-        limitations.append("CM metrics collection limits: " + ", ".join(parts) + ".")
+        limitations.append(f"{source_label} collection limits: " + ", ".join(parts) + ".")
     if truncated_metrics:
-        limitations.append("CM metrics were truncated for: " + ", ".join(truncated_metrics) + ".")
+        limitations.append(f"{source_label} were truncated for: " + ", ".join(truncated_metrics) + ".")
     if unavailable_metrics:
-        limitations.append("CM metrics unavailable for: " + ", ".join(unavailable_metrics) + ".")
+        limitations.append(f"{source_label} unavailable for: " + ", ".join(unavailable_metrics) + ".")
         limitations.append(
-            "Unavailable CM metrics can indicate a profile/version metric-name mismatch, a missing role, "
+            f"Unavailable {source_label} can indicate a profile/version metric-name mismatch, a missing role, "
             "or no metric series for the bounded query window. Treat affected runtime hypotheses as lower confidence."
         )
     if no_data_metric_ids:
-        limitations.append("CM metrics returned no_data for: " + ", ".join(no_data_metric_ids) + ".")
+        limitations.append(f"{source_label} returned no_data for: " + ", ".join(no_data_metric_ids) + ".")
     warnings = [warning for warning in context.get("warnings") or [] if isinstance(warning, str)]
     if warnings:
         limitations.append(f"Collection warnings present: {len(warnings)}.")
 
     return {
         "status": status,
+        "source": str(context.get("source") or "cm_timeseries"),
+        "source_label": source_label,
         "total_metrics": total_metrics,
         "ok_metrics": ok_metrics,
         "no_data_metrics": no_data_metrics,

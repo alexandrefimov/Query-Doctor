@@ -93,6 +93,7 @@ def write_collected_case(
     *,
     profile_digest_text: str,
     cm_timeseries_context: dict[str, object] | None = None,
+    runtime_metrics_context: dict[str, object] | None = None,
     extra_metadata: Mapping[str, object] | None = None,
     warnings: Iterable[str] = (),
     secrets: Iterable[str] = (),
@@ -141,6 +142,9 @@ def write_collected_case(
     if cm_timeseries_context is not None:
         timeseries_text = json.dumps(cm_timeseries_context, indent=2, sort_keys=True) + "\n"
         (case_dir / "cm_timeseries_context.json").write_text(timeseries_text, encoding="utf-8")
+    if runtime_metrics_context is not None:
+        runtime_metrics_text = json.dumps(runtime_metrics_context, indent=2, sort_keys=True) + "\n"
+        (case_dir / "runtime_metrics_context.json").write_text(runtime_metrics_text, encoding="utf-8")
     (case_dir / "collection_warnings.txt").write_text(warnings_text, encoding="utf-8")
     return case_dir
 

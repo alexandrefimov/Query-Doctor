@@ -1,6 +1,6 @@
 # Engine Expansion Plan
 
-Last reviewed: 2026-05-08
+Last reviewed: 2026-05-12
 
 This document records the transition plan for future source-provider and engine
 work. It does not change current support: Query Doctor is still Apache Impala
@@ -42,7 +42,7 @@ Do not add a second SQL engine until `case_primary_bottleneck = unknown` is
 below roughly 20% on a representative real Impala batch, as stated in
 [roadmap.md](roadmap.md).
 
-## Phase 1: Direct Impala Profile Source
+## Phase 1: Direct Impala Profile Source And Metrics Source
 
 First expand away from Cloudera Manager, not away from Impala.
 
@@ -50,12 +50,14 @@ The first Direct Impala slice should be intentionally narrow:
 
 - support one explicit known query/profile fetch from an Impala daemon
   debug/profile endpoint;
+- support optional explicit Prometheus runtime metrics for that same known
+  query window;
 - stay read-only, bounded, redacted, and explicit;
 - keep browser and trusted-report output raw-free;
 - support enterprise auth requirements, including Kerberos, before claiming the
   provider is useful for real deployments;
-- document that cluster metrics and events are not equivalent to Cloudera
-  Manager in the first Direct Impala version.
+- document that Prometheus metrics are not discovery or event support and are
+  context-only unless correlated with deterministic profile evidence.
 
 Use small source interfaces instead of one large provider object:
 
@@ -64,16 +66,17 @@ Use small source interfaces instead of one large provider object:
 - `MetricsSource`: publish normalized bounded metric facts.
 - `EventSource`: publish normalized bounded event facts.
 
-Cloudera Manager can implement all four over time. The first Direct Impala
-provider should implement `ProfileSource` only unless real usage proves that
-bounded discovery is needed.
+Cloudera Manager can implement all four over time. Direct Impala currently
+implements the one-query profile source and an optional Prometheus
+`MetricsSource`; it still does not implement discovery or events.
 
-Do not add Prometheus, event/log providers, or a second engine in this phase.
+Do not add event/log providers or a second engine in this phase.
 Do not rewrite `query_doctor/cm/` for neatness; wrap existing behavior only as
 far as needed to create a tested boundary.
 
 Done means at least one real non-Cloudera-Manager Impala deployment can diagnose
-one known query safely, with fixtures and browser/report safety tests.
+one known query safely, with optional bounded Prometheus runtime metrics,
+fixtures, and browser/report safety tests.
 
 ## Phase 2: Engine Fact Contract
 
@@ -122,11 +125,13 @@ A second engine requires:
 Do not update public README language to imply multi-engine support until the
 engine has real fixtures, safety coverage, and working diagnosis paths.
 
-## Phase 4: Prometheus Metrics Source
+## Phase 4: Prometheus Metrics Source Expansion
 
 Prometheus-style metrics are a metrics-source expansion, not an engine
-expansion. They can run in parallel with second-engine work only if the provider
-interfaces from Phase 1 are already stable.
+expansion. The first slice is implemented for direct Impala Known Query ID
+diagnosis. Broader expansion, such as batch workflows or additional metric
+profiles, can run in parallel with second-engine work only if the provider
+interfaces from Phase 1 are stable.
 
 Requirements:
 

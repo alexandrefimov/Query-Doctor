@@ -31,6 +31,7 @@ from query_doctor.cluster.event_context import (
     safe_token,
     safe_window,
 )
+from query_doctor.safety.redaction import sanitize_text_for_log
 
 COLUMN_STATS_JOIN_FILTER_STATUSES = ("complete", "ndv_missing", "size_missing", "all_missing", "unknown")
 IMPALA_DAEMON_PROFILE_SOURCE = "impala_daemon"
@@ -273,20 +274,24 @@ def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
 
 
 def collect_cm_timeseries_context(case_dir: Path) -> dict[str, Any] | None:
-    context_path = case_dir / "cm_timeseries_context.json"
+    context_path = case_dir / "runtime_metrics_context.json"
+    if not context_path.exists():
+        context_path = case_dir / "cm_timeseries_context.json"
     if not context_path.exists():
         return None
     try:
         raw = json.loads(context_path.read_text(encoding="utf-8", errors="replace"))
     except (json.JSONDecodeError, OSError):
-        return {"available": False, "error": "failed to parse CM time-series context"}
+        return {"available": False, "error": "failed to parse runtime metrics context"}
     if not isinstance(raw, dict):
-        return {"available": False, "error": "CM time-series context is not an object"}
+        return {"available": False, "error": "runtime metrics context is not an object"}
     queries = raw.get("queries")
     if not isinstance(queries, list):
-        return {"available": False, "error": "CM time-series context query list is missing"}
+        return {"available": False, "error": "runtime metrics context query list is missing"}
     return {
         "available": bool(raw.get("available")),
+        "source": safe_token(raw.get("source"), default="cm_timeseries"),
+        "source_label": safe_runtime_metrics_source_label(raw.get("source_label"), raw.get("source")),
         "metrics_profile": raw.get("metrics_profile")
         if isinstance(raw.get("metrics_profile"), str)
         else None,
@@ -298,11 +303,21 @@ def collect_cm_timeseries_context(case_dir: Path) -> dict[str, Any] | None:
             if isinstance(query, dict)
         ],
         "warnings": [
-            warning
+            sanitize_text_for_log(warning)
             for warning in raw.get("warnings", [])
             if isinstance(warning, str)
         ][:5],
     }
+
+
+def safe_runtime_metrics_source_label(value: object, source: object = None) -> str:
+    text = str(value or "").strip()
+    if text in {"Cloudera Manager time-series metrics", "Prometheus runtime metrics"}:
+        return text
+    source_token = safe_token(source, default="cm_timeseries")
+    if source_token == "prometheus":
+        return "Prometheus runtime metrics"
+    return "Cloudera Manager time-series metrics"
 
 
 def find_cluster_context_path(case_dir: Path) -> Path | None:

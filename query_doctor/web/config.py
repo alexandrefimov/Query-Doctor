@@ -24,6 +24,11 @@ from query_doctor.web.models import (
     WebClusterConfig,
     WebSettings,
 )
+from query_doctor.prometheus.timeseries import (
+    DEFAULT_PROMETHEUS_METRICS_PROFILE,
+    DEFAULT_PROMETHEUS_STEP_SEC,
+    DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+)
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -126,6 +131,13 @@ def validate_web_startup_config(
                 raise WebError(
                     "Missing required Impala startup setting(s): impala_profile_hosts. "
                     "Provide one or more impalad web hosts in local config."
+                )
+            if optional_config_bool(config_values, "collect_prometheus_timeseries") and not optional_config_string(
+                config_values,
+                "prometheus_url",
+            ):
+                raise WebError(
+                    "collect_prometheus_timeseries=true requires prometheus_url in local config."
                 )
             continue
         if not first_string_value(cluster.cm_url, env.get("CM_URL")):
@@ -280,6 +292,23 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
         )
         or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+        collect_prometheus_timeseries=optional_config_bool(config_values, "collect_prometheus_timeseries") is True,
+        prometheus_url=optional_config_string(config_values, "prometheus_url"),
+        prometheus_metrics_profile=first_string_value(
+            optional_config_string(config_values, "prometheus_metrics_profile"),
+            DEFAULT_PROMETHEUS_METRICS_PROFILE,
+        )
+        or DEFAULT_PROMETHEUS_METRICS_PROFILE,
+        prometheus_step_sec=first_int_value(
+            optional_config_int(config_values, "prometheus_step_sec"),
+            default=DEFAULT_PROMETHEUS_STEP_SEC,
+        )
+        or DEFAULT_PROMETHEUS_STEP_SEC,
+        prometheus_timeseries_padding_sec=first_int_value(
+            optional_config_int(config_values, "prometheus_timeseries_padding_sec"),
+            default=DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+        )
+        or DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
         metadata_coordinator=first_string_value(
             args.metadata_coordinator,
             optional_config_string(config_values, "metadata_coordinator"),

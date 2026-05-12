@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from query_doctor.cli.collect_cm_profiles import DEFAULT_CM_METRICS_PROFILE
+from query_doctor.prometheus.timeseries import (
+    DEFAULT_PROMETHEUS_METRICS_PROFILE,
+    DEFAULT_PROMETHEUS_STEP_SEC,
+    DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+)
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -98,6 +103,11 @@ class WebSettings:
     impala_profile_port: int = DEFAULT_IMPALA_PROFILE_PORT
     impala_profile_scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME
     impala_profile_timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
+    collect_prometheus_timeseries: bool = False
+    prometheus_url: str | None = None
+    prometheus_metrics_profile: str = DEFAULT_PROMETHEUS_METRICS_PROFILE
+    prometheus_step_sec: int = DEFAULT_PROMETHEUS_STEP_SEC
+    prometheus_timeseries_padding_sec: int = DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC
     metadata_coordinator: str | None = None
     metadata_impala_shell: str | None = None
     metadata_auth: str = DEFAULT_METADATA_AUTH

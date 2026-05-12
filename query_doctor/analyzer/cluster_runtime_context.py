@@ -58,6 +58,8 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
     if not context:
         return {
             "status": "unavailable",
+            "source": "none",
+            "source_label": "Runtime metrics",
             "collection_status": "not_collected",
             "coverage": "0/0 metrics ok, 0 points",
             "metrics_profile": "unknown",
@@ -123,6 +125,8 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "status": metrics.get("status", "unknown"),
+        "source": str(context.get("source") or "cm_timeseries"),
+        "source_label": str(context.get("source_label") or metrics.get("source_label") or "Runtime metrics"),
         "collection_status": "collected" if metrics.get("total_metrics", 0) else "empty",
         "coverage": correlation.get("coverage")
         or f"{metrics.get('ok_metrics', 0)}/{metrics.get('total_metrics', 0)} metrics ok, {metrics.get('total_points', 0)} points",

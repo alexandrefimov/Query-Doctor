@@ -1,6 +1,6 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-05-10
+Last reviewed: 2026-05-12
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
@@ -74,11 +74,12 @@ Current support is intentionally narrow:
 - Cloudera Manager summaries and profiles are the implemented Recent queries
   source.
 - Direct Impala daemon profile endpoints are supported only for one explicit
-  Known Query ID. They do not provide discovery, metrics, or events.
+  Known Query ID. They do not provide discovery or events; optional Prometheus
+  runtime metrics can be collected only when explicitly configured.
 - Direct Impala profile analysis publishes raw-free Profile Format, Source
   Provenance, Profile Resource Facts, and Profile Timing Facts.
-- Cloudera Manager (CM) time-series support is bounded and summarized before
-  becoming facts.
+- Cloudera Manager (CM) and Prometheus time-series support is bounded and
+  summarized before becoming facts.
 - Cloudera Manager events support is bounded and summarized before becoming
   Cluster Event Context.
 - Impala metadata collection is explicit, read-only, and allowlisted.
@@ -87,18 +88,18 @@ Current support is intentionally narrow:
 - The pasted-query optimizer is read-only, does not execute input, and does not
   echo submitted text after submit.
 
-## Future Architecture
+## Source-Provider Architecture
 
-This diagram is a roadmap shape, not current support. Future providers and
-workflows must first add contracts, fixtures, safety tests, and public docs
-before they become product behavior.
+This diagram shows current and roadmap seams. Not every provider implements
+every source family; future providers and workflows must first add contracts,
+fixtures, safety tests, and public docs before they become product behavior.
 
 ```mermaid
 flowchart TD
     subgraph Providers["Roadmap source-provider seams"]
         CMProvider[Cloudera Manager profiles, metrics and events]
         ImpalaDaemon[Direct Impala profile endpoint]
-        PromProvider[Prometheus-style metrics]
+        PromProvider[Prometheus metrics for Known Query ID]
         EventProvider[Prepared log/event summaries]
         LakehouseProvider[Future Big Data SQL/lakehouse providers]
         StorageProvider[Future storage and table-format context]
@@ -271,9 +272,10 @@ Current provider support:
 
 - Cloudera Manager API, tested against CM 6.2.1 behavior.
 - Direct Impala daemon profile endpoint for one explicit Known Query ID, with
-  profile-only source provenance, resource facts, and timing facts.
+  source provenance, resource facts, timing facts, and optional explicit
+  Prometheus runtime metrics.
 
-Planned provider seams:
+Provider seams:
 
 - CM-version seam: isolate endpoint paths, response parsing, query-state
   normalization, and time-series tsquery allowlists so newer CM versions can be
@@ -282,13 +284,13 @@ Planned provider seams:
 - Non-CM Impala seam: direct Impala daemon debug/profile collection exists only
   for one explicit Known Query ID. It must stay explicit, bounded, read-only,
   redacted, and single-query oriented; follow-up work should improve fixtures,
-  profile-only action cards, and normalized engine facts before any batch
-  workflow uses it.
+  profile action cards, and normalized engine facts before any batch workflow
+  uses it.
 - Metrics seam: keep metrics source separate from profile source. Cloudera
-  Manager time-series is the current implementation; Prometheus is the likely
-  future metrics provider for non-CM clusters. Prometheus integration needs a
-  bounded query allowlist, fixed time windows, response-size limits, and
-  summarized facts only.
+  Manager time-series is the Recent scan implementation. Prometheus is an
+  implemented optional metrics provider for direct Impala Known Query ID cases.
+  It uses a bounded query allowlist, fixed time windows, response-size limits,
+  and summarized facts only.
 - Events seam: keep Cloudera Manager events as the current event source for
   bounded cluster context. Future prepared log/event providers must publish
   normalized counts, categories, affected safe scopes and limitations, not raw

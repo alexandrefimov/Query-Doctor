@@ -56,6 +56,11 @@
   "impala_profile_port": 25000,
   "impala_profile_scheme": "http",
   "impala_profile_timeout_sec": 15,
+  "collect_prometheus_timeseries": false,
+  "prometheus_url": "http://prometheus.example.com:9090",
+  "prometheus_metrics_profile": "ambari-hadoop",
+  "prometheus_step_sec": 30,
+  "prometheus_timeseries_padding_sec": 120,
 
   "recent_limit": 20,
   "recent_select": 5,

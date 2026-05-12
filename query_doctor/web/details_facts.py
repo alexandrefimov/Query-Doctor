@@ -482,6 +482,8 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
         value = clean_metadata_fact_value(value)
         if section == "facts" and key in {
             "status",
+            "source",
+            "source_label",
             "metrics_profile",
             "coverage",
             "availability",
@@ -635,6 +637,8 @@ def parse_cluster_runtime_context_facts(text: str) -> dict[str, Any] | None:
             continue
         if key in {
             "status",
+            "source",
+            "source_label",
             "collection_status",
             "coverage",
             "metrics_profile",

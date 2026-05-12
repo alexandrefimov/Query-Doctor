@@ -20,6 +20,15 @@ from query_doctor.impala.profile_source import (
     fetch_impala_profile_text,
 )
 from query_doctor.impala.daemon_identity import fetch_impala_daemon_identity, identity_metadata
+from query_doctor.prometheus.timeseries import (
+    DEFAULT_MAX_PROMETHEUS_POINTS,
+    DEFAULT_PROMETHEUS_METRICS_PROFILE,
+    DEFAULT_PROMETHEUS_STEP_SEC,
+    DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+    DEFAULT_PROMETHEUS_TIMEOUT_SEC,
+    PROMETHEUS_METRICS_PROFILE_CHOICES,
+    collect_prometheus_timeseries_context,
+)
 from query_doctor.safety.redaction import sanitize_adapter_error_message
 
 
@@ -30,6 +39,13 @@ def positive_int(value: str) -> int:
     parsed = int(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative integer")
     return parsed
 
 
@@ -69,6 +85,64 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--out", type=Path, required=True, help="Output corpus directory.")
     parser.add_argument("--redact", action="store_true", help="Required for real profile collection.")
     parser.add_argument("--redact-identifiers", action="store_true", help="Redact usernames and pools.")
+    parser.add_argument(
+        "--prometheus-url",
+        help="Prometheus base URL for bounded runtime metric summaries. No credentials in the URL.",
+    )
+    parser.add_argument(
+        "--collect-prometheus-timeseries",
+        action="store_true",
+        default=None,
+        help=(
+            "Collect bounded allowlisted Prometheus runtime metric summaries. "
+            "Providing --prometheus-url also enables this unless --no-collect-prometheus-timeseries is set."
+        ),
+    )
+    parser.add_argument(
+        "--no-collect-prometheus-timeseries",
+        action="store_false",
+        dest="collect_prometheus_timeseries",
+        help="Disable Prometheus runtime metric summaries.",
+    )
+    parser.add_argument(
+        "--prometheus-metrics-profile",
+        choices=PROMETHEUS_METRICS_PROFILE_CHOICES,
+        default=DEFAULT_PROMETHEUS_METRICS_PROFILE,
+        help=f"Prometheus metric-name compatibility profile. Default: {DEFAULT_PROMETHEUS_METRICS_PROFILE}.",
+    )
+    parser.add_argument(
+        "--prometheus-step-sec",
+        type=positive_int,
+        default=DEFAULT_PROMETHEUS_STEP_SEC,
+        help=f"Prometheus query_range step in seconds. Default: {DEFAULT_PROMETHEUS_STEP_SEC}.",
+    )
+    parser.add_argument(
+        "--prometheus-timeseries-padding-sec",
+        type=non_negative_int,
+        default=DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+        help=(
+            "Seconds to pad before query start and after query end for Prometheus metrics. "
+            f"Default: {DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC}."
+        ),
+    )
+    parser.add_argument(
+        "--max-timeseries-bytes",
+        type=positive_int,
+        default=2 * 1024 * 1024,
+        help="Maximum bytes per Prometheus query_range response. Default: 2097152.",
+    )
+    parser.add_argument(
+        "--max-timeseries-points",
+        type=positive_int,
+        default=DEFAULT_MAX_PROMETHEUS_POINTS,
+        help=f"Maximum numeric data points to summarize per Prometheus query. Default: {DEFAULT_MAX_PROMETHEUS_POINTS}.",
+    )
+    parser.add_argument(
+        "--prometheus-timeout-sec",
+        type=positive_int,
+        default=DEFAULT_PROMETHEUS_TIMEOUT_SEC,
+        help=f"Timeout per Prometheus request. Default: {DEFAULT_PROMETHEUS_TIMEOUT_SEC}.",
+    )
     return parser.parse_args(argv)
 
 
@@ -80,6 +154,17 @@ def main(
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if not args.redact:
         print("[Impala profile collector] ERROR: real Impala collection requires --redact.", file=sys.stderr)
+        return 3
+    collect_prometheus = (
+        bool(args.prometheus_url)
+        if args.collect_prometheus_timeseries is None
+        else bool(args.collect_prometheus_timeseries)
+    )
+    if collect_prometheus and not args.prometheus_url:
+        print(
+            "[Impala profile collector] ERROR: --collect-prometheus-timeseries requires --prometheus-url.",
+            file=sys.stderr,
+        )
         return 3
     try:
         fetch_kwargs = {
@@ -127,10 +212,28 @@ def main(
         warnings.extend(profile_metadata_warnings)
         if identity is None:
             warnings.append("Impala daemon identity unavailable")
+        runtime_metrics_context = None
+        if collect_prometheus:
+            runtime_metrics_context = collect_prometheus_timeseries_context(
+                summary,
+                prometheus_url=args.prometheus_url,
+                metrics_profile=args.prometheus_metrics_profile,
+                padding_sec=args.prometheus_timeseries_padding_sec,
+                step_sec=args.prometheus_step_sec,
+                max_response_bytes=args.max_timeseries_bytes,
+                max_points=args.max_timeseries_points,
+                timeout_sec=args.prometheus_timeout_sec,
+                opener=opener,
+            )
+            if runtime_metrics_context.get("available"):
+                warnings.append("Prometheus runtime metrics context collected")
+            else:
+                warnings.append("Prometheus runtime metrics context unavailable")
         case_dir = write_collected_case(
             args.out,
             summary,
             profile_digest_text=result.profile_text,
+            runtime_metrics_context=runtime_metrics_context,
             extra_metadata={
                 "profile_source": "impala_daemon",
                 "profile_source_label": "Impala daemon profile endpoint",
@@ -156,6 +259,9 @@ def main(
     print(f"Profile text length: {len(result.profile_text)}")
     print("Redaction: enabled")
     print(f"Max profile bytes: {args.max_profile_bytes}")
+    if collect_prometheus:
+        print("Prometheus runtime metrics context: enabled")
+        print(f"Prometheus metrics profile: {args.prometheus_metrics_profile}")
     print("Raw provider output was not printed to stdout.")
     return 0
 

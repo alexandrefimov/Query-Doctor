@@ -19,6 +19,10 @@ def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
 
     lines = ["## CM Time-Series Context", ""]
     lines.append(f"- available: {'yes' if context.get('available') else 'no'}")
+    if context.get("source"):
+        lines.append(f"- source: {context.get('source')}")
+    if context.get("source_label"):
+        lines.append(f"- source_label: {context.get('source_label')}")
     if context.get("metrics_profile"):
         lines.append(f"- metrics_profile: {context.get('metrics_profile')}")
     window = context.get("window") or {}
@@ -81,6 +85,10 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
     facts = build_cm_metrics_facts(context)
     lines = ["## Runtime Metrics Facts", ""]
     lines.append(f"- status: {facts['status']}")
+    if facts.get("source"):
+        lines.append(f"- source: {facts['source']}")
+    if facts.get("source_label"):
+        lines.append(f"- source_label: {facts['source_label']}")
     if context.get("metrics_profile"):
         lines.append(f"- metrics_profile: {context.get('metrics_profile')}")
     lines.append(

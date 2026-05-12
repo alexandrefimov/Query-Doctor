@@ -9,6 +9,7 @@ PROVENANCE_KINDS = ("engine", "profile", "metrics", "events", "metadata")
 KNOWN_SOURCE_LABELS = {
     "cm_query_context": "Cloudera Manager query metadata",
     "cm_timeseries_context": "Cloudera Manager time-series metrics",
+    "prometheus_metrics": "Prometheus runtime metrics",
     "cluster_event_context": "Cluster event context",
     "impala_daemon_profile": "Impala daemon profile endpoint",
     "impala_metadata_context": "Impala metadata context",
@@ -27,6 +28,7 @@ def safe_label(value: object, *, default: str = "unknown") -> str:
     allowed = {
         "Cloudera Manager query metadata",
         "Cloudera Manager time-series metrics",
+        "Prometheus runtime metrics",
         "Cluster event context",
         "Impala daemon profile endpoint",
         "Impala metadata context",
@@ -126,7 +128,13 @@ def metrics_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
         status = "unavailable"
     coverage = f"{ok}/{total} metric queries ok"
     limitations = [] if status == "available" else ["Metric coverage is incomplete or unavailable."]
-    return provenance_item("metrics", status, "Cloudera Manager time-series metrics", coverage, limitations)
+    source_label = context.get("source_label")
+    label = (
+        "Prometheus runtime metrics"
+        if source_label == "Prometheus runtime metrics" or context.get("source") == "prometheus"
+        else "Cloudera Manager time-series metrics"
+    )
+    return provenance_item("metrics", status, label, coverage, limitations)
 
 
 def events_provenance(analysis: dict[str, Any]) -> dict[str, Any]:

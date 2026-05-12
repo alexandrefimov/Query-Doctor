@@ -166,6 +166,8 @@ def render_cluster_runtime_context(analysis: dict[str, Any]) -> list[str]:
     lines = ["## Cluster Runtime Context", ""]
     for key in (
         "status",
+        "source",
+        "source_label",
         "collection_status",
         "coverage",
         "metrics_profile",

@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlsplit
 
 
 DEFAULT_CONFIG_PATH = "query-doctor-config.json"
@@ -34,6 +35,7 @@ ALLOWED_CONFIG_KEYS = {
     "cm_user",
     "cm_url",
     "collect_cm_timeseries",
+    "collect_prometheus_timeseries",
     "cm_metrics_profile",
     "cm_timeseries_padding_sec",
     "host",
@@ -52,6 +54,10 @@ ALLOWED_CONFIG_KEYS = {
     "out",
     "pool",
     "port",
+    "prometheus_metrics_profile",
+    "prometheus_step_sec",
+    "prometheus_timeseries_padding_sec",
+    "prometheus_url",
     "redact",
     "redact_identifiers",
     "service",
@@ -311,6 +317,7 @@ def normalize_config_value(key: str, value: object) -> object:
             "recent_min_duration_sec",
             "recent_select",
             "recent_window_minutes",
+            "prometheus_step_sec",
         }:
             if key in {"recent_max_duration_sec", "recent_min_duration_sec"}:
                 raise ConfigError(f"Config field {key} must be a non-negative number.")
@@ -323,6 +330,8 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError("Config field krb5ccname must be a non-empty string.")
         if key == "metadata_timeout_sec":
             raise ConfigError("Config field metadata_timeout_sec must be a positive integer.")
+        if key == "prometheus_timeseries_padding_sec":
+            raise ConfigError("Config field prometheus_timeseries_padding_sec must be a non-negative integer.")
         return None
     if key == "krb5ccname":
         if not isinstance(value, str):
@@ -343,6 +352,8 @@ def normalize_config_value(key: str, value: object) -> object:
         "optimizer_model",
         "out",
         "pool",
+        "prometheus_metrics_profile",
+        "prometheus_url",
         "query_type",
         "recent_output_json",
         "recent_order",
@@ -388,6 +399,8 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError(
                 f"Config field metadata_protocol must be one of: {', '.join(METADATA_PROTOCOL_CHOICES)}."
             )
+        if key == "prometheus_url":
+            validate_safe_http_url(normalized, field_name="prometheus_url")
         return normalized or None
     if key in {
         "since_hours",
@@ -410,6 +423,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "metadata_max_tables",
         "metadata_timeout_sec",
         "port",
+        "prometheus_step_sec",
     }:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"Config field {key} must be a positive integer.")
@@ -434,9 +448,9 @@ def normalize_config_value(key: str, value: object) -> object:
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ConfigError(f"Config field {key} must be a non-negative integer.")
         return value
-    if key == "cm_timeseries_padding_sec":
+    if key in {"cm_timeseries_padding_sec", "prometheus_timeseries_padding_sec"}:
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise ConfigError("Config field cm_timeseries_padding_sec must be a non-negative integer.")
+            raise ConfigError(f"Config field {key} must be a non-negative integer.")
         return value
     if key in {"recent_max_duration_sec", "recent_min_duration_sec"}:
         if (
@@ -454,6 +468,7 @@ def normalize_config_value(key: str, value: object) -> object:
     if key in {
         "insecure_skip_verify",
         "collect_cm_timeseries",
+        "collect_prometheus_timeseries",
         "recent_collect_cm_events",
         "recent_collect_cm_timeseries",
         "recent_include_failed",
@@ -551,6 +566,18 @@ def normalize_cluster_label(value: object) -> str | None:
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in normalized):
         raise ConfigError("Cluster config label must not contain control characters.")
     return normalized
+
+
+def validate_safe_http_url(value: str, *, field_name: str) -> None:
+    if not value:
+        return
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ConfigError(f"Config field {field_name} must be an http or https URL.")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ConfigError(
+            f"Config field {field_name} must not include credentials, query parameters, or fragments."
+        )
 
 
 def load_and_validate_config(
