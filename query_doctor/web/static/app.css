@@ -1315,13 +1315,13 @@ code,.technical,.mono {
   width:100%;
   table-layout:auto;
   border-collapse:collapse;
-  font-size:12px;
+  font-size:11.5px;
   background:var(--control)
 }
 
 .batch-table th,.batch-table td {
   border-bottom:1px solid var(--border);
-  padding:7px 9px;
+  padding:6px 7px;
   text-align:left;
   vertical-align:top
 }
@@ -1363,7 +1363,7 @@ code,.technical,.mono {
 
 .batch-cell--query-id {
   width:1%;
-  min-width:250px;
+  min-width:210px;
   font-family:var(--mono);
   font-size:11px;
   line-height:1.3;
@@ -1373,8 +1373,8 @@ code,.technical,.mono {
 
 .batch-cell--user {
   width:1%;
-  min-width:120px;
-  max-width:180px;
+  min-width:96px;
+  max-width:150px;
   font-family:var(--mono);
   font-size:11px;
   line-height:1.3;
@@ -1385,7 +1385,7 @@ code,.technical,.mono {
 
 .batch-cell--summary {
   width:100%;
-  min-width:320px;
+  min-width:280px;
   white-space:normal
 }
 

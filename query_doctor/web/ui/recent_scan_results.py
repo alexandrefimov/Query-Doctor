@@ -165,8 +165,8 @@ def render_optimizer_funnel_note(header_items: tuple[tuple[str, Any], ...]) -> s
         "<div class=\"batch-note\"><strong>Optimizer funnel:</strong> "
         "draft-ready means a trusted SQL draft shape was detected; "
         "recipe backlog means a supported or adjacent recipe shape needs follow-up; "
-        "review-only means no trusted SQL draft shape was detected, so use Review scope "
-        "for manual query-shape analysis.</div>"
+        "review-only means no trusted SQL draft shape was detected, so open Details "
+        "for manual query-shape guidance.</div>"
     )
 
 
@@ -244,8 +244,6 @@ def render_batch_case_row(
                 view.optimizer_rewrite_support_label,
                 view.optimizer_rewrite_support_reason,
             ),
-            optimizer_next_action_cell(view.optimization_artifact_status),
-            reason_cell(optimizer_review_scope_text(view)),
             summary_cell(view, query_group=normalized),
         ]
     elif normalized == "stats":
@@ -258,7 +256,6 @@ def render_batch_case_row(
             reason_cell(stats_need_label(view.stats_need_type)),
             compact_cell(view.stats_speed_benefit.title()),
             compact_cell(view.stats_confidence.title()),
-            reason_cell(stats_next_action_label(view.stats_required_confirmation)),
             summary_cell(view, query_group=normalized),
         ]
     else:
@@ -328,9 +325,10 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
     detail_html = ""
     if normalized == "optimization":
         why = f"Why: {view.optimization_summary}" if view.optimization_summary else "Why: query-shape evidence"
+        review = f" Review: {view.optimization_review_areas}." if view.optimization_review_areas else ""
         facts = f" Facts: {view.optimizer_fact_summary}." if view.optimizer_fact_summary else ""
         guardrails = f" Guardrails: {view.optimizer_guardrail_summary}." if view.optimizer_guardrail_summary else ""
-        detail_html = f"<span>{escape_value(why)}.{escape_value(facts)}{escape_value(guardrails)}</span>"
+        detail_html = f"<span>{escape_value(why)}.{escape_value(review)}{escape_value(facts)}{escape_value(guardrails)}</span>"
     elif normalized == "stats":
         why = f"Why: {view.stats_summary}" if view.stats_summary else "Why: stats-planning evidence"
         review = f" Review: {view.stats_review_areas}" if view.stats_review_areas else ""
@@ -370,30 +368,6 @@ def stats_need_label(value: Any) -> str:
     return labels.get(str(value), str(value))
 
 
-def optimizer_next_action_cell(value: Any) -> str:
-    label, class_name, title = optimizer_next_action_view(value)
-    return (
-        "<td class=\"batch-cell--compact\">"
-        f"<span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(title)}\">"
-        f"{escape_value(label)}</span></td>"
-    )
-
-
-def optimizer_next_action_view(value: Any) -> tuple[str, str, str]:
-    status = str(value or "unknown")
-    labels = {
-        "trusted_draft": ("Open draft", "batch-status--ok"),
-        "trusted_recommendations": ("Open guidance", "batch-status--ok"),
-        "trusted_no_rewrite": ("Open outcome", "batch-status--ok"),
-        "partial_untrusted": ("Validate manually", "batch-status--warning"),
-        "not_run": ("Generate draft", "batch-status--neutral"),
-        "source_unavailable": ("Source unavailable", "batch-status--neutral"),
-        "unknown": ("Check details", "batch-status--neutral"),
-    }
-    label, class_name = labels.get(status, labels["unknown"])
-    return label, class_name, optimizer_artifact_status_label(status)
-
-
 def optimizer_rewrite_support_cell(status: Any, label: Any, reason: Any) -> str:
     display_label, class_name, title = optimizer_rewrite_support_view(status, label, reason)
     return (
@@ -425,23 +399,6 @@ def optimizer_rewrite_support_view(status: Any, label: Any, reason: Any) -> tupl
     title = f"{title_label}: {title_reason}" if title_reason else title_label
     return fallback_label, class_name, title
 
-
-def stats_next_action_label(value: Any) -> str:
-    text = str(value or "").strip()
-    return text or "compare EXPLAIN and rerun comparable load"
-
-
-def optimizer_artifact_status_label(value: Any) -> str:
-    labels = {
-        "trusted_draft": "Trusted draft",
-        "trusted_recommendations": "Trusted recommendations",
-        "trusted_no_rewrite": "No rewrite",
-        "partial_untrusted": "Untrusted draft",
-        "not_run": "Not run",
-        "source_unavailable": "Source unavailable",
-        "unknown": "Unknown",
-    }
-    return labels.get(str(value or "unknown"), "Unknown")
 
 def metadata_cell(status: Any) -> str:
     normalized = str(status).lower() if status is not None else "unknown"

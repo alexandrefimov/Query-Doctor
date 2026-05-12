@@ -170,7 +170,7 @@ def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
         rewrite_support = str(view.optimization_candidate.get("rewrite_support") or "").lower()
         rewriteability_bucket = str(view.optimization_candidate.get("rewriteability_bucket") or "").lower()
         if rewriteability_bucket == "not_rewriteable":
-            return "Use Review scope for manual query-shape analysis"
+            return "Open Details for manual query-shape guidance"
         if rewriteability_bucket == "human_review_only":
             return "Review optimizer guardrails and manual query-shape guidance"
         if rewrite_support == "recipe_detected":

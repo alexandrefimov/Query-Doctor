@@ -91,13 +91,13 @@ def render_help_content() -> str:
 <ul>
 <li><strong>Rank</strong> is ordering within the current group, not a root-cause verdict.</li>
 <li><strong>Query ID</strong> opens the details page for the selected case.</li>
-<li><strong>User</strong> shows the sanitized Cloudera Manager query user.</li>
+<li><strong>User</strong> shows the sanitized query user when available.</li>
 <li><strong>Score</strong> is a deterministic triage priority from analyzer facts.</li>
-<li><strong>Duration</strong> comes from Cloudera Manager summary data when available.</li>
+<li><strong>Duration</strong> comes from query summary data when available.</li>
 <li><strong>STATS</strong> summarizes table statistics availability.</li>
 <li><strong>META</strong> summarizes metadata collection status.</li>
-<li><strong>Optimization candidates</strong> use Candidate, Impact, Confidence, Next action, and Review scope columns.</li>
-<li><strong>Stats refresh candidates</strong> use Candidate, Need, Speed benefit, Confidence, and Next action columns.</li>
+<li><strong>Optimization candidates</strong> use Candidate, Impact, Confidence, Rewrite support, and Summary columns.</li>
+<li><strong>Stats refresh candidates</strong> use Candidate, Need, Speed benefit, Confidence, and Summary columns.</li>
 <li>Cases without triage severity and without Medium/High optimization or stats-refresh candidacy are intentionally hidden from separate result groups.</li>
 <li><strong>Summary</strong> explains deterministic signals without raw evidence.</li>
 </ul>
