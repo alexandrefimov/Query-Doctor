@@ -200,9 +200,9 @@ def _candidate_is_visible(candidate: dict[str, Any]) -> bool:
 def competing_signal_next_action(reason_summary: str) -> str:
     reasons = str(reason_summary or "").lower()
     has_stats = "stats" in reasons
-    has_sql_shape = "sql-shape" in reasons
-    has_data_movement = "data-movement" in reasons
-    has_runtime_skew = "runtime-skew" in reasons
+    has_sql_shape = "sql-shape" in reasons or "query shape" in reasons
+    has_data_movement = "data-movement" in reasons or "data movement" in reasons
+    has_runtime_skew = "runtime-skew" in reasons or "runtime skew" in reasons
     has_storage = "storage/hdfs" in reasons
     if has_stats and has_sql_shape:
         return "Review SQL-shape guidance alongside stats evidence; confirm with EXPLAIN before stats action"

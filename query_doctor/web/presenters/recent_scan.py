@@ -319,24 +319,24 @@ PRIMARY_BOTTLENECK_LABELS = {
 }
 
 PRIMARY_BOTTLENECK_REASON_LABELS = {
-    "stats_candidate_supported": "stats candidate supported",
-    "stats_not_primary": "stats not primary",
-    "large_intermediate_or_exchange_top_finding": "large exchange/intermediate traffic is top finding",
-    "storage_or_hdfs_top_finding": "storage/HDFS is top finding",
-    "storage_or_hdfs_runtime_diagnosis": "storage/HDFS runtime diagnosis",
-    "join_top_finding": "join is top finding",
-    "sort_top_finding": "sort is top finding",
-    "analytic_top_finding": "analytic operator is top finding",
-    "execution_tail_top_finding": "execution tail is top finding",
+    "stats_candidate_supported": "stats gaps match estimate-mismatch evidence",
+    "stats_not_primary": "stats are unlikely to be the main explanation",
+    "large_intermediate_or_exchange_top_finding": "exchange or intermediate data movement is the top finding",
+    "storage_or_hdfs_top_finding": "storage/HDFS evidence is the top finding",
+    "storage_or_hdfs_runtime_diagnosis": "storage/HDFS evidence is the strongest runtime follow-up",
+    "join_top_finding": "join shape is the top finding",
+    "sort_top_finding": "sort shape is the top finding",
+    "analytic_top_finding": "analytic operator shape is the top finding",
+    "execution_tail_top_finding": "execution tail is the top finding",
     "backend_data_skew_detected": "backend data skew detected",
     "very_short_query_or_unknown_wall_clock": "very short query or unknown wall clock",
     "no_primary_branch_supported": "no primary branch supported",
     "competing_stats_and_non_stats": "competing stats and non-stats signals",
-    "competing_stats": "competing stats signal",
-    "competing_sql_shape": "competing SQL-shape signal",
-    "competing_runtime_skew": "competing runtime-skew signal",
-    "competing_runtime_data_movement": "competing data-movement signal",
-    "competing_runtime_storage": "competing storage/HDFS signal",
+    "competing_stats": "stats gaps also match estimate evidence",
+    "competing_sql_shape": "query shape also needs review",
+    "competing_runtime_skew": "runtime skew also needs review",
+    "competing_runtime_data_movement": "exchange/data movement also needs review",
+    "competing_runtime_storage": "storage/HDFS also needs review",
 }
 
 
