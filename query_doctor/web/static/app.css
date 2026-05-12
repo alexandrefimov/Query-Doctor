@@ -1077,6 +1077,13 @@ code,.technical,.mono {
   font-size:13px
 }
 
+.batch-head .badge {
+  max-width:min(360px,45vw);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  justify-content:flex-start
+}
+
 .batch-metrics {
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(108px,1fr));
@@ -1340,7 +1347,7 @@ code,.technical,.mono {
 
 .batch-table th,.batch-table td {
   border-bottom:1px solid var(--border);
-  padding:6px 7px;
+  padding:6px;
   text-align:left;
   vertical-align:top
 }
@@ -1382,18 +1389,21 @@ code,.technical,.mono {
 
 .batch-cell--query-id {
   width:1%;
-  min-width:210px;
+  min-width:160px;
+  max-width:190px;
   font-family:var(--mono);
   font-size:11px;
   line-height:1.3;
   white-space:nowrap;
-  overflow-wrap:normal
+  overflow:hidden;
+  overflow-wrap:normal;
+  text-overflow:ellipsis
 }
 
 .batch-cell--user {
   width:1%;
-  min-width:96px;
-  max-width:150px;
+  min-width:76px;
+  max-width:120px;
   font-family:var(--mono);
   font-size:11px;
   line-height:1.3;
@@ -1404,7 +1414,7 @@ code,.technical,.mono {
 
 .batch-cell--summary {
   width:100%;
-  min-width:280px;
+  min-width:220px;
   white-space:normal
 }
 
@@ -1424,7 +1434,8 @@ code,.technical,.mono {
 }
 
 .batch-cell--reason {
-  min-width:220px;
+  min-width:150px;
+  max-width:220px;
   white-space:normal;
   overflow-wrap:anywhere
 }
@@ -1432,12 +1443,12 @@ code,.technical,.mono {
 .batch-mini-badge {
   display:inline-flex;
   align-items:center;
-  min-height:20px;
-  padding:2px 7px;
+  min-height:19px;
+  padding:2px 6px;
   border-radius:4px;
   border:1px solid transparent;
   font-family:var(--mono);
-  font-size:10.5px;
+  font-size:10px;
   font-weight:750;
   line-height:1;
   white-space:nowrap
