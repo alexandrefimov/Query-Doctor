@@ -17,11 +17,15 @@ Before larger or safety-sensitive work:
 - read `docs/code-audit.md` if the work touches web details, browser safety,
   report validation, optimizer, collectors, config, or architecture;
 - run `git status --short --branch` and preserve unrelated user changes;
+- run `python3 scripts/check_staged_public_safety.py` before committing
+  public-facing docs, config examples, or generated-artifact boundary changes;
 - prefer existing package boundaries and helpers over new abstractions;
 - keep browser/report output raw-free.
 
-Always finish with `git diff --check`. Stage intended files explicitly.
-Run `python3 scripts/agent_preflight.py` when test selection is unclear.
+Always finish with `git diff --check`. Use `scripts/local_gate.sh` before
+broad handoff or release work when time permits. Stage intended files
+explicitly. Run `python3 scripts/agent_preflight.py` when test selection is
+unclear.
 
 ## Change Routing Table
 

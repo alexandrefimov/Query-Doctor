@@ -1,6 +1,6 @@
 # Development Practices
 
-Last reviewed: 2026-05-08
+Last reviewed: 2026-05-12
 
 This document records the engineering practices that keep Query Doctor
 maintainable as it grows. It complements the mandatory safety rules in
@@ -86,6 +86,47 @@ Use a risk-based test set:
 For touched safety boundaries, run the focused tests listed in
 [contributor-architecture.md](contributor-architecture.md) and then broaden as
 needed. Always run `git diff --check` before committing.
+
+## Local Automation
+
+Install development dependencies once with `python3 -m pip install -e ".[dev]"`
+inside your chosen virtual environment. The repository keeps automation
+offline after dependency installation.
+
+Use the local gate when you want one command that mirrors the important local
+checks before handoff or release work:
+
+```bash
+scripts/local_gate.sh
+```
+
+The gate runs agent preflight, staged public-safety checks, whitespace checks,
+active-doc checks, Markdown link checks, ruff correctness checks, full pytest,
+demo preflight, and synthetic demo generation. Set `PUBLIC_RELEASE=1` to add
+the slower public-release tracked-tree and history scan:
+
+```bash
+PUBLIC_RELEASE=1 scripts/local_gate.sh
+```
+
+If `ruff` is installed outside the active Python environment, pass it
+explicitly:
+
+```bash
+RUFF=/path/to/ruff scripts/local_gate.sh
+```
+
+For fast commit-time safety, install the local pre-commit hooks:
+
+```bash
+pre-commit install
+```
+
+The staged public-safety hook rejects generated case artifacts, local configs,
+caches, virtualenv paths, private-looking hostnames/domains, user home paths,
+embedded URL credentials, private keys, and high-confidence tokens before they
+enter repository history. It is intentionally a guardrail, not a replacement
+for release review or `query-doctor-demo-preflight --public-release`.
 
 ## Dependency Policy
 

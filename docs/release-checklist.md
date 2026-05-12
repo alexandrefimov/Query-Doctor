@@ -16,19 +16,20 @@ announcing a public release.
 Run from the repository root:
 
 ```bash
-DEMO_OUT="${TMPDIR:-/tmp}/query-doctor-demo-pack"
-python -m ruff check query_doctor tests
-python scripts/check_markdown_links.py
-python -m pytest -q
-git diff --check
-query-doctor-demo-preflight --public-release
-query-doctor-demo --out "$DEMO_OUT" --overwrite
+PUBLIC_RELEASE=1 scripts/local_gate.sh
 ```
 
-If console scripts are not installed, use:
+If you need to run the gate manually, use:
 
 ```bash
 DEMO_OUT="${TMPDIR:-/tmp}/query-doctor-demo-pack"
+python scripts/agent_preflight.py
+python scripts/check_staged_public_safety.py
+git diff --check
+python scripts/check_active_docs.py
+python scripts/check_markdown_links.py
+python -m ruff check query_doctor tests
+python -m pytest -q
 python -m query_doctor.cli.demo_preflight --public-release
 python -m query_doctor.cli.demo_data --out "$DEMO_OUT" --overwrite
 ```
@@ -77,8 +78,12 @@ Confirm public docs state only implemented behavior:
 - Apache Impala is the only implemented query engine.
 - Current Cloudera Manager collection is validated against the local CM 6.2.1
   environment.
-- Direct Impala daemon profile collection, Prometheus metrics, broader engine
-  support, and Cluster Doctor product workflows are roadmap seams only.
+- Direct Impala daemon collection supports bounded Recent and Running scans
+  plus one explicit Known Query ID, without Cloudera Manager events.
+- Prometheus runtime metrics are optional bounded context for explicitly
+  configured direct Impala Known Query ID collection.
+- Broader engine support and Cluster Doctor product workflows are roadmap seams
+  only.
 - Query Optimizer is read-only and does not execute pasted query text.
 - Validated reports and details-page optimizer drafts are explicit selected-case
   actions.

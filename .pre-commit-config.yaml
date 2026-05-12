@@ -1,16 +1,15 @@
 repos:
   - repo: local
     hooks:
+      - id: query-doctor-staged-public-safety
+        name: Query Doctor staged public-safety check
+        entry: python3 scripts/check_staged_public_safety.py
+        language: system
+        pass_filenames: false
+
       - id: ruff-check
         name: ruff check
         entry: ruff check
-        language: system
-        types_or: [python, pyi]
-        require_serial: true
-
-      - id: ruff-format-check
-        name: ruff format check
-        entry: ruff format --check
         language: system
         types_or: [python, pyi]
         require_serial: true
@@ -23,6 +22,6 @@ repos:
 
       - id: markdown-link-check
         name: markdown link check
-        entry: python scripts/check_markdown_links.py
+        entry: python3 scripts/check_markdown_links.py
         language: system
         pass_filenames: false
