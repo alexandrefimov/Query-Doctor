@@ -88,6 +88,13 @@ SHAPE_BOUNDARY_REASONS = {
     "target_cte_group_not_simple",
     "source_cte_group_not_simple",
     "final_cte_reference_boundary",
+    "aggregate_cte_unavailable",
+    "aggregate_dimensions_unavailable",
+    "aggregate_measures_unavailable",
+    "downstream_aggregate_rewrite_unsupported",
+    "source_cte_unavailable",
+    "union_branch_rollup_unsupported",
+    "union_outputs_unavailable",
 }
 PREDICATE_NOT_COPYABLE_REASONS = {
     "no_copyable_predicate",

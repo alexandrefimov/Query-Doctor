@@ -173,8 +173,17 @@ def deterministic_recipe_draft_diagnostics(
         "single_cte_projection_alias_predicate_pushdown",
         "linear_cte_predicate_pushdown",
         "cte_dag_predicate_pushdown",
+        "post_union_aggregate_pushdown",
     }:
         return DeterministicDraftDiagnostics(tuple(dedupe_preserve_order(reasons)))
+    if rewrite_recipe.recipe_id == "post_union_aggregate_pushdown":
+        return DeterministicDraftDiagnostics(
+            tuple(
+                dedupe_preserve_order(
+                    (*reasons, *post_union_aggregate_pushdown_draft_diagnostics(source_sql, rewrite_recipe))
+                )
+            )
+        )
     cte_reasons, cte_decisions = cte_predicate_pushdown_draft_diagnostics(
         source_sql,
         rewrite_recipe,
@@ -183,6 +192,48 @@ def deterministic_recipe_draft_diagnostics(
         tuple(dedupe_preserve_order((*reasons, *cte_reasons))),
         tuple(cte_decisions),
     )
+
+
+def post_union_aggregate_pushdown_draft_diagnostics(
+    source_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> tuple[str, ...]:
+    parsed = parse_with_query(source_sql)
+    reasons: list[str] = []
+    if parsed is None:
+        return ("cte_parse_failed",)
+    if any_cte_has_column_list(source_sql):
+        reasons.append("cte_column_list")
+    union_cte, aggregate_cte = recipe_ctes(parsed.ctes, rewrite_recipe)
+    if union_cte is None:
+        reasons.append("source_cte_unavailable")
+    if aggregate_cte is None:
+        reasons.append("aggregate_cte_unavailable")
+    if union_cte is None or aggregate_cte is None:
+        return tuple(dedupe_preserve_order(reasons))
+    dimensions = non_aggregate_projection_names(aggregate_cte.body)
+    aggregate_fragments = aggregate_projection_fragments(aggregate_cte.body)
+    if not dimensions:
+        reasons.append("aggregate_dimensions_unavailable")
+    if not aggregate_fragments:
+        reasons.append("aggregate_measures_unavailable")
+    if not union_projection_names(union_cte.body):
+        reasons.append("union_outputs_unavailable")
+    if not dimensions or not aggregate_fragments:
+        return tuple(dedupe_preserve_order(reasons))
+    group_expression_map = non_aggregate_projection_expression_map(aggregate_cte.body)
+    branch_bodies = rollup_union_branches(
+        union_cte.body,
+        group_names=dimensions,
+        aggregate_fragments=aggregate_fragments,
+        output_names=union_projection_names(union_cte.body),
+        group_expression_map=group_expression_map,
+    )
+    if branch_bodies is None:
+        reasons.append("union_branch_rollup_unsupported")
+    if rewrite_downstream_aggregate_body(aggregate_cte.body) is None:
+        reasons.append("downstream_aggregate_rewrite_unsupported")
+    return tuple(dedupe_preserve_order(reasons))
 
 
 def cte_predicate_pushdown_draft_diagnostics(
