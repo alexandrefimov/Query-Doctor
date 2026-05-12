@@ -18,6 +18,7 @@ from query_doctor.recent.query_optimization_score import (
 from query_doctor.recent.stats_optimization_score import score_stats_optimization_candidate
 
 HIGH_CONFIDENCE_PRIMARY_CAP_TIER = "low"
+MIXED_PRIMARY_STATS_CAP_TIER = "medium"
 QUERY_CAP_SIGNALS = {
     "stats": "primary_bottleneck_is_stats; rewrite is secondary",
     "runtime_admission": "primary_bottleneck_is_runtime_admission",
@@ -31,6 +32,14 @@ STATS_CAP_SIGNALS = {
     "runtime_skew": "primary_bottleneck_is_runtime_skew",
     "runtime_data_movement": "primary_bottleneck_is_runtime_data_movement",
     "runtime_storage": "primary_bottleneck_is_runtime_storage",
+}
+MIXED_STATS_CAP_SIGNALS = {
+    "competing_sql_shape": "mixed_primary_includes_sql_shape; stats refresh requires EXPLAIN confirmation",
+    "competing_runtime_skew": "mixed_primary_includes_runtime_skew; stats refresh is not first action",
+    "competing_runtime_data_movement": (
+        "mixed_primary_includes_runtime_data_movement; stats refresh is not first action"
+    ),
+    "competing_runtime_storage": "mixed_primary_includes_runtime_storage; stats refresh is not first action",
 }
 
 
@@ -166,9 +175,17 @@ def case_primary_bottleneck_from_analysis(analysis: dict[str, object] | None) ->
 
 def apply_primary_bottleneck_caps(case: CaseResult) -> None:
     primary = case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
+    label = str(primary.get("label") or "").lower()
+    if label == "mixed" and case.stats_optimization_candidate is not None:
+        signal = mixed_primary_stats_cap_signal(primary)
+        if signal:
+            case.stats_optimization_candidate = cap_candidate_tier(
+                case.stats_optimization_candidate,
+                MIXED_PRIMARY_STATS_CAP_TIER,
+                signal,
+            )
     if str(primary.get("confidence") or "").lower() != "high":
         return
-    label = str(primary.get("label") or "").lower()
     if label in QUERY_CAP_SIGNALS and case.query_optimization_candidate is not None:
         case.query_optimization_candidate = cap_candidate_tier(
             case.query_optimization_candidate,
@@ -181,6 +198,19 @@ def apply_primary_bottleneck_caps(case: CaseResult) -> None:
             HIGH_CONFIDENCE_PRIMARY_CAP_TIER,
             STATS_CAP_SIGNALS[label],
         )
+
+
+def mixed_primary_stats_cap_signal(primary: dict[str, object]) -> str:
+    reasons = primary.get("reasons")
+    if not isinstance(reasons, (list, tuple)):
+        return ""
+    reason_set = {str(reason).strip().lower() for reason in reasons if str(reason).strip()}
+    if "competing_stats" not in reason_set:
+        return ""
+    for reason, signal in MIXED_STATS_CAP_SIGNALS.items():
+        if reason in reason_set:
+            return signal
+    return ""
 
 
 def cap_candidate_tier(candidate: Any, max_tier: str, counter_signal: str) -> Any:
