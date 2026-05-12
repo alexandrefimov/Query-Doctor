@@ -139,7 +139,7 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert result == 0
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     results = summary["results"]
-    assert len(results) == 13
+    assert len(results) == 14
     assert {item["expected_output_kind"] for item in results} == {
         "sql_draft",
         "validation_rejected",
@@ -150,28 +150,29 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     aggregate = summary["aggregates"]["by_model"]["qwen3-coder:30b-a3b-q8_0"]
     assert aggregate["expected_outcome_match_rate"] == 1.0
     funnel = summary["optimizer_funnel"]
-    assert funnel["total_runs"] == 13
-    assert funnel["dry_run_runs"] == 13
+    assert funnel["total_runs"] == 14
+    assert funnel["dry_run_runs"] == 14
     assert funnel["trusted_outcome_runs"] == 0
-    assert funnel["expected_matched_runs"] == 13
+    assert funnel["expected_matched_runs"] == 14
     assert funnel["expected_match_rate"] == 1.0
     assert funnel["expected_output_kind_counts"] == {
         "no_rewrite": 1,
         "recommendations_only": 2,
-        "sql_draft": 7,
+        "sql_draft": 8,
         "validation_rejected": 3,
     }
     assert funnel["offline_output_kind_counts"] == {
         "no_rewrite": 1,
         "recommendations_only": 2,
-        "sql_draft": 7,
+        "sql_draft": 8,
         "validation_rejected": 3,
     }
     by_case = summary["aggregates"]["by_case"]
-    assert len(by_case) == 13
+    assert len(by_case) == 14
     assert by_case["optimizer_cases:cte_dag_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
     assert by_case["optimizer_cases:linear_cte_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
     assert by_case["optimizer_cases:pass_through_cte_elimination"]["expected_output_kind"] == "sql_draft"
+    assert by_case["optimizer_cases:single_cte_projection_alias_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
     assert by_case["optimizer_cases:single_cte_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
     assert by_case["optimizer_cases:single_derived_table_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
     case_summary = by_case["optimizer_cases:reject_changed_predicate"]

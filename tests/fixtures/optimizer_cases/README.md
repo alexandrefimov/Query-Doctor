@@ -15,8 +15,9 @@ bake-offs, validator changes, or new Python-owned rewrite recipes need a stable
 baseline. Include both positive recipe drafts and negative safety cases such as
 changed predicates, changed joins, changed projection shape, or query shapes
 that must remain recommendations-only. Positive recipe fixtures currently cover
-single CTE, linear CTE, CTE DAG, derived-table predicate pushdown, and UNION ALL
-aggregate rollup shapes.
+single CTE, projection-alias single CTE, linear CTE, CTE DAG, derived-table
+predicate pushdown, pass-through CTE elimination, and UNION ALL aggregate
+rollup shapes.
 
 Use it with the optimizer bake-off helper:
 

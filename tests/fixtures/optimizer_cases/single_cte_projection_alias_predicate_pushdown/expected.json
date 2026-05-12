@@ -1,0 +1,11 @@
+{
+  "case_id": "single_cte_projection_alias_predicate_pushdown",
+  "expected_output_kind": "sql_draft",
+  "expected_recipe": "single_cte_projection_alias_predicate_pushdown",
+  "expected_risk_mode": "conservative_rewrite",
+  "expected_risk_reasons": [
+    "cte_body_validation_not_proven"
+  ],
+  "expect_material_change": true,
+  "expect_validation_errors": []
+}
