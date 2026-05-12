@@ -9,6 +9,7 @@
   "expected_fallback_reason": "deterministic_draft_unavailable",
   "expected_draft_unavailable_reasons": [
     "no_deterministic_draft",
+    "aggregate_avg_rollup_unsupported",
     "union_branch_rollup_unsupported",
     "downstream_aggregate_rewrite_unsupported"
   ]

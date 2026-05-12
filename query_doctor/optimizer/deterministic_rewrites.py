@@ -34,6 +34,7 @@ from query_doctor.optimizer.sql_shape import (
     clause_signature,
     is_cte_dag_predicate_pushdown_candidate,
     is_linear_cte_chain,
+    lower_sql_outside_quoted_text,
     main_select_has_distinct,
     next_top_level_clause_offset,
     non_aggregate_projection_names,
@@ -221,6 +222,7 @@ def post_union_aggregate_pushdown_draft_diagnostics(
         reasons.append("union_outputs_unavailable")
     if not dimensions or not aggregate_fragments:
         return tuple(dedupe_preserve_order(reasons))
+    reasons.extend(unsupported_post_union_aggregate_rollup_reasons(aggregate_fragments))
     group_expression_map = non_aggregate_projection_expression_map(aggregate_cte.body)
     branch_bodies = rollup_union_branches(
         union_cte.body,
@@ -233,6 +235,21 @@ def post_union_aggregate_pushdown_draft_diagnostics(
         reasons.append("union_branch_rollup_unsupported")
     if rewrite_downstream_aggregate_body(aggregate_cte.body) is None:
         reasons.append("downstream_aggregate_rewrite_unsupported")
+    return tuple(dedupe_preserve_order(reasons))
+
+
+def unsupported_post_union_aggregate_rollup_reasons(aggregate_fragments: tuple[str, ...]) -> tuple[str, ...]:
+    reasons: list[str] = []
+    for fragment in aggregate_fragments:
+        lowered = lower_sql_outside_quoted_text(fragment)
+        if re.search(r"\bavg\s*\(", lowered, re.IGNORECASE):
+            reasons.append("aggregate_avg_rollup_unsupported")
+        if re.search(r"\bmin\s*\(", lowered, re.IGNORECASE):
+            reasons.append("aggregate_min_rollup_unsupported")
+        if re.search(r"\bmax\s*\(", lowered, re.IGNORECASE):
+            reasons.append("aggregate_max_rollup_unsupported")
+        if re.search(r"\bcount\s*\(\s*distinct\b", lowered, re.IGNORECASE):
+            reasons.append("aggregate_count_distinct_rollup_unsupported")
     return tuple(dedupe_preserve_order(reasons))
 
 
