@@ -45,6 +45,9 @@ dev = [
     "pytest>=8",
     "ruff>=0.8",
 ]
+e2e = [
+    "playwright>=1.48",
+]
 
 [project.scripts]
 query-doctor-analyze = "query_doctor.cli.analyze_profile:main"
