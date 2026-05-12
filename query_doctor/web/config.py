@@ -132,10 +132,7 @@ def validate_web_startup_config(
                     "Missing required Impala startup setting(s): impala_profile_hosts. "
                     "Provide one or more impalad web hosts in local config."
                 )
-            if optional_config_bool(config_values, "collect_prometheus_timeseries") and not optional_config_string(
-                config_values,
-                "prometheus_url",
-            ):
+            if cluster.collect_prometheus_timeseries and not cluster.prometheus_url:
                 raise WebError(
                     "collect_prometheus_timeseries=true requires prometheus_url in local config."
                 )
