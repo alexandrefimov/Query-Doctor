@@ -8,6 +8,7 @@ from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_collector
 from query_doctor.config.contract import load_and_validate_config
+from query_doctor.web.cluster_selection import build_web_cluster_configs, settings_for_cluster_key
 from query_doctor.web.models import (
     DEFAULT_HOST,
     DEFAULT_IMPALA_PROFILE_PORT,
@@ -20,6 +21,7 @@ from query_doctor.web.models import (
     DEFAULT_PORT,
     DEFAULT_QUERY_PROFILE_SOURCE,
     WebError,
+    WebClusterConfig,
     WebSettings,
 )
 
@@ -97,29 +99,48 @@ def validate_web_startup_config(
         return []
     env = os.environ if env is None else env
     config_values = load_web_local_config(config_path, cwd=cwd)
-    query_profile_source = first_string_value(
-        optional_config_string(config_values, "query_profile_source"),
-        DEFAULT_QUERY_PROFILE_SOURCE,
-    )
-    if query_profile_source == "impala":
-        hosts = optional_config_string_list(config_values, "impala_profile_hosts")
-        if not hosts:
-            raise WebError(
-                "Missing required Impala startup setting(s): impala_profile_hosts. "
-                "Provide one or more impalad web hosts in local config."
+    clusters = build_web_cluster_configs(config_values)
+    clusters_to_validate = clusters or (
+        WebClusterConfig(
+            key="default",
+            label="Configured cluster",
+            cm_url=optional_config_string(config_values, "cm_url"),
+            cm_cluster=optional_config_string(config_values, "cluster"),
+            cm_service=optional_config_string(config_values, "service"),
+            cm_username=optional_config_string(config_values, "username"),
+            ca_bundle=optional_config_string(config_values, "ca_bundle"),
+            insecure_skip_verify=optional_config_bool(config_values, "insecure_skip_verify") is True,
+            query_profile_source=first_string_value(
+                optional_config_string(config_values, "query_profile_source"),
+                DEFAULT_QUERY_PROFILE_SOURCE,
             )
-        return []
+            or DEFAULT_QUERY_PROFILE_SOURCE,
+            impala_profile_hosts=optional_config_string_list(config_values, "impala_profile_hosts"),
+        ),
+    )
     missing: list[str] = []
-    if not first_string_value(optional_config_string(config_values, "cm_url"), env.get("CM_URL")):
-        missing.append("cm_url")
-    if not first_string_value(optional_config_string(config_values, "username"), env.get("CM_USERNAME")):
+    cm_clusters = [cluster for cluster in clusters_to_validate if cluster.query_profile_source != "impala"]
+    for cluster in clusters_to_validate:
+        if cluster.query_profile_source == "impala":
+            if not cluster.impala_profile_hosts:
+                raise WebError(
+                    "Missing required Impala startup setting(s): impala_profile_hosts. "
+                    "Provide one or more impalad web hosts in local config."
+                )
+            continue
+        if not first_string_value(cluster.cm_url, env.get("CM_URL")):
+            missing.append("cm_url")
+        if not cluster.cm_cluster:
+            missing.append("cluster")
+        if not cluster.cm_service:
+            missing.append("service")
+    if cm_clusters and not first_string_value(
+        optional_config_string(config_values, "username"), env.get("CM_USERNAME")
+    ) and not any(cluster.cm_username for cluster in cm_clusters):
         missing.append("username/cm_user")
-    if not optional_config_string(config_values, "cluster"):
-        missing.append("cluster")
-    if not optional_config_string(config_values, "service"):
-        missing.append("service")
-    if not ((env.get("CM_PASSWORD") or "").strip() or (env.get("CM_TOKEN") or "").strip()):
+    if cm_clusters and not ((env.get("CM_PASSWORD") or "").strip() or (env.get("CM_TOKEN") or "").strip()):
         missing.append("CM_PASSWORD/CM_TOKEN environment variable")
+    missing = list(dict.fromkeys(missing))
     if missing:
         raise WebError(
             "Missing required CM startup setting(s): "
@@ -128,20 +149,23 @@ def validate_web_startup_config(
         )
 
     warnings: list[str] = []
-    ca_bundle = optional_config_string(config_values, "ca_bundle")
-    insecure_skip_verify = optional_config_bool(config_values, "insecure_skip_verify") is True
-    if ca_bundle:
-        ca_path = Path(ca_bundle).expanduser()
-        if not ca_path.is_absolute():
-            ca_path = cwd / ca_path
-        if not ca_path.is_file() or not os.access(ca_path, os.R_OK):
-            raise WebError(f"Configured ca_bundle is not readable: {ca_bundle}")
-        if insecure_skip_verify:
-            warnings.append(
-                "insecure_skip_verify=true is set; CM TLS verification will be disabled even though ca_bundle is configured."
-            )
-    elif insecure_skip_verify:
-        warnings.append("insecure_skip_verify=true is set; CM TLS verification will be disabled.")
+    for cluster in clusters_to_validate:
+        if cluster.query_profile_source == "impala":
+            continue
+        ca_bundle = cluster.ca_bundle
+        insecure_skip_verify = cluster.insecure_skip_verify
+        if ca_bundle:
+            ca_path = Path(ca_bundle).expanduser()
+            if not ca_path.is_absolute():
+                ca_path = cwd / ca_path
+            if not ca_path.is_file() or not os.access(ca_path, os.R_OK):
+                raise WebError(f"Configured ca_bundle is not readable: {ca_bundle}")
+            if insecure_skip_verify:
+                warnings.append(
+                    "insecure_skip_verify=true is set; CM TLS verification will be disabled even though ca_bundle is configured."
+                )
+        elif insecure_skip_verify:
+            warnings.append("insecure_skip_verify=true is set; CM TLS verification will be disabled.")
     return warnings
 
 
@@ -188,7 +212,8 @@ def merged_bool_setting(cli_value: bool, config_value: bool | None, *, default: 
 def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
     config_path = resolve_web_config_path(args.config, cwd=cwd)
     config_values = load_web_local_config(args.config, cwd=cwd)
-    return WebSettings(
+    clusters = build_web_cluster_configs(config_values)
+    settings = WebSettings(
         config=config_path,
         host=first_string_value(
             args.host,
@@ -196,6 +221,24 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             DEFAULT_HOST,
         )
         or DEFAULT_HOST,
+        cm_url=first_string_value(
+            optional_config_string(config_values, "cm_url"),
+        ),
+        cm_cluster=first_string_value(
+            optional_config_string(config_values, "cluster"),
+        ),
+        cm_service=first_string_value(
+            optional_config_string(config_values, "service"),
+        ),
+        cm_username=first_string_value(
+            optional_config_string(config_values, "username"),
+        ),
+        ca_bundle=first_string_value(
+            optional_config_string(config_values, "ca_bundle"),
+        ),
+        insecure_skip_verify=optional_config_bool(config_values, "insecure_skip_verify") is True,
+        clusters=clusters,
+        active_cluster_key=clusters[0].key if clusters else None,
         port=first_int_value(
             args.port,
             optional_config_int(config_values, "port"),
@@ -286,3 +329,6 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
         ),
         krb5ccname=optional_config_string(config_values, "krb5ccname"),
     )
+    if clusters:
+        return settings_for_cluster_key(settings, clusters[0].key)
+    return settings

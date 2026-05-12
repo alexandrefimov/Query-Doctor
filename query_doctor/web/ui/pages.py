@@ -93,12 +93,16 @@ def render_query_page(
     result: Any | None = None,
     job: Any | None = None,
     error: object | None = None,
+    form_values: dict[str, Any] | None = None,
 ) -> str:
     run_disabled = bool(job is not None and getattr(job, "status", "") == "running")
+    panel_form_values = {"diagnosis_target": "query"}
+    if form_values:
+        panel_form_values.update(form_values)
     sections = [
         render_batch_run_panel(
             settings,
-            {"diagnosis_target": "query"},
+            panel_form_values,
             run_disabled=run_disabled,
             query_id=query_id,
             diagnosis_target="query",

@@ -112,10 +112,13 @@ def effective_subprocess_env(
     settings: WebSettings,
     base_env: dict[str, str] | os._Environ[str] | None = None,
 ) -> dict[str, str]:
-    return merge_kerberos_cache_env(
+    effective = merge_kerberos_cache_env(
         os.environ if base_env is None else base_env,
         {"krb5ccname": settings.krb5ccname},
     )
+    if settings.cm_username and not effective.get("CM_USERNAME"):
+        effective["CM_USERNAME"] = settings.cm_username
+    return effective
 
 
 def resolve_metadata_impala_shell(settings: WebSettings, env: dict[str, str]) -> str | None:

@@ -7,7 +7,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from query_doctor.cli.commands import command_prefix
-from query_doctor.web.command_builders import append_web_metadata_args, display_float
+from query_doctor.web.cluster_selection import (
+    require_cm_cluster_settings,
+    selected_cluster_key_from_mapping,
+    settings_for_cluster_key,
+)
+from query_doctor.web.command_builders import append_web_cm_args, append_web_metadata_args, display_float
 from query_doctor.web.config import metadata_configured
 from query_doctor.web.form_helpers import (
     first_form_value,
@@ -85,9 +90,16 @@ def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str,
 def parse_batch_run_config(
     form: dict[str, list[str]],
     *,
+    settings: WebSettings | None = None,
     default_metadata_top_limit: int = WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
     default_parallelism: int = 50,
 ) -> BatchRunConfig:
+    cluster_key = (
+        selected_cluster_key_from_mapping(form, settings)
+        if settings is not None
+        else first_form_value(form, "cluster_key")
+    )
+    selected_settings = settings_for_cluster_key(settings, cluster_key) if settings is not None else None
     scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(form)
     recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
     cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
@@ -128,7 +140,11 @@ def parse_batch_run_config(
         maximum=BATCH_CM_EVENTS_MAX_EVENTS_MAX,
     )
     collect_cm_timeseries = bool(first_form_value(form, "collect_cm_timeseries"))
-    cm_metrics_profile = parse_cm_metrics_profile(form)
+    cm_metrics_profile = (
+        selected_settings.cm_metrics_profile
+        if selected_settings is not None
+        else parse_cm_metrics_profile(form)
+    )
     cm_timeseries_top_limit = parse_non_negative_form_int(
         form,
         "cm_timeseries_top_limit",
@@ -139,6 +155,7 @@ def parse_batch_run_config(
         recent_window_minutes=recent_window_minutes,
         scan_date=scan_date,
         scan_hour=scan_hour,
+        cluster_key=cluster_key or "",
         from_time=from_time,
         to_time=to_time,
         cm_inspect_limit=cm_inspect_limit,
@@ -167,9 +184,16 @@ def parse_batch_run_config(
 def parse_running_run_config(
     form: dict[str, list[str]],
     *,
+    settings: WebSettings | None = None,
     default_metadata_top_limit: int = WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
     default_parallelism: int = 50,
 ) -> BatchRunConfig:
+    cluster_key = (
+        selected_cluster_key_from_mapping(form, settings)
+        if settings is not None
+        else first_form_value(form, "cluster_key")
+    )
+    selected_settings = settings_for_cluster_key(settings, cluster_key) if settings is not None else None
     cm_inspect_limit = WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT
     metadata_top_limit = parse_non_negative_form_int(
         form, "metadata_top_limit", default=default_metadata_top_limit, maximum=BATCH_METADATA_TOP_LIMIT_MAX
@@ -190,7 +214,11 @@ def parse_running_run_config(
         default=WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
         maximum=BATCH_CM_EVENTS_MAX_EVENTS_MAX,
     )
-    cm_metrics_profile = parse_cm_metrics_profile(form)
+    cm_metrics_profile = (
+        selected_settings.cm_metrics_profile
+        if selected_settings is not None
+        else parse_cm_metrics_profile(form)
+    )
     cm_timeseries_top_limit = parse_non_negative_form_int(
         form,
         "cm_timeseries_top_limit",
@@ -199,6 +227,7 @@ def parse_running_run_config(
     )
     return BatchRunConfig(
         recent_window_minutes=WEB_RUNNING_SCAN_WINDOW_MINUTES,
+        cluster_key=cluster_key or "",
         from_time=None,
         to_time=None,
         cm_inspect_limit=cm_inspect_limit,
@@ -231,6 +260,7 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
         "scan_target",
         "scan_date",
         "scan_hour",
+        "cluster_key",
         "metadata_top_limit",
         "min_duration_sec",
         "max_duration_sec",
@@ -256,6 +286,7 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "scan_target": "running" if config.only_running else "finished",
         "scan_date": config.scan_date,
         "scan_hour": str(config.scan_hour),
+        "cluster_key": config.cluster_key,
         "metadata_top_limit": str(config.metadata_top_limit),
         "min_duration_sec": "" if config.min_duration_sec is None else display_float(config.min_duration_sec),
         "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),
@@ -273,6 +304,9 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
 
 
 def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSettings) -> None:
+    settings = settings_for_cluster_key(settings, config.cluster_key)
+    if settings.clusters or any((settings.cm_url, settings.cm_cluster, settings.cm_service)):
+        require_cm_cluster_settings(settings)
     if config.metadata_top_limit > 0:
         if not metadata_configured(settings):
             raise WebError("Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config.")
@@ -281,6 +315,7 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
 
 
 def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettings) -> tuple[list[str], Path]:
+    settings = settings_for_cluster_key(settings, config.cluster_key)
     validate_batch_config_for_settings(config, settings)
     out_dir = batch_output_dir(job_id)
     progress_path = batch_progress_path(job_id)
@@ -319,6 +354,7 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
         "--progress-jsonl",
         str(progress_path),
     ]
+    append_web_cm_args(cmd, settings)
     if config.only_running:
         cmd.extend(["--recent-window-minutes", str(config.recent_window_minutes)])
     else:

@@ -6,6 +6,7 @@ import subprocess
 import threading
 from dataclasses import replace
 
+from query_doctor.web.cluster_selection import selected_cluster_key_from_mapping, settings_for_cluster_key
 from query_doctor.web.batch_scan import (
     build_batch_command,
     form_values_from_config,
@@ -42,21 +43,23 @@ def start_batch_job(
     runner: Runner = subprocess.run,
 ) -> tuple[int, str]:
     try:
+        selected_settings = settings_for_cluster_key(settings, selected_cluster_key_from_mapping(form, settings))
         config = parse_batch_run_config(
             form,
-            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT if metadata_configured(settings) else 0,
+            settings=selected_settings,
+            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT if metadata_configured(selected_settings) else 0,
             default_parallelism=50,
         )
-        validate_batch_config_for_settings(config, settings)
+        validate_batch_config_for_settings(config, selected_settings)
         if config.metadata_top_limit > 0:
-            preflight_web_metadata_batch(settings, runner=runner)
+            preflight_web_metadata_batch(selected_settings, runner=runner)
     except WebError as exc:
         return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))
 
     job = job_store.create_batch(form_values_from_config(config))
     thread = threading.Thread(
         target=run_batch_job,
-        args=(job.job_id, config, settings, job_store, runner),
+        args=(job.job_id, config, selected_settings, job_store, runner),
         daemon=True,
     )
     thread.start()
@@ -71,14 +74,16 @@ def start_running_job(
     runner: Runner = subprocess.run,
 ) -> tuple[int, str]:
     try:
+        selected_settings = settings_for_cluster_key(settings, selected_cluster_key_from_mapping(form, settings))
         config = parse_running_run_config(
             form,
-            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT if metadata_configured(settings) else 0,
+            settings=selected_settings,
+            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT if metadata_configured(selected_settings) else 0,
             default_parallelism=50,
         )
-        validate_batch_config_for_settings(config, settings)
+        validate_batch_config_for_settings(config, selected_settings)
         if config.metadata_top_limit > 0:
-            preflight_web_metadata_batch(settings, runner=runner)
+            preflight_web_metadata_batch(selected_settings, runner=runner)
     except WebError as exc:
         return 400, render_running_queries_page(
             settings,
@@ -89,7 +94,7 @@ def start_running_job(
     job = job_store.create_running_batch(form_values_from_config(config))
     thread = threading.Thread(
         target=run_batch_job,
-        args=(job.job_id, config, settings, job_store, runner),
+        args=(job.job_id, config, selected_settings, job_store, runner),
         daemon=True,
     )
     thread.start()

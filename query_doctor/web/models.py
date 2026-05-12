@@ -43,11 +43,49 @@ class WebError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class WebClusterConfig:
+    key: str
+    label: str
+    cm_url: str | None = None
+    cm_cluster: str | None = None
+    cm_service: str | None = None
+    cm_username: str | None = None
+    ca_bundle: str | None = None
+    insecure_skip_verify: bool = False
+    cm_metrics_profile: str = DEFAULT_CM_METRICS_PROFILE
+    query_profile_source: str = DEFAULT_QUERY_PROFILE_SOURCE
+    impala_profile_hosts: tuple[str, ...] = ()
+    impala_profile_port: int = DEFAULT_IMPALA_PROFILE_PORT
+    impala_profile_scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME
+    impala_profile_timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
+    metadata_coordinator: str | None = None
+    metadata_impala_shell: str | None = None
+    metadata_auth: str = DEFAULT_METADATA_AUTH
+    metadata_protocol: str = DEFAULT_METADATA_PROTOCOL
+    metadata_ssl: bool = False
+    metadata_ca_cert: str | None = None
+    metadata_timeout_sec: int = DEFAULT_METADATA_TIMEOUT_SEC
+    metadata_max_tables: int | None = None
+    metadata_max_output_bytes: int | None = None
+    metadata_redact: bool = False
+    krb5ccname: str | None = None
+
+
+@dataclass(frozen=True)
 class WebSettings:
     config: Path
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     allow_nonlocal_web_bind: bool = False
+    cm_url: str | None = None
+    cm_cluster: str | None = None
+    cm_service: str | None = None
+    cm_username: str | None = None
+    ca_bundle: str | None = None
+    insecure_skip_verify: bool = False
+    cm_metrics_profile: str = DEFAULT_CM_METRICS_PROFILE
+    clusters: tuple[WebClusterConfig, ...] = ()
+    active_cluster_key: str | None = None
     max_profile_bytes: int | None = None
     model: str = DEFAULT_MODEL
     optimizer_model: str | None = None
@@ -97,6 +135,7 @@ class BatchRunConfig:
     recent_window_minutes: int = 30
     scan_date: str = ""
     scan_hour: int = 0
+    cluster_key: str = ""
     from_time: str | None = None
     to_time: str | None = None
     cm_inspect_limit: int = BATCH_CM_INSPECT_LIMIT_MAX

@@ -5,6 +5,26 @@
   "cluster": "example_cluster",
   "service": "impala",
   "username": "query_doctor_user",
+  "clusters": [
+    {
+      "id": "prod",
+      "label": "Production",
+      "cm_url": "https://cm-prod.example.com:7183/",
+      "cluster": "prod_cluster",
+      "service": "impala",
+      "cm_metrics_profile": "cm7",
+      "metadata_coordinator": "impala-prod-coordinator.example.com:21000"
+    },
+    {
+      "id": "stage",
+      "label": "Staging",
+      "cm_url": "https://cm-stage.example.com:7183/",
+      "cluster": "stage_cluster",
+      "service": "impala",
+      "cm_metrics_profile": "cm6",
+      "metadata_coordinator": "impala-stage-coordinator.example.com:21000"
+    }
+  ],
   "ca_bundle": "~/.qdcreds/cm-chain.pem",
   "insecure_skip_verify": false,
   "krb5ccname": "FILE:/tmp/krb5cc_query_doctor",

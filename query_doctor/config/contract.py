@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ IMPALA_PROFILE_SCHEME_CHOICES = ("http", "https")
 ALLOWED_CONFIG_KEYS = {
     "ca_bundle",
     "cluster",
+    "clusters",
     "cm_user",
     "cm_url",
     "collect_cm_timeseries",
@@ -96,6 +98,34 @@ CONFIG_ALIASES = {
     "cm_user": "username",
     "metadata_krb5ccname": "krb5ccname",
 }
+CLUSTER_CONFIG_KEYS = {
+    "ca_bundle",
+    "cluster",
+    "cm_metrics_profile",
+    "cm_url",
+    "id",
+    "impala_profile_hosts",
+    "impala_profile_port",
+    "impala_profile_scheme",
+    "impala_profile_timeout_sec",
+    "insecure_skip_verify",
+    "krb5ccname",
+    "label",
+    "metadata_auth",
+    "metadata_ca_cert",
+    "metadata_coordinator",
+    "metadata_impala_shell",
+    "metadata_max_output_bytes",
+    "metadata_max_tables",
+    "metadata_protocol",
+    "metadata_redact",
+    "metadata_ssl",
+    "metadata_timeout_sec",
+    "query_profile_source",
+    "service",
+    "username",
+}
+CLUSTER_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 SECRET_CONFIG_KEYS_REJECTED = {"CM_PASSWORD", "CM_TOKEN"}
 SECRET_CONFIG_KEY_PARTS = (
     "access_token",
@@ -248,11 +278,21 @@ def validate_config_field(key: str) -> None:
         raise ConfigError(f"Unknown config field {key}.")
 
 
+def validate_cluster_config_field(key: str) -> None:
+    if key in {"id", "label"}:
+        return
+    validate_config_field(key)
+    if normalize_config_key(key) not in CLUSTER_CONFIG_KEYS:
+        raise ConfigError(f"Unknown cluster config field {key}.")
+
+
 def validate_config_fields(values: Mapping[object, object]) -> None:
     normalize_config_keys(values)
 
 
 def normalize_config_value(key: str, value: object) -> object:
+    if key == "clusters":
+        return normalize_clusters_config(value)
     if value is None:
         if key in {
             "impala_profile_port",
@@ -427,6 +467,90 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError(f"Config field {key} must be true or false.")
         return value
     raise ConfigError(f"Unknown config field {key}.")
+
+
+def normalize_clusters_config(value: object) -> list[dict[str, object]]:
+    if isinstance(value, Mapping):
+        raw_items = []
+        for raw_key, raw_value in value.items():
+            if not isinstance(raw_key, str):
+                raise ConfigError("Cluster config ids must be strings.")
+            raw_items.append((raw_key, raw_value))
+    elif isinstance(value, list):
+        raw_items = [(None, raw_value) for raw_value in value]
+    else:
+        raise ConfigError("Config field clusters must be a non-empty object or list.")
+    if not raw_items:
+        raise ConfigError("Config field clusters must contain at least one cluster.")
+
+    normalized_clusters: list[dict[str, object]] = []
+    seen_ids: set[str] = set()
+    for index, (mapping_id, raw_cluster) in enumerate(raw_items):
+        if not isinstance(raw_cluster, Mapping):
+            raise ConfigError("Each clusters entry must be a JSON object.")
+        cluster = normalize_cluster_config(raw_cluster, mapping_id=mapping_id, index=index)
+        cluster_id = str(cluster["id"])
+        if cluster_id in seen_ids:
+            raise ConfigError(f"Duplicate cluster id {cluster_id}.")
+        seen_ids.add(cluster_id)
+        normalized_clusters.append(cluster)
+    return normalized_clusters
+
+
+def normalize_cluster_config(
+    raw_cluster: Mapping[object, object],
+    *,
+    mapping_id: str | None,
+    index: int,
+) -> dict[str, object]:
+    normalized: dict[str, object] = {}
+    for raw_key, raw_value in raw_cluster.items():
+        if not isinstance(raw_key, str):
+            raise ConfigError("Cluster config keys must be strings.")
+        validate_cluster_config_field(raw_key)
+        normalized_key = normalize_config_key(raw_key)
+        if normalized_key in normalized:
+            raise ConfigError(
+                f"Cluster config field {raw_key} duplicates normalized field {normalized_key}."
+            )
+        if normalized_key == "id":
+            normalized[normalized_key] = normalize_cluster_id(raw_value)
+        elif normalized_key == "label":
+            normalized[normalized_key] = normalize_cluster_label(raw_value)
+        else:
+            normalized[normalized_key] = normalize_config_value(normalized_key, raw_value)
+
+    if mapping_id is not None:
+        mapped_id = normalize_cluster_id(mapping_id)
+        explicit_id = normalized.get("id")
+        if explicit_id is not None and explicit_id != mapped_id:
+            raise ConfigError("Cluster config id must match its clusters object key.")
+        normalized["id"] = mapped_id
+    elif "id" not in normalized:
+        raise ConfigError(f"Cluster config entry at index {index} must include id.")
+    return normalized
+
+
+def normalize_cluster_id(value: object) -> str:
+    if not isinstance(value, str):
+        raise ConfigError("Cluster config id must be a string.")
+    normalized = value.strip()
+    if not CLUSTER_ID_RE.match(normalized):
+        raise ConfigError(
+            "Cluster config id must be 1-64 characters using only letters, digits, '.', '_' or '-'."
+        )
+    return normalized
+
+
+def normalize_cluster_label(value: object) -> str | None:
+    if not isinstance(value, str):
+        raise ConfigError("Cluster config label must be a string.")
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in normalized):
+        raise ConfigError("Cluster config label must not contain control characters.")
+    return normalized
 
 
 def load_and_validate_config(

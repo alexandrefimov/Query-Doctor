@@ -22,6 +22,7 @@ from query_doctor.web.case_files import (
     resolve_under_repo,
 )
 from query_doctor.web.command_builders import (
+    append_web_cm_args,
     build_analyzer_command,
     build_query_id_analyzer_command,
     build_report_command,
@@ -218,14 +219,13 @@ def collect_case(
     out_dir: Path | None = None,
     cancel_check: CancelCheck | None = None,
 ) -> Path:
-    config_username = None
+    config_username = settings.cm_username
     try:
-        config_username = optional_config_string(
-            load_web_local_config(settings.config, cwd=Path.cwd()),
-            "username",
+        config_username = config_username or optional_config_string(
+            load_web_local_config(settings.config, cwd=Path.cwd()), "username"
         )
     except cm_collector.ConfigError:
-        config_username = None
+        config_username = config_username or None
     collection_out_dir = out_dir if out_dir is not None else settings.corpus_dir
     if settings.query_profile_source == "impala":
         if not settings.impala_profile_hosts:
@@ -265,6 +265,7 @@ def collect_case(
             "--out",
             str(collection_out_dir),
         ]
+        append_web_cm_args(collector_cmd, settings)
         if redact_identifiers:
             collector_cmd.append("--redact-identifiers")
         if settings.max_profile_bytes is not None:

@@ -6,6 +6,7 @@ import subprocess
 import threading
 from typing import Callable
 
+from query_doctor.web.cluster_selection import selected_cluster_key_from_mapping, settings_for_cluster_key
 from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.form_helpers import first_form_value
 from query_doctor.web.jobs import WebJobStore
@@ -35,16 +36,35 @@ def handle_analyze_request(
     redact_identifiers = False
     if not query_id:
         return 400, render_query_page(settings, error="Query ID is required.")
+    form_values = {
+        "diagnosis_target": "query",
+        "cluster_key": selected_cluster_key_from_mapping(form, settings),
+    }
     try:
-        result = analysis_func(query_id, report_mode, redact_identifiers, settings)
+        selected_settings = settings_for_cluster_key(settings, str(form_values["cluster_key"]))
+    except WebError as exc:
+        return 400, render_query_page(
+            settings,
+            query_id=query_id,
+            error=sanitize_for_display(exc),
+            form_values=form_values,
+        )
+    try:
+        result = analysis_func(query_id, report_mode, redact_identifiers, selected_settings)
     except WebError as exc:
         return 400, render_query_page(
             settings,
             query_id=query_id,
             report_mode=report_mode,
             error=sanitize_for_display(exc),
+            form_values=form_values,
         )
-    return 200, render_query_page(settings, report_mode=report_mode, result=result)
+    return 200, render_query_page(
+        settings,
+        report_mode=report_mode,
+        result=result,
+        form_values=form_values,
+    )
 
 
 def handle_optimizer_request(
@@ -75,11 +95,32 @@ def start_analyze_job(
     redact_identifiers = False
     if not query_id:
         return 400, render_query_page(settings, error="Query ID is required.")
+    form_values = {
+        "diagnosis_target": "query",
+        "cluster_key": selected_cluster_key_from_mapping(form, settings),
+    }
+    try:
+        selected_settings = settings_for_cluster_key(settings, str(form_values["cluster_key"]))
+    except WebError as exc:
+        return 400, render_query_page(
+            settings,
+            query_id=query_id,
+            error=sanitize_for_display(exc),
+            form_values=form_values,
+        )
 
     job = job_store.create(query_id, report_mode)
     thread = threading.Thread(
         target=run_analysis_job,
-        args=(job.job_id, query_id, report_mode, redact_identifiers, settings, job_store, analysis_func),
+        args=(
+            job.job_id,
+            query_id,
+            report_mode,
+            redact_identifiers,
+            selected_settings,
+            job_store,
+            analysis_func,
+        ),
         daemon=True,
     )
     thread.start()

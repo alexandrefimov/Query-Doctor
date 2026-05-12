@@ -11,11 +11,15 @@ from query_doctor.web.ui.recent_scan_form import (
     read_local_config_values,
     render_batch_number_field,
     render_batch_text_field,
-    render_cm_metrics_profile_select,
+    render_cluster_select,
     render_running_scan_framing_note,
 )
-from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE
-from query_doctor.web.models import WEB_CM_EVENTS_MAX_EVENTS_DEFAULT, WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT
+from query_doctor.web.cluster_selection import default_cluster_key, settings_for_cluster_key
+from query_doctor.web.models import (
+    WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
+    WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
+    WebError,
+)
 from query_doctor.web.ui.pages import render_page
 from query_doctor.web.ui.progress import render_job_panel
 from query_doctor.web.ui.recent_scan_results import render_batch_card
@@ -76,11 +80,16 @@ def render_running_queries_run_panel(
     *,
     run_disabled: bool = False,
 ) -> str:
-    metadata_configured = bool(getattr(settings, "metadata_coordinator", None))
     local_config = read_local_config_values(settings)
     if "recent_parallelism" not in local_config and "recent_cm_jobs" in local_config:
         local_config["recent_parallelism"] = local_config["recent_cm_jobs"]
     values = {
+        "cluster_key": form_or_config_value(
+            form_values,
+            "cluster_key",
+            config_values=local_config,
+            fallback=default_cluster_key(settings),
+        ),
         "min_duration_sec": form_or_config_value(
             form_values,
             "min_duration_sec",
@@ -108,12 +117,6 @@ def render_running_queries_run_panel(
             config_key="recent_cm_events_max_events",
             fallback=str(WEB_CM_EVENTS_MAX_EVENTS_DEFAULT),
         ),
-        "cm_metrics_profile": form_or_config_value(
-            form_values,
-            "cm_metrics_profile",
-            config_values=local_config,
-            fallback=DEFAULT_CM_METRICS_PROFILE,
-        ),
         "cm_timeseries_top_limit": form_or_config_value(
             form_values,
             "cm_timeseries_top_limit",
@@ -126,6 +129,11 @@ def render_running_queries_run_panel(
     }
     if form_values:
         values.update(form_values)
+    try:
+        selected_settings = settings_for_cluster_key(settings, str(values.get("cluster_key") or ""))
+    except WebError:
+        selected_settings = settings
+    metadata_configured = bool(getattr(selected_settings, "metadata_coordinator", None))
 
     def value(name: str) -> str:
         return html.escape(str(values.get(name, "")), quote=True)
@@ -150,6 +158,7 @@ def render_running_queries_run_panel(
         "<div class=\"batch-form-sections\">"
         "<fieldset class=\"batch-form-section\"><legend>Query filters</legend>"
         "<div class=\"batch-form-grid\">"
+        f"{render_cluster_select(settings, value('cluster_key'), field_id='running_cluster_key')}"
         f"{render_batch_number_field('min_duration_sec', 'Minimum duration (sec)', value('min_duration_sec'), step='0.001', required=False, help_text='Only include running queries at least this long. Empty means no duration filter.')}"
         f"{render_batch_text_field('user', 'Username', value('user'), help_text='Optional exact Cloudera Manager query user filter. Empty means all users.')}"
         f"{render_batch_text_field('pool', 'Resource pool', value('pool'), help_text='Optional Cloudera Manager pool filter. Empty means all pools.')}"
@@ -160,7 +169,6 @@ def render_running_queries_run_panel(
         f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for CM profile downloads and local analysis. Hard cap: 100.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
         f"{render_batch_number_field('cm_events_max_events', 'CM events max events', value('cm_events_max_events'), help_text='Maximum Cloudera Manager Events records to summarize once for the running scan window. Hard cap: 200.')}"
-        f"{render_cm_metrics_profile_select(value('cm_metrics_profile'))}"
         f"{render_batch_number_field('cm_timeseries_top_limit', 'CM metrics top cases', value('cm_timeseries_top_limit'), required=False, help_text='Maximum top ranked analyzed running cases that receive bounded Cloudera Manager time-series summaries. Default: 10. Use 0 to skip metrics refresh.')}"
         "</div>"
         "</fieldset>"

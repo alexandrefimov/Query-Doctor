@@ -6,7 +6,7 @@ from pathlib import Path
 
 from query_doctor.cli.commands import command_prefix
 from query_doctor.web.config import metadata_configured
-from query_doctor.web.models import WebSettings
+from query_doctor.web.models import WebError, WebSettings
 
 
 BATCH_REPORT_NAME = "diagnosis.md"
@@ -43,6 +43,34 @@ def append_web_metadata_args(cmd: list[str], settings: WebSettings) -> None:
         cmd.extend(["--metadata-max-output-bytes", str(settings.metadata_max_output_bytes)])
     if settings.metadata_redact:
         cmd.append("--metadata-redact")
+
+
+def append_web_cm_args(cmd: list[str], settings: WebSettings) -> None:
+    if not any((settings.cm_url, settings.cm_cluster, settings.cm_service, settings.ca_bundle)):
+        return
+    missing: list[str] = []
+    if not settings.cm_url:
+        missing.append("cm_url")
+    if not settings.cm_cluster:
+        missing.append("cluster")
+    if not settings.cm_service:
+        missing.append("service")
+    if missing:
+        raise WebError("Selected cluster is missing CM setting(s): " + ", ".join(missing) + ".")
+    cmd.extend(
+        [
+            "--cm-url",
+            settings.cm_url,
+            "--cluster",
+            settings.cm_cluster,
+            "--service",
+            settings.cm_service,
+        ]
+    )
+    if settings.ca_bundle:
+        cmd.extend(["--ca-bundle", settings.ca_bundle])
+    if settings.insecure_skip_verify:
+        cmd.append("--insecure-skip-verify")
 
 
 def build_analyzer_command(case_dir: Path, settings: WebSettings) -> list[str]:
