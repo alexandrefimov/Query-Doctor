@@ -27,6 +27,7 @@ from query_doctor.optimizer.recommendation_output import (
     no_rewrite_recommendations,
     no_supported_rewrite_recommendations,
     normalize_optimizer_recommendations,
+    normalize_optimizer_recommendations_with_telemetry,
     output_limit_no_rewrite_recommendations,
     validate_optimizer_recommendations_text,
     validation_failed_no_rewrite_recommendations,

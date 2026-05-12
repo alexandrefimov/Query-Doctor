@@ -47,6 +47,14 @@ SCORING_SCOPE_LABELS = {
     "error": "Error",
     "unknown": "Unknown",
 }
+MODEL_COMPARABLE_SCOPES = frozenset(
+    {
+        "llm_recommendations",
+        "llm_sql_draft",
+        "llm_sql_validation",
+        "error",
+    }
+)
 GENERATED_ARTIFACT_FILENAME_RE = re.compile(
     r"\b(?:analysis_facts\.md|cm_metadata\.json|optimized_query\.sql|"
     r"optimized_query\.partial\.txt|optimized_query_recommendations\.md|"
@@ -358,6 +366,18 @@ def optimizer_scoring_scope(result: dict[str, Any]) -> str:
     return "unknown"
 
 
+def is_model_comparable_result(result: dict[str, Any]) -> bool:
+    return optimizer_scoring_scope(result) in MODEL_COMPARABLE_SCOPES
+
+
+def recommendation_normalization_telemetry(result: dict[str, Any]) -> dict[str, Any]:
+    generation_metadata = result.get("generation_metadata")
+    if not isinstance(generation_metadata, dict):
+        return {}
+    telemetry = generation_metadata.get("recommendation_normalization")
+    return telemetry if isinstance(telemetry, dict) else {}
+
+
 def run_case_model(
     *,
     case_dir: Path,
@@ -608,6 +628,113 @@ def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def build_model_comparable_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    by_model: dict[str, dict[str, Any]] = {}
+    total_runs = 0
+    for result in results:
+        if not is_model_comparable_result(result):
+            continue
+        total_runs += 1
+        model = str(result.get("requested_model") or "unknown")
+        bucket = by_model.setdefault(
+            model,
+            {
+                "runs": 0,
+                "status_counts": defaultdict(int),
+                "output_kind_counts": defaultdict(int),
+                "fallback_reason_counts": defaultdict(int),
+                "scoring_scope_counts": defaultdict(int),
+                "matched_expected_outcomes": 0,
+                "expected_outcomes": 0,
+                "elapsed_sec": [],
+                "recommendation_telemetry_runs": 0,
+                "recommendation_llm_bullet_count": 0,
+                "recommendation_matched_candidate_bullet_count": 0,
+                "recommendation_canonical_fallback_runs": 0,
+                "recommendation_final_model_candidate_bullet_count": 0,
+                "recommendation_final_canonical_candidate_bullet_count": 0,
+            },
+        )
+        update_result_bucket(bucket, result)
+        bucket["scoring_scope_counts"][optimizer_scoring_scope(result)] += 1
+        if result.get("status") == "ok" and isinstance(result.get("elapsed_sec"), (int, float)):
+            bucket["elapsed_sec"].append(float(result["elapsed_sec"]))
+        telemetry = recommendation_normalization_telemetry(result)
+        if telemetry:
+            update_recommendation_telemetry_bucket(bucket, telemetry)
+
+    rendered: dict[str, Any] = {}
+    for model, bucket in by_model.items():
+        runs = max(1, int(bucket["runs"]))
+        elapsed = bucket["elapsed_sec"]
+        recommendation_runs = int(bucket["recommendation_telemetry_runs"])
+        recommendation_llm_bullets = int(bucket["recommendation_llm_bullet_count"])
+        recommendation_matched_bullets = int(bucket["recommendation_matched_candidate_bullet_count"])
+        rendered[model] = {
+            "runs": bucket["runs"],
+            "trusted_outcome_rate": bucket["status_counts"].get("ok", 0) / runs,
+            "trusted_sql_draft_rate": bucket["output_kind_counts"].get("sql_draft", 0) / runs,
+            "trusted_no_rewrite_rate": bucket["output_kind_counts"].get("no_rewrite", 0) / runs,
+            "trusted_recommendations_rate": bucket["output_kind_counts"].get("recommendations_only", 0) / runs,
+            "partial_untrusted_rate": bucket["output_kind_counts"].get("partial_untrusted", 0) / runs,
+            "error_rate": (
+                bucket["status_counts"].get("error", 0)
+                + bucket["status_counts"].get("validation_failed", 0)
+            )
+            / runs,
+            "expected_outcome_match_rate": (
+                bucket["matched_expected_outcomes"] / bucket["expected_outcomes"]
+                if bucket["expected_outcomes"]
+                else None
+            ),
+            "mean_elapsed_sec": sum(elapsed) / len(elapsed) if elapsed else None,
+            "recommendation_telemetry_runs": recommendation_runs,
+            "recommendation_candidate_match_rate": (
+                ratio(recommendation_matched_bullets, recommendation_llm_bullets)
+                if recommendation_llm_bullets
+                else None
+            ),
+            "recommendation_canonical_fallback_rate": (
+                ratio(int(bucket["recommendation_canonical_fallback_runs"]), recommendation_runs)
+                if recommendation_runs
+                else None
+            ),
+            "recommendation_llm_bullet_count": recommendation_llm_bullets,
+            "recommendation_matched_candidate_bullet_count": recommendation_matched_bullets,
+            "recommendation_final_model_candidate_bullet_count": int(
+                bucket["recommendation_final_model_candidate_bullet_count"]
+            ),
+            "recommendation_final_canonical_candidate_bullet_count": int(
+                bucket["recommendation_final_canonical_candidate_bullet_count"]
+            ),
+            "status_counts": dict(bucket["status_counts"]),
+            "output_kind_counts": dict(bucket["output_kind_counts"]),
+            "fallback_reason_counts": dict(bucket["fallback_reason_counts"]),
+            "scoring_scope_counts": dict(sorted(bucket["scoring_scope_counts"].items())),
+        }
+    return {
+        "scopes": sorted(MODEL_COMPARABLE_SCOPES),
+        "total_runs": total_runs,
+        "by_model": rendered,
+    }
+
+
+def update_recommendation_telemetry_bucket(bucket: dict[str, Any], telemetry: dict[str, Any]) -> None:
+    bucket["recommendation_telemetry_runs"] += 1
+    bucket["recommendation_llm_bullet_count"] += int(telemetry.get("llm_bullet_count") or 0)
+    bucket["recommendation_matched_candidate_bullet_count"] += int(
+        telemetry.get("matched_candidate_bullet_count") or 0
+    )
+    if telemetry.get("canonical_fallback_used") is True:
+        bucket["recommendation_canonical_fallback_runs"] += 1
+    bucket["recommendation_final_model_candidate_bullet_count"] += int(
+        telemetry.get("final_model_candidate_bullet_count") or 0
+    )
+    bucket["recommendation_final_canonical_candidate_bullet_count"] += int(
+        telemetry.get("final_canonical_candidate_bullet_count") or 0
+    )
+
+
 def build_scoring_scope_summary(results: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     buckets: dict[str, dict[str, Any]] = {}
     for result in results:
@@ -735,6 +862,14 @@ def render_summary_markdown(payload: dict[str, Any]) -> str:
     results = payload.get("results")
     if not isinstance(results, list):
         results = []
+    model_comparable = payload.get("model_comparable")
+    if not isinstance(model_comparable, dict):
+        model_comparable = build_model_comparable_summary(
+            [result for result in results if isinstance(result, dict)]
+        )
+    model_comparable_by_model = model_comparable.get("by_model")
+    if not isinstance(model_comparable_by_model, dict):
+        model_comparable_by_model = {}
 
     lines = [
         "# Query Doctor Optimizer Model Compare",
@@ -765,6 +900,43 @@ def render_summary_markdown(payload: dict[str, Any]) -> str:
                     format_rate(metrics.get("trusted_recommendations_rate")),
                     format_rate(metrics.get("partial_untrusted_rate")),
                     format_rate(metrics.get("expected_outcome_match_rate")),
+                    format_seconds(metrics.get("mean_elapsed_sec")),
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Model-Comparable Summary",
+            "",
+            "This section excludes deterministic recipes, deterministic no-rewrite outcomes, dry-runs, and offline-validator fixtures.",
+            "",
+            "| model | runs | trusted outcome | trusted SQL draft | no rewrite | recommendations | partial untrusted | error | expected match | recommendation candidate match | recommendation fallback | mean sec |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    if not model_comparable_by_model:
+        lines.append("| none | 0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |")
+    for model, metrics in sorted(model_comparable_by_model.items()):
+        if not isinstance(metrics, dict):
+            continue
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    markdown_escape(model),
+                    str(metrics.get("runs", 0)),
+                    format_rate(metrics.get("trusted_outcome_rate")),
+                    format_rate(metrics.get("trusted_sql_draft_rate")),
+                    format_rate(metrics.get("trusted_no_rewrite_rate")),
+                    format_rate(metrics.get("trusted_recommendations_rate")),
+                    format_rate(metrics.get("partial_untrusted_rate")),
+                    format_rate(metrics.get("error_rate")),
+                    format_rate(metrics.get("expected_outcome_match_rate")),
+                    format_rate(metrics.get("recommendation_candidate_match_rate")),
+                    format_rate(metrics.get("recommendation_canonical_fallback_rate")),
                     format_seconds(metrics.get("mean_elapsed_sec")),
                 ]
             )
@@ -933,6 +1105,7 @@ def main(argv: list[str] | None = None) -> int:
                         "results": results,
                         "aggregates": build_aggregates(results),
                         "optimizer_funnel": build_optimizer_funnel(results),
+                        "model_comparable": build_model_comparable_summary(results),
                         "optimizer_num_predict": args.optimizer_num_predict,
                     },
                 )

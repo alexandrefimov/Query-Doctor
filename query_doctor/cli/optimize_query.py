@@ -143,6 +143,7 @@ from query_doctor.optimizer.validation import (
     no_rewrite_recommendations,
     no_supported_rewrite_recommendations,
     normalize_optimizer_recommendations,
+    normalize_optimizer_recommendations_with_telemetry,
     normalized_trusted_draft_sql,
     output_limit_no_rewrite_recommendations,
     parse_between_predicate_signature,
@@ -391,13 +392,20 @@ def main(argv: list[str] | None = None) -> int:
                 num_predict=OPTIMIZER_NUM_PREDICT,
             )
             generated = response.text
-            recommendations = normalize_optimizer_recommendations(generated, facts_text, risk_decision, rewrite_recipe)
+            normalized_recommendations = normalize_optimizer_recommendations_with_telemetry(
+                generated,
+                facts_text,
+                risk_decision,
+                rewrite_recipe,
+            )
+            recommendations = normalized_recommendations.text
             generation_metadata = llm_generation_metadata(
                 response,
                 prompt=recommendations_prompt,
                 source_sql=source_sql.sql,
                 generated=generated,
             )
+            generation_metadata["recommendation_normalization"] = normalized_recommendations.telemetry
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(recommendations.rstrip() + "\n", encoding="utf-8")
             write_recommendations_marker(

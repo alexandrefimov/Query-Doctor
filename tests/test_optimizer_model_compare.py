@@ -81,9 +81,11 @@ def test_dry_run_writes_optimizer_summary_without_raw_paths(tmp_path):
     assert funnel["dry_run_runs"] == 1
     assert funnel["scoring_scope_counts"] == {"dry_run": 1}
     assert funnel["trusted_sql_draft_runs"] == 0
+    assert summary["model_comparable"]["total_runs"] == 0
     assert str(tmp_path) not in json.dumps(summary)
     assert str(tmp_path) not in summary_md
     assert "## Model Summary" in summary_md
+    assert "## Model-Comparable Summary" in summary_md
     assert "## Optimizer Funnel" in summary_md
 
 
@@ -155,6 +157,7 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert funnel["total_runs"] == 17
     assert funnel["dry_run_runs"] == 17
     assert funnel["trusted_outcome_runs"] == 0
+    assert summary["model_comparable"]["total_runs"] == 0
     assert funnel["expected_matched_runs"] == 17
     assert funnel["offline_validator_fixture_runs"] == 0
     assert funnel["scoring_scope_counts"] == {"dry_run": 17}
@@ -197,6 +200,7 @@ def test_summary_markdown_renders_model_case_and_mismatch_sections():
             "expected_output_kind": "sql_draft",
             "matched_expected_outcome": False,
             "elapsed_sec": 1.0,
+            "generation_metadata": {"prompt_chars": 120},
         }
     ]
     payload = {
@@ -206,18 +210,22 @@ def test_summary_markdown_renders_model_case_and_mismatch_sections():
                 "case_name": "optimizer_cases:case-a",
                 "requested_model": "model-a",
                 "run_index": 1,
+                "status": "ok",
                 "expected_output_kind": "sql_draft",
                 "output_kind": "no_rewrite",
                 "matched_expected_outcome": False,
-                }
-            ],
+                "generation_metadata": {"prompt_chars": 120},
+            }
+        ],
         "aggregates": module.build_aggregates(results),
         "optimizer_funnel": module.build_optimizer_funnel(results),
+        "model_comparable": module.build_model_comparable_summary(results),
     }
 
     markdown = module.render_summary_markdown(payload)
 
     assert "## Model Summary" in markdown
+    assert "## Model-Comparable Summary" in markdown
     assert "## Optimizer Funnel" in markdown
     assert "## Scoring Scope Summary" in markdown
     assert "## Case Summary" in markdown
@@ -333,6 +341,67 @@ def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
     assert funnel["trusted_sql_draft_rate"] == 0.3333
     assert funnel["partial_untrusted_rate"] == 0.1667
     assert funnel["expected_match_rate"] == 0.6667
+    comparable = module.build_model_comparable_summary(results)
+    assert comparable["total_runs"] == 3
+    comparable_unknown = comparable["by_model"]["unknown"]
+    assert comparable_unknown["scoring_scope_counts"] == {
+        "error": 1,
+        "llm_recommendations": 1,
+        "llm_sql_validation": 1,
+    }
+    assert comparable_unknown["expected_outcome_match_rate"] == 0.5
+
+
+def test_model_comparable_summary_tracks_recommendation_normalization_telemetry():
+    module = load_compare_module()
+    results = [
+        {
+            "requested_model": "model-a",
+            "status": "ok",
+            "output_kind": "recommendations_only",
+            "expected_output_kind": "recommendations_only",
+            "matched_expected_outcome": True,
+            "elapsed_sec": 2.0,
+            "generation_metadata": {
+                "prompt_chars": 120,
+                "recommendation_normalization": {
+                    "llm_bullet_count": 4,
+                    "matched_candidate_bullet_count": 2,
+                    "canonical_fallback_used": False,
+                    "final_model_candidate_bullet_count": 2,
+                    "final_canonical_candidate_bullet_count": 0,
+                },
+            },
+        },
+        {
+            "requested_model": "model-a",
+            "status": "ok",
+            "output_kind": "recommendations_only",
+            "expected_output_kind": "recommendations_only",
+            "matched_expected_outcome": True,
+            "elapsed_sec": 3.0,
+            "generation_metadata": {
+                "prompt_chars": 120,
+                "recommendation_normalization": {
+                    "llm_bullet_count": 3,
+                    "matched_candidate_bullet_count": 0,
+                    "canonical_fallback_used": True,
+                    "final_model_candidate_bullet_count": 0,
+                    "final_canonical_candidate_bullet_count": 1,
+                },
+            },
+        },
+    ]
+
+    comparable = module.build_model_comparable_summary(results)
+
+    model = comparable["by_model"]["model-a"]
+    assert comparable["total_runs"] == 2
+    assert model["recommendation_telemetry_runs"] == 2
+    assert model["recommendation_candidate_match_rate"] == 0.2857
+    assert model["recommendation_canonical_fallback_rate"] == 0.5
+    assert model["recommendation_final_model_candidate_bullet_count"] == 2
+    assert model["recommendation_final_canonical_candidate_bullet_count"] == 1
 
 
 def test_actual_fixture_run_marks_validation_rejection_fixture_as_offline_only(tmp_path, monkeypatch):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 
 from query_doctor.report.recommendation_candidates import recommendation_candidate_lines
 from query_doctor.report.recommendations import (
@@ -37,6 +38,13 @@ UNSAFE_RECOMMENDATION_SQL_LINE_RE = re.compile(
 UNSAFE_RECOMMENDATION_CTE_RE = re.compile(r"\bwith\s+[A-Za-z_][\w$]*\s+as\b", re.IGNORECASE)
 MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTES", "65536"))
 MAX_OPTIMIZER_RECOMMENDATION_ITEMS = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATION_ITEMS", "8"))
+BULLET_LINE_RE = re.compile(r"^\s*(?:[-*]|\d+\.)\s+\S")
+
+
+@dataclass(frozen=True)
+class OptimizerRecommendationNormalization:
+    text: str
+    telemetry: dict[str, object]
 
 
 def extract_recommendations(generated: str) -> str:
@@ -77,14 +85,30 @@ def normalize_optimizer_recommendations(
     risk_decision: OptimizerRiskDecision | None = None,
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
 ) -> str:
+    return normalize_optimizer_recommendations_with_telemetry(
+        generated,
+        facts_text,
+        risk_decision,
+        rewrite_recipe,
+    ).text
+
+
+def normalize_optimizer_recommendations_with_telemetry(
+    generated: str,
+    facts_text: str,
+    risk_decision: OptimizerRiskDecision | None = None,
+    rewrite_recipe: OptimizerRewriteRecipe | None = None,
+) -> OptimizerRecommendationNormalization:
     text = extract_recommendations(generated)
     candidates = recommendation_candidate_lines(facts_text, language="en")
     preserved: list[str] = []
     seen_candidate_ids: set[str] = set()
+    llm_bullet_count = 0
     for line in text.splitlines():
         stripped = line.strip()
-        if not re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", stripped):
+        if not BULLET_LINE_RE.match(stripped):
             continue
+        llm_bullet_count += 1
         candidate_id = recommendation_candidate_id_for_bullet(stripped, candidates)
         if candidate_id is None or candidate_id in seen_candidate_ids:
             continue
@@ -92,11 +116,34 @@ def normalize_optimizer_recommendations(
         preserved.append(f"- {body}")
         seen_candidate_ids.add(candidate_id)
 
+    canonical_fallback_used = not preserved
     if not preserved:
         preserved = canonical_recommendation_bullets(candidates)
 
     specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)
-    return "\n".join(dedupe_preserve_order(specific + preserved)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS])
+    final_lines = dedupe_preserve_order(specific + preserved)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS]
+    specific_set = set(specific)
+    preserved_set = set(preserved)
+    final_specific_count = sum(1 for line in final_lines if line in specific_set)
+    final_candidate_count = sum(1 for line in final_lines if line in preserved_set)
+    telemetry: dict[str, object] = {
+        "llm_bullet_count": llm_bullet_count,
+        "allowed_candidate_count": len(candidates),
+        "matched_candidate_bullet_count": len(seen_candidate_ids),
+        "canonical_fallback_used": canonical_fallback_used,
+        "specific_context_bullet_count": len(specific),
+        "final_bullet_count": len(final_lines),
+        "final_specific_context_bullet_count": final_specific_count,
+        "final_model_candidate_bullet_count": 0 if canonical_fallback_used else final_candidate_count,
+        "final_canonical_candidate_bullet_count": final_candidate_count if canonical_fallback_used else 0,
+        "candidate_match_rate": round(len(seen_candidate_ids) / llm_bullet_count, 4)
+        if llm_bullet_count
+        else None,
+    }
+    return OptimizerRecommendationNormalization(
+        text="\n".join(final_lines),
+        telemetry=telemetry,
+    )
 
 
 def no_rewrite_recommendations(
