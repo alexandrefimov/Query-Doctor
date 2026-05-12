@@ -766,6 +766,30 @@ code,.technical,.mono {
   gap:10px
 }
 
+.batch-filter-rows {
+  display:grid;
+  gap:12px
+}
+
+.batch-filter-row {
+  display:grid;
+  grid-template-columns:96px minmax(0,1fr);
+  align-items:start;
+  gap:10px
+}
+
+.batch-filter-row-label,.batch-result-filter-label {
+  color:var(--muted);
+  font-size:10.5px;
+  font-weight:780;
+  line-height:1.25;
+  text-transform:uppercase
+}
+
+.batch-filter-row-label {
+  padding-top:22px
+}
+
 .batch-form-sections {
   display:grid;
   gap:10px
@@ -1144,12 +1168,24 @@ code,.technical,.mono {
 }
 
 .batch-result-filters {
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  flex-wrap:wrap;
+  display:grid;
   gap:8px;
   margin:0 0 12px
+}
+
+.batch-result-filter-row {
+  display:grid;
+  grid-template-columns:96px minmax(0,1fr);
+  align-items:start;
+  gap:10px
+}
+
+.batch-result-filter-row--secondary {
+  align-items:center
+}
+
+.batch-result-filter-row--secondary .batch-result-filter-label {
+  align-self:center
 }
 
 .batch-filter-tabs {
@@ -1162,9 +1198,9 @@ code,.technical,.mono {
 .batch-filter-link,.batch-spill-toggle {
   display:inline-flex;
   align-items:center;
-  gap:7px;
-  min-height:30px;
-  padding:0 10px;
+  gap:8px;
+  min-height:32px;
+  padding:0 11px;
   border:1px solid var(--border-strong);
   border-radius:4px;
   background:var(--control);
@@ -1176,8 +1212,8 @@ code,.technical,.mono {
 .batch-filter-link span {
   display:inline-grid;
   place-items:center;
-  min-width:20px;
-  height:20px;
+  min-width:22px;
+  height:21px;
   padding:0 6px;
   border-radius:999px;
   background:var(--panel-muted);
@@ -1189,6 +1225,12 @@ code,.technical,.mono {
 .batch-filter-link--active,.batch-spill-toggle--active {
   background:var(--accent-soft);
   border-color:rgba(15,111,131,.34);
+  color:var(--accent-strong);
+  box-shadow:inset 0 0 0 1px rgba(15,111,131,.14)
+}
+
+.batch-filter-link--active span {
+  background:var(--control);
   color:var(--accent-strong)
 }
 
@@ -2220,6 +2262,14 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
 
 .batch-form-grid {
   grid-template-columns:repeat(2,minmax(120px,1fr))
+}
+
+.batch-filter-row,.batch-result-filter-row {
+  grid-template-columns:1fr
+}
+
+.batch-filter-row-label {
+  padding-top:0
 }
 
 .batch-progress-steps {

@@ -174,7 +174,18 @@ def render_result_filters(
 ) -> str:
     switcher = render_query_group_switcher(rows, active_group, only_with_spills=only_with_spills)
     spill_toggle = render_spill_filter_toggle(active_group, only_with_spills=only_with_spills)
-    return f"<div class=\"batch-result-filters\">{switcher}{spill_toggle}</div>"
+    return (
+        "<div class=\"batch-result-filters\">"
+        "<div class=\"batch-result-filter-row\">"
+        "<span class=\"batch-result-filter-label\">Result group</span>"
+        f"{switcher}"
+        "</div>"
+        "<div class=\"batch-result-filter-row batch-result-filter-row--secondary\">"
+        "<span class=\"batch-result-filter-label\">Spill filter</span>"
+        f"{spill_toggle}"
+        "</div>"
+        "</div>"
+    )
 
 
 def render_spill_filter_toggle(active_group: str, *, only_with_spills: bool = False) -> str:
