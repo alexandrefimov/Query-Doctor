@@ -173,9 +173,9 @@ Cloudera Manager deployments:
   measurement on real batches.
 - Workload-level diagnosis: raw-free fingerprint grouping, baseline/regression
   detection, and action outcome tracking.
-- Optimizer usefulness: rewriteability taxonomy, recipe-aware candidate
-  selection, per-conjunct predicate-pushdown hardening, narrow Python-owned
-  recipes, and optimizer funnel measurement.
+- Optimizer usefulness: fresh optimizer funnel measurement, expression-projection
+  predicate pushdown, UNION ALL branch predicate pushdown, narrow Python-owned
+  recipes for repeated expensive ETL shapes, and action-quality feedback.
 
 ### P2 - Expansion Readiness
 
@@ -216,9 +216,10 @@ item first only when the touched area has a direct P0 safety or contract risk.
 5. Use source provenance for safe Details/report coverage and limitation
    wording, including explicit direct Impala `none` coverage for metrics,
    events, and metadata.
-6. Add optimizer rewriteability taxonomy to analyzer output, batch summaries,
-   and Details so expensive-but-not-draftable queries are not treated as failed
-   optimizer cases.
+6. Re-run the real optimizer benchmark after the route-specific optimizer model
+   default, rewriteability taxonomy, recipe-aware ranking, and per-conjunct
+   predicate-pushdown baseline; use the funnel to choose the next recipe or
+   evidence-backed recommendation slice.
 7. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
 
@@ -427,11 +428,13 @@ Keep optimizer trust strict while making useful outcomes more common.
   candidate selection, not model quality, prompts, the validator, or table
   stats. Real cases are selected for cost, while supported recipes still assume
   textbook projection, predicate, qualifier, and CTE/UNION shapes.
-- Follow-up code review found that the shared predicate-pushdown helpers
-  already evaluate top-level `AND` conjuncts independently. The near-term work
-  is to formalize and harden that contract with tests, inspectable helper
-  output, clearer validation messages, and support for parenthesized `AND`
-  groups; it is not a new recipe family.
+- The shared predicate-pushdown helper contract is now a completed baseline for
+  existing predicate-pushdown recipes: top-level and whole-group parenthesized
+  `AND` conjuncts are evaluated independently, safe conjuncts can be copied
+  without copying unsafe siblings, and tests cover mixed aliases, joins,
+  `BETWEEN`, `IN`, `IS NULL`, grouped CTEs, derived tables, existing inner
+  `WHERE` append, and no-copy cases. Keep hardening this contract when new
+  predicate forms are admitted, but do not treat it as a new recipe family.
 - Keep the validator strict. Improving SQL draft yield should come from richer
   analyzer facts, per-shape deterministic executors, and recipe-aware selection,
   not from loosening validation.
@@ -442,69 +445,53 @@ completed implementation inventory.
 
 Remaining near-term optimizer work:
 
-1. Add the rewriteability taxonomy to analyzer output, batch summaries, and
-   Details so expensive-but-not-draftable queries are not confused with failed
-   optimizer cases. The operational buckets should be: safe material draft,
-   recipe detected but deterministic draft unavailable, recipe-adjacent shape,
-   stats-likely, human-review-only, and not rewriteable.
-2. Add recipe-aware candidate selection for demo and benchmark runs. Rank
-   `safe_to_attempt` cases first by impact, then `recipe_detected_no_draft`
-   cases as recipe backlog, then recipe-adjacent engineering targets. Do not
-   silently fall through to expensive-but-unrewriteable cases when evaluating
-   SQL draft quality.
-3. Formalize and harden the existing per-conjunct predicate-pushdown contract
-   across `single_cte_predicate_pushdown`, `linear_cte_predicate_pushdown`,
-   `cte_dag_predicate_pushdown`, and `single_derived_table_predicate_pushdown`.
-   Add tests proving mixed safe/unsafe aliases, joins, `BETWEEN`, `IN`,
-   `IS NULL`, grouped CTEs, derived tables, existing inner `WHERE` append, and
-   no-copy cases. Add parenthesized `AND`-group handling as the only first-step
-   behavior expansion.
-4. Target new recipes at expensive ETL patterns rather than low-value small
+1. Re-run the real optimizer benchmark after the prompt-route split, model
+   default split, rewriteability taxonomy, recipe-aware ranking, and
+   per-conjunct predicate-pushdown baseline. Compare trusted SQL drafts,
+   deterministic no-recipe outcomes, recommendations-only outcomes, and
+   validation failures before adding another recipe.
+2. Target new recipes at expensive ETL patterns rather than low-value small
    queries: partition-limited `INSERT OVERWRITE ... anti-join staging UNION ALL
    staging`, large-fact joins to small distinct key sets, wider post-UNION
    rollups, pre-aggregation before exchange, and repeated-scan / redundant CTE
    shapes.
-5. Add narrow expression-projection predicate pushdown only after per-conjunct
-   pushdown lands. The first version should allow only deterministic scalar
-   projection expressions with no aggregate/window/subquery inputs and should
-   substitute output aliases back to exact source expressions under validation.
-6. Extend UNION ALL branch predicate pushdown after branch lineage facts can
+3. Add narrow expression-projection predicate pushdown. The first version
+   should allow only deterministic scalar projection expressions with no
+   aggregate/window/subquery inputs and should substitute output aliases back to
+   exact source expressions under validation.
+4. Extend UNION ALL branch predicate pushdown after branch lineage facts can
    prove which branch owns the filtered output column. Validation must preserve
    branch count/order/schema and keep untouched branches byte-equivalent.
-7. Treat `pre_aggregate_join_input` as a larger follow-up project, not the next
+5. Treat `pre_aggregate_join_input` as a larger follow-up project, not the next
    quick recipe: additive measure proof, join-key/group-key containment, outer
    joins, `AVG`, and `COUNT(DISTINCT ...)` make this high value but high risk.
-8. Re-run the real optimizer benchmark after the prompt-route split and compare
-   trusted SQL drafts, deterministic no-recipe outcomes, recommendations-only
-   outcomes, and validation failures.
-9. Turn any repeated successful generic rewrite into an analyzer-owned fact plus
+6. Turn any repeated successful generic rewrite into an analyzer-owned fact plus
    Python-owned recipe only when validation can prove the boundary.
-10. Validate the expanded CTE facts against sanitized real fixtures and add only
+7. Validate the expanded CTE facts against sanitized real fixtures and add only
    missing analyzer-owned categories that block proof of specific future
    recipes.
-11. Add more focused deterministic recipes for CTE simplification only after
+8. Add more focused deterministic recipes for CTE simplification only after
    recipe-specific validation exists, especially single-use CTE inlining and
    wider pass-through variants with aliases or downstream CTE consumers.
-12. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
+9. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
    especially stats-present-but-not-primary cases and mixed stats/runtime
    bottleneck signals.
-13. Use repeated real-case batches to measure the full optimizer funnel after
+10. Use repeated real-case batches to measure the full optimizer funnel after
    each facts or recipe change: optimization candidate, stats/query context,
    recipe detected, safe to attempt, trusted draft, and no-draft reason.
-14. Automate the optimizer funnel against fixture and sanitized real corpora
+11. Automate the optimizer funnel against fixture and sanitized real corpora
    outside the normal fast CI path. Each run should produce a raw-free
    `funnel.json` with candidate, recipe-detected, draft-ready, trusted-draft,
    no-rewrite, recommendations-only, and failure counts, and alert on material
    regressions.
-15. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
+12. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
    minimal diffs.
 
 Stop condition for the trusted SQL-draft direction:
 
-- After per-conjunct hardening plus parenthesized `AND`-group support,
-  expression-projection pushdown, and UNION ALL branch pushdown are implemented
-  and tested, a fresh 200+ case medium/high batch still has a `safe_to_attempt`
-  rate below roughly 5%.
+- After expression-projection pushdown and UNION ALL branch pushdown are
+  implemented and tested, a fresh 200+ case medium/high batch still has a
+  `safe_to_attempt` rate below roughly 5%.
 - Recipe-adjacent backlog is not materially larger than safe-draft cases,
   meaning real workloads are structurally outside the conservative recipe
   surface rather than merely under-implemented.
