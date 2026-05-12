@@ -213,11 +213,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
   function applyScanTarget(form) {
-    var selector = form.querySelector('select[name="scan_target"]');
-    if (!selector) {
+    var selected = form.querySelector('input[name="scan_target"]:checked');
+    if (!selected) {
       return;
     }
-    var target = selector.value === 'running' ? 'running' : 'finished';
+    var target = selected.value === 'running' ? 'running' : 'finished';
     form.setAttribute('action', target === 'running' ? '/running/run' : '/batch/run');
     Array.prototype.slice.call(form.querySelectorAll('[data-scan-target-field]')).forEach(function (element) {
       var visible = element.getAttribute('data-scan-target-field') === target;
@@ -226,10 +226,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   Array.prototype.slice.call(document.querySelectorAll('[data-scan-target-form]')).forEach(function (scanForm) {
     applyScanTarget(scanForm);
-    var selector = scanForm.querySelector('select[name="scan_target"]');
-    if (selector) {
-      selector.addEventListener('change', function () { applyScanTarget(scanForm); });
-    }
+    Array.prototype.slice.call(scanForm.querySelectorAll('input[name="scan_target"]')).forEach(function (choice) {
+      choice.addEventListener('change', function () { applyScanTarget(scanForm); });
+    });
   });
   function detailJobProgressElements() {
     return Array.prototype.slice.call(document.querySelectorAll('[data-report-job-status-url], [data-optimizer-job-status-url]'));
