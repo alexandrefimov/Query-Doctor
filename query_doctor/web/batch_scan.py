@@ -41,6 +41,7 @@ from query_doctor.web.models import (
 
 
 BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority"}
+WEB_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT = 100
 BATCH_METADATA_TOP_LIMIT_MAX = 200
 BATCH_CM_TIMESERIES_TOP_LIMIT_MAX = 200
 BATCH_CM_EVENTS_MAX_EVENTS_MAX = 200
@@ -108,7 +109,7 @@ def parse_batch_run_config(
     scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(form)
     recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
     cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
-    triage_profile_limit = cm_inspect_limit
+    triage_profile_limit = WEB_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT
     metadata_top_limit = parse_non_negative_form_int(
         form, "metadata_top_limit", default=default_metadata_top_limit, maximum=BATCH_METADATA_TOP_LIMIT_MAX
     )
