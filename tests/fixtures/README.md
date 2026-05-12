@@ -30,6 +30,13 @@ directory:
 Use it for metadata/context parsing tests. Keep any SQL in fixtures sanitized
 and intentionally minimal.
 
+## Primary Bottleneck Fixtures
+
+`primary_bottleneck_fixtures/` contains compact sanitized JSON fixtures with
+structured analyzer facts and expected primary bottleneck classifications. Use
+these for routing regressions where profile parsing is not the behavior under
+test.
+
 ## Optimizer Fixtures
 
 Optimizer fixtures live under `optimizer_cases/` and each case should include:

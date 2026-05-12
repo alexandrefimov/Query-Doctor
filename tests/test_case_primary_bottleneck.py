@@ -1,5 +1,16 @@
+import json
+from pathlib import Path
+
 from query_doctor.analyzer.case_bottleneck import classify_case_primary_bottleneck
 from query_doctor.analyzer.facts_renderer import render_primary_bottleneck
+
+
+REPO_DIR = Path(__file__).resolve().parents[1]
+PRIMARY_BOTTLENECK_FIXTURE_DIR = REPO_DIR / "tests" / "fixtures" / "primary_bottleneck_fixtures"
+
+
+def primary_bottleneck_fixture_names() -> list[str]:
+    return sorted(path.name for path in PRIMARY_BOTTLENECK_FIXTURE_DIR.glob("*.json"))
 
 
 def analysis_fixture(**overrides):
@@ -24,6 +35,15 @@ def analysis_fixture(**overrides):
 
 def anomaly(count: int) -> list[dict[str, str]]:
     return [{"label": f"op-{index}"} for index in range(count)]
+
+
+def test_primary_bottleneck_json_fixtures_match_expected_classification():
+    assert primary_bottleneck_fixture_names(), "expected primary bottleneck fixtures"
+    for fixture_name in primary_bottleneck_fixture_names():
+        payload = json.loads((PRIMARY_BOTTLENECK_FIXTURE_DIR / fixture_name).read_text(encoding="utf-8"))
+        result = json.loads(json.dumps(classify_case_primary_bottleneck(payload["analysis"]).to_dict()))
+
+        assert result == payload["expected"], fixture_name
 
 
 def test_runtime_admission_dominates_wall_clock():

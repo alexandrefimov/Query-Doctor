@@ -1,0 +1,51 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 120000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "HASH JOIN",
+        "rows_actual_to_estimated_ratio": 500
+      },
+      {
+        "operator_name": "AGGREGATE",
+        "rows_actual_to_estimated_ratio": 80
+      }
+    ],
+    "findings": [
+      {
+        "id": "join_bottleneck",
+        "operators": [
+          {
+            "time_ms": 62000
+          }
+        ]
+      },
+      {
+        "id": "large_intermediate_or_exchange_traffic"
+      }
+    ],
+    "top_operators_by_time": [
+      {
+        "operator_name": "EXCHANGE",
+        "time_ms": 70000
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "limited",
+      "stats_primary_bottleneck": "mixed_candidate",
+      "non_stats_bottleneck_categories": "query_shape,exchange_or_data_movement"
+    }
+  },
+  "expected": {
+    "label": "mixed",
+    "confidence": "medium",
+    "reasons": [
+      "competing_stats",
+      "competing_sql_shape",
+      "competing_runtime_data_movement"
+    ]
+  }
+}
