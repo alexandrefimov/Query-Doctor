@@ -216,10 +216,10 @@ item first only when the touched area has a direct P0 safety or contract risk.
 5. Use source provenance for safe Details/report coverage and limitation
    wording, including explicit direct Impala `none` coverage for metrics,
    events, and metadata.
-6. Re-run the real optimizer benchmark after the route-specific optimizer model
-   default, rewriteability taxonomy, recipe-aware ranking, and per-conjunct
-   predicate-pushdown baseline; use the funnel to choose the next recipe or
-   evidence-backed recommendation slice.
+6. Run explicit selected-case optimizer outcomes on the 11 draft-ready cases
+   from the fresh Cloudera Manager `QUERY >=60s` funnel sample; use trusted
+   draft, no-rewrite, recommendations-only, fallback, and latency counts before
+   adding another recipe or changing model defaults.
 7. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
 
