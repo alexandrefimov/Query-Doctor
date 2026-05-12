@@ -1,0 +1,51 @@
+name: Web E2E
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/web-e2e.yml"
+      - "pyproject.toml"
+      - "query_doctor/web/**"
+      - "query_doctor/safety/**"
+      - "tests/test_web_e2e.py"
+      - "tests/web_server_test_support.py"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/web-e2e.yml"
+      - "pyproject.toml"
+      - "query_doctor/web/**"
+      - "query_doctor/safety/**"
+      - "tests/test_web_e2e.py"
+      - "tests/web_server_test_support.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-e2e:
+    name: Web E2E / Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install local package and E2E tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,e2e]"
+
+      - name: Install Chromium browser
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run web E2E smoke
+        run: PYTHONPATH=. python -m pytest -q tests/test_web_e2e.py
