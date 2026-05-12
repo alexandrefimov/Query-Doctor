@@ -1,0 +1,15 @@
+{
+  "case_id": "no_draft_post_union_shape_boundary",
+  "expected_output_kind": "no_rewrite",
+  "expected_recipe": "post_union_aggregate_pushdown",
+  "expected_risk_mode": "conservative_rewrite",
+  "expected_risk_reasons": [
+    "cte_body_validation_not_proven"
+  ],
+  "expected_fallback_reason": "deterministic_draft_unavailable",
+  "expected_draft_unavailable_reasons": [
+    "no_deterministic_draft",
+    "union_branch_rollup_unsupported",
+    "downstream_aggregate_rewrite_unsupported"
+  ]
+}

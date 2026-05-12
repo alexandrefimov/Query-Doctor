@@ -36,7 +36,19 @@ def test_optimizer_benchmark_fixture_contract(case_dir: Path):
 
     draft_path = case_dir / "draft.sql"
     if not draft_path.exists():
-        assert expected["expected_output_kind"] == "recommendations_only"
+        if expected["expected_output_kind"] == "no_rewrite":
+            assert recipe is not None
+            assert optimize_query.deterministic_recipe_draft(source_sql, recipe) is None
+            diagnostics = optimize_query.deterministic_recipe_draft_diagnostics(
+                source_sql,
+                recipe,
+                deterministic_draft=None,
+            )
+            expected_reasons = expected.get("expected_draft_unavailable_reasons", [])
+            assert all(reason in diagnostics.reasons for reason in expected_reasons)
+            assert expected.get("expected_fallback_reason") == "deterministic_draft_unavailable"
+        else:
+            assert expected["expected_output_kind"] == "recommendations_only"
         return
 
     draft_sql = draft_path.read_text(encoding="utf-8")

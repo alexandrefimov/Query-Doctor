@@ -143,7 +143,7 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert result == 0
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     results = summary["results"]
-    assert len(results) == 17
+    assert len(results) == 20
     assert {item["expected_output_kind"] for item in results} == {
         "sql_draft",
         "validation_rejected",
@@ -154,28 +154,28 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     aggregate = summary["aggregates"]["by_model"]["qwen3-coder:30b-a3b-q8_0"]
     assert aggregate["expected_outcome_match_rate"] == 1.0
     funnel = summary["optimizer_funnel"]
-    assert funnel["total_runs"] == 17
-    assert funnel["dry_run_runs"] == 17
+    assert funnel["total_runs"] == 20
+    assert funnel["dry_run_runs"] == 20
     assert funnel["trusted_outcome_runs"] == 0
     assert summary["model_comparable"]["total_runs"] == 0
-    assert funnel["expected_matched_runs"] == 17
+    assert funnel["expected_matched_runs"] == 20
     assert funnel["offline_validator_fixture_runs"] == 0
-    assert funnel["scoring_scope_counts"] == {"dry_run": 17}
+    assert funnel["scoring_scope_counts"] == {"dry_run": 20}
     assert funnel["expected_match_rate"] == 1.0
     assert funnel["expected_output_kind_counts"] == {
-        "no_rewrite": 1,
+        "no_rewrite": 4,
         "recommendations_only": 5,
         "sql_draft": 8,
         "validation_rejected": 3,
     }
     assert funnel["offline_output_kind_counts"] == {
-        "no_rewrite": 1,
+        "no_rewrite": 4,
         "recommendations_only": 5,
         "sql_draft": 8,
         "validation_rejected": 3,
     }
     by_case = summary["aggregates"]["by_case"]
-    assert len(by_case) == 17
+    assert len(by_case) == 20
     assert by_case["optimizer_cases:cte_dag_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
     assert by_case["optimizer_cases:linear_cte_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
     assert by_case["optimizer_cases:pass_through_cte_elimination"]["expected_output_kind"] == "sql_draft"
@@ -186,6 +186,9 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert case_summary["expected_output_kind"] == "validation_rejected"
     assert case_summary["expected_outcome_match_rate"] == 1.0
     assert case_summary["models"]["qwen3-coder:30b-a3b-q8_0"]["expected_outcome_match_rate"] == 1.0
+    assert by_case["optimizer_cases:no_draft_downstream_cte_filter"]["expected_output_kind"] == "no_rewrite"
+    assert by_case["optimizer_cases:no_draft_cte_lineage_limit"]["expected_output_kind"] == "no_rewrite"
+    assert by_case["optimizer_cases:no_draft_post_union_shape_boundary"]["expected_output_kind"] == "no_rewrite"
     assert str(module.DEFAULT_FIXTURE_CORPUS) not in json.dumps(summary)
 
 

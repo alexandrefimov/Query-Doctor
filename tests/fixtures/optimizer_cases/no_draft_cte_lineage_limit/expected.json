@@ -1,0 +1,16 @@
+{
+  "case_id": "no_draft_cte_lineage_limit",
+  "expected_output_kind": "no_rewrite",
+  "expected_recipe": "cte_dag_predicate_pushdown",
+  "expected_risk_mode": "conservative_rewrite",
+  "expected_risk_reasons": [
+    "cte_body_validation_not_proven",
+    "many_ctes"
+  ],
+  "expected_fallback_reason": "deterministic_draft_unavailable",
+  "expected_draft_unavailable_reasons": [
+    "no_deterministic_draft",
+    "final_cte_lineage_unavailable",
+    "final_cte_lineage_upstream_non_simple_projection"
+  ]
+}

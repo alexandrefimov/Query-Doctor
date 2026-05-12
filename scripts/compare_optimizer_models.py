@@ -26,6 +26,8 @@ from query_doctor.cli.optimize_query import (
     RECOMMENDATIONS_NAME,
     decide_optimizer_risk_mode,
     detect_optimizer_rewrite_recipe,
+    deterministic_recipe_draft,
+    deterministic_recipe_draft_diagnostics,
     draft_has_material_change,
     validate_draft_sql,
 )
@@ -302,13 +304,37 @@ def offline_fixture_outcome(case_dir: Path) -> dict[str, Any]:
 
     draft_path = case_dir / "draft.sql"
     if not draft_path.is_file():
-        offline["offline_output_kind"] = "recommendations_only"
+        deterministic_draft = deterministic_recipe_draft(source_sql, recipe)
+        diagnostics = (
+            deterministic_recipe_draft_diagnostics(
+                source_sql,
+                recipe,
+                deterministic_draft=deterministic_draft,
+            )
+            if recipe is not None and deterministic_draft is None and risk.mode != "recommendations_only"
+            else None
+        )
+        output_kind = "no_rewrite" if diagnostics is not None else "recommendations_only"
+        offline["offline_output_kind"] = output_kind
         offline["offline_validation_errors"] = []
+        if diagnostics is not None:
+            offline["offline_fallback_reason"] = "deterministic_draft_unavailable"
+            offline["offline_draft_unavailable_reasons"] = [
+                safe_error_summary(reason, max_chars=200) for reason in diagnostics.reasons
+            ]
+        expected_reasons = expected.get("expected_draft_unavailable_reasons", [])
+        if not isinstance(expected_reasons, list):
+            expected_reasons = []
         offline["matched_expected_outcome"] = (
-            expected.get("expected_output_kind") == "recommendations_only"
+            expected.get("expected_output_kind") == output_kind
             and expected.get("expected_recipe") == offline_recipe
             and expected.get("expected_risk_mode") == risk.mode
             and list(expected.get("expected_risk_reasons", risk.reasons)) == list(risk.reasons)
+            and (
+                not expected.get("expected_fallback_reason")
+                or expected.get("expected_fallback_reason") == offline.get("offline_fallback_reason")
+            )
+            and all(str(reason) in (offline.get("offline_draft_unavailable_reasons") or []) for reason in expected_reasons)
         )
         return offline
 
@@ -350,6 +376,9 @@ def actual_matches_expected_outcome(*, status: str, marker: dict[str, Any], expe
     if expected_kind == "validation_rejected":
         return output_kind == "no_rewrite" and str(marker.get("fallback_reason") or "") == "validation_failed"
     if expected_kind != output_kind:
+        return False
+    expected_fallback = str(expected.get("expected_fallback_reason") or "")
+    if expected_fallback and str(marker.get("fallback_reason") or "") != expected_fallback:
         return False
     expected_recipe = expected.get("expected_recipe")
     if expected_recipe is None:

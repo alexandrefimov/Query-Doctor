@@ -7,7 +7,8 @@ Each case contains:
 
 - `source.sql`: server-owned source SQL shape.
 - `analysis_facts.md`: minimal Python-owned facts needed by recipe/risk logic.
-- `draft.sql`: optional generated draft to validate.
+- `draft.sql`: optional generated draft to validate. Fixtures without a draft
+  can still assert recommendations-only or deterministic no-rewrite outcomes.
 - `expected.json`: expected deterministic outcome.
 
 The corpus is intentionally narrow. Add cases when prompt tuning, model
@@ -19,7 +20,9 @@ single CTE, projection-alias single CTE, linear CTE, CTE DAG, derived-table
 predicate pushdown, pass-through CTE elimination, and UNION ALL aggregate
 rollup shapes. Recommendations-only fixtures cover complex CTE, join-heavy,
 nested-query, and aggregate join-heavy shapes where model wording is exercised
-without allowing a trusted SQL draft.
+without allowing a trusted SQL draft. Deterministic no-rewrite fixtures cover
+recipe-detected shapes where the Python-owned executor must fail closed before
+any LLM SQL draft path is used.
 
 Use it with the optimizer bake-off helper:
 
