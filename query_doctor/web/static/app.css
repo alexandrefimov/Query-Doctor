@@ -501,6 +501,16 @@ code,.technical,.mono {
   align-items:start
 }
 
+.known-query-row {
+  grid-template-columns:minmax(420px,1fr) minmax(180px,260px) auto;
+  align-items:end
+}
+
+.known-query-row .run-button {
+  width:auto;
+  margin-top:0
+}
+
 .field {
   display:grid;
   gap:6px;

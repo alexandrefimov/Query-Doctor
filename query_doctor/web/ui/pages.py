@@ -97,6 +97,10 @@ def render_query_page(
 ) -> str:
     run_disabled = bool(job is not None and getattr(job, "status", "") == "running")
     panel_form_values = {"diagnosis_target": "query"}
+    if form_values is None and job is not None:
+        stored_values = getattr(job, "batch_form_values", None)
+        if isinstance(stored_values, dict):
+            form_values = stored_values
     if form_values:
         panel_form_values.update(form_values)
     sections = [

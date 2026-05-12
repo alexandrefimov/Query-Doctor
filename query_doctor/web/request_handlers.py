@@ -109,7 +109,7 @@ def start_analyze_job(
             form_values=form_values,
         )
 
-    job = job_store.create(query_id, report_mode)
+    job = job_store.create(query_id, report_mode, form_values=form_values)
     thread = threading.Thread(
         target=run_analysis_job,
         args=(

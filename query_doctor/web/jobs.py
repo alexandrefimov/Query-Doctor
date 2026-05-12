@@ -113,7 +113,12 @@ class WebJobStore:
         self._clock = clock
         self._lock = threading.Lock()
 
-    def create(self, query_id: str, report_mode: str) -> WebJobSnapshot:
+    def create(
+        self,
+        query_id: str,
+        report_mode: str,
+        form_values: dict[str, object] | None = None,
+    ) -> WebJobSnapshot:
         stage = WEB_STAGES[0]
         with self._lock:
             prior_result_html = "\n".join(render_specific_query_results(tuple(self._query_results))) if self._query_results else ""
@@ -125,6 +130,7 @@ class WebJobStore:
                 stage_label=stage[1],
                 progress=stage[2],
                 result_html=prior_result_html,
+                batch_form_values=dict(form_values) if form_values is not None else None,
             )
             self._store_job_locked(job)
             return job.snapshot()
