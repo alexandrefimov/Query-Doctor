@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from query_doctor.cli.collect_cm_profiles import DEFAULT_CM_METRICS_PROFILE
+from query_doctor.optimizer.defaults import DEFAULT_OPTIMIZER_MODEL
 from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_METRICS_PROFILE,
     DEFAULT_PROMETHEUS_STEP_SEC,
@@ -18,7 +18,6 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_TIMEOUT_SEC = 1800
 DEFAULT_MODEL = "qwen3-coder:30b-a3b-q8_0"
-DEFAULT_OPTIMIZER_MODEL = os.getenv("QD_OPTIMIZER_MODEL")
 DEFAULT_CORPUS_DIR = Path("cases/cm-corpus")
 DEFAULT_QUERY_PROFILE_SOURCE = "cm"
 DEFAULT_IMPALA_PROFILE_PORT = 25000
@@ -99,7 +98,7 @@ class WebSettings:
     active_cluster_key: str | None = None
     max_profile_bytes: int | None = None
     model: str = DEFAULT_MODEL
-    optimizer_model: str | None = None
+    optimizer_model: str | None = DEFAULT_OPTIMIZER_MODEL
     timeout_sec: int = DEFAULT_TIMEOUT_SEC
     repo_dir: Path = _REPO_ROOT
     corpus_dir: Path = DEFAULT_CORPUS_DIR

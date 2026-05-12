@@ -10,6 +10,7 @@ from query_doctor.web.models import (
     DEFAULT_HOST,
     DEFAULT_METADATA_TIMEOUT_SEC,
     DEFAULT_MODEL,
+    DEFAULT_OPTIMIZER_MODEL,
     DEFAULT_PORT,
     DEFAULT_TIMEOUT_SEC,
 )
@@ -47,7 +48,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model for reports. Default: {DEFAULT_MODEL}.")
     parser.add_argument(
         "--optimizer-model",
-        help="Ollama model for Query LLM optimizer. Defaults to config/env value, otherwise --model.",
+        help=(
+            "Ollama model for Query LLM optimizer. "
+            f"Default: {DEFAULT_OPTIMIZER_MODEL}. Override with config, QD_OPTIMIZER_MODEL, or this flag."
+        ),
     )
     parser.add_argument(
         "--timeout-sec",

@@ -46,7 +46,7 @@
   "since_hours": 1,
   "limit": 1,
   "max_profile_bytes": 52428800,
-  "optimizer_model": "",
+  "optimizer_model": "deepseek-coder-v2:16b",
   "collect_cm_timeseries": false,
   "cm_metrics_profile": "cm6",
   "recent_cm_timeseries_top_limit": 10,

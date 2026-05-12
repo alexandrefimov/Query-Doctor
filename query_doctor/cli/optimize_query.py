@@ -37,6 +37,7 @@ from query_doctor.optimizer.deterministic_rewrites import (
     RISK_THRESHOLD_BYPASS_RECIPE_IDS,
     deterministic_recipe_draft,
 )
+from query_doctor.optimizer.defaults import DEFAULT_OPTIMIZER_MODEL
 from query_doctor.optimizer.prompts import build_prompt, build_recommendations_prompt
 from query_doctor.optimizer.recommendations import (
     action_card_recommendation_bullet,
@@ -180,7 +181,6 @@ from query_doctor.report.recommendations import (
 )
 from query_doctor.report.llm_client import (
     DEFAULT_KEEP_ALIVE,
-    DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
     PROGRESS_PREFIX,
     StreamedLLMResponse,
@@ -317,7 +317,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate a validated optimized query draft for one case.")
     parser.add_argument("case_dir")
     parser.add_argument("--out", default=OUTPUT_NAME)
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--model", default=DEFAULT_OPTIMIZER_MODEL)
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--keep-alive", default=DEFAULT_KEEP_ALIVE)
