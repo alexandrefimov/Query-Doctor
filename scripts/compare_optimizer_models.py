@@ -316,6 +316,11 @@ def actual_matches_expected_outcome(*, status: str, marker: dict[str, Any], expe
     return str(marker.get("rewrite_recipe") or "") == str(expected_recipe)
 
 
+def actual_expected_outcome_applies(expected: dict[str, Any]) -> bool:
+    """Return whether fixture expected output should score an actual CLI run."""
+    return str(expected.get("expected_output_kind") or "") != "validation_rejected"
+
+
 def run_case_model(
     *,
     case_dir: Path,
@@ -402,7 +407,17 @@ def run_case_model(
         "error_summary": "" if status == "ok" else extract_error_summary(completed.stderr),
     }
     if offline:
-        result["matched_expected_outcome"] = actual_matches_expected_outcome(status=status, marker=marker, expected=offline)
+        offline_match = result.pop("matched_expected_outcome", None)
+        if offline_match is not None:
+            result["offline_matched_expected_outcome"] = offline_match
+        if actual_expected_outcome_applies(offline):
+            result["matched_expected_outcome"] = actual_matches_expected_outcome(
+                status=status,
+                marker=marker,
+                expected=offline,
+            )
+        else:
+            result["expected_outcome_scope"] = "offline_validator"
     return result
 
 
@@ -490,6 +505,7 @@ def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
     offline_output_kind_counts: defaultdict[str, int] = defaultdict(int)
     expected_outcome_runs = 0
     expected_matched_runs = 0
+    offline_validator_runs = 0
     for result in results:
         status = str(result.get("status") or "unknown")
         output_kind = str(result.get("output_kind") or "none")
@@ -507,6 +523,8 @@ def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
             expected_outcome_runs += 1
             if result.get("matched_expected_outcome") is True:
                 expected_matched_runs += 1
+        if result.get("expected_outcome_scope") == "offline_validator":
+            offline_validator_runs += 1
     total_runs = len(results)
     trusted_runs = status_counts.get("ok", 0)
     trusted_sql_draft_runs = output_kind_counts.get("sql_draft", 0)
@@ -532,6 +550,7 @@ def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "expected_outcome_runs": expected_outcome_runs,
         "expected_matched_runs": expected_matched_runs,
+        "offline_validator_fixture_runs": offline_validator_runs,
         "trusted_outcome_rate": ratio(trusted_runs, total_runs),
         "trusted_sql_draft_rate": ratio(trusted_sql_draft_runs, total_runs),
         "partial_untrusted_rate": ratio(partial_untrusted_runs, total_runs),
@@ -695,6 +714,7 @@ def render_summary_markdown(payload: dict[str, Any]) -> str:
                 f"- dry-run runs: {optimizer_funnel.get('dry_run_runs', 0)}",
                 f"- error runs: {optimizer_funnel.get('error_runs', 0)}",
                 f"- expected match runs: {optimizer_funnel.get('expected_matched_runs', 0)} / {optimizer_funnel.get('expected_outcome_runs', 0)} ({format_rate(optimizer_funnel.get('expected_match_rate'))})",
+                f"- offline validator-only fixtures: {optimizer_funnel.get('offline_validator_fixture_runs', 0)}",
                 f"- output counts: {format_counts(optimizer_funnel.get('output_kind_counts'))}",
                 f"- expected output counts: {format_counts(optimizer_funnel.get('expected_output_kind_counts'))}",
                 f"- offline output counts: {format_counts(optimizer_funnel.get('offline_output_kind_counts'))}",

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -154,6 +155,7 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert funnel["dry_run_runs"] == 14
     assert funnel["trusted_outcome_runs"] == 0
     assert funnel["expected_matched_runs"] == 14
+    assert funnel["offline_validator_fixture_runs"] == 0
     assert funnel["expected_match_rate"] == 1.0
     assert funnel["expected_output_kind_counts"] == {
         "no_rewrite": 1,
@@ -287,13 +289,19 @@ def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
             "status": "dry_run",
             "output_kind": "",
         },
+        {
+            "status": "ok",
+            "output_kind": "sql_draft",
+            "expected_output_kind": "validation_rejected",
+            "expected_outcome_scope": "offline_validator",
+        },
     ]
 
     funnel = module.build_optimizer_funnel(results)
 
-    assert funnel["total_runs"] == 5
-    assert funnel["trusted_outcome_runs"] == 3
-    assert funnel["trusted_sql_draft_runs"] == 1
+    assert funnel["total_runs"] == 6
+    assert funnel["trusted_outcome_runs"] == 4
+    assert funnel["trusted_sql_draft_runs"] == 2
     assert funnel["trusted_no_rewrite_runs"] == 1
     assert funnel["trusted_recommendations_runs"] == 1
     assert funnel["partial_untrusted_runs"] == 1
@@ -302,10 +310,51 @@ def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
     assert funnel["validation_failed_fallback_runs"] == 1
     assert funnel["expected_outcome_runs"] == 3
     assert funnel["expected_matched_runs"] == 2
-    assert funnel["trusted_outcome_rate"] == 0.6
-    assert funnel["trusted_sql_draft_rate"] == 0.2
-    assert funnel["partial_untrusted_rate"] == 0.2
+    assert funnel["offline_validator_fixture_runs"] == 1
+    assert funnel["trusted_outcome_rate"] == 0.6667
+    assert funnel["trusted_sql_draft_rate"] == 0.3333
+    assert funnel["partial_untrusted_rate"] == 0.1667
     assert funnel["expected_match_rate"] == 0.6667
+
+
+def test_actual_fixture_run_marks_validation_rejection_fixture_as_offline_only(tmp_path, monkeypatch):
+    module = load_compare_module()
+    fixture = module.DEFAULT_FIXTURE_CORPUS / "reject_changed_predicate"
+    out_dir = tmp_path / "out"
+    args = module.parse_args(
+        [
+            str(fixture),
+            "--models",
+            "qwen3-coder:30b-a3b-q8_0",
+            "--out-dir",
+            str(out_dir),
+        ]
+    )
+
+    def fake_run(cmd, **kwargs):
+        run_dir = Path(cmd[3])
+        marker = {
+            "output_kind": "sql_draft",
+            "rewrite_recipe": "post_union_aggregate_pushdown",
+            "generation_metadata": {"generator": "deterministic_recipe"},
+            "validation_errors": [],
+        }
+        (run_dir / module.MARKER_NAME).write_text(json.dumps(marker), encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    result = module.run_case_model(
+        case_dir=fixture,
+        model="qwen3-coder:30b-a3b-q8_0",
+        run_index=1,
+        out_dir=out_dir,
+        args=args,
+    )
+
+    assert result["offline_matched_expected_outcome"] is True
+    assert result["expected_outcome_scope"] == "offline_validator"
+    assert "matched_expected_outcome" not in result
 
 
 def test_fixture_case_copy_materializes_source_sql_for_optimizer_cli(tmp_path):
