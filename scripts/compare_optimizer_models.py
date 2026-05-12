@@ -36,6 +36,17 @@ PROGRESS_PREFIX = "[Query Doctor optimizer compare]"
 DEFAULT_FIXTURE_CORPUS = PROJECT_ROOT / "tests" / "fixtures" / "optimizer_cases"
 HIDDEN_ERROR_PATH = "<local path hidden>"
 HIDDEN_ARTIFACT = "<artifact hidden>"
+SCORING_SCOPE_LABELS = {
+    "deterministic_recipe": "Deterministic recipe",
+    "deterministic_no_rewrite": "Deterministic no-rewrite",
+    "llm_recommendations": "LLM recommendations",
+    "llm_sql_draft": "LLM SQL draft",
+    "llm_sql_validation": "LLM SQL validation fallback",
+    "offline_validator": "Offline validator",
+    "dry_run": "Dry run",
+    "error": "Error",
+    "unknown": "Unknown",
+}
 GENERATED_ARTIFACT_FILENAME_RE = re.compile(
     r"\b(?:analysis_facts\.md|cm_metadata\.json|optimized_query\.sql|"
     r"optimized_query\.partial\.txt|optimized_query_recommendations\.md|"
@@ -321,6 +332,32 @@ def actual_expected_outcome_applies(expected: dict[str, Any]) -> bool:
     return str(expected.get("expected_output_kind") or "") != "validation_rejected"
 
 
+def optimizer_scoring_scope(result: dict[str, Any]) -> str:
+    if result.get("expected_outcome_scope") == "offline_validator":
+        return "offline_validator"
+    status = str(result.get("status") or "")
+    if status == "dry_run":
+        return "dry_run"
+    if status in {"error", "validation_failed"}:
+        return "error"
+    generation_metadata = result.get("generation_metadata")
+    if not isinstance(generation_metadata, dict):
+        generation_metadata = {}
+    generator = str(generation_metadata.get("generator") or "")
+    if generator == "deterministic_recipe":
+        return "deterministic_recipe"
+    if generator == "deterministic_no_rewrite":
+        return "deterministic_no_rewrite"
+    output_kind = str(result.get("output_kind") or "")
+    if output_kind == "recommendations_only":
+        return "llm_recommendations"
+    if output_kind == "sql_draft" and generation_metadata:
+        return "llm_sql_draft"
+    if output_kind == "no_rewrite" and generation_metadata:
+        return "llm_sql_validation"
+    return "unknown"
+
+
 def run_case_model(
     *,
     case_dir: Path,
@@ -347,6 +384,7 @@ def run_case_model(
             "status": "dry_run",
             "validation_status": "not_run",
             "output_kind": "",
+            "scoring_scope": "dry_run",
             "elapsed_sec": 0.0,
             "error_summary": "",
         }
@@ -418,6 +456,7 @@ def run_case_model(
             )
         else:
             result["expected_outcome_scope"] = "offline_validator"
+    result["scoring_scope"] = optimizer_scoring_scope(result)
     return result
 
 
@@ -506,6 +545,7 @@ def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
     expected_outcome_runs = 0
     expected_matched_runs = 0
     offline_validator_runs = 0
+    scoring_scope_counts: defaultdict[str, int] = defaultdict(int)
     for result in results:
         status = str(result.get("status") or "unknown")
         output_kind = str(result.get("output_kind") or "none")
@@ -525,6 +565,7 @@ def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
                 expected_matched_runs += 1
         if result.get("expected_outcome_scope") == "offline_validator":
             offline_validator_runs += 1
+        scoring_scope_counts[optimizer_scoring_scope(result)] += 1
     total_runs = len(results)
     trusted_runs = status_counts.get("ok", 0)
     trusted_sql_draft_runs = output_kind_counts.get("sql_draft", 0)
@@ -551,6 +592,8 @@ def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
         "expected_outcome_runs": expected_outcome_runs,
         "expected_matched_runs": expected_matched_runs,
         "offline_validator_fixture_runs": offline_validator_runs,
+        "scoring_scope_counts": dict(sorted(scoring_scope_counts.items())),
+        "scoring_scope_summary": build_scoring_scope_summary(results),
         "trusted_outcome_rate": ratio(trusted_runs, total_runs),
         "trusted_sql_draft_rate": ratio(trusted_sql_draft_runs, total_runs),
         "partial_untrusted_rate": ratio(partial_untrusted_runs, total_runs),
@@ -563,6 +606,40 @@ def build_optimizer_funnel(results: list[dict[str, Any]]) -> dict[str, Any]:
         "expected_output_kind_counts": dict(sorted(expected_output_kind_counts.items())),
         "offline_output_kind_counts": dict(sorted(offline_output_kind_counts.items())),
     }
+
+
+def build_scoring_scope_summary(results: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    buckets: dict[str, dict[str, Any]] = {}
+    for result in results:
+        scope = optimizer_scoring_scope(result)
+        bucket = buckets.setdefault(
+            scope,
+            {
+                "runs": 0,
+                "status_counts": defaultdict(int),
+                "output_kind_counts": defaultdict(int),
+                "fallback_reason_counts": defaultdict(int),
+                "matched_expected_outcomes": 0,
+                "expected_outcomes": 0,
+            },
+        )
+        update_result_bucket(bucket, result)
+    rendered: dict[str, dict[str, Any]] = {}
+    for scope, bucket in sorted(buckets.items()):
+        expected_outcomes = int(bucket["expected_outcomes"])
+        matched_expected = int(bucket["matched_expected_outcomes"])
+        rendered[scope] = {
+            "label": SCORING_SCOPE_LABELS.get(scope, scope.replace("_", " ").title()),
+            "runs": bucket["runs"],
+            "expected_outcome_runs": expected_outcomes,
+            "expected_matched_runs": matched_expected,
+            "expected_match_rate": ratio(matched_expected, expected_outcomes)
+            if expected_outcomes
+            else None,
+            "status_counts": dict(sorted(bucket["status_counts"].items())),
+            "output_kind_counts": dict(sorted(bucket["output_kind_counts"].items())),
+        }
+    return rendered
 
 
 def ratio(numerator: int, denominator: int) -> float:
@@ -721,6 +798,33 @@ def render_summary_markdown(payload: dict[str, Any]) -> str:
                 "",
             ]
         )
+        scope_summary = optimizer_funnel.get("scoring_scope_summary")
+        if isinstance(scope_summary, dict) and scope_summary:
+            lines.extend(
+                [
+                    "## Scoring Scope Summary",
+                    "",
+                    "| scope | runs | expected match | status counts | output counts |",
+                    "|---|---:|---:|---|---|",
+                ]
+            )
+            for scope, metrics in sorted(scope_summary.items()):
+                if not isinstance(metrics, dict):
+                    continue
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            markdown_escape(metrics.get("label") or scope),
+                            str(metrics.get("runs", 0)),
+                            format_rate(metrics.get("expected_match_rate")),
+                            markdown_escape(format_counts(metrics.get("status_counts"))),
+                            markdown_escape(format_counts(metrics.get("output_kind_counts"))),
+                        ]
+                    )
+                    + " |"
+                )
+            lines.append("")
     else:
         lines.extend(["- unavailable", ""])
     lines.extend(

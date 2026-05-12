@@ -79,6 +79,7 @@ def test_dry_run_writes_optimizer_summary_without_raw_paths(tmp_path):
     assert summary["results"][0]["status"] == "dry_run"
     assert summary["optimizer_funnel"] == funnel
     assert funnel["dry_run_runs"] == 1
+    assert funnel["scoring_scope_counts"] == {"dry_run": 1}
     assert funnel["trusted_sql_draft_runs"] == 0
     assert str(tmp_path) not in json.dumps(summary)
     assert str(tmp_path) not in summary_md
@@ -156,6 +157,7 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert funnel["trusted_outcome_runs"] == 0
     assert funnel["expected_matched_runs"] == 14
     assert funnel["offline_validator_fixture_runs"] == 0
+    assert funnel["scoring_scope_counts"] == {"dry_run": 14}
     assert funnel["expected_match_rate"] == 1.0
     assert funnel["expected_output_kind_counts"] == {
         "no_rewrite": 1,
@@ -186,6 +188,17 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
 
 def test_summary_markdown_renders_model_case_and_mismatch_sections():
     module = load_compare_module()
+    results = [
+        {
+            "case_name": "optimizer_cases:case-a",
+            "requested_model": "model-a",
+            "status": "ok",
+            "output_kind": "no_rewrite",
+            "expected_output_kind": "sql_draft",
+            "matched_expected_outcome": False,
+            "elapsed_sec": 1.0,
+        }
+    ]
     payload = {
         "optimizer_num_predict": 4096,
         "results": [
@@ -196,27 +209,17 @@ def test_summary_markdown_renders_model_case_and_mismatch_sections():
                 "expected_output_kind": "sql_draft",
                 "output_kind": "no_rewrite",
                 "matched_expected_outcome": False,
-            }
-        ],
-        "aggregates": module.build_aggregates(
-            [
-                {
-                    "case_name": "optimizer_cases:case-a",
-                    "requested_model": "model-a",
-                    "status": "ok",
-                    "output_kind": "no_rewrite",
-                    "expected_output_kind": "sql_draft",
-                    "matched_expected_outcome": False,
-                    "elapsed_sec": 1.0,
                 }
-            ]
-        ),
+            ],
+        "aggregates": module.build_aggregates(results),
+        "optimizer_funnel": module.build_optimizer_funnel(results),
     }
 
     markdown = module.render_summary_markdown(payload)
 
     assert "## Model Summary" in markdown
     assert "## Optimizer Funnel" in markdown
+    assert "## Scoring Scope Summary" in markdown
     assert "## Case Summary" in markdown
     assert "## Mismatched Expected Outcomes" in markdown
     assert "optimizer_cases:case-a" in markdown
@@ -265,6 +268,7 @@ def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
             "expected_output_kind": "sql_draft",
             "offline_output_kind": "sql_draft",
             "matched_expected_outcome": True,
+            "generation_metadata": {"generator": "deterministic_recipe"},
         },
         {
             "status": "ok",
@@ -273,6 +277,7 @@ def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
             "expected_output_kind": "validation_rejected",
             "offline_output_kind": "validation_rejected",
             "matched_expected_outcome": True,
+            "generation_metadata": {"prompt_chars": 120},
         },
         {
             "status": "ok",
@@ -280,6 +285,7 @@ def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
             "expected_output_kind": "recommendations_only",
             "offline_output_kind": "recommendations_only",
             "matched_expected_outcome": False,
+            "generation_metadata": {"prompt_chars": 120},
         },
         {
             "status": "validation_failed",
@@ -294,6 +300,7 @@ def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
             "output_kind": "sql_draft",
             "expected_output_kind": "validation_rejected",
             "expected_outcome_scope": "offline_validator",
+            "generation_metadata": {"generator": "deterministic_recipe"},
         },
     ]
 
@@ -311,6 +318,17 @@ def test_optimizer_funnel_counts_trusted_and_untrusted_outcomes():
     assert funnel["expected_outcome_runs"] == 3
     assert funnel["expected_matched_runs"] == 2
     assert funnel["offline_validator_fixture_runs"] == 1
+    assert funnel["scoring_scope_counts"] == {
+        "deterministic_recipe": 1,
+        "dry_run": 1,
+        "error": 1,
+        "llm_recommendations": 1,
+        "llm_sql_validation": 1,
+        "offline_validator": 1,
+    }
+    assert funnel["scoring_scope_summary"]["deterministic_recipe"]["expected_match_rate"] == 1.0
+    assert funnel["scoring_scope_summary"]["llm_recommendations"]["expected_match_rate"] == 0.0
+    assert funnel["scoring_scope_summary"]["offline_validator"]["expected_match_rate"] is None
     assert funnel["trusted_outcome_rate"] == 0.6667
     assert funnel["trusted_sql_draft_rate"] == 0.3333
     assert funnel["partial_untrusted_rate"] == 0.1667
@@ -354,6 +372,7 @@ def test_actual_fixture_run_marks_validation_rejection_fixture_as_offline_only(t
 
     assert result["offline_matched_expected_outcome"] is True
     assert result["expected_outcome_scope"] == "offline_validator"
+    assert result["scoring_scope"] == "offline_validator"
     assert "matched_expected_outcome" not in result
 
 
