@@ -34,12 +34,12 @@ def handle_analyze_request(
     query_id = first_form_value(form, "query_id")
     report_mode = "analysis"
     redact_identifiers = False
-    if not query_id:
-        return 400, render_query_page(settings, error="Query ID is required.")
     form_values = {
         "diagnosis_target": "query",
         "cluster_key": selected_cluster_key_from_mapping(form, settings),
     }
+    if not query_id:
+        return 400, render_query_page(settings, error="Query ID is required.", form_values=form_values)
     try:
         selected_settings = settings_for_cluster_key(settings, str(form_values["cluster_key"]))
     except WebError as exc:
@@ -93,12 +93,12 @@ def start_analyze_job(
     query_id = first_form_value(form, "query_id")
     report_mode = "analysis"
     redact_identifiers = False
-    if not query_id:
-        return 400, render_query_page(settings, error="Query ID is required.")
     form_values = {
         "diagnosis_target": "query",
         "cluster_key": selected_cluster_key_from_mapping(form, settings),
     }
+    if not query_id:
+        return 400, render_query_page(settings, error="Query ID is required.", form_values=form_values)
     try:
         selected_settings = settings_for_cluster_key(settings, str(form_values["cluster_key"]))
     except WebError as exc:
