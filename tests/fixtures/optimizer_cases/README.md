@@ -17,7 +17,9 @@ changed predicates, changed joins, changed projection shape, or query shapes
 that must remain recommendations-only. Positive recipe fixtures currently cover
 single CTE, projection-alias single CTE, linear CTE, CTE DAG, derived-table
 predicate pushdown, pass-through CTE elimination, and UNION ALL aggregate
-rollup shapes.
+rollup shapes. Recommendations-only fixtures cover complex CTE, join-heavy,
+nested-query, and aggregate join-heavy shapes where model wording is exercised
+without allowing a trusted SQL draft.
 
 Use it with the optimizer bake-off helper:
 

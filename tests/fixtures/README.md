@@ -54,6 +54,9 @@ Current cases:
 | `no_material_change/` | Trusted no-rewrite outcome when draft has no material change. |
 | `recommendations_only_complex_cte/` | Recommendations-only fallback for unsupported complex CTE shape. |
 | `recommendations_only_many_joins/` | Recommendations-only fallback for excessive join complexity. |
+| `recommendations_only_cte_many_joins/` | Recommendations-only fallback for CTE plus excessive join complexity. |
+| `recommendations_only_nested_many_joins/` | Recommendations-only fallback for nested query plus excessive join complexity. |
+| `recommendations_only_aggregate_many_joins/` | Recommendations-only fallback for aggregate query with excessive join complexity. |
 | `reject_changed_predicate/` | Validator rejection for changed filter predicate. |
 | `reject_changed_join_predicate/` | Validator rejection for changed join predicate. |
 | `reject_projection_change/` | Validator rejection for changed projection shape/expression. |

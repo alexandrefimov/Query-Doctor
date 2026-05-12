@@ -1,0 +1,9 @@
+{
+  "case_id": "recommendations_only_aggregate_many_joins",
+  "expected_output_kind": "recommendations_only",
+  "expected_recipe": null,
+  "expected_risk_mode": "recommendations_only",
+  "expected_risk_reasons": [
+    "too_many_top_level_joins_for_safe_rewrite"
+  ]
+}
