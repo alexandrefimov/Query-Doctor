@@ -31,7 +31,7 @@ def render_help_content() -> str:
 <section class="panel docs-panel" aria-label="Query Doctor help">
 <h1>Help</h1>
 <div class="report-body">
-<p>Query Doctor is a local-first Big Data Query Diagnostic Tool for Apache Impala workloads. It combines deterministic profile analysis, bounded metadata checks, optional bounded Cloudera Manager metric context, and validated report generation. The implemented engine is Apache Impala only.</p>
+<p>Query Doctor is a local-first Big Data Query Diagnostic Tool for Apache Impala workloads. It combines deterministic profile analysis, bounded metadata checks, bounded runtime context when the selected source supports it, and validated report generation. The implemented engine is Apache Impala only.</p>
 
 <h2>On this page</h2>
 <ul>
@@ -59,24 +59,23 @@ def render_help_content() -> str:
 
 <details>
 <summary>Recent queries</summary>
-<p>Recent queries is the primary administrator workflow. It reads query summaries from Cloudera Manager, applies filters, collects bounded profiles for selected queries, runs deterministic analysis, and shows action-oriented groups. Web scans do not auto-run LLM reports or optimizer drafts.</p>
+<p>Recent queries is the primary administrator workflow. It reads query summaries from the selected source, applies filters, collects bounded profiles for selected queries, runs deterministic analysis, and shows action-oriented groups. Web scans do not auto-run LLM reports or optimizer drafts.</p>
 <ul>
 <li><strong>Scan target</strong> switches between completed-query evidence and a live running-query snapshot.</li>
-<li><strong>Scan date</strong> and <strong>Scan Hour</strong> appear only for Finished queries and select one Cloudera Manager summary hour from today or the previous two days.</li>
+<li><strong>Scan date</strong> and <strong>Scan Hour</strong> appear only for Finished queries and select one summary hour from today or the previous two days.</li>
 <li><strong>Minimum duration</strong>, <strong>Username</strong>, and <strong>Resource pool</strong> narrow the summary set before profile collection.</li>
 <li><strong>Parallelism</strong> controls profile fetch and local analysis. <strong>Metadata parallelism</strong> separately bounds read-only metadata collection.</li>
-<li><strong>Collect CM events</strong> gathers one bounded Cloudera Manager Events context for the scan window. Events do not affect candidate selection and are not standalone proof for a query.</li>
+<li>Runtime context is collected automatically when the selected source supports it. Cloudera Manager clusters add bounded event and metric summaries; direct Impala Recent and Running scans use profile evidence and skip Cloudera Manager-only context.</li>
 <li>Results are grouped as <strong>Bad queries</strong>, <strong>Suspicious queries</strong>, <strong>Optimization candidates</strong>, and <strong>Stats refresh candidates</strong>.</li>
 <li><strong>Optimization candidates</strong> are deterministic query-shape review opportunities. They do not promise speedup and do not execute SQL.</li>
 <li><strong>Stats refresh candidates</strong> require metadata evidence, estimate mismatch, and planning-sensitive runtime symptoms. They still require EXPLAIN comparison and a comparable rerun.</li>
 <li><strong>Only queries with spills</strong> is a display filter over analyzed results; it does not change scan parameters.</li>
-<li><strong>Collect CM metrics</strong> enables bounded Cloudera Manager time-series summaries for the top ranked analyzed cases. The default budget is 10 cases.</li>
 </ul>
 </details>
 
 <details>
 <summary>Running now</summary>
-<p>Running now uses the same result and details shape as Finished queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. Profiles can be incomplete until a query finishes, so findings can be lower-confidence than completed-query analysis. Cluster event context and runtime metrics are enabled by default as bounded runtime context.</p>
+<p>Running now uses the same result and details shape as Finished queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. Profiles can be incomplete until a query finishes, so findings can be lower-confidence than completed-query analysis. Runtime context is collected automatically when the selected source supports it.</p>
 </details>
 
 <details>

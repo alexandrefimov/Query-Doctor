@@ -15,11 +15,7 @@ from query_doctor.web.ui.recent_scan_form import (
     render_running_scan_framing_note,
 )
 from query_doctor.web.cluster_selection import default_cluster_key, settings_for_cluster_key
-from query_doctor.web.models import (
-    WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
-    WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
-    WebError,
-)
+from query_doctor.web.models import WebError
 from query_doctor.web.ui.pages import render_page
 from query_doctor.web.ui.progress import render_job_panel
 from query_doctor.web.ui.recent_scan_results import render_batch_card
@@ -110,20 +106,6 @@ def render_running_queries_run_panel(
             config_key="recent_metadata_jobs",
             fallback=WEB_RECENT_SCAN_DEFAULTS["metadata_jobs"],
         ),
-        "cm_events_max_events": form_or_config_value(
-            form_values,
-            "cm_events_max_events",
-            config_values=local_config,
-            config_key="recent_cm_events_max_events",
-            fallback=str(WEB_CM_EVENTS_MAX_EVENTS_DEFAULT),
-        ),
-        "cm_timeseries_top_limit": form_or_config_value(
-            form_values,
-            "cm_timeseries_top_limit",
-            config_values=local_config,
-            config_key="recent_cm_timeseries_top_limit",
-            fallback=str(WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT),
-        ),
         "user": form_or_config_value(form_values, "user", config_values=local_config, config_key="recent_user"),
         "pool": form_or_config_value(form_values, "pool", config_values=local_config, config_key="recent_pool"),
     }
@@ -146,13 +128,13 @@ def render_running_queries_run_panel(
         "<section class=\"panel batch-run-panel\" aria-label=\"Run running query scan\">"
         "<div class=\"section-heading\"><div>"
         "<h1 class=\"section-title\">Running Queries</h1>"
-        "<div class=\"section-kicker\">Scan currently running Impala queries from Cloudera Manager summaries.</div>"
+        "<div class=\"section-kicker\">Scan currently running Impala queries from the selected source.</div>"
         "</div></div>"
         "<form id=\"running-form\" class=\"batch-form\" method=\"post\" action=\"/running/run\">"
         f"{metadata_note_html}"
         "<div class=\"scope-line\" aria-label=\"Running query collection scope\">"
-        "<strong>Scope:</strong> current running CM summaries → analyzable profiles → ranked cases → automatic metadata for top bad/suspicious cases · no auto LLM. "
-        "Cluster event context and runtime metrics are collected by default as bounded runtime context."
+        "<strong>Scope:</strong> current running query summaries → analyzable profiles → ranked cases → automatic metadata for top bad/suspicious cases · no auto LLM. "
+        "Runtime context is collected automatically when the selected source supports it."
         "</div>"
         f"{render_running_scan_framing_note()}"
         "<div class=\"batch-form-sections\">"
@@ -160,16 +142,14 @@ def render_running_queries_run_panel(
         "<div class=\"batch-form-grid\">"
         f"{render_cluster_select(settings, value('cluster_key'), field_id='running_cluster_key')}"
         f"{render_batch_number_field('min_duration_sec', 'Minimum duration (sec)', value('min_duration_sec'), step='0.001', required=False, help_text='Only include running queries at least this long. Empty means no duration filter.')}"
-        f"{render_batch_text_field('user', 'Username', value('user'), help_text='Optional exact Cloudera Manager query user filter. Empty means all users.')}"
-        f"{render_batch_text_field('pool', 'Resource pool', value('pool'), help_text='Optional Cloudera Manager pool filter. Empty means all pools.')}"
+        f"{render_batch_text_field('user', 'Username', value('user'), help_text='Optional exact query user filter. Empty means all users.')}"
+        f"{render_batch_text_field('pool', 'Resource pool', value('pool'), help_text='Optional resource pool filter. Empty means all pools.')}"
         "</div>"
         "</fieldset>"
         "<fieldset class=\"batch-form-section\"><legend>Analysis settings</legend>"
         "<div class=\"batch-form-grid\">"
-        f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for CM profile downloads and local analysis. Hard cap: 100.')}"
+        f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for profile downloads and local analysis. Hard cap: 100.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
-        f"{render_batch_number_field('cm_events_max_events', 'CM events max events', value('cm_events_max_events'), help_text='Maximum Cloudera Manager Events records to summarize once for the running scan window. Hard cap: 200.')}"
-        f"{render_batch_number_field('cm_timeseries_top_limit', 'CM metrics top cases', value('cm_timeseries_top_limit'), required=False, help_text='Maximum top ranked analyzed running cases that receive bounded Cloudera Manager time-series summaries. Default: 10. Use 0 to skip metrics refresh.')}"
         "</div>"
         "</fieldset>"
         "</div>"

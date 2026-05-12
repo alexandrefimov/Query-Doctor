@@ -18,7 +18,13 @@ from query_doctor.web.command_builders import (
     append_web_metadata_args,
     display_float,
 )
-from query_doctor.web.config import impala_profile_source_configured, metadata_configured
+from query_doctor.web.config import (
+    impala_profile_source_configured,
+    load_web_local_config,
+    metadata_configured,
+    optional_config_bool,
+    optional_config_int,
+)
 from query_doctor.web.form_helpers import (
     first_form_value,
     parse_cm_metrics_profile,
@@ -106,6 +112,7 @@ def parse_batch_run_config(
         else first_form_value(form, "cluster_key")
     )
     selected_settings = settings_for_cluster_key(settings, cluster_key) if settings is not None else None
+    local_config = _local_config_values(settings)
     scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(form)
     recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
     cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
@@ -138,14 +145,27 @@ def parse_batch_run_config(
     metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
-    collect_cm_events = bool(first_form_value(form, "collect_cm_events"))
+    collect_cm_events = _config_bool(
+        local_config,
+        "recent_collect_cm_events",
+        fallback=True,
+    )
     cm_events_max_events = parse_positive_form_int(
         form,
         "cm_events_max_events",
-        default=WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
+        default=_config_int(
+            local_config,
+            "recent_cm_events_max_events",
+            fallback=WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
+        ),
         maximum=BATCH_CM_EVENTS_MAX_EVENTS_MAX,
     )
-    collect_cm_timeseries = bool(first_form_value(form, "collect_cm_timeseries"))
+    collect_cm_timeseries = _config_bool(
+        local_config,
+        "recent_collect_cm_timeseries",
+        "collect_cm_timeseries",
+        fallback=True,
+    )
     cm_metrics_profile = (
         selected_settings.cm_metrics_profile
         if selected_settings is not None
@@ -154,7 +174,11 @@ def parse_batch_run_config(
     cm_timeseries_top_limit = parse_non_negative_form_int(
         form,
         "cm_timeseries_top_limit",
-        default=WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
+        default=_config_int(
+            local_config,
+            "recent_cm_timeseries_top_limit",
+            fallback=WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
+        ),
         maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
     )
     return BatchRunConfig(
@@ -200,6 +224,7 @@ def parse_running_run_config(
         else first_form_value(form, "cluster_key")
     )
     selected_settings = settings_for_cluster_key(settings, cluster_key) if settings is not None else None
+    local_config = _local_config_values(settings)
     cm_inspect_limit = WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT
     metadata_top_limit = parse_non_negative_form_int(
         form, "metadata_top_limit", default=default_metadata_top_limit, maximum=BATCH_METADATA_TOP_LIMIT_MAX
@@ -217,7 +242,11 @@ def parse_running_run_config(
     cm_events_max_events = parse_positive_form_int(
         form,
         "cm_events_max_events",
-        default=WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
+        default=_config_int(
+            local_config,
+            "recent_cm_events_max_events",
+            fallback=WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
+        ),
         maximum=BATCH_CM_EVENTS_MAX_EVENTS_MAX,
     )
     cm_metrics_profile = (
@@ -228,7 +257,11 @@ def parse_running_run_config(
     cm_timeseries_top_limit = parse_non_negative_form_int(
         form,
         "cm_timeseries_top_limit",
-        default=WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
+        default=_config_int(
+            local_config,
+            "recent_cm_timeseries_top_limit",
+            fallback=WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
+        ),
         maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
     )
     return BatchRunConfig(
@@ -258,6 +291,33 @@ def parse_running_run_config(
         cm_metrics_profile=cm_metrics_profile,
         cm_timeseries_top_limit=cm_timeseries_top_limit,
     )
+
+
+def _local_config_values(settings: WebSettings | None) -> dict[str, object]:
+    if settings is None:
+        return {}
+    try:
+        return load_web_local_config(settings.config, cwd=Path.cwd())
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _config_bool(
+    config_values: dict[str, object],
+    primary_key: str,
+    secondary_key: str | None = None,
+    *,
+    fallback: bool,
+) -> bool:
+    value = optional_config_bool(config_values, primary_key)
+    if value is None and secondary_key is not None:
+        value = optional_config_bool(config_values, secondary_key)
+    return fallback if value is None else value
+
+
+def _config_int(config_values: dict[str, object], key: str, *, fallback: int) -> int:
+    value = optional_config_int(config_values, key)
+    return fallback if value is None else value
 
 
 def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:

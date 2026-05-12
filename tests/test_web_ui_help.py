@@ -46,7 +46,7 @@ def test_web_help_page_renders_curated_static_help():
     assert "Recent queries" in body
     assert "Finished queries" in body
     assert "Known Query ID" in body
-    assert "Collect CM metrics" in body
+    assert "Runtime context is collected automatically when the selected source supports it." in body
     assert "Running now" in body
     assert "Query Optimizer" not in body
     assert "Specific Query" not in body
