@@ -33,6 +33,8 @@ def append_web_metadata_args(cmd: list[str], settings: WebSettings) -> None:
     cmd.extend(["--metadata-auth", settings.metadata_auth])
     cmd.extend(["--metadata-protocol", settings.metadata_protocol])
     cmd.extend(["--metadata-timeout-sec", str(settings.metadata_timeout_sec)])
+    if settings.metadata_kerberos_service_name:
+        cmd.extend(["--metadata-kerberos-service-name", settings.metadata_kerberos_service_name])
     if settings.metadata_ssl:
         cmd.append("--metadata-ssl")
     if settings.metadata_ca_cert:

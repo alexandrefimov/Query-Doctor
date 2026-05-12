@@ -329,6 +329,11 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             DEFAULT_METADATA_PROTOCOL,
         )
         or DEFAULT_METADATA_PROTOCOL,
+        metadata_kerberos_service_name=first_string_value(
+            args.metadata_kerberos_service_name,
+            optional_config_string(config_values, "metadata_kerberos_service_name"),
+            optional_config_string(config_values, "impala_kerberos_service_name"),
+        ),
         metadata_ssl=merged_bool_setting(
             args.metadata_ssl,
             optional_config_bool(config_values, "metadata_ssl"),

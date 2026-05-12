@@ -27,6 +27,7 @@ METADATA_AUTH_CHOICES = ("kerberos",)
 METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
 QUERY_PROFILE_SOURCE_CHOICES = ("cm", "impala")
 IMPALA_PROFILE_SCHEME_CHOICES = ("http", "https")
+KERBEROS_SERVICE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 
 ALLOWED_CONFIG_KEYS = {
     "ca_bundle",
@@ -39,6 +40,7 @@ ALLOWED_CONFIG_KEYS = {
     "cm_metrics_profile",
     "cm_timeseries_padding_sec",
     "host",
+    "impala_kerberos_service_name",
     "impala_profile_hosts",
     "impala_profile_port",
     "impala_profile_scheme",
@@ -93,6 +95,7 @@ ALLOWED_CONFIG_KEYS = {
     "metadata_ca_cert",
     "metadata_coordinator",
     "metadata_impala_shell",
+    "metadata_kerberos_service_name",
     "metadata_max_output_bytes",
     "metadata_max_tables",
     "metadata_protocol",
@@ -348,6 +351,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "cm_metrics_profile",
         "cm_url",
         "host",
+        "impala_kerberos_service_name",
         "impala_profile_scheme",
         "optimizer_model",
         "out",
@@ -368,6 +372,7 @@ def normalize_config_value(key: str, value: object) -> object:
         "metadata_ca_cert",
         "metadata_coordinator",
         "metadata_impala_shell",
+        "metadata_kerberos_service_name",
         "metadata_protocol",
     }:
         if not isinstance(value, str):
@@ -401,6 +406,8 @@ def normalize_config_value(key: str, value: object) -> object:
             )
         if key == "prometheus_url":
             validate_safe_http_url(normalized, field_name="prometheus_url")
+        if key in {"impala_kerberos_service_name", "metadata_kerberos_service_name"}:
+            validate_kerberos_service_name(normalized, field_name=key)
         return normalized or None
     if key in {
         "since_hours",
@@ -578,6 +585,13 @@ def validate_safe_http_url(value: str, *, field_name: str) -> None:
         raise ConfigError(
             f"Config field {field_name} must not include credentials, query parameters, or fragments."
         )
+
+
+def validate_kerberos_service_name(value: str, *, field_name: str) -> None:
+    if not value:
+        return
+    if not KERBEROS_SERVICE_NAME_RE.fullmatch(value):
+        raise ConfigError(f"Config field {field_name} must be a short token such as hive or impala.")
 
 
 def load_and_validate_config(

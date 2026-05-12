@@ -68,6 +68,7 @@ def collect_optimizer_metadata(
             coordinator=settings.metadata_coordinator,
             auth=settings.metadata_auth,
             protocol=settings.metadata_protocol,
+            kerberos_service_name=settings.metadata_kerberos_service_name,
             ssl=settings.metadata_ssl,
             ca_cert=settings.metadata_ca_cert,
             timeout_sec=settings.metadata_timeout_sec,

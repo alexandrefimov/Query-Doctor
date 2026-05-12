@@ -73,6 +73,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=("beeswax", "hs2", "hs2-http"),
         help="impala-shell protocol for web metadata collection. Default comes from config or beeswax.",
     )
+    parser.add_argument(
+        "--metadata-kerberos-service-name",
+        help="Kerberos service principal short name for metadata impala-shell, e.g. hive or impala.",
+    )
     parser.add_argument("--metadata-ssl", action="store_true", help="Pass --ssl to impala-shell metadata collection.")
     parser.add_argument("--metadata-ca-cert", help="CA certificate path for --metadata-ssl metadata connections.")
     parser.add_argument(

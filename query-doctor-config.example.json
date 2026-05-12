@@ -84,6 +84,8 @@
   "metadata_coordinator": "impala-coordinator.example.com:21000",
   "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
   "metadata_auth": "kerberos",
+  "impala_kerberos_service_name": "impala",
+  "metadata_kerberos_service_name": "impala",
   "metadata_protocol": "beeswax",
   "metadata_ssl": false,
   "metadata_ca_cert": "",

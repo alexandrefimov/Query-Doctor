@@ -13,6 +13,7 @@ from query_doctor.impala.shell_runner import (
     ImpalaShellConfigError,
     validate_auth,
     validate_coordinator,
+    validate_kerberos_service_name,
     validate_protocol,
 )
 from query_doctor.impala.metadata_policy import (
@@ -92,6 +93,11 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
         help="impala-shell protocol for metadata collection. Default: %(default)s.",
     )
     parser.add_argument(
+        "--metadata-kerberos-service-name",
+        default=os.environ.get("QD_METADATA_KERBEROS_SERVICE_NAME") or os.environ.get("QD_IMPALA_KERBEROS_SERVICE_NAME"),
+        help="Kerberos service principal short name passed to impala-shell, e.g. hive or impala.",
+    )
+    parser.add_argument(
         "--metadata-ssl",
         action="store_true",
         help="Pass --ssl to impala-shell for metadata collection.",
@@ -165,6 +171,12 @@ def validate_metadata_args(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error("--metadata-max-tables must be positive")
     if args.metadata_ca_cert and not args.metadata_ssl:
         parser.error("--metadata-ca-cert requires --metadata-ssl")
+    try:
+        args.metadata_kerberos_service_name = validate_kerberos_service_name(
+            args.metadata_kerberos_service_name
+        )
+    except ImpalaShellConfigError as exc:
+        parser.error(str(exc))
     if effective_mode != "off" and args.metadata_default_db:
         try:
             args.metadata_default_db = normalize_database_identifier(args.metadata_default_db)
@@ -388,6 +400,9 @@ def build_metadata_collector_cmd(
     )
     if args.metadata_redact:
         cmd.append("--redact")
+    kerberos_service_name = getattr(args, "metadata_kerberos_service_name", None)
+    if kerberos_service_name:
+        cmd.extend(["--kerberos-service-name", kerberos_service_name])
     if args.metadata_ssl:
         cmd.append("--ssl")
     if args.metadata_ca_cert:

@@ -18,6 +18,7 @@ from query_doctor.impala.shell_runner import (
     run_impala_shell,
     validate_auth,
     validate_coordinator,
+    validate_kerberos_service_name,
     validate_protocol,
 )
 from query_doctor.impala.shell_output import normalize_output_bytes
@@ -71,6 +72,7 @@ def build_impala_shell_args(args: argparse.Namespace, sql: str) -> list[str]:
         protocol=args.protocol,
         ssl=args.ssl,
         ca_cert=args.ca_cert,
+        kerberos_service_name=args.kerberos_service_name,
     )
 
 
@@ -191,6 +193,8 @@ def collect_impala_context(
         print(f"- auth: {args.auth}")
         if args.protocol:
             print(f"- protocol: {args.protocol}")
+        if args.kerberos_service_name:
+            print(f"- kerberos service name: {args.kerberos_service_name}")
         if args.ssl:
             print("- ssl: yes")
         if args.ca_cert:
@@ -266,6 +270,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["beeswax", "hs2", "hs2-http"],
         help="Optional impala-shell protocol.",
     )
+    parser.add_argument(
+        "--kerberos-service-name",
+        help="Kerberos service principal short name passed to impala-shell, e.g. hive or impala.",
+    )
     parser.add_argument("--ssl", action="store_true", default=None, help="Pass --ssl to impala-shell.")
     parser.add_argument("--ca-cert", help="CA certificate path for --ssl connections.")
     parser.add_argument(
@@ -308,6 +316,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     try:
         validate_auth(args.auth)
         validate_protocol(args.protocol)
+        args.kerberos_service_name = validate_kerberos_service_name(args.kerberos_service_name)
         if args.coordinator:
             args.coordinator = validate_coordinator(args.coordinator)
         elif not args.dry_run:
@@ -331,6 +340,11 @@ def apply_local_config(args: argparse.Namespace, *, cwd: Path) -> None:
     args.coordinator = first_string(args.coordinator, config_values.get("metadata_coordinator"))
     args.auth = first_string(args.auth, config_values.get("metadata_auth"), "kerberos")
     args.protocol = first_string(args.protocol, config_values.get("metadata_protocol"))
+    args.kerberos_service_name = first_string(
+        args.kerberos_service_name,
+        config_values.get("metadata_kerberos_service_name"),
+        config_values.get("impala_kerberos_service_name"),
+    )
     args.ssl = first_bool(args.ssl, config_values.get("metadata_ssl"), default=False)
     args.ca_cert = first_string(args.ca_cert, config_values.get("metadata_ca_cert"))
     args.timeout_sec = first_int(args.timeout_sec, config_values.get("metadata_timeout_sec"), default=DEFAULT_TIMEOUT_SEC)

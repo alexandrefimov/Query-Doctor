@@ -11,6 +11,7 @@ ALLOWED_AUTH_MODES = ("kerberos",)
 ALLOWED_PROTOCOLS = ("beeswax", "hs2", "hs2-http")
 COORDINATOR_HOSTPORT_RE = re.compile(r"([A-Za-z0-9_.-]+):([0-9]{1,5})\Z")
 COORDINATOR_IPV6_RE = re.compile(r"\[([0-9A-Fa-f:.]+)\]:([0-9]{1,5})\Z")
+KERBEROS_SERVICE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 
 Runner = Callable[..., subprocess.CompletedProcess[bytes]]
 
@@ -59,6 +60,19 @@ def validate_protocol(protocol: str | None) -> str | None:
     return protocol
 
 
+def validate_kerberos_service_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if not KERBEROS_SERVICE_NAME_RE.fullmatch(normalized):
+        raise ImpalaShellConfigError(
+            "Kerberos service name must be a short token such as hive or impala."
+        )
+    return normalized
+
+
 def build_impala_shell_argv(
     *,
     impala_shell: str,
@@ -68,10 +82,12 @@ def build_impala_shell_argv(
     protocol: str | None = None,
     ssl: bool = False,
     ca_cert: str | None = None,
+    kerberos_service_name: str | None = None,
 ) -> list[str]:
     validate_coordinator(coordinator)
     validate_auth(auth)
     validate_protocol(protocol)
+    kerberos_service_name = validate_kerberos_service_name(kerberos_service_name)
     if not impala_shell.strip():
         raise ImpalaShellConfigError("--impala-shell must not be empty.")
     if ca_cert and not ssl:
@@ -93,6 +109,8 @@ def build_impala_shell_argv(
         argv.extend(["--ca_cert", ca_cert])
     if protocol:
         argv.extend(["--protocol", protocol])
+    if kerberos_service_name:
+        argv.append(f"--kerberos_service_name={kerberos_service_name}")
     return argv
 
 
