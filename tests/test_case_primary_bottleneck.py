@@ -153,7 +153,30 @@ def test_stats_candidate_with_competing_non_stats_signal_becomes_mixed():
 
     assert result.label == "mixed"
     assert result.confidence == "medium"
-    assert result.reasons == ("competing_stats_and_non_stats",)
+    assert result.reasons == ("competing_stats", "competing_runtime_skew")
+
+
+def test_stats_candidate_with_competing_query_shape_signal_keeps_both_reasons():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(4),
+            findings=[
+                {
+                    "id": "join_bottleneck",
+                    "operators": [{"time_ms": 8_000}],
+                }
+            ],
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "mixed_candidate",
+                "non_stats_bottleneck_categories": "query_shape",
+            },
+        )
+    )
+
+    assert result.label == "mixed"
+    assert result.confidence == "medium"
+    assert result.reasons == ("competing_stats", "competing_sql_shape")
 
 
 def test_mixed_candidate_is_not_overridden_by_data_movement_top_finding():
@@ -172,6 +195,7 @@ def test_mixed_candidate_is_not_overridden_by_data_movement_top_finding():
 
     assert result.label == "mixed"
     assert result.confidence == "medium"
+    assert result.reasons == ("competing_stats", "competing_runtime_data_movement")
 
 
 def test_sql_shape_high_requires_metadata_and_anomaly_pattern():
@@ -350,6 +374,7 @@ def test_mixed_candidate_is_not_overridden_by_storage_top_finding():
 
     assert result.label == "mixed"
     assert result.confidence == "medium"
+    assert result.reasons == ("competing_stats", "competing_runtime_storage")
 
 
 def test_very_short_query_returns_unknown():

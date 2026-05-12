@@ -19,6 +19,20 @@ QUERY_SHAPE_FINDING_IDS = {
 }
 
 CONFIDENCE_ORDER = {"low": 1, "medium": 2, "high": 3}
+COMPETING_CATEGORY_TO_PRIMARY = {
+    "backend_data_skew": "runtime_skew",
+    "backend_execution_tail": "runtime_skew",
+    "exchange_or_data_movement": "runtime_data_movement",
+    "query_shape": "sql_shape",
+    "storage_or_hdfs": "runtime_storage",
+}
+COMPETING_PRIMARY_ORDER = (
+    "stats",
+    "sql_shape",
+    "runtime_skew",
+    "runtime_data_movement",
+    "runtime_storage",
+)
 
 
 @dataclass(frozen=True)
@@ -141,7 +155,11 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         )
 
     if len(primary_candidates) >= 2 or stats_competing_signal:
-        reasons = tuple(f"competing_{name}" for name in primary_candidates)
+        reasons = competing_primary_reasons(
+            primary_candidates,
+            non_stats_categories,
+            include_stats=stats_competing_signal or "stats" in primary_candidates,
+        )
         if not reasons:
             reasons = ("competing_stats_and_non_stats",)
         return CasePrimaryBottleneck("mixed", "medium", reasons)
@@ -301,6 +319,22 @@ def category_set(value: Any) -> set[str]:
     if isinstance(value, (list, tuple, set)):
         return {str(item).strip() for item in value if str(item).strip()}
     return set()
+
+
+def competing_primary_reasons(
+    primary_candidates: list[str],
+    non_stats_categories: set[str],
+    *,
+    include_stats: bool,
+) -> tuple[str, ...]:
+    names = set(primary_candidates)
+    if include_stats:
+        names.add("stats")
+    for category in non_stats_categories:
+        primary = COMPETING_CATEGORY_TO_PRIMARY.get(category)
+        if primary:
+            names.add(primary)
+    return tuple(f"competing_{name}" for name in COMPETING_PRIMARY_ORDER if name in names)
 
 
 def normalized_confidence(value: Any) -> str:
