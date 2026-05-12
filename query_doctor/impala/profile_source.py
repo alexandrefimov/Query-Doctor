@@ -17,6 +17,7 @@ from query_doctor.cm.models import CMAdapterError, CMClientError
 DEFAULT_IMPALA_PROFILE_PORT = 25000
 DEFAULT_IMPALA_PROFILE_SCHEME = "http"
 DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC = 15
+PROFILE_MARKER_SCAN_CHARS = 128 * 1024
 IMPALA_PROFILE_PATHS = (
     "/query_profile?query_id={query_id}&format=text",
     "/query_profile?query_id={query_id}",
@@ -178,7 +179,7 @@ def profile_response_is_not_found(text: str) -> bool:
 
 
 def profile_text_looks_like_runtime_profile(text: str) -> bool:
-    normalized = text[:8192].lower()
+    normalized = text[:PROFILE_MARKER_SCAN_CHARS].lower()
     if any(marker in normalized for marker in PROFILE_CONTENT_MARKERS):
         return True
     if "query id:" in normalized and any(marker in normalized for marker in PROFILE_STRUCTURAL_MARKERS):
