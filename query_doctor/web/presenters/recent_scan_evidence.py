@@ -165,7 +165,7 @@ def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
         if label == "storage/hdfs":
             return "Review storage and HDFS evidence before SQL or stats action"
     if not primary.unavailable and primary.label == "Competing signals":
-        return "Review competing stats, SQL-shape, and runtime signals"
+        return competing_signal_next_action(primary.reason_summary)
     if _candidate_is_visible(view.optimization_candidate):
         rewrite_support = str(view.optimization_candidate.get("rewrite_support") or "").lower()
         rewriteability_bucket = str(view.optimization_candidate.get("rewriteability_bucket") or "").lower()
@@ -195,6 +195,24 @@ def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
 
 def _candidate_is_visible(candidate: dict[str, Any]) -> bool:
     return str(candidate.get("tier") or "").lower() in {"high", "medium"}
+
+
+def competing_signal_next_action(reason_summary: str) -> str:
+    reasons = str(reason_summary or "").lower()
+    has_stats = "stats" in reasons
+    has_sql_shape = "sql-shape" in reasons
+    has_data_movement = "data-movement" in reasons
+    has_runtime_skew = "runtime-skew" in reasons
+    has_storage = "storage/hdfs" in reasons
+    if has_stats and has_sql_shape:
+        return "Review SQL-shape guidance alongside stats evidence; confirm with EXPLAIN before stats action"
+    if has_stats and has_data_movement:
+        return "Review exchange/data-movement evidence before treating stats as the main action"
+    if has_stats and has_runtime_skew:
+        return "Review runtime skew evidence before treating stats as the main action"
+    if has_stats and has_storage:
+        return "Review storage and HDFS evidence before treating stats as the main action"
+    return "Review competing stats, SQL-shape, and runtime signals"
 
 
 def _candidate_title(value: Any) -> str:
