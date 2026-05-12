@@ -161,7 +161,11 @@ def collect_case_profile(
                 "--max-profile-bytes",
                 str(config.max_profile_bytes),
             ]
-            include_cm_timeseries = config.collect_cm_timeseries if collect_cm_timeseries is None else collect_cm_timeseries
+            include_cm_timeseries = (
+                config.collect_cm_timeseries
+                if collect_cm_timeseries is None
+                else collect_cm_timeseries
+            )
             if include_cm_timeseries:
                 cmd.extend(
                     [
@@ -209,13 +213,25 @@ def process_cases(
     progress: ProgressWriter,
 ) -> None:
     collection_started = time.monotonic()
-    progress.emit(stage="profile_collection", status="started", total=len(cases), cm_jobs=config.cm_jobs)
+    progress.emit(
+        stage="profile_collection", status="started", total=len(cases), cm_jobs=config.cm_jobs
+    )
     collect_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
-    progress.emit(stage="profile_collection", status="done", total=len(cases), seconds=elapsed_seconds(collection_started))
+    progress.emit(
+        stage="profile_collection",
+        status="done",
+        total=len(cases),
+        seconds=elapsed_seconds(collection_started),
+    )
     analysis_started = time.monotonic()
     progress.emit(stage="analyzer_scoring", status="started", total=len(cases), jobs=config.jobs)
     analyze_cases(config, cases, env=env, repo_root=repo_root, progress=progress)
-    progress.emit(stage="analyzer_scoring", status="done", total=len(cases), seconds=elapsed_seconds(analysis_started))
+    progress.emit(
+        stage="analyzer_scoring",
+        status="done",
+        total=len(cases),
+        seconds=elapsed_seconds(analysis_started),
+    )
     refresh_top_cm_timeseries(config, cases, env=env, repo_root=repo_root, progress=progress)
 
 
@@ -234,7 +250,14 @@ def collect_cases(
 
     with ThreadPoolExecutor(max_workers=config.cm_jobs) as executor:
         futures = [
-            executor.submit(collect_case_for_batch, config, case, env=env, repo_root=repo_root, progress=progress)
+            executor.submit(
+                collect_case_for_batch,
+                config,
+                case,
+                env=env,
+                repo_root=repo_root,
+                progress=progress,
+            )
             for case in cases
         ]
         for future in as_completed(futures):
@@ -257,7 +280,14 @@ def analyze_cases(
 
     with ThreadPoolExecutor(max_workers=config.jobs) as executor:
         futures = [
-            executor.submit(analyze_case_for_batch, config, case, env=env, repo_root=repo_root, progress=progress)
+            executor.submit(
+                analyze_case_for_batch,
+                config,
+                case,
+                env=env,
+                repo_root=repo_root,
+                progress=progress,
+            )
             for case in cases
         ]
         for future in as_completed(futures):
@@ -284,7 +314,9 @@ def collect_case_for_batch(
             seconds=case.cm_collect_seconds,
         )
         return case
-    progress.emit(stage="case", case_id=case_id, status="collection_done", seconds=case.cm_collect_seconds)
+    progress.emit(
+        stage="case", case_id=case_id, status="collection_done", seconds=case.cm_collect_seconds
+    )
     return case
 
 
@@ -297,22 +329,36 @@ def refresh_top_cm_timeseries(
     progress: ProgressWriter,
 ) -> None:
     if config.query_profile_source == "cm" and not config.collect_cm_timeseries:
-        progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="collect_cm_timeseries=false")
+        progress.emit(
+            stage="cm_timeseries_refresh", status="skipped", reason="collect_cm_timeseries=false"
+        )
         return
     if config.query_profile_source == "impala":
         if not config.collect_prometheus_timeseries:
-            progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="collect_prometheus_timeseries=false")
+            progress.emit(
+                stage="cm_timeseries_refresh",
+                status="skipped",
+                reason="collect_prometheus_timeseries=false",
+            )
             return
         if not config.prometheus_url:
-            progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="prometheus_url not configured")
+            progress.emit(
+                stage="cm_timeseries_refresh",
+                status="skipped",
+                reason="prometheus_url not configured",
+            )
             return
     if config.cm_timeseries_top_limit <= 0:
-        progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="cm_timeseries_top_limit=0")
+        progress.emit(
+            stage="cm_timeseries_refresh", status="skipped", reason="cm_timeseries_top_limit=0"
+        )
         return
     ranked = [
         case
         for case in sorted(cases, key=batch_ranking_key)
-        if case.collection_status == "ok" and case.analysis_status == "ok" and case.actual_case_dir is not None
+        if case.collection_status == "ok"
+        and case.analysis_status == "ok"
+        and case.actual_case_dir is not None
     ]
     candidates = ranked[: config.cm_timeseries_top_limit]
     if not candidates:
@@ -370,7 +416,12 @@ def refresh_case_cm_timeseries(
 ) -> CaseResult:
     case_id = f"case-{case.index:03d}"
     if case.actual_case_dir is None:
-        progress.emit(stage="cm_timeseries_refresh", case_id=case_id, status="failed", reason="case_dir_missing")
+        progress.emit(
+            stage="cm_timeseries_refresh",
+            case_id=case_id,
+            status="failed",
+            reason="case_dir_missing",
+        )
         return case
     refresh_dir = case.wrapper_dir / f".cm-timeseries-refresh-{uuid4().hex}"
     progress.emit(stage="cm_timeseries_refresh", case_id=case_id, status="started")
@@ -391,7 +442,9 @@ def refresh_case_cm_timeseries(
         if case.cm_collect_seconds is None:
             case.cm_collect_seconds = refresh_case.cm_collect_seconds
         elif refresh_case.cm_collect_seconds is not None:
-            case.cm_collect_seconds = round(case.cm_collect_seconds + refresh_case.cm_collect_seconds, 3)
+            case.cm_collect_seconds = round(
+                case.cm_collect_seconds + refresh_case.cm_collect_seconds, 3
+            )
         if refresh_case.collection_status == "ok" and context_paths:
             target = case.actual_case_dir / context_paths[0].name
             shutil.copyfile(context_paths[0], target)
@@ -517,24 +570,45 @@ def refresh_top_metadata(
     candidates = select_metadata_refresh_candidates_for_config(config, ranked)
     if not candidates:
         mark_metadata_not_requested(ranked)
-        progress.emit(stage="metadata_refresh", status="skipped", reason="no bad or suspicious cases")
+        progress.emit(
+            stage="metadata_refresh", status="skipped", reason="no bad or suspicious cases"
+        )
         return
     started = time.monotonic()
-    progress.emit(stage="metadata_refresh", status="started", total=len(candidates), metadata_jobs=config.metadata_jobs)
+    progress.emit(
+        stage="metadata_refresh",
+        status="started",
+        total=len(candidates),
+        metadata_jobs=config.metadata_jobs,
+    )
     if config.metadata_jobs == 1:
         for case in candidates:
             refresh_case_metadata(config, case, env=env, repo_root=repo_root, progress=progress)
     else:
         with ThreadPoolExecutor(max_workers=config.metadata_jobs) as executor:
             futures = [
-                executor.submit(refresh_case_metadata, config, case, env=env, repo_root=repo_root, progress=progress)
+                executor.submit(
+                    refresh_case_metadata,
+                    config,
+                    case,
+                    env=env,
+                    repo_root=repo_root,
+                    progress=progress,
+                )
                 for case in candidates
             ]
             for future in as_completed(futures):
                 future.result()
     refreshed_ids = {id(case) for case in candidates}
-    mark_metadata_not_requested([case for case in cases if case.analysis_status == "ok" and id(case) not in refreshed_ids])
-    progress.emit(stage="metadata_refresh", status="done", total=len(candidates), seconds=elapsed_seconds(started))
+    mark_metadata_not_requested(
+        [case for case in cases if case.analysis_status == "ok" and id(case) not in refreshed_ids]
+    )
+    progress.emit(
+        stage="metadata_refresh",
+        status="done",
+        total=len(candidates),
+        seconds=elapsed_seconds(started),
+    )
 
 
 def refresh_case_metadata(
@@ -546,9 +620,13 @@ def refresh_case_metadata(
     progress: ProgressWriter,
 ) -> CaseResult:
     case_id = f"case-{case.index:03d}"
-    progress.emit(stage="metadata_refresh", case_id=case_id, status="started", triage_rank=case.triage_rank)
+    progress.emit(
+        stage="metadata_refresh", case_id=case_id, status="started", triage_rank=case.triage_rank
+    )
     started = time.monotonic()
-    run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode=config.metadata_mode)
+    run_analysis_pass(
+        config, case, env=env, repo_root=repo_root, metadata_mode=config.metadata_mode
+    )
     case.metadata_refreshed = True
     seconds = elapsed_seconds(started)
     if case.analysis_status == "ok":
@@ -582,7 +660,11 @@ def run_top_reports(
     if config.top_reports <= 0:
         return
     ranked = sorted(
-        [case for case in cases if case.analysis_status == "ok" and case.score > 0 and case.actual_case_dir],
+        [
+            case
+            for case in cases
+            if case.analysis_status == "ok" and case.score > 0 and case.actual_case_dir
+        ],
         key=batch_ranking_key,
     )
     for case in ranked[: config.top_reports]:
@@ -644,7 +726,9 @@ def subprocess_timeout_sec(cmd: list[str]) -> int:
     return DEFAULT_SUBPROCESS_TIMEOUT_SEC
 
 
-def run_subprocess(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
+def run_subprocess(
+    cmd: list[str], *, cwd: Path, env: dict[str, str]
+) -> subprocess.CompletedProcess:
     timeout_sec = subprocess_timeout_sec(cmd)
     try:
         return subprocess.run(

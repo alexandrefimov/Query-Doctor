@@ -95,7 +95,9 @@ def test_web_report_markdown_renders_safe_html():
     )
 
     assert "<h1>Title</h1>" in rendered
-    assert "<p>Paragraph with <code>inline_code</code> and &lt;b&gt;unsafe&lt;/b&gt;.</p>" in rendered
+    assert (
+        "<p>Paragraph with <code>inline_code</code> and &lt;b&gt;unsafe&lt;/b&gt;.</p>" in rendered
+    )
     assert "<ul><li>item one</li><li>item two</li></ul>" in rendered
     assert "<blockquote>quoted</blockquote>" in rendered
     assert "<table>" in rendered
@@ -129,7 +131,10 @@ def test_details_inline_report_keeps_summary_open_and_appendix_collapsed():
     appendix_index = rendered.index("Detailed report and follow-up checks")
     assert summary_index < appendix_index
     assert recommendation_index < appendix_index
-    assert '<details class="analysis-subdetails report-appendix" aria-label="LLM report details">' in rendered
+    assert (
+        '<details class="analysis-subdetails report-appendix" aria-label="LLM report details">'
+        in rendered
+    )
     assert "Detailed evidence." in rendered[appendix_index:]
     assert "Follow-up check." in rendered[appendix_index:]
     assert module.render_details_inline_report_html is markdown.render_details_inline_report_html
@@ -248,9 +253,9 @@ def test_web_report_sidebar_only_marks_existing_artifacts_available(tmp_path):
     assert "Analyzer facts" in body
     assert "analysis_facts.md" not in body
     assert "Profile text<code>profile.txt</code>" not in body
-    assert "<span>Profile</span><span class=\"badge gray\">not collected</span>" in body
-    assert "<span>SQL</span><span class=\"badge gray\">not collected</span>" in body
-    assert "<span>Host metrics</span><span class=\"badge gray\">not collected</span>" in body
+    assert '<span>Profile</span><span class="badge gray">not collected</span>' in body
+    assert '<span>SQL</span><span class="badge gray">not collected</span>' in body
+    assert '<span>Host metrics</span><span class="badge gray">not collected</span>' in body
     assert str(case_dir) not in body
     assert "case_dir" not in body
     assert "qwen3-coder:30b" not in body

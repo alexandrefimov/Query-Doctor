@@ -79,7 +79,9 @@ def find_nonzero_spill_metric_lines(text: str) -> list[str]:
     return lines
 
 
-def find_codegen_bottleneck_lines(text: str, total_time_ms: float | None, min_share: float = 0.10) -> list[str]:
+def find_codegen_bottleneck_lines(
+    text: str, total_time_ms: float | None, min_share: float = 0.10
+) -> list[str]:
     if not isinstance(total_time_ms, (int, float)) or total_time_ms <= 0:
         return []
     lines: list[str] = []

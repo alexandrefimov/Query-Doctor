@@ -18,7 +18,9 @@ def test_web_running_page_renders_without_scan_window_fields_and_with_bounds_not
 
     assert "Scan date" not in body
     assert "Scan Hour" not in body
-    assert "Runtime context is collected automatically when the selected source supports it." in body
+    assert (
+        "Runtime context is collected automatically when the selected source supports it." in body
+    )
     assert 'name="cm_timeseries_top_limit"' not in body
     assert "Live snapshot:" in body
     assert "no date/hour window is used" in body
@@ -50,6 +52,9 @@ def test_web_running_route_renders_page():
     assert captured["status"] == 200
     assert "Running Queries" in captured["body"]
     assert "current running query summaries" in captured["body"]
-    assert "Runtime context is collected automatically when the selected source supports it." in captured["body"]
+    assert (
+        "Runtime context is collected automatically when the selected source supports it."
+        in captured["body"]
+    )
     assert "Live snapshot:" in captured["body"]
     assert "profiles can be incomplete while queries execute" in captured["body"]

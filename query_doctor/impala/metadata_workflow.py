@@ -94,7 +94,8 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--metadata-kerberos-service-name",
-        default=os.environ.get("QD_METADATA_KERBEROS_SERVICE_NAME") or os.environ.get("QD_IMPALA_KERBEROS_SERVICE_NAME"),
+        default=os.environ.get("QD_METADATA_KERBEROS_SERVICE_NAME")
+        or os.environ.get("QD_IMPALA_KERBEROS_SERVICE_NAME"),
         help="Kerberos service principal short name passed to impala-shell, e.g. hive or impala.",
     )
     parser.add_argument(
@@ -235,7 +236,9 @@ def resolve_metadata_mode(args: argparse.Namespace) -> str:
     return args.metadata_mode
 
 
-def metadata_config_status(args: argparse.Namespace, *, base_dir: Path | None = None) -> MetadataConfigStatus:
+def metadata_config_status(
+    args: argparse.Namespace, *, base_dir: Path | None = None
+) -> MetadataConfigStatus:
     if not args.metadata_coordinator:
         return MetadataConfigStatus(False, "metadata coordinator is not configured")
     try:
@@ -247,7 +250,9 @@ def metadata_config_status(args: argparse.Namespace, *, base_dir: Path | None = 
         args.metadata_coordinator = validate_coordinator(args.metadata_coordinator)
     except ImpalaShellConfigError as exc:
         return MetadataConfigStatus(False, str(exc), fatal=True)
-    resolved_impala_shell = _resolve_impala_shell_path(args.metadata_impala_shell, base_dir=base_dir)
+    resolved_impala_shell = _resolve_impala_shell_path(
+        args.metadata_impala_shell, base_dir=base_dir
+    )
     if resolved_impala_shell is None:
         return MetadataConfigStatus(
             False,
@@ -346,7 +351,9 @@ def build_metadata_plan(
                 invalid.append(table)
                 continue
             try:
-                normalized_table = normalize_table_identifier(f"{normalized_default_database}.{table}")
+                normalized_table = normalize_table_identifier(
+                    f"{normalized_default_database}.{table}"
+                )
             except CollectorError:
                 invalid.append(table)
                 continue
@@ -421,7 +428,9 @@ def print_metadata_plan(plan: MetadataPlan, *, dry_run: bool) -> None:
     for table in plan.selected_tables:
         print(f"[pipeline]   collect: {table}")
     if plan.skipped_tables:
-        print(f"[pipeline] skipped due to metadata max tables ({plan.max_tables}): {len(plan.skipped_tables)}")
+        print(
+            f"[pipeline] skipped due to metadata max tables ({plan.max_tables}): {len(plan.skipped_tables)}"
+        )
         for table in plan.skipped_tables:
             print(f"[pipeline]   skip: {table}")
     if plan.invalid_tables:

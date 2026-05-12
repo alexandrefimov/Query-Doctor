@@ -22,7 +22,13 @@ LEGACY_CONFIG_WARNING = (
 )
 
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
-RECENT_ORDER_CHOICES = ("recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority")
+RECENT_ORDER_CHOICES = (
+    "recent",
+    "duration-desc",
+    "duration-asc",
+    "recent-duration-desc",
+    "status-priority",
+)
 METADATA_AUTH_CHOICES = ("kerberos",)
 METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
 QUERY_PROFILE_SOURCE_CHOICES = ("cm", "impala")
@@ -196,7 +202,9 @@ def discover_config_path(
             source_kind="explicit",
         )
 
-    default_path = _discover_default_path(cwd=cwd, repo_root=repo_root, use_repo_default=use_repo_default)
+    default_path = _discover_default_path(
+        cwd=cwd, repo_root=repo_root, use_repo_default=use_repo_default
+    )
     if default_path is None:
         return ConfigLoadResult(path=None, values={}, source_kind="none")
     if default_path.name == LEGACY_CONFIG_PATH:
@@ -269,9 +277,7 @@ def normalize_config_keys(raw: Mapping[object, object]) -> dict[str, object]:
         validate_config_field(key)
         normalized_key = normalize_config_key(key)
         if normalized_key in normalized:
-            raise ConfigError(
-                f"Config field {key} duplicates normalized field {normalized_key}."
-            )
+            raise ConfigError(f"Config field {key} duplicates normalized field {normalized_key}.")
         normalized[normalized_key] = normalize_config_value(normalized_key, value)
     return normalized
 
@@ -341,7 +347,9 @@ def normalize_config_value(key: str, value: object) -> object:
         if key == "metadata_timeout_sec":
             raise ConfigError("Config field metadata_timeout_sec must be a positive integer.")
         if key == "prometheus_timeseries_padding_sec":
-            raise ConfigError("Config field prometheus_timeseries_padding_sec must be a non-negative integer.")
+            raise ConfigError(
+                "Config field prometheus_timeseries_padding_sec must be a non-negative integer."
+            )
         return None
     if key == "krb5ccname":
         if not isinstance(value, str):
@@ -386,9 +394,7 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError(f"Config field {key} must be a string.")
         normalized = value.strip()
         if key == "status" and normalized not in STATUS_CHOICES:
-            raise ConfigError(
-                f"Config field status must be one of: {', '.join(STATUS_CHOICES)}."
-            )
+            raise ConfigError(f"Config field status must be one of: {', '.join(STATUS_CHOICES)}.")
         if key == "query_profile_source" and normalized not in QUERY_PROFILE_SOURCE_CHOICES:
             raise ConfigError(
                 "Config field query_profile_source must be one of: "
@@ -454,9 +460,13 @@ def normalize_config_value(key: str, value: object) -> object:
         hosts = [host for host in hosts if host]
         for host in hosts:
             if any(ord(ch) < 32 or ord(ch) == 127 for ch in host):
-                raise ConfigError("Config field impala_profile_hosts must not contain control characters.")
+                raise ConfigError(
+                    "Config field impala_profile_hosts must not contain control characters."
+                )
             if any(marker in host for marker in ("/", "\\", "@", "?", "#")):
-                raise ConfigError("Config field impala_profile_hosts must contain hostnames or host:port only.")
+                raise ConfigError(
+                    "Config field impala_profile_hosts must contain hostnames or host:port only."
+                )
         return hosts
     if key in {"recent_metadata_top_limit", "recent_cm_timeseries_top_limit"}:
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -598,7 +608,9 @@ def validate_kerberos_service_name(value: str, *, field_name: str) -> None:
     if not value:
         return
     if not KERBEROS_SERVICE_NAME_RE.fullmatch(value):
-        raise ConfigError(f"Config field {field_name} must be a short token such as hive or impala.")
+        raise ConfigError(
+            f"Config field {field_name} must be a short token such as hive or impala."
+        )
 
 
 def load_and_validate_config(

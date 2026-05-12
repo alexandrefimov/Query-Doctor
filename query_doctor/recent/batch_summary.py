@@ -147,9 +147,17 @@ def build_summary(
     rank_cases_for_query_optimization(cases)
     rank_cases_for_stats_optimization(cases)
     selected_count = len(cases)
-    inspected = discovery.summaries_inspected if discovery.summaries_inspected is not None else len(discovery.candidates)
-    reason_counts = {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
-    reason_sql_verb_counts = {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
+    inspected = (
+        discovery.summaries_inspected
+        if discovery.summaries_inspected is not None
+        else len(discovery.candidates)
+    )
+    reason_counts = (
+        {} if discovery.scan_too_broad else candidate_reason_counts(discovery.candidates)
+    )
+    reason_sql_verb_counts = (
+        {} if discovery.scan_too_broad else candidate_reason_sql_verb_counts(discovery.candidates)
+    )
     primary_distribution = case_primary_bottleneck_distribution(cases)
     primary_unknown_breakdown = case_primary_unknown_breakdown(cases)
     rewriteability_distribution = optimizer_rewriteability_distribution(cases)
@@ -198,7 +206,9 @@ def build_summary(
         "selected_count": selected_count,
         "candidate_reason_counts": reason_counts,
         "candidate_reason_sql_verb_counts": reason_sql_verb_counts,
-        "candidate_exclusion_count": 0 if discovery.scan_too_broad else max(0, inspected - selected_count),
+        "candidate_exclusion_count": 0
+        if discovery.scan_too_broad
+        else max(0, inspected - selected_count),
         "case_primary_bottleneck_distribution": primary_distribution,
         "case_primary_unknown_breakdown": primary_unknown_breakdown,
         "optimizer_rewriteability_distribution": rewriteability_distribution,
@@ -231,13 +241,14 @@ def batch_ranking_key(case: CaseResult) -> tuple[object, ...]:
 
 def candidate_reason_counts(candidates: list[cm_profiles.RecentQueryCandidate]) -> dict[str, int]:
     counts = Counter(
-        cm_profiles.sanitize_text_for_log(candidate.reason or "unknown")
-        for candidate in candidates
+        cm_profiles.sanitize_text_for_log(candidate.reason or "unknown") for candidate in candidates
     )
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
 
-def candidate_reason_sql_verb_counts(candidates: list[cm_profiles.RecentQueryCandidate]) -> dict[str, dict[str, int]]:
+def candidate_reason_sql_verb_counts(
+    candidates: list[cm_profiles.RecentQueryCandidate],
+) -> dict[str, dict[str, int]]:
     grouped: dict[str, Counter[str]] = {}
     for candidate in candidates:
         reason = cm_profiles.sanitize_text_for_log(candidate.reason or "unknown")
@@ -287,7 +298,9 @@ def case_primary_bottleneck_distribution(cases: list[CaseResult]) -> dict[str, o
     confidence_counts: Counter[str] = Counter()
     classified = 0
     for case in cases:
-        bottleneck = case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
+        bottleneck = (
+            case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
+        )
         label = str(bottleneck.get("label") or "").strip().lower()
         confidence = str(bottleneck.get("confidence") or "").strip().lower()
         if label in PRIMARY_BOTTLENECK_LABELS:
@@ -337,12 +350,18 @@ def case_primary_unknown_breakdown(cases: list[CaseResult]) -> dict[str, object]
     analysis_json_cases = 0
     unknown_cases = [case for case in cases if case_primary_label(case) == "unknown"]
     for case in unknown_cases:
-        metadata_status_counts[known_or_other(case.metadata_status, UNKNOWN_METADATA_STATUS_LABELS)] += 1
+        metadata_status_counts[
+            known_or_other(case.metadata_status, UNKNOWN_METADATA_STATUS_LABELS)
+        ] += 1
         query_tier_counts[
-            known_or_other(candidate_tier(case.query_optimization_candidate), UNKNOWN_OPTIMIZATION_TIER_LABELS)
+            known_or_other(
+                candidate_tier(case.query_optimization_candidate), UNKNOWN_OPTIMIZATION_TIER_LABELS
+            )
         ] += 1
         stats_tier_counts[
-            known_or_other(candidate_tier(case.stats_optimization_candidate), UNKNOWN_OPTIMIZATION_TIER_LABELS)
+            known_or_other(
+                candidate_tier(case.stats_optimization_candidate), UNKNOWN_OPTIMIZATION_TIER_LABELS
+            )
         ] += 1
         duration_bucket_counts[duration_bucket(case.duration_sec)] += 1
         score_severity_counts[case_score_severity(case)] += 1
@@ -361,14 +380,20 @@ def case_primary_unknown_breakdown(cases: list[CaseResult]) -> dict[str, object]
                 known_or_other(evidence_quality.get("level"), UNKNOWN_EVIDENCE_QUALITY_LABELS)
             ] += 1
             for limitation in evidence_quality.get("limitations") or []:
-                evidence_limitation_counts[known_or_other(limitation, UNKNOWN_LIMITATION_LABELS)] += 1
+                evidence_limitation_counts[
+                    known_or_other(limitation, UNKNOWN_LIMITATION_LABELS)
+                ] += 1
         runtime_diagnosis = analysis.get("runtime_diagnosis")
         if isinstance(runtime_diagnosis, dict):
-            runtime_diagnosis_counts[runtime_diagnosis_bucket(runtime_diagnosis.get("summary"))] += 1
+            runtime_diagnosis_counts[
+                runtime_diagnosis_bucket(runtime_diagnosis.get("summary"))
+            ] += 1
         stats_quality = analysis.get("stats_metadata_quality")
         if isinstance(stats_quality, dict):
             stats_primary_counts[
-                known_or_other(stats_quality.get("stats_primary_bottleneck"), UNKNOWN_STATS_PRIMARY_LABELS)
+                known_or_other(
+                    stats_quality.get("stats_primary_bottleneck"), UNKNOWN_STATS_PRIMARY_LABELS
+                )
             ] += 1
             stats_context_counts[
                 known_or_other(stats_quality.get("stats_context"), UNKNOWN_STATS_CONTEXT_LABELS)
@@ -392,7 +417,9 @@ def case_primary_unknown_breakdown(cases: list[CaseResult]) -> dict[str, object]
 
 
 def case_primary_label(case: CaseResult) -> str:
-    bottleneck = case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
+    bottleneck = (
+        case.case_primary_bottleneck if isinstance(case.case_primary_bottleneck, dict) else {}
+    )
     return str(bottleneck.get("label") or "").strip().lower()
 
 
@@ -417,7 +444,9 @@ def safe_counter_label(value: object, *, default: str = "unknown") -> str:
     text = str(value or "").strip().lower()
     if not text:
         return default
-    safe = "".join(character if character.isalnum() or character == "_" else "_" for character in text)
+    safe = "".join(
+        character if character.isalnum() or character == "_" else "_" for character in text
+    )
     safe = "_".join(part for part in safe.split("_") if part)
     return safe or default
 
@@ -549,7 +578,9 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
             )
         elif normalized_bucket == "human_review_only":
             human_review_status_counts[normalize_adjacent_label(support.status)] += 1
-            human_review_eligibility_counts[normalize_adjacent_label(support.draft_eligibility)] += 1
+            human_review_eligibility_counts[
+                normalize_adjacent_label(support.draft_eligibility)
+            ] += 1
             human_review_risk_reason_counts.update(
                 normalize_human_review_risk_reason(reason) for reason in support.risk_reasons
             )
@@ -583,9 +614,7 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "recipe_detected_no_draft_eligibility_counts": dict(
             sorted(no_draft_eligibility_counts.items())
         ),
-        "recipe_detected_no_draft_class_counts": dict(
-            sorted(no_draft_class_counts.items())
-        ),
+        "recipe_detected_no_draft_class_counts": dict(sorted(no_draft_class_counts.items())),
         "recipe_detected_no_draft_class_recipe_counts": {
             no_draft_class: dict(sorted(recipe_counts.items()))
             for no_draft_class, recipe_counts in sorted(no_draft_class_recipe_counts.items())
@@ -597,9 +626,7 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
             }
             for no_draft_class, recipe_counts in sorted(no_draft_class_recipe_reason_counts.items())
         },
-        "recipe_detected_no_draft_reason_counts": dict(
-            sorted(no_draft_reason_counts.items())
-        ),
+        "recipe_detected_no_draft_reason_counts": dict(sorted(no_draft_reason_counts.items())),
         "recipe_detected_no_draft_cte_pushdown_decision_counts": dict(
             sorted(no_draft_cte_pushdown_decision_counts.items())
         ),
@@ -676,7 +703,9 @@ def optimizer_funnel(
     no_draft_other_cases = int(distribution.get("recipe_detected_no_draft_other_cases") or 0)
     adjacent_cases = int(distribution.get("recipe_adjacent_shape_cases") or 0)
     adjacent_actionable_cases = int(distribution.get("recipe_adjacent_actionable_cases") or 0)
-    adjacent_structural_cases = int(distribution.get("recipe_adjacent_structural_boundary_cases") or 0)
+    adjacent_structural_cases = int(
+        distribution.get("recipe_adjacent_structural_boundary_cases") or 0
+    )
     adjacent_other_cases = int(distribution.get("recipe_adjacent_other_cases") or 0)
     stats_likely_cases = int(distribution.get("stats_likely_cases") or 0)
     human_review_cases = int(distribution.get("human_review_only_cases") or 0)
@@ -899,7 +928,9 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
             ]
         )
         if isinstance(label_counts, dict) and label_counts:
-            rendered_labels = ", ".join(f"{label}={count}" for label, count in sorted(label_counts.items()))
+            rendered_labels = ", ".join(
+                f"{label}={count}" for label, count in sorted(label_counts.items())
+            )
             lines.append(f"- labels: {rendered_labels}")
         if isinstance(confidence_counts, dict) and confidence_counts:
             rendered_confidences = ", ".join(
@@ -951,7 +982,9 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
             ]
         )
         if isinstance(bucket_counts, dict) and bucket_counts:
-            rendered_buckets = ", ".join(f"{bucket}={count}" for bucket, count in sorted(bucket_counts.items()))
+            rendered_buckets = ", ".join(
+                f"{bucket}={count}" for bucket, count in sorted(bucket_counts.items())
+            )
             lines.append(f"- buckets: {rendered_buckets}")
         human_review_reasons = rewriteability_distribution.get(
             "human_review_only_risk_reason_counts"
@@ -983,12 +1016,8 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"{label}={count}" for label, count in sorted(no_draft_eligibility.items())
             )
             lines.append(f"- no-draft eligibility: {rendered_eligibility}")
-        no_draft_reasons = rewriteability_distribution.get(
-            "recipe_detected_no_draft_reason_counts"
-        )
-        no_draft_classes = rewriteability_distribution.get(
-            "recipe_detected_no_draft_class_counts"
-        )
+        no_draft_reasons = rewriteability_distribution.get("recipe_detected_no_draft_reason_counts")
+        no_draft_classes = rewriteability_distribution.get("recipe_detected_no_draft_class_counts")
         no_draft_actionability = rewriteability_distribution.get(
             "recipe_detected_no_draft_actionability_counts"
         )
@@ -1008,10 +1037,7 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         if isinstance(no_draft_class_recipes, dict) and no_draft_class_recipes:
             rendered_class_recipes = "; ".join(
                 f"{label}: "
-                + ", ".join(
-                    f"{recipe}={count}"
-                    for recipe, count in sorted(recipe_counts.items())
-                )
+                + ", ".join(f"{recipe}={count}" for recipe, count in sorted(recipe_counts.items()))
                 for label, recipe_counts in sorted(no_draft_class_recipes.items())
                 if isinstance(recipe_counts, dict) and recipe_counts
             )
@@ -1023,19 +1049,14 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         if isinstance(no_draft_class_recipe_reasons, dict) and no_draft_class_recipe_reasons:
             rendered_class_recipe_reasons = "; ".join(
                 f"{label}/{recipe}: "
-                + ", ".join(
-                    f"{reason}={count}"
-                    for reason, count in sorted(reason_counts.items())
-                )
+                + ", ".join(f"{reason}={count}" for reason, count in sorted(reason_counts.items()))
                 for label, recipe_counts in sorted(no_draft_class_recipe_reasons.items())
                 if isinstance(recipe_counts, dict)
                 for recipe, reason_counts in sorted(recipe_counts.items())
                 if isinstance(reason_counts, dict) and reason_counts
             )
             if rendered_class_recipe_reasons:
-                lines.append(
-                    f"- no-draft class/recipe reasons: {rendered_class_recipe_reasons}"
-                )
+                lines.append(f"- no-draft class/recipe reasons: {rendered_class_recipe_reasons}")
         if isinstance(no_draft_reasons, dict) and no_draft_reasons:
             rendered_reasons = ", ".join(
                 f"{reason}={count}" for reason, count in sorted(no_draft_reasons.items())
@@ -1049,7 +1070,9 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"{reason}={count}" for reason, count in sorted(no_draft_decisions.items())
             )
             lines.append(f"- no-draft CTE predicate decisions: {rendered_decisions}")
-        adjacent_actionability = rewriteability_distribution.get("recipe_adjacent_actionability_counts")
+        adjacent_actionability = rewriteability_distribution.get(
+            "recipe_adjacent_actionability_counts"
+        )
         if isinstance(adjacent_actionability, dict) and adjacent_actionability:
             rendered_actionability = ", ".join(
                 f"{label}={count}" for label, count in sorted(adjacent_actionability.items())

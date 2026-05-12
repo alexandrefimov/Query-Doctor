@@ -40,8 +40,12 @@ def anomaly(count: int) -> list[dict[str, str]]:
 def test_primary_bottleneck_json_fixtures_match_expected_classification():
     assert primary_bottleneck_fixture_names(), "expected primary bottleneck fixtures"
     for fixture_name in primary_bottleneck_fixture_names():
-        payload = json.loads((PRIMARY_BOTTLENECK_FIXTURE_DIR / fixture_name).read_text(encoding="utf-8"))
-        result = json.loads(json.dumps(classify_case_primary_bottleneck(payload["analysis"]).to_dict()))
+        payload = json.loads(
+            (PRIMARY_BOTTLENECK_FIXTURE_DIR / fixture_name).read_text(encoding="utf-8")
+        )
+        result = json.loads(
+            json.dumps(classify_case_primary_bottleneck(payload["analysis"]).to_dict())
+        )
 
         assert result == payload["expected"], fixture_name
 
@@ -353,7 +357,7 @@ def test_storage_or_hdfs_runtime_diagnosis_can_route_medium_primary():
                 {
                     "id": "hdfs_or_storage_bottleneck",
                     "operators": [],
-                }
+                },
             ],
             runtime_diagnosis={
                 "summary": (

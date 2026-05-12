@@ -62,7 +62,9 @@ def run_reports(
             partial_path = partial_report_path(output_path)
             if output_path.exists() or partial_path.exists():
                 failures += 1
-                print(f"Report skipped: refusing to overwrite existing generated report for {case_dir} mode {mode}")
+                print(
+                    f"Report skipped: refusing to overwrite existing generated report for {case_dir} mode {mode}"
+                )
                 continue
             exit_code = report_runner(case_dir, mode)
             generated_paths.extend([output_path, partial_path])

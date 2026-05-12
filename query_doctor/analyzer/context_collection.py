@@ -33,7 +33,13 @@ from query_doctor.cluster.event_context import (
 )
 from query_doctor.safety.redaction import sanitize_text_for_log
 
-COLUMN_STATS_JOIN_FILTER_STATUSES = ("complete", "ndv_missing", "size_missing", "all_missing", "unknown")
+COLUMN_STATS_JOIN_FILTER_STATUSES = (
+    "complete",
+    "ndv_missing",
+    "size_missing",
+    "all_missing",
+    "unknown",
+)
 IMPALA_DAEMON_PROFILE_SOURCE = "impala_daemon"
 IMPALA_DAEMON_PROFILE_SOURCE_LABEL = "Impala daemon profile endpoint"
 
@@ -83,7 +89,9 @@ def build_query_wall_clock(
 
 def collect_referenced_tables(case_dir: Path, profile_text: str) -> list[str]:
     tables: set[str] = set()
-    tables.update(read_referenced_context_tables(case_dir / "impala_context" / "referenced_tables.txt"))
+    tables.update(
+        read_referenced_context_tables(case_dir / "impala_context" / "referenced_tables.txt")
+    )
     for sql in sql_inputs_for_case(case_dir, profile_text):
         tables.update(extract_referenced_tables_from_sql(sql))
     return sorted(tables, key=lambda value: value.lower())
@@ -215,8 +223,7 @@ def collect_impala_context(case_dir: Path) -> dict[str, Any] | None:
         "referenced_tables": tables,
         "explain": context_file_status(explain_path, case_dir),
         "table_metadata": {
-            table: context_table_file_status(context_dir, case_dir, table)
-            for table in tables
+            table: context_table_file_status(context_dir, case_dir, table) for table in tables
         },
         "warnings": extract_context_warnings(summary_path),
     }
@@ -262,9 +269,7 @@ def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
         return {"available": False, "error": "query metadata is not an object"}
 
     context = {
-        field: raw.get(field)
-        for field in CM_QUERY_CONTEXT_FIELDS
-        if raw.get(field) is not None
+        field: raw.get(field) for field in CM_QUERY_CONTEXT_FIELDS if raw.get(field) is not None
     }
     if raw.get("profile_source") == IMPALA_DAEMON_PROFILE_SOURCE:
         context["profile_source"] = IMPALA_DAEMON_PROFILE_SOURCE
@@ -291,17 +296,15 @@ def collect_cm_timeseries_context(case_dir: Path) -> dict[str, Any] | None:
     return {
         "available": bool(raw.get("available")),
         "source": safe_token(raw.get("source"), default="cm_timeseries"),
-        "source_label": safe_runtime_metrics_source_label(raw.get("source_label"), raw.get("source")),
+        "source_label": safe_runtime_metrics_source_label(
+            raw.get("source_label"), raw.get("source")
+        ),
         "metrics_profile": raw.get("metrics_profile")
         if isinstance(raw.get("metrics_profile"), str)
         else None,
         "window": raw.get("window") if isinstance(raw.get("window"), dict) else {},
         "limits": raw.get("limits") if isinstance(raw.get("limits"), dict) else {},
-        "queries": [
-            query
-            for query in queries
-            if isinstance(query, dict)
-        ],
+        "queries": [query for query in queries if isinstance(query, dict)],
         "warnings": [
             sanitize_text_for_log(warning)
             for warning in raw.get("warnings", [])

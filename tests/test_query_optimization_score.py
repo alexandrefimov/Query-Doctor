@@ -147,7 +147,10 @@ def test_expensive_query_without_shape_signal_is_at_most_low():
     assert result.tier == "low"
     assert result.score <= 20
     assert "no query-shape opportunity evidence" in result.counter_signals
-    assert "large read volume is storage context without query-shape evidence" in result.counter_signals
+    assert (
+        "large read volume is storage context without query-shape evidence"
+        in result.counter_signals
+    )
 
 
 def test_admission_wait_dominated_query_is_penalized():
@@ -184,7 +187,10 @@ def test_cardinality_mismatch_with_join_evidence_increases_confidence():
     )
 
     assert result.confidence in {"medium", "high"}
-    assert result.score > score_query_optimization_candidate(cardinality_only_facts(), duration_sec=180).score
+    assert (
+        result.score
+        > score_query_optimization_candidate(cardinality_only_facts(), duration_sec=180).score
+    )
 
 
 def test_generic_join_guidance_does_not_create_join_expansion_reason():
@@ -223,11 +229,18 @@ def test_generic_join_guidance_does_not_create_join_expansion_reason():
 - Check whether the query creates many-to-many JOIN amplification before SORT/ANALYTIC/AGGREGATE.
 """
 
-    result = score_query_optimization_candidate(facts, duration_sec=600, metadata_status="not_requested")
+    result = score_query_optimization_candidate(
+        facts, duration_sec=600, metadata_status="not_requested"
+    )
 
     assert "join row expansion or cardinality mismatch with join evidence" not in result.reasons
-    assert "cardinality mismatch needs query-shape evidence before stronger action" in result.reasons
-    assert "metadata was not collected, so stats-vs-query-shape split is unconfirmed" in result.counter_signals
+    assert (
+        "cardinality mismatch needs query-shape evidence before stronger action" in result.reasons
+    )
+    assert (
+        "metadata was not collected, so stats-vs-query-shape split is unconfirmed"
+        in result.counter_signals
+    )
     assert result.confidence == "medium"
 
 
@@ -242,7 +255,9 @@ def test_join_operator_ratio_creates_join_expansion_reason():
 
 
 def test_backend_data_skew_adds_distribution_review_context():
-    facts = high_shape_facts() + """
+    facts = (
+        high_shape_facts()
+        + """
 
 ## Backend / Host Tail Evidence
 
@@ -251,6 +266,7 @@ def test_backend_data_skew_adds_distribution_review_context():
 - data skew: yes (F07: rows produced max/min ratio is 10.5x)
 - execution skew: no
 """
+    )
 
     result = score_query_optimization_candidate(
         facts,
@@ -265,7 +281,9 @@ def test_backend_data_skew_adds_distribution_review_context():
 
 def test_structured_cardinality_count_wins_over_rendered_summary_text():
     result = score_query_optimization_candidate(
-        cardinality_only_facts().replace("- Cardinality anomalies: 5", "- Cardinality anomalies: 0"),
+        cardinality_only_facts().replace(
+            "- Cardinality anomalies: 5", "- Cardinality anomalies: 0"
+        ),
         duration_sec=180,
         metadata_status="not_requested",
         analysis={
@@ -277,13 +295,20 @@ def test_structured_cardinality_count_wins_over_rendered_summary_text():
         },
     )
 
-    assert "cardinality mismatch needs query-shape evidence before stronger action" in result.reasons
-    assert "metadata was not collected, so stats-vs-query-shape split is unconfirmed" in result.counter_signals
+    assert (
+        "cardinality mismatch needs query-shape evidence before stronger action" in result.reasons
+    )
+    assert (
+        "metadata was not collected, so stats-vs-query-shape split is unconfirmed"
+        in result.counter_signals
+    )
 
 
 def test_structured_metadata_gap_wins_over_rendered_metadata_text():
     result = score_query_optimization_candidate(
-        cardinality_only_facts().replace("missing/unknown", "available").replace(
+        cardinality_only_facts()
+        .replace("missing/unknown", "available")
+        .replace(
             "incomplete/unknown",
             "complete",
         ),

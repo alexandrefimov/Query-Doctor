@@ -17,8 +17,7 @@ SPEC.loader.exec_module(check_active_docs)
 def test_find_failures_reports_stale_terms_and_missing_links(tmp_path):
     doc = tmp_path / "doc.md"
     doc.write_text(
-        "Use python3 query_doctor.py for this TODO.\n"
-        "See [missing](missing.md).\n",
+        "Use python3 query_doctor.py for this TODO.\nSee [missing](missing.md).\n",
         encoding="utf-8",
     )
 
@@ -32,10 +31,7 @@ def test_find_failures_reports_stale_terms_and_missing_links(tmp_path):
 def test_find_failures_ignores_code_fences_and_external_links(tmp_path):
     doc = tmp_path / "doc.md"
     doc.write_text(
-        "```bash\n"
-        "python3 query_doctor.py\n"
-        "```\n"
-        "See [external](https://example.invalid/doc).\n",
+        "```bash\npython3 query_doctor.py\n```\nSee [external](https://example.invalid/doc).\n",
         encoding="utf-8",
     )
 
@@ -65,8 +61,7 @@ def test_active_docs_require_review_header_and_status_index(tmp_path):
         check_active_docs.ACTIVE_DOCS = original_active_docs
 
     assert any(
-        "active doc missing Last reviewed/Last updated header" in failure
-        for failure in failures
+        "active doc missing Last reviewed/Last updated header" in failure for failure in failures
     )
 
 
@@ -78,9 +73,7 @@ def test_i18n_copy_requires_existing_english_source(tmp_path):
 
     failures = check_active_docs.find_i18n_failures(tmp_path)
 
-    assert failures == [
-        "docs/i18n/ru/missing.md: English source is missing: docs/missing.md"
-    ]
+    assert failures == ["docs/i18n/ru/missing.md: English source is missing: docs/missing.md"]
 
 
 def test_current_docs_require_status_index_entry(tmp_path):
@@ -105,6 +98,4 @@ def test_current_docs_require_status_index_entry(tmp_path):
     finally:
         check_active_docs.ACTIVE_DOCS = original_active_docs
 
-    assert failures == [
-        "docs/README.md: current docs missing from status index: docs/ui/notes.md"
-    ]
+    assert failures == ["docs/README.md: current docs missing from status index: docs/ui/notes.md"]

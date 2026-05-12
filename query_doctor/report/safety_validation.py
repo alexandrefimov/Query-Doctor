@@ -22,7 +22,7 @@ SQL_IDENTIFIER_RE = (
 )
 SQL_IDENTIFIER_STRICT_RE = (
     r'(?:`[^`\n]+`|"[^"\n]+"|[A-Za-z_][\w$-]*\s*\.\s*[A-Za-z_][\w$-]*'
-    r'(?:\s*\.\s*[A-Za-z_][\w$-]*)?)'
+    r"(?:\s*\.\s*[A-Za-z_][\w$-]*)?)"
 )
 SQL_STATEMENT_BOUNDARY_RE = r"(?=\s*(?:$|[;.,)]|\n))"
 SQL_TABLE_FOLLOW_RE = (

@@ -32,10 +32,19 @@ ADMIN_SQL_VERBS = {
     "USE",
 }
 QUERY_DOCTOR_SMOKE_RE = re.compile(r"\bquery_doctor\b", re.IGNORECASE)
-CTAS_RE = re.compile(r"\A\s*CREATE\s+(?:EXTERNAL\s+)?TABLE\b.*\bAS\s+(?:WITH|SELECT)\b", re.IGNORECASE | re.DOTALL)
+CTAS_RE = re.compile(
+    r"\A\s*CREATE\s+(?:EXTERNAL\s+)?TABLE\b.*\bAS\s+(?:WITH|SELECT)\b", re.IGNORECASE | re.DOTALL
+)
 ANALYZABLE_SQL_VERBS = {"SELECT", "WITH", "INSERT", "DELETE", "UPSERT"}
 ANALYZABLE_QUERY_TYPES = {"QUERY", "SELECT", "INSERT", "DML"}
-RUNNING_QUERY_STATUSES = {"running", "executing", "in_progress", "in-progress", "in progress", "active"}
+RUNNING_QUERY_STATUSES = {
+    "running",
+    "executing",
+    "in_progress",
+    "in-progress",
+    "in progress",
+    "active",
+}
 
 
 def select_recent_query_candidates(
@@ -80,16 +89,20 @@ def select_recent_query_candidates(
     eligible_indexes = [index for index, (_, eligible) in enumerate(classified) if eligible]
     if order == "duration-desc":
         eligible_indexes.sort(
-            key=lambda index: classified[index][0].summary.duration_sec
-            if classified[index][0].summary.duration_sec is not None
-            else -1.0,
+            key=lambda index: (
+                classified[index][0].summary.duration_sec
+                if classified[index][0].summary.duration_sec is not None
+                else -1.0
+            ),
             reverse=True,
         )
     elif order == "duration-asc":
         eligible_indexes.sort(
-            key=lambda index: classified[index][0].summary.duration_sec
-            if classified[index][0].summary.duration_sec is not None
-            else float("inf")
+            key=lambda index: (
+                classified[index][0].summary.duration_sec
+                if classified[index][0].summary.duration_sec is not None
+                else float("inf")
+            )
         )
     elif order == "recent-duration-desc":
         eligible_indexes.sort(

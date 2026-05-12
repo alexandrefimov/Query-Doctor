@@ -208,15 +208,15 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
         dependency_edge_count += len(refs)
         consumer_counts.update(refs)
         has_fanin = has_fanin or len(refs) > 1
-        has_forward_or_self_reference = has_forward_or_self_reference or any(name_indexes[ref] >= index for ref in refs)
+        has_forward_or_self_reference = has_forward_or_self_reference or any(
+            name_indexes[ref] >= index for ref in refs
+        )
     final_refs = referenced_cte_names(parsed.final_sql, names)
     consumer_counts.update(final_refs)
     max_consumer_count = max(consumer_counts.values(), default=0)
     single_use_cte_count = sum(1 for name in names if consumer_counts[name] == 1)
     pass_through_cte_count = sum(
-        1
-        for definition in parsed.ctes
-        if cte_body_is_pass_through_layer(definition.body, names)
+        1 for definition in parsed.ctes if cte_body_is_pass_through_layer(definition.body, names)
     )
     graph_shape = cte_graph_shape(
         sql,
@@ -237,8 +237,7 @@ def analyze_cte_shape(sql: str) -> CteShapeFacts:
         names,
     )
     projection_statuses = [
-        cte_projection_preservation_status(definition.body)
-        for definition in parsed.ctes
+        cte_projection_preservation_status(definition.body) for definition in parsed.ctes
     ]
     return CteShapeFacts(
         cte_count=len(parsed.ctes),
@@ -334,7 +333,9 @@ def analyze_derived_table_shape(sql: str) -> DerivedTableShapeFacts:
             has_downstream_filter=has_downstream_filter,
             boundary_reasons=boundary_reasons,
         ),
-        predicate_origin_status="outer_select_filter" if has_downstream_filter else "no_downstream_filter",
+        predicate_origin_status="outer_select_filter"
+        if has_downstream_filter
+        else "no_downstream_filter",
         projection_preservation_status=projection_status,
         has_downstream_filter=has_downstream_filter,
         boundary_reasons=boundary_reasons,
@@ -407,7 +408,9 @@ def cte_shape_has_downstream_filter(parsed: CteParseResult) -> bool:
 
 def cte_predicate_origin_status(parsed: CteParseResult) -> str:
     final_filter = clause_signature(parsed.final_sql, "WHERE") is not None
-    cte_filter_count = sum(1 for definition in parsed.ctes[1:] if clause_signature(definition.body, "WHERE"))
+    cte_filter_count = sum(
+        1 for definition in parsed.ctes[1:] if clause_signature(definition.body, "WHERE")
+    )
     if final_filter and cte_filter_count:
         return "mixed_downstream_filters"
     if final_filter:
@@ -422,7 +425,9 @@ def cte_projection_contract_status(parsed: CteParseResult) -> str:
     signatures.append(projection_signature(parsed.final_sql))
     if any(signature is None for signature in signatures):
         return "unknown_projection_contract"
-    if all(signature and len(signature.output_names) == signature.count for signature in signatures):
+    if all(
+        signature and len(signature.output_names) == signature.count for signature in signatures
+    ):
         return "named_projection_contract"
     return "partial_projection_contract"
 
@@ -569,11 +574,7 @@ def where_referenced_output_names(sql: str, output_names: set[str]) -> tuple[str
         tokens = tokenize_sql(sql[where_offset + len("WHERE") : end])
     except OptimizerSqlError:
         return ()
-    names = [
-        token.lower()
-        for token in tokens
-        if token.lower() in output_names
-    ]
+    names = [token.lower() for token in tokens if token.lower() in output_names]
     return tuple(dedupe_preserve_order(names))
 
 
@@ -703,7 +704,9 @@ def cte_body_has_aggregate_boundary(sql: str) -> bool:
 
 
 def cte_body_has_set_boundary(sql: str) -> bool:
-    return any(top_level_keyword_count(sql, keyword) > 0 for keyword in ("UNION", "EXCEPT", "INTERSECT"))
+    return any(
+        top_level_keyword_count(sql, keyword) > 0 for keyword in ("UNION", "EXCEPT", "INTERSECT")
+    )
 
 
 def cte_body_has_window_boundary(sql: str) -> bool:
@@ -769,7 +772,9 @@ def projection_expression_signature(sql: str) -> tuple[str, ...] | None:
 
 
 def normalize_projection_item_signature(fragment: str) -> str:
-    return normalized_projection_alias_as_insensitive_signature(normalize_sql_signature_fragment(fragment))
+    return normalized_projection_alias_as_insensitive_signature(
+        normalize_sql_signature_fragment(fragment)
+    )
 
 
 def normalized_material_signature(sql: str) -> str:
@@ -856,7 +861,9 @@ def top_level_join_condition_signature(sql: str) -> tuple[str, ...]:
     join_offset = find_top_level_keyword_offset(sql, ("JOIN",))
     while join_offset is not None:
         on_offset = find_top_level_keyword_offset(sql, ("ON",), start=join_offset + len("JOIN"))
-        next_join_offset = find_top_level_keyword_offset(sql, ("JOIN",), start=join_offset + len("JOIN"))
+        next_join_offset = find_top_level_keyword_offset(
+            sql, ("JOIN",), start=join_offset + len("JOIN")
+        )
         clause_end = next_top_level_clause_offset(sql, join_offset + len("JOIN"))
         end = min(offset for offset in (next_join_offset, clause_end) if offset is not None)
         if on_offset is None or on_offset >= end:
@@ -954,7 +961,9 @@ def projection_name_for_fragment(fragment: str) -> str | None:
 def aggregate_projection_names(sql: str) -> tuple[str, ...]:
     names: list[str] = []
     for item in projection_item_fragments(sql):
-        if re.search(r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE):
+        if re.search(
+            r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE
+        ):
             name = projection_name_for_fragment(item)
             if name:
                 names.append(name)
@@ -964,7 +973,9 @@ def aggregate_projection_names(sql: str) -> tuple[str, ...]:
 def non_aggregate_projection_names(sql: str) -> tuple[str, ...]:
     names: list[str] = []
     for item in projection_item_fragments(sql):
-        if re.search(r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE):
+        if re.search(
+            r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE
+        ):
             continue
         name = projection_name_for_fragment(item)
         if name:
@@ -988,7 +999,9 @@ def aggregate_projection_fragments(sql: str) -> tuple[str, ...]:
     return tuple(
         item
         for item in projection_item_fragments(sql)
-        if re.search(r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE)
+        if re.search(
+            r"\b(?:sum|count|min|max|avg)\s*\(", lower_sql_outside_quoted_text(item), re.IGNORECASE
+        )
     )
 
 
@@ -996,7 +1009,9 @@ def count_distinct_key_names(sql: str) -> tuple[str, ...]:
     names: list[str] = []
     for item in aggregate_projection_fragments(sql):
         lowered = lower_sql_outside_quoted_text(item)
-        for match in re.finditer(r"\bcount\s*\(\s*distinct\s+(?P<expr>[^)]+?)\s*\)", lowered, re.IGNORECASE):
+        for match in re.finditer(
+            r"\bcount\s*\(\s*distinct\s+(?P<expr>[^)]+?)\s*\)", lowered, re.IGNORECASE
+        ):
             expr = match.group("expr").strip()
             if re.fullmatch(r"(?:[a-z_][\w$]*\.)?[a-z_][\w$]*", expr):
                 names.append(expr.rsplit(".", 1)[-1])
@@ -1071,10 +1086,14 @@ def aggregate_input_rollup_shape_is_supported(
     return True
 
 
-def post_union_aggregate_input_rollup_names(source_union_body: str, source_aggregate_body: str) -> tuple[str, ...]:
+def post_union_aggregate_input_rollup_names(
+    source_union_body: str, source_aggregate_body: str
+) -> tuple[str, ...]:
     union_outputs = union_projection_names(source_union_body)
     dimensions = set(non_aggregate_projection_names(source_aggregate_body))
-    if not aggregate_input_rollup_shape_is_supported(source_aggregate_body, union_outputs, dimensions):
+    if not aggregate_input_rollup_shape_is_supported(
+        source_aggregate_body, union_outputs, dimensions
+    ):
         return ()
     return aggregate_input_projection_names(source_aggregate_body, union_outputs, dimensions)
 

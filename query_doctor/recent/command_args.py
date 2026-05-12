@@ -9,7 +9,9 @@ def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
     if config.config_path:
         cmd.extend(["--config", config.config_path])
     if config.cm_url and config.cluster and config.service:
-        cmd.extend(["--cm-url", config.cm_url, "--cluster", config.cluster, "--service", config.service])
+        cmd.extend(
+            ["--cm-url", config.cm_url, "--cluster", config.cluster, "--service", config.service]
+        )
     if config.ca_bundle:
         cmd.extend(["--ca-bundle", config.ca_bundle])
 

@@ -18,11 +18,11 @@ def render_result(result: Any) -> list[str]:
     has_facts = has_analyzer_facts_section(result.report_text)
     return [
         render_report_header(result),
-        "<section class=\"report-shell\">",
-        "<div class=\"content-main\">",
-        "<details class=\"panel report-card\" open>",
+        '<section class="report-shell">',
+        '<div class="content-main">',
+        '<details class="panel report-card" open>',
         "<summary>Validated diagnosis markdown</summary>",
-        "<div class=\"report-body\">",
+        '<div class="report-body">',
         render_appendix_notice() if has_facts else "",
         render_report_markdown_html(result.report_text, with_heading_ids=True),
         "</div>",
@@ -43,34 +43,34 @@ def render_report_header(result: Any) -> str:
         ("case source", escape_report_value(result.case_source)),
     )
     overview = "".join(
-        "<div class=\"case-overview-card\">"
+        '<div class="case-overview-card">'
         f"<span>{html.escape(label)}</span><strong>{value}</strong>"
         "</div>"
         for label, value in overview_items
     )
     retry_note = (
-        "<div class=\"batch-note\">Report generation was retried after validator feedback; only the final validated report is rendered.</div>"
+        '<div class="batch-note">Report generation was retried after validator feedback; only the final validated report is rendered.</div>'
         if result.report_retry
         else ""
     )
     return (
-        "<section class=\"panel report-header\" aria-label=\"Report header\">"
-        "<div class=\"breadcrumb\"><a href=\"/query\">Known Query ID</a><span>/</span><span>validated diagnosis</span></div>"
-        "<div class=\"report-title-row\"><div>"
+        '<section class="panel report-header" aria-label="Report header">'
+        '<div class="breadcrumb"><a href="/query">Known Query ID</a><span>/</span><span>validated diagnosis</span></div>'
+        '<div class="report-title-row"><div>'
         "<h1>Known Query ID diagnosis</h1>"
-        "<div class=\"report-subtitle\">Validated report for one explicit Impala Query ID.</div>"
-        "<div class=\"query-line\">"
+        '<div class="report-subtitle">Validated report for one explicit Impala Query ID.</div>'
+        '<div class="query-line">'
         f"<span>Query ID:</span><code>{escape_report_value(result.query_id)}</code>"
         "<span>Report:</span><code>validated</code>"
         "</div></div></div>"
-        "<div class=\"case-overview\" aria-label=\"Known Query ID result overview\">"
-        f"<div class=\"case-overview-grid\">{overview}</div>"
+        '<div class="case-overview" aria-label="Known Query ID result overview">'
+        f'<div class="case-overview-grid">{overview}</div>'
         "</div>"
-        "<div class=\"status-strip\" aria-label=\"Report status\">"
-        "<span class=\"status-item\"><span class=\"dot\"></span>Validation: <span class=\"badge green\">PASS</span></span>"
-        "<span class=\"status-item\"><span class=\"dot\"></span>Validated before render</span>"
-        "<span class=\"status-item\"><span class=\"dot gray\"></span>Raw SQL, profiles, metadata and local paths are hidden</span>"
-        "<span class=\"status-item\"><span class=\"dot\"></span>Report ready</span>"
+        '<div class="status-strip" aria-label="Report status">'
+        '<span class="status-item"><span class="dot"></span>Validation: <span class="badge green">PASS</span></span>'
+        '<span class="status-item"><span class="dot"></span>Validated before render</span>'
+        '<span class="status-item"><span class="dot gray"></span>Raw SQL, profiles, metadata and local paths are hidden</span>'
+        '<span class="status-item"><span class="dot"></span>Report ready</span>'
         "</div>"
         f"{retry_note}"
         "</section>"
@@ -79,10 +79,10 @@ def render_report_header(result: Any) -> str:
 
 def render_appendix_notice() -> str:
     return (
-        "<div class=\"appendix-notice\">"
+        '<div class="appendix-notice">'
         "<span><strong>Analyzer facts</strong> are marked as deterministic appendix when present. "
         "This section is not LLM-written narrative.</span>"
-        "<span class=\"badge gray\">deterministic appendix</span>"
+        '<span class="badge gray">deterministic appendix</span>'
         "</div>"
     )
 
@@ -95,7 +95,7 @@ def render_report_sidebar(
     has_facts: bool,
 ) -> str:
     return (
-        "<aside class=\"side-panel\" aria-label=\"Report side panel\">"
+        '<aside class="side-panel" aria-label="Report side panel">'
         + render_toc_card(headings)
         + render_report_metadata_card(result, has_facts)
         + render_evidence_card(inventory)
@@ -108,27 +108,27 @@ def render_report_sidebar(
 def render_toc_card(headings: list[tuple[str, str]]) -> str:
     if not headings:
         return ""
-    links = "".join(f"<a href=\"#{anchor}\">{html.escape(text)}</a>" for text, anchor in headings)
-    return f"<section class=\"panel side-card\"><h2>Sections</h2><nav class=\"toc-list\">{links}</nav></section>"
+    links = "".join(f'<a href="#{anchor}">{html.escape(text)}</a>' for text, anchor in headings)
+    return f'<section class="panel side-card"><h2>Sections</h2><nav class="toc-list">{links}</nav></section>'
 
 
 def render_report_metadata_card(result: Any, has_facts: bool) -> str:
     facts_state = "available" if has_facts else "not_observed"
     retry_row = (
-        "<div class=\"meta-row\"><span>Report generation</span><strong>regenerated after validator retry</strong></div>"
+        '<div class="meta-row"><span>Report generation</span><strong>regenerated after validator retry</strong></div>'
         if result.report_retry
         else ""
     )
     return (
-        "<section class=\"panel side-card\"><h2>Report metadata</h2><div class=\"meta-list\">"
-        f"<div class=\"meta-row\"><span>Mode</span><strong>{escape_report_value(result.report_mode)}</strong></div>"
-        "<div class=\"meta-row\"><span>Validation</span><strong>PASS</strong></div>"
-        "<div class=\"meta-row\"><span>Report</span><strong>ready</strong></div>"
-        f"<div class=\"meta-row\"><span>Analyzer facts</span><strong>{facts_state}</strong></div>"
-        f"<div class=\"meta-row\"><span>Parsed operators</span><strong>{escape_report_value(result.parsed_operators)}</strong></div>"
-        f"<div class=\"meta-row\"><span>Cardinality anomalies</span><strong>{escape_report_value(result.cardinality_anomalies)}</strong></div>"
-        f"<div class=\"meta-row\"><span>Memory anomalies</span><strong>{escape_report_value(result.memory_anomalies)}</strong></div>"
-        f"<div class=\"meta-row\"><span>Case source</span><strong>{escape_report_value(result.case_source)}</strong></div>"
+        '<section class="panel side-card"><h2>Report metadata</h2><div class="meta-list">'
+        f'<div class="meta-row"><span>Mode</span><strong>{escape_report_value(result.report_mode)}</strong></div>'
+        '<div class="meta-row"><span>Validation</span><strong>PASS</strong></div>'
+        '<div class="meta-row"><span>Report</span><strong>ready</strong></div>'
+        f'<div class="meta-row"><span>Analyzer facts</span><strong>{facts_state}</strong></div>'
+        f'<div class="meta-row"><span>Parsed operators</span><strong>{escape_report_value(result.parsed_operators)}</strong></div>'
+        f'<div class="meta-row"><span>Cardinality anomalies</span><strong>{escape_report_value(result.cardinality_anomalies)}</strong></div>'
+        f'<div class="meta-row"><span>Memory anomalies</span><strong>{escape_report_value(result.memory_anomalies)}</strong></div>'
+        f'<div class="meta-row"><span>Case source</span><strong>{escape_report_value(result.case_source)}</strong></div>'
         f"{retry_row}"
         "</div></section>"
     )
@@ -136,30 +136,30 @@ def render_report_metadata_card(result: Any, has_facts: bool) -> str:
 
 def render_evidence_card(inventory: ReportEvidenceInventory) -> str:
     rows = "".join(
-        f"<div class=\"meta-row\"><span>{html.escape(item.label)}</span>{render_state_badge(item.state)}</div>"
+        f'<div class="meta-row"><span>{html.escape(item.label)}</span>{render_state_badge(item.state)}</div>'
         for item in inventory.completeness
     )
-    return f"<section class=\"panel side-card\"><h2>Evidence completeness</h2><div class=\"meta-list\">{rows}</div></section>"
+    return f'<section class="panel side-card"><h2>Evidence completeness</h2><div class="meta-list">{rows}</div></section>'
 
 
 def render_artifacts_card(inventory: ReportEvidenceInventory) -> str:
     if not inventory.categories:
         return (
-            "<section class=\"panel side-card\"><h2>Evidence categories</h2>"
-            "<p class=\"helper\">No recognized safe evidence categories are available.</p></section>"
+            '<section class="panel side-card"><h2>Evidence categories</h2>'
+            '<p class="helper">No recognized safe evidence categories are available.</p></section>'
         )
     items = "".join(
-        "<div class=\"artifact-item\"><span>"
+        '<div class="artifact-item"><span>'
         f"{html.escape(item.label)}</span>"
-        "<span class=\"badge green\">available</span></div>"
+        '<span class="badge green">available</span></div>'
         for item in inventory.categories
     )
-    return f"<section class=\"panel side-card\"><h2>Evidence categories</h2><div class=\"artifact-list\">{items}</div></section>"
+    return f'<section class="panel side-card"><h2>Evidence categories</h2><div class="artifact-list">{items}</div></section>'
 
 
 def render_pipeline_card(result: Any, inventory: ReportEvidenceInventory) -> str:
     return (
-        "<section class=\"panel side-card\"><h2>Pipeline</h2><div class=\"timeline\">"
+        '<section class="panel side-card"><h2>Pipeline</h2><div class="timeline">'
         f"{render_timeline_item('Case source', result.case_source)}"
         f"{render_timeline_item('Profile evidence', inventory.profile_evidence_state)}"
         f"{render_timeline_item('Analyzer facts', inventory.analyzer_facts_state)}"
@@ -170,7 +170,7 @@ def render_pipeline_card(result: Any, inventory: ReportEvidenceInventory) -> str
 
 def render_timeline_item(label: str, value: str) -> str:
     return (
-        "<div class=\"timeline-item\"><span class=\"timeline-dot\"></span><div>"
+        '<div class="timeline-item"><span class="timeline-dot"></span><div>'
         f"<strong>{html.escape(label)}</strong><span>{escape_report_value(value)}</span>"
         "</div></div>"
     )
@@ -178,8 +178,8 @@ def render_timeline_item(label: str, value: str) -> str:
 
 def render_state_badge(state: str) -> str:
     if state == "available":
-        return "<span class=\"badge green\">available</span>"
-    return f"<span class=\"badge gray\">{html.escape(state)}</span>"
+        return '<span class="badge green">available</span>'
+    return f'<span class="badge gray">{html.escape(state)}</span>'
 
 
 def escape_report_value(value: Any) -> str:

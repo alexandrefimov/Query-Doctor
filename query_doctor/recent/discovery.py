@@ -12,7 +12,9 @@ from query_doctor.recent.batch_config import MAX_RAW_CM_SUMMARY_SCAN_LIMIT, secr
 from query_doctor.recent.batch_models import BatchConfig, DiscoveryResult
 
 CMClientFactory = Callable[[BatchConfig, dict[str, str]], cm_profiles.CMHttpClient]
-CM_SUMMARY_SCAN_LIMIT_WARNING_RE = re.compile(r"\bquery scan limit reached\b|\bscan limit reached\b", re.IGNORECASE)
+CM_SUMMARY_SCAN_LIMIT_WARNING_RE = re.compile(
+    r"\bquery scan limit reached\b|\bscan limit reached\b", re.IGNORECASE
+)
 CM_SUMMARY_TIME_SHARD_MINUTES = 60
 CM_SUMMARY_MIN_TIME_SHARD_MINUTES = 15
 CM_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -70,7 +72,9 @@ def discover_candidates(
     filters = build_recent_filters(config)
     discovery_filters = replace(filters, limit=raw_cm_summary_scan_limit(config.cm_inspect_limit))
 
-    def fetch_page(received_filters: cm_profiles.CMQueryFilters, page_token: str | None) -> cm_profiles.CMQueryPage:
+    def fetch_page(
+        received_filters: cm_profiles.CMQueryFilters, page_token: str | None
+    ) -> cm_profiles.CMQueryPage:
         return cm_profiles.fetch_cm_query_summary_page(client, received_filters, page_token)
 
     server_filter_expression = cm_profiles.build_cm_query_filter_expression(discovery_filters)
@@ -87,15 +91,19 @@ def discover_candidates(
     time_shard_scan_limit_warning_count = 0
     raw_scan_cap_hit = collection.raw_scan_cap_hit
     if should_time_shard_discovery(config, warnings):
-        sharded_collection, time_shard_count, time_shard_scan_limit_warning_count = collect_time_sharded_summaries(
-            config,
-            collection.filters,
-            fetch_page,
-            env=env,
+        sharded_collection, time_shard_count, time_shard_scan_limit_warning_count = (
+            collect_time_sharded_summaries(
+                config,
+                collection.filters,
+                fetch_page,
+                env=env,
+            )
         )
         summaries = sharded_collection.summaries
         non_scan_limit_warnings = [
-            warning for warning in collection.warnings if not is_cm_summary_scan_limit_warning(warning)
+            warning
+            for warning in collection.warnings
+            if not is_cm_summary_scan_limit_warning(warning)
         ]
         warnings = [
             f"CM query summary scan limit was reported; retried discovery with {time_shard_count} time shards.",
@@ -173,10 +181,12 @@ def collect_discovery_summaries(
         min_duration_sec=filters.min_duration_sec,
         max_duration_sec=filters.max_duration_sec,
     )
-    summaries, warnings, used_duration_fallback = cm_profiles.collect_query_summaries_with_duration_fallback(
-        filters,
-        fetch_page,
-        secrets=secret_values(env),
+    summaries, warnings, used_duration_fallback = (
+        cm_profiles.collect_query_summaries_with_duration_fallback(
+            filters,
+            fetch_page,
+            secrets=secret_values(env),
+        )
     )
     if not used_duration_fallback:
         return _DiscoveryCollection(
@@ -247,7 +257,9 @@ def collect_time_sharded_summaries(
         scan_limit_warning_count += shard_scan_limit_warnings
         if shard_scan_limit_warnings and can_split_time_shard(start, end):
             warnings.extend(
-                warning for warning in collection.warnings if not is_cm_summary_scan_limit_warning(warning)
+                warning
+                for warning in collection.warnings
+                if not is_cm_summary_scan_limit_warning(warning)
             )
             pending_shards[:0] = split_time_shard(start, end)
             continue
@@ -332,7 +344,10 @@ def is_cm_summary_scan_limit_warning(warning: str) -> bool:
 
 
 def matching_candidate_limit_hit(candidates: list[cm_profiles.RecentQueryCandidate]) -> bool:
-    return any(candidate.reason == "eligible but not selected because recent-select limit was reached" for candidate in candidates)
+    return any(
+        candidate.reason == "eligible but not selected because recent-select limit was reached"
+        for candidate in candidates
+    )
 
 
 def classify_duration_filter_mode(

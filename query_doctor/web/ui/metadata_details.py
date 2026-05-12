@@ -22,9 +22,9 @@ def render_metadata_facts_section(view: RecentScanMetadataView) -> str:
         degraded_note = metadata_degraded_note(metadata_view)
         degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
         return (
-            "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
+            '<details class="analysis-subdetails" aria-label="Metadata facts">'
             "<summary>Metadata facts</summary>"
-            "<div class=\"report-body\"><p>metadata facts are not available</p>"
+            '<div class="report-body"><p>metadata facts are not available</p>'
             f"{degraded_html}</div>"
             "</details>"
         )
@@ -36,7 +36,7 @@ def render_metadata_facts_view(view: RecentScanMetadataView) -> str:
     if view.tables:
         rows = "\n".join(render_metadata_fact_table_row_view(table) for table in view.tables)
         table_html = (
-            "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+            '<div class="batch-table-wrap"><table class="batch-table">'
             "<thead><tr>"
             "<th>Table</th><th>Object</th><th>SHOW CREATE command</th><th>TABLE STATS command</th><th>COLUMN STATS command</th>"
             "<th>Row-count stats</th><th>Column stats</th><th>Observed</th><th>Missing</th><th>Partitions</th><th>Format</th><th>Limitations</th>"
@@ -45,25 +45,21 @@ def render_metadata_facts_view(view: RecentScanMetadataView) -> str:
             "</table></div>"
         )
     summary_rows = "".join(
-        "<div class=\"meta-row\">"
+        '<div class="meta-row">'
         f"<span>{html.escape(label)}</span><strong>{escape_value(value)}</strong>"
         "</div>"
         for label, value in view.summary_items
     )
-    fallback_html = (
-        f"<p>{html.escape(view.fallback_note)}</p>"
-        if view.fallback_note
-        else ""
-    )
+    fallback_html = f"<p>{html.escape(view.fallback_note)}</p>" if view.fallback_note else ""
     degraded_note = metadata_degraded_note(view)
     degraded_html = f"<p>{html.escape(degraded_note)}</p>" if degraded_note else ""
     return (
-        "<details class=\"analysis-subdetails\" aria-label=\"Metadata facts\">"
+        '<details class="analysis-subdetails" aria-label="Metadata facts">'
         "<summary>Metadata facts</summary>"
-        "<div class=\"report-body\">"
+        '<div class="report-body">'
         f"{fallback_html}"
         f"{degraded_html}"
-        f"<div class=\"meta-list\">{summary_rows}</div>"
+        f'<div class="meta-list">{summary_rows}</div>'
         f"{table_html}"
         "</div>"
         "</details>"

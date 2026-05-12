@@ -6,7 +6,10 @@ import subprocess
 import threading
 from dataclasses import replace
 
-from query_doctor.web.cluster_selection import selected_cluster_key_from_mapping, settings_for_cluster_key
+from query_doctor.web.cluster_selection import (
+    selected_cluster_key_from_mapping,
+    settings_for_cluster_key,
+)
 from query_doctor.web.batch_scan import (
     build_batch_command,
     form_values_from_config,
@@ -18,7 +21,12 @@ from query_doctor.web.batch_scan import (
 from query_doctor.web.config import metadata_configured
 from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.jobs import WebJobStore
-from query_doctor.web.models import WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT, BatchRunConfig, WebError, WebSettings
+from query_doctor.web.models import (
+    WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
+    BatchRunConfig,
+    WebError,
+    WebSettings,
+)
 from query_doctor.web.subprocesses import (
     Runner,
     effective_subprocess_env,
@@ -43,18 +51,24 @@ def start_batch_job(
     runner: Runner = subprocess.run,
 ) -> tuple[int, str]:
     try:
-        selected_settings = settings_for_cluster_key(settings, selected_cluster_key_from_mapping(form, settings))
+        selected_settings = settings_for_cluster_key(
+            settings, selected_cluster_key_from_mapping(form, settings)
+        )
         config = parse_batch_run_config(
             form,
             settings=selected_settings,
-            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT if metadata_configured(selected_settings) else 0,
+            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT
+            if metadata_configured(selected_settings)
+            else 0,
             default_parallelism=50,
         )
         validate_batch_config_for_settings(config, selected_settings)
         if config.metadata_top_limit > 0:
             preflight_web_metadata_batch(selected_settings, runner=runner)
     except WebError as exc:
-        return 400, render_batch_page(settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form))
+        return 400, render_batch_page(
+            settings, error=sanitize_for_display(exc), form_values=form_values_from_form(form)
+        )
 
     job = job_store.create_batch(form_values_from_config(config))
     thread = threading.Thread(
@@ -74,11 +88,15 @@ def start_running_job(
     runner: Runner = subprocess.run,
 ) -> tuple[int, str]:
     try:
-        selected_settings = settings_for_cluster_key(settings, selected_cluster_key_from_mapping(form, settings))
+        selected_settings = settings_for_cluster_key(
+            settings, selected_cluster_key_from_mapping(form, settings)
+        )
         config = parse_running_run_config(
             form,
             settings=selected_settings,
-            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT if metadata_configured(selected_settings) else 0,
+            default_metadata_top_limit=WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT
+            if metadata_configured(selected_settings)
+            else 0,
             default_parallelism=50,
         )
         validate_batch_config_for_settings(config, selected_settings)
@@ -133,7 +151,9 @@ def run_batch_job(
             running_settings = replace(settings, batch_summary=summary_path)
             job_store.complete_html(
                 job_id,
-                render_batch_card(running_settings, title="Running Queries", details_base_path="/running/case"),
+                render_batch_card(
+                    running_settings, title="Running Queries", details_base_path="/running/case"
+                ),
             )
         else:
             job_store.set_latest_batch_summary(summary_path)
@@ -142,4 +162,7 @@ def run_batch_job(
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(job_id, "Unexpected recent scan failure. Details are hidden because they may contain sensitive data.")
+        job_store.fail(
+            job_id,
+            "Unexpected recent scan failure. Details are hidden because they may contain sensitive data.",
+        )

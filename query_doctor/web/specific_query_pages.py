@@ -20,7 +20,10 @@ from query_doctor.web.jobs import WebJobSnapshot, WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.query_analysis import validate_query_id
 from query_doctor.web.specific_query_state import build_specific_query_detail_render_context
-from query_doctor.web.trusted_artifacts import case_has_analyzer_facts, load_specific_query_trusted_report_artifact
+from query_doctor.web.trusted_artifacts import (
+    case_has_analyzer_facts,
+    load_specific_query_trusted_report_artifact,
+)
 from query_doctor.web.ui.markdown import render_report_markdown_html
 from query_doctor.web.ui.pages import render_page, render_query_page
 from query_doctor.web.ui.specific_query import render_specific_query_detail
@@ -70,7 +73,9 @@ def render_specific_query_detail_for_request(
     )
 
 
-def render_specific_query_report_for_request(settings: WebSettings, query_id: str) -> tuple[int, str]:
+def render_specific_query_report_for_request(
+    settings: WebSettings, query_id: str
+) -> tuple[int, str]:
     try:
         validated_query_id = validate_query_id(query_id)
     except WebError as exc:
@@ -113,23 +118,23 @@ def render_specific_query_report_page(
     report_text: str,
 ) -> str:
     section = (
-        "<section class=\"panel report-header\" aria-label=\"Specific Query report header\">"
-        "<div class=\"breadcrumb\"><a href=\"/query\">Specific Query</a><span>/</span>"
-        f"<a href=\"/query/details/{quote(query_id, safe='')}\">{html.escape(query_id)}</a>"
+        '<section class="panel report-header" aria-label="Specific Query report header">'
+        '<div class="breadcrumb"><a href="/query">Specific Query</a><span>/</span>'
+        f'<a href="/query/details/{quote(query_id, safe="")}">{html.escape(query_id)}</a>'
         "<span>/</span><span>validated report</span></div>"
-        "<div class=\"report-title-row\"><div>"
+        '<div class="report-title-row"><div>'
         "<h1>Validated Specific Query report</h1>"
-        "<div class=\"report-subtitle\">Rendered only after the report action completed validation.</div>"
-        "<div class=\"query-line\">"
+        '<div class="report-subtitle">Rendered only after the report action completed validation.</div>'
+        '<div class="query-line">'
         f"<span>Query:</span><code>{html.escape(query_id)}</code>"
         "</div></div></div>"
-        "<div class=\"status-strip\" aria-label=\"Report status\">"
-        "<span class=\"status-item\"><span class=\"dot\"></span>Validation: <span class=\"badge green\">PASS</span></span>"
-        "<span class=\"status-item\"><span class=\"dot gray\"></span>Mode: <span class=\"badge gray\">admin</span></span>"
+        '<div class="status-strip" aria-label="Report status">'
+        '<span class="status-item"><span class="dot"></span>Validation: <span class="badge green">PASS</span></span>'
+        '<span class="status-item"><span class="dot gray"></span>Mode: <span class="badge gray">admin</span></span>'
         "</div></section>"
-        "<details class=\"panel report-card\" open aria-label=\"Validated report body\">"
+        '<details class="panel report-card" open aria-label="Validated report body">'
         "<summary>Validated diagnosis markdown</summary>"
-        f"<div class=\"report-body\">{render_report_markdown_html(report_text, with_heading_ids=True)}</div>"
+        f'<div class="report-body">{render_report_markdown_html(report_text, with_heading_ids=True)}</div>'
         "</details>"
     )
     return render_page(settings, active_nav="query", show_run_panel=False, extra_sections=[section])

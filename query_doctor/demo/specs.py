@@ -400,8 +400,7 @@ def optimization_report_text() -> str:
 
 def optimization_source_sql() -> str:
     return (
-        "SELECT customer_id, SUM(amount) AS total_amount "
-        "FROM demo.fact_orders GROUP BY customer_id"
+        "SELECT customer_id, SUM(amount) AS total_amount FROM demo.fact_orders GROUP BY customer_id"
     )
 
 

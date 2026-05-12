@@ -61,7 +61,9 @@ def batch_table_column_count(query_group: str) -> int:
 
 
 def batch_table_head(query_group: str) -> str:
-    headers = "".join(f"<th>{html.escape(label)}</th>" for label in batch_table_columns(query_group))
+    headers = "".join(
+        f"<th>{html.escape(label)}</th>" for label in batch_table_columns(query_group)
+    )
     return f"<thead><tr>{headers}</tr></thead>"
 
 
@@ -154,16 +156,20 @@ def render_query_group_switcher(
     }
     links = []
     for key, (label, _severities) in QUERY_GROUPS.items():
-        css_class = "batch-filter-link batch-filter-link--active" if key == active_group else "batch-filter-link"
+        css_class = (
+            "batch-filter-link batch-filter-link--active"
+            if key == active_group
+            else "batch-filter-link"
+        )
         href = f"?query_group={html.escape(key, quote=True)}"
         if only_with_spills:
             href += "&only_with_spills=on"
         href += "#recent-results"
         links.append(
-            f"<a class=\"{css_class}\" href=\"{href}\">"
+            f'<a class="{css_class}" href="{href}">'
             f"{html.escape(label)} <span>{counts[key]}</span></a>"
         )
-    return f"<nav class=\"batch-filter-tabs\" aria-label=\"Query result filter\">{''.join(links)}</nav>"
+    return f'<nav class="batch-filter-tabs" aria-label="Query result filter">{"".join(links)}</nav>'
 
 
 def render_result_filters(
@@ -175,13 +181,13 @@ def render_result_filters(
     switcher = render_query_group_switcher(rows, active_group, only_with_spills=only_with_spills)
     spill_toggle = render_spill_filter_toggle(active_group, only_with_spills=only_with_spills)
     return (
-        "<div class=\"batch-result-filters\">"
-        "<div class=\"batch-result-filter-row\">"
-        "<span class=\"batch-result-filter-label\">Result group</span>"
+        '<div class="batch-result-filters">'
+        '<div class="batch-result-filter-row">'
+        '<span class="batch-result-filter-label">Result group</span>'
         f"{switcher}"
         "</div>"
-        "<div class=\"batch-result-filter-row batch-result-filter-row--secondary\">"
-        "<span class=\"batch-result-filter-label\">Spill filter</span>"
+        '<div class="batch-result-filter-row batch-result-filter-row--secondary">'
+        '<span class="batch-result-filter-label">Spill filter</span>'
         f"{spill_toggle}"
         "</div>"
         "</div>"
@@ -195,8 +201,8 @@ def render_spill_filter_toggle(active_group: str, *, only_with_spills: bool = Fa
         href += "&only_with_spills=on"
     href += "#recent-results"
     return (
-        f"<a class=\"batch-spill-toggle{active_class}\" href=\"{href}\" "
-        f"aria-label=\"Only queries with spills\" aria-pressed=\"{str(only_with_spills).lower()}\">"
-        f"<span class=\"batch-spill-check\" aria-hidden=\"true\">{'✓' if only_with_spills else ''}</span>"
+        f'<a class="batch-spill-toggle{active_class}" href="{href}" '
+        f'aria-label="Only queries with spills" aria-pressed="{str(only_with_spills).lower()}">'
+        f'<span class="batch-spill-check" aria-hidden="true">{"✓" if only_with_spills else ""}</span>'
         "<span>Only queries with spills</span></a>"
     )

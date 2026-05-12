@@ -25,7 +25,9 @@ def test_web_analysis_rejects_symlinked_report_output_outside_case_dir(monkeypat
         del kwargs
         if command_uses_role(cmd, "collect_cm"):
             case_dir.mkdir(parents=True)
-            return subprocess.CompletedProcess(cmd, 0, stdout=f"Output case directory: {case_dir}\n", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=f"Output case directory: {case_dir}\n", stderr=""
+            )
         if command_uses_role(cmd, "pipeline"):
             (case_dir / "analysis_facts.md").write_text(
                 "- Parsed operators: 7\n- Cardinality anomalies: 0\n- Memory anomalies: 2\n",
@@ -57,7 +59,9 @@ def test_web_analysis_rejects_symlinked_analyzer_output_outside_case_dir(monkeyp
         del kwargs
         if command_uses_role(cmd, "collect_cm"):
             case_dir.mkdir(parents=True)
-            return subprocess.CompletedProcess(cmd, 0, stdout=f"Output case directory: {case_dir}\n", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=f"Output case directory: {case_dir}\n", stderr=""
+            )
         if command_uses_role(cmd, "pipeline"):
             (case_dir / "analysis_facts.md").symlink_to(outside_facts)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -90,7 +94,9 @@ def test_web_analysis_collect_cm_uses_selected_cluster_settings(monkeypatch, tmp
         if command_uses_role(cmd, "collect_cm"):
             collect_cmds.append(cmd)
             case_dir.mkdir(parents=True)
-            return subprocess.CompletedProcess(cmd, 0, stdout=f"Output case directory: {case_dir}\n", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=f"Output case directory: {case_dir}\n", stderr=""
+            )
         if command_uses_role(cmd, "pipeline"):
             (case_dir / "analysis_facts.md").write_text(
                 "- Parsed operators: 7\n- Cardinality anomalies: 0\n- Memory anomalies: 2\n",

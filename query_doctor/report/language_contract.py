@@ -215,4 +215,6 @@ def get_report_language_contract(language: str) -> ReportLanguageContract:
         return REPORT_LANGUAGE_CONTRACTS[language]
     except KeyError as exc:
         supported = ", ".join(SUPPORTED_REPORT_LANGUAGES)
-        raise ValueError(f"unsupported report language: {language}; supported: {supported}") from exc
+        raise ValueError(
+            f"unsupported report language: {language}; supported: {supported}"
+        ) from exc

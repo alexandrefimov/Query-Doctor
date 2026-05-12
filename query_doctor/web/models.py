@@ -225,7 +225,9 @@ class WebJob:
             kind=self.kind,
             result_html=self.result_html,
             error=self.error,
-            batch_form_values=dict(self.batch_form_values) if self.batch_form_values is not None else None,
+            batch_form_values=dict(self.batch_form_values)
+            if self.batch_form_values is not None
+            else None,
             batch_progress_path=self.batch_progress_path,
             batch_case_id=self.batch_case_id,
             batch_source=self.batch_source,

@@ -77,16 +77,20 @@ def render_recent_scan_case_detail_view(
     escaped_case_id_for_url = html.escape(view.case_id, quote=True)
     report_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/report"
     report_export_url = f"{report_url}.md"
-    optimized_query_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/optimized-query"
-    optimizer_validation_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/validate-rewrite"
+    optimized_query_url = (
+        f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/optimized-query"
+    )
+    optimizer_validation_url = (
+        f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/validate-rewrite"
+    )
     llm_actions_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/llm-actions"
     return (
-        f"<section class=\"panel batch-panel\" aria-label=\"{safe_workflow_title} case details\">"
-        f"<div class=\"breadcrumb\"><a href=\"{safe_list_href}\">{safe_workflow_title}</a><span>/</span>"
+        f'<section class="panel batch-panel" aria-label="{safe_workflow_title} case details">'
+        f'<div class="breadcrumb"><a href="{safe_list_href}">{safe_workflow_title}</a><span>/</span>'
         f"<span>{html.escape(view.case_id)}</span></div>"
-        f"<div class=\"batch-head\"><div><h1>{safe_workflow_title} case details</h1>"
+        f'<div class="batch-head"><div><h1>{safe_workflow_title} case details</h1>'
         "<p>Deterministic facts for one analyzed query.</p></div>"
-        f"<span class=\"badge blue\">{html.escape(view.case_id)}</span></div>"
+        f'<span class="badge blue">{html.escape(view.case_id)}</span></div>'
         f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
@@ -103,16 +107,16 @@ def render_case_detail_overview(view: RecentScanCaseDetailView) -> str:
 
 def render_case_detail_overview_view(view: RecentScanCaseOverviewView) -> str:
     cards = "".join(
-        "<div class=\"case-overview-card\">"
+        '<div class="case-overview-card">'
         f"<span>{html.escape(card.label)}</span><strong>{render_case_overview_card_value(card)}</strong>"
         "</div>"
         for card in view.cards
     )
     return (
-        "<section id=\"case-overview\" class=\"case-overview\" aria-label=\"Case overview\">"
-        "<div class=\"case-query-line\"><span>Query ID</span>"
+        '<section id="case-overview" class="case-overview" aria-label="Case overview">'
+        '<div class="case-query-line"><span>Query ID</span>'
         f"<strong>{escape_value(view.query_id)}</strong></div>"
-        f"<div class=\"case-overview-grid\">{cards}</div>"
+        f'<div class="case-overview-grid">{cards}</div>'
         "</section>"
     )
 
@@ -136,14 +140,14 @@ def render_case_status_summary_view(
     technical_details_html: str = "",
 ) -> str:
     cards = "".join(
-        "<div class=\"case-summary-card\">"
+        '<div class="case-summary-card">'
         f"<span>{html.escape(card.label)}</span><strong>{render_case_status_card_value(card)}</strong>"
         "</div>"
         for card in view.cards
     )
     return (
-        "<section id=\"pipeline-status\" aria-label=\"Pipeline status\">"
-        f"<div class=\"case-summary-grid\">{cards}</div>"
+        '<section id="pipeline-status" aria-label="Pipeline status">'
+        f'<div class="case-summary-grid">{cards}</div>'
         f"{technical_details_html}"
         "</section>"
     )
@@ -163,18 +167,18 @@ def render_evidence_action_guide(view: RecentScanCaseDetailView) -> str:
 
 def render_evidence_action_guide_view(view: RecentScanEvidenceGuideView) -> str:
     card_html = "".join(
-        "<div class=\"case-summary-card\">"
+        '<div class="case-summary-card">'
         f"<span>{html.escape(card.label)}</span><strong>{escape_value(card.value)}</strong>"
         "</div>"
         for card in view.cards
     )
     return (
-        "<section id=\"evidence-guide\" class=\"case-overview\" aria-label=\"Evidence and action guide\">"
-        "<div class=\"section-heading\"><div>"
-        "<h2 class=\"section-title\">Evidence guide</h2>"
-        "<div class=\"section-kicker\">Quick read of evidence confidence, context, and the safest next step.</div>"
+        '<section id="evidence-guide" class="case-overview" aria-label="Evidence and action guide">'
+        '<div class="section-heading"><div>'
+        '<h2 class="section-title">Evidence guide</h2>'
+        '<div class="section-kicker">Quick read of evidence confidence, context, and the safest next step.</div>'
         "</div></div>"
-        f"<div class=\"case-summary-grid\">{card_html}</div>"
+        f'<div class="case-summary-grid">{card_html}</div>'
         "</section>"
     )
 
@@ -186,19 +190,19 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         else render_runtime_verdict(view.runtime_verdict)
     )
     return (
-        "<section id=\"findings\" class=\"panel docs-panel findings-panel\" aria-label=\"Findings\">"
+        '<section id="findings" class="panel docs-panel findings-panel" aria-label="Findings">'
         "<h1>Findings</h1>"
-        "<div class=\"report-body\">"
+        '<div class="report-body">'
         f"{runtime_verdict_html}"
         f"{render_runtime_diagnosis_summary(view.runtime_diagnosis)}"
         f"{render_action_candidate_findings(view)}"
         f"{render_score_reason_explanations(view)}"
         "</div>"
         "</section>"
-        "<div id=\"evidence-details\">"
-        "<details class=\"panel docs-panel analysis-details\" aria-label=\"Evidence details\">"
+        '<div id="evidence-details">'
+        '<details class="panel docs-panel analysis-details" aria-label="Evidence details">'
         "<summary>Evidence details</summary>"
-        "<div class=\"report-body analysis-details-body\">"
+        '<div class="report-body analysis-details-body">'
         f"{render_runtime_diagnosis_details(view.runtime_diagnosis)}"
         f"{render_cluster_runtime_context_section(view.cluster_runtime_context)}"
         f"{render_runtime_signals(view)}"
@@ -212,15 +216,15 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
 
 def render_case_detail_toc() -> str:
     return (
-        "<section class=\"detail-toc\" aria-label=\"Details navigation\">"
-        "<span class=\"detail-toc-title\">Jump to section</span>"
-        "<nav class=\"detail-toc-list\">"
-        "<a href=\"#case-overview\" class=\"detail-toc-link\">Case overview</a>"
-        "<a href=\"#pipeline-status\" class=\"detail-toc-link\">Pipeline status</a>"
-        "<a href=\"#analysis-summary\" class=\"detail-toc-link\">Analysis summary</a>"
-        "<a href=\"#findings\" class=\"detail-toc-link\">Findings</a>"
-        "<a href=\"#evidence-details\" class=\"detail-toc-link\">Evidence details</a>"
-        "<a href=\"#llm-actions\" class=\"detail-toc-link\">LLM actions</a>"
+        '<section class="detail-toc" aria-label="Details navigation">'
+        '<span class="detail-toc-title">Jump to section</span>'
+        '<nav class="detail-toc-list">'
+        '<a href="#case-overview" class="detail-toc-link">Case overview</a>'
+        '<a href="#pipeline-status" class="detail-toc-link">Pipeline status</a>'
+        '<a href="#analysis-summary" class="detail-toc-link">Analysis summary</a>'
+        '<a href="#findings" class="detail-toc-link">Findings</a>'
+        '<a href="#evidence-details" class="detail-toc-link">Evidence details</a>'
+        '<a href="#llm-actions" class="detail-toc-link">LLM actions</a>'
         "</nav>"
         "</section>"
     )
@@ -233,12 +237,12 @@ def render_case_analysis_summary(view: RecentScanCaseDetailView) -> str:
 def render_case_analysis_summary_view(view: RecentScanAnalysisSummaryView) -> str:
     fields = [(row.label, row.value) for row in view.rows]
     return (
-        "<section id=\"analysis-summary\" class=\"case-overview\" aria-label=\"Analysis summary\">"
-        "<div class=\"section-heading\"><div>"
-        "<h2 class=\"section-title\">Analysis summary</h2>"
-        "<div class=\"section-kicker\">Safe deterministic triage for this case. This is not raw SQL or a root-cause claim.</div>"
+        '<section id="analysis-summary" class="case-overview" aria-label="Analysis summary">'
+        '<div class="section-heading"><div>'
+        '<h2 class="section-title">Analysis summary</h2>'
+        '<div class="section-kicker">Safe deterministic triage for this case. This is not raw SQL or a root-cause claim.</div>'
         "</div></div>"
-        f"<div class=\"meta-list\">{metadata_rows(fields)}</div>"
+        f'<div class="meta-list">{metadata_rows(fields)}</div>'
         "</section>"
     )
 
@@ -252,9 +256,9 @@ def render_technical_details_view(view: RecentScanTechnicalDetailsView) -> str:
         return ""
     rows = metadata_rows(list(view.fields))
     return (
-        "<details class=\"analysis-subdetails technical-details\">"
+        '<details class="analysis-subdetails technical-details">'
         "<summary>Pipeline timings</summary>"
-        f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
+        f'<div class="report-body"><div class="meta-list">{rows}</div></div>'
         "</details>"
     )
 
@@ -266,17 +270,17 @@ def render_score_reason_explanations(view: RecentScanCaseDetailView) -> str:
 def render_score_reason_explanations_view(view: RecentScanScoreReasonsView) -> str:
     if not view.reasons:
         reason_cards = (
-            "<li class=\"reason-card\"><strong>No positive deterministic score reasons</strong>"
+            '<li class="reason-card"><strong>No positive deterministic score reasons</strong>'
             "<p>Batch score does not contain a suspicious analyzer signal for this case.</p></li>"
         )
     else:
         reason_cards = "".join(render_score_reason_card_view(reason) for reason in view.reasons)
-    return f"<ul class=\"reason-list findings-list\" aria-label=\"Why this query is suspicious\">{reason_cards}</ul>"
+    return f'<ul class="reason-list findings-list" aria-label="Why this query is suspicious">{reason_cards}</ul>'
 
 
 def render_score_reason_card_view(reason: RecentScanScoreReasonView) -> str:
     return (
-        "<li class=\"reason-card\">"
+        '<li class="reason-card">'
         f"<strong>{html.escape(reason.title)}</strong>"
         f"<p>{html.escape(reason.explanation)}</p>"
         "</li>"

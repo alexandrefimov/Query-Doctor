@@ -107,7 +107,9 @@ def runtime_diagnosis_profile_resource_signal(analysis: dict[str, Any]) -> dict[
 
     evidence = [f"Profile Resource Facts: admission_result={admission_result}."]
     if startup.get("available"):
-        evidence.append(f"Profile Resource Facts: backend_startup_max={fmt_duration(startup_max_ms)}.")
+        evidence.append(
+            f"Profile Resource Facts: backend_startup_max={fmt_duration(startup_max_ms)}."
+        )
     if fragments.get("available"):
         evidence.append(
             "Profile Resource Facts: fragment_instances_per_host "
@@ -341,7 +343,9 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
     total_read = (analysis.get("totals") or {}).get("TotalBytesRead") or {}
     storage_evidence: list[str] = []
     storage_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "host_disk_io_pressure"))
-    storage_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "hdfs_datanode_io_pressure"))
+    storage_evidence.extend(
+        runtime_diagnosis_metric_evidence(analysis, "hdfs_datanode_io_pressure")
+    )
     if total_read.get("bytes") is not None:
         storage_evidence.append(f"TotalBytesRead={fmt_bytes(float(total_read['bytes']))}.")
     if storage_finding:
@@ -372,7 +376,9 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
         )
     else:
         storage_status = "unknown"
-        storage_interpretation = "Storage/HDFS path was not established by the available deterministic facts."
+        storage_interpretation = (
+            "Storage/HDFS path was not established by the available deterministic facts."
+        )
     signals.append(
         runtime_diagnosis_signal(
             "storage_hdfs",
@@ -385,7 +391,9 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
 
     cpu_status = runtime_diagnosis_metric_status(analysis, "host_cpu_pressure")
     admission_status = runtime_diagnosis_metric_status(analysis, "admission_pool_pressure")
-    admission_wait_ms = numeric_context_value(analysis.get("cm_query_context") or {}, "admission_wait_ms")
+    admission_wait_ms = numeric_context_value(
+        analysis.get("cm_query_context") or {}, "admission_wait_ms"
+    )
     cpu_evidence = runtime_diagnosis_metric_evidence(analysis, "host_cpu_pressure")
     cpu_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "admission_pool_pressure"))
     if admission_wait_ms is not None:
@@ -396,7 +404,9 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
             "Admission/pool pressure is a plausible follow-up hypothesis because pool metrics align with "
             "query admission wait evidence. Confirm against pool limits, queue behavior, and comparable reruns."
         )
-    elif cpu_status == "correlated" or (admission_wait_ms is not None and admission_wait_ms >= 1000):
+    elif cpu_status == "correlated" or (
+        admission_wait_ms is not None and admission_wait_ms >= 1000
+    ):
         cpu_runtime_status = "plausible_follow_up"
         cpu_runtime_interpretation = (
             "CPU/admission runtime pressure is a plausible follow-up hypothesis only for the collected window; "
@@ -410,9 +420,7 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
         )
     else:
         cpu_runtime_status = "context_only" if cpu_status == "context_only" else "unknown"
-        cpu_runtime_interpretation = (
-            "CPU/admission data is insufficient or context-only; do not use it as the primary explanation."
-        )
+        cpu_runtime_interpretation = "CPU/admission data is insufficient or context-only; do not use it as the primary explanation."
     signals.append(
         runtime_diagnosis_signal(
             "cpu_admission",

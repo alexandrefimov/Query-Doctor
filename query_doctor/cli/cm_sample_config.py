@@ -103,15 +103,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sample", choices=("healthy", "slow"), default="healthy")
     parser.add_argument("--limit", type=positive_int, default=DEFAULT_LIMIT)
     parser.add_argument("--since-hours", type=positive_int, default=DEFAULT_SINCE_HOURS)
-    parser.add_argument("--candidate-scan-limit", type=positive_int, default=DEFAULT_CANDIDATE_SCAN_LIMIT)
+    parser.add_argument(
+        "--candidate-scan-limit", type=positive_int, default=DEFAULT_CANDIDATE_SCAN_LIMIT
+    )
     parser.add_argument("--max-profile-bytes", type=positive_int, default=DEFAULT_MAX_PROFILE_BYTES)
     parser.add_argument("--out", default=DEFAULT_OUT)
-    parser.add_argument("--max-duration-sec", type=non_negative_int, default=DEFAULT_HEALTHY_MAX_DURATION_SEC)
+    parser.add_argument(
+        "--max-duration-sec", type=non_negative_int, default=DEFAULT_HEALTHY_MAX_DURATION_SEC
+    )
     parser.add_argument("--min-duration-sec", type=non_negative_int)
     parser.add_argument("--include-missing-duration", action="store_true")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true", help="Fetch summaries and print selected candidates only.")
-    mode.add_argument("--apply", action="store_true", help="Collect selected profiles and run analyzer smoke.")
+    mode.add_argument(
+        "--dry-run", action="store_true", help="Fetch summaries and print selected candidates only."
+    )
+    mode.add_argument(
+        "--apply", action="store_true", help="Collect selected profiles and run analyzer smoke."
+    )
     parser.add_argument("--keep-generated", action="store_true")
     parser.add_argument("--report-mode", choices=REPORT_MODES, default="none")
     parser.add_argument(
@@ -172,10 +180,14 @@ def build_config(
     if args.candidate_scan_limit > MAX_CANDIDATE_SCAN_LIMIT:
         raise SampleSmokeError(f"--candidate-scan-limit must be <= {MAX_CANDIDATE_SCAN_LIMIT}.")
 
-    cm_url = config_string("cm_url", cli_value=None, config_values=config_values, env_value=env.get("CM_URL"))
+    cm_url = config_string(
+        "cm_url", cli_value=None, config_values=config_values, env_value=env.get("CM_URL")
+    )
     cluster = config_string("cluster", cli_value=None, config_values=config_values)
     service = config_string("service", cli_value=None, config_values=config_values)
-    out_value = config_string("out", cli_value=args.out, config_values=config_values, default=DEFAULT_OUT)
+    out_value = config_string(
+        "out", cli_value=args.out, config_values=config_values, default=DEFAULT_OUT
+    )
     ca_bundle = config_string(
         "ca_bundle",
         cli_value=args.ca_bundle,
@@ -204,7 +216,9 @@ def build_config(
         max_profile_bytes=args.max_profile_bytes,
         max_duration_sec=args.max_duration_sec,
         min_duration_sec=(
-            args.min_duration_sec if args.min_duration_sec is not None else DEFAULT_SLOW_MIN_DURATION_SEC
+            args.min_duration_sec
+            if args.min_duration_sec is not None
+            else DEFAULT_SLOW_MIN_DURATION_SEC
         ),
         min_duration_sec_explicit=args.min_duration_sec is not None,
         dry_run=not args.apply,

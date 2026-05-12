@@ -14,7 +14,7 @@ class SafeHtml(str):
 
 def metadata_rows(fields: list[tuple[str, Any]]) -> str:
     return "".join(
-        "<div class=\"meta-row\">"
+        '<div class="meta-row">'
         f"<span>{html.escape(label)}</span><strong>{value if isinstance(value, SafeHtml) else escape_value(value)}</strong>"
         "</div>"
         for label, value in fields
@@ -22,11 +22,11 @@ def metadata_rows(fields: list[tuple[str, Any]]) -> str:
 
 
 def compact_cell(value: Any) -> str:
-    return f"<td class=\"batch-cell--compact\">{value if isinstance(value, SafeHtml) else escape_value(value)}</td>"
+    return f'<td class="batch-cell--compact">{value if isinstance(value, SafeHtml) else escape_value(value)}</td>'
 
 
 def reason_cell(value: Any) -> str:
-    return f"<td class=\"batch-cell--reason\">{escape_value(value)}</td>"
+    return f'<td class="batch-cell--reason">{escape_value(value)}</td>'
 
 
 def score_badge(case: dict[str, Any]) -> SafeHtml:
@@ -104,7 +104,7 @@ def report_badge(value: str) -> SafeHtml:
 
 
 def badge_html(label: Any, class_name: str) -> SafeHtml:
-    return SafeHtml(f"<span class=\"batch-mini-badge {class_name}\">{escape_value(label)}</span>")
+    return SafeHtml(f'<span class="batch-mini-badge {class_name}">{escape_value(label)}</span>')
 
 
 def display_score(value: Any) -> str:

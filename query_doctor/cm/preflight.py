@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import sys
 
-from query_doctor.cm.client import build_cm_profile_text_request, build_cm_query_summary_page_request
+from query_doctor.cm.client import (
+    build_cm_profile_text_request,
+    build_cm_query_summary_page_request,
+)
 from query_doctor.cm.collector_plan import ca_bundle_plan_line, tls_plan_line
 from query_doctor.cm.config import build_preflight_query_filters
 from query_doctor.cm.models import CMClientError, CollectorConfig, sanitize_cm_url_for_display
@@ -32,8 +35,7 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
     except CMClientError as exc:
         print("[CM profile collector] Preflight result: FAILED")
         print(
-            "Query summary check failed: "
-            f"{sanitize_adapter_error_message(exc)}",
+            f"Query summary check failed: {sanitize_adapter_error_message(exc)}",
             file=sys.stderr,
         )
         print(
@@ -62,8 +64,7 @@ def run_cm_preflight(config: CollectorConfig, client: object) -> int:
             )
         except CMClientError as exc:
             print(
-                "Profile text check failed: "
-                f"{sanitize_adapter_error_message(exc)}",
+                f"Profile text check failed: {sanitize_adapter_error_message(exc)}",
                 file=sys.stderr,
             )
             print(

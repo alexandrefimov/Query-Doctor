@@ -54,11 +54,7 @@ def cm_query_summary_metadata(summary: CMQuerySummary) -> dict[str, object]:
     }
     if summary.statement:
         metadata["statement"] = summary.statement
-    return {
-        key: value
-        for key, value in metadata.items()
-        if value is not None
-    }
+    return {key: value for key, value in metadata.items() if value is not None}
 
 
 def safe_case_slug(query_id: str) -> str:
@@ -127,10 +123,7 @@ def write_collected_case(
         )
 
     metadata_text = json.dumps(metadata, indent=2, sort_keys=True) + "\n"
-    sanitized_warnings = [
-        sanitize_text_for_log(warning, secrets=secrets)
-        for warning in warnings
-    ]
+    sanitized_warnings = [sanitize_text_for_log(warning, secrets=secrets) for warning in warnings]
     warnings_text = "\n".join(sanitized_warnings).strip()
     if warnings_text:
         warnings_text += "\n"
@@ -144,7 +137,9 @@ def write_collected_case(
         (case_dir / "cm_timeseries_context.json").write_text(timeseries_text, encoding="utf-8")
     if runtime_metrics_context is not None:
         runtime_metrics_text = json.dumps(runtime_metrics_context, indent=2, sort_keys=True) + "\n"
-        (case_dir / "runtime_metrics_context.json").write_text(runtime_metrics_text, encoding="utf-8")
+        (case_dir / "runtime_metrics_context.json").write_text(
+            runtime_metrics_text, encoding="utf-8"
+        )
     (case_dir / "collection_warnings.txt").write_text(warnings_text, encoding="utf-8")
     return case_dir
 
@@ -230,7 +225,9 @@ def collect_query_summaries(
             warnings.append(sanitize_text_for_log(exc, secrets=secrets))
             break
 
-        warnings.extend(sanitize_text_for_log(warning, secrets=secrets) for warning in page.warnings)
+        warnings.extend(
+            sanitize_text_for_log(warning, secrets=secrets) for warning in page.warnings
+        )
         inspected += len(page.items)
 
         for item in page.items:

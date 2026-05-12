@@ -397,7 +397,11 @@ def cluster_runtime_context_report_evidence_bullet(facts_text: str) -> str | Non
     scoring = summary.get("scoring_contribution")
     if scoring:
         parts.append("scoring: " + runtime_metrics_display_text(scoring))
-    return "- " + "; ".join(parts) + ". Treat this as runtime follow-up context, not standalone root-cause proof."
+    return (
+        "- "
+        + "; ".join(parts)
+        + ". Treat this as runtime follow-up context, not standalone root-cause proof."
+    )
 
 
 def cluster_event_context_summary(facts_text: str) -> dict[str, str]:
@@ -507,7 +511,11 @@ def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
         limit_points.append("some allowlisted metrics were unavailable")
     if limit_points:
         parts.append("limitations: " + "; ".join(limit_points))
-    return "- " + "; ".join(parts) + ". Metrics are runtime context unless Runtime Metrics Correlation marks them as correlated."
+    return (
+        "- "
+        + "; ".join(parts)
+        + ". Metrics are runtime context unless Runtime Metrics Correlation marks them as correlated."
+    )
 
 
 def runtime_metrics_display_text(value: str) -> str:

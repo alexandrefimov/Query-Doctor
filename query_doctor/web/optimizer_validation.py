@@ -32,7 +32,9 @@ def read_analysis_facts_text(case_dir: Path) -> str:
     return facts_text
 
 
-def optimizer_manual_guidance(case_dir: Path | None, *, reason: str = "no_trusted_draft") -> str | None:
+def optimizer_manual_guidance(
+    case_dir: Path | None, *, reason: str = "no_trusted_draft"
+) -> str | None:
     if case_dir is None:
         return None
     try:
@@ -48,8 +50,12 @@ def optimizer_manual_guidance(case_dir: Path | None, *, reason: str = "no_truste
         "not_run": "- No trusted SQL rewrite is shown yet. Use the bullets below as manual rewrite guidance.",
     }
     bullets = [reason_bullets.get(reason, "- No trusted SQL rewrite is shown for this case.")]
-    bullets.append("- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts.")
-    bullets.extend(optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe))
+    bullets.append(
+        "- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts."
+    )
+    bullets.extend(
+        optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)
+    )
     text = "\n".join(bullets)
     return text if not validate_optimizer_recommendations_text(text) else None
 
@@ -60,12 +66,17 @@ def optimizer_manual_rewrite_allowed(state: dict[str, object]) -> bool:
         return True
     if status == "generated" and str(state.get("fallback_reason") or "") == "validation_failed":
         return True
-    if status == "failed" and "failed deterministic validation" in str(state.get("error") or "").lower():
+    if (
+        status == "failed"
+        and "failed deterministic validation" in str(state.get("error") or "").lower()
+    ):
         return True
     return False
 
 
-def validate_external_optimizer_rewrite(case_dir: Path | None, form: dict[str, list[str]]) -> dict[str, object]:
+def validate_external_optimizer_rewrite(
+    case_dir: Path | None, form: dict[str, list[str]]
+) -> dict[str, object]:
     draft_sql = first_form_value(form, EXTERNAL_REWRITE_SQL_FIELD)
     if not draft_sql:
         return {

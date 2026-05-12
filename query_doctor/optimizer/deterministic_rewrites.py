@@ -181,7 +181,12 @@ def deterministic_recipe_draft_diagnostics(
         return DeterministicDraftDiagnostics(
             tuple(
                 dedupe_preserve_order(
-                    (*reasons, *post_union_aggregate_pushdown_draft_diagnostics(source_sql, rewrite_recipe))
+                    (
+                        *reasons,
+                        *post_union_aggregate_pushdown_draft_diagnostics(
+                            source_sql, rewrite_recipe
+                        ),
+                    )
                 )
             )
         )
@@ -238,7 +243,9 @@ def post_union_aggregate_pushdown_draft_diagnostics(
     return tuple(dedupe_preserve_order(reasons))
 
 
-def unsupported_post_union_aggregate_rollup_reasons(aggregate_fragments: tuple[str, ...]) -> tuple[str, ...]:
+def unsupported_post_union_aggregate_rollup_reasons(
+    aggregate_fragments: tuple[str, ...],
+) -> tuple[str, ...]:
     reasons: list[str] = []
     for fragment in aggregate_fragments:
         lowered = lower_sql_outside_quoted_text(fragment)
@@ -313,7 +320,10 @@ def downstream_cte_filter_reasons(ctes: tuple[CteDefinition, ...]) -> tuple[str,
             reasons.append("downstream_cte_filter_join_boundary")
         if main_select_has_distinct(cte.body):
             reasons.append("downstream_cte_filter_distinct_boundary")
-        if any(top_level_keyword_count(cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+        if any(
+            top_level_keyword_count(cte.body, keyword)
+            for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS
+        ):
             reasons.append("downstream_cte_filter_unsupported_clause_boundary")
     return tuple(dedupe_preserve_order(reasons))
 
@@ -358,7 +368,9 @@ def linear_cte_pushdown_draft_diagnostics(
         reasons.append("unsupported_cte_graph")
     if not parsed.ctes:
         return tuple(reasons), ()
-    if referenced_cte_names(parsed.final_sql, tuple(cte.name for cte in parsed.ctes)) != (parsed.ctes[-1].name,):
+    if referenced_cte_names(parsed.final_sql, tuple(cte.name for cte in parsed.ctes)) != (
+        parsed.ctes[-1].name,
+    ):
         reasons.append("final_cte_reference_boundary")
     if top_level_join_signature(parsed.final_sql):
         reasons.append("final_select_join_boundary")
@@ -612,7 +624,10 @@ def projection_lineage_failure_reason(
     if len(tokens) == 1:
         if alias_map:
             column = tokens[0].lower()
-            if any(column in lineage_maps.get(upstream_cte, {}) for upstream_cte in set(alias_map.values())):
+            if any(
+                column in lineage_maps.get(upstream_cte, {})
+                for upstream_cte in set(alias_map.values())
+            ):
                 return f"{prefix}_ambiguous_projection"
             return f"{prefix}_upstream_column_unavailable"
         return f"{prefix}_unknown"
@@ -633,7 +648,10 @@ def cte_body_draft_blocking_reasons(cte_body: str, prefix: str) -> list[str]:
         reasons.append(f"{prefix}_distinct_boundary")
     if top_level_join_signature(cte_body):
         reasons.append(f"{prefix}_join_boundary")
-    if any(top_level_keyword_count(cte_body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+    if any(
+        top_level_keyword_count(cte_body, keyword)
+        for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS
+    ):
         reasons.append(f"{prefix}_unsupported_clause_boundary")
     return reasons
 
@@ -649,7 +667,9 @@ def dedupe_preserve_order(items: Iterable[str]) -> tuple[str, ...]:
     return tuple(result)
 
 
-def pass_through_cte_elimination_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:
+def pass_through_cte_elimination_draft(
+    source_sql: str, rewrite_recipe: OptimizerRewriteRecipe
+) -> str | None:
     parsed = parse_with_query(source_sql)
     if parsed is None or len(parsed.ctes) < 2:
         return None
@@ -674,7 +694,10 @@ def pass_through_cte_elimination_draft(source_sql: str, rewrite_recipe: Optimize
         return None
     if top_level_join_signature(parsed.final_sql):
         return None
-    if any(top_level_keyword_count(parsed.final_sql, keyword) for keyword in ("UNION", "EXCEPT", "INTERSECT")):
+    if any(
+        top_level_keyword_count(parsed.final_sql, keyword)
+        for keyword in ("UNION", "EXCEPT", "INTERSECT")
+    ):
         return None
     if relation_qualifier_referenced(parsed.final_sql, removed_cte):
         return None
@@ -789,7 +812,10 @@ def single_derived_table_predicate_pushdown_draft(source_sql: str) -> str | None
         return None
     if main_select_has_distinct(parsed.body) or top_level_join_signature(parsed.body):
         return None
-    if any(top_level_keyword_count(parsed.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+    if any(
+        top_level_keyword_count(parsed.body, keyword)
+        for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS
+    ):
         return None
     if any(top_level_keyword_count(parsed.body, keyword) for keyword in ("GROUP", "ORDER")):
         return None
@@ -808,10 +834,14 @@ def single_derived_table_predicate_pushdown_draft(source_sql: str) -> str | None
     modified_body = add_where_predicates_to_cte_body(parsed.body, predicates)
     if modified_body is None:
         return None
-    return f"{source_sql[:parsed.body_start]}{modified_body.strip()}{source_sql[parsed.body_end:]}"
+    return (
+        f"{source_sql[: parsed.body_start]}{modified_body.strip()}{source_sql[parsed.body_end :]}"
+    )
 
 
-def post_union_aggregate_pushdown_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:
+def post_union_aggregate_pushdown_draft(
+    source_sql: str, rewrite_recipe: OptimizerRewriteRecipe
+) -> str | None:
     parsed = parse_with_query(source_sql)
     if parsed is None or any_cte_has_column_list(source_sql):
         return None
@@ -835,11 +865,16 @@ def post_union_aggregate_pushdown_draft(source_sql: str, rewrite_recipe: Optimiz
     aggregate_body = rewrite_downstream_aggregate_body(aggregate_cte.body)
     if aggregate_body is None:
         return None
-    cte_bodies = {union_cte.name: "\n    UNION ALL\n".join(branch_bodies), aggregate_cte.name: aggregate_body}
+    cte_bodies = {
+        union_cte.name: "\n    UNION ALL\n".join(branch_bodies),
+        aggregate_cte.name: aggregate_body,
+    }
     return rebuild_with_cte_bodies(parsed.ctes, parsed.final_sql, cte_bodies)
 
 
-def final_union_distinct_rollup_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:
+def final_union_distinct_rollup_draft(
+    source_sql: str, rewrite_recipe: OptimizerRewriteRecipe
+) -> str | None:
     parsed = parse_with_query(source_sql)
     if parsed is None or any_cte_has_column_list(source_sql):
         return None
@@ -850,8 +885,12 @@ def final_union_distinct_rollup_draft(source_sql: str, rewrite_recipe: Optimizer
     dimensions = non_aggregate_projection_names(parsed.final_sql)
     distinct_keys = count_distinct_key_names(parsed.final_sql)
     passthrough_names = set(dimensions) | set(distinct_keys)
-    additive_inputs = aggregate_input_projection_names(parsed.final_sql, union_outputs, passthrough_names)
-    required_names = tuple(name for name in union_outputs if name in passthrough_names or name in set(additive_inputs))
+    additive_inputs = aggregate_input_projection_names(
+        parsed.final_sql, union_outputs, passthrough_names
+    )
+    required_names = tuple(
+        name for name in union_outputs if name in passthrough_names or name in set(additive_inputs)
+    )
     if not required_names or not distinct_keys:
         return None
     aggregate_fragments = tuple(
@@ -868,7 +907,9 @@ def final_union_distinct_rollup_draft(source_sql: str, rewrite_recipe: Optimizer
     )
     if branch_bodies is None:
         return None
-    return rebuild_with_cte_bodies(parsed.ctes, parsed.final_sql, {union_cte.name: "\n    UNION ALL\n".join(branch_bodies)})
+    return rebuild_with_cte_bodies(
+        parsed.ctes, parsed.final_sql, {union_cte.name: "\n    UNION ALL\n".join(branch_bodies)}
+    )
 
 
 def recipe_ctes(
@@ -898,18 +939,29 @@ def rollup_union_branches(
     )
     branch_bodies: list[str] = []
     for branch in branches:
-        if any(top_level_keyword_count(branch, keyword) for keyword in ("GROUP", "HAVING", "ORDER", "LIMIT", "UNION", "EXCEPT", "INTERSECT")):
+        if any(
+            top_level_keyword_count(branch, keyword)
+            for keyword in ("GROUP", "HAVING", "ORDER", "LIMIT", "UNION", "EXCEPT", "INTERSECT")
+        ):
             return None
         projection_map = branch_projection_expression_map(branch, output_names)
         if projection_map is None:
             return None
         group_expressions: list[str] = []
         projected_fragments: list[str] = []
-        aggregate_names = {name for fragment in aggregate_fragments if (name := projection_name_for_fragment(fragment))}
+        aggregate_names = {
+            name
+            for fragment in aggregate_fragments
+            if (name := projection_name_for_fragment(fragment))
+        }
         for name in projected_names:
             if name in aggregate_names:
                 source_fragment = next(
-                    (fragment for fragment in aggregate_fragments if projection_name_for_fragment(fragment) == name),
+                    (
+                        fragment
+                        for fragment in aggregate_fragments
+                        if projection_name_for_fragment(fragment) == name
+                    ),
                     "",
                 )
                 expression = rewrite_aggregate_fragment_for_branch(source_fragment, projection_map)
@@ -940,7 +992,9 @@ def rollup_union_branches(
     return branch_bodies
 
 
-def branch_projection_expression_map(branch: str, output_names: tuple[str, ...]) -> dict[str, str] | None:
+def branch_projection_expression_map(
+    branch: str, output_names: tuple[str, ...]
+) -> dict[str, str] | None:
     fragments = projection_item_fragments(branch)
     if len(fragments) < len(output_names):
         return None
@@ -988,7 +1042,9 @@ def branch_from_tail(branch: str) -> str | None:
     return branch[from_offset:].rstrip()
 
 
-def rewrite_aggregate_fragment_for_branch(fragment: str, projection_map: dict[str, str]) -> str | None:
+def rewrite_aggregate_fragment_for_branch(
+    fragment: str, projection_map: dict[str, str]
+) -> str | None:
     alias = projection_name_for_fragment(fragment)
     if not alias:
         return None
@@ -1045,7 +1101,9 @@ def rewrite_downstream_aggregate_body(aggregate_body: str) -> str | None:
     return "SELECT " + ",\n       ".join(projections) + "\n" + tail.strip()
 
 
-def replace_sum_inner_expression(fragment: str, replacement: Callable[[str], str | None]) -> str | None:
+def replace_sum_inner_expression(
+    fragment: str, replacement: Callable[[str], str | None]
+) -> str | None:
     return replace_aggregate_inner_expression(fragment, "sum", replacement)
 
 
@@ -1055,7 +1113,9 @@ def replace_count_inner_expression(
     *,
     function_name: str = "COUNT",
 ) -> str | None:
-    return replace_aggregate_inner_expression(fragment, "count", replacement, function_name=function_name)
+    return replace_aggregate_inner_expression(
+        fragment, "count", replacement, function_name=function_name
+    )
 
 
 def replace_aggregate_inner_expression(
@@ -1080,7 +1140,9 @@ def replace_aggregate_inner_expression(
     if not new_inner:
         return None
     output_function = function_name or fragment[function_offset:open_offset].strip()
-    expression = f"{fragment[:function_offset]}{output_function}({new_inner}){fragment[close_offset + 1:]}"
+    expression = (
+        f"{fragment[:function_offset]}{output_function}({new_inner}){fragment[close_offset + 1 :]}"
+    )
     alias = projection_name_for_fragment(expression)
     if alias:
         expression = projection_expression(expression)
@@ -1114,7 +1176,9 @@ def rewrite_expression_identifiers(expression: str, projection_map: dict[str, st
             continue
         start = index
         index += 1
-        while index < len(expression) and (expression[index].isalnum() or expression[index] in {"_", "$"}):
+        while index < len(expression) and (
+            expression[index].isalnum() or expression[index] in {"_", "$"}
+        ):
             index += 1
         name = expression[start:index]
         pieces.append(projection_map.get(name.lower(), name))
@@ -1128,10 +1192,11 @@ def format_projection_expression(expression: str, output_name: str) -> str:
     return f"{expression.strip()} AS {output_name}"
 
 
-def rebuild_with_cte_bodies(ctes: tuple[CteDefinition, ...], final_sql: str, cte_bodies: dict[str, str]) -> str:
+def rebuild_with_cte_bodies(
+    ctes: tuple[CteDefinition, ...], final_sql: str, cte_bodies: dict[str, str]
+) -> str:
     cte_blocks = [
-        f"{cte.name} AS (\n{cte_bodies.get(cte.name, cte.body).strip()}\n)"
-        for cte in ctes
+        f"{cte.name} AS (\n{cte_bodies.get(cte.name, cte.body).strip()}\n)" for cte in ctes
     ]
     return "WITH " + ",\n".join(cte_blocks) + "\n" + final_sql.strip()
 
@@ -1145,7 +1210,10 @@ def single_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
     cte = parsed.ctes[0]
     if main_select_has_distinct(cte.body) or top_level_join_signature(cte.body):
         return None
-    if any(top_level_keyword_count(cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+    if any(
+        top_level_keyword_count(cte.body, keyword)
+        for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS
+    ):
         return None
     available_columns = simple_cte_filter_columns(cte.body)
     if not available_columns:
@@ -1178,7 +1246,10 @@ def single_cte_projection_alias_predicate_pushdown_draft(source_sql: str) -> str
     cte = parsed.ctes[0]
     if main_select_has_distinct(cte.body) or top_level_join_signature(cte.body):
         return None
-    if any(top_level_keyword_count(cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+    if any(
+        top_level_keyword_count(cte.body, keyword)
+        for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS
+    ):
         return None
     if clause_signature(cte.body, "GROUP"):
         return None
@@ -1207,14 +1278,19 @@ def linear_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
         return None
     if not is_linear_cte_chain(source_sql):
         return None
-    if referenced_cte_names(parsed.final_sql, tuple(cte.name for cte in parsed.ctes)) != (parsed.ctes[-1].name,):
+    if referenced_cte_names(parsed.final_sql, tuple(cte.name for cte in parsed.ctes)) != (
+        parsed.ctes[-1].name,
+    ):
         return None
     if top_level_join_signature(parsed.final_sql):
         return None
     first_cte = parsed.ctes[0]
     if main_select_has_distinct(first_cte.body) or top_level_join_signature(first_cte.body):
         return None
-    if any(top_level_keyword_count(first_cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+    if any(
+        top_level_keyword_count(first_cte.body, keyword)
+        for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS
+    ):
         return None
     available_columns_by_cte = [simple_cte_filter_columns(cte.body) for cte in parsed.ctes]
     if any(not columns for columns in available_columns_by_cte):
@@ -1252,7 +1328,9 @@ def linear_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
         predicate_columns = predicate_column_references(predicate, available_columns_by_cte[0])
         if predicate_columns is None:
             continue
-        if not all(predicate_columns <= columns for columns in available_columns_by_cte[:path_length]):
+        if not all(
+            predicate_columns <= columns for columns in available_columns_by_cte[:path_length]
+        ):
             continue
         signature = sql_predicate_signature_counter(f"SELECT 1 WHERE {predicate}", "WHERE")
         if not signature:
@@ -1264,7 +1342,9 @@ def linear_cte_predicate_pushdown_draft(source_sql: str) -> str | None:
         filtered_predicates.append(predicate)
     if not filtered_predicates:
         return None
-    modified_first_body = add_where_predicates_to_cte_body(first_cte.body, tuple(filtered_predicates))
+    modified_first_body = add_where_predicates_to_cte_body(
+        first_cte.body, tuple(filtered_predicates)
+    )
     if modified_first_body is None:
         return None
     cte_blocks = [f"{first_cte.name} AS (\n{modified_first_body.strip()}\n)"]
@@ -1317,7 +1397,10 @@ def projection_alias_source_column_map(cte_body: str) -> dict[str, str]:
         if len(tokens) != 1:
             continue
         source_column = tokens[0].lower()
-        if not source_column[:1].isalpha() or tokens[0].upper() in SAFE_SINGLE_CTE_PREDICATE_KEYWORDS:
+        if (
+            not source_column[:1].isalpha()
+            or tokens[0].upper() in SAFE_SINGLE_CTE_PREDICATE_KEYWORDS
+        ):
             continue
         if source_column != output_name:
             alias_map[output_name] = source_column
@@ -1327,7 +1410,9 @@ def projection_alias_source_column_map(cte_body: str) -> dict[str, str]:
 LineageRef = tuple[str, str]
 
 
-def cte_dag_predicate_pushdown_draft(source_sql: str, rewrite_recipe: OptimizerRewriteRecipe) -> str | None:
+def cte_dag_predicate_pushdown_draft(
+    source_sql: str, rewrite_recipe: OptimizerRewriteRecipe
+) -> str | None:
     parsed = parse_with_query(source_sql)
     if parsed is None or len(parsed.ctes) < 2:
         return None
@@ -1381,7 +1466,9 @@ def cte_dag_predicate_pushdown_draft(source_sql: str, rewrite_recipe: OptimizerR
         source_columns = simple_cte_filter_columns(source_cte.body)
         if not source_columns:
             continue
-        source_column_map = {column: source_column for column, (_cte_name, source_column) in lineage_refs.items()}
+        source_column_map = {
+            column: source_column for column, (_cte_name, source_column) in lineage_refs.items()
+        }
         rewritten_predicate = rewrite_expression_identifiers(predicate, source_column_map)
         if rewritten_predicate is None:
             continue
@@ -1393,24 +1480,35 @@ def cte_dag_predicate_pushdown_draft(source_sql: str, rewrite_recipe: OptimizerR
             continue
         if main_select_has_distinct(source_cte.body) or top_level_join_signature(source_cte.body):
             continue
-        if any(top_level_keyword_count(source_cte.body, keyword) for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS):
+        if any(
+            top_level_keyword_count(source_cte.body, keyword)
+            for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS
+        ):
             continue
-        signature = sql_predicate_signature_counter(f"SELECT 1 WHERE {rewritten_predicate}", "WHERE")
-        if not signature or counter_is_subset(signature, sql_predicate_signature_counter(source_cte.body, "WHERE")):
+        signature = sql_predicate_signature_counter(
+            f"SELECT 1 WHERE {rewritten_predicate}", "WHERE"
+        )
+        if not signature or counter_is_subset(
+            signature, sql_predicate_signature_counter(source_cte.body, "WHERE")
+        ):
             continue
         predicates_by_cte.setdefault(source_cte_name, []).append(rewritten_predicate)
     if not predicates_by_cte:
         return None
     cte_bodies: dict[str, str] = {}
     for cte_name, cte_predicates in predicates_by_cte.items():
-        modified_body = add_where_predicates_to_cte_body(cte_by_name[cte_name].body, tuple(cte_predicates))
+        modified_body = add_where_predicates_to_cte_body(
+            cte_by_name[cte_name].body, tuple(cte_predicates)
+        )
         if modified_body is None:
             return None
         cte_bodies[cte_name] = modified_body
     return rebuild_with_cte_bodies(parsed.ctes, parsed.final_sql, cte_bodies)
 
 
-def cte_output_lineage_maps(ctes: tuple[CteDefinition, ...]) -> dict[str, dict[str, set[LineageRef]]]:
+def cte_output_lineage_maps(
+    ctes: tuple[CteDefinition, ...],
+) -> dict[str, dict[str, set[LineageRef]]]:
     names = tuple(cte.name for cte in ctes)
     lineage_maps: dict[str, dict[str, set[LineageRef]]] = {}
     for cte in ctes:
@@ -1521,7 +1619,10 @@ def cte_relation_alias_map(sql: str, cte_names: tuple[str, ...]) -> dict[str, st
         alias_index = index + 2
         if alias_index < len(tokens) and tokens[alias_index].upper() == "AS":
             alias_index += 1
-        if alias_index < len(tokens) and tokens[alias_index].upper() not in RELATION_ALIAS_BOUNDARIES:
+        if (
+            alias_index < len(tokens)
+            and tokens[alias_index].upper() not in RELATION_ALIAS_BOUNDARIES
+        ):
             aliases[tokens[alias_index].lower()] = cte_name
     return aliases
 
@@ -1587,7 +1688,11 @@ def simple_group_by_columns(cte_body: str) -> set[str]:
         token = tokens[0].lower()
         if token.isdigit():
             position = int(token)
-            if position < 1 or position > len(projected_columns) or not projected_columns[position - 1]:
+            if (
+                position < 1
+                or position > len(projected_columns)
+                or not projected_columns[position - 1]
+            ):
                 return set()
             columns.add(projected_columns[position - 1])
         else:
@@ -1789,7 +1894,9 @@ def predicate_column_reference_result(
         if predicate_token_is_identifier_like(token):
             if index + 1 < len(tokens) and tokens[index + 1] == "(":
                 return PredicateColumnReferenceResult(set(), "unsupported_predicate_function_call")
-            return PredicateColumnReferenceResult(set(), "unsupported_predicate_unavailable_unqualified_column")
+            return PredicateColumnReferenceResult(
+                set(), "unsupported_predicate_unavailable_unqualified_column"
+            )
         return PredicateColumnReferenceResult(set(), "unsupported_predicate_token")
     if not column_references:
         return PredicateColumnReferenceResult(set(), "unsupported_predicate_no_column_reference")
@@ -1835,7 +1942,9 @@ def dequalify_predicate_for_cte_aliases_with_reason(
             continue
         first_start = index
         first_end = index + 1
-        while first_end < len(predicate) and (predicate[first_end].isalnum() or predicate[first_end] in {"_", "$"}):
+        while first_end < len(predicate) and (
+            predicate[first_end].isalnum() or predicate[first_end] in {"_", "$"}
+        ):
             first_end += 1
         dot_cursor = first_end
         while dot_cursor < len(predicate) and predicate[dot_cursor].isspace():
@@ -1847,15 +1956,21 @@ def dequalify_predicate_for_cte_aliases_with_reason(
         second_start = dot_cursor + 1
         while second_start < len(predicate) and predicate[second_start].isspace():
             second_start += 1
-        if second_start >= len(predicate) or not (predicate[second_start].isalpha() or predicate[second_start] == "_"):
+        if second_start >= len(predicate) or not (
+            predicate[second_start].isalpha() or predicate[second_start] == "_"
+        ):
             return None, "not_for_target_malformed_qualified_reference"
         second_end = second_start + 1
-        while second_end < len(predicate) and (predicate[second_end].isalnum() or predicate[second_end] in {"_", "$"}):
+        while second_end < len(predicate) and (
+            predicate[second_end].isalnum() or predicate[second_end] in {"_", "$"}
+        ):
             second_end += 1
         qualifier = predicate[first_start:first_end].lower()
         column = predicate[second_start:second_end].lower()
         if qualifier not in cte_qualifiers:
-            if predicate_has_target_qualified_reference(predicate, cte_qualifiers, available_columns):
+            if predicate_has_target_qualified_reference(
+                predicate, cte_qualifiers, available_columns
+            ):
                 return None, "not_for_target_mixed_target_foreign_qualifier"
             return None, "not_for_target_foreign_qualifier_only"
         if column not in available_columns:
@@ -1881,7 +1996,9 @@ def predicate_has_target_qualified_reference(
             continue
         first_start = index
         first_end = index + 1
-        while first_end < len(predicate) and (predicate[first_end].isalnum() or predicate[first_end] in {"_", "$"}):
+        while first_end < len(predicate) and (
+            predicate[first_end].isalnum() or predicate[first_end] in {"_", "$"}
+        ):
             first_end += 1
         dot_cursor = first_end
         while dot_cursor < len(predicate) and predicate[dot_cursor].isspace():
@@ -1892,11 +2009,15 @@ def predicate_has_target_qualified_reference(
         second_start = dot_cursor + 1
         while second_start < len(predicate) and predicate[second_start].isspace():
             second_start += 1
-        if second_start >= len(predicate) or not (predicate[second_start].isalpha() or predicate[second_start] == "_"):
+        if second_start >= len(predicate) or not (
+            predicate[second_start].isalpha() or predicate[second_start] == "_"
+        ):
             index = second_start
             continue
         second_end = second_start + 1
-        while second_end < len(predicate) and (predicate[second_end].isalnum() or predicate[second_end] in {"_", "$"}):
+        while second_end < len(predicate) and (
+            predicate[second_end].isalnum() or predicate[second_end] in {"_", "$"}
+        ):
             second_end += 1
         qualifier = predicate[first_start:first_end].lower()
         column = predicate[second_start:second_end].lower()

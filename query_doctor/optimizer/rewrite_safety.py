@@ -5,7 +5,11 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from query_doctor.optimizer.source_sql import skip_block_comment_text, skip_line_comment_text, skip_quoted_text
+from query_doctor.optimizer.source_sql import (
+    skip_block_comment_text,
+    skip_line_comment_text,
+    skip_quoted_text,
+)
 from query_doctor.optimizer.sql import tokenize_sql
 from query_doctor.optimizer.sql_fragments import (
     CLAUSE_SIGNATURE_BOUNDARIES,
@@ -36,13 +40,14 @@ def post_union_where_predicates_preserved(
     source_aggregate_body: str,
     draft_aggregate_body: str,
 ) -> bool:
-    return (
-        where_predicates_preserved_or_safely_extended_by_union_branch(source_union_body, draft_union_body)
-        and where_predicates_preserved_or_safely_extended(source_aggregate_body, draft_aggregate_body)
-    )
+    return where_predicates_preserved_or_safely_extended_by_union_branch(
+        source_union_body, draft_union_body
+    ) and where_predicates_preserved_or_safely_extended(source_aggregate_body, draft_aggregate_body)
 
 
-def where_predicates_preserved_or_safely_extended_by_union_branch(source_union_body: str, draft_union_body: str) -> bool:
+def where_predicates_preserved_or_safely_extended_by_union_branch(
+    source_union_body: str, draft_union_body: str
+) -> bool:
     source_branches = split_top_level_union_all_fragments(source_union_body)
     draft_branches = split_top_level_union_all_fragments(draft_union_body)
     if len(source_branches) != len(draft_branches):
@@ -61,7 +66,9 @@ def where_predicates_preserved_or_safely_extended(source_sql: str, draft_sql: st
     extra_predicates = draft_predicates - source_predicates
     if not extra_predicates:
         return True
-    return counter_is_subset(extra_predicates, transitive_inner_join_where_predicate_counter(source_sql))
+    return counter_is_subset(
+        extra_predicates, transitive_inner_join_where_predicate_counter(source_sql)
+    )
 
 
 def sql_predicate_signature_counter(sql: str, keyword: str) -> Counter[str]:
@@ -128,7 +135,9 @@ def next_clause_boundary_at_depth(sql: str, start: int, clause_depth: int) -> in
             depth = max(clause_depth, depth - 1)
             index += 1
             continue
-        if depth == clause_depth and any(keyword_at(sql, index, boundary) for boundary in boundaries):
+        if depth == clause_depth and any(
+            keyword_at(sql, index, boundary) for boundary in boundaries
+        ):
             return index
         index += 1
     return len(sql)
@@ -200,7 +209,11 @@ def transitive_inner_join_where_predicate_counter(source_sql: str) -> Counter[st
             elif source_expr == right_expr:
                 target_expr = left_expr
             if target_expr:
-                derived.append(normalize_sql_signature_fragment(f"{target_expr} BETWEEN {low_value} AND {high_value}"))
+                derived.append(
+                    normalize_sql_signature_fragment(
+                        f"{target_expr} BETWEEN {low_value} AND {high_value}"
+                    )
+                )
     return Counter(derived)
 
 

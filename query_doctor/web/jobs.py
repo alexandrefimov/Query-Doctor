@@ -33,7 +33,10 @@ from query_doctor.web.ui.recent_scan_progress import (
     render_batch_progress_panel,
 )
 from query_doctor.web.ui.report import render_result
-from query_doctor.web.ui.specific_query import render_specific_query_result, render_specific_query_results
+from query_doctor.web.ui.specific_query import (
+    render_specific_query_result,
+    render_specific_query_results,
+)
 
 
 TERMINAL_JOB_STATUSES = {"ok", "failed", "cancelled"}
@@ -79,7 +82,9 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             progress = progress_view["percent"]
         else:
             progress = job.progress
-            progress_view = job_progress_view_payload(progress_view_for_job(job.kind, job.stage_label, progress))
+            progress_view = job_progress_view_payload(
+                progress_view_for_job(job.kind, job.stage_label, progress)
+            )
         payload = {
             "status": job.status,
             "stage": job.stage_label,
@@ -121,7 +126,11 @@ class WebJobStore:
     ) -> WebJobSnapshot:
         stage = WEB_STAGES[0]
         with self._lock:
-            prior_result_html = "\n".join(render_specific_query_results(tuple(self._query_results))) if self._query_results else ""
+            prior_result_html = (
+                "\n".join(render_specific_query_results(tuple(self._query_results)))
+                if self._query_results
+                else ""
+            )
             job = WebJob(
                 job_id=uuid.uuid4().hex,
                 query_id=query_id,
@@ -203,7 +212,9 @@ class WebJobStore:
             self._store_job_locked(job)
             return job.snapshot()
 
-    def create_batch_optimized_query(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
+    def create_batch_optimized_query(
+        self, case_id: str, *, source: str = "batch"
+    ) -> WebJobSnapshot:
         stage = OPTIMIZED_QUERY_STAGES[0]
         job = WebJob(
             job_id=uuid.uuid4().hex,
@@ -271,7 +282,11 @@ class WebJobStore:
         with self._lock:
             self._prune_locked()
             for job in self._jobs.values():
-                if job.kind in {"batch_report", "batch_llm_actions"} and job.batch_case_id == case_id and job.status == "running":
+                if (
+                    job.kind in {"batch_report", "batch_llm_actions"}
+                    and job.batch_case_id == case_id
+                    and job.status == "running"
+                ):
                     return job.snapshot()
         return None
 
@@ -279,7 +294,11 @@ class WebJobStore:
         with self._lock:
             self._prune_locked()
             for job in self._jobs.values():
-                if job.kind in {"query_report", "query_llm_actions"} and job.query_id == query_id and job.status == "running":
+                if (
+                    job.kind in {"query_report", "query_llm_actions"}
+                    and job.query_id == query_id
+                    and job.status == "running"
+                ):
                     return job.snapshot()
         return None
 
@@ -287,7 +306,11 @@ class WebJobStore:
         with self._lock:
             self._prune_locked()
             for job in self._jobs.values():
-                if job.kind in {"batch_optimized_query", "batch_llm_actions"} and job.batch_case_id == case_id and job.status == "running":
+                if (
+                    job.kind in {"batch_optimized_query", "batch_llm_actions"}
+                    and job.batch_case_id == case_id
+                    and job.status == "running"
+                ):
                     return job.snapshot()
         return None
 
@@ -295,7 +318,11 @@ class WebJobStore:
         with self._lock:
             self._prune_locked()
             for job in self._jobs.values():
-                if job.kind in {"query_optimized_query", "query_llm_actions"} and job.query_id == query_id and job.status == "running":
+                if (
+                    job.kind in {"query_optimized_query", "query_llm_actions"}
+                    and job.query_id == query_id
+                    and job.status == "running"
+                ):
                     return job.snapshot()
         return None
 
@@ -369,7 +396,9 @@ class WebJobStore:
                 safe_case.pop("case_index", None)
                 safe_case.pop("case_dir", None)
                 self._query_results.append(safe_case)
-                job.result_html = "\n".join(render_specific_query_results(tuple(self._query_results)))
+                job.result_html = "\n".join(
+                    render_specific_query_results(tuple(self._query_results))
+                )
             else:
                 job.result_html = "\n".join(render_query_analysis_output(result))
             job.error = ""
@@ -417,7 +446,8 @@ class WebJobStore:
             expired = [
                 job_id
                 for job_id, job in self._jobs.items()
-                if job.status in TERMINAL_JOB_STATUSES and current - job.updated_at > self._terminal_job_ttl_sec
+                if job.status in TERMINAL_JOB_STATUSES
+                and current - job.updated_at > self._terminal_job_ttl_sec
             ]
             for job_id in expired:
                 self._jobs.pop(job_id, None)

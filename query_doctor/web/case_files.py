@@ -128,7 +128,9 @@ def replace_case_dir_after_success(staged_case_dir: Path, expected_case_dir: Pat
     expected_case_dir.parent.mkdir(parents=True, exist_ok=True)
     backup_path: Path | None = None
     if expected_case_dir.exists() or expected_case_dir.is_symlink():
-        backup_path = expected_case_dir.with_name(f".replace-{expected_case_dir.name}-{uuid.uuid4().hex}")
+        backup_path = expected_case_dir.with_name(
+            f".replace-{expected_case_dir.name}-{uuid.uuid4().hex}"
+        )
         expected_case_dir.rename(backup_path)
     try:
         staged_case_dir.rename(expected_case_dir)
@@ -161,7 +163,9 @@ def ensure_complete_existing_case(case_dir: Path) -> None:
             "Existing Query ID case is incomplete. "
             "Re-run analysis to regenerate required artifacts."
         )
-    missing = [name for name in COLLECTED_CASE_FILES if case_relative_file_path(case_dir, name) is None]
+    missing = [
+        name for name in COLLECTED_CASE_FILES if case_relative_file_path(case_dir, name) is None
+    ]
     if missing:
         raise WebError(
             "Existing Query ID case is incomplete. "
@@ -195,7 +199,9 @@ def resolve_under_repo(repo_dir: Path, path: Path) -> Path:
 def parse_facts_summary(facts_text: str) -> dict[str, str]:
     summary: dict[str, str] = {}
     for key in ("Parsed operators", "Cardinality anomalies", "Memory anomalies"):
-        match = re.search(rf"^\s*[-*]?\s*{re.escape(key)}\s*:\s*(?P<value>\d+)\s*$", facts_text, re.MULTILINE)
+        match = re.search(
+            rf"^\s*[-*]?\s*{re.escape(key)}\s*:\s*(?P<value>\d+)\s*$", facts_text, re.MULTILINE
+        )
         if match:
             summary[key] = match.group("value")
     return summary

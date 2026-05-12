@@ -110,7 +110,9 @@ def fetch_impala_query_list_url(
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
         raise CMClientError("Impala query list endpoint request failed safely.") from exc
     if len(raw) > max_query_list_bytes:
-        raise CMClientError("Impala query list endpoint response exceeded the configured byte limit.")
+        raise CMClientError(
+            "Impala query list endpoint response exceeded the configured byte limit."
+        )
     text = raw.decode("utf-8", errors="replace")
     try:
         return json.loads(text)
@@ -166,7 +168,9 @@ def default_status_for_collection_key(key: str) -> str | None:
     return None
 
 
-def parse_impala_query_entry(raw: dict[str, Any], *, default_status: str | None) -> CMQuerySummary | None:
+def parse_impala_query_entry(
+    raw: dict[str, Any], *, default_status: str | None
+) -> CMQuerySummary | None:
     query_id = normalize_string(first_present(raw, ("query_id", "queryId", "id", "query-id")))
     if not query_id:
         query_id = extract_query_id_from_strings(raw)
@@ -178,21 +182,33 @@ def parse_impala_query_entry(raw: dict[str, Any], *, default_status: str | None)
     end_time = normalize_impala_timestamp(
         first_present(raw, ("end_time", "endTime", "end_time_utc", "endTimeUtc", "end"))
     )
-    status = normalize_string(first_present(raw, ("status", "state", "query_state", "queryState"))) or default_status
+    status = (
+        normalize_string(first_present(raw, ("status", "state", "query_state", "queryState")))
+        or default_status
+    )
     return CMQuerySummary(
         query_id=query_id,
         start_time=start_time,
         end_time=end_time,
         duration_ms=parse_duration_ms(raw),
         status=status,
-        user=normalize_string(first_present(raw, ("user", "username", "effective_user", "effectiveUser"))),
-        pool=normalize_string(first_present(raw, ("pool", "pool_name", "poolName", "request_pool", "requestPool"))),
+        user=normalize_string(
+            first_present(raw, ("user", "username", "effective_user", "effectiveUser"))
+        ),
+        pool=normalize_string(
+            first_present(raw, ("pool", "pool_name", "poolName", "request_pool", "requestPool"))
+        ),
         query_type=normalize_string(
-            first_present(raw, ("query_type", "queryType", "stmt_type", "stmtType", "statementType"))
+            first_present(
+                raw, ("query_type", "queryType", "stmt_type", "stmtType", "statementType")
+            )
         )
         or "QUERY",
-        statement=normalize_statement(first_present(raw, ("stmt", "statement", "query", "sql", "stmt_text", "stmtText"))),
-        query_state=normalize_string(first_present(raw, ("query_state", "queryState", "state"))) or status,
+        statement=normalize_statement(
+            first_present(raw, ("stmt", "statement", "query", "sql", "stmt_text", "stmtText"))
+        ),
+        query_state=normalize_string(first_present(raw, ("query_state", "queryState", "state")))
+        or status,
     )
 
 
@@ -252,7 +268,10 @@ def parse_duration_text(value: str) -> int | None:
     text = value.strip().lower()
     if not text:
         return None
-    match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)\s*(ms|millis|milliseconds|s|sec|secs|seconds|m|min|mins|minutes)?", text)
+    match = re.fullmatch(
+        r"([0-9]+(?:\.[0-9]+)?)\s*(ms|millis|milliseconds|s|sec|secs|seconds|m|min|mins|minutes)?",
+        text,
+    )
     if not match:
         return None
     number = float(match.group(1))

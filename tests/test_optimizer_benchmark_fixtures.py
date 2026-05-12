@@ -53,7 +53,10 @@ def test_optimizer_benchmark_fixture_contract(case_dir: Path):
 
     draft_sql = draft_path.read_text(encoding="utf-8")
     errors = optimize_query.validate_draft_sql(source_sql, draft_sql, recipe)
-    assert optimize_query.draft_has_material_change(source_sql, draft_sql) is expected["expect_material_change"]
+    assert (
+        optimize_query.draft_has_material_change(source_sql, draft_sql)
+        is expected["expect_material_change"]
+    )
     for expected_error in expected["expect_validation_errors"]:
         assert expected_error in errors
     if not expected["expect_validation_errors"]:
@@ -68,4 +71,6 @@ def test_optimizer_benchmark_fixture_contract(case_dir: Path):
     elif expected["expected_output_kind"] == "validation_rejected":
         assert errors
     else:
-        raise AssertionError(f"unsupported expected optimizer output kind: {expected['expected_output_kind']}")
+        raise AssertionError(
+            f"unsupported expected optimizer output kind: {expected['expected_output_kind']}"
+        )

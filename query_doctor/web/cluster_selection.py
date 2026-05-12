@@ -78,8 +78,12 @@ def build_web_cluster_config(
         cm_url=first_string(string_value(values, "cm_url"), string_value(defaults, "cm_url")),
         cm_cluster=first_string(string_value(values, "cluster"), string_value(defaults, "cluster")),
         cm_service=first_string(string_value(values, "service"), string_value(defaults, "service")),
-        cm_username=first_string(string_value(values, "username"), string_value(defaults, "username")),
-        ca_bundle=first_string(string_value(values, "ca_bundle"), string_value(defaults, "ca_bundle")),
+        cm_username=first_string(
+            string_value(values, "username"), string_value(defaults, "username")
+        ),
+        ca_bundle=first_string(
+            string_value(values, "ca_bundle"), string_value(defaults, "ca_bundle")
+        ),
         insecure_skip_verify=first_bool(values, defaults, "insecure_skip_verify", default=False),
         cm_metrics_profile=cm_metrics_profile,
         query_profile_source=first_string(
@@ -107,7 +111,9 @@ def build_web_cluster_config(
             "impala_profile_timeout_sec",
             default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
         ),
-        collect_prometheus_timeseries=first_bool(values, defaults, "collect_prometheus_timeseries", default=False),
+        collect_prometheus_timeseries=first_bool(
+            values, defaults, "collect_prometheus_timeseries", default=False
+        ),
         prometheus_url=first_string(
             string_value(values, "prometheus_url"),
             string_value(defaults, "prometheus_url"),
@@ -267,7 +273,9 @@ def cluster_select_options(settings: WebSettings) -> tuple[tuple[str, str], ...]
     return tuple((cluster.key, cluster.label) for cluster in settings.clusters)
 
 
-def selected_cluster_key_from_mapping(values: Mapping[str, object] | None, settings: WebSettings) -> str:
+def selected_cluster_key_from_mapping(
+    values: Mapping[str, object] | None, settings: WebSettings
+) -> str:
     if values is None:
         return default_cluster_key(settings)
     value = values.get("cluster_key")

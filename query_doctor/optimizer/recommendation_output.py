@@ -66,7 +66,9 @@ def validate_optimizer_recommendations_text(text: str) -> list[str]:
     lowered = stripped.lower()
     if any(token in lowered for token in UNSAFE_RECOMMENDATION_TOKENS):
         return ["Optimizer recommendations contain SQL-like or unsafe output."]
-    if UNSAFE_RECOMMENDATION_SQL_LINE_RE.search(stripped) or UNSAFE_RECOMMENDATION_CTE_RE.search(stripped):
+    if UNSAFE_RECOMMENDATION_SQL_LINE_RE.search(stripped) or UNSAFE_RECOMMENDATION_CTE_RE.search(
+        stripped
+    ):
         return ["Optimizer recommendations contain SQL-like or unsafe output."]
     if re.search(r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+", stripped):
         return ["Optimizer recommendations contain browser-unsafe local path output."]
@@ -134,8 +136,12 @@ def normalize_optimizer_recommendations_with_telemetry(
         "specific_context_bullet_count": len(specific),
         "final_bullet_count": len(final_lines),
         "final_specific_context_bullet_count": final_specific_count,
-        "final_model_candidate_bullet_count": 0 if canonical_fallback_used else final_candidate_count,
-        "final_canonical_candidate_bullet_count": final_candidate_count if canonical_fallback_used else 0,
+        "final_model_candidate_bullet_count": 0
+        if canonical_fallback_used
+        else final_candidate_count,
+        "final_canonical_candidate_bullet_count": final_candidate_count
+        if canonical_fallback_used
+        else 0,
         "candidate_match_rate": round(len(seen_candidate_ids) / llm_bullet_count, 4)
         if llm_bullet_count
         else None,
@@ -151,7 +157,9 @@ def no_rewrite_recommendations(
     facts_text: str,
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
 ) -> str:
-    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "no material SQL change"
+    reasons = (
+        ", ".join(risk_decision.reasons) if risk_decision.reasons else "no material SQL change"
+    )
     prefix = [
         "- The model response passed validation but did not contain a material SQL rewrite, so no trusted optimized query is shown.",
         f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
@@ -171,7 +179,11 @@ def no_supported_rewrite_recommendations(
     risk_decision: OptimizerRiskDecision,
     facts_text: str,
 ) -> str:
-    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "no Python-owned rewrite recipe"
+    reasons = (
+        ", ".join(risk_decision.reasons)
+        if risk_decision.reasons
+        else "no Python-owned rewrite recipe"
+    )
     prefix = [
         "- Python did not detect a supported SQL rewrite recipe for this query shape, so no LLM SQL draft was requested.",
         f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
@@ -192,7 +204,11 @@ def deterministic_draft_unavailable_recommendations(
     facts_text: str,
     rewrite_recipe: OptimizerRewriteRecipe,
 ) -> str:
-    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "deterministic draft unavailable"
+    reasons = (
+        ", ".join(risk_decision.reasons)
+        if risk_decision.reasons
+        else "deterministic draft unavailable"
+    )
     prefix = [
         (
             "- Python detected a supported rewrite recipe, but could not construct a deterministic SQL draft "
@@ -238,8 +254,13 @@ def validation_failed_no_rewrite_recommendations(
     facts_text: str,
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
 ) -> str:
-    categories = ", ".join(dedupe_preserve_order(errors)[:3]) or "deterministic validation rejected the draft"
-    reasons = ", ".join(risk_decision.reasons) if risk_decision.reasons else "rewrite validation failed"
+    categories = (
+        ", ".join(dedupe_preserve_order(errors)[:3])
+        or "deterministic validation rejected the draft"
+    )
+    reasons = (
+        ", ".join(risk_decision.reasons) if risk_decision.reasons else "rewrite validation failed"
+    )
     prefix = [
         "- The model could not write a SQL draft that passed deterministic validation, so no trusted optimized query is shown.",
         f"- Validation category: {categories}.",

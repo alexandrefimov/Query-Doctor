@@ -55,7 +55,9 @@ def facts_text(
     elif action_cards:
         action_cards_text = "### Card 1: Evidence-backed finding\n\n- confirmed\n"
     else:
-        action_cards_text = "No deterministic action cards were triggered from the parsed evidence.\n"
+        action_cards_text = (
+            "No deterministic action cards were triggered from the parsed evidence.\n"
+        )
     findings_text = (
         "### Heavy operator [medium]\n\n- found\n"
         if findings
@@ -204,7 +206,11 @@ def test_classifies_problem_case_with_severe_action_card(tmp_path, capsys):
     make_case(root, "case-a")
     runner, _calls = fake_runner_factory(
         module,
-        {"case-a": facts_text(memory=0, action_cards=True, severe_action_card=True, findings=False)},
+        {
+            "case-a": facts_text(
+                memory=0, action_cards=True, severe_action_card=True, findings=False
+            )
+        },
     )
 
     result = module.main([str(root)], analyzer_runner=runner)
@@ -245,7 +251,11 @@ def test_detects_banned_phrases_and_can_fail(tmp_path, capsys):
     make_case(root, "case-a")
     runner, _calls = fake_runner_factory(
         module,
-        {"case-a": facts_text(extra="This does not prove hot keys exist or that stats are stale.\n")},
+        {
+            "case-a": facts_text(
+                extra="This does not prove hot keys exist or that stats are stale.\n"
+            )
+        },
     )
 
     result = module.main([str(root), "--fail-on-banned-phrases"], analyzer_runner=runner)
@@ -312,7 +322,11 @@ def test_writes_deterministic_json_summary(tmp_path):
     json_path = tmp_path / "summary.json"
     runner, _calls = fake_runner_factory(
         module,
-        {"case-a": facts_text(operators=9, cardinality=2, memory=1, action_cards=False, findings=False)},
+        {
+            "case-a": facts_text(
+                operators=9, cardinality=2, memory=1, action_cards=False, findings=False
+            )
+        },
     )
 
     result = module.main([str(root), "--json-out", str(json_path)], analyzer_runner=runner)

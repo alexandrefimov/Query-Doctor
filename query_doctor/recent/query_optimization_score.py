@@ -98,7 +98,9 @@ def score_query_optimization_candidate(
             counter_signals.append("no query-shape opportunity evidence")
     score = max(0, min(100, raw_score))
 
-    tier = candidate_tier(score, has_shape_evidence=has_shape_evidence, counter_signals=counter_signals)
+    tier = candidate_tier(
+        score, has_shape_evidence=has_shape_evidence, counter_signals=counter_signals
+    )
     confidence = candidate_confidence(
         opportunity_reasons,
         counter_signals,
@@ -127,7 +129,9 @@ def query_optimization_sort_key(case_summary: dict[str, object]) -> tuple[object
     score = numeric_value(candidate.get("score"))
     duration = numeric_value(case_summary.get("duration_sec"))
     triage_rank = numeric_value(case_summary.get("triage_rank"))
-    rewriteability_rank = optimizer_rewriteability_rank(case_summary.get("optimizer_rewrite_support"))
+    rewriteability_rank = optimizer_rewriteability_rank(
+        case_summary.get("optimizer_rewrite_support")
+    )
     return (
         -TIER_ORDER.get(tier, 0),
         -rewriteability_rank,
@@ -143,9 +147,15 @@ def query_optimization_sort_key(case_summary: dict[str, object]) -> tuple[object
 def optimizer_rewriteability_rank(support: object) -> int:
     support = support if isinstance(support, dict) else {}
     bucket = str(support.get("rewriteability_bucket") or "").strip().lower()
-    if bucket == "recipe_adjacent_shape" and optimizer_adjacent_actionability(support) != "actionable":
+    if (
+        bucket == "recipe_adjacent_shape"
+        and optimizer_adjacent_actionability(support) != "actionable"
+    ):
         return REWRITEABILITY_ORDER["human_review_only"]
-    if bucket == "recipe_detected_no_draft" and optimizer_no_draft_actionability(support) != "actionable":
+    if (
+        bucket == "recipe_detected_no_draft"
+        and optimizer_no_draft_actionability(support) != "actionable"
+    ):
         return REWRITEABILITY_ORDER["human_review_only"]
     if bucket in REWRITEABILITY_ORDER:
         return REWRITEABILITY_ORDER[bucket]
@@ -275,7 +285,9 @@ def impact_signals(facts: str, duration_sec: float | None) -> tuple[int, list[st
         elif duration_sec >= 10:
             score += 10
             reasons.append("moderate runtime")
-    max_read = max_size_value(facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read"))
+    max_read = max_size_value(
+        facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read")
+    )
     if max_read >= 100 * 1024**3:
         score += 22
         reasons.append("large scan/read volume")
@@ -285,7 +297,9 @@ def impact_signals(facts: str, duration_sec: float | None) -> tuple[int, list[st
     elif max_read >= 1024**3:
         score += 6
         reasons.append("non-trivial scan/read volume")
-    max_memory = max_size_value(facts, ("peak memory", "PeakMemoryUsage", "Peak Mem", "memory_aggregate_peak"))
+    max_memory = max_size_value(
+        facts, ("peak memory", "PeakMemoryUsage", "Peak Mem", "memory_aggregate_peak")
+    )
     if max_memory >= 64 * 1024**3:
         score += 20
         reasons.append("very high peak memory")
@@ -320,7 +334,9 @@ def query_shape_opportunity_signals(
     if join_row_expansion_evidence(facts, analysis=analysis):
         score += 30
         reasons.append("join row expansion or cardinality mismatch with join evidence")
-        review.extend(["join keys and join cardinality", "filter placement", "pre-aggregation before join"])
+        review.extend(
+            ["join keys and join cardinality", "filter placement", "pre-aggregation before join"]
+        )
     elif cardinality_mismatch_count(facts, analysis=analysis) > 0:
         score += 10
         reasons.append("cardinality mismatch needs query-shape evidence before stronger action")
@@ -341,7 +357,11 @@ def query_shape_opportunity_signals(
         score += 18
         reasons.append("spill pressure at shape-sensitive operator")
         review.extend(["spill-heavy operator inputs", "pre-aggregation", "sort/distinct inputs"])
-    if "cm metrics correlation" in lower and "network i/o spike is correlated" in lower and large_exchange_evidence(facts):
+    if (
+        "cm metrics correlation" in lower
+        and "network i/o spike is correlated" in lower
+        and large_exchange_evidence(facts)
+    ):
         score += 8
         reasons.append("network I/O context aligns with exchange evidence")
         review.extend(["exchange payload", "data movement"])
@@ -371,16 +391,34 @@ def query_optimization_counter_signals(
     if failure_category:
         signals.append("case has collection or analysis failure")
         penalty *= 0.5
-    status_values = " ".join(fact_values(scoring_section_text(facts, "## CM Query Context"), "status"))
-    state_values = " ".join(fact_values(scoring_section_text(facts, "## CM Query Context"), "query_state"))
-    if re.search(r"\b(?:failed|cancelled|canceled|exception)\b", f"{status_values} {state_values}", re.IGNORECASE):
+    status_values = " ".join(
+        fact_values(scoring_section_text(facts, "## CM Query Context"), "status")
+    )
+    state_values = " ".join(
+        fact_values(scoring_section_text(facts, "## CM Query Context"), "query_state")
+    )
+    if re.search(
+        r"\b(?:failed|cancelled|canceled|exception)\b",
+        f"{status_values} {state_values}",
+        re.IGNORECASE,
+    ):
         signals.append("query did not complete with useful execution evidence")
         penalty *= 0.35
     admission_wait = duration_value_for_label(facts, "admission_wait")
-    if admission_wait is not None and duration_sec and duration_sec > 0 and admission_wait / duration_sec >= 0.5:
+    if (
+        admission_wait is not None
+        and duration_sec
+        and duration_sec > 0
+        and admission_wait / duration_sec >= 0.5
+    ):
         signals.append("admission wait dominates runtime")
         penalty *= 0.25
-    elif admission_wait is not None and duration_sec and duration_sec > 0 and admission_wait / duration_sec >= 0.2:
+    elif (
+        admission_wait is not None
+        and duration_sec
+        and duration_sec > 0
+        and admission_wait / duration_sec >= 0.2
+    ):
         signals.append("admission wait is a material runtime component")
         penalty *= 0.7
     if duration_sec is not None and duration_sec < 5:
@@ -404,7 +442,9 @@ def large_scan_waste_evidence(facts: str) -> bool:
     lower = facts.lower()
     if "large scan volume with comparatively small downstream row count" in lower:
         return True
-    read_bytes = max_size_value(facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read"))
+    read_bytes = max_size_value(
+        facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read")
+    )
     rows_returned = max_numeric_value(facts, ("RowsReturned", "rows_produced", "Rows available"))
     rows_produced = max_numeric_value(facts, ("RowsProduced",))
     if read_bytes >= 10 * 1024**3 and rows_returned and rows_returned <= 100_000:
@@ -423,7 +463,11 @@ def join_row_expansion_evidence(
     if "join row expansion" in lower or "join explosion" in lower:
         return True
     ratio = max_join_actual_estimated_ratio(facts, analysis=analysis)
-    return ratio is not None and ratio >= 50 and cardinality_mismatch_count(facts, analysis=analysis) > 0
+    return (
+        ratio is not None
+        and ratio >= 50
+        and cardinality_mismatch_count(facts, analysis=analysis) > 0
+    )
 
 
 def large_exchange_evidence(facts: str) -> bool:
@@ -437,7 +481,9 @@ def large_exchange_evidence(facts: str) -> bool:
 
 
 def memory_shape_evidence(facts: str) -> bool:
-    if not re.search(r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b", facts, re.IGNORECASE):
+    if not re.search(
+        r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b", facts, re.IGNORECASE
+    ):
         return False
     if re.search(r"peak/estimated memory ratio:\s*(\d+(?:\.\d+)?)x", facts, re.IGNORECASE):
         return True
@@ -490,13 +536,21 @@ def join_operator_evidence_lines(text: str) -> list[str]:
 
 def join_operator_line(line: str) -> bool:
     stripped = line.strip()
-    if re.search(r"^-\s*operator:\s*.*\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", stripped, re.IGNORECASE):
+    if re.search(
+        r"^-\s*operator:\s*.*\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", stripped, re.IGNORECASE
+    ):
         return True
-    return bool(re.search(r"^-\s*\d+:[^\n]*\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", stripped, re.IGNORECASE))
+    return bool(
+        re.search(
+            r"^-\s*\d+:[^\n]*\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", stripped, re.IGNORECASE
+        )
+    )
 
 
 def is_join_operator_name(value: object) -> bool:
-    return bool(re.search(r"\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", str(value or ""), re.IGNORECASE))
+    return bool(
+        re.search(r"\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", str(value or ""), re.IGNORECASE)
+    )
 
 
 def action_card_blocks(facts: str) -> list[str]:
@@ -523,7 +577,9 @@ def ratio_from_text(value: str) -> float | None:
 
 def backend_data_skew_evidence(facts: str) -> bool:
     backend_facts = scoring_section_text(facts, "## Backend / Host Tail Evidence")
-    return any(value.strip().lower().startswith("yes") for value in fact_values(backend_facts, "data skew"))
+    return any(
+        value.strip().lower().startswith("yes") for value in fact_values(backend_facts, "data skew")
+    )
 
 
 def metadata_status_is_usable(value: str) -> bool:

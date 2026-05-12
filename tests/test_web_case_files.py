@@ -25,7 +25,9 @@ def test_case_summary_readers_ignore_symlinked_inputs_outside_case_dir(tmp_path)
     case_dir.mkdir()
     outside_metadata = tmp_path / "cm_metadata.json"
     outside_profile = tmp_path / "profile_digest.md"
-    outside_metadata.write_text(json.dumps({"duration_sec": 99, "user": "leaked-user"}), encoding="utf-8")
+    outside_metadata.write_text(
+        json.dumps({"duration_sec": 99, "user": "leaked-user"}), encoding="utf-8"
+    )
     outside_profile.write_text("User: leaked-user\nPool: leaked-pool\n", encoding="utf-8")
     (case_dir / "cm_metadata.json").symlink_to(outside_metadata)
     (case_dir / "profile_digest.md").symlink_to(outside_profile)
@@ -46,7 +48,9 @@ def test_complete_existing_case_rejects_symlinked_required_files_outside_case_di
         ensure_complete_existing_case(case_dir)
 
 
-def test_replace_case_dir_after_success_rejects_symlinked_analyzer_output_outside_case_dir(tmp_path):
+def test_replace_case_dir_after_success_rejects_symlinked_analyzer_output_outside_case_dir(
+    tmp_path,
+):
     staged_case_dir = tmp_path / "staged"
     expected_case_dir = tmp_path / "expected"
     write_collected_case_files(staged_case_dir)

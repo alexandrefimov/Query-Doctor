@@ -13,7 +13,7 @@ from query_doctor.web.presenters.recent_scan import numeric_count
 def render_batch_progress_panel(progress_path: Path | None, job_status: str = "running") -> str:
     summary = batch_progress_summary(progress_path, job_status)
     steps = "".join(
-        "<div class=\"batch-progress-step batch-progress-step--{state}\">"
+        '<div class="batch-progress-step batch-progress-step--{state}">'
         "<strong>{icon} {label}</strong><span>{detail}</span></div>".format(
             state=html.escape(step["state"]),
             icon=html.escape(step["icon"]),
@@ -26,10 +26,10 @@ def render_batch_progress_panel(progress_path: Path | None, job_status: str = "r
         f"<span>{html.escape(label)}: {html.escape(str(value))}</span>"
         for label, value in summary["metrics"]
     )
-    metrics_html = f"<div class=\"batch-progress-metrics\">{metrics}</div>" if metrics else ""
+    metrics_html = f'<div class="batch-progress-metrics">{metrics}</div>' if metrics else ""
     return (
-        "<div class=\"batch-progress\" aria-label=\"Batch progress\">"
-        f"<div class=\"batch-progress-steps\">{steps}</div>"
+        '<div class="batch-progress" aria-label="Batch progress">'
+        f'<div class="batch-progress-steps">{steps}</div>'
         f"{metrics_html}"
         "</div>"
     )
@@ -39,7 +39,9 @@ def batch_progress_percent(progress_path: Path | None, job_status: str = "runnin
     return batch_progress_percent_from_summary(batch_progress_summary(progress_path, job_status))
 
 
-def batch_progress_summary(progress_path: Path | None, job_status: str = "running") -> dict[str, Any]:
+def batch_progress_summary(
+    progress_path: Path | None, job_status: str = "running"
+) -> dict[str, Any]:
     events = read_batch_progress_events(progress_path)
     return summarize_batch_progress(events, job_status=job_status)
 
@@ -53,7 +55,9 @@ def batch_progress_percent_from_summary(summary: dict[str, Any]) -> int:
     return round(completed * 100 / len(steps))
 
 
-def batch_progress_view_payload(progress_path: Path | None, job_status: str = "running") -> dict[str, object]:
+def batch_progress_view_payload(
+    progress_path: Path | None, job_status: str = "running"
+) -> dict[str, object]:
     summary = batch_progress_summary(progress_path, job_status)
     steps = summary["steps"]
     current_index = batch_progress_current_step_index(steps)
@@ -454,7 +458,9 @@ def progress_step(label: str, state: str, detail: str) -> dict[str, str]:
 
 def discovery_detail(counters: dict[str, Any]) -> str:
     if counters["candidates_selected"] is not None:
-        return detail_with_time(f"{counters['candidates_selected']} selected", counters.get("discovery_seconds"))
+        return detail_with_time(
+            f"{counters['candidates_selected']} selected", counters.get("discovery_seconds")
+        )
     return "waiting"
 
 

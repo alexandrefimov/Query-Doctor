@@ -17,14 +17,14 @@ from query_doctor.report.facts_extractors import (
 )
 
 
-SPILL_SCRATCH_REWRITE_RE = re.compile(r"\b(spill|scratch|спилл|спай[лл]|спила|спайла)\b", re.IGNORECASE)
+SPILL_SCRATCH_REWRITE_RE = re.compile(
+    r"\b(spill|scratch|спилл|спай[лл]|спила|спайла)\b", re.IGNORECASE
+)
 STORAGE_WORDING_RE = re.compile(
     r"(физическ\w*\s+хранен\w*|проблем\w*\s+с\s+хранилищ\w*|хранилищ\w*)",
     re.IGNORECASE,
 )
-SPILL_SCRATCH_NEXT_CHECK = (
-    "- Проверить spill/scratch counters в raw profile, чтобы подтвердить или исключить memory pressure со spill."
-)
+SPILL_SCRATCH_NEXT_CHECK = "- Проверить spill/scratch counters в raw profile, чтобы подтвердить или исключить memory pressure со spill."
 UNSUPPORTED_STATS_FRESHNESS_CLAIM_RE = re.compile(
     r"("
     r"указывает\s+на\s+устарев\w*\s+или\s+отсутств\w*\s+статистик\w*|"
@@ -163,11 +163,13 @@ CM_CONTEXT_ONLY_CAUSAL_RE = re.compile(
     r"неправильн\w+\s+оценк\w*|неэффективн\w+\s+использован\w+|bottleneck|узк\w+\s+мест)\b",
     re.IGNORECASE,
 )
-CM_DAEMON_MEMORY_WORD_RE = re.compile(r"\b(?:daemon\s+memory|памят\w+\s+демон\w+|рост\s+памят\w+)\b", re.IGNORECASE)
-CM_NETWORK_WORD_RE = re.compile(r"\b(?:network\s+I/O|network\s+io|сетев\w+\s+I/O|сеть|сети|сетев\w+)\b", re.IGNORECASE)
-CM_CONTEXT_ONLY_SAFE_NOTE = (
-    "- Runtime metrics context-only: наблюдаемый runtime signal не считается причиной без matching profile evidence."
+CM_DAEMON_MEMORY_WORD_RE = re.compile(
+    r"\b(?:daemon\s+memory|памят\w+\s+демон\w+|рост\s+памят\w+)\b", re.IGNORECASE
 )
+CM_NETWORK_WORD_RE = re.compile(
+    r"\b(?:network\s+I/O|network\s+io|сетев\w+\s+I/O|сеть|сети|сетев\w+)\b", re.IGNORECASE
+)
+CM_CONTEXT_ONLY_SAFE_NOTE = "- Runtime metrics context-only: наблюдаемый runtime signal не считается причиной без matching profile evidence."
 CLUSTER_EVENT_CONTEXT_WORD_RE = re.compile(
     r"\b(?:CM\s+events?|Cluster\s+Event\s+Context|event\s+context|service\s+restart|restart\s+event|"
     r"daemon\s+error|catalog\s+error|metastore\s+error|disk\s+capacity|HDFS\s+event|YARN\s+event|"
@@ -262,9 +264,7 @@ def find_backend_tail_claim_errors(report_text: str, facts_text: str) -> list[st
             and not line_has_safe_negation(line, positive_data_skew_match.start())
             and "positive_data_skew" not in seen
         ):
-            errors.append(
-                "backend data skew claim contradicts parsed Backend / Host Tail Evidence"
-            )
+            errors.append("backend data skew claim contradicts parsed Backend / Host Tail Evidence")
             seen.add("positive_data_skew")
 
         single_tail_match = BACKEND_PROVEN_SINGLE_TAIL_RE.search(line)
@@ -290,9 +290,7 @@ def find_backend_tail_claim_errors(report_text: str, facts_text: str) -> list[st
             and not line_has_safe_negation(line, execution_match.start())
             and "execution_skew" not in seen
         ):
-            errors.append(
-                "execution skew claim contradicts parsed Backend / Host Tail Evidence"
-            )
+            errors.append("execution skew claim contradicts parsed Backend / Host Tail Evidence")
             seen.add("execution_skew")
 
         write_path_match = WRITE_PATH_PROVEN_RE.search(line)
@@ -347,7 +345,9 @@ def line_has_primary_bottleneck_overclaim(line: str) -> bool:
 def find_primary_bottleneck_overclaim_errors(report_text: str) -> list[str]:
     for line in report_text.splitlines():
         if line_has_primary_bottleneck_overclaim(line):
-            return ["report states a primary/root bottleneck or source without direct causal evidence"]
+            return [
+                "report states a primary/root bottleneck or source without direct causal evidence"
+            ]
     return []
 
 
@@ -360,7 +360,9 @@ def normalize_primary_bottleneck_overclaim(line: str) -> str:
 def normalize_cm_context_only_overclaim(line: str, facts_text: str) -> str:
     if not CM_CONTEXT_ONLY_CAUSAL_RE.search(line):
         return line
-    if cm_metric_context_only(facts_text, "daemon_memory_growth") and CM_DAEMON_MEMORY_WORD_RE.search(line):
+    if cm_metric_context_only(
+        facts_text, "daemon_memory_growth"
+    ) and CM_DAEMON_MEMORY_WORD_RE.search(line):
         return CM_CONTEXT_ONLY_SAFE_NOTE
     if cm_metric_context_only(facts_text, "network_io_spike") and CM_NETWORK_WORD_RE.search(line):
         return CM_CONTEXT_ONLY_SAFE_NOTE

@@ -77,12 +77,17 @@ from query_doctor.cm.sample_selection import (
 
 
 SECRET_PARAM_KEY_PARTS = ("password", "token", "auth", "authorization", "secret", "credential")
-AUTH_HEADER_DISPLAY_RE = re.compile(r"\bAuthorization\s*:\s*(?:Bearer|Basic)?\s*(?:<redacted>|\S+)", re.IGNORECASE)
+AUTH_HEADER_DISPLAY_RE = re.compile(
+    r"\bAuthorization\s*:\s*(?:Bearer|Basic)?\s*(?:<redacted>|\S+)", re.IGNORECASE
+)
 SERIOUS_SUMMARY_WARNING_PATTERNS = (
     re.compile(r"\bCM query summary fetch failed\b", re.IGNORECASE),
     re.compile(r"\bHTTP\s+(?:401|403|404)\b", re.IGNORECASE),
     re.compile(r"\b(?:TLS|SSL|certificate|cert)\b", re.IGNORECASE),
-    re.compile(r"\b(?:network|connection|connect|timed out|timeout|refused|unreachable|DNS)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:network|connection|connect|timed out|timeout|refused|unreachable|DNS)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\binvalid JSON\b", re.IGNORECASE),
     re.compile(r"\bJSON that is not an object\b", re.IGNORECASE),
     re.compile(r"\bresponse shape\b", re.IGNORECASE),
@@ -122,10 +127,7 @@ def sanitize_request_param(key: str, value: object) -> str:
 
 
 def sanitized_request_params(params: dict[str, object]) -> list[tuple[str, str]]:
-    return [
-        (key, sanitize_request_param(key, params[key]))
-        for key in sorted(params)
-    ]
+    return [(key, sanitize_request_param(key, params[key])) for key in sorted(params)]
 
 
 def print_request_plan(config: SampleSmokeConfig, filters: CMQueryFilters) -> None:
@@ -190,7 +192,9 @@ def collect_summary_candidates(
                 f"{sanitize_summary_warning_message(exc, secrets=secrets)}"
             )
             break
-        warnings.extend(sanitize_summary_warning_message(warning, secrets=secrets) for warning in page.warnings)
+        warnings.extend(
+            sanitize_summary_warning_message(warning, secrets=secrets) for warning in page.warnings
+        )
         if not page.items and page.next_page_token:
             warnings.append("Stopped pagination because a summary page returned no items.")
             break
@@ -257,14 +261,18 @@ def print_plan(
         print(f"Summary warning count: {len(warnings)}")
         print_summary_warnings(warnings)
     if serious_warnings:
-        print("Summary fetch failed; candidate selection was not evaluated as a normal zero-candidate result.")
+        print(
+            "Summary fetch failed; candidate selection was not evaluated as a normal zero-candidate result."
+        )
         print_auth_hint(serious_warnings)
     if config.show_request_plan:
         print_request_plan(config, filters)
     print_selection_diagnostics(config, diagnostics, show_zero_hint=not serious_warnings)
     print_candidate_table(candidates)
     if config.dry_run:
-        print("Dry-run only. No profile text was fetched, no cases were written, no analyzer or reports were run.")
+        print(
+            "Dry-run only. No profile text was fetched, no cases were written, no analyzer or reports were run."
+        )
 
 
 def fetch_profile_with_client(
@@ -321,7 +329,9 @@ def collect_selected_profiles(
             result.case_dirs.append(case_dir)
         except (CMClientError, CMAdapterError, OutputError, OSError) as exc:
             result.failed_count += 1
-            result.failures.append(f"{summary.query_id}: {sanitize_adapter_error_message(exc, secrets=secrets)}")
+            result.failures.append(
+                f"{summary.query_id}: {sanitize_adapter_error_message(exc, secrets=secrets)}"
+            )
 
     return result
 
@@ -434,7 +444,10 @@ def main(
         selected, diagnostics = select_sample_with_diagnostics(summaries, config)
         serious_warnings = serious_summary_warnings(warnings)
     except (SampleSmokeError, CMClientError, CMAdapterError, OSError) as exc:
-        print(f"[CM sample smoke] ERROR: {sanitize_adapter_error_message(exc, secrets=cm_env_secrets(env))}", file=sys.stderr)
+        print(
+            f"[CM sample smoke] ERROR: {sanitize_adapter_error_message(exc, secrets=cm_env_secrets(env))}",
+            file=sys.stderr,
+        )
         return 2
 
     print_plan(config, filters, selected, warnings, diagnostics, serious_warnings=serious_warnings)

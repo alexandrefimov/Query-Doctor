@@ -43,7 +43,9 @@ def profile_details_text(profile_text: str) -> str:
 
 def profile_summary_timestamp_to_iso(value: str) -> str | None:
     raw = value.strip()
-    match = re.match(r"^(?P<prefix>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})(?:\.(?P<fraction>\d+))?$", raw)
+    match = re.match(
+        r"^(?P<prefix>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})(?:\.(?P<fraction>\d+))?$", raw
+    )
     if not match:
         return None
     fraction = match.group("fraction")
@@ -96,7 +98,9 @@ def extract_summary_metadata_from_profile_text(profile_text: str) -> dict[str, s
     return fields
 
 
-def merge_profile_summary_metadata(summary: CMQuerySummary, profile_text: str) -> tuple[CMQuerySummary, list[str]]:
+def merge_profile_summary_metadata(
+    summary: CMQuerySummary, profile_text: str
+) -> tuple[CMQuerySummary, list[str]]:
     fields = extract_summary_metadata_from_profile_text(profile_text)
     if not fields:
         return summary, []
@@ -131,7 +135,9 @@ def parse_cm_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def padded_cm_timeseries_window(summary: CMQuerySummary, *, padding_sec: int) -> tuple[str, str] | None:
+def padded_cm_timeseries_window(
+    summary: CMQuerySummary, *, padding_sec: int
+) -> tuple[str, str] | None:
     if not summary.start_time or not summary.end_time:
         return None
     start = parse_cm_timestamp(summary.start_time) - timedelta(seconds=padding_sec)
@@ -148,9 +154,7 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
         raise CMAdapterError("CM query summary item must be an object.")
 
     source = raw_with_attributes(raw, query_summary_attributes(raw))
-    query_id = normalize_optional_string(
-        first_present(source, ("queryId", "query_id", "id"))
-    )
+    query_id = normalize_optional_string(first_present(source, ("queryId", "query_id", "id")))
     if not query_id:
         raise CMAdapterError("CM query summary is missing required query id.")
 
@@ -218,7 +222,12 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
         ),
         memory_aggregate_peak=parse_optional_int_field(
             source,
-            ("memoryAggregatePeak", "memory_aggregate_peak", "peakMemoryBytes", "peak_memory_bytes"),
+            (
+                "memoryAggregatePeak",
+                "memory_aggregate_peak",
+                "peakMemoryBytes",
+                "peak_memory_bytes",
+            ),
             "memory_aggregate_peak",
         ),
         memory_per_node_peak=parse_optional_int_field(
@@ -238,9 +247,9 @@ def parse_cm_query_details_summary(raw: dict[str, object], query_id: str) -> CMQ
     if not isinstance(raw, dict):
         raise CMAdapterError("CM query details item must be an object.")
 
-    details_query_id = normalize_optional_string(
-        first_present(raw, ("queryId", "query_id", "id"))
-    ) or query_id
+    details_query_id = (
+        normalize_optional_string(first_present(raw, ("queryId", "query_id", "id"))) or query_id
+    )
     if details_query_id != query_id:
         raise CMAdapterError("CM query details query id did not match the requested query id.")
 
@@ -366,9 +375,7 @@ def parse_int_field(value: object, field_name: str) -> int:
         try:
             return int(float(value.strip()))
         except ValueError as exc:
-            raise CMAdapterError(
-                f"CM query summary field {field_name} must be numeric."
-            ) from exc
+            raise CMAdapterError(f"CM query summary field {field_name} must be numeric.") from exc
     raise CMAdapterError(f"CM query summary field {field_name} must be numeric.")
 
 
@@ -392,7 +399,5 @@ def parse_float_field(value: object, field_name: str) -> float:
         try:
             return float(value.strip())
         except ValueError as exc:
-            raise CMAdapterError(
-                f"CM query summary field {field_name} must be numeric."
-            ) from exc
+            raise CMAdapterError(f"CM query summary field {field_name} must be numeric.") from exc
     raise CMAdapterError(f"CM query summary field {field_name} must be numeric.")

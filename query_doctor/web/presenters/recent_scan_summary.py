@@ -53,11 +53,15 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
             f"{safe_display_text(summary.get('to_time') or 'unknown')}"
         )
     elif summary.get("recent_window_minutes") is not None:
-        parts.append(f"Search depth: {safe_display_text(summary.get('recent_window_minutes'))} minutes")
+        parts.append(
+            f"Search depth: {safe_display_text(summary.get('recent_window_minutes'))} minutes"
+        )
     parts.append(f"Duration filter: {safe_display_text(summary.get('duration_filter') or 'none')}")
     duration_filter_mode = str(summary.get("duration_filter_mode") or "").strip().lower()
     if duration_filter_mode and duration_filter_mode != "none":
-        parts.append(f"Duration filtering: {safe_display_text(summary.get('duration_filter_mode'))}")
+        parts.append(
+            f"Duration filtering: {safe_display_text(summary.get('duration_filter_mode'))}"
+        )
     if summary.get("triage_profile_limit") is not None:
         parts.append(f"Analyzer limit: {safe_display_text(summary.get('triage_profile_limit'))}")
     if summary.get("metadata_top_limit") is not None:
@@ -183,7 +187,9 @@ def case_has_spill(case: dict[str, Any]) -> bool:
     reasons = case.get("score_reasons")
     if not isinstance(reasons, list):
         return False
-    return any("spill/scratch evidence: non-zero metrics" in str(reason).lower() for reason in reasons)
+    return any(
+        "spill/scratch evidence: non-zero metrics" in str(reason).lower() for reason in reasons
+    )
 
 
 def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> str | None:
@@ -196,7 +202,9 @@ def recent_scan_empty_message(summary: dict[str, Any], *, case_count: int) -> st
         return None
     summaries = summary.get("summaries_inspected")
     if summaries is not None and numeric_count(summaries) == 0:
-        return "No matching queries found for this hour bucket. Try another hour or changing filters."
+        return (
+            "No matching queries found for this hour bucket. Try another hour or changing filters."
+        )
     if summaries is not None:
         return "No query candidates matched the current scan criteria. Try another hour or changing filters."
     return None

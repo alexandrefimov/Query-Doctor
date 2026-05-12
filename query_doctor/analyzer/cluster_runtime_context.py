@@ -42,9 +42,8 @@ def _window_scope(context: dict[str, Any]) -> str:
         return "not_reported"
     if window.get("from") and window.get("to"):
         padding = window.get("padding_sec")
-        return (
-            "bounded query runtime window"
-            + (f" with {padding}s padding" if padding is not None else "")
+        return "bounded query runtime window" + (
+            f" with {padding}s padding" if padding is not None else ""
         )
     if window.get("padding_sec") is not None:
         return f"bounded query runtime window with {window['padding_sec']}s padding"
@@ -80,7 +79,11 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
         }
 
     metrics = build_cm_metrics_facts(context)
-    correlation = analysis.get("cm_metrics_correlation") if isinstance(analysis.get("cm_metrics_correlation"), dict) else {}
+    correlation = (
+        analysis.get("cm_metrics_correlation")
+        if isinstance(analysis.get("cm_metrics_correlation"), dict)
+        else {}
+    )
     signals = [signal for signal in correlation.get("signals") or [] if isinstance(signal, dict)]
 
     observed = [
@@ -106,7 +109,8 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
     not_observed = [
         _signal_label(signal.get("key"))
         for signal in signals
-        if signal.get("metric_status") == "not_observed" or signal.get("correlation_status") == "not_observed"
+        if signal.get("metric_status") == "not_observed"
+        or signal.get("correlation_status") == "not_observed"
     ]
 
     correlated_count = len(correlated)
@@ -117,7 +121,9 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
             "capped at +6; context-only, unknown and not_observed signals do not add score"
         )
     else:
-        scoring = "none; only correlated runtime metric signals can add bounded runtime triage score"
+        scoring = (
+            "none; only correlated runtime metric signals can add bounded runtime triage score"
+        )
 
     limitations = [str(item) for item in metrics.get("limitations") or [] if item]
     if correlation.get("guardrail"):
@@ -126,7 +132,9 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": metrics.get("status", "unknown"),
         "source": str(context.get("source") or "cm_timeseries"),
-        "source_label": str(context.get("source_label") or metrics.get("source_label") or "Runtime metrics"),
+        "source_label": str(
+            context.get("source_label") or metrics.get("source_label") or "Runtime metrics"
+        ),
         "collection_status": "collected" if metrics.get("total_metrics", 0) else "empty",
         "coverage": correlation.get("coverage")
         or f"{metrics.get('ok_metrics', 0)}/{metrics.get('total_metrics', 0)} metrics ok, {metrics.get('total_points', 0)} points",

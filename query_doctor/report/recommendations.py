@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 
 from query_doctor.report.contract import NEXT_CHECKS_HEADING, RECOMMENDATIONS_HEADING
-from query_doctor.report.recommendation_candidates import MAX_RECOMMENDATION_ITEMS, recommendation_candidate_lines
+from query_doctor.report.recommendation_candidates import (
+    MAX_RECOMMENDATION_ITEMS,
+    recommendation_candidate_lines,
+)
 
 
 VAGUE_RECOMMENDATION_RE = re.compile(
@@ -90,7 +93,8 @@ def insert_required_bullets_into_section(
     missing = [
         bullet
         for bullet, patterns in bullet_rules
-        if bullet not in text and not any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+        if bullet not in text
+        and not any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
     ]
     return insert_bullets_into_section(text, heading, missing)
 
@@ -109,11 +113,17 @@ RECOMMENDATION_CANDIDATE_MATCHERS: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
     "reduce_row_growth": (
         re.compile(r"\b(?:сократ|уменьш|reduce)\w*\b", re.IGNORECASE),
-        re.compile(r"\b(?:рост\w*\s+строк|intermediate\s+rows|JOIN|AGGREGATE|EXCHANGE|ранн\w*\s+фильтр|предварительн\w*\s+агрегац)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:рост\w*\s+строк|intermediate\s+rows|JOIN|AGGREGATE|EXCHANGE|ранн\w*\s+фильтр|предварительн\w*\s+агрегац)\b",
+            re.IGNORECASE,
+        ),
     ),
     "rewrite_join_filter": (
         re.compile(r"\b(?:перепис|rewrite)\w*\b", re.IGNORECASE),
-        re.compile(r"\b(?:JOIN|фильтр|filter|intermediate\s+rows|оператор\w*\s+с\s+высок\w*\s+стоимост)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:JOIN|фильтр|filter|intermediate\s+rows|оператор\w*\s+с\s+высок\w*\s+стоимост)\b",
+            re.IGNORECASE,
+        ),
     ),
     "reduce_memory_input": (
         re.compile(r"\b(?:памят|memory|mem)\w*\b", re.IGNORECASE),
@@ -122,15 +132,21 @@ RECOMMENDATION_CANDIDATE_MATCHERS: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
     "reduce_exchange_rows": (
         re.compile(r"\b(?:сниз|сократ|уменьш|отфильтр|агрегир|reduce)\w*\b", re.IGNORECASE),
-        re.compile(r"\b(?:exchange|intermediate|перераспредел|data\s+movement)\w*\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:exchange|intermediate|перераспредел|data\s+movement)\w*\b", re.IGNORECASE
+        ),
     ),
     "reduce_exchange_payload": (
         re.compile(r"\b(?:payload|колонк|column)\w*\b", re.IGNORECASE),
-        re.compile(r"\b(?:exchange|intermediate|перераспредел|data\s+movement)\w*\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:exchange|intermediate|перераспредел|data\s+movement)\w*\b", re.IGNORECASE
+        ),
         re.compile(r"\b(?:сократ|остав|перенест|reduce|project)\w*\b", re.IGNORECASE),
     ),
     "reduce_spill_pressure": (
-        re.compile(r"\b(?:spill|scratch|memory\s+pressure|давлен\w*\s+на\s+памят)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:spill|scratch|memory\s+pressure|давлен\w*\s+на\s+памят)\b", re.IGNORECASE
+        ),
         re.compile(r"\b(?:сниз|уменьш|сократ|reduce)\w*\b", re.IGNORECASE),
     ),
     "baseline": (
@@ -138,12 +154,20 @@ RECOMMENDATION_CANDIDATE_MATCHERS: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(r"\b(?:сравнен|compare|нов\w*\s+профил)\w*\b", re.IGNORECASE),
     ),
     "no_shape_change": (
-        re.compile(r"\b(?:не\s+меня|не\s+изменя|do\s+not\s+change|no\s+shape\s+change)\b", re.IGNORECASE),
-        re.compile(r"\b(?:SQL\s+shape|shape|форм\w*\s+SQL|дорог\w*\s+оператор|intermediate\s+rows)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:не\s+меня|не\s+изменя|do\s+not\s+change|no\s+shape\s+change)\b", re.IGNORECASE
+        ),
+        re.compile(
+            r"\b(?:SQL\s+shape|shape|форм\w*\s+SQL|дорог\w*\s+оператор|intermediate\s+rows)\b",
+            re.IGNORECASE,
+        ),
     ),
     "rerun_after_change": (
         re.compile(r"\b(?:нов\w*\s+профил|после\s+изменен|rerun|next\s+profile)\b", re.IGNORECASE),
-        re.compile(r"\b(?:confirmed\s+operator\s+evidence|operator\s+evidence|подтвержд\w*\s+operator)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:confirmed\s+operator\s+evidence|operator\s+evidence|подтвержд\w*\s+operator)\b",
+            re.IGNORECASE,
+        ),
     ),
 }
 

@@ -16,7 +16,9 @@ from query_doctor.web.presenters.recent_scan_models import (
 from query_doctor.web.presenters.recent_scan_values import safe_display_text, safe_display_value
 
 
-def present_recent_scan_cm_metrics(cm_metrics_facts: dict[str, Any] | None) -> RecentScanCmMetricsView:
+def present_recent_scan_cm_metrics(
+    cm_metrics_facts: dict[str, Any] | None,
+) -> RecentScanCmMetricsView:
     if not cm_metrics_facts:
         return RecentScanCmMetricsView(
             unavailable=True,
@@ -29,7 +31,11 @@ def present_recent_scan_cm_metrics(cm_metrics_facts: dict[str, Any] | None) -> R
     if not isinstance(summary, dict):
         summary = {}
     raw_signals = cm_metrics_facts.get("signals")
-    signals = [signal for signal in raw_signals if isinstance(signal, dict)] if isinstance(raw_signals, list) else []
+    signals = (
+        [signal for signal in raw_signals if isinstance(signal, dict)]
+        if isinstance(raw_signals, list)
+        else []
+    )
     correlation_summary = cm_metrics_facts.get("correlation_summary")
     if not isinstance(correlation_summary, dict):
         correlation_summary = {}
@@ -100,7 +106,11 @@ def present_recent_scan_runtime_diagnosis(
             signals=(),
         )
     raw_signals = runtime_diagnosis_facts.get("signals")
-    signal_dicts = [signal for signal in raw_signals if isinstance(signal, dict)] if isinstance(raw_signals, list) else []
+    signal_dicts = (
+        [signal for signal in raw_signals if isinstance(signal, dict)]
+        if isinstance(raw_signals, list)
+        else []
+    )
     signals = tuple(
         RecentScanRuntimeDiagnosisSignalView(
             title=safe_display_text(signal.get("title") or signal.get("key") or "Runtime signal"),
@@ -108,7 +118,9 @@ def present_recent_scan_runtime_diagnosis(
             interpretation=safe_display_value(signal.get("interpretation")),
             evidence=tuple(
                 _runtime_metrics_display_value(safe_display_text(item))
-                for item in (signal.get("evidence") if isinstance(signal.get("evidence"), list) else [])
+                for item in (
+                    signal.get("evidence") if isinstance(signal.get("evidence"), list) else []
+                )
                 if item is not None
             ),
         )
@@ -206,9 +218,15 @@ def present_recent_scan_runtime_verdict(
     context_only = _text(rollup.get("context_only_signals"))
     observed = _text(rollup.get("observed_signals"))
     not_observed = _text(rollup.get("not_observed_signals"))
-    diagnosis_summary = _text(runtime_diagnosis.summary if not runtime_diagnosis.unavailable else "")
+    diagnosis_summary = _text(
+        runtime_diagnosis.summary if not runtime_diagnosis.unavailable else ""
+    )
 
-    if cluster_runtime_context.unavailable or collection_status in {"not_collected", "unavailable"} or status == "unavailable":
+    if (
+        cluster_runtime_context.unavailable
+        or collection_status in {"not_collected", "unavailable"}
+        or status == "unavailable"
+    ):
         return RecentScanRuntimeVerdictView(
             title="Runtime context not collected",
             badge_class="batch-status--neutral",

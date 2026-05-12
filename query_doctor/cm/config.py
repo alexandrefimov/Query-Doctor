@@ -41,7 +41,10 @@ from query_doctor.cm.config_validation import (
     validate_recent_order,
     validate_recent_select,
 )
-from query_doctor.cm.timeseries import DEFAULT_CM_TIMESERIES_PADDING_SEC, DEFAULT_MAX_TIMESERIES_POINTS
+from query_doctor.cm.timeseries import (
+    DEFAULT_CM_TIMESERIES_PADDING_SEC,
+    DEFAULT_MAX_TIMESERIES_POINTS,
+)
 
 
 REPO_DIR = Path(__file__).resolve().parents[2]
@@ -61,7 +64,9 @@ def build_config(
         args.config,
         cwd=cwd,
         repo_root=repo_root,
-        use_repo_default=not any((args.cm_url, args.cluster, args.service, args.out, args.ca_bundle)),
+        use_repo_default=not any(
+            (args.cm_url, args.cluster, args.service, args.out, args.ca_bundle)
+        ),
     )
 
     cm_url = string_setting(
@@ -311,11 +316,7 @@ def build_http_config(
 
 def cm_env_secrets(env: dict[str, str] | os._Environ[str] | None = None) -> tuple[str, ...]:
     env = os.environ if env is None else env
-    return tuple(
-        value
-        for value in (env.get("CM_PASSWORD"), env.get("CM_TOKEN"))
-        if value
-    )
+    return tuple(value for value in (env.get("CM_PASSWORD"), env.get("CM_TOKEN")) if value)
 
 
 def build_query_filters(config: CollectorConfig) -> CMQueryFilters:

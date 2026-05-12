@@ -24,7 +24,9 @@ HOST_VALUE_RE = re.compile(
     r"\b(?:host|hostname|executor|backend)\s*[=:]\s*(?P<host>[A-Za-z0-9_.:-]+)",
     re.IGNORECASE,
 )
-HOST_LINE_RE = re.compile(r"^\s*-?\s*(?:host|hostname)\s*[:=]\s*(?P<host>[A-Za-z0-9_.:-]+)", re.IGNORECASE)
+HOST_LINE_RE = re.compile(
+    r"^\s*-?\s*(?:host|hostname)\s*[:=]\s*(?P<host>[A-Za-z0-9_.:-]+)", re.IGNORECASE
+)
 FRAGMENT_VALUE_RE = re.compile(
     r"\b(?:fragment(?:\s+instance)?|instance|fragment_instance)\s*(?:id)?\s*[=:]\s*(?P<fragment>[A-Za-z0-9_.:-]+)",
     re.IGNORECASE,
@@ -36,26 +38,59 @@ FRAGMENT_LINE_RE = re.compile(
     r"^\s*-?\s*(?:fragment(?:\s+instance)?|instance|fragment_instance)\s*(?:id)?\s*[:=]\s*(?P<fragment>[A-Za-z0-9_.:-]+)",
     re.IGNORECASE,
 )
-METRIC_LINE_RE = re.compile(r"^\s*-?\s*(?P<key>[A-Za-z][A-Za-z0-9 _./-]*?)\s*[:=]\s*(?P<value>.+?)\s*$")
+METRIC_LINE_RE = re.compile(
+    r"^\s*-?\s*(?P<key>[A-Za-z][A-Za-z0-9 _./-]*?)\s*[:=]\s*(?P<value>.+?)\s*$"
+)
 
-BACKEND_ASSIGNED_KEYS = {"scanbytesassigned", "assignedscanbytes", "assignedbytes", "bytesassigned", "scanrangebytes"}
+BACKEND_ASSIGNED_KEYS = {
+    "scanbytesassigned",
+    "assignedscanbytes",
+    "assignedbytes",
+    "bytesassigned",
+    "scanrangebytes",
+}
 BACKEND_BYTES_READ_KEYS = {"bytesread", "totalbytesread", "hdfsbytesread"}
-BACKEND_BYTES_WRITTEN_KEYS = {"byteswritten", "hdfsbyteswritten", "hdfswrittenbytes", "writeiobytes"}
+BACKEND_BYTES_WRITTEN_KEYS = {
+    "byteswritten",
+    "hdfsbyteswritten",
+    "hdfswrittenbytes",
+    "writeiobytes",
+}
 BACKEND_ROWS_KEYS = {"rowsproduced", "rowsread", "rowsreturned"}
 BACKEND_READ_RATE_KEYS = {"readrate", "bytesreadrate", "hdfsreadrate", "scanrate"}
 BACKEND_WRITE_RATE_KEYS = {"writerate", "byteswrittenrate", "hdfswriterate"}
-BACKEND_WRITE_TIME_KEYS = {"hdfswritetime", "hdfswritewallclocktime", "writetime", "writewallclocktime"}
+BACKEND_WRITE_TIME_KEYS = {
+    "hdfswritetime",
+    "hdfswritewallclocktime",
+    "writetime",
+    "writewallclocktime",
+}
 BACKEND_WRITE_SEC_PER_GIB_KEYS = {
     "hdfswritesecpergb",
     "hdfswritesecpergib",
     "writesecpergb",
     "writesecpergib",
 }
-BACKEND_SCANNER_WAIT_KEYS = {"scannerwaittime", "scannerwaitwallclocktime", "scannerthreadswaittime"}
+BACKEND_SCANNER_WAIT_KEYS = {
+    "scannerwaittime",
+    "scannerwaitwallclocktime",
+    "scannerthreadswaittime",
+}
 BACKEND_MATERIALIZE_KEYS = {"materializetime", "materializewallclocktime"}
 BACKEND_PARSE_KEYS = {"parsetime", "parsewallclocktime"}
-BACKEND_SCANNER_CONCURRENCY_KEYS = {"peakscannerconcurrency", "numscannerthreads", "scannerthreadspeak"}
-BACKEND_EXECUTION_TIME_KEYS = {"executiontime", "exectime", "totaltime", "backendtime", "donetime", "runtime"}
+BACKEND_SCANNER_CONCURRENCY_KEYS = {
+    "peakscannerconcurrency",
+    "numscannerthreads",
+    "scannerthreadspeak",
+}
+BACKEND_EXECUTION_TIME_KEYS = {
+    "executiontime",
+    "exectime",
+    "totaltime",
+    "backendtime",
+    "donetime",
+    "runtime",
+}
 
 
 def append_backend_evidence(fact: BackendHostFact, line: str) -> None:
@@ -174,7 +209,11 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
     def finish_current() -> None:
         nonlocal current, current_header_indent, current_child_indent
         if current is not None and current.host and current.has_metric():
-            if current.hdfs_write_sec_per_gib is None and current.hdfs_write_time_ms and current.bytes_written:
+            if (
+                current.hdfs_write_sec_per_gib is None
+                and current.hdfs_write_time_ms
+                and current.bytes_written
+            ):
                 gib = current.bytes_written / (1024**3)
                 if gib > 0:
                     current.hdfs_write_sec_per_gib = (current.hdfs_write_time_ms / 1000) / gib

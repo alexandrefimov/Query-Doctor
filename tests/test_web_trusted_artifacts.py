@@ -12,9 +12,17 @@ from query_doctor.web.jobs import WebJobStore
 
 def test_trusted_artifacts_exposes_optimizer_artifact_status_helpers():
     assert trusted_artifacts.optimizer_artifact_status_for_case({}) == "unknown"
-    assert trusted_artifacts.OPTIMIZER_STATUS_ORDER["trusted_draft"] > trusted_artifacts.OPTIMIZER_STATUS_ORDER["not_run"]
-    assert trusted_artifacts.trusted_report_download_filename("abc:def$$$") == "query-doctor-report-abcdef.md"
-    assert trusted_artifacts.trusted_report_download_filename("$$$") == "query-doctor-report-report.md"
+    assert (
+        trusted_artifacts.OPTIMIZER_STATUS_ORDER["trusted_draft"]
+        > trusted_artifacts.OPTIMIZER_STATUS_ORDER["not_run"]
+    )
+    assert (
+        trusted_artifacts.trusted_report_download_filename("abc:def$$$")
+        == "query-doctor-report-abcdef.md"
+    )
+    assert (
+        trusted_artifacts.trusted_report_download_filename("$$$") == "query-doctor-report-report.md"
+    )
 
 
 def test_report_evidence_inventory_returns_safe_categories_without_filenames(tmp_path):
@@ -88,7 +96,9 @@ def test_load_case_analyzer_facts_text_is_bounded_and_path_safe(tmp_path):
 def test_load_case_impala_context_artifact_is_bounded_and_path_safe(tmp_path):
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    (case_dir / "impala_context.json").write_text('{"tables": ["db.safe_table"]}\n', encoding="utf-8")
+    (case_dir / "impala_context.json").write_text(
+        '{"tables": ["db.safe_table"]}\n', encoding="utf-8"
+    )
 
     artifact = trusted_artifacts.load_case_impala_context_artifact(case_dir)
 
@@ -110,7 +120,9 @@ def test_load_case_impala_context_artifact_is_bounded_and_path_safe(tmp_path):
     assert trusted_artifacts.load_case_impala_context_artifact(tmp_path / "missing") is None
 
 
-def write_optimizer_marker(case_dir, *, source_sql, draft_name="optimized_query.sql", source_scope="read_only_statement"):
+def write_optimizer_marker(
+    case_dir, *, source_sql, draft_name="optimized_query.sql", source_scope="read_only_statement"
+):
     marker = {
         "draft": draft_name,
         "draft_sha256": trusted_artifacts.file_sha256(case_dir / draft_name),
@@ -132,8 +144,12 @@ def write_trusted_report(case_dir: Path, text: str) -> None:
     trusted_artifacts.write_batch_case_report_validation_marker(case_dir)
 
 
-def write_trusted_optimizer_draft(case_dir: Path, *, source_sql: str, draft_sql: str | None = None) -> None:
-    (case_dir / "cm_metadata.json").write_text(json.dumps({"statement": source_sql}), encoding="utf-8")
+def write_trusted_optimizer_draft(
+    case_dir: Path, *, source_sql: str, draft_sql: str | None = None
+) -> None:
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"statement": source_sql}), encoding="utf-8"
+    )
     (case_dir / "optimized_query.sql").write_text(draft_sql or f"{source_sql};\n", encoding="utf-8")
     write_optimizer_marker(case_dir, source_sql=source_sql)
 
@@ -144,7 +160,9 @@ def batch_settings(tmp_path: Path, case_dir: Path) -> trusted_artifacts.WebSetti
         json.dumps({"cases": [{"case_index": 1, "query_id": "abc", "case_dir": str(case_dir)}]}),
         encoding="utf-8",
     )
-    return trusted_artifacts.WebSettings(config=Path(".query-doctor-cm.local.json"), batch_summary=summary)
+    return trusted_artifacts.WebSettings(
+        config=Path(".query-doctor-cm.local.json"), batch_summary=summary
+    )
 
 
 def test_resolve_batch_case_report_dir_ignores_profile_symlink_outside_case_dir(tmp_path):
@@ -168,7 +186,9 @@ def test_optimizer_artifact_status_uses_strict_trust_check_for_source_scope(tmp_
     case_dir.mkdir()
     source_sql = "SELECT a FROM db.source_table WHERE ds = 20260504"
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
-    (case_dir / "cm_metadata.json").write_text(json.dumps({"statement": source_sql}), encoding="utf-8")
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"statement": source_sql}), encoding="utf-8"
+    )
     (case_dir / "optimized_query.sql").write_text(
         "SELECT a FROM db.source_table WHERE ds = 20260504;\n",
         encoding="utf-8",
@@ -184,7 +204,9 @@ def test_optimizer_artifact_status_uses_strict_trust_check_for_draft_sql_safety(
     case_dir.mkdir()
     source_sql = "SELECT a FROM db.source_table WHERE ds = 20260504"
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
-    (case_dir / "cm_metadata.json").write_text(json.dumps({"statement": source_sql}), encoding="utf-8")
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"statement": source_sql}), encoding="utf-8"
+    )
     (case_dir / "optimized_query.sql").write_text("DROP TABLE db.source_table;\n", encoding="utf-8")
     write_optimizer_marker(case_dir, source_sql=source_sql)
 
@@ -229,7 +251,9 @@ def test_trusted_report_artifacts_hide_stale_report_text(tmp_path):
     case_dir.mkdir()
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
     write_trusted_report(case_dir, "# Report\n\nsafe body\n")
-    (case_dir / "diagnosis.md").write_text("# Report\n\nchanged after validation\n", encoding="utf-8")
+    (case_dir / "diagnosis.md").write_text(
+        "# Report\n\nchanged after validation\n", encoding="utf-8"
+    )
 
     assert (
         trusted_artifacts.load_batch_case_trusted_report_artifact(
@@ -290,7 +314,9 @@ def test_trusted_optimizer_artifacts_reject_draft_symlink_outside_case_dir(tmp_p
     outside_draft = tmp_path / "optimized_query.sql"
     outside_draft.write_text(f"{source_sql};\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
-    (case_dir / "cm_metadata.json").write_text(json.dumps({"statement": source_sql}), encoding="utf-8")
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"statement": source_sql}), encoding="utf-8"
+    )
     (case_dir / "optimized_query.sql").symlink_to(outside_draft)
     write_optimizer_marker(case_dir, source_sql=source_sql)
 
@@ -306,13 +332,17 @@ def test_trusted_optimizer_artifacts_reject_recommendations_symlink_outside_case
     outside_recommendations = tmp_path / "optimized_query_recommendations.md"
     outside_recommendations.write_text("- Collect table and column statistics.\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text(facts_text, encoding="utf-8")
-    (case_dir / "cm_metadata.json").write_text(json.dumps({"statement": source_sql}), encoding="utf-8")
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"statement": source_sql}), encoding="utf-8"
+    )
     (case_dir / "optimized_query_recommendations.md").symlink_to(outside_recommendations)
     marker = {
         "facts_sha256": hashlib.sha256(facts_text.encode("utf-8")).hexdigest(),
         "output_kind": "recommendations_only",
         "recommendations": "optimized_query_recommendations.md",
-        "recommendations_sha256": trusted_artifacts.file_sha256(case_dir / "optimized_query_recommendations.md"),
+        "recommendations_sha256": trusted_artifacts.file_sha256(
+            case_dir / "optimized_query_recommendations.md"
+        ),
         "risk_mode": "recommendations_only",
         "risk_reasons": ["too_many_ctes_for_safe_rewrite"],
         "schema_version": trusted_artifacts.OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION,
@@ -335,8 +365,12 @@ def test_specific_query_trusted_detail_artifacts_hide_stale_outputs(tmp_path):
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
     write_trusted_report(case_dir, "# Report\n\nsafe body\n")
     write_trusted_optimizer_draft(case_dir, source_sql=source_sql)
-    (case_dir / "diagnosis.md").write_text("# Report\n\nchanged after validation\n", encoding="utf-8")
-    (case_dir / "optimized_query.sql").write_text("SELECT a FROM db.source_table;\n", encoding="utf-8")
+    (case_dir / "diagnosis.md").write_text(
+        "# Report\n\nchanged after validation\n", encoding="utf-8"
+    )
+    (case_dir / "optimized_query.sql").write_text(
+        "SELECT a FROM db.source_table;\n", encoding="utf-8"
+    )
 
     artifacts = trusted_artifacts.load_specific_query_trusted_detail_artifacts(
         trusted_artifacts.WebSettings(config=Path(".query-doctor-cm.local.json")),

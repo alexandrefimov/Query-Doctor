@@ -191,7 +191,9 @@ def write_demo_case(out_dir: Path, spec: DemoCaseSpec) -> None:
     if spec.optimizer_recommendations:
         write_optimizer_recommendations(case_dir, spec)
     if spec.partial_optimizer_note:
-        (case_dir / OPTIMIZED_QUERY_PARTIAL_NAME).write_text(spec.partial_optimizer_note + "\n", encoding="utf-8")
+        (case_dir / OPTIMIZED_QUERY_PARTIAL_NAME).write_text(
+            spec.partial_optimizer_note + "\n", encoding="utf-8"
+        )
 
 
 def synthetic_profile_digest(spec: DemoCaseSpec) -> str:
@@ -261,7 +263,9 @@ def write_demo_notes(out_dir: Path, *, summary_path: Path) -> None:
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def render_success_message(out_dir: Path) -> str:

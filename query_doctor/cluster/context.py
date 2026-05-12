@@ -92,7 +92,9 @@ def normalize_source_contexts(
     return contexts[:MAX_CONTEXT_SOURCES]
 
 
-def normalize_source_context(raw: Mapping[str, object], *, default_source: str) -> dict[str, object]:
+def normalize_source_context(
+    raw: Mapping[str, object], *, default_source: str
+) -> dict[str, object]:
     source = safe_token(raw.get("source"), default=default_source)
     available = bool(raw.get("available"))
     status = safe_token(raw.get("status"), default="unknown")
@@ -140,7 +142,9 @@ def merged_signals(source_contexts: list[dict[str, object]]) -> list[dict[str, o
             current = by_id.get(signal_id)
             if current is None or int(signal["event_count"]) > int(current["event_count"]):
                 by_id[signal_id] = signal
-    return sorted(by_id.values(), key=lambda item: (-int(item["event_count"]), str(item["signal_id"])))
+    return sorted(
+        by_id.values(), key=lambda item: (-int(item["event_count"]), str(item["signal_id"]))
+    )
 
 
 def aggregate_limitations(source_contexts: list[dict[str, object]]) -> list[str]:

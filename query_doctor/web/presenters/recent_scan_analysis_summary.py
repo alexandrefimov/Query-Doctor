@@ -12,13 +12,19 @@ from query_doctor.web.presenters.recent_scan_models import (
 )
 
 
-def present_recent_scan_analysis_summary(view: RecentScanCaseDetailView) -> RecentScanAnalysisSummaryView:
+def present_recent_scan_analysis_summary(
+    view: RecentScanCaseDetailView,
+) -> RecentScanAnalysisSummaryView:
     rows = (
-        RecentScanAnalysisSummaryRowView("evidence quality", evidence_guide_value(view, "evidence quality")),
+        RecentScanAnalysisSummaryRowView(
+            "evidence quality", evidence_guide_value(view, "evidence quality")
+        ),
         RecentScanAnalysisSummaryRowView("facts", evidence_guide_value(view, "facts")),
         RecentScanAnalysisSummaryRowView("primary bottleneck", primary_bottleneck_summary(view)),
         RecentScanAnalysisSummaryRowView("optimizer outcome", optimizer_outcome_summary(view)),
-        RecentScanAnalysisSummaryRowView("stats evidence", evidence_guide_value(view, "stats evidence")),
+        RecentScanAnalysisSummaryRowView(
+            "stats evidence", evidence_guide_value(view, "stats evidence")
+        ),
         RecentScanAnalysisSummaryRowView("stats candidate", stats_candidate_summary(view)),
         RecentScanAnalysisSummaryRowView("runtime context", runtime_context_summary(view)),
         RecentScanAnalysisSummaryRowView("metadata coverage", metadata_coverage_summary(view)),
@@ -54,7 +60,9 @@ def optimizer_outcome_summary(view: RecentScanCaseDetailView) -> str:
     support_label = str(candidate.get("rewrite_support_label") or "Unknown").strip()
     review = str(candidate.get("review_areas") or "query shape").strip()
     if bucket == "not_rewriteable":
-        return f"{tier} / {score}: review-only; no trusted SQL draft shape detected. Review {review}."
+        return (
+            f"{tier} / {score}: review-only; no trusted SQL draft shape detected. Review {review}."
+        )
     if bucket == "human_review_only":
         return f"{tier} / {score}: manual guidance only; SQL draft disabled by guardrails. Review {review}."
     if bucket == "safe_material_draft":
@@ -85,7 +93,12 @@ def runtime_context_summary(view: RecentScanCaseDetailView) -> str:
 
 def metadata_coverage_summary(view: RecentScanCaseDetailView) -> str:
     summary = dict(view.metadata.summary_items)
-    for key in ("metadata coverage", "stats coverage", "metadata command status", "metadata status"):
+    for key in (
+        "metadata coverage",
+        "stats coverage",
+        "metadata command status",
+        "metadata status",
+    ):
         value = summary.get(key)
         if is_meaningful_value(value):
             return str(value)

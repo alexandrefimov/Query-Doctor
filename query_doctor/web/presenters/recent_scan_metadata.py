@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from query_doctor.web.presenters.recent_scan_models import RecentScanMetadataTableView, RecentScanMetadataView
+from query_doctor.web.presenters.recent_scan_models import (
+    RecentScanMetadataTableView,
+    RecentScanMetadataView,
+)
 from query_doctor.web.presenters.recent_scan_values import (
     has_metadata_aggregate_facts,
     metadata_fact_limitations,
@@ -22,9 +25,13 @@ AGGREGATE_METADATA_FALLBACK_NOTE = (
 )
 
 
-def present_recent_scan_metadata(case: dict[str, Any], metadata_facts: dict[str, Any] | None) -> RecentScanMetadataView:
+def present_recent_scan_metadata(
+    case: dict[str, Any], metadata_facts: dict[str, Any] | None
+) -> RecentScanMetadataView:
     if not metadata_facts:
-        fallback_note = AGGREGATE_METADATA_FALLBACK_NOTE if has_metadata_aggregate_facts(case) else ""
+        fallback_note = (
+            AGGREGATE_METADATA_FALLBACK_NOTE if has_metadata_aggregate_facts(case) else ""
+        )
         return RecentScanMetadataView(
             unavailable=not bool(fallback_note),
             fallback_note=fallback_note,
@@ -35,7 +42,9 @@ def present_recent_scan_metadata(case: dict[str, Any], metadata_facts: dict[str,
     if not isinstance(statement_counts, dict):
         statement_counts = {}
     tables = metadata_facts.get("tables")
-    raw_tables = [table for table in tables if isinstance(table, dict)] if isinstance(tables, list) else []
+    raw_tables = (
+        [table for table in tables if isinstance(table, dict)] if isinstance(tables, list) else []
+    )
     return RecentScanMetadataView(
         unavailable=False,
         fallback_note="",
@@ -72,9 +81,15 @@ def metadata_summary_items(
         ("metadata status", safe_display_value(case.get("metadata_status"))),
         ("metadata coverage", metadata_coverage_summary(case, statement_counts, table_count)),
         ("referenced tables", safe_display_value(case.get("referenced_table_count"))),
-        ("collected metadata tables", safe_display_value(case.get("collected_metadata_table_count"))),
+        (
+            "collected metadata tables",
+            safe_display_value(case.get("collected_metadata_table_count")),
+        ),
         ("too large metadata", safe_display_value(case.get("too_large_count"))),
-        ("metadata command status", metadata_statement_counts_summary(statement_counts) if counts_known else None),
+        (
+            "metadata command status",
+            metadata_statement_counts_summary(statement_counts) if counts_known else None,
+        ),
     ]
     metadata_reasons = metadata_score_reasons(case)
     if metadata_reasons:

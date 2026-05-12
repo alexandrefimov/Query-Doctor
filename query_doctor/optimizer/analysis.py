@@ -31,7 +31,9 @@ class OptimizerAnalysis:
     tables: list[ExtractedTable]
     findings: list[OptimizerFinding] = field(default_factory=list)
     metadata_status: str = "unavailable"
-    metadata_message: str = "Metadata is unavailable. Configure local metadata settings to enable table facts."
+    metadata_message: str = (
+        "Metadata is unavailable. Configure local metadata settings to enable table facts."
+    )
 
 
 def analyze_query_optimizer(
@@ -149,7 +151,9 @@ def metadata_findings(sql: str, tables: dict[str, dict[str, Any]]) -> list[Optim
                     severity="candidate",
                 )
             )
-        partition_columns = [str(item) for item in table.get("partition_columns") or [] if str(item).strip()]
+        partition_columns = [
+            str(item) for item in table.get("partition_columns") or [] if str(item).strip()
+        ]
         if partition_columns and not has_partition_filter(sql, partition_columns):
             findings.append(
                 OptimizerFinding(
@@ -180,12 +184,16 @@ def stats_incomplete(table: dict[str, Any]) -> bool:
 def has_partition_filter(sql: str, columns: list[str]) -> bool:
     text = strip_sql_comments_and_strings(sql)
     for column in columns:
-        if re.search(rf"(?:\b|\.){re.escape(column)}\b\s*(=|<|>|<=|>=|IN\b|BETWEEN\b)", text, re.IGNORECASE):
+        if re.search(
+            rf"(?:\b|\.){re.escape(column)}\b\s*(=|<|>|<=|>=|IN\b|BETWEEN\b)", text, re.IGNORECASE
+        ):
             return True
     return False
 
 
-def large_join_without_stats(tables: list[ExtractedTable], metadata_tables: dict[str, dict[str, Any]]) -> bool:
+def large_join_without_stats(
+    tables: list[ExtractedTable], metadata_tables: dict[str, dict[str, Any]]
+) -> bool:
     if len(tables) < 3:
         return False
     if not metadata_tables:

@@ -64,13 +64,11 @@ class CMEventsRequest:
 def validate_cm_events_request(request: CMEventsRequest) -> CMEventsRequest:
     if request.window_minutes <= 0 or request.window_minutes > MAX_CM_EVENTS_WINDOW_MINUTES:
         raise CMAdapterError(
-            "CM events window_minutes must be between "
-            f"1 and {MAX_CM_EVENTS_WINDOW_MINUTES}."
+            f"CM events window_minutes must be between 1 and {MAX_CM_EVENTS_WINDOW_MINUTES}."
         )
     if request.max_events <= 0 or request.max_events > MAX_CM_EVENTS_MAX_EVENTS:
         raise CMAdapterError(
-            "CM events max_events must be between "
-            f"1 and {MAX_CM_EVENTS_MAX_EVENTS}."
+            f"CM events max_events must be between 1 and {MAX_CM_EVENTS_MAX_EVENTS}."
         )
     severities = tuple(normalize_event_severity(value) for value in request.severities)
     if not severities:
@@ -226,7 +224,9 @@ def summarize_cm_events_response(
         limitations.append("CM may have more matching events than the bounded max_events limit.")
     if event_count >= request.max_events:
         limitations.append("CM events were bounded by max_events.")
-    limitations.append("Severity filtering is applied after bounded CM fetch for CM 6.x compatibility.")
+    limitations.append(
+        "Severity filtering is applied after bounded CM fetch for CM 6.x compatibility."
+    )
 
     return {
         "source": "cm_events",
@@ -299,7 +299,9 @@ def classify_event_signals(text: str, *, category: str) -> tuple[str, ...]:
         signals.append("role_unhealthy_event")
     if "datanode" in text and any(token in text for token in ("slow disk", "volume", "disk")):
         signals.append("hdfs_slow_disk_event")
-    if "namenode" in text and any(token in text for token in ("rpc", "safe mode", "safemode", "block")):
+    if "namenode" in text and any(
+        token in text for token in ("rpc", "safe mode", "safemode", "block")
+    ):
         signals.append("namenode_rpc_event")
     if any(token in text for token in ("hive metastore", "metastore", "hms")):
         signals.append("metastore_error_event")
@@ -309,7 +311,9 @@ def classify_event_signals(text: str, *, category: str) -> tuple[str, ...]:
         signals.append("impala_daemon_error_event")
     if any(token in text for token in ("yarn", "container")):
         signals.append("yarn_container_event")
-    if any(token in text for token in ("kerberos", "authentication", "authorization", "auth failure")):
+    if any(
+        token in text for token in ("kerberos", "authentication", "authorization", "auth failure")
+    ):
         signals.append("auth_failure_event")
     if any(token in text for token in ("disk full", "no space", "capacity", "scratch")):
         signals.append("disk_capacity_event")
@@ -318,7 +322,9 @@ def classify_event_signals(text: str, *, category: str) -> tuple[str, ...]:
     return dedupe_preserve_order(tuple(signals))
 
 
-def classify_product_status(signals: list[dict[str, object]], event_count: int, alert_count: int) -> str:
+def classify_product_status(
+    signals: list[dict[str, object]], event_count: int, alert_count: int
+) -> str:
     if event_count == 0:
         return "cluster_context_clean"
     severe_signals = {
@@ -353,7 +359,9 @@ def validate_cm_events_time_bound(value: str, field_name: str) -> str:
     try:
         datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
     except ValueError as exc:
-        raise CMAdapterError(f"CM events {field_name} must be formatted as YYYY-MM-DDTHH:MM:SSZ.") from exc
+        raise CMAdapterError(
+            f"CM events {field_name} must be formatted as YYYY-MM-DDTHH:MM:SSZ."
+        ) from exc
     return value
 
 

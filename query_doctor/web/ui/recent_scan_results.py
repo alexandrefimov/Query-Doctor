@@ -43,6 +43,7 @@ from query_doctor.web.ui.recent_scan_progress import (
     summarize_batch_progress,
 )
 
+
 def render_batch_card(
     settings: Any,
     query_group: str = DEFAULT_QUERY_GROUP,
@@ -60,16 +61,16 @@ def render_batch_card(
         payload = json.loads(Path(summary_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return (
-            f"<section class=\"panel batch-panel\" aria-label=\"{aria_label}\">"
-            f"<div class=\"batch-head\"><div><h1>{escaped_title}</h1>"
+            f'<section class="panel batch-panel" aria-label="{aria_label}">'
+            f'<div class="batch-head"><div><h1>{escaped_title}</h1>'
             "<p>Configured batch summary could not be read.</p></div></div>"
-            f"<div class=\"batch-note\">{html.escape(type(exc).__name__)}</div>"
+            f'<div class="batch-note">{html.escape(type(exc).__name__)}</div>'
             "</section>"
         )
     if not isinstance(payload, dict):
         return (
-            f"<section class=\"panel batch-panel\" aria-label=\"{aria_label}\">"
-            f"<div class=\"batch-head\"><div><h1>{escaped_title}</h1>"
+            f'<section class="panel batch-panel" aria-label="{aria_label}">'
+            f'<div class="batch-head"><div><h1>{escaped_title}</h1>'
             "<p>Configured batch summary is not a JSON object.</p></div></div>"
             "</section>"
         )
@@ -96,7 +97,7 @@ def render_batch_summary(
     rows_for_group = sort_rows_for_query_group(rows_for_group, active_group)
     rows_for_group = filter_rows_by_spills(rows_for_group, only_with_spills=only_with_spills)
     header = "".join(
-        "<div class=\"batch-metric\">"
+        '<div class="batch-metric">'
         f"<span>{html.escape(label)}</span>"
         f"<strong>{escape_value(value)}</strong>"
         "</div>"
@@ -118,7 +119,7 @@ def render_batch_summary(
             active_group,
             only_with_spills=only_with_spills,
         )
-        rows = f"<tr><td colspan=\"{batch_table_column_count(active_group)}\" class=\"empty-cell\">{html.escape(empty_text)}</td></tr>"
+        rows = f'<tr><td colspan="{batch_table_column_count(active_group)}" class="empty-cell">{html.escape(empty_text)}</td></tr>'
     scan_details = render_batch_scan_details(summary)
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
@@ -127,26 +128,31 @@ def render_batch_summary(
     escaped_title = html.escape(title)
     aria_label = html.escape(title.lower())
     return (
-        f"<section id=\"recent-results\" class=\"panel batch-panel\" aria-label=\"{aria_label}\">"
-        "<div class=\"batch-head\">"
+        f'<section id="recent-results" class="panel batch-panel" aria-label="{aria_label}">'
+        '<div class="batch-head">'
         f"<div><h1>{escaped_title}</h1></div>"
         "</div>"
-        f"<div class=\"batch-metrics\">{header}</div>"
+        f'<div class="batch-metrics">{header}</div>'
         f"{optimizer_funnel_note}"
         f"{scan_details}"
         f"{empty_note}"
         f"{warning_note}"
         f"{switcher}"
-        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        '<div class="batch-table-wrap"><table class="batch-table">'
         f"{batch_table_head(active_group)}"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
         "</section>"
     )
 
+
 def render_batch_scope_note(summary: dict[str, Any]) -> str:
     parts = list(present_recent_scan_summary(summary).scope_parts)
-    return f"<div class=\"batch-note\"><strong>Scan details:</strong> {'. '.join(html.escape(part) for part in parts)}.</div>" if parts else ""
+    return (
+        f'<div class="batch-note"><strong>Scan details:</strong> {". ".join(html.escape(part) for part in parts)}.</div>'
+        if parts
+        else ""
+    )
 
 
 def render_batch_scan_details(summary: dict[str, Any]) -> str:
@@ -154,7 +160,7 @@ def render_batch_scan_details(summary: dict[str, Any]) -> str:
     if not parts:
         return ""
     items = "".join(f"<span>{html.escape(part)}</span>" for part in parts)
-    return f"<div class=\"batch-detail-grid\" aria-label=\"Scan details\">{items}</div>"
+    return f'<div class="batch-detail-grid" aria-label="Scan details">{items}</div>'
 
 
 def render_optimizer_funnel_note(header_items: tuple[tuple[str, Any], ...]) -> str:
@@ -162,7 +168,7 @@ def render_optimizer_funnel_note(header_items: tuple[tuple[str, Any], ...]) -> s
     if metrics.get("optimization", 0) <= 0:
         return ""
     return (
-        "<div class=\"batch-note\"><strong>Optimizer funnel:</strong> "
+        '<div class="batch-note"><strong>Optimizer funnel:</strong> '
         "draft-ready means a trusted SQL draft shape was detected; "
         "recipe backlog means a supported or adjacent recipe shape needs follow-up; "
         "review-only means no trusted SQL draft shape was detected, so open Details "
@@ -175,13 +181,17 @@ def render_batch_empty_note(summary: dict[str, Any]) -> str:
     if not message:
         return ""
     heading = "Scan stopped" if summary.get("scan_too_broad") else "No cases selected"
-    return f"<div class=\"batch-note\"><strong>{heading}:</strong> {html.escape(message)}</div>"
+    return f'<div class="batch-note"><strong>{heading}:</strong> {html.escape(message)}</div>'
 
 
 def recent_scan_too_broad_message(summary: dict[str, Any]) -> str | None:
     if not summary.get("scan_too_broad"):
         return None
-    cap = summary.get("cm_summary_safety_cap") or summary.get("cm_inspect_limit") or summary.get("summaries_inspected")
+    cap = (
+        summary.get("cm_summary_safety_cap")
+        or summary.get("cm_inspect_limit")
+        or summary.get("summaries_inspected")
+    )
     return f"Scan stopped because this hour has more than {cap} matching CM summaries. Narrow the filters or choose another hour."
 
 
@@ -213,7 +223,7 @@ def render_batch_warning_note(summary: dict[str, Any]) -> str:
     if not warnings:
         return ""
     rendered = "; ".join(html.escape(warning) for warning in warnings)
-    return f"<div class=\"batch-note\"><strong>Scan warnings:</strong> {rendered}</div>"
+    return f'<div class="batch-note"><strong>Scan warnings:</strong> {rendered}</div>'
 
 
 def render_batch_case_row(
@@ -223,12 +233,16 @@ def render_batch_case_row(
     details_base_path: str = "/batch/case",
     query_group: str = DEFAULT_QUERY_GROUP,
 ) -> str:
-    view = case if isinstance(case, RecentScanCaseRowView) else present_recent_scan_case_row(rank, case)
+    view = (
+        case
+        if isinstance(case, RecentScanCaseRowView)
+        else present_recent_scan_case_row(rank, case)
+    )
     row_class = "batch-row batch-row--failed" if row_has_failure(view) else "batch-row"
-    row_attrs = f"class=\"{row_class}\""
+    row_attrs = f'class="{row_class}"'
     if view.case_id:
         href = f"{details_base_path.rstrip('/')}/{html.escape(view.case_id, quote=True)}"
-        row_attrs += f" data-href=\"{href}\" tabindex=\"0\""
+        row_attrs += f' data-href="{href}" tabindex="0"'
     normalized = normalize_query_group(query_group)
     if normalized == "optimization":
         cells = [
@@ -273,20 +287,22 @@ def render_batch_case_row(
 
 
 def row_has_failure(view: RecentScanCaseRowView) -> bool:
-    return any(str(value).lower() == "failed" for value in (view.collection_status, view.analysis_status))
+    return any(
+        str(value).lower() == "failed" for value in (view.collection_status, view.analysis_status)
+    )
 
 
 def query_id_cell(query_id: Any) -> str:
     escaped = escape_value(query_id)
-    return f"<td class=\"batch-cell--query-id\">{escaped}</td>"
+    return f'<td class="batch-cell--query-id">{escaped}</td>'
 
 
 def user_cell(user: Any) -> str:
-    return f"<td class=\"batch-cell--user\">{escape_value(user)}</td>"
+    return f'<td class="batch-cell--user">{escape_value(user)}</td>'
 
 
 def reason_cell(value: Any) -> str:
-    return f"<td class=\"batch-cell--reason\">{escape_value(value)}</td>"
+    return f'<td class="batch-cell--reason">{escape_value(value)}</td>'
 
 
 def score_cell(view: RecentScanCaseRowView) -> str:
@@ -299,7 +315,7 @@ def score_cell(view: RecentScanCaseRowView) -> str:
         class_name = "batch-severity--suspicious"
     else:
         class_name = "batch-severity--clean"
-    return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\">{escape_value(display_score(score))}</span></td>"
+    return f'<td class="batch-cell--compact"><span class="batch-mini-badge {class_name}">{escape_value(display_score(score))}</span></td>'
 
 
 def candidate_cell(tier: Any) -> str:
@@ -311,7 +327,7 @@ def candidate_cell(tier: Any) -> str:
         "unknown": "batch-status--warning",
     }.get(normalized, "batch-status--neutral")
     label = str(tier or "not_likely").replace("_", " ").title()
-    return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\">{escape_value(label)}</span></td>"
+    return f'<td class="batch-cell--compact"><span class="batch-mini-badge {class_name}">{escape_value(label)}</span></td>'
 
 
 def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUERY_GROUP) -> str:
@@ -324,17 +340,27 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
     normalized = normalize_query_group(query_group)
     detail_html = ""
     if normalized == "optimization":
-        why = f"Why: {view.optimization_summary}" if view.optimization_summary else "Why: query-shape evidence"
-        review = f" Review: {view.optimization_review_areas}." if view.optimization_review_areas else ""
+        why = (
+            f"Why: {view.optimization_summary}"
+            if view.optimization_summary
+            else "Why: query-shape evidence"
+        )
+        review = (
+            f" Review: {view.optimization_review_areas}." if view.optimization_review_areas else ""
+        )
         facts = f" Facts: {view.optimizer_fact_summary}." if view.optimizer_fact_summary else ""
-        guardrails = f" Guardrails: {view.optimizer_guardrail_summary}." if view.optimizer_guardrail_summary else ""
+        guardrails = (
+            f" Guardrails: {view.optimizer_guardrail_summary}."
+            if view.optimizer_guardrail_summary
+            else ""
+        )
         detail_html = f"<span>{escape_value(why)}.{escape_value(review)}{escape_value(facts)}{escape_value(guardrails)}</span>"
     elif normalized == "stats":
         why = f"Why: {view.stats_summary}" if view.stats_summary else "Why: stats-planning evidence"
         review = f" Review: {view.stats_review_areas}" if view.stats_review_areas else ""
         detail_html = f"<span>{escape_value(why)}.{escape_value(review)}</span>"
     return (
-        "<td class=\"batch-cell--summary\">"
+        '<td class="batch-cell--summary">'
         f"<strong>{escape_value(view.signal_summary)}</strong>"
         f"{primary_html}"
         f"{detail_html}"
@@ -371,8 +397,8 @@ def stats_need_label(value: Any) -> str:
 def optimizer_rewrite_support_cell(status: Any, label: Any, reason: Any) -> str:
     display_label, class_name, title = optimizer_rewrite_support_view(status, label, reason)
     return (
-        "<td class=\"batch-cell--compact\">"
-        f"<span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(title)}\">"
+        '<td class="batch-cell--compact">'
+        f'<span class="batch-mini-badge {class_name}" title="{escape_value(title)}">'
         f"{escape_value(display_label)}</span></td>"
     )
 
@@ -414,7 +440,7 @@ def metadata_cell(status: Any) -> str:
     else:
         symbol = "?"
         class_name = "batch-status--warning"
-    return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(status)}\">{symbol}</span></td>"
+    return f'<td class="batch-cell--compact"><span class="batch-mini-badge {class_name}" title="{escape_value(status)}">{symbol}</span></td>'
 
 
 def stats_cell(status: Any) -> str:
@@ -435,7 +461,7 @@ def stats_cell(status: Any) -> str:
         symbol = "−"
         class_name = "batch-status--neutral"
         title = "table stats not checked"
-    return f"<td class=\"batch-cell--compact\"><span class=\"batch-mini-badge {class_name}\" title=\"{escape_value(title)}\">{symbol}</span></td>"
+    return f'<td class="batch-cell--compact"><span class="batch-mini-badge {class_name}" title="{escape_value(title)}">{symbol}</span></td>'
 
 
 def batch_case_details_link(case: dict[str, Any] | RecentScanCaseRowView) -> SafeHtml:
@@ -443,7 +469,7 @@ def batch_case_details_link(case: dict[str, Any] | RecentScanCaseRowView) -> Saf
     if case_id is None:
         return SafeHtml("")
     escaped = html.escape(case_id, quote=True)
-    return SafeHtml(f"<a class=\"button\" href=\"/batch/case/{escaped}\">Details</a>")
+    return SafeHtml(f'<a class="button" href="/batch/case/{escaped}">Details</a>')
 
 
 def batch_case_id(case: dict[str, Any]) -> str | None:

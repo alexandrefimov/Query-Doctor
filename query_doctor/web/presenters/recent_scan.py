@@ -99,8 +99,12 @@ from query_doctor.web.presenters.recent_scan_technical import (
 
 def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryView:
     cases = summary.get("cases")
-    raw_cases = [case for case in cases if isinstance(case, dict)] if isinstance(cases, list) else []
-    rows = tuple(present_recent_scan_case_row(rank, case) for rank, case in enumerate(raw_cases, start=1))
+    raw_cases = (
+        [case for case in cases if isinstance(case, dict)] if isinstance(cases, list) else []
+    )
+    rows = tuple(
+        present_recent_scan_case_row(rank, case) for rank, case in enumerate(raw_cases, start=1)
+    )
     bad_count = sum(1 for row in rows if row.score_severity in {"failed", "high"})
     suspicious_count = sum(1 for row in rows if row.score_severity == "suspicious")
     optimization_count = sum(1 for row in rows if row.optimization_tier in {"high", "medium"})
@@ -108,7 +112,11 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
         optimizer_funnel_header_counts(rows)
     )
     stats_count = sum(1 for row in rows if row.stats_tier in {"high", "medium"})
-    metadata_count = sum(1 for row in rows if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"})
+    metadata_count = sum(
+        1
+        for row in rows
+        if str(row.metadata_status).lower() in {"ok", "available", "done", "collected"}
+    )
     header_items = (
         ("total", len(rows)),
         ("bad", bad_count),
@@ -143,7 +151,8 @@ def optimizer_funnel_header_counts(rows: tuple[RecentScanCaseRowView, ...]) -> t
     recipe_backlog = sum(
         1
         for row in candidates
-        if row.optimizer_rewriteability_bucket in {"recipe_detected_no_draft", "recipe_adjacent_shape"}
+        if row.optimizer_rewriteability_bucket
+        in {"recipe_detected_no_draft", "recipe_adjacent_shape"}
     )
     review_only = sum(
         1
@@ -155,7 +164,9 @@ def optimizer_funnel_header_counts(rows: tuple[RecentScanCaseRowView, ...]) -> t
 
 def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanCaseRowView:
     reasons = case.get("score_reasons")
-    reason_text = "; ".join(safe_display_text(item) for item in reasons) if isinstance(reasons, list) else ""
+    reason_text = (
+        "; ".join(safe_display_text(item) for item in reasons) if isinstance(reasons, list) else ""
+    )
     collection_status = safe_display_value(case.get("collection_status"))
     analysis_status = safe_display_value(case.get("analysis_status"))
     metadata_status = safe_display_value(case.get("metadata_status"))
@@ -191,7 +202,9 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         optimization_score=optimization["score"],
         optimization_impact=optimization["impact"],
         optimization_confidence=optimization["confidence"],
-        optimization_artifact_status=safe_display_text(case.get("_optimizer_artifact_status") or "unknown"),
+        optimization_artifact_status=safe_display_text(
+            case.get("_optimizer_artifact_status") or "unknown"
+        ),
         optimizer_rewrite_support=optimization["rewrite_support"],
         optimizer_rewrite_support_label=optimization["rewrite_support_label"],
         optimizer_rewrite_support_reason=optimization["rewrite_support_reason"],
@@ -244,7 +257,9 @@ def present_recent_scan_case_detail(
     primary_bottleneck = present_case_primary_bottleneck(case)
     cm_metrics = present_recent_scan_cm_metrics(cm_metrics_facts)
     runtime_diagnosis = present_recent_scan_runtime_diagnosis(runtime_diagnosis_facts)
-    cluster_runtime_context = present_recent_scan_cluster_runtime_context(cluster_runtime_context_facts)
+    cluster_runtime_context = present_recent_scan_cluster_runtime_context(
+        cluster_runtime_context_facts
+    )
     return RecentScanCaseDetailView(
         case_id=safe_display_text(case_id),
         query_id=safe_display_value(case.get("query_id")),
@@ -280,7 +295,10 @@ def present_recent_scan_case_detail(
             ("cardinality anomalies", safe_display_value(case.get("cardinality_anomaly_count"))),
             ("memory anomalies", safe_display_value(case.get("memory_anomaly_count"))),
             ("zero row estimate gaps", safe_display_value(case.get("zero_row_estimate_gap_count"))),
-            ("zero memory estimate gaps", safe_display_value(case.get("zero_memory_estimate_gap_count"))),
+            (
+                "zero memory estimate gaps",
+                safe_display_value(case.get("zero_memory_estimate_gap_count")),
+            ),
             ("backend data skew", safe_display_value(case.get("backend_data_skew"))),
             ("host-tail candidates", safe_display_value(case.get("host_tail_candidate_count"))),
         ),
@@ -291,14 +309,20 @@ def present_recent_scan_case_detail(
             ("report seconds", safe_display_value(case.get("report_seconds"))),
             ("total seconds", safe_display_value(case.get("total_seconds"))),
         ),
-        score_reasons=tuple(safe_display_text(reason) for reason in case.get("score_reasons") or [] if reason is not None),
+        score_reasons=tuple(
+            safe_display_text(reason)
+            for reason in case.get("score_reasons") or []
+            if reason is not None
+        ),
         optimization_candidate=optimization,
         stats_candidate=stats_candidate,
         metadata=present_recent_scan_metadata(case, metadata_facts),
         cm_metrics=cm_metrics,
         runtime_diagnosis=runtime_diagnosis,
         cluster_runtime_context=cluster_runtime_context,
-        runtime_verdict=present_recent_scan_runtime_verdict(cluster_runtime_context, runtime_diagnosis),
+        runtime_verdict=present_recent_scan_runtime_verdict(
+            cluster_runtime_context, runtime_diagnosis
+        ),
         evidence_quality=present_recent_scan_evidence_quality(evidence_quality_facts),
         stats_quality=present_recent_scan_stats_quality(stats_quality_facts),
         primary_bottleneck=primary_bottleneck,
@@ -354,7 +378,11 @@ def present_case_primary_bottleneck(case: dict[str, Any]) -> RecentScanPrimaryBo
     label_is_known = raw_label in PRIMARY_BOTTLENECK_LABELS
     label = PRIMARY_BOTTLENECK_LABELS.get(raw_label, "Unknown")
     raw_confidence = str(bottleneck.get("confidence") or "unknown").strip().lower()
-    confidence = raw_confidence if label_is_known and raw_confidence in {"high", "medium", "low"} else "unknown"
+    confidence = (
+        raw_confidence
+        if label_is_known and raw_confidence in {"high", "medium", "low"}
+        else "unknown"
+    )
     reasons = bottleneck.get("reasons")
     safe_reasons = (
         [primary_bottleneck_reason_label(item) for item in list(reasons)[:3]]
@@ -390,7 +418,9 @@ def primary_bottleneck_reason_label(value: Any) -> str:
     return "unrecognized reason category"
 
 
-def present_recent_scan_evidence_quality(evidence_quality_facts: dict[str, Any] | None) -> RecentScanEvidenceQualityView:
+def present_recent_scan_evidence_quality(
+    evidence_quality_facts: dict[str, Any] | None,
+) -> RecentScanEvidenceQualityView:
     facts = evidence_quality_facts if isinstance(evidence_quality_facts, dict) else {}
     strengths = facts.get("strengths") if isinstance(facts.get("strengths"), list) else []
     limitations = facts.get("limitations") if isinstance(facts.get("limitations"), list) else []
@@ -407,7 +437,9 @@ def present_recent_scan_evidence_quality(evidence_quality_facts: dict[str, Any] 
     )
 
 
-def present_recent_scan_stats_quality(stats_quality_facts: dict[str, Any] | None) -> RecentScanStatsQualityView:
+def present_recent_scan_stats_quality(
+    stats_quality_facts: dict[str, Any] | None,
+) -> RecentScanStatsQualityView:
     facts = stats_quality_facts if isinstance(stats_quality_facts, dict) else {}
     status = safe_display_text(facts.get("status") or "")
     table_stats = safe_display_text(facts.get("table_stats") or "")
@@ -486,9 +518,17 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
     confidence = safe_display_text(candidate.get("confidence") or "low")
     score = numeric_count(candidate.get("score")) or 0
     reasons = candidate.get("reasons")
-    safe_reasons = [safe_optimization_display_text(reason) for reason in reasons[:3]] if isinstance(reasons, list) else []
+    safe_reasons = (
+        [safe_optimization_display_text(reason) for reason in reasons[:3]]
+        if isinstance(reasons, list)
+        else []
+    )
     review = candidate.get("suggested_review_areas")
-    safe_review = [safe_optimization_display_text(item) for item in review[:3]] if isinstance(review, list) else []
+    safe_review = (
+        [safe_optimization_display_text(item) for item in review[:3]]
+        if isinstance(review, list)
+        else []
+    )
     counter_signals = candidate.get("counter_signals")
     safe_counter_signals = (
         [safe_optimization_display_text(item) for item in counter_signals[:2]]
@@ -524,7 +564,9 @@ def optimizer_rewrite_support_view(case: dict[str, Any]) -> dict[str, str]:
         "rewrite_support_label": label,
         "rewrite_support_reason": reason,
         "rewriteability_bucket": bucket,
-        "rewriteability_label": safe_optimizer_rewriteability_label(support.get("rewriteability_label")),
+        "rewriteability_label": safe_optimizer_rewriteability_label(
+            support.get("rewriteability_label")
+        ),
         "rewrite_support_facts": optimizer_rewrite_support_fact_summary(support),
         "rewrite_support_guardrails": optimizer_rewrite_support_guardrail_summary(support),
     }
@@ -615,9 +657,17 @@ def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
     speed_benefit = safe_display_text(candidate.get("speed_benefit") or "unknown")
     score = numeric_count(candidate.get("score")) or 0
     reasons = candidate.get("reasons")
-    safe_reasons = [safe_optimization_display_text(reason) for reason in reasons[:3]] if isinstance(reasons, list) else []
+    safe_reasons = (
+        [safe_optimization_display_text(reason) for reason in reasons[:3]]
+        if isinstance(reasons, list)
+        else []
+    )
     review = candidate.get("suggested_review_areas")
-    safe_review = [safe_optimization_display_text(item) for item in review[:3]] if isinstance(review, list) else []
+    safe_review = (
+        [safe_optimization_display_text(item) for item in review[:3]]
+        if isinstance(review, list)
+        else []
+    )
     confirmation = candidate.get("required_confirmation")
     safe_confirmation = (
         [safe_optimization_display_text(item) for item in confirmation[:2]]

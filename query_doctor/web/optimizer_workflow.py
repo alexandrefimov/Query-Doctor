@@ -15,7 +15,11 @@ from query_doctor.impala import metadata_workflow
 from query_doctor.optimizer.analysis import OptimizerAnalysis, analyze_query_optimizer
 from query_doctor.web.config import metadata_configured
 from query_doctor.web.models import WebError, WebSettings
-from query_doctor.web.subprocesses import Runner, effective_subprocess_env, resolve_metadata_impala_shell
+from query_doctor.web.subprocesses import (
+    Runner,
+    effective_subprocess_env,
+    resolve_metadata_impala_shell,
+)
 from query_doctor.optimizer.sql import ExtractedTable, OptimizerSqlError, extract_referenced_tables
 
 
@@ -29,7 +33,9 @@ def run_optimizer_analysis(
         tables = extract_referenced_tables(sql)
     except OptimizerSqlError as exc:
         raise WebError(str(exc)) from exc
-    metadata_context, metadata_status, metadata_message = collect_optimizer_metadata(tables, settings, runner=runner)
+    metadata_context, metadata_status, metadata_message = collect_optimizer_metadata(
+        tables, settings, runner=runner
+    )
     return analyze_query_optimizer(
         sql,
         tables=tables,
@@ -46,19 +52,35 @@ def collect_optimizer_metadata(
     runner: Runner = subprocess.run,
 ) -> tuple[dict[str, Any] | None, str, str]:
     if not tables:
-        return None, "unavailable", "Metadata collection was not attempted because no physical tables were detected."
+        return (
+            None,
+            "unavailable",
+            "Metadata collection was not attempted because no physical tables were detected.",
+        )
     if not metadata_configured(settings):
-        return None, "unavailable", "Metadata is unavailable. Configure local metadata settings to enable table facts."
+        return (
+            None,
+            "unavailable",
+            "Metadata is unavailable. Configure local metadata settings to enable table facts.",
+        )
 
     max_tables = settings.metadata_max_tables or metadata_workflow.DEFAULT_METADATA_MAX_TABLES
     plan = metadata_workflow.build_metadata_plan([table.name for table in tables], max_tables)
     if not plan.selected_tables:
-        return None, "unavailable", "No fully qualified db.table identifiers were available for metadata collection."
+        return (
+            None,
+            "unavailable",
+            "No fully qualified db.table identifiers were available for metadata collection.",
+        )
 
     env = effective_subprocess_env(settings)
     impala_shell = resolve_metadata_impala_shell(settings, env)
     if not impala_shell:
-        return None, "unavailable", "Metadata is unavailable because the local impala-shell executable is not available."
+        return (
+            None,
+            "unavailable",
+            "Metadata is unavailable because the local impala-shell executable is not available.",
+        )
 
     with tempfile.TemporaryDirectory(prefix="query-doctor-optimizer-") as tmp:
         args = argparse.Namespace(
@@ -82,14 +104,30 @@ def collect_optimizer_metadata(
         try:
             exit_code = impala_context_collector.collect_impala_context(args, runner=runner)
         except Exception:
-            return None, "failed", "Metadata collection failed. Extracted tables are still shown with safe limitations."
+            return (
+                None,
+                "failed",
+                "Metadata collection failed. Extracted tables are still shown with safe limitations.",
+            )
         context = read_optimizer_metadata_context(Path(tmp))
     if context is None:
         return None, "failed", "Metadata collection did not produce safe metadata facts."
     if exit_code != 0:
-        return context, "failed", "Metadata collection was incomplete. Only available safe facts are used."
-    skipped = f" Skipped {len(plan.skipped_tables)} table(s) due to the configured metadata table limit." if plan.skipped_tables else ""
-    return context, "collected", f"Safe metadata facts were collected for {len(plan.selected_tables)} table(s).{skipped}"
+        return (
+            context,
+            "failed",
+            "Metadata collection was incomplete. Only available safe facts are used.",
+        )
+    skipped = (
+        f" Skipped {len(plan.skipped_tables)} table(s) due to the configured metadata table limit."
+        if plan.skipped_tables
+        else ""
+    )
+    return (
+        context,
+        "collected",
+        f"Safe metadata facts were collected for {len(plan.selected_tables)} table(s).{skipped}",
+    )
 
 
 def read_optimizer_metadata_context(out_dir: Path) -> dict[str, Any] | None:

@@ -29,7 +29,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--host", help=f"Bind host. Default comes from config or {DEFAULT_HOST}.")
-    parser.add_argument("--port", type=positive_int, help=f"Bind port. Default comes from config or {DEFAULT_PORT}.")
+    parser.add_argument(
+        "--port", type=positive_int, help=f"Bind port. Default comes from config or {DEFAULT_PORT}."
+    )
     parser.add_argument(
         "--allow-nonlocal-web-bind",
         "--allow-nonlocal-demo-bind",
@@ -45,7 +47,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int,
         help=f"Override collector max profile bytes. Default comes from config or {cm_collector.DEFAULT_MAX_PROFILE_BYTES}.",
     )
-    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Ollama model for reports. Default: {DEFAULT_MODEL}.")
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"Ollama model for reports. Default: {DEFAULT_MODEL}.",
+    )
     parser.add_argument(
         "--optimizer-model",
         help=(
@@ -66,8 +72,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "The web UI never chooses this path from request parameters."
         ),
     )
-    parser.add_argument("--metadata-coordinator", help="Impala coordinator HOST:PORT for web metadata collection.")
-    parser.add_argument("--metadata-impala-shell", help="impala-shell executable for web metadata collection.")
+    parser.add_argument(
+        "--metadata-coordinator", help="Impala coordinator HOST:PORT for web metadata collection."
+    )
+    parser.add_argument(
+        "--metadata-impala-shell", help="impala-shell executable for web metadata collection."
+    )
     parser.add_argument(
         "--metadata-auth",
         help="Metadata auth mode. Default comes from config or kerberos.",
@@ -81,14 +91,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--metadata-kerberos-service-name",
         help="Kerberos service principal short name for metadata impala-shell, e.g. hive or impala.",
     )
-    parser.add_argument("--metadata-ssl", action="store_true", help="Pass --ssl to impala-shell metadata collection.")
-    parser.add_argument("--metadata-ca-cert", help="CA certificate path for --metadata-ssl metadata connections.")
+    parser.add_argument(
+        "--metadata-ssl",
+        action="store_true",
+        help="Pass --ssl to impala-shell metadata collection.",
+    )
+    parser.add_argument(
+        "--metadata-ca-cert", help="CA certificate path for --metadata-ssl metadata connections."
+    )
     parser.add_argument(
         "--metadata-timeout-sec",
         type=positive_int,
         help=f"Timeout per metadata statement. Default comes from config or {DEFAULT_METADATA_TIMEOUT_SEC}.",
     )
-    parser.add_argument("--metadata-max-tables", type=positive_int, help="Maximum referenced tables to collect.")
-    parser.add_argument("--metadata-max-output-bytes", type=positive_int, help="Maximum metadata output bytes.")
-    parser.add_argument("--metadata-redact", action="store_true", help="Pass --metadata-redact to web metadata collection.")
+    parser.add_argument(
+        "--metadata-max-tables", type=positive_int, help="Maximum referenced tables to collect."
+    )
+    parser.add_argument(
+        "--metadata-max-output-bytes", type=positive_int, help="Maximum metadata output bytes."
+    )
+    parser.add_argument(
+        "--metadata-redact",
+        action="store_true",
+        help="Pass --metadata-redact to web metadata collection.",
+    )
     return parser.parse_args(argv)

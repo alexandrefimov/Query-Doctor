@@ -100,5 +100,7 @@ def run_cm_recent_query_listing(
         )
         print(f"Sanitized JSON written: {config.recent_output_json}")
 
-    print("No profile text, raw SQL, raw JSON, case directories, analyzer output, or reports were written.")
+    print(
+        "No profile text, raw SQL, raw JSON, case directories, analyzer output, or reports were written."
+    )
     return 0

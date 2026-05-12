@@ -75,13 +75,17 @@ def operator_with_zero_memory_estimate_gap(op: OperatorFact) -> OperatorFact | N
 
 def op_to_json(op: OperatorFact) -> dict[str, Any]:
     row_observation = op.best_rows_observation() or op.best_zero_row_estimate_gap_observation()
-    memory_observation = op.best_memory_observation() or op.best_zero_memory_estimate_gap_observation()
+    memory_observation = (
+        op.best_memory_observation() or op.best_zero_memory_estimate_gap_observation()
+    )
     actual_rows = row_observation.actual_rows if row_observation else op.actual_rows
     estimated_rows = row_observation.estimated_rows if row_observation else op.estimated_rows
     rows_ratio = observation_rows_ratio(row_observation) if row_observation else None
     peak_mem_bytes = memory_observation.peak_mem_bytes if memory_observation else op.peak_mem_bytes
     estimated_peak_mem_bytes = (
-        memory_observation.estimated_peak_mem_bytes if memory_observation else op.estimated_peak_mem_bytes
+        memory_observation.estimated_peak_mem_bytes
+        if memory_observation
+        else op.estimated_peak_mem_bytes
     )
     mem_ratio = observation_mem_ratio(memory_observation) if memory_observation else None
     return {

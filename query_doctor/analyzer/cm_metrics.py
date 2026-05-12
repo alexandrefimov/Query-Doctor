@@ -61,7 +61,10 @@ def cm_metric_ready(metric: dict[str, Any] | None) -> bool:
         return False
     if cm_metric_point_count(metric) < CM_METRIC_MIN_POINTS_FOR_SIGNAL:
         return False
-    return any(numeric_context_value(metric, field) is not None for field in ("min", "max", "avg", "latest"))
+    return any(
+        numeric_context_value(metric, field) is not None
+        for field in ("min", "max", "avg", "latest")
+    )
 
 
 def cm_signal(status: str, basis: str) -> dict[str, str]:
@@ -134,7 +137,9 @@ def metric_series_max_values(metric: dict[str, Any] | None) -> list[float]:
     return values
 
 
-def metric_series_spread_basis(metric: dict[str, Any] | None, *, value_suffix: str = "") -> str | None:
+def metric_series_spread_basis(
+    metric: dict[str, Any] | None, *, value_suffix: str = ""
+) -> str | None:
     series_count = metric_series_count(metric)
     values = sorted(metric_series_max_values(metric), reverse=True)
     if not series_count or len(values) < 2:
@@ -150,12 +155,16 @@ def metric_value(metric: dict[str, Any] | None, field: str) -> float | None:
 
 
 def max_metric_value(metrics: list[dict[str, Any]], field: str) -> float | None:
-    values = [value for metric in metrics for value in [metric_value(metric, field)] if value is not None]
+    values = [
+        value for metric in metrics for value in [metric_value(metric, field)] if value is not None
+    ]
     return max(values) if values else None
 
 
 def metric_spread_basis(metrics: list[dict[str, Any]]) -> str | None:
-    spreads = [spread for metric in metrics for spread in [metric_series_spread_basis(metric)] if spread]
+    spreads = [
+        spread for metric in metrics for spread in [metric_series_spread_basis(metric)] if spread
+    ]
     if not spreads:
         return None
     return spreads[0] if len(spreads) == 1 else "component spreads: " + "; ".join(spreads[:3])
@@ -167,7 +176,13 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     ok_metrics = sum(1 for query in queries if query.get("status") == "ok")
     total_points = sum(cm_metric_point_count(query) for query in queries)
     available = bool(context.get("available")) and total_metrics > 0
-    status = "available" if available and ok_metrics == total_metrics else "partial" if ok_metrics else "unavailable"
+    status = (
+        "available"
+        if available and ok_metrics == total_metrics
+        else "partial"
+        if ok_metrics
+        else "unavailable"
+    )
 
     admission_queued = cm_metric_by_id(context, "impala_pool_queued_rate")
     admission_rejected = cm_metric_by_id(context, "impala_pool_rejected_rate")
@@ -192,11 +207,20 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     rejected_max = numeric_context_value(admission_rejected or {}, "max")
     timed_out_max = numeric_context_value(admission_timed_out or {}, "max")
     admission_spread = metric_series_spread_basis(admission_queued)
-    admission_ready = any(cm_metric_ready(metric) for metric in (admission_queued, admission_rejected, admission_timed_out))
+    admission_ready = any(
+        cm_metric_ready(metric)
+        for metric in (admission_queued, admission_rejected, admission_timed_out)
+    )
     if admission_ready:
-        queued_observed = queued_max is not None and queued_max >= CM_ADMISSION_POOL_QUEUED_RATE_THRESHOLD
-        rejected_observed = rejected_max is not None and rejected_max > CM_ADMISSION_POOL_REJECTED_RATE_THRESHOLD
-        timed_out_observed = timed_out_max is not None and timed_out_max > CM_ADMISSION_POOL_TIMED_OUT_RATE_THRESHOLD
+        queued_observed = (
+            queued_max is not None and queued_max >= CM_ADMISSION_POOL_QUEUED_RATE_THRESHOLD
+        )
+        rejected_observed = (
+            rejected_max is not None and rejected_max > CM_ADMISSION_POOL_REJECTED_RATE_THRESHOLD
+        )
+        timed_out_observed = (
+            timed_out_max is not None and timed_out_max > CM_ADMISSION_POOL_TIMED_OUT_RATE_THRESHOLD
+        )
         basis_parts: list[str] = []
         if queued_max is not None:
             basis_parts.append(
@@ -208,11 +232,17 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             basis_parts.append(f"admission rejected max={rejected_max:.2f}/s")
         if timed_out_max is not None:
             basis_parts.append(f"admission timed_out max={timed_out_max:.2f}/s")
-        basis = "; ".join(basis_parts) if basis_parts else "available admission pool metrics did not cross thresholds"
+        basis = (
+            "; ".join(basis_parts)
+            if basis_parts
+            else "available admission pool metrics did not cross thresholds"
+        )
         if admission_spread:
             basis = f"{basis}; {admission_spread}"
         admission_pool_pressure = cm_signal(
-            "observed" if queued_observed or rejected_observed or timed_out_observed else "not_observed",
+            "observed"
+            if queued_observed or rejected_observed or timed_out_observed
+            else "not_observed",
             basis,
         )
     else:
@@ -221,7 +251,11 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             "admission pool metrics are missing or have insufficient points; availability: "
             + cm_metric_availability_detail(
                 context,
-                ("impala_pool_queued_rate", "impala_pool_rejected_rate", "impala_pool_timed_out_rate"),
+                (
+                    "impala_pool_queued_rate",
+                    "impala_pool_rejected_rate",
+                    "impala_pool_timed_out_rate",
+                ),
             ),
         )
 
@@ -236,10 +270,12 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             or (cpu_system_max is not None and cpu_system_max >= CM_HOST_CPU_SYSTEM_MAX_THRESHOLD)
         )
         basis = (
-            f"host_cpu_user max={cpu_user_max:.2f} avg={cpu_user_avg:.2f}; "
-            f"host_cpu_system max={cpu_system_max:.2f}"
-        ) if cpu_user_max is not None and cpu_user_avg is not None and cpu_system_max is not None else (
-            "available CPU metrics did not cross pressure thresholds"
+            (
+                f"host_cpu_user max={cpu_user_max:.2f} avg={cpu_user_avg:.2f}; "
+                f"host_cpu_system max={cpu_system_max:.2f}"
+            )
+            if cpu_user_max is not None and cpu_user_avg is not None and cpu_system_max is not None
+            else ("available CPU metrics did not cross pressure thresholds")
         )
         if cpu_user_spread:
             basis = f"{basis}; {cpu_user_spread}"
@@ -264,9 +300,13 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             ratio is not None and ratio >= CM_DAEMON_MEMORY_GROWTH_RATIO_THRESHOLD
         )
         basis = (
-            f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)} "
-            f"delta={fmt_bytes(delta)} ratio={ratio:.2f}x"
-        ) if ratio is not None else f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)}"
+            (
+                f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)} "
+                f"delta={fmt_bytes(delta)} ratio={ratio:.2f}x"
+            )
+            if ratio is not None
+            else f"daemon memory min={fmt_bytes(daemon_mem_min)} max={fmt_bytes(daemon_mem_max)}"
+        )
         if daemon_memory_spread:
             basis = f"{basis}; {daemon_memory_spread}"
         daemon_memory_growth = cm_signal(
@@ -295,9 +335,13 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             ratio is None or ratio >= CM_HOST_DISK_IO_RATIO_THRESHOLD
         )
         basis = (
-            f"host disk I/O max={fmt_bytes(disk_max)}/s avg={fmt_bytes(disk_avg)}/s "
-            f"ratio={ratio:.2f}x"
-        ) if ratio is not None else f"host disk I/O max={fmt_bytes(disk_max)}/s avg={fmt_bytes(disk_avg)}/s"
+            (
+                f"host disk I/O max={fmt_bytes(disk_max)}/s avg={fmt_bytes(disk_avg)}/s "
+                f"ratio={ratio:.2f}x"
+            )
+            if ratio is not None
+            else f"host disk I/O max={fmt_bytes(disk_max)}/s avg={fmt_bytes(disk_avg)}/s"
+        )
         if disk_spread:
             basis = f"{basis}; {disk_spread}"
         host_disk_io_pressure = cm_signal(
@@ -308,7 +352,9 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         host_disk_io_pressure = cm_signal(
             "unknown",
             "host disk I/O metrics are missing or have insufficient points; availability: "
-            + cm_metric_availability_detail(context, ("host_disk_read_rate", "host_disk_write_rate")),
+            + cm_metric_availability_detail(
+                context, ("host_disk_read_rate", "host_disk_write_rate")
+            ),
         )
 
     hdfs_read_max = numeric_context_value(hdfs_read or {}, "max")
@@ -316,10 +362,16 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
     hdfs_local_max = numeric_context_value(hdfs_local_reads or {}, "max")
     hdfs_remote_max = numeric_context_value(hdfs_remote_reads or {}, "max")
     hdfs_spread = metric_series_spread_basis(hdfs_read)
-    hdfs_ready = any(cm_metric_ready(metric) for metric in (hdfs_read, hdfs_local_reads, hdfs_remote_reads))
+    hdfs_ready = any(
+        cm_metric_ready(metric) for metric in (hdfs_read, hdfs_local_reads, hdfs_remote_reads)
+    )
     if hdfs_ready and hdfs_read_max is not None and hdfs_read_avg is not None:
         read_ratio = hdfs_read_max / hdfs_read_avg if hdfs_read_avg > 0 else None
-        remote_ratio = hdfs_remote_max / hdfs_local_max if hdfs_remote_max is not None and hdfs_local_max and hdfs_local_max > 0 else None
+        remote_ratio = (
+            hdfs_remote_max / hdfs_local_max
+            if hdfs_remote_max is not None and hdfs_local_max and hdfs_local_max > 0
+            else None
+        )
         hdfs_observed = hdfs_read_max >= CM_HDFS_DATANODE_READ_BYTES_PER_SEC or (
             remote_ratio is not None and remote_ratio >= CM_HDFS_REMOTE_READ_RATIO_THRESHOLD
         )
@@ -365,9 +417,13 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             ratio is None or ratio >= CM_NETWORK_SPIKE_RATIO_THRESHOLD
         )
         basis = (
-            f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s "
-            f"ratio={ratio:.2f}x"
-        ) if ratio is not None else f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s"
+            (
+                f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s "
+                f"ratio={ratio:.2f}x"
+            )
+            if ratio is not None
+            else f"host network I/O max={fmt_bytes(network_max)}/s avg={fmt_bytes(network_avg)}/s"
+        )
         if network_spread:
             basis = f"{basis}; {network_spread}"
         network_io_spike = cm_signal(
@@ -384,20 +440,14 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             ),
         )
 
-    truncated_metrics = [
-        str(query.get("id"))
-        for query in queries
-        if query.get("truncated")
-    ][:5]
+    truncated_metrics = [str(query.get("id")) for query in queries if query.get("truncated")][:5]
     unavailable_metrics = [
         safe_cm_metric_id(query.get("id"))
         for query in queries
         if query.get("status") not in {"ok", "no_data"}
     ][:5]
     no_data_metric_ids = [
-        safe_cm_metric_id(query.get("id"))
-        for query in queries
-        if query.get("status") == "no_data"
+        safe_cm_metric_id(query.get("id")) for query in queries if query.get("status") == "no_data"
     ][:5]
     no_data_metrics = sum(1 for query in queries if query.get("status") == "no_data")
     unavailable_metric_count = sum(
@@ -420,15 +470,21 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             parts.append(f"max_response_bytes={max_bytes}")
         limitations.append(f"{source_label} collection limits: " + ", ".join(parts) + ".")
     if truncated_metrics:
-        limitations.append(f"{source_label} were truncated for: " + ", ".join(truncated_metrics) + ".")
+        limitations.append(
+            f"{source_label} were truncated for: " + ", ".join(truncated_metrics) + "."
+        )
     if unavailable_metrics:
-        limitations.append(f"{source_label} unavailable for: " + ", ".join(unavailable_metrics) + ".")
+        limitations.append(
+            f"{source_label} unavailable for: " + ", ".join(unavailable_metrics) + "."
+        )
         limitations.append(
             f"Unavailable {source_label} can indicate a profile/version metric-name mismatch, a missing role, "
             "or no metric series for the bounded query window. Treat affected runtime hypotheses as lower confidence."
         )
     if no_data_metric_ids:
-        limitations.append(f"{source_label} returned no_data for: " + ", ".join(no_data_metric_ids) + ".")
+        limitations.append(
+            f"{source_label} returned no_data for: " + ", ".join(no_data_metric_ids) + "."
+        )
     warnings = [warning for warning in context.get("warnings") or [] if isinstance(warning, str)]
     if warnings:
         limitations.append(f"Collection warnings present: {len(warnings)}.")

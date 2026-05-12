@@ -109,7 +109,9 @@ def test_cluster_event_context_unavailable_is_inconclusive():
     assert context["available"] is False
     assert context["status"] == "unavailable"
     assert context["product_status"] == "inconclusive"
-    assert context["limitations"] == ["Cluster event context was unavailable from the configured provider."]
+    assert context["limitations"] == [
+        "Cluster event context was unavailable from the configured provider."
+    ]
 
 
 def test_cluster_event_context_safe_empty_text_passes():

@@ -34,7 +34,9 @@ RULES: tuple[Rule, ...] = (
         name="Web UI / routes",
         patterns=("query_doctor/web/**", "tests/test_web*.py"),
         read=("docs/codex-handoff.md", "docs/code-audit.md", "docs/safety-contract.md"),
-        tests=("python3 -m pytest -q tests/test_web_server.py tests/test_web_ui_home.py tests/test_web_ui_help.py",),
+        tests=(
+            "python3 -m pytest -q tests/test_web_server.py tests/test_web_ui_home.py tests/test_web_ui_help.py",
+        ),
         changelog="yes, for user-visible workflow or browser safety changes",
         notes=("Route dynamic browser text through presenter/display safety helpers.",),
     ),
@@ -42,7 +44,9 @@ RULES: tuple[Rule, ...] = (
         name="Trusted artifacts",
         patterns=("query_doctor/web/trusted_artifacts.py", "tests/test_web_trusted_artifacts.py"),
         read=("docs/code-audit.md", "docs/query-optimizer-contract.md", "docs/safety-contract.md"),
-        tests=("python3 -m pytest -q tests/test_web_trusted_artifacts.py tests/test_web_optimizer.py",),
+        tests=(
+            "python3 -m pytest -q tests/test_web_trusted_artifacts.py tests/test_web_optimizer.py",
+        ),
         changelog="yes, for trust marker or trusted loading behavior changes",
         notes=("Status badges and loading must share the same strict trust predicate.",),
     ),
@@ -56,9 +60,15 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         name="Optimizer",
-        patterns=("query_doctor/optimizer/**", "tests/test_optimizer*.py", "tests/test_query_optimizer.py"),
+        patterns=(
+            "query_doctor/optimizer/**",
+            "tests/test_optimizer*.py",
+            "tests/test_query_optimizer.py",
+        ),
         read=("docs/query-optimizer-contract.md", "docs/code-audit.md", "docs/model-bakeoff.md"),
-        tests=("python3 -m pytest -q tests/test_query_optimizer.py tests/test_optimizer_sql.py tests/test_optimizer_benchmark_fixtures.py",),
+        tests=(
+            "python3 -m pytest -q tests/test_query_optimizer.py tests/test_optimizer_sql.py tests/test_optimizer_benchmark_fixtures.py",
+        ),
         changelog="yes, for optimizer behavior, validation, marker, or fallback changes",
         notes=("Never execute optimizer SQL and never echo pasted SQL after submit.",),
     ),
@@ -80,7 +90,12 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         name="Analyzer / recent scan",
-        patterns=("query_doctor/analyzer/**", "query_doctor/recent/**", "tests/test_analyzer*.py", "tests/test_recent*.py"),
+        patterns=(
+            "query_doctor/analyzer/**",
+            "query_doctor/recent/**",
+            "tests/test_analyzer*.py",
+            "tests/test_recent*.py",
+        ),
         read=("docs/codex-handoff.md", "docs/code-audit.md", "docs/analyzer-audit.md"),
         tests=(
             "python3 -m pytest -q tests/test_analyzer_cli.py tests/test_batch_recent_cli.py tests/test_web_ui_recent_scan.py tests/test_web_ui_recent_scan_presenter.py",
@@ -135,7 +150,9 @@ def matching_rules(paths: Iterable[str]) -> list[Rule]:
     return found
 
 
-def changed_paths_from_git(repo: Path, *, staged: bool = False, base: str | None = None) -> list[str]:
+def changed_paths_from_git(
+    repo: Path, *, staged: bool = False, base: str | None = None
+) -> list[str]:
     if staged and base:
         raise ValueError("--staged and --base cannot be used together")
     if base:
@@ -165,10 +182,7 @@ def changed_paths_from_git(repo: Path, *, staged: bool = False, base: str | None
         )
         outputs.append(untracked_result.stdout)
     return unique_ordered(
-        line.strip()
-        for output in outputs
-        for line in output.splitlines()
-        if line.strip()
+        line.strip() for output in outputs for line in output.splitlines() if line.strip()
     )
 
 
@@ -204,9 +218,7 @@ def validation_scope_notes(rules: Sequence[Rule]) -> list[str]:
             "Web, optimizer, report, collector, and analyzer suites are not "
             "needed unless their routing rules changed."
         )
-    if "Web UI / routes" in names and not (
-        names & {"Trusted artifacts", "Report", "Optimizer"}
-    ):
+    if "Web UI / routes" in names and not (names & {"Trusted artifacts", "Report", "Optimizer"}):
         notes.append(
             "Optimizer and report suites are not needed unless the UI change "
             "reaches those trust boundaries."
@@ -224,7 +236,9 @@ def render_report(paths: Sequence[str], rules: Sequence[Rule]) -> str:
     lines.append("")
 
     if not rules:
-        lines.append("No specific rule matched. Read `docs/codex-handoff.md` and run `git diff --check`.")
+        lines.append(
+            "No specific rule matched. Read `docs/codex-handoff.md` and run `git diff --check`."
+        )
         return "\n".join(lines)
 
     lines.append("Matched areas:")

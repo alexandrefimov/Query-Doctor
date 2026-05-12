@@ -11,7 +11,9 @@ from query_doctor.web.presenters.recent_scan_models import (
 )
 
 
-def present_recent_scan_evidence_guide(view: RecentScanCaseDetailView) -> RecentScanEvidenceGuideView:
+def present_recent_scan_evidence_guide(
+    view: RecentScanCaseDetailView,
+) -> RecentScanEvidenceGuideView:
     return RecentScanEvidenceGuideView(
         cards=(
             RecentScanEvidenceGuideCardView("evidence quality", evidence_quality_label(view)),
@@ -53,7 +55,11 @@ def evidence_quality_label(view: RecentScanCaseDetailView) -> str:
     if statuses.get("analysis") not in {"", "ok", "analyzed", "success"}:
         return "Incomplete: analyzer facts are unavailable"
 
-    has_profile_findings = bool(view.score_reasons) and view.score_severity in {"failed", "high", "suspicious"}
+    has_profile_findings = bool(view.score_reasons) and view.score_severity in {
+        "failed",
+        "high",
+        "suspicious",
+    }
     runtime_title = str(view.runtime_verdict.title or "").strip()
     metadata_available = not view.metadata.unavailable
     if has_profile_findings and runtime_title == "Correlated runtime context":
@@ -168,7 +174,9 @@ def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
         return competing_signal_next_action(primary.reason_summary)
     if _candidate_is_visible(view.optimization_candidate):
         rewrite_support = str(view.optimization_candidate.get("rewrite_support") or "").lower()
-        rewriteability_bucket = str(view.optimization_candidate.get("rewriteability_bucket") or "").lower()
+        rewriteability_bucket = str(
+            view.optimization_candidate.get("rewriteability_bucket") or ""
+        ).lower()
         if rewriteability_bucket == "not_rewriteable":
             return "Open Details for manual query-shape guidance"
         if rewriteability_bucket == "human_review_only":

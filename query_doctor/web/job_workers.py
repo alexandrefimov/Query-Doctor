@@ -61,7 +61,9 @@ def run_batch_case_report_job(
                 "The partial report is untrusted and hidden."
             )
         if completed.returncode != 0:
-            raise WebError(subprocess_failure_message("Query Doctor batch case report generation", completed))
+            raise WebError(
+                subprocess_failure_message("Query Doctor batch case report generation", completed)
+            )
         if not case_has_batch_report_output(case_dir):
             raise WebError("Report generation completed but the validated report was not created.")
         write_batch_case_report_validation_marker(case_dir)
@@ -97,15 +99,24 @@ def run_specific_query_report_job(
                 "The partial report is untrusted and hidden."
             )
         if completed.returncode != 0:
-            raise WebError(subprocess_failure_message("Query Doctor specific query report generation", completed))
+            raise WebError(
+                subprocess_failure_message(
+                    "Query Doctor specific query report generation", completed
+                )
+            )
         if not case_has_batch_report_output(case_dir):
             raise WebError("Report generation completed but the validated report was not created.")
         write_batch_case_report_validation_marker(case_dir)
-        job_store.complete_html(job_id, f"Validated report generated for {redact_browser_display_text(query_id)}.")
+        job_store.complete_html(
+            job_id, f"Validated report generated for {redact_browser_display_text(query_id)}."
+        )
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(job_id, "Unexpected report generation failure. Details are hidden because they may contain sensitive data.")
+        job_store.fail(
+            job_id,
+            "Unexpected report generation failure. Details are hidden because they may contain sensitive data.",
+        )
 
 
 def generate_validated_report_artifact(
@@ -161,9 +172,13 @@ def generate_validated_optimizer_artifact(
             "The partial draft is untrusted and hidden."
         )
     if completed.returncode != 0:
-        raise WebError(subprocess_failure_message("Query Doctor optimized query generation", completed))
+        raise WebError(
+            subprocess_failure_message("Query Doctor optimized query generation", completed)
+        )
     if not optimized_query_validated_exists(case_dir):
-        raise WebError("Optimized query generation completed but the validated draft was not created.")
+        raise WebError(
+            "Optimized query generation completed but the validated draft was not created."
+        )
 
 
 def run_llm_actions_job(
@@ -194,11 +209,16 @@ def run_llm_actions_job(
         )
         if job_store.cancel_requested(job_id):
             return
-        job_store.complete_html(job_id, f"LLM report and optimizer generated for {redact_browser_display_text(label)}.")
+        job_store.complete_html(
+            job_id, f"LLM report and optimizer generated for {redact_browser_display_text(label)}."
+        )
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(job_id, "Unexpected LLM action failure. Details are hidden because they may contain sensitive data.")
+        job_store.fail(
+            job_id,
+            "Unexpected LLM action failure. Details are hidden because they may contain sensitive data.",
+        )
 
 
 def run_optimized_query_job(
@@ -228,11 +248,20 @@ def run_optimized_query_job(
                 "The partial draft is untrusted and hidden."
             )
         if completed.returncode != 0:
-            raise WebError(subprocess_failure_message("Query Doctor optimized query generation", completed))
+            raise WebError(
+                subprocess_failure_message("Query Doctor optimized query generation", completed)
+            )
         if not optimized_query_validated_exists(case_dir):
-            raise WebError("Optimized query generation completed but the validated draft was not created.")
-        job_store.complete_html(job_id, f"Optimized query draft generated for {redact_browser_display_text(label)}.")
+            raise WebError(
+                "Optimized query generation completed but the validated draft was not created."
+            )
+        job_store.complete_html(
+            job_id, f"Optimized query draft generated for {redact_browser_display_text(label)}."
+        )
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(job_id, "Unexpected optimized query generation failure. Details are hidden because they may contain sensitive data.")
+        job_store.fail(
+            job_id,
+            "Unexpected optimized query generation failure. Details are hidden because they may contain sensitive data.",
+        )

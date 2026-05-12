@@ -154,7 +154,9 @@ def score_case(case: CaseResult) -> None:
     )
 
 
-def case_primary_bottleneck_from_analysis(analysis: dict[str, object] | None) -> dict[str, object] | None:
+def case_primary_bottleneck_from_analysis(
+    analysis: dict[str, object] | None,
+) -> dict[str, object] | None:
     if not isinstance(analysis, dict):
         return None
     bottleneck = analysis.get("case_primary_bottleneck")
@@ -165,7 +167,9 @@ def case_primary_bottleneck_from_analysis(analysis: dict[str, object] | None) ->
     if not label or not confidence:
         return None
     reasons = bottleneck.get("reasons")
-    safe_reasons = [str(item) for item in reasons if item] if isinstance(reasons, (list, tuple)) else []
+    safe_reasons = (
+        [str(item) for item in reasons if item] if isinstance(reasons, (list, tuple)) else []
+    )
     return {
         "label": label,
         "confidence": confidence,
@@ -216,7 +220,9 @@ def mixed_primary_stats_cap_signal(primary: dict[str, object]) -> str:
 def cap_candidate_tier(candidate: Any, max_tier: str, counter_signal: str) -> Any:
     current_tier = str(getattr(candidate, "tier", "not_likely") or "not_likely")
     capped_tier = lower_tier(current_tier, max_tier)
-    signals = tuple(dedupe_preserve_order([*getattr(candidate, "counter_signals", ()), counter_signal]))
+    signals = tuple(
+        dedupe_preserve_order([*getattr(candidate, "counter_signals", ()), counter_signal])
+    )
     return replace(candidate, tier=capped_tier, counter_signals=signals)
 
 
@@ -238,7 +244,9 @@ def load_analysis_json(case_dir) -> dict[str, object] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -> tuple[int, list[str]]:
+def score_analysis_facts(
+    facts: str, *, metadata_status: str = "not_observed"
+) -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
     components = extract_scoring_components(facts)
@@ -268,7 +276,11 @@ def score_analysis_facts(facts: str, *, metadata_status: str = "not_observed") -
         score += min(12, host_tail_candidates * 8)
         reasons.append(f"host-tail candidates: {host_tail_candidates}")
     duration_sec = components["duration_sec"]
-    if isinstance(duration_sec, (int, float)) and duration_sec >= 1800 and execution_tail_candidates > 0:
+    if (
+        isinstance(duration_sec, (int, float))
+        and duration_sec >= 1800
+        and execution_tail_candidates > 0
+    ):
         score += 8
         reasons.append(f"long-running query with host tail: {duration_sec / 60:.1f}m")
     if components["backend_data_skew"] is True:
@@ -321,7 +333,9 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
         host_tail_candidates = normalized_tail_candidate_count(backend_facts)
     execution_tail_candidates = fact_int(backend_facts, "execution tail candidates")
     if execution_tail_candidates is None:
-        normalized_execution_tails = normalized_tail_candidate_count(backend_facts, family="execution")
+        normalized_execution_tails = normalized_tail_candidate_count(
+            backend_facts, family="execution"
+        )
         execution_tail_candidates = (
             normalized_execution_tails
             if normalized_execution_tails is not None
@@ -331,7 +345,9 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
         "cardinality_anomaly_count": fact_int(summary_facts, "Cardinality anomalies"),
         "memory_anomaly_count": fact_int(summary_facts, "Memory anomalies"),
         "zero_row_estimate_gap_count": fact_int(summary_facts, "Zero/unknown row estimate gaps"),
-        "zero_memory_estimate_gap_count": fact_int(summary_facts, "Zero/unknown memory estimate gaps"),
+        "zero_memory_estimate_gap_count": fact_int(
+            summary_facts, "Zero/unknown memory estimate gaps"
+        ),
         "backend_data_skew": backend_data_skew_value(backend_facts),
         "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(backend_facts),
         "host_tail_candidate_count": host_tail_candidates,

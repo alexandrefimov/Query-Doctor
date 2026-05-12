@@ -58,7 +58,7 @@ def _estimate_heading_guidance(language: str) -> str:
         )
     return (
         '- Do not put ratio-below-1 row facts under a broad "row underestimation" heading. '
-        'If the section mixes ratio-above-1 and ratio-below-1 operators, title it '
+        "If the section mixes ratio-above-1 and ratio-below-1 operators, title it "
         '"row estimate mismatches" or "mixed row estimate gaps".\n'
         '- For ratio-below-1 row facts, say "the estimate is above the actual row count" or '
         '"underestimation is not supported for this operator"; do not call that operator underestimated.'
@@ -97,7 +97,7 @@ def build_cardinality_contract(facts_text: str, *, language: str = "ru") -> str:
             '- Forbidden positive claim wording includes "cardinality underestimation", '
             '"actual rows exceed estimates", "estimates were too low", '
             '"stale statistics caused the issue", "skew is proven", and "hot keys are proven" '
-            'unless the exact matched phrase is clearly negated as unsupported.',
+            "unless the exact matched phrase is clearly negated as unsupported.",
         )
         return """
 Cardinality evidence contract:

@@ -154,7 +154,9 @@ def resolve_case_dirs(args: argparse.Namespace) -> list[Path]:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compare Query LLM optimizer outcomes across Ollama models.")
+    parser = argparse.ArgumentParser(
+        description="Compare Query LLM optimizer outcomes across Ollama models."
+    )
     parser.add_argument(
         "cases",
         nargs="*",
@@ -206,7 +208,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "expected_output_kind is one of these values, for example recommendations_only."
         ),
     )
-    parser.add_argument("--dry-run", action="store_true", help="Resolve cases and write summary without calling Ollama.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Resolve cases and write summary without calling Ollama.",
+    )
     return parser.parse_args(argv)
 
 
@@ -311,7 +317,9 @@ def offline_fixture_outcome(case_dir: Path) -> dict[str, Any]:
                 recipe,
                 deterministic_draft=deterministic_draft,
             )
-            if recipe is not None and deterministic_draft is None and risk.mode != "recommendations_only"
+            if recipe is not None
+            and deterministic_draft is None
+            and risk.mode != "recommendations_only"
             else None
         )
         output_kind = "no_rewrite" if diagnostics is not None else "recommendations_only"
@@ -332,9 +340,13 @@ def offline_fixture_outcome(case_dir: Path) -> dict[str, Any]:
             and list(expected.get("expected_risk_reasons", risk.reasons)) == list(risk.reasons)
             and (
                 not expected.get("expected_fallback_reason")
-                or expected.get("expected_fallback_reason") == offline.get("offline_fallback_reason")
+                or expected.get("expected_fallback_reason")
+                == offline.get("offline_fallback_reason")
             )
-            and all(str(reason) in (offline.get("offline_draft_unavailable_reasons") or []) for reason in expected_reasons)
+            and all(
+                str(reason) in (offline.get("offline_draft_unavailable_reasons") or [])
+                for reason in expected_reasons
+            )
         )
         return offline
 
@@ -351,7 +363,9 @@ def offline_fixture_outcome(case_dir: Path) -> dict[str, Any]:
         {
             "offline_output_kind": output_kind,
             "offline_material_change": material_change,
-            "offline_validation_errors": [safe_error_summary(error, max_chars=200) for error in errors],
+            "offline_validation_errors": [
+                safe_error_summary(error, max_chars=200) for error in errors
+            ],
         }
     )
     expected_errors = expected.get("expect_validation_errors", [])
@@ -368,13 +382,18 @@ def offline_fixture_outcome(case_dir: Path) -> dict[str, Any]:
     return offline
 
 
-def actual_matches_expected_outcome(*, status: str, marker: dict[str, Any], expected: dict[str, Any]) -> bool:
+def actual_matches_expected_outcome(
+    *, status: str, marker: dict[str, Any], expected: dict[str, Any]
+) -> bool:
     if status != "ok":
         return False
     expected_kind = str(expected.get("expected_output_kind") or "")
     output_kind = str(marker.get("output_kind") or "")
     if expected_kind == "validation_rejected":
-        return output_kind == "no_rewrite" and str(marker.get("fallback_reason") or "") == "validation_failed"
+        return (
+            output_kind == "no_rewrite"
+            and str(marker.get("fallback_reason") or "") == "validation_failed"
+        )
     if expected_kind != output_kind:
         return False
     expected_fallback = str(expected.get("expected_fallback_reason") or "")
@@ -508,10 +527,13 @@ def run_case_model(
         **common,
         "status": status,
         "validation_status": validation_status,
-        "output_kind": output_kind or ("partial_untrusted" if (run_dir / PARTIAL_NAME).is_file() else ""),
+        "output_kind": output_kind
+        or ("partial_untrusted" if (run_dir / PARTIAL_NAME).is_file() else ""),
         "fallback_reason": fallback_reason,
         "generation_metadata": generation_metadata,
-        "validation_errors": [safe_error_summary(error, max_chars=200) for error in validation_errors],
+        "validation_errors": [
+            safe_error_summary(error, max_chars=200) for error in validation_errors
+        ],
         "elapsed_sec": elapsed,
         "error_summary": "" if status == "ok" else extract_error_summary(completed.stderr),
     }
@@ -592,8 +614,12 @@ def build_aggregates(results: list[dict[str, Any]]) -> dict[str, Any]:
             "trusted_outcome_rate": bucket["status_counts"].get("ok", 0) / runs,
             "trusted_sql_draft_rate": bucket["output_kind_counts"].get("sql_draft", 0) / runs,
             "trusted_no_rewrite_rate": bucket["output_kind_counts"].get("no_rewrite", 0) / runs,
-            "trusted_recommendations_rate": bucket["output_kind_counts"].get("recommendations_only", 0) / runs,
-            "partial_untrusted_rate": bucket["output_kind_counts"].get("partial_untrusted", 0) / runs,
+            "trusted_recommendations_rate": bucket["output_kind_counts"].get(
+                "recommendations_only", 0
+            )
+            / runs,
+            "partial_untrusted_rate": bucket["output_kind_counts"].get("partial_untrusted", 0)
+            / runs,
             "expected_outcome_match_rate": (
                 bucket["matched_expected_outcomes"] / bucket["expected_outcomes"]
                 if bucket["expected_outcomes"]
@@ -720,14 +746,20 @@ def build_model_comparable_summary(results: list[dict[str, Any]]) -> dict[str, A
         elapsed = bucket["elapsed_sec"]
         recommendation_runs = int(bucket["recommendation_telemetry_runs"])
         recommendation_llm_bullets = int(bucket["recommendation_llm_bullet_count"])
-        recommendation_matched_bullets = int(bucket["recommendation_matched_candidate_bullet_count"])
+        recommendation_matched_bullets = int(
+            bucket["recommendation_matched_candidate_bullet_count"]
+        )
         rendered[model] = {
             "runs": bucket["runs"],
             "trusted_outcome_rate": bucket["status_counts"].get("ok", 0) / runs,
             "trusted_sql_draft_rate": bucket["output_kind_counts"].get("sql_draft", 0) / runs,
             "trusted_no_rewrite_rate": bucket["output_kind_counts"].get("no_rewrite", 0) / runs,
-            "trusted_recommendations_rate": bucket["output_kind_counts"].get("recommendations_only", 0) / runs,
-            "partial_untrusted_rate": bucket["output_kind_counts"].get("partial_untrusted", 0) / runs,
+            "trusted_recommendations_rate": bucket["output_kind_counts"].get(
+                "recommendations_only", 0
+            )
+            / runs,
+            "partial_untrusted_rate": bucket["output_kind_counts"].get("partial_untrusted", 0)
+            / runs,
             "error_rate": (
                 bucket["status_counts"].get("error", 0)
                 + bucket["status_counts"].get("validation_failed", 0)
@@ -770,7 +802,9 @@ def build_model_comparable_summary(results: list[dict[str, Any]]) -> dict[str, A
     }
 
 
-def update_recommendation_telemetry_bucket(bucket: dict[str, Any], telemetry: dict[str, Any]) -> None:
+def update_recommendation_telemetry_bucket(
+    bucket: dict[str, Any], telemetry: dict[str, Any]
+) -> None:
     bucket["recommendation_telemetry_runs"] += 1
     bucket["recommendation_llm_bullet_count"] += int(telemetry.get("llm_bullet_count") or 0)
     bucket["recommendation_matched_candidate_bullet_count"] += int(
@@ -1121,7 +1155,9 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"{PROGRESS_PREFIX} ERROR: {safe_error_summary(exc)}", file=sys.stderr)
         return 2
-    fixture_corpus = Path(args.fixture_corpus).expanduser().resolve() if args.fixture_corpus else None
+    fixture_corpus = (
+        Path(args.fixture_corpus).expanduser().resolve() if args.fixture_corpus else None
+    )
     if fixture_corpus is not None:
         fixture_dirs = fixture_case_dirs(fixture_corpus)
         fixture_dirs = filter_fixture_case_dirs(fixture_dirs, args.fixture_expected_output_kind)
@@ -1140,7 +1176,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     missing = [path for path in case_dirs if not path.is_dir()]
     if missing:
-        print(f"{PROGRESS_PREFIX} ERROR: case directory is unavailable: {safe_error_summary(missing[0])}", file=sys.stderr)
+        print(
+            f"{PROGRESS_PREFIX} ERROR: case directory is unavailable: {safe_error_summary(missing[0])}",
+            file=sys.stderr,
+        )
         return 2
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -1153,7 +1192,15 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                     flush=True,
                 )
-                results.append(run_case_model(case_dir=case_dir, model=model, run_index=run_index, out_dir=args.out_dir, args=args))
+                results.append(
+                    run_case_model(
+                        case_dir=case_dir,
+                        model=model,
+                        run_index=run_index,
+                        out_dir=args.out_dir,
+                        args=args,
+                    )
+                )
                 write_summary_outputs(
                     args.out_dir,
                     {

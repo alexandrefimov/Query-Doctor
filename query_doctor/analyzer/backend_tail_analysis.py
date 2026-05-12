@@ -40,7 +40,9 @@ def host_to_json(fact: BackendHostFact) -> dict[str, Any]:
         "hdfs_write_time_human": fmt_duration(fact.hdfs_write_time_ms),
         "hdfs_write_sec_per_gib": fact.hdfs_write_sec_per_gib,
         "hdfs_write_sec_per_gib_human": (
-            f"{fact.hdfs_write_sec_per_gib:.2f}s/GiB" if fact.hdfs_write_sec_per_gib is not None else "n/a"
+            f"{fact.hdfs_write_sec_per_gib:.2f}s/GiB"
+            if fact.hdfs_write_sec_per_gib is not None
+            else "n/a"
         ),
         "scanner_wait_time_ms": fact.scanner_wait_time_ms,
         "scanner_wait_time_human": fmt_duration(fact.scanner_wait_time_ms),
@@ -185,7 +187,11 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
     elif group_statuses:
         group, data_skew, reason, _comparable, _group_hosts = group_statuses[0]
     else:
-        group, data_skew, reason = "unknown", "unknown", "insufficient comparable per-host assigned/read/row metrics"
+        group, data_skew, reason = (
+            "unknown",
+            "unknown",
+            "insufficient comparable per-host assigned/read/row metrics",
+        )
     data_skew_reason = f"{group}: {reason}" if group != "unknown" else reason
 
     candidates: list[dict[str, Any]] = []
@@ -208,9 +214,39 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
                 BACKEND_EXECUTION_TAIL_MIN_MS,
                 BACKEND_EXECUTION_TAIL_MIN_GAP_MS,
             ),
-            ("read_rate_bps", "read rate", "read_rate_human", False, "read_rate", False, BACKEND_TAIL_RATIO, None, None),
-            ("write_rate_bps", "write rate", "write_rate_human", False, "write_path", True, BACKEND_TAIL_RATIO, None, None),
-            ("hdfs_write_time_ms", "HDFS write time", "hdfs_write_time_human", True, "write_path", True, BACKEND_TAIL_RATIO, None, None),
+            (
+                "read_rate_bps",
+                "read rate",
+                "read_rate_human",
+                False,
+                "read_rate",
+                False,
+                BACKEND_TAIL_RATIO,
+                None,
+                None,
+            ),
+            (
+                "write_rate_bps",
+                "write rate",
+                "write_rate_human",
+                False,
+                "write_path",
+                True,
+                BACKEND_TAIL_RATIO,
+                None,
+                None,
+            ),
+            (
+                "hdfs_write_time_ms",
+                "HDFS write time",
+                "hdfs_write_time_human",
+                True,
+                "write_path",
+                True,
+                BACKEND_TAIL_RATIO,
+                None,
+                None,
+            ),
             (
                 "hdfs_write_sec_per_gib",
                 "HDFS write sec/GiB",
@@ -223,7 +259,17 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
                 None,
             ),
         ]
-        for key, label, human_key, higher_is_worse, family, is_write_path, min_ratio, min_worst_value, min_gap in metric_specs:
+        for (
+            key,
+            label,
+            human_key,
+            higher_is_worse,
+            family,
+            is_write_path,
+            min_ratio,
+            min_worst_value,
+            min_gap,
+        ) in metric_specs:
             candidate = tail_candidate_from_metric(
                 group_hosts,
                 key=key,
@@ -249,12 +295,22 @@ def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, 
             if is_write_path:
                 write_path_candidates.append(candidate)
 
-    execution_skew = "yes" if execution_tail_candidates else ("unknown" if not comparable_statuses else "no")
-    write_path_anomaly = "yes" if write_path_candidates else ("unknown" if not comparable_statuses else "no")
+    execution_skew = (
+        "yes" if execution_tail_candidates else ("unknown" if not comparable_statuses else "no")
+    )
+    write_path_anomaly = (
+        "yes" if write_path_candidates else ("unknown" if not comparable_statuses else "no")
+    )
     tail_candidate_count = len({candidate["host"] for candidate in candidates})
-    execution_tail_candidate_count = len({candidate["host"] for candidate in execution_tail_candidates})
-    read_rate_tail_candidate_count = len({candidate["host"] for candidate in read_rate_tail_candidates})
-    write_path_tail_candidate_count = len({candidate["host"] for candidate in write_path_candidates})
+    execution_tail_candidate_count = len(
+        {candidate["host"] for candidate in execution_tail_candidates}
+    )
+    read_rate_tail_candidate_count = len(
+        {candidate["host"] for candidate in read_rate_tail_candidates}
+    )
+    write_path_tail_candidate_count = len(
+        {candidate["host"] for candidate in write_path_candidates}
+    )
     return {
         "rows_parsed": len(hosts),
         "hosts": hosts,

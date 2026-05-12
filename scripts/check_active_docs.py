@@ -39,7 +39,9 @@ IGNORED_SCHEMES = {"http", "https", "mailto", "tel", "app"}
 INLINE_LINK_RE = re.compile(r"!?\[[^\]]*]\(([^)\n]+)\)")
 REFERENCE_LINK_RE = re.compile(r"^\s*\[[^\]]+]:\s+(.+?)\s*$")
 REVIEWED_RE = re.compile(r"^Last (?:reviewed|updated):\s+(\d{4}-\d{2}-\d{2})\s*$", re.IGNORECASE)
-STATUS_ROW_RE = re.compile(r"^\|\s*\[[^\]]+]\(([^)]+)\)\s*\|\s*(active|reference|archived)\s*\|", re.IGNORECASE)
+STATUS_ROW_RE = re.compile(
+    r"^\|\s*\[[^\]]+]\(([^)]+)\)\s*\|\s*(active|reference|archived)\s*\|", re.IGNORECASE
+)
 MAX_ACTIVE_DOC_AGE_DAYS = 90
 
 
@@ -53,9 +55,14 @@ STALE_PATTERNS = (
     StalePattern(re.compile(r"Russian Help page", re.IGNORECASE), "old Help language guidance"),
     StalePattern(re.compile(r"\bquery_doctor(?:_v2)?\.py\b"), "removed root prototype command"),
     StalePattern(re.compile(r"\bcm_impala_case\.py\b"), "removed root prototype command"),
-    StalePattern(re.compile(r"python3?\s+query_doctor(?:_v2)?\.py\b"), "removed root command invocation"),
+    StalePattern(
+        re.compile(r"python3?\s+query_doctor(?:_v2)?\.py\b"), "removed root command invocation"
+    ),
     StalePattern(re.compile(r"<<<<<<<|=======|>>>>>>>"), "merge conflict marker"),
-    StalePattern(re.compile(r"\bTODO\b|\bTBD\b|outdated|obsolete", re.IGNORECASE), "stale marker in active docs"),
+    StalePattern(
+        re.compile(r"\bTODO\b|\bTBD\b|outdated|obsolete", re.IGNORECASE),
+        "stale marker in active docs",
+    ),
 )
 
 
@@ -207,7 +214,9 @@ def find_failures(paths: list[Path], root: Path = ROOT) -> list[str]:
             if last_reviewed is None:
                 failures.append(f"{rel_path}: active doc missing Last reviewed/Last updated header")
             elif (today - last_reviewed).days > MAX_ACTIVE_DOC_AGE_DAYS:
-                failures.append(f"{rel_path}: active doc review is older than {MAX_ACTIVE_DOC_AGE_DAYS} days")
+                failures.append(
+                    f"{rel_path}: active doc review is older than {MAX_ACTIVE_DOC_AGE_DAYS} days"
+                )
         for lineno, line in iter_doc_lines(path):
             for stale in STALE_PATTERNS:
                 if stale.pattern.search(line):

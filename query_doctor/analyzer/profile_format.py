@@ -6,7 +6,9 @@ import re
 from typing import Any
 
 
-IMPALA_VERSION_LINE_RE = re.compile(r"^\s*Impala\s+Version\s*:\s*(?P<value>.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+IMPALA_VERSION_LINE_RE = re.compile(
+    r"^\s*Impala\s+Version\s*:\s*(?P<value>.+?)\s*$", re.IGNORECASE | re.MULTILINE
+)
 IMPALA_VERSION_TOKEN_RE = re.compile(
     r"\b(?:impalad|catalogd|statestored)?\s*version\s+(?P<version>[0-9][A-Za-z0-9_.-]*)"
     r"(?:\s+(?P<build_type>[A-Z][A-Z0-9_-]*))?",
@@ -92,9 +94,13 @@ def build_profile_format_facts(
 
     features: dict[str, bool | int] = {
         "summary": bool(re.search(r"^\s*Summary\s*:", text, re.IGNORECASE | re.MULTILINE)),
-        "query_timeline": bool(re.search(r"^\s*Query\s+Timeline\s*:", text, re.IGNORECASE | re.MULTILINE)),
+        "query_timeline": bool(
+            re.search(r"^\s*Query\s+Timeline\s*:", text, re.IGNORECASE | re.MULTILINE)
+        ),
         "plan": bool(re.search(r"^\s*Plan\s*:", text, re.IGNORECASE | re.MULTILINE)),
-        "exec_summary_table": bool(re.search(r"^\s*ExecSummary\s*:", text, re.IGNORECASE | re.MULTILINE)),
+        "exec_summary_table": bool(
+            re.search(r"^\s*ExecSummary\s*:", text, re.IGNORECASE | re.MULTILINE)
+        ),
         "admission": "Admission result:" in text,
         "backend_startup_latencies": "Backend startup latencies" in text,
         "per_node_peak_memory": "Per Node Peak Memory Usage" in text,
@@ -105,15 +111,20 @@ def build_profile_format_facts(
         "fragment_instance_lifecycle": "Fragment Instance Lifecycle" in text,
         "raw_runtime_nodes": bool(RAW_RUNTIME_NODE_RE.search(text)),
         "runtime_node_count": len(RAW_RUNTIME_NODE_RE.findall(text)),
-        "fragment_section_count": len(FRAGMENT_SECTION_RE.findall(text)) + len(AVERAGED_FRAGMENT_RE.findall(text)),
+        "fragment_section_count": len(FRAGMENT_SECTION_RE.findall(text))
+        + len(AVERAGED_FRAGMENT_RE.findall(text)),
         "fragment_instance_count": len(INSTANCE_HOST_RE.findall(text)),
     }
     layout = profile_layout_name(features)
     version = version_facts.get("version")
     return {
-        "profile_family": "impala_runtime_profile" if features["summary"] or features["raw_runtime_nodes"] else "unknown",
+        "profile_family": "impala_runtime_profile"
+        if features["summary"] or features["raw_runtime_nodes"]
+        else "unknown",
         "profile_source": context.get("profile_source") or "unknown",
-        "source_label": context.get("source_label") or context.get("profile_source_label") or "unknown",
+        "source_label": context.get("source_label")
+        or context.get("profile_source_label")
+        or "unknown",
         "impala_distribution": infer_impala_distribution(
             version_facts.get("version_label"),
             context.get("impala_daemon_product"),

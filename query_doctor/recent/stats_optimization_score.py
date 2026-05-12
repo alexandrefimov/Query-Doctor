@@ -67,7 +67,9 @@ def score_stats_optimization_candidate(
     )
     important_column_evidence = important_column_stats_evidence(facts, analysis=analysis)
     mismatch_score, mismatch_reasons = estimate_mismatch_evidence(facts, analysis=analysis)
-    planning_score, planning_reasons, review_areas = planning_dependent_evidence(facts, analysis=analysis)
+    planning_score, planning_reasons, review_areas = planning_dependent_evidence(
+        facts, analysis=analysis
+    )
     counter_signals, penalty = stats_counter_signals(
         facts,
         duration,
@@ -111,7 +113,9 @@ def score_stats_optimization_candidate(
     elif not has_planning_symptom:
         raw_score = min(raw_score, 35)
         counter_signals.append("stats gap without expensive planning-dependent symptom")
-    elif is_generic_column_only_stats_evidence(metadata_kind, important_column_evidence=important_column_evidence):
+    elif is_generic_column_only_stats_evidence(
+        metadata_kind, important_column_evidence=important_column_evidence
+    ):
         raw_score = min(raw_score, 65)
         counter_signals.append("column stats gap is not tied to specific join/filter columns")
 
@@ -193,14 +197,18 @@ def stats_impact_signals(facts: str, duration_sec: float | None) -> tuple[int, l
         elif duration_sec >= 10:
             score += 7
             reasons.append("moderate runtime")
-    read_bytes = max_size_value(facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read"))
+    read_bytes = max_size_value(
+        facts, ("TotalBytesRead", "BytesRead", "ScanBytesAssigned", "bytes_read")
+    )
     if read_bytes >= 100 * 1024**3:
         score += 15
         reasons.append("large scan/read volume")
     elif read_bytes >= 10 * 1024**3:
         score += 10
         reasons.append("material scan/read volume")
-    peak_memory = max_size_value(facts, ("peak memory", "PeakMemoryUsage", "Peak Mem", "memory_aggregate_peak"))
+    peak_memory = max_size_value(
+        facts, ("peak memory", "PeakMemoryUsage", "Peak Mem", "memory_aggregate_peak")
+    )
     if peak_memory >= 16 * 1024**3:
         score += 10
         reasons.append("high peak memory")
@@ -230,9 +238,14 @@ def stats_metadata_evidence(
         table_values = [str(quality.get("table_stats") or "").lower()]
         column_values = [str(quality.get("column_stats") or "").lower()]
     else:
-        table_values = [value.lower() for value in fact_values(facts, "table stats row-count completeness")]
+        table_values = [
+            value.lower() for value in fact_values(facts, "table stats row-count completeness")
+        ]
         column_values = [value.lower() for value in fact_values(facts, "column stats completeness")]
-    if any(value in {"missing", "unknown", "missing/unknown", "not_available"} for value in table_values):
+    if any(
+        value in {"missing", "unknown", "missing/unknown", "not_available"}
+        for value in table_values
+    ):
         score += 25
         reasons.append("missing or unknown table/partition row-count stats")
         kinds.add("table")
@@ -240,7 +253,18 @@ def stats_metadata_evidence(
         score += 15
         reasons.append("incomplete table/partition stats")
         kinds.add("table")
-    if any(value in {"missing", "unknown", "missing/unknown", "not_available", "incomplete", "incomplete/unknown"} for value in column_values):
+    if any(
+        value
+        in {
+            "missing",
+            "unknown",
+            "missing/unknown",
+            "not_available",
+            "incomplete",
+            "incomplete/unknown",
+        }
+        for value in column_values
+    ):
         score += 20
         reasons.append("missing or incomplete column statistics")
         kinds.add("column")
@@ -259,13 +283,19 @@ def estimate_mismatch_evidence(
     cardinality = cardinality_mismatch_count(facts, analysis=analysis)
     zero_row = analysis_list_count(analysis, "zero_row_estimate_gaps")
     if zero_row is None:
-        zero_row = fact_int(scoring_section_text(facts, "## Summary"), "Zero/unknown row estimate gaps") or 0
+        zero_row = (
+            fact_int(scoring_section_text(facts, "## Summary"), "Zero/unknown row estimate gaps")
+            or 0
+        )
     memory = analysis_list_count(analysis, "memory_anomalies")
     if memory is None:
         memory = fact_int(scoring_section_text(facts, "## Summary"), "Memory anomalies") or 0
     zero_memory = analysis_list_count(analysis, "zero_memory_estimate_gaps")
     if zero_memory is None:
-        zero_memory = fact_int(scoring_section_text(facts, "## Summary"), "Zero/unknown memory estimate gaps") or 0
+        zero_memory = (
+            fact_int(scoring_section_text(facts, "## Summary"), "Zero/unknown memory estimate gaps")
+            or 0
+        )
     ratio = max_structured_ratio(analysis, "cardinality_anomalies")
     if ratio is None and not analysis_has_list(analysis, "cardinality_anomalies"):
         ratio = max_ratio_value(facts, ("actual/estimated ratio",))
@@ -306,19 +336,25 @@ def planning_dependent_evidence(
     has_shape_operator = bool(
         re.search(r"\b(?:HASH JOIN|JOIN|AGGREGATE|SORT|ANALYTIC|DISTINCT)\b", facts, re.IGNORECASE)
     ) or any(
-        is_operator_name(operator, ("HASH JOIN", "JOIN", "AGGREGATE", "SORT", "ANALYTIC", "DISTINCT"))
+        is_operator_name(
+            operator, ("HASH JOIN", "JOIN", "AGGREGATE", "SORT", "ANALYTIC", "DISTINCT")
+        )
         for key in ("cardinality_anomalies", "memory_anomalies")
         for operator in analysis_operators(analysis, key)
     )
     if "severe cardinality underestimation before high-cost operator" in lower and has_join:
         score += 25
         reasons.append("estimate mismatch before expensive hash join")
-        review.extend(["table/partition row counts", "join key column statistics", "filter column statistics"])
+        review.extend(
+            ["table/partition row counts", "join key column statistics", "filter column statistics"]
+        )
     elif has_join and max_ratio_value(facts, ("actual/estimated ratio",)) is not None:
         score += 15
         reasons.append("estimate mismatch feeds join planning")
         review.extend(["join key column statistics", "filter column statistics"])
-    if large_exchange_evidence(facts) or analysis_has_finding(analysis, "large_intermediate_or_exchange_traffic"):
+    if large_exchange_evidence(facts) or analysis_has_finding(
+        analysis, "large_intermediate_or_exchange_traffic"
+    ):
         score += 18
         reasons.append("estimate mismatch may affect exchange or join distribution decisions")
         review.extend(["join distribution", "exchange volume", "join/filter column statistics"])
@@ -354,16 +390,34 @@ def stats_counter_signals(
     if failure_category:
         signals.append("case has collection or analysis failure")
         penalty *= 0.5
-    status_values = " ".join(fact_values(scoring_section_text(facts, "## CM Query Context"), "status"))
-    state_values = " ".join(fact_values(scoring_section_text(facts, "## CM Query Context"), "query_state"))
-    if re.search(r"\b(?:failed|cancelled|canceled|exception)\b", f"{status_values} {state_values}", re.IGNORECASE):
+    status_values = " ".join(
+        fact_values(scoring_section_text(facts, "## CM Query Context"), "status")
+    )
+    state_values = " ".join(
+        fact_values(scoring_section_text(facts, "## CM Query Context"), "query_state")
+    )
+    if re.search(
+        r"\b(?:failed|cancelled|canceled|exception)\b",
+        f"{status_values} {state_values}",
+        re.IGNORECASE,
+    ):
         signals.append("query did not complete with useful execution evidence")
         penalty *= 0.35
     admission_wait = duration_value_for_label(facts, "admission_wait")
-    if admission_wait is not None and duration_sec and duration_sec > 0 and admission_wait / duration_sec >= 0.5:
+    if (
+        admission_wait is not None
+        and duration_sec
+        and duration_sec > 0
+        and admission_wait / duration_sec >= 0.5
+    ):
         signals.append("admission wait dominates runtime")
         penalty *= 0.25
-    elif admission_wait is not None and duration_sec and duration_sec > 0 and admission_wait / duration_sec >= 0.2:
+    elif (
+        admission_wait is not None
+        and duration_sec
+        and duration_sec > 0
+        and admission_wait / duration_sec >= 0.2
+    ):
         signals.append("admission wait is a material runtime component")
         penalty *= 0.7
     if duration_sec is not None and duration_sec < 5:
@@ -400,14 +454,23 @@ def classify_stats_need(
     has_planning_symptom: bool,
     important_column_evidence: bool = False,
 ) -> tuple[str, str, str]:
-    if "insufficient" in metadata_kind or str(metadata_status).lower() not in USABLE_METADATA_STATUSES:
+    if (
+        "insufficient" in metadata_kind
+        or str(metadata_status).lower() not in USABLE_METADATA_STATUSES
+    ):
         return "insufficient_metadata", "unknown", "unknown"
     if not has_mismatch or not has_planning_symptom:
         if not metadata_kind:
             return "not_likely_stats_issue", "low", "low"
     table = "table" in metadata_kind
     column = "column" in metadata_kind
-    table_need = "critical" if table and has_mismatch and has_planning_symptom else "high" if table else "low"
+    table_need = (
+        "critical"
+        if table and has_mismatch and has_planning_symptom
+        else "high"
+        if table
+        else "low"
+    )
     column_need = (
         "critical"
         if column and important_column_evidence and has_mismatch and has_planning_symptom
@@ -432,7 +495,11 @@ def stats_candidate_tier(
     counter_signals: list[str],
 ) -> str:
     severe_counter = any(
-        signal in {"admission wait dominates runtime", "query did not complete with useful execution evidence"}
+        signal
+        in {
+            "admission wait dominates runtime",
+            "query did not complete with useful execution evidence",
+        }
         for signal in counter_signals
     )
     if severe_counter and score < 35:
@@ -465,7 +532,13 @@ def stats_confidence(
         return "medium" if mismatch_score and planning_score else "low"
     if normalized_metadata_status in PARTIAL_METADATA_STATUSES:
         return "medium" if metadata_score and mismatch_score and planning_score else "low"
-    if chain_complete and metadata_score >= 30 and mismatch_score >= 30 and planning_score >= 30 and not counter_signals:
+    if (
+        chain_complete
+        and metadata_score >= 30
+        and mismatch_score >= 30
+        and planning_score >= 30
+        and not counter_signals
+    ):
         return "high"
     if metadata_score and mismatch_score and planning_score:
         return "medium"
@@ -491,16 +564,14 @@ def important_column_stats_evidence(
 ) -> bool:
     quality = analysis_dict(analysis, "stats_metadata_quality")
     if quality is not None:
-        return (
-            numeric_value(quality.get("join_filter_columns_without_stats")) > 0
-            or str(quality.get("join_filter_column_relevance") or "").lower() in {"missing", "partial"}
-        )
+        return numeric_value(quality.get("join_filter_columns_without_stats")) > 0 or str(
+            quality.get("join_filter_column_relevance") or ""
+        ).lower() in {"missing", "partial"}
     sql_context = analysis_dict(analysis, "sql_column_context")
     if sql_context is not None:
-        return (
-            numeric_value(sql_context.get("join_filter_columns_without_stats")) > 0
-            or str(sql_context.get("join_filter_column_relevance") or "").lower() in {"missing", "partial"}
-        )
+        return numeric_value(sql_context.get("join_filter_columns_without_stats")) > 0 or str(
+            sql_context.get("join_filter_column_relevance") or ""
+        ).lower() in {"missing", "partial"}
     lower = facts.lower()
     return any(
         marker in lower

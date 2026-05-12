@@ -30,11 +30,7 @@ def count_report_section_items(text: str, heading: str) -> int | None:
             break
         section_lines.append(line)
 
-    bullet_count = sum(
-        1
-        for line in section_lines
-        if re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line)
-    )
+    bullet_count = sum(1 for line in section_lines if re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line))
     if bullet_count:
         return bullet_count
 
@@ -85,7 +81,9 @@ def validate_recommendations_section(
         if not re.match(r"^(?:[-*]|\d+\.)\s+\S", stripped):
             continue
         if VAGUE_RECOMMENDATION_RE.search(stripped) or GENERIC_OPTIMIZE_RE.search(stripped):
-            errors.append("practical recommendations contain open-ended check/analyze/optimize wording")
+            errors.append(
+                "practical recommendations contain open-ended check/analyze/optimize wording"
+            )
             break
         if ADMIN_ONLY_RECOMMENDATION_RE.search(stripped):
             errors.append("practical recommendations contain admin-only checks")
@@ -133,5 +131,7 @@ def validate_unsupported_conclusions_slot(
     for conclusion in unsupported:
         normalized = conclusion.lower()
         if normalized and normalized in short_summary:
-            return ["short summary contains unsupported conclusion that belongs in Что НЕ подтверждается фактами"]
+            return [
+                "short summary contains unsupported conclusion that belongs in Что НЕ подтверждается фактами"
+            ]
     return []

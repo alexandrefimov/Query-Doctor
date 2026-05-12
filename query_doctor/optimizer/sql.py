@@ -80,7 +80,9 @@ def validate_optimizer_sql_tokens(tokens: list[str]) -> list[str]:
             )
     leading = statement_tokens[0].upper()
     if leading not in READ_ONLY_START_KEYWORDS:
-        raise OptimizerSqlError("Only read-only SELECT/WITH queries are supported by Query Optimizer.")
+        raise OptimizerSqlError(
+            "Only read-only SELECT/WITH queries are supported by Query Optimizer."
+        )
     return statement_tokens
 
 

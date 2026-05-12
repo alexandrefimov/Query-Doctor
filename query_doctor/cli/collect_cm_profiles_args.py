@@ -17,7 +17,10 @@ from query_doctor.cm.config_defaults import (
     MAX_RECENT_SELECT,
 )
 from query_doctor.cm.metrics_catalog import CM_METRICS_PROFILE_CHOICES, DEFAULT_CM_METRICS_PROFILE
-from query_doctor.cm.timeseries import DEFAULT_CM_TIMESERIES_PADDING_SEC, DEFAULT_MAX_TIMESERIES_POINTS
+from query_doctor.cm.timeseries import (
+    DEFAULT_CM_TIMESERIES_PADDING_SEC,
+    DEFAULT_MAX_TIMESERIES_POINTS,
+)
 from query_doctor.config.contract import (
     DEFAULT_CONFIG_PATH as DEFAULT_LOCAL_CONFIG_NAME,
     LEGACY_CONFIG_PATH as LEGACY_LOCAL_CONFIG_NAME,
@@ -76,8 +79,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--max-profile-bytes",
         type=positive_int,
         help=(
-            "Maximum profile text bytes to fetch or process. "
-            f"Default: {DEFAULT_MAX_PROFILE_BYTES}."
+            f"Maximum profile text bytes to fetch or process. Default: {DEFAULT_MAX_PROFILE_BYTES}."
         ),
     )
     parser.add_argument("--pool", help="Optional admission pool filter.")
@@ -248,8 +250,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--ca-bundle",
         help=(
-            "PEM CA bundle for verified CM TLS connections. "
-            "May also be provided with CM_CA_BUNDLE."
+            "PEM CA bundle for verified CM TLS connections. May also be provided with CM_CA_BUNDLE."
         ),
     )
     parser.add_argument(

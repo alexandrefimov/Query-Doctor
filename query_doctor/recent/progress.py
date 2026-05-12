@@ -24,11 +24,7 @@ class ProgressWriter:
     def emit(self, **event: object) -> None:
         if self._handle is None:
             return
-        payload = {
-            key: value
-            for key, value in event.items()
-            if value is not None
-        }
+        payload = {key: value for key, value in event.items() if value is not None}
         line = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         assert self._lock is not None
         with self._lock:

@@ -104,7 +104,7 @@ def scan_staged_text(text: str, *, path: str) -> list[StagedFinding]:
     for finding in scan_public_release_text(text, path=path):
         findings.append(
             StagedFinding(
-                "blocker",
+                finding.severity,
                 finding.message.removeprefix("public release scan found "),
                 path,
             )
@@ -129,7 +129,8 @@ def scan_staged_paths(repo_dir: Path, paths: list[str]) -> list[StagedFinding]:
 def render_findings(findings: list[StagedFinding]) -> str:
     if not findings:
         return "Staged public-safety check: OK"
-    lines = ["Staged public-safety check: FAILED"]
+    failed = any(finding.severity == "blocker" for finding in findings)
+    lines = [f"Staged public-safety check: {'FAILED' if failed else 'WARNINGS'}"]
     for finding in findings:
         lines.append(f"- {finding.severity.upper()}: {finding.message} [{finding.path}]")
     return "\n".join(lines)

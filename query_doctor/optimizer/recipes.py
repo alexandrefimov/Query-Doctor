@@ -42,7 +42,9 @@ def detect_optimizer_rewrite_recipe(
     source_sql: str,
     facts_text: str,
 ) -> OptimizerRewriteRecipe | None:
-    if not optimizer_action_cards(facts_text) and not facts_have_finding(facts_text, "Large intermediate"):
+    if not optimizer_action_cards(facts_text) and not facts_have_finding(
+        facts_text, "Large intermediate"
+    ):
         return None
     parsed = parse_with_query(source_sql)
     if parsed is not None:
@@ -76,9 +78,15 @@ def detect_optimizer_rewrite_recipe(
         if cte_shape.predicate_pushdown_status != "candidate":
             return build_pass_through_cte_elimination_recipe_if_supported(source_sql)
         if cte_shape.graph_shape == "single_cte":
-            if not single_cte_predicate_pushdown_has_candidate_predicate(parsed.ctes[0], parsed.final_sql):
-                if single_cte_projection_alias_predicate_pushdown_has_candidate_predicate(parsed.ctes[0], parsed.final_sql):
-                    return build_single_cte_projection_alias_predicate_pushdown_recipe(parsed.ctes[0])
+            if not single_cte_predicate_pushdown_has_candidate_predicate(
+                parsed.ctes[0], parsed.final_sql
+            ):
+                if single_cte_projection_alias_predicate_pushdown_has_candidate_predicate(
+                    parsed.ctes[0], parsed.final_sql
+                ):
+                    return build_single_cte_projection_alias_predicate_pushdown_recipe(
+                        parsed.ctes[0]
+                    )
                 return None
             return build_single_cte_predicate_pushdown_recipe(parsed.ctes[0])
         if is_linear_cte_chain(source_sql):
@@ -106,7 +114,9 @@ def detect_optimizer_rewrite_recipe(
     return build_single_derived_table_predicate_pushdown_recipe(derived.alias)
 
 
-def build_pass_through_cte_elimination_recipe_if_supported(source_sql: str) -> OptimizerRewriteRecipe | None:
+def build_pass_through_cte_elimination_recipe_if_supported(
+    source_sql: str,
+) -> OptimizerRewriteRecipe | None:
     parsed = parse_with_query(source_sql)
     if parsed is None or len(parsed.ctes) < 2:
         return None
@@ -119,7 +129,10 @@ def build_pass_through_cte_elimination_recipe_if_supported(source_sql: str) -> O
     candidate_name = final_refs[0]
     if top_level_join_signature(parsed.final_sql):
         return None
-    if any(top_level_keyword_count(parsed.final_sql, keyword) for keyword in ("UNION", "EXCEPT", "INTERSECT")):
+    if any(
+        top_level_keyword_count(parsed.final_sql, keyword)
+        for keyword in ("UNION", "EXCEPT", "INTERSECT")
+    ):
         return None
     if any(candidate_name in referenced_cte_names(cte.body, names) for cte in parsed.ctes):
         return None
@@ -132,7 +145,9 @@ def build_pass_through_cte_elimination_recipe_if_supported(source_sql: str) -> O
     return build_pass_through_cte_elimination_recipe(candidate.name, upstream_refs[0])
 
 
-def build_pass_through_cte_elimination_recipe(cte_name: str, upstream_cte: str) -> OptimizerRewriteRecipe:
+def build_pass_through_cte_elimination_recipe(
+    cte_name: str, upstream_cte: str
+) -> OptimizerRewriteRecipe:
     prompt_bullets = (
         "Use recipe pass_through_cte_elimination.",
         f"Remove pass-through CTE {cte_name} and make the final SELECT read directly from CTE {upstream_cte}.",
@@ -243,7 +258,9 @@ def single_cte_projection_alias_predicate_pushdown_has_candidate_predicate(
     )
 
 
-def build_single_cte_projection_alias_predicate_pushdown_recipe(first_cte: CteDefinition) -> OptimizerRewriteRecipe:
+def build_single_cte_projection_alias_predicate_pushdown_recipe(
+    first_cte: CteDefinition,
+) -> OptimizerRewriteRecipe:
     prompt_bullets = (
         "Use recipe single_cte_projection_alias_predicate_pushdown.",
         "The query has one CTE consumed by the final SELECT; preserve the CTE name and final output column contract.",
@@ -277,15 +294,25 @@ def build_post_union_aggregate_pushdown_recipe(
     input_rollup_names = post_union_aggregate_input_rollup_names(union_cte.body, aggregate_cte.body)
     downstream_names = set(dimensions) | set(measures) | set(input_rollup_names)
     unused_detail_names = tuple(
-        name
-        for name in union_outputs
-        if name and name not in downstream_names
+        name for name in union_outputs if name and name not in downstream_names
     )
     dimensions_text = ", ".join(dimensions) if dimensions else "the downstream GROUP BY dimensions"
     measures_text = ", ".join(measures) if measures else "the downstream aggregate measures"
-    input_rollup_text = ", ".join(input_rollup_names) if input_rollup_names else "additive input columns when the downstream expression can remain unchanged"
-    output_text = ", ".join(tuple(dimensions) + tuple(measures)) if dimensions or measures else "the grouped dimensions followed by aggregate measures"
-    unused_text = ", ".join(unused_detail_names) if unused_detail_names else "detail-only columns not used downstream"
+    input_rollup_text = (
+        ", ".join(input_rollup_names)
+        if input_rollup_names
+        else "additive input columns when the downstream expression can remain unchanged"
+    )
+    output_text = (
+        ", ".join(tuple(dimensions) + tuple(measures))
+        if dimensions or measures
+        else "the grouped dimensions followed by aggregate measures"
+    )
+    unused_text = (
+        ", ".join(unused_detail_names)
+        if unused_detail_names
+        else "detail-only columns not used downstream"
+    )
     prompt_bullets = (
         "Use recipe post_union_aggregate_pushdown.",
         f"In CTE {union_cte.name}, pre-aggregate every UNION ALL branch before the UNION ALL.",
@@ -370,20 +397,30 @@ def build_final_union_distinct_rollup_recipe(
     dimensions = non_aggregate_projection_names(final_sql)
     distinct_keys = count_distinct_key_names(final_sql)
     passthrough_names = set(dimensions) | set(distinct_keys)
-    if not final_distinct_rollup_aggregate_shape_is_supported(final_sql, union_outputs, passthrough_names):
+    if not final_distinct_rollup_aggregate_shape_is_supported(
+        final_sql, union_outputs, passthrough_names
+    ):
         return None
     additive_inputs = aggregate_input_projection_names(final_sql, union_outputs, passthrough_names)
     required_name_set = set(dimensions) | set(distinct_keys) | set(additive_inputs)
     output_names = tuple(name for name in union_outputs if name in required_name_set)
     if set(output_names) != required_name_set or not output_names or not distinct_keys:
         return None
-    unused_detail_names = tuple(name for name in union_outputs if name and name not in set(output_names))
+    unused_detail_names = tuple(
+        name for name in union_outputs if name and name not in set(output_names)
+    )
     output_text = ", ".join(output_names)
     grain_names = tuple(name for name in output_names if name not in set(additive_inputs))
     grain_text = ", ".join(grain_names)
     distinct_text = ", ".join(distinct_keys)
-    additive_text = ", ".join(additive_inputs) if additive_inputs else "no additive measure input columns"
-    unused_text = ", ".join(unused_detail_names) if unused_detail_names else "detail-only columns not used by the final aggregate"
+    additive_text = (
+        ", ".join(additive_inputs) if additive_inputs else "no additive measure input columns"
+    )
+    unused_text = (
+        ", ".join(unused_detail_names)
+        if unused_detail_names
+        else "detail-only columns not used by the final aggregate"
+    )
     prompt_bullets = (
         "Use recipe final_union_distinct_rollup.",
         f"In CTE {union_cte.name}, pre-aggregate every UNION ALL branch before the UNION ALL.",

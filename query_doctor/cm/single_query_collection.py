@@ -31,7 +31,9 @@ def run_cm_single_query_collection(
             "collected by Query Doctor CM collector",
             "source query id preserved",
             "redaction enabled",
-            "host redaction enabled" if config.redact_hosts else "host redaction disabled for private node diagnostics",
+            "host redaction enabled"
+            if config.redact_hosts
+            else "host redaction disabled for private node diagnostics",
             "CM API endpoint family: v32 Impala query details",
             "analyzer/report were not run automatically",
         ]
@@ -43,7 +45,9 @@ def run_cm_single_query_collection(
             )
             warnings.append("CM query details metadata collected")
         except AttributeError:
-            warnings.append("CM query details metadata unavailable: JSON details endpoint is not supported.")
+            warnings.append(
+                "CM query details metadata unavailable: JSON details endpoint is not supported."
+            )
         except CMClientError as exc:
             warnings.append(
                 "CM query details metadata unavailable: "

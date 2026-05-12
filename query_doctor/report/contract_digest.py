@@ -44,7 +44,9 @@ def markdown_bullet_lines(lines: list[str], *, limit: int = FACT_APPENDIX_MAX_IT
     return bullets[:limit]
 
 
-def markdown_subheading_titles(lines: list[str], *, prefix: str = "### ", limit: int = FACT_APPENDIX_MAX_ITEMS) -> list[str]:
+def markdown_subheading_titles(
+    lines: list[str], *, prefix: str = "### ", limit: int = FACT_APPENDIX_MAX_ITEMS
+) -> list[str]:
     titles = [line[len(prefix) :].strip() for line in lines if line.startswith(prefix)]
     return titles[:limit]
 
@@ -92,7 +94,9 @@ def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[s
         if backend_has_proven_tail(summary):
             points.append("Backend facts support execution skew / host-tail evidence.")
         else:
-            points.append("Backend facts do not prove a single slow tail host unless execution skew is yes.")
+            points.append(
+                "Backend facts do not prove a single slow tail host unless execution skew is yes."
+            )
     if facts_have_spill_scratch_evidence(facts_text):
         points.append(
             "Parsed findings contain non-zero spill/scratch metric evidence; keep causal wording separate."
@@ -148,7 +152,9 @@ def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[s
             f"({suffix}); use it for follow-up checks, not root-cause proof."
         )
     if not points:
-        points.append("Parsed facts do not select a confirmed optimization target; use this report as a baseline.")
+        points.append(
+            "Parsed facts do not select a confirmed optimization target; use this report as a baseline."
+        )
     return points[:FACT_APPENDIX_MAX_ITEMS]
 
 
@@ -201,7 +207,9 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     backend_summary = parse_backend_tail_summary(facts_text)
     backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
-    backend_normalized_lines = extract_markdown_subsection(backend_lines, "### Normalized tail candidates")
+    backend_normalized_lines = extract_markdown_subsection(
+        backend_lines, "### Normalized tail candidates"
+    )
     cm_metrics = cm_metrics_facts_summary(facts_text)
 
     differentiators: list[str] = []
@@ -272,12 +280,16 @@ def case_summary_differentiators(facts_text: str) -> list[str]:
         differentiators.append(f"Runtime metric signal: {point}")
     cm_correlation = cm_metrics_correlation_summary(facts_text)
     if cm_correlation.get("correlated_signals"):
-        differentiators.append(f"Runtime metrics correlated signals: {cm_correlation['correlated_signals']}")
+        differentiators.append(
+            f"Runtime metrics correlated signals: {cm_correlation['correlated_signals']}"
+        )
     for point in cm_metrics_correlation_points(facts_text):
         differentiators.append(f"Runtime metric correlation: {point}")
     cluster_context = cluster_runtime_context_summary(facts_text)
     if cluster_context.get("scoring_contribution"):
-        differentiators.append(f"Cluster runtime scoring: {cluster_context['scoring_contribution']}")
+        differentiators.append(
+            f"Cluster runtime scoring: {cluster_context['scoring_contribution']}"
+        )
     cluster_events = cluster_event_context_summary(facts_text)
     if cluster_events.get("status"):
         differentiators.append(f"Cluster event context status: {cluster_events['status']}")
@@ -357,7 +369,9 @@ def build_report_contract_digest(facts_text: str, *, language: str = "ru") -> di
             "has_backend_tail_evidence": facts_has_backend_tail_evidence(facts_text),
             "has_spill_scratch_evidence": facts_have_spill_scratch_evidence(facts_text),
             "has_metadata_stats_gap": facts_have_metadata_stats_gap(facts_text),
-            "has_large_intermediate_or_exchange": facts_have_large_intermediate_or_exchange(facts_text),
+            "has_large_intermediate_or_exchange": facts_have_large_intermediate_or_exchange(
+                facts_text
+            ),
         },
         "backend_summary": backend_summary,
         "cm_metrics": cm_metrics,

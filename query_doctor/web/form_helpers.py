@@ -72,7 +72,9 @@ def parse_non_negative_form_int(
     return value
 
 
-def parse_non_negative_form_float(form: dict[str, list[str]], name: str, *, default: float) -> float:
+def parse_non_negative_form_float(
+    form: dict[str, list[str]], name: str, *, default: float
+) -> float:
     text = first_form_value(form, name)
     if not text:
         value = default

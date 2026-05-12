@@ -39,9 +39,7 @@ def normalize_table_identifier(raw_table: str) -> str:
 
     parts = table.split(".")
     if len(parts) != 2:
-        raise CollectorError(
-            f"Refusing table identifier {raw_table!r}; expected exactly db.table."
-        )
+        raise CollectorError(f"Refusing table identifier {raw_table!r}; expected exactly db.table.")
 
     normalized_parts: list[str] = []
     for part in parts:

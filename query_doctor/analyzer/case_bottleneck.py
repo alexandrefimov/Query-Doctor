@@ -60,7 +60,10 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         )
 
     admission_wait = admission_wait_sec(analysis)
-    if admission_wait is not None and admission_wait / wall_clock_sec >= ADMISSION_WAIT_DOMINATES_RATIO:
+    if (
+        admission_wait is not None
+        and admission_wait / wall_clock_sec >= ADMISSION_WAIT_DOMINATES_RATIO
+    ):
         confidence = "high" if wall_clock_confidence == "high" else "medium"
         return CasePrimaryBottleneck(
             "runtime_admission",
@@ -184,7 +187,9 @@ def admission_wait_sec(analysis: dict[str, Any]) -> float | None:
 
 
 def top_finding_id(analysis: dict[str, Any]) -> str:
-    explicit = str(analysis.get("top_elapsed_finding_id") or analysis.get("top_finding_id") or "").strip()
+    explicit = str(
+        analysis.get("top_elapsed_finding_id") or analysis.get("top_finding_id") or ""
+    ).strip()
     if explicit:
         return explicit
     scored = [
@@ -214,7 +219,9 @@ def runtime_diagnosis_supports_storage(analysis: dict[str, Any]) -> bool:
 def finding_elapsed_ms(finding: dict[str, Any], analysis: dict[str, Any]) -> float:
     finding_id = str(finding.get("id") or "")
     if finding_id == "host_execution_tail_suspected":
-        backend = analysis.get("backend_tail") if isinstance(analysis.get("backend_tail"), dict) else {}
+        backend = (
+            analysis.get("backend_tail") if isinstance(analysis.get("backend_tail"), dict) else {}
+        )
         return max(
             (
                 numeric_value(candidate.get("worst_value")) or 0.0
@@ -247,14 +254,20 @@ def primary_confidence(primary: str, analysis: dict[str, Any], wall_clock_confid
     cardinality_count = len(analysis.get("cardinality_anomalies") or [])
     metadata_status = metadata_status_from_analysis(analysis)
     if primary == "stats":
-        if metadata_status in {"collected", "ok"} and cardinality_count >= CARDINALITY_ANOMALY_HIGH_COUNT:
+        if (
+            metadata_status in {"collected", "ok"}
+            and cardinality_count >= CARDINALITY_ANOMALY_HIGH_COUNT
+        ):
             level = "high"
         elif metadata_status in {"collected", "ok", "partial"}:
             level = "medium"
         else:
             level = "low"
     elif primary == "sql_shape":
-        if metadata_status in {"collected", "ok"} and cardinality_count >= CARDINALITY_ANOMALY_HIGH_COUNT:
+        if (
+            metadata_status in {"collected", "ok"}
+            and cardinality_count >= CARDINALITY_ANOMALY_HIGH_COUNT
+        ):
             level = "high"
         elif metadata_status in {"collected", "ok"}:
             level = "medium"
@@ -283,7 +296,9 @@ def primary_reasons(primary: str, analysis: dict[str, Any]) -> tuple[str, ...]:
     if primary == "runtime_skew":
         return ("backend_data_skew_detected",)
     if primary == "runtime_storage":
-        if not top_finding_id(analysis) == STORAGE_FINDING_ID and runtime_diagnosis_supports_storage(analysis):
+        if not top_finding_id(
+            analysis
+        ) == STORAGE_FINDING_ID and runtime_diagnosis_supports_storage(analysis):
             return ("storage_or_hdfs_runtime_diagnosis",)
         return ("storage_or_hdfs_top_finding",)
     return (f"{primary}_supported",)

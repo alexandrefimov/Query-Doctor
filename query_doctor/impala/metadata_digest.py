@@ -101,7 +101,9 @@ def build_metadata_facts_digest(
 
     if len(tables) > max_tables:
         omitted = len(tables) - max_tables
-        lines.append(f"- metadata digest truncated after {max_tables} tables; {omitted} table(s) omitted.")
+        lines.append(
+            f"- metadata digest truncated after {max_tables} tables; {omitted} table(s) omitted."
+        )
 
     digest = "\n".join(lines).strip()
     if len(digest) <= max_chars:
@@ -139,7 +141,10 @@ def _parse_metadata_section(section: str) -> tuple[list[str], list[dict[str, obj
         if table_match:
             if current_table is not None:
                 tables.append(current_table)
-            current_table = {"name": _sanitize_inline_value(table_match.group("table")), "facts": []}
+            current_table = {
+                "name": _sanitize_inline_value(table_match.group("table")),
+                "facts": [],
+            }
             continue
         fact_match = _FACT_LINE_RE.match(line)
         if not fact_match:

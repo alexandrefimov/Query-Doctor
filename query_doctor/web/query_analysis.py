@@ -28,7 +28,10 @@ from query_doctor.web.command_builders import (
     build_report_command,
 )
 from query_doctor.web.config import load_web_local_config, optional_config_string
-from query_doctor.web.job_workers import REPORT_VALIDATION_EXIT_CODE, REPORT_VALIDATION_FAILURE_MESSAGE
+from query_doctor.web.job_workers import (
+    REPORT_VALIDATION_EXIT_CODE,
+    REPORT_VALIDATION_FAILURE_MESSAGE,
+)
 from query_doctor.web.models import WebError, WebQueryAnalysisResult, WebResult, WebSettings
 from query_doctor.web.subprocesses import (
     CancelCheck,
@@ -250,7 +253,9 @@ def collect_case(
             collector_cmd.extend(["--max-profile-bytes", str(settings.max_profile_bytes)])
         if settings.collect_prometheus_timeseries or settings.prometheus_url:
             if not settings.prometheus_url:
-                raise WebError("Prometheus runtime metrics are enabled but prometheus_url is not configured.")
+                raise WebError(
+                    "Prometheus runtime metrics are enabled but prometheus_url is not configured."
+                )
             collector_cmd.extend(
                 [
                     "--prometheus-url",
@@ -307,9 +312,13 @@ def collect_case(
     try:
         case_dir.relative_to(expected_corpus_dir)
     except ValueError as exc:
-        raise WebError("Collector returned a case directory outside the web corpus directory.") from exc
+        raise WebError(
+            "Collector returned a case directory outside the web corpus directory."
+        ) from exc
     if case_dir != expected_case_dir:
-        raise WebError("Collector returned a case directory that does not match the requested query id.")
+        raise WebError(
+            "Collector returned a case directory that does not match the requested query id."
+        )
     if not case_dir.exists():
         raise WebError("Collector did not create the expected case directory.")
     return case_dir

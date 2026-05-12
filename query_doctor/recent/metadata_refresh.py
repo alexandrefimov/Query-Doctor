@@ -55,7 +55,9 @@ def mark_metadata_not_requested(cases: list[CaseResult]) -> None:
             case.metadata_status = "not_requested"
 
 
-def select_metadata_refresh_candidates_for_config(config: BatchConfig, ranked_cases: list[CaseResult]) -> list[CaseResult]:
+def select_metadata_refresh_candidates_for_config(
+    config: BatchConfig, ranked_cases: list[CaseResult]
+) -> list[CaseResult]:
     return select_metadata_refresh_candidates(
         ranked_cases,
         config.metadata_top_limit,

@@ -9,7 +9,9 @@ from query_doctor.web.presenters.recent_scan_models import (
 )
 
 
-def present_recent_scan_status_summary(view: RecentScanCaseDetailView) -> RecentScanStatusSummaryView:
+def present_recent_scan_status_summary(
+    view: RecentScanCaseDetailView,
+) -> RecentScanStatusSummaryView:
     cards: list[RecentScanStatusCardView] = []
     for label, value in view.status_fields:
         if label in {"collection", "analysis", "metadata"}:

@@ -215,9 +215,7 @@ def build_config(
         default=DEFAULT_CM_EVENTS_WINDOW_MINUTES,
     )
     if window_minutes > MAX_CM_EVENTS_WINDOW_MINUTES:
-        raise ConfigError(
-            f"--window-minutes must be <= {MAX_CM_EVENTS_WINDOW_MINUTES}."
-        )
+        raise ConfigError(f"--window-minutes must be <= {MAX_CM_EVENTS_WINDOW_MINUTES}.")
     from_time = args.from_time.strip() if args.from_time else None
     to_time = args.to_time.strip() if args.to_time else None
     if bool(from_time) != bool(to_time):
@@ -236,7 +234,9 @@ def build_config(
         config_values=config_values,
         env_value=env.get("CM_CA_BUNDLE"),
     )
-    output_json = resolve_optional_output_json(args.output_json, cwd=cwd, option_name="--output-json")
+    output_json = resolve_optional_output_json(
+        args.output_json, cwd=cwd, option_name="--output-json"
+    )
     cluster_event_context_json = resolve_optional_output_json(
         args.cluster_event_context_json,
         cwd=cwd,
@@ -310,7 +310,10 @@ def build_http_config(
     env: dict[str, str] | os._Environ[str] | None = None,
 ) -> CMHttpConfig:
     env = os.environ if env is None else env
-    if not (env.get("CM_TOKEN") or (env.get("CM_PASSWORD") and (env.get("CM_USERNAME") or config.cm_username))):
+    if not (
+        env.get("CM_TOKEN")
+        or (env.get("CM_PASSWORD") and (env.get("CM_USERNAME") or config.cm_username))
+    ):
         raise ConfigError("CM Events collection requires CM_TOKEN or CM_USERNAME/CM_PASSWORD.")
     return CMHttpConfig(
         cm_url=config.cm_url,
@@ -416,7 +419,9 @@ def run_cm_events(
         write_cluster_context(config.cluster_context_json, cluster_context)
         print(f"Cluster context JSON written: {config.cluster_context_json}")
 
-    print("No raw CM JSON, raw event payloads, raw log lines, hostnames, paths, query text, or reports were written.")
+    print(
+        "No raw CM JSON, raw event payloads, raw log lines, hostnames, paths, query text, or reports were written."
+    )
     return 0 if context.get("available") else 4
 
 

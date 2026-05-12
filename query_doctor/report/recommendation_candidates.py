@@ -78,7 +78,9 @@ def _with_anchor(text: str, anchor: str | None, *, language: str) -> str:
     return text.rstrip(".") + "." + suffix
 
 
-def recommendation_candidate_lines(facts_text: str, *, language: str = "ru") -> list[tuple[str, str]]:
+def recommendation_candidate_lines(
+    facts_text: str, *, language: str = "ru"
+) -> list[tuple[str, str]]:
     """Return Python-owned optimization actions derived only from deterministic facts."""
     candidates: list[tuple[str, str]] = []
     cardinality_count = facts_cardinality_anomaly_count(facts_text)
@@ -204,7 +206,9 @@ def recommendation_candidate_lines(facts_text: str, *, language: str = "ru") -> 
             ),
         )
 
-    if cm_metrics_profile_supported(facts_text, "daemon_memory_growth") or cm_metrics_profile_supported(
+    if cm_metrics_profile_supported(
+        facts_text, "daemon_memory_growth"
+    ) or cm_metrics_profile_supported(
         facts_text,
         "daemon_memory_pressure",
     ):
@@ -220,7 +224,9 @@ def recommendation_candidate_lines(facts_text: str, *, language: str = "ru") -> 
         )
 
     if cm_metrics_profile_supported(facts_text, "host_cpu_pressure") and (
-        cardinality_count and cardinality_count > 0 or facts_have_large_intermediate_or_exchange(facts_text)
+        cardinality_count
+        and cardinality_count > 0
+        or facts_have_large_intermediate_or_exchange(facts_text)
     ):
         add(
             "reduce_cpu_work_with_profile_evidence",

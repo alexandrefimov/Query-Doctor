@@ -146,8 +146,8 @@ from query_doctor.recent.metadata_refresh import (
     select_metadata_refresh_candidates,
     suspicious_can_be_promoted_by_metadata,
 )
-REPO_DIR = Path(__file__).resolve().parents[2]
 
+REPO_DIR = Path(__file__).resolve().parents[2]
 
 
 def positive_int(value: str) -> int:
@@ -491,11 +491,15 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     except Exception as exc:  # noqa: BLE001 - user-facing sanitized batch failure
         discovery_failed = True
         if discovery_seconds is None:
-            discovery_seconds = elapsed_seconds(discovery_started) if discovery_started is not None else None
+            discovery_seconds = (
+                elapsed_seconds(discovery_started) if discovery_started is not None else None
+            )
             if discovery_seconds is not None:
                 print(f"[batch] discovery: {format_seconds(discovery_seconds)}")
         warnings.append(cm_profiles.sanitize_text_for_log(exc, secrets=secret_values(env)))
-        progress.emit(stage="discovery", status="failed", phase="discovery", seconds=discovery_seconds)
+        progress.emit(
+            stage="discovery", status="failed", phase="discovery", seconds=discovery_seconds
+        )
 
     try:
         if not config.discover_only:
@@ -521,7 +525,9 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             )
             process_cases(config, case_results, env=env, repo_root=repo_root, progress=progress)
             rank_cases_for_metadata(case_results)
-            refresh_top_metadata(config, case_results, env=env, repo_root=repo_root, progress=progress)
+            refresh_top_metadata(
+                config, case_results, env=env, repo_root=repo_root, progress=progress
+            )
             completed_cases = sum(1 for case in case_results if case.analysis_status == "ok")
             failed_cases = sum(1 for case in case_results if case.failure_category)
             progress.emit(
@@ -549,7 +555,9 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         write_batch_outputs(config.out, summary)
         progress.emit(stage="summary", status="done", seconds=elapsed_seconds(summary_started))
         if summary.get("discovery_failed"):
-            progress.emit(stage="batch", status="failed", phase="discovery", total_seconds=total_seconds)
+            progress.emit(
+                stage="batch", status="failed", phase="discovery", total_seconds=total_seconds
+            )
         else:
             progress.emit(stage="batch", status="done", total_seconds=total_seconds)
         print(f"[batch] summaries inspected: {summary['summaries_inspected']}")
@@ -561,12 +569,15 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         print(f"[batch] summary Markdown: {config.out / 'batch_summary.md'}")
         return 0 if not summary.get("discovery_failed") else 1
     except Exception:
-        progress.emit(stage="batch", status="failed", phase="runtime", total_seconds=elapsed_seconds(total_started))
+        progress.emit(
+            stage="batch",
+            status="failed",
+            phase="runtime",
+            total_seconds=elapsed_seconds(total_started),
+        )
         raise
     finally:
         progress.close()
-
-
 
 
 def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> DiscoveryResult:

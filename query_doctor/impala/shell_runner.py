@@ -33,7 +33,9 @@ def validate_coordinator(coordinator: str) -> str:
     if value != coordinator or re.search(r"\s", value):
         raise ImpalaShellConfigError("--coordinator must not contain whitespace.")
     if "://" in value or "@" in value:
-        raise ImpalaShellConfigError("--coordinator must be HOST:PORT, not a URL or credential string.")
+        raise ImpalaShellConfigError(
+            "--coordinator must be HOST:PORT, not a URL or credential string."
+        )
     if re.search(r"[;&|`$<>'\"(){}\\]", value):
         raise ImpalaShellConfigError("--coordinator contains unsupported shell metacharacters.")
 
@@ -56,7 +58,9 @@ def validate_protocol(protocol: str | None) -> str | None:
         return None
     if protocol not in ALLOWED_PROTOCOLS:
         allowed = ", ".join(ALLOWED_PROTOCOLS)
-        raise ImpalaShellConfigError(f"Unsupported --protocol value {protocol!r}; allowed: {allowed}.")
+        raise ImpalaShellConfigError(
+            f"Unsupported --protocol value {protocol!r}; allowed: {allowed}."
+        )
     return protocol
 
 

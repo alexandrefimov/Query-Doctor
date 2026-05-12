@@ -46,7 +46,13 @@ from query_doctor.web.models import (
 )
 
 
-BATCH_ORDER_VALUES = {"recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority"}
+BATCH_ORDER_VALUES = {
+    "recent",
+    "duration-desc",
+    "duration-asc",
+    "recent-duration-desc",
+    "status-priority",
+}
 WEB_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT = 100
 BATCH_METADATA_TOP_LIMIT_MAX = 200
 BATCH_CM_TIMESERIES_TOP_LIMIT_MAX = 200
@@ -69,8 +75,15 @@ def default_recent_scan_bucket(now: datetime | None = None) -> tuple[str, int]:
 
 
 def allowed_recent_scan_dates(now: datetime | None = None) -> set[str]:
-    current = now.astimezone(RECENT_SCAN_TIMEZONE).date() if now else datetime.now(RECENT_SCAN_TIMEZONE).date()
-    return {(current - timedelta(days=days)).isoformat() for days in range(RECENT_SCAN_LOOKBACK_DAYS + 1)}
+    current = (
+        now.astimezone(RECENT_SCAN_TIMEZONE).date()
+        if now
+        else datetime.now(RECENT_SCAN_TIMEZONE).date()
+    )
+    return {
+        (current - timedelta(days=days)).isoformat()
+        for days in range(RECENT_SCAN_LOOKBACK_DAYS + 1)
+    }
 
 
 def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str, str]:
@@ -92,7 +105,9 @@ def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str,
     latest_date, latest_hour = default_recent_scan_bucket()
     if scan_date > latest_date or (scan_date == latest_date and scan_hour > latest_hour):
         raise WebError("Scan hour must not be in the future.")
-    start_local = datetime.combine(parsed_date, datetime_time(scan_hour), tzinfo=RECENT_SCAN_TIMEZONE)
+    start_local = datetime.combine(
+        parsed_date, datetime_time(scan_hour), tzinfo=RECENT_SCAN_TIMEZONE
+    )
     end_local = start_local + timedelta(hours=RECENT_SCAN_BUCKET_HOURS)
     from_time = start_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     to_time = end_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -111,14 +126,19 @@ def parse_batch_run_config(
         if settings is not None
         else first_form_value(form, "cluster_key")
     )
-    selected_settings = settings_for_cluster_key(settings, cluster_key) if settings is not None else None
+    selected_settings = (
+        settings_for_cluster_key(settings, cluster_key) if settings is not None else None
+    )
     local_config = _local_config_values(settings)
     scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(form)
     recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
     cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
     triage_profile_limit = WEB_RECENT_TRIAGE_PROFILE_LIMIT_DEFAULT
     metadata_top_limit = parse_non_negative_form_int(
-        form, "metadata_top_limit", default=default_metadata_top_limit, maximum=BATCH_METADATA_TOP_LIMIT_MAX
+        form,
+        "metadata_top_limit",
+        default=default_metadata_top_limit,
+        maximum=BATCH_METADATA_TOP_LIMIT_MAX,
     )
     min_duration_sec = parse_optional_non_negative_form_float(form, "min_duration_sec")
     max_duration_text = first_form_value(form, "max_duration_sec")
@@ -129,7 +149,9 @@ def parse_batch_run_config(
             raise WebError("max_duration_sec must be greater than or equal to min_duration_sec.")
     order = first_form_value(form, "order") or "duration-desc"
     if order not in BATCH_ORDER_VALUES:
-        raise WebError("Order must be one of: recent, duration-desc, duration-asc, recent-duration-desc, status-priority.")
+        raise WebError(
+            "Order must be one of: recent, duration-desc, duration-asc, recent-duration-desc, status-priority."
+        )
     parallelism_text = first_form_value(form, "parallelism")
     if not parallelism_text and first_form_value(form, "jobs"):
         parallelism_text = first_form_value(form, "jobs")
@@ -142,7 +164,9 @@ def parse_batch_run_config(
         default=default_parallelism,
         maximum=min(BATCH_CM_JOBS_MAX, BATCH_JOBS_MAX),
     )
-    metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
+    metadata_jobs = parse_positive_form_int(
+        form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX
+    )
     user = first_form_value(form, "user")
     pool = first_form_value(form, "pool")
     collect_cm_events = _config_bool(
@@ -223,11 +247,16 @@ def parse_running_run_config(
         if settings is not None
         else first_form_value(form, "cluster_key")
     )
-    selected_settings = settings_for_cluster_key(settings, cluster_key) if settings is not None else None
+    selected_settings = (
+        settings_for_cluster_key(settings, cluster_key) if settings is not None else None
+    )
     local_config = _local_config_values(settings)
     cm_inspect_limit = WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT
     metadata_top_limit = parse_non_negative_form_int(
-        form, "metadata_top_limit", default=default_metadata_top_limit, maximum=BATCH_METADATA_TOP_LIMIT_MAX
+        form,
+        "metadata_top_limit",
+        default=default_metadata_top_limit,
+        maximum=BATCH_METADATA_TOP_LIMIT_MAX,
     )
     min_duration_sec = parse_optional_non_negative_form_float(form, "min_duration_sec")
     parallelism_text = first_form_value(form, "parallelism")
@@ -238,7 +267,9 @@ def parse_running_run_config(
         default=default_parallelism,
         maximum=min(BATCH_CM_JOBS_MAX, BATCH_JOBS_MAX),
     )
-    metadata_jobs = parse_positive_form_int(form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX)
+    metadata_jobs = parse_positive_form_int(
+        form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX
+    )
     cm_events_max_events = parse_positive_form_int(
         form,
         "cm_events_max_events",
@@ -354,8 +385,12 @@ def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
         "scan_hour": str(config.scan_hour),
         "cluster_key": config.cluster_key,
         "metadata_top_limit": str(config.metadata_top_limit),
-        "min_duration_sec": "" if config.min_duration_sec is None else display_float(config.min_duration_sec),
-        "max_duration_sec": "" if config.max_duration_sec is None else display_float(config.max_duration_sec),
+        "min_duration_sec": ""
+        if config.min_duration_sec is None
+        else display_float(config.min_duration_sec),
+        "max_duration_sec": ""
+        if config.max_duration_sec is None
+        else display_float(config.max_duration_sec),
         "order": config.order,
         "parallelism": str(config.parallelism),
         "metadata_jobs": str(config.metadata_jobs),
@@ -373,17 +408,23 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
     settings = settings_for_cluster_key(settings, config.cluster_key)
     if settings.query_profile_source == "impala":
         if not impala_profile_source_configured(settings):
-            raise WebError("Selected cluster is missing impalad host settings for direct Impala discovery.")
+            raise WebError(
+                "Selected cluster is missing impalad host settings for direct Impala discovery."
+            )
     elif settings.clusters or any((settings.cm_url, settings.cm_cluster, settings.cm_service)):
         require_cm_cluster_settings(settings)
     if config.metadata_top_limit > 0:
         if not metadata_configured(settings):
-            raise WebError("Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config.")
+            raise WebError(
+                "Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config."
+            )
         if settings.metadata_ca_cert and not settings.metadata_ssl:
             raise WebError("--metadata-ca-cert requires --metadata-ssl for web batch metadata.")
 
 
-def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettings) -> tuple[list[str], Path]:
+def build_batch_command(
+    job_id: str, config: BatchRunConfig, settings: WebSettings
+) -> tuple[list[str], Path]:
     settings = settings_for_cluster_key(settings, config.cluster_key)
     validate_batch_config_for_settings(config, settings)
     out_dir = batch_output_dir(job_id)
@@ -451,7 +492,9 @@ def build_batch_command(job_id: str, config: BatchRunConfig, settings: WebSettin
     if config.only_running:
         cmd.append("--only-running")
     if config.collect_cm_events and not direct_impala_source:
-        cmd.extend(["--collect-cm-events", "--cm-events-max-events", str(config.cm_events_max_events)])
+        cmd.extend(
+            ["--collect-cm-events", "--cm-events-max-events", str(config.cm_events_max_events)]
+        )
     if config.collect_cm_timeseries and not direct_impala_source:
         cmd.extend(
             [

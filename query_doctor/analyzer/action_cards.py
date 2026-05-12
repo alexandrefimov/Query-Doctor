@@ -7,7 +7,10 @@ from typing import Any
 from query_doctor.analyzer.cm_metrics import correlated_cm_metric_line
 from query_doctor.analyzer.operators import operator_key
 from query_doctor.analyzer.scalars import fmt_bytes
-from query_doctor.analyzer.thresholds import DEFAULT_LARGE_BYTES_THRESHOLD, MEDIUM_DATA_MOVEMENT_BYTES
+from query_doctor.analyzer.thresholds import (
+    DEFAULT_LARGE_BYTES_THRESHOLD,
+    MEDIUM_DATA_MOVEMENT_BYTES,
+)
 
 
 def context_referenced_tables(analysis: dict[str, Any]) -> list[str]:
@@ -38,13 +41,12 @@ def action_card_score(card: dict[str, Any]) -> float:
 def build_action_cards(analysis: dict[str, Any], max_cards: int = 5) -> list[dict[str, Any]]:
     thresholds = analysis.get("thresholds", {})
     large_rows_threshold = float(thresholds.get("large_rows_threshold") or 1_000_000)
-    large_bytes_threshold = float(thresholds.get("large_bytes_threshold") or DEFAULT_LARGE_BYTES_THRESHOLD)
+    large_bytes_threshold = float(
+        thresholds.get("large_bytes_threshold") or DEFAULT_LARGE_BYTES_THRESHOLD
+    )
     total_read = analysis.get("totals", {}).get("TotalBytesRead") or {}
     total_sent = analysis.get("totals", {}).get("TotalBytesSent") or {}
-    memory_by_key = {
-        operator_key(op): op
-        for op in analysis.get("memory_anomalies", [])
-    }
+    memory_by_key = {operator_key(op): op for op in analysis.get("memory_anomalies", [])}
 
     cards: list[dict[str, Any]] = []
     used_keys: set[tuple[str, str]] = set()
@@ -117,9 +119,13 @@ def make_action_card(
             ]
         )
     if total_read.get("raw") and (total_read.get("bytes") or 0) >= MEDIUM_DATA_MOVEMENT_BYTES:
-        evidence.append(f"TotalBytesRead: {total_read['raw']} ({fmt_bytes(total_read.get('bytes'))})")
+        evidence.append(
+            f"TotalBytesRead: {total_read['raw']} ({fmt_bytes(total_read.get('bytes'))})"
+        )
     if total_sent.get("raw") and (total_sent.get("bytes") or 0) >= MEDIUM_DATA_MOVEMENT_BYTES:
-        evidence.append(f"TotalBytesSent: {total_sent['raw']} ({fmt_bytes(total_sent.get('bytes'))})")
+        evidence.append(
+            f"TotalBytesSent: {total_sent['raw']} ({fmt_bytes(total_sent.get('bytes'))})"
+        )
     metric_evidence_keys: list[str] = []
     if related_memory:
         metric_evidence_keys.extend(["daemon_memory_growth", "daemon_memory_pressure"])

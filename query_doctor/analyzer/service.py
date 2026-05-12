@@ -65,6 +65,7 @@ def make_finding(
         "missing_evidence": missing_evidence or [],
     }
 
+
 def analyze(
     text: str,
     args: argparse.Namespace,
@@ -81,7 +82,9 @@ def analyze(
         name: extract_total_counter(text, name)
         for name in ["TotalBytesRead", "TotalBytesSent", "TotalTime"]
     }
-    query_wall_clock = build_query_wall_clock(totals, cm_query_context, extract_query_timeline_duration_ms(text))
+    query_wall_clock = build_query_wall_clock(
+        totals, cm_query_context, extract_query_timeline_duration_ms(text)
+    )
 
     top_by_time = sorted(
         [op for op in operators if op.time_ms is not None],
@@ -107,17 +110,14 @@ def analyze(
         [
             anomaly
             for op in operators
-            if (anomaly := operator_with_best_memory_ratio(op, args.mem_ratio_threshold)) is not None
+            if (anomaly := operator_with_best_memory_ratio(op, args.mem_ratio_threshold))
+            is not None
         ],
         key=lambda x: x.mem_ratio or 0,
         reverse=True,
     )
     zero_row_estimate_gaps = sorted(
-        [
-            gap
-            for op in operators
-            if (gap := operator_with_zero_row_estimate_gap(op)) is not None
-        ],
+        [gap for op in operators if (gap := operator_with_zero_row_estimate_gap(op)) is not None],
         key=lambda x: x.actual_rows or 0,
         reverse=True,
     )
@@ -164,7 +164,9 @@ def analyze(
 
     spill_lines = find_matching_lines(text, SPILL_RE)
     spill_nonzero_lines = find_nonzero_spill_metric_lines(text)
-    stats_lines = find_matching_lines(text, re.compile("|".join(p.pattern for p in STATS_PATTERNS), re.IGNORECASE))
+    stats_lines = find_matching_lines(
+        text, re.compile("|".join(p.pattern for p in STATS_PATTERNS), re.IGNORECASE)
+    )
     storage_lines = find_matching_lines(text, SCAN_STORAGE_RE)
     codegen_lines = find_matching_lines(text, CODEGEN_RE)
 
@@ -198,7 +200,11 @@ def analyze(
         network_exchange_evidence.append(
             f"TotalBytesSent is large: {total_sent['raw']} ({fmt_bytes(total_sent['bytes'])})"
         )
-    elif total_sent and total_sent.get("bytes") is not None and total_sent["bytes"] < MEDIUM_DATA_MOVEMENT_BYTES:
+    elif (
+        total_sent
+        and total_sent.get("bytes") is not None
+        and total_sent["bytes"] < MEDIUM_DATA_MOVEMENT_BYTES
+    ):
         not_supported_causes.append(
             "TotalBytesSent was parsed below the large data-movement threshold: "
             f"{total_sent['raw']} ({fmt_bytes(total_sent['bytes'])}); do not treat it as large exchange traffic."
@@ -212,13 +218,21 @@ def analyze(
                 )
 
     total_read = totals.get("TotalBytesRead")
-    if total_read and total_read.get("bytes") is not None and total_read["bytes"] < MEDIUM_DATA_MOVEMENT_BYTES:
+    if (
+        total_read
+        and total_read.get("bytes") is not None
+        and total_read["bytes"] < MEDIUM_DATA_MOVEMENT_BYTES
+    ):
         not_supported_causes.append(
             "TotalBytesRead was parsed below the large I/O footprint threshold: "
             f"{total_read['raw']} ({fmt_bytes(total_read['bytes'])}); do not treat it as large scan I/O."
         )
 
-    if total_sent and total_sent.get("bytes") is not None and total_sent["bytes"] >= args.large_bytes_threshold:
+    if (
+        total_sent
+        and total_sent.get("bytes") is not None
+        and total_sent["bytes"] >= args.large_bytes_threshold
+    ):
         network_exchange_evidence.append(
             "TotalBytesSent meets the high data-movement threshold "
             f"({fmt_bytes(args.large_bytes_threshold)})."
@@ -299,7 +313,10 @@ def analyze(
                 "high",
                 "Join bottleneck",
                 "Detected heavy join operators by time, row volume, partitioned join mode, or bad estimates.",
-                operators=[op_to_json(op) for op in sorted(join_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True)],
+                operators=[
+                    op_to_json(op)
+                    for op in sorted(join_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True)
+                ],
             )
         )
 
@@ -310,7 +327,10 @@ def analyze(
                 "medium",
                 "Sort bottleneck",
                 "Detected expensive SORT/TOP-N operators by time, row volume, or memory estimate mismatch.",
-                operators=[op_to_json(op) for op in sorted(sort_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True)],
+                operators=[
+                    op_to_json(op)
+                    for op in sorted(sort_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True)
+                ],
             )
         )
 
@@ -321,7 +341,12 @@ def analyze(
                 "medium",
                 "Analytic bottleneck",
                 "Detected ANALYTIC operators with notable time or row volume.",
-                operators=[op_to_json(op) for op in sorted(analytic_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True)],
+                operators=[
+                    op_to_json(op)
+                    for op in sorted(
+                        analytic_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True
+                    )
+                ],
             )
         )
     elif re.search(r"\bANALYTIC\b", text, re.IGNORECASE):
@@ -345,9 +370,7 @@ def analyze(
             )
         )
     else:
-        not_supported_causes.append(
-            "No non-zero spill/scratch I/O evidence was parsed."
-        )
+        not_supported_causes.append("No non-zero spill/scratch I/O evidence was parsed.")
 
     if storage_bottleneck_evidence:
         findings.append(
@@ -398,9 +421,7 @@ def analyze(
             not_supported_causes.append(
                 "Codegen/LLVM share was not evaluated because Query Wall Clock duration is unknown."
             )
-        not_supported_causes.append(
-            "No codegen/LLVM candidate signal was parsed."
-        )
+        not_supported_causes.append("No codegen/LLVM candidate signal was parsed.")
 
     if backend_tail["execution_tail_candidates"]:
         findings.append(
@@ -414,7 +435,9 @@ def analyze(
                 ),
                 evidence_lines=[
                     f"{candidate['host']}: {candidate['evidence']} ({candidate['ratio_human']})"
-                    for candidate in backend_tail["execution_tail_candidates"][: args.max_evidence_lines]
+                    for candidate in backend_tail["execution_tail_candidates"][
+                        : args.max_evidence_lines
+                    ]
                 ],
                 admin_actions=[
                     "Compare per-host RowsProduced / BytesRead / BytesWritten rates.",
@@ -443,7 +466,9 @@ def analyze(
                 ),
                 evidence_lines=[
                     f"{candidate['host']}: {candidate['evidence']} ({candidate['ratio_human']})"
-                    for candidate in backend_tail["write_path_candidates"][: args.max_evidence_lines]
+                    for candidate in backend_tail["write_path_candidates"][
+                        : args.max_evidence_lines
+                    ]
                 ],
                 admin_actions=[
                     "Check HDFS write latency and DataNode pipeline details for the write-path tail host.",

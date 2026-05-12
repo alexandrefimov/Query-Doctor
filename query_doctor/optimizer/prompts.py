@@ -70,7 +70,9 @@ INPUT SQL END
 """.strip()
 
 
-def build_recommendations_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
+def build_recommendations_prompt(
+    *, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision
+) -> str:
     candidates = recommendation_candidate_lines(facts_text, language="en")
     rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
     manual_bullets = optimizer_prompt_rewrite_bullets(facts_text, risk_decision, rewrite_recipe)

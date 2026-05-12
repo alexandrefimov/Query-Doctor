@@ -192,7 +192,9 @@ def classify_optimizer_rewrite_support(
         source_sql = extract_optimizable_source_sql(read_source_sql(case_dir))
         extract_referenced_tables(source_sql.sql)
     except (OSError, OptimizerSqlError, QueryOptimizationError, ValueError):
-        return source_unavailable_support("Source SQL is unavailable for trusted draft classification")
+        return source_unavailable_support(
+            "Source SQL is unavailable for trusted draft classification"
+        )
 
     risk = decide_optimizer_risk_mode(source_sql.sql)
     cte_shape = analyze_cte_shape(source_sql.sql)
@@ -283,11 +285,7 @@ def classify_optimizer_rewrite_support(
             validation_errors=deterministic_errors,
             material_change=material_change,
         )
-        if (
-            not deterministic_draft
-            or deterministic_errors
-            or not material_change
-        ):
+        if not deterministic_draft or deterministic_errors or not material_change:
             no_draft_class = classify_draft_unavailable_class(
                 draft_diagnostics.reasons,
                 draft_diagnostics.cte_pushdown_conjunct_decision_reasons,
@@ -311,9 +309,7 @@ def classify_optimizer_rewrite_support(
                 draft_unavailable_class_label=NO_DRAFT_CLASS_LABELS[no_draft_class],
                 cte_pushdown_conjunct_decision_counts=dict(
                     sorted(
-                        Counter(
-                            draft_diagnostics.cte_pushdown_conjunct_decision_reasons
-                        ).items()
+                        Counter(draft_diagnostics.cte_pushdown_conjunct_decision_reasons).items()
                     )
                 ),
                 cte_count=cte_shape.cte_count,
@@ -475,7 +471,10 @@ def classify_draft_unavailable_class(
         reason.endswith(SHAPE_BOUNDARY_REASON_SUFFIXES) for reason in reason_set
     ):
         return "shape_boundary"
-    if reason_set & PREDICATE_NOT_COPYABLE_REASONS or decision_set & PREDICATE_NOT_COPYABLE_DECISIONS:
+    if (
+        reason_set & PREDICATE_NOT_COPYABLE_REASONS
+        or decision_set & PREDICATE_NOT_COPYABLE_DECISIONS
+    ):
         return "predicate_not_copyable"
     return "other"
 

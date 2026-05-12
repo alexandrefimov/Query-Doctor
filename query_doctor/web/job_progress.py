@@ -64,13 +64,23 @@ LLM_ACTIONS_PROGRESS_STEPS = (
     JobProgressStep("Done", ("Done",), 100),
 )
 
-WEB_STAGES = tuple((index, step.stage_label, step.progress) for index, step in enumerate(WEB_PROGRESS_STEPS))
-BATCH_STAGES = tuple((index, step.stage_label, step.progress) for index, step in enumerate(BATCH_PROGRESS_STEPS))
-BATCH_REPORT_STAGES = tuple((index, step.stage_label, step.progress) for index, step in enumerate(REPORT_PROGRESS_STEPS))
-OPTIMIZED_QUERY_STAGES = tuple(
-    (index, step.stage_label, step.progress) for index, step in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS)
+WEB_STAGES = tuple(
+    (index, step.stage_label, step.progress) for index, step in enumerate(WEB_PROGRESS_STEPS)
 )
-LLM_ACTIONS_STAGES = tuple((index, step.stage_label, step.progress) for index, step in enumerate(LLM_ACTIONS_PROGRESS_STEPS))
+BATCH_STAGES = tuple(
+    (index, step.stage_label, step.progress) for index, step in enumerate(BATCH_PROGRESS_STEPS)
+)
+BATCH_REPORT_STAGES = tuple(
+    (index, step.stage_label, step.progress) for index, step in enumerate(REPORT_PROGRESS_STEPS)
+)
+OPTIMIZED_QUERY_STAGES = tuple(
+    (index, step.stage_label, step.progress)
+    for index, step in enumerate(OPTIMIZED_QUERY_PROGRESS_STEPS)
+)
+LLM_ACTIONS_STAGES = tuple(
+    (index, step.stage_label, step.progress)
+    for index, step in enumerate(LLM_ACTIONS_PROGRESS_STEPS)
+)
 
 
 def progress_step_index(
@@ -153,7 +163,9 @@ def progress_steps_for_job_kind(kind: str) -> tuple[JobProgressStep, ...]:
     return WEB_PROGRESS_STEPS
 
 
-def progress_view_for_job(kind: str, stage_label: str, progress: int | float | None) -> JobProgressView:
+def progress_view_for_job(
+    kind: str, stage_label: str, progress: int | float | None
+) -> JobProgressView:
     steps = progress_steps_for_job_kind(kind)
     default_index = 1 if kind in {"batch_report", "query_report"} else 0
     return build_progress_view(steps, stage_label, progress, default_index=default_index)

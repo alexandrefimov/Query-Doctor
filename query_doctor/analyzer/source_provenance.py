@@ -47,7 +47,9 @@ def safe_detail_value(value: object, *, default: str = "unknown") -> str:
     return text if clean.isalnum() and len(text) <= 80 else default
 
 
-def provenance_item(kind: str, status: str, label: str, coverage: str, limitations: list[str] | None = None) -> dict[str, Any]:
+def provenance_item(
+    kind: str, status: str, label: str, coverage: str, limitations: list[str] | None = None
+) -> dict[str, Any]:
     return {
         "kind": kind,
         "status": safe_status(status),
@@ -58,7 +60,9 @@ def provenance_item(kind: str, status: str, label: str, coverage: str, limitatio
 
 
 def engine_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
-    profile = analysis.get("profile_format") if isinstance(analysis.get("profile_format"), dict) else {}
+    profile = (
+        analysis.get("profile_format") if isinstance(analysis.get("profile_format"), dict) else {}
+    )
     family = profile.get("profile_family")
     if family != "impala_runtime_profile":
         return provenance_item(
@@ -82,7 +86,9 @@ def engine_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
 
 
 def profile_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
-    profile = analysis.get("profile_format") if isinstance(analysis.get("profile_format"), dict) else {}
+    profile = (
+        analysis.get("profile_format") if isinstance(analysis.get("profile_format"), dict) else {}
+    )
     if profile.get("profile_family") != "impala_runtime_profile":
         return provenance_item(
             "profile",
@@ -93,7 +99,11 @@ def profile_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
         )
 
     source_label = profile.get("source_label")
-    label = "Impala daemon profile endpoint" if source_label == "Impala daemon profile endpoint" else "Impala runtime profile"
+    label = (
+        "Impala daemon profile endpoint"
+        if source_label == "Impala daemon profile endpoint"
+        else "Impala runtime profile"
+    )
     layout = safe_detail_value(profile.get("layout"))
     compatibility = safe_detail_value(profile.get("compatibility"))
     return provenance_item(
@@ -148,7 +158,9 @@ def events_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
             ["Cluster event context was not collected for this case."],
         )
     status = "available" if context.get("available") else "unavailable"
-    signal_counts = context.get("signal_counts") if isinstance(context.get("signal_counts"), dict) else {}
+    signal_counts = (
+        context.get("signal_counts") if isinstance(context.get("signal_counts"), dict) else {}
+    )
     coverage = f"signals={sum(value for value in signal_counts.values() if isinstance(value, int))}"
     limitations = [] if status == "available" else ["Cluster event context is unavailable."]
     return provenance_item("events", status, "Cluster event context", coverage, limitations)
@@ -175,8 +187,14 @@ def metadata_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
     tables_requested = context.get("tables_requested")
     tables = context.get("tables") if isinstance(context.get("tables"), list) else []
     status = "available" if context.get("table_metadata_facts") == "supported" else "partial"
-    coverage = f"tables={len(tables)}/{tables_requested if isinstance(tables_requested, int) else 0}"
-    limitations = [] if status == "available" else ["Metadata context is present but no supported table facts were extracted."]
+    coverage = (
+        f"tables={len(tables)}/{tables_requested if isinstance(tables_requested, int) else 0}"
+    )
+    limitations = (
+        []
+        if status == "available"
+        else ["Metadata context is present but no supported table facts were extracted."]
+    )
     return provenance_item("metadata", status, "Impala metadata context", coverage, limitations)
 
 

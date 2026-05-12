@@ -62,7 +62,9 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
     assert "candidate, not a proven root cause" in recommendations
 
     stats_case_dir = Path(cases[1]["case_dir"])
-    assert "Table Metadata Context" in (stats_case_dir / "analysis_facts.md").read_text(encoding="utf-8")
+    assert "Table Metadata Context" in (stats_case_dir / "analysis_facts.md").read_text(
+        encoding="utf-8"
+    )
     assert (Path(cases[2]["case_dir"]) / "optimized_query.partial.txt").is_file()
 
 
@@ -94,7 +96,12 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
     assert "demo-stats-0002" in stats_html
     assert str(out_dir) not in optimization_html
     assert str(out_dir) not in stats_html
-    for forbidden in ("profile_digest.md", "analysis_facts.md", "query_metadata.json", "cm_metadata.json"):
+    for forbidden in (
+        "profile_digest.md",
+        "analysis_facts.md",
+        "query_metadata.json",
+        "cm_metadata.json",
+    ):
         assert forbidden not in optimization_html
         assert forbidden not in stats_html
 

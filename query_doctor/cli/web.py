@@ -45,7 +45,9 @@ def main(argv: list[str] | None = None) -> int:
     handler = make_handler(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), handler)
     print(f"[Query Doctor web] listening on http://{settings.host}:{settings.port}")
-    print("[Query Doctor web] credentials and CM config are read only by local subprocesses; they are not shown in the UI.")
+    print(
+        "[Query Doctor web] credentials and CM config are read only by local subprocesses; they are not shown in the UI."
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

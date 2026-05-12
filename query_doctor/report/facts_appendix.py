@@ -50,8 +50,12 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
     totals_lines = extract_markdown_section(facts_text, "## Totals")
     backend_lines = extract_markdown_section(facts_text, "## Backend / Host Tail Evidence")
     backend_summary_lines = extract_markdown_subsection(backend_lines, "### Summary")
-    backend_normalized_lines = extract_markdown_subsection(backend_lines, "### Normalized tail candidates")
-    backend_candidates_lines = extract_markdown_subsection(backend_lines, "### Host tail candidates")
+    backend_normalized_lines = extract_markdown_subsection(
+        backend_lines, "### Normalized tail candidates"
+    )
+    backend_candidates_lines = extract_markdown_subsection(
+        backend_lines, "### Host tail candidates"
+    )
     cluster_event_lines = extract_markdown_section(facts_text, "## Cluster Event Context")
     cluster_event_signal_lines = extract_markdown_subsection(
         cluster_event_lines,
@@ -87,25 +91,33 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
     for label in ("TotalTime", "TotalBytesRead", "TotalBytesSent"):
         append_fact_bullet(lines, label, first_bullet_value(totals_lines, label))
     for label in ("duration", "source", "confidence"):
-        append_fact_bullet(lines, f"query wall-clock {label}", first_bullet_value(query_wall_clock_lines, label))
+        append_fact_bullet(
+            lines, f"query wall-clock {label}", first_bullet_value(query_wall_clock_lines, label)
+        )
     if evidence_quality_lines:
         lines.extend(["", "### Evidence Quality"])
         for label in ("score", "level"):
             append_fact_bullet(lines, label, first_bullet_value(evidence_quality_lines, label))
         strengths = extract_markdown_subsection(evidence_quality_lines, "### Strengths")
         limitations = extract_markdown_subsection(evidence_quality_lines, "### Limitations")
-        strength_excerpt, remaining_strengths = limited_nonempty_lines(strengths, limit=FACT_APPENDIX_MAX_ITEMS)
+        strength_excerpt, remaining_strengths = limited_nonempty_lines(
+            strengths, limit=FACT_APPENDIX_MAX_ITEMS
+        )
         if strength_excerpt:
             lines.extend(["", "#### Strengths"])
             lines.extend(strength_excerpt)
             if remaining_strengths:
                 lines.append(f"- ... {remaining_strengths} more evidence-quality strengths omitted")
-        limitation_excerpt, remaining_limitations = limited_nonempty_lines(limitations, limit=FACT_APPENDIX_MAX_ITEMS)
+        limitation_excerpt, remaining_limitations = limited_nonempty_lines(
+            limitations, limit=FACT_APPENDIX_MAX_ITEMS
+        )
         if limitation_excerpt:
             lines.extend(["", "#### Limitations"])
             lines.extend(limitation_excerpt)
             if remaining_limitations:
-                lines.append(f"- ... {remaining_limitations} more evidence-quality limitations omitted")
+                lines.append(
+                    f"- ... {remaining_limitations} more evidence-quality limitations omitted"
+                )
 
     if backend_summary_lines:
         lines.extend(["", "### Backend / Host Tail Evidence"])
@@ -132,11 +144,7 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
                 lines.append(f"- ... {remaining_normalized} more normalized tail lines omitted")
 
         candidate_excerpt, remaining_candidates = limited_nonempty_lines(
-            [
-                line
-                for line in backend_candidates_lines
-                if not re.match(r"^\s*\|?\s*-{3,}", line)
-            ],
+            [line for line in backend_candidates_lines if not re.match(r"^\s*\|?\s*-{3,}", line)],
             limit=6,
         )
         if candidate_excerpt and candidate_excerpt != ["- none"]:
@@ -179,11 +187,7 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
 
     if referenced_table_lines:
         table_excerpt, remaining_tables = limited_nonempty_lines(
-            [
-                line
-                for line in referenced_table_lines
-                if line.lstrip().startswith("- ")
-            ],
+            [line for line in referenced_table_lines if line.lstrip().startswith("- ")],
             limit=FACT_APPENDIX_MAX_ITEMS,
         )
         if table_excerpt:
@@ -212,9 +216,7 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
     if action_card_lines:
         lines.extend(["", "### Action cards"])
         card_titles = [
-            line[4:].strip()
-            for line in action_card_lines
-            if line.startswith("### Card ")
+            line[4:].strip() for line in action_card_lines if line.startswith("### Card ")
         ]
         if card_titles:
             for title in card_titles[:FACT_APPENDIX_MAX_ITEMS]:
@@ -232,11 +234,7 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
             if remaining:
                 lines.append(f"- ... {remaining} more action-card lines omitted from appendix.")
 
-    finding_titles = [
-        line[4:].strip()
-        for line in findings_lines
-        if line.startswith("### ")
-    ]
+    finding_titles = [line[4:].strip() for line in findings_lines if line.startswith("### ")]
     if finding_titles:
         lines.extend(["", "### Findings"])
         for title in finding_titles[:FACT_APPENDIX_MAX_ITEMS]:
@@ -262,9 +260,17 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
     return "\n".join(lines)
 
 
-def append_analyzer_facts_appendix(report_text: str, facts_text: str, *, language: str = "ru") -> str:
+def append_analyzer_facts_appendix(
+    report_text: str, facts_text: str, *, language: str = "ru"
+) -> str:
     contract = get_report_language_contract(language)
     without_model_appendix = strip_markdown_section(report_text, contract.analyzer_facts_heading)
     if contract.analyzer_facts_heading != ANALYZER_FACTS_HEADING:
-        without_model_appendix = strip_markdown_section(without_model_appendix, ANALYZER_FACTS_HEADING)
-    return without_model_appendix.rstrip() + "\n" + render_analyzer_facts_appendix(facts_text, language=language)
+        without_model_appendix = strip_markdown_section(
+            without_model_appendix, ANALYZER_FACTS_HEADING
+        )
+    return (
+        without_model_appendix.rstrip()
+        + "\n"
+        + render_analyzer_facts_appendix(facts_text, language=language)
+    )

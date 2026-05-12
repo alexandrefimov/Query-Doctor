@@ -39,7 +39,9 @@ def build_specific_query_detail_render_context(
     cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
     runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
     cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
-    artifacts = load_specific_query_trusted_detail_artifacts(settings, query_id, case_dir, job_store, job=job)
+    artifacts = load_specific_query_trusted_detail_artifacts(
+        settings, query_id, case_dir, job_store, job=job
+    )
     report_state = artifacts.report_state
     optimized_query_state = artifacts.optimized_query_state
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")

@@ -29,7 +29,15 @@ def render_cm_query_context(analysis: dict[str, Any]) -> list[str]:
     lines.append("- available: yes")
     if is_direct_impala:
         lines.append(f"- source: {context.get('source_label') or 'Impala daemon profile endpoint'}")
-    for field in ("query_id", "status", "query_state", "query_type", "pool", "start_time", "end_time"):
+    for field in (
+        "query_id",
+        "status",
+        "query_state",
+        "query_type",
+        "pool",
+        "start_time",
+        "end_time",
+    ):
         value = context.get(field)
         if value is not None:
             lines.append(f"- {field}: {value}")
@@ -81,9 +89,7 @@ def render_runtime_counter_context(analysis: dict[str, Any]) -> list[str]:
         "wait": "wait",
     }
     lines = ["## Runtime Counter Context", ""]
-    lines.append(
-        f"- guardrail: {context.get('guardrail') or 'runtime counters are context only'}"
-    )
+    lines.append(f"- guardrail: {context.get('guardrail') or 'runtime counters are context only'}")
     for family, item in families.items():
         label = labels.get(family, family.replace("_", " "))
         lines.append(
@@ -213,7 +219,9 @@ def render_cluster_event_context(analysis: dict[str, Any]) -> list[str]:
     lines.append(f"- source_status: {format_cluster_event_sources(context.get('sources'))}")
     lines.append(f"- window_scope: {format_cluster_event_window(context.get('window'))}")
     lines.append(f"- signal_counts: {format_cluster_event_counts(context.get('signal_counts'))}")
-    guardrail = context.get("guardrail") or "Cluster event context is context only, not root-cause proof."
+    guardrail = (
+        context.get("guardrail") or "Cluster event context is context only, not root-cause proof."
+    )
     lines.append(f"- guardrail: {guardrail}")
     lines.append("")
 

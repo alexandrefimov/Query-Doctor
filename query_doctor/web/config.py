@@ -114,7 +114,8 @@ def validate_web_startup_config(
             cm_service=optional_config_string(config_values, "service"),
             cm_username=optional_config_string(config_values, "username"),
             ca_bundle=optional_config_string(config_values, "ca_bundle"),
-            insecure_skip_verify=optional_config_bool(config_values, "insecure_skip_verify") is True,
+            insecure_skip_verify=optional_config_bool(config_values, "insecure_skip_verify")
+            is True,
             query_profile_source=first_string_value(
                 optional_config_string(config_values, "query_profile_source"),
                 DEFAULT_QUERY_PROFILE_SOURCE,
@@ -124,7 +125,9 @@ def validate_web_startup_config(
         ),
     )
     missing: list[str] = []
-    cm_clusters = [cluster for cluster in clusters_to_validate if cluster.query_profile_source != "impala"]
+    cm_clusters = [
+        cluster for cluster in clusters_to_validate if cluster.query_profile_source != "impala"
+    ]
     for cluster in clusters_to_validate:
         if cluster.query_profile_source == "impala":
             if not cluster.impala_profile_hosts:
@@ -143,11 +146,17 @@ def validate_web_startup_config(
             missing.append("cluster")
         if not cluster.cm_service:
             missing.append("service")
-    if cm_clusters and not first_string_value(
-        optional_config_string(config_values, "username"), env.get("CM_USERNAME")
-    ) and not any(cluster.cm_username for cluster in cm_clusters):
+    if (
+        cm_clusters
+        and not first_string_value(
+            optional_config_string(config_values, "username"), env.get("CM_USERNAME")
+        )
+        and not any(cluster.cm_username for cluster in cm_clusters)
+    ):
         missing.append("username/cm_user")
-    if cm_clusters and not ((env.get("CM_PASSWORD") or "").strip() or (env.get("CM_TOKEN") or "").strip()):
+    if cm_clusters and not (
+        (env.get("CM_PASSWORD") or "").strip() or (env.get("CM_TOKEN") or "").strip()
+    ):
         missing.append("CM_PASSWORD/CM_TOKEN environment variable")
     missing = list(dict.fromkeys(missing))
     if missing:
@@ -174,7 +183,9 @@ def validate_web_startup_config(
                     "insecure_skip_verify=true is set; CM TLS verification will be disabled even though ca_bundle is configured."
                 )
         elif insecure_skip_verify:
-            warnings.append("insecure_skip_verify=true is set; CM TLS verification will be disabled.")
+            warnings.append(
+                "insecure_skip_verify=true is set; CM TLS verification will be disabled."
+            )
     return warnings
 
 
@@ -214,7 +225,9 @@ def first_int_value(*values: int | None, default: int | None) -> int | None:
     return default
 
 
-def merged_bool_setting(cli_value: bool, config_value: bool | None, *, default: bool = False) -> bool:
+def merged_bool_setting(
+    cli_value: bool, config_value: bool | None, *, default: bool = False
+) -> bool:
     return bool(cli_value) or (config_value if config_value is not None else default)
 
 
@@ -289,7 +302,10 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
         )
         or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
-        collect_prometheus_timeseries=optional_config_bool(config_values, "collect_prometheus_timeseries") is True,
+        collect_prometheus_timeseries=optional_config_bool(
+            config_values, "collect_prometheus_timeseries"
+        )
+        is True,
         prometheus_url=optional_config_string(config_values, "prometheus_url"),
         prometheus_metrics_profile=first_string_value(
             optional_config_string(config_values, "prometheus_metrics_profile"),

@@ -144,7 +144,9 @@ def empty_table_context(table: str) -> dict[str, Any]:
     }
 
 
-def apply_statement_result(table_context: dict[str, Any], statement: str, result: dict[str, Any]) -> None:
+def apply_statement_result(
+    table_context: dict[str, Any], statement: str, result: dict[str, Any]
+) -> None:
     status = safe_status(result.get("status"))
     table_context["statements"][statement] = status
     if status == "not_applicable":
@@ -164,7 +166,11 @@ def apply_statement_result(table_context: dict[str, Any], statement: str, result
 
 def safe_status(value: Any) -> str:
     status = str(value or "").strip().lower()
-    return status if status in {"ok", "error", "too_large", "timeout", "planned", "not_applicable"} else "unknown"
+    return (
+        status
+        if status in {"ok", "error", "too_large", "timeout", "planned", "not_applicable"}
+        else "unknown"
+    )
 
 
 def apply_not_applicable_result(table_context: dict[str, Any], statement: str) -> None:
@@ -217,15 +223,25 @@ def parse_table_stats(text: str) -> dict[str, Any]:
         table_level_row = total_row or (rows[0] if rows_index == 0 else None)
         if rows_index is not None:
             facts.update(parse_partition_row_counts(rows, rows_index))
-        if table_level_row is not None and rows_index is not None and rows_index < len(table_level_row):
+        if (
+            table_level_row is not None
+            and rows_index is not None
+            and rows_index < len(table_level_row)
+        ):
             rows_value, completeness = parse_row_count_token(table_level_row[rows_index])
             facts["table_rows"] = rows_value
             facts["table_stats_row_count_completeness"] = completeness
         elif facts.get("partition_count", 0) > 0:
             facts["table_stats_row_count_completeness"] = (
-                "available" if facts.get("partitions_with_unknown_row_count", 0) == 0 else "missing/unknown"
+                "available"
+                if facts.get("partitions_with_unknown_row_count", 0) == 0
+                else "missing/unknown"
             )
-        if table_level_row is not None and size_index is not None and size_index < len(table_level_row):
+        if (
+            table_level_row is not None
+            and size_index is not None
+            and size_index < len(table_level_row)
+        ):
             size = table_level_row[size_index].strip()
             if size and size.lower() not in UNKNOWN_MARKERS:
                 facts["table_size"] = size
@@ -264,9 +280,7 @@ def parse_partition_row_counts(rows: list[list[str]], rows_index: int) -> dict[s
     if rows_index <= 0:
         return {}
     partition_rows = [
-        row
-        for row in rows
-        if rows_index < len(row) and not is_total_stats_row(row, rows_index)
+        row for row in rows if rows_index < len(row) and not is_total_stats_row(row, rows_index)
     ]
     known = 0
     unknown = 0
@@ -304,13 +318,17 @@ def parse_column_stats(text: str) -> dict[str, Any]:
     missing_markers = 0
     per_column: dict[str, str] = {}
     status_counts = {status: 0 for status in COLUMN_STATS_STATUS_VALUES}
-    ndv_indices = column_stats_indices(header_map, ("ndv", "numdvs", "numdistinctvalues", "distinctvalues"))
+    ndv_indices = column_stats_indices(
+        header_map, ("ndv", "numdvs", "numdistinctvalues", "distinctvalues")
+    )
     size_indices = column_stats_indices(header_map, ("maxsize", "avgsize", "maxbytes", "avgbytes"))
     excluded_metric_indices = column_stats_indices(
         header_map,
         ("column", "name", "columnname", "type", "datatype", "comment", "comments"),
     )
-    metric_indices = [index for index in range(len(headers)) if index not in excluded_metric_indices]
+    metric_indices = [
+        index for index in range(len(headers)) if index not in excluded_metric_indices
+    ]
     for row in rows:
         if name_index is not None and name_index < len(row):
             column = row[name_index].strip()
@@ -353,7 +371,9 @@ def classify_column_stats_row(
     metric_indices: list[int],
 ) -> str:
     present_metric_indices = [index for index in metric_indices if index < len(row)]
-    if present_metric_indices and all(is_unknown_marker(row[index]) for index in present_metric_indices):
+    if present_metric_indices and all(
+        is_unknown_marker(row[index]) for index in present_metric_indices
+    ):
         return "all_missing"
     if any(index < len(row) and is_unknown_marker(row[index]) for index in ndv_indices):
         return "ndv_missing"

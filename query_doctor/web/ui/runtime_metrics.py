@@ -24,14 +24,14 @@ def render_runtime_verdict(view: RecentScanRuntimeVerdictView) -> str:
     reasons = ""
     if view.reasons:
         reasons = (
-            "<ul class=\"compact-list\">"
+            '<ul class="compact-list">'
             + "".join(f"<li>{escape_value(reason)}</li>" for reason in view.reasons)
             + "</ul>"
         )
     return (
-        "<div class=\"reason-card runtime-verdict\" aria-label=\"Runtime verdict\">"
+        '<div class="reason-card runtime-verdict" aria-label="Runtime verdict">'
         "<strong>"
-        f"<span class=\"batch-mini-badge {html.escape(view.badge_class)}\">{escape_value(view.title)}</span>"
+        f'<span class="batch-mini-badge {html.escape(view.badge_class)}">{escape_value(view.title)}</span>'
         "</strong>"
         f"<p>{escape_value(view.summary)}</p>"
         f"{reasons}"
@@ -43,9 +43,9 @@ def render_runtime_signals(view: RecentScanCaseDetailView) -> str:
     fields = list(view.runtime_fields)
     rows = metadata_rows(fields)
     return (
-        "<details class=\"analysis-subdetails\" aria-label=\"Runtime signals\">"
+        '<details class="analysis-subdetails" aria-label="Runtime signals">'
         "<summary>Runtime signals</summary>"
-        f"<div class=\"report-body\"><div class=\"meta-list\">{rows}</div></div>"
+        f'<div class="report-body"><div class="meta-list">{rows}</div></div>'
         "</details>"
     )
 
@@ -54,7 +54,7 @@ def render_runtime_diagnosis_summary(view: RecentScanRuntimeDiagnosisView) -> st
     if view.unavailable:
         return ""
     return (
-        "<div class=\"runtime-diagnosis-summary\">"
+        '<div class="runtime-diagnosis-summary">'
         "<strong>Runtime Diagnosis</strong>"
         f"<p>{escape_value(runtime_diagnosis_summary_text(view.summary))}</p>"
         "</div>"
@@ -74,15 +74,15 @@ def render_runtime_diagnosis_details(view: RecentScanRuntimeDiagnosisView) -> st
         for signal in view.signals
     )
     if not rows:
-        rows = "<tr><td colspan=\"4\" class=\"empty-cell\">runtime diagnosis signals are not available</td></tr>"
+        rows = '<tr><td colspan="4" class="empty-cell">runtime diagnosis signals are not available</td></tr>'
     return (
-        "<details class=\"analysis-subdetails\" aria-label=\"Runtime diagnosis\">"
+        '<details class="analysis-subdetails" aria-label="Runtime diagnosis">'
         "<summary>Runtime diagnosis</summary>"
-        "<div class=\"report-body\">"
-        "<div class=\"meta-list\">"
+        '<div class="report-body">'
+        '<div class="meta-list">'
         f"{metadata_rows([('status', view.status), ('summary', view.summary)])}"
         "</div>"
-        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        '<div class="batch-table-wrap"><table class="batch-table">'
         "<thead><tr><th>Signal</th><th>Status</th><th>Interpretation</th><th>Evidence</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
@@ -97,12 +97,12 @@ def render_cluster_runtime_context_section(view: RecentScanClusterRuntimeContext
     summary_rows = metadata_rows(cluster_runtime_summary_items(view))
     rollup_rows = metadata_rows(list(view.signal_rollup_items))
     return (
-        "<details class=\"analysis-subdetails\" aria-label=\"Cluster runtime context\">"
+        '<details class="analysis-subdetails" aria-label="Cluster runtime context">'
         "<summary>Cluster runtime context</summary>"
-        "<div class=\"report-body\">"
-        f"<div class=\"meta-list\">{summary_rows}</div>"
+        '<div class="report-body">'
+        f'<div class="meta-list">{summary_rows}</div>'
         "<h3>Signal rollup</h3>"
-        f"<div class=\"meta-list\">{rollup_rows}</div>"
+        f'<div class="meta-list">{rollup_rows}</div>'
         "</div>"
         "</details>"
     )
@@ -112,7 +112,7 @@ def render_runtime_diagnosis_evidence(evidence: tuple[str, ...]) -> str:
     if not evidence:
         return '<span class="muted">none</span>'
     return (
-        "<ul class=\"compact-list\">"
+        '<ul class="compact-list">'
         + "".join(f"<li>{escape_value(item)}</li>" for item in evidence[:5])
         + "</ul>"
     )
@@ -128,17 +128,25 @@ def runtime_diagnosis_status_badge(value: Any) -> SafeHtml:
         "unavailable": "gray",
     }
     label = normalized.replace("_", " ") if normalized else "unknown"
-    return SafeHtml(f'<span class="badge {classes.get(normalized, "gray")}">{html.escape(label)}</span>')
+    return SafeHtml(
+        f'<span class="badge {classes.get(normalized, "gray")}">{html.escape(label)}</span>'
+    )
 
 
 def runtime_diagnosis_summary_text(value: Any) -> str:
     text = str(value or "").strip()
-    if text == "Network/exchange pressure is the strongest plausible follow-up hypothesis from deterministic facts.":
+    if (
+        text
+        == "Network/exchange pressure is the strongest plausible follow-up hypothesis from deterministic facts."
+    ):
         return (
             "Network/exchange pressure may be relevant: analyzer facts show correlated network context "
             "and profile evidence. This is a follow-up hypothesis, not standalone root-cause proof."
         )
-    if text == "No single runtime environment hypothesis is supported as likely by the deterministic facts.":
+    if (
+        text
+        == "No single runtime environment hypothesis is supported as likely by the deterministic facts."
+    ):
         return (
             "Analyzer facts do not support network, HDFS, CPU, or admission as the main explanation. "
             "Available signals remain context only."
@@ -187,20 +195,20 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         empty_message="metric facts are not available",
     )
     return (
-        "<details class=\"analysis-subdetails\" aria-label=\"Runtime metrics\">"
+        '<details class="analysis-subdetails" aria-label="Runtime metrics">'
         "<summary>Runtime metrics</summary>"
-        "<div class=\"report-body\">"
-        f"<div class=\"meta-list\">{summary_rows}</div>"
+        '<div class="report-body">'
+        f'<div class="meta-list">{summary_rows}</div>'
         "<h3>Correlated runtime metric signals</h3>"
-        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        '<div class="batch-table-wrap"><table class="batch-table">'
         "<thead><tr><th>Metric</th><th>Metric status</th><th>Metric basis</th>"
         "<th>Correlation</th><th>Strength</th><th>Interpretation</th></tr></thead>"
         f"<tbody>{correlated_rows}</tbody>"
         "</table></div>"
-        "<details class=\"compact-details\">"
+        '<details class="compact-details">'
         "<summary>All collected runtime metrics</summary>"
-        "<div class=\"compact-details-body\">"
-        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">"
+        '<div class="compact-details-body">'
+        '<div class="batch-table-wrap"><table class="batch-table">'
         "<thead><tr><th>Metric</th><th>Metric status</th><th>Metric basis</th>"
         "<th>Correlation</th><th>Strength</th><th>Interpretation</th></tr></thead>"
         f"<tbody>{all_metric_rows}</tbody>"
@@ -212,9 +220,13 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
     )
 
 
-def cluster_runtime_summary_items(view: RecentScanClusterRuntimeContextView) -> list[tuple[str, Any]]:
+def cluster_runtime_summary_items(
+    view: RecentScanClusterRuntimeContextView,
+) -> list[tuple[str, Any]]:
     low_value_labels = {"guardrail", "limit_summary", "window_scope"}
-    return [(label, value) for label, value in view.summary_items if str(label) not in low_value_labels]
+    return [
+        (label, value) for label, value in view.summary_items if str(label) not in low_value_labels
+    ]
 
 
 def render_cm_metric_rows(
@@ -243,12 +255,14 @@ def render_cm_metric_rows(
             correlation_strength,
             correlation_interpretation,
         ) in (
-            cm_metric_row_values(label, signals_by_label.get(label), correlations_by_label.get(label))
+            cm_metric_row_values(
+                label, signals_by_label.get(label), correlations_by_label.get(label)
+            )
             for label in selected_labels
         )
     )
     if not rows:
-        return f"<tr><td colspan=\"6\" class=\"empty-cell\">{html.escape(empty_message)}</td></tr>"
+        return f'<tr><td colspan="6" class="empty-cell">{html.escape(empty_message)}</td></tr>'
     return rows
 
 
@@ -291,7 +305,9 @@ def cm_metric_row_values(
     signal: Any,
     correlation: Any,
 ) -> tuple[str, Any, Any, Any, Any, Any]:
-    metric_status = signal.status if signal is not None else getattr(correlation, "metric_status", None)
+    metric_status = (
+        signal.status if signal is not None else getattr(correlation, "metric_status", None)
+    )
     metric_basis = signal.basis if signal is not None else None
     correlation_status = correlation.status if correlation is not None else "not evaluated"
     correlation_strength = correlation.strength if correlation is not None else ""

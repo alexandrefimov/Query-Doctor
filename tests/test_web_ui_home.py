@@ -43,14 +43,20 @@ def test_detail_job_polling_applies_progress_view():
     script = layout.render_client_script()
 
     assert "function escapeHtml(value)" in script
-    assert 'replace(/[&<>"\']/g' in script
+    assert "replace(/[&<>\"']/g" in script
     assert "function safeProgressStepState(value)" in script
-    assert "function applyProgressView(progressElement, progressView, fallbackStage, fallbackProgress)" in script
+    assert (
+        "function applyProgressView(progressElement, progressView, fallbackStage, fallbackProgress)"
+        in script
+    )
     assert "progressElement.querySelector('.progress-stage')" in script
     assert "progressElement.querySelector('.progress-fill')" in script
     assert "progressElement.querySelector('.batch-progress-steps')" in script
     assert "batch-progress-step--' + stepState" in script
-    assert "applyProgressView(progressElement, data.progress_view, data.stage, data.progress)" in script
+    assert (
+        "applyProgressView(progressElement, data.progress_view, data.stage, data.progress)"
+        in script
+    )
 
 
 def test_package_progress_renderers_are_available():
@@ -105,7 +111,9 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "Analyze one explicit Impala query with deterministic profile facts." not in body
     assert "Saved case paths are supported by the CLI pipeline for now." not in body
     assert "case path" not in body
-    assert '<details class="info-popover"><summary aria-label="Query ID help">i</summary>' not in body
+    assert (
+        '<details class="info-popover"><summary aria-label="Query ID help">i</summary>' not in body
+    )
     assert "CM: unknown/not checked" not in body
     assert "Kerberos: unknown/not checked" not in body
     assert "Metadata collector: CLI only" not in body
@@ -121,7 +129,9 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "--bg:#0f1419" in styles
     assert_css_contains(styles, "html[data-design=command]{--bg:#eef4f1")
     assert_css_contains(styles, "html[data-theme=dark][data-design=command]{--bg:#101314")
-    assert_css_contains(styles, "html[data-design=command] .page{max-width:1240px;padding:20px 28px 48px}")
+    assert_css_contains(
+        styles, "html[data-design=command] .page{max-width:1240px;padding:20px 28px 48px}"
+    )
     assert "html[data-design=classic]" not in styles
     assert "html[data-design=review]" not in styles
     assert "design-icon-review" not in styles
@@ -140,9 +150,13 @@ def test_web_render_page_contains_reference_local_ui_shell():
         ".segmented input:checked+span,.segmented input:checked+label{color:#fff;background:var(--accent);",
     )
     assert_css_contains(styles, ".segmented label{min-width:58px;display:grid;place-items:stretch;")
-    assert_css_contains(styles, ".segmented span{display:grid;place-items:center;width:100%;height:100%;")
+    assert_css_contains(
+        styles, ".segmented span{display:grid;place-items:center;width:100%;height:100%;"
+    )
     assert_css_contains(styles, ".manual-inputs-hidden{display:none!important}")
-    assert body.index('id="query_id"') < body.index('<button class="run-button" type="submit">Run</button>')
+    assert body.index('id="query_id"') < body.index(
+        '<button class="run-button" type="submit">Run</button>'
+    )
     assert "Локальный демо-сервер: только явный Query ID" not in body
     assert "Validated before render" not in body
     assert "Analyzer-owned facts" not in body
@@ -199,11 +213,15 @@ def test_web_render_page_contains_theme_toggle():
         styles,
         ".theme-toggle .theme-icon-light,"
         ".design-toggle .design-icon-serious,"
-        ".design-toggle .design-icon-command{display:none}"
+        ".design-toggle .design-icon-command{display:none}",
     )
     assert_css_contains(styles, ".theme-toggle .theme-icon-dark{display:block}")
-    assert_css_contains(styles, "html[data-theme=dark] .theme-toggle .theme-icon-light{display:block}")
-    assert_css_contains(styles, "html[data-theme=dark] .theme-toggle .theme-icon-dark{display:none}")
+    assert_css_contains(
+        styles, "html[data-theme=dark] .theme-toggle .theme-icon-light{display:block}"
+    )
+    assert_css_contains(
+        styles, "html[data-theme=dark] .theme-toggle .theme-icon-dark{display:none}"
+    )
 
 
 def test_web_render_page_contains_design_toggle():
@@ -218,16 +236,19 @@ def test_web_render_page_contains_design_toggle():
     assert 'aria-label="Switch to green design"' in body
     assert "query-doctor-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
     assert "data-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
-    assert "['serious', 'command']" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
-    assert "document.documentElement.setAttribute('data-design', 'serious')" in layout.read_static_asset_text(
-        "theme-bootstrap.js"
+    assert "['serious', 'command']" in (
+        layout.read_static_asset_text("theme-bootstrap.js") + scripts
+    )
+    assert (
+        "document.documentElement.setAttribute('data-design', 'serious')"
+        in layout.read_static_asset_text("theme-bootstrap.js")
     )
     assert "Switch to blue design" in scripts
     assert "Switch to green design" in scripts
     assert_css_contains(
         styles,
         "html[data-design=serious] .design-toggle .design-icon-serious,"
-        "html[data-design=command] .design-toggle .design-icon-command{display:block}"
+        "html[data-design=command] .design-toggle .design-icon-command{display:block}",
     )
     assert "Switch to classic design" not in scripts
     assert "Switch to command design" not in scripts

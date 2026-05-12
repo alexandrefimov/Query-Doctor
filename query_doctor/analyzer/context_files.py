@@ -27,14 +27,24 @@ def context_file_status(path: Path, case_dir: Path) -> dict[str, object]:
     }
 
 
-def context_table_file_status(context_dir: Path, case_dir: Path, table: str) -> dict[str, dict[str, object]]:
+def context_table_file_status(
+    context_dir: Path, case_dir: Path, table: str
+) -> dict[str, dict[str, object]]:
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", table).strip("._") or "table"
     tables_dir = context_dir / "tables"
     return {
-        "SHOW CREATE TABLE": context_file_status(tables_dir / f"{safe_name}.show_create.sql", case_dir),
-        "SHOW TABLE STATS": context_file_status(tables_dir / f"{safe_name}.table_stats.txt", case_dir),
-        "SHOW COLUMN STATS": context_file_status(tables_dir / f"{safe_name}.column_stats.txt", case_dir),
-        "DESCRIBE FORMATTED": context_file_status(tables_dir / f"{safe_name}.describe_formatted.txt", case_dir),
+        "SHOW CREATE TABLE": context_file_status(
+            tables_dir / f"{safe_name}.show_create.sql", case_dir
+        ),
+        "SHOW TABLE STATS": context_file_status(
+            tables_dir / f"{safe_name}.table_stats.txt", case_dir
+        ),
+        "SHOW COLUMN STATS": context_file_status(
+            tables_dir / f"{safe_name}.column_stats.txt", case_dir
+        ),
+        "DESCRIBE FORMATTED": context_file_status(
+            tables_dir / f"{safe_name}.describe_formatted.txt", case_dir
+        ),
     }
 
 

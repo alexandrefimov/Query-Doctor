@@ -83,7 +83,7 @@ PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
             "max by (instance) (impala_memory_rss) "
             "or max by (instance) (impala_memory_total_used) "
             "or max by (instance) (impala_mem_tracker_process_resident_set_size) "
-            "or max by (instance) (process_resident_memory_bytes{job=~\".*[Ii]mpala.*|.*impalad.*\"})"
+            'or max by (instance) (process_resident_memory_bytes{job=~".*[Ii]mpala.*|.*impalad.*"})'
         ),
     ),
     PrometheusTimeSeriesQuery(
@@ -221,9 +221,13 @@ class PrometheusClient:
                 continue
             existing_params[key] = str(value)
         parsed_url = urlsplit(url)
-        return urlunsplit((parsed_url.scheme, parsed_url.netloc, parsed_url.path, urlencode(existing_params), ""))
+        return urlunsplit(
+            (parsed_url.scheme, parsed_url.netloc, parsed_url.path, urlencode(existing_params), "")
+        )
 
-    def build_request(self, path: str, params: dict[str, object] | None = None) -> urllib.request.Request:
+    def build_request(
+        self, path: str, params: dict[str, object] | None = None
+    ) -> urllib.request.Request:
         return urllib.request.Request(
             self.build_url(path, params),
             method="GET",

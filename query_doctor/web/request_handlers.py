@@ -6,7 +6,10 @@ import subprocess
 import threading
 from typing import Callable
 
-from query_doctor.web.cluster_selection import selected_cluster_key_from_mapping, settings_for_cluster_key
+from query_doctor.web.cluster_selection import (
+    selected_cluster_key_from_mapping,
+    settings_for_cluster_key,
+)
 from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.form_helpers import first_form_value
 from query_doctor.web.jobs import WebJobStore
@@ -39,7 +42,9 @@ def handle_analyze_request(
         "cluster_key": selected_cluster_key_from_mapping(form, settings),
     }
     if not query_id:
-        return 400, render_query_page(settings, error="Query ID is required.", form_values=form_values)
+        return 400, render_query_page(
+            settings, error="Query ID is required.", form_values=form_values
+        )
     try:
         selected_settings = settings_for_cluster_key(settings, str(form_values["cluster_key"]))
     except WebError as exc:
@@ -98,7 +103,9 @@ def start_analyze_job(
         "cluster_key": selected_cluster_key_from_mapping(form, settings),
     }
     if not query_id:
-        return 400, render_query_page(settings, error="Query ID is required.", form_values=form_values)
+        return 400, render_query_page(
+            settings, error="Query ID is required.", form_values=form_values
+        )
     try:
         selected_settings = settings_for_cluster_key(settings, str(form_values["cluster_key"]))
     except WebError as exc:
@@ -166,4 +173,7 @@ def run_analysis_job(
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        job_store.fail(job_id, "Unexpected web failure. Details are hidden because they may contain sensitive data.")
+        job_store.fail(
+            job_id,
+            "Unexpected web failure. Details are hidden because they may contain sensitive data.",
+        )

@@ -10,12 +10,18 @@ from query_doctor.analyzer.thresholds import DEFAULT_LARGE_BYTES_THRESHOLD
 
 
 def finding_ids(analysis: dict[str, Any]) -> set[str]:
-    return {str(finding.get("id")) for finding in analysis.get("findings") or [] if isinstance(finding, dict)}
+    return {
+        str(finding.get("id"))
+        for finding in analysis.get("findings") or []
+        if isinstance(finding, dict)
+    }
 
 
 def has_memory_profile_evidence(analysis: dict[str, Any]) -> bool:
     thresholds = analysis.get("thresholds", {})
-    large_bytes_threshold = float(thresholds.get("large_bytes_threshold") or DEFAULT_LARGE_BYTES_THRESHOLD)
+    large_bytes_threshold = float(
+        thresholds.get("large_bytes_threshold") or DEFAULT_LARGE_BYTES_THRESHOLD
+    )
     if analysis.get("memory_anomalies") or analysis.get("zero_memory_estimate_gaps"):
         return True
     if analysis.get("spill_nonzero_evidence_lines"):
@@ -35,7 +41,9 @@ def has_storage_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 
 def has_admission_profile_evidence(analysis: dict[str, Any]) -> bool:
-    admission_wait_ms = numeric_context_value(analysis.get("cm_query_context") or {}, "admission_wait_ms")
+    admission_wait_ms = numeric_context_value(
+        analysis.get("cm_query_context") or {}, "admission_wait_ms"
+    )
     return admission_wait_ms is not None and admission_wait_ms >= 1000
 
 
@@ -53,7 +61,10 @@ def has_cpu_profile_evidence(analysis: dict[str, Any]) -> bool:
         return True
     thresholds = analysis.get("thresholds", {})
     slow_operator_ms = float(thresholds.get("slow_operator_ms") or 0)
-    return any((op.get("time_ms") or 0) >= slow_operator_ms for op in analysis.get("top_operators_by_time") or [])
+    return any(
+        (op.get("time_ms") or 0) >= slow_operator_ms
+        for op in analysis.get("top_operators_by_time") or []
+    )
 
 
 def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:

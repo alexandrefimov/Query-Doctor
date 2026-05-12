@@ -57,7 +57,9 @@ def test_dry_run_writes_optimizer_summary_without_raw_paths(tmp_path):
         "# Query Doctor deterministic analysis facts\n\n## Summary\n\n- Cardinality anomalies: 0\n",
         encoding="utf-8",
     )
-    (case_dir / "cm_metadata.json").write_text('{"statement": "SELECT a FROM db.source_table"}', encoding="utf-8")
+    (case_dir / "cm_metadata.json").write_text(
+        '{"statement": "SELECT a FROM db.source_table"}', encoding="utf-8"
+    )
     out_dir = tmp_path / "out"
 
     result = module.main(
@@ -98,7 +100,9 @@ def test_cases_file_dry_run_resolves_case_ids_without_raw_paths(tmp_path):
         "# Query Doctor deterministic analysis facts\n\n## Summary\n\n- Cardinality anomalies: 0\n",
         encoding="utf-8",
     )
-    (case_dir / "cm_metadata.json").write_text('{"statement": "SELECT a FROM db.source_table"}', encoding="utf-8")
+    (case_dir / "cm_metadata.json").write_text(
+        '{"statement": "SELECT a FROM db.source_table"}', encoding="utf-8"
+    )
     cases_file = tmp_path / "cases.txt"
     cases_file.write_text("abc:def\n", encoding="utf-8")
     out_dir = tmp_path / "out"
@@ -176,19 +180,47 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     }
     by_case = summary["aggregates"]["by_case"]
     assert len(by_case) == 20
-    assert by_case["optimizer_cases:cte_dag_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
-    assert by_case["optimizer_cases:linear_cte_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
-    assert by_case["optimizer_cases:pass_through_cte_elimination"]["expected_output_kind"] == "sql_draft"
-    assert by_case["optimizer_cases:single_cte_projection_alias_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
-    assert by_case["optimizer_cases:single_cte_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
-    assert by_case["optimizer_cases:single_derived_table_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
+    assert (
+        by_case["optimizer_cases:cte_dag_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
+    )
+    assert (
+        by_case["optimizer_cases:linear_cte_predicate_pushdown"]["expected_output_kind"]
+        == "sql_draft"
+    )
+    assert (
+        by_case["optimizer_cases:pass_through_cte_elimination"]["expected_output_kind"]
+        == "sql_draft"
+    )
+    assert (
+        by_case["optimizer_cases:single_cte_projection_alias_predicate_pushdown"][
+            "expected_output_kind"
+        ]
+        == "sql_draft"
+    )
+    assert (
+        by_case["optimizer_cases:single_cte_predicate_pushdown"]["expected_output_kind"]
+        == "sql_draft"
+    )
+    assert (
+        by_case["optimizer_cases:single_derived_table_predicate_pushdown"]["expected_output_kind"]
+        == "sql_draft"
+    )
     case_summary = by_case["optimizer_cases:reject_changed_predicate"]
     assert case_summary["expected_output_kind"] == "validation_rejected"
     assert case_summary["expected_outcome_match_rate"] == 1.0
     assert case_summary["models"]["qwen3-coder:30b-a3b-q8_0"]["expected_outcome_match_rate"] == 1.0
-    assert by_case["optimizer_cases:no_draft_downstream_cte_filter"]["expected_output_kind"] == "no_rewrite"
-    assert by_case["optimizer_cases:no_draft_cte_lineage_limit"]["expected_output_kind"] == "no_rewrite"
-    assert by_case["optimizer_cases:no_draft_post_union_shape_boundary"]["expected_output_kind"] == "no_rewrite"
+    assert (
+        by_case["optimizer_cases:no_draft_downstream_cte_filter"]["expected_output_kind"]
+        == "no_rewrite"
+    )
+    assert (
+        by_case["optimizer_cases:no_draft_cte_lineage_limit"]["expected_output_kind"]
+        == "no_rewrite"
+    )
+    assert (
+        by_case["optimizer_cases:no_draft_post_union_shape_boundary"]["expected_output_kind"]
+        == "no_rewrite"
+    )
     assert str(module.DEFAULT_FIXTURE_CORPUS) not in json.dumps(summary)
 
 
@@ -434,7 +466,9 @@ def test_model_comparable_summary_tracks_recommendation_normalization_telemetry(
     assert model["recommendation_final_canonical_candidate_bullet_count"] == 1
 
 
-def test_actual_fixture_run_marks_validation_rejection_fixture_as_offline_only(tmp_path, monkeypatch):
+def test_actual_fixture_run_marks_validation_rejection_fixture_as_offline_only(
+    tmp_path, monkeypatch
+):
     module = load_compare_module()
     fixture = module.DEFAULT_FIXTURE_CORPUS / "reject_changed_predicate"
     out_dir = tmp_path / "out"
@@ -493,10 +527,16 @@ def test_expected_validation_rejection_matches_trusted_no_rewrite_fallback():
     assert module.actual_matches_expected_outcome(
         status="ok",
         marker={"output_kind": "no_rewrite", "fallback_reason": "validation_failed"},
-        expected={"expected_output_kind": "validation_rejected", "expected_recipe": "post_union_aggregate_pushdown"},
+        expected={
+            "expected_output_kind": "validation_rejected",
+            "expected_recipe": "post_union_aggregate_pushdown",
+        },
     )
     assert not module.actual_matches_expected_outcome(
         status="ok",
         marker={"output_kind": "sql_draft", "rewrite_recipe": "post_union_aggregate_pushdown"},
-        expected={"expected_output_kind": "validation_rejected", "expected_recipe": "post_union_aggregate_pushdown"},
+        expected={
+            "expected_output_kind": "validation_rejected",
+            "expected_recipe": "post_union_aggregate_pushdown",
+        },
     )

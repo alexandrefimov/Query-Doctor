@@ -204,7 +204,10 @@ def main(
             print("[pipeline] metadata collection: auto mode configured")
             metadata_mode = "on"
         elif config_status.fatal:
-            print(f"[pipeline] ERROR: metadata configuration is invalid: {config_status.reason}", file=sys.stderr)
+            print(
+                f"[pipeline] ERROR: metadata configuration is invalid: {config_status.reason}",
+                file=sys.stderr,
+            )
             return 2
         else:
             print(
@@ -216,7 +219,10 @@ def main(
         if metadata_mode == "on":
             config_status = metadata_config_status(args, base_dir=repo_dir)
             if not config_status.configured:
-                print(f"[pipeline] ERROR: metadata collection is not configured: {config_status.reason}", file=sys.stderr)
+                print(
+                    f"[pipeline] ERROR: metadata collection is not configured: {config_status.reason}",
+                    file=sys.stderr,
+                )
                 return 2
         raw_tables = read_referenced_tables_from_facts(facts)
         default_database = args.metadata_default_db or read_default_database_from_facts(facts)
@@ -227,12 +233,16 @@ def main(
         )
         print_metadata_plan(metadata_plan, dry_run=metadata_mode == "dry-run")
         if metadata_mode == "dry-run":
-            print("[pipeline] metadata dry-run complete; analyzer/report were not rerun after metadata collection")
+            print(
+                "[pipeline] metadata dry-run complete; analyzer/report were not rerun after metadata collection"
+            )
             return 0
         if metadata_plan.selected_tables:
             metadata_cmd = build_metadata_collector_cmd(
                 args,
-                collector_prefix=command_prefix(repo_dir, "collect_impala_context", backend=command_backend),
+                collector_prefix=command_prefix(
+                    repo_dir, "collect_impala_context", backend=command_backend
+                ),
                 case_dir=case_dir,
                 tables=metadata_plan.selected_tables,
             )
@@ -251,7 +261,9 @@ def main(
                     "[pipeline] metadata collection failed; continuing analyzer-only "
                     f"because --metadata-failure-policy continue is set (exit {code})"
                 )
-                print("[pipeline] partial metadata outputs are left on disk but not promoted into analyzer facts")
+                print(
+                    "[pipeline] partial metadata outputs are left on disk but not promoted into analyzer facts"
+                )
                 print("[pipeline] stop-after-analysis requested; report generation skipped")
                 return 0
             call_runner_with_timeout(
@@ -294,7 +306,9 @@ def main(
     if args.stop_other_models:
         report_cmd.append("--stop-other-models")
 
-    call_runner_with_timeout(command_runner, report_cmd, cwd=repo_dir, timeout_sec=REPORT_TIMEOUT_SEC)
+    call_runner_with_timeout(
+        command_runner, report_cmd, cwd=repo_dir, timeout_sec=REPORT_TIMEOUT_SEC
+    )
 
     print()
     print(f"[pipeline] done: {case_dir / args.out}")

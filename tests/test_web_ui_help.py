@@ -46,7 +46,9 @@ def test_web_help_page_renders_curated_static_help():
     assert "Recent queries" in body
     assert "Finished queries" in body
     assert "Known Query ID" in body
-    assert "Runtime context is collected automatically when the selected source supports it." in body
+    assert (
+        "Runtime context is collected automatically when the selected source supports it." in body
+    )
     assert "Running now" in body
     assert "Query Optimizer" not in body
     assert "Specific Query" not in body
@@ -70,10 +72,15 @@ def test_web_help_page_renders_curated_static_help():
     assert 'target="_blank" rel="noopener noreferrer"' in body
     compact_styles = compact_css(styles)
     assert (
-        compact_css(".report-body a{color:var(--accent-strong);font-weight:650;text-decoration:underline;")
+        compact_css(
+            ".report-body a{color:var(--accent-strong);font-weight:650;text-decoration:underline;"
+        )
         in compact_styles
     )
-    assert compact_css(".report-body a:hover,.report-body a:focus{color:var(--accent);") in compact_styles
+    assert (
+        compact_css(".report-body a:hover,.report-body a:focus{color:var(--accent);")
+        in compact_styles
+    )
     assert "Metadata" in body
     assert "Metadata allowlist" in body
     assert "Validated reports" in body

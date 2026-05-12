@@ -9,7 +9,9 @@ from query_doctor.analyzer.runtime_counters import line_indent
 from query_doctor.analyzer.scalars import table_duration_to_ms
 
 
-QUERY_TIMELINE_HEADER_RE = re.compile(r"^\s*Query\s+Timeline\s*:?\s*(?P<value>[^\n\r]*)$", re.IGNORECASE)
+QUERY_TIMELINE_HEADER_RE = re.compile(
+    r"^\s*Query\s+Timeline\s*:?\s*(?P<value>[^\n\r]*)$", re.IGNORECASE
+)
 TIMELINE_EVENT_RE = re.compile(
     r"^\s*-\s*(?P<label>[^:\n\r]{1,180})\s*:\s*(?P<value>[^\n\r]+)$",
     re.IGNORECASE,
@@ -67,7 +69,11 @@ def query_event_key(label: str) -> str | None:
     normalized = normalized_label(label)
     if normalized.startswith("readytostarton") and normalized.endswith("backends"):
         return "ready_to_start"
-    if normalized.startswith("all") and "executionbackends" in normalized and normalized.endswith("started"):
+    if (
+        normalized.startswith("all")
+        and "executionbackends" in normalized
+        and normalized.endswith("started")
+    ):
         return "all_backends_started"
     return QUERY_EVENT_KEYS.get(normalized)
 

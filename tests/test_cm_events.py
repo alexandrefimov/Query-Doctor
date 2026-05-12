@@ -205,15 +205,17 @@ def test_cli_collects_with_injected_client_and_writes_sanitized_json(tmp_path, c
             assert params["maxResults"] == 5
             assert params["contentType"] == "application/json"
             assert "attributes.service==IMPALA_SERVICE_1" in params["query"]
-            return json.dumps({
-                "items": [
-                    {
-                        "category": "LOG_EVENT",
-                        "severity": "IMPORTANT",
-                        "content": "metastore error with RAW_QUERY_TEXT_TOKEN",
-                    }
-                ]
-            })
+            return json.dumps(
+                {
+                    "items": [
+                        {
+                            "category": "LOG_EVENT",
+                            "severity": "IMPORTANT",
+                            "content": "metastore error with RAW_QUERY_TEXT_TOKEN",
+                        }
+                    ]
+                }
+            )
 
     def client_factory(http_config):
         assert http_config.token == "TOKEN_VALUE"

@@ -55,7 +55,9 @@ from query_doctor.config.contract import merge_kerberos_cache_env
 
 DEFAULT_TIMEOUT_SEC = 30
 DEFAULT_MAX_OUTPUT_BYTES = 262_144
-CREATE_VIEW_RE = re.compile(r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", re.IGNORECASE | re.MULTILINE)
+CREATE_VIEW_RE = re.compile(
+    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", re.IGNORECASE | re.MULTILINE
+)
 VIEW_NOT_APPLICABLE_RE = re.compile(r"not\s+applicable\s+to\s+a\s+view", re.IGNORECASE)
 REPO_DIR = Path(__file__).resolve().parents[2]
 
@@ -188,7 +190,11 @@ def collect_impala_context(
     if args.dry_run:
         print("Planned read-only Impala statements:")
         print(f"- impala-shell: {args.impala_shell}")
-        coordinator = redact_impala_context_text(args.coordinator) if args.coordinator else "<required for execution>"
+        coordinator = (
+            redact_impala_context_text(args.coordinator)
+            if args.coordinator
+            else "<required for execution>"
+        )
         print(f"- coordinator: {coordinator}")
         print(f"- auth: {args.auth}")
         if args.protocol:
@@ -274,7 +280,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--kerberos-service-name",
         help="Kerberos service principal short name passed to impala-shell, e.g. hive or impala.",
     )
-    parser.add_argument("--ssl", action="store_true", default=None, help="Pass --ssl to impala-shell.")
+    parser.add_argument(
+        "--ssl", action="store_true", default=None, help="Pass --ssl to impala-shell."
+    )
     parser.add_argument("--ca-cert", help="CA certificate path for --ssl connections.")
     parser.add_argument(
         "--timeout-sec",
@@ -336,7 +344,9 @@ def apply_local_config(args: argparse.Namespace, *, cwd: Path) -> None:
         use_repo_default=False,
     )
 
-    args.impala_shell = first_string(args.impala_shell, config_values.get("metadata_impala_shell"), "impala-shell")
+    args.impala_shell = first_string(
+        args.impala_shell, config_values.get("metadata_impala_shell"), "impala-shell"
+    )
     args.coordinator = first_string(args.coordinator, config_values.get("metadata_coordinator"))
     args.auth = first_string(args.auth, config_values.get("metadata_auth"), "kerberos")
     args.protocol = first_string(args.protocol, config_values.get("metadata_protocol"))
@@ -347,7 +357,9 @@ def apply_local_config(args: argparse.Namespace, *, cwd: Path) -> None:
     )
     args.ssl = first_bool(args.ssl, config_values.get("metadata_ssl"), default=False)
     args.ca_cert = first_string(args.ca_cert, config_values.get("metadata_ca_cert"))
-    args.timeout_sec = first_int(args.timeout_sec, config_values.get("metadata_timeout_sec"), default=DEFAULT_TIMEOUT_SEC)
+    args.timeout_sec = first_int(
+        args.timeout_sec, config_values.get("metadata_timeout_sec"), default=DEFAULT_TIMEOUT_SEC
+    )
     args.max_output_bytes = first_int(
         args.max_output_bytes,
         config_values.get("metadata_max_output_bytes"),

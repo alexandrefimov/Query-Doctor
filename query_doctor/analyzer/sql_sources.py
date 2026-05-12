@@ -353,7 +353,9 @@ def extract_referenced_tables_from_sql(sql: str) -> list[str]:
                 continue
             table, next_index = parse_table_identifier(tokens, index)
             if table:
-                if table.lower() not in cte_names and not is_function_reference(tokens, index, next_index):
+                if table.lower() not in cte_names and not is_function_reference(
+                    tokens, index, next_index
+                ):
                     tables.add(table)
                 expect_table = False
                 index = next_index
@@ -389,7 +391,12 @@ def extract_join_filter_column_references_from_sql(sql: str) -> list[tuple[str, 
         if clause == "filter" and lower in SQL_WHERE_STOP_WORDS:
             clause = ""
             continue
-        if clause and is_sql_identifier(token) and tokens[index + 1] == "." and is_sql_identifier(tokens[index + 2]):
+        if (
+            clause
+            and is_sql_identifier(token)
+            and tokens[index + 1] == "."
+            and is_sql_identifier(tokens[index + 2])
+        ):
             qualifier = normalize_sql_identifier_part(token)
             column = normalize_sql_identifier_part(tokens[index + 2])
             table = alias_to_table.get(str(qualifier or "").lower())
@@ -434,7 +441,9 @@ def table_aliases_from_tokens(tokens: list[str], cte_names: set[str]) -> dict[st
                 continue
             table, next_index = parse_table_identifier(tokens, index)
             if table:
-                if table.lower() not in cte_names and not is_function_reference(tokens, index, next_index):
+                if table.lower() not in cte_names and not is_function_reference(
+                    tokens, index, next_index
+                ):
                     register_table_aliases(aliases, table, tokens, next_index)
                 expect_table = False
                 index = next_index
@@ -444,7 +453,9 @@ def table_aliases_from_tokens(tokens: list[str], cte_names: set[str]) -> dict[st
     return aliases
 
 
-def register_table_aliases(aliases: dict[str, str], table: str, tokens: list[str], index: int) -> None:
+def register_table_aliases(
+    aliases: dict[str, str], table: str, tokens: list[str], index: int
+) -> None:
     aliases[table.lower()] = table
     unqualified = table.rsplit(".", 1)[-1].lower()
     aliases.setdefault(unqualified, table)

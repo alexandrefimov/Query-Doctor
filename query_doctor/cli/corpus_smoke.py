@@ -182,7 +182,9 @@ def analyzer_command(case_dir: Path) -> list[str]:
 
 
 def parse_count(facts_text: str, key: str) -> int | None:
-    match = re.search(rf"^\s*[-*]?\s*{re.escape(key)}\s*:\s*(?P<value>\d+)\s*$", facts_text, re.MULTILINE)
+    match = re.search(
+        rf"^\s*[-*]?\s*{re.escape(key)}\s*:\s*(?P<value>\d+)\s*$", facts_text, re.MULTILINE
+    )
     if not match:
         return None
     return int(match.group("value"))
@@ -239,10 +241,13 @@ def smoke_case(
     case_result = CaseResult(
         case_path=case_dir,
         parsed_operators=parse_count(facts_text, "Parsed operators") if facts_present else None,
-        cardinality_anomalies=parse_count(facts_text, "Cardinality anomalies") if facts_present else None,
+        cardinality_anomalies=parse_count(facts_text, "Cardinality anomalies")
+        if facts_present
+        else None,
         memory_anomalies=parse_count(facts_text, "Memory anomalies") if facts_present else None,
         action_cards_present=action_cards_present,
-        severe_action_cards_present=action_cards_present and section_has_severe_signal(facts_text, "Action Cards"),
+        severe_action_cards_present=action_cards_present
+        and section_has_severe_signal(facts_text, "Action Cards"),
         findings_present=section_has_real_content(
             facts_text,
             "Findings",
@@ -299,7 +304,9 @@ def print_table(results: list[CaseResult], totals: dict[str, int]) -> None:
         for result in results
     ]
     widths = [
-        max(len(headers[index]), *(len(row[index]) for row in rows)) if rows else len(headers[index])
+        max(len(headers[index]), *(len(row[index]) for row in rows))
+        if rows
+        else len(headers[index])
         for index in range(len(headers))
     ]
 
@@ -320,7 +327,9 @@ def print_table(results: list[CaseResult], totals: dict[str, int]) -> None:
     print(f"FAIL cases: {totals['fail_cases']}")
 
 
-def write_json_summary(path: str, root: Path, results: list[CaseResult], totals: dict[str, int]) -> None:
+def write_json_summary(
+    path: str, root: Path, results: list[CaseResult], totals: dict[str, int]
+) -> None:
     output_path = Path(path).expanduser()
     payload = {
         "cases": [result.to_json() for result in results],
@@ -328,7 +337,9 @@ def write_json_summary(path: str, root: Path, results: list[CaseResult], totals:
         "totals": totals,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def run_smoke(
@@ -356,7 +367,9 @@ def main(
         print(f"[corpus-smoke] ERROR: {exc}", file=sys.stderr)
         return 2
 
-    results, totals = run_smoke(root, keep_generated=args.keep_generated, analyzer_runner=analyzer_runner)
+    results, totals = run_smoke(
+        root, keep_generated=args.keep_generated, analyzer_runner=analyzer_runner
+    )
     print_table(results, totals)
     if args.json_out:
         write_json_summary(args.json_out, root, results, totals)

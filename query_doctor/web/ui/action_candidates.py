@@ -21,12 +21,12 @@ def render_action_candidate_findings_view(view: RecentScanActionCandidatesView) 
     if not view.cards:
         return ""
     cards = "".join(render_action_candidate_card_view(card) for card in view.cards)
-    return f"<ul class=\"reason-list action-candidate-list\">{cards}</ul>"
+    return f'<ul class="reason-list action-candidate-list">{cards}</ul>'
 
 
 def render_action_candidate_card_view(card: RecentScanActionCandidateCardView) -> str:
     return (
-        "<li class=\"reason-card\">"
+        '<li class="reason-card">'
         f"<strong>{html.escape(card.title)}</strong>"
         f"<p>{escape_value(card.body)}</p>"
         "</li>"

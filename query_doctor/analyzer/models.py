@@ -58,7 +58,9 @@ def observation_has_row_pair(observation: OperatorObservation) -> bool:
 
 
 def observation_has_memory_pair(observation: OperatorObservation) -> bool:
-    return observation.peak_mem_bytes is not None and observation.estimated_peak_mem_bytes is not None
+    return (
+        observation.peak_mem_bytes is not None and observation.estimated_peak_mem_bytes is not None
+    )
 
 
 @dataclass
@@ -94,7 +96,9 @@ class OperatorFact:
             for observation in self.observations
             if observation_rows_ratio(observation) is not None
         ]
-        if not candidates and not any(observation_has_row_pair(observation) for observation in self.observations):
+        if not candidates and not any(
+            observation_has_row_pair(observation) for observation in self.observations
+        ):
             fallback = OperatorObservation(
                 time_ms=self.time_ms,
                 actual_rows=self.actual_rows,
@@ -115,7 +119,9 @@ class OperatorFact:
             for observation in self.observations
             if observation_mem_ratio(observation) is not None
         ]
-        if not candidates and not any(observation_has_memory_pair(observation) for observation in self.observations):
+        if not candidates and not any(
+            observation_has_memory_pair(observation) for observation in self.observations
+        ):
             fallback = OperatorObservation(
                 time_ms=self.time_ms,
                 actual_rows=self.actual_rows,
@@ -136,7 +142,9 @@ class OperatorFact:
             for observation in self.observations
             if observation_has_zero_row_estimate_gap(observation)
         ]
-        if not candidates and not any(observation_has_row_pair(observation) for observation in self.observations):
+        if not candidates and not any(
+            observation_has_row_pair(observation) for observation in self.observations
+        ):
             fallback = OperatorObservation(
                 time_ms=self.time_ms,
                 actual_rows=self.actual_rows,
@@ -157,7 +165,9 @@ class OperatorFact:
             for observation in self.observations
             if observation_has_zero_memory_estimate_gap(observation)
         ]
-        if not candidates and not any(observation_has_memory_pair(observation) for observation in self.observations):
+        if not candidates and not any(
+            observation_has_memory_pair(observation) for observation in self.observations
+        ):
             fallback = OperatorObservation(
                 time_ms=self.time_ms,
                 actual_rows=self.actual_rows,

@@ -12,7 +12,12 @@ from urllib.parse import parse_qs, urlsplit
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.query_analysis import run_query_id_analysis
-from query_doctor.web.routes import WebRouteResponse, post_route_is_allowed, route_get_request, route_post_request
+from query_doctor.web.routes import (
+    WebRouteResponse,
+    post_route_is_allowed,
+    route_get_request,
+    route_post_request,
+)
 from query_doctor.web.subprocesses import Runner
 from query_doctor.web.ui.pages import render_page
 
@@ -207,7 +212,9 @@ def request_origin_allowed(
         forwarded_header_value=forwarded_header_value,
     )
     if origin == "null":
-        return request_url_allowed_for_local_web(referer_value, settings, allowed_ports=allowed_ports)
+        return request_url_allowed_for_local_web(
+            referer_value, settings, allowed_ports=allowed_ports
+        )
     if any(char.isspace() for char in origin):
         return False
     parsed = urlsplit(origin)
@@ -227,7 +234,9 @@ def request_origin_allowed(
     return request_host_allowed(origin_host, settings)
 
 
-def request_url_allowed_for_local_web(value: str | None, settings: WebSettings, *, allowed_ports: set[int]) -> bool:
+def request_url_allowed_for_local_web(
+    value: str | None, settings: WebSettings, *, allowed_ports: set[int]
+) -> bool:
     if value is None or not value.strip():
         return False
     if any(char.isspace() for char in value):
@@ -343,7 +352,9 @@ def make_handler(
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             if download_filename is not None:
-                self.send_header("Content-Disposition", f'attachment; filename="{download_filename}"')
+                self.send_header(
+                    "Content-Disposition", f'attachment; filename="{download_filename}"'
+                )
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(payload)))
             self.send_request_id_header()
@@ -363,8 +374,12 @@ def make_handler(
             headers = getattr(self, "headers", {})
             origin_value = headers.get("Origin") if hasattr(headers, "get") else None
             host_value = headers.get("Host") if hasattr(headers, "get") else None
-            forwarded_host_value = headers.get("X-Forwarded-Host") if hasattr(headers, "get") else None
-            forwarded_port_value = headers.get("X-Forwarded-Port") if hasattr(headers, "get") else None
+            forwarded_host_value = (
+                headers.get("X-Forwarded-Host") if hasattr(headers, "get") else None
+            )
+            forwarded_port_value = (
+                headers.get("X-Forwarded-Port") if hasattr(headers, "get") else None
+            )
             forwarded_header_value = headers.get("Forwarded") if hasattr(headers, "get") else None
             referer_value = headers.get("Referer") if hasattr(headers, "get") else None
             return request_origin_allowed(
@@ -386,8 +401,12 @@ def make_handler(
             headers = getattr(self, "headers", {})
             origin_value = headers.get("Origin") if hasattr(headers, "get") else None
             host_value = headers.get("Host") if hasattr(headers, "get") else None
-            forwarded_host_value = headers.get("X-Forwarded-Host") if hasattr(headers, "get") else None
-            forwarded_port_value = headers.get("X-Forwarded-Port") if hasattr(headers, "get") else None
+            forwarded_host_value = (
+                headers.get("X-Forwarded-Host") if hasattr(headers, "get") else None
+            )
+            forwarded_port_value = (
+                headers.get("X-Forwarded-Port") if hasattr(headers, "get") else None
+            )
             forwarded_header_value = headers.get("Forwarded") if hasattr(headers, "get") else None
             referer_value = headers.get("Referer") if hasattr(headers, "get") else None
             print(

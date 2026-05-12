@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+
 # Compatibility monkeypatch seam; llm_client uses the same urllib module object.
 import urllib.request
 from pathlib import Path
@@ -240,7 +241,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="admin",
         help="Report audience mode. Default: %(default)s",
     )
-    parser.add_argument("--facts", default="analysis_facts.md", help="Facts file path, relative to CASE_DIR by default")
+    parser.add_argument(
+        "--facts",
+        default="analysis_facts.md",
+        help="Facts file path, relative to CASE_DIR by default",
+    )
     parser.add_argument(
         "--out",
         default="diagnosis_report.md",
@@ -252,7 +257,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="en",
         help="Report language. Default: %(default)s",
     )
-    parser.add_argument("--dry-prompt", action="store_true", help="Print the final prompt and exit without calling Ollama")
+    parser.add_argument(
+        "--dry-prompt",
+        action="store_true",
+        help="Print the final prompt and exit without calling Ollama",
+    )
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
     parser.add_argument(
@@ -367,7 +376,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{PROGRESS_PREFIX} partial report saved to: {partial_path}", file=sys.stderr)
             return 4
 
-    final_report_text = append_analyzer_facts_appendix(narrative_text, facts_text, language=args.language)
+    final_report_text = append_analyzer_facts_appendix(
+        narrative_text, facts_text, language=args.language
+    )
 
     if validation_mode != "off":
         validation_errors = validate_report_for_mode(

@@ -227,7 +227,13 @@ def update_operator(existing: OperatorFact, new: OperatorFact) -> None:
         if old is None or val > old:
             setattr(existing, attr, val)
 
-    for attr in ["time_ms", "actual_rows", "estimated_rows", "peak_mem_bytes", "estimated_peak_mem_bytes"]:
+    for attr in [
+        "time_ms",
+        "actual_rows",
+        "estimated_rows",
+        "peak_mem_bytes",
+        "estimated_peak_mem_bytes",
+    ]:
         prefer_max(attr)
     if not existing.join_kind and new.join_kind:
         existing.join_kind = new.join_kind
@@ -289,7 +295,9 @@ def raw_node_direct_counter_indent(section_lines: list[str], header_indent: int)
     return min(indents) if indents else None
 
 
-def classify_raw_time_counter(line: str, direct_counter_indent: int | None) -> tuple[str, float | None]:
+def classify_raw_time_counter(
+    line: str, direct_counter_indent: int | None
+) -> tuple[str, float | None]:
     m = RAW_TIME_COUNTER_RE.match(line)
     if not m:
         return "not_time", None

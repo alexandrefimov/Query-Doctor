@@ -39,13 +39,15 @@ def render_specific_query_result(result: Any) -> list[str]:
     return render_specific_query_results([case])
 
 
-def render_specific_query_results(cases: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> list[str]:
+def render_specific_query_results(
+    cases: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> list[str]:
     rows = "".join(render_specific_query_row(case) for case in cases)
     return [
-        "<section class=\"panel batch-panel\" aria-label=\"Known Query ID analysis result\">",
-        "<div class=\"batch-head\"><div><h1>Known Query ID analysis</h1>"
+        '<section class="panel batch-panel" aria-label="Known Query ID analysis result">',
+        '<div class="batch-head"><div><h1>Known Query ID analysis</h1>'
         "<p>Deterministic analyzer result for one explicit Impala Query ID. No LLM report is generated.</p></div></div>",
-        "<div class=\"batch-table-wrap\"><table class=\"batch-table\">",
+        '<div class="batch-table-wrap"><table class="batch-table">',
         "<thead><tr>",
         "<th>Query ID</th><th>Score</th><th>Duration</th><th>STATS</th><th>META</th><th>Summary</th>",
         "</tr></thead>",
@@ -57,10 +59,10 @@ def render_specific_query_results(cases: list[dict[str, Any]] | tuple[dict[str, 
 
 def render_specific_query_row(case: dict[str, Any]) -> str:
     view = present_recent_scan_case_row(1, case)
-    row_attrs = "class=\"batch-row\""
+    row_attrs = 'class="batch-row"'
     details_href = specific_query_details_href(case.get("query_id"))
     if details_href:
-        row_attrs += f" data-href=\"{details_href}\" tabindex=\"0\""
+        row_attrs += f' data-href="{details_href}" tabindex="0"'
     cells = [
         query_id_cell(view.query_id),
         score_cell(view),
@@ -97,7 +99,9 @@ def render_specific_query_detail(
     optimizer_validation_result: dict[str, Any] | None = None,
 ) -> str:
     if trusted_report_html is None and trusted_report_text:
-        trusted_report_html = SafeHtml(render_report_markdown_html(trusted_report_text, with_heading_ids=True))
+        trusted_report_html = SafeHtml(
+            render_report_markdown_html(trusted_report_text, with_heading_ids=True)
+        )
     view = present_recent_scan_case_detail(
         "specific-query",
         case,
@@ -117,10 +121,10 @@ def render_specific_query_detail(
     llm_actions_url = specific_query_llm_actions_href(query_id)
     optimizer_view = present_optimized_query_action(optimized_query_state)
     return (
-        "<section class=\"panel batch-panel\" aria-label=\"Known Query ID details\">"
-        "<div class=\"breadcrumb\"><a href=\"/query\">Known Query ID</a><span>/</span>"
+        '<section class="panel batch-panel" aria-label="Known Query ID details">'
+        '<div class="breadcrumb"><a href="/query">Known Query ID</a><span>/</span>'
         f"<span>{escaped_query_id}</span></div>"
-        "<div class=\"batch-head\"><div><h1>Known Query ID details</h1>"
+        '<div class="batch-head"><div><h1>Known Query ID details</h1>'
         "<p>Deterministic facts for one analyzed query.</p></div></div>"
         f"{render_case_detail_toc()}"
         f"{render_case_detail_overview(view)}"

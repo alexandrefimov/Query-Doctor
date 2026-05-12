@@ -74,14 +74,18 @@ def run_cancellable_subprocess(
         if cancel_check():
             terminate_process_tree(process)
             stdout, stderr = communicate_after_stop(process)
-            return subprocess.CompletedProcess(cmd, WEB_CANCELLED_RETURN_CODE, stdout=stdout, stderr=stderr)
+            return subprocess.CompletedProcess(
+                cmd, WEB_CANCELLED_RETURN_CODE, stdout=stdout, stderr=stderr
+            )
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             terminate_process_tree(process, force=True)
             raise subprocess.TimeoutExpired(cmd, timeout_sec)
         try:
             stdout, stderr = process.communicate(timeout=min(0.2, remaining))
-            return subprocess.CompletedProcess(cmd, process.returncode, stdout=stdout, stderr=stderr)
+            return subprocess.CompletedProcess(
+                cmd, process.returncode, stdout=stdout, stderr=stderr
+            )
         except subprocess.TimeoutExpired:
             continue
 
@@ -139,12 +143,18 @@ def preflight_web_metadata_batch(
 ) -> None:
     env = effective_subprocess_env(settings, base_env=base_env)
     if not metadata_configured(settings):
-        raise WebError("Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config.")
+        raise WebError(
+            "Metadata collection is not configured for this web session. Restart with metadata options or disable metadata in config."
+        )
     if not resolve_metadata_impala_shell(settings, env):
-        raise WebError("Metadata preflight failed: impala-shell executable is not available. Fix server metadata settings or disable metadata in config.")
+        raise WebError(
+            "Metadata preflight failed: impala-shell executable is not available. Fix server metadata settings or disable metadata in config."
+        )
     krb5ccname = env.get("KRB5CCNAME", "")
     if krb5ccname and any(ord(ch) < 32 or ord(ch) == 127 for ch in krb5ccname):
-        raise WebError("Metadata preflight failed: Kerberos cache setting is invalid. Fix server environment or disable metadata in config.")
+        raise WebError(
+            "Metadata preflight failed: Kerberos cache setting is invalid. Fix server environment or disable metadata in config."
+        )
     try:
         completed = run_subprocess(
             ["klist"],
@@ -154,7 +164,9 @@ def preflight_web_metadata_batch(
             env=env,
         )
     except OSError as exc:
-        raise WebError("Metadata preflight failed: klist is not available. Fix server Kerberos setup or disable metadata in config.") from exc
+        raise WebError(
+            "Metadata preflight failed: klist is not available. Fix server Kerberos setup or disable metadata in config."
+        ) from exc
     if completed.returncode != 0:
         raise WebError(
             "Metadata preflight failed: Kerberos cache is not available or expired. "

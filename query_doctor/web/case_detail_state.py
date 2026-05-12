@@ -42,7 +42,9 @@ def build_batch_case_detail_render_context(
     cm_metrics_facts = load_batch_case_cm_metrics_facts(settings, case)
     runtime_diagnosis_facts = load_batch_case_runtime_diagnosis_facts(settings, case)
     cluster_runtime_context_facts = load_batch_case_cluster_runtime_context_facts(settings, case)
-    artifacts = load_batch_case_trusted_detail_artifacts(settings, case_id, case, job_store, job=job)
+    artifacts = load_batch_case_trusted_detail_artifacts(
+        settings, case_id, case, job_store, job=job
+    )
     report_state = artifacts.report_state
     optimized_query_state = artifacts.optimized_query_state
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")

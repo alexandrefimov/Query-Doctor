@@ -43,7 +43,13 @@ MAX_JOBS = 4
 MAX_HIGH_JOBS = 100
 MAX_CM_JOBS = 100
 MAX_METADATA_JOBS = 5
-ORDER_CHOICES = ("recent", "duration-desc", "duration-asc", "recent-duration-desc", "status-priority")
+ORDER_CHOICES = (
+    "recent",
+    "duration-desc",
+    "duration-asc",
+    "recent-duration-desc",
+    "status-priority",
+)
 METADATA_MODE_CHOICES = ("auto", "on", "off", "dry-run")
 SAFE_OUTPUT_PREFIX = "query-doctor-"
 SYSTEM_OUTPUT_ROOTS = (
@@ -137,18 +143,23 @@ def build_batch_config(
         # implicit local config in the current working directory.
         config_values = {}
         effective_config_path = None
-    query_profile_source = first_string(
-        getattr(args, "query_profile_source", None),
-        config_values.get("query_profile_source"),
-        "cm",
-    ) or "cm"
+    query_profile_source = (
+        first_string(
+            getattr(args, "query_profile_source", None),
+            config_values.get("query_profile_source"),
+            "cm",
+        )
+        or "cm"
+    )
     if query_profile_source not in {"cm", "impala"}:
         raise ValueError("--query-profile-source must be one of: cm, impala")
     cm_url = first_string(args.cm_url, env.get("CM_URL"), config_values.get("cm_url"))
     cluster = first_string(args.cluster, config_values.get("cluster"))
     service = first_string(args.service, config_values.get("service"))
     impala_profile_hosts = normalize_impala_profile_hosts(
-        first_string_tuple(getattr(args, "impala_profile_hosts", None), config_values.get("impala_profile_hosts"))
+        first_string_tuple(
+            getattr(args, "impala_profile_hosts", None), config_values.get("impala_profile_hosts")
+        )
     )
     impala_profile_port = first_int(
         getattr(args, "impala_profile_port", None),
@@ -178,7 +189,9 @@ def build_batch_config(
         default=bool(prometheus_url),
     )
     if collect_prometheus_timeseries and not prometheus_url:
-        raise ValueError("--collect-prometheus-timeseries requires --prometheus-url or local config prometheus_url.")
+        raise ValueError(
+            "--collect-prometheus-timeseries requires --prometheus-url or local config prometheus_url."
+        )
     prometheus_metrics_profile = normalize_prometheus_metrics_profile(
         first_string(
             getattr(args, "prometheus_metrics_profile", None),
@@ -210,7 +223,9 @@ def build_batch_config(
             raise ValueError("Missing --service or local config service.")
     else:
         if not impala_profile_hosts:
-            raise ValueError("Impala query discovery requires --impala-profile-host or local config impala_profile_hosts.")
+            raise ValueError(
+                "Impala query discovery requires --impala-profile-host or local config impala_profile_hosts."
+            )
 
     cm_inspect_limit = first_int(
         args.cm_inspect_limit,
@@ -281,8 +296,15 @@ def build_batch_config(
     if cm_events_max_events > MAX_CM_EVENTS_MAX_EVENTS:
         raise ValueError(f"--cm-events-max-events must be <= {MAX_CM_EVENTS_MAX_EVENTS}")
     cm_jobs = first_int(args.cm_jobs, config_values.get("recent_cm_jobs"), default=args.jobs)
-    metadata_jobs = first_int(args.metadata_jobs, config_values.get("recent_metadata_jobs"), default=5)
-    validate_jobs_config(args.jobs, allow_high_jobs=args.allow_high_jobs, metadata_mode=args.metadata_mode, top_reports=args.top_reports)
+    metadata_jobs = first_int(
+        args.metadata_jobs, config_values.get("recent_metadata_jobs"), default=5
+    )
+    validate_jobs_config(
+        args.jobs,
+        allow_high_jobs=args.allow_high_jobs,
+        metadata_mode=args.metadata_mode,
+        top_reports=args.top_reports,
+    )
     validate_cm_jobs_config(cm_jobs)
     validate_metadata_jobs_config(metadata_jobs)
     min_duration_sec = (
@@ -341,10 +363,17 @@ def build_batch_config(
         metadata_top_limit=metadata_top_limit,
         min_duration_sec=min_duration_sec,
         max_duration_sec=max_duration_sec,
-        order=first_string(args.order, config_values.get("recent_order"), "duration-desc") or "duration-desc",
-        include_failed=first_bool(args.include_failed, config_values.get("recent_include_failed"), default=False),
-        include_running=first_bool(args.include_running, config_values.get("recent_include_running"), default=False),
-        only_running=first_bool(args.only_running, config_values.get("recent_only_running"), default=False),
+        order=first_string(args.order, config_values.get("recent_order"), "duration-desc")
+        or "duration-desc",
+        include_failed=first_bool(
+            args.include_failed, config_values.get("recent_include_failed"), default=False
+        ),
+        include_running=first_bool(
+            args.include_running, config_values.get("recent_include_running"), default=False
+        ),
+        only_running=first_bool(
+            args.only_running, config_values.get("recent_only_running"), default=False
+        ),
         user=first_string(args.user, config_values.get("recent_user")),
         pool=first_string(args.pool, config_values.get("recent_pool")),
         query_type=first_string(args.query_type, config_values.get("query_type")),
@@ -381,29 +410,45 @@ def build_batch_config(
             default=cm_profiles.DEFAULT_MAX_TIMESERIES_POINTS,
         ),
         metadata_mode=args.metadata_mode,
-        metadata_coordinator=first_string(args.metadata_coordinator, config_values.get("metadata_coordinator")),
-        metadata_impala_shell=first_string(args.metadata_impala_shell, config_values.get("metadata_impala_shell")),
-        metadata_auth=first_string(args.metadata_auth, config_values.get("metadata_auth"), "kerberos") or "kerberos",
-        metadata_protocol=first_string(args.metadata_protocol, config_values.get("metadata_protocol"), "beeswax") or "beeswax",
+        metadata_coordinator=first_string(
+            args.metadata_coordinator, config_values.get("metadata_coordinator")
+        ),
+        metadata_impala_shell=first_string(
+            args.metadata_impala_shell, config_values.get("metadata_impala_shell")
+        ),
+        metadata_auth=first_string(
+            args.metadata_auth, config_values.get("metadata_auth"), "kerberos"
+        )
+        or "kerberos",
+        metadata_protocol=first_string(
+            args.metadata_protocol, config_values.get("metadata_protocol"), "beeswax"
+        )
+        or "beeswax",
         metadata_kerberos_service_name=first_string(
             getattr(args, "metadata_kerberos_service_name", None),
             config_values.get("metadata_kerberos_service_name"),
             config_values.get("impala_kerberos_service_name"),
         ),
-        metadata_ssl=first_bool(args.metadata_ssl, config_values.get("metadata_ssl"), default=False),
+        metadata_ssl=first_bool(
+            args.metadata_ssl, config_values.get("metadata_ssl"), default=False
+        ),
         metadata_ca_cert=first_string(args.metadata_ca_cert, config_values.get("metadata_ca_cert")),
         metadata_timeout_sec=first_int(
             args.metadata_timeout_sec,
             config_values.get("metadata_timeout_sec"),
             default=30,
         ),
-        metadata_max_tables=first_int(args.metadata_max_tables, config_values.get("metadata_max_tables"), default=None),
+        metadata_max_tables=first_int(
+            args.metadata_max_tables, config_values.get("metadata_max_tables"), default=None
+        ),
         metadata_max_output_bytes=first_int(
             args.metadata_max_output_bytes,
             config_values.get("metadata_max_output_bytes"),
             default=None,
         ),
-        metadata_redact=first_bool(args.metadata_redact, config_values.get("metadata_redact"), default=False),
+        metadata_redact=first_bool(
+            args.metadata_redact, config_values.get("metadata_redact"), default=False
+        ),
         top_reports=args.top_reports,
         cm_jobs=cm_jobs,
         jobs=args.jobs,
@@ -418,7 +463,9 @@ def build_batch_config(
         impala_profile_hosts=impala_profile_hosts,
         impala_profile_port=int(impala_profile_port or DEFAULT_IMPALA_PROFILE_PORT),
         impala_profile_scheme=impala_profile_scheme,
-        impala_profile_timeout_sec=int(impala_profile_timeout_sec or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC),
+        impala_profile_timeout_sec=int(
+            impala_profile_timeout_sec or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
+        ),
         collect_prometheus_timeseries=collect_prometheus_timeseries,
         prometheus_url=prometheus_url,
         prometheus_metrics_profile=prometheus_metrics_profile,
@@ -430,7 +477,9 @@ def build_batch_config(
     )
 
 
-def validate_jobs_config(jobs: int, *, allow_high_jobs: bool, metadata_mode: str, top_reports: int) -> None:
+def validate_jobs_config(
+    jobs: int, *, allow_high_jobs: bool, metadata_mode: str, top_reports: int
+) -> None:
     if jobs > MAX_HIGH_JOBS:
         raise ValueError(f"--jobs must be <= {MAX_HIGH_JOBS}")
     if allow_high_jobs:
@@ -438,7 +487,9 @@ def validate_jobs_config(jobs: int, *, allow_high_jobs: bool, metadata_mode: str
             raise ValueError("--allow-high-jobs requires --top-reports 0")
         return
     if jobs > MAX_JOBS:
-        raise ValueError(f"--jobs must be <= {MAX_JOBS} unless --allow-high-jobs is used with --top-reports 0")
+        raise ValueError(
+            f"--jobs must be <= {MAX_JOBS} unless --allow-high-jobs is used with --top-reports 0"
+        )
 
 
 def validate_cm_jobs_config(cm_jobs: int) -> None:
@@ -525,7 +576,9 @@ def validate_batch_output_path(out: Path, repo_root: Path) -> None:
     repo_root = repo_root.resolve()
     out = out.resolve()
     if path_is_relative_to(out, repo_root):
-        raise ValueError("--out must be outside the repository. Use /tmp or another directory outside the repository.")
+        raise ValueError(
+            "--out must be outside the repository. Use /tmp or another directory outside the repository."
+        )
     validate_not_dangerous_output_path(out)
 
 
@@ -537,19 +590,27 @@ def validate_not_dangerous_output_path(out: Path) -> None:
     if resolved == root:
         raise ValueError("--out must point to a dedicated batch directory, not filesystem root")
     if resolved in safe_temp_roots:
-        raise ValueError("--out must point to a dedicated query-doctor-* batch directory, not the temp root itself")
+        raise ValueError(
+            "--out must point to a dedicated query-doctor-* batch directory, not the temp root itself"
+        )
     if resolved == home:
         raise ValueError("--out must point to a dedicated batch directory, not the home directory")
     if resolved.parent == root:
         raise ValueError("--out path is too shallow; use a dedicated /tmp batch directory")
     if resolved.parent == home:
-        raise ValueError("--out must not be a direct child of the home directory; use /tmp or another dedicated directory")
+        raise ValueError(
+            "--out must not be a direct child of the home directory; use /tmp or another dedicated directory"
+        )
     under_safe_temp = any(path_is_relative_to(resolved, temp_root) for temp_root in safe_temp_roots)
     if not under_safe_temp:
         for system_root in system_output_roots():
             if path_is_relative_to(resolved, system_root):
-                raise ValueError("--out must not point inside a system directory; use /tmp/query-doctor-*")
-        raise ValueError("--out must be a dedicated query-doctor-* directory under /tmp or the system temp directory")
+                raise ValueError(
+                    "--out must not point inside a system directory; use /tmp/query-doctor-*"
+                )
+        raise ValueError(
+            "--out must be a dedicated query-doctor-* directory under /tmp or the system temp directory"
+        )
     if not resolved.name.startswith(SAFE_OUTPUT_PREFIX):
         raise ValueError("--out directory name must start with query-doctor-")
 
@@ -562,7 +623,9 @@ def prepare_batch_output_dir(out: Path, *, repo_root: Path, overwrite: bool) -> 
         raise ValueError("--out exists and is not a directory")
     if out.exists() and any(out.iterdir()):
         if not overwrite:
-            raise ValueError("output directory exists and is not empty; use --overwrite or choose a new /tmp path")
+            raise ValueError(
+                "output directory exists and is not empty; use --overwrite or choose a new /tmp path"
+            )
         validate_safe_overwrite_target(out, repo_root=repo_root)
         shutil.rmtree(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -608,7 +671,9 @@ def preflight(config: BatchConfig, *, env: dict[str, str], repo_root: Path) -> N
             if "/" in config.metadata_impala_shell and not shell_path.is_absolute():
                 shell_path = repo_root / shell_path
             if "/" in config.metadata_impala_shell and not shell_path.exists():
-                raise ValueError(f"metadata impala-shell is not available: {config.metadata_impala_shell}")
+                raise ValueError(
+                    f"metadata impala-shell is not available: {config.metadata_impala_shell}"
+                )
 
 
 def secret_values(env: dict[str, str]) -> list[str]:

@@ -182,6 +182,8 @@ def profile_text_looks_like_runtime_profile(text: str) -> bool:
     normalized = text[:PROFILE_MARKER_SCAN_CHARS].lower()
     if any(marker in normalized for marker in PROFILE_CONTENT_MARKERS):
         return True
-    if "query id:" in normalized and any(marker in normalized for marker in PROFILE_STRUCTURAL_MARKERS):
+    if "query id:" in normalized and any(
+        marker in normalized for marker in PROFILE_STRUCTURAL_MARKERS
+    ):
         return True
     return False

@@ -24,8 +24,7 @@ def safe_truthy(value: Any) -> bool:
 
 def safe_statement_statuses(statements: dict[Any, Any]) -> dict[str, Any]:
     return {
-        statement_display_label(key): safe_display_value(value)
-        for key, value in statements.items()
+        statement_display_label(key): safe_display_value(value) for key, value in statements.items()
     }
 
 
@@ -118,7 +117,9 @@ def batch_report_status(case: dict[str, Any]) -> str:
     return safe_display_text(validation)
 
 
-def batch_case_display_report_status(case: dict[str, Any], report_state: dict[str, Any] | None = None) -> str:
+def batch_case_display_report_status(
+    case: dict[str, Any], report_state: dict[str, Any] | None = None
+) -> str:
     if isinstance(report_state, dict):
         status = str(report_state.get("status") or "")
         if status == "generated" or report_state.get("trusted"):
@@ -137,7 +138,12 @@ def case_has_failure(case: dict[str, Any]) -> bool:
         return True
     return any(
         case.get(name) == "failed"
-        for name in ("collection_status", "analysis_status", "metadata_status", "report_validation_status")
+        for name in (
+            "collection_status",
+            "analysis_status",
+            "metadata_status",
+            "report_validation_status",
+        )
     )
 
 

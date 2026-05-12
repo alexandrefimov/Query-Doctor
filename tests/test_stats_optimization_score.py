@@ -150,7 +150,9 @@ def test_legacy_stale_stats_text_does_not_promote_stats_candidate():
         + "\n- stats_possibly_stale: supported stale stats evidence\n"
     )
 
-    result = score_stats_optimization_candidate(facts, duration_sec=120, metadata_status="collected")
+    result = score_stats_optimization_candidate(
+        facts, duration_sec=120, metadata_status="collected"
+    )
 
     assert result.need_type == "not_likely_stats_issue"
     assert result.tier in {"low", "not_likely"}
@@ -161,16 +163,22 @@ def test_legacy_stale_stats_text_does_not_promote_stats_candidate():
 def test_cardinality_mismatch_with_missing_stats_and_spill_can_be_high():
     facts = stats_facts() + "\n- spill/scratch evidence: supported\n"
 
-    result = score_stats_optimization_candidate(facts, duration_sec=120, metadata_status="collected")
+    result = score_stats_optimization_candidate(
+        facts, duration_sec=120, metadata_status="collected"
+    )
 
     assert result.tier == "high"
     assert "spill or memory pressure follows planning-sensitive operators" in result.reasons
 
 
 def test_expensive_duration_only_is_at_most_low():
-    facts = stats_facts(table_stats="available", column_stats="available", mismatch=False, planning=False)
+    facts = stats_facts(
+        table_stats="available", column_stats="available", mismatch=False, planning=False
+    )
 
-    result = score_stats_optimization_candidate(facts, duration_sec=1200, metadata_status="collected")
+    result = score_stats_optimization_candidate(
+        facts, duration_sec=1200, metadata_status="collected"
+    )
 
     assert result.tier in {"low", "not_likely"}
     assert result.score <= 35
@@ -179,7 +187,9 @@ def test_expensive_duration_only_is_at_most_low():
 def test_admission_wait_dominated_query_is_penalized():
     facts = stats_facts() + "\n- admission_wait: 80s\n"
 
-    result = score_stats_optimization_candidate(facts, duration_sec=100, metadata_status="collected")
+    result = score_stats_optimization_candidate(
+        facts, duration_sec=100, metadata_status="collected"
+    )
 
     assert result.tier in {"low", "not_likely"}
     assert "admission wait dominates runtime" in result.counter_signals
@@ -200,9 +210,14 @@ def test_failed_or_cancelled_query_without_useful_execution_is_penalized():
 
 
 def test_many_to_many_shape_with_present_stats_is_not_likely_stats_issue():
-    facts = stats_facts(table_stats="available", column_stats="available") + "\n- join row expansion: many-to-many evidence\n"
+    facts = (
+        stats_facts(table_stats="available", column_stats="available")
+        + "\n- join row expansion: many-to-many evidence\n"
+    )
 
-    result = score_stats_optimization_candidate(facts, duration_sec=120, metadata_status="collected")
+    result = score_stats_optimization_candidate(
+        facts, duration_sec=120, metadata_status="collected"
+    )
 
     assert result.tier in {"low", "not_likely"}
     assert result.need_type == "not_likely_stats_issue"

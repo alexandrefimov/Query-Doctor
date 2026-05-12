@@ -52,9 +52,7 @@ def test_cluster_context_aggregates_event_context_status_and_checks():
     ]
     assert context["signal_counts"] == {"hdfs_slow_disk_event": 2}
     assert context["signals"][0]["signal_id"] == "hdfs_slow_disk_event"
-    assert context["next_checks"] == [
-        "Check HDFS/DataNode health and recent storage warnings."
-    ]
+    assert context["next_checks"] == ["Check HDFS/DataNode health and recent storage warnings."]
 
 
 def test_cluster_context_is_inconclusive_without_sources():

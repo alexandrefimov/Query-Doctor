@@ -32,11 +32,9 @@ def render_details_inline_report_html(report_text: str) -> str:
     result = "\n".join(visible_html)
     if appendix_html:
         result += (
-            "\n<details class=\"analysis-subdetails report-appendix\" aria-label=\"LLM report details\">"
+            '\n<details class="analysis-subdetails report-appendix" aria-label="LLM report details">'
             "<summary>Detailed report and follow-up checks</summary>"
-            "<div class=\"report-body\">"
-            + "\n".join(appendix_html)
-            + "</div></details>"
+            '<div class="report-body">' + "\n".join(appendix_html) + "</div></details>"
         )
     return result
 
@@ -58,7 +56,9 @@ def split_report_markdown_h2_sections(report_text: str) -> list[tuple[str, str]]
         sections.append((current_title, current_lines))
     if not any(title for title, _lines in sections):
         return []
-    return [(title, "\n".join(lines).strip()) for title, lines in sections if "\n".join(lines).strip()]
+    return [
+        (title, "\n".join(lines).strip()) for title, lines in sections if "\n".join(lines).strip()
+    ]
 
 
 def render_report_markdown_html(markdown_text: str, *, with_heading_ids: bool = False) -> str:
@@ -72,14 +72,18 @@ def render_report_markdown_html(markdown_text: str, *, with_heading_ids: bool = 
 
     def flush_paragraph() -> None:
         if paragraph:
-            blocks.append(f"<p>{render_inline_markdown(' '.join(part.strip() for part in paragraph))}</p>")
+            blocks.append(
+                f"<p>{render_inline_markdown(' '.join(part.strip() for part in paragraph))}</p>"
+            )
             paragraph.clear()
 
     def flush_list() -> None:
         nonlocal list_type
         if list_type is not None:
             tag = "ol" if list_type == "ol" else "ul"
-            blocks.append(f"<{tag}>" + "".join(f"<li>{item}</li>" for item in list_items) + f"</{tag}>")
+            blocks.append(
+                f"<{tag}>" + "".join(f"<li>{item}</li>" for item in list_items) + f"</{tag}>"
+            )
             list_items.clear()
             list_type = None
 
@@ -140,8 +144,10 @@ def render_report_markdown_html(markdown_text: str, *, with_heading_ids: bool = 
             flush_list()
             level = len(heading_match.group(1))
             heading_counter += 1
-            heading_id = f" id=\"section-{heading_counter}\"" if with_heading_ids else ""
-            blocks.append(f"<h{level}{heading_id}>{render_inline_markdown(heading_match.group(2))}</h{level}>")
+            heading_id = f' id="section-{heading_counter}"' if with_heading_ids else ""
+            blocks.append(
+                f"<h{level}{heading_id}>{render_inline_markdown(heading_match.group(2))}</h{level}>"
+            )
             index += 1
             continue
 
@@ -223,5 +229,13 @@ def render_markdown_table(table_lines: list[str]) -> str:
     body_rows: list[str] = []
     for row in rows:
         cells = row[: len(header)] + [""] * max(0, len(header) - len(row))
-        body_rows.append("<tr>" + "".join(f"<td>{render_inline_markdown(cell)}</td>" for cell in cells) + "</tr>")
-    return "<table><thead><tr>" + header_html + "</tr></thead><tbody>" + "".join(body_rows) + "</tbody></table>"
+        body_rows.append(
+            "<tr>" + "".join(f"<td>{render_inline_markdown(cell)}</td>" for cell in cells) + "</tr>"
+        )
+    return (
+        "<table><thead><tr>"
+        + header_html
+        + "</tr></thead><tbody>"
+        + "".join(body_rows)
+        + "</tbody></table>"
+    )

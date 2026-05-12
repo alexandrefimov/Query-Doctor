@@ -51,7 +51,9 @@ def build_evidence_quality(analysis: dict[str, Any]) -> dict[str, Any]:
             score += 10
             strengths.append(f"comparable backend groups: {len(comparable_groups)}")
         else:
-            limitations.append("backend rows were parsed but comparable per-fragment work was not established")
+            limitations.append(
+                "backend rows were parsed but comparable per-fragment work was not established"
+            )
     else:
         limitations.append("backend per-host facts are unavailable")
 
@@ -76,7 +78,9 @@ def build_evidence_quality(analysis: dict[str, Any]) -> dict[str, Any]:
     metadata_status = metadata.get("table_metadata_facts")
     if metadata_status == "supported":
         score += 10
-        strengths.append(f"table metadata facts supported for {metadata.get('tables_requested', 0)} requested tables")
+        strengths.append(
+            f"table metadata facts supported for {metadata.get('tables_requested', 0)} requested tables"
+        )
     elif metadata.get("context_file") == "present":
         score += 4
         limitations.append("table metadata context is present but supported facts are incomplete")

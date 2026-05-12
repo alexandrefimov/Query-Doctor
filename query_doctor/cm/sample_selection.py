@@ -119,7 +119,9 @@ def select_sample_with_diagnostics(
             eligible,
             key=lambda item: (
                 summary_duration_sec(item) is None,
-                summary_duration_sec(item) if summary_duration_sec(item) is not None else float("inf"),
+                summary_duration_sec(item)
+                if summary_duration_sec(item) is not None
+                else float("inf"),
                 item.query_id,
             ),
         )[: config.limit]
@@ -157,7 +159,9 @@ def print_candidate_table(candidates: list[CMQuerySummary]) -> None:
         for summary in candidates
     ]
     widths = [
-        max(len(headers[index]), *(len(row[index]) for row in rows)) if rows else len(headers[index])
+        max(len(headers[index]), *(len(row[index]) for row in rows))
+        if rows
+        else len(headers[index])
         for index in range(len(headers))
     ]
     print(" | ".join(headers[index].ljust(widths[index]) for index in range(len(headers))))

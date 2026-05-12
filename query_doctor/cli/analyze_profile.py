@@ -61,9 +61,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--mem-ratio-threshold", type=float, default=4.0)
     parser.add_argument("--slow-operator-ms", type=float, default=10_000.0)
     parser.add_argument("--large-rows-threshold", type=float, default=1_000_000.0)
-    parser.add_argument("--large-bytes-threshold", type=float, default=DEFAULT_LARGE_BYTES_THRESHOLD)
+    parser.add_argument(
+        "--large-bytes-threshold", type=float, default=DEFAULT_LARGE_BYTES_THRESHOLD
+    )
     parser.add_argument("--max-evidence-lines", type=int, default=30)
-    parser.add_argument("--verbose", action="store_true", help="Include raw evidence lines and parsing details in markdown")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include raw evidence lines and parsing details in markdown",
+    )
     parser.add_argument("--stdout", action="store_true", help="Also print markdown to stdout")
     parser.add_argument(
         "--json",

@@ -56,8 +56,7 @@ def test_current_cm_timeseries_allowlist_is_defined_by_catalog():
         for mapping in cm_timeseries_mappings_for_profile(DEFAULT_CM_METRICS_PROFILE)
     )
     collector_allowlist = tuple(
-        (query.query_id, query.label, query.tsquery)
-        for query in CM_TIMESERIES_QUERY_ALLOWLIST
+        (query.query_id, query.label, query.tsquery) for query in CM_TIMESERIES_QUERY_ALLOWLIST
     )
 
     assert collector_allowlist == catalog_allowlist

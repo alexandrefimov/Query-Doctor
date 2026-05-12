@@ -198,7 +198,9 @@ def route_batch_detail_get(
         case_id = match.group("case_id")
         effective_settings, case = resolver(settings, store, case_id)
         if case is None:
-            return WebRouteResponse.html(404, render_batch_case_not_found_page(effective_settings, case_id))
+            return WebRouteResponse.html(
+                404, render_batch_case_not_found_page(effective_settings, case_id)
+            )
         detail_kwargs = kwargs_factory()
         suffix = match.group("suffix") or ""
         if suffix == "/report":
@@ -206,7 +208,9 @@ def route_batch_detail_get(
             if report is None:
                 return WebRouteResponse.html(
                     404,
-                    render_batch_case_detail_for_request(effective_settings, case_id, case, store, **detail_kwargs),
+                    render_batch_case_detail_for_request(
+                        effective_settings, case_id, case, store, **detail_kwargs
+                    ),
                 )
             return WebRouteResponse.html(
                 200,
@@ -217,12 +221,16 @@ def route_batch_detail_get(
             if report is None:
                 return WebRouteResponse.html(
                     404,
-                    render_batch_case_detail_for_request(effective_settings, case_id, case, store, **detail_kwargs),
+                    render_batch_case_detail_for_request(
+                        effective_settings, case_id, case, store, **detail_kwargs
+                    ),
                 )
             return WebRouteResponse.markdown_download(report.download_filename, report.text)
         return WebRouteResponse.html(
             200,
-            render_batch_case_detail_for_request(effective_settings, case_id, case, store, **detail_kwargs),
+            render_batch_case_detail_for_request(
+                effective_settings, case_id, case, store, **detail_kwargs
+            ),
         )
     return None
 
@@ -232,7 +240,9 @@ def route_specific_detail_get(
     settings: WebSettings,
     store: WebJobStore,
 ) -> WebRouteResponse | None:
-    match = re.fullmatch(r"/query/details/(?P<query_id>[^/]+)(?P<suffix>/report|/report\.md|/optimized-query)?", path)
+    match = re.fullmatch(
+        r"/query/details/(?P<query_id>[^/]+)(?P<suffix>/report|/report\.md|/optimized-query)?", path
+    )
     if not match:
         return None
     query_id = unquote(match.group("query_id"))
@@ -254,7 +264,9 @@ def route_specific_query_report_markdown(settings: WebSettings, query_id: str) -
     report = load_specific_query_trusted_report_artifact(validated_query_id, case_dir)
     if report is None:
         message = WebError("Validated report is not available for this query.")
-        return WebRouteResponse.html(404, render_query_page(settings, query_id=validated_query_id, error=message))
+        return WebRouteResponse.html(
+            404, render_query_page(settings, query_id=validated_query_id, error=message)
+        )
     return WebRouteResponse.markdown_download(report.download_filename, report.text)
 
 
@@ -304,9 +316,13 @@ def route_job_get(
     if job.kind in {"batch_report", "batch_llm_actions", "batch_optimized_query"}:
         return route_batch_job_detail_get(job, settings, store)
     if job.kind in {"query_report", "query_llm_actions", "query_optimized_query"}:
-        status, body = render_specific_query_detail_for_request(settings, job.query_id, store, job=job)
+        status, body = render_specific_query_detail_for_request(
+            settings, job.query_id, store, job=job
+        )
         return WebRouteResponse.html(status, body)
-    return WebRouteResponse.html(200, render_query_page(settings, report_mode=job.report_mode, job=job))
+    return WebRouteResponse.html(
+        200, render_query_page(settings, report_mode=job.report_mode, job=job)
+    )
 
 
 def route_batch_job_detail_get(
@@ -322,10 +338,14 @@ def route_batch_job_detail_get(
         effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
         detail_kwargs = {}
     if case is None:
-        return WebRouteResponse.html(404, render_batch_case_not_found_page(effective_settings, case_id))
+        return WebRouteResponse.html(
+            404, render_batch_case_not_found_page(effective_settings, case_id)
+        )
     return WebRouteResponse.html(
         200,
-        render_batch_case_detail_for_request(effective_settings, case_id, case, store, job=job, **detail_kwargs),
+        render_batch_case_detail_for_request(
+            effective_settings, case_id, case, store, job=job, **detail_kwargs
+        ),
     )
 
 
@@ -389,13 +409,21 @@ def route_batch_case_post(
     case_id = match.group("case_id")
     action = match.group("action")
     if action == "report":
-        status, body = start_batch_case_report_job(case_id, settings, store, runner=runner, source=source)
+        status, body = start_batch_case_report_job(
+            case_id, settings, store, runner=runner, source=source
+        )
     elif action == "optimized-query":
-        status, body = start_batch_case_optimized_query_job(case_id, settings, store, runner=runner, source=source)
+        status, body = start_batch_case_optimized_query_job(
+            case_id, settings, store, runner=runner, source=source
+        )
     elif action == "validate-rewrite":
-        status, body = handle_batch_case_external_rewrite_validation(case_id, settings, store, form, source=source)
+        status, body = handle_batch_case_external_rewrite_validation(
+            case_id, settings, store, form, source=source
+        )
     else:
-        status, body = start_batch_case_llm_actions_job(case_id, settings, store, runner=runner, source=source)
+        status, body = start_batch_case_llm_actions_job(
+            case_id, settings, store, runner=runner, source=source
+        )
     return WebRouteResponse.redirect(body) if status == 303 else WebRouteResponse.html(status, body)
 
 
@@ -415,9 +443,15 @@ def route_specific_query_post(
     if action == "report":
         status, body = start_specific_query_report_job(query_id, settings, store, runner=runner)
     elif action == "optimized-query":
-        status, body = start_specific_query_optimized_query_job(query_id, settings, store, runner=runner)
+        status, body = start_specific_query_optimized_query_job(
+            query_id, settings, store, runner=runner
+        )
     elif action == "validate-rewrite":
-        status, body = handle_specific_query_external_rewrite_validation(query_id, settings, store, form)
+        status, body = handle_specific_query_external_rewrite_validation(
+            query_id, settings, store, form
+        )
     else:
-        status, body = start_specific_query_llm_actions_job(query_id, settings, store, runner=runner)
+        status, body = start_specific_query_llm_actions_job(
+            query_id, settings, store, runner=runner
+        )
     return WebRouteResponse.redirect(body) if status == 303 else WebRouteResponse.html(status, body)

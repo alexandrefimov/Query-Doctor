@@ -72,11 +72,15 @@ def fetch_impala_daemon_identity(
 ) -> ImpalaDaemonIdentity | None:
     urls = endpoint_urls(hosts, port=port, scheme=scheme, path="/metrics?json")
     for metrics_url in urls:
-        identity = fetch_identity_from_metrics_url(metrics_url, timeout_sec=timeout_sec, opener=opener)
+        identity = fetch_identity_from_metrics_url(
+            metrics_url, timeout_sec=timeout_sec, opener=opener
+        )
         if identity is None:
             continue
         index_url = replace_url_path(metrics_url, "/")
-        index_identity = fetch_identity_from_index_url(index_url, timeout_sec=timeout_sec, opener=opener)
+        index_identity = fetch_identity_from_index_url(
+            index_url, timeout_sec=timeout_sec, opener=opener
+        )
         return merge_identities(identity, index_identity)
     return None
 
@@ -165,7 +169,11 @@ def identity_from_version_label(value: str) -> ImpalaDaemonIdentity:
     version_label = f"{daemon} version {version}"
     if build_type:
         version_label = f"{version_label} {build_type}"
-    product = "cloudera_impala" if re.search(r"\b(?:cdh|cdp|cloudera)\b", value, re.IGNORECASE) else "apache_impala"
+    product = (
+        "cloudera_impala"
+        if re.search(r"\b(?:cdh|cdp|cloudera)\b", value, re.IGNORECASE)
+        else "apache_impala"
+    )
     return ImpalaDaemonIdentity(
         product=product,
         daemon=daemon,

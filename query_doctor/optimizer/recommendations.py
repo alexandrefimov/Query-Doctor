@@ -5,7 +5,11 @@ from __future__ import annotations
 import os
 import re
 
-from query_doctor.optimizer.models import OptimizerActionCard, OptimizerRewriteRecipe, OptimizerRiskDecision
+from query_doctor.optimizer.models import (
+    OptimizerActionCard,
+    OptimizerRewriteRecipe,
+    OptimizerRiskDecision,
+)
 from query_doctor.optimizer.sql import collect_cte_names
 from query_doctor.optimizer.sql_shape import (
     dedupe_preserve_order,
@@ -109,7 +113,9 @@ def optimizer_mode_contract(
     )
 
 
-def optimizer_temperature(requested_temperature: float, risk_decision: OptimizerRiskDecision) -> float:
+def optimizer_temperature(
+    requested_temperature: float, risk_decision: OptimizerRiskDecision
+) -> float:
     if risk_decision.mode in {"conservative_rewrite", "recommendations_only"}:
         return 0.0
     return requested_temperature
@@ -123,9 +129,12 @@ def optimizer_prompt_rewrite_bullets(
     bullets: list[str] = []
     if rewrite_recipe:
         bullets.extend(rewrite_recipe.prompt_bullets)
-        return dedupe_preserve_order(bullets)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS + 4]
-    bullets.extend(bullet.lstrip("- ").strip() for bullet in optimizer_specific_recommendation_bullets(facts_text, risk_decision))
-    return dedupe_preserve_order(bullets)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS + 4]
+        return dedupe_preserve_order(bullets)[: MAX_OPTIMIZER_RECOMMENDATION_ITEMS + 4]
+    bullets.extend(
+        bullet.lstrip("- ").strip()
+        for bullet in optimizer_specific_recommendation_bullets(facts_text, risk_decision)
+    )
+    return dedupe_preserve_order(bullets)[: MAX_OPTIMIZER_RECOMMENDATION_ITEMS + 4]
 
 
 def build_optimizer_fact_digest(
@@ -167,7 +176,9 @@ def build_sql_shape_digest(
     result = {
         "cte_count": len(collect_cte_names(tokens)),
         "top_level_join_count": len(top_level_join_signature(source_sql)),
-        "set_operator_count": sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS),
+        "set_operator_count": sum(
+            top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS
+        ),
         "statement_token_count": len(tokens),
         "risk_mode": risk_decision.mode,
         "risk_reasons": list(risk_decision.reasons),
@@ -188,7 +199,11 @@ def optimizer_action_cards(facts_text: str, *, limit: int = 3) -> list[Optimizer
         nonlocal current_title, current_evidence, in_evidence
         operator = current_evidence.get("operator", "")
         if current_title and operator and len(cards) < limit:
-            cards.append(OptimizerActionCard(title=current_title, operator=operator, evidence=dict(current_evidence)))
+            cards.append(
+                OptimizerActionCard(
+                    title=current_title, operator=operator, evidence=dict(current_evidence)
+                )
+            )
         current_title = ""
         current_evidence = {}
         in_evidence = False
@@ -233,13 +248,17 @@ def optimizer_specific_recommendation_bullets(
             "the safe manual path is to change one CTE at a time, preserve CTE names, keep JOIN keys and filter scope stable, "
             "and verify the output columns after each step."
         )
-    if any("EXCHANGE" in card.operator.upper() for card in cards) or facts_have_finding(facts_text, "Large intermediate or exchange traffic"):
+    if any("EXCHANGE" in card.operator.upper() for card in cards) or facts_have_finding(
+        facts_text, "Large intermediate or exchange traffic"
+    ):
         bullets.append(
             "- Reduce rows/payload before EXCHANGE or other data movement first: move safe filtering, pre-aggregation, "
             "or intermediate-column pruning earlier while preserving final columns and filter scope."
         )
     bullets.extend(cluster_runtime_context_optimizer_bullets(facts_text))
-    if any(keyword in card.operator.upper() for card in cards for keyword in ("JOIN", "NESTED LOOP")):
+    if any(
+        keyword in card.operator.upper() for card in cards for keyword in ("JOIN", "NESTED LOOP")
+    ):
         bullets.append(
             "- For JOIN sections, review many-to-many amplification and input cardinality before the expensive operator; "
             "do not change join keys or join type without separate plan and result validation."
@@ -251,9 +270,9 @@ def optimizer_specific_recommendation_bullets(
         )
     if not bullets:
         bullets.extend(
-            canonical_recommendation_bullets(recommendation_candidate_lines(facts_text, language="en"))[
-                :MAX_OPTIMIZER_RECOMMENDATION_ITEMS
-            ]
+            canonical_recommendation_bullets(
+                recommendation_candidate_lines(facts_text, language="en")
+            )[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS]
         )
     return dedupe_preserve_order(bullets)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS]
 
@@ -317,11 +336,16 @@ def rewrite_target_for_operator(operator: str) -> str:
         return "manual rewrite target is reducing input rows before AGGREGATE or checking whether earlier aggregation is possible"
     if "ANALYTIC" in upper:
         return "manual rewrite target is reducing input rows/columns before ANALYTIC"
-    return "manual rewrite target is reducing input rows or intermediate payload before this operator"
+    return (
+        "manual rewrite target is reducing input rows or intermediate payload before this operator"
+    )
 
 
 def facts_have_finding(facts_text: str, title_fragment: str) -> bool:
-    return title_fragment.lower() in "\n".join(extract_report_markdown_section(facts_text, "## Findings")).lower()
+    return (
+        title_fragment.lower()
+        in "\n".join(extract_report_markdown_section(facts_text, "## Findings")).lower()
+    )
 
 
 def facts_have_cardinality_or_stats_gap(facts_text: str) -> bool:

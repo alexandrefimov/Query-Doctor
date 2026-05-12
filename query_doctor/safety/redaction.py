@@ -16,7 +16,9 @@ class SupportsSecretValues(Protocol):
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 BRACKETED_IPV6_RE = re.compile(r"\[(?P<ip>[0-9A-Fa-f:]+)\]")
-IPV6_CANDIDATE_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?P<ip>[0-9A-Fa-f:]*:[0-9A-Fa-f:.]+)(?![A-Za-z0-9_.-])")
+IPV6_CANDIDATE_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?P<ip>[0-9A-Fa-f:]*:[0-9A-Fa-f:.]+)(?![A-Za-z0-9_.-])"
+)
 URL_CREDENTIAL_RE = re.compile(r"\b(https?://)([^/\s:@]+):([^@\s/]+)@", re.IGNORECASE)
 URL_HOST_RE = re.compile(
     r"\b(https?://)(<redacted>@)?([^/\s:?#\\[]+)(:\d+)?",
@@ -36,7 +38,9 @@ USER_FIELD_RE = re.compile(
     r"(?im)^([ \t]*(?:User|Username|Effective User|Connected User|Delegated User)"
     r"[ \t]*[:=][ \t]*)([^ \t\r\n]+)"
 )
-USER_KV_RE = re.compile(r"\b(user|username)([ \t]*=[ \t]*)([A-Za-z][A-Za-z0-9_.-]*)\b", re.IGNORECASE)
+USER_KV_RE = re.compile(
+    r"\b(user|username)([ \t]*=[ \t]*)([A-Za-z][A-Za-z0-9_.-]*)\b", re.IGNORECASE
+)
 HOST_FIELD_RE = re.compile(
     r"(?im)^([ \t]*(?:Host|Hostname|Coordinator|Coordinator Host|Daemon|Impala Daemon|"
     r"Impalad|Server)[ \t]*[:=][ \t]*)([^ \t\r\n]+)"

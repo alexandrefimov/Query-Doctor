@@ -185,7 +185,9 @@ def build_cm_query_summary_page_request(
     )
     if filters.from_time is not None or filters.to_time is not None:
         if not filters.from_time or not filters.to_time:
-            raise CMAdapterError("CM query summary explicit time window requires both from_time and to_time.")
+            raise CMAdapterError(
+                "CM query summary explicit time window requires both from_time and to_time."
+            )
         from_time, to_time = filters.from_time, filters.to_time
     elif filters.since_minutes is not None:
         from_time, to_time = cm_time_window_minutes(filters.since_minutes, now=now)

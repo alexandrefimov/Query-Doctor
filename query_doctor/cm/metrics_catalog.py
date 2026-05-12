@@ -346,7 +346,9 @@ def normalize_cm_metrics_profile(profile: str | None = None) -> str:
     return normalized
 
 
-def cm_timeseries_mappings_for_profile(profile: str | None = None) -> tuple[CMTimeSeriesMapping, ...]:
+def cm_timeseries_mappings_for_profile(
+    profile: str | None = None,
+) -> tuple[CMTimeSeriesMapping, ...]:
     normalized = normalize_cm_metrics_profile(profile)
     return tuple(mapping for mapping in CM_TIMESERIES_MAPPINGS if normalized in mapping.profiles)
 

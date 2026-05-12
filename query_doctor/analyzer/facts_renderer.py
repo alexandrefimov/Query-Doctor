@@ -31,7 +31,9 @@ def md_escape(value: str) -> str:
     return value.replace("|", "\\|")
 
 
-def render_operator_table(title: str, rows: list[dict[str, Any]], max_rows: int | None = None) -> list[str]:
+def render_operator_table(
+    title: str, rows: list[dict[str, Any]], max_rows: int | None = None
+) -> list[str]:
     out = [f"## {title}", ""]
     if not rows:
         out += ["No parsed operators in this category.", ""]
@@ -59,7 +61,9 @@ def render_operator_table(title: str, rows: list[dict[str, Any]], max_rows: int 
             + " |"
         )
     if len(visible_rows) < len(rows):
-        out.append(f"| ... {len(rows) - len(visible_rows)} more in verbose output |  |  |  |  |  |  |  |")
+        out.append(
+            f"| ... {len(rows) - len(visible_rows)} more in verbose output |  |  |  |  |  |  |  |"
+        )
     out.append("")
     return out
 
@@ -100,7 +104,9 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
     features = profile.get("features") if isinstance(profile.get("features"), dict) else {}
     lines = ["## Profile Format", ""]
     lines.append(f"- family: {profile.get('profile_family') or 'unknown'}")
-    lines.append(f"- source: {profile.get('source_label') or profile.get('profile_source') or 'unknown'}")
+    lines.append(
+        f"- source: {profile.get('source_label') or profile.get('profile_source') or 'unknown'}"
+    )
     lines.append(f"- distribution: {profile.get('impala_distribution') or 'unknown'}")
     lines.append(f"- version: {profile.get('impala_version') or 'unknown'}")
     if profile.get("impala_build_type"):
@@ -164,11 +170,15 @@ def render_profile_resource_facts(analysis: dict[str, Any]) -> list[str]:
         system_time = {}
 
     lines = ["## Profile Resource Facts", ""]
-    lines.append("- guardrail: resource profile facts are deterministic context, not root-cause proof by themselves.")
+    lines.append(
+        "- guardrail: resource profile facts are deterministic context, not root-cause proof by themselves."
+    )
     lines.append(f"- admission_result: {resources.get('admission_result') or 'unknown'}")
 
     if startup.get("available"):
-        percentiles = startup.get("percentiles") if isinstance(startup.get("percentiles"), dict) else {}
+        percentiles = (
+            startup.get("percentiles") if isinstance(startup.get("percentiles"), dict) else {}
+        )
         lines.append(
             "- backend_startup_latencies: "
             f"count={startup.get('count', 0)}, "
@@ -266,7 +276,12 @@ def render_profile_timing_facts(analysis: dict[str, Any]) -> list[str]:
             f"timeline_max={fmt_duration(timeline.get('max_ms'))}"
         )
         events = lifecycle.get("events") if isinstance(lifecycle.get("events"), dict) else {}
-        for key in ("prepare_finished", "open_finished", "first_batch_produced", "exec_internal_finished"):
+        for key in (
+            "prepare_finished",
+            "open_finished",
+            "first_batch_produced",
+            "exec_internal_finished",
+        ):
             item = events.get(key)
             if not isinstance(item, dict) or not item.get("available"):
                 continue
@@ -340,8 +355,12 @@ def render_findings(analysis: dict[str, Any], verbose: bool) -> list[str]:
                     f"{op['estimated_peak_mem_human']} ({op['mem_ratio_human']})"
                 )
             if not verbose and len(finding["operators"]) > len(operators):
-                lines.append(f"  - ... {len(finding['operators']) - len(operators)} more in verbose output")
-        if finding.get("evidence_lines") and (verbose or finding.get("id") == "host_execution_tail_suspected"):
+                lines.append(
+                    f"  - ... {len(finding['operators']) - len(operators)} more in verbose output"
+                )
+        if finding.get("evidence_lines") and (
+            verbose or finding.get("id") == "host_execution_tail_suspected"
+        ):
             lines.append("- Evidence lines:")
             for ev in finding["evidence_lines"]:
                 lines.append(f"  - `{ev}`")
@@ -423,7 +442,9 @@ def render_backend_tail_evidence(analysis: dict[str, Any]) -> list[str]:
     if backend.get("write_path_candidates"):
         lines.append("- Host-specific HDFS/RPC/write path issue is suspected, not proven.")
     else:
-        lines.append("- Host-specific HDFS/RPC/write path issue is not confirmed by backend write-path counters.")
+        lines.append(
+            "- Host-specific HDFS/RPC/write path issue is not confirmed by backend write-path counters."
+        )
     lines.append("")
     return lines
 
@@ -489,6 +510,7 @@ def render_verbose_evidence(analysis: dict[str, Any]) -> list[str]:
     lines.append("")
     return lines
 
+
 def render_referenced_tables(analysis: dict[str, Any]) -> list[str]:
     lines = ["## Referenced Tables", ""]
     tables = analysis.get("referenced_tables") or []
@@ -511,12 +533,16 @@ def render_sql_context(analysis: dict[str, Any]) -> list[str]:
         lines.append("- default_database: not_observed")
     lines.append("")
     return lines
+
+
 def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False) -> str:
     totals = analysis["totals"]
     lines: list[str] = []
     lines.append("# Query Doctor deterministic analysis facts")
     lines.append("")
-    lines.append("> This file is generated by deterministic parsing/rules. The LLM report writer must not add facts that are absent here.")
+    lines.append(
+        "> This file is generated by deterministic parsing/rules. The LLM report writer must not add facts that are absent here."
+    )
     lines.append("")
 
     lines.append("## Totals")
@@ -544,10 +570,18 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     report_top_n = int(analysis.get("thresholds", {}).get("report_top_n", 10))
     max_table_rows = None if verbose else report_top_n
     lines += render_operator_table("Top operators by time", analysis["top_operators_by_time"])
-    lines += render_operator_table("Actual rows vs estimated rows anomalies", analysis["cardinality_anomalies"], max_table_rows)
-    lines += render_operator_table("Peak memory vs estimated memory anomalies", analysis["memory_anomalies"], max_table_rows)
-    lines += render_operator_table("Zero/unknown row estimate gaps", analysis["zero_row_estimate_gaps"], max_table_rows)
-    lines += render_operator_table("Zero/unknown memory estimate gaps", analysis["zero_memory_estimate_gaps"], max_table_rows)
+    lines += render_operator_table(
+        "Actual rows vs estimated rows anomalies", analysis["cardinality_anomalies"], max_table_rows
+    )
+    lines += render_operator_table(
+        "Peak memory vs estimated memory anomalies", analysis["memory_anomalies"], max_table_rows
+    )
+    lines += render_operator_table(
+        "Zero/unknown row estimate gaps", analysis["zero_row_estimate_gaps"], max_table_rows
+    )
+    lines += render_operator_table(
+        "Zero/unknown memory estimate gaps", analysis["zero_memory_estimate_gaps"], max_table_rows
+    )
 
     lines += render_sql_context(analysis)
     lines += render_referenced_tables(analysis)
@@ -573,6 +607,8 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines.append("")
 
     if verbose:
-        lines += render_operator_table("Top operators by peak memory", analysis["top_operators_by_peak_memory"])
+        lines += render_operator_table(
+            "Top operators by peak memory", analysis["top_operators_by_peak_memory"]
+        )
         lines += render_verbose_evidence(analysis)
     return "\n".join(lines)

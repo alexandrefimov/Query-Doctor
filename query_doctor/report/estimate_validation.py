@@ -126,7 +126,9 @@ def mentions_contradicted_row_underestimated_operator(
             for operator, direction in directions.items()
             if operator_type_name(operator) == operator_type
         ]
-        if matching_directions and all(direction == "overestimated" for direction in matching_directions):
+        if matching_directions and all(
+            direction == "overestimated" for direction in matching_directions
+        ):
             errors.append(
                 "row/cardinality underestimation claim contradicts parsed facts "
                 f"for {operator_type}: all parsed actual/estimated row ratios are below 1"
@@ -149,7 +151,11 @@ def find_contradicted_row_underestimation_claims(report_text: str, facts_text: s
         if MARKDOWN_HEADING_RE.match(line):
             row_underestimation_context = False
             row_underestimation_context_from_heading = False
-        elif starts_new_top_level_item(line) and not has_claim and not row_underestimation_context_from_heading:
+        elif (
+            starts_new_top_level_item(line)
+            and not has_claim
+            and not row_underestimation_context_from_heading
+        ):
             row_underestimation_context = False
             row_underestimation_context_from_heading = False
 
@@ -221,7 +227,9 @@ def mentions_contradicted_memory_underestimated_operator(
             for operator, direction in directions.items()
             if operator_type_name(operator) == operator_type
         ]
-        if matching_directions and all(direction == "overestimated" for direction in matching_directions):
+        if matching_directions and all(
+            direction == "overestimated" for direction in matching_directions
+        ):
             errors.append(
                 "memory underestimation claim contradicts parsed facts "
                 f"for {operator_type}: all parsed actual/estimated memory ratios are below 1"
@@ -267,7 +275,9 @@ def mentions_contradicted_memory_overestimated_operator(
             for operator, direction in directions.items()
             if operator_type_name(operator) == operator_type
         ]
-        if matching_directions and all(direction == "underestimated" for direction in matching_directions):
+        if matching_directions and all(
+            direction == "underestimated" for direction in matching_directions
+        ):
             errors.append(
                 "memory overestimation claim contradicts parsed facts "
                 f"for {operator_type}: all parsed actual/estimated memory ratios are above 1"
@@ -290,8 +300,12 @@ def find_contradicted_memory_underestimation_claims(report_text: str, facts_text
             continue
         if directions:
             before = len(errors)
-            errors.extend(mentions_contradicted_memory_underestimated_operator(line, directions, seen))
-            if len(errors) == before and all(direction != "underestimated" for direction in directions.values()):
+            errors.extend(
+                mentions_contradicted_memory_underestimated_operator(line, directions, seen)
+            )
+            if len(errors) == before and all(
+                direction != "underestimated" for direction in directions.values()
+            ):
                 errors.append(
                     "memory underestimation claim is unsupported: all parsed actual/estimated memory ratios are at or below 1"
                 )
@@ -312,8 +326,12 @@ def find_contradicted_memory_overestimation_claims(report_text: str, facts_text:
             continue
         if directions:
             before = len(errors)
-            errors.extend(mentions_contradicted_memory_overestimated_operator(line, directions, seen))
-            if len(errors) == before and all(direction != "overestimated" for direction in directions.values()):
+            errors.extend(
+                mentions_contradicted_memory_overestimated_operator(line, directions, seen)
+            )
+            if len(errors) == before and all(
+                direction != "overestimated" for direction in directions.values()
+            ):
                 errors.append(
                     "memory overestimation claim is unsupported: all parsed actual/estimated memory ratios are at or above 1"
                 )

@@ -42,7 +42,9 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
         lines.extend([f"### Table: {table['table']}", ""])
         lines.append(f"- object type: {table.get('object_type', 'unknown')}")
         for statement in ("SHOW CREATE TABLE", "SHOW TABLE STATS", "SHOW COLUMN STATS"):
-            lines.append(f"- {statement} status: {table.get('statements', {}).get(statement, 'unknown')}")
+            lines.append(
+                f"- {statement} status: {table.get('statements', {}).get(statement, 'unknown')}"
+            )
         lines.append(f"- table stats rows: {table.get('table_rows', 'unknown')}")
         lines.append(
             "- table stats row-count completeness: "
@@ -73,7 +75,9 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
             f"- column stats completeness: {table.get('column_stats_completeness', 'unknown')}"
         )
         if has_column_stats_status_counts(table):
-            lines.append(f"- column stats complete columns: {int_value(table.get('column_stats_complete_columns'))}")
+            lines.append(
+                f"- column stats complete columns: {int_value(table.get('column_stats_complete_columns'))}"
+            )
             lines.append(
                 "- column stats NDV-missing columns: "
                 f"{int_value(table.get('column_stats_ndv_missing_columns'))}"
@@ -88,11 +92,15 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
             )
         columns = table.get("column_stats_columns") or []
         if columns:
-            lines.append("- column stats columns: " + ", ".join(f"`{column}`" for column in columns))
+            lines.append(
+                "- column stats columns: " + ", ".join(f"`{column}`" for column in columns)
+            )
         lines.append(f"- file format: {table.get('file_format', 'unknown')}")
         partitions = table.get("partition_columns") or []
         if partitions:
-            lines.append("- partition columns: " + ", ".join(f"`{column}`" for column in partitions))
+            lines.append(
+                "- partition columns: " + ", ".join(f"`{column}`" for column in partitions)
+            )
         else:
             lines.append("- partition columns: unknown")
         lines.append("")
@@ -145,7 +153,9 @@ def render_stats_metadata_quality(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
-def stats_metadata_quality(context: dict[str, Any], analysis: dict[str, Any] | None = None) -> dict[str, Any]:
+def stats_metadata_quality(
+    context: dict[str, Any], analysis: dict[str, Any] | None = None
+) -> dict[str, Any]:
     tables = [table for table in context.get("tables") or [] if isinstance(table, dict)]
     analysis_facts = analysis if isinstance(analysis, dict) else {}
     row_estimate_issue_count = len(analysis_facts.get("cardinality_anomalies") or []) + len(
@@ -190,33 +200,53 @@ def stats_metadata_quality(context: dict[str, Any], analysis: dict[str, Any] | N
             "guardrail": "Stats quality is follow-up evidence, not a standalone root cause.",
         }
 
-    table_values = [stats_value(table.get("table_stats_row_count_completeness")) for table in tables]
+    table_values = [
+        stats_value(table.get("table_stats_row_count_completeness")) for table in tables
+    ]
     column_values = [stats_value(table.get("column_stats_completeness")) for table in tables]
-    missing_table_stats = sum(1 for value in table_values if value in {"missing/unknown", "missing", "unknown"})
+    missing_table_stats = sum(
+        1 for value in table_values if value in {"missing/unknown", "missing", "unknown"}
+    )
     incomplete_column_stats = sum(
         1 for value in column_values if value in {"incomplete/unknown", "incomplete", "unknown"}
     )
     table_stats = aggregate_stats_status(table_values, good_value="available")
     column_stats = aggregate_stats_status(column_values, good_value="complete")
-    column_stats_complete_columns = sum(int_value(table.get("column_stats_complete_columns")) for table in tables)
-    column_stats_ndv_missing_columns = sum(int_value(table.get("column_stats_ndv_missing_columns")) for table in tables)
-    column_stats_size_missing_columns = sum(int_value(table.get("column_stats_size_missing_columns")) for table in tables)
-    column_stats_all_missing_columns = sum(int_value(table.get("column_stats_all_missing_columns")) for table in tables)
+    column_stats_complete_columns = sum(
+        int_value(table.get("column_stats_complete_columns")) for table in tables
+    )
+    column_stats_ndv_missing_columns = sum(
+        int_value(table.get("column_stats_ndv_missing_columns")) for table in tables
+    )
+    column_stats_size_missing_columns = sum(
+        int_value(table.get("column_stats_size_missing_columns")) for table in tables
+    )
+    column_stats_all_missing_columns = sum(
+        int_value(table.get("column_stats_all_missing_columns")) for table in tables
+    )
     partitioned_tables = sum(1 for table in tables if has_partition_columns(table))
     partitioned_tables_with_missing_table_stats = sum(
         1
         for table, value in zip(tables, table_values)
         if has_partition_columns(table) and value in {"missing/unknown", "missing", "unknown"}
     )
-    partition_count = sum(int_value(table.get("partition_count")) for table in tables if has_partition_columns(table))
+    partition_count = sum(
+        int_value(table.get("partition_count")) for table in tables if has_partition_columns(table)
+    )
     partitions_with_known_row_count = sum(
-        int_value(table.get("partitions_with_known_row_count")) for table in tables if has_partition_columns(table)
+        int_value(table.get("partitions_with_known_row_count"))
+        for table in tables
+        if has_partition_columns(table)
     )
     partitions_with_unknown_row_count = sum(
-        int_value(table.get("partitions_with_unknown_row_count")) for table in tables if has_partition_columns(table)
+        int_value(table.get("partitions_with_unknown_row_count"))
+        for table in tables
+        if has_partition_columns(table)
     )
     partitions_with_zero_row_count = sum(
-        int_value(table.get("partitions_with_zero_row_count")) for table in tables if has_partition_columns(table)
+        int_value(table.get("partitions_with_zero_row_count"))
+        for table in tables
+        if has_partition_columns(table)
     )
     partition_coverage = partition_stats_coverage(
         partitioned_tables,
@@ -226,13 +256,21 @@ def stats_metadata_quality(context: dict[str, Any], analysis: dict[str, Any] | N
         partitions_with_known_row_count=partitions_with_known_row_count,
         partitions_with_unknown_row_count=partitions_with_unknown_row_count,
     )
-    sql_column_context = analysis_facts.get("sql_column_context") if isinstance(analysis_facts, dict) else {}
+    sql_column_context = (
+        analysis_facts.get("sql_column_context") if isinstance(analysis_facts, dict) else {}
+    )
     sql_column_context = sql_column_context if isinstance(sql_column_context, dict) else {}
     join_filter_relevance = str(sql_column_context.get("join_filter_column_relevance") or "unknown")
     join_filter_columns_observed = int_value(sql_column_context.get("join_filter_columns_observed"))
-    join_filter_columns_with_stats = int_value(sql_column_context.get("join_filter_columns_with_stats"))
-    join_filter_columns_without_stats = int_value(sql_column_context.get("join_filter_columns_without_stats"))
-    join_filter_columns_with_complete_stats = int_value(sql_column_context.get("join_filter_columns_with_complete_stats"))
+    join_filter_columns_with_stats = int_value(
+        sql_column_context.get("join_filter_columns_with_stats")
+    )
+    join_filter_columns_without_stats = int_value(
+        sql_column_context.get("join_filter_columns_without_stats")
+    )
+    join_filter_columns_with_complete_stats = int_value(
+        sql_column_context.get("join_filter_columns_with_complete_stats")
+    )
     join_filter_columns_with_ndv_missing_stats = int_value(
         sql_column_context.get("join_filter_columns_with_ndv_missing_stats")
     )
@@ -242,8 +280,12 @@ def stats_metadata_quality(context: dict[str, Any], analysis: dict[str, Any] | N
     join_filter_columns_with_all_missing_stats = int_value(
         sql_column_context.get("join_filter_columns_with_all_missing_stats")
     )
-    join_filter_columns_with_unknown_stats = int_value(sql_column_context.get("join_filter_columns_with_unknown_stats"))
-    join_filter_partition_columns = int_value(sql_column_context.get("join_filter_partition_columns"))
+    join_filter_columns_with_unknown_stats = int_value(
+        sql_column_context.get("join_filter_columns_with_unknown_stats")
+    )
+    join_filter_partition_columns = int_value(
+        sql_column_context.get("join_filter_partition_columns")
+    )
     non_stats_categories = non_stats_bottleneck_categories(analysis_facts)
     non_stats_signal_count = len(non_stats_categories)
     non_stats_category_label = ", ".join(non_stats_categories) if non_stats_categories else "none"
@@ -288,7 +330,9 @@ def stats_metadata_quality(context: dict[str, Any], analysis: dict[str, Any] | N
                 )
         else:
             stats_context = "stats_available_no_row_estimate_evidence"
-            interpretation = "Collected metadata shows available table stats and complete column stats."
+            interpretation = (
+                "Collected metadata shows available table stats and complete column stats."
+            )
             stats_primary_bottleneck = "not_supported"
     else:
         status = "unknown"
@@ -357,7 +401,10 @@ def aggregate_stats_status(values: list[str], *, good_value: str) -> str:
         return good_value
     if unique <= {good_value, "not_available", "not_applicable"}:
         return "mixed"
-    if any(value in {"missing/unknown", "missing", "unknown", "incomplete/unknown", "incomplete"} for value in values):
+    if any(
+        value in {"missing/unknown", "missing", "unknown", "incomplete/unknown", "incomplete"}
+        for value in values
+    ):
         return "incomplete_or_unknown"
     return "mixed"
 
@@ -366,7 +413,9 @@ def has_partition_columns(table: dict[str, Any]) -> bool:
     partitions = table.get("partition_columns")
     if not isinstance(partitions, list):
         return False
-    return any(str(column or "").strip().lower() not in {"", "unknown", "none"} for column in partitions)
+    return any(
+        str(column or "").strip().lower() not in {"", "unknown", "none"} for column in partitions
+    )
 
 
 def has_partition_row_count_facts(table: dict[str, Any]) -> bool:

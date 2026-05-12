@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import re
 
-from query_doctor.report.contract import NEXT_CHECKS_HEADING, NOT_SUPPORTED_HEADING, SHORT_SUMMARY_HEADING
+from query_doctor.report.contract import (
+    NEXT_CHECKS_HEADING,
+    NOT_SUPPORTED_HEADING,
+    SHORT_SUMMARY_HEADING,
+)
 from query_doctor.report.recommendations import insert_bullets_into_section
 
 
@@ -101,7 +105,11 @@ def move_misplaced_zero_cardinality_note(
         stripped = line.strip()
         if stripped == not_supported_heading:
             in_not_supported = True
-        elif stripped.startswith("## ") or stripped.startswith("### ") or stripped in {"<details>", "</details>"}:
+        elif (
+            stripped.startswith("## ")
+            or stripped.startswith("### ")
+            or stripped in {"<details>", "</details>"}
+        ):
             in_not_supported = False
         if stripped == zero_cardinality_bullet and not in_not_supported:
             removed = True
@@ -109,7 +117,9 @@ def move_misplaced_zero_cardinality_note(
         cleaned.append(line)
     if not removed:
         return text
-    return insert_bullets_into_section("\n".join(cleaned), not_supported_heading, [zero_cardinality_bullet])
+    return insert_bullets_into_section(
+        "\n".join(cleaned), not_supported_heading, [zero_cardinality_bullet]
+    )
 
 
 def normalize_report_headings(text: str, replacements: dict[str, str]) -> str:

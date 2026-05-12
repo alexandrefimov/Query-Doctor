@@ -86,7 +86,10 @@ def stop_other_ollama_models(
 
     loaded_models = parse_ollama_ps_models(ps.stdout)
     if loaded_models is None:
-        print(f"{PROGRESS_PREFIX} warning: could not parse ollama ps output; continuing", file=sys.stderr)
+        print(
+            f"{PROGRESS_PREFIX} warning: could not parse ollama ps output; continuing",
+            file=sys.stderr,
+        )
         return []
 
     stopped: list[str] = []
@@ -101,7 +104,10 @@ def stop_other_ollama_models(
         )
         if stop.returncode != 0:
             err = (stop.stderr or stop.stdout or "").strip()
-            print(f"{PROGRESS_PREFIX} warning: ollama stop {model_name!r} failed: {err}", file=sys.stderr)
+            print(
+                f"{PROGRESS_PREFIX} warning: ollama stop {model_name!r} failed: {err}",
+                file=sys.stderr,
+            )
             continue
         stopped.append(model_name)
     return stopped

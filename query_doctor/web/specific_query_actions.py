@@ -68,7 +68,9 @@ def start_specific_query_report_job(
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
         cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
-        report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store)
+        report_state = load_specific_query_report_state(
+            settings, validated_query_id, case_dir, job_store
+        )
         return 400, render_page(
             settings,
             active_nav="query",
@@ -90,7 +92,9 @@ def start_specific_query_report_job(
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
         cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
-        report_state = load_specific_query_report_state(settings, validated_query_id, case_dir, job_store)
+        report_state = load_specific_query_report_state(
+            settings, validated_query_id, case_dir, job_store
+        )
         return 400, render_page(
             settings,
             active_nav="query",
@@ -141,7 +145,9 @@ def start_specific_query_optimized_query_job(
         cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
         runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
         cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
-        optimized_query_state = load_optimized_query_state(case_dir, job_store, query_id=validated_query_id)
+        optimized_query_state = load_optimized_query_state(
+            case_dir, job_store, query_id=validated_query_id
+        )
         return 400, render_page(
             settings,
             active_nav="query",

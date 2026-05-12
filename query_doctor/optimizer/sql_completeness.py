@@ -49,7 +49,10 @@ def sql_completeness_errors(sql: str) -> list[str]:
             trailing = statement_tokens[-1].upper()
             if trailing in INCOMPLETE_TRAILING_TOKENS:
                 errors.append("optimized draft appears incomplete")
-            if statement_tokens[0].upper() == "WITH" and find_top_level_token(statement_tokens, "SELECT", start=1) is None:
+            if (
+                statement_tokens[0].upper() == "WITH"
+                and find_top_level_token(statement_tokens, "SELECT", start=1) is None
+            ):
                 errors.append("optimized draft WITH query is missing its final SELECT")
     return dedupe_preserve_order(errors)
 

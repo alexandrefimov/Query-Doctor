@@ -6,11 +6,7 @@ from web_server_test_support import load_web_module
 def test_web_readme_page_uses_curated_help_instead_of_repository_readme(tmp_path):
     module = load_web_module()
     (tmp_path / "README.md").write_text(
-        "# Local README\n\n"
-        "Intro with <script>alert(1)</script>.\n\n"
-        "```sh\n"
-        "echo <safe>\n"
-        "```\n",
+        "# Local README\n\nIntro with <script>alert(1)</script>.\n\n```sh\necho <safe>\n```\n",
         encoding="utf-8",
     )
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"), repo_dir=tmp_path)

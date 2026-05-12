@@ -216,7 +216,9 @@ def test_stats_metadata_quality_renders_counts_without_table_names():
     assert "- non_stats_bottleneck_categories: none" in text
     assert "- stats_primary_bottleneck: candidate_supported" in text
     assert "- stats_context: stats_gap_with_row_estimate_evidence" in text
-    assert "Missing or incomplete stats coverage aligns with row-estimate mismatch evidence." in text
+    assert (
+        "Missing or incomplete stats coverage aligns with row-estimate mismatch evidence." in text
+    )
     assert "db.fact_orders" not in text
     assert "db.dim_customer" not in text
 

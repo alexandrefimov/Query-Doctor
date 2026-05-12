@@ -90,10 +90,14 @@ def check_common_security_headers(
 ) -> None:
     for name, expected in SECURITY_HEADERS.items():
         actual = header_value(response, name)
-        require(actual == expected, f"{label}: expected {name}: {expected!r}, got {actual!r}", failures)
+        require(
+            actual == expected, f"{label}: expected {name}: {expected!r}, got {actual!r}", failures
+        )
     csp = header_value(response, "content-security-policy")
     require(csp, f"{label}: missing Content-Security-Policy", failures)
-    require("'unsafe-inline'" not in csp, f"{label}: CSP must not contain 'unsafe-inline'", failures)
+    require(
+        "'unsafe-inline'" not in csp, f"{label}: CSP must not contain 'unsafe-inline'", failures
+    )
     for directive in (
         "default-src 'self'",
         "img-src 'self' data:",
@@ -129,9 +133,21 @@ def check_home(response: HttpResponse, failures: list[str]) -> None:
     check_common_security_headers(response, label, failures)
     check_content_length(response, label, failures)
     body = response.text
-    require('<link rel="stylesheet" href="/static/app.css">' in body, f"{label}: missing app.css link", failures)
-    require('<script src="/static/theme-bootstrap.js"></script>' in body, f"{label}: missing theme bootstrap script", failures)
-    require('<script src="/static/app.js"></script>' in body, f"{label}: missing app.js script", failures)
+    require(
+        '<link rel="stylesheet" href="/static/app.css">' in body,
+        f"{label}: missing app.css link",
+        failures,
+    )
+    require(
+        '<script src="/static/theme-bootstrap.js"></script>' in body,
+        f"{label}: missing theme bootstrap script",
+        failures,
+    )
+    require(
+        '<script src="/static/app.js"></script>' in body,
+        f"{label}: missing app.js script",
+        failures,
+    )
     require("<style>" not in body, f"{label}: unexpected inline <style>", failures)
     require("color-scheme:light" not in body, f"{label}: product CSS leaked inline", failures)
 
@@ -157,7 +173,9 @@ def check_static_asset(
 
 def check_static_rejection(response: HttpResponse, path: str, failures: list[str]) -> None:
     label = f"GET {path}"
-    require(response.status in {400, 404}, f"{label}: expected 400/404, got {response.status}", failures)
+    require(
+        response.status in {400, 404}, f"{label}: expected 400/404, got {response.status}", failures
+    )
     for forbidden in FORBIDDEN_STATIC_LEAKS:
         require(forbidden not in response.text, f"{label}: response leaked {forbidden!r}", failures)
 

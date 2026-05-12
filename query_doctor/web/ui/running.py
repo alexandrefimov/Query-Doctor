@@ -106,8 +106,12 @@ def render_running_queries_run_panel(
             config_key="recent_metadata_jobs",
             fallback=WEB_RECENT_SCAN_DEFAULTS["metadata_jobs"],
         ),
-        "user": form_or_config_value(form_values, "user", config_values=local_config, config_key="recent_user"),
-        "pool": form_or_config_value(form_values, "pool", config_values=local_config, config_key="recent_pool"),
+        "user": form_or_config_value(
+            form_values, "user", config_values=local_config, config_key="recent_user"
+        ),
+        "pool": form_or_config_value(
+            form_values, "pool", config_values=local_config, config_key="recent_pool"
+        ),
     }
     if form_values:
         values.update(form_values)
@@ -120,41 +124,45 @@ def render_running_queries_run_panel(
     def value(name: str) -> str:
         return html.escape(str(values.get(name, "")), quote=True)
 
-    metadata_note = "" if metadata_configured else "Metadata collection is not configured for this web session."
-    metadata_note_html = f"<div class=\"batch-note\">{html.escape(metadata_note)}</div>" if metadata_note else ""
+    metadata_note = (
+        "" if metadata_configured else "Metadata collection is not configured for this web session."
+    )
+    metadata_note_html = (
+        f'<div class="batch-note">{html.escape(metadata_note)}</div>' if metadata_note else ""
+    )
     button_disabled = " disabled" if run_disabled else ""
     button_label = "Running" if run_disabled else "Run scan"
     return (
-        "<section class=\"panel batch-run-panel\" aria-label=\"Run running query scan\">"
-        "<div class=\"section-heading\"><div>"
-        "<h1 class=\"section-title\">Running Queries</h1>"
-        "<div class=\"section-kicker\">Scan currently running Impala queries from the selected source.</div>"
+        '<section class="panel batch-run-panel" aria-label="Run running query scan">'
+        '<div class="section-heading"><div>'
+        '<h1 class="section-title">Running Queries</h1>'
+        '<div class="section-kicker">Scan currently running Impala queries from the selected source.</div>'
         "</div></div>"
-        "<form id=\"running-form\" class=\"batch-form\" method=\"post\" action=\"/running/run\">"
+        '<form id="running-form" class="batch-form" method="post" action="/running/run">'
         f"{metadata_note_html}"
-        "<div class=\"scope-line\" aria-label=\"Running query collection scope\">"
+        '<div class="scope-line" aria-label="Running query collection scope">'
         "<strong>Scope:</strong> current running query summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM. "
         "Runtime context is collected automatically when the selected source supports it."
         "</div>"
         f"{render_running_scan_framing_note()}"
-        "<div class=\"batch-form-sections\">"
-        "<fieldset class=\"batch-form-section\"><legend>Query filters</legend>"
-        "<div class=\"batch-form-grid\">"
+        '<div class="batch-form-sections">'
+        '<fieldset class="batch-form-section"><legend>Query filters</legend>'
+        '<div class="batch-form-grid">'
         f"{render_cluster_select(settings, value('cluster_key'), field_id='running_cluster_key')}"
         f"{render_batch_number_field('min_duration_sec', 'Minimum duration (sec)', value('min_duration_sec'), step='0.001', required=False, help_text='Only include running queries at least this long. Empty means no duration filter.')}"
         f"{render_batch_text_field('user', 'Username', value('user'), help_text='Optional exact query user filter. Empty means all users.')}"
         f"{render_batch_text_field('pool', 'Resource pool', value('pool'), help_text='Optional resource pool filter. Empty means all pools.')}"
         "</div>"
         "</fieldset>"
-        "<fieldset class=\"batch-form-section\"><legend>Analysis settings</legend>"
-        "<div class=\"batch-form-grid\">"
+        '<fieldset class="batch-form-section"><legend>Analysis settings</legend>'
+        '<div class="batch-form-grid">'
         f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for profile downloads and local analysis. Hard cap: 100.')}"
         f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
         "</div>"
         "</fieldset>"
         "</div>"
-        "<div class=\"batch-actions\">"
-        f"<button class=\"run-button\" type=\"submit\"{button_disabled}>{button_label}</button>"
+        '<div class="batch-actions">'
+        f'<button class="run-button" type="submit"{button_disabled}>{button_label}</button>'
         "</div>"
         "</form></section>"
     )

@@ -169,10 +169,14 @@ def safe_limitations(value: object) -> list[str]:
             limitations.append(DISPLAY_LIMITATION_TEXT.get(item, item))
             continue
         if item.startswith("CM events were unavailable:"):
-            limitations.append("Cluster event context was unavailable from the configured provider.")
+            limitations.append(
+                "Cluster event context was unavailable from the configured provider."
+            )
             continue
         if UNSAFE_LIMITATION_RE.search(item):
-            limitations.append("A provider limitation was omitted because it contained raw details.")
+            limitations.append(
+                "A provider limitation was omitted because it contained raw details."
+            )
             continue
         if 0 < len(item) <= 180:
             limitations.append(item)

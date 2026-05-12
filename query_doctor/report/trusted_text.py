@@ -174,8 +174,10 @@ def sanitize_report_text(report_text: str, facts_text: str, *, language: str = "
         line = direction_normalized
         is_not_supported = current_section == contract.not_supported_heading
         is_structure_line = line.startswith("#") or line.startswith(">") or not line.strip()
-        if not is_structure_line and not is_not_supported and should_drop_zero_cardinality_positive_claim(
-            line, facts_text
+        if (
+            not is_structure_line
+            and not is_not_supported
+            and should_drop_zero_cardinality_positive_claim(line, facts_text)
         ):
             line = contract.zero_cardinality_not_supported_bullet
         if (
@@ -186,7 +188,9 @@ def sanitize_report_text(report_text: str, facts_text: str, *, language: str = "
                 or should_rewrite_spill_storage_line(line)
             )
         ):
-            stripped = strip_unsupported_prose(line, current_section, facts_text, report_contract=contract)
+            stripped = strip_unsupported_prose(
+                line, current_section, facts_text, report_contract=contract
+            )
             if stripped is None:
                 continue
             line = stripped
@@ -217,7 +221,9 @@ def facts_include_referenced_tables(facts_text: str) -> bool:
     return False
 
 
-def validate_report_against_facts(report_text: str, facts_text: str, *, language: str = "ru") -> list[str]:
+def validate_report_against_facts(
+    report_text: str, facts_text: str, *, language: str = "ru"
+) -> list[str]:
     contract = get_report_language_contract(language)
     errors: list[str] = []
     cardinality_count = facts_cardinality_anomaly_count(facts_text)
@@ -293,7 +299,9 @@ def enforce_user_report_requirements(text: str, facts_text: str, *, language: st
     return enforce_admin_report_requirements(text, facts_text, language=language)
 
 
-def enforce_admin_report_requirements(text: str, facts_text: str = "", *, language: str = "ru") -> str:
+def enforce_admin_report_requirements(
+    text: str, facts_text: str = "", *, language: str = "ru"
+) -> str:
     contract = get_report_language_contract(language)
 
     def localized(ru_text: str, en_text: str) -> str:
@@ -316,10 +324,14 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "", *, langua
     )
     metrics_evidence_bullet = cm_metrics_report_evidence_bullet(facts_text)
     if metrics_evidence_bullet:
-        text = insert_bullets_into_section(text, contract.evidence_heading, [metrics_evidence_bullet])
+        text = insert_bullets_into_section(
+            text, contract.evidence_heading, [metrics_evidence_bullet]
+        )
     cluster_runtime_bullet = cluster_runtime_context_report_evidence_bullet(facts_text)
     if cluster_runtime_bullet:
-        text = insert_bullets_into_section(text, contract.evidence_heading, [cluster_runtime_bullet])
+        text = insert_bullets_into_section(
+            text, contract.evidence_heading, [cluster_runtime_bullet]
+        )
     cluster_event_bullet = cluster_event_context_report_evidence_bullet(facts_text)
     if cluster_event_bullet:
         text = insert_bullets_into_section(text, contract.evidence_heading, [cluster_event_bullet])
@@ -361,7 +373,9 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "", *, langua
             )
         )
     memory_count = facts_memory_anomaly_count(facts_text)
-    if facts_have_admission_or_pool_evidence(facts_text) or (memory_count is not None and memory_count > 0):
+    if facts_have_admission_or_pool_evidence(facts_text) or (
+        memory_count is not None and memory_count > 0
+    ):
         admin_bullet_rules.append(
             (
                 localized(
@@ -405,7 +419,9 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "", *, langua
                     "RowsProduced, BytesRead/BytesWritten and rates for the tail host and peers."
                 ),
             )
-            backend_tail_patterns = (r"Backend\s*/\s*Host\s+Tail\s+Evidence|execution\s+tail|tail\s+host",)
+            backend_tail_patterns = (
+                r"Backend\s*/\s*Host\s+Tail\s+Evidence|execution\s+tail|tail\s+host",
+            )
         else:
             backend_tail_bullet = localized(
                 (
@@ -440,18 +456,24 @@ def enforce_admin_report_requirements(text: str, facts_text: str = "", *, langua
     )
 
 
-def normalize_report_file(path: Path, *, facts_text: str = "", mode: str = "admin", language: str = "ru") -> None:
+def normalize_report_file(
+    path: Path, *, facts_text: str = "", mode: str = "admin", language: str = "ru"
+) -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
     text = normalize_report_text(text, facts_text=facts_text, mode=mode, language=language)
     path.write_text(text, encoding="utf-8")
 
 
-def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin", language: str = "ru") -> str:
+def normalize_report_text(
+    text: str, *, facts_text: str = "", mode: str = "admin", language: str = "ru"
+) -> str:
     contract = get_report_language_contract(language)
     text = sanitize_report_text(text, facts_text, language=language)
     text = normalize_report_headings(text, contract.detail_heading_rewrite)
     text = remove_report_html_blocks(text)
-    text = remove_negative_caveats_from_short_summary(text, short_summary_heading=contract.short_summary_heading)
+    text = remove_negative_caveats_from_short_summary(
+        text, short_summary_heading=contract.short_summary_heading
+    )
     text = normalize_practical_recommendations(
         text,
         facts_text,
@@ -459,7 +481,9 @@ def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin
         next_checks_heading=contract.next_checks_heading,
         language=language,
     )
-    text = move_misplaced_admin_bullets_into_admin_section(text, next_checks_heading=contract.next_checks_heading)
+    text = move_misplaced_admin_bullets_into_admin_section(
+        text, next_checks_heading=contract.next_checks_heading
+    )
     text = move_misplaced_zero_cardinality_note(
         text,
         not_supported_heading=contract.not_supported_heading,
@@ -477,7 +501,9 @@ def normalize_report_text(text: str, *, facts_text: str = "", mode: str = "admin
         next_checks_heading=contract.next_checks_heading,
         language=language,
     )
-    text = move_misplaced_admin_bullets_into_admin_section(text, next_checks_heading=contract.next_checks_heading)
+    text = move_misplaced_admin_bullets_into_admin_section(
+        text, next_checks_heading=contract.next_checks_heading
+    )
     text = move_misplaced_zero_cardinality_note(
         text,
         not_supported_heading=contract.not_supported_heading,
@@ -501,11 +527,7 @@ def validate_report_text(
     if len(stripped) < min_chars:
         errors.append(f"report is too short: {len(stripped)} chars, minimum is {min_chars}")
 
-    section_lines = [
-        line.strip()
-        for line in text.splitlines()
-        if line.startswith("#")
-    ]
+    section_lines = [line.strip() for line in text.splitlines() if line.startswith("#")]
     if len(section_lines) < min_sections:
         errors.append(
             f"report has too few markdown sections: {len(section_lines)}, minimum is {min_sections}"
@@ -522,13 +544,15 @@ def validate_report_text(
 
     short_summary_items = count_report_section_items(text, contract.short_summary_heading)
     if short_summary_items is not None and not 2 <= short_summary_items <= 6:
-        errors.append(
-            f"short summary must contain 2-6 concise items, found {short_summary_items}"
-        )
+        errors.append(f"short summary must contain 2-6 concise items, found {short_summary_items}")
     errors.extend(validate_report_html_safety(text))
     errors.extend(validate_report_internal_fingerprints(text))
     errors.extend(validate_report_language_safety(text, language=language))
-    errors.extend(validate_recommendations_section(text, recommendations_heading=contract.recommendations_heading))
+    errors.extend(
+        validate_recommendations_section(
+            text, recommendations_heading=contract.recommendations_heading
+        )
+    )
 
     if contains_raw_sql_like_text(text):
         errors.append("report contains SQL-like text that is not allowed in trusted output")
@@ -539,7 +563,9 @@ def validate_report_text(
     return errors
 
 
-def validate_report_safety_text(text: str, *, facts_text: str = "", language: str = "ru") -> list[str]:
+def validate_report_safety_text(
+    text: str, *, facts_text: str = "", language: str = "ru"
+) -> list[str]:
     errors: list[str] = []
     errors.extend(validate_report_html_safety(text))
     errors.extend(validate_report_internal_fingerprints(text))
@@ -565,6 +591,8 @@ def validate_report_for_mode(
     return validate_report_text(text, facts_text=facts_text, language=language)
 
 
-def validate_report_file(output_path: Path, *, facts_text: str = "", language: str = "ru") -> list[str]:
+def validate_report_file(
+    output_path: Path, *, facts_text: str = "", language: str = "ru"
+) -> list[str]:
     text = output_path.read_text(encoding="utf-8", errors="replace")
     return validate_report_text(text, facts_text=facts_text, language=language)

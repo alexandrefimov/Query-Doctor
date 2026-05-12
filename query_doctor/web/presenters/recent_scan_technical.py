@@ -10,7 +10,9 @@ from query_doctor.web.presenters.recent_scan_models import (
 )
 
 
-def present_recent_scan_technical_details(view: RecentScanCaseDetailView) -> RecentScanTechnicalDetailsView:
+def present_recent_scan_technical_details(
+    view: RecentScanCaseDetailView,
+) -> RecentScanTechnicalDetailsView:
     return RecentScanTechnicalDetailsView(
         fields=tuple(
             (label, value)

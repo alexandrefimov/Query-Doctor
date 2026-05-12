@@ -37,9 +37,7 @@ OPTIMIZER_VALIDATION_PREFIXES = (
     "query_doctor/optimizer/",
     "query_doctor/web/optimizer",
 )
-OPTIMIZER_VALIDATION_FILES = (
-    "query_doctor/cli/optimize_query.py",
-)
+OPTIMIZER_VALIDATION_FILES = ("query_doctor/cli/optimize_query.py",)
 METADATA_COLLECTOR_PREFIXES = (
     "query_doctor/impala/",
     "query_doctor/cm/",
@@ -73,19 +71,57 @@ RAW_ARTIFACT_TOKENS = (
 )
 
 UNSAFE_PATTERNS = (
-    ("local path", re.compile(r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+|(?<![\w/])/Users/[^\s<>'\"]+|(?<![\w/])/var/folders/[^\s<>'\"]+|(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+")),
+    (
+        "local path",
+        re.compile(
+            r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+|(?<![\w/])/Users/[^\s<>'\"]+|(?<![\w/])/var/folders/[^\s<>'\"]+|(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+"
+        ),
+    ),
     ("raw profile marker", re.compile(r"\bBEGIN PROFILE\b|\bQuery Timeline\b", re.IGNORECASE)),
-    ("raw subprocess output", re.compile(r"\braw\s+(?:stdout|stderr)\b|\bsubprocess\s+output\b", re.IGNORECASE)),
+    (
+        "raw subprocess output",
+        re.compile(r"\braw\s+(?:stdout|stderr)\b|\bsubprocess\s+output\b", re.IGNORECASE),
+    ),
     ("model/runtime internals", re.compile(r"\bqwen[\w:.-]*\b|\bollama\b", re.IGNORECASE)),
-    ("secret-like token", re.compile(r"\b(?:CM_PASSWORD|CM_TOKEN|Authorization:\s*Bearer|api[_-]?key|password\s*=|token\s*=)\b", re.IGNORECASE)),
+    (
+        "secret-like token",
+        re.compile(
+            r"\b(?:CM_PASSWORD|CM_TOKEN|Authorization:\s*Bearer|api[_-]?key|password\s*=|token\s*=)\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
 PUBLIC_RELEASE_PATTERNS = (
-    ("private local user path", re.compile(r"(?<![\w/])(?:/Users|/home)/(?!demo\b|example\b|runner\b)[A-Za-z0-9._-]+(?:/[^\s<>'\"]*)?")),
-    ("private-looking hostname/domain", re.compile(r"\b(?:[A-Za-z0-9-]+\.)+(?:corp|internal|lan|local|private|prod|pw)\b", re.IGNORECASE)),
-    ("embedded URL credentials", re.compile(r"https?://[^/\s:@]+:[^@\s/]+@[^/\s<>'\"]+", re.IGNORECASE)),
+    (
+        "private local user path",
+        re.compile(
+            r"(?<![\w/])(?:/Users|/home)/(?!demo\b|example\b|runner\b)[A-Za-z0-9._-]+(?:/[^\s<>'\"]*)?"
+        ),
+    ),
+    (
+        "private-looking hostname/domain",
+        re.compile(
+            r"\b(?:[A-Za-z0-9-]+\.)+(?:corp|internal|lan|local|private|prod|pw)\b", re.IGNORECASE
+        ),
+    ),
+    (
+        "embedded URL credentials",
+        re.compile(r"https?://[^/\s:@]+:[^@\s/]+@[^/\s<>'\"]+", re.IGNORECASE),
+    ),
     ("private key material", re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----")),
-    ("high-confidence cloud token", re.compile(r"\b(?:AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-[A-Za-z0-9]{20,})\b")),
-    ("authorization token", re.compile(r"\bAuthorization:\s*Bearer\s+(?!<redacted>|[.]{3}|secret-token\b)[A-Za-z0-9._=-]{12,}", re.IGNORECASE)),
+    (
+        "high-confidence cloud token",
+        re.compile(
+            r"\b(?:AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-[A-Za-z0-9]{20,})\b"
+        ),
+    ),
+    (
+        "authorization token",
+        re.compile(
+            r"\bAuthorization:\s*Bearer\s+(?!<redacted>|[.]{3}|secret-token\b)[A-Za-z0-9._=-]{12,}",
+            re.IGNORECASE,
+        ),
+    ),
 )
 PUBLIC_RELEASE_GREP_PATTERNS = (
     r"/Users/[A-Za-z0-9._-]+",
@@ -107,7 +143,9 @@ TEST_COMMANDS_BY_CATEGORY = {
         "python3 -m pytest -q tests/test_web_server.py tests/test_web_optimizer.py tests/test_web_ui_home.py tests/test_web_ui_help.py tests/test_web_display_safety.py tests/test_web_trusted_artifacts.py",
     ),
     "report validation": ("python3 -m pytest -q tests/test_report_sanitizer.py",),
-    "optimizer validation": ("python3 -m pytest -q tests/test_optimizer_sql.py tests/test_query_optimizer.py tests/test_web_optimizer.py",),
+    "optimizer validation": (
+        "python3 -m pytest -q tests/test_optimizer_sql.py tests/test_query_optimizer.py tests/test_web_optimizer.py",
+    ),
     "metadata collection": (
         "python3 -m pytest -q tests/test_impala_context_collector_cli.py tests/test_impala_metadata_workflow.py tests/test_cm_profile_collector_cli.py",
     ),
@@ -203,7 +241,12 @@ def changed_files_from_git(repo_dir: Path, *, runner: Runner = run_command) -> t
 
 def safety_categories_for_path(path: str) -> tuple[str, ...]:
     categories: list[str] = []
-    if path in BROWSER_UI_FILES or path.startswith(BROWSER_UI_PREFIXES) or "browser_display" in path or "trusted_artifacts" in path:
+    if (
+        path in BROWSER_UI_FILES
+        or path.startswith(BROWSER_UI_PREFIXES)
+        or "browser_display" in path
+        or "trusted_artifacts" in path
+    ):
         categories.append("browser display safety")
     if path in REPORT_VALIDATION_PATHS or "report_sanitizer" in path:
         categories.append("report validation")
@@ -211,7 +254,9 @@ def safety_categories_for_path(path: str) -> tuple[str, ...]:
         categories.append("optimizer validation")
     if path in METADATA_COLLECTOR_FILES or path.startswith(METADATA_COLLECTOR_PREFIXES):
         categories.append("metadata collection")
-    if path in CONFIG_PATHS or any(path.startswith(prefix) for prefix in CONFIG_PATHS if prefix.endswith("/")):
+    if path in CONFIG_PATHS or any(
+        path.startswith(prefix) for prefix in CONFIG_PATHS if prefix.endswith("/")
+    ):
         categories.append("config loading")
     return tuple(categories)
 
@@ -229,7 +274,9 @@ def is_relevant_text_file(path: str) -> bool:
     suffix = Path(path).suffix
     if suffix not in TEXT_SUFFIXES:
         return False
-    if path.startswith(("docs/", "query_doctor/web/", "query_doctor/report/", "query_doctor/safety/")):
+    if path.startswith(
+        ("docs/", "query_doctor/web/", "query_doctor/report/", "query_doctor/safety/")
+    ):
         return True
     if path.startswith("query_doctor_") and suffix == ".py":
         return True
@@ -243,13 +290,23 @@ def scan_text_for_unsafe_output(text: str, *, path: str) -> tuple[Finding, ...]:
     unsafe_severity = "warning" if is_doc else "blocker"
     for token in RAW_ARTIFACT_TOKENS:
         if token in text:
-            findings.append(Finding(unsafe_severity, f"browser/trusted-output text contains raw artifact filename: {token}", path))
+            findings.append(
+                Finding(
+                    unsafe_severity,
+                    f"browser/trusted-output text contains raw artifact filename: {token}",
+                    path,
+                )
+            )
     for label, pattern in UNSAFE_PATTERNS:
         if pattern.search(text):
-            findings.append(Finding(unsafe_severity, f"browser/trusted-output text contains {label}", path))
+            findings.append(
+                Finding(unsafe_severity, f"browser/trusted-output text contains {label}", path)
+            )
     if SQL_LIKE_PATTERN.search(text):
         severity = "warning" if is_doc else "blocker"
-        findings.append(Finding(severity, "browser/trusted-output text contains SQL-like snippet", path))
+        findings.append(
+            Finding(severity, "browser/trusted-output text contains SQL-like snippet", path)
+        )
     return tuple(findings)
 
 
@@ -279,10 +336,16 @@ def scan_public_release_text(text: str, *, path: str) -> tuple[Finding, ...]:
             value = match.group(0)
             if public_release_match_is_allowed(label, value):
                 continue
-            severity = "warning" if path.startswith("tests/") and label not in {
-                "private key material",
-                "high-confidence cloud token",
-            } else "blocker"
+            severity = (
+                "warning"
+                if path.startswith("tests/")
+                and label
+                not in {
+                    "private key material",
+                    "high-confidence cloud token",
+                }
+                else "blocker"
+            )
             findings.append(Finding(severity, f"public release scan found {label}", path))
             break
     return tuple(findings)
@@ -310,7 +373,9 @@ def scan_tracked_tree_for_public_release(
         try:
             text = full_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            findings.append(Finding("warning", "could not read tracked file for public release scan", path))
+            findings.append(
+                Finding("warning", "could not read tracked file for public release scan", path)
+            )
             continue
         findings.extend(scan_public_release_text(text, path=path))
     return tuple(findings)
@@ -352,7 +417,9 @@ def scan_git_history_for_public_release(
                 runner=runner,
             )
             if result.returncode not in (0, 1):
-                findings.append(Finding("warning", "git history grep failed during public release scan"))
+                findings.append(
+                    Finding("warning", "git history grep failed during public release scan")
+                )
                 continue
             if result.returncode == 1:
                 continue
@@ -390,7 +457,9 @@ def added_lines_from_unified_diff(diff_text: str) -> str:
 
 
 def path_is_tracked(repo_dir: Path, path: str, *, runner: Runner = run_command) -> bool:
-    result = git_output(["ls-files", "--error-unmatch", "--", path], repo_dir=repo_dir, runner=runner)
+    result = git_output(
+        ["ls-files", "--error-unmatch", "--", path], repo_dir=repo_dir, runner=runner
+    )
     return result.returncode == 0
 
 
@@ -435,7 +504,9 @@ def scan_changed_files(
     return tuple(findings)
 
 
-def suggested_tests_for_categories(categories: tuple[str, ...], *, repo_dir: Path) -> tuple[str, ...]:
+def suggested_tests_for_categories(
+    categories: tuple[str, ...], *, repo_dir: Path
+) -> tuple[str, ...]:
     commands: list[str] = []
     for category in categories:
         for command in TEST_COMMANDS_BY_CATEGORY.get(category, ()):
@@ -469,7 +540,9 @@ def build_report(
     if status.returncode != 0:
         findings.append(Finding("warning", "could not read git status"))
     elif dirty_paths:
-        findings.append(Finding("warning", f"working tree has {len(dirty_paths)} uncommitted path(s)"))
+        findings.append(
+            Finding("warning", f"working tree has {len(dirty_paths)} uncommitted path(s)")
+        )
 
     diff_check = git_output(["diff", "--check"], repo_dir=repo_dir, runner=runner)
     if diff_check.returncode != 0:
@@ -481,7 +554,9 @@ def build_report(
         findings.append(Finding("warning", f"safety-sensitive files changed: {category}"))
 
     if categories and not any(path.startswith("docs/") for path in changed_files):
-        findings.append(Finding("warning", "safety-sensitive changes have no docs update in the current diff"))
+        findings.append(
+            Finding("warning", "safety-sensitive changes have no docs update in the current diff")
+        )
 
     findings.extend(scan_changed_files(repo_dir, changed_files, runner=runner))
     if public_release:
@@ -527,7 +602,9 @@ def render_report(report: PreflightReport) -> str:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     repo_dir = Path(args.repo).resolve()
-    report = build_report(repo_dir, public_release=args.public_release, skip_history=args.skip_history)
+    report = build_report(
+        repo_dir, public_release=args.public_release, skip_history=args.skip_history
+    )
     print(render_report(report))
     return 1 if report.status == NOT_READY else 0
 

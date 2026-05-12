@@ -92,7 +92,9 @@ def append_web_impala_profile_args(cmd: list[str], settings: WebSettings) -> Non
         cmd.extend(["--impala-profile-host", host])
     if settings.collect_prometheus_timeseries or settings.prometheus_url:
         if not settings.prometheus_url:
-            raise WebError("Prometheus runtime metrics are enabled but prometheus_url is not configured.")
+            raise WebError(
+                "Prometheus runtime metrics are enabled but prometheus_url is not configured."
+            )
         cmd.extend(
             [
                 "--prometheus-url",
@@ -130,7 +132,9 @@ def build_query_id_analyzer_command(case_dir: Path, settings: WebSettings) -> li
     return cmd
 
 
-def build_report_command(case_dir: Path, report_mode: str, report_name: str, settings: WebSettings) -> list[str]:
+def build_report_command(
+    case_dir: Path, report_mode: str, report_name: str, settings: WebSettings
+) -> list[str]:
     return command_prefix(settings.repo_dir, "report") + [
         str(case_dir),
         "--model",

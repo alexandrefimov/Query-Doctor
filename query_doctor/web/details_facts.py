@@ -112,7 +112,9 @@ def load_specific_query_cluster_runtime_context_facts(case_dir: Path) -> dict[st
     return None
 
 
-def load_batch_case_metadata_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+def load_batch_case_metadata_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
         return None
@@ -129,7 +131,9 @@ def load_batch_case_metadata_facts(settings: WebSettings, case: dict[str, object
     return fallback_facts
 
 
-def load_batch_case_evidence_quality_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+def load_batch_case_evidence_quality_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
         return None
@@ -140,7 +144,9 @@ def load_batch_case_evidence_quality_facts(settings: WebSettings, case: dict[str
     return None
 
 
-def load_batch_case_stats_quality_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+def load_batch_case_stats_quality_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
         return None
@@ -151,7 +157,9 @@ def load_batch_case_stats_quality_facts(settings: WebSettings, case: dict[str, o
     return None
 
 
-def load_batch_case_cm_metrics_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+def load_batch_case_cm_metrics_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
         return None
@@ -162,7 +170,9 @@ def load_batch_case_cm_metrics_facts(settings: WebSettings, case: dict[str, obje
     return None
 
 
-def load_batch_case_runtime_diagnosis_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+def load_batch_case_runtime_diagnosis_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
         return None
@@ -173,7 +183,9 @@ def load_batch_case_runtime_diagnosis_facts(settings: WebSettings, case: dict[st
     return None
 
 
-def load_batch_case_cluster_runtime_context_facts(settings: WebSettings, case: dict[str, object]) -> dict[str, Any] | None:
+def load_batch_case_cluster_runtime_context_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
         return None
@@ -242,7 +254,9 @@ def convert_table_metadata_context_for_web(context: dict[str, Any]) -> dict[str,
     tables = context.get("tables")
     if not isinstance(tables, list):
         return None
-    converted = [convert_table_metadata_table_for_web(table) for table in tables if isinstance(table, dict)]
+    converted = [
+        convert_table_metadata_table_for_web(table) for table in tables if isinstance(table, dict)
+    ]
     if not converted and not context:
         return None
     return {
@@ -262,20 +276,25 @@ def convert_table_metadata_table_for_web(table: dict[str, Any]) -> dict[str, Any
         "table": table.get("table", "unknown"),
         "object type": table.get("object_type", "unknown"),
         "statements": table.get("statements") if isinstance(table.get("statements"), dict) else {},
-        "table stats row-count completeness": table.get("table_stats_row_count_completeness", "unknown"),
+        "table stats row-count completeness": table.get(
+            "table_stats_row_count_completeness", "unknown"
+        ),
         "partition count": table.get("partition_count", 0),
         "partitions with known row count": table.get("partitions_with_known_row_count", 0),
         "partitions with unknown row count": table.get("partitions_with_unknown_row_count", 0),
         "partitions with zero row count": table.get("partitions_with_zero_row_count", 0),
         "column stats columns observed": table.get("column_stats_columns_observed", "unknown"),
-        "column stats missing/unknown markers": table.get("column_stats_missing_markers", "unknown"),
+        "column stats missing/unknown markers": table.get(
+            "column_stats_missing_markers", "unknown"
+        ),
         "column stats completeness": table.get("column_stats_completeness", "unknown"),
         "column stats complete columns": table.get("column_stats_complete_columns", 0),
         "column stats NDV-missing columns": table.get("column_stats_ndv_missing_columns", 0),
         "column stats size-missing columns": table.get("column_stats_size_missing_columns", 0),
         "column stats all-missing columns": table.get("column_stats_all_missing_columns", 0),
         "file format": table.get("file_format", "unknown"),
-        "partition columns": ", ".join(str(item) for item in table.get("partition_columns") or []) or "unknown",
+        "partition columns": ", ".join(str(item) for item in table.get("partition_columns") or [])
+        or "unknown",
     }
 
 
@@ -438,12 +457,10 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
     summary: dict[str, str] = {}
     correlation_summary: dict[str, str] = {}
     signal_values: dict[str, dict[str, str]] = {
-        key: {"label": label}
-        for key, label in CM_METRIC_SIGNAL_LABELS.items()
+        key: {"label": label} for key, label in CM_METRIC_SIGNAL_LABELS.items()
     }
     correlation_values: dict[str, dict[str, str]] = {
-        key: {"label": label}
-        for key, label in CM_METRIC_SIGNAL_LABELS.items()
+        key: {"label": label} for key, label in CM_METRIC_SIGNAL_LABELS.items()
     }
     current_correlation_key = ""
     limitations: list[str] = []
@@ -500,7 +517,13 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
         if section == "facts" and key in signal_values:
             signal_values[key]["status"] = value
             continue
-        if section == "correlation" and key in {"status", "coverage", "correlated_signals", "context_only_signals", "guardrail"}:
+        if section == "correlation" and key in {
+            "status",
+            "coverage",
+            "correlated_signals",
+            "context_only_signals",
+            "guardrail",
+        }:
             correlation_summary[key] = value
             current_correlation_key = ""
             continue
@@ -515,19 +538,27 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
                 correlation_values[key]["strength"] = clean_metadata_fact_value(match.group(1))
             current_correlation_key = key
             continue
-        if section == "correlation" and current_correlation_key and key in {"basis", "interpretation"}:
+        if (
+            section == "correlation"
+            and current_correlation_key
+            and key in {"basis", "interpretation"}
+        ):
             correlation_values[current_correlation_key][key] = value
     signals = [
-        signal
-        for signal in signal_values.values()
-        if signal.get("status") or signal.get("basis")
+        signal for signal in signal_values.values() if signal.get("status") or signal.get("basis")
     ]
     correlations = [
         correlation
         for correlation in correlation_values.values()
         if correlation.get("status") or correlation.get("interpretation")
     ]
-    if not summary and not signals and not limitations and not correlation_summary and not correlations:
+    if (
+        not summary
+        and not signals
+        and not limitations
+        and not correlation_summary
+        and not correlations
+    ):
         return None
     return {
         "summary": summary,

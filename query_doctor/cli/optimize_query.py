@@ -234,9 +234,15 @@ JOIN_MODIFIER_KEYWORDS = {"LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS", "S
 CONSERVATIVE_CTE_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_CTE_THRESHOLD", "2"))
 CONSERVATIVE_JOIN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_JOIN_THRESHOLD", "6"))
 CONSERVATIVE_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_CONSERVATIVE_TOKEN_THRESHOLD", "1000"))
-RECOMMENDATIONS_ONLY_CTE_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_CTE_THRESHOLD", "5"))
-RECOMMENDATIONS_ONLY_JOIN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_JOIN_THRESHOLD", "10"))
-RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD = int(os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD", "2000"))
+RECOMMENDATIONS_ONLY_CTE_THRESHOLD = int(
+    os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_CTE_THRESHOLD", "5")
+)
+RECOMMENDATIONS_ONLY_JOIN_THRESHOLD = int(
+    os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_JOIN_THRESHOLD", "10")
+)
+RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD = int(
+    os.getenv("QD_OPTIMIZER_RECOMMENDATIONS_ONLY_TOKEN_THRESHOLD", "2000")
+)
 MAX_OPTIMIZER_RECOMMENDATION_ITEMS = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATION_ITEMS", "8"))
 INCOMPLETE_TRAILING_TOKENS = {
     ",",
@@ -272,8 +278,9 @@ def stream_optimizer_response(**kwargs: object) -> StreamedLLMResponse:
     response = stream_ollama_report(**kwargs)
     if isinstance(response, StreamedLLMResponse):
         return response
-    return StreamedLLMResponse(text=str(response), done_reason="", eval_count=None, prompt_eval_count=None)
-
+    return StreamedLLMResponse(
+        text=str(response), done_reason="", eval_count=None, prompt_eval_count=None
+    )
 
 
 def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
@@ -283,7 +290,9 @@ def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
     cte_count = len(collect_cte_names(tokens))
     join_count = len(top_level_join_signature(source_sql))
     token_count = len(tokens)
-    set_operator_count = sum(top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS)
+    set_operator_count = sum(
+        top_level_keyword_count(source_sql, operator) for operator in TOP_LEVEL_SET_OPERATORS
+    )
     if cte_count:
         conservative_reasons.append("cte_body_validation_not_proven")
     if not cte_count and nested_query_signatures(source_sql):
@@ -311,12 +320,16 @@ def decide_optimizer_risk_mode(source_sql: str) -> OptimizerRiskDecision:
     if set_operator_count:
         conservative_reasons.append("set_operations")
     if conservative_reasons:
-        return OptimizerRiskDecision(mode="conservative_rewrite", reasons=tuple(conservative_reasons))
+        return OptimizerRiskDecision(
+            mode="conservative_rewrite", reasons=tuple(conservative_reasons)
+        )
     return OptimizerRiskDecision(mode="rewrite_allowed", reasons=())
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate a validated optimized query draft for one case.")
+    parser = argparse.ArgumentParser(
+        description="Generate a validated optimized query draft for one case."
+    )
     parser.add_argument("case_dir")
     parser.add_argument("--out", default=OUTPUT_NAME)
     parser.add_argument("--model", default=DEFAULT_OPTIMIZER_MODEL)
@@ -346,8 +359,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PROGRESS_PREFIX} optimized query scope: {source_sql.scope}", file=sys.stderr)
         print(f"{PROGRESS_PREFIX} optimizer risk mode: {risk_decision.mode}", file=sys.stderr)
         recipe_can_bypass_risk_threshold = bool(
-            rewrite_recipe
-            and rewrite_recipe.recipe_id in RISK_THRESHOLD_BYPASS_RECIPE_IDS
+            rewrite_recipe and rewrite_recipe.recipe_id in RISK_THRESHOLD_BYPASS_RECIPE_IDS
         )
         deterministic_draft = deterministic_recipe_draft(source_sql.sql, rewrite_recipe)
         if deterministic_draft and (
@@ -357,9 +369,13 @@ def main(argv: list[str] | None = None) -> int:
             if not errors and draft_has_material_change(source_sql.sql, deterministic_draft):
                 output_name = Path(args.out).name
                 if output_name != args.out:
-                    raise QueryOptimizationError("Output must be a filename inside the case directory.")
+                    raise QueryOptimizationError(
+                        "Output must be a filename inside the case directory."
+                    )
                 output_path = case_dir / output_name
-                output_path.write_text(normalized_trusted_draft_sql(deterministic_draft), encoding="utf-8")
+                output_path.write_text(
+                    normalized_trusted_draft_sql(deterministic_draft), encoding="utf-8"
+                )
                 write_marker(
                     case_dir,
                     output_name,
@@ -375,9 +391,15 @@ def main(argv: list[str] | None = None) -> int:
                         "generated_chars": len(deterministic_draft),
                     },
                 )
-                print(f"{PROGRESS_PREFIX} optimizer deterministic recipe draft done", file=sys.stderr)
+                print(
+                    f"{PROGRESS_PREFIX} optimizer deterministic recipe draft done", file=sys.stderr
+                )
                 return 0
-        if rewrite_recipe is not None and deterministic_draft is None and risk_decision.mode != "recommendations_only":
+        if (
+            rewrite_recipe is not None
+            and deterministic_draft is None
+            and risk_decision.mode != "recommendations_only"
+        ):
             diagnostics = deterministic_recipe_draft_diagnostics(
                 source_sql.sql,
                 rewrite_recipe,
@@ -386,7 +408,10 @@ def main(argv: list[str] | None = None) -> int:
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
-                deterministic_draft_unavailable_recommendations(risk_decision, facts_text, rewrite_recipe) + "\n",
+                deterministic_draft_unavailable_recommendations(
+                    risk_decision, facts_text, rewrite_recipe
+                )
+                + "\n",
                 encoding="utf-8",
             )
             generation_metadata: dict[str, object] = {
@@ -444,7 +469,9 @@ def main(argv: list[str] | None = None) -> int:
                 source_sql=source_sql.sql,
                 generated=generated,
             )
-            generation_metadata["recommendation_normalization"] = normalized_recommendations.telemetry
+            generation_metadata["recommendation_normalization"] = (
+                normalized_recommendations.telemetry
+            )
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(recommendations.rstrip() + "\n", encoding="utf-8")
             write_recommendations_marker(
@@ -500,12 +527,15 @@ def main(argv: list[str] | None = None) -> int:
             num_predict=OPTIMIZER_NUM_PREDICT,
         )
         generated = response.text
-        generation_metadata = llm_generation_metadata(response, prompt=prompt, source_sql=source_sql.sql, generated=generated)
+        generation_metadata = llm_generation_metadata(
+            response, prompt=prompt, source_sql=source_sql.sql, generated=generated
+        )
         if response.done_reason == "length":
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
-                output_limit_no_rewrite_recommendations(facts_text, risk_decision, rewrite_recipe) + "\n",
+                output_limit_no_rewrite_recommendations(facts_text, risk_decision, rewrite_recipe)
+                + "\n",
                 encoding="utf-8",
             )
             write_recommendations_marker(
@@ -531,7 +561,10 @@ def main(argv: list[str] | None = None) -> int:
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
-                validation_failed_no_rewrite_recommendations(errors, risk_decision, facts_text, rewrite_recipe) + "\n",
+                validation_failed_no_rewrite_recommendations(
+                    errors, risk_decision, facts_text, rewrite_recipe
+                )
+                + "\n",
                 encoding="utf-8",
             )
             write_recommendations_marker(
@@ -549,7 +582,10 @@ def main(argv: list[str] | None = None) -> int:
             )
             for error in errors:
                 print(f"{PROGRESS_PREFIX} ERROR: {error}", file=sys.stderr)
-            print(f"{PROGRESS_PREFIX} optimizer no rewrite recommended after validation failure", file=sys.stderr)
+            print(
+                f"{PROGRESS_PREFIX} optimizer no rewrite recommended after validation failure",
+                file=sys.stderr,
+            )
             return 0
         if not draft_has_material_change(source_sql.sql, draft_sql):
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)

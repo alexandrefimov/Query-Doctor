@@ -57,7 +57,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         )
     )
     parser.add_argument("--query-id", required=True, help="Explicit Impala query id.")
-    parser.add_argument("--host", action="append", default=[], help="impalad web host or host:port.")
+    parser.add_argument(
+        "--host", action="append", default=[], help="impalad web host or host:port."
+    )
     parser.add_argument(
         "--port",
         type=positive_int,
@@ -83,8 +85,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=f"Maximum profile response bytes. Default: {DEFAULT_MAX_PROFILE_BYTES}.",
     )
     parser.add_argument("--out", type=Path, required=True, help="Output corpus directory.")
-    parser.add_argument("--redact", action="store_true", help="Required for real profile collection.")
-    parser.add_argument("--redact-identifiers", action="store_true", help="Redact usernames and pools.")
+    parser.add_argument(
+        "--redact", action="store_true", help="Required for real profile collection."
+    )
+    parser.add_argument(
+        "--redact-identifiers", action="store_true", help="Redact usernames and pools."
+    )
     parser.add_argument(
         "--prometheus-url",
         help="Prometheus base URL for bounded runtime metric summaries. No credentials in the URL.",
@@ -153,7 +159,10 @@ def main(
 ) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if not args.redact:
-        print("[Impala profile collector] ERROR: real Impala collection requires --redact.", file=sys.stderr)
+        print(
+            "[Impala profile collector] ERROR: real Impala collection requires --redact.",
+            file=sys.stderr,
+        )
         return 3
     collect_prometheus = (
         bool(args.prometheus_url)
@@ -179,7 +188,9 @@ def main(
             fetch_kwargs["opener"] = opener
         result = fetch_impala_profile_text(**fetch_kwargs)
         summary = CMQuerySummary(query_id=result.query_id)
-        summary, profile_metadata_warnings = merge_profile_summary_metadata(summary, result.profile_text)
+        summary, profile_metadata_warnings = merge_profile_summary_metadata(
+            summary, result.profile_text
+        )
         profile_metadata_warnings = [
             warning.replace("CM profile text", "Impala profile text")
             for warning in profile_metadata_warnings
@@ -247,8 +258,7 @@ def main(
     except (CMClientError, OutputError, OSError) as exc:
         print("[Impala profile collector] Collection result: FAILED", file=sys.stderr)
         print(
-            "Single-query Impala profile collection failed: "
-            f"{sanitize_adapter_error_message(exc)}",
+            f"Single-query Impala profile collection failed: {sanitize_adapter_error_message(exc)}",
             file=sys.stderr,
         )
         return 4
