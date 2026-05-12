@@ -195,6 +195,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             f"Default path when passed without a value: {DEFAULT_FIXTURE_CORPUS}."
         ),
     )
+    parser.add_argument(
+        "--fixture-expected-output-kind",
+        nargs="+",
+        metavar="KIND",
+        help=(
+            "When --fixture-corpus is used, include only fixtures whose expected.json "
+            "expected_output_kind is one of these values, for example recommendations_only."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Resolve cases and write summary without calling Ollama.")
     return parser.parse_args(argv)
 
@@ -250,6 +259,19 @@ def fixture_case_dirs(corpus_dir: Path) -> list[Path]:
         for path in corpus_dir.iterdir()
         if path.is_dir() and (path / "expected.json").is_file() and (path / "source.sql").is_file()
     )
+
+
+def filter_fixture_case_dirs(case_dirs: list[Path], expected_kinds: list[str] | None) -> list[Path]:
+    if not expected_kinds:
+        return case_dirs
+    allowed = {str(kind).strip() for kind in expected_kinds if str(kind).strip()}
+    if not allowed:
+        return case_dirs
+    return [
+        case_dir
+        for case_dir in case_dirs
+        if str(read_expected_fixture(case_dir).get("expected_output_kind") or "") in allowed
+    ]
 
 
 def offline_fixture_outcome(case_dir: Path) -> dict[str, Any]:
@@ -1073,9 +1095,13 @@ def main(argv: list[str] | None = None) -> int:
     fixture_corpus = Path(args.fixture_corpus).expanduser().resolve() if args.fixture_corpus else None
     if fixture_corpus is not None:
         fixture_dirs = fixture_case_dirs(fixture_corpus)
+        fixture_dirs = filter_fixture_case_dirs(fixture_dirs, args.fixture_expected_output_kind)
         if not fixture_dirs:
+            reason = "fixture corpus is unavailable or empty"
+            if args.fixture_expected_output_kind:
+                reason = "fixture corpus has no fixtures matching --fixture-expected-output-kind"
             print(
-                f"{PROGRESS_PREFIX} ERROR: fixture corpus is unavailable or empty: {safe_error_summary(fixture_corpus)}",
+                f"{PROGRESS_PREFIX} ERROR: {reason}: {safe_error_summary(fixture_corpus)}",
                 file=sys.stderr,
             )
             return 2

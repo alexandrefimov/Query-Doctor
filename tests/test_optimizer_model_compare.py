@@ -189,6 +189,33 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert str(module.DEFAULT_FIXTURE_CORPUS) not in json.dumps(summary)
 
 
+def test_fixture_corpus_dry_run_filters_expected_output_kind(tmp_path):
+    module = load_compare_module()
+    out_dir = tmp_path / "out"
+
+    result = module.main(
+        [
+            "--models",
+            "qwen3-coder:30b-a3b-q8_0",
+            "--fixture-corpus",
+            "--fixture-expected-output-kind",
+            "recommendations_only",
+            "--dry-run",
+            "--out-dir",
+            str(out_dir),
+        ]
+    )
+
+    assert result == 0
+    summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
+    results = summary["results"]
+    assert len(results) == 5
+    assert {item["expected_output_kind"] for item in results} == {"recommendations_only"}
+    assert summary["optimizer_funnel"]["expected_output_kind_counts"] == {
+        "recommendations_only": 5,
+    }
+
+
 def test_summary_markdown_renders_model_case_and_mismatch_sections():
     module = load_compare_module()
     results = [
