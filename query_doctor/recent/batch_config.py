@@ -342,6 +342,11 @@ def build_batch_config(
         metadata_impala_shell=first_string(args.metadata_impala_shell, config_values.get("metadata_impala_shell")),
         metadata_auth=first_string(args.metadata_auth, config_values.get("metadata_auth"), "kerberos") or "kerberos",
         metadata_protocol=first_string(args.metadata_protocol, config_values.get("metadata_protocol"), "beeswax") or "beeswax",
+        metadata_kerberos_service_name=first_string(
+            getattr(args, "metadata_kerberos_service_name", None),
+            config_values.get("metadata_kerberos_service_name"),
+            config_values.get("impala_kerberos_service_name"),
+        ),
         metadata_ssl=first_bool(args.metadata_ssl, config_values.get("metadata_ssl"), default=False),
         metadata_ca_cert=first_string(args.metadata_ca_cert, config_values.get("metadata_ca_cert")),
         metadata_timeout_sec=first_int(

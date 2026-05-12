@@ -318,6 +318,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--metadata-impala-shell", help="impala-shell executable.")
     parser.add_argument("--metadata-auth")
     parser.add_argument("--metadata-protocol", choices=("beeswax", "hs2", "hs2-http"))
+    parser.add_argument("--metadata-kerberos-service-name")
     parser.add_argument("--metadata-ssl", action="store_true", default=None)
     parser.add_argument("--metadata-ca-cert")
     parser.add_argument("--metadata-timeout-sec", type=positive_int)

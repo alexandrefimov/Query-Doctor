@@ -48,6 +48,7 @@ class BatchConfig:
     metadata_impala_shell: str | None
     metadata_auth: str
     metadata_protocol: str
+    metadata_kerberos_service_name: str | None
     metadata_ssl: bool
     metadata_ca_cert: str | None
     metadata_timeout_sec: int

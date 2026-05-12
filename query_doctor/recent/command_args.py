@@ -24,6 +24,8 @@ def append_metadata_args(cmd: list[str], config: BatchConfig) -> None:
     cmd.extend(["--metadata-auth", config.metadata_auth])
     cmd.extend(["--metadata-protocol", config.metadata_protocol])
     cmd.extend(["--metadata-timeout-sec", str(config.metadata_timeout_sec)])
+    if config.metadata_kerberos_service_name:
+        cmd.extend(["--metadata-kerberos-service-name", config.metadata_kerberos_service_name])
     if config.metadata_ssl:
         cmd.append("--metadata-ssl")
     if config.metadata_ca_cert:
