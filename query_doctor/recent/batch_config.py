@@ -18,6 +18,13 @@ from query_doctor.impala.profile_source import (
     normalize_impala_profile_hosts,
     normalize_impala_profile_scheme,
 )
+from query_doctor.prometheus.timeseries import (
+    DEFAULT_PROMETHEUS_METRICS_PROFILE,
+    DEFAULT_PROMETHEUS_STEP_SEC,
+    DEFAULT_PROMETHEUS_TIMEOUT_SEC,
+    DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+    normalize_prometheus_metrics_profile,
+)
 from query_doctor.recent.batch_models import BatchConfig
 
 
@@ -160,6 +167,40 @@ def build_batch_config(
         config_values.get("impala_profile_timeout_sec"),
         default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     )
+    prometheus_url = first_string(
+        getattr(args, "prometheus_url", None),
+        config_values.get("prometheus_url"),
+    )
+    collect_prometheus_timeseries = first_bool(
+        getattr(args, "collect_prometheus_timeseries", None),
+        config_values.get("recent_collect_prometheus_timeseries"),
+        config_values.get("collect_prometheus_timeseries"),
+        default=bool(prometheus_url),
+    )
+    if collect_prometheus_timeseries and not prometheus_url:
+        raise ValueError("--collect-prometheus-timeseries requires --prometheus-url or local config prometheus_url.")
+    prometheus_metrics_profile = normalize_prometheus_metrics_profile(
+        first_string(
+            getattr(args, "prometheus_metrics_profile", None),
+            config_values.get("prometheus_metrics_profile"),
+            DEFAULT_PROMETHEUS_METRICS_PROFILE,
+        )
+    )
+    prometheus_step_sec = first_int(
+        getattr(args, "prometheus_step_sec", None),
+        config_values.get("prometheus_step_sec"),
+        default=DEFAULT_PROMETHEUS_STEP_SEC,
+    )
+    prometheus_timeseries_padding_sec = first_int(
+        getattr(args, "prometheus_timeseries_padding_sec", None),
+        config_values.get("prometheus_timeseries_padding_sec"),
+        default=DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+    )
+    prometheus_timeout_sec = first_int(
+        getattr(args, "prometheus_timeout_sec", None),
+        config_values.get("prometheus_timeout_sec"),
+        default=DEFAULT_PROMETHEUS_TIMEOUT_SEC,
+    )
     if query_profile_source == "cm":
         if not cm_url:
             raise ValueError("Missing --cm-url, CM_URL, or local config cm_url.")
@@ -211,6 +252,8 @@ def build_batch_config(
     if query_profile_source == "impala":
         collect_cm_events = False
         collect_cm_timeseries = False
+    else:
+        collect_prometheus_timeseries = False
     recent_window_minutes = first_int(
         args.recent_window_minutes,
         config_values.get("recent_window_minutes"),
@@ -376,6 +419,14 @@ def build_batch_config(
         impala_profile_port=int(impala_profile_port or DEFAULT_IMPALA_PROFILE_PORT),
         impala_profile_scheme=impala_profile_scheme,
         impala_profile_timeout_sec=int(impala_profile_timeout_sec or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC),
+        collect_prometheus_timeseries=collect_prometheus_timeseries,
+        prometheus_url=prometheus_url,
+        prometheus_metrics_profile=prometheus_metrics_profile,
+        prometheus_step_sec=int(prometheus_step_sec or DEFAULT_PROMETHEUS_STEP_SEC),
+        prometheus_timeseries_padding_sec=int(
+            prometheus_timeseries_padding_sec or DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC
+        ),
+        prometheus_timeout_sec=int(prometheus_timeout_sec or DEFAULT_PROMETHEUS_TIMEOUT_SEC),
     )
 
 

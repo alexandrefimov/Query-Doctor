@@ -90,6 +90,22 @@ def append_web_impala_profile_args(cmd: list[str], settings: WebSettings) -> Non
     )
     for host in settings.impala_profile_hosts:
         cmd.extend(["--impala-profile-host", host])
+    if settings.collect_prometheus_timeseries or settings.prometheus_url:
+        if not settings.prometheus_url:
+            raise WebError("Prometheus runtime metrics are enabled but prometheus_url is not configured.")
+        cmd.extend(
+            [
+                "--prometheus-url",
+                settings.prometheus_url,
+                "--collect-prometheus-timeseries",
+                "--prometheus-metrics-profile",
+                settings.prometheus_metrics_profile,
+                "--prometheus-step-sec",
+                str(settings.prometheus_step_sec),
+                "--prometheus-timeseries-padding-sec",
+                str(settings.prometheus_timeseries_padding_sec),
+            ]
+        )
 
 
 def build_analyzer_command(case_dir: Path, settings: WebSettings) -> list[str]:

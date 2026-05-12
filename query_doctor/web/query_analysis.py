@@ -248,7 +248,7 @@ def collect_case(
             collector_cmd.extend(["--host", host])
         if settings.max_profile_bytes is not None:
             collector_cmd.extend(["--max-profile-bytes", str(settings.max_profile_bytes)])
-        if settings.collect_prometheus_timeseries:
+        if settings.collect_prometheus_timeseries or settings.prometheus_url:
             if not settings.prometheus_url:
                 raise WebError("Prometheus runtime metrics are enabled but prometheus_url is not configured.")
             collector_cmd.extend(

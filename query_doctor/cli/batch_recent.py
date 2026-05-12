@@ -17,6 +17,14 @@ from pathlib import Path
 from query_doctor.cli import collect_cm_profiles as cm_profiles
 from query_doctor.cli.commands import command_prefix
 from query_doctor.engines import get_default_engine_adapter
+from query_doctor.prometheus.timeseries import (
+    DEFAULT_MAX_PROMETHEUS_POINTS,
+    DEFAULT_PROMETHEUS_METRICS_PROFILE,
+    DEFAULT_PROMETHEUS_STEP_SEC,
+    DEFAULT_PROMETHEUS_TIMEOUT_SEC,
+    DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
+    PROMETHEUS_METRICS_PROFILE_CHOICES,
+)
 from query_doctor.recent.batch_config import (
     MAX_CM_INSPECT_LIMIT,
     MAX_CM_EVENTS_MAX_EVENTS,
@@ -200,6 +208,48 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--impala-profile-scheme", choices=("http", "https"))
     parser.add_argument("--impala-profile-timeout-sec", type=positive_int)
     parser.add_argument(
+        "--prometheus-url",
+        help="Prometheus base URL for direct Impala runtime metric summaries. No credentials in the URL.",
+    )
+    parser.add_argument(
+        "--collect-prometheus-timeseries",
+        action="store_true",
+        default=None,
+        help=(
+            "Collect bounded allowlisted Prometheus runtime metric summaries for direct Impala scans. "
+            "Providing --prometheus-url also enables this unless --no-collect-prometheus-timeseries is set."
+        ),
+    )
+    parser.add_argument(
+        "--no-collect-prometheus-timeseries",
+        action="store_false",
+        dest="collect_prometheus_timeseries",
+        help="Disable Prometheus runtime metric summaries for direct Impala scans.",
+    )
+    parser.add_argument(
+        "--prometheus-metrics-profile",
+        choices=PROMETHEUS_METRICS_PROFILE_CHOICES,
+        help=f"Prometheus metric-name compatibility profile. Default: {DEFAULT_PROMETHEUS_METRICS_PROFILE}.",
+    )
+    parser.add_argument(
+        "--prometheus-step-sec",
+        type=positive_int,
+        help=f"Prometheus query_range step in seconds. Default: {DEFAULT_PROMETHEUS_STEP_SEC}.",
+    )
+    parser.add_argument(
+        "--prometheus-timeseries-padding-sec",
+        type=non_negative_int,
+        help=(
+            "Seconds to pad before query start and after query end for Prometheus metrics. "
+            f"Default: {DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC}."
+        ),
+    )
+    parser.add_argument(
+        "--prometheus-timeout-sec",
+        type=positive_int,
+        help=f"Timeout per Prometheus request. Default: {DEFAULT_PROMETHEUS_TIMEOUT_SEC}.",
+    )
+    parser.add_argument(
         "--out",
         help="Dedicated query-doctor-* output directory under /tmp or the system temp directory.",
     )
@@ -306,7 +356,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--max-timeseries-points",
         type=positive_int,
-        help=f"Maximum numeric data points to summarize per CM time-series query. Default: {cm_profiles.DEFAULT_MAX_TIMESERIES_POINTS}.",
+        help=(
+            "Maximum numeric data points to summarize per runtime metric query. "
+            f"Default: CM {cm_profiles.DEFAULT_MAX_TIMESERIES_POINTS}, Prometheus {DEFAULT_MAX_PROMETHEUS_POINTS}."
+        ),
     )
     parser.add_argument(
         "--metadata-mode",

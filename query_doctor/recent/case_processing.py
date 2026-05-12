@@ -124,6 +124,31 @@ def collect_case_profile(
             ]
             for host in config.impala_profile_hosts:
                 cmd.extend(["--host", host])
+            include_prometheus = (
+                config.collect_prometheus_timeseries
+                if collect_cm_timeseries is None
+                else collect_cm_timeseries
+            )
+            if include_prometheus and config.prometheus_url:
+                cmd.extend(
+                    [
+                        "--prometheus-url",
+                        config.prometheus_url,
+                        "--collect-prometheus-timeseries",
+                        "--prometheus-metrics-profile",
+                        config.prometheus_metrics_profile,
+                        "--prometheus-step-sec",
+                        str(config.prometheus_step_sec),
+                        "--prometheus-timeseries-padding-sec",
+                        str(config.prometheus_timeseries_padding_sec),
+                        "--prometheus-timeout-sec",
+                        str(config.prometheus_timeout_sec),
+                        "--max-timeseries-bytes",
+                        str(config.max_timeseries_bytes),
+                        "--max-timeseries-points",
+                        str(config.max_timeseries_points),
+                    ]
+                )
         else:
             cmd = command_prefix(repo_root, "collect_cm") + [
                 "--query-id",
@@ -271,12 +296,16 @@ def refresh_top_cm_timeseries(
     repo_root: Path,
     progress: ProgressWriter,
 ) -> None:
-    if config.query_profile_source != "cm":
-        progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="query_profile_source=impala")
-        return
-    if not config.collect_cm_timeseries:
+    if config.query_profile_source == "cm" and not config.collect_cm_timeseries:
         progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="collect_cm_timeseries=false")
         return
+    if config.query_profile_source == "impala":
+        if not config.collect_prometheus_timeseries:
+            progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="collect_prometheus_timeseries=false")
+            return
+        if not config.prometheus_url:
+            progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="prometheus_url not configured")
+            return
     if config.cm_timeseries_top_limit <= 0:
         progress.emit(stage="cm_timeseries_refresh", status="skipped", reason="cm_timeseries_top_limit=0")
         return
@@ -356,13 +385,15 @@ def refresh_case_cm_timeseries(
             collect_cm_timeseries=True,
             out_dir=refresh_dir,
         )
-        context_paths = sorted(refresh_dir.rglob("cm_timeseries_context.json"))
+        context_paths = sorted(refresh_dir.rglob("runtime_metrics_context.json")) or sorted(
+            refresh_dir.rglob("cm_timeseries_context.json")
+        )
         if case.cm_collect_seconds is None:
             case.cm_collect_seconds = refresh_case.cm_collect_seconds
         elif refresh_case.cm_collect_seconds is not None:
             case.cm_collect_seconds = round(case.cm_collect_seconds + refresh_case.cm_collect_seconds, 3)
         if refresh_case.collection_status == "ok" and context_paths:
-            target = case.actual_case_dir / "cm_timeseries_context.json"
+            target = case.actual_case_dir / context_paths[0].name
             shutil.copyfile(context_paths[0], target)
             run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode="off")
             if case.analysis_status == "ok":

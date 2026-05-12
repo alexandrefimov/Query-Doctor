@@ -372,7 +372,7 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
         metrics.append(("jobs", counters["jobs"]))
     return {
         "steps": [
-            progress_step("CM discovery", states["discovery"], discovery_detail(counters)),
+            progress_step("Query discovery", states["discovery"], discovery_detail(counters)),
             progress_step("Cluster event context", states["cm_events"], cm_events_detail(counters)),
             progress_step(
                 "Profile collection",
@@ -384,7 +384,7 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 states["analysis"],
                 case_detail(counters, "analysis_done"),
             ),
-            progress_step("CM metrics", states["cm_metrics"], cm_metrics_detail(counters)),
+            progress_step("Runtime metrics", states["cm_metrics"], cm_metrics_detail(counters)),
             progress_step("Metadata refresh", states["metadata"], metadata_detail(counters)),
             progress_step(
                 "Ranking / summary",

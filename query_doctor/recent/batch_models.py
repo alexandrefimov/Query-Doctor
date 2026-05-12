@@ -73,6 +73,12 @@ class BatchConfig:
     impala_profile_port: int = 25000
     impala_profile_scheme: str = "http"
     impala_profile_timeout_sec: int = 15
+    collect_prometheus_timeseries: bool = False
+    prometheus_url: str | None = None
+    prometheus_metrics_profile: str = "ambari-hadoop"
+    prometheus_step_sec: int = 30
+    prometheus_timeseries_padding_sec: int = 120
+    prometheus_timeout_sec: int = 30
 
 
 @dataclass

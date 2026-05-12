@@ -125,6 +125,14 @@ HUMAN_REVIEW_RISK_REASONS = {
 }
 
 
+def runtime_metrics_provider(config: BatchConfig) -> str:
+    if config.query_profile_source == "impala" and config.collect_prometheus_timeseries:
+        return "prometheus"
+    if config.query_profile_source == "cm" and config.collect_cm_timeseries:
+        return "cloudera-manager"
+    return "none"
+
+
 def build_summary(
     config: BatchConfig,
     discovery: DiscoveryResult,
@@ -155,6 +163,10 @@ def build_summary(
         "metadata_top_limit": config.metadata_top_limit,
         "collect_cm_timeseries": config.collect_cm_timeseries,
         "cm_timeseries_top_limit": config.cm_timeseries_top_limit,
+        "query_profile_source": config.query_profile_source,
+        "collect_prometheus_timeseries": config.collect_prometheus_timeseries,
+        "prometheus_metrics_profile": config.prometheus_metrics_profile,
+        "runtime_metrics_provider": runtime_metrics_provider(config),
         "recent_window_minutes": config.recent_window_minutes,
         "from_time": config.from_time,
         "to_time": config.to_time,
@@ -842,8 +854,9 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         f"- excluded candidates: {summary.get('candidate_exclusion_count', 0)}",
         f"- triage profile limit: {summary['triage_profile_limit']}",
         f"- metadata top limit: {summary['metadata_top_limit']}",
-        f"- collect CM metrics: {summary['collect_cm_timeseries']}",
-        f"- CM metrics top limit: {summary['cm_timeseries_top_limit']}",
+        f"- runtime metrics provider: {summary.get('runtime_metrics_provider') or 'none'}",
+        f"- collect runtime metrics: {bool(summary.get('collect_cm_timeseries') or summary.get('collect_prometheus_timeseries'))}",
+        f"- runtime metrics top limit: {summary['cm_timeseries_top_limit']}",
         f"- search depth minutes: {summary['recent_window_minutes']}",
         f"- explicit time window: {summary.get('from_time') or 'relative'} -> {summary.get('to_time') or 'relative'}",
         f"- time-sharded discovery: {summary.get('time_sharded', False)}",
