@@ -43,12 +43,12 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
     summaries = summary.get("summaries_inspected")
     if summary.get("cm_summary_safety_cap_hit"):
         cap = summary.get("cm_summary_safety_cap") or summaries
-        parts.append(f"CM match limit hit: {safe_display_text(cap)}")
+        parts.append(f"Query match limit hit: {safe_display_text(cap)}")
     elif summaries is not None:
-        parts.append(f"CM summaries inspected: {safe_display_text(summaries)}")
+        parts.append(f"Query summaries inspected: {safe_display_text(summaries)}")
     if summary.get("from_time") or summary.get("to_time"):
         parts.append(
-            "CM time window: "
+            "Scan time window: "
             f"{safe_display_text(summary.get('from_time') or 'unknown')} -> "
             f"{safe_display_text(summary.get('to_time') or 'unknown')}"
         )
@@ -61,8 +61,13 @@ def recent_scan_scope_parts(summary: dict[str, Any]) -> tuple[str, ...]:
     if summary.get("triage_profile_limit") is not None:
         parts.append(f"Analyzer limit: {safe_display_text(summary.get('triage_profile_limit'))}")
     if summary.get("metadata_top_limit") is not None:
+        metadata_scope = (
+            "analyzed cases"
+            if str(summary.get("query_profile_source") or "").strip().lower() == "impala"
+            else "bad/suspicious cases"
+        )
         parts.append(
-            f"Metadata budget: up to {safe_display_text(summary.get('metadata_top_limit'))} bad/suspicious cases"
+            f"Metadata budget: up to {safe_display_text(summary.get('metadata_top_limit'))} {metadata_scope}"
         )
     parts.extend(cluster_context_scope_parts(summary))
     if summary.get("query_type_filter") is not None:

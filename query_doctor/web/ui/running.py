@@ -133,7 +133,7 @@ def render_running_queries_run_panel(
         "<form id=\"running-form\" class=\"batch-form\" method=\"post\" action=\"/running/run\">"
         f"{metadata_note_html}"
         "<div class=\"scope-line\" aria-label=\"Running query collection scope\">"
-        "<strong>Scope:</strong> current running query summaries → analyzable profiles → ranked cases → automatic metadata for top bad/suspicious cases · no auto LLM. "
+        "<strong>Scope:</strong> current running query summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM. "
         "Runtime context is collected automatically when the selected source supports it."
         "</div>"
         f"{render_running_scan_framing_note()}"

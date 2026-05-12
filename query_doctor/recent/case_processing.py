@@ -21,7 +21,7 @@ from query_doctor.recent.metadata_refresh import (
     mark_metadata_not_requested,
     metadata_refresh_skip_reason,
     rank_cases_for_metadata,
-    select_metadata_refresh_candidates,
+    select_metadata_refresh_candidates_for_config,
 )
 from query_doctor.recent.progress import ProgressWriter
 
@@ -514,7 +514,7 @@ def refresh_top_metadata(
         mark_metadata_not_requested(ranked)
         progress.emit(stage="metadata_refresh", status="skipped", reason=skip_reason)
         return
-    candidates = select_metadata_refresh_candidates(ranked, config.metadata_top_limit)
+    candidates = select_metadata_refresh_candidates_for_config(config, ranked)
     if not candidates:
         mark_metadata_not_requested(ranked)
         progress.emit(stage="metadata_refresh", status="skipped", reason="no bad or suspicious cases")
