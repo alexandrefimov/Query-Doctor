@@ -196,6 +196,22 @@ document.addEventListener('DOMContentLoaded', function () {
       choice.addEventListener('change', function () { applyDiagnosisTarget(root); });
     });
   });
+  function syncDiagnosisCluster(root) {
+    var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    if (!selector) {
+      return;
+    }
+    Array.prototype.slice.call(root.querySelectorAll('input[type="hidden"][name="cluster_key"]')).forEach(function (input) {
+      input.value = selector.value;
+    });
+  }
+  Array.prototype.slice.call(document.querySelectorAll('[data-diagnosis-target-root]')).forEach(function (root) {
+    syncDiagnosisCluster(root);
+    var selector = root.querySelector('[data-diagnosis-cluster-control] select[name="cluster_key"]');
+    if (selector) {
+      selector.addEventListener('change', function () { syncDiagnosisCluster(root); });
+    }
+  });
   function applyScanTarget(form) {
     var selector = form.querySelector('select[name="scan_target"]');
     if (!selector) {

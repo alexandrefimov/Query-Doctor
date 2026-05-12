@@ -502,13 +502,17 @@ code,.technical,.mono {
 }
 
 .known-query-row {
-  grid-template-columns:minmax(420px,1fr) minmax(180px,260px) auto;
+  grid-template-columns:minmax(420px,1fr) auto;
   align-items:end
 }
 
 .known-query-row .run-button {
   width:auto;
   margin-top:0
+}
+
+.diagnosis-cluster-control {
+  max-width:340px
 }
 
 .field {

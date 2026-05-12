@@ -80,7 +80,7 @@ def render_help_content() -> str:
 
 <details>
 <summary>Known Query ID</summary>
-<p>Known Query ID is for one explicit query ID. The mode has a primary Query ID field, a compact Cluster selector when clusters are configured, and a Run button. It collects and analyzes one query without automatic LLM execution, clears the input after submit, and appends the result to the Known Query ID analysis table.</p>
+<p>Known Query ID is for one explicit query ID. Use the shared Cluster selector above Diagnosis target, then enter the Query ID and run analysis. It collects and analyzes one query without automatic LLM execution, clears the input after submit, and appends the result to the Known Query ID analysis table.</p>
 </details>
 
 <h2 id="results-table">Results table</h2>
