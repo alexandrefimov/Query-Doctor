@@ -150,6 +150,8 @@ def stats_quality_label(view: RecentScanCaseDetailView) -> str:
 
 def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
     primary = view.primary_bottleneck
+    if not primary.unavailable and primary.label.lower() == "storage/hdfs":
+        return "Review storage and HDFS evidence before SQL, stats, or LLM action"
     if not primary.unavailable and primary.confidence == "high":
         label = primary.label.lower()
         if label == "stats":
@@ -162,8 +164,6 @@ def evidence_next_action_label(view: RecentScanCaseDetailView) -> str:
             return "Review runtime skew evidence before SQL or stats action"
         if label == "data movement":
             return "Review data-movement evidence before SQL or stats action"
-        if label == "storage/hdfs":
-            return "Review storage and HDFS evidence before SQL or stats action"
     if not primary.unavailable and primary.label == "Competing signals":
         return competing_signal_next_action(primary.reason_summary)
     if _candidate_is_visible(view.optimization_candidate):
