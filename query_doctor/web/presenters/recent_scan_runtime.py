@@ -213,7 +213,7 @@ def present_recent_scan_runtime_verdict(
             title="Runtime context not collected",
             badge_class="batch-status--neutral",
             summary=(
-                "Bounded Cloudera Manager runtime context is not available for this case. "
+                "Bounded runtime context is not available for this case. "
                 "Profile and metadata findings remain the primary evidence."
             ),
             reasons=_reason_tuple(

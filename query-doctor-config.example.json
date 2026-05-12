@@ -17,7 +17,7 @@
     },
     {
       "id": "direct-impala",
-      "label": "Direct Impala",
+      "label": "Ambari Direct Impala",
       "query_profile_source": "impala",
       "impala_profile_hosts": [
         "impalad-worker-1.example.com",
@@ -26,7 +26,16 @@
       "impala_profile_port": 25000,
       "impala_profile_scheme": "http",
       "impala_profile_timeout_sec": 15,
-      "metadata_coordinator": "impala-coordinator.example.com:21000"
+      "impala_kerberos_service_name": "hive",
+      "collect_prometheus_timeseries": true,
+      "prometheus_url": "https://prometheus.example.com/",
+      "prometheus_metrics_profile": "ambari-hadoop",
+      "prometheus_step_sec": 30,
+      "prometheus_timeseries_padding_sec": 300,
+      "metadata_coordinator": "impala-coordinator.example.com:21000",
+      "metadata_auth": "kerberos",
+      "metadata_protocol": "beeswax",
+      "metadata_kerberos_service_name": "hive"
     }
   ],
   "ca_bundle": "~/.qdcreds/cm-chain.pem",
