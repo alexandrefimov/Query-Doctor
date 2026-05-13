@@ -224,11 +224,51 @@ document.addEventListener('DOMContentLoaded', function () {
       element.classList.toggle('manual-inputs-hidden', !visible);
     });
   }
+  function parseScanHourOptions(dateSelect) {
+    var raw = dateSelect.getAttribute('data-scan-hour-options') || '{}';
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      return {};
+    }
+  }
+  function updateScanHourOptions(scanForm) {
+    var dateSelect = scanForm.querySelector('select[name="scan_date"][data-scan-hour-options]');
+    var hourSelect = scanForm.querySelector('select[name="scan_hour"]');
+    if (!dateSelect || !hourSelect) {
+      return;
+    }
+    var optionsByDate = parseScanHourOptions(dateSelect);
+    var hourOptions = optionsByDate[dateSelect.value];
+    if (!Array.isArray(hourOptions)) {
+      return;
+    }
+    var previousValue = hourSelect.value;
+    var hasPreviousValue = false;
+    hourSelect.innerHTML = hourOptions.map(function (option) {
+      var value = String(option[0]);
+      var label = String(option[1]);
+      if (value === previousValue) {
+        hasPreviousValue = true;
+      }
+      return '<option value="' + escapeHtml(value) + '">' + escapeHtml(label) + '</option>';
+    }).join('');
+    if (hasPreviousValue) {
+      hourSelect.value = previousValue;
+    } else if (hourOptions.length) {
+      hourSelect.value = String(hourOptions[hourOptions.length - 1][0]);
+    }
+  }
   Array.prototype.slice.call(document.querySelectorAll('[data-scan-target-form]')).forEach(function (scanForm) {
     applyScanTarget(scanForm);
+    updateScanHourOptions(scanForm);
     Array.prototype.slice.call(scanForm.querySelectorAll('input[name="scan_target"]')).forEach(function (choice) {
       choice.addEventListener('change', function () { applyScanTarget(scanForm); });
     });
+    var dateSelect = scanForm.querySelector('select[name="scan_date"][data-scan-hour-options]');
+    if (dateSelect) {
+      dateSelect.addEventListener('change', function () { updateScanHourOptions(scanForm); });
+    }
   });
   function detailJobProgressElements() {
     return Array.prototype.slice.call(document.querySelectorAll('[data-report-job-status-url], [data-optimizer-job-status-url]'));
