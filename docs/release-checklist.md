@@ -120,11 +120,14 @@ Review at minimum:
 
 ## PyPI Publishing
 
-Before the first package-index release:
+The first package-index release, `v0.1.1`, was published on 2026-05-13 through
+TestPyPI and PyPI Trusted Publishing. Keep the one-time setup below in place and
+recheck it before changing publisher settings, repository ownership, workflow
+names, or environment names.
 
-- Confirm the package name `query-doctor` is still available on PyPI and
-  TestPyPI. Pending Trusted Publishers do not reserve names until the first
-  successful upload.
+One-time package-index setup:
+
+- Confirm the PyPI project is [query-doctor](https://pypi.org/project/query-doctor/).
 - Verify the GitHub Environments named `testpypi` and `pypi` exist, require
   trusted maintainer approval for deployments, and block admin bypass.
 - Configure TestPyPI Trusted Publishing for the project:
@@ -163,7 +166,7 @@ python -m twine check dist/*
   environment deployment. Then install from TestPyPI:
 
 ```bash
-python -m pip install --index-url https://test.pypi.org/simple/ query-doctor
+python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple query-doctor==VERSION
 ```
 
 - Cut a protected release tag matching the package version exactly, for example
@@ -175,6 +178,8 @@ python -m pip install --index-url https://test.pypi.org/simple/ query-doctor
   Trusted Publishing without stored API tokens.
 - Do not reuse a PyPI version number. If a release upload fails after a file is
   accepted by PyPI, bump the version for the next attempt.
+- After PyPI upload, install the exact released version from production PyPI in
+  a clean virtual environment and smoke the public demo commands.
 
 ## After Release
 

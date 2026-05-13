@@ -55,12 +55,11 @@ in place:
   required default-branch check.
 - Additional public-quality automation covers package build/install smoke,
   local Markdown link checks, CodeQL, Dependency Review, Web E2E, and a manual
-  release-gate workflow. PyPI and TestPyPI publishing automation is present and
-  uses Trusted Publishing through GitHub OIDC once the index-side pending
-  publishers are configured; the GitHub `pypi` and `testpypi` environments
-  already require maintainer approval and block admin bypass. Pre-commit also
-  enforces ruff check, ruff format, staged public-safety checks, whitespace, and
-  Markdown links.
+  release-gate workflow. Query Doctor is published on PyPI as `query-doctor`.
+  PyPI and TestPyPI publishing automation uses Trusted Publishing through
+  GitHub OIDC; the GitHub `pypi` and `testpypi` environments require maintainer
+  approval and block admin bypass. Pre-commit also enforces ruff check, ruff
+  format, staged public-safety checks, whitespace, and Markdown links.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample
   cases and an English trusted demo report by default.
 
@@ -70,6 +69,7 @@ change.
 ## P1 Community Baseline
 
 - Release checklist exists and is used before tags or visibility changes.
+- README installation works from PyPI with `pip install query-doctor`.
 - Dependabot checks GitHub Actions and Python tooling updates.
 - CI covers the supported Python floor and a modern Python version.
 - Scheduled CI runs the broader test suite separately from fast PR safety checks.
