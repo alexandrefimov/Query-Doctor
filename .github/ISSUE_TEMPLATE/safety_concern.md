@@ -16,6 +16,10 @@ Use GitHub's private "Report a vulnerability" flow for exploitable
 vulnerabilities. Use this public template only for sanitized safety concerns
 that do not disclose an exploitable issue or private operational data.
 
+If you are unsure whether the issue is exploitable or contains private
+operational details, use the private vulnerability flow instead of a public
+issue.
+
 ## Summary
 
 What safety boundary may be affected?
@@ -25,6 +29,7 @@ What safety boundary may be affected?
 - [ ] Raw metadata or provider JSON exposure
 - [ ] Local path or artifact filename exposure
 - [ ] Secret or credential exposure
+- [ ] Subprocess output exposure
 - [ ] Model/runtime internals exposure
 - [ ] Unsupported report claim accepted as trusted
 - [ ] Unsafe optimizer draft accepted as trusted
@@ -65,3 +70,4 @@ What did it do instead?
 - Query Doctor version or commit:
 - Python version:
 - Operating system:
+- Collection mode, if relevant: Cloudera Manager / direct Impala / demo

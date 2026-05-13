@@ -6,10 +6,27 @@ future repository visibility changes.
 ## Repository Hygiene
 
 - Start from a clean working tree: `git status --short`.
+- Create release and public-readiness cleanup work in a clean branch or
+  worktree. Do not mix it with local experiment, generated-output, or
+  environment-specific changes.
 - Confirm no generated case, report, profile, metadata, local config, cache,
   virtualenv, credential, or temporary output is tracked.
 - Stage only explicit intended files; do not use `git add .` or `git add -A`.
 - Review `git diff --cached` before committing or tagging.
+
+## Pull Request Baseline
+
+Before merging release-facing or public-repository hygiene changes:
+
+- Use the repository pull request template and fill in the safety checklist.
+- Link any issue that tracks the release, hardening, test, or documentation
+  follow-up.
+- Keep behavior, documentation, and CI changes in reviewable semantic commits.
+- Avoid mixing formatting-only churn with behavior or safety changes.
+- Confirm the PR contains no real operational identifiers in fixtures,
+  screenshots, logs, docs, or test names.
+- Require all branch-protection checks to pass before merge.
+- After merge, confirm `main` is still green before tagging or publishing.
 
 ## Safety And Public-Release Checks
 
@@ -88,10 +105,14 @@ Confirm public docs state only implemented behavior:
 - Query Optimizer is read-only and does not execute pasted query text.
 - Validated reports and details-page optimizer drafts are explicit selected-case
   actions.
+- Public issue and PR templates route sensitive data away from public issues and
+  remind contributors of the safety contract.
 
 Review at minimum:
 
 - [../README.md](../README.md)
+- [../CONTRIBUTING.md](../CONTRIBUTING.md)
+- [../SECURITY.md](../SECURITY.md)
 - [security-model.md](security-model.md)
 - [safety-contract.md](safety-contract.md)
 - [architecture.md](architecture.md)

@@ -23,9 +23,10 @@ Which area would this affect?
 - [ ] Report validation
 - [ ] Query Optimizer
 - [ ] Web UI
-- [ ] Cluster Doctor seam
-- [ ] Documentation
+- [ ] CLI or configuration
 - [ ] Packaging or CI
+- [ ] Documentation
+- [ ] Roadmap seam
 
 ## Safety And Trust Boundary
 
@@ -37,6 +38,12 @@ How should the feature preserve Query Doctor's safety contract?
 - [ ] Browser/trusted output does not expose raw SQL, profiles, metadata, paths,
       secrets, command output, model/runtime internals, or raw artifact names.
 - [ ] Unsupported or ambiguous evidence remains `unknown` or `not_observed`.
+
+## Current Scope Check
+
+- [ ] This is for Apache Impala, the only implemented query engine today.
+- [ ] This does not require executing user SQL or optimizer draft SQL.
+- [ ] This does not require browser-visible raw artifacts or arbitrary docs.
 
 ## Alternatives
 
