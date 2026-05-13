@@ -118,6 +118,59 @@ Review at minimum:
 - Repository and pipeline follow-ups are tracked in
   [repository-hardening.md](repository-hardening.md).
 
+## PyPI Publishing
+
+Before the first PyPI release:
+
+- Confirm the package name `query-doctor` is still available on PyPI and
+  TestPyPI. Pending Trusted Publishers do not reserve names until the first
+  successful upload.
+- Create a GitHub Environment named `pypi` and require trusted maintainer
+  approval for deployments to that environment.
+- Configure PyPI Trusted Publishing for the project:
+  - owner: `alexandrefimov`;
+  - repository: `Query-Doctor`;
+  - workflow: `publish.yml`;
+  - environment: `pypi`.
+- Configure the matching TestPyPI publisher if you want a full index-level dry
+  run before the production upload.
+
+Before every PyPI release:
+
+- Bump the package version in `pyproject.toml` and `setup.py` together.
+- Run the release gate from a clean synced branch:
+
+```bash
+PUBLIC_RELEASE=1 scripts/local_gate.sh
+pre-commit run --all-files
+git diff --check
+```
+
+- Build and inspect the exact distributions locally:
+
+```bash
+python -m pip install --upgrade build twine
+python -m build
+python -m twine check dist/*
+```
+
+- Prefer a TestPyPI upload first for the first release or any packaging change:
+
+```bash
+python -m twine upload --repository testpypi dist/*
+python -m pip install --index-url https://test.pypi.org/simple/ query-doctor
+```
+
+- Cut a protected release tag matching the package version exactly, for example
+  `v0.1.0` for `version = "0.1.0"`.
+- Publish the GitHub release from that tag. The
+  [Publish Package](../.github/workflows/publish.yml) workflow builds fresh
+  source/wheel distributions, checks metadata, smoke-tests the installed wheel,
+  verifies the tag matches `pyproject.toml`, and then uploads through PyPI
+  Trusted Publishing without stored API tokens.
+- Do not reuse a PyPI version number. If a release upload fails after a file is
+  accepted by PyPI, bump the version for the next attempt.
+
 ## After Release
 
 - Record significant release notes in [changelog.md](changelog.md).

@@ -42,6 +42,7 @@ from query_doctor.web.trusted_artifacts import write_batch_case_report_validatio
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_DEMO_OUT = Path(tempfile.gettempdir()) / "query-doctor-demo-pack"
+DEFAULT_DEMO_OUT_HELP = "system temp directory / query-doctor-demo-pack"
 SUMMARY_NAME = "batch_summary.json"
 
 
@@ -55,7 +56,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--out",
         default=str(DEFAULT_DEMO_OUT),
-        help=f"Output directory. Must be a dedicated query-doctor-* temp directory. Default: {DEFAULT_DEMO_OUT}",
+        help=(
+            "Output directory. Must be a dedicated query-doctor-* temp directory. "
+            f"Default: {DEFAULT_DEMO_OUT_HELP}."
+        ),
     )
     parser.add_argument(
         "--overwrite",
