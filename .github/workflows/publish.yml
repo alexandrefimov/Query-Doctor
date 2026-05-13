@@ -11,6 +11,7 @@ permissions:
 jobs:
   pypi:
     name: Publish to PyPI
+    if: startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: pypi
