@@ -1,0 +1,4 @@
+name: Query Doctor CodeQL config
+
+paths-ignore:
+  - tests/**

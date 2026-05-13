@@ -786,8 +786,64 @@ def normalized_projection_alias_as_insensitive_signature(signature: str) -> str:
 
 
 def normalize_material_signature_segment(segment: str) -> str:
-    segment = re.sub(r"\s*\.\s*", ".", segment)
-    return re.sub(r"\bas (?=[a-z_][\w$]*(?:,| from\b|$))", "", segment)
+    return remove_projection_alias_as(compact_spaces_around_dots(segment))
+
+
+def compact_spaces_around_dots(segment: str) -> str:
+    chars: list[str] = []
+    index = 0
+    while index < len(segment):
+        char = segment[index]
+        if char.isspace():
+            next_index = index + 1
+            while next_index < len(segment) and segment[next_index].isspace():
+                next_index += 1
+            previous_is_dot = bool(chars) and chars[-1] == "."
+            next_is_dot = next_index < len(segment) and segment[next_index] == "."
+            if not previous_is_dot and not next_is_dot and chars:
+                chars.append(" ")
+            index = next_index
+            continue
+        if char == "." and chars and chars[-1] == " ":
+            chars.pop()
+        chars.append(char)
+        index += 1
+    return "".join(chars)
+
+
+def remove_projection_alias_as(segment: str) -> str:
+    chars: list[str] = []
+    index = 0
+    while index < len(segment):
+        if starts_alias_as(segment, index):
+            index += 3
+            continue
+        chars.append(segment[index])
+        index += 1
+    return "".join(chars)
+
+
+def starts_alias_as(segment: str, index: int) -> bool:
+    if segment[index : index + 3] != "as ":
+        return False
+    if index > 0 and (segment[index - 1].isalnum() or segment[index - 1] in {"_", "$"}):
+        return False
+    alias_start = index + 3
+    if alias_start >= len(segment):
+        return False
+    first = segment[alias_start]
+    if not (first == "_" or first.isalpha()):
+        return False
+    alias_end = alias_start + 1
+    while alias_end < len(segment) and (
+        segment[alias_end].isalnum() or segment[alias_end] in {"_", "$"}
+    ):
+        alias_end += 1
+    return (
+        alias_end == len(segment)
+        or segment.startswith(",", alias_end)
+        or segment.startswith(" from", alias_end)
+    )
 
 
 def rewrite_unquoted_signature_segments(signature: str, rewrite: Callable[[str], str]) -> str:

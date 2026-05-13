@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from query_doctor.optimizer.source_sql import (
     is_sql_identifier_char,
     is_sql_identifier_start,
@@ -29,6 +27,7 @@ CLAUSE_SIGNATURE_BOUNDARIES = (
     "CLUSTER",
 )
 JOIN_MODIFIER_KEYWORDS = {"LEFT", "RIGHT", "FULL", "INNER", "OUTER", "CROSS", "SEMI", "ANTI"}
+SIGNATURE_OPERATOR_CHARS = set("(),=+-*/<>")
 
 
 def skip_sql_whitespace_and_comments(sql: str, index: int) -> int:
@@ -134,7 +133,31 @@ def split_top_level_sql_fragments(fragment: str, delimiter: str) -> list[str]:
 
 def normalize_sql_signature_fragment(fragment: str) -> str:
     compact = " ".join(lower_sql_outside_quoted_text(fragment).strip().rstrip(";").split())
-    return re.sub(r"\s*([(),=+\-*/<>])\s*", r"\1", compact)
+    return compact_spaces_around_signature_operators(compact)
+
+
+def compact_spaces_around_signature_operators(fragment: str) -> str:
+    chars: list[str] = []
+    index = 0
+    while index < len(fragment):
+        char = fragment[index]
+        if char.isspace():
+            next_index = index + 1
+            while next_index < len(fragment) and fragment[next_index].isspace():
+                next_index += 1
+            previous_is_operator = bool(chars) and chars[-1] in SIGNATURE_OPERATOR_CHARS
+            next_is_operator = (
+                next_index < len(fragment) and fragment[next_index] in SIGNATURE_OPERATOR_CHARS
+            )
+            if not previous_is_operator and not next_is_operator and chars:
+                chars.append(" ")
+            index = next_index
+            continue
+        if char in SIGNATURE_OPERATOR_CHARS and chars and chars[-1] == " ":
+            chars.pop()
+        chars.append(char)
+        index += 1
+    return "".join(chars)
 
 
 def lower_sql_outside_quoted_text(sql: str) -> str:

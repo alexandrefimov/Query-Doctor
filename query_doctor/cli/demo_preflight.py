@@ -9,6 +9,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Callable
 
 
@@ -20,6 +21,7 @@ NOT_READY = "NOT_READY"
 
 TEXT_SUFFIXES = {".css", ".html", ".json", ".md", ".py", ".txt"}
 PUBLIC_RELEASE_TEXT_SUFFIXES = TEXT_SUFFIXES | {".cfg", ".ini", ".sh", ".toml", ".yaml", ".yml"}
+RESERVED_EXAMPLE_DOMAINS = ("example.com", "example.net", "example.org")
 GIT_GREP_CHUNK_SIZE = 40
 
 BROWSER_UI_PREFIXES = (
@@ -319,9 +321,21 @@ def public_release_match_is_allowed(label: str, value: str) -> bool:
     if label == "private local user path":
         return lowered.startswith(("/users/demo", "/users/example", "/home/demo", "/home/example"))
     if label == "embedded URL credentials":
-        if re.fullmatch(r"https?://user:pass@(?:localhost|127\.0\.0\.1)(?::\d+)?", lowered):
+        parsed = urlsplit(lowered)
+        host = parsed.hostname or ""
+        if (
+            parsed.username == "user"
+            and parsed.password == "pass"
+            and host
+            in {
+                "localhost",
+                "127.0.0.1",
+            }
+        ):
             return True
-        return ".example." in lowered or "example.com" in lowered
+        return any(
+            host == domain or host.endswith(f".{domain}") for domain in RESERVED_EXAMPLE_DOMAINS
+        )
     if label == "authorization token":
         return "secret" in lowered or "<redacted>" in lowered
     if label == "private-looking hostname/domain":

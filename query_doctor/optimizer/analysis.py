@@ -110,7 +110,14 @@ def analyze_query_optimizer(
 
 def has_select_star(sql: str) -> bool:
     text = strip_sql_comments_and_strings(sql)
-    return bool(re.search(r"\bSELECT\b(?:(?!\bFROM\b).)*\*", text, re.IGNORECASE | re.DOTALL))
+    select_match = re.search(r"\bSELECT\b", text, re.IGNORECASE)
+    if not select_match:
+        return False
+    from_match = re.search(r"\bFROM\b", text[select_match.end() :], re.IGNORECASE)
+    if not from_match:
+        return False
+    projection = text[select_match.end() : select_match.end() + from_match.start()]
+    return "*" in projection
 
 
 def strip_sql_comments_and_strings(sql: str) -> str:
