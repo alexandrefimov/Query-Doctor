@@ -211,7 +211,6 @@ from query_doctor.safety.redaction import (
     HOST_METADATA_KEY_PARTS,
     HostAliasRedactor,
     IPV4_RE,
-    IPV6_CANDIDATE_RE,
     POOL_METADATA_KEYS,
     PRESERVED_METADATA_KEYS,
     SECRET_VALUE_RE,

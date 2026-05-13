@@ -16,9 +16,6 @@ class SupportsSecretValues(Protocol):
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 BRACKETED_IPV6_RE = re.compile(r"\[(?P<ip>[0-9A-Fa-f:]+)\]")
-IPV6_CANDIDATE_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])(?P<ip>[0-9A-Fa-f:]*:[0-9A-Fa-f:.]+)(?![A-Za-z0-9_.-])"
-)
 URL_CREDENTIAL_RE = re.compile(r"\b(https?://)([^/\s:@]+):([^@\s/]+)@", re.IGNORECASE)
 URL_HOST_RE = re.compile(
     r"\b(https?://)(<redacted>@)?([^/\s:?#\\[]+)(:\d+)?",
@@ -64,6 +61,8 @@ SQL_TABLE_RE = re.compile(
     r"\b(FROM|JOIN)\s+`?[A-Za-z_][A-Za-z0-9_$]*`?",
     re.IGNORECASE,
 )
+IPV6_CANDIDATE_CHARS = frozenset("0123456789abcdefABCDEF:.")
+IPV6_BOUNDARY_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-")
 
 PRESERVED_METADATA_KEYS = {
     "query_id",
@@ -179,16 +178,49 @@ class HostAliasRedactor:
         return f"{self.alias_for(match.group('host'))}{match.group('port') or ''}"
 
 
+def redact_ipv6_candidates(text: str, host_redactor: HostAliasRedactor) -> str:
+    redacted_parts: list[str] = []
+    index = 0
+    text_length = len(text)
+
+    while index < text_length:
+        char = text[index]
+        if char not in IPV6_CANDIDATE_CHARS:
+            redacted_parts.append(char)
+            index += 1
+            continue
+
+        start = index
+        while index < text_length and text[index] in IPV6_CANDIDATE_CHARS:
+            index += 1
+
+        candidate = text[start:index]
+        if ":" not in candidate:
+            redacted_parts.append(candidate)
+            continue
+        if start > 0 and text[start - 1] in IPV6_BOUNDARY_CHARS:
+            redacted_parts.append(candidate)
+            continue
+        if index < text_length and text[index] in IPV6_BOUNDARY_CHARS:
+            redacted_parts.append(candidate)
+            continue
+
+        try:
+            ip_address = ipaddress.ip_address(candidate)
+        except ValueError:
+            redacted_parts.append(candidate)
+            continue
+
+        if ip_address.version == 6:
+            redacted_parts.append(host_redactor.alias_for(candidate))
+        else:
+            redacted_parts.append(candidate)
+
+    return "".join(redacted_parts)
+
+
 def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None) -> str:
     host_redactor = redactor or HostAliasRedactor()
-
-    def replace_ipv6_candidate(match: re.Match[str]) -> str:
-        value = match.group("ip")
-        try:
-            ipaddress.ip_address(value)
-        except ValueError:
-            return match.group(0)
-        return host_redactor.alias_for(value)
 
     def replace_bracketed_ipv6(match: re.Match[str]) -> str:
         value = match.group("ip")
@@ -215,7 +247,7 @@ def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None
     redacted = HOSTLIKE_FQDN_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
     redacted = IPV4_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
     redacted = BRACKETED_IPV6_RE.sub(replace_bracketed_ipv6, redacted)
-    redacted = IPV6_CANDIDATE_RE.sub(replace_ipv6_candidate, redacted)
+    redacted = redact_ipv6_candidates(redacted, host_redactor)
     return redacted
 
 

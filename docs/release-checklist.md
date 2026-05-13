@@ -192,7 +192,7 @@ python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-ur
 ```
 
 - Cut a protected release tag matching the package version exactly, for example
-  `v0.1.1` for `version = "0.1.1"`.
+  `vVERSION` for `version = "VERSION"`.
 - Publish the GitHub release from that tag. The
   [Publish Package](../.github/workflows/publish.yml) workflow builds fresh
   source/wheel distributions, checks metadata, smoke-tests the installed wheel,
