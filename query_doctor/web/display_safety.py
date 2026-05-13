@@ -21,6 +21,7 @@ def sanitize_browser_error_text(value: object, *, max_chars: int | None = 1200) 
         redact_artifact_markers=True,
         redact_model_names=True,
         redact_sql_snippets=True,
+        redact_infrastructure=True,
         max_chars=max_chars,
     )
     for token in BROWSER_ERROR_FIELD_NAME_TOKENS:

@@ -192,6 +192,7 @@ def safe_display_text(value: Any) -> str:
         redact_field_names=True,
         redact_artifact_markers=True,
         redact_model_names=True,
+        redact_infrastructure=True,
     )
 
 
@@ -204,4 +205,5 @@ def safe_optimization_display_text(value: Any) -> str:
         redact_artifact_markers=True,
         redact_model_names=True,
         redact_sql_snippets=True,
+        redact_infrastructure=True,
     )
