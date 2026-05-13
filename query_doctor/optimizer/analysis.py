@@ -121,9 +121,41 @@ def has_select_star(sql: str) -> bool:
 
 
 def strip_sql_comments_and_strings(sql: str) -> str:
-    text = re.sub(r"--[^\n]*", " ", sql)
-    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
-    return re.sub(r"'(?:''|[^'])*'", "''", text)
+    parts: list[str] = []
+    cursor = 0
+    while cursor < len(sql):
+        char = sql[cursor]
+        next_char = sql[cursor + 1] if cursor + 1 < len(sql) else ""
+        if char == "-" and next_char == "-":
+            line_end = sql.find("\n", cursor + 2)
+            parts.append(" ")
+            if line_end == -1:
+                break
+            cursor = line_end
+            continue
+        if char == "/" and next_char == "*":
+            comment_end = sql.find("*/", cursor + 2)
+            parts.append(" ")
+            if comment_end == -1:
+                break
+            cursor = comment_end + 2
+            continue
+        if char == "'":
+            parts.append("''")
+            cursor += 1
+            while cursor < len(sql):
+                if sql[cursor] != "'":
+                    cursor += 1
+                    continue
+                if cursor + 1 < len(sql) and sql[cursor + 1] == "'":
+                    cursor += 2
+                    continue
+                cursor += 1
+                break
+            continue
+        parts.append(char)
+        cursor += 1
+    return "".join(parts)
 
 
 def metadata_table_map(metadata_context: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
