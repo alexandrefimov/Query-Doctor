@@ -77,7 +77,8 @@ gate:
 
 Package CI should build the source distribution and wheel, run metadata checks,
 install the wheel into a clean virtual environment, and smoke installed console
-scripts. Docs CI should catch broken local Markdown links before merge.
+scripts plus the installed demo web UI. Docs CI should catch broken local
+Markdown links before merge.
 Dependency Review should stay enabled on pull requests as a security signal
 alongside Dependabot. CodeQL should scan production code before release tags;
 test fixtures may be excluded from code-scanning noise when they intentionally

@@ -122,7 +122,12 @@ def check_content_length(response: HttpResponse, label: str, failures: list[str]
         )
 
 
-def check_home(response: HttpResponse, failures: list[str]) -> None:
+def check_home(
+    response: HttpResponse,
+    failures: list[str],
+    *,
+    expected_text: tuple[str, ...] = (),
+) -> None:
     label = "GET /"
     require(response.status == 200, f"{label}: expected 200, got {response.status}", failures)
     require(
@@ -150,6 +155,8 @@ def check_home(response: HttpResponse, failures: list[str]) -> None:
     )
     require("<style>" not in body, f"{label}: unexpected inline <style>", failures)
     require("color-scheme:light" not in body, f"{label}: product CSS leaked inline", failures)
+    for expected in expected_text:
+        require(expected in body, f"{label}: missing expected text {expected!r}", failures)
 
 
 def check_static_asset(
@@ -180,15 +187,52 @@ def check_static_rejection(response: HttpResponse, path: str, failures: list[str
         require(forbidden not in response.text, f"{label}: response leaked {forbidden!r}", failures)
 
 
-def run_smoke(base_url: str) -> list[str]:
+def check_path_expected_text(
+    response: HttpResponse,
+    path: str,
+    expected_text: str,
+    failures: list[str],
+) -> None:
+    label = f"GET {path}"
+    require(response.status == 200, f"{label}: expected 200, got {response.status}", failures)
+    require(
+        expected_text in response.text,
+        f"{label}: missing expected text {expected_text!r}",
+        failures,
+    )
+
+
+def parse_expected_path_text(values: list[str]) -> tuple[tuple[str, str], ...]:
+    parsed: list[tuple[str, str]] = []
+    for value in values:
+        if "::" not in value:
+            raise ValueError("--expect-path-text must be formatted as PATH::TEXT")
+        path, expected_text = value.split("::", 1)
+        if not path.startswith("/"):
+            raise ValueError("--expect-path-text PATH must start with /")
+        if not expected_text:
+            raise ValueError("--expect-path-text TEXT must be non-empty")
+        parsed.append((path, expected_text))
+    return tuple(parsed)
+
+
+def run_smoke(
+    base_url: str,
+    *,
+    expected_text: tuple[str, ...] = (),
+    expected_path_text: tuple[tuple[str, str], ...] = (),
+) -> list[str]:
     host, port, base_path = normalize_base_url(base_url)
     failures: list[str] = []
     home_path = f"{base_path}/" if base_path else "/"
-    check_home(fetch(host, port, home_path), failures)
+    check_home(fetch(host, port, home_path), failures, expected_text=expected_text)
     for path, (content_type, marker) in STATIC_ASSETS.items():
         check_static_asset(fetch(host, port, path), path, content_type, marker, failures)
     for path in STATIC_DENYLIST:
         check_static_rejection(fetch(host, port, path), path, failures)
+    for path, expected in expected_path_text:
+        full_path = f"{base_path}{path}" if base_path else path
+        check_path_expected_text(fetch(host, port, full_path), path, expected, failures)
     return failures
 
 
@@ -199,13 +243,29 @@ def parse_args() -> argparse.Namespace:
         default="http://127.0.0.1:8766",
         help="Base URL for a running Query Doctor web UI.",
     )
+    parser.add_argument(
+        "--expect-text",
+        action="append",
+        default=[],
+        help="Text that must appear in the rendered home page. May be repeated.",
+    )
+    parser.add_argument(
+        "--expect-path-text",
+        action="append",
+        default=[],
+        help="PATH::TEXT pair that must appear in the rendered response for PATH. May be repeated.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     try:
-        failures = run_smoke(args.url)
+        failures = run_smoke(
+            args.url,
+            expected_text=tuple(args.expect_text),
+            expected_path_text=parse_expected_path_text(args.expect_path_text),
+        )
     except Exception as exc:  # noqa: BLE001 - CLI should report connection/setup failures plainly.
         print(f"web static smoke failed to run: {exc}", file=sys.stderr)
         return 2

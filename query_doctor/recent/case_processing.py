@@ -16,7 +16,11 @@ from query_doctor.recent.batch_config import elapsed_seconds, format_seconds
 from query_doctor.recent.batch_models import BatchConfig, CaseResult
 from query_doctor.recent.batch_scoring import inspect_case_outputs, score_case
 from query_doctor.recent.batch_summary import batch_ranking_key
-from query_doctor.recent.command_args import append_cm_config_args, append_metadata_args
+from query_doctor.recent.command_args import (
+    append_cm_config_args,
+    append_cm_connection_args,
+    append_metadata_args,
+)
 from query_doctor.recent.metadata_refresh import (
     mark_metadata_not_requested,
     metadata_refresh_skip_reason,
@@ -64,7 +68,7 @@ def collect_scan_cm_events(
         cmd.extend(["--window-minutes", str(config.recent_window_minutes)])
     else:
         cmd.extend(["--from-time", config.from_time, "--to-time", config.to_time])
-    append_cm_config_args(cmd, config)
+    append_cm_connection_args(cmd, config)
     result = run_subprocess(cmd, cwd=repo_root, env=env)
     context = read_cluster_context_json(cluster_context_path)
     if context is None:

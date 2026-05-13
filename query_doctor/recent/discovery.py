@@ -130,12 +130,13 @@ def discover_candidates(
         warnings.append(
             "CM summary raw scan cap was reached before discovery completed. Narrow the scan window or filters and run again."
         )
-    if raw_scan_cap_hit or matching_candidate_limit_hit(candidates):
-        limit = config.triage_profile_limit
-        if matching_candidate_limit_hit(candidates):
-            warnings.append(
-                f"More than {limit} query summaries matched the current filters. Narrow the scan hour or filters and run again."
-            )
+    candidate_limit_hit = matching_candidate_limit_hit(candidates)
+    if candidate_limit_hit and not raw_scan_cap_hit:
+        warnings.append(
+            f"More than {config.triage_profile_limit} query summaries matched "
+            f"the current filters; selected the top {config.triage_profile_limit} by scan order."
+        )
+    if raw_scan_cap_hit:
         return DiscoveryResult(
             candidates=[],
             warnings=list(warnings),

@@ -5,7 +5,7 @@ from __future__ import annotations
 from query_doctor.recent.batch_models import BatchConfig
 
 
-def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
+def append_cm_connection_args(cmd: list[str], config: BatchConfig) -> None:
     if config.config_path:
         cmd.extend(["--config", config.config_path])
     if config.cm_url and config.cluster and config.service:
@@ -14,6 +14,10 @@ def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
         )
     if config.ca_bundle:
         cmd.extend(["--ca-bundle", config.ca_bundle])
+
+
+def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
+    append_cm_connection_args(cmd, config)
     if config.redact_identifiers:
         cmd.append("--redact-identifiers")
     if not config.redact_hosts:

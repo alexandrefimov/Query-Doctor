@@ -380,6 +380,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--metadata-max-tables", type=positive_int)
     parser.add_argument("--metadata-max-output-bytes", type=positive_int)
     parser.add_argument("--metadata-redact", action="store_true", default=None)
+    parser.add_argument("--metadata-redact-identifiers", action="store_true", default=None)
+    parser.add_argument(
+        "--metadata-no-redact-identifiers",
+        dest="metadata_redact_identifiers",
+        action="store_false",
+    )
+    parser.add_argument("--metadata-redact-hosts", action="store_true", default=None)
+    parser.add_argument(
+        "--metadata-no-redact-hosts",
+        dest="metadata_redact_hosts",
+        action="store_false",
+    )
     parser.add_argument(
         "--top-reports",
         type=non_negative_int,
@@ -604,21 +616,15 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
             max_duration_sec=config.max_duration_sec,
             order=config.order,
         )
+        warnings = list(result.warnings)
         if matching_candidate_limit_hit(candidates):
-            return DiscoveryResult(
-                candidates=[],
-                warnings=[
-                    *result.warnings,
-                    f"More than {config.triage_profile_limit} query summaries matched the current filters. Narrow the scan window or filters and run again.",
-                ],
-                duration_filter_mode="client-side",
-                server_filter_expression="impala-daemon-query-list",
-                summaries_inspected=len(summaries),
-                scan_too_broad=True,
+            warnings.append(
+                f"More than {config.triage_profile_limit} query summaries matched "
+                f"the current filters; selected the top {config.triage_profile_limit} by scan order."
             )
         return DiscoveryResult(
             candidates=candidates,
-            warnings=result.warnings,
+            warnings=warnings,
             duration_filter_mode="client-side",
             server_filter_expression="impala-daemon-query-list",
             summaries_inspected=len(summaries),

@@ -175,11 +175,17 @@ def preflight_web_metadata_batch(
 
 
 def subprocess_failure_message(stage: str, completed: subprocess.CompletedProcess[str]) -> str:
-    return (
+    message = (
         f"{stage} failed with exit code {completed.returncode}. "
         "Captured subprocess output is not shown because it may contain raw "
         "profile text, SQL, JSON, or credentials."
     )
+    if completed.returncode == 2:
+        message += (
+            " Exit code 2 usually indicates command-line argument validation or "
+            "local configuration validation failed."
+        )
+    return message
 
 
 def has_cm_credentials(

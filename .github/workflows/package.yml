@@ -52,6 +52,36 @@ jobs:
           /tmp/query-doctor-wheel-venv/bin/query-doctor-report --help
           /tmp/query-doctor-wheel-venv/bin/query-doctor-optimize-query --help
 
+      - name: Smoke installed demo web UI
+        run: |
+          /tmp/query-doctor-wheel-venv/bin/query-doctor-web --host 127.0.0.1 --port 8767 --batch-summary /tmp/query-doctor-package-demo/batch_summary.json &
+          web_pid="$!"
+          trap 'kill "$web_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import http.client
+          import time
+
+          deadline = time.time() + 10
+          while time.time() < deadline:
+              try:
+                  conn = http.client.HTTPConnection("127.0.0.1", 8767, timeout=1)
+                  conn.request("GET", "/")
+                  response = conn.getresponse()
+                  response.read()
+                  conn.close()
+                  if response.status == 200:
+                      raise SystemExit(0)
+              except OSError:
+                  time.sleep(0.2)
+          raise SystemExit("installed web server did not become ready")
+          PY
+          python scripts/web_static_smoke.py \
+            --url http://127.0.0.1:8767 \
+            --expect-text "Finished Queries" \
+            --expect-text "demo-optimizer-0001" \
+            --expect-text "demo-validator-0003" \
+            --expect-path-text "/?query_group=stats::demo-stats-0002"
+
       - name: Run installed console script contract tests
         run: |
           QUERY_DOCTOR_INSTALLED_CLI_BIN=/tmp/query-doctor-wheel-venv/bin python -m pytest -q tests/test_installed_cli_contract.py

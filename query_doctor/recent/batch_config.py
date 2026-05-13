@@ -347,8 +347,16 @@ def build_batch_config(
         default=False,
     )
     privacy_mode = first_bool(config_values.get("privacy_mode"), default=True)
-    redact_identifiers = first_bool(config_values.get("redact_identifiers"), default=privacy_mode)
-    redact_hosts = first_bool(config_values.get("redact_hosts"), default=privacy_mode)
+    redact_identifiers = first_bool(
+        getattr(args, "metadata_redact_identifiers", None),
+        config_values.get("redact_identifiers"),
+        default=privacy_mode,
+    )
+    redact_hosts = first_bool(
+        getattr(args, "metadata_redact_hosts", None),
+        config_values.get("redact_hosts"),
+        default=privacy_mode,
+    )
     metadata_redact = first_bool(
         args.metadata_redact, config_values.get("metadata_redact"), default=privacy_mode
     )
