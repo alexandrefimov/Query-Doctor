@@ -120,20 +120,23 @@ Review at minimum:
 
 ## PyPI Publishing
 
-Before the first PyPI release:
+Before the first package-index release:
 
 - Confirm the package name `query-doctor` is still available on PyPI and
   TestPyPI. Pending Trusted Publishers do not reserve names until the first
   successful upload.
-- Create a GitHub Environment named `pypi` and require trusted maintainer
-  approval for deployments to that environment.
+- Verify the GitHub Environments named `testpypi` and `pypi` exist, require
+  trusted maintainer approval for deployments, and block admin bypass.
+- Configure TestPyPI Trusted Publishing for the project:
+  - owner: `alexandrefimov`;
+  - repository: `Query-Doctor`;
+  - workflow: `publish-testpypi.yml`;
+  - environment: `testpypi`.
 - Configure PyPI Trusted Publishing for the project:
   - owner: `alexandrefimov`;
   - repository: `Query-Doctor`;
   - workflow: `publish.yml`;
   - environment: `pypi`.
-- Configure the matching TestPyPI publisher if you want a full index-level dry
-  run before the production upload.
 
 Before every PyPI release:
 
@@ -154,15 +157,17 @@ python -m build
 python -m twine check dist/*
 ```
 
-- Prefer a TestPyPI upload first for the first release or any packaging change:
+- Prefer a TestPyPI upload first for the first release or any packaging change.
+  After the version bump is merged to `main`, manually run
+  `Publish TestPyPI Package` from GitHub Actions and approve the `testpypi`
+  environment deployment. Then install from TestPyPI:
 
 ```bash
-python -m twine upload --repository testpypi dist/*
 python -m pip install --index-url https://test.pypi.org/simple/ query-doctor
 ```
 
 - Cut a protected release tag matching the package version exactly, for example
-  `v0.1.0` for `version = "0.1.0"`.
+  `v0.1.1` for `version = "0.1.1"`.
 - Publish the GitHub release from that tag. The
   [Publish Package](../.github/workflows/publish.yml) workflow builds fresh
   source/wheel distributions, checks metadata, smoke-tests the installed wheel,

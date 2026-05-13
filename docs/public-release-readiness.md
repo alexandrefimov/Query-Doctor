@@ -55,10 +55,12 @@ in place:
   required default-branch check.
 - Additional public-quality automation covers package build/install smoke,
   local Markdown link checks, CodeQL, Dependency Review, Web E2E, and a manual
-  release-gate workflow. PyPI publishing automation is present and uses Trusted
-  Publishing through GitHub OIDC once the PyPI-side publisher and GitHub
-  `pypi` environment are configured. Pre-commit also enforces ruff check, ruff
-  format, staged public-safety checks, whitespace, and Markdown links.
+  release-gate workflow. PyPI and TestPyPI publishing automation is present and
+  uses Trusted Publishing through GitHub OIDC once the index-side pending
+  publishers are configured; the GitHub `pypi` and `testpypi` environments
+  already require maintainer approval and block admin bypass. Pre-commit also
+  enforces ruff check, ruff format, staged public-safety checks, whitespace, and
+  Markdown links.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample
   cases and an English trusted demo report by default.
 
