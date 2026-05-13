@@ -30,6 +30,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [codex-handoff.md](codex-handoff.md): current agent working baseline.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
+- [configuration.md](configuration.md): local JSON config reference, discovery
+  order, and field groups.
 - [release-checklist.md](release-checklist.md): final release and visibility
   change checks, including public docs, local gates, and CI parity.
 
@@ -62,6 +64,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [configuration.md](configuration.md) | reference | Local JSON config locations, discovery order, field groups, and examples. |
 | [local-smoke.md](local-smoke.md) | reference | Local validation workflows. |
 | [credentials.md](credentials.md) | reference | Local credential layout and secret handling. |
 | [security-model.md](security-model.md) | reference | Public security/privacy overview; defer to `safety-contract.md` for rules. |

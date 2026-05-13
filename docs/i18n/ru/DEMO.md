@@ -32,12 +32,13 @@ scripts/query-doctor-web-local
 Ручной запуск:
 
 ```bash
-cp query-doctor-config.example.json query-doctor-config.json
+mkdir -p ~/.qdcreds
+cp query-doctor-config.example.json ~/.qdcreds/query-doctor-config.json
 set -a
 source ~/.qdcreds/cm-ro.env
 set +a
 query-doctor-web \
-  --config query-doctor-config.json \
+  --config ~/.qdcreds/query-doctor-config.json \
   --host 127.0.0.1 \
   --port 8765
 ```

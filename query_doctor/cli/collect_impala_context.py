@@ -43,7 +43,12 @@ from query_doctor.cli.collect_cm_profiles import (
     ConfigError,
     load_effective_local_config,
 )
-from query_doctor.config.contract import merge_kerberos_cache_env
+from query_doctor.config.contract import (
+    DEFAULT_CONFIG_PATH,
+    LEGACY_CONFIG_PATH,
+    QDCREDS_CONFIG_PATH,
+    merge_kerberos_cache_env,
+)
 
 
 DEFAULT_TIMEOUT_SEC = 30
@@ -254,8 +259,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         help=(
             "Optional local config with non-secret metadata settings. If omitted, "
-            "query-doctor-config.json is loaded when present, falling back to legacy "
-            ".query-doctor-cm.local.json."
+            f"{DEFAULT_CONFIG_PATH} is loaded when present, then {QDCREDS_CONFIG_PATH}, "
+            f"then legacy {LEGACY_CONFIG_PATH}."
         ),
     )
     parser.add_argument(

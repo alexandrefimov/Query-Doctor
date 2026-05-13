@@ -16,9 +16,12 @@ from urllib.parse import urlsplit
 DEFAULT_CONFIG_PATH = "query-doctor-config.json"
 LEGACY_CONFIG_PATH = ".query-doctor-cm.local.json"
 EXAMPLE_CONFIG_PATH = "query-doctor-config.example.json"
+QDCREDS_DIR_NAME = ".qdcreds"
+QDCREDS_CONFIG_PATH = f"~/{QDCREDS_DIR_NAME}/{DEFAULT_CONFIG_PATH}"
 LEGACY_CONFIG_WARNING = (
     "Using legacy config path .query-doctor-cm.local.json; "
-    "please rename it to query-doctor-config.json."
+    "please rename it to query-doctor-config.json or move it to "
+    "~/.qdcreds/query-doctor-config.json."
 )
 
 STATUS_CHOICES = ("succeeded", "failed", "cancelled", "all")
@@ -199,6 +202,7 @@ def discover_config_path(
     cwd: Path = Path("."),
     repo_root: Path | None = None,
     use_repo_default: bool = True,
+    home_dir: Path | None = None,
 ) -> ConfigLoadResult:
     cwd = Path(cwd)
     if explicit_path:
@@ -209,7 +213,10 @@ def discover_config_path(
         )
 
     default_path = _discover_default_path(
-        cwd=cwd, repo_root=repo_root, use_repo_default=use_repo_default
+        cwd=cwd,
+        repo_root=repo_root,
+        use_repo_default=use_repo_default,
+        home_dir=home_dir,
     )
     if default_path is None:
         return ConfigLoadResult(path=None, values={}, source_kind="none")
@@ -228,12 +235,16 @@ def _discover_default_path(
     cwd: Path,
     repo_root: Path | None,
     use_repo_default: bool,
+    home_dir: Path | None = None,
 ) -> Path | None:
     candidates = [cwd / DEFAULT_CONFIG_PATH]
     if repo_root is not None:
         repo_candidate = Path(repo_root) / DEFAULT_CONFIG_PATH
         if use_repo_default and repo_candidate != candidates[0]:
             candidates.append(repo_candidate)
+    qdcreds_candidate = qdcreds_config_path(home_dir=home_dir)
+    if qdcreds_candidate not in candidates:
+        candidates.append(qdcreds_candidate)
     candidates.append(cwd / LEGACY_CONFIG_PATH)
     if repo_root is not None:
         repo_legacy_candidate = Path(repo_root) / LEGACY_CONFIG_PATH
@@ -250,8 +261,19 @@ def discover_default_local_config(
     cwd: Path,
     repo_root: Path,
     use_repo_default: bool = True,
+    home_dir: Path | None = None,
 ) -> Path | None:
-    return _discover_default_path(cwd=cwd, repo_root=repo_root, use_repo_default=use_repo_default)
+    return _discover_default_path(
+        cwd=cwd,
+        repo_root=repo_root,
+        use_repo_default=use_repo_default,
+        home_dir=home_dir,
+    )
+
+
+def qdcreds_config_path(*, home_dir: Path | None = None) -> Path:
+    home = Path.home() if home_dir is None else Path(home_dir).expanduser()
+    return home / QDCREDS_DIR_NAME / DEFAULT_CONFIG_PATH
 
 
 def load_local_config(path: str | Path | None, *, cwd: Path = Path(".")) -> dict[str, object]:
@@ -629,12 +651,14 @@ def load_and_validate_config(
     repo_root: Path | None = None,
     use_repo_default: bool = True,
     warn_legacy: bool = True,
+    home_dir: Path | None = None,
 ) -> ConfigLoadResult:
     discovered = discover_config_path(
         explicit_path,
         cwd=cwd,
         repo_root=repo_root,
         use_repo_default=use_repo_default,
+        home_dir=home_dir,
     )
     if discovered.path is None:
         return discovered

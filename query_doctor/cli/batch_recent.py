@@ -16,6 +16,7 @@ from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
 from query_doctor.cli.commands import command_prefix
+from query_doctor.config.contract import QDCREDS_CONFIG_PATH
 from query_doctor.engines import get_default_engine_adapter
 from query_doctor.prometheus.timeseries import (
     DEFAULT_MAX_PROMETHEUS_POINTS,
@@ -184,7 +185,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config",
         help=(
             "Optional local Query Doctor config. Defaults to query-doctor-config.json, "
-            "then legacy .query-doctor-cm.local.json."
+            f"then {QDCREDS_CONFIG_PATH}, then legacy "
+            f"{cm_profiles.LEGACY_LOCAL_CONFIG_NAME}."
         ),
     )
     parser.add_argument("--cm-url", help="Cloudera Manager base URL. May also use CM_URL.")

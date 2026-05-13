@@ -24,6 +24,7 @@ from query_doctor.cm.timeseries import (
 from query_doctor.config.contract import (
     DEFAULT_CONFIG_PATH as DEFAULT_LOCAL_CONFIG_NAME,
     LEGACY_CONFIG_PATH as LEGACY_LOCAL_CONFIG_NAME,
+    QDCREDS_CONFIG_PATH as QDCREDS_LOCAL_CONFIG_PATH,
     RECENT_ORDER_CHOICES,
 )
 
@@ -46,7 +47,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Local JSON config file with non-secret CM collector settings. "
             f"If omitted, {DEFAULT_LOCAL_CONFIG_NAME} is loaded when present, "
-            f"falling back to legacy {LEGACY_LOCAL_CONFIG_NAME}. "
+            f"then {QDCREDS_LOCAL_CONFIG_PATH}, then legacy {LEGACY_LOCAL_CONFIG_NAME}. "
             "Passwords/tokens must still come from environment variables."
         ),
     )
