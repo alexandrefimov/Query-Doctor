@@ -42,14 +42,19 @@ baseline in place:
   report language selection.
 - Public packaging metadata, release checklist, contributor docs, security
   reporting, code of conduct, Dependabot, and CI matrix coverage are present.
+- Private Vulnerability Reporting, secret scanning, secret scanning push
+  protection, Dependabot security updates, and CodeQL scanning are enabled for
+  the public repository.
+- `main` branch protection includes admins, strict required checks, pull request
+  review/conversation gates, force-push blocking, and deletion blocking.
 - Agent instructions, roadmap, architecture docs, release docs, and Russian
   companion pages are aligned with the current direct Impala and Prometheus
   baseline.
 - CI runs deterministic safety checks on pull requests and main, including a
-  current-tree public-release scan, and runs the broader test suite on schedule
-  or manual dispatch.
+  current-tree public-release scan, and the full Python 3.11 test suite is a
+  required default-branch check.
 - Additional public-quality automation covers package build/install smoke,
-  local Markdown link checks, CodeQL readiness, Dependency Review, and a manual
+  local Markdown link checks, CodeQL, Dependency Review, Web E2E, and a manual
   release-gate workflow. Pre-commit also enforces ruff check, ruff format,
   staged public-safety checks, whitespace, and Markdown links.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample
@@ -64,10 +69,9 @@ change.
 - Dependabot checks GitHub Actions and Python tooling updates.
 - CI covers the supported Python floor and a modern Python version.
 - Scheduled CI runs the broader test suite separately from fast PR safety checks.
-- Packaging, docs, CodeQL readiness, Dependency Review, and manual release-gate
+- Packaging, docs, CodeQL, Dependency Review, and manual release-gate
   workflows cover public repository quality beyond the fast deterministic
-  safety gate. CodeQL analysis should be enabled after GitHub code scanning is
-  enabled in repository settings.
+  safety gate.
 - Contributor docs explain dev tooling, safety boundaries, and explicit staging.
 - Code of conduct exists and reinforces sanitized examples and safety-first
   discussion.
@@ -104,3 +108,5 @@ fresh demo smoke, not only focused safety tests.
 - Keep the current and future architecture diagrams in sync with UI, report,
   optimizer, and provider-boundary changes.
 - Consider coverage reporting only after maintainers commit to reviewing it.
+- Track repository-security and maintainer-automation follow-ups in
+  [repository-hardening.md](repository-hardening.md).

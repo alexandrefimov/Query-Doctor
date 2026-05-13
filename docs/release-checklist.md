@@ -62,15 +62,15 @@ Package CI should build the source distribution and wheel, run metadata checks,
 install the wheel into a clean virtual environment, and smoke installed console
 scripts. Docs CI should catch broken local Markdown links before merge.
 Dependency Review should stay enabled on pull requests as a security signal
-alongside Dependabot. CodeQL is installed behind the `ENABLE_CODEQL=true`
-repository-variable gate; enable GitHub code scanning in repository settings
-before turning that variable on.
+alongside Dependabot. CodeQL should scan production code before release tags;
+test fixtures may be excluded from code-scanning noise when they intentionally
+contain synthetic unsafe patterns.
 
-The scheduled or manually dispatched full suite is the broader regression gate.
-The manually dispatched Release Gate workflow should mirror this checklist with
-full pytest, public preflight, demo smoke, docs link checks and packaging smoke.
-Run the full suite locally before visibility changes, tags, or public
-announcements even when fast PR CI is green.
+The full Python 3.11 suite is required on `main`. The manually dispatched
+Release Gate workflow should mirror this checklist with full pytest, public
+preflight, demo smoke, docs link checks, and packaging smoke. Run the full suite
+locally before visibility changes, tags, or public announcements even when fast
+PR CI is green.
 
 ## Documentation Review
 
@@ -101,11 +101,22 @@ Review at minimum:
 ## GitHub Readiness
 
 - CI is green on the release branch.
+- `main` branch protection is strict, includes admins, blocks force pushes and
+  branch deletion, requires conversation resolution, and requires the current
+  release checks.
+- GitHub Actions default workflow token permissions are read-only, and workflow
+  tokens cannot approve pull requests.
+- GitHub Actions are restricted to selected actions, allowing GitHub-owned and
+  verified actions.
 - Dependabot configuration is present.
+- CodeQL, Dependabot security updates, secret scanning, secret scanning push
+  protection, and Private Vulnerability Reporting are enabled.
 - Issue templates avoid asking for raw production inputs.
 - `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE`, and
   `COMMERCIAL-LICENSE.md` are present.
 - Public visibility is changed only after the final human review.
+- Repository and pipeline follow-ups are tracked in
+  [repository-hardening.md](repository-hardening.md).
 
 ## After Release
 

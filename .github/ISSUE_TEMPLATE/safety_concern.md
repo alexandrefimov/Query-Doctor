@@ -12,8 +12,9 @@ Do not paste secrets, raw production SQL, raw profiles, raw metadata, raw CM
 JSON, local paths, hostnames, usernames, emails, tokens, cookies, Authorization
 headers, Kerberos ticket data, or private cluster details.
 
-If GitHub security advisories are enabled for this repository, use a private
-advisory for exploitable vulnerabilities.
+Use GitHub's private "Report a vulnerability" flow for exploitable
+vulnerabilities. Use this public template only for sanitized safety concerns
+that do not disclose an exploitable issue or private operational data.
 
 ## Summary
 

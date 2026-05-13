@@ -34,6 +34,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
   order, and field groups.
 - [release-checklist.md](release-checklist.md): final release and visibility
   change checks, including public docs, local gates, and CI parity.
+- [repository-hardening.md](repository-hardening.md): repository security,
+  pipeline hardening, and maintainer automation backlog.
 
 ## Document Status Index
 
@@ -70,6 +72,7 @@ Status legend:
 | [security-model.md](security-model.md) | reference | Public security/privacy overview; defer to `safety-contract.md` for rules. |
 | [public-release-readiness.md](public-release-readiness.md) | reference | Public-release checklist. |
 | [release-checklist.md](release-checklist.md) | reference | Maintainer release checklist. |
+| [repository-hardening.md](repository-hardening.md) | reference | Repository security, CI hardening, release automation, and maintainer time-saving backlog. |
 | [community-starter-issues.md](community-starter-issues.md) | reference | Curated public issue backlog. |
 | [contributor-architecture.md](contributor-architecture.md) | reference | Contributor map; defer to `architecture.md` and `code-map.md` for current boundaries. |
 | [ui/query-doctor-design-notes.md](ui/query-doctor-design-notes.md) | reference | Internal localhost UI visual direction; not a behavior contract. |

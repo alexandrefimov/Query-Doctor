@@ -101,8 +101,9 @@ and raw timestamps must stay out of browser-visible and trusted report output.
 
 ## Security Reports
 
-Use GitHub security advisories when available. If advisories are not enabled,
-open a minimal issue using the safety concern template without including
+Use GitHub's private "Report a vulnerability" flow for exploitable
+vulnerabilities or trust-boundary failures. For non-exploitable safety concerns,
+open a minimal public issue using the safety concern template without including
 secrets, raw production SQL, raw profiles, raw metadata, or private cluster
 details.
 

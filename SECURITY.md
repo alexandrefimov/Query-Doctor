@@ -6,14 +6,12 @@ as sensitive unless it has passed the project redaction and trust boundaries.
 
 ## Supported Status
 
-This repository is still being prepared for public release. Until a formal
-release policy is added, security-sensitive reports should be handled privately
-with the repository maintainers.
+Until a formal release-support policy is added, security-sensitive reports
+should be handled privately with the repository maintainers.
 
-Preferred private reporting path, when available, is GitHub Security Advisories
-for this repository. If advisories are not enabled yet, contact the maintainer
-privately and share only sanitized reproduction details until a private channel
-is confirmed.
+Use GitHub's private "Report a vulnerability" flow for exploitable
+vulnerabilities or trust-boundary failures. Share only sanitized reproduction
+details until a private channel is confirmed.
 
 ## Reporting
 
