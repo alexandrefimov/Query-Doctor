@@ -12,6 +12,7 @@ raw profiles, credentials, local config, or real case paths.
 | `tiny_exchange_case/` | Small exchange-heavy shape. | Exchange parsing and summary behavior. |
 | `scan_or_exchange_heavy_case/` | Scan/exchange-heavy evidence. | Analyzer and report signal coverage. |
 | `backend_tail_case/` | Backend / host tail evidence. | Tail detection and report wording. |
+| `writer_tail_case/` | Backend write-path tail without execution skew. | Write-tail routing and unsupported storage/skew guardrails. |
 | `missing_estimates_case/` | Missing or unknown estimates. | Cardinality/stats recommendation behavior. |
 | `memory_only_case/` | Memory-focused evidence without broad signals. | Memory anomaly handling. |
 | `no_action_cards_case/` | Facts without action cards. | Report recommendation fallback behavior. |
