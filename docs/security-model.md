@@ -29,7 +29,16 @@ External collection paths must be:
 - redacted;
 - safe by default.
 
-Current external collection support is Cloudera Manager based and Impala-only.
+Current external collection support is Impala-only:
+
+- Cloudera Manager can provide full Recent discovery, profile, runtime metrics,
+  and event context for Impala workflows.
+- Direct Impala daemon endpoints can provide bounded Recent scans, Running
+  scans, and one explicit Known Query ID without Cloudera Manager events.
+- Optional Prometheus runtime metrics can provide bounded context for configured
+  direct Impala workflows.
+- Impala metadata collection uses allowlisted read-only metadata statements.
+
 Future source providers must keep the same safety properties before they become
 supported product behavior.
 
@@ -40,7 +49,8 @@ Browser-visible UI and trusted reports must not expose:
 - raw SQL or pasted query text after submit;
 - raw profile text;
 - raw metadata output;
-- raw Cloudera Manager JSON;
+- raw provider JSON, including Cloudera Manager, direct Impala, or Prometheus
+  responses;
 - local paths or `case_dir`;
 - subprocess stdout/stderr;
 - credentials, tokens, cookies, Authorization headers, or embedded URL secrets;
@@ -107,9 +117,10 @@ open a minimal public issue using the safety concern template without including
 secrets, raw production SQL, raw profiles, raw metadata, or private cluster
 details.
 
-## Public Release Hygiene
+## Release Hygiene
 
-Before making the repository public, run:
+Before cutting a tag, changing repository visibility, or announcing a public
+release, run:
 
 ```bash
 query-doctor-demo-preflight --public-release
@@ -119,5 +130,5 @@ This deterministic guard scans both the current tracked tree and git history
 for common private-data markers. It does not replace a final human review, and
 it does not prove that no secret has ever existed in the repository. A history
 blocker means the affected history must be cleaned with a dedicated history
-rewrite or replaced by a clean public branch before changing repository
-visibility.
+rewrite or replaced by a clean public branch before release or future visibility
+changes.

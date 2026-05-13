@@ -1,18 +1,18 @@
 # Public Release Readiness
 
-This checklist tracks what Query Doctor needs before and after changing the
-repository visibility. It is intentionally practical: public quality means the
-project is honest, reproducible, safe to inspect, and clear about unsupported
-scope.
+This checklist tracks what Query Doctor needs before tags, announcements, and
+any future repository visibility changes. It is intentionally practical: public
+quality means the project is honest, reproducible, safe to inspect, and clear
+about unsupported scope.
 
-## P0 Before Public Visibility
+## P0 Release Gate
 
 - Clean working tree.
 - Local release gate passes from a clean checkout: staged public-safety checks,
   active-doc checks, Markdown link checks, ruff, full pytest,
   `git diff --check`, public-release preflight, and synthetic demo pack smoke.
-- `pre-commit run --all-files` passes before the public branch handoff,
-  including ruff format checks.
+- `pre-commit run --all-files` passes before public release handoff, including
+  ruff format checks.
 - Git history has been reviewed for secrets, raw production query text, profiles,
   query IDs, hostnames, users, local paths, generated reports, and real config.
 - README quickstart works from a fresh virtual environment.
@@ -33,8 +33,8 @@ scope.
 
 ## Current Snapshot
 
-As of 2026-05-13, the public-readiness branch has the main best-practice
-baseline in place:
+As of 2026-05-13, the public `main` branch has the main best-practice baseline
+in place:
 
 - Canonical public docs and default browser-visible copy are English.
 - Russian docs are localized companions only under `docs/i18n/ru/`.
@@ -93,7 +93,7 @@ change.
 
 ## Release Gate
 
-Before changing visibility, tagging, or announcing a public release, run the
+Before tagging, announcing a public release, or changing visibility, run the
 commands in [release-checklist.md](release-checklist.md) locally and confirm CI
 is green on the release branch. The local gate is intentionally stricter than
 fast PR CI because public release quality depends on the full test suite and a

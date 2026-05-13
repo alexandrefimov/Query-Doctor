@@ -1,7 +1,7 @@
 # Release Checklist
 
-Use this checklist before changing repository visibility, cutting a tag, or
-announcing a public release.
+Use this checklist before cutting a tag, announcing a public release, or making
+future repository visibility changes.
 
 ## Repository Hygiene
 
@@ -69,8 +69,8 @@ contain synthetic unsafe patterns.
 The full Python 3.11 suite is required on `main`. The manually dispatched
 Release Gate workflow should mirror this checklist with full pytest, public
 preflight, demo smoke, docs link checks, and packaging smoke. Run the full suite
-locally before visibility changes, tags, or public announcements even when fast
-PR CI is green.
+locally before tags, public announcements, or future visibility changes even
+when fast PR CI is green.
 
 ## Documentation Review
 
@@ -114,7 +114,7 @@ Review at minimum:
 - Issue templates avoid asking for raw production inputs.
 - `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE`, and
   `COMMERCIAL-LICENSE.md` are present.
-- Public visibility is changed only after the final human review.
+- Future visibility changes happen only after final human review.
 - Repository and pipeline follow-ups are tracked in
   [repository-hardening.md](repository-hardening.md).
 

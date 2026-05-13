@@ -19,7 +19,7 @@ Do not file public issues containing:
 
 - raw SQL or query text;
 - raw Impala profiles;
-- raw Cloudera Manager JSON;
+- raw provider API JSON or daemon responses;
 - raw metadata output;
 - hostnames, IP addresses, usernames, emails, principals, tokens, cookies,
   passwords, Authorization headers, embedded URL credentials, local config

@@ -2,23 +2,9 @@ name: Web E2E
 
 on:
   pull_request:
-    paths:
-      - ".github/workflows/web-e2e.yml"
-      - "pyproject.toml"
-      - "query_doctor/web/**"
-      - "query_doctor/safety/**"
-      - "tests/test_web_e2e.py"
-      - "tests/web_server_test_support.py"
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/web-e2e.yml"
-      - "pyproject.toml"
-      - "query_doctor/web/**"
-      - "query_doctor/safety/**"
-      - "tests/test_web_e2e.py"
-      - "tests/web_server_test_support.py"
   workflow_dispatch:
 
 permissions:
@@ -33,19 +19,60 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect web E2E scope
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          if [[ "$base_sha" =~ ^0+$ ]]; then
+            echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
+          if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/web-e2e\.yml|pyproject\.toml|query_doctor/web/|query_doctor/safety/|tests/test_web_e2e\.py|tests/web_server_test_support\.py)'; then
+            echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_e2e=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Python
+        if: steps.changes.outputs.run_e2e == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install local package and E2E tools
+        if: steps.changes.outputs.run_e2e == 'true'
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,e2e]"
 
       - name: Install Chromium browser
+        if: steps.changes.outputs.run_e2e == 'true'
         run: python -m playwright install --with-deps chromium
 
       - name: Run web E2E smoke
+        if: steps.changes.outputs.run_e2e == 'true'
         run: PYTHONPATH=. python -m pytest -q tests/test_web_e2e.py
+
+      - name: Skip web E2E for unrelated changes
+        if: steps.changes.outputs.run_e2e != 'true'
+        run: echo "No browser-facing files changed; Web E2E check reported as skipped."

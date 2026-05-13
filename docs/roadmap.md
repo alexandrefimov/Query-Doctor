@@ -110,8 +110,9 @@ Planning summary:
   must first define raw-free JSON/view-model contracts, preserve no-echo rules
   for pasted SQL, add browser-safety tests, and justify the dependency.
 - Supported deployment is single-user local-first: the process runs under the
-  user's own Cloudera Manager and Kerberos context and stores artifacts locally.
-  Shared network deployment is not supported by the current architecture.
+  user's own Cloudera Manager, Kerberos, Impala, Prometheus, and LLM context as
+  configured, and stores artifacts locally. Shared network deployment is not
+  supported by the current architecture.
 - Non-local or shared deployment must remain an explicit "if you must" path
   until there is a real design partner. It needs corporate TLS/auth, trusted
   reverse-proxy boundaries, per-user job/artifact ownership, audit, persistence,
@@ -235,8 +236,9 @@ when a tempting implementation would skip a contract boundary.
   and thin source-family interfaces over the current Cloudera Manager, direct
   Impala, and Prometheus paths before broader provider expansion.
 - P2 provider work must not start until the P0 provider-neutral contracts it
-  depends on are in place. Do not add placeholder provider packages while the
-  only real implementation is still Cloudera Manager.
+  depends on are in place. Do not add placeholder provider packages; expand
+  provider boundaries only from implemented Cloudera Manager, direct Impala, and
+  Prometheus paths.
 - A second SQL engine must wait until Impala diagnosis is useful on real
   workloads, with `case_primary_bottleneck = unknown` below roughly 20% on a
   representative real-case batch and an engine profile-fact contract already in
@@ -267,10 +269,10 @@ it into a shared service.
 - Add a lightweight POST origin/host check for local web requests. Treat full
   CSRF token machinery as deferred until a non-local or shared deployment path
   is explicitly designed.
-- Document supported deployment in README or SECURITY guidance:
-  single-user, local-first, behind the user's own Cloudera Manager credentials.
-  Call out that binding the current server as a shared corporate service is not
-  supported.
+- Keep supported deployment guidance current in README and SECURITY guidance:
+  single-user, local-first, behind the user's own configured credentials and
+  local access. Call out that binding the current server as a shared corporate
+  service is not supported.
 - Document team usage patterns before building multi-tenancy: shared reports
   repository, CI scheduled batch scans, shared internal LLM endpoint, team
   jumpbox or remote devbox, and version pinning.

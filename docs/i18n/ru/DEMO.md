@@ -17,11 +17,12 @@ selected-case LLM actions. В Diagnose находятся Recent queries и вт
 
 ## Запуск
 
-Используйте ignored local Cloudera Manager (CM) config и credentials из
-environment variables. На локальной машине Query Doctor ожидает read-only CM
-credentials в
-`~/.qdcreds/cm-ro.env`; значения секретов не хранятся в репозитории и не
-попадают в committed config.
+Используйте ignored local config и credentials из environment variables. Для
+Cloudera Manager (CM) workflow Query Doctor ожидает read-only CM credentials в
+`~/.qdcreds/cm-ro.env`. Для direct Impala workflow храните daemon hosts,
+Prometheus URLs, Kerberos service names и metadata coordinator settings в
+`~/.qdcreds/query-doctor-config.json` или другом ignored local config. Значения
+секретов не хранятся в репозитории и не попадают в committed config.
 
 Предпочтительный локальный запуск:
 
@@ -34,6 +35,7 @@ scripts/query-doctor-web-local
 ```bash
 mkdir -p ~/.qdcreds
 cp query-doctor-config.example.json ~/.qdcreds/query-doctor-config.json
+# Отредактируйте config под CM или direct Impala / Prometheus / metadata.
 set -a
 source ~/.qdcreds/cm-ro.env
 set +a
@@ -65,9 +67,9 @@ query-doctor-collect-cm-profiles \
 
 ## Основные поверхности
 
-- **Diagnose / Recent queries**: bounded scan завершенных Cloudera Manager (CM)
-  summaries по умолчанию, selected profile collection, deterministic ranking,
-  no automatic LLM reports.
+- **Diagnose / Recent queries**: bounded scan завершенных queries из
+  настроенного источника, CM summaries или direct Impala daemon query-list,
+  selected profile collection, deterministic ranking, no automatic LLM reports.
 - **Diagnose / Running now**: тот же result shape для running queries, без
   date/hour filters и с lower-confidence live evidence.
 - **Diagnose / Known Query ID**: один explicit Impala query ID без automatic
@@ -94,8 +96,8 @@ surface для одного safe `SELECT` / `WITH ... SELECT`; pasted SQL не �
   не выполняет SQL и не собирает Cloudera Manager events. Direct Impala
   Recent/Running может читать bounded daemon query-list endpoints, а
   Prometheus runtime metrics доступны только как optional bounded context.
-- Raw profile text, raw SQL, raw CM JSON и credentials не должны появляться в
-  UI, logs, docs или reports.
+- Raw profile text, raw SQL, raw provider API responses, raw metadata и
+  credentials не должны появляться в UI, logs, docs или reports.
 
 ## Generated files
 
@@ -104,7 +106,9 @@ UI пишет ignored local files under the configured corpus directory:
 ```text
 cases/cm-corpus/<safe_query_slug>/
   profile_digest.md
+  provider metadata summaries
   cm_metadata.json
+  runtime_metrics_context.json
   collection_warnings.txt
   analysis_facts.md
   diagnosis.md
