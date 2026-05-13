@@ -60,6 +60,8 @@ in place:
   GitHub OIDC; the GitHub `pypi` and `testpypi` environments require maintainer
   approval and block admin bypass. Pre-commit also enforces ruff check, ruff
   format, staged public-safety checks, whitespace, and Markdown links.
+- Repository metadata, topics, issue labels, issue templates, pull request
+  template, and curated sanitized starter issues are in place.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample
   cases and an English trusted demo report by default.
 
@@ -106,8 +108,6 @@ fresh demo smoke, not only focused safety tests.
 ## Remaining Public Polish
 
 - Update the README screenshot after material UI layout changes.
-- Sync GitHub labels from `.github/labels.yml` after repository creation.
-- Open selected curated starter issues from `docs/community-starter-issues.md`.
 - Expand the synthetic fixture corpus when new diagnostic scenarios are stable.
 - Keep the current and future architecture diagrams in sync with UI, report,
   optimizer, and provider-boundary changes.
