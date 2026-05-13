@@ -47,6 +47,8 @@
   "limit": 1,
   "max_profile_bytes": 52428800,
   "optimizer_model": "deepseek-coder-v2:16b",
+  "no_llm": false,
+  "privacy_mode": true,
   "collect_cm_timeseries": false,
   "cm_metrics_profile": "cm6",
   "recent_cm_timeseries_top_limit": 10,
@@ -59,7 +61,8 @@
   "status": "all",
   "query_type": "QUERY",
   "redact": true,
-  "redact_identifiers": false,
+  "redact_identifiers": true,
+  "redact_hosts": true,
 
   "query_profile_source": "cm",
   "impala_profile_hosts": [

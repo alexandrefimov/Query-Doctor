@@ -271,6 +271,8 @@ def collect_case(
             )
         if redact_identifiers:
             collector_cmd.append("--redact-identifiers")
+        if not settings.redact_hosts:
+            collector_cmd.append("--no-redact-hosts")
     else:
         if not has_cm_credentials(username=config_username):
             raise WebError(MISSING_CM_CREDENTIALS_MESSAGE)
@@ -289,6 +291,8 @@ def collect_case(
         append_web_cm_args(collector_cmd, settings)
         if redact_identifiers:
             collector_cmd.append("--redact-identifiers")
+        if not settings.redact_hosts:
+            collector_cmd.append("--no-redact-hosts")
         if settings.max_profile_bytes is not None:
             collector_cmd.extend(["--max-profile-bytes", str(settings.max_profile_bytes)])
 

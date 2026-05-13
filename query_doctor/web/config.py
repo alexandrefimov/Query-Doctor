@@ -235,6 +235,15 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
     config_path = resolve_web_config_path(args.config, cwd=cwd)
     config_values = load_web_local_config(args.config, cwd=cwd)
     clusters = build_web_cluster_configs(config_values)
+    privacy_mode = optional_config_bool(config_values, "privacy_mode")
+    if privacy_mode is None:
+        privacy_mode = True
+    redact_identifiers = optional_config_bool(config_values, "redact_identifiers")
+    if redact_identifiers is None:
+        redact_identifiers = privacy_mode
+    redact_hosts = optional_config_bool(config_values, "redact_hosts")
+    if redact_hosts is None:
+        redact_hosts = privacy_mode
     settings = WebSettings(
         config=config_path,
         host=first_string_value(
@@ -279,6 +288,11 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             DEFAULT_OPTIMIZER_MODEL,
             args.model,
         ),
+        no_llm=getattr(args, "no_llm", False)
+        or optional_config_bool(config_values, "no_llm") is True,
+        privacy_mode=privacy_mode,
+        redact_identifiers=redact_identifiers,
+        redact_hosts=redact_hosts,
         timeout_sec=args.timeout_sec,
         batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
         query_profile_source=first_string_value(
@@ -373,6 +387,7 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
         metadata_redact=merged_bool_setting(
             args.metadata_redact,
             optional_config_bool(config_values, "metadata_redact"),
+            default=privacy_mode,
         ),
         krb5ccname=optional_config_string(config_values, "krb5ccname"),
     )

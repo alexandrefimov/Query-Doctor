@@ -140,6 +140,30 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
         help="Redact metadata output before writing. Enabled by default.",
     )
     parser.add_argument(
+        "--metadata-redact-identifiers",
+        action="store_true",
+        default=_env_bool("QD_METADATA_REDACT_IDENTIFIERS", True),
+        help="Redact database and table identifiers in metadata output. Enabled by default.",
+    )
+    parser.add_argument(
+        "--metadata-no-redact-identifiers",
+        dest="metadata_redact_identifiers",
+        action="store_false",
+        help="Preserve database and table identifiers in local metadata output.",
+    )
+    parser.add_argument(
+        "--metadata-redact-hosts",
+        action="store_true",
+        default=_env_bool("QD_METADATA_REDACT_HOSTS", True),
+        help="Redact hostnames in metadata output. Enabled by default.",
+    )
+    parser.add_argument(
+        "--metadata-no-redact-hosts",
+        dest="metadata_redact_hosts",
+        action="store_false",
+        help="Preserve hostnames in local metadata output.",
+    )
+    parser.add_argument(
         "--metadata-dry-run",
         action="store_true",
         help="Show the bounded metadata collection plan without running impala-shell.",
@@ -407,6 +431,16 @@ def build_metadata_collector_cmd(
     )
     if args.metadata_redact:
         cmd.append("--redact")
+    else:
+        cmd.append("--no-redact")
+    if getattr(args, "metadata_redact_identifiers", True):
+        cmd.append("--redact-identifiers")
+    else:
+        cmd.append("--no-redact-identifiers")
+    if getattr(args, "metadata_redact_hosts", True):
+        cmd.append("--redact-hosts")
+    else:
+        cmd.append("--no-redact-hosts")
     kerberos_service_name = getattr(args, "metadata_kerberos_service_name", None)
     if kerberos_service_name:
         cmd.extend(["--kerberos-service-name", kerberos_service_name])

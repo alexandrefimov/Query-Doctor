@@ -143,6 +143,12 @@ def build_config(
             default="recent",
         )
     )
+    privacy_mode = bool_setting(
+        "privacy_mode",
+        cli_value=None,
+        config_values=config_values,
+        default=True,
+    )
 
     return CollectorConfig(
         cm_url=cm_url,
@@ -243,19 +249,19 @@ def build_config(
             "redact",
             cli_value=args.redact,
             config_values=config_values,
-            default=False,
+            default=privacy_mode,
         ),
         redact_identifiers=bool_setting(
             "redact_identifiers",
             cli_value=args.redact_identifiers,
             config_values=config_values,
-            default=False,
+            default=privacy_mode,
         ),
         redact_hosts=bool_setting(
             "redact_hosts",
             cli_value=args.redact_hosts,
             config_values=config_values,
-            default=True,
+            default=privacy_mode,
         ),
         collect_cm_timeseries=bool(args.collect_cm_timeseries)
         if args.collect_cm_timeseries is not None

@@ -77,7 +77,10 @@ class WebClusterConfig:
     metadata_timeout_sec: int = DEFAULT_METADATA_TIMEOUT_SEC
     metadata_max_tables: int | None = None
     metadata_max_output_bytes: int | None = None
-    metadata_redact: bool = False
+    metadata_redact: bool = True
+    privacy_mode: bool = True
+    redact_identifiers: bool = True
+    redact_hosts: bool = True
     krb5ccname: str | None = None
 
 
@@ -99,6 +102,10 @@ class WebSettings:
     max_profile_bytes: int | None = None
     model: str = DEFAULT_MODEL
     optimizer_model: str | None = DEFAULT_OPTIMIZER_MODEL
+    no_llm: bool = False
+    privacy_mode: bool = True
+    redact_identifiers: bool = True
+    redact_hosts: bool = True
     timeout_sec: int = DEFAULT_TIMEOUT_SEC
     repo_dir: Path = _REPO_ROOT
     corpus_dir: Path = DEFAULT_CORPUS_DIR
@@ -123,7 +130,7 @@ class WebSettings:
     metadata_timeout_sec: int = DEFAULT_METADATA_TIMEOUT_SEC
     metadata_max_tables: int | None = None
     metadata_max_output_bytes: int | None = None
-    metadata_redact: bool = False
+    metadata_redact: bool = True
     krb5ccname: str | None = None
 
 

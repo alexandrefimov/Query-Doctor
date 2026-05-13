@@ -72,6 +72,7 @@ def build_web_cluster_config(
             DEFAULT_CM_METRICS_PROFILE,
         )
     )
+    privacy_mode = first_bool(values, defaults, "privacy_mode", default=True)
     return WebClusterConfig(
         key=key,
         label=label,
@@ -175,7 +176,10 @@ def build_web_cluster_config(
         ),
         metadata_max_tables=optional_int(values, defaults, "metadata_max_tables"),
         metadata_max_output_bytes=optional_int(values, defaults, "metadata_max_output_bytes"),
-        metadata_redact=first_bool(values, defaults, "metadata_redact", default=False),
+        metadata_redact=first_bool(values, defaults, "metadata_redact", default=privacy_mode),
+        privacy_mode=privacy_mode,
+        redact_identifiers=first_bool(values, defaults, "redact_identifiers", default=privacy_mode),
+        redact_hosts=first_bool(values, defaults, "redact_hosts", default=privacy_mode),
         krb5ccname=first_string(
             string_value(values, "krb5ccname"),
             string_value(defaults, "krb5ccname"),
@@ -325,6 +329,9 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 metadata_max_tables=cluster.metadata_max_tables,
                 metadata_max_output_bytes=cluster.metadata_max_output_bytes,
                 metadata_redact=cluster.metadata_redact,
+                privacy_mode=cluster.privacy_mode,
+                redact_identifiers=cluster.redact_identifiers,
+                redact_hosts=cluster.redact_hosts,
                 krb5ccname=cluster.krb5ccname,
             )
     raise WebError("Selected cluster is not configured in local config.")

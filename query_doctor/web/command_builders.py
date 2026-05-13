@@ -45,6 +45,14 @@ def append_web_metadata_args(cmd: list[str], settings: WebSettings) -> None:
         cmd.extend(["--metadata-max-output-bytes", str(settings.metadata_max_output_bytes)])
     if settings.metadata_redact:
         cmd.append("--metadata-redact")
+    if settings.redact_identifiers:
+        cmd.append("--metadata-redact-identifiers")
+    else:
+        cmd.append("--metadata-no-redact-identifiers")
+    if settings.redact_hosts:
+        cmd.append("--metadata-redact-hosts")
+    else:
+        cmd.append("--metadata-no-redact-hosts")
 
 
 def append_web_cm_args(cmd: list[str], settings: WebSettings) -> None:
@@ -135,7 +143,7 @@ def build_query_id_analyzer_command(case_dir: Path, settings: WebSettings) -> li
 def build_report_command(
     case_dir: Path, report_mode: str, report_name: str, settings: WebSettings
 ) -> list[str]:
-    return command_prefix(settings.repo_dir, "report") + [
+    cmd = command_prefix(settings.repo_dir, "report") + [
         str(case_dir),
         "--model",
         settings.model,
@@ -148,10 +156,13 @@ def build_report_command(
         "--validation-mode",
         WEB_REPORT_VALIDATION_MODE,
     ]
+    if settings.no_llm:
+        cmd.append("--no-llm")
+    return cmd
 
 
 def build_batch_case_report_command(case_dir: Path, settings: WebSettings) -> list[str]:
-    return command_prefix(settings.repo_dir, "pipeline") + [
+    cmd = command_prefix(settings.repo_dir, "pipeline") + [
         str(case_dir),
         "--mode",
         "admin",
@@ -166,10 +177,13 @@ def build_batch_case_report_command(case_dir: Path, settings: WebSettings) -> li
         "--report-validation-mode",
         WEB_REPORT_VALIDATION_MODE,
     ]
+    if settings.no_llm:
+        cmd.append("--no-llm")
+    return cmd
 
 
 def build_optimized_query_command(case_dir: Path, settings: WebSettings) -> list[str]:
-    return command_prefix(settings.repo_dir, "optimize_query") + [
+    cmd = command_prefix(settings.repo_dir, "optimize_query") + [
         str(case_dir),
         "--model",
         optimizer_model_for_settings(settings),
@@ -178,6 +192,9 @@ def build_optimized_query_command(case_dir: Path, settings: WebSettings) -> list
         "--keep-alive",
         "0",
     ]
+    if settings.no_llm:
+        cmd.append("--no-llm")
+    return cmd
 
 
 def optimizer_model_for_settings(settings: WebSettings) -> str:

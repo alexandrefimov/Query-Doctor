@@ -19,7 +19,7 @@ def test_web_handler_renders_mocked_analysis_result_without_raw_html():
     def fake_analysis(query_id, report_mode, redact_identifiers, received_settings):
         assert query_id == "abc:def"
         assert report_mode == "analysis"
-        assert redact_identifiers is False
+        assert redact_identifiers is True
         assert received_settings is settings
         return module.WebQueryAnalysisResult(
             query_id=query_id,

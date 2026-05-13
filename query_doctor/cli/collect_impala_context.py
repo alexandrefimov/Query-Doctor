@@ -38,14 +38,7 @@ from query_doctor.impala.metadata_results import (
     planned_result,
     write_outputs,
 )
-from query_doctor.impala.metadata_redaction import (
-    GENERIC_URL_CREDENTIAL_RE,
-    SQL_SECRET_VALUE_RE,
-    URI_HOST_RE,
-    USER_PATH_RE,
-    redact_impala_context_text,
-    redact_uri_hosts,
-)
+from query_doctor.impala.metadata_redaction import redact_impala_context_text
 from query_doctor.cli.collect_cm_profiles import (
     ConfigError,
     load_effective_local_config,
@@ -63,6 +56,16 @@ REPO_DIR = Path(__file__).resolve().parents[2]
 
 
 Runner = Callable[..., subprocess.CompletedProcess[bytes]]
+
+
+def redact_metadata_value(args: argparse.Namespace, value: object) -> str:
+    if not args.redact:
+        return str(value)
+    return redact_impala_context_text(
+        value,
+        redact_identifiers=getattr(args, "redact_identifiers", True),
+        redact_hosts=getattr(args, "redact_hosts", True),
+    )
 
 
 def build_impala_shell_args(args: argparse.Namespace, sql: str) -> list[str]:
@@ -106,7 +109,7 @@ def run_statement(
             label=plan.label,
             sql=plan.sql,
             status="error",
-            error=redact_impala_context_text(exc),
+            error=redact_metadata_value(args, exc),
         )
 
     stdout_bytes = proc.stdout or b""
@@ -134,8 +137,8 @@ def run_statement(
             **size_metadata,
         )
 
-    stdout = redact_impala_context_text(stdout_output.text)
-    stderr = redact_impala_context_text(stderr_output.text)
+    stdout = redact_metadata_value(args, stdout_output.text)
+    stderr = redact_metadata_value(args, stderr_output.text)
     if proc.returncode != 0:
         if is_view_not_applicable_error(stdout, stderr):
             return StatementResult(
@@ -191,7 +194,7 @@ def collect_impala_context(
         print("Planned read-only Impala statements:")
         print(f"- impala-shell: {args.impala_shell}")
         coordinator = (
-            redact_impala_context_text(args.coordinator)
+            redact_metadata_value(args, args.coordinator)
             if args.coordinator
             else "<required for execution>"
         )
@@ -204,9 +207,9 @@ def collect_impala_context(
         if args.ssl:
             print("- ssl: yes")
         if args.ca_cert:
-            print(f"- ca-cert: {redact_impala_context_text(args.ca_cert)}")
+            print(f"- ca-cert: {redact_metadata_value(args, args.ca_cert)}")
         for plan in plans:
-            print(f"- {plan.sql}")
+            print(f"- {redact_metadata_value(args, plan.sql)}")
         results = [planned_result(plan) for plan in plans]
     else:
         print(f"Collecting read-only Impala metadata for {len(tables)} table(s).")
@@ -306,6 +309,30 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Write metadata output without redaction.",
     )
+    parser.add_argument(
+        "--redact-identifiers",
+        action="store_true",
+        default=None,
+        help="Redact database and table identifiers in metadata output.",
+    )
+    parser.add_argument(
+        "--no-redact-identifiers",
+        dest="redact_identifiers",
+        action="store_false",
+        help="Preserve database and table identifiers in local metadata output.",
+    )
+    parser.add_argument(
+        "--redact-hosts",
+        action="store_true",
+        default=None,
+        help="Redact hostnames in metadata output.",
+    )
+    parser.add_argument(
+        "--no-redact-hosts",
+        dest="redact_hosts",
+        action="store_false",
+        help="Preserve hostnames in local metadata output.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without connecting.")
     return parser
 
@@ -365,7 +392,20 @@ def apply_local_config(args: argparse.Namespace, *, cwd: Path) -> None:
         config_values.get("metadata_max_output_bytes"),
         default=DEFAULT_MAX_OUTPUT_BYTES,
     )
-    args.redact = first_bool(args.redact, config_values.get("metadata_redact"), default=True)
+    privacy_mode = first_bool(config_values.get("privacy_mode"), default=True)
+    args.redact = first_bool(
+        args.redact, config_values.get("metadata_redact"), default=privacy_mode
+    )
+    args.redact_identifiers = first_bool(
+        args.redact_identifiers,
+        config_values.get("redact_identifiers"),
+        default=privacy_mode,
+    )
+    args.redact_hosts = first_bool(
+        args.redact_hosts,
+        config_values.get("redact_hosts"),
+        default=privacy_mode,
+    )
     args.krb5ccname = first_string(config_values.get("krb5ccname"))
     max_tables = first_int(config_values.get("metadata_max_tables"), default=None)
     if max_tables is not None and len(args.table or []) > max_tables:

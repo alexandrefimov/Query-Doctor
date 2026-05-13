@@ -84,6 +84,7 @@ def start_specific_query_report_job(
                     runtime_diagnosis_facts,
                     cluster_runtime_context_facts,
                     report_state=report_state,
+                    llm_enabled=not settings.no_llm,
                 )
             ],
         )
@@ -108,6 +109,7 @@ def start_specific_query_report_job(
                     runtime_diagnosis_facts,
                     cluster_runtime_context_facts,
                     report_state=report_state,
+                    llm_enabled=not settings.no_llm,
                 )
             ],
         )
@@ -161,6 +163,7 @@ def start_specific_query_optimized_query_job(
                     runtime_diagnosis_facts,
                     cluster_runtime_context_facts,
                     optimized_query_state=optimized_query_state,
+                    llm_enabled=not settings.no_llm,
                 )
             ],
         )

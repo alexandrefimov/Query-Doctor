@@ -47,6 +47,7 @@ jobs:
           /tmp/query-doctor-wheel-venv/bin/query-doctor-demo --out /tmp/query-doctor-package-demo --overwrite
           test -f /tmp/query-doctor-package-demo/batch_summary.json
           /tmp/query-doctor-wheel-venv/bin/query-doctor-demo-preflight --help
+          /tmp/query-doctor-wheel-venv/bin/query-doctor-demo-preflight --repo "$GITHUB_WORKSPACE"
           /tmp/query-doctor-wheel-venv/bin/query-doctor-web --help
           /tmp/query-doctor-wheel-venv/bin/query-doctor-report --help
           /tmp/query-doctor-wheel-venv/bin/query-doctor-optimize-query --help

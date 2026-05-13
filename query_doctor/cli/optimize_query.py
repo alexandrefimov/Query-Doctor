@@ -336,6 +336,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--keep-alive", default=DEFAULT_KEEP_ALIVE)
+    parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Use only Python-owned deterministic rewrites or recommendations; do not call Ollama.",
+    )
     return parser.parse_args(argv)
 
 
@@ -441,6 +446,36 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if risk_decision.mode == "recommendations_only":
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
+            if args.no_llm:
+                recommendations_path = case_dir / RECOMMENDATIONS_NAME
+                recommendations = (
+                    no_rewrite_recommendations(risk_decision, facts_text, rewrite_recipe)
+                    if rewrite_recipe is not None
+                    else no_supported_rewrite_recommendations(risk_decision, facts_text)
+                )
+                recommendations_path.write_text(recommendations.rstrip() + "\n", encoding="utf-8")
+                write_recommendations_marker(
+                    case_dir,
+                    RECOMMENDATIONS_NAME,
+                    source_sql=source_sql.sql,
+                    facts_text=facts_text,
+                    source_scope=source_sql.scope,
+                    risk_decision=risk_decision,
+                    rewrite_recipe=rewrite_recipe,
+                    output_kind="recommendations_only",
+                    fallback_reason="llm_disabled",
+                    generation_metadata={
+                        "generator": "deterministic_no_llm",
+                        "prompt_chars": 0,
+                        "source_sql_chars": len(source_sql.sql),
+                        "generated_chars": 0,
+                    },
+                )
+                print(
+                    f"{PROGRESS_PREFIX} optimizer recommendations done without LLM",
+                    file=sys.stderr,
+                )
+                return 0
             recommendations_prompt = build_recommendations_prompt(
                 source_sql=source_sql.sql,
                 facts_text=facts_text,
@@ -511,6 +546,34 @@ def main(argv: list[str] | None = None) -> int:
                 },
             )
             print(f"{PROGRESS_PREFIX} optimizer no supported rewrite recipe", file=sys.stderr)
+            return 0
+        if args.no_llm:
+            remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
+            recommendations_path = case_dir / RECOMMENDATIONS_NAME
+            recommendations_path.write_text(
+                no_rewrite_recommendations(risk_decision, facts_text, rewrite_recipe) + "\n",
+                encoding="utf-8",
+            )
+            write_recommendations_marker(
+                case_dir,
+                RECOMMENDATIONS_NAME,
+                source_sql=source_sql.sql,
+                facts_text=facts_text,
+                source_scope=source_sql.scope,
+                risk_decision=risk_decision,
+                rewrite_recipe=rewrite_recipe,
+                output_kind="no_rewrite",
+                fallback_reason="llm_disabled",
+                generation_metadata={
+                    "generator": "deterministic_no_llm",
+                    "prompt_chars": 0,
+                    "source_sql_chars": len(source_sql.sql),
+                    "generated_chars": 0,
+                },
+            )
+            print(
+                f"{PROGRESS_PREFIX} optimizer LLM disabled; wrote recommendations", file=sys.stderr
+            )
             return 0
         prompt = build_prompt(
             source_sql=source_sql.sql,

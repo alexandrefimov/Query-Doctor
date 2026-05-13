@@ -67,6 +67,7 @@ def render_specific_query_detail_for_request(
             render_specific_query_detail(
                 validated_query_id,
                 case,
+                llm_enabled=not settings.no_llm,
                 **render_context,
             )
         ],
@@ -105,6 +106,7 @@ def render_specific_query_report_for_request(
                     cm_metrics_facts,
                     runtime_diagnosis_facts,
                     cluster_runtime_context_facts,
+                    llm_enabled=not settings.no_llm,
                 )
             ],
         )

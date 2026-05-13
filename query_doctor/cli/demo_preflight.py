@@ -188,8 +188,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--repo",
-        default=str(REPO_DIR),
-        help="Repository root to inspect. Defaults to the current Query Doctor checkout.",
+        default=None,
+        help="Repository root to inspect. Defaults to the current working directory.",
     )
     parser.add_argument(
         "--public-release",
@@ -601,7 +601,7 @@ def render_report(report: PreflightReport) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    repo_dir = Path(args.repo).resolve()
+    repo_dir = Path(args.repo or ".").resolve()
     report = build_report(
         repo_dir, public_release=args.public_release, skip_history=args.skip_history
     )

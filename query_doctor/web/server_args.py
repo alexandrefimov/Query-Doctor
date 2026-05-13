@@ -60,6 +60,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Run report and optimizer actions in deterministic Python-only mode.",
+    )
+    parser.add_argument(
         "--timeout-sec",
         type=positive_int,
         default=DEFAULT_TIMEOUT_SEC,

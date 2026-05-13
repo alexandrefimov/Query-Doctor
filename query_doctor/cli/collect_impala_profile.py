@@ -92,6 +92,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--redact-identifiers", action="store_true", help="Redact usernames and pools."
     )
     parser.add_argument(
+        "--no-redact-hosts",
+        action="store_false",
+        default=True,
+        dest="redact_hosts",
+        help="Preserve hostnames in local artifacts. Do not use for shared outputs.",
+    )
+    parser.add_argument(
         "--prometheus-url",
         help="Prometheus base URL for bounded runtime metric summaries. No credentials in the URL.",
     )
@@ -253,7 +260,7 @@ def main(
             warnings=warnings,
             redact=True,
             redact_identifiers=args.redact_identifiers,
-            redact_hosts=True,
+            redact_hosts=args.redact_hosts,
         )
     except (CMClientError, OutputError, OSError) as exc:
         print("[Impala profile collector] Collection result: FAILED", file=sys.stderr)
@@ -268,6 +275,7 @@ def main(
     print(f"Output case directory: {case_dir}")
     print(f"Profile text length: {len(result.profile_text)}")
     print("Redaction: enabled")
+    print(f"Host redaction: {'enabled' if args.redact_hosts else 'disabled'}")
     print(f"Max profile bytes: {args.max_profile_bytes}")
     if collect_prometheus:
         print("Prometheus runtime metrics context: enabled")

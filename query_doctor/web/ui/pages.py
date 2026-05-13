@@ -220,6 +220,7 @@ def render_batch_case_detail_page(
             workflow_title=workflow_title,
             list_href=list_href,
             detail_base_path=detail_base_path,
+            llm_enabled=not getattr(settings, "no_llm", False),
         )
     ]
     return render_page(

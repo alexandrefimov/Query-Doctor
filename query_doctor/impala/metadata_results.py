@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from query_doctor.impala.metadata_policy import StatementPlan
+from query_doctor.impala.metadata_redaction import redact_impala_context_text
 
 
 @dataclass
@@ -47,16 +48,26 @@ def not_applicable_result(plan: StatementPlan, reason: str) -> StatementResult:
     )
 
 
-def result_to_json(result: StatementResult) -> dict[str, object]:
+def redact_output_value(args: argparse.Namespace, value: object) -> str:
+    if not getattr(args, "redact", True):
+        return str(value)
+    return redact_impala_context_text(
+        value,
+        redact_identifiers=getattr(args, "redact_identifiers", True),
+        redact_hosts=getattr(args, "redact_hosts", True),
+    )
+
+
+def result_to_json(result: StatementResult, *, args: argparse.Namespace) -> dict[str, object]:
     return {
-        "table": result.table,
+        "table": redact_output_value(args, result.table),
         "statement": result.label,
-        "sql": result.sql,
+        "sql": redact_output_value(args, result.sql),
         "status": result.status,
         "returncode": result.returncode,
-        "error": result.error,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
+        "error": redact_output_value(args, result.error) if result.error else "",
+        "stdout": redact_output_value(args, result.stdout) if result.stdout else "",
+        "stderr": redact_output_value(args, result.stderr) if result.stderr else "",
         "stdout_raw_bytes": result.stdout_raw_bytes,
         "stdout_bytes": result.stdout_bytes,
         "stdout_normalized": result.stdout_normalized,
@@ -66,12 +77,14 @@ def result_to_json(result: StatementResult) -> dict[str, object]:
     }
 
 
-def render_statement_output(result: StatementResult) -> str:
-    output = result.stdout.strip()
+def render_statement_output(result: StatementResult, *, args: argparse.Namespace) -> str:
+    output = redact_output_value(args, result.stdout).strip() if result.stdout else ""
     if result.stderr.strip():
-        output = (output + "\n\nstderr:\n" + result.stderr.strip()).strip()
+        output = (
+            output + "\n\nstderr:\n" + redact_output_value(args, result.stderr).strip()
+        ).strip()
     if result.error:
-        output = (output + "\n\nerror: " + result.error).strip()
+        output = (output + "\n\nerror: " + redact_output_value(args, result.error)).strip()
     return output or "(no output captured)"
 
 
@@ -91,13 +104,15 @@ def render_markdown(
         "- read-only statements only: yes",
         f"- max output bytes: {args.max_output_bytes}",
         f"- timeout seconds: {args.timeout_sec}",
-        "- redaction: enabled",
+        f"- redaction: {'enabled' if getattr(args, 'redact', True) else 'disabled'}",
+        f"- identifier redaction: {'enabled' if getattr(args, 'redact', True) and getattr(args, 'redact_identifiers', True) else 'disabled'}",
+        f"- host redaction: {'enabled' if getattr(args, 'redact', True) and getattr(args, 'redact_hosts', True) else 'disabled'}",
         f"- dry-run: {'yes' if args.dry_run else 'no'}",
         "",
     ]
 
     for table in tables:
-        lines += [f"## Table: {table}", ""]
+        lines += [f"## Table: {redact_output_value(args, table)}", ""]
         for result in [item for item in results if item.table == table]:
             fence = "sql" if result.label == "SHOW CREATE TABLE" else "text"
             lines += [
@@ -105,7 +120,7 @@ def render_markdown(
                 f"status: {result.status}",
                 "",
                 f"```{fence}",
-                render_statement_output(result),
+                render_statement_output(result, args=args),
                 "```",
                 "",
             ]
@@ -124,13 +139,21 @@ def write_outputs(
     markdown = render_markdown(timestamp=timestamp, tables=tables, results=results, args=args)
     payload = {
         "collection_timestamp": timestamp,
-        "tables": tables,
+        "tables": [redact_output_value(args, table) for table in tables],
         "read_only_statements_only": True,
         "max_output_bytes": args.max_output_bytes,
         "timeout_seconds": args.timeout_sec,
-        "redaction": "enabled",
+        "redaction": "enabled" if getattr(args, "redact", True) else "disabled",
+        "identifier_redaction": (
+            "enabled"
+            if getattr(args, "redact", True) and getattr(args, "redact_identifiers", True)
+            else "disabled"
+        ),
+        "host_redaction": "enabled"
+        if getattr(args, "redact", True) and getattr(args, "redact_hosts", True)
+        else "disabled",
         "dry_run": args.dry_run,
-        "results": [result_to_json(result) for result in results],
+        "results": [result_to_json(result, args=args) for result in results],
     }
     (out_dir / "impala_context.md").write_text(markdown, encoding="utf-8")
     (out_dir / "impala_context.json").write_text(

@@ -229,6 +229,148 @@ DEFAULT_VALIDATION_MODE = os.getenv("QD_REPORT_VALIDATION_MODE", "strict")
 FACT_APPENDIX_MAX_ITEMS = 8
 
 
+def localized_text(language: str, ru_text: str, en_text: str) -> str:
+    return ru_text if language == "ru" else en_text
+
+
+def deterministic_report_body(
+    facts_text: str,
+    *,
+    language: str,
+    mode: str,
+) -> str:
+    contract = get_report_language_contract(language)
+    digest = build_report_contract_digest(facts_text, language=language)
+    candidates = recommendation_candidate_lines(facts_text, language=language)
+    recommendations = canonical_recommendation_bullets(candidates)
+    summary_points = [
+        str(point).rstrip(".")
+        for point in digest.get("supported_summary_points", [])
+        if str(point).strip()
+    ]
+    differentiators = [
+        str(point).rstrip(".")
+        for point in digest.get("case_differentiators", [])
+        if str(point).strip()
+    ]
+    short_summary = (differentiators[:3] + summary_points[:3])[:6]
+    while len(short_summary) < 2:
+        short_summary.append(
+            localized_text(
+                language,
+                "Отчет собран детерминированно из фактов анализатора без внешней генерации",
+                "The report was built deterministically from analyzer facts without external generation",
+            )
+        )
+
+    evidence_groups_value = digest.get("evidence_groups", {})
+    evidence_items: list[str] = []
+    if isinstance(evidence_groups_value, dict):
+        for key, values in evidence_groups_value.items():
+            if not isinstance(values, list):
+                continue
+            for value in values[:3]:
+                evidence_items.append(f"{key}: {value}")
+                if len(evidence_items) >= 5:
+                    break
+            if len(evidence_items) >= 5:
+                break
+    if not evidence_items:
+        evidence_items = summary_points[:3]
+    if not evidence_items:
+        evidence_items = [
+            localized_text(
+                language,
+                "Факты анализатора доступны как базовая, но не каузальная картина выполнения",
+                "Analyzer facts are available as a baseline execution view, not as causal proof",
+            )
+        ]
+
+    unsupported = [
+        str(item)
+        for item in digest.get("unsupported_conclusions", [])
+        if str(item).strip().startswith("- ")
+    ]
+    if not unsupported:
+        unsupported = [
+            localized_text(
+                language,
+                "- Нет отдельного подтверждения внешней сетевой, HDFS, codegen или platform root-cause без соответствующего факта.",
+                "- There is no separate proof for external network, HDFS, codegen, or platform root-cause without a matching fact.",
+            )
+        ]
+
+    amplifiers = []
+    evidence_flags = digest.get("evidence_flags", {})
+    if isinstance(evidence_flags, dict):
+        for key, value in evidence_flags.items():
+            if value:
+                amplifiers.append(f"{key}: yes")
+    if not amplifiers:
+        amplifiers = [
+            localized_text(
+                language,
+                "Дополнительные усилители не выделены; используйте отчет как baseline для сравнения.",
+                "No additional amplifiers were selected; use this report as a comparison baseline.",
+            )
+        ]
+
+    follow_ups = [
+        localized_text(
+            language,
+            "- После изменения сравнить новый профиль с теми же operator-level facts и рекомендациями.",
+            "- After a change, compare a new profile against the same operator-level facts and recommendations.",
+        ),
+        localized_text(
+            language,
+            "- Если проблема сохранится, приложить детерминированные факты анализатора к DBA/platform разбору.",
+            "- If the issue remains, attach deterministic analyzer facts to the DBA/platform review.",
+        ),
+    ]
+    if mode == "user":
+        follow_ups.append(
+            localized_text(
+                language,
+                "- Проверять только read-only изменения и подтверждать результат на тестовом или согласованном запуске.",
+                "- Keep validation read-only where possible and confirm the result on a test or approved run.",
+            )
+        )
+
+    lines = [
+        contract.short_summary_heading,
+        "",
+        *[f"- {item}" for item in short_summary],
+        "",
+        contract.recommendations_heading,
+        "",
+        *recommendations,
+        "",
+        contract.detailed_report_heading,
+        "",
+        contract.evidence_safe_problems_heading,
+        "",
+        *[f"- {item}" for item in summary_points[:5]],
+        "",
+        contract.evidence_heading,
+        "",
+        *[f"- {item}" for item in evidence_items[:5]],
+        "",
+        contract.amplifiers_heading,
+        "",
+        *[f"- {item}" for item in amplifiers[:5]],
+        "",
+        contract.not_supported_heading,
+        "",
+        *unsupported[:5],
+        "",
+        contract.next_checks_heading,
+        "",
+        *follow_ups,
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Write a Query Doctor markdown report from deterministic analysis facts only."
@@ -261,6 +403,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--dry-prompt",
         action="store_true",
         help="Print the final prompt and exit without calling Ollama",
+    )
+    parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Generate a deterministic Python-owned report without calling Ollama.",
     )
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
@@ -327,14 +474,17 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{PROGRESS_PREFIX} case: {case_dir}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} facts: {facts_path}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} facts sha256: {facts_sha256}", file=sys.stderr)
-    print(f"{PROGRESS_PREFIX} model: {args.model}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} mode: {args.mode}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} validation mode: {validation_mode}", file=sys.stderr)
     print(f"{PROGRESS_PREFIX} resolved output path: {output_path}", file=sys.stderr)
-    print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
-    print(f"{PROGRESS_PREFIX} keep_alive: {args.keep_alive}", file=sys.stderr)
+    if args.no_llm:
+        print(f"{PROGRESS_PREFIX} generation: deterministic_python", file=sys.stderr)
+    else:
+        print(f"{PROGRESS_PREFIX} model: {args.model}", file=sys.stderr)
+        print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
+        print(f"{PROGRESS_PREFIX} keep_alive: {args.keep_alive}", file=sys.stderr)
 
-    if args.stop_other_models:
+    if args.stop_other_models and not args.no_llm:
         stopped = stop_other_ollama_models(
             target_model=args.model,
         )
@@ -345,14 +495,21 @@ def main(argv: list[str] | None = None) -> int:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    generated_body = stream_ollama_report(
-        prompt=prompt,
-        model=args.model,
-        ollama_url=args.ollama_url,
-        temperature=args.temperature,
-        keep_alive=args.keep_alive,
-        system_prompt=report_contract.system_prompt,
-    )
+    if args.no_llm:
+        generated_body = deterministic_report_body(
+            facts_text,
+            language=args.language,
+            mode=args.mode,
+        )
+    else:
+        generated_body = stream_ollama_report(
+            prompt=prompt,
+            model=args.model,
+            ollama_url=args.ollama_url,
+            temperature=args.temperature,
+            keep_alive=args.keep_alive,
+            system_prompt=report_contract.system_prompt,
+        )
 
     narrative_text = normalize_report_text(
         report_header(facts_path, facts_sha256, args.model) + generated_body,

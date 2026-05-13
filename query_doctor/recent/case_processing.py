@@ -124,6 +124,10 @@ def collect_case_profile(
             ]
             for host in config.impala_profile_hosts:
                 cmd.extend(["--host", host])
+            if config.redact_identifiers:
+                cmd.append("--redact-identifiers")
+            if not config.redact_hosts:
+                cmd.append("--no-redact-hosts")
             include_prometheus = (
                 config.collect_prometheus_timeseries
                 if collect_cm_timeseries is None

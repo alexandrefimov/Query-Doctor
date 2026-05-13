@@ -122,6 +122,7 @@ def render_llm_actions_block(
     trusted_optimizer_recommendations: str | None = None,
     optimizer_manual_guidance: str | None = None,
     optimizer_validation_result: dict[str, Any] | None = None,
+    llm_enabled: bool = True,
 ) -> str:
     optimizer_view = optimized_query_state or present_optimized_query_action(None)
     escaped_case_id = html.escape(case_id, quote=True)
@@ -170,7 +171,7 @@ def render_llm_actions_block(
             report_action, report_view.button_label, disabled=report_button_disabled
         )
     optimizer_action_html = render_optimizer_action_button(
-        optimizer_view, optimizer_action, optimizer_open
+        optimizer_view, optimizer_action, optimizer_open, llm_enabled=llm_enabled
     )
     combined_card_html = ""
     if not combined_disabled:
@@ -179,13 +180,16 @@ def render_llm_actions_block(
             "Generate report + optimizer",
             primary=True,
         )
+        combined_title = "Full LLM pass" if llm_enabled else "Full Python pass"
         combined_card_html = (
-            '<div class="llm-action-card llm-action-card--primary"><strong>Full LLM pass</strong>'
+            '<div class="llm-action-card llm-action-card--primary">'
+            f"<strong>{combined_title}</strong>"
             f"{combined_html}</div>"
         )
     notes: list[str] = []
     if not report_enabled:
-        notes.append("LLM Report is available only for suspicious or bad queries.")
+        report_note_label = "LLM Report" if llm_enabled else "Report"
+        notes.append(f"{report_note_label} is available only for suspicious or bad queries.")
     elif report_view.note:
         notes.append(html.escape(report_view.note))
     if optimizer_status == "unavailable":
@@ -210,13 +214,16 @@ def render_llm_actions_block(
             optimizer_validation_action_url=optimizer_validation_action,
             optimizer_validation_result=optimizer_validation_result,
         )
+    section_label = "LLM actions" if llm_enabled else "Python-only actions"
+    report_title = "LLM Report" if llm_enabled else "Python Report"
+    optimizer_title = "Query LLM optimizer" if llm_enabled else "Query optimizer"
     return (
-        '<section id="llm-actions" class="panel docs-panel" aria-label="LLM actions">'
-        "<h1>LLM actions</h1>"
+        f'<section id="llm-actions" class="panel docs-panel" aria-label="{section_label}">'
+        f"<h1>{section_label}</h1>"
         '<div class="report-body">'
         '<div class="llm-action-grid">'
-        f'<div class="llm-action-card"><strong>LLM Report</strong>{report_action_html}</div>'
-        f'<div class="llm-action-card"><strong>Query LLM optimizer</strong>{optimizer_action_html}</div>'
+        f'<div class="llm-action-card"><strong>{report_title}</strong>{report_action_html}</div>'
+        f'<div class="llm-action-card"><strong>{optimizer_title}</strong>{optimizer_action_html}</div>'
         f"{combined_card_html}"
         "</div>"
         f"{notes_html}"
@@ -321,20 +328,23 @@ def render_optimizer_action_button(
     view: OptimizedQueryActionView,
     action_url: str,
     open_url: str,
+    *,
+    llm_enabled: bool = True,
 ) -> str:
     status = view.status
     output_kind = view.output_kind
+    optimizer_label = "Query LLM optimizer" if llm_enabled else "Query optimizer"
     if status == "generated" and output_kind == "no_rewrite":
-        return f'<a class="button" href="{open_url}">Open Query LLM optimizer outcome</a>'
+        return f'<a class="button" href="{open_url}">Open {optimizer_label} outcome</a>'
     if status == "generated" and output_kind == "recommendations_only":
-        return f'<a class="button" href="{open_url}">Open Query LLM optimizer recommendations</a>'
+        return f'<a class="button" href="{open_url}">Open {optimizer_label} recommendations</a>'
     if status == "generated":
-        return f'<a class="button" href="{open_url}">Open Query LLM optimizer draft</a>'
+        return f'<a class="button" href="{open_url}">Open {optimizer_label} draft</a>'
     if status == "unavailable":
-        return '<button class="button" type="button" disabled>Run Query LLM optimizer</button>'
+        return f'<button class="button" type="button" disabled>Run {optimizer_label}</button>'
     if status == "running":
-        return '<button class="button" type="button" disabled>Running Query LLM optimizer</button>'
-    return render_post_button(action_url, "Run Query LLM optimizer")
+        return f'<button class="button" type="button" disabled>Running {optimizer_label}</button>'
+    return render_post_button(action_url, f"Run {optimizer_label}")
 
 
 def render_optimizer_status(

@@ -14,6 +14,10 @@ def append_cm_config_args(cmd: list[str], config: BatchConfig) -> None:
         )
     if config.ca_bundle:
         cmd.extend(["--ca-bundle", config.ca_bundle])
+    if config.redact_identifiers:
+        cmd.append("--redact-identifiers")
+    if not config.redact_hosts:
+        cmd.append("--no-redact-hosts")
 
 
 def append_metadata_args(cmd: list[str], config: BatchConfig) -> None:
@@ -38,3 +42,11 @@ def append_metadata_args(cmd: list[str], config: BatchConfig) -> None:
         cmd.extend(["--metadata-max-output-bytes", str(config.metadata_max_output_bytes)])
     if config.metadata_redact:
         cmd.append("--metadata-redact")
+    if config.redact_identifiers:
+        cmd.append("--metadata-redact-identifiers")
+    else:
+        cmd.append("--metadata-no-redact-identifiers")
+    if config.redact_hosts:
+        cmd.append("--metadata-redact-hosts")
+    else:
+        cmd.append("--metadata-no-redact-hosts")

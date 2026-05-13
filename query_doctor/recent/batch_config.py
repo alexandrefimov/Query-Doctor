@@ -346,6 +346,12 @@ def build_batch_config(
         config_values.get("insecure_skip_verify"),
         default=False,
     )
+    privacy_mode = first_bool(config_values.get("privacy_mode"), default=True)
+    redact_identifiers = first_bool(config_values.get("redact_identifiers"), default=privacy_mode)
+    redact_hosts = first_bool(config_values.get("redact_hosts"), default=privacy_mode)
+    metadata_redact = first_bool(
+        args.metadata_redact, config_values.get("metadata_redact"), default=privacy_mode
+    )
 
     return BatchConfig(
         out=out,
@@ -446,9 +452,7 @@ def build_batch_config(
             config_values.get("metadata_max_output_bytes"),
             default=None,
         ),
-        metadata_redact=first_bool(
-            args.metadata_redact, config_values.get("metadata_redact"), default=False
-        ),
+        metadata_redact=metadata_redact,
         top_reports=args.top_reports,
         cm_jobs=cm_jobs,
         jobs=args.jobs,
@@ -474,6 +478,9 @@ def build_batch_config(
             prometheus_timeseries_padding_sec or DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC
         ),
         prometheus_timeout_sec=int(prometheus_timeout_sec or DEFAULT_PROMETHEUS_TIMEOUT_SEC),
+        privacy_mode=privacy_mode,
+        redact_identifiers=redact_identifiers,
+        redact_hosts=redact_hosts,
     )
 
 

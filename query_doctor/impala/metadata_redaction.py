@@ -23,14 +23,30 @@ URI_HOST_RE = re.compile(
     r"(?P<port>:\d+)?"
 )
 USER_PATH_RE = re.compile(r"(?i)(/user/)[^/\s'\"`]+")
+BARE_TABLE_IDENTIFIER_RE = re.compile(
+    r"(?<![A-Za-z0-9_$./-])`?[A-Za-z_][A-Za-z0-9_$]*`?"
+    r"\s*\.\s*`?[A-Za-z_][A-Za-z0-9_$]*`?(?![A-Za-z0-9_$])"
+)
 
 
-def redact_impala_context_text(text: object) -> str:
-    redacted = redact_profile_text(str(text))
+def redact_impala_context_text(
+    text: object,
+    *,
+    redact_identifiers: bool = True,
+    redact_hosts: bool = True,
+) -> str:
+    redacted = redact_profile_text(
+        str(text),
+        redact_identifiers=redact_identifiers,
+        redact_hosts=redact_hosts,
+    )
     redacted = GENERIC_URL_CREDENTIAL_RE.sub(r"\1<redacted>@", redacted)
-    redacted = redact_uri_hosts(redacted)
+    if redact_hosts:
+        redacted = redact_uri_hosts(redacted)
     redacted = SQL_SECRET_VALUE_RE.sub(r"\1<redacted>\3", redacted)
     redacted = USER_PATH_RE.sub(r"\1<user>", redacted)
+    if redact_identifiers:
+        redacted = BARE_TABLE_IDENTIFIER_RE.sub("<db>.<table>", redacted)
     return redacted
 
 

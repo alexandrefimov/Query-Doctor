@@ -97,6 +97,7 @@ def render_specific_query_detail(
     trusted_optimizer_recommendations: str | None = None,
     optimizer_manual_guidance: str | None = None,
     optimizer_validation_result: dict[str, Any] | None = None,
+    llm_enabled: bool = True,
 ) -> str:
     if trusted_report_html is None and trusted_report_text:
         trusted_report_html = SafeHtml(
@@ -131,7 +132,7 @@ def render_specific_query_detail(
         f"{render_case_status_summary(view)}"
         f"{render_case_analysis_summary(view)}"
         f"{render_analysis_details(view)}"
-        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result)}"
+        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled)}"
         "</section>"
     )
 

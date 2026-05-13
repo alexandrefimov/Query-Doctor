@@ -36,7 +36,6 @@ def handle_analyze_request(
 ) -> tuple[int, str]:
     query_id = first_form_value(form, "query_id")
     report_mode = "analysis"
-    redact_identifiers = False
     form_values = {
         "diagnosis_target": "query",
         "cluster_key": selected_cluster_key_from_mapping(form, settings),
@@ -55,7 +54,9 @@ def handle_analyze_request(
             form_values=form_values,
         )
     try:
-        result = analysis_func(query_id, report_mode, redact_identifiers, selected_settings)
+        result = analysis_func(
+            query_id, report_mode, selected_settings.redact_identifiers, selected_settings
+        )
     except WebError as exc:
         return 400, render_query_page(
             settings,
@@ -97,7 +98,6 @@ def start_analyze_job(
 ) -> tuple[int, str]:
     query_id = first_form_value(form, "query_id")
     report_mode = "analysis"
-    redact_identifiers = False
     form_values = {
         "diagnosis_target": "query",
         "cluster_key": selected_cluster_key_from_mapping(form, settings),
@@ -123,7 +123,7 @@ def start_analyze_job(
             job.job_id,
             query_id,
             report_mode,
-            redact_identifiers,
+            selected_settings.redact_identifiers,
             selected_settings,
             job_store,
             analysis_func,

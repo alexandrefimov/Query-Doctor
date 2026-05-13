@@ -127,6 +127,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Unload other Ollama models before generation.",
     )
     parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Generate the report with deterministic Python code and do not call Ollama.",
+    )
+    parser.add_argument(
         "--skip-report",
         action="store_true",
         help="Run only deterministic analyzer.",
@@ -305,6 +310,8 @@ def main(
 
     if args.stop_other_models:
         report_cmd.append("--stop-other-models")
+    if args.no_llm:
+        report_cmd.append("--no-llm")
 
     call_runner_with_timeout(
         command_runner, report_cmd, cwd=repo_dir, timeout_sec=REPORT_TIMEOUT_SEC
