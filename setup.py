@@ -30,7 +30,7 @@ CONSOLE_SCRIPTS = project_scripts()
 
 setup(
     name="query-doctor",
-    version="0.1.1",
+    version="0.1.2",
     description="Local-first Apache Impala query diagnostic tool.",
     author="Aleksandr Efimov",
     maintainer="Aleksandr Efimov",
