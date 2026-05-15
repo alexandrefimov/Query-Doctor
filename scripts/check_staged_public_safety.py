@@ -23,6 +23,7 @@ BLOCKED_PATH_PARTS = (
     "htmlcov/",
 )
 BLOCKED_FILENAMES = {
+    ".DS_Store",
     ".query-doctor-cm.local.json",
     "analysis_facts.md",
     "cluster_event_context.json",

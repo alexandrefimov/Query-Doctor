@@ -26,6 +26,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 ## Start Here
 
 - [../README.md](../README.md): public project overview and workflows.
+- [../README.ru.md](../README.ru.md): Russian companion for the public project
+  README.
 - [agent-quickstart.md](agent-quickstart.md): shortest safe path for agents.
 - [codex-handoff.md](codex-handoff.md): current agent working baseline.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
@@ -49,6 +51,7 @@ Status legend:
 | Document | Status | Use |
 | --- | --- | --- |
 | [../README.md](../README.md) | active | Public overview and workflows. |
+| [../README.ru.md](../README.ru.md) | reference | Russian companion for the public overview. |
 | [../AGENTS.md](../AGENTS.md) | active | Hard rules for coding agents. |
 | [README.md](README.md) | active | Documentation status index. |
 | [agent-quickstart.md](agent-quickstart.md) | active | Shortest safe agent read path and validation bias. |
@@ -66,6 +69,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [documentation-audit.md](documentation-audit.md) | reference | Sensitive-information and Russian-localization documentation audit. |
 | [configuration.md](configuration.md) | reference | Local JSON config locations, discovery order, field groups, and examples. |
 | [local-smoke.md](local-smoke.md) | reference | Local validation workflows. |
 | [credentials.md](credentials.md) | reference | Local credential layout and secret handling. |

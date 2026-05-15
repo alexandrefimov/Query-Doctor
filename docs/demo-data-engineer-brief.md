@@ -1,12 +1,16 @@
 # Query Doctor Data-Engineer Demo Brief
 
-Date: 2026-05-06
-Last updated: 2026-05-13
+Last reviewed: 2026-05-15
 
 This brief is for a data-engineer demo discussion. It explains how Query Doctor
 prioritizes cases and which deterministic facts support the UI labels. It is
 not a public API contract; exact weights can change as tests and analyzer facts
 evolve.
+
+For public, repeatable demos, pair this brief with the sanitized synthetic demo
+pack from [demo-mode.md](demo-mode.md) and the scenario notes in
+[demo-cases.md](demo-cases.md). Do not use old prepared-pack case IDs, account
+names, query IDs, or local deep links in public demo material.
 
 The safe demo position is:
 
@@ -15,7 +19,8 @@ The safe demo position is:
 - LLM Report phrases supported facts; it does not own diagnosis.
 - Query LLM optimizer can show SQL only after deterministic validation.
 - Raw SQL, raw profiles, raw metadata, local paths, subprocess output, model
-  names and raw generated artifact names are not part of the browser demo.
+  names, raw generated artifact names, account names and query IDs are not part
+  of the browser demo.
 
 ## Demo mental model
 

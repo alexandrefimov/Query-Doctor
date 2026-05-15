@@ -107,6 +107,13 @@ PUBLIC_RELEASE_PATTERNS = (
         ),
     ),
     (
+        "production-looking hostname/domain",
+        re.compile(
+            r"\b(?:[A-Za-z0-9-]+\.)*[A-Za-z0-9-]*prod[A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "embedded URL credentials",
         re.compile(r"https?://[^/\s:@]+:[^@\s/]+@[^/\s<>'\"]+", re.IGNORECASE),
     ),
@@ -129,6 +136,7 @@ PUBLIC_RELEASE_GREP_PATTERNS = (
     r"/Users/[A-Za-z0-9._-]+",
     r"/home/[A-Za-z0-9._-]+",
     r"([A-Za-z0-9-]+\.)+(corp|internal|lan|local|private|prod|pw)",
+    r"([A-Za-z0-9-]+\.)*[A-Za-z0-9-]*prod[A-Za-z0-9-]*(\.[A-Za-z0-9-]+)+",
     r"https?://[^/[:space:]@]+:[^@[:space:]/]+@[^/[:space:]]+",
     r"-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----",
     r"(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-[A-Za-z0-9]{20,})",
@@ -338,6 +346,11 @@ def public_release_match_is_allowed(label: str, value: str) -> bool:
         )
     if label == "authorization token":
         return "secret" in lowered or "<redacted>" in lowered
+    if label == "production-looking hostname/domain":
+        return any(
+            lowered == domain or lowered.endswith(f".{domain}")
+            for domain in RESERVED_EXAMPLE_DOMAINS
+        )
     if label == "private-looking hostname/domain":
         return lowered == "query-doctor-cm.local"
     return False
