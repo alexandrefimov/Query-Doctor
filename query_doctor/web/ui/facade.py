@@ -26,6 +26,7 @@ from query_doctor.web.ui.markdown import (
 )
 from query_doctor.web.ui.pages import (
     render_batch_case_detail_page,
+    render_batch_case_detail_view_page,
     render_batch_case_not_found_page,
     render_batch_case_report_page,
     render_batch_page,
@@ -152,6 +153,7 @@ __all__ = [
     "render_batch_card",
     "render_batch_case_detail",
     "render_batch_case_detail_page",
+    "render_batch_case_detail_view_page",
     "render_batch_case_not_found_page",
     "render_batch_case_report_action",
     "render_batch_case_report_page",

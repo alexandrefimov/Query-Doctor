@@ -16,6 +16,9 @@ from query_doctor.optimizer.deterministic_rewrites import (
     deterministic_recipe_draft,
     deterministic_recipe_draft_diagnostics,
 )
+from query_doctor.optimizer.no_draft_observability import (
+    deterministic_draft_unavailable_safe_reason,
+)
 from query_doctor.optimizer.recipes import detect_optimizer_rewrite_recipe
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 from query_doctor.optimizer.sql_shape import analyze_cte_shape
@@ -96,6 +99,10 @@ SHAPE_BOUNDARY_REASONS = {
     "aggregate_max_rollup_unsupported",
     "aggregate_min_rollup_unsupported",
     "downstream_aggregate_rewrite_unsupported",
+    "post_union_aggregate_shape_boundary",
+    "post_union_branch_shape_boundary",
+    "post_union_downstream_rollup_boundary",
+    "post_union_projection_lineage_boundary",
     "source_cte_unavailable",
     "union_branch_rollup_unsupported",
     "union_outputs_unavailable",
@@ -290,12 +297,16 @@ def classify_optimizer_rewrite_support(
                 draft_diagnostics.reasons,
                 draft_diagnostics.cte_pushdown_conjunct_decision_reasons,
             )
+            safe_reason = deterministic_draft_unavailable_safe_reason(
+                draft_diagnostics.reasons, recipe
+            )
             return OptimizerRewriteSupport(
                 status="draft_disabled",
                 label="Recipe detected; draft unavailable",
                 reason=(
                     f"{recipe_reason}; deterministic recipe execution could not construct "
-                    "a material SQL draft for this concrete SQL shape"
+                    "a material SQL draft for this concrete SQL shape; "
+                    f"safe reason: {safe_reason}"
                 ),
                 risk_mode=risk.mode,
                 risk_reasons=tuple(risk.reasons),

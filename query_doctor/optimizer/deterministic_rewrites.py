@@ -227,19 +227,59 @@ def post_union_aggregate_pushdown_draft_diagnostics(
         reasons.append("union_outputs_unavailable")
     if not dimensions or not aggregate_fragments:
         return tuple(dedupe_preserve_order(reasons))
+    union_outputs = union_projection_names(union_cte.body)
+    reasons.extend(
+        post_union_aggregate_observability_reasons(
+            union_cte.body,
+            aggregate_fragments=aggregate_fragments,
+            output_names=union_outputs,
+        )
+    )
     reasons.extend(unsupported_post_union_aggregate_rollup_reasons(aggregate_fragments))
     group_expression_map = non_aggregate_projection_expression_map(aggregate_cte.body)
     branch_bodies = rollup_union_branches(
         union_cte.body,
         group_names=dimensions,
         aggregate_fragments=aggregate_fragments,
-        output_names=union_projection_names(union_cte.body),
+        output_names=union_outputs,
         group_expression_map=group_expression_map,
     )
     if branch_bodies is None:
         reasons.append("union_branch_rollup_unsupported")
     if rewrite_downstream_aggregate_body(aggregate_cte.body) is None:
+        reasons.append("post_union_downstream_rollup_boundary")
         reasons.append("downstream_aggregate_rewrite_unsupported")
+    return tuple(dedupe_preserve_order(reasons))
+
+
+def post_union_aggregate_observability_reasons(
+    union_body: str,
+    *,
+    aggregate_fragments: tuple[str, ...],
+    output_names: tuple[str, ...],
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if any(
+        re.search(r"\bcount\s*\(\s*(?:\*|1)\s*\)", lower_sql_outside_quoted_text(fragment))
+        for fragment in aggregate_fragments
+    ):
+        reasons.append("post_union_count_star_rollup")
+    branches = split_top_level_union_all_fragments(union_body)
+    if any(branch_from_tail(branch) is None for branch in branches):
+        reasons.append("post_union_constant_row_branch")
+    if any(
+        top_level_keyword_count(branch, keyword)
+        for branch in branches
+        for keyword in ("GROUP", "HAVING", "ORDER", "LIMIT", "UNION", "EXCEPT", "INTERSECT")
+    ):
+        reasons.append("post_union_branch_shape_boundary")
+    if output_names and any(
+        branch_projection_expression_map(branch, output_names) is None for branch in branches
+    ):
+        reasons.append("post_union_projection_lineage_boundary")
+    unsupported_rollup = unsupported_post_union_aggregate_rollup_reasons(aggregate_fragments)
+    if unsupported_rollup:
+        reasons.append("post_union_aggregate_shape_boundary")
     return tuple(dedupe_preserve_order(reasons))
 
 

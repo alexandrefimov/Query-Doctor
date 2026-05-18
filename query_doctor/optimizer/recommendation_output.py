@@ -11,6 +11,9 @@ from query_doctor.report.recommendations import (
     canonical_recommendation_bullets,
     recommendation_candidate_id_for_bullet,
 )
+from query_doctor.optimizer.no_draft_observability import (
+    deterministic_draft_unavailable_safe_reason,
+)
 from query_doctor.optimizer.models import OptimizerRewriteRecipe, OptimizerRiskDecision
 from query_doctor.optimizer.recommendations import optimizer_specific_recommendation_bullets
 from query_doctor.optimizer.source_sql import QueryOptimizationError, enforce_text_size
@@ -203,18 +206,21 @@ def deterministic_draft_unavailable_recommendations(
     risk_decision: OptimizerRiskDecision,
     facts_text: str,
     rewrite_recipe: OptimizerRewriteRecipe,
+    draft_reasons: tuple[str, ...] | list[str] = (),
 ) -> str:
     reasons = (
         ", ".join(risk_decision.reasons)
         if risk_decision.reasons
         else "deterministic draft unavailable"
     )
+    safe_reason = deterministic_draft_unavailable_safe_reason(draft_reasons, rewrite_recipe)
     prefix = [
         (
             "- Python detected a supported rewrite recipe, but could not construct a deterministic SQL draft "
             "for this exact query shape, so no LLM SQL draft was requested."
         ),
         f"- Rewrite recipe: {rewrite_recipe.title}.",
+        f"- Safe no-draft reason: {safe_reason}.",
         f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
     ]
     specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[

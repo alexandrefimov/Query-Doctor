@@ -414,7 +414,10 @@ def main(argv: list[str] | None = None) -> int:
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
                 deterministic_draft_unavailable_recommendations(
-                    risk_decision, facts_text, rewrite_recipe
+                    risk_decision,
+                    facts_text,
+                    rewrite_recipe,
+                    diagnostics.reasons,
                 )
                 + "\n",
                 encoding="utf-8",
