@@ -23,6 +23,7 @@ from query_doctor.report.facts_extractors import (
     cluster_runtime_context_report_evidence_bullet,
     cm_metrics_correlation_summary,
     cm_metrics_report_evidence_bullet,
+    evidence_quality_report_evidence_bullet,
     facts_cardinality_anomaly_count,
     facts_has_backend_tail_evidence,
     facts_have_action_cards,
@@ -335,6 +336,16 @@ def enforce_admin_report_requirements(
     cluster_event_bullet = cluster_event_context_report_evidence_bullet(facts_text)
     if cluster_event_bullet:
         text = insert_bullets_into_section(text, contract.evidence_heading, [cluster_event_bullet])
+    evidence_quality_bullet = evidence_quality_report_evidence_bullet(
+        facts_text,
+        language=language,
+    )
+    if evidence_quality_bullet:
+        text = insert_bullets_into_section(
+            text,
+            contract.evidence_heading,
+            [evidence_quality_bullet],
+        )
     admin_bullet_rules: list[tuple[str, tuple[str, ...]]] = []
     if facts_has_backend_tail_evidence(facts_text):
         admin_bullet_rules.extend(

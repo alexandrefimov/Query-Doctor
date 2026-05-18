@@ -18,6 +18,8 @@ from query_doctor.report.facts_extractors import (
     cm_metrics_correlation_summary,
     cm_metrics_facts_summary,
     cm_metrics_observed_points,
+    evidence_quality_points,
+    evidence_quality_summary,
     facts_cardinality_anomaly_count,
     facts_has_backend_tail_evidence,
     facts_have_action_cards,
@@ -150,6 +152,20 @@ def supported_summary_points(facts_text: str, *, language: str = "ru") -> list[s
         points.append(
             "Cluster Event Context contains bounded event summary "
             f"({suffix}); use it for follow-up checks, not root-cause proof."
+        )
+    quality = evidence_quality_summary(facts_text)
+    if quality:
+        quality_parts = []
+        score = quality.get("score")
+        level = quality.get("level")
+        if isinstance(score, str):
+            quality_parts.append(f"score={score}")
+        if isinstance(level, str):
+            quality_parts.append(f"level={level}")
+        suffix = ", ".join(quality_parts) if quality_parts else "facts present"
+        points.append(
+            f"Evidence Quality is {suffix}; use it for confidence and coverage framing, "
+            "not to upgrade context-only evidence into root-cause proof."
         )
     if not points:
         points.append(
@@ -314,10 +330,13 @@ def evidence_groups(facts_text: str) -> dict[str, list[str]]:
     cm_metric_correlation_points = cm_metrics_correlation_points(facts_text)
     cluster_context_points = cluster_runtime_context_points(facts_text)
     cluster_event_points = cluster_event_context_points(facts_text)
+    quality_points = evidence_quality_points(facts_text)
     if action_cards:
         groups["action_cards"] = action_cards
     if findings:
         groups["findings"] = findings
+    if quality_points:
+        groups["evidence_quality"] = quality_points
     if cm_metric_points:
         groups["cm_metrics"] = cm_metric_points
     if cm_metric_correlation_points:
@@ -335,7 +354,6 @@ def build_report_contract_digest(facts_text: str, *, language: str = "ru") -> di
     """Return a compact Python-owned contract for LLM report slots."""
     summary_lines = extract_markdown_section(facts_text, "## Summary")
     totals_lines = extract_markdown_section(facts_text, "## Totals")
-    evidence_quality_lines = extract_markdown_section(facts_text, "## Evidence Quality")
     action_card_lines = extract_markdown_section(facts_text, "## Action Cards")
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     limitation_lines = extract_markdown_section(
@@ -378,11 +396,7 @@ def build_report_contract_digest(facts_text: str, *, language: str = "ru") -> di
         "cm_metrics_correlation": cm_metrics_correlation,
         "cluster_runtime_context": cluster_runtime_context,
         "cluster_event_context": cluster_event_context,
-        "evidence_quality": {
-            label: first_bullet_value(evidence_quality_lines, label)
-            for label in ("score", "level")
-            if first_bullet_value(evidence_quality_lines, label) is not None
-        },
+        "evidence_quality": evidence_quality_summary(facts_text),
         "supported_summary_points": supported_summary_points(facts_text, language=language),
         "case_differentiators": case_summary_differentiators(facts_text),
         "evidence_groups": evidence_groups(facts_text),

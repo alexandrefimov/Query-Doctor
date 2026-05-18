@@ -364,6 +364,9 @@ Engineering interpretation rules:
 - Use Cluster Event Context only as a Python-owned raw-free event summary. Cluster event signals are cluster/service context and follow-up checks, not standalone root-cause proof.
 - Do not claim service restarts, daemon errors, catalog errors, metastore issues, disk capacity events, HDFS/YARN events, authentication failures, or cluster events caused this query unless analysis_facts.md explicitly contains direct causal correlation.
 - Do not state CPU, memory, daemon, network, HDFS, or cluster pressure as a root cause from runtime metrics alone.
+- Use Evidence Quality as the confidence and coverage frame for the report. Evidence Quality never creates root-cause proof and never upgrades context-only runtime, metadata, or event signals into a cause.
+- If Evidence Quality includes limitations, mention the most important limitation under "{evidence_label}", "{not_supported_label}", or "{next_checks_label}", not in "{short_summary_label}" or "{recommendations_label}".
+- If Evidence Quality is low or medium, keep causal wording especially conservative. If it is high, still require direct deterministic facts for any root-cause claim.
 - Mention observed runtime metrics in "{short_summary_label}" only when they are useful confirmed context for this query; keep not_observed and unknown metric statuses out of the short summary.
 - Put unknown/not_observed runtime metric limitations under "{not_supported_label}" or "{next_checks_label}", not in the short summary.
 
@@ -424,6 +427,7 @@ Python-owned slot contract:
 - Use "evidence_groups" to organize "{detailed_label}" into readable narrative. You may explain why a supported signal matters, but do not add new facts or causes.
 - Use "cm_metrics" only as Python-owned bounded runtime context. Do not derive metrics claims from other sections.
 - Use "cluster_event_context" only as Python-owned bounded Cluster Event Context. Put event-driven checks under "{next_checks_label}", not as recommendations unless the candidate list contains that action target.
+- Use "evidence_quality" only for confidence and coverage framing. It may explain why the report is conservative, but it is not itself a finding, recommendation, or causal signal.
 - Use "unsupported_conclusions" only under "{not_supported_label}".
 - Use "action_card_titles", "finding_titles", "summary", "totals", and "evidence_flags" to choose what is worth mentioning.
 - Do not introduce a user-facing fact, unsupported conclusion, or action target that is absent from the digest or deterministic facts.

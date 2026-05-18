@@ -14,7 +14,11 @@ from query_doctor.report.contract import (
     RUNTIME_METRICS_FACTS_HEADING,
     TABLE_METADATA_CONTEXT_HEADING,
 )
-from query_doctor.report.markdown import extract_markdown_section, strip_markdown_section
+from query_doctor.report.markdown import (
+    extract_markdown_section,
+    extract_markdown_subsection,
+    strip_markdown_section,
+)
 
 
 FACT_APPENDIX_MAX_ITEMS = 8
@@ -139,6 +143,101 @@ def first_bullet_value(lines: list[str], label: str) -> str | None:
         if match:
             return match.group("value").strip()
     return None
+
+
+def markdown_bullet_values(
+    lines: list[str],
+    *,
+    limit: int = FACT_APPENDIX_MAX_ITEMS,
+) -> list[str]:
+    values: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        values.append(stripped[2:].strip())
+        if len(values) >= limit:
+            break
+    return values
+
+
+def evidence_quality_summary(facts_text: str) -> dict[str, str | list[str]]:
+    lines = extract_markdown_section(facts_text, "## Evidence Quality")
+    if not lines:
+        return {}
+
+    summary: dict[str, str | list[str]] = {}
+    for label in ("score", "level"):
+        value = first_bullet_value(lines, label)
+        if value is not None:
+            summary[label] = value
+
+    strengths = markdown_bullet_values(extract_markdown_subsection(lines, "### Strengths"))
+    limitations = markdown_bullet_values(extract_markdown_subsection(lines, "### Limitations"))
+    if strengths:
+        summary["strengths"] = strengths
+    if limitations:
+        summary["limitations"] = limitations
+    return summary
+
+
+def evidence_quality_points(facts_text: str) -> list[str]:
+    summary = evidence_quality_summary(facts_text)
+    if not summary:
+        return []
+
+    points: list[str] = []
+    score = summary.get("score")
+    level = summary.get("level")
+    parts = []
+    if isinstance(score, str):
+        parts.append(f"score={score}")
+    if isinstance(level, str):
+        parts.append(f"level={level}")
+    points.append("Evidence Quality" + (f": {', '.join(parts)}" if parts else " facts present"))
+
+    limitations = summary.get("limitations")
+    if isinstance(limitations, list):
+        points.extend(f"limitation: {item}" for item in limitations[:2])
+    strengths = summary.get("strengths")
+    if isinstance(strengths, list):
+        points.extend(f"strength: {item}" for item in strengths[:2])
+    return points[:FACT_APPENDIX_MAX_ITEMS]
+
+
+def evidence_quality_report_evidence_bullet(
+    facts_text: str,
+    *,
+    language: str = "ru",
+) -> str | None:
+    summary = evidence_quality_summary(facts_text)
+    if not summary:
+        return None
+
+    score = summary.get("score")
+    level = summary.get("level")
+    header_parts = []
+    if isinstance(score, str):
+        header_parts.append(f"score={score}")
+    if isinstance(level, str):
+        header_parts.append(f"level={level}")
+    header = "Evidence Quality" + (f": {', '.join(header_parts)}" if header_parts else "")
+
+    detail_parts: list[str] = []
+    strengths = summary.get("strengths")
+    if isinstance(strengths, list) and strengths:
+        detail_parts.append("strengths: " + "; ".join(strengths[:2]))
+    limitations = summary.get("limitations")
+    if isinstance(limitations, list) and limitations:
+        detail_parts.append("limitations: " + "; ".join(limitations[:2]))
+
+    guardrail = (
+        "Используйте это как рамку уверенности и покрытия, не как самостоятельное доказательство root cause."
+        if language == "ru"
+        else "Use this as confidence and coverage framing, not standalone root-cause proof."
+    )
+    suffix = f"; {'; '.join(detail_parts)}" if detail_parts else ""
+    return f"- {header}{suffix}. {guardrail}"
 
 
 def facts_has_backend_tail_evidence(facts_text: str) -> bool:
