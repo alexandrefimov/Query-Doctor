@@ -11,6 +11,10 @@ from query_doctor.analyzer.scalars import extract_first_duration_ms, parse_size_
 ADMISSION_RESULT_RE = re.compile(
     r"^\s*Admission result\s*:\s*(?P<value>.+?)\s*$", re.IGNORECASE | re.MULTILINE
 )
+ADMISSION_QUEUE_RE = re.compile(
+    r"^\s*(?:Initial admission queue reason|Admission queue details)\s*:\s*(?P<value>.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 BACKEND_STARTUP_RE = re.compile(
     r"^\s*Backend startup latencies\s*:\s*(?P<value>.+?)\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -50,14 +54,39 @@ def safe_admission_result(value: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
     if "admitted_immediately" in normalized:
         return "admitted_immediately"
-    if normalized.startswith("admitted"):
-        return "admitted"
-    if "queued" in normalized or "queue" in normalized:
-        return "queued"
+    if "trivial" in normalized:
+        return "admitted_trivial"
+    if "timed_out" in normalized or "timeout" in normalized:
+        return "timed_out"
     if "reject" in normalized:
         return "rejected"
+    if "queued" in normalized or "queue" in normalized:
+        return "queued"
+    if normalized.startswith("admitted"):
+        return "admitted"
     if normalized:
         return "other"
+    return "unknown"
+
+
+def safe_admission_queue_reason_category(value: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized:
+        return "unknown"
+    if "stale" in normalized or "last update" in normalized:
+        return "stale_state"
+    if "user" in normalized or "group" in normalized or "quota" in normalized:
+        return "user_or_group_quota"
+    if "full" in normalized or "max queued" in normalized:
+        return "queue_full"
+    if "slot" in normalized or "max requests" in normalized or "request limit" in normalized:
+        return "slot_limit"
+    if "host" in normalized and "mem" in normalized:
+        return "host_memory"
+    if ("pool" in normalized or "cluster" in normalized) and "mem" in normalized:
+        return "pool_memory"
+    if "queue" in normalized:
+        return "queue_not_empty"
     return "unknown"
 
 
@@ -138,6 +167,7 @@ def parse_backend_startup_latencies(value: str) -> dict[str, Any]:
 
 def build_profile_resource_facts(text: str) -> dict[str, Any]:
     admission_match = ADMISSION_RESULT_RE.search(text)
+    admission_queue_match = ADMISSION_QUEUE_RE.search(text)
     backend_match = BACKEND_STARTUP_RE.search(text)
     fragment_match = FRAGMENT_INSTANCES_RE.search(text)
     memory_match = PER_NODE_PEAK_MEMORY_RE.search(text)
@@ -156,10 +186,16 @@ def build_profile_resource_facts(text: str) -> dict[str, Any]:
     system_time_values = (
         parse_duration_pairs(system_time_match.group("value")) if system_time_match else []
     )
+    admission_wait_ms = (
+        extract_first_duration_ms(admission_queue_match.group("value"))
+        if admission_queue_match
+        else None
+    )
 
     facts: dict[str, Any] = {
         "available": bool(
             admission_match
+            or admission_queue_match
             or backend_match
             or fragment_counts
             or memory_values
@@ -170,6 +206,12 @@ def build_profile_resource_facts(text: str) -> dict[str, Any]:
         "admission_result": safe_admission_result(admission_match.group("value"))
         if admission_match
         else "unknown",
+        "admission_wait_ms": admission_wait_ms,
+        "admission_queue_reason_category": (
+            safe_admission_queue_reason_category(admission_queue_match.group("value"))
+            if admission_queue_match
+            else "unknown"
+        ),
         "backend_startup_latencies": (
             parse_backend_startup_latencies(backend_match.group("value"))
             if backend_match

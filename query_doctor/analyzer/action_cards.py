@@ -6,7 +6,7 @@ from typing import Any
 
 from query_doctor.analyzer.cm_metrics import correlated_cm_metric_line
 from query_doctor.analyzer.operators import operator_key
-from query_doctor.analyzer.scalars import fmt_bytes
+from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, numeric_context_value
 from query_doctor.analyzer.thresholds import (
     DEFAULT_LARGE_BYTES_THRESHOLD,
     MEDIUM_DATA_MOVEMENT_BYTES,
@@ -30,6 +30,8 @@ def context_missing_metadata(analysis: dict[str, Any], command_names: set[str]) 
 
 
 def action_card_score(card: dict[str, Any]) -> float:
+    if card.get("kind") == "runtime_admission":
+        return 1e30
     op = card["operator"]
     rows_ratio = op.get("rows_actual_to_estimated_ratio") or 0
     mem_ratio = op.get("mem_actual_to_estimated_ratio") or 0
@@ -50,6 +52,9 @@ def build_action_cards(analysis: dict[str, Any], max_cards: int = 5) -> list[dic
 
     cards: list[dict[str, Any]] = []
     used_keys: set[tuple[str, str]] = set()
+    admission_card = make_runtime_admission_action_card(analysis)
+    if admission_card is not None:
+        cards.append(admission_card)
 
     for op in analysis.get("cardinality_anomalies", []):
         if (op.get("rows_actual_to_estimated_ratio") or 0) < 100:
@@ -92,6 +97,70 @@ def build_action_cards(analysis: dict[str, Any], max_cards: int = 5) -> list[dic
         )
 
     return sorted(cards, key=action_card_score, reverse=True)[:max_cards]
+
+
+def make_runtime_admission_action_card(analysis: dict[str, Any]) -> dict[str, Any] | None:
+    bottleneck = analysis.get("case_primary_bottleneck")
+    bottleneck = bottleneck if isinstance(bottleneck, dict) else {}
+    if str(bottleneck.get("label") or "") != "runtime_admission":
+        return None
+    cm_context = analysis.get("cm_query_context")
+    cm_context = cm_context if isinstance(cm_context, dict) else {}
+    wait_ms = numeric_context_value(cm_context, "admission_wait_ms")
+    if wait_ms is None:
+        wait_ms = numeric_context_value(cm_context, "admission_wait")
+    if wait_ms is None:
+        wait_ms = numeric_context_value(cm_context, "resources_reserved_wait_time")
+    if wait_ms is None:
+        wait_ms = profile_admission_wait_ms(analysis)
+
+    evidence = ["primary bottleneck: runtime_admission"]
+    if bottleneck.get("confidence"):
+        evidence.append(f"confidence: {bottleneck['confidence']}")
+    if wait_ms is not None:
+        evidence.append(f"admission wait: {fmt_duration(wait_ms)}")
+    return {
+        "kind": "runtime_admission",
+        "title": "Admission wait or rejection dominated the case",
+        "operator": {},
+        "finding": (
+            "Explicit query-specific admission evidence made admission/runtime "
+            "the primary bottleneck."
+        ),
+        "evidence": evidence,
+        "admin_actions": [
+            "Check admission pool saturation during the case window.",
+            "Review queued query count, memory pressure, and pool limits for the same window.",
+            "Compare other queries in the same pool before changing SQL shape or stats.",
+        ],
+        "user_actions": [
+            "Treat SQL-shape and stats findings as still useful follow-up checks when they appear.",
+            "Re-run after pool pressure is addressed and compare admission wait and wall-clock time.",
+        ],
+        "how_to_verify": [
+            "Confirm admission wait drops on the next run.",
+            "Confirm wall-clock time improves without a new runtime bottleneck appearing.",
+        ],
+        "missing_evidence": [
+            "Cluster-wide pool history beyond the collected runtime window.",
+            "Per-pool queue ownership if runtime metrics were unavailable.",
+        ],
+    }
+
+
+def profile_admission_wait_ms(analysis: dict[str, Any]) -> float | None:
+    resources = analysis.get("profile_resources")
+    resources = resources if isinstance(resources, dict) else {}
+    wait_ms = numeric_context_value(resources, "admission_wait_ms")
+    if wait_ms is not None:
+        return wait_ms
+    timings = analysis.get("profile_timings")
+    timings = timings if isinstance(timings, dict) else {}
+    query_timeline = timings.get("query_timeline")
+    query_timeline = query_timeline if isinstance(query_timeline, dict) else {}
+    phases = query_timeline.get("phase_durations")
+    phases = phases if isinstance(phases, dict) else {}
+    return numeric_context_value(phases, "admission_ms")
 
 
 def make_action_card(

@@ -199,6 +199,7 @@ def parse_cm_query_summary(raw: dict[str, object]) -> CMQuerySummary:
             (
                 "admissionWaitMillis",
                 "admissionWaitMs",
+                "admissionWait",
                 "admission_wait_ms",
                 "queuedTimeMillis",
                 "queuedTimeMs",

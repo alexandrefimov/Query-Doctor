@@ -361,6 +361,12 @@ PRIMARY_BOTTLENECK_REASON_LABELS = {
     "competing_runtime_skew": "runtime skew also needs review",
     "competing_runtime_data_movement": "exchange/data movement also needs review",
     "competing_runtime_storage": "storage/HDFS also needs review",
+    "admission_timed_out": "admission timed out before execution",
+    "admission_rejected": "admission was rejected before execution",
+    "admission_wait_explicit": "explicit admission wait was observed",
+    "admission_wait_source_cm_query_context": "admission wait came from query context",
+    "admission_wait_source_profile_resource_facts": "admission wait came from profile resource facts",
+    "admission_wait_source_profile_timing_facts": "admission wait came from profile timing facts",
 }
 
 

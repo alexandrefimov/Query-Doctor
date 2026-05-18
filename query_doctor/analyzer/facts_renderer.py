@@ -174,6 +174,12 @@ def render_profile_resource_facts(analysis: dict[str, Any]) -> list[str]:
         "- guardrail: resource profile facts are deterministic context, not root-cause proof by themselves."
     )
     lines.append(f"- admission_result: {resources.get('admission_result') or 'unknown'}")
+    if resources.get("admission_wait_ms") is not None:
+        lines.append(f"- admission_wait: {fmt_duration(resources.get('admission_wait_ms'))}")
+    if resources.get("admission_queue_reason_category") not in {None, "unknown"}:
+        lines.append(
+            f"- admission_queue_reason_category: {resources.get('admission_queue_reason_category')}"
+        )
 
     if startup.get("available"):
         percentiles = (

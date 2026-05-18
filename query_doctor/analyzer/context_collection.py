@@ -240,6 +240,8 @@ CM_QUERY_CONTEXT_FIELDS = (
     "duration_ms",
     "admission_result",
     "admission_wait_ms",
+    "admission_wait",
+    "resources_reserved_wait_time",
     "rows_produced",
     "bytes_read",
     "bytes_sent",

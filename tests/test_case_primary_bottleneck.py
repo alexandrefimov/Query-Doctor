@@ -56,8 +56,142 @@ def test_runtime_admission_dominates_wall_clock():
     )
 
     assert result.label == "runtime_admission"
+    assert result.confidence == "medium"
+    assert result.reasons == (
+        "admission_wait_share_80pct",
+        "admission_wait_source_cm_query_context",
+    )
+
+
+def test_runtime_admission_routes_medium_for_material_explicit_wait():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 100_000, "confidence": "high"},
+            cm_query_context={
+                "admission_result": "Admitted (queued)",
+                "admission_wait_ms": 8_000,
+            },
+        )
+    )
+
+    assert result.label == "runtime_admission"
+    assert result.confidence == "medium"
+    assert result.reasons == (
+        "admission_wait_share_8pct",
+        "admission_wait_source_cm_query_context",
+    )
+
+
+def test_runtime_admission_ignores_tiny_queued_wait():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 2_000_000, "confidence": "high"},
+            cm_query_context={
+                "admission_result": "Admitted (queued)",
+                "admission_wait_ms": 5,
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
+
+
+def test_runtime_admission_uses_profile_resource_wait():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 80_000, "confidence": "high"},
+            profile_resources={
+                "available": True,
+                "admission_result": "queued",
+                "admission_wait_ms": 12_000,
+            },
+        )
+    )
+
+    assert result.label == "runtime_admission"
+    assert result.confidence == "medium"
+    assert result.reasons == (
+        "admission_wait_share_15pct",
+        "admission_wait_source_profile_resource_facts",
+    )
+
+
+def test_runtime_admission_uses_profile_timeline_wait():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 70_000, "confidence": "medium"},
+            profile_resources={"available": True, "admission_result": "queued"},
+            profile_timings={
+                "available": True,
+                "query_timeline": {
+                    "available": True,
+                    "phase_durations": {"admission_ms": 25_000},
+                },
+            },
+        )
+    )
+
+    assert result.label == "runtime_admission"
     assert result.confidence == "high"
-    assert result.reasons == ("admission_wait_share_80pct",)
+    assert result.reasons == (
+        "admission_wait_share_35pct",
+        "admission_wait_source_profile_timing_facts",
+    )
+
+
+def test_runtime_admission_immediate_profile_result_is_negative_evidence():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 90_000, "confidence": "high"},
+            profile_resources={
+                "available": True,
+                "admission_result": "admitted_immediately",
+                "admission_wait_ms": 30_000,
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
+
+
+def test_runtime_admission_terminal_timeout_does_not_require_wall_clock():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": None, "confidence": "unknown"},
+            cm_query_context={"admission_result": "Timed out (queued)"},
+        )
+    )
+
+    assert result.label == "runtime_admission"
+    assert result.confidence == "high"
+    assert result.reasons == ("admission_timed_out",)
+
+
+def test_runtime_admission_preserves_primary_when_stats_evidence_coexists():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 120_000, "confidence": "high"},
+            cm_query_context={
+                "admission_result": "Admitted (queued)",
+                "admission_wait_ms": 45_000,
+            },
+            cardinality_anomalies=anomaly(2),
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "runtime_admission"
+    assert result.confidence == "high"
+    assert result.reasons == (
+        "admission_wait_share_37pct",
+        "admission_wait_source_cm_query_context",
+    )
 
 
 def test_runtime_skew_requires_top_execution_tail_finding():
