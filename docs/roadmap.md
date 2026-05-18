@@ -148,9 +148,10 @@ items compete.
 Do first when touched, because these items protect the trust boundary or unlock
 multiple later changes:
 
-- Browser and trusted-report safety: typed raw-free view models, presenter-owned
-  display strings, consolidated trusted artifact access, export of validated
-  safe Markdown, and browser-safety tests for any new dynamic Details content.
+- Browser and trusted-report safety: keep typed raw-free view models,
+  presenter-owned display strings, consolidated trusted artifact loading,
+  export of validated safe Markdown, and browser-safety tests for any new
+  dynamic Details content.
 - Local web hardening: package-owned static assets, tighter Content Security
   Policy, local POST origin/host checks, no-store/security headers, and bounded
   local job cleanup.
@@ -225,41 +226,29 @@ generic SQL execution, broad package reorganization, and fake adapters.
 This is the short ordered queue for the next roadmap pulls. Pull a different
 item first only when the touched area has a direct P0 safety or contract risk.
 
-1. Move one high-value Details path to typed raw-free view models and keep
-   browser-safety tests around every dynamic field.
-2. Consolidate Details and report UI artifact access behind
-   `query_doctor.web.trusted_artifacts`.
-3. Rename runtime-context analyzer/report keys and headings to canonical
+1. Rename runtime-context analyzer/report keys and headings to canonical
    provider-neutral names, with legacy `cm_*` load fallbacks and
    report-validator snapshot coverage in the same change.
-4. Move metrics facts and correlation reads from Cloudera Manager query IDs to
+2. Move metrics facts and correlation reads from Cloudera Manager query IDs to
    abstract catalog `signal_id`s.
-5. Use source provenance for safe Details/report coverage and limitation
+3. Use source provenance for safe Details/report coverage and limitation
    wording, including explicit direct Impala coverage for profile, optional
    Prometheus metrics, unavailable events, and metadata status.
-6. Analyze the 7 recipe-detected/no-draft and 13 recipe-adjacent structural
+4. Analyze the 7 recipe-detected/no-draft and 13 recipe-adjacent structural
    boundary cases from the fresh Cloudera Manager `QUERY >=60s` sample, then
    decide whether a narrow deterministic recipe, safer structural explanation,
    or metadata-enabled rerun is the next highest-value optimizer step.
-7. Continue replacing report-side stats/query-shape extraction with structured
+5. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
 
 First concrete product-growth PR sequence after those contract items:
 
-1. Harden the existing `runtime_admission` primary-bottleneck path. Keep the
-   current label, add direct profile and Cloudera Manager fact coverage where
-   explicit query-specific admission wait/result data exists, keep cluster
-   pool gauges context-only, and add deterministic action-card guidance.
-2. Add a raw-free workload fingerprint primitive in `query_doctor.recent` and
-   attach `workload_fingerprint = "wf_<24hex>"` to each batch case. Keep it a
-   pure function with no UI, persistence, SQL reads, profile reads, or optimizer
-   source reads in this first slice.
-3. Add in-scan workload grouping in `batch_summary.json`, Recent scan rows, and
+1. Add in-scan workload grouping in `batch_summary.json`, Recent scan rows, and
    case Details. Use `schema_version: 1`, hide singleton groups from the group
    panel, and render only safe aggregate fields through typed presenters.
-4. Add local rolling workload baselines and regression labels only after the
+2. Add local rolling workload baselines and regression labels only after the
    in-scan grouping is validated on real batches.
-5. Add minimal action outcome tracking after recommendation IDs and workload
+3. Add minimal action outcome tracking after recommendation IDs and workload
    fingerprints are stable.
 
 ## Dependency And Readiness Rules
@@ -326,15 +315,12 @@ it into a shared service.
 - Add bounded TTL cleanup for the in-memory web job store as local reliability
   work. Do not turn it into a multi-user ACL or persistence project without an
   explicit shared-deploy decision.
-- Move browser rendering toward typed raw-free view models. Render functions
-  should gradually accept presenter-owned dataclasses with safe primitive
-  fields or `SafeHtml`, rather than raw case/facts dictionaries. Start with one
-  high-value page such as batch case Details, prove the pattern with tests, and
-  avoid broad migration churn.
-- Consolidate trusted artifact access behind `query_doctor.web.trusted_artifacts`
-  where UI code still reaches into case files directly. The motivation is
-  today's browser/report safety and reviewability; a future shared-deploy ACL
-  can wrap that boundary later.
+- Keep browser rendering on typed raw-free view models. New Details blocks
+  should accept presenter-owned dataclasses with safe primitive fields or
+  `SafeHtml`, rather than raw case/facts dictionaries.
+- Keep trusted artifact access behind `query_doctor.web.trusted_artifacts`.
+  Validated reports and optimizer outcomes should reach UI code only after
+  marker checks, path safety checks, and display redaction in that boundary.
 - Add lightweight request/job trace IDs for correlating local web logs,
   background jobs, and subprocess outcomes. Do not add actor or deployment-mode
   fields until an actual identity source is selected.
@@ -381,14 +367,12 @@ Short-term workload-level diagnostics:
   diagnostic work. Group repeated query shapes by raw-free normalized
   signatures and show aggregate count, runtime, p95, scan, spill, memory, pool,
   and trend signals without exposing SQL.
-- The first fingerprint signature should use only structured safe fields that
-  already exist in case dictionaries or analyzer facts, such as SQL verb, query
-  type, safe shape counts, aggregate/window presence, scan/exchange counts, and
-  sorted referenced tables that are already safe to display. It must not read
+- The first fingerprint primitive now attaches only a safe `wf_<24hex>` value
+  to each batch case from structured case/analyzer facts. It must stay free of
   raw SQL files, raw profile files, raw metadata, optimizer source SQL, column
   lists, predicates, literals, aliases, comments, host/daemon identifiers, raw
-  artifact names, or free-form analyzer wording.
-- Store first-slice groups under an isolated `workload_groups` block in
+  artifact names, and free-form analyzer wording.
+- Store the next grouping slice under an isolated `workload_groups` block in
   `batch_summary.json` with `schema_version: 1`, a `wf_` fingerprint, raw-free
   shape fields, safe aggregates, and local member case IDs. Older readers must
   be able to ignore the block.
@@ -399,12 +383,13 @@ Short-term workload-level diagnostics:
   was applied and whether the observed runtime, score, or failure rate changed.
   This is needed to learn which recommendation families are useful in practice.
 
-Short-term pool/admission diagnostics:
+Current pool/admission baseline and follow-ups:
 
-- Harden the existing `runtime_admission` `case_primary_bottleneck` label
-  rather than adding a new admission label. Promote it only when analyzer-owned
+- Keep the existing `runtime_admission` `case_primary_bottleneck` label rather
+  than adding a parallel admission label. Promote it only when analyzer-owned
   query-specific facts support admission wait or admission result evidence,
-  such as direct profile counters or Cloudera Manager query attributes.
+  such as direct profile counters, profile timeline facts, or Cloudera Manager
+  query attributes.
 - Keep pool/admission actions deterministic and non-LLM by default: rebalance a
   query class, review pool sizing, or collect a bounded workload window before
   claiming SQL-shape or stats work is the next action.
@@ -436,24 +421,9 @@ Provider-neutral runtime context cleanup:
   with Cloudera Manager wrappers over existing helpers. Avoid one broad
   provider object, fake implementations, or placeholder packages.
 
-First product-growth PR acceptance details:
+Next product-growth PR acceptance details:
 
-1. `runtime_admission` hardening:
-   - classify high confidence only when query-specific admission wait dominates
-     wall clock; classify medium confidence for material explicit wait that
-     does not dominate;
-   - add tests for strong admission, medium admission, cluster-saturation-only
-     supporting context, Cloudera Manager-only admission attributes, and
-     admission coexisting with stats evidence;
-   - keep pool/admission action text deterministic, raw-free, and browser-safe.
-2. Workload fingerprint primitive:
-   - add a pure fingerprint helper with stable canonical JSON hashing, safe
-     defaults for missing facts, sorted table inputs, and an explicit incomplete
-     marker when facts are partial;
-   - prove with tests that the helper does not open raw SQL, raw profile, raw
-     metadata, optimizer source, or artifact files;
-   - attach only the safe `wf_<24hex>` value to batch cases in this slice.
-3. In-scan workload groups:
+1. In-scan workload groups:
    - build `workload_groups` from current-scan cases only, filter singleton
      groups out of the panel, and sort groups by duration impact;
    - render the group panel through the existing Recent scan grouping seam,
