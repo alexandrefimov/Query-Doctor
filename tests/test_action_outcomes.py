@@ -3,11 +3,35 @@ import json
 import pytest
 
 from query_doctor.web.action_outcomes import (
+    SCHEMA_VERSION,
+    ActionOutcomeRecord,
     action_outcome_record_from_case,
     append_action_outcome,
     load_action_outcomes,
+    summarize_action_outcomes,
 )
 from query_doctor.web.models import WebError
+from query_doctor.web.ui.outcomes import render_action_outcomes_page
+
+
+def outcome_record(
+    *,
+    recommendation_id: str = "stats_refresh_review.v1",
+    applied: str = "yes",
+    outcome: str = "improved",
+    workload_fingerprint: str = "wf_1234567890abcdef12345678",
+) -> ActionOutcomeRecord:
+    return ActionOutcomeRecord(
+        schema_version=SCHEMA_VERSION,
+        recorded_at_iso="2026-05-18T00:00:00+00:00",
+        workload_fingerprint=workload_fingerprint,
+        case_fingerprint="cf_1234567890abcdef12345678",
+        case_id_local="case-001",
+        recommendation_id=recommendation_id,
+        applied=applied,
+        outcome=outcome,
+        note_redacted="",
+    )
 
 
 def test_action_outcome_record_is_raw_free_and_loadable(tmp_path):
@@ -71,3 +95,59 @@ def test_action_outcome_rejects_unknown_recommendation_id():
             recommendation_id="freeform.v1",
             form={"applied": ["yes"], "outcome": ["improved"]},
         )
+
+
+def test_action_outcome_metrics_apply_min_sample_threshold():
+    metrics = summarize_action_outcomes(
+        [
+            outcome_record(outcome="improved"),
+            outcome_record(outcome="improved"),
+            outcome_record(outcome="no_change"),
+            outcome_record(outcome="worsened"),
+            outcome_record(applied="skip", outcome="not_applicable"),
+            outcome_record(applied="no", outcome="not_applicable"),
+            outcome_record(
+                recommendation_id="runtime_admission_check.v1",
+                outcome="improved",
+            ),
+        ],
+        min_applied=4,
+    )
+
+    assert [metric.recommendation_id for metric in metrics] == [
+        "stats_refresh_review.v1",
+        "runtime_admission_check.v1",
+    ]
+    stats_metric = metrics[0]
+    assert stats_metric.total_records == 6
+    assert stats_metric.applied_count == 4
+    assert stats_metric.not_applied_count == 1
+    assert stats_metric.skipped_count == 1
+    assert stats_metric.improved_count == 2
+    assert stats_metric.no_change_count == 1
+    assert stats_metric.worsened_count == 1
+    assert stats_metric.improvement_rate == 0.5
+    assert stats_metric.min_sample_met is True
+    assert metrics[1].min_sample_met is False
+
+
+def test_action_outcome_metrics_page_renders_safe_aggregate_only(tmp_path, monkeypatch):
+    outcome_path = tmp_path / "action_outcomes.jsonl"
+    monkeypatch.setenv("QUERY_DOCTOR_ACTION_OUTCOMES_PATH", str(outcome_path))
+    for record in [
+        outcome_record(workload_fingerprint="wf_aaaaaaaaaaaaaaaaaaaaaaaa"),
+        outcome_record(workload_fingerprint="wf_bbbbbbbbbbbbbbbbbbbbbbbb"),
+        outcome_record(workload_fingerprint="wf_cccccccccccccccccccccccc"),
+        outcome_record(outcome="no_change", workload_fingerprint="wf_dddddddddddddddddddddddd"),
+        outcome_record(outcome="unsure", workload_fingerprint="wf_eeeeeeeeeeeeeeeeeeeeeeee"),
+    ]:
+        append_action_outcome(record, path=outcome_path)
+
+    html = render_action_outcomes_page()
+
+    assert "5 recorded" in html
+    assert "improved in 3 of 5 applied records (60%)" in html
+    assert "Stats refresh review" in html
+    assert "case-001" not in html
+    assert "cf_1234567890abcdef12345678" not in html
+    assert str(outcome_path) not in html

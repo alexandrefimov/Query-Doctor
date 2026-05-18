@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,8 @@ from query_doctor.web.models import WebError
 SCHEMA_VERSION = 1
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_LOAD_LIMIT = 200
+DEFAULT_METRIC_LOAD_LIMIT = 1_000_000
+DEFAULT_METRIC_MIN_APPLIED = 5
 OUTCOME_PATH_ENV = "QUERY_DOCTOR_ACTION_OUTCOMES_PATH"
 
 RECOMMENDATION_LABELS = {
@@ -43,6 +46,22 @@ class ActionOutcomeRecord:
     applied: str
     outcome: str
     note_redacted: str = ""
+
+
+@dataclass(frozen=True)
+class RecommendationOutcomeMetric:
+    recommendation_id: str
+    total_records: int
+    applied_count: int
+    not_applied_count: int
+    skipped_count: int
+    improved_count: int
+    no_change_count: int
+    worsened_count: int
+    unsure_count: int
+    improvement_rate: float | None
+    min_sample_met: bool
+    min_applied: int
 
 
 def action_outcomes_path() -> Path:
@@ -167,6 +186,90 @@ def load_action_outcomes(
         if record is not None:
             records.append(record)
     return records[-max(0, limit) :]
+
+
+def load_action_outcome_metrics(
+    *,
+    path: Path | None = None,
+    limit: int = DEFAULT_METRIC_LOAD_LIMIT,
+    min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
+) -> tuple[RecommendationOutcomeMetric, ...]:
+    return summarize_action_outcomes(
+        load_action_outcomes(path=path, limit=limit),
+        min_applied=min_applied,
+    )
+
+
+def action_outcome_metrics_by_recommendation(
+    *,
+    path: Path | None = None,
+    limit: int = DEFAULT_METRIC_LOAD_LIMIT,
+    min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
+) -> dict[str, RecommendationOutcomeMetric]:
+    return {
+        metric.recommendation_id: metric
+        for metric in load_action_outcome_metrics(
+            path=path,
+            limit=limit,
+            min_applied=min_applied,
+        )
+    }
+
+
+def summarize_action_outcomes(
+    records: list[ActionOutcomeRecord],
+    *,
+    min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
+) -> tuple[RecommendationOutcomeMetric, ...]:
+    grouped: dict[str, list[ActionOutcomeRecord]] = {}
+    for record in records:
+        if recommendation_id_allowed(record.recommendation_id):
+            grouped.setdefault(record.recommendation_id, []).append(record)
+    metrics = [
+        recommendation_outcome_metric(
+            recommendation_id=recommendation_id,
+            records=group_records,
+            min_applied=min_applied,
+        )
+        for recommendation_id, group_records in grouped.items()
+    ]
+    return tuple(
+        sorted(
+            metrics,
+            key=lambda metric: (
+                -metric.applied_count,
+                -metric.improved_count,
+                safe_recommendation_label(metric.recommendation_id),
+            ),
+        )
+    )
+
+
+def recommendation_outcome_metric(
+    *,
+    recommendation_id: str,
+    records: list[ActionOutcomeRecord],
+    min_applied: int,
+) -> RecommendationOutcomeMetric:
+    applied_counts = Counter(record.applied for record in records)
+    outcome_counts = Counter(record.outcome for record in records if record.applied == "yes")
+    applied_count = applied_counts.get("yes", 0)
+    improved_count = outcome_counts.get("improved", 0)
+    min_applied = max(1, int(min_applied))
+    return RecommendationOutcomeMetric(
+        recommendation_id=recommendation_id,
+        total_records=len(records),
+        applied_count=applied_count,
+        not_applied_count=applied_counts.get("no", 0),
+        skipped_count=applied_counts.get("skip", 0),
+        improved_count=improved_count,
+        no_change_count=outcome_counts.get("no_change", 0),
+        worsened_count=outcome_counts.get("worsened", 0),
+        unsure_count=outcome_counts.get("unsure", 0),
+        improvement_rate=round(improved_count / applied_count, 4) if applied_count else None,
+        min_sample_met=applied_count >= min_applied,
+        min_applied=min_applied,
+    )
 
 
 def parse_action_outcome_line(line: str) -> ActionOutcomeRecord | None:
