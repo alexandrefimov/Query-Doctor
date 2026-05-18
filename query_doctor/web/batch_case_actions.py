@@ -6,11 +6,9 @@ import subprocess
 import threading
 
 from query_doctor.web.batch_case_pages import render_batch_case_detail_for_request
-from query_doctor.web.case_detail_context import (
-    case_allows_llm_report,
-    resolve_case_detail_settings,
-    resolve_running_case_detail_settings,
-    running_detail_kwargs,
+from query_doctor.web.case_detail_state import (
+    build_batch_case_detail_action_context,
+    server_owned_case_required_report_state,
 )
 from query_doctor.web.job_workers import (
     run_batch_case_report_job,
@@ -21,10 +19,6 @@ from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebSettings
 from query_doctor.web.optimizer_validation import validate_external_optimizer_rewrite
 from query_doctor.web.subprocesses import Runner
-from query_doctor.web.trusted_artifacts import (
-    case_has_safe_source_sql,
-    resolve_batch_case_report_dir,
-)
 from query_doctor.web.ui.pages import (
     render_batch_case_not_found_page,
 )
@@ -42,48 +36,31 @@ def start_batch_case_report_job(
     runner: Runner = subprocess.run,
     source: str = "auto",
 ) -> tuple[int, str]:
-    if source == "running":
-        effective_settings, case = resolve_running_case_detail_settings(
-            settings, job_store, case_id
-        )
-        detail_kwargs = running_detail_kwargs()
-    else:
-        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
-        detail_kwargs = {}
-    if case is None:
-        return 404, render_batch_case_not_found_page(effective_settings, case_id)
-    if not case_allows_llm_report(case):
+    context = build_batch_case_detail_action_context(settings, case_id, job_store, source=source)
+    if context.case is None:
+        return 404, render_batch_case_not_found_page(context.settings, case_id)
+    if not context.report_allowed:
         return 400, render_batch_case_detail_for_request(
-            effective_settings, case_id, case, job_store, **detail_kwargs
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    if job_store.running_batch_report(case_id) is not None:
+    if context.report_running:
         return 400, render_batch_case_detail_for_request(
-            effective_settings, case_id, case, job_store, **detail_kwargs
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    case_dir = resolve_batch_case_report_dir(effective_settings, case)
-    if case_dir is None:
-        report_state = {
-            "status": "failed",
-            "running": False,
-            "trusted": False,
-            "partial": False,
-            "error": "Report generation requires a complete server-owned case. Re-run analysis first.",
-        }
+    if context.case_dir is None:
         return 400, render_batch_case_detail_for_request(
-            effective_settings,
+            context.settings,
             case_id,
-            case,
+            context.case,
             job_store,
-            report_state_override=report_state,
-            **detail_kwargs,
+            report_state_override=server_owned_case_required_report_state(),
+            **context.detail_kwargs,
         )
 
-    job = job_store.create_batch_report(
-        case_id, source="running" if source == "running" else "batch"
-    )
+    job = job_store.create_batch_report(case_id, source=context.job_source)
     thread = threading.Thread(
         target=run_batch_case_report_job,
-        args=(job.job_id, case_id, case_dir, settings, job_store, runner),
+        args=(job.job_id, case_id, context.case_dir, settings, job_store, runner),
         daemon=True,
     )
     thread.start()
@@ -98,35 +75,25 @@ def start_batch_case_optimized_query_job(
     runner: Runner = subprocess.run,
     source: str = "auto",
 ) -> tuple[int, str]:
-    if source == "running":
-        effective_settings, case = resolve_running_case_detail_settings(
-            settings, job_store, case_id
-        )
-        detail_kwargs = running_detail_kwargs()
-    else:
-        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
-        detail_kwargs = {}
-    if case is None:
-        return 404, render_batch_case_not_found_page(effective_settings, case_id)
-    case_dir = resolve_batch_case_report_dir(effective_settings, case)
-    if case_dir is None:
+    context = build_batch_case_detail_action_context(settings, case_id, job_store, source=source)
+    if context.case is None:
+        return 404, render_batch_case_not_found_page(context.settings, case_id)
+    if context.case_dir is None:
         return 400, render_batch_case_detail_for_request(
-            effective_settings, case_id, case, job_store, **detail_kwargs
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    if not case_has_safe_source_sql(case_dir):
+    if not context.source_sql_available:
         return 400, render_batch_case_detail_for_request(
-            effective_settings, case_id, case, job_store, **detail_kwargs
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    if job_store.running_batch_optimized_query(case_id) is not None:
+    if context.optimizer_running:
         return 400, render_batch_case_detail_for_request(
-            effective_settings, case_id, case, job_store, **detail_kwargs
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    job = job_store.create_batch_optimized_query(
-        case_id, source="running" if source == "running" else "batch"
-    )
+    job = job_store.create_batch_optimized_query(case_id, source=context.job_source)
     thread = threading.Thread(
         target=run_optimized_query_job,
-        args=(job.job_id, case_id, case_dir, settings, job_store, runner),
+        args=(job.job_id, case_id, context.case_dir, settings, job_store, runner),
         daemon=True,
     )
     thread.start()
@@ -141,25 +108,17 @@ def handle_batch_case_external_rewrite_validation(
     *,
     source: str = "auto",
 ) -> tuple[int, str]:
-    if source == "running":
-        effective_settings, case = resolve_running_case_detail_settings(
-            settings, job_store, case_id
-        )
-        detail_kwargs = running_detail_kwargs()
-    else:
-        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
-        detail_kwargs = {}
-    if case is None:
-        return 404, render_batch_case_not_found_page(effective_settings, case_id)
-    case_dir = resolve_batch_case_report_dir(effective_settings, case)
-    result = validate_external_optimizer_rewrite(case_dir, form)
+    context = build_batch_case_detail_action_context(settings, case_id, job_store, source=source)
+    if context.case is None:
+        return 404, render_batch_case_not_found_page(context.settings, case_id)
+    result = validate_external_optimizer_rewrite(context.case_dir, form)
     return 200, render_batch_case_detail_for_request(
-        effective_settings,
+        context.settings,
         case_id,
-        case,
+        context.case,
         job_store,
         optimizer_validation_result=result,
-        **detail_kwargs,
+        **context.detail_kwargs,
     )
 
 
@@ -171,38 +130,25 @@ def start_batch_case_llm_actions_job(
     runner: Runner = subprocess.run,
     source: str = "auto",
 ) -> tuple[int, str]:
-    if source == "running":
-        effective_settings, case = resolve_running_case_detail_settings(
-            settings, job_store, case_id
-        )
-        detail_kwargs = running_detail_kwargs()
-    else:
-        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
-        detail_kwargs = {}
-    if case is None:
-        return 404, render_batch_case_not_found_page(effective_settings, case_id)
-    if not case_allows_llm_report(case):
+    context = build_batch_case_detail_action_context(settings, case_id, job_store, source=source)
+    if context.case is None:
+        return 404, render_batch_case_not_found_page(context.settings, case_id)
+    if not context.report_allowed:
         return 400, render_batch_case_detail_for_request(
-            effective_settings, case_id, case, job_store, **detail_kwargs
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    case_dir = resolve_batch_case_report_dir(effective_settings, case)
-    if case_dir is None or not case_has_safe_source_sql(case_dir):
+    if context.case_dir is None or not context.source_sql_available:
         return 400, render_batch_case_detail_for_request(
-            effective_settings, case_id, case, job_store, **detail_kwargs
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    if (
-        job_store.running_batch_report(case_id) is not None
-        or job_store.running_batch_optimized_query(case_id) is not None
-    ):
+    if context.report_running or context.optimizer_running:
         return 400, render_batch_case_detail_for_request(
-            effective_settings, case_id, case, job_store, **detail_kwargs
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    job = job_store.create_batch_llm_actions(
-        case_id, source="running" if source == "running" else "batch"
-    )
+    job = job_store.create_batch_llm_actions(case_id, source=context.job_source)
     thread = threading.Thread(
         target=run_llm_actions_job,
-        args=(job.job_id, case_id, case_dir, settings, job_store, runner),
+        args=(job.job_id, case_id, context.case_dir, settings, job_store, runner),
         daemon=True,
     )
     thread.start()

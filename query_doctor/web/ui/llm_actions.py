@@ -17,9 +17,6 @@ from query_doctor.web.presenters.recent_scan import (
 )
 from query_doctor.web.ui.html_helpers import SafeHtml
 from query_doctor.web.ui.report_actions import (
-    render_batch_case_report_action,
-    render_llm_report_failure,
-    render_llm_report_progress,
     render_llm_report_status,
     render_progress_steps,
 )
@@ -510,108 +507,6 @@ def render_trusted_optimized_query_draft(trusted_optimized_query: str) -> str:
         "</div>"
         f"<pre><code>{html.escape(trusted_optimized_query)}</code></pre>"
         "</div>"
-    )
-
-
-def render_optimized_query_action(
-    case_id: str,
-    view: OptimizedQueryActionView | None,
-    *,
-    action_url: str | None = None,
-    open_url: str | None = None,
-    trusted_optimized_query: str | None = None,
-    trusted_optimizer_recommendations: str | None = None,
-) -> str:
-    view = view or present_optimized_query_action(None)
-    status = view.status
-    form_action = html.escape(
-        action_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query",
-        quote=True,
-    )
-    open_href = html.escape(
-        open_url or f"/batch/case/{html.escape(case_id, quote=True)}/optimized-query",
-        quote=True,
-    )
-    output_kind = view.output_kind
-    if status == "generated" and output_kind == "no_rewrite":
-        action_html = f'<a class="button" href="{open_href}">Open Query LLM optimizer outcome</a>'
-    elif status == "generated" and output_kind == "recommendations_only":
-        action_html = (
-            f'<a class="button" href="{open_href}">Open Query LLM optimizer recommendations</a>'
-        )
-    elif status == "generated":
-        action_html = f'<a class="button" href="{open_href}">Open Query LLM optimizer draft</a>'
-    elif status == "unavailable":
-        action_html = (
-            '<button class="button" type="button" disabled>Run Query LLM optimizer</button>'
-        )
-    elif status == "running":
-        action_html = (
-            '<button class="button" type="button" disabled>Running Query LLM optimizer</button>'
-        )
-    else:
-        action_html = (
-            f'<form method="post" action="{form_action}">'
-            '<button class="button" type="submit">Run Query LLM optimizer</button>'
-            "</form>"
-        )
-    if status == "running":
-        status_html = render_optimized_query_progress(view)
-    elif status in {"failed", "cancelled"}:
-        status_html = render_optimized_query_failure(view)
-    elif status == "partial_untrusted":
-        status_html = render_optimized_query_outcome(view)
-    elif status == "unavailable":
-        status_html = '<p class="helper">Source SQL is unavailable or outside the optimizer read-only scope for this case.</p>'
-    elif status == "generated":
-        status_html = render_optimized_query_outcome(view)
-    else:
-        status_html = ""
-    notes: list[str] = []
-    if status == "unavailable":
-        notes.append("Source SQL is unavailable or outside optimizer read-only scope.")
-    elif status == "partial_untrusted":
-        notes.append("Optimizer returned an untrusted draft; it is hidden by the safety contract.")
-    elif status == "failed":
-        notes.append("Optimizer run failed; results are unavailable.")
-    notes_html = ""
-    if notes:
-        notes_html = f'<p class="helper">{"<br>".join(notes)}</p>'
-    draft_html = ""
-    if status == "generated" and trusted_optimized_query:
-        draft_html = (
-            '<details class="analysis-subdetails" open aria-label="Query LLM optimizer draft">'
-            "<summary>Query LLM optimizer draft</summary>"
-            '<p class="helper">Draft only. The query was not executed and requires review before use.</p>'
-            f"{render_trusted_optimized_query_draft(trusted_optimized_query)}"
-            "</details>"
-        )
-    elif status == "generated" and trusted_optimizer_recommendations:
-        if output_kind == "no_rewrite":
-            summary = "Query LLM optimizer outcome"
-            helper = no_rewrite_recommendations_helper(view.fallback_reason)
-        else:
-            summary = "Query LLM optimizer recommendations"
-            helper = (
-                "Deterministic risk checks skipped SQL rewrite; review the recommendations instead."
-            )
-        draft_html = (
-            '<details class="analysis-subdetails" open aria-label="Query LLM optimizer recommendations">'
-            f"<summary>{html.escape(summary)}</summary>"
-            f'<p class="helper">{html.escape(helper)}</p>'
-            f"<div>{render_safe_markdown_paragraphs(trusted_optimizer_recommendations)}</div>"
-            "</details>"
-        )
-    return (
-        '<section id="query-llm-optimizer" class="panel docs-panel" aria-label="Query LLM optimizer action">'
-        "<h1>Query LLM optimizer</h1>"
-        '<div class="report-body">'
-        f"{status_html}"
-        f"{notes_html}"
-        f"{action_html}"
-        f"{draft_html}"
-        "</div>"
-        "</section>"
     )
 
 

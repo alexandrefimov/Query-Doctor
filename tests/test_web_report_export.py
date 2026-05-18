@@ -69,7 +69,12 @@ def dispatch_get(
 
 def test_trusted_batch_report_download_returns_markdown_headers_and_redacted_body(tmp_path):
     case_dir = tmp_path / "cases" / "case-001" / "abc"
-    write_report_case(case_dir, f"# Report\n\nValidated body with {case_dir} hidden.\n")
+    sibling_path = "/tmp/query-doctor-sibling-case/diagnosis.md"
+    user_path = "/Users/example/query-doctor/leak.md"
+    write_report_case(
+        case_dir,
+        f"# Report\n\nValidated body with {case_dir} hidden.\n{sibling_path}\n{user_path}\n",
+    )
     summary = tmp_path / "batch_summary.json"
     write_batch_summary(summary, case_dir)
     settings = web_settings(batch_summary=summary)
@@ -89,6 +94,8 @@ def test_trusted_batch_report_download_returns_markdown_headers_and_redacted_bod
     text = body.decode("utf-8")
     assert "Validated body with [local case path hidden] hidden." in text
     assert str(case_dir) not in text
+    assert sibling_path not in text
+    assert user_path not in text
 
 
 def test_untrusted_batch_report_download_returns_404_without_report_body(tmp_path):
@@ -133,7 +140,12 @@ def test_specific_query_report_download_is_symmetric_for_trusted_and_untrusted(t
     settings = web_settings(repo_dir=tmp_path, corpus_dir=Path("cases"))
     query_id = "abc:def"
     case_dir = expected_case_dir_for_query(query_id, settings)
-    write_report_case(case_dir, f"# Report\n\nSpecific report with {case_dir} hidden.\n")
+    sibling_path = "/tmp/query-doctor-specific-sibling/diagnosis.md"
+    user_path = "/Users/example/query-doctor/specific-leak.md"
+    write_report_case(
+        case_dir,
+        f"# Report\n\nSpecific report with {case_dir} hidden.\n{sibling_path}\n{user_path}\n",
+    )
     (case_dir / "cm_metadata.json").write_text("{}", encoding="utf-8")
     (case_dir / "collection_warnings.txt").write_text("", encoding="utf-8")
 
@@ -145,6 +157,8 @@ def test_specific_query_report_download_is_symmetric_for_trusted_and_untrusted(t
     assert trusted.download_filename == "query-doctor-report-abcdef.md"
     assert "Specific report with [local case path hidden] hidden." in trusted.body
     assert str(case_dir) not in trusted.body
+    assert sibling_path not in trusted.body
+    assert user_path not in trusted.body
 
     (case_dir / BATCH_REPORT_NAME).write_text(
         "# Report\n\nChanged stale specific body.\n", encoding="utf-8"

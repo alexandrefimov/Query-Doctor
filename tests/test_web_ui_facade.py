@@ -13,3 +13,10 @@ def test_package_web_ui_facade_exports_expected_helpers():
     assert "render_batch_case_detail_view_page" in facade.__all__
     assert "render_static_stylesheet_link" in facade.__all__
     assert "render_script_link" in facade.__all__
+
+
+def test_package_web_ui_facade_does_not_export_removed_legacy_actions():
+    assert not hasattr(facade, "render_batch_case_report_action")
+    assert not hasattr(facade, "render_optimized_query_action")
+    assert "render_batch_case_report_action" not in facade.__all__
+    assert "render_optimized_query_action" not in facade.__all__

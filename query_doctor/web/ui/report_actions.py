@@ -14,61 +14,6 @@ from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
 REPORT_ACTION_JOB_KINDS = {"batch_report", "query_report"}
 
 
-def render_batch_case_report_action(
-    case_id: str,
-    report_view: ReportActionView,
-    *,
-    action_url: str | None = None,
-    open_url: str | None = None,
-    report_enabled: bool = True,
-    trusted_report_html: SafeHtml | str | None = None,
-) -> str:
-    view = report_view
-    escaped_case_id = html.escape(case_id, quote=True)
-    disabled = " disabled" if view.button_disabled or not report_enabled else ""
-    form_action = html.escape(action_url or f"/batch/case/{escaped_case_id}/report", quote=True)
-    report_href = html.escape(open_url or f"/batch/case/{escaped_case_id}/report", quote=True)
-    if view.show_open_link:
-        action_html = f'<a class="button" href="{report_href}">Open full report</a>'
-    else:
-        action_html = (
-            '<form method="post" '
-            f'action="{form_action}">'
-            f'<button class="button" type="submit"{disabled}>{html.escape(view.button_label)}</button>'
-            "</form>"
-        )
-    if view.status == "running":
-        status_html = render_llm_report_progress(view)
-    elif view.status in {"failed", "cancelled"}:
-        status_html = render_llm_report_failure(view)
-    else:
-        status_html = ""
-    notes = []
-    if not report_enabled:
-        notes.append("LLM Report is available only for suspicious or bad queries.")
-    elif view.note:
-        notes.append(html.escape(view.note))
-    notes_html = ""
-    if notes:
-        notes_html = f'<p class="helper">{"<br>".join(notes)}</p>'
-    report_html = (
-        f'<div class="inline-report">{trusted_report_html}</div>'
-        if view.show_open_link and trusted_report_html
-        else ""
-    )
-    return (
-        '<section id="llm-report" class="panel docs-panel" aria-label="LLM report action">'
-        "<h1>LLM Report</h1>"
-        '<div class="report-body">'
-        f"{status_html}"
-        f"{notes_html}"
-        f"{action_html}"
-        f"{report_html}"
-        "</div>"
-        "</section>"
-    )
-
-
 def render_llm_report_status(
     view: ReportActionView, trusted_report_html: SafeHtml | str | None
 ) -> str:

@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+from query_doctor.web.case_detail_context import (
+    case_allows_llm_report,
+    resolve_case_detail_settings,
+    resolve_running_case_detail_settings,
+    running_detail_kwargs,
+)
 from query_doctor.web.details_facts import (
     load_batch_case_cluster_runtime_context_facts,
     load_batch_case_cm_metrics_facts,
@@ -24,8 +31,28 @@ from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_case_detail,
 )
 from query_doctor.web.trusted_artifacts import (
+    case_has_safe_source_sql,
     load_batch_case_trusted_detail_artifacts,
+    resolve_batch_case_report_dir,
 )
+
+
+SERVER_OWNED_CASE_REQUIRED_REPORT_ERROR = (
+    "Report generation requires a complete server-owned case. Re-run analysis first."
+)
+
+
+@dataclass(frozen=True)
+class BatchCaseDetailActionContext:
+    settings: WebSettings
+    case: dict[str, object] | None
+    detail_kwargs: dict[str, str]
+    case_dir: Path | None
+    report_allowed: bool
+    source_sql_available: bool
+    report_running: bool
+    optimizer_running: bool
+    job_source: str
 
 
 @dataclass(frozen=True)
@@ -41,6 +68,45 @@ class BatchCaseDetailRenderContext:
     list_href: str
     detail_base_path: str
     active_nav: str
+
+
+def build_batch_case_detail_action_context(
+    settings: WebSettings,
+    case_id: str,
+    job_store: WebJobStore,
+    *,
+    source: str = "auto",
+) -> BatchCaseDetailActionContext:
+    if source == "running":
+        effective_settings, case = resolve_running_case_detail_settings(
+            settings, job_store, case_id
+        )
+        detail_kwargs = running_detail_kwargs()
+    else:
+        effective_settings, case = resolve_case_detail_settings(settings, job_store, case_id)
+        detail_kwargs = {}
+    case_dir = resolve_batch_case_report_dir(effective_settings, case) if case else None
+    return BatchCaseDetailActionContext(
+        settings=effective_settings,
+        case=case,
+        detail_kwargs=detail_kwargs,
+        case_dir=case_dir,
+        report_allowed=case_allows_llm_report(case) if case else False,
+        source_sql_available=case_has_safe_source_sql(case_dir) if case_dir else False,
+        report_running=job_store.running_batch_report(case_id) is not None,
+        optimizer_running=job_store.running_batch_optimized_query(case_id) is not None,
+        job_source="running" if source == "running" else "batch",
+    )
+
+
+def server_owned_case_required_report_state() -> dict[str, object]:
+    return {
+        "status": "failed",
+        "running": False,
+        "trusted": False,
+        "partial": False,
+        "error": SERVER_OWNED_CASE_REQUIRED_REPORT_ERROR,
+    }
 
 
 def build_batch_case_detail_render_context(

@@ -30,7 +30,7 @@ from query_doctor.web.ui.recent_scan_results import (
     stats_cell,
     summary_cell,
 )
-from query_doctor.web.ui.markdown import render_report_markdown_html
+from query_doctor.web.ui.markdown import render_details_inline_report_html
 
 
 def render_specific_query_result(result: Any) -> list[str]:
@@ -85,7 +85,6 @@ def render_specific_query_detail_view(
     view: RecentScanCaseDetailView,
     *,
     optimized_query_state: dict[str, Any] | OptimizedQueryActionView | None = None,
-    trusted_report_html: SafeHtml | str | None = None,
     trusted_report_text: str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
@@ -93,10 +92,11 @@ def render_specific_query_detail_view(
     optimizer_validation_result: dict[str, Any] | None = None,
     llm_enabled: bool = True,
 ) -> str:
-    if trusted_report_html is None and trusted_report_text:
-        trusted_report_html = SafeHtml(
-            render_report_markdown_html(trusted_report_text, with_heading_ids=True)
-        )
+    trusted_report_html = (
+        SafeHtml(render_details_inline_report_html(trusted_report_text))
+        if trusted_report_text
+        else None
+    )
     escaped_query_id = html.escape(query_id)
     report_url = specific_query_report_href(query_id)
     report_export_url = f"{report_url}.md" if report_url else None

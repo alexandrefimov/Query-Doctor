@@ -70,5 +70,4 @@ from query_doctor.web.ui.recent_scan_results import (
     render_batch_summary,
     summarize_batch_progress,
 )
-from query_doctor.web.ui.report_actions import render_batch_case_report_action
 from query_doctor.web.ui.runtime_metrics import render_runtime_signals

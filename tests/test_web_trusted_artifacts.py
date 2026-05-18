@@ -217,12 +217,17 @@ def test_optimizer_artifact_status_uses_strict_trust_check_for_draft_sql_safety(
 def test_trusted_report_artifacts_include_text_and_safe_download_name(tmp_path):
     batch_case_dir = tmp_path / "cases" / "case-001"
     specific_case_dir = tmp_path / "specific"
+    sibling_path = "/tmp/query-doctor-sibling-case/diagnosis.md"
+    user_path = "/Users/example/query-doctor/leak.md"
     batch_case_dir.mkdir(parents=True)
     specific_case_dir.mkdir()
     for case_dir in (batch_case_dir, specific_case_dir):
         (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
         (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
-        write_trusted_report(case_dir, f"# Report\n\nsafe body from {case_dir}\n")
+        write_trusted_report(
+            case_dir,
+            f"# Report\n\nsafe body from {case_dir}\n{sibling_path}\n{user_path}\n",
+        )
 
     batch_artifact = trusted_artifacts.load_batch_case_trusted_report_artifact(
         batch_settings(tmp_path, batch_case_dir),
@@ -239,11 +244,15 @@ def test_trusted_report_artifacts_include_text_and_safe_download_name(tmp_path):
     assert batch_artifact.download_filename == "query-doctor-report-case001.md"
     assert "[local case path hidden]" in batch_artifact.text
     assert str(batch_case_dir) not in batch_artifact.text
+    assert sibling_path not in batch_artifact.text
+    assert user_path not in batch_artifact.text
     assert specific_artifact is not None
     assert specific_artifact.source_id == "abc:def$$$"
     assert specific_artifact.download_filename == "query-doctor-report-abcdef.md"
     assert "[local case path hidden]" in specific_artifact.text
     assert str(specific_case_dir) not in specific_artifact.text
+    assert sibling_path not in specific_artifact.text
+    assert user_path not in specific_artifact.text
 
 
 def test_trusted_report_artifacts_hide_stale_report_text(tmp_path):

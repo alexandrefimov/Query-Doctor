@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from query_doctor.web.case_detail_context import case_allows_llm_report
 from query_doctor.web.case_files import build_query_id_summary_case
 from query_doctor.web.details_facts import (
     load_specific_query_cluster_runtime_context_facts,
@@ -26,6 +27,8 @@ from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_case_detail,
 )
 from query_doctor.web.trusted_artifacts import (
+    case_has_analyzer_facts,
+    case_has_safe_source_sql,
     load_specific_query_trusted_detail_artifacts,
 )
 
@@ -39,6 +42,36 @@ class SpecificQueryDetailRenderContext:
     trusted_optimizer_recommendations: str | None
     optimizer_manual_guidance: str | None
     optimizer_validation_result: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class SpecificQueryDetailActionContext:
+    query_id: str
+    case_dir: Path
+    case: dict[str, object]
+    analyzer_facts_available: bool
+    report_allowed: bool
+    source_sql_available: bool
+    report_running: bool
+    optimizer_running: bool
+
+
+def build_specific_query_detail_action_context(
+    query_id: str,
+    case_dir: Path,
+    job_store: WebJobStore,
+) -> SpecificQueryDetailActionContext:
+    case = build_query_id_summary_case(query_id, case_dir)
+    return SpecificQueryDetailActionContext(
+        query_id=query_id,
+        case_dir=case_dir,
+        case=case,
+        analyzer_facts_available=case_has_analyzer_facts(case_dir),
+        report_allowed=case_allows_llm_report(case),
+        source_sql_available=case_has_safe_source_sql(case_dir),
+        report_running=job_store.running_query_report(query_id) is not None,
+        optimizer_running=job_store.running_query_optimized_query(query_id) is not None,
+    )
 
 
 def build_specific_query_detail_render_context(

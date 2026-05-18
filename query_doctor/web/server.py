@@ -220,8 +220,15 @@ from query_doctor.web.batch_case_actions import (
     start_batch_case_report_job,
 )
 from query_doctor.web.server_args import parse_args
-from query_doctor.web.case_detail_state import build_batch_case_detail_render_context
-from query_doctor.web.specific_query_state import build_specific_query_detail_render_context
+from query_doctor.web.case_detail_state import (
+    build_batch_case_detail_action_context,
+    build_batch_case_detail_render_context,
+    server_owned_case_required_report_state,
+)
+from query_doctor.web.specific_query_state import (
+    build_specific_query_detail_action_context,
+    build_specific_query_detail_render_context,
+)
 from query_doctor.web.specific_query_pages import (
     render_specific_query_detail_for_request,
     render_specific_query_report_for_request,

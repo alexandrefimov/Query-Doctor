@@ -31,6 +31,7 @@ from query_doctor.web.command_builders import (
 from query_doctor.web.models import WebJobSnapshot, WebSettings
 from query_doctor.web.job_progress import JobProgressView, progress_view_for_job
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
+from query_doctor.safety.browser_display import redact_local_paths_for_display
 
 
 OPTIMIZER_STATUS_ORDER = {
@@ -483,7 +484,7 @@ def load_validated_batch_case_report(settings: WebSettings, case: dict[str, obje
     for path in hidden_paths:
         if path:
             report_text = report_text.replace(path, "[local case path hidden]")
-    return report_text
+    return redact_local_paths_for_display(report_text)
 
 
 def load_validated_specific_query_report(case_dir: Path) -> str | None:
@@ -493,7 +494,9 @@ def load_validated_specific_query_report(case_dir: Path) -> str | None:
     if report_text is None:
         return None
     case_path = str(case_dir)
-    return report_text.replace(case_path, "[local case path hidden]") if case_path else report_text
+    if case_path:
+        report_text = report_text.replace(case_path, "[local case path hidden]")
+    return redact_local_paths_for_display(report_text)
 
 
 def load_batch_case_trusted_report_artifact(
