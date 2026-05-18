@@ -401,11 +401,14 @@ Current pool/admission baseline and follow-ups:
 
 Provider-neutral runtime context cleanup:
 
-- Treat source identity as data, not analyzer schema. Add canonical
-  `query_context`, `metrics_context`, `metrics_facts`, and
-  `metrics_correlation` keys/headings with explicit source labels. Keep
-  existing `cm_*` keys, headings, and artifacts as legacy load fallbacks during
-  migration.
+- Treat source identity as data, not analyzer schema. Canonical
+  `Runtime Metrics Facts`, `Runtime Metrics Correlation`, and
+  `Cluster Runtime Context` headings are the current analyzer/report contract;
+  keep legacy `CM Metrics` heading load fallbacks for old artifacts. The
+  remaining migration is canonical `query_context`, `metrics_context`,
+  `metrics_facts`, and `metrics_correlation` data keys with explicit source
+  labels while preserving existing `cm_*` keys and artifacts as legacy load
+  fallbacks.
 - Update report-validator heading allowlists atomically with any heading rename
   and add a snapshot test for rendered `analysis_facts.md`, so the trusted
   report contract cannot drift silently.
