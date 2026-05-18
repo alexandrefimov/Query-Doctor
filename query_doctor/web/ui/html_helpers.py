@@ -114,6 +114,12 @@ def display_score(value: Any) -> str:
 
 
 def escape_value(value: Any) -> str:
+    """HTML-escape an already browser-safe display value.
+
+    This helper does not redact local paths, SQL-like text, provider payloads,
+    secrets, or raw artifact names. Callers must pass presenter-owned safe
+    display text, or use SafeHtml only for trusted markup.
+    """
     if value is None:
         return "unknown"
     if value is True:
