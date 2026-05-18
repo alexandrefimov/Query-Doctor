@@ -37,9 +37,10 @@ and intentionally minimal.
 ## Primary Bottleneck Fixtures
 
 `primary_bottleneck_fixtures/` contains compact sanitized JSON fixtures with
-structured analyzer facts and expected primary bottleneck classifications. Use
-these for routing regressions where profile parsing is not the behavior under
-test.
+structured analyzer facts and expected primary bottleneck classifications. It
+includes stats-present-but-not-primary, mixed stats/runtime, and context-only
+runtime cases. Use these for routing regressions where profile parsing is not
+the behavior under test.
 
 ## Optimizer Fixtures
 

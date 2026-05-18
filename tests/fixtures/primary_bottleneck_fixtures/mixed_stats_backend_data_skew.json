@@ -1,0 +1,46 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [
+      {
+        "operator_name": "AGGREGATE",
+        "rows_actual_to_estimated_ratio": 600
+      }
+    ],
+    "backend_tail": {
+      "data_skew": "yes",
+      "execution_skew": "unknown",
+      "execution_tail_candidate_count": 0
+    },
+    "findings": [
+      {
+        "id": "cardinality_estimate_errors",
+        "operators": [
+          {
+            "time_ms": 8000
+          }
+        ]
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "limited",
+      "table_stats": "incomplete_or_unknown",
+      "column_stats": "incomplete_or_unknown",
+      "row_estimate_evidence": "observed",
+      "row_estimate_issue_count": 1,
+      "stats_primary_bottleneck": "mixed_candidate",
+      "non_stats_bottleneck_categories": "backend_data_skew"
+    }
+  },
+  "expected": {
+    "label": "mixed",
+    "confidence": "medium",
+    "reasons": [
+      "competing_stats",
+      "competing_runtime_skew"
+    ]
+  }
+}

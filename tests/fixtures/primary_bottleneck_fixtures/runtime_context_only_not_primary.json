@@ -1,0 +1,35 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 180000,
+      "confidence": "high"
+    },
+    "cardinality_anomalies": [],
+    "findings": [],
+    "metrics_correlation": {
+      "status": "available",
+      "correlated_signals": 0,
+      "context_only_signals": 2,
+      "host_cpu_pressure": "context_only",
+      "admission_pool_pressure": "context_only"
+    },
+    "cluster_runtime_context": {
+      "status": "available",
+      "correlated_signals": "none",
+      "context_only_signals": "Host CPU pressure, Admission pool pressure",
+      "scoring_contribution": "none; context-only runtime signals do not add score"
+    },
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "none"
+    }
+  },
+  "expected": {
+    "label": "unknown",
+    "confidence": "low",
+    "reasons": [
+      "no_primary_branch_supported"
+    ]
+  }
+}

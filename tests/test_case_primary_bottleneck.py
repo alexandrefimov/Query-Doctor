@@ -50,6 +50,26 @@ def test_primary_bottleneck_json_fixtures_match_expected_classification():
         assert result == payload["expected"], fixture_name
 
 
+def test_primary_bottleneck_json_fixtures_are_safe_sanitized_inputs():
+    fixture_text = "\n".join(
+        (PRIMARY_BOTTLENECK_FIXTURE_DIR / fixture_name).read_text(encoding="utf-8")
+        for fixture_name in primary_bottleneck_fixture_names()
+    )
+
+    for forbidden in [
+        "SELECT ",
+        "Query (id=",
+        ".example.",
+        "/tmp/",
+        "/Users/",
+        "hdfs://",
+        "RAW_",
+        "Authorization",
+        "profile_digest.md",
+    ]:
+        assert forbidden not in fixture_text
+
+
 def test_runtime_admission_dominates_wall_clock():
     result = classify_case_primary_bottleneck(
         analysis_fixture(cm_query_context={"admission_wait_ms": 8_000})
