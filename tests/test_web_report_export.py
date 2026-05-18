@@ -97,6 +97,15 @@ def test_trusted_batch_report_download_returns_markdown_headers_and_redacted_bod
     assert sibling_path not in text
     assert user_path not in text
 
+    inline = route_get_request("/batch/case/case-001/report", settings, WebJobStore())
+    assert inline is not None
+    assert inline.status == 200
+    assert "Validated Finished Queries case report" in inline.body
+    assert "Validated body with [local case path hidden] hidden." in inline.body
+    assert str(case_dir) not in inline.body
+    assert sibling_path not in inline.body
+    assert user_path not in inline.body
+
 
 def test_untrusted_batch_report_download_returns_404_without_report_body(tmp_path):
     case_dir = tmp_path / "cases" / "case-001" / "abc"
@@ -159,6 +168,15 @@ def test_specific_query_report_download_is_symmetric_for_trusted_and_untrusted(t
     assert str(case_dir) not in trusted.body
     assert sibling_path not in trusted.body
     assert user_path not in trusted.body
+
+    inline = route_get_request("/query/details/abc%3Adef/report", settings, WebJobStore())
+    assert inline is not None
+    assert inline.status == 200
+    assert "Validated Specific Query report" in inline.body
+    assert "Specific report with [local case path hidden] hidden." in inline.body
+    assert str(case_dir) not in inline.body
+    assert sibling_path not in inline.body
+    assert user_path not in inline.body
 
     (case_dir / BATCH_REPORT_NAME).write_text(
         "# Report\n\nChanged stale specific body.\n", encoding="utf-8"
