@@ -1063,6 +1063,25 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
         for reason, count in reason_counts.items():
             lines.append(f"- {reason}: {count}")
         lines.append("")
+    workload_history = summary.get("workload_history")
+    if isinstance(workload_history, dict):
+        regression_counts = workload_history.get("regression_counts")
+        rendered_regressions = "none"
+        if isinstance(regression_counts, dict) and regression_counts:
+            rendered_regressions = ", ".join(
+                f"{label}={count}" for label, count in sorted(regression_counts.items())
+            )
+        lines.extend(
+            [
+                "## Workload History",
+                "",
+                f"- loaded records: {workload_history.get('loaded_record_count', 0)}",
+                f"- appended records: {workload_history.get('appended_record_count', 0)}",
+                f"- append status: {workload_history.get('append_status', 'unknown')}",
+                f"- regressions: {rendered_regressions}",
+                "",
+            ]
+        )
     primary_distribution = summary.get("case_primary_bottleneck_distribution")
     if isinstance(primary_distribution, dict):
         label_counts = primary_distribution.get("label_counts")

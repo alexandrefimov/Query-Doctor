@@ -26,6 +26,7 @@ from query_doctor.prometheus.timeseries import (
     normalize_prometheus_metrics_profile,
 )
 from query_doctor.recent.batch_models import BatchConfig
+from query_doctor.recent.workload_history import DEFAULT_WORKLOAD_HISTORY_MAX_BYTES
 
 
 MAX_CM_INSPECT_LIMIT = 5000
@@ -324,6 +325,26 @@ def build_batch_config(
     if max_duration_sec is not None and min_duration_sec is not None:
         if max_duration_sec < min_duration_sec:
             raise ValueError("--max-duration-sec must be >= --min-duration-sec")
+    collect_workload_history = first_bool(
+        getattr(args, "collect_workload_history", None),
+        config_values.get("recent_collect_workload_history"),
+        config_values.get("collect_workload_history"),
+        default=False,
+    )
+    workload_history_path = expand_optional_path(
+        first_string(
+            getattr(args, "workload_history_path", None),
+            config_values.get("recent_workload_history_path"),
+            config_values.get("workload_history_path"),
+        ),
+        cwd=cwd,
+    )
+    workload_history_max_bytes = first_int(
+        getattr(args, "workload_history_max_bytes", None),
+        config_values.get("recent_workload_history_max_bytes"),
+        config_values.get("workload_history_max_bytes"),
+        default=DEFAULT_WORKLOAD_HISTORY_MAX_BYTES,
+    )
 
     out_value = first_string(args.out, config_values.get("out"))
     if not out_value:
@@ -486,6 +507,11 @@ def build_batch_config(
             prometheus_timeseries_padding_sec or DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC
         ),
         prometheus_timeout_sec=int(prometheus_timeout_sec or DEFAULT_PROMETHEUS_TIMEOUT_SEC),
+        collect_workload_history=collect_workload_history,
+        workload_history_path=workload_history_path,
+        workload_history_max_bytes=int(
+            workload_history_max_bytes or DEFAULT_WORKLOAD_HISTORY_MAX_BYTES
+        ),
         privacy_mode=privacy_mode,
         redact_identifiers=redact_identifiers,
         redact_hosts=redact_hosts,
@@ -581,6 +607,13 @@ def resolve_config_path(config_path: str | None, cwd: Path) -> str | None:
 
 def expand_optional_path_string(value: str | None) -> str | None:
     return str(Path(value).expanduser()) if value else None
+
+
+def expand_optional_path(value: str | None, *, cwd: Path) -> Path | None:
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (cwd / path).resolve()
 
 
 def effective_subprocess_env(env: dict[str, str], krb5ccname: str | None) -> dict[str, str]:

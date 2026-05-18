@@ -79,6 +79,9 @@ class BatchConfig:
     prometheus_step_sec: int = 30
     prometheus_timeseries_padding_sec: int = 120
     prometheus_timeout_sec: int = 30
+    collect_workload_history: bool = False
+    workload_history_path: Path | None = None
+    workload_history_max_bytes: int = 5 * 1024 * 1024
     privacy_mode: bool = True
     redact_identifiers: bool = True
     redact_hosts: bool = True

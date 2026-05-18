@@ -6,7 +6,10 @@ import html
 from typing import Any
 
 from query_doctor.web.presenters.recent_scan import RecentScanCaseRowView, numeric_value
-from query_doctor.web.presenters.recent_scan_models import RecentScanWorkloadGroupsView
+from query_doctor.web.presenters.recent_scan_models import (
+    RecentScanWorkloadGroupView,
+    RecentScanWorkloadGroupsView,
+)
 from query_doctor.web.ui.html_helpers import escape_value
 from query_doctor.web.trusted_artifacts import OPTIMIZER_STATUS_ORDER
 
@@ -219,6 +222,7 @@ def render_workload_groups(view: RecentScanWorkloadGroupsView) -> str:
         f"<td>{escape_value(group.member_count)}</td>"
         f"<td>{escape_value(group.duration_sec_p95)}</td>"
         f"<td>{escape_value(group.duration_sec_total)}</td>"
+        f"<td>{escape_value(workload_baseline_cell(group))}</td>"
         f"<td>{escape_value(group.pool_top)}</td>"
         f"<td>{escape_value(group.primary_bottleneck_top)}</td>"
         f"<td>{escape_value(group.score_top)}</td>"
@@ -233,9 +237,17 @@ def render_workload_groups(view: RecentScanWorkloadGroupsView) -> str:
         '<div class="batch-table-wrap"><table class="batch-table workload-group-table">'
         "<thead><tr>"
         "<th>Group</th><th>Cases</th><th>p95 duration</th><th>Total duration</th>"
-        "<th>Pool</th><th>Primary</th><th>Severity</th><th>Shape</th><th>Members</th>"
+        "<th>Baseline</th><th>Pool</th><th>Primary</th><th>Severity</th><th>Shape</th><th>Members</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
         "</details>"
     )
+
+
+def workload_baseline_cell(group: RecentScanWorkloadGroupView) -> str:
+    if group.baseline_sample_count <= 0:
+        return "unknown"
+    p95 = group.baseline_duration_sec_p95
+    p95_text = f"p95 {p95}s" if str(p95 or "").strip() else "p95 unknown"
+    return f"{group.regression}; baseline {p95_text}; n={group.baseline_sample_count}"

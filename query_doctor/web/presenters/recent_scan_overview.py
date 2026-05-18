@@ -54,6 +54,14 @@ def present_recent_scan_case_overview(view: RecentScanCaseDetailView) -> RecentS
                 "text",
             )
         )
+    if view.workload_baseline_sample_count > 0:
+        cards.append(
+            RecentScanCaseOverviewCardView(
+                "workload baseline",
+                workload_baseline_overview_value(view),
+                "text",
+            )
+        )
     if view.has_spill:
         cards.append(RecentScanCaseOverviewCardView("spill", "spill evidence observed", "text"))
     if is_visible_table_stats_status(view.table_stats_status):
@@ -75,6 +83,15 @@ def workload_group_overview_value(view: RecentScanCaseDetailView) -> str:
     p95 = view.workload_group_duration_sec_p95
     p95_text = f" · p95 {p95}s" if is_meaningful_detail_value(p95) else ""
     return f"Similar queries in this scan: {view.workload_group_member_count}{p95_text}"
+
+
+def workload_baseline_overview_value(view: RecentScanCaseDetailView) -> str:
+    p95 = view.workload_baseline_duration_sec_p95
+    p95_text = f"baseline p95 {p95}s" if is_meaningful_detail_value(p95) else "baseline p95 unknown"
+    return (
+        f"{p95_text} (last {view.workload_baseline_sample_count} batches) "
+        f"· regression: {view.workload_regression}"
+    )
 
 
 def candidate_overview_value(candidate: dict[str, Any], rank: Any) -> str:

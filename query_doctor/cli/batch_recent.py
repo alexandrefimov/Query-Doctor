@@ -101,6 +101,7 @@ from query_doctor.recent.batch_summary import (
     rank_cases_for_stats_optimization,
     write_batch_outputs,
 )
+from query_doctor.recent.workload_history import update_summary_with_workload_history
 from query_doctor.recent import case_processing as batch_case_processing
 from query_doctor.recent.command_args import append_cm_config_args, append_metadata_args
 from query_doctor.recent.case_processing import (
@@ -436,6 +437,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--progress-jsonl",
         help="Optional append-only JSONL progress file. Contains sanitized structured stage events only.",
     )
+    parser.add_argument(
+        "--collect-workload-history",
+        action="store_true",
+        default=None,
+        help="Opt in to local workload fingerprint baseline history and regression labels.",
+    )
+    parser.add_argument(
+        "--workload-history-path",
+        help="Optional local JSONL path for workload baseline history. Default: ~/.query-doctor/workload_history.jsonl.",
+    )
+    parser.add_argument(
+        "--workload-history-max-bytes",
+        type=positive_int,
+        help="Rotate workload history before appending when this byte limit is exceeded.",
+    )
     return parser.parse_args(argv)
 
 
@@ -566,6 +582,12 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
             cluster_context=cluster_context,
             total_seconds=total_seconds,
         )
+        if config.collect_workload_history:
+            update_summary_with_workload_history(
+                summary,
+                path=config.workload_history_path,
+                max_bytes=config.workload_history_max_bytes,
+            )
         write_batch_outputs(config.out, summary)
         progress.emit(stage="summary", status="done", seconds=elapsed_seconds(summary_started))
         if summary.get("discovery_failed"):

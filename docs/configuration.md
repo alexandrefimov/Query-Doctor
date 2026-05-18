@@ -180,6 +180,9 @@ supported shared-service deployment model.
 | `recent_cm_events_max_events` | positive integer | Maximum CM events to summarize. |
 | `recent_collect_cm_timeseries` | boolean | Collect bounded CM runtime metrics when supported. |
 | `recent_cm_timeseries_top_limit` | non-negative integer | Number of top cases eligible for CM time-series refresh. |
+| `collect_workload_history` / `recent_collect_workload_history` | boolean | Opt in to local workload fingerprint baseline history and regression labels. |
+| `workload_history_path` / `recent_workload_history_path` | string path | Optional local JSONL path for workload history. Defaults to `~/.query-doctor/workload_history.jsonl`. |
+| `workload_history_max_bytes` / `recent_workload_history_max_bytes` | positive integer | Rotate the local workload history file before appending when it exceeds this size. |
 
 Recent and Running web workflows do not auto-run LLM reports or optimizer jobs.
 

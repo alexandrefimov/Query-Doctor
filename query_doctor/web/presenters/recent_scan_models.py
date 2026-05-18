@@ -65,6 +65,9 @@ class RecentScanCaseRowView:
     workload_fingerprint_short: str
     workload_group_member_count: int
     workload_group_duration_sec_p95: Any
+    workload_baseline_duration_sec_p95: Any
+    workload_baseline_sample_count: int
+    workload_regression: str
     score_value: float
     score_severity: str
     has_failure: bool
@@ -82,6 +85,9 @@ class RecentScanWorkloadGroupView:
     pool_top: str
     primary_bottleneck_top: str
     score_top: str
+    baseline_duration_sec_p95: Any
+    baseline_sample_count: int
+    regression: str
     shape_summary: str
     table_summary: str
     member_case_ids: tuple[str, ...]
@@ -332,5 +338,8 @@ class RecentScanCaseDetailView:
     workload_fingerprint_short: str
     workload_group_member_count: int
     workload_group_duration_sec_p95: Any
+    workload_baseline_duration_sec_p95: Any
+    workload_baseline_sample_count: int
+    workload_regression: str
     report_action: ReportActionView
     score_severity: str

@@ -186,6 +186,9 @@ def present_workload_groups(summary: dict[str, Any]) -> RecentScanWorkloadGroups
         aggregates = raw_group.get("aggregates")
         if not isinstance(aggregates, dict):
             aggregates = {}
+        baseline = raw_group.get("baseline")
+        if not isinstance(baseline, dict):
+            baseline = {}
         shape = raw_group.get("shape")
         if not isinstance(shape, dict):
             shape = {}
@@ -209,6 +212,9 @@ def present_workload_groups(summary: dict[str, Any]) -> RecentScanWorkloadGroups
                     aggregates.get("primary_bottleneck_top") or "unknown"
                 ),
                 score_top=safe_display_text(aggregates.get("score_top") or "unknown"),
+                baseline_duration_sec_p95=safe_display_value(baseline.get("duration_sec_p95")),
+                baseline_sample_count=numeric_count(baseline.get("sample_count")),
+                regression=safe_workload_regression_label(baseline.get("regression")),
                 shape_summary=workload_shape_summary(shape),
                 table_summary=workload_table_summary(shape.get("referenced_tables")),
                 member_case_ids=member_case_ids,
@@ -230,6 +236,11 @@ def short_workload_fingerprint(value: Any) -> str:
 def safe_case_id(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text if re.fullmatch(r"case-[0-9]{3}", text) else ""
+
+
+def safe_workload_regression_label(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in {"none", "mild", "strong", "unknown"} else "unknown"
 
 
 def workload_shape_summary(shape: dict[str, Any]) -> str:
@@ -338,6 +349,11 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         workload_group_duration_sec_p95=safe_display_value(
             case.get("workload_group_duration_sec_p95")
         ),
+        workload_baseline_duration_sec_p95=safe_display_value(
+            case.get("workload_baseline_duration_sec_p95")
+        ),
+        workload_baseline_sample_count=numeric_count(case.get("workload_baseline_sample_count")),
+        workload_regression=safe_workload_regression_label(case.get("workload_regression")),
         score_value=numeric_value(case.get("score")),
         score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
@@ -452,6 +468,11 @@ def present_recent_scan_case_detail(
         workload_group_duration_sec_p95=safe_display_value(
             case.get("workload_group_duration_sec_p95")
         ),
+        workload_baseline_duration_sec_p95=safe_display_value(
+            case.get("workload_baseline_duration_sec_p95")
+        ),
+        workload_baseline_sample_count=numeric_count(case.get("workload_baseline_sample_count")),
+        workload_regression=safe_workload_regression_label(case.get("workload_regression")),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )
