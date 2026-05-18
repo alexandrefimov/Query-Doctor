@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-13
+Last updated: 2026-05-18
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -62,6 +62,11 @@ not as an "AI SQL optimizer" whose primary promise is automatic SQL rewriting.
 - Marketing, demos, and benchmarks should lead with evidence-backed diagnosis:
   stats vs SQL shape vs runtime/admission/skew/data movement vs unknown, then
   show SQL rewrites only for recipe-backed cases.
+- Product growth should deepen the current Impala wedge before broadening the
+  engine surface. Spark SQL is not a near-term direction: it would require a
+  different runtime/profile fact model, collector surface, optimizer contract,
+  and market positioning before Query Doctor has proven enough value on Impala
+  workloads.
 
 ## Success Metrics
 
@@ -179,6 +184,19 @@ Cloudera Manager deployments:
   predicate pushdown, UNION ALL branch predicate pushdown, narrow Python-owned
   recipes for repeated expensive ETL shapes, and action-quality feedback.
 
+When choosing P1 product-growth work after required P0 contract work, target
+these product areas first. The first concrete PR sequence is defined in the Next
+Pull Queue below and may start with the narrower admission slice when it is the
+lower-risk way to reduce unknown diagnoses.
+
+1. Workload fingerprinting, baselines, and regression detection.
+2. Pool and admission diagnostics as analyzer-owned first-class causes.
+3. Minimal action outcome tracking for applied recommendations.
+4. Direct Impala daemon depth, fixtures, Prometheus coverage, and profile action
+   cards.
+5. Metadata and stats depth for join/filter column coverage, freshness,
+   selectivity mismatch, and bottleneck calibration.
+
 ### P2 - Expansion Readiness
 
 Do after P0 contracts are stable and P1 diagnostic quality is useful enough on
@@ -226,6 +244,24 @@ item first only when the touched area has a direct P0 safety or contract risk.
 7. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
 
+First concrete product-growth PR sequence after those contract items:
+
+1. Harden the existing `runtime_admission` primary-bottleneck path. Keep the
+   current label, add direct profile and Cloudera Manager fact coverage where
+   explicit query-specific admission wait/result data exists, keep cluster
+   pool gauges context-only, and add deterministic action-card guidance.
+2. Add a raw-free workload fingerprint primitive in `query_doctor.recent` and
+   attach `workload_fingerprint = "wf_<24hex>"` to each batch case. Keep it a
+   pure function with no UI, persistence, SQL reads, profile reads, or optimizer
+   source reads in this first slice.
+3. Add in-scan workload grouping in `batch_summary.json`, Recent scan rows, and
+   case Details. Use `schema_version: 1`, hide singleton groups from the group
+   panel, and render only safe aggregate fields through typed presenters.
+4. Add local rolling workload baselines and regression labels only after the
+   in-scan grouping is validated on real batches.
+5. Add minimal action outcome tracking after recommendation IDs and workload
+   fingerprints are stable.
+
 ## Dependency And Readiness Rules
 
 Use these rules to keep roadmap work ordered. They override local convenience
@@ -239,10 +275,14 @@ when a tempting implementation would skip a contract boundary.
   depends on are in place. Do not add placeholder provider packages; expand
   provider boundaries only from implemented Cloudera Manager, direct Impala, and
   Prometheus paths.
-- A second SQL engine must wait until Impala diagnosis is useful on real
-  workloads, with `case_primary_bottleneck = unknown` below roughly 20% on a
-  representative real-case batch and an engine profile-fact contract already in
-  place.
+- A second SQL engine must wait until all of these are true:
+  `case_primary_bottleneck = unknown` is below roughly 20% on a representative
+  100+ case real Impala batch, workload fingerprinting and baselines work on
+  real data, action outcome tracking has at least 50 applied/not-applied
+  records, direct Impala diagnosis is stable on at least two non-Cloudera
+  Manager deployments, a real design partner asks for a specific second engine
+  with a real workload, and an engine profile-fact contract already exists from
+  implemented behavior.
 - Shared deployment work must wait for an explicit shared-deploy product
   decision, a real design partner, and a design for authentication, ownership,
   audit, persistence, and operational support.
@@ -341,12 +381,38 @@ Short-term workload-level diagnostics:
   diagnostic work. Group repeated query shapes by raw-free normalized
   signatures and show aggregate count, runtime, p95, scan, spill, memory, pool,
   and trend signals without exposing SQL.
+- The first fingerprint signature should use only structured safe fields that
+  already exist in case dictionaries or analyzer facts, such as SQL verb, query
+  type, safe shape counts, aggregate/window presence, scan/exchange counts, and
+  sorted referenced tables that are already safe to display. It must not read
+  raw SQL files, raw profile files, raw metadata, optimizer source SQL, column
+  lists, predicates, literals, aliases, comments, host/daemon identifiers, raw
+  artifact names, or free-form analyzer wording.
+- Store first-slice groups under an isolated `workload_groups` block in
+  `batch_summary.json` with `schema_version: 1`, a `wf_` fingerprint, raw-free
+  shape fields, safe aggregates, and local member case IDs. Older readers must
+  be able to ignore the block.
 - Add workload baseline and regression detection for query fingerprints, so
   chronic expensive shapes and recent slowdowns are separated before choosing
   stats, SQL-shape, or runtime actions.
 - Add minimal action outcome tracking: manually record whether a recommendation
   was applied and whether the observed runtime, score, or failure rate changed.
   This is needed to learn which recommendation families are useful in practice.
+
+Short-term pool/admission diagnostics:
+
+- Harden the existing `runtime_admission` `case_primary_bottleneck` label
+  rather than adding a new admission label. Promote it only when analyzer-owned
+  query-specific facts support admission wait or admission result evidence,
+  such as direct profile counters or Cloudera Manager query attributes.
+- Keep pool/admission actions deterministic and non-LLM by default: rebalance a
+  query class, review pool sizing, or collect a bounded workload window before
+  claiming SQL-shape or stats work is the next action.
+- Do not infer admission pressure from duration alone. Cluster pool saturation,
+  runtime metrics, events, concurrent workload signals, and Prometheus gauges
+  remain supporting context unless query-specific analyzer facts prove the
+  bottleneck. A stats or SQL-shape finding may still coexist with
+  `runtime_admission` and must not be suppressed.
 
 Provider-neutral runtime context cleanup:
 
@@ -369,6 +435,32 @@ Provider-neutral runtime context cleanup:
   `ProfileSource`, `QueryDiscoverySource`, `MetricsSource`, and `EventSource`,
   with Cloudera Manager wrappers over existing helpers. Avoid one broad
   provider object, fake implementations, or placeholder packages.
+
+First product-growth PR acceptance details:
+
+1. `runtime_admission` hardening:
+   - classify high confidence only when query-specific admission wait dominates
+     wall clock; classify medium confidence for material explicit wait that
+     does not dominate;
+   - add tests for strong admission, medium admission, cluster-saturation-only
+     supporting context, Cloudera Manager-only admission attributes, and
+     admission coexisting with stats evidence;
+   - keep pool/admission action text deterministic, raw-free, and browser-safe.
+2. Workload fingerprint primitive:
+   - add a pure fingerprint helper with stable canonical JSON hashing, safe
+     defaults for missing facts, sorted table inputs, and an explicit incomplete
+     marker when facts are partial;
+   - prove with tests that the helper does not open raw SQL, raw profile, raw
+     metadata, optimizer source, or artifact files;
+   - attach only the safe `wf_<24hex>` value to batch cases in this slice.
+3. In-scan workload groups:
+   - build `workload_groups` from current-scan cases only, filter singleton
+     groups out of the panel, and sort groups by duration impact;
+   - render the group panel through the existing Recent scan grouping seam,
+     plus a compact row badge and one Details line for similar queries in the
+     same scan;
+   - keep persistence, baselines, regression labels, action outcomes, a
+     dedicated workload view, and LLM group summaries out of this PR.
 
 ### 4. Query Optimizer Usefulness
 
@@ -675,12 +767,14 @@ These are not current support. Revisit them only when the listed signal is met.
   normalized context often enough that a separate product mode is clearer than
   adding more Details sections. Query Doctor may consume only normalized
   Python-owned context from it.
-- Workload-level views by query fingerprint, pool, user, table set, and time
-  window. Revisit after raw-free fingerprint aggregation and baseline storage
-  are implemented locally.
-- Pool/admission diagnostics as an analyzer-owned layer with safe facts for
-  pool pressure, queue wait, and concurrent load. This should be a separate
-  diagnosis path from per-query SQL-shape analysis.
+- Broad workload-level views by query fingerprint, pool, user, table set, and
+  time window. Raw-free fingerprint aggregation, baselines, regression signals,
+  and minimal outcome tracking are near-term work; broad exploratory workload
+  views wait until those safe aggregates exist locally.
+- Broad pool/admission operations belong with the deferred Cluster Doctor
+  product. Per-query pool/admission diagnosis is near-term only as
+  analyzer-owned facts for pool pressure, queue wait, and concurrent load,
+  separate from per-query SQL-shape analysis.
 
 ### Engines And Storage
 
@@ -692,6 +786,12 @@ report coverage before being documented as supported.
 Do not add a second engine until Impala diagnosis is useful on real workloads.
 A practical readiness bar is `case_primary_bottleneck = unknown` below roughly
 20% on a representative real-case batch.
+
+Spark SQL is explicitly deferred for now. Its useful diagnostic surface is a
+different model from Impala: SQL plans plus per-stage/per-task metrics,
+executor behavior, event history, and logs. Treating it as the first second
+engine would multiply collector, parser, analyzer, optimizer, validation, and
+maintenance cost before the Impala product clears the readiness gate.
 
 Recommended expansion order is documented in
 [engine-expansion-plan.md](engine-expansion-plan.md):

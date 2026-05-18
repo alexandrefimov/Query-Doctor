@@ -1,6 +1,6 @@
 # Engine Expansion Plan
 
-Last reviewed: 2026-05-13
+Last reviewed: 2026-05-18
 
 This document records the transition plan for future source-provider and engine
 work. It does not change current support: Query Doctor is still Apache Impala
@@ -41,9 +41,13 @@ Do not start broad provider or engine expansion until all of these are true:
 - design partners confirm that the current product is useful enough to justify
   expanding its deployment surface.
 
-Do not add a second SQL engine until `case_primary_bottleneck = unknown` is
-below roughly 20% on a representative real Impala batch, as stated in
-[roadmap.md](roadmap.md).
+Do not add a second SQL engine until every second-engine gate in
+[roadmap.md](roadmap.md) is true: `case_primary_bottleneck = unknown` below
+roughly 20% on a representative 100+ case real Impala batch, real workload
+fingerprinting and baselines, at least 50 action-outcome records, stable direct
+Impala diagnosis on at least two non-Cloudera-Manager deployments, concrete
+design-partner demand for a named engine, and an implemented engine profile-fact
+contract.
 
 ## Phase 1: Direct Impala Profile Source And Metrics Source
 
@@ -118,6 +122,13 @@ Trino is the default candidate to validate because it is a common migration
 destination from legacy Hadoop and Cloudera environments, and it supports a
 local-first diagnostic model better than closed platforms. This is a candidate,
 not a public commitment.
+
+Spark SQL is explicitly not the next engine candidate under the current product
+state. Its useful diagnostic surface depends on SQL plans, per-stage and
+per-task metrics, executor behavior, event history, and logs rather than the
+Impala-style runtime profile model. Treat Spark as deferred until the
+second-engine gates are met and a design partner brings a real Spark workload
+with an agreed collector and fact model.
 
 A second engine requires:
 
