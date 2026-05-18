@@ -96,7 +96,7 @@ def render_recent_scan_case_detail_view(
         f"{render_case_detail_overview(view)}"
         f"{render_case_status_summary(view)}"
         f"{render_case_analysis_summary(view)}"
-        f"{render_analysis_details(view)}"
+        f"{render_analysis_details(view, detail_base_path=detail_base_path)}"
         f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled)}"
         "</section>"
     )
@@ -184,7 +184,9 @@ def render_evidence_action_guide_view(view: RecentScanEvidenceGuideView) -> str:
     )
 
 
-def render_analysis_details(view: RecentScanCaseDetailView) -> str:
+def render_analysis_details(
+    view: RecentScanCaseDetailView, *, detail_base_path: str = "/batch/case"
+) -> str:
     runtime_verdict_html = (
         ""
         if view.runtime_verdict.title == "Runtime context not collected"
@@ -196,7 +198,7 @@ def render_analysis_details(view: RecentScanCaseDetailView) -> str:
         '<div class="report-body">'
         f"{runtime_verdict_html}"
         f"{render_runtime_diagnosis_summary(view.runtime_diagnosis)}"
-        f"{render_action_candidate_findings(view)}"
+        f"{render_action_candidate_findings(view, detail_base_path=detail_base_path)}"
         f"{render_score_reason_explanations(view)}"
         "</div>"
         "</section>"

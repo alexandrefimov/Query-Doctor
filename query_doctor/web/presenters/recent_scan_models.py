@@ -285,6 +285,7 @@ class RecentScanCaseOverviewView:
 class RecentScanActionCandidateCardView:
     title: str
     body: str
+    recommendation_id: str = ""
 
 
 @dataclass(frozen=True)

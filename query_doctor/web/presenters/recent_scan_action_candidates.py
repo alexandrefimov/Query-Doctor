@@ -33,6 +33,7 @@ def present_recent_scan_action_candidates(
                     f"Review first: {optimization.get('review_areas') or 'query shape'}."
                     f"{counter_text}"
                 ),
+                recommendation_id="query_optimization_review.v1",
             )
         )
     stats = view.stats_candidate
@@ -54,6 +55,25 @@ def present_recent_scan_action_candidates(
                     f"{stats.get('required_confirmation') or 'compare EXPLAIN and rerun under comparable load'}."
                     f"{counter_text}"
                 ),
+                recommendation_id="stats_refresh_review.v1",
+            )
+        )
+    if view.primary_bottleneck.label == "Admission/runtime":
+        reason = (
+            f" Evidence: {view.primary_bottleneck.reason_summary}."
+            if view.primary_bottleneck.reason_summary
+            else ""
+        )
+        cards.append(
+            RecentScanActionCandidateCardView(
+                "Admission/runtime follow-up",
+                (
+                    "Explicit query-specific admission evidence made runtime admission "
+                    f"the primary bottleneck. Confidence: {view.primary_bottleneck.confidence}. "
+                    "Check pool saturation during the case window, then rerun under comparable load."
+                    f"{reason}"
+                ),
+                recommendation_id="runtime_admission_check.v1",
             )
         )
     return RecentScanActionCandidatesView(cards=tuple(cards))

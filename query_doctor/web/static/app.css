@@ -1357,6 +1357,31 @@ code,.technical,.mono {
   font-size:12px
 }
 
+.action-outcome-control {
+  display:grid;
+  gap:7px;
+  margin-top:9px;
+  padding-top:9px;
+  border-top:1px solid var(--border)
+}
+
+.action-outcome-label {
+  color:var(--muted);
+  font-size:11px;
+  font-weight:720
+}
+
+.action-outcome-form {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px
+}
+
+.action-outcome-form .button {
+  height:28px;
+  white-space:normal
+}
+
 .technical-details {
   overflow:hidden
 }

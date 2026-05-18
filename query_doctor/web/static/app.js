@@ -89,6 +89,23 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     fallbackCopyCode(code) ? copied() : failed();
   });
+  document.addEventListener('click', function (event) {
+    var applyButton = event.target.closest && event.target.closest('[data-action-outcome-show-result]');
+    if (!applyButton) {
+      return;
+    }
+    event.preventDefault();
+    var card = applyButton.closest('[data-action-outcome-card]');
+    var panel = card && card.querySelector('[data-action-outcome-result-panel]');
+    if (!panel) {
+      return;
+    }
+    panel.hidden = false;
+    var firstButton = panel.querySelector('button');
+    if (firstButton) {
+      firstButton.focus();
+    }
+  });
   function rowNavigationTarget(event) {
     if (!event.target.closest) {
       return null;

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from query_doctor.web.action_outcomes import action_outcome_count
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
     compact_cell,
@@ -81,6 +82,7 @@ def render_batch_card(
         only_with_spills=only_with_spills,
         title=title,
         details_base_path=details_base_path,
+        action_outcomes_recorded=action_outcome_count(),
     )
 
 
@@ -91,6 +93,7 @@ def render_batch_summary(
     only_with_spills: bool = False,
     title: str = "Finished Queries",
     details_base_path: str = "/batch/case",
+    action_outcomes_recorded: int | None = None,
 ) -> str:
     view = present_recent_scan_summary(summary)
     active_group = normalize_query_group(query_group)
@@ -125,6 +128,7 @@ def render_batch_summary(
     empty_note = render_batch_empty_note(summary)
     warning_note = render_batch_warning_note(summary)
     optimizer_funnel_note = render_optimizer_funnel_note(view.header_items)
+    action_outcomes_note = render_action_outcomes_note(action_outcomes_recorded)
     switcher = render_result_filters(view.rows, active_group, only_with_spills=only_with_spills)
     workload_groups = render_workload_groups(view.workload_groups)
     escaped_title = html.escape(title)
@@ -136,6 +140,7 @@ def render_batch_summary(
         "</div>"
         f'<div class="batch-metrics">{header}</div>'
         f"{optimizer_funnel_note}"
+        f"{action_outcomes_note}"
         f"{scan_details}"
         f"{workload_groups}"
         f"{empty_note}"
@@ -146,6 +151,15 @@ def render_batch_summary(
         f"<tbody>{rows}</tbody>"
         "</table></div>"
         "</section>"
+    )
+
+
+def render_action_outcomes_note(count: int | None) -> str:
+    if count is None:
+        return ""
+    return (
+        '<div class="batch-note"><strong>Action outcomes recorded:</strong> '
+        f'<a href="/outcomes">{html.escape(str(max(0, count)))}</a></div>'
     )
 
 

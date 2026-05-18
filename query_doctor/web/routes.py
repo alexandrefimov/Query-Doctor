@@ -17,6 +17,10 @@ from query_doctor.web.batch_case_actions import (
 )
 from query_doctor.web.batch_case_pages import render_batch_case_detail_for_request
 from query_doctor.web.batch_jobs import start_batch_job, start_running_job
+from query_doctor.web.action_outcomes import (
+    action_outcome_record_from_case,
+    append_action_outcome,
+)
 from query_doctor.web.case_detail_context import (
     batch_page_settings,
     resolve_case_detail_settings,
@@ -48,10 +52,12 @@ from query_doctor.web.trusted_artifacts import (
 )
 from query_doctor.web.ui.help import render_demo_guide_page, render_help_page
 from query_doctor.web.ui.optimizer import render_optimizer_page
+from query_doctor.web.ui.outcomes import render_action_outcomes_page
 from query_doctor.web.ui.pages import (
     render_batch_case_not_found_page,
     render_batch_case_report_page,
     render_batch_page,
+    render_page,
     render_query_page,
     render_readme_page,
 )
@@ -70,6 +76,9 @@ REPORT_DOWNLOAD_CONTENT_TYPE = "text/markdown; charset=utf-8"
 JOB_CANCEL_POST_RE = re.compile(r"/jobs/(?P<job_id>[0-9a-f]{32})/cancel")
 BATCH_CASE_POST_RE = re.compile(
     r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions)"
+)
+ACTION_OUTCOME_POST_RE = re.compile(
+    r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/outcome/(?P<recommendation_id>[A-Za-z0-9_.-]+)"
 )
 SPECIFIC_QUERY_POST_RE = re.compile(
     r"/query/details/(?P<query_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions)"
@@ -151,6 +160,16 @@ def route_get_request(
         )
     if parsed.path == "/help":
         return WebRouteResponse.html(200, render_help_page(settings))
+    if parsed.path == "/outcomes":
+        return WebRouteResponse.html(
+            200,
+            render_page(
+                settings,
+                active_nav="batch",
+                show_run_panel=False,
+                extra_sections=[render_action_outcomes_page()],
+            ),
+        )
     if parsed.path in {"/demo", "/demo-guide"}:
         return WebRouteResponse.html(200, render_demo_guide_page(settings))
     if parsed.path == "/readme":
@@ -176,6 +195,7 @@ def post_route_is_allowed(path: str) -> bool:
         parsed_path in STATIC_POST_PATHS
         or JOB_CANCEL_POST_RE.fullmatch(parsed_path) is not None
         or BATCH_CASE_POST_RE.fullmatch(parsed_path) is not None
+        or ACTION_OUTCOME_POST_RE.fullmatch(parsed_path) is not None
         or SPECIFIC_QUERY_POST_RE.fullmatch(parsed_path) is not None
     )
 
@@ -372,6 +392,9 @@ def route_post_request(
                 ),
             )
         return WebRouteResponse.redirect(f"/jobs/{job_id}")
+    outcome_action = route_action_outcome_post(parsed.path, form, settings, store)
+    if outcome_action is not None:
+        return outcome_action
     batch_action = route_batch_case_post(parsed.path, form, settings, store, runner=runner)
     if batch_action is not None:
         return batch_action
@@ -392,6 +415,47 @@ def route_post_request(
     else:
         return None
     return WebRouteResponse.redirect(body) if status == 303 else WebRouteResponse.html(status, body)
+
+
+def route_action_outcome_post(
+    path: str,
+    form: dict[str, list[str]],
+    settings: WebSettings,
+    store: WebJobStore,
+) -> WebRouteResponse | None:
+    match = ACTION_OUTCOME_POST_RE.fullmatch(path)
+    if not match:
+        return None
+    source = "running" if match.group("source") == "running" else "batch"
+    case_id = match.group("case_id")
+    if source == "running":
+        effective_settings, case = resolve_running_case_detail_settings(settings, store, case_id)
+    else:
+        effective_settings, case = resolve_case_detail_settings(settings, store, case_id)
+    if case is None:
+        return WebRouteResponse.html(
+            404, render_batch_case_not_found_page(effective_settings, case_id)
+        )
+    try:
+        record = action_outcome_record_from_case(
+            case_id=case_id,
+            case=case,
+            recommendation_id=match.group("recommendation_id"),
+            form=form,
+        )
+        append_action_outcome(record)
+    except (OSError, WebError) as exc:
+        safe_error = (
+            WebError("Action outcome could not be saved.") if isinstance(exc, OSError) else exc
+        )
+        return WebRouteResponse.html(
+            400,
+            render_batch_page(
+                batch_page_settings(effective_settings, store),
+                error=safe_error,
+            ),
+        )
+    return WebRouteResponse.redirect(f"/{source}/case/{case_id}#findings")
 
 
 def route_batch_case_post(
