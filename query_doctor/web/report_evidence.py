@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from query_doctor.web.case_files import case_relative_file_path
+from query_doctor.web.case_files import case_has_any_artifact, case_relative_file_path
 from query_doctor.web.command_builders import BATCH_REPORT_NAME
 
 
@@ -57,12 +57,12 @@ def report_evidence_inventory(case_dir: Path) -> ReportEvidenceInventory:
     categories = tuple(
         ReportEvidenceCategory(label)
         for label, names in REPORT_ARTIFACT_CANDIDATES
-        if _case_has_any_artifact(case_dir, names)
+        if case_has_any_artifact(case_dir, names)
     )
     completeness = tuple(
         ReportEvidenceCompleteness(
             label,
-            "available" if names and _case_has_any_artifact(case_dir, names) else "not collected",
+            "available" if names and case_has_any_artifact(case_dir, names) else "not collected",
         )
         for label, names in REPORT_EVIDENCE_COMPLETENESS_GROUPS
     )
@@ -71,9 +71,7 @@ def report_evidence_inventory(case_dir: Path) -> ReportEvidenceInventory:
         completeness=completeness,
         profile_evidence_state=(
             "available"
-            if _case_has_any_artifact(
-                case_dir, ("profile_digest.md", "profile.txt", "profile.json")
-            )
+            if case_has_any_artifact(case_dir, ("profile_digest.md", "profile.txt", "profile.json"))
             else "not observed"
         ),
         analyzer_facts_state=(
@@ -82,7 +80,3 @@ def report_evidence_inventory(case_dir: Path) -> ReportEvidenceInventory:
             else "not observed"
         ),
     )
-
-
-def _case_has_any_artifact(case_dir: Path, names: tuple[str, ...]) -> bool:
-    return any(case_relative_file_path(case_dir, name) is not None for name in names)

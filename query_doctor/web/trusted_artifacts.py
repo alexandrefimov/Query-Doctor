@@ -30,6 +30,11 @@ from query_doctor.web.models import WebJobSnapshot, WebSettings
 from query_doctor.web.job_progress import JobProgressView, progress_view_for_job
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 from query_doctor.safety.browser_display import redact_local_paths_for_display
+from query_doctor.web.case_files import (
+    case_has_any_artifact,
+    case_relative_file_path,
+    read_case_relative_text,
+)
 from query_doctor.web.report_evidence import (
     REPORT_ARTIFACT_CANDIDATES,
     REPORT_EVIDENCE_COMPLETENESS_GROUPS,
@@ -91,34 +96,6 @@ def trusted_report_download_filename(source_id: str) -> str:
     return f"query-doctor-report-{short_id}.md"
 
 
-def _case_has_any_artifact(case_dir: Path, names: tuple[str, ...]) -> bool:
-    return any(_case_has_relative_file(case_dir, name) for name in names)
-
-
-def _case_has_relative_file(case_dir: Path, name: str) -> bool:
-    return _case_relative_file_path(case_dir, name) is not None
-
-
-def _case_relative_file_path(case_dir: Path, name: str) -> Path | None:
-    try:
-        resolved_case_dir = case_dir.resolve(strict=True)
-        path = (resolved_case_dir / name).resolve(strict=True)
-        path.relative_to(resolved_case_dir)
-    except (OSError, ValueError):
-        return None
-    return path if path.is_file() else None
-
-
-def _read_case_relative_text(case_dir: Path, name: str) -> str | None:
-    path = _case_relative_file_path(case_dir, name)
-    if path is None:
-        return None
-    try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-
-
 def optimizer_artifact_status_for_case(case: dict[str, Any]) -> str:
     case_dir_value = case.get("case_dir")
     if not isinstance(case_dir_value, str) or not case_dir_value.strip():
@@ -165,7 +142,7 @@ def resolve_batch_case_report_dir(settings: WebSettings, case: dict[str, object]
     if case_dir is None:
         return None
     for artifact_dir in batch_case_artifact_dirs(case_dir):
-        if _case_has_relative_file(artifact_dir, "profile_digest.md"):
+        if case_relative_file_path(artifact_dir, "profile_digest.md") is not None:
             return artifact_dir
     return None
 
@@ -177,14 +154,14 @@ def optimizer_artifact_dirs(case_dir: Path) -> tuple[Path, ...]:
         OPTIMIZED_QUERY_VALIDATION_MARKER,
     )
     dirs: list[Path] = []
-    if case_dir.is_dir() and _case_has_any_artifact(case_dir, artifact_markers):
+    if case_dir.is_dir() and case_has_any_artifact(case_dir, artifact_markers):
         dirs.append(case_dir)
     try:
         children = sorted(path for path in case_dir.iterdir() if path.is_dir())
     except OSError:
         children = []
     for child in children:
-        if _case_has_any_artifact(child, artifact_markers):
+        if case_has_any_artifact(child, artifact_markers):
             dirs.append(child)
     return tuple(dirs)
 
@@ -218,17 +195,17 @@ def batch_case_artifact_dir_has_safe_facts(case_dir: Path) -> bool:
 
 
 def case_has_analyzer_facts(case_dir: Path) -> bool:
-    return _case_has_relative_file(case_dir, "analysis_facts.md")
+    return case_relative_file_path(case_dir, "analysis_facts.md") is not None
 
 
 def case_has_impala_context_artifact(case_dir: Path) -> bool:
-    return _case_has_any_artifact(
+    return case_has_any_artifact(
         case_dir, ("impala_context.json", "impala_context/impala_context.json")
     )
 
 
 def load_case_analyzer_facts_text(case_dir: Path, *, max_bytes: int | None = None) -> str | None:
-    facts_path = _case_relative_file_path(case_dir, "analysis_facts.md")
+    facts_path = case_relative_file_path(case_dir, "analysis_facts.md")
     if facts_path is None:
         return None
     try:
@@ -249,7 +226,7 @@ def load_case_impala_context_artifact(
     except OSError:
         return None
     for name in ("impala_context.json", "impala_context/impala_context.json"):
-        context_path = _case_relative_file_path(resolved_case_dir, name)
+        context_path = case_relative_file_path(resolved_case_dir, name)
         if context_path is None:
             continue
         try:
@@ -276,9 +253,9 @@ def optimizer_artifact_status_for_dir(case_dir: Path) -> str:
         if output_kind == "no_rewrite":
             return "trusted_no_rewrite"
         return "trusted_draft"
-    if _case_has_relative_file(case_dir, OPTIMIZED_QUERY_PARTIAL_NAME) or _case_has_relative_file(
-        case_dir,
-        OPTIMIZED_QUERY_NAME,
+    if (
+        case_relative_file_path(case_dir, OPTIMIZED_QUERY_PARTIAL_NAME) is not None
+        or case_relative_file_path(case_dir, OPTIMIZED_QUERY_NAME) is not None
     ):
         return "partial_untrusted"
     try:
@@ -292,7 +269,7 @@ def load_validated_batch_case_report(settings: WebSettings, case: dict[str, obje
     case_dir = resolve_batch_case_report_dir(settings, case)
     if case_dir is None or not batch_case_validated_report_exists(case_dir, case):
         return None
-    report_text = _read_case_relative_text(case_dir, BATCH_REPORT_NAME)
+    report_text = read_case_relative_text(case_dir, BATCH_REPORT_NAME)
     if report_text is None:
         return None
     hidden_paths = {str(case_dir)}
@@ -308,7 +285,7 @@ def load_validated_batch_case_report(settings: WebSettings, case: dict[str, obje
 def load_validated_specific_query_report(case_dir: Path) -> str | None:
     if not batch_case_validated_report_exists(case_dir):
         return None
-    report_text = _read_case_relative_text(case_dir, BATCH_REPORT_NAME)
+    report_text = read_case_relative_text(case_dir, BATCH_REPORT_NAME)
     if report_text is None:
         return None
     case_path = str(case_dir)
@@ -351,7 +328,7 @@ def load_validated_optimized_query(case_dir: Path) -> str | None:
     marker = read_optimized_query_marker(case_dir)
     if marker.get("output_kind") in {"recommendations_only", "no_rewrite"}:
         return None
-    return _read_case_relative_text(case_dir, OPTIMIZED_QUERY_NAME)
+    return read_case_relative_text(case_dir, OPTIMIZED_QUERY_NAME)
 
 
 def load_validated_optimizer_recommendations(case_dir: Path) -> str | None:
@@ -360,7 +337,7 @@ def load_validated_optimizer_recommendations(case_dir: Path) -> str | None:
     marker = read_optimized_query_marker(case_dir)
     if marker.get("output_kind") not in {"recommendations_only", "no_rewrite"}:
         return None
-    recommendations = _read_case_relative_text(case_dir, OPTIMIZED_QUERY_RECOMMENDATIONS_NAME)
+    recommendations = read_case_relative_text(case_dir, OPTIMIZED_QUERY_RECOMMENDATIONS_NAME)
     if recommendations is None:
         return None
     if validate_optimizer_recommendations_text(recommendations):
@@ -440,7 +417,7 @@ def case_has_safe_source_sql(case_dir: Path) -> bool:
         return True
     except (OSError, OptimizerSqlError, QueryOptimizationError):
         pass
-    metadata_path = _case_relative_file_path(case_dir, "cm_metadata.json")
+    metadata_path = case_relative_file_path(case_dir, "cm_metadata.json")
     if metadata_path is None:
         return False
     try:
@@ -480,7 +457,7 @@ def load_batch_case_report_state(
     partial = False
     if artifact_dir is not None:
         trusted = batch_case_validated_report_exists(artifact_dir, case)
-        partial = _case_has_relative_file(artifact_dir, BATCH_REPORT_PARTIAL_NAME)
+        partial = case_relative_file_path(artifact_dir, BATCH_REPORT_PARTIAL_NAME) is not None
     status = "generated" if trusted else "not_run"
     if partial and not trusted:
         status = "partial_untrusted"
@@ -534,7 +511,7 @@ def load_specific_query_report_state(
     else:
         running_job = job_store.running_query_report(query_id)
     trusted = batch_case_validated_report_exists(case_dir)
-    partial = _case_has_relative_file(case_dir, BATCH_REPORT_PARTIAL_NAME)
+    partial = case_relative_file_path(case_dir, BATCH_REPORT_PARTIAL_NAME) is not None
     status = "generated" if trusted else "not_run"
     if partial and not trusted:
         status = "partial_untrusted"
@@ -600,8 +577,8 @@ def load_optimized_query_state(
     trusted = case_dir is not None and optimized_query_validated_exists(case_dir)
     marker = read_optimized_query_marker(case_dir) if case_dir is not None and trusted else {}
     partial = case_dir is not None and (
-        _case_has_relative_file(case_dir, OPTIMIZED_QUERY_PARTIAL_NAME)
-        or (_case_has_relative_file(case_dir, OPTIMIZED_QUERY_NAME) and not trusted)
+        case_relative_file_path(case_dir, OPTIMIZED_QUERY_PARTIAL_NAME) is not None
+        or (case_relative_file_path(case_dir, OPTIMIZED_QUERY_NAME) is not None and not trusted)
     )
     source_available = case_dir is not None and case_has_safe_source_sql(case_dir)
     status = "generated" if trusted else "not_run"

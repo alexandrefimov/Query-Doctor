@@ -45,6 +45,16 @@ def test_report_evidence_reexport_through_trusted_artifacts():
     assert trusted_artifacts.ReportEvidenceInventory is report_evidence.ReportEvidenceInventory
 
 
+def test_no_private_path_helpers_remain_in_trust_modules():
+    from query_doctor.web import report_evidence
+
+    assert not hasattr(trusted_artifacts, "_case_has_any_artifact")
+    assert not hasattr(trusted_artifacts, "_case_has_relative_file")
+    assert not hasattr(trusted_artifacts, "_case_relative_file_path")
+    assert not hasattr(trusted_artifacts, "_read_case_relative_text")
+    assert not hasattr(report_evidence, "_case_has_any_artifact")
+
+
 def test_report_evidence_inventory_returns_safe_categories_without_filenames(tmp_path):
     case_dir = tmp_path / "case"
     case_dir.mkdir()

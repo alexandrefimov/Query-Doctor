@@ -5,8 +5,10 @@ import json
 import pytest
 
 from query_doctor.web.case_files import (
+    case_has_any_artifact,
     ensure_complete_existing_case,
     read_case_metadata,
+    read_case_relative_text,
     read_profile_summary_fields,
     replace_case_dir_after_success,
 )
@@ -34,6 +36,26 @@ def test_case_summary_readers_ignore_symlinked_inputs_outside_case_dir(tmp_path)
 
     assert read_case_metadata(case_dir) == {}
     assert read_profile_summary_fields(case_dir) == {}
+
+
+def test_case_has_any_artifact_matches_relative_file_predicate(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "a.md").write_text("a", encoding="utf-8")
+
+    assert case_has_any_artifact(case_dir, ("a.md",))
+    assert case_has_any_artifact(case_dir, ("missing.md", "a.md"))
+    assert not case_has_any_artifact(case_dir, ("missing.md",))
+
+
+def test_read_case_relative_text_rejects_symlinks_outside_case_dir(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text("outside\n", encoding="utf-8")
+    (case_dir / "alias.md").symlink_to(outside)
+
+    assert read_case_relative_text(case_dir, "alias.md") is None
 
 
 def test_complete_existing_case_rejects_symlinked_required_files_outside_case_dir(tmp_path):

@@ -183,6 +183,20 @@ def case_relative_file_path(case_dir: Path, name: str) -> Path | None:
     return path if path.is_file() else None
 
 
+def case_has_any_artifact(case_dir: Path, names: tuple[str, ...]) -> bool:
+    return any(case_relative_file_path(case_dir, name) is not None for name in names)
+
+
+def read_case_relative_text(case_dir: Path, name: str) -> str | None:
+    path = case_relative_file_path(case_dir, name)
+    if path is None:
+        return None
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
 def parse_output_case_dir(stdout: str) -> Path:
     match = OUTPUT_CASE_RE.search(stdout)
     if not match:
