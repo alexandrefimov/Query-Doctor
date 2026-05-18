@@ -111,7 +111,12 @@ query-doctor-web --batch-summary /tmp/query-doctor-demo-pack/batch_summary.json
 pack локальный и не содержит real SQL, profiles, metadata, hostnames, users или
 credentials.
 
-![Synthetic Query Doctor web demo](docs/assets/query-doctor-synthetic-demo.png)
+Локальный web UI начинается с bounded search form и показывает synthetic
+Finished Queries results для review:
+
+![Synthetic Query Doctor demo search form](docs/assets/demo_search.png)
+
+![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
 Видео: [45-second synthetic demo](https://youtu.be/rtBmnmS-Y10).
 

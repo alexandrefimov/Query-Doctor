@@ -36,22 +36,28 @@ evidence.
 
 ## README Screenshot Refresh
 
-The README screenshot at `docs/assets/query-doctor-synthetic-demo.png` should
-be refreshed after material web UI or workflow layout changes. Use only the
-synthetic demo pack, and keep generated demo output outside the repository:
+The README screenshots at `docs/assets/demo_search.png` and
+`docs/assets/demo_finished_queries.png` should be refreshed after material web
+UI or workflow layout changes. Use only the synthetic demo pack, and keep
+generated demo output outside the repository:
 
 ```bash
 query-doctor-demo --out /tmp/query-doctor-demo-pack --overwrite
 query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary /tmp/query-doctor-demo-pack/batch_summary.json
 ```
 
-Open the printed localhost URL, preferably the Optimization candidates view:
+Open the printed localhost URL and capture:
+
+- the main bounded search form for `docs/assets/demo_search.png`;
+- the Finished Queries results view for `docs/assets/demo_finished_queries.png`.
+
+For the results view, the Optimization candidates filter is a useful default:
 
 ```text
 http://127.0.0.1:8766/?query_group=optimization#recent-results
 ```
 
-Capture the browser viewport and replace only
-`docs/assets/query-doctor-synthetic-demo.png`. Do not commit the generated demo
-pack, local config, local browser output, raw profiles, raw SQL, local paths, or
-screenshots from real Cloudera Manager or Impala data.
+Capture browser viewports and replace only the public synthetic screenshots.
+Do not commit the generated demo pack, local config, local browser output, raw
+profiles, raw SQL, local paths, or screenshots from real Cloudera Manager or
+Impala data.

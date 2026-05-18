@@ -70,6 +70,16 @@ def run_git(args: list[str], *, repo_dir: Path) -> subprocess.CompletedProcess[s
     )
 
 
+def run_git_bytes(args: list[str], *, repo_dir: Path) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
 def staged_paths(repo_dir: Path) -> list[str]:
     result = run_git(
         ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"],
@@ -97,10 +107,13 @@ def blocked_path_reason(path: str) -> str | None:
 
 
 def staged_file_text(repo_dir: Path, path: str) -> str | None:
-    result = run_git(["show", f":{path}"], repo_dir=repo_dir)
+    result = run_git_bytes(["show", f":{path}"], repo_dir=repo_dir)
     if result.returncode != 0:
         return None
-    return result.stdout
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def scan_staged_text(text: str, *, path: str) -> list[StagedFinding]:
