@@ -6,6 +6,8 @@ import html
 from typing import Any
 
 from query_doctor.web.presenters.recent_scan import RecentScanCaseRowView, numeric_value
+from query_doctor.web.presenters.recent_scan_models import RecentScanWorkloadGroupsView
+from query_doctor.web.ui.html_helpers import escape_value
 from query_doctor.web.trusted_artifacts import OPTIMIZER_STATUS_ORDER
 
 
@@ -205,4 +207,35 @@ def render_spill_filter_toggle(active_group: str, *, only_with_spills: bool = Fa
         f'aria-label="Only queries with spills" aria-pressed="{str(only_with_spills).lower()}">'
         f'<span class="batch-spill-check" aria-hidden="true">{"✓" if only_with_spills else ""}</span>'
         "<span>Only queries with spills</span></a>"
+    )
+
+
+def render_workload_groups(view: RecentScanWorkloadGroupsView) -> str:
+    if not view.groups:
+        return ""
+    rows = "\n".join(
+        "<tr>"
+        f"<td>{escape_value(group.fingerprint_short)}</td>"
+        f"<td>{escape_value(group.member_count)}</td>"
+        f"<td>{escape_value(group.duration_sec_p95)}</td>"
+        f"<td>{escape_value(group.duration_sec_total)}</td>"
+        f"<td>{escape_value(group.pool_top)}</td>"
+        f"<td>{escape_value(group.primary_bottleneck_top)}</td>"
+        f"<td>{escape_value(group.score_top)}</td>"
+        f"<td>{escape_value(group.shape_summary)}<span>{escape_value(group.table_summary)}</span></td>"
+        f"<td>{escape_value(', '.join(group.member_case_ids))}</td>"
+        "</tr>"
+        for group in view.groups
+    )
+    return (
+        '<details class="batch-note workload-groups">'
+        f"<summary>Workload groups ({len(view.groups)})</summary>"
+        '<div class="batch-table-wrap"><table class="batch-table workload-group-table">'
+        "<thead><tr>"
+        "<th>Group</th><th>Cases</th><th>p95 duration</th><th>Total duration</th>"
+        "<th>Pool</th><th>Primary</th><th>Severity</th><th>Shape</th><th>Members</th>"
+        "</tr></thead>"
+        f"<tbody>{rows}</tbody>"
+        "</table></div>"
+        "</details>"
     )

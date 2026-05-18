@@ -18,6 +18,7 @@ from query_doctor.recent.query_optimization_score import optimizer_adjacent_acti
 from query_doctor.recent.query_optimization_score import optimizer_no_draft_actionability
 from query_doctor.recent.query_optimization_score import query_optimization_sort_key
 from query_doctor.recent.stats_optimization_score import stats_optimization_sort_key
+from query_doctor.recent.workload_fingerprint import WorkloadFingerprint
 from query_doctor.recent.workload_fingerprint import compute_workload_fingerprint
 
 PRIMARY_BOTTLENECK_LABELS = {
@@ -163,6 +164,7 @@ def build_summary(
     primary_unknown_breakdown = case_primary_unknown_breakdown(cases)
     rewriteability_distribution = optimizer_rewriteability_distribution(cases)
     optimizer_funnel_summary = optimizer_funnel(cases, rewriteability_distribution)
+    ranked_case_summaries, workload_groups = case_summaries_with_workload_groups(cases)
     return {
         "mode": "recent-query-batch",
         "out": str(config.out),
@@ -223,7 +225,8 @@ def build_summary(
         "cluster_context": cluster_context,
         "warnings": [cm_profiles.sanitize_text_for_log(warning) for warning in warnings],
         "discovery_failed": bool(discovery_failed),
-        "cases": [case_to_summary(case) for case in sorted(cases, key=batch_ranking_key)],
+        "workload_groups": workload_groups,
+        "cases": ranked_case_summaries,
     }
 
 
@@ -779,13 +782,35 @@ def ratio(numerator: int, denominator: int) -> float:
     return round(numerator / denominator, 4)
 
 
+def case_summaries_with_workload_groups(
+    cases: list[CaseResult],
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    records: list[tuple[dict[str, object], WorkloadFingerprint]] = []
+    for case in sorted(cases, key=batch_ranking_key):
+        summary = _case_to_summary_base(case)
+        workload = compute_workload_fingerprint(summary, load_case_analysis(case))
+        attach_workload_fingerprint_fields(summary, workload)
+        records.append((summary, workload))
+    workload_groups = build_workload_groups(records)
+    return [summary for summary, _workload in records], workload_groups
+
+
 def case_to_summary(case: CaseResult) -> dict[str, object]:
+    summary = _case_to_summary_base(case)
+    attach_workload_fingerprint_fields(
+        summary,
+        compute_workload_fingerprint(summary, load_case_analysis(case)),
+    )
+    return summary
+
+
+def _case_to_summary_base(case: CaseResult) -> dict[str, object]:
     stage_seconds = [
         value
         for value in (case.cm_collect_seconds, case.analysis_seconds, case.report_seconds)
         if value is not None
     ]
-    summary = {
+    return {
         "case_index": case.index,
         "candidate_rank": case.candidate_rank,
         "triage_rank": case.triage_rank,
@@ -835,11 +860,131 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "report_seconds": case.report_seconds,
         "total_seconds": round(sum(stage_seconds), 3) if stage_seconds else None,
     }
-    summary["workload_fingerprint"] = compute_workload_fingerprint(
-        summary,
-        load_case_analysis(case),
-    ).fingerprint
-    return summary
+
+
+def attach_workload_fingerprint_fields(
+    summary: dict[str, object],
+    workload: WorkloadFingerprint,
+) -> None:
+    summary["workload_fingerprint"] = workload.fingerprint
+    summary["group_fingerprint"] = workload.fingerprint
+    summary["workload_fingerprint_incomplete"] = bool(workload.shape.get("incomplete"))
+
+
+def build_workload_groups(
+    records: list[tuple[dict[str, object], WorkloadFingerprint]],
+) -> dict[str, object]:
+    grouped: dict[str, list[tuple[dict[str, object], WorkloadFingerprint]]] = {}
+    for summary, workload in records:
+        if workload.shape.get("incomplete"):
+            continue
+        grouped.setdefault(workload.fingerprint, []).append((summary, workload))
+
+    visible_groups: list[dict[str, object]] = []
+    for fingerprint, members in sorted(grouped.items()):
+        aggregates = workload_group_aggregates([summary for summary, _workload in members])
+        member_count = int(aggregates["count"])
+        for summary, _workload in members:
+            summary["workload_group_member_count"] = member_count
+            summary["workload_group_duration_sec_p95"] = aggregates.get("duration_sec_p95")
+        if member_count < 2:
+            continue
+        visible_groups.append(
+            {
+                "fingerprint": fingerprint,
+                "shape": workload_group_shape(members[0][1]),
+                "aggregates": aggregates,
+                "member_count": member_count,
+                "member_case_ids": [
+                    case_id
+                    for summary, _workload in members
+                    if (case_id := local_case_id(summary)) is not None
+                ],
+            }
+        )
+
+    visible_groups.sort(key=workload_group_sort_key)
+    return {"schema_version": 1, "groups": visible_groups}
+
+
+def workload_group_shape(workload: WorkloadFingerprint) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in workload.shape.items()
+        if key not in {"incomplete", "incomplete_fields"}
+    }
+
+
+def workload_group_aggregates(summaries: list[dict[str, object]]) -> dict[str, object]:
+    durations = sorted(
+        value
+        for summary in summaries
+        if (value := numeric_float(summary.get("duration_sec"))) is not None
+    )
+    aggregates: dict[str, object] = {
+        "count": len(summaries),
+        "member_count": len(summaries),
+        "duration_sec_total": round(sum(durations), 3) if durations else None,
+        "duration_sec_p50": percentile_value(durations, 0.50),
+        "duration_sec_p95": percentile_value(durations, 0.95),
+        "pool_top": modal_label(summary.get("pool") for summary in summaries),
+        "primary_bottleneck_top": modal_label(
+            primary_bottleneck_label(summary) for summary in summaries
+        ),
+        "score_top": modal_label(summary.get("score_severity") for summary in summaries),
+    }
+    return {key: value for key, value in aggregates.items() if value is not None}
+
+
+def workload_group_sort_key(group: dict[str, object]) -> tuple[object, ...]:
+    aggregates = group.get("aggregates") if isinstance(group.get("aggregates"), dict) else {}
+    duration_total = numeric_float(aggregates.get("duration_sec_total")) or 0.0
+    member_count = numeric_int(group.get("member_count")) or 0
+    return (-duration_total, -member_count, str(group.get("fingerprint") or ""))
+
+
+def percentile_value(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    index = max(0, min(len(values) - 1, int((len(values) * percentile) + 0.999999) - 1))
+    return round(values[index], 3)
+
+
+def modal_label(values: object) -> str | None:
+    counter: Counter[str] = Counter()
+    for value in values:
+        text = str(value or "").strip().lower()
+        if text:
+            counter[cm_profiles.sanitize_text_for_log(text)] += 1
+    if not counter:
+        return None
+    return sorted(counter.items(), key=lambda item: (-item[1], item[0]))[0][0]
+
+
+def primary_bottleneck_label(summary: dict[str, object]) -> object:
+    primary = summary.get("case_primary_bottleneck")
+    return primary.get("label") if isinstance(primary, dict) else None
+
+
+def local_case_id(summary: dict[str, object]) -> str | None:
+    index = numeric_int(summary.get("case_index"))
+    if index is None or index <= 0:
+        return None
+    return f"case-{index:03d}"
+
+
+def numeric_int(value: object) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def numeric_float(value: object) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def case_score_severity(case: CaseResult) -> str:

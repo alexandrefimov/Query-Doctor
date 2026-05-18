@@ -31,6 +31,7 @@ from query_doctor.web.ui.recent_scan_groups import (
     normalize_query_group,
     render_result_filters,
     sort_rows_for_query_group,
+    render_workload_groups,
 )
 from query_doctor.web.ui.recent_scan_progress import (
     batch_progress_percent,
@@ -125,6 +126,7 @@ def render_batch_summary(
     warning_note = render_batch_warning_note(summary)
     optimizer_funnel_note = render_optimizer_funnel_note(view.header_items)
     switcher = render_result_filters(view.rows, active_group, only_with_spills=only_with_spills)
+    workload_groups = render_workload_groups(view.workload_groups)
     escaped_title = html.escape(title)
     aria_label = html.escape(title.lower())
     return (
@@ -135,6 +137,7 @@ def render_batch_summary(
         f'<div class="batch-metrics">{header}</div>'
         f"{optimizer_funnel_note}"
         f"{scan_details}"
+        f"{workload_groups}"
         f"{empty_note}"
         f"{warning_note}"
         f"{switcher}"
@@ -247,7 +250,7 @@ def render_batch_case_row(
     if normalized == "optimization":
         cells = [
             compact_cell(rank),
-            query_id_cell(view.query_id),
+            query_id_cell(view),
             user_cell(view.user),
             compact_cell(view.duration_sec),
             candidate_cell(view.optimization_tier),
@@ -263,7 +266,7 @@ def render_batch_case_row(
     elif normalized == "stats":
         cells = [
             compact_cell(rank),
-            query_id_cell(view.query_id),
+            query_id_cell(view),
             user_cell(view.user),
             compact_cell(view.duration_sec),
             candidate_cell(view.stats_tier),
@@ -275,7 +278,7 @@ def render_batch_case_row(
     else:
         cells = [
             compact_cell(rank),
-            query_id_cell(view.query_id),
+            query_id_cell(view),
             user_cell(view.user),
             score_cell(view),
             compact_cell(view.duration_sec),
@@ -292,9 +295,28 @@ def row_has_failure(view: RecentScanCaseRowView) -> bool:
     )
 
 
-def query_id_cell(query_id: Any) -> str:
+def query_id_cell(view: Any) -> str:
+    if isinstance(view, RecentScanCaseRowView):
+        query_id = view.query_id
+        badge = workload_badge(view)
+    else:
+        query_id = view
+        badge = ""
     escaped = escape_value(query_id)
-    return f'<td class="batch-cell--query-id">{escaped}</td>'
+    return f'<td class="batch-cell--query-id">{escaped}{badge}</td>'
+
+
+def workload_badge(view: RecentScanCaseRowView) -> str:
+    if not view.workload_fingerprint_short:
+        return ""
+    title_parts = ["Workload group fingerprint"]
+    if view.workload_group_member_count > 1:
+        title_parts.append(f"{view.workload_group_member_count} similar queries in this scan")
+    title = "; ".join(title_parts)
+    return (
+        ' <span class="batch-mini-badge batch-status--neutral" '
+        f'title="{escape_value(title)}">{escape_value(view.workload_fingerprint_short)}</span>'
+    )
 
 
 def user_cell(user: Any) -> str:

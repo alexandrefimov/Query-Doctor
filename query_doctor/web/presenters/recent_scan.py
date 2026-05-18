@@ -30,6 +30,8 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanStatusSummaryView,
     RecentScanSummaryView,
     RecentScanTechnicalDetailsView,
+    RecentScanWorkloadGroupView,
+    RecentScanWorkloadGroupsView,
     ReportActionView,
 )
 from query_doctor.web.job_progress import JobProgressView
@@ -133,6 +135,7 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
     return RecentScanSummaryView(
         header_items=header_items,
         rows=rows,
+        workload_groups=present_workload_groups(summary),
         scope_parts=recent_scan_scope_parts(summary),
         empty_message=recent_scan_empty_message(summary, case_count=len(rows)),
         warning_messages=recent_scan_warning_messages(summary),
@@ -160,6 +163,105 @@ def optimizer_funnel_header_counts(rows: tuple[RecentScanCaseRowView, ...]) -> t
         if row.optimizer_rewriteability_bucket in {"not_rewriteable", "human_review_only"}
     )
     return draft_ready, recipe_backlog, review_only
+
+
+WORKLOAD_FINGERPRINT_RE = re.compile(r"^wf_[0-9a-f]{24}$")
+WORKLOAD_TABLE_RE = re.compile(r"^[a-z_][a-z0-9_$]*(?:\.[a-z_][a-z0-9_$]*){0,2}$")
+
+
+def present_workload_groups(summary: dict[str, Any]) -> RecentScanWorkloadGroupsView:
+    payload = summary.get("workload_groups")
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        return RecentScanWorkloadGroupsView(groups=())
+    raw_groups = payload.get("groups")
+    if not isinstance(raw_groups, list):
+        return RecentScanWorkloadGroupsView(groups=())
+    groups = []
+    for raw_group in raw_groups:
+        if not isinstance(raw_group, dict):
+            continue
+        fingerprint = safe_workload_fingerprint(raw_group.get("fingerprint"))
+        if not fingerprint:
+            continue
+        aggregates = raw_group.get("aggregates")
+        if not isinstance(aggregates, dict):
+            aggregates = {}
+        shape = raw_group.get("shape")
+        if not isinstance(shape, dict):
+            shape = {}
+        member_case_ids = tuple(
+            case_id
+            for item in raw_group.get("member_case_ids") or ()
+            if (case_id := safe_case_id(item))
+        )
+        groups.append(
+            RecentScanWorkloadGroupView(
+                fingerprint=fingerprint,
+                fingerprint_short=short_workload_fingerprint(fingerprint),
+                member_count=numeric_count(raw_group.get("member_count"))
+                or numeric_count(aggregates.get("member_count"))
+                or numeric_count(aggregates.get("count")),
+                duration_sec_p50=safe_display_value(aggregates.get("duration_sec_p50")),
+                duration_sec_p95=safe_display_value(aggregates.get("duration_sec_p95")),
+                duration_sec_total=safe_display_value(aggregates.get("duration_sec_total")),
+                pool_top=safe_display_text(aggregates.get("pool_top") or "unknown"),
+                primary_bottleneck_top=safe_display_text(
+                    aggregates.get("primary_bottleneck_top") or "unknown"
+                ),
+                score_top=safe_display_text(aggregates.get("score_top") or "unknown"),
+                shape_summary=workload_shape_summary(shape),
+                table_summary=workload_table_summary(shape.get("referenced_tables")),
+                member_case_ids=member_case_ids,
+            )
+        )
+    return RecentScanWorkloadGroupsView(groups=tuple(groups))
+
+
+def safe_workload_fingerprint(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if WORKLOAD_FINGERPRINT_RE.fullmatch(text) else ""
+
+
+def short_workload_fingerprint(value: Any) -> str:
+    fingerprint = safe_workload_fingerprint(value)
+    return f"{fingerprint[:11]}" if fingerprint else ""
+
+
+def safe_case_id(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if re.fullmatch(r"case-[0-9]{3}", text) else ""
+
+
+def workload_shape_summary(shape: dict[str, Any]) -> str:
+    parts = [
+        safe_display_text(shape.get("sql_verb") or "unknown"),
+        safe_display_text(shape.get("query_type") or "unknown"),
+        f"joins {numeric_count(shape.get('join_count'))}",
+        f"CTEs {numeric_count(shape.get('cte_count'))}",
+        f"set ops {numeric_count(shape.get('set_operation_count'))}",
+        f"scans {numeric_count(shape.get('scan_count'))}",
+        f"exchanges {numeric_count(shape.get('exchange_count'))}",
+    ]
+    if safe_truthy(shape.get("aggregate_present")):
+        parts.append("aggregate")
+    if safe_truthy(shape.get("window_present")):
+        parts.append("window")
+    return " · ".join(part for part in parts if part)
+
+
+def workload_table_summary(value: Any, *, limit: int = 5) -> str:
+    if not isinstance(value, list):
+        return "tables unknown"
+    tables = [
+        safe_display_text(table)
+        for item in value
+        if (table := str(item or "").strip().lower()) and WORKLOAD_TABLE_RE.fullmatch(table)
+    ]
+    if not tables:
+        return "tables unknown"
+    visible = tables[:limit]
+    suffix = f" +{len(tables) - limit} more" if len(tables) > limit else ""
+    return ", ".join(visible) + suffix
 
 
 def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanCaseRowView:
@@ -224,6 +326,18 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         stats_review_areas=stats_candidate["review_areas"],
         stats_required_confirmation=stats_candidate["required_confirmation"],
         primary_bottleneck=primary_bottleneck,
+        workload_fingerprint=safe_workload_fingerprint(
+            case.get("group_fingerprint") or case.get("workload_fingerprint")
+        ),
+        workload_fingerprint_short=short_workload_fingerprint(
+            case.get("group_fingerprint") or case.get("workload_fingerprint")
+        )
+        if not safe_truthy(case.get("workload_fingerprint_incomplete"))
+        else "",
+        workload_group_member_count=numeric_count(case.get("workload_group_member_count")),
+        workload_group_duration_sec_p95=safe_display_value(
+            case.get("workload_group_duration_sec_p95")
+        ),
         score_value=numeric_value(case.get("score")),
         score_severity=case_score_severity(case),
         has_failure=case_has_failure(case),
@@ -326,6 +440,18 @@ def present_recent_scan_case_detail(
         evidence_quality=present_recent_scan_evidence_quality(evidence_quality_facts),
         stats_quality=present_recent_scan_stats_quality(stats_quality_facts),
         primary_bottleneck=primary_bottleneck,
+        workload_fingerprint=safe_workload_fingerprint(
+            case.get("group_fingerprint") or case.get("workload_fingerprint")
+        ),
+        workload_fingerprint_short=short_workload_fingerprint(
+            case.get("group_fingerprint") or case.get("workload_fingerprint")
+        )
+        if not safe_truthy(case.get("workload_fingerprint_incomplete"))
+        else "",
+        workload_group_member_count=numeric_count(case.get("workload_group_member_count")),
+        workload_group_duration_sec_p95=safe_display_value(
+            case.get("workload_group_duration_sec_p95")
+        ),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )

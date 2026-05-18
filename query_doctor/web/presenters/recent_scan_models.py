@@ -61,6 +61,10 @@ class RecentScanCaseRowView:
     stats_review_areas: str
     stats_required_confirmation: str
     primary_bottleneck: RecentScanPrimaryBottleneckView
+    workload_fingerprint: str
+    workload_fingerprint_short: str
+    workload_group_member_count: int
+    workload_group_duration_sec_p95: Any
     score_value: float
     score_severity: str
     has_failure: bool
@@ -68,9 +72,31 @@ class RecentScanCaseRowView:
 
 
 @dataclass(frozen=True)
+class RecentScanWorkloadGroupView:
+    fingerprint: str
+    fingerprint_short: str
+    member_count: int
+    duration_sec_p50: Any
+    duration_sec_p95: Any
+    duration_sec_total: Any
+    pool_top: str
+    primary_bottleneck_top: str
+    score_top: str
+    shape_summary: str
+    table_summary: str
+    member_case_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RecentScanWorkloadGroupsView:
+    groups: tuple[RecentScanWorkloadGroupView, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanSummaryView:
     header_items: tuple[tuple[str, Any], ...]
     rows: tuple[RecentScanCaseRowView, ...]
+    workload_groups: RecentScanWorkloadGroupsView
     scope_parts: tuple[str, ...]
     empty_message: str | None
     warning_messages: tuple[str, ...]
@@ -301,5 +327,9 @@ class RecentScanCaseDetailView:
     evidence_quality: RecentScanEvidenceQualityView
     stats_quality: RecentScanStatsQualityView
     primary_bottleneck: RecentScanPrimaryBottleneckView
+    workload_fingerprint: str
+    workload_fingerprint_short: str
+    workload_group_member_count: int
+    workload_group_duration_sec_p95: Any
     report_action: ReportActionView
     score_severity: str
