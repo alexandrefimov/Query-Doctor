@@ -25,7 +25,6 @@ from query_doctor.web.ui.markdown import (
     render_report_markdown_html,
 )
 from query_doctor.web.ui.pages import (
-    render_batch_case_detail_page,
     render_batch_case_not_found_page,
     render_batch_case_report_page,
     render_batch_page,
@@ -38,7 +37,7 @@ from query_doctor.web.ui.recent_scan_results import (
 )
 from query_doctor.web.ui.report import render_result
 from query_doctor.web.ui.specific_query import (
-    render_specific_query_detail,
+    render_specific_query_detail_view,
     render_specific_query_result,
     render_specific_query_results,
 )

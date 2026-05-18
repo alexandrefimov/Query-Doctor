@@ -73,7 +73,7 @@ def test_package_page_renderers_are_available():
     assert callable(pages.render_page)
     assert callable(pages.render_query_page)
     assert callable(pages.render_batch_page)
-    assert callable(pages.render_batch_case_detail_page)
+    assert callable(pages.render_batch_case_detail_view_page)
     assert callable(pages.render_error_panel)
 
 

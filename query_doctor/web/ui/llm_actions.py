@@ -8,9 +8,7 @@ from typing import Any
 
 from query_doctor.web.job_progress import (
     JobProgressView,
-    LLM_ACTIONS_PROGRESS_STEPS,
-    OPTIMIZED_QUERY_PROGRESS_STEPS,
-    build_indexed_progress_view,
+    default_progress_view_for_job_kind,
 )
 from query_doctor.web.presenters.recent_scan import (
     ReportActionView,
@@ -27,6 +25,7 @@ from query_doctor.web.ui.report_actions import (
 )
 
 LLM_ACTIONS_JOB_KINDS = {"batch_llm_actions", "query_llm_actions"}
+OPTIMIZED_QUERY_JOB_KINDS = {"batch_optimized_query", "query_optimized_query"}
 
 OPTIMIZER_OUTPUT_LABELS = {
     "sql_draft": "Validated SQL draft",
@@ -272,10 +271,8 @@ def render_llm_actions_job_progress(
     optimizer_view: OptimizedQueryActionView,
 ) -> str:
     progress_view = report_view.progress_view or optimizer_view.progress_view
-    if progress_view is None:
-        progress_view = build_indexed_progress_view(
-            LLM_ACTIONS_PROGRESS_STEPS, "Checking selected case", 0
-        )
+    progress_kind = llm_actions_progress_kind(report_view.job_kind, optimizer_view.job_kind)
+    progress_view = progress_view or default_progress_view_for_job_kind(progress_kind)
     current_stage = progress_view.current_stage
     escaped_job_id = html.escape(report_view.job_id, quote=True)
     status_attrs = (
@@ -298,6 +295,14 @@ def render_llm_actions_job_progress(
         f'<div class="batch-progress"><div class="batch-progress-steps">{step_html}</div></div>'
         "</div>"
     )
+
+
+def llm_actions_progress_kind(report_job_kind: str, optimizer_job_kind: str) -> str:
+    if report_job_kind in LLM_ACTIONS_JOB_KINDS:
+        return report_job_kind
+    if optimizer_job_kind in LLM_ACTIONS_JOB_KINDS:
+        return optimizer_job_kind
+    return "batch_llm_actions"
 
 
 def render_llm_actions_job_stopped(
@@ -612,10 +617,8 @@ def render_optimized_query_action(
 
 def render_optimized_query_progress(view: OptimizedQueryActionView) -> str:
     progress_view = view.progress_view
-    if progress_view is None:
-        progress_view = build_indexed_progress_view(
-            OPTIMIZED_QUERY_PROGRESS_STEPS, "Checking source SQL", 0
-        )
+    progress_kind = optimized_query_progress_kind(view.job_kind)
+    progress_view = progress_view or default_progress_view_for_job_kind(progress_kind)
     current_stage = progress_view.current_stage
     status_attrs = ""
     job_id = view.job_id
@@ -643,6 +646,10 @@ def render_optimized_query_progress(view: OptimizedQueryActionView) -> str:
         f'<div class="batch-progress"><div class="batch-progress-steps">{step_html}</div></div>'
         "</div>"
     )
+
+
+def optimized_query_progress_kind(job_kind: str) -> str:
+    return job_kind if job_kind in OPTIMIZED_QUERY_JOB_KINDS else "batch_optimized_query"
 
 
 def render_optimized_query_outcome(view: OptimizedQueryActionView) -> str:

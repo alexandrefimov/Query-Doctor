@@ -20,6 +20,7 @@ def render_batch_case_detail_for_request(
     detail_base_path: str = "/batch/case",
     active_nav: str = "batch",
     optimizer_validation_result: dict[str, object] | None = None,
+    report_state_override: dict[str, object] | None = None,
 ) -> str:
     render_context = build_batch_case_detail_render_context(
         settings,
@@ -32,6 +33,7 @@ def render_batch_case_detail_for_request(
         detail_base_path=detail_base_path,
         active_nav=active_nav,
         optimizer_validation_result=optimizer_validation_result,
+        report_state_override=report_state_override,
     )
     return render_batch_case_detail_view_page(
         settings,

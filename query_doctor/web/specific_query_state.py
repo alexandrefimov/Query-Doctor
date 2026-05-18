@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from query_doctor.web.case_files import build_query_id_summary_case
 from query_doctor.web.details_facts import (
     load_specific_query_cluster_runtime_context_facts,
     load_specific_query_cm_metrics_facts,
@@ -19,9 +21,24 @@ from query_doctor.web.optimizer_validation import (
     optimizer_manual_guidance,
     optimizer_manual_rewrite_allowed,
 )
+from query_doctor.web.presenters.recent_scan import (
+    RecentScanCaseDetailView,
+    present_recent_scan_case_detail,
+)
 from query_doctor.web.trusted_artifacts import (
     load_specific_query_trusted_detail_artifacts,
 )
+
+
+@dataclass(frozen=True)
+class SpecificQueryDetailRenderContext:
+    view: RecentScanCaseDetailView
+    optimized_query_state: dict[str, Any]
+    trusted_report_text: str | None
+    trusted_optimized_query: str | None
+    trusted_optimizer_recommendations: str | None
+    optimizer_manual_guidance: str | None
+    optimizer_validation_result: dict[str, object] | None
 
 
 def build_specific_query_detail_render_context(
@@ -31,8 +48,12 @@ def build_specific_query_detail_render_context(
     job_store: WebJobStore,
     *,
     job: WebJobSnapshot | None = None,
+    case: dict[str, object] | None = None,
     optimizer_validation_result: dict[str, object] | None = None,
-) -> dict[str, Any]:
+    report_state_override: dict[str, object] | None = None,
+    optimized_query_state_override: dict[str, object] | None = None,
+) -> SpecificQueryDetailRenderContext:
+    case = case if case is not None else build_query_id_summary_case(query_id, case_dir)
     metadata_facts = load_specific_query_metadata_facts(case_dir)
     evidence_quality_facts = load_specific_query_evidence_quality_facts(case_dir)
     stats_quality_facts = load_specific_query_stats_quality_facts(case_dir)
@@ -42,8 +63,25 @@ def build_specific_query_detail_render_context(
     artifacts = load_specific_query_trusted_detail_artifacts(
         settings, query_id, case_dir, job_store, job=job
     )
-    report_state = artifacts.report_state
-    optimized_query_state = artifacts.optimized_query_state
+    report_state = (
+        dict(report_state_override) if report_state_override is not None else artifacts.report_state
+    )
+    optimized_query_state = (
+        dict(optimized_query_state_override)
+        if optimized_query_state_override is not None
+        else artifacts.optimized_query_state
+    )
+    view = present_recent_scan_case_detail(
+        "specific-query",
+        case,
+        metadata_facts,
+        cm_metrics_facts,
+        runtime_diagnosis_facts,
+        cluster_runtime_context_facts,
+        evidence_quality_facts,
+        stats_quality_facts,
+        report_state=report_state,
+    )
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")
     optimizer_guidance = (
         None
@@ -52,18 +90,18 @@ def build_specific_query_detail_render_context(
         or not optimizer_manual_rewrite_allowed(optimized_query_state)
         else optimizer_manual_guidance(case_dir, reason=manual_guidance_reason)
     )
-    return {
-        "metadata_facts": metadata_facts,
-        "evidence_quality_facts": evidence_quality_facts,
-        "stats_quality_facts": stats_quality_facts,
-        "cm_metrics_facts": cm_metrics_facts,
-        "runtime_diagnosis_facts": runtime_diagnosis_facts,
-        "cluster_runtime_context_facts": cluster_runtime_context_facts,
-        "report_state": report_state,
-        "optimized_query_state": optimized_query_state,
-        "trusted_report_text": artifacts.trusted_report_text,
-        "trusted_optimized_query": artifacts.trusted_optimized_query,
-        "trusted_optimizer_recommendations": artifacts.trusted_optimizer_recommendations,
-        "optimizer_manual_guidance": optimizer_guidance,
-        "optimizer_validation_result": optimizer_validation_result,
-    }
+    return SpecificQueryDetailRenderContext(
+        view=view,
+        optimized_query_state=optimized_query_state,
+        trusted_report_text=artifacts.trusted_report_text if report_state.get("trusted") else None,
+        trusted_optimized_query=(
+            artifacts.trusted_optimized_query if optimized_query_state.get("trusted") else None
+        ),
+        trusted_optimizer_recommendations=(
+            artifacts.trusted_optimizer_recommendations
+            if optimized_query_state.get("trusted")
+            else None
+        ),
+        optimizer_manual_guidance=optimizer_guidance,
+        optimizer_validation_result=optimizer_validation_result,
+    )

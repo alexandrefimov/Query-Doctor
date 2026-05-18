@@ -20,7 +20,7 @@ from query_doctor.web.ui.recent_scan_details import (
     render_case_status_summary,
 )
 from query_doctor.web.presenters.recent_scan import (
-    present_recent_scan_case_detail,
+    RecentScanCaseDetailView,
     present_recent_scan_case_row,
 )
 from query_doctor.web.ui.recent_scan_results import (
@@ -80,16 +80,10 @@ def specific_query_details_href(query_id: Any) -> str:
     return f"/query/details/{quote(query_id.strip(), safe='')}"
 
 
-def render_specific_query_detail(
+def render_specific_query_detail_view(
     query_id: str,
-    case: dict[str, Any],
-    metadata_facts: dict[str, Any] | None = None,
-    cm_metrics_facts: dict[str, Any] | None = None,
-    runtime_diagnosis_facts: dict[str, Any] | None = None,
-    cluster_runtime_context_facts: dict[str, Any] | None = None,
-    evidence_quality_facts: dict[str, Any] | None = None,
-    stats_quality_facts: dict[str, Any] | None = None,
-    report_state: dict[str, Any] | None = None,
+    view: RecentScanCaseDetailView,
+    *,
     optimized_query_state: dict[str, Any] | OptimizedQueryActionView | None = None,
     trusted_report_html: SafeHtml | str | None = None,
     trusted_report_text: str | None = None,
@@ -103,17 +97,6 @@ def render_specific_query_detail(
         trusted_report_html = SafeHtml(
             render_report_markdown_html(trusted_report_text, with_heading_ids=True)
         )
-    view = present_recent_scan_case_detail(
-        "specific-query",
-        case,
-        metadata_facts,
-        cm_metrics_facts,
-        runtime_diagnosis_facts,
-        cluster_runtime_context_facts,
-        evidence_quality_facts,
-        stats_quality_facts,
-        report_state=report_state,
-    )
     escaped_query_id = html.escape(query_id)
     report_url = specific_query_report_href(query_id)
     report_export_url = f"{report_url}.md" if report_url else None

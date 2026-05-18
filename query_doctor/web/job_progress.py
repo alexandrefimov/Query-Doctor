@@ -81,6 +81,14 @@ LLM_ACTIONS_STAGES = tuple(
     (index, step.stage_label, step.progress)
     for index, step in enumerate(LLM_ACTIONS_PROGRESS_STEPS)
 )
+DEFAULT_DETAIL_ACTION_PROGRESS_INDEX = {
+    "batch_report": 1,
+    "query_report": 1,
+    "batch_optimized_query": 0,
+    "query_optimized_query": 0,
+    "batch_llm_actions": 0,
+    "query_llm_actions": 0,
+}
 
 
 def progress_step_index(
@@ -169,6 +177,13 @@ def progress_view_for_job(
     steps = progress_steps_for_job_kind(kind)
     default_index = 1 if kind in {"batch_report", "query_report"} else 0
     return build_progress_view(steps, stage_label, progress, default_index=default_index)
+
+
+def default_progress_view_for_job_kind(kind: str) -> JobProgressView:
+    steps = progress_steps_for_job_kind(kind)
+    default_index = DEFAULT_DETAIL_ACTION_PROGRESS_INDEX.get(kind, 0)
+    default_step = steps[max(0, min(len(steps) - 1, default_index))]
+    return build_indexed_progress_view(steps, default_step.stage_label, default_index)
 
 
 def progress_view_payload(view: JobProgressView) -> dict[str, object]:

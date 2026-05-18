@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 import html
+from pathlib import Path
 from urllib.parse import quote
 
 from query_doctor.web.case_files import (
     build_query_id_summary_case,
     ensure_complete_existing_case,
     expected_case_dir_for_query,
-)
-from query_doctor.web.details_facts import (
-    load_specific_query_cluster_runtime_context_facts,
-    load_specific_query_cm_metrics_facts,
-    load_specific_query_metadata_facts,
-    load_specific_query_runtime_diagnosis_facts,
 )
 from query_doctor.web.jobs import WebJobSnapshot, WebJobStore
 from query_doctor.web.models import WebError, WebSettings
@@ -26,7 +21,7 @@ from query_doctor.web.trusted_artifacts import (
 )
 from query_doctor.web.ui.markdown import render_report_markdown_html
 from query_doctor.web.ui.pages import render_page, render_query_page
-from query_doctor.web.ui.specific_query import render_specific_query_detail
+from query_doctor.web.ui.specific_query import render_specific_query_detail_view
 
 
 def render_specific_query_detail_for_request(
@@ -51,24 +46,53 @@ def render_specific_query_detail_for_request(
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)
+    return 200, render_specific_query_detail_page(
+        settings,
+        validated_query_id,
+        case,
+        case_dir,
+        job_store,
+        job=job,
+        optimizer_validation_result=optimizer_validation_result,
+    )
+
+
+def render_specific_query_detail_page(
+    settings: WebSettings,
+    validated_query_id: str,
+    case: dict[str, object],
+    case_dir: Path,
+    job_store: WebJobStore,
+    *,
+    job: WebJobSnapshot | None = None,
+    optimizer_validation_result: dict[str, object] | None = None,
+) -> str:
     render_context = build_specific_query_detail_render_context(
         settings,
         validated_query_id,
         case_dir,
         job_store,
         job=job,
+        case=case,
         optimizer_validation_result=optimizer_validation_result,
     )
-    return 200, render_page(
+    return render_page(
         settings,
         active_nav="query",
         show_run_panel=False,
         extra_sections=[
-            render_specific_query_detail(
+            render_specific_query_detail_view(
                 validated_query_id,
-                case,
+                render_context.view,
                 llm_enabled=not settings.no_llm,
-                **render_context,
+                optimized_query_state=render_context.optimized_query_state,
+                trusted_report_text=render_context.trusted_report_text,
+                trusted_optimized_query=render_context.trusted_optimized_query,
+                trusted_optimizer_recommendations=(
+                    render_context.trusted_optimizer_recommendations
+                ),
+                optimizer_manual_guidance=render_context.optimizer_manual_guidance,
+                optimizer_validation_result=render_context.optimizer_validation_result,
             )
         ],
     )
@@ -90,25 +114,12 @@ def render_specific_query_report_for_request(
     case = build_query_id_summary_case(validated_query_id, case_dir)
     report = load_specific_query_trusted_report_artifact(validated_query_id, case_dir)
     if report is None:
-        metadata_facts = load_specific_query_metadata_facts(case_dir)
-        cm_metrics_facts = load_specific_query_cm_metrics_facts(case_dir)
-        runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
-        cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
-        return 404, render_page(
+        return 404, render_specific_query_detail_page(
             settings,
-            active_nav="query",
-            show_run_panel=False,
-            extra_sections=[
-                render_specific_query_detail(
-                    validated_query_id,
-                    case,
-                    metadata_facts,
-                    cm_metrics_facts,
-                    runtime_diagnosis_facts,
-                    cluster_runtime_context_facts,
-                    llm_enabled=not settings.no_llm,
-                )
-            ],
+            validated_query_id,
+            case,
+            case_dir,
+            WebJobStore(),
         )
     return 200, render_specific_query_report_page(settings, validated_query_id, case, report.text)
 

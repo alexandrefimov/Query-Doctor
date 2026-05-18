@@ -1,0 +1,20 @@
+{
+  "tables": [
+    "sanitized_db.fact_exchange"
+  ],
+  "read_only_statements_only": true,
+  "results": [
+    {
+      "table": "sanitized_db.fact_exchange",
+      "statement": "SHOW TABLE STATS",
+      "status": "ok",
+      "stdout": "| #Rows | Size |\n| 5000000 | 768 MiB |\n"
+    },
+    {
+      "table": "sanitized_db.fact_exchange",
+      "statement": "SHOW COLUMN STATS",
+      "status": "ok",
+      "stdout": "| Column | Type | NDV | #Nulls | Max Size | Avg Size |\n| join_key | BIGINT | 200000 | 0 | 8 | 8 |\n| event_count | BIGINT | 1000 | 0 | 8 | 8 |\n"
+    }
+  ]
+}

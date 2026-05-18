@@ -25,7 +25,6 @@ from query_doctor.web.ui.markdown import (
     split_table_row,
 )
 from query_doctor.web.ui.pages import (
-    render_batch_case_detail_page,
     render_batch_case_detail_view_page,
     render_batch_case_not_found_page,
     render_batch_case_report_page,
@@ -58,7 +57,6 @@ from query_doctor.web.ui.recent_scan import (
     discovery_detail,
     display_score,
     escape_value,
-    explain_score_reason,
     form_or_config_bool,
     form_or_config_value,
     has_metadata_aggregate_facts,
@@ -75,7 +73,6 @@ from query_doctor.web.ui.recent_scan import (
     reason_cell,
     render_action_candidate_findings_view,
     render_batch_card,
-    render_batch_case_detail,
     render_batch_case_report_action,
     render_batch_case_row,
     render_batch_empty_note,
@@ -96,7 +93,6 @@ from query_doctor.web.ui.recent_scan import (
     render_metadata_facts_view,
     render_recent_scan_case_detail_view,
     render_runtime_signals,
-    render_score_reason_card,
     render_score_reason_card_view,
     render_score_reason_explanations,
     render_score_reason_explanations_view,
@@ -109,7 +105,7 @@ from query_doctor.web.ui.recent_scan import (
 )
 from query_doctor.web.ui.report import render_result
 from query_doctor.web.ui.specific_query import (
-    render_specific_query_detail,
+    render_specific_query_detail_view,
     render_specific_query_result,
     render_specific_query_results,
 )
@@ -131,7 +127,6 @@ __all__ = [
     "discovery_detail",
     "display_score",
     "escape_value",
-    "explain_score_reason",
     "form_or_config_bool",
     "form_or_config_value",
     "has_metadata_aggregate_facts",
@@ -151,8 +146,6 @@ __all__ = [
     "render_action_candidate_findings_view",
     "render_app_header",
     "render_batch_card",
-    "render_batch_case_detail",
-    "render_batch_case_detail_page",
     "render_batch_case_detail_view_page",
     "render_batch_case_not_found_page",
     "render_batch_case_report_action",
@@ -193,14 +186,13 @@ __all__ = [
     "render_result",
     "render_run_panel",
     "render_runtime_signals",
-    "render_score_reason_card",
     "render_score_reason_card_view",
     "render_score_reason_explanations",
     "render_score_reason_explanations_view",
     "render_shared_styles",
     "render_script_link",
     "render_static_stylesheet_link",
-    "render_specific_query_detail",
+    "render_specific_query_detail_view",
     "render_specific_query_result",
     "render_specific_query_results",
     "render_technical_details",

@@ -5,12 +5,13 @@ from __future__ import annotations
 import html
 
 from query_doctor.web.job_progress import (
-    REPORT_PROGRESS_STEPS,
     JobProgressView,
-    build_indexed_progress_view,
+    default_progress_view_for_job_kind,
 )
 from query_doctor.web.presenters.recent_scan import ReportActionView
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
+
+REPORT_ACTION_JOB_KINDS = {"batch_report", "query_report"}
 
 
 def render_batch_case_report_action(
@@ -93,14 +94,9 @@ def render_llm_report_status(
 
 
 def render_llm_report_progress(view: ReportActionView) -> str:
-    progress_view = (
-        view.progress_view if view.job_kind in {"batch_report", "query_report"} else None
-    )
-    progress_view = progress_view or build_indexed_progress_view(
-        REPORT_PROGRESS_STEPS,
-        "Generating validated report",
-        1,
-    )
+    progress_kind = report_progress_kind(view.job_kind)
+    progress_view = view.progress_view if view.job_kind in REPORT_ACTION_JOB_KINDS else None
+    progress_view = progress_view or default_progress_view_for_job_kind(progress_kind)
     current_stage = progress_view.current_stage
     status_attrs = ""
     if view.job_id:
@@ -127,6 +123,10 @@ def render_llm_report_progress(view: ReportActionView) -> str:
         f'<div class="batch-progress"><div class="batch-progress-steps">{step_html}</div></div>'
         "</div>"
     )
+
+
+def report_progress_kind(job_kind: str) -> str:
+    return job_kind if job_kind in REPORT_ACTION_JOB_KINDS else "batch_report"
 
 
 def render_progress_steps(progress_view: JobProgressView) -> str:

@@ -12,7 +12,6 @@ from query_doctor.web.case_detail_context import (
     resolve_running_case_detail_settings,
     running_detail_kwargs,
 )
-from query_doctor.web.details_facts import load_batch_case_metadata_facts
 from query_doctor.web.job_workers import (
     run_batch_case_report_job,
     run_llm_actions_job,
@@ -27,7 +26,6 @@ from query_doctor.web.trusted_artifacts import (
     resolve_batch_case_report_dir,
 )
 from query_doctor.web.ui.pages import (
-    render_batch_case_detail_page,
     render_batch_case_not_found_page,
 )
 
@@ -64,7 +62,6 @@ def start_batch_case_report_job(
         )
     case_dir = resolve_batch_case_report_dir(effective_settings, case)
     if case_dir is None:
-        metadata_facts = load_batch_case_metadata_facts(effective_settings, case)
         report_state = {
             "status": "failed",
             "running": False,
@@ -72,12 +69,12 @@ def start_batch_case_report_job(
             "partial": False,
             "error": "Report generation requires a complete server-owned case. Re-run analysis first.",
         }
-        return 400, render_batch_case_detail_page(
+        return 400, render_batch_case_detail_for_request(
             effective_settings,
             case_id,
             case,
-            metadata_facts,
-            report_state=report_state,
+            job_store,
+            report_state_override=report_state,
             **detail_kwargs,
         )
 

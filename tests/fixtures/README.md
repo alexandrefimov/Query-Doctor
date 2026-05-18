@@ -11,8 +11,11 @@ raw profiles, credentials, local config, or real case paths.
 | `minimal_case/` | Small valid profile baseline. | Analyzer smoke and low-signal behavior. |
 | `tiny_exchange_case/` | Small exchange-heavy shape. | Exchange parsing and summary behavior. |
 | `scan_or_exchange_heavy_case/` | Scan/exchange-heavy evidence. | Analyzer and report signal coverage. |
+| `stats_present_exchange_case/` | Complete stats metadata with exchange/data-movement as primary evidence. | Stats-not-primary routing and safe summary behavior. |
+| `mixed_stats_runtime_case/` | Metadata stats gap plus backend data-skew evidence. | Mixed primary-bottleneck routing without stale-stats or runtime root-cause claims. |
 | `backend_tail_case/` | Backend / host tail evidence. | Tail detection and report wording. |
 | `writer_tail_case/` | Backend write-path tail without execution skew. | Write-tail routing and unsupported storage/skew guardrails. |
+| `long_writer_tail_case/` | Long query with writer-path tail and comparable execution times. | Duration guardrails and writer-tail routing without execution-skew or scan-storage claims. |
 | `missing_estimates_case/` | Missing or unknown estimates. | Cardinality/stats recommendation behavior. |
 | `memory_only_case/` | Memory-focused evidence without broad signals. | Memory anomaly handling. |
 | `no_action_cards_case/` | Facts without action cards. | Report recommendation fallback behavior. |

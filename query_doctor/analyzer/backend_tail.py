@@ -41,6 +41,7 @@ FRAGMENT_LINE_RE = re.compile(
 METRIC_LINE_RE = re.compile(
     r"^\s*-?\s*(?P<key>[A-Za-z][A-Za-z0-9 _./-]*?)\s*[:=]\s*(?P<value>.+?)\s*$"
 )
+SECTION_BOUNDARY_RE = re.compile(r"^\s*(?:```|#{1,6}\s+)")
 
 BACKEND_ASSIGNED_KEYS = {
     "scanbytesassigned",
@@ -226,6 +227,10 @@ def parse_backend_host_facts(text: str) -> list[BackendHostFact]:
         fragment_match = AVERAGED_FRAGMENT_RE.match(line) or FRAGMENT_HEADER_RE.match(line)
         if fragment_match:
             current_fragment_group = fragment_match.group("fragment").upper()
+
+        if current is not None and SECTION_BOUNDARY_RE.match(line):
+            finish_current()
+            continue
 
         header_match = BACKEND_HEADER_RE.match(line)
         if header_match:

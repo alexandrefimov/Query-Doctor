@@ -55,6 +55,7 @@ def build_batch_case_detail_render_context(
     detail_base_path: str = "/batch/case",
     active_nav: str = "batch",
     optimizer_validation_result: dict[str, object] | None = None,
+    report_state_override: dict[str, object] | None = None,
 ) -> BatchCaseDetailRenderContext:
     metadata_facts = load_batch_case_metadata_facts(settings, case)
     evidence_quality_facts = load_batch_case_evidence_quality_facts(settings, case)
@@ -65,7 +66,9 @@ def build_batch_case_detail_render_context(
     artifacts = load_batch_case_trusted_detail_artifacts(
         settings, case_id, case, job_store, job=job
     )
-    report_state = artifacts.report_state
+    report_state = (
+        dict(report_state_override) if report_state_override is not None else artifacts.report_state
+    )
     optimized_query_state = artifacts.optimized_query_state
     view = present_recent_scan_case_detail(
         case_id,
@@ -89,7 +92,7 @@ def build_batch_case_detail_render_context(
     return BatchCaseDetailRenderContext(
         view=view,
         optimized_query_state=optimized_query_state,
-        trusted_report_text=artifacts.trusted_report_text,
+        trusted_report_text=artifacts.trusted_report_text if report_state.get("trusted") else None,
         trusted_optimized_query=artifacts.trusted_optimized_query,
         trusted_optimizer_recommendations=artifacts.trusted_optimizer_recommendations,
         optimizer_manual_guidance=optimizer_guidance,
