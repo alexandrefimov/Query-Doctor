@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
+from query_doctor.analyzer.query_context import query_context
 from query_doctor.analyzer.runtime_metrics import (
     runtime_metrics_context,
     runtime_metrics_correlation,
+    runtime_metrics_facts,
 )
 from query_doctor.analyzer.scalars import numeric_context_value
 from query_doctor.analyzer.thresholds import DEFAULT_LARGE_BYTES_THRESHOLD
@@ -45,9 +47,7 @@ def has_storage_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 
 def has_admission_profile_evidence(analysis: dict[str, Any]) -> bool:
-    admission_wait_ms = numeric_context_value(
-        analysis.get("cm_query_context") or {}, "admission_wait_ms"
-    )
+    admission_wait_ms = numeric_context_value(query_context(analysis) or {}, "admission_wait_ms")
     return admission_wait_ms is not None and admission_wait_ms >= 1000
 
 
@@ -72,15 +72,17 @@ def has_cpu_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 
 def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
+    facts = runtime_metrics_facts(analysis)
     context = runtime_metrics_context(analysis)
-    if not context:
+    if facts is None and not context:
         return {
             "status": "unavailable",
             "signals": [],
             "guardrail": "Runtime metrics context was not collected for this case.",
         }
 
-    facts = build_cm_metrics_facts(context)
+    if facts is None:
+        facts = build_cm_metrics_facts(context or {})
     if facts["status"] not in {"available", "partial"}:
         return {
             "status": facts["status"],

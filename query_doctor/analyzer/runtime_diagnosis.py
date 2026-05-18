@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from query_doctor.analyzer.cm_metrics import cm_metric_correlation_signal
+from query_doctor.analyzer.query_context import query_context
 from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio, numeric_context_value
 
 
@@ -391,9 +392,7 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
 
     cpu_status = runtime_diagnosis_metric_status(analysis, "host_cpu_pressure")
     admission_status = runtime_diagnosis_metric_status(analysis, "admission_pool_pressure")
-    admission_wait_ms = numeric_context_value(
-        analysis.get("cm_query_context") or {}, "admission_wait_ms"
-    )
+    admission_wait_ms = numeric_context_value(query_context(analysis) or {}, "admission_wait_ms")
     cpu_evidence = runtime_diagnosis_metric_evidence(analysis, "host_cpu_pressure")
     cpu_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "admission_pool_pressure"))
     if admission_wait_ms is not None:

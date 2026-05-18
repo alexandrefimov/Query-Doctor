@@ -10,6 +10,7 @@ from query_doctor.analyzer.runtime_metrics import runtime_metrics_context
 PROVENANCE_KINDS = ("engine", "profile", "metrics", "events", "metadata")
 KNOWN_SOURCE_LABELS = {
     "cm_query_context": "Cloudera Manager query metadata",
+    "runtime_metrics_context": "Runtime metrics",
     "cm_timeseries_context": "Cloudera Manager time-series metrics",
     "prometheus_metrics": "Prometheus runtime metrics",
     "cluster_event_context": "Cluster event context",
@@ -29,6 +30,7 @@ def safe_label(value: object, *, default: str = "unknown") -> str:
     text = str(value or "").strip()
     allowed = {
         "Cloudera Manager query metadata",
+        "Runtime metrics",
         "Cloudera Manager time-series metrics",
         "Prometheus runtime metrics",
         "Cluster event context",
@@ -122,7 +124,7 @@ def metrics_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
         return provenance_item(
             "metrics",
             "none",
-            "Cloudera Manager time-series metrics",
+            "Runtime metrics",
             "not_collected",
             ["Runtime metrics were not collected for this case."],
         )
@@ -140,13 +142,18 @@ def metrics_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
         status = "unavailable"
     coverage = f"{ok}/{total} metric queries ok"
     limitations = [] if status == "available" else ["Metric coverage is incomplete or unavailable."]
-    source_label = context.get("source_label")
-    label = (
-        "Prometheus runtime metrics"
-        if source_label == "Prometheus runtime metrics" or context.get("source") == "prometheus"
-        else "Cloudera Manager time-series metrics"
-    )
+    label = runtime_metrics_provenance_label(context)
     return provenance_item("metrics", status, label, coverage, limitations)
+
+
+def runtime_metrics_provenance_label(context: dict[str, Any]) -> str:
+    source = str(context.get("source") or "").strip()
+    source_label = context.get("source_label")
+    if source == "prometheus" or source_label == "Prometheus runtime metrics":
+        return "Prometheus runtime metrics"
+    if source == "cm_timeseries" or source_label == "Cloudera Manager time-series metrics":
+        return "Cloudera Manager time-series metrics"
+    return "Runtime metrics"
 
 
 def events_provenance(analysis: dict[str, Any]) -> dict[str, Any]:

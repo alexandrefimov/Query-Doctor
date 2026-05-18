@@ -23,3 +23,13 @@ def runtime_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any] | No
         return correlation
     correlation = analysis.get("cm_metrics_correlation")
     return correlation if isinstance(correlation, dict) else None
+
+
+def runtime_metrics_facts(analysis: dict[str, Any]) -> dict[str, Any] | None:
+    """Return canonical runtime metrics facts with legacy CM fallback."""
+
+    facts = analysis.get("metrics_facts")
+    if isinstance(facts, dict):
+        return facts
+    facts = analysis.get("cm_metrics_facts")
+    return facts if isinstance(facts, dict) else None

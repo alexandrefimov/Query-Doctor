@@ -9,7 +9,7 @@ from pathlib import Path
 
 from query_doctor.analyzer.action_cards import DEFAULT_LARGE_BYTES_THRESHOLD, build_action_cards
 from query_doctor.analyzer.case_bottleneck import classify_case_primary_bottleneck
-from query_doctor.analyzer.cm_metrics import build_cm_metrics_correlation
+from query_doctor.analyzer.cm_metrics import build_cm_metrics_correlation, build_cm_metrics_facts
 from query_doctor.analyzer.cluster_runtime_context import build_cluster_runtime_context
 from query_doctor.analyzer.context_collection import (
     collect_cluster_context,
@@ -96,12 +96,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     text = digest_path.read_text(encoding="utf-8", errors="replace")
-    cm_query_context = collect_cm_query_context(digest_path.parent)
-    analysis = analyze(text, args, cm_query_context=cm_query_context)
-    analysis["cm_query_context"] = cm_query_context
+    collected_query_context = collect_cm_query_context(digest_path.parent)
+    analysis = analyze(text, args, cm_query_context=collected_query_context)
+    analysis["query_context"] = collected_query_context
+    analysis["cm_query_context"] = collected_query_context
     metrics_context = collect_cm_timeseries_context(digest_path.parent)
     analysis["metrics_context"] = metrics_context
     analysis["cm_timeseries_context"] = metrics_context
+    metrics_facts = build_cm_metrics_facts(metrics_context) if metrics_context else None
+    analysis["metrics_facts"] = metrics_facts
+    analysis["cm_metrics_facts"] = metrics_facts
     analysis["cluster_context"] = collect_cluster_context(digest_path.parent)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)

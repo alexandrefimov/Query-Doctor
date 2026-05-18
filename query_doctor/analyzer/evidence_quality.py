@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
-from query_doctor.analyzer.runtime_metrics import runtime_metrics_context
+from query_doctor.analyzer.runtime_metrics import runtime_metrics_context, runtime_metrics_facts
 
 
 def evidence_quality_level(score: int) -> str:
@@ -58,9 +58,11 @@ def build_evidence_quality(analysis: dict[str, Any]) -> dict[str, Any]:
     else:
         limitations.append("backend per-host facts are unavailable")
 
+    metrics = runtime_metrics_facts(analysis)
     metrics_context = runtime_metrics_context(analysis)
-    if metrics_context:
-        metrics = build_cm_metrics_facts(metrics_context)
+    if metrics is not None or metrics_context:
+        if metrics is None:
+            metrics = build_cm_metrics_facts(metrics_context or {})
         status = metrics.get("status")
         coverage = f"{metrics.get('ok_metrics')}/{metrics.get('total_metrics')} metrics ok, {metrics.get('total_points')} points"
         if status == "available":

@@ -6,6 +6,7 @@ from typing import Any
 
 from query_doctor.analyzer.cm_metrics import correlated_cm_metric_line
 from query_doctor.analyzer.operators import operator_key
+from query_doctor.analyzer.query_context import query_context
 from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, numeric_context_value
 from query_doctor.analyzer.thresholds import (
     DEFAULT_LARGE_BYTES_THRESHOLD,
@@ -104,13 +105,12 @@ def make_runtime_admission_action_card(analysis: dict[str, Any]) -> dict[str, An
     bottleneck = bottleneck if isinstance(bottleneck, dict) else {}
     if str(bottleneck.get("label") or "") != "runtime_admission":
         return None
-    cm_context = analysis.get("cm_query_context")
-    cm_context = cm_context if isinstance(cm_context, dict) else {}
-    wait_ms = numeric_context_value(cm_context, "admission_wait_ms")
+    context = query_context(analysis) or {}
+    wait_ms = numeric_context_value(context, "admission_wait_ms")
     if wait_ms is None:
-        wait_ms = numeric_context_value(cm_context, "admission_wait")
+        wait_ms = numeric_context_value(context, "admission_wait")
     if wait_ms is None:
-        wait_ms = numeric_context_value(cm_context, "resources_reserved_wait_time")
+        wait_ms = numeric_context_value(context, "resources_reserved_wait_time")
     if wait_ms is None:
         wait_ms = profile_admission_wait_ms(analysis)
 

@@ -11,6 +11,7 @@ from query_doctor.analyzer.evidence_quality import build_evidence_quality
 from query_doctor.analyzer.runtime_metrics import (
     runtime_metrics_context,
     runtime_metrics_correlation,
+    runtime_metrics_facts,
 )
 from query_doctor.analyzer.source_provenance import metrics_provenance
 
@@ -62,6 +63,8 @@ def test_runtime_metrics_accessors_prefer_canonical_keys_with_legacy_fallbacks()
     legacy_context = {"source": "cm_timeseries"}
     canonical_correlation = {"status": "available"}
     legacy_correlation = {"status": "legacy"}
+    canonical_facts = {"status": "available"}
+    legacy_facts = {"status": "legacy"}
 
     assert (
         runtime_metrics_context(
@@ -86,9 +89,21 @@ def test_runtime_metrics_accessors_prefer_canonical_keys_with_legacy_fallbacks()
         runtime_metrics_correlation({"cm_metrics_correlation": legacy_correlation})
         is legacy_correlation
     )
+    assert (
+        runtime_metrics_facts(
+            {
+                "metrics_facts": canonical_facts,
+                "cm_metrics_facts": legacy_facts,
+            }
+        )
+        is canonical_facts
+    )
+    assert runtime_metrics_facts({"cm_metrics_facts": legacy_facts}) is legacy_facts
 
 
 def test_analyzer_runtime_metric_readers_accept_canonical_only_keys():
+    from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
+
     analysis = {
         "metrics_context": runtime_metrics_context_fixture(),
         "operators": [{"id": "01:SCAN HDFS"}],
@@ -96,11 +111,14 @@ def test_analyzer_runtime_metric_readers_accept_canonical_only_keys():
         "thresholds": {"slow_operator_ms": 500},
     }
 
+    analysis["metrics_facts"] = build_cm_metrics_facts(analysis["metrics_context"])
     correlation = build_cm_metrics_correlation(analysis)
     analysis["metrics_correlation"] = correlation
 
     assert "cm_timeseries_context" not in analysis
+    assert "cm_metrics_facts" not in analysis
     assert "cm_metrics_correlation" not in analysis
+    assert runtime_metrics_facts(analysis) is analysis["metrics_facts"]
     assert correlation["status"] == "available"
     assert (
         cm_metric_correlation_signal(analysis, "host_cpu_pressure")["correlation_status"]
@@ -124,6 +142,29 @@ def test_analyzer_runtime_metric_readers_accept_canonical_only_keys():
     assert "runtime metrics coverage: 2/2 metrics ok, 6 points" in evidence_quality["strengths"]
     assert provenance["status"] == "available"
     assert provenance["label"] == "Prometheus runtime metrics"
+
+
+def test_runtime_metrics_provenance_uses_generic_label_for_unknown_sources():
+    provenance = metrics_provenance(
+        {
+            "metrics_context": {
+                "available": True,
+                "source": "unknown_provider",
+                "source_label": "/tmp/raw-provider-name",
+                "queries": [
+                    {
+                        "id": "provider_specific_cpu",
+                        "signal_id": "host_cpu_pressure",
+                        "status": "ok",
+                        "point_count": 3,
+                    }
+                ],
+            }
+        }
+    )
+
+    assert provenance["label"] == "Runtime metrics"
+    assert "/tmp/raw-provider-name" not in str(provenance)
 
 
 def test_metric_facts_use_signal_ids_when_source_ids_are_provider_specific():

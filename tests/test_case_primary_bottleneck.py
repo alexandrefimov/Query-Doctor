@@ -79,7 +79,7 @@ def test_runtime_admission_dominates_wall_clock():
     assert result.confidence == "medium"
     assert result.reasons == (
         "admission_wait_share_80pct",
-        "admission_wait_source_cm_query_context",
+        "admission_wait_source_query_context",
     )
 
 
@@ -98,7 +98,7 @@ def test_runtime_admission_routes_medium_for_material_explicit_wait():
     assert result.confidence == "medium"
     assert result.reasons == (
         "admission_wait_share_8pct",
-        "admission_wait_source_cm_query_context",
+        "admission_wait_source_query_context",
     )
 
 
@@ -210,7 +210,7 @@ def test_runtime_admission_preserves_primary_when_stats_evidence_coexists():
     assert result.confidence == "high"
     assert result.reasons == (
         "admission_wait_share_37pct",
-        "admission_wait_source_cm_query_context",
+        "admission_wait_source_query_context",
     )
 
 

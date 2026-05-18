@@ -32,6 +32,7 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [codex-handoff.md](codex-handoff.md): current agent working baseline.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
+- [brand-voice.md](brand-voice.md): voice and humor guardrails.
 - [configuration.md](configuration.md): local JSON config reference, discovery
   order, and field groups.
 - [release-checklist.md](release-checklist.md): final release and visibility
@@ -57,6 +58,7 @@ Status legend:
 | [agent-quickstart.md](agent-quickstart.md) | active | Shortest safe agent read path and validation bias. |
 | [codex-handoff.md](codex-handoff.md) | active | Current agent baseline and safety-sensitive context. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
+| [brand-voice.md](brand-voice.md) | active | Voice and humor policy for safe outer surfaces. |
 | [architecture.md](architecture.md) | active | Current component boundaries and data flow. |
 | [engine-expansion-plan.md](engine-expansion-plan.md) | active | Future source-provider, engine, metrics, and storage expansion order. |
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |

@@ -226,19 +226,17 @@ generic SQL execution, broad package reorganization, and fake adapters.
 This is the short ordered queue for the next roadmap pulls. Pull a different
 item first only when the touched area has a direct P0 safety or contract risk.
 
-1. Rename runtime-context analyzer/report keys and headings to canonical
-   provider-neutral names, with legacy `cm_*` load fallbacks and
-   report-validator snapshot coverage in the same change.
-2. Move metrics facts and correlation reads from Cloudera Manager query IDs to
-   abstract catalog `signal_id`s.
-3. Use source provenance for safe Details/report coverage and limitation
+1. Finish the remaining provider-neutral runtime contract tail:
+   report-validator heading tests when aliases or headings change, plus any
+   remaining UI/presenter naming cleanup that can stay compatibility-safe.
+2. Use source provenance for safe Details/report coverage and limitation
    wording, including explicit direct Impala coverage for profile, optional
    Prometheus metrics, unavailable events, and metadata status.
-4. Analyze the 7 recipe-detected/no-draft and 13 recipe-adjacent structural
+3. Analyze the 7 recipe-detected/no-draft and 13 recipe-adjacent structural
    boundary cases from the fresh Cloudera Manager `QUERY >=60s` sample, then
    decide whether a narrow deterministic recipe, safer structural explanation,
    or metadata-enabled rerun is the next highest-value optimizer step.
-5. Continue replacing report-side stats/query-shape extraction with structured
+4. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
 
 First concrete product-growth PR sequence after those contract items:
@@ -405,16 +403,24 @@ Provider-neutral runtime context cleanup:
   `Runtime Metrics Facts`, `Runtime Metrics Correlation`, and
   `Cluster Runtime Context` headings are the current analyzer/report contract;
   keep legacy `CM Metrics` heading load fallbacks for old artifacts. Analyzer
-  runtime metrics readers now use canonical `metrics_context` and
-  `metrics_correlation` keys with `cm_*` fallbacks. Runtime metric collectors
-  now write abstract catalog `signal_id`s next to provider-specific `id`s, and
-  analyzer metric facts read via `signal_id` with legacy ID fallbacks. The
-  remaining migration is canonical `query_context` and `metrics_facts` data
-  keys, persistence/loader aliases, and explicit source labels while preserving
-  existing `cm_*` keys and artifacts as legacy load fallbacks.
-- Update report-validator heading allowlists atomically with any heading rename
-  and add a snapshot test for rendered `analysis_facts.md`, so the trusted
-  report contract cannot drift silently.
+  runtime readers now use canonical `query_context`, `metrics_context`,
+  `metrics_facts`, and `metrics_correlation` keys with `cm_*` fallbacks.
+  Report contract digests also expose `metrics_facts` and
+  `metrics_correlation` aliases while preserving legacy digest keys. Runtime
+  metric collectors now write abstract catalog `signal_id`s next to
+  provider-specific `id`s, and analyzer metric facts read via `signal_id` with
+  legacy ID fallbacks. Source Provenance uses explicit Cloudera Manager and
+  Prometheus labels for collected runtime metrics and generic `Runtime metrics`
+  wording when metrics are absent or unknown. Report guardrails read
+  provider-neutral Runtime Metrics Correlation headings when checking
+  context-only signals. Web Details facts loaders expose provider-neutral
+  runtime-metrics aliases and state builders consume them, while preserving
+  existing `cm_*` keys, wrapper names, and artifacts as legacy load fallbacks.
+  The remaining migration is broader source-provenance use in safe
+  Details/report coverage wording and compatibility-safe UI/presenter naming
+  cleanup.
+- Keep report-validator heading allowlists and snapshot tests in sync with any
+  heading or alias change, so the trusted report contract cannot drift silently.
 - Keep any later metric-catalog expansion source-backed: new metrics must write
   a catalog `signal_id` plus a provider-specific `id`, and analyzer reads must
   preserve legacy fallback for old corpora.

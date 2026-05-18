@@ -338,8 +338,10 @@ def evidence_groups(facts_text: str) -> dict[str, list[str]]:
     if quality_points:
         groups["evidence_quality"] = quality_points
     if cm_metric_points:
+        groups["metrics_facts"] = cm_metric_points
         groups["cm_metrics"] = cm_metric_points
     if cm_metric_correlation_points:
+        groups["metrics_correlation"] = cm_metric_correlation_points
         groups["cm_metrics_correlation"] = cm_metric_correlation_points
     if cluster_context_points:
         groups["cluster_runtime_context"] = cluster_context_points
@@ -392,6 +394,8 @@ def build_report_contract_digest(facts_text: str, *, language: str = "ru") -> di
             ),
         },
         "backend_summary": backend_summary,
+        "metrics_facts": cm_metrics,
+        "metrics_correlation": cm_metrics_correlation,
         "cm_metrics": cm_metrics,
         "cm_metrics_correlation": cm_metrics_correlation,
         "cluster_runtime_context": cluster_runtime_context,

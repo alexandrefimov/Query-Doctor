@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from query_doctor.analyzer.query_context import query_context
 from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_rows, numeric_context_value
 
 
@@ -12,7 +13,7 @@ def md_escape(value: str) -> str:
 
 
 def render_cm_query_context(analysis: dict[str, Any]) -> list[str]:
-    context = analysis.get("cm_query_context")
+    context = query_context(analysis)
     if not context:
         return []
 

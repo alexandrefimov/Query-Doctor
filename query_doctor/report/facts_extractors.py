@@ -632,7 +632,11 @@ def cm_metrics_signal_observed(facts_text: str, key: str) -> bool:
 
 
 def cm_metrics_correlation_status(facts_text: str, key: str) -> str | None:
-    lines = extract_markdown_section(facts_text, CM_METRICS_CORRELATION_HEADING)
+    lines = extract_first_markdown_section(
+        facts_text,
+        RUNTIME_METRICS_CORRELATION_HEADING,
+        CM_METRICS_CORRELATION_HEADING,
+    )
     if not lines:
         return None
     pattern = re.compile(rf"^\s*-\s*{re.escape(key)}\s*:\s*(?P<status>[a-z_]+)\b", re.IGNORECASE)

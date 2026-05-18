@@ -88,12 +88,16 @@ def load_specific_query_stats_quality_facts(case_dir: Path) -> dict[str, Any] | 
     return None
 
 
-def load_specific_query_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
+def load_specific_query_runtime_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
     for artifact_dir in batch_case_artifact_dirs(case_dir):
-        facts = load_case_analysis_cm_metrics_facts(artifact_dir)
+        facts = load_case_analysis_runtime_metrics_facts(artifact_dir)
         if facts:
             return facts
     return None
+
+
+def load_specific_query_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
+    return load_specific_query_runtime_metrics_facts(case_dir)
 
 
 def load_specific_query_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -157,17 +161,23 @@ def load_batch_case_stats_quality_facts(
     return None
 
 
-def load_batch_case_cm_metrics_facts(
+def load_batch_case_runtime_metrics_facts(
     settings: WebSettings, case: dict[str, object]
 ) -> dict[str, Any] | None:
     case_dir = resolve_batch_case_dir(settings, case)
     if case_dir is None:
         return None
     for artifact_dir in batch_case_artifact_dirs(case_dir):
-        facts = load_case_analysis_cm_metrics_facts(artifact_dir)
+        facts = load_case_analysis_runtime_metrics_facts(artifact_dir)
         if facts:
             return facts
     return None
+
+
+def load_batch_case_cm_metrics_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
+    return load_batch_case_runtime_metrics_facts(settings, case)
 
 
 def load_batch_case_runtime_diagnosis_facts(
@@ -217,11 +227,15 @@ def load_case_analysis_stats_quality_facts(case_dir: Path) -> dict[str, Any] | N
     return parse_stats_quality_facts(text)
 
 
-def load_case_analysis_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
+def load_case_analysis_runtime_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
     text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
     if text is None:
         return None
-    return parse_cm_metrics_facts(text)
+    return parse_runtime_metrics_facts(text)
+
+
+def load_case_analysis_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
+    return load_case_analysis_runtime_metrics_facts(case_dir)
 
 
 def load_case_analysis_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -451,7 +465,7 @@ def parse_stats_quality_facts(text: str) -> dict[str, Any] | None:
     return summary
 
 
-def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
+def parse_runtime_metrics_facts(text: str) -> dict[str, Any] | None:
     section = ""
     in_limitations = False
     summary: dict[str, str] = {}
@@ -567,6 +581,10 @@ def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
         "correlations": correlations,
         "limitations": limitations[:5],
     }
+
+
+def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
+    return parse_runtime_metrics_facts(text)
 
 
 def parse_runtime_diagnosis_facts(text: str) -> dict[str, Any] | None:

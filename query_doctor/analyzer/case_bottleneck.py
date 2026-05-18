@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from query_doctor.analyzer.query_context import query_context
+
 ADMISSION_HIGH_WAIT_MS = 10_000.0
 ADMISSION_HIGH_RATIO = 0.20
 ADMISSION_MEDIUM_WAIT_MS = 5_000.0
@@ -235,19 +237,18 @@ def admission_wait_reasons(wait_share: float | None, wait_source: str) -> tuple[
 
 
 def admission_evidence(analysis: dict[str, Any]) -> AdmissionEvidence:
-    cm_context = analysis.get("cm_query_context")
-    cm_context = cm_context if isinstance(cm_context, dict) else {}
+    context = query_context(analysis) or {}
     profile_resources = analysis.get("profile_resources")
     profile_resources = profile_resources if isinstance(profile_resources, dict) else {}
 
-    cm_result = normalized_admission_result(cm_context.get("admission_result"))
+    context_result = normalized_admission_result(context.get("admission_result"))
     profile_result = normalized_admission_result(profile_resources.get("admission_result"))
-    result = cm_result if cm_result != "unknown" else profile_result
+    result = context_result if context_result != "unknown" else profile_result
 
     for source, value in (
-        ("cm_query_context", cm_context.get("admission_wait_ms")),
-        ("cm_query_context", cm_context.get("admission_wait")),
-        ("cm_query_context", cm_context.get("resources_reserved_wait_time")),
+        ("query_context", context.get("admission_wait_ms")),
+        ("query_context", context.get("admission_wait")),
+        ("query_context", context.get("resources_reserved_wait_time")),
         ("profile_resource_facts", profile_resources.get("admission_wait_ms")),
         ("profile_resource_facts", structured_wait_delta_ms(profile_resources)),
         ("profile_timing_facts", profile_timeline_admission_ms(analysis)),

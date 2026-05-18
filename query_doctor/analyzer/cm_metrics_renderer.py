@@ -8,6 +8,7 @@ from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
 from query_doctor.analyzer.runtime_metrics import (
     runtime_metrics_context,
     runtime_metrics_correlation,
+    runtime_metrics_facts,
 )
 from query_doctor.analyzer.scalars import numeric_context_value
 
@@ -82,18 +83,20 @@ def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
 
 
 def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
+    facts = runtime_metrics_facts(analysis)
     context = runtime_metrics_context(analysis)
-    if not context:
+    if facts is None and not context:
         return []
 
-    facts = build_cm_metrics_facts(context)
+    if facts is None:
+        facts = build_cm_metrics_facts(context or {})
     lines = ["## Runtime Metrics Facts", ""]
     lines.append(f"- status: {facts['status']}")
     if facts.get("source"):
         lines.append(f"- source: {facts['source']}")
     if facts.get("source_label"):
         lines.append(f"- source_label: {facts['source_label']}")
-    if context.get("metrics_profile"):
+    if context and context.get("metrics_profile"):
         lines.append(f"- metrics_profile: {context.get('metrics_profile')}")
     lines.append(
         f"- coverage: {facts['ok_metrics']}/{facts['total_metrics']} metrics ok, "
