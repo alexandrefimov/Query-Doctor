@@ -18,6 +18,7 @@ from query_doctor.recent.query_optimization_score import optimizer_adjacent_acti
 from query_doctor.recent.query_optimization_score import optimizer_no_draft_actionability
 from query_doctor.recent.query_optimization_score import query_optimization_sort_key
 from query_doctor.recent.stats_optimization_score import stats_optimization_sort_key
+from query_doctor.recent.workload_fingerprint import compute_workload_fingerprint
 
 PRIMARY_BOTTLENECK_LABELS = {
     "stats",
@@ -784,7 +785,7 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         for value in (case.cm_collect_seconds, case.analysis_seconds, case.report_seconds)
         if value is not None
     ]
-    return {
+    summary = {
         "case_index": case.index,
         "candidate_rank": case.candidate_rank,
         "triage_rank": case.triage_rank,
@@ -834,6 +835,11 @@ def case_to_summary(case: CaseResult) -> dict[str, object]:
         "report_seconds": case.report_seconds,
         "total_seconds": round(sum(stage_seconds), 3) if stage_seconds else None,
     }
+    summary["workload_fingerprint"] = compute_workload_fingerprint(
+        summary,
+        load_case_analysis(case),
+    ).fingerprint
+    return summary
 
 
 def case_score_severity(case: CaseResult) -> str:
