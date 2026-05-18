@@ -70,6 +70,7 @@ class PrometheusConfig:
 @dataclass(frozen=True)
 class PrometheusTimeSeriesQuery:
     query_id: str
+    signal_id: str
     label: str
     promql: str
     profiles: tuple[str, ...] = (DEFAULT_PROMETHEUS_METRICS_PROFILE, "node-exporter-hadoop")
@@ -78,6 +79,7 @@ class PrometheusTimeSeriesQuery:
 PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
     PrometheusTimeSeriesQuery(
         query_id="impala_daemon_memory",
+        signal_id="impala_daemon_memory_growth",
         label="Impala daemon memory pressure",
         promql=(
             "max by (instance) (impala_memory_rss) "
@@ -88,6 +90,7 @@ PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
     ),
     PrometheusTimeSeriesQuery(
         query_id="impala_pool_queued_rate",
+        signal_id="admission_pool_pressure",
         label="Impala admission queued rate",
         promql=(
             "sum(rate(impala_admission_controller_total_queued[2m])) "
@@ -97,6 +100,7 @@ PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
     ),
     PrometheusTimeSeriesQuery(
         query_id="impala_pool_rejected_rate",
+        signal_id="admission_pool_pressure",
         label="Impala admission rejected rate",
         promql=(
             "sum(rate(impala_admission_controller_total_rejected[2m])) "
@@ -106,6 +110,7 @@ PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
     ),
     PrometheusTimeSeriesQuery(
         query_id="impala_pool_timed_out_rate",
+        signal_id="admission_pool_pressure",
         label="Impala admission timed-out rate",
         promql=(
             "sum(rate(impala_admission_controller_total_timed_out[2m])) "
@@ -115,31 +120,37 @@ PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
     ),
     PrometheusTimeSeriesQuery(
         query_id="host_cpu_user",
+        signal_id="host_cpu_pressure",
         label="Host CPU user rate",
         promql='100 * avg by (instance) (rate(node_cpu_seconds_total{mode="user"}[2m]))',
     ),
     PrometheusTimeSeriesQuery(
         query_id="host_cpu_system",
+        signal_id="host_cpu_pressure",
         label="Host CPU system rate",
         promql='100 * avg by (instance) (rate(node_cpu_seconds_total{mode="system"}[2m]))',
     ),
     PrometheusTimeSeriesQuery(
         query_id="host_memory_used",
+        signal_id="host_memory_pressure",
         label="Host memory used",
         promql="node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
     ),
     PrometheusTimeSeriesQuery(
         query_id="host_disk_read_rate",
+        signal_id="host_disk_io_pressure",
         label="Host disk read rate",
         promql="sum by (instance) (rate(node_disk_read_bytes_total[2m]))",
     ),
     PrometheusTimeSeriesQuery(
         query_id="host_disk_write_rate",
+        signal_id="host_disk_io_pressure",
         label="Host disk write rate",
         promql="sum by (instance) (rate(node_disk_written_bytes_total[2m]))",
     ),
     PrometheusTimeSeriesQuery(
         query_id="hdfs_datanode_read_bytes_rate",
+        signal_id="hdfs_datanode_io_pressure",
         label="HDFS DataNode read bytes rate",
         promql=(
             "sum by (instance) (rate(hadoop_datanode_bytes_read[2m])) "
@@ -149,6 +160,7 @@ PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
     ),
     PrometheusTimeSeriesQuery(
         query_id="hdfs_datanode_local_reads_rate",
+        signal_id="hdfs_datanode_io_pressure",
         label="HDFS DataNode local reads rate",
         promql=(
             "sum by (instance) (rate(hadoop_datanode_reads_from_local_client[2m])) "
@@ -158,6 +170,7 @@ PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
     ),
     PrometheusTimeSeriesQuery(
         query_id="hdfs_datanode_remote_reads_rate",
+        signal_id="hdfs_datanode_io_pressure",
         label="HDFS DataNode remote reads rate",
         promql=(
             "sum by (instance) (rate(hadoop_datanode_reads_from_remote_client[2m])) "
@@ -167,11 +180,13 @@ PROMETHEUS_TIMESERIES_MAPPINGS: tuple[PrometheusTimeSeriesQuery, ...] = (
     ),
     PrometheusTimeSeriesQuery(
         query_id="host_network_receive_rate",
+        signal_id="host_network_io_spike",
         label="Host network receive rate",
         promql='sum by (instance) (rate(node_network_receive_bytes_total{device!="lo"}[2m]))',
     ),
     PrometheusTimeSeriesQuery(
         query_id="host_network_transmit_rate",
+        signal_id="host_network_io_spike",
         label="Host network transmit rate",
         promql='sum by (instance) (rate(node_network_transmit_bytes_total{device!="lo"}[2m]))',
     ),
@@ -371,6 +386,7 @@ def summarize_prometheus_response(
             series_summaries.append(summarize_prometheus_series(bounded_values, index=series_index))
     summary: dict[str, object] = {
         "id": query.query_id,
+        "signal_id": query.signal_id,
         "label": query.label,
         "status": "ok" if values else "no_data",
         "point_count": len(values),
@@ -465,6 +481,7 @@ def collect_prometheus_timeseries_context(
             queries.append(
                 {
                     "id": query.query_id,
+                    "signal_id": query.signal_id,
                     "label": query.label,
                     "status": "unavailable",
                     "point_count": 0,

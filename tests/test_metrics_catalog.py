@@ -13,6 +13,7 @@ from query_doctor.cm.metrics_catalog import (
     metric_signals_for_family,
     metric_signals_for_tier,
     normalize_cm_metrics_profile,
+    runtime_metric_signal_id_for_query_id,
 )
 from query_doctor.cm.models import (
     CM_TIMESERIES_QUERY_ALLOWLIST,
@@ -52,11 +53,12 @@ def test_metrics_catalog_tracks_implementation_statuses():
 
 def test_current_cm_timeseries_allowlist_is_defined_by_catalog():
     catalog_allowlist = tuple(
-        (mapping.query_id, mapping.label, mapping.tsquery)
+        (mapping.query_id, mapping.signal_id, mapping.label, mapping.tsquery)
         for mapping in cm_timeseries_mappings_for_profile(DEFAULT_CM_METRICS_PROFILE)
     )
     collector_allowlist = tuple(
-        (query.query_id, query.label, query.tsquery) for query in CM_TIMESERIES_QUERY_ALLOWLIST
+        (query.query_id, query.signal_id, query.label, query.tsquery)
+        for query in CM_TIMESERIES_QUERY_ALLOWLIST
     )
 
     assert collector_allowlist == catalog_allowlist
@@ -120,6 +122,16 @@ def test_cm_mappings_reference_known_signal_ids():
         "host_memory_pressure",
         "host_network_io_spike",
     }
+
+
+def test_runtime_metric_signal_lookup_accepts_current_and_legacy_query_ids():
+    assert runtime_metric_signal_id_for_query_id("host_cpu_user") == "host_cpu_pressure"
+    assert (
+        runtime_metric_signal_id_for_query_id("host_network_receive_rate")
+        == "host_network_io_spike"
+    )
+    assert runtime_metric_signal_id_for_query_id("host_network_io") == "host_network_io_spike"
+    assert runtime_metric_signal_id_for_query_id("unknown_metric") is None
 
 
 def test_metrics_catalog_can_slice_by_family():

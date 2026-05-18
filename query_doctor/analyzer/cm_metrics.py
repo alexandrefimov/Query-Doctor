@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from query_doctor.cm.metrics_catalog import runtime_metric_signal_id_for_query_id
 from query_doctor.analyzer.scalars import fmt_bytes, numeric_context_value
 
 
@@ -39,6 +40,45 @@ def cm_metrics_by_ids(context: dict[str, Any], metric_ids: tuple[str, ...]) -> l
         if isinstance(query, dict) and query.get("id") in wanted:
             metrics.append(query)
     return metrics
+
+
+def runtime_metric_signal_id(metric: dict[str, Any]) -> str | None:
+    signal_id = str(metric.get("signal_id") or "").strip()
+    if signal_id:
+        return signal_id
+    return runtime_metric_signal_id_for_query_id(str(metric.get("id") or ""))
+
+
+def cm_metrics_by_signal(
+    context: dict[str, Any],
+    signal_id: str,
+    *,
+    fallback_ids: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    queries = [query for query in context.get("queries") or [] if isinstance(query, dict)]
+    signal_metrics = [query for query in queries if runtime_metric_signal_id(query) == signal_id]
+    if signal_metrics:
+        return signal_metrics
+    if fallback_ids:
+        return cm_metrics_by_ids(context, fallback_ids)
+    return []
+
+
+def cm_metric_by_signal(
+    context: dict[str, Any],
+    signal_id: str,
+    *,
+    fallback_ids: tuple[str, ...] = (),
+) -> dict[str, Any] | None:
+    metrics = cm_metrics_by_signal(context, signal_id, fallback_ids=fallback_ids)
+    return metrics[0] if metrics else None
+
+
+def metric_by_source_id(metrics: list[dict[str, Any]], metric_id: str) -> dict[str, Any] | None:
+    for metric in metrics:
+        if metric.get("id") == metric_id:
+            return metric
+    return None
 
 
 def cm_metric_point_count(metric: dict[str, Any] | None) -> int:
@@ -91,6 +131,30 @@ def runtime_metrics_source_label(context: dict[str, Any]) -> str:
 
 def cm_metric_availability_detail(context: dict[str, Any], metric_ids: tuple[str, ...]) -> str:
     details: list[str] = []
+    wanted = set(metric_ids)
+    wanted_signals = {
+        signal_id
+        for metric_id in metric_ids
+        for signal_id in [runtime_metric_signal_id_for_query_id(metric_id)]
+        if signal_id
+    }
+    signal_metrics = [
+        query
+        for query in context.get("queries") or []
+        if isinstance(query, dict) and runtime_metric_signal_id(query) in wanted_signals
+    ]
+    if signal_metrics and not any(
+        str(metric.get("id") or "") in wanted for metric in signal_metrics
+    ):
+        for metric in signal_metrics[:5]:
+            signal_id = safe_cm_metric_id(metric.get("signal_id") or "runtime_metric")
+            status = safe_cm_metric_id(metric.get("status") or "unknown")
+            point_count = cm_metric_point_count(metric)
+            if status == "ok" and point_count < CM_METRIC_MIN_POINTS_FOR_SIGNAL:
+                details.append(f"{signal_id}=insufficient_points")
+            else:
+                details.append(f"{signal_id}={status}")
+        return ", ".join(details)
     for metric_id in metric_ids:
         metric = cm_metric_by_id(context, metric_id)
         safe_id = safe_cm_metric_id(metric_id)
@@ -184,33 +248,70 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         else "unavailable"
     )
 
-    admission_queued = cm_metric_by_id(context, "impala_pool_queued_rate")
-    admission_rejected = cm_metric_by_id(context, "impala_pool_rejected_rate")
-    admission_timed_out = cm_metric_by_id(context, "impala_pool_timed_out_rate")
-    host_cpu_user = cm_metric_by_id(context, "host_cpu_user")
-    host_cpu_system = cm_metric_by_id(context, "host_cpu_system")
-    daemon_memory = cm_metric_by_id(context, "impala_daemon_memory")
-    disk_metrics = cm_metrics_by_ids(
-        context,
-        ("host_disk_read_rate", "host_disk_write_rate"),
+    admission_metric_ids = (
+        "impala_pool_queued_rate",
+        "impala_pool_rejected_rate",
+        "impala_pool_timed_out_rate",
     )
-    hdfs_read = cm_metric_by_id(context, "hdfs_datanode_read_bytes_rate")
-    hdfs_local_reads = cm_metric_by_id(context, "hdfs_datanode_local_reads_rate")
-    hdfs_remote_reads = cm_metric_by_id(context, "hdfs_datanode_remote_reads_rate")
-    network_metrics = cm_metrics_by_ids(
+    admission_metrics = cm_metrics_by_signal(
         context,
-        ("host_network_io", "host_network_receive_rate", "host_network_transmit_rate"),
+        "admission_pool_pressure",
+        fallback_ids=admission_metric_ids,
+    )
+    admission_queued = metric_by_source_id(admission_metrics, "impala_pool_queued_rate")
+    admission_rejected = metric_by_source_id(admission_metrics, "impala_pool_rejected_rate")
+    admission_timed_out = metric_by_source_id(admission_metrics, "impala_pool_timed_out_rate")
+    host_cpu_metric_ids = ("host_cpu_user", "host_cpu_system")
+    host_cpu_metrics = cm_metrics_by_signal(
+        context,
+        "host_cpu_pressure",
+        fallback_ids=host_cpu_metric_ids,
+    )
+    host_cpu_user = metric_by_source_id(host_cpu_metrics, "host_cpu_user")
+    host_cpu_system = metric_by_source_id(host_cpu_metrics, "host_cpu_system")
+    daemon_memory = cm_metric_by_signal(
+        context,
+        "impala_daemon_memory_growth",
+        fallback_ids=("impala_daemon_memory",),
+    )
+    disk_metric_ids = ("host_disk_read_rate", "host_disk_write_rate")
+    disk_metrics = cm_metrics_by_signal(
+        context,
+        "host_disk_io_pressure",
+        fallback_ids=disk_metric_ids,
+    )
+    hdfs_metric_ids = (
+        "hdfs_datanode_read_bytes_rate",
+        "hdfs_datanode_local_reads_rate",
+        "hdfs_datanode_remote_reads_rate",
+    )
+    hdfs_metrics = cm_metrics_by_signal(
+        context,
+        "hdfs_datanode_io_pressure",
+        fallback_ids=hdfs_metric_ids,
+    )
+    hdfs_read = metric_by_source_id(hdfs_metrics, "hdfs_datanode_read_bytes_rate")
+    hdfs_local_reads = metric_by_source_id(hdfs_metrics, "hdfs_datanode_local_reads_rate")
+    hdfs_remote_reads = metric_by_source_id(hdfs_metrics, "hdfs_datanode_remote_reads_rate")
+    network_metric_ids = (
+        "host_network_io",
+        "host_network_receive_rate",
+        "host_network_transmit_rate",
+    )
+    network_metrics = cm_metrics_by_signal(
+        context,
+        "host_network_io_spike",
+        fallback_ids=network_metric_ids,
     )
 
     queued_max = numeric_context_value(admission_queued or {}, "max")
     queued_avg = numeric_context_value(admission_queued or {}, "avg")
     rejected_max = numeric_context_value(admission_rejected or {}, "max")
     timed_out_max = numeric_context_value(admission_timed_out or {}, "max")
-    admission_spread = metric_series_spread_basis(admission_queued)
-    admission_ready = any(
-        cm_metric_ready(metric)
-        for metric in (admission_queued, admission_rejected, admission_timed_out)
-    )
+    admission_generic_max = max_metric_value(admission_metrics, "max")
+    admission_generic_avg = max_metric_value(admission_metrics, "avg")
+    admission_spread = metric_spread_basis(admission_metrics)
+    admission_ready = any(cm_metric_ready(metric) for metric in admission_metrics)
     if admission_ready:
         queued_observed = (
             queued_max is not None and queued_max >= CM_ADMISSION_POOL_QUEUED_RATE_THRESHOLD
@@ -232,6 +333,17 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             basis_parts.append(f"admission rejected max={rejected_max:.2f}/s")
         if timed_out_max is not None:
             basis_parts.append(f"admission timed_out max={timed_out_max:.2f}/s")
+        generic_observed = False
+        if not basis_parts and admission_generic_max is not None:
+            generic_observed = admission_generic_max >= CM_ADMISSION_POOL_QUEUED_RATE_THRESHOLD
+            basis_parts.append(
+                f"admission pool pressure max={admission_generic_max:.2f}/s"
+                + (
+                    f" avg={admission_generic_avg:.2f}/s"
+                    if admission_generic_avg is not None
+                    else ""
+                )
+            )
         basis = (
             "; ".join(basis_parts)
             if basis_parts
@@ -241,7 +353,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
             basis = f"{basis}; {admission_spread}"
         admission_pool_pressure = cm_signal(
             "observed"
-            if queued_observed or rejected_observed or timed_out_observed
+            if queued_observed or rejected_observed or timed_out_observed or generic_observed
             else "not_observed",
             basis,
         )
@@ -249,25 +361,32 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         admission_pool_pressure = cm_signal(
             "unknown",
             "admission pool metrics are missing or have insufficient points; availability: "
-            + cm_metric_availability_detail(
-                context,
-                (
-                    "impala_pool_queued_rate",
-                    "impala_pool_rejected_rate",
-                    "impala_pool_timed_out_rate",
-                ),
-            ),
+            + cm_metric_availability_detail(context, admission_metric_ids),
         )
 
     cpu_user_max = numeric_context_value(host_cpu_user or {}, "max")
     cpu_user_avg = numeric_context_value(host_cpu_user or {}, "avg")
     cpu_system_max = numeric_context_value(host_cpu_system or {}, "max")
-    cpu_user_spread = metric_series_spread_basis(host_cpu_user)
-    if cm_metric_ready(host_cpu_user) or cm_metric_ready(host_cpu_system):
+    cpu_generic_max = max_metric_value(host_cpu_metrics, "max")
+    cpu_generic_avg = max_metric_value(host_cpu_metrics, "avg")
+    cpu_spread = metric_spread_basis(host_cpu_metrics)
+    if any(cm_metric_ready(metric) for metric in host_cpu_metrics):
         cpu_observed = (
             (cpu_user_max is not None and cpu_user_max >= CM_HOST_CPU_USER_MAX_THRESHOLD)
             or (cpu_user_avg is not None and cpu_user_avg >= CM_HOST_CPU_USER_AVG_THRESHOLD)
             or (cpu_system_max is not None and cpu_system_max >= CM_HOST_CPU_SYSTEM_MAX_THRESHOLD)
+            or (
+                cpu_generic_max is not None
+                and cpu_generic_max >= CM_HOST_CPU_USER_MAX_THRESHOLD
+                and cpu_user_max is None
+                and cpu_system_max is None
+            )
+            or (
+                cpu_generic_avg is not None
+                and cpu_generic_avg >= CM_HOST_CPU_USER_AVG_THRESHOLD
+                and cpu_user_max is None
+                and cpu_system_max is None
+            )
         )
         basis = (
             (
@@ -275,10 +394,14 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
                 f"host_cpu_system max={cpu_system_max:.2f}"
             )
             if cpu_user_max is not None and cpu_user_avg is not None and cpu_system_max is not None
-            else ("available CPU metrics did not cross pressure thresholds")
+            else (
+                f"host CPU max={cpu_generic_max:.2f} avg={cpu_generic_avg:.2f}"
+                if cpu_generic_max is not None and cpu_generic_avg is not None
+                else "available CPU metrics did not cross pressure thresholds"
+            )
         )
-        if cpu_user_spread:
-            basis = f"{basis}; {cpu_user_spread}"
+        if cpu_spread:
+            basis = f"{basis}; {cpu_spread}"
         host_cpu_pressure = cm_signal(
             "observed" if cpu_observed else "not_observed",
             basis,
@@ -287,7 +410,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         host_cpu_pressure = cm_signal(
             "unknown",
             "host CPU metrics are missing or have insufficient points; availability: "
-            + cm_metric_availability_detail(context, ("host_cpu_user", "host_cpu_system")),
+            + cm_metric_availability_detail(context, host_cpu_metric_ids),
         )
 
     daemon_mem_min = numeric_context_value(daemon_memory or {}, "min")
@@ -352,31 +475,31 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         host_disk_io_pressure = cm_signal(
             "unknown",
             "host disk I/O metrics are missing or have insufficient points; availability: "
-            + cm_metric_availability_detail(
-                context, ("host_disk_read_rate", "host_disk_write_rate")
-            ),
+            + cm_metric_availability_detail(context, disk_metric_ids),
         )
 
     hdfs_read_max = numeric_context_value(hdfs_read or {}, "max")
     hdfs_read_avg = numeric_context_value(hdfs_read or {}, "avg")
+    hdfs_generic_max = max_metric_value(hdfs_metrics, "max")
+    hdfs_generic_avg = max_metric_value(hdfs_metrics, "avg")
     hdfs_local_max = numeric_context_value(hdfs_local_reads or {}, "max")
     hdfs_remote_max = numeric_context_value(hdfs_remote_reads or {}, "max")
-    hdfs_spread = metric_series_spread_basis(hdfs_read)
-    hdfs_ready = any(
-        cm_metric_ready(metric) for metric in (hdfs_read, hdfs_local_reads, hdfs_remote_reads)
-    )
-    if hdfs_ready and hdfs_read_max is not None and hdfs_read_avg is not None:
-        read_ratio = hdfs_read_max / hdfs_read_avg if hdfs_read_avg > 0 else None
+    hdfs_spread = metric_spread_basis(hdfs_metrics)
+    hdfs_ready = any(cm_metric_ready(metric) for metric in hdfs_metrics)
+    effective_hdfs_max = hdfs_read_max if hdfs_read_max is not None else hdfs_generic_max
+    effective_hdfs_avg = hdfs_read_avg if hdfs_read_avg is not None else hdfs_generic_avg
+    if hdfs_ready and effective_hdfs_max is not None and effective_hdfs_avg is not None:
+        read_ratio = effective_hdfs_max / effective_hdfs_avg if effective_hdfs_avg > 0 else None
         remote_ratio = (
             hdfs_remote_max / hdfs_local_max
             if hdfs_remote_max is not None and hdfs_local_max and hdfs_local_max > 0
             else None
         )
-        hdfs_observed = hdfs_read_max >= CM_HDFS_DATANODE_READ_BYTES_PER_SEC or (
+        hdfs_observed = effective_hdfs_max >= CM_HDFS_DATANODE_READ_BYTES_PER_SEC or (
             remote_ratio is not None and remote_ratio >= CM_HDFS_REMOTE_READ_RATIO_THRESHOLD
         )
         basis_parts = [
-            f"HDFS DataNode read max={fmt_bytes(hdfs_read_max)}/s avg={fmt_bytes(hdfs_read_avg)}/s"
+            f"HDFS DataNode read max={fmt_bytes(effective_hdfs_max)}/s avg={fmt_bytes(effective_hdfs_avg)}/s"
         ]
         if read_ratio is not None:
             basis_parts.append(f"read ratio={read_ratio:.2f}x")
@@ -397,14 +520,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         hdfs_datanode_io_pressure = cm_signal(
             "unknown",
             "HDFS DataNode read metrics are missing or have insufficient points; availability: "
-            + cm_metric_availability_detail(
-                context,
-                (
-                    "hdfs_datanode_read_bytes_rate",
-                    "hdfs_datanode_local_reads_rate",
-                    "hdfs_datanode_remote_reads_rate",
-                ),
-            ),
+            + cm_metric_availability_detail(context, hdfs_metric_ids),
         )
 
     network_max = max_metric_value(network_metrics, "max")
@@ -434,10 +550,7 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         network_io_spike = cm_signal(
             "unknown",
             "host network I/O metric is missing or has insufficient points; availability: "
-            + cm_metric_availability_detail(
-                context,
-                ("host_network_io", "host_network_receive_rate", "host_network_transmit_rate"),
-            ),
+            + cm_metric_availability_detail(context, network_metric_ids),
         )
 
     truncated_metrics = [str(query.get("id")) for query in queries if query.get("truncated")][:5]

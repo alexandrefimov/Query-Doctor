@@ -406,17 +406,18 @@ Provider-neutral runtime context cleanup:
   `Cluster Runtime Context` headings are the current analyzer/report contract;
   keep legacy `CM Metrics` heading load fallbacks for old artifacts. Analyzer
   runtime metrics readers now use canonical `metrics_context` and
-  `metrics_correlation` keys with `cm_*` fallbacks. The remaining migration is
-  canonical `query_context` and `metrics_facts` data keys, persistence/loader
-  aliases, and explicit source labels while preserving existing `cm_*` keys and
-  artifacts as legacy load fallbacks.
+  `metrics_correlation` keys with `cm_*` fallbacks. Runtime metric collectors
+  now write abstract catalog `signal_id`s next to provider-specific `id`s, and
+  analyzer metric facts read via `signal_id` with legacy ID fallbacks. The
+  remaining migration is canonical `query_context` and `metrics_facts` data
+  keys, persistence/loader aliases, and explicit source labels while preserving
+  existing `cm_*` keys and artifacts as legacy load fallbacks.
 - Update report-validator heading allowlists atomically with any heading rename
   and add a snapshot test for rendered `analysis_facts.md`, so the trusted
   report contract cannot drift silently.
-- Move metrics analyzer reads from Cloudera Manager time-series query IDs to
-  abstract catalog `signal_id`s. The Cloudera Manager collector should write
-  both `signal_id` and source-specific IDs so old corpora can be loaded through
-  a catalog-backed compatibility path.
+- Keep any later metric-catalog expansion source-backed: new metrics must write
+  a catalog `signal_id` plus a provider-specific `id`, and analyzer reads must
+  preserve legacy fallback for old corpora.
 - Use analyzer source provenance for raw-free UI/report coverage wording and
   explicit `none`, `unavailable`, or partial-coverage limitations. Keep any
   later persistence or snapshot contract changes narrow and compatibility-safe.

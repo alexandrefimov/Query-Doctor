@@ -137,6 +137,7 @@ def summarize_timeseries_response(
             series_summaries.append(summarize_timeseries_series(bounded_values, index=series_index))
     summary: dict[str, object] = {
         "id": query.query_id,
+        "signal_id": query.signal_id,
         "label": query.label,
         "status": "ok" if values else "no_data",
         "point_count": len(values),
@@ -201,6 +202,7 @@ def collect_cm_timeseries_context(
             queries.append(
                 {
                     "id": query.query_id,
+                    "signal_id": query.signal_id,
                     "label": query.label,
                     "status": "unavailable",
                     "point_count": 0,

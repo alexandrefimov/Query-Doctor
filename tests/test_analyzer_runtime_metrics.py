@@ -33,6 +33,7 @@ def runtime_metrics_context_fixture() -> dict[str, object]:
         "queries": [
             {
                 "id": "host_cpu_user",
+                "signal_id": "host_cpu_pressure",
                 "label": "Host CPU user rate",
                 "status": "ok",
                 "point_count": 3,
@@ -43,6 +44,7 @@ def runtime_metrics_context_fixture() -> dict[str, object]:
             },
             {
                 "id": "host_cpu_system",
+                "signal_id": "host_cpu_pressure",
                 "label": "Host CPU system rate",
                 "status": "ok",
                 "point_count": 3,
@@ -122,3 +124,44 @@ def test_analyzer_runtime_metric_readers_accept_canonical_only_keys():
     assert "runtime metrics coverage: 2/2 metrics ok, 6 points" in evidence_quality["strengths"]
     assert provenance["status"] == "available"
     assert provenance["label"] == "Prometheus runtime metrics"
+
+
+def test_metric_facts_use_signal_ids_when_source_ids_are_provider_specific():
+    from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
+
+    context = {
+        "available": True,
+        "source": "prometheus",
+        "source_label": "Prometheus runtime metrics",
+        "queries": [
+            {
+                "id": "provider_memory_rss",
+                "signal_id": "impala_daemon_memory_growth",
+                "label": "Provider memory",
+                "status": "ok",
+                "point_count": 3,
+                "min": 10 * 1024 * 1024 * 1024,
+                "max": 24 * 1024 * 1024 * 1024,
+                "avg": 16 * 1024 * 1024 * 1024,
+                "latest": 24 * 1024 * 1024 * 1024,
+            },
+            {
+                "id": "provider_network_bytes",
+                "signal_id": "host_network_io_spike",
+                "label": "Provider network",
+                "status": "ok",
+                "point_count": 3,
+                "min": 10 * 1024 * 1024,
+                "max": 240 * 1024 * 1024,
+                "avg": 20 * 1024 * 1024,
+                "latest": 20 * 1024 * 1024,
+            },
+        ],
+    }
+
+    facts = build_cm_metrics_facts(context)
+
+    assert facts["daemon_memory_growth"]["status"] == "observed"
+    assert facts["network_io_spike"]["status"] == "observed"
+    assert "provider_memory_rss" not in facts["daemon_memory_growth"]["basis"]
+    assert "provider_network_bytes" not in facts["network_io_spike"]["basis"]

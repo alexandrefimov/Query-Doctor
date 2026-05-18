@@ -332,9 +332,23 @@ CM_TIMESERIES_MAPPINGS: tuple[CMTimeSeriesMapping, ...] = (
     ),
 )
 
+LEGACY_RUNTIME_METRIC_QUERY_SIGNAL_IDS = {
+    "host_network_io": "host_network_io_spike",
+}
+
 
 def metric_signal_by_id() -> dict[str, MetricSignalSpec]:
     return {spec.signal_id: spec for spec in METRIC_SIGNAL_CATALOG}
+
+
+def runtime_metric_signal_id_for_query_id(query_id: str | None) -> str | None:
+    text = str(query_id or "").strip()
+    if not text:
+        return None
+    for mapping in CM_TIMESERIES_MAPPINGS:
+        if mapping.query_id == text:
+            return mapping.signal_id
+    return LEGACY_RUNTIME_METRIC_QUERY_SIGNAL_IDS.get(text)
 
 
 def normalize_cm_metrics_profile(profile: str | None = None) -> str:

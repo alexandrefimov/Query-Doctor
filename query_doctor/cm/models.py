@@ -93,6 +93,7 @@ class CollectorConfig:
 @dataclass(frozen=True)
 class CMTimeSeriesQuery:
     query_id: str
+    signal_id: str
     label: str
     tsquery: str
 
@@ -103,6 +104,7 @@ def cm_timeseries_query_allowlist(
     return tuple(
         CMTimeSeriesQuery(
             query_id=mapping.query_id,
+            signal_id=mapping.signal_id,
             label=mapping.label,
             tsquery=mapping.tsquery,
         )
