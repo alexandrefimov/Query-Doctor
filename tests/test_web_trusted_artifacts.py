@@ -38,6 +38,13 @@ def test_trusted_markers_reexport_through_trusted_artifacts():
     )
 
 
+def test_report_evidence_reexport_through_trusted_artifacts():
+    from query_doctor.web import report_evidence
+
+    assert trusted_artifacts.report_evidence_inventory is report_evidence.report_evidence_inventory
+    assert trusted_artifacts.ReportEvidenceInventory is report_evidence.ReportEvidenceInventory
+
+
 def test_report_evidence_inventory_returns_safe_categories_without_filenames(tmp_path):
     case_dir = tmp_path / "case"
     case_dir.mkdir()

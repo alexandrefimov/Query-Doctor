@@ -30,6 +30,14 @@ from query_doctor.web.models import WebJobSnapshot, WebSettings
 from query_doctor.web.job_progress import JobProgressView, progress_view_for_job
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 from query_doctor.safety.browser_display import redact_local_paths_for_display
+from query_doctor.web.report_evidence import (
+    REPORT_ARTIFACT_CANDIDATES,
+    REPORT_EVIDENCE_COMPLETENESS_GROUPS,
+    ReportEvidenceCategory,
+    ReportEvidenceCompleteness,
+    ReportEvidenceInventory,
+    report_evidence_inventory,
+)
 from query_doctor.web.trusted_markers import (
     batch_case_validated_report_exists,
     case_has_batch_report_output,
@@ -72,86 +80,15 @@ class TrustedReportArtifact:
 
 
 @dataclass(frozen=True)
-class ReportEvidenceCategory:
-    label: str
-
-
-@dataclass(frozen=True)
-class ReportEvidenceCompleteness:
-    label: str
-    state: str
-
-
-@dataclass(frozen=True)
-class ReportEvidenceInventory:
-    categories: tuple[ReportEvidenceCategory, ...]
-    completeness: tuple[ReportEvidenceCompleteness, ...]
-    profile_evidence_state: str
-    analyzer_facts_state: str
-
-
-@dataclass(frozen=True)
 class CaseImpalaContextArtifact:
     case_dir: Path
     context_path: Path
     payload: dict[str, Any]
 
 
-REPORT_ARTIFACT_CANDIDATES = (
-    ("Profile digest", ("profile_digest.md",)),
-    ("Profile text", ("profile.txt",)),
-    ("Profile JSON", ("profile.json",)),
-    ("SQL", ("sql.sql",)),
-    ("SQL", ("query.sql",)),
-    ("SQL", ("original_query.sql",)),
-    ("EXPLAIN", ("explain.txt",)),
-    ("Analyzer facts", ("analysis_facts.md",)),
-    ("Diagnosis", (BATCH_REPORT_NAME,)),
-    ("Impala metadata", ("impala_context.md",)),
-    ("Impala metadata JSON", ("impala_context.json",)),
-    ("CM query details", ("cm_query_details.json",)),
-    ("CM metadata", ("cm_metadata.json",)),
-    ("Collection warnings", ("collection_warnings.txt",)),
-)
-REPORT_EVIDENCE_COMPLETENESS_GROUPS = (
-    ("Profile", ("profile_digest.md", "profile.txt", "profile.json")),
-    ("SQL", ("sql.sql", "query.sql", "original_query.sql")),
-    ("EXPLAIN", ("explain.txt",)),
-    ("Metadata", ("impala_context.md", "impala_context.json")),
-    ("Host metrics", ()),
-)
-
-
 def trusted_report_download_filename(source_id: str) -> str:
     short_id = REPORT_DOWNLOAD_ID_RE.sub("", source_id)[:8] or "report"
     return f"query-doctor-report-{short_id}.md"
-
-
-def report_evidence_inventory(case_dir: Path) -> ReportEvidenceInventory:
-    categories = tuple(
-        ReportEvidenceCategory(label)
-        for label, names in REPORT_ARTIFACT_CANDIDATES
-        if _case_has_any_artifact(case_dir, names)
-    )
-    completeness = tuple(
-        ReportEvidenceCompleteness(
-            label,
-            "available" if names and _case_has_any_artifact(case_dir, names) else "not collected",
-        )
-        for label, names in REPORT_EVIDENCE_COMPLETENESS_GROUPS
-    )
-    return ReportEvidenceInventory(
-        categories=categories,
-        completeness=completeness,
-        profile_evidence_state=(
-            "available"
-            if _case_has_any_artifact(
-                case_dir, ("profile_digest.md", "profile.txt", "profile.json")
-            )
-            else "not observed"
-        ),
-        analyzer_facts_state="available" if case_has_analyzer_facts(case_dir) else "not observed",
-    )
 
 
 def _case_has_any_artifact(case_dir: Path, names: tuple[str, ...]) -> bool:
