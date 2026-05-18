@@ -25,6 +25,19 @@ def test_trusted_artifacts_exposes_optimizer_artifact_status_helpers():
     )
 
 
+def test_trusted_markers_reexport_through_trusted_artifacts():
+    from query_doctor.web import trusted_markers
+
+    assert (
+        trusted_artifacts.batch_case_validated_report_exists
+        is trusted_markers.batch_case_validated_report_exists
+    )
+    assert (
+        trusted_artifacts.optimized_query_validated_exists
+        is trusted_markers.optimized_query_validated_exists
+    )
+
+
 def test_report_evidence_inventory_returns_safe_categories_without_filenames(tmp_path):
     case_dir = tmp_path / "case"
     case_dir.mkdir()
