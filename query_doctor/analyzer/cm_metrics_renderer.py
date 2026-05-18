@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
+from query_doctor.analyzer.runtime_metrics import (
+    runtime_metrics_context,
+    runtime_metrics_correlation,
+)
 from query_doctor.analyzer.scalars import numeric_context_value
 
 
@@ -13,7 +17,7 @@ def md_escape(value: str) -> str:
 
 
 def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
-    context = analysis.get("cm_timeseries_context")
+    context = runtime_metrics_context(analysis)
     if not context:
         return []
 
@@ -78,7 +82,7 @@ def render_cm_timeseries_context(analysis: dict[str, Any]) -> list[str]:
 
 
 def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
-    context = analysis.get("cm_timeseries_context")
+    context = runtime_metrics_context(analysis)
     if not context:
         return []
 
@@ -132,7 +136,7 @@ def render_cm_metrics_facts(analysis: dict[str, Any]) -> list[str]:
 
 
 def render_cm_metrics_correlation(analysis: dict[str, Any]) -> list[str]:
-    correlation = analysis.get("cm_metrics_correlation")
+    correlation = runtime_metrics_correlation(analysis)
     if not correlation:
         return []
 

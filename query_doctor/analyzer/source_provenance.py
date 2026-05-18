@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from query_doctor.analyzer.runtime_metrics import runtime_metrics_context
+
 
 PROVENANCE_KINDS = ("engine", "profile", "metrics", "events", "metadata")
 KNOWN_SOURCE_LABELS = {
@@ -115,7 +117,7 @@ def profile_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
 
 
 def metrics_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
-    context = analysis.get("cm_timeseries_context")
+    context = runtime_metrics_context(analysis)
     if not isinstance(context, dict):
         return provenance_item(
             "metrics",

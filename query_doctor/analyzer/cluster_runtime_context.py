@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
+from query_doctor.analyzer.runtime_metrics import (
+    runtime_metrics_context,
+    runtime_metrics_correlation,
+)
 
 
 CM_RUNTIME_SIGNAL_LABELS = {
@@ -53,7 +57,7 @@ def _window_scope(context: dict[str, Any]) -> str:
 def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
     """Summarize collected runtime context without exposing raw metric series."""
 
-    context = analysis.get("cm_timeseries_context")
+    context = runtime_metrics_context(analysis)
     if not context:
         return {
             "status": "unavailable",
@@ -79,11 +83,7 @@ def build_cluster_runtime_context(analysis: dict[str, Any]) -> dict[str, Any]:
         }
 
     metrics = build_cm_metrics_facts(context)
-    correlation = (
-        analysis.get("cm_metrics_correlation")
-        if isinstance(analysis.get("cm_metrics_correlation"), dict)
-        else {}
-    )
+    correlation = runtime_metrics_correlation(analysis) or {}
     signals = [signal for signal in correlation.get("signals") or [] if isinstance(signal, dict)]
 
     observed = [

@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
+from query_doctor.analyzer.runtime_metrics import (
+    runtime_metrics_context,
+    runtime_metrics_correlation,
+)
 from query_doctor.analyzer.scalars import numeric_context_value
 from query_doctor.analyzer.thresholds import DEFAULT_LARGE_BYTES_THRESHOLD
 
@@ -68,7 +72,7 @@ def has_cpu_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 
 def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
-    context = analysis.get("cm_timeseries_context")
+    context = runtime_metrics_context(analysis)
     if not context:
         return {
             "status": "unavailable",
@@ -232,7 +236,7 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
 
 
 def cm_metric_correlation_signal(analysis: dict[str, Any], key: str) -> dict[str, Any] | None:
-    correlation = analysis.get("cm_metrics_correlation") or {}
+    correlation = runtime_metrics_correlation(analysis) or {}
     for signal in correlation.get("signals") or []:
         if isinstance(signal, dict) and signal.get("key") == key:
             return signal

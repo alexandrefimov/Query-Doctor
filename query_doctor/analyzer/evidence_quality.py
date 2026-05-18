@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
+from query_doctor.analyzer.runtime_metrics import runtime_metrics_context
 
 
 def evidence_quality_level(score: int) -> str:
@@ -57,7 +58,7 @@ def build_evidence_quality(analysis: dict[str, Any]) -> dict[str, Any]:
     else:
         limitations.append("backend per-host facts are unavailable")
 
-    metrics_context = analysis.get("cm_timeseries_context")
+    metrics_context = runtime_metrics_context(analysis)
     if metrics_context:
         metrics = build_cm_metrics_facts(metrics_context)
         status = metrics.get("status")
