@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from query_doctor.web.models import WebJobSnapshot
 
 
 @dataclass(frozen=True)
@@ -81,14 +85,6 @@ LLM_ACTIONS_STAGES = tuple(
     (index, step.stage_label, step.progress)
     for index, step in enumerate(LLM_ACTIONS_PROGRESS_STEPS)
 )
-DEFAULT_DETAIL_ACTION_PROGRESS_INDEX = {
-    "batch_report": 1,
-    "query_report": 1,
-    "batch_optimized_query": 0,
-    "query_optimized_query": 0,
-    "batch_llm_actions": 0,
-    "query_llm_actions": 0,
-}
 
 
 def progress_step_index(
@@ -142,23 +138,6 @@ def build_progress_view(
     )
 
 
-def build_indexed_progress_view(
-    steps: tuple[JobProgressStep, ...],
-    current_stage: str,
-    current_index: int,
-) -> JobProgressView:
-    bounded_index = max(0, min(len(steps) - 1, current_index))
-    return JobProgressView(
-        current_stage=current_stage,
-        current_index=bounded_index,
-        percent=indexed_progress_percent(steps, bounded_index),
-        steps=tuple(
-            progress_step_view(step, index, bounded_index, current_stage)
-            for index, step in enumerate(steps)
-        ),
-    )
-
-
 def progress_steps_for_job_kind(kind: str) -> tuple[JobProgressStep, ...]:
     if kind in {"batch_report", "query_report"}:
         return REPORT_PROGRESS_STEPS
@@ -179,11 +158,10 @@ def progress_view_for_job(
     return build_progress_view(steps, stage_label, progress, default_index=default_index)
 
 
-def default_progress_view_for_job_kind(kind: str) -> JobProgressView:
-    steps = progress_steps_for_job_kind(kind)
-    default_index = DEFAULT_DETAIL_ACTION_PROGRESS_INDEX.get(kind, 0)
-    default_step = steps[max(0, min(len(steps) - 1, default_index))]
-    return build_indexed_progress_view(steps, default_step.stage_label, default_index)
+def progress_view_from_snapshot(job: WebJobSnapshot | None) -> JobProgressView | None:
+    if job is None:
+        return None
+    return progress_view_for_job(job.kind, job.stage_label, job.progress)
 
 
 def progress_view_payload(view: JobProgressView) -> dict[str, object]:

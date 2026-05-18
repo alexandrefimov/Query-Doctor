@@ -6,10 +6,7 @@ from dataclasses import dataclass
 import html
 from typing import Any
 
-from query_doctor.web.job_progress import (
-    JobProgressView,
-    default_progress_view_for_job_kind,
-)
+from query_doctor.web.job_progress import JobProgressView
 from query_doctor.web.presenters.recent_scan import (
     ReportActionView,
     safe_display_text,
@@ -268,8 +265,10 @@ def render_llm_actions_job_progress(
     optimizer_view: OptimizedQueryActionView,
 ) -> str:
     progress_view = report_view.progress_view or optimizer_view.progress_view
-    progress_kind = llm_actions_progress_kind(report_view.job_kind, optimizer_view.job_kind)
-    progress_view = progress_view or default_progress_view_for_job_kind(progress_kind)
+    if progress_view is None:
+        # State builders populate progress_view for running combined jobs. If a
+        # caller violates that invariant, avoid fabricating stale progress.
+        return ""
     current_stage = progress_view.current_stage
     escaped_job_id = html.escape(report_view.job_id, quote=True)
     status_attrs = (
@@ -292,14 +291,6 @@ def render_llm_actions_job_progress(
         f'<div class="batch-progress"><div class="batch-progress-steps">{step_html}</div></div>'
         "</div>"
     )
-
-
-def llm_actions_progress_kind(report_job_kind: str, optimizer_job_kind: str) -> str:
-    if report_job_kind in LLM_ACTIONS_JOB_KINDS:
-        return report_job_kind
-    if optimizer_job_kind in LLM_ACTIONS_JOB_KINDS:
-        return optimizer_job_kind
-    return "batch_llm_actions"
 
 
 def render_llm_actions_job_stopped(
@@ -512,8 +503,10 @@ def render_trusted_optimized_query_draft(trusted_optimized_query: str) -> str:
 
 def render_optimized_query_progress(view: OptimizedQueryActionView) -> str:
     progress_view = view.progress_view
-    progress_kind = optimized_query_progress_kind(view.job_kind)
-    progress_view = progress_view or default_progress_view_for_job_kind(progress_kind)
+    if progress_view is None:
+        # load_optimized_query_state populates progress_view for running jobs.
+        # Missing progress here indicates an invalid caller state.
+        return ""
     current_stage = progress_view.current_stage
     status_attrs = ""
     job_id = view.job_id
@@ -541,10 +534,6 @@ def render_optimized_query_progress(view: OptimizedQueryActionView) -> str:
         f'<div class="batch-progress"><div class="batch-progress-steps">{step_html}</div></div>'
         "</div>"
     )
-
-
-def optimized_query_progress_kind(job_kind: str) -> str:
-    return job_kind if job_kind in OPTIMIZED_QUERY_JOB_KINDS else "batch_optimized_query"
 
 
 def render_optimized_query_outcome(view: OptimizedQueryActionView) -> str:

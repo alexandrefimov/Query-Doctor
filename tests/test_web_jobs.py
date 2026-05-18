@@ -1,6 +1,12 @@
 import json
 
+from query_doctor.web.job_progress import (
+    BATCH_REPORT_STAGES,
+    progress_view_for_job,
+    progress_view_from_snapshot,
+)
 from query_doctor.web.jobs import WebJobStore, render_job_status_json
+from query_doctor.web.models import WebJobSnapshot
 
 
 class FakeClock:
@@ -56,6 +62,31 @@ def test_web_job_store_terminal_timestamps_stay_internal():
     payload = json.loads(render_job_status_json(snapshot))
     assert "created_at" not in payload
     assert "updated_at" not in payload
+
+
+def test_progress_view_from_snapshot_matches_direct_job_progress_view():
+    snapshot = WebJobSnapshot(
+        job_id="0" * 32,
+        query_id="qid",
+        report_mode="admin",
+        status="running",
+        stage_label=BATCH_REPORT_STAGES[2][1],
+        progress=BATCH_REPORT_STAGES[2][2],
+        kind="batch_report",
+        error="",
+        result_html="",
+        cancel_requested=False,
+        batch_progress_path=None,
+        batch_case_id="case-001",
+        batch_source="batch",
+    )
+
+    direct = progress_view_for_job(snapshot.kind, snapshot.stage_label, snapshot.progress)
+    via_snapshot = progress_view_from_snapshot(snapshot)
+
+    assert via_snapshot is not None
+    assert via_snapshot == direct
+    assert progress_view_from_snapshot(None) is None
 
 
 def test_web_job_store_updates_terminal_ttl_when_job_finishes():

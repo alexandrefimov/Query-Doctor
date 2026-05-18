@@ -27,7 +27,7 @@ from query_doctor.web.command_builders import (
     WEB_REPORT_VALIDATION_MODE,
 )
 from query_doctor.web.models import WebJobSnapshot, WebSettings
-from query_doctor.web.job_progress import JobProgressView, progress_view_for_job
+from query_doctor.web.job_progress import progress_view_from_snapshot
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 from query_doctor.safety.browser_display import redact_local_paths_for_display
 from query_doctor.web.case_files import (
@@ -637,12 +637,6 @@ def load_optimized_query_state(
         "progress": state_job.progress if state_job is not None else 0,
         "progress_view": progress_view,
     }
-
-
-def progress_view_from_snapshot(job: WebJobSnapshot | None) -> JobProgressView | None:
-    if job is None:
-        return None
-    return progress_view_for_job(job.kind, job.stage_label, job.progress)
 
 
 def decorate_cases_with_optimizer_artifact_status(summary: dict[str, Any]) -> dict[str, Any]:

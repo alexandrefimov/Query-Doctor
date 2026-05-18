@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import html
 
-from query_doctor.web.job_progress import (
-    JobProgressView,
-    default_progress_view_for_job_kind,
-)
+from query_doctor.web.job_progress import JobProgressView
 from query_doctor.web.presenters.recent_scan import ReportActionView
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
 
@@ -39,9 +36,14 @@ def render_llm_report_status(
 
 
 def render_llm_report_progress(view: ReportActionView) -> str:
-    progress_kind = report_progress_kind(view.job_kind)
-    progress_view = view.progress_view if view.job_kind in REPORT_ACTION_JOB_KINDS else None
-    progress_view = progress_view or default_progress_view_for_job_kind(progress_kind)
+    if view.job_kind not in REPORT_ACTION_JOB_KINDS:
+        # Combined LLM-actions jobs route through render_llm_actions_job_progress.
+        # A report-only renderer should not fabricate progress for that state.
+        return ""
+    progress_view = view.progress_view
+    if progress_view is None:
+        # State builders populate progress_view for running report jobs.
+        return ""
     current_stage = progress_view.current_stage
     status_attrs = ""
     if view.job_id:
@@ -68,10 +70,6 @@ def render_llm_report_progress(view: ReportActionView) -> str:
         f'<div class="batch-progress"><div class="batch-progress-steps">{step_html}</div></div>'
         "</div>"
     )
-
-
-def report_progress_kind(job_kind: str) -> str:
-    return job_kind if job_kind in REPORT_ACTION_JOB_KINDS else "batch_report"
 
 
 def render_progress_steps(progress_view: JobProgressView) -> str:

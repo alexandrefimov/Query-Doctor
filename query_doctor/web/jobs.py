@@ -17,7 +17,7 @@ from query_doctor.web.job_progress import (
     LLM_ACTIONS_STAGES,
     OPTIMIZED_QUERY_STAGES,
     WEB_STAGES,
-    progress_view_for_job,
+    progress_view_from_snapshot,
     progress_view_payload as job_progress_view_payload,
 )
 from query_doctor.web.models import (
@@ -82,9 +82,7 @@ def render_job_status_json(job: WebJobSnapshot | None) -> str:
             progress = progress_view["percent"]
         else:
             progress = job.progress
-            progress_view = job_progress_view_payload(
-                progress_view_for_job(job.kind, job.stage_label, progress)
-            )
+            progress_view = job_progress_view_payload(progress_view_from_snapshot(job))
         payload = {
             "status": job.status,
             "stage": job.stage_label,

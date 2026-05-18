@@ -45,6 +45,51 @@ def test_report_evidence_reexport_through_trusted_artifacts():
     assert trusted_artifacts.ReportEvidenceInventory is report_evidence.ReportEvidenceInventory
 
 
+def test_trusted_artifacts_uses_canonical_progress_view_from_snapshot():
+    from query_doctor.web import job_progress
+
+    assert trusted_artifacts.progress_view_from_snapshot is job_progress.progress_view_from_snapshot
+    assert callable(job_progress.progress_view_from_snapshot)
+
+
+def test_running_report_state_carries_non_null_progress_view(tmp_path):
+    from query_doctor.web.job_progress import JobProgressView
+
+    case_dir = tmp_path / "case-001"
+    store = WebJobStore()
+    snapshot = store.create_batch_report("case-001")
+
+    state = trusted_artifacts.load_batch_case_report_state(
+        batch_settings(tmp_path, case_dir),
+        "case-001",
+        {"case_index": 1, "query_id": "abc", "case_dir": str(case_dir)},
+        store,
+        job=snapshot,
+    )
+
+    assert state["status"] == "running"
+    assert isinstance(state["progress_view"], JobProgressView)
+
+
+def test_running_optimized_query_state_carries_non_null_progress_view(tmp_path):
+    from query_doctor.web.job_progress import JobProgressView
+
+    case_dir = tmp_path / "case-001"
+    case_dir.mkdir()
+    store = WebJobStore()
+    snapshot = store.create_batch_optimized_query("case-001")
+
+    state = trusted_artifacts.load_optimized_query_state(
+        case_dir,
+        store,
+        batch_case_id="case-001",
+        job=snapshot,
+    )
+
+    assert state["status"] == "running"
+    assert isinstance(state["progress_view"], JobProgressView)
+
+
 def test_no_private_path_helpers_remain_in_trust_modules():
     from query_doctor.web import report_evidence
 
