@@ -858,3 +858,7 @@ or a new safety contract before they return.
   runtime context correlation.
 - Documentation drift remains a product risk; active docs should be updated as
   part of safety-sensitive feature work.
+- Post-0.2.0 UI and diagnosis follow-ups are tracked for scan-side language
+  selection (#66), safe query-type grouping (#67), optimization score
+  calibration (#68), Known Query ID progress (#69), and elapsed-time progress
+  display (#70).

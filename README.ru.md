@@ -329,7 +329,7 @@ configs, credentials, raw profiles, raw metadata или temporary outputs.
 ## Public status
 
 Репозиторий публичный. `v0.1.0` - initial public GitHub release baseline,
-`v0.1.1` - первый PyPI release, этот checkout подготовлен для `v0.2.0`:
+`v0.1.1` - первый PyPI release, а `v0.2.0` - текущий package-index release:
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) показывает
 текущий package-index status. Public license is AGPL-3.0-or-later, commercial
 licensing available separately.
