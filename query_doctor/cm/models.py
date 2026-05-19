@@ -80,6 +80,7 @@ class CollectorConfig:
     redact: bool
     redact_identifiers: bool
     redact_hosts: bool
+    metadata_source_tables_out: Path | None
     collect_cm_timeseries: bool
     cm_metrics_profile: str
     cm_timeseries_padding_sec: int

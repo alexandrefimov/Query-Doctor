@@ -1,6 +1,6 @@
 # Query Doctor Safety Contract
 
-Last reviewed: 2026-05-13
+Last reviewed: 2026-05-19
 
 Language: English | [Russian](i18n/ru/safety-contract.md)
 
@@ -31,7 +31,8 @@ implementation boundaries.
   `impala-shell` with an already available TGT from `kinit`.
 - The metadata collector does not call `kinit`, does not prompt for passwords,
   does not accept AD/LDAP passwords, and does not use impyla or a Python DB API.
-- The metadata collector accepts only explicit table names and read-only
+- The metadata collector accepts only bounded table references from explicit
+  CLI input or Python-owned selected-case extraction. It runs only read-only
   statements: `SHOW CREATE TABLE`, `SHOW TABLE STATS`, and
   `SHOW COLUMN STATS`.
 - Raw `impala-shell` stdout/stderr must not be printed to the terminal.

@@ -12,6 +12,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from query_doctor.cli.commands import command_prefix, command_spec
+from query_doctor.impala.metadata_workflow import (
+    DEFAULT_METADATA_MAX_TABLES,
+    METADATA_SOURCE_TABLES_ENV,
+    build_metadata_plan,
+    read_default_database_from_facts,
+    read_referenced_tables_from_facts,
+)
 from query_doctor.recent.batch_config import elapsed_seconds, format_seconds
 from query_doctor.recent.batch_models import BatchConfig, CaseResult
 from query_doctor.recent.batch_scoring import inspect_case_outputs, score_case
@@ -34,6 +41,7 @@ PROFILE_COLLECTION_TIMEOUT_SEC = 900
 ANALYSIS_TIMEOUT_SEC = 900
 METADATA_ANALYSIS_TIMEOUT_SEC = 1800
 REPORT_TIMEOUT_SEC = 2400
+RUNTIME_METRICS_REFRESH_TIMEOUT_SEC = 300
 DEFAULT_SUBPROCESS_TIMEOUT_SEC = 900
 SUBPROCESS_TIMEOUT_RETURN_CODE = 124
 MAX_CM_TIMESERIES_REFRESH_JOBS = 5
@@ -467,10 +475,16 @@ def refresh_case_cm_timeseries(
                 score=case.score,
             )
         else:
+            reason = (
+                "runtime_metrics_refresh_timeout"
+                if refresh_case.collection_status == "timeout"
+                else "runtime_metrics_context_missing"
+            )
             progress.emit(
                 stage="cm_timeseries_refresh",
                 case_id=case_id,
                 status="failed",
+                reason=reason,
                 seconds=elapsed_seconds(started),
             )
     finally:
@@ -575,7 +589,18 @@ def refresh_top_metadata(
         mark_metadata_not_requested(ranked)
         progress.emit(stage="metadata_refresh", status="skipped", reason=skip_reason)
         return
-    candidates = select_metadata_refresh_candidates_for_config(config, ranked)
+    collectable_ranked = [
+        case for case in ranked if metadata_case_has_collectable_references(config, case)
+    ]
+    if not collectable_ranked:
+        mark_metadata_not_requested(ranked)
+        progress.emit(
+            stage="metadata_refresh",
+            status="skipped",
+            reason="no collectable referenced tables",
+        )
+        return
+    candidates = select_metadata_refresh_candidates_for_config(config, collectable_ranked)
     if not candidates:
         mark_metadata_not_requested(ranked)
         progress.emit(
@@ -619,6 +644,31 @@ def refresh_top_metadata(
     )
 
 
+def metadata_case_has_collectable_references(config: BatchConfig, case: CaseResult) -> bool:
+    if case.actual_case_dir is None:
+        return False
+    facts_path = case.actual_case_dir / "analysis_facts.md"
+    if not facts_path.exists():
+        return False
+    metadata_max_tables = config.metadata_max_tables or DEFAULT_METADATA_MAX_TABLES
+    if metadata_max_tables <= 0:
+        return False
+    plan = build_metadata_plan(
+        [*case.metadata_source_tables, *read_referenced_tables_from_facts(facts_path)],
+        metadata_max_tables,
+        default_database=read_default_database_from_facts(facts_path),
+    )
+    return bool(plan.selected_tables)
+
+
+def metadata_subprocess_env(env: dict[str, str], case: CaseResult) -> dict[str, str]:
+    if not case.metadata_source_tables:
+        return env
+    case_env = dict(env)
+    case_env[METADATA_SOURCE_TABLES_ENV] = json.dumps(list(case.metadata_source_tables))
+    return case_env
+
+
 def refresh_case_metadata(
     config: BatchConfig,
     case: CaseResult,
@@ -633,7 +683,11 @@ def refresh_case_metadata(
     )
     started = time.monotonic()
     run_analysis_pass(
-        config, case, env=env, repo_root=repo_root, metadata_mode=config.metadata_mode
+        config,
+        case,
+        env=metadata_subprocess_env(env, case),
+        repo_root=repo_root,
+        metadata_mode=config.metadata_mode,
     )
     case.metadata_refreshed = True
     seconds = elapsed_seconds(started)
@@ -721,9 +775,19 @@ def command_value(cmd: list[str], flag: str) -> str | None:
     return cmd[index + 1]
 
 
+def command_has_flag(cmd: list[str], flag: str) -> bool:
+    return flag in cmd
+
+
 def subprocess_timeout_sec(cmd: list[str]) -> int:
     if command_uses_role(cmd, "collect_cm"):
+        if command_has_flag(cmd, "--collect-cm-timeseries"):
+            return RUNTIME_METRICS_REFRESH_TIMEOUT_SEC
         return PROFILE_COLLECTION_TIMEOUT_SEC
+    if command_uses_role(cmd, "collect_impala_profile") and command_has_flag(
+        cmd, "--collect-prometheus-timeseries"
+    ):
+        return RUNTIME_METRICS_REFRESH_TIMEOUT_SEC
     if command_uses_role(cmd, "pipeline"):
         if "--stop-after-analysis" not in cmd:
             return REPORT_TIMEOUT_SEC

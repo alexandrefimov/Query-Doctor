@@ -88,7 +88,7 @@ RU_REPORT_CONTRACT = ReportLanguageContract(
     user_validation_heading="### Изменения, требующие проверки",
     user_verify_heading="### Как проверить улучшение",
     zero_cardinality_not_supported_bullet=(
-        "- В analysis_facts.md нет подтверждённой аномалии кардинальности; не заявляйте "
+        "- В analyzer facts нет подтверждённой аномалии кардинальности; не заявляйте "
         "недооценку кардинальности без соответствующего факта."
     ),
     root_cause_heading_rewrite={
@@ -151,7 +151,7 @@ EN_REPORT_CONTRACT = ReportLanguageContract(
     user_validation_heading="### Changes requiring validation",
     user_verify_heading="### How to verify improvement",
     zero_cardinality_not_supported_bullet=(
-        "- analysis_facts.md has no confirmed cardinality anomaly; do not claim "
+        "- Analyzer facts have no confirmed cardinality anomaly; do not claim "
         "cardinality underestimation without a matching fact."
     ),
     root_cause_heading_rewrite={

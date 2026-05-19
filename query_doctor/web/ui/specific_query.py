@@ -9,6 +9,8 @@ from urllib.parse import quote
 from query_doctor.web.ui.html_helpers import SafeHtml, compact_cell
 from query_doctor.web.ui.llm_actions import (
     OptimizedQueryActionView,
+    OPTIMIZER_RESULT_ANCHOR_ID,
+    actions_section_id,
     present_optimized_query_action,
     render_llm_actions_block,
 )
@@ -102,7 +104,7 @@ def render_specific_query_detail_view(
     report_export_url = f"{report_url}.md" if report_url else None
     optimized_query_url = specific_query_optimized_query_href(query_id)
     optimizer_validation_url = specific_query_validate_rewrite_href(query_id)
-    llm_actions_url = specific_query_llm_actions_href(query_id)
+    actions_url = specific_query_actions_href(query_id, llm_enabled=llm_enabled)
     optimizer_view = present_optimized_query_action(optimized_query_state)
     return (
         '<section class="panel batch-panel" aria-label="Known Query ID details">'
@@ -110,12 +112,12 @@ def render_specific_query_detail_view(
         f"<span>{escaped_query_id}</span></div>"
         '<div class="batch-head"><div><h1>Known Query ID details</h1>'
         "<p>Deterministic facts for one analyzed query.</p></div></div>"
-        f"{render_case_detail_toc()}"
+        f"{render_case_detail_toc(llm_enabled=llm_enabled)}"
         f"{render_case_detail_overview(view)}"
-        f"{render_case_status_summary(view)}"
+        f"{render_case_status_summary(view, llm_enabled=llm_enabled)}"
         f"{render_case_analysis_summary(view)}"
         f"{render_analysis_details(view)}"
-        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled)}"
+        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled)}"
         "</section>"
     )
 
@@ -139,6 +141,11 @@ def specific_query_validate_rewrite_href(query_id: Any) -> str:
 
 
 def specific_query_llm_actions_href(query_id: Any) -> str:
+    return specific_query_actions_href(query_id, llm_enabled=True)
+
+
+def specific_query_actions_href(query_id: Any, *, llm_enabled: bool = True) -> str:
     if not isinstance(query_id, str) or not query_id.strip():
         return ""
-    return f"/query/details/{quote(query_id.strip(), safe='')}/llm-actions"
+    action_id = actions_section_id(llm_enabled=llm_enabled)
+    return f"/query/details/{quote(query_id.strip(), safe='')}/{action_id}"

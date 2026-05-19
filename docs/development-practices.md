@@ -1,6 +1,6 @@
 # Development Practices
 
-Last reviewed: 2026-05-13
+Last reviewed: 2026-05-19
 
 This document records the engineering practices that keep Query Doctor
 maintainable as it grows. It complements the mandatory safety rules in

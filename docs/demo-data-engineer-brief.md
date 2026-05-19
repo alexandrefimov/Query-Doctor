@@ -1,6 +1,6 @@
 # Query Doctor Data-Engineer Demo Brief
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-19
 
 This brief is for a data-engineer demo discussion. It explains how Query Doctor
 prioritizes cases and which deterministic facts support the UI labels. It is
@@ -262,8 +262,10 @@ The details-page optimizer is safe only because Python owns the trust chain:
 
 1. Python extracts a server-owned source query or supported payload.
 2. Python classifies risk and chooses rewrite mode.
-3. Python may provide recipe-specific rewrite bullets.
-4. The LLM assembles a candidate draft.
+3. Python runs a deterministic recipe executor when the query shape is inside a
+   supported transform.
+4. The LLM may phrase explanation or recommendations, but it is not the trusted
+   SQL writer.
 5. Python validates read-only scope, table set, filters, joins, projection
    shape, literals, result shape and recipe-specific invariants.
 6. Only a validated draft is shown as trusted SQL.
@@ -274,11 +276,14 @@ no-rewrite guidance. This is a safety feature, not a failed demo.
 Use this exact distinction:
 
 - "The analyzer selected the candidate and strategy."
-- "The LLM assembled a draft."
+- "Python produced the draft through a supported recipe."
 - "The validator decided whether the draft is trusted."
+- "The LLM can explain the outcome, but it did not become the trusted SQL
+  writer."
 
 Avoid saying:
 
+- "The LLM assembled the trusted draft."
 - "The LLM optimized the query."
 - "The generated query is faster."
 - "Stats are the root cause."

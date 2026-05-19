@@ -1,6 +1,6 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-05-13
+Last reviewed: 2026-05-19
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
@@ -374,18 +374,21 @@ The sanitizer and validator:
 - write only sanitized/normalized `.partial` output on validation failure and
   preserve the existing final report.
 
-### Optimizer Draft Generator
+### Optimizer Outcome Generator
 
 The details-page optimizer:
 
 - reads only server-owned analyzed case inputs;
 - may use a read-only SELECT/WITH source or a SELECT/WITH payload extracted from
   supported INSERT/CTAS sources;
-- uses the LLM for wording or SQL draft generation, while Python owns trust;
+- uses Python-owned deterministic recipe executors for trusted SQL drafts;
+- may use the LLM for explanation and recommendation wording, but not as the
+  source of a trusted SQL draft;
 - never executes SQL;
-- writes a validated draft only after read-only SQL validation and result-shape
-  checks over physical tables, filter scope, projection, DISTINCT, top-level
-  GROUP/ORDER/set operations, CTE names, and top-level join shape;
+- writes a validated draft only after a supported recipe executor and
+  read-only SQL validation prove result-shape checks over physical tables,
+  filter scope, projection, DISTINCT, top-level GROUP/ORDER/set operations,
+  CTE names, and top-level join shape;
 - classifies rewrite risk as `rewrite_allowed`, `conservative_rewrite`, or
   `recommendations_only`;
 - may emit trusted non-SQL outcomes such as deterministic recommendations-only

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import uuid
 from pathlib import Path
@@ -9,7 +10,8 @@ from typing import Callable
 
 from query_doctor.cli import collect_cm_profiles as cm_collector
 from query_doctor.cli.commands import command_prefix
-
+from query_doctor.impala.metadata_workflow import METADATA_SOURCE_TABLES_ENV
+from query_doctor.metadata_source_tables import read_metadata_source_tables
 from query_doctor.web.case_files import (
     build_query_id_summary_case,
     case_relative_file_path,
@@ -27,7 +29,11 @@ from query_doctor.web.command_builders import (
     build_query_id_analyzer_command,
     build_report_command,
 )
-from query_doctor.web.config import load_web_local_config, optional_config_string
+from query_doctor.web.config import (
+    load_web_local_config,
+    metadata_configured,
+    optional_config_string,
+)
 from query_doctor.web.job_workers import (
     REPORT_VALIDATION_EXIT_CODE,
     REPORT_VALIDATION_FAILURE_MESSAGE,
@@ -220,6 +226,7 @@ def collect_case(
     runner: Runner,
     env: dict[str, str] | None = None,
     out_dir: Path | None = None,
+    metadata_source_tables_out: Path | None = None,
     cancel_check: CancelCheck | None = None,
 ) -> Path:
     config_username = settings.cm_username
@@ -251,6 +258,8 @@ def collect_case(
             collector_cmd.extend(["--host", host])
         if settings.max_profile_bytes is not None:
             collector_cmd.extend(["--max-profile-bytes", str(settings.max_profile_bytes)])
+        if metadata_source_tables_out is not None:
+            collector_cmd.extend(["--metadata-source-tables-out", str(metadata_source_tables_out)])
         if settings.collect_prometheus_timeseries or settings.prometheus_url:
             if not settings.prometheus_url:
                 raise WebError(
@@ -289,6 +298,8 @@ def collect_case(
             str(collection_out_dir),
         ]
         append_web_cm_args(collector_cmd, settings)
+        if metadata_source_tables_out is not None:
+            collector_cmd.extend(["--metadata-source-tables-out", str(metadata_source_tables_out)])
         if redact_identifiers:
             collector_cmd.append("--redact-identifiers")
         if not settings.redact_hosts:
@@ -341,6 +352,9 @@ def collect_analyze_and_replace_query_case(
     corpus_dir = resolve_under_repo(settings.repo_dir, settings.corpus_dir)
     staging_root = corpus_dir / f".query-refresh-{uuid.uuid4().hex}"
     staging_case_dir = staging_root / expected_case_dir.name
+    metadata_source_tables_path = (
+        staging_root / ".metadata-source-tables.json" if metadata_configured(settings) else None
+    )
     try:
         case_dir = collect_case(
             validated_query_id,
@@ -350,15 +364,17 @@ def collect_analyze_and_replace_query_case(
             runner,
             env=subprocess_env,
             out_dir=staging_root,
+            metadata_source_tables_out=metadata_source_tables_path,
             cancel_check=cancel_check,
         )
         update_progress(progress, 2)
+        metadata_source_tables = read_metadata_source_tables(metadata_source_tables_path)
         analyzed = run_subprocess(
             build_query_id_analyzer_command(case_dir, settings),
             cwd=settings.repo_dir,
             timeout_sec=settings.timeout_sec,
             runner=runner,
-            env=subprocess_env,
+            env=query_id_analyzer_env(subprocess_env, metadata_source_tables),
             cancel_check=cancel_check,
         )
         if cancel_check is not None and cancel_check():
@@ -369,3 +385,18 @@ def collect_analyze_and_replace_query_case(
     finally:
         if staging_root.exists():
             remove_path(staging_root)
+
+
+def query_id_analyzer_env(
+    env: dict[str, str],
+    metadata_source_tables: tuple[str, ...],
+) -> dict[str, str]:
+    if not metadata_source_tables:
+        if METADATA_SOURCE_TABLES_ENV not in env:
+            return env
+        analyzer_env = dict(env)
+        analyzer_env.pop(METADATA_SOURCE_TABLES_ENV, None)
+        return analyzer_env
+    analyzer_env = dict(env)
+    analyzer_env[METADATA_SOURCE_TABLES_ENV] = json.dumps(list(metadata_source_tables))
+    return analyzer_env

@@ -45,7 +45,6 @@ from query_doctor.report.recommendations import (
 )
 from query_doctor.report.runtime_claim_validation import (
     SPILL_SCRATCH_NEXT_CHECK,
-    STATS_FRESHNESS_MISSING_EVIDENCE,
     facts_have_admission_or_pool_evidence,
     find_backend_tail_claim_errors,
     find_cluster_event_context_claim_errors,
@@ -59,6 +58,7 @@ from query_doctor.report.runtime_claim_validation import (
     normalize_supported_evidence_contradiction,
     should_rewrite_spill_storage_line,
     should_rewrite_stats_freshness_claim,
+    stats_freshness_missing_evidence_note,
 )
 from query_doctor.report.safety_validation import (
     REPORT_INTERNAL_FINGERPRINT_RE,
@@ -164,12 +164,14 @@ def sanitize_report_text(report_text: str, facts_text: str, *, language: str = "
         if line.startswith("## ") or line.startswith("### "):
             current_section = line.strip()
         if should_rewrite_stats_freshness_claim(line):
-            line = STATS_FRESHNESS_MISSING_EVIDENCE
-        line = normalize_primary_bottleneck_overclaim(line)
-        line = normalize_cm_context_only_overclaim(line, facts_text)
-        line = normalize_operator_time_wording(line, facts_text)
-        line = normalize_supported_evidence_contradiction(line, facts_text)
-        direction_normalized = normalize_contradicted_estimate_direction(line, facts_text)
+            line = stats_freshness_missing_evidence_note(language)
+        line = normalize_primary_bottleneck_overclaim(line, language=language)
+        line = normalize_cm_context_only_overclaim(line, facts_text, language=language)
+        line = normalize_operator_time_wording(line, facts_text, language=language)
+        line = normalize_supported_evidence_contradiction(line, facts_text, language=language)
+        direction_normalized = normalize_contradicted_estimate_direction(
+            line, facts_text, language=language
+        )
         if direction_normalized is None:
             continue
         line = direction_normalized
@@ -233,7 +235,7 @@ def validate_report_against_facts(
         if claims:
             errors.append(
                 "report contains unsupported cardinality/stats/skew claim(s) while "
-                f"analysis_facts.md says Cardinality anomalies: 0: {', '.join(claims)}"
+                f"analyzer facts say Cardinality anomalies: 0: {', '.join(claims)}"
             )
     errors.extend(find_contradicted_row_underestimation_claims(report_text, facts_text))
     errors.extend(find_contradicted_memory_underestimation_claims(report_text, facts_text))
@@ -288,9 +290,9 @@ def enforce_user_report_requirements(text: str, facts_text: str, *, language: st
     )
     if facts_has_backend_tail_evidence(facts_text):
         backend_bullet = (
-            "- Передать платформенной команде backend/host evidence из analysis_facts.md; host/network/HDFS/RPC path — это проверки, не доказанная причина."
+            "- Передать платформенной команде backend/host evidence из analyzer facts; host/network/HDFS/RPC path — это проверки, не доказанная причина."
             if language == "ru"
-            else "- Send backend/host evidence from analysis_facts.md to the platform team; host/network/HDFS/RPC path items are checks, not a proven cause."
+            else "- Send backend/host evidence from analyzer facts to the platform team; host/network/HDFS/RPC path items are checks, not a proven cause."
         )
         text = insert_bullets_into_section(
             text,

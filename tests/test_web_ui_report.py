@@ -132,7 +132,7 @@ def test_details_inline_report_keeps_summary_open_and_appendix_collapsed():
     assert summary_index < appendix_index
     assert recommendation_index < appendix_index
     assert (
-        '<details class="analysis-subdetails report-appendix" aria-label="LLM report details">'
+        '<details class="analysis-subdetails report-appendix" aria-label="Report details">'
         in rendered
     )
     assert "Detailed evidence." in rendered[appendix_index:]

@@ -30,6 +30,13 @@ DEFAULT_METADATA_AUTH = "kerberos"
 DEFAULT_METADATA_PROTOCOL = "beeswax"
 METADATA_MODES = ("auto", "on", "off", "dry-run")
 REPO_DIR = Path(__file__).resolve().parents[2]
+METADATA_SOURCE_TABLES_ENV = "QD_METADATA_SOURCE_TABLES_JSON"
+GENERIC_METADATA_IDENTIFIER_PARTS = {
+    "<db>",
+    "<database>",
+    "<schema>",
+    "<table>",
+}
 
 
 @dataclass(frozen=True)
@@ -368,10 +375,16 @@ def build_metadata_plan(
     normalized: list[str] = []
     invalid: list[str] = []
     for table in raw_tables:
+        if is_generic_metadata_identifier(table):
+            invalid.append(table)
+            continue
         try:
             normalized_table = normalize_table_identifier(table)
         except CollectorError:
             if not normalized_default_database:
+                invalid.append(table)
+                continue
+            if is_generic_metadata_identifier(table):
                 invalid.append(table)
                 continue
             try:
@@ -390,6 +403,23 @@ def build_metadata_plan(
         max_tables=max_tables,
         default_database=normalized_default_database,
     )
+
+
+def is_generic_metadata_identifier(raw_table: str) -> bool:
+    """Return true for placeholders that should not become live metadata queries."""
+    parts = [
+        part.strip().strip("`").lower() for part in raw_table.strip().split(".") if part.strip()
+    ]
+    if not parts:
+        return True
+    if any(part in GENERIC_METADATA_IDENTIFIER_PARTS for part in parts):
+        return True
+    if parts == ["db", "table"]:
+        return True
+    # `table` is also an Impala keyword. The collector emits unquoted
+    # allowlisted SHOW statements, so this shape is not collectable even with a
+    # default database and is usually produced by redacted SQL text.
+    return parts[-1] == "table"
 
 
 def build_metadata_collector_cmd(
@@ -453,23 +483,33 @@ def build_metadata_collector_cmd(
     return cmd
 
 
-def print_metadata_plan(plan: MetadataPlan, *, dry_run: bool) -> None:
+def print_metadata_plan(
+    plan: MetadataPlan, *, dry_run: bool, redact_identifiers: bool = False
+) -> None:
+    def display_table(table: str) -> str:
+        if not redact_identifiers:
+            return table
+        if "." in table:
+            return "<db>.<table>"
+        return "<table>"
+
     print()
     print("[pipeline] Impala metadata collection plan:")
     if plan.default_database:
-        print(f"[pipeline] default database for unqualified tables: {plan.default_database}")
+        default_database = "<db>" if redact_identifiers else plan.default_database
+        print(f"[pipeline] default database for unqualified tables: {default_database}")
     print(f"[pipeline] selected referenced tables: {len(plan.selected_tables)}")
     for table in plan.selected_tables:
-        print(f"[pipeline]   collect: {table}")
+        print(f"[pipeline]   collect: {display_table(table)}")
     if plan.skipped_tables:
         print(
             f"[pipeline] skipped due to metadata max tables ({plan.max_tables}): {len(plan.skipped_tables)}"
         )
         for table in plan.skipped_tables:
-            print(f"[pipeline]   skip: {table}")
+            print(f"[pipeline]   skip: {display_table(table)}")
     if plan.invalid_tables:
         print(f"[pipeline] skipped malformed referenced tables: {len(plan.invalid_tables)}")
         for table in plan.invalid_tables:
-            print(f"[pipeline]   invalid: {table}")
+            print(f"[pipeline]   invalid: {display_table(table)}")
     if dry_run:
         print("[pipeline] metadata dry-run requested; impala-shell will not run")

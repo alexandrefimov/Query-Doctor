@@ -7,6 +7,7 @@ import argparse
 import math
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -130,6 +131,7 @@ from query_doctor.recent.discovery import (
 )
 from query_doctor.cm.profile_parsing import parse_cm_timestamp
 from query_doctor.cm.query_discovery import is_running_query_summary
+from query_doctor.analyzer.sql_sources import extract_referenced_tables_from_sql
 from query_doctor.impala.query_discovery import fetch_impala_query_summaries
 from query_doctor.recent.progress import ProgressWriter
 from query_doctor.recent.query_optimization_score import (
@@ -150,6 +152,71 @@ from query_doctor.recent.metadata_refresh import (
 )
 
 REPO_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_CREDS_DIR_NAME = ".qdcreds"
+DEFAULT_CM_ENV_NAME = "cm-ro.env"
+CM_ENV_FILE_KEYS = {
+    "CM_USERNAME",
+    "CM_USER",
+    "CM_PASSWORD",
+    "CM_TOKEN",
+    "KRB5CCNAME",
+    "KRB5_PRINCIPAL",
+}
+
+
+def default_cm_env_path(env: dict[str, str]) -> tuple[Path, bool]:
+    configured = env.get("QD_CM_ENV")
+    if configured:
+        return Path(configured).expanduser(), True
+    creds_dir = Path(env.get("QD_CREDS_DIR") or (Path.home() / DEFAULT_CREDS_DIR_NAME)).expanduser()
+    return creds_dir / DEFAULT_CM_ENV_NAME, False
+
+
+def parse_cm_env_line(line: str, *, line_number: int) -> tuple[str, str] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    try:
+        tokens = shlex.split(stripped, comments=True, posix=True)
+    except ValueError as exc:
+        raise ValueError(f"invalid CM env file syntax at line {line_number}") from exc
+    if not tokens:
+        return None
+    if tokens[0] == "export":
+        tokens = tokens[1:]
+    if len(tokens) != 1 or "=" not in tokens[0]:
+        return None
+    key, value = tokens[0].split("=", 1)
+    if key not in CM_ENV_FILE_KEYS:
+        return None
+    return key, value
+
+
+def load_local_cm_env(env: dict[str, str], *, allow_default: bool) -> dict[str, str]:
+    env_path, explicit = default_cm_env_path(env)
+    if not explicit and not allow_default:
+        return env
+    if not env_path.exists():
+        if explicit:
+            raise ValueError("QD_CM_ENV points to a missing CM credentials env file.")
+        return env
+    if not env_path.is_file():
+        raise ValueError("CM credentials env path is not a file.")
+    loaded = dict(env)
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ValueError("could not read CM credentials env file.") from exc
+    for line_number, line in enumerate(lines, 1):
+        parsed = parse_cm_env_line(line, line_number=line_number)
+        if parsed is None:
+            continue
+        key, value = parsed
+        if not loaded.get(key):
+            loaded[key] = value
+    if not loaded.get("CM_USERNAME") and loaded.get("CM_USER"):
+        loaded["CM_USERNAME"] = loaded["CM_USER"]
+    return loaded
 
 
 def positive_int(value: str) -> int:
@@ -288,7 +355,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--metadata-top-limit",
         type=non_negative_int,
         help=(
-            "Metadata budget: refresh bad cases first, then suspicious cases that can be promoted. "
+            "Metadata budget: refresh priority cases first, then fill with remaining "
+            "collectable top cases. "
             f"Hard cap: {MAX_METADATA_TOP_LIMIT}. Default: 0."
         ),
     )
@@ -457,10 +525,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) -> int:
     total_started = time.monotonic()
+    allow_default_cm_env = env is None
     env = dict(os.environ if env is None else env)
     args = parse_args(argv)
     repo_root = REPO_DIR
     try:
+        env = load_local_cm_env(env, allow_default=allow_default_cm_env)
         config = build_batch_config(args, env=env, cwd=Path.cwd(), repo_root=repo_root)
         env = effective_subprocess_env(env, config.krb5ccname)
         preflight(config, env=env, repo_root=repo_root)
@@ -515,6 +585,9 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
                     query_type=summary.query_type,
                     sql_verb=candidate.sql_verb,
                     wrapper_dir=cases_root / f"case-{index:03d}",
+                    metadata_source_tables=tuple(
+                        extract_referenced_tables_from_sql(summary.statement or "")
+                    ),
                     candidate_rank=index,
                 )
             )

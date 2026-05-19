@@ -38,7 +38,7 @@ def render_metadata_facts_view(view: RecentScanMetadataView) -> str:
         table_html = (
             '<div class="batch-table-wrap"><table class="batch-table">'
             "<thead><tr>"
-            "<th>Table</th><th>Object</th><th>SHOW CREATE command</th><th>TABLE STATS command</th><th>COLUMN STATS command</th>"
+            "<th>Table</th><th>Object</th><th>Definition metadata</th><th>Table stats metadata</th><th>Column stats metadata</th>"
             "<th>Row-count stats</th><th>Column stats</th><th>Observed</th><th>Missing</th><th>Partitions</th><th>Format</th><th>Limitations</th>"
             "</tr></thead>"
             f"<tbody>{rows}</tbody>"

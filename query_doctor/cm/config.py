@@ -263,6 +263,11 @@ def build_config(
             config_values=config_values,
             default=privacy_mode,
         ),
+        metadata_source_tables_out=resolve_metadata_source_tables_out(
+            args.metadata_source_tables_out,
+            out=out,
+            cwd=cwd,
+        ),
         collect_cm_timeseries=bool(args.collect_cm_timeseries)
         if args.collect_cm_timeseries is not None
         else True,
@@ -302,6 +307,26 @@ def build_config(
         ca_bundle=ca_bundle,
         credentials=credentials,
     )
+
+
+def resolve_metadata_source_tables_out(
+    raw_path: str | None,
+    *,
+    out: Path,
+    cwd: Path,
+) -> Path | None:
+    if not raw_path:
+        return None
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = cwd / path
+    resolved = path.resolve(strict=False)
+    output_root = out.resolve(strict=False)
+    try:
+        resolved.relative_to(output_root)
+    except ValueError as exc:
+        raise ConfigError("--metadata-source-tables-out must be inside --out.") from exc
+    return resolved
 
 
 def build_http_config(

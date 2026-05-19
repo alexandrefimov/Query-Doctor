@@ -209,15 +209,22 @@ def run_llm_actions_job(
         )
         if job_store.cancel_requested(job_id):
             return
+        result_label = (
+            "Python report and optimizer"
+            if getattr(settings, "no_llm", False)
+            else "LLM report and optimizer"
+        )
         job_store.complete_html(
-            job_id, f"LLM report and optimizer generated for {redact_browser_display_text(label)}."
+            job_id,
+            f"{result_label} generated for {redact_browser_display_text(label)}.",
         )
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
+        action_label = "Python action" if getattr(settings, "no_llm", False) else "LLM action"
         job_store.fail(
             job_id,
-            "Unexpected LLM action failure. Details are hidden because they may contain sensitive data.",
+            f"Unexpected {action_label} failure. Details are hidden because they may contain sensitive data.",
         )
 
 

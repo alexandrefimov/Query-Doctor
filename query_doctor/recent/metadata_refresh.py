@@ -61,7 +61,7 @@ def select_metadata_refresh_candidates_for_config(
     return select_metadata_refresh_candidates(
         ranked_cases,
         config.metadata_top_limit,
-        include_remaining=config.query_profile_source == "impala",
+        include_remaining=True,
     )
 
 

@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Last reviewed: 2026-05-13
+Last reviewed: 2026-05-19
 
 Query Doctor reads non-secret local settings from a JSON config file. Keep
 passwords, tokens, keytabs, ticket contents, Authorization headers, and API keys
@@ -67,6 +67,18 @@ Use this shape for the normal Cloudera Manager workflow:
 Provide `CM_PASSWORD` or `CM_TOKEN` through the shell environment, for example
 from `~/.qdcreds/cm-ro.env`.
 
+Direct `query_doctor.cli.batch_recent` runs also read the local Cloudera
+Manager env file before preflight. Discovery order is:
+
+1. `QD_CM_ENV`, when set.
+2. `$QD_CREDS_DIR/cm-ro.env`, when `QD_CREDS_DIR` is set.
+3. `~/.qdcreds/cm-ro.env`.
+
+The file is parsed as simple `KEY=value` or `export KEY=value` assignments
+without shell evaluation. Only `CM_USERNAME`, `CM_USER`, `CM_PASSWORD`,
+`CM_TOKEN`, `KRB5CCNAME`, and `KRB5_PRINCIPAL` are accepted from this file.
+Already-exported environment variables win over file values.
+
 ## Minimal Direct Impala Config
 
 Use this shape when Cloudera Manager is not the profile source:
@@ -98,6 +110,10 @@ Direct Impala collection reads only bounded daemon debug web endpoints for
 Recent, Running, or one Known Query ID workflow. It does not execute SQL.
 Metadata collection uses read-only `SHOW` statements through `impala-shell` and
 stays bounded by the metadata limits below.
+For Cloudera Manager Recent batches, the metadata refresh may use table
+references extracted from discovery statements before profile identifier
+redaction. Those identifiers are passed only to the bounded metadata subprocess;
+progress, summaries, trusted reports, and pipeline plan output remain raw-free.
 
 ## Safety And Privacy
 
@@ -175,7 +191,7 @@ supported shared-service deployment model.
 | `recent_cm_summary_limit` | positive integer | CM summary scan cap. |
 | `recent_profile_analysis_limit` | positive integer | Profile analysis cap. |
 | `recent_metadata_jobs` | positive integer | Metadata refresh worker limit. |
-| `recent_metadata_top_limit` | non-negative integer | Number of top cases eligible for metadata refresh. |
+| `recent_metadata_top_limit` | non-negative integer | Maximum number of top collectable cases eligible for metadata refresh. |
 | `recent_collect_cm_events` | boolean | Collect bounded CM event context when supported. |
 | `recent_cm_events_max_events` | positive integer | Maximum CM events to summarize. |
 | `recent_collect_cm_timeseries` | boolean | Collect bounded CM runtime metrics when supported. |

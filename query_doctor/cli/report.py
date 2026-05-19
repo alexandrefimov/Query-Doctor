@@ -227,6 +227,11 @@ from query_doctor.report.trusted_text import (
 
 DEFAULT_VALIDATION_MODE = os.getenv("QD_REPORT_VALIDATION_MODE", "strict")
 FACT_APPENDIX_MAX_ITEMS = 8
+SHAPE_ONLY_VALIDATION_PREFIXES = (
+    "report is too short:",
+    "report has too few markdown sections:",
+    "missing required section:",
+)
 
 
 def localized_text(language: str, ru_text: str, en_text: str) -> str:
@@ -371,6 +376,39 @@ def deterministic_report_body(
     return "\n".join(lines)
 
 
+def validation_errors_are_shape_only(errors: list[str]) -> bool:
+    return bool(errors) and all(
+        error.startswith(SHAPE_ONLY_VALIDATION_PREFIXES) for error in errors
+    )
+
+
+def model_output_attempted_report_shape(text: str) -> bool:
+    section_lines = [line for line in text.splitlines() if line.startswith("#")]
+    return len(section_lines) >= 4
+
+
+def deterministic_report_text(
+    *,
+    facts_path: Path,
+    facts_sha256: str,
+    model: str,
+    facts_text: str,
+    language: str,
+    mode: str,
+) -> str:
+    return normalize_report_text(
+        report_header(facts_path, facts_sha256, model)
+        + deterministic_report_body(
+            facts_text,
+            language=language,
+            mode=mode,
+        ),
+        facts_text=facts_text,
+        mode=mode,
+        language=language,
+    )
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Write a Query Doctor markdown report from deterministic analysis facts only."
@@ -496,8 +534,11 @@ def main(argv: list[str] | None = None) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if args.no_llm:
-        generated_body = deterministic_report_body(
-            facts_text,
+        narrative_text = deterministic_report_text(
+            facts_path=facts_path,
+            facts_sha256=facts_sha256,
+            model=args.model,
+            facts_text=facts_text,
             language=args.language,
             mode=args.mode,
         )
@@ -510,13 +551,12 @@ def main(argv: list[str] | None = None) -> int:
             keep_alive=args.keep_alive,
             system_prompt=report_contract.system_prompt,
         )
-
-    narrative_text = normalize_report_text(
-        report_header(facts_path, facts_sha256, args.model) + generated_body,
-        facts_text=facts_text,
-        mode=args.mode,
-        language=args.language,
-    )
+        narrative_text = normalize_report_text(
+            report_header(facts_path, facts_sha256, args.model) + generated_body,
+            facts_text=facts_text,
+            mode=args.mode,
+            language=args.language,
+        )
 
     if validation_mode != "off":
         validation_errors = validate_report_for_mode(
@@ -525,6 +565,31 @@ def main(argv: list[str] | None = None) -> int:
             validation_mode=validation_mode,
             language=args.language,
         )
+        if (
+            validation_errors_are_shape_only(validation_errors)
+            and not args.no_llm
+            and validation_mode == "strict"
+            and model_output_attempted_report_shape(narrative_text)
+        ):
+            print(
+                f"{PROGRESS_PREFIX} model report was structurally incomplete; "
+                "using deterministic Python report body",
+                file=sys.stderr,
+            )
+            narrative_text = deterministic_report_text(
+                facts_path=facts_path,
+                facts_sha256=facts_sha256,
+                model=args.model,
+                facts_text=facts_text,
+                language=args.language,
+                mode=args.mode,
+            )
+            validation_errors = validate_report_for_mode(
+                narrative_text,
+                facts_text=facts_text,
+                validation_mode=validation_mode,
+                language=args.language,
+            )
         if validation_errors:
             partial_path = write_failed_report_to_partial(output_path, narrative_text)
             print(f"{PROGRESS_PREFIX} ERROR: generated report failed validation", file=sys.stderr)

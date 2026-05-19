@@ -18,7 +18,7 @@ ADMIN_CHECK_BULLET_RE = re.compile(
     re.IGNORECASE,
 )
 ZERO_CARDINALITY_NOT_SUPPORTED_BULLET = (
-    "- В analysis_facts.md нет подтверждённой аномалии кардинальности; не заявляйте "
+    "- В analyzer facts нет подтверждённой аномалии кардинальности; не заявляйте "
     "недооценку кардинальности без соответствующего факта."
 )
 SHORT_SUMMARY_NEGATIVE_RE = re.compile(

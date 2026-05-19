@@ -11,9 +11,22 @@ from query_doctor.report.markdown import (
     extract_markdown_subsection,
     strip_markdown_section,
 )
+from query_doctor.safety.browser_display import redact_browser_display_text
 
 
 FACT_APPENDIX_MAX_ITEMS = 8
+
+
+def escape_fact_markdown_text(text: str) -> str:
+    """Escape raw HTML delimiters in fact excerpts before trusted report rendering."""
+    redacted = redact_browser_display_text(
+        text,
+        redact_artifact_markers=True,
+        redact_field_names=True,
+        redact_model_names=True,
+        redact_infrastructure=True,
+    )
+    return redacted.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def first_bullet_value(lines: list[str], label: str) -> str | None:
@@ -30,7 +43,7 @@ def first_bullet_value(lines: list[str], label: str) -> str | None:
 
 def append_fact_bullet(output: list[str], label: str, value: str | None) -> None:
     if value:
-        output.append(f"- {label}: {value}")
+        output.append(f"- {label}: {escape_fact_markdown_text(value)}")
 
 
 def limited_nonempty_lines(
@@ -38,7 +51,7 @@ def limited_nonempty_lines(
     *,
     limit: int = FACT_APPENDIX_MAX_ITEMS,
 ) -> tuple[list[str], int]:
-    selected = [line.rstrip() for line in lines if line.strip()]
+    selected = [escape_fact_markdown_text(line.rstrip()) for line in lines if line.strip()]
     return selected[:limit], max(0, len(selected) - limit)
 
 
@@ -202,6 +215,7 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
                 line
                 for line in table_metadata_lines
                 if line.startswith("### Table:") or line.lstrip().startswith("- ")
+                if not re.match(r"^\s*-\s*context path\s*:", line, flags=re.IGNORECASE)
             ],
             limit=FACT_APPENDIX_MAX_ITEMS * 2,
         )
@@ -216,7 +230,9 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
     if action_card_lines:
         lines.extend(["", "### Action cards"])
         card_titles = [
-            line[4:].strip() for line in action_card_lines if line.startswith("### Card ")
+            escape_fact_markdown_text(line[4:].strip())
+            for line in action_card_lines
+            if line.startswith("### Card ")
         ]
         if card_titles:
             for title in card_titles[:FACT_APPENDIX_MAX_ITEMS]:
@@ -230,11 +246,15 @@ def render_analyzer_facts_appendix(facts_text: str, *, language: str = "ru") -> 
                 action_card_lines,
                 limit=FACT_APPENDIX_MAX_ITEMS,
             )
-            lines.extend(excerpt or ["- No action-card facts present in analysis_facts.md."])
+            lines.extend(excerpt or ["- No action-card facts present in analyzer facts."])
             if remaining:
                 lines.append(f"- ... {remaining} more action-card lines omitted from appendix.")
 
-    finding_titles = [line[4:].strip() for line in findings_lines if line.startswith("### ")]
+    finding_titles = [
+        escape_fact_markdown_text(line[4:].strip())
+        for line in findings_lines
+        if line.startswith("### ")
+    ]
     if finding_titles:
         lines.extend(["", "### Findings"])
         for title in finding_titles[:FACT_APPENDIX_MAX_ITEMS]:

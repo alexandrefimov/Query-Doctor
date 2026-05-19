@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -14,6 +15,7 @@ from query_doctor.cli.commands import (
     resolve_command_backend,
 )
 from query_doctor.impala.metadata_workflow import (
+    METADATA_SOURCE_TABLES_ENV,
     add_metadata_arguments,
     build_metadata_collector_cmd,
     build_metadata_plan,
@@ -31,6 +33,19 @@ ANALYZER_TIMEOUT_SEC = 900
 METADATA_STAGE_TIMEOUT_SEC = 1800
 REPORT_TIMEOUT_SEC = 2400
 SUBPROCESS_TIMEOUT_EXIT_CODE = 124
+
+
+def read_metadata_source_tables_from_env(env: dict[str, str]) -> list[str]:
+    raw_value = env.get(METADATA_SOURCE_TABLES_ENV)
+    if not raw_value:
+        return []
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [value for value in payload if isinstance(value, str) and value.strip()]
 
 
 def run_cmd(cmd: list[str], cwd: Path, *, timeout_sec: int | None = None) -> None:
@@ -229,14 +244,19 @@ def main(
                     file=sys.stderr,
                 )
                 return 2
-        raw_tables = read_referenced_tables_from_facts(facts)
+        source_tables = read_metadata_source_tables_from_env(os.environ)
+        raw_tables = [*source_tables, *read_referenced_tables_from_facts(facts)]
         default_database = args.metadata_default_db or read_default_database_from_facts(facts)
         metadata_plan = build_metadata_plan(
             raw_tables,
             args.metadata_max_tables,
             default_database=default_database,
         )
-        print_metadata_plan(metadata_plan, dry_run=metadata_mode == "dry-run")
+        print_metadata_plan(
+            metadata_plan,
+            dry_run=metadata_mode == "dry-run",
+            redact_identifiers=bool(source_tables),
+        )
         if metadata_mode == "dry-run":
             print(
                 "[pipeline] metadata dry-run complete; analyzer/report were not rerun after metadata collection"

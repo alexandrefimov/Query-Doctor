@@ -1,6 +1,6 @@
 # Query Optimizer Contract
 
-Last reviewed: 2026-05-10
+Last reviewed: 2026-05-19
 
 This document is the active contract for both optimizer surfaces:
 
@@ -63,7 +63,6 @@ flowchart TD
 
     subgraph DraftPaths["Outcome construction"]
         Recipe[Python-owned recipe executor]
-        LLM[LLM wording or untrusted draft text]
         NoDraft[Recommendations-only or no-rewrite]
     end
 
@@ -85,9 +84,7 @@ flowchart TD
     Rewriteability --> Risk
     Risk -->|supported recipe| Recipe
     Risk -->|unsupported or too risky| NoDraft
-    Risk -->|wording only| LLM
     Recipe --> Validator
-    LLM -. untrusted until validation .-> Validator
     Validator -->|pass| Marker
     Marker --> TrustedDraft
     NoDraft --> Marker

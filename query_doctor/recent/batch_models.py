@@ -113,6 +113,7 @@ class CaseResult:
     query_type: str | None
     sql_verb: str | None
     wrapper_dir: Path
+    metadata_source_tables: tuple[str, ...] = ()
     actual_case_dir: Path | None = None
     collection_status: str = "not_started"
     analysis_status: str = "not_started"

@@ -42,6 +42,7 @@ UNSAFE_RECOMMENDATION_CTE_RE = re.compile(r"\bwith\s+[A-Za-z_][\w$]*\s+as\b", re
 MAX_RECOMMENDATIONS_BYTES = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATIONS_BYTES", "65536"))
 MAX_OPTIMIZER_RECOMMENDATION_ITEMS = int(os.getenv("QD_OPTIMIZER_MAX_RECOMMENDATION_ITEMS", "8"))
 BULLET_LINE_RE = re.compile(r"^\s*(?:[-*]|\d+\.)\s+\S")
+CYRILLIC_TEXT_RE = re.compile(r"[\u0400-\u04FF]")
 
 
 @dataclass(frozen=True)
@@ -52,13 +53,17 @@ class OptimizerRecommendationNormalization:
 
 def extract_recommendations(generated: str) -> str:
     text = generated.strip()
-    errors = validate_optimizer_recommendations_text(text)
+    errors = _validate_optimizer_recommendations_text(text, enforce_english=False)
     if errors:
         raise QueryOptimizationError(errors[0])
     return text
 
 
 def validate_optimizer_recommendations_text(text: str) -> list[str]:
+    return _validate_optimizer_recommendations_text(text, enforce_english=True)
+
+
+def _validate_optimizer_recommendations_text(text: str, *, enforce_english: bool) -> list[str]:
     stripped = text.strip()
     if not stripped:
         return ["Optimizer recommendations are empty."]
@@ -81,6 +86,8 @@ def validate_optimizer_recommendations_text(text: str) -> list[str]:
         return ["Optimizer recommendations contain browser-unsafe local path output."]
     if re.search(r"(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+", stripped):
         return ["Optimizer recommendations contain browser-unsafe local path output."]
+    if enforce_english and CYRILLIC_TEXT_RE.search(stripped):
+        return ["Optimizer recommendations must be English-only."]
     return []
 
 
@@ -106,6 +113,7 @@ def normalize_optimizer_recommendations_with_telemetry(
 ) -> OptimizerRecommendationNormalization:
     text = extract_recommendations(generated)
     candidates = recommendation_candidate_lines(facts_text, language="en")
+    candidate_text_by_id = dict(candidates)
     preserved: list[str] = []
     seen_candidate_ids: set[str] = set()
     llm_bullet_count = 0
@@ -117,8 +125,10 @@ def normalize_optimizer_recommendations_with_telemetry(
         candidate_id = recommendation_candidate_id_for_bullet(stripped, candidates)
         if candidate_id is None or candidate_id in seen_candidate_ids:
             continue
-        body = re.sub(r"^\s*(?:[-*]|\d+\.)\s+", "", stripped).strip()
-        preserved.append(f"- {body}")
+        candidate_text = candidate_text_by_id.get(candidate_id)
+        if candidate_text is None:
+            continue
+        preserved.append(f"- {candidate_text}")
         seen_candidate_ids.add(candidate_id)
 
     canonical_fallback_used = not preserved
@@ -149,10 +159,11 @@ def normalize_optimizer_recommendations_with_telemetry(
         if llm_bullet_count
         else None,
     }
-    return OptimizerRecommendationNormalization(
-        text="\n".join(final_lines),
-        telemetry=telemetry,
-    )
+    normalized_text = "\n".join(final_lines)
+    errors = validate_optimizer_recommendations_text(normalized_text)
+    if errors:
+        raise QueryOptimizationError(errors[0])
+    return OptimizerRecommendationNormalization(text=normalized_text, telemetry=telemetry)
 
 
 def no_rewrite_recommendations(

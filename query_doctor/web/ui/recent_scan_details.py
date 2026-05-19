@@ -40,6 +40,8 @@ from query_doctor.web.ui.action_candidates import (
 )
 from query_doctor.web.ui.llm_actions import (
     OptimizedQueryActionView,
+    OPTIMIZER_RESULT_ANCHOR_ID,
+    actions_section_id,
     render_llm_actions_block,
 )
 from query_doctor.web.ui.metadata_details import (
@@ -84,7 +86,8 @@ def render_recent_scan_case_detail_view(
     optimizer_validation_url = (
         f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/validate-rewrite"
     )
-    llm_actions_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/llm-actions"
+    actions_id = actions_section_id(llm_enabled=llm_enabled)
+    actions_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/{actions_id}"
     return (
         f'<section class="panel batch-panel" aria-label="{safe_workflow_title} case details">'
         f'<div class="breadcrumb"><a href="{safe_list_href}">{safe_workflow_title}</a><span>/</span>'
@@ -92,12 +95,12 @@ def render_recent_scan_case_detail_view(
         f'<div class="batch-head"><div><h1>{safe_workflow_title} case details</h1>'
         "<p>Deterministic facts for one analyzed query.</p></div>"
         f'<span class="badge blue">{html.escape(view.case_id)}</span></div>'
-        f"{render_case_detail_toc()}"
+        f"{render_case_detail_toc(llm_enabled=llm_enabled)}"
         f"{render_case_detail_overview(view)}"
-        f"{render_case_status_summary(view)}"
+        f"{render_case_status_summary(view, llm_enabled=llm_enabled)}"
         f"{render_case_analysis_summary(view)}"
         f"{render_analysis_details(view, detail_base_path=detail_base_path)}"
-        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=optimized_query_url, optimizer_validation_url=optimizer_validation_url, combined_action_url=llm_actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled)}"
+        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled)}"
         "</section>"
     )
 
@@ -128,9 +131,11 @@ def render_case_overview_card_value(card: RecentScanCaseOverviewCardView) -> str
     return escape_value(card.value)
 
 
-def render_case_status_summary(view: RecentScanCaseDetailView) -> str:
+def render_case_status_summary(view: RecentScanCaseDetailView, *, llm_enabled: bool = True) -> str:
     return render_case_status_summary_view(
-        present_recent_scan_status_summary(view),
+        present_recent_scan_status_summary(
+            view, report_label="LLM report" if llm_enabled else "Python report"
+        ),
         technical_details_html=render_technical_details(view),
     )
 
@@ -217,7 +222,9 @@ def render_analysis_details(
     )
 
 
-def render_case_detail_toc() -> str:
+def render_case_detail_toc(*, llm_enabled: bool = True) -> str:
+    actions_label = "LLM actions" if llm_enabled else "Python-only actions"
+    actions_id = actions_section_id(llm_enabled=llm_enabled)
     return (
         '<section class="detail-toc" aria-label="Details navigation">'
         '<span class="detail-toc-title">Jump to section</span>'
@@ -227,7 +234,7 @@ def render_case_detail_toc() -> str:
         '<a href="#analysis-summary" class="detail-toc-link">Analysis summary</a>'
         '<a href="#findings" class="detail-toc-link">Findings</a>'
         '<a href="#evidence-details" class="detail-toc-link">Evidence details</a>'
-        '<a href="#llm-actions" class="detail-toc-link">LLM actions</a>'
+        f'<a href="#{actions_id}" class="detail-toc-link">{actions_label}</a>'
         "</nav>"
         "</section>"
     )

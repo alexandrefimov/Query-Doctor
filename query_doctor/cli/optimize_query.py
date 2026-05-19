@@ -344,13 +344,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def resolve_optimizer_case_dir(case_dir: Path) -> Path:
+    if (case_dir / "analysis_facts.md").is_file():
+        return case_dir
+    try:
+        resolved_case_dir = case_dir.resolve(strict=True)
+    except OSError:
+        return case_dir
+    candidates: list[Path] = []
+    try:
+        children = sorted(resolved_case_dir.iterdir(), key=lambda path: path.name)
+    except OSError:
+        return case_dir
+    for child in children:
+        try:
+            resolved_child = child.resolve(strict=True)
+            resolved_child.relative_to(resolved_case_dir)
+        except (OSError, ValueError):
+            continue
+        if resolved_child.is_dir() and (resolved_child / "analysis_facts.md").is_file():
+            candidates.append(resolved_child)
+    if len(candidates) == 1:
+        print(
+            f"{PROGRESS_PREFIX} optimized query source: using nested analyzed case",
+            file=sys.stderr,
+        )
+        return candidates[0]
+    return case_dir
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     case_dir = Path(args.case_dir).expanduser().resolve()
-    facts_path = case_dir / "analysis_facts.md"
     if not case_dir.is_dir():
         print(f"{PROGRESS_PREFIX} ERROR: case directory is unavailable", file=sys.stderr)
         return 2
+    case_dir = resolve_optimizer_case_dir(case_dir)
+    facts_path = case_dir / "analysis_facts.md"
     if not facts_path.is_file():
         print(f"{PROGRESS_PREFIX} ERROR: analysis_facts.md is required", file=sys.stderr)
         return 2

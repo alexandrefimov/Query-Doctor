@@ -113,6 +113,27 @@ def test_web_help_page_renders_curated_static_help():
         assert forbidden not in body
 
 
+def test_web_help_page_uses_python_only_copy_when_no_llm():
+    module = load_web_module()
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"), no_llm=True)
+
+    body = module.render_help_page(settings)
+
+    assert "Details and Python-only actions" in body
+    assert "Python-only actions" in body
+    assert "Python Report" in body
+    assert "Query optimizer" in body
+    assert "without LLM calls" in body
+    assert "Web scans do not auto-run reports or optimizer jobs." in body
+    assert "without automatic report or optimizer execution" in body
+    assert "LLM Report" not in body
+    assert "Query LLM optimizer" not in body
+    assert "Details and LLM actions" not in body
+    assert "mass LLM execution" not in body
+    for forbidden in FORBIDDEN_HELP_STRINGS:
+        assert forbidden not in body
+
+
 def test_web_navigation_includes_help_link():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))

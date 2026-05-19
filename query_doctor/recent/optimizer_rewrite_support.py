@@ -203,10 +203,15 @@ def classify_optimizer_rewrite_support(
             "Source SQL is unavailable for trusted draft classification"
         )
 
-    risk = decide_optimizer_risk_mode(source_sql.sql)
-    cte_shape = analyze_cte_shape(source_sql.sql)
-    derived_shape = analyze_derived_table_shape(source_sql.sql)
-    recipe = detect_optimizer_rewrite_recipe(source_sql.sql, facts_text)
+    try:
+        risk = decide_optimizer_risk_mode(source_sql.sql)
+        cte_shape = analyze_cte_shape(source_sql.sql)
+        derived_shape = analyze_derived_table_shape(source_sql.sql)
+        recipe = detect_optimizer_rewrite_recipe(source_sql.sql, facts_text)
+    except (OptimizerSqlError, QueryOptimizationError, ValueError):
+        return source_unavailable_support(
+            "Source SQL is outside trusted draft classification scope"
+        )
     if recipe is not None:
         recipe_id = recipe.recipe_id
         recipe_reason = RECIPE_REASONS.get(recipe_id, "Python-owned rewrite recipe is available")

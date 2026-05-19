@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-05-13
+Last reviewed: 2026-05-19
 
 Language: English | [Russian](i18n/ru/README.md)
 

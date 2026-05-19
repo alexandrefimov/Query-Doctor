@@ -1,6 +1,6 @@
 # Query Optimizer Contract
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-19
 
 Язык: [English](../../query-optimizer-contract.md) | Русский
 
@@ -15,7 +15,9 @@ Last reviewed: 2026-05-15
   deterministic execution и strict validation.
 - Unsupported или high-risk cases должны возвращать trusted no-rewrite или
   recommendations-only guidance.
-- Raw LLM output остается untrusted до deterministic validation.
+- LLM может формулировать wording и guidance, но не является trusted SQL
+  writer.
+- Raw LLM output остается untrusted.
 
 ## Surfaces
 

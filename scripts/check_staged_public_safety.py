@@ -24,6 +24,7 @@ BLOCKED_PATH_PARTS = (
 )
 BLOCKED_FILENAMES = {
     ".DS_Store",
+    ".metadata-source-tables.json",
     ".query-doctor-cm.local.json",
     "analysis_facts.md",
     "cluster_event_context.json",

@@ -1,6 +1,6 @@
 # Локальный UI demo Query Doctor
 
-Last reviewed: 2026-05-13
+Last reviewed: 2026-05-19
 
 Язык: [English](../../DEMO.md) | Русский
 
@@ -28,6 +28,13 @@ Prometheus URLs, Kerberos service names и metadata coordinator settings в
 
 ```bash
 scripts/query-doctor-web-local
+```
+
+Для local Python-only session, где selected-case report и optimizer actions не
+вызывают LLM:
+
+```bash
+scripts/query-doctor-web-local-no-llm
 ```
 
 Ручной запуск:

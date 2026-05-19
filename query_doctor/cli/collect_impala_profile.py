@@ -13,13 +13,14 @@ from query_doctor.cm.profile_parsing import (
     extract_statement_from_profile_text,
     merge_profile_summary_metadata,
 )
+from query_doctor.impala.daemon_identity import fetch_impala_daemon_identity, identity_metadata
 from query_doctor.impala.profile_source import (
     DEFAULT_IMPALA_PROFILE_PORT,
     DEFAULT_IMPALA_PROFILE_SCHEME,
     DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     fetch_impala_profile_text,
 )
-from query_doctor.impala.daemon_identity import fetch_impala_daemon_identity, identity_metadata
+from query_doctor.metadata_source_tables import write_metadata_source_tables
 from query_doctor.prometheus.timeseries import (
     DEFAULT_MAX_PROMETHEUS_POINTS,
     DEFAULT_PROMETHEUS_METRICS_PROFILE,
@@ -97,6 +98,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=True,
         dest="redact_hosts",
         help="Preserve hostnames in local artifacts. Do not use for shared outputs.",
+    )
+    parser.add_argument(
+        "--metadata-source-tables-out",
+        type=Path,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--prometheus-url",
@@ -182,6 +188,9 @@ def main(
             file=sys.stderr,
         )
         return 3
+    metadata_source_tables_out = resolve_metadata_source_tables_out(args)
+    if metadata_source_tables_out is False:
+        return 3
     try:
         fetch_kwargs = {
             "query_id": args.query_id,
@@ -262,6 +271,8 @@ def main(
             redact_identifiers=args.redact_identifiers,
             redact_hosts=args.redact_hosts,
         )
+        if isinstance(metadata_source_tables_out, Path):
+            write_metadata_source_tables(metadata_source_tables_out, summary.statement)
     except (CMClientError, OutputError, OSError) as exc:
         print("[Impala profile collector] Collection result: FAILED", file=sys.stderr)
         print(
@@ -282,6 +293,22 @@ def main(
         print(f"Prometheus metrics profile: {args.prometheus_metrics_profile}")
     print("Raw provider output was not printed to stdout.")
     return 0
+
+
+def resolve_metadata_source_tables_out(args: argparse.Namespace) -> Path | bool | None:
+    if args.metadata_source_tables_out is None:
+        return None
+    source_tables_path = args.metadata_source_tables_out.resolve(strict=False)
+    output_root = args.out.resolve(strict=False)
+    try:
+        source_tables_path.relative_to(output_root)
+    except ValueError:
+        print(
+            "[Impala profile collector] ERROR: --metadata-source-tables-out must be inside --out.",
+            file=sys.stderr,
+        )
+        return False
+    return source_tables_path
 
 
 if __name__ == "__main__":

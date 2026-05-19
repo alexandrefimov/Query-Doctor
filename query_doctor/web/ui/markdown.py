@@ -32,7 +32,7 @@ def render_details_inline_report_html(report_text: str) -> str:
     result = "\n".join(visible_html)
     if appendix_html:
         result += (
-            '\n<details class="analysis-subdetails report-appendix" aria-label="LLM report details">'
+            '\n<details class="analysis-subdetails report-appendix" aria-label="Report details">'
             "<summary>Detailed report and follow-up checks</summary>"
             '<div class="report-body">' + "\n".join(appendix_html) + "</div></details>"
         )

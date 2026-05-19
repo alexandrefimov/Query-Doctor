@@ -67,11 +67,15 @@ def inspect_case_outputs(case: CaseResult) -> None:
         return
     statuses = Counter(str(item.get("status")) for item in results if isinstance(item, dict))
     case.too_large_count = statuses.get("too_large", 0)
-    if statuses.get("error", 0) and statuses.get("ok", 0):
+    ok_count = statuses.get("ok", 0)
+    failure_count = sum(
+        count for status, count in statuses.items() if status not in {"ok", "not_applicable"}
+    )
+    if failure_count and ok_count:
         case.metadata_status = "partial"
-    elif statuses.get("error", 0):
+    elif failure_count:
         case.metadata_status = "failed"
-    elif statuses.get("ok", 0):
+    elif ok_count:
         case.metadata_status = "collected"
     else:
         case.metadata_status = "skipped"

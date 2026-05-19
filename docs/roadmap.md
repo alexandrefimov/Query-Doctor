@@ -817,7 +817,7 @@ Good future split boundaries:
 - report prompt contract, sanitizer, validation, recommendation candidates, and
   LLM client code;
 - optimizer parsing, risk classification, validation, recipes, fallback, and
-  LLM draft contracts;
+  trusted outcome contracts;
 - Cloudera Manager client/config, query discovery, profile collection,
   time-series collection, events collection, and source-provider adapters;
 - Impala metadata allowlist, Kerberos/cache handling, shell/protocol execution,

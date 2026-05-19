@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-19
 
 Язык: [English](README.md) | Русский
 
@@ -329,9 +329,10 @@ configs, credentials, raw profiles, raw metadata или temporary outputs.
 ## Public status
 
 Репозиторий публичный. `v0.1.0` - initial public GitHub release baseline,
-`v0.1.1` - первый PyPI release, `v0.1.2` - текущий PyPI release:
-[query-doctor on PyPI](https://pypi.org/project/query-doctor/). Public license
-is AGPL-3.0-or-later, commercial licensing available separately.
+`v0.1.1` - первый PyPI release, этот checkout подготовлен для `v0.1.3`:
+[query-doctor on PyPI](https://pypi.org/project/query-doctor/) показывает
+текущий package-index status. Public license is AGPL-3.0-or-later, commercial
+licensing available separately.
 
 PyPI publishing использует GitHub OIDC Trusted Publishing. Repository-side
 `testpypi` и `pypi` environments требуют maintainer approval и не используют

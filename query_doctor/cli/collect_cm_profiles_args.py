@@ -210,6 +210,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--metadata-source-tables-out",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--collect-cm-timeseries",
         action="store_true",
         default=None,

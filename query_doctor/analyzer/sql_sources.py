@@ -307,17 +307,42 @@ def extract_referenced_tables_from_sql(sql: str) -> list[str]:
     index = 0
     in_from_list = False
     expect_table = False
+    from_depth: int | None = None
+    depth = 0
 
     while index < len(tokens):
         token = tokens[index]
         lower = token.lower()
 
-        if token in (")", ";") or lower in SQL_FROM_STOP_WORDS:
+        if token == "(":
+            if expect_table:
+                expect_table = False
+                in_from_list = False
+                from_depth = None
+            depth += 1
+            index += 1
+            continue
+        if token == ")":
+            if in_from_list and from_depth is not None and depth <= from_depth:
+                in_from_list = False
+                expect_table = False
+                from_depth = None
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if token == ";" or (
+            in_from_list
+            and from_depth is not None
+            and depth == from_depth
+            and lower in SQL_FROM_STOP_WORDS
+        ):
             in_from_list = False
             expect_table = False
+            from_depth = None
         elif lower == "from":
             in_from_list = True
             expect_table = True
+            from_depth = depth
             index += 1
             continue
         elif lower == "join":
@@ -340,17 +365,12 @@ def extract_referenced_tables_from_sql(sql: str) -> list[str]:
                     index += 1
                 expect_table = True
                 continue
-        elif in_from_list and token == ",":
+        elif in_from_list and from_depth is not None and depth == from_depth and token == ",":
             expect_table = True
             index += 1
             continue
 
         if expect_table:
-            if token == "(":
-                expect_table = False
-                in_from_list = False
-                index += 1
-                continue
             table, next_index = parse_table_identifier(tokens, index)
             if table:
                 if table.lower() not in cte_names and not is_function_reference(
@@ -413,32 +433,52 @@ def table_aliases_from_tokens(tokens: list[str], cte_names: set[str]) -> dict[st
     index = 0
     in_from_list = False
     expect_table = False
+    from_depth: int | None = None
+    depth = 0
     while index < len(tokens):
         token = tokens[index]
         lower = token.lower()
-        if token in (")", ";") or lower in SQL_FROM_STOP_WORDS:
+        if token == "(":
+            if expect_table:
+                expect_table = False
+                in_from_list = False
+                from_depth = None
+            depth += 1
+            index += 1
+            continue
+        if token == ")":
+            if in_from_list and from_depth is not None and depth <= from_depth:
+                in_from_list = False
+                expect_table = False
+                from_depth = None
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if token == ";" or (
+            in_from_list
+            and from_depth is not None
+            and depth == from_depth
+            and lower in SQL_FROM_STOP_WORDS
+        ):
             in_from_list = False
             expect_table = False
+            from_depth = None
         elif lower == "from":
             in_from_list = True
             expect_table = True
+            from_depth = depth
             index += 1
             continue
         elif lower == "join":
             expect_table = True
             index += 1
             continue
-        elif in_from_list and token == ",":
+        elif in_from_list and from_depth is not None and depth == from_depth and token == ",":
             expect_table = True
             index += 1
             continue
 
         if expect_table:
-            if token == "(":
-                expect_table = False
-                in_from_list = False
-                index += 1
-                continue
             table, next_index = parse_table_identifier(tokens, index)
             if table:
                 if table.lower() not in cte_names and not is_function_reference(

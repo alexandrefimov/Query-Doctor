@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-19
 
 Язык: [English](../../configuration.md) | Русский
 
@@ -33,6 +33,29 @@ environment variables или local env files, описанных в
 - direct Impala profile/query source settings;
 - optional bounded Prometheus settings;
 - privacy controls such as `privacy_mode` and `no_llm`.
+
+## CM env files
+
+Cloudera Manager credentials держите в environment, а не в JSON config. Direct
+web и batch CLI могут загрузить local env file из `QD_CM_ENV`,
+`$QD_CREDS_DIR/cm-ro.env` или `~/.qdcreds/cm-ro.env`.
+
+Файл читается whitelist-only, без shell evaluation. Разрешены только
+`CM_USERNAME`, `CM_USER`, `CM_PASSWORD`, `CM_TOKEN`, `KRB5CCNAME` и
+`KRB5_PRINCIPAL`. Уже exported environment variables имеют приоритет над file
+values.
+
+## Recent batch metadata
+
+Для Cloudera Manager Recent batches metadata refresh может использовать real
+table references, извлеченные из discovery statements до profile identifier
+redaction. Эти identifiers передаются только во внутренний bounded metadata
+subprocess; progress, summaries, trusted reports и pipeline plan output должны
+оставаться raw-free.
+
+`recent_metadata_top_limit` означает maximum number of top collectable cases,
+eligible for metadata refresh. Placeholder-only/generic references не должны
+тратить этот budget.
 
 ## Что нельзя хранить
 

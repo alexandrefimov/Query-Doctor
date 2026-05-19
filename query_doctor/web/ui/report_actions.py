@@ -12,12 +12,15 @@ REPORT_ACTION_JOB_KINDS = {"batch_report", "query_report"}
 
 
 def render_llm_report_status(
-    view: ReportActionView, trusted_report_html: SafeHtml | str | None
+    view: ReportActionView,
+    trusted_report_html: SafeHtml | str | None,
+    *,
+    llm_enabled: bool = True,
 ) -> str:
     if view.status == "running":
-        status_html = render_llm_report_progress(view)
+        status_html = render_llm_report_progress(view, llm_enabled=llm_enabled)
     elif view.status in {"failed", "cancelled"}:
-        status_html = render_llm_report_failure(view)
+        status_html = render_llm_report_failure(view, llm_enabled=llm_enabled)
     else:
         status_html = ""
     report_html = (
@@ -27,15 +30,17 @@ def render_llm_report_status(
     )
     if not status_html and not report_html:
         return ""
+    result_label = "LLM report" if llm_enabled else "Python report"
+    result_title = "LLM Report" if llm_enabled else "Python Report"
     return (
-        '<div class="llm-result-block" aria-label="LLM report result">'
-        "<h2>LLM Report</h2>"
+        f'<div class="llm-result-block" aria-label="{result_label} result">'
+        f"<h2>{result_title}</h2>"
         f"{status_html}{report_html}"
         "</div>"
     )
 
 
-def render_llm_report_progress(view: ReportActionView) -> str:
+def render_llm_report_progress(view: ReportActionView, *, llm_enabled: bool = True) -> str:
     if view.job_kind not in REPORT_ACTION_JOB_KINDS:
         # Combined LLM-actions jobs route through render_llm_actions_job_progress.
         # A report-only renderer should not fabricate progress for that state.
@@ -60,9 +65,11 @@ def render_llm_report_progress(view: ReportActionView) -> str:
     else:
         cancel_html = ""
     step_html = render_progress_steps(progress_view)
+    progress_label = "LLM report" if llm_enabled else "Python report"
+    progress_title = "Generating LLM report" if llm_enabled else "Generating Python report"
     return (
-        f'<div class="report-progress" aria-label="LLM report progress"{status_attrs}>'
-        f'<div class="progress-head"><span class="progress-title">Generating LLM report</span>'
+        f'<div class="report-progress" aria-label="{progress_label} progress"{status_attrs}>'
+        f'<div class="progress-head"><span class="progress-title">{progress_title}</span>'
         f'<span class="progress-stage">{html.escape(current_stage)}</span>{cancel_html}</div>'
         '<div class="progress-bar" aria-hidden="true">'
         f'<span class="progress-fill" style="width:{progress_view.percent}%"></span>'
@@ -85,18 +92,19 @@ def render_progress_steps(progress_view: JobProgressView) -> str:
     )
 
 
-def render_llm_report_failure(view: ReportActionView) -> str:
+def render_llm_report_failure(view: ReportActionView, *, llm_enabled: bool = True) -> str:
     cancelled = view.status == "cancelled"
+    report_label = "LLM report" if llm_enabled else "Python report"
     message = (
         view.error
         if view.error not in {None, "", "unknown"}
-        else "LLM report generation failed. Unsafe output is hidden."
+        else f"{report_label} generation failed. Unsafe output is hidden."
     )
-    title = "LLM report stopped" if cancelled else "LLM report failed"
+    title = f"{report_label} stopped" if cancelled else f"{report_label} failed"
     label = "Stopped" if cancelled else "Error"
     detail = "Stopped by user" if cancelled else "Unsafe output is hidden"
     return (
-        '<div class="report-progress" aria-label="LLM report progress">'
+        f'<div class="report-progress" aria-label="{report_label} progress">'
         f'<div class="progress-head"><span class="progress-title">{title}</span>'
         f'<span class="progress-stage">{html.escape(view.stage_label or ("Cancelled" if cancelled else "Failed"))}</span></div>'
         '<div class="progress-bar" aria-hidden="true">'

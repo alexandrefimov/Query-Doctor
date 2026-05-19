@@ -1,6 +1,6 @@
 # Documentation Audit
 
-Last updated: 2026-05-15
+Last updated: 2026-05-19
 
 This audit covers two separate risks:
 
@@ -88,8 +88,8 @@ ever staged explicitly.
 Current non-archived English documentation inventory after the localization
 cleanup:
 
-- 34 current English docs, counting the root `README.md` and this audit;
-- 34 Russian companions exist;
+- 35 current English docs, counting the root `README.md` and this audit;
+- 35 Russian companions exist;
 - 0 Russian companions are missing.
 
 Existing Russian companions:
@@ -101,6 +101,7 @@ Existing Russian companions:
 - `docs/i18n/ru/agent-quickstart.md`;
 - `docs/i18n/ru/analyzer-audit.md`;
 - `docs/i18n/ru/architecture.md`;
+- `docs/i18n/ru/brand-voice.md`;
 - `docs/i18n/ru/changelog.md`;
 - `docs/i18n/ru/cluster-doctor-contract.md`;
 - `docs/i18n/ru/code-audit.md`;

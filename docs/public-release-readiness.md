@@ -33,8 +33,8 @@ about unsupported scope.
 
 ## Current Snapshot
 
-As of 2026-05-13, the public `main` branch has the main best-practice baseline
-in place:
+As of 2026-05-19, the public repository has the main best-practice baseline in
+place:
 
 - Canonical public docs and default browser-visible copy are English.
 - Russian docs are localized companions only under `docs/i18n/ru/`.
@@ -60,6 +60,9 @@ in place:
   GitHub OIDC; the GitHub `pypi` and `testpypi` environments require maintainer
   approval and block admin bypass. Pre-commit also enforces ruff check, ruff
   format, staged public-safety checks, whitespace, and Markdown links.
+- The pending 0.2.0 release candidate must pass the local release gate, PR CI,
+  manual Release Gate, package build/check, and a bounded no-LLM Recent batch
+  smoke with metadata collection enabled before tagging.
 - Repository metadata, topics, issue labels, issue templates, pull request
   template, and curated sanitized starter issues are in place.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample

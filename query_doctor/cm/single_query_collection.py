@@ -15,6 +15,7 @@ from query_doctor.cm.profile_parsing import (
     merge_profile_summary_metadata,
 )
 from query_doctor.cm.timeseries import collect_cm_timeseries_context
+from query_doctor.metadata_source_tables import write_metadata_source_tables
 from query_doctor.safety.redaction import sanitize_adapter_error_message
 
 
@@ -91,6 +92,7 @@ def run_cm_single_query_collection(
             redact_identifiers=config.redact_identifiers,
             redact_hosts=config.redact_hosts,
         )
+        write_metadata_source_tables(config.metadata_source_tables_out, summary.statement)
     except (CMClientError, OutputError, OSError) as exc:
         print(
             "[CM profile collector] Collection result: FAILED",

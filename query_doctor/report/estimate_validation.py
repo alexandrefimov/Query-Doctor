@@ -60,13 +60,26 @@ ROW_DIRECTION_WORD_RE = re.compile(
 )
 CONTRADICTED_ROW_ESTIMATE_NOTE = (
     "- Направление row/cardinality estimate для одной строки отчёта не поддержано parsed facts; "
-    "используйте конкретные actual/estimated ratios из analysis_facts.md."
+    "используйте конкретные actual/estimated ratios из analyzer facts."
+)
+CONTRADICTED_ROW_ESTIMATE_NOTE_EN = (
+    "- The row/cardinality estimate direction for one report line is not supported by "
+    "parsed facts; use the concrete actual/estimated ratios from analyzer facts."
 )
 CONTRADICTED_MEMORY_ESTIMATE_NOTE = (
     "- расхождение оценки памяти: направление memory estimate для одной строки отчёта "
     "не поддержано parsed facts; используйте конкретные actual/estimated memory ratios "
-    "из analysis_facts.md."
+    "из analyzer facts."
 )
+CONTRADICTED_MEMORY_ESTIMATE_NOTE_EN = (
+    "- Memory estimate mismatch: the memory estimate direction for one report line is "
+    "not supported by parsed facts; use the concrete actual/estimated memory ratios "
+    "from analyzer facts."
+)
+
+
+def _localized(language: str, ru_text: str, en_text: str) -> str:
+    return ru_text if language == "ru" else en_text
 
 
 def line_has_row_underestimation_claim(line: str) -> bool:
@@ -338,11 +351,19 @@ def find_contradicted_memory_overestimation_claims(report_text: str, facts_text:
     return errors
 
 
-def normalize_contradicted_estimate_direction(line: str, facts_text: str) -> str | None:
+def normalize_contradicted_estimate_direction(
+    line: str, facts_text: str, *, language: str = "ru"
+) -> str | None:
     if find_contradicted_row_underestimation_claims(line, facts_text):
-        return CONTRADICTED_ROW_ESTIMATE_NOTE
+        return _localized(
+            language, CONTRADICTED_ROW_ESTIMATE_NOTE, CONTRADICTED_ROW_ESTIMATE_NOTE_EN
+        )
     if find_contradicted_memory_underestimation_claims(line, facts_text):
-        return CONTRADICTED_MEMORY_ESTIMATE_NOTE
+        return _localized(
+            language, CONTRADICTED_MEMORY_ESTIMATE_NOTE, CONTRADICTED_MEMORY_ESTIMATE_NOTE_EN
+        )
     if find_contradicted_memory_overestimation_claims(line, facts_text):
-        return CONTRADICTED_MEMORY_ESTIMATE_NOTE
+        return _localized(
+            language, CONTRADICTED_MEMORY_ESTIMATE_NOTE, CONTRADICTED_MEMORY_ESTIMATE_NOTE_EN
+        )
     return line

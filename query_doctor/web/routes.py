@@ -75,13 +75,13 @@ STATIC_ASSETS = {
 REPORT_DOWNLOAD_CONTENT_TYPE = "text/markdown; charset=utf-8"
 JOB_CANCEL_POST_RE = re.compile(r"/jobs/(?P<job_id>[0-9a-f]{32})/cancel")
 BATCH_CASE_POST_RE = re.compile(
-    r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions)"
+    r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions|case-actions)"
 )
 ACTION_OUTCOME_POST_RE = re.compile(
     r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/outcome/(?P<recommendation_id>[A-Za-z0-9_.-]+)"
 )
 SPECIFIC_QUERY_POST_RE = re.compile(
-    r"/query/details/(?P<query_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions)"
+    r"/query/details/(?P<query_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions|case-actions)"
 )
 
 

@@ -1,6 +1,6 @@
 # Контракт безопасности Query Doctor
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-19
 
 Язык: [English](../../safety-contract.md) | Русский
 
@@ -32,8 +32,10 @@ Last reviewed: 2026-05-15
   `impala-shell` с уже полученным TGT от `kinit`.
 - Metadata collector не вызывает `kinit`, не запрашивает passwords, не
   принимает AD/LDAP passwords и не использует impyla/Python DB API.
-- Metadata collector принимает только explicit table names и read-only
-  statements: `SHOW CREATE TABLE`, `SHOW TABLE STATS`, `SHOW COLUMN STATS`.
+- Metadata collector принимает только bounded table references из explicit CLI
+  input или Python-owned selected-case extraction. Он выполняет только
+  read-only statements: `SHOW CREATE TABLE`, `SHOW TABLE STATS`,
+  `SHOW COLUMN STATS`.
 - Raw `impala-shell` stdout/stderr не печатается в terminal; collected output
   bounded, redacted и пишется только в explicit `--out`.
 - Generated `impala_context.md` и `impala_context.json` являются local outputs
@@ -84,8 +86,9 @@ production profile text.
   internals.
 - Любой dynamic browser-visible text должен проходить shared browser display
   redaction policy перед rendering.
-- Web Recent scan не должен автоматически запускать LLM reports; validated
-  report generation является explicit action для одного selected case.
+- Web Recent scan не должен автоматически запускать LLM reports или optimizer
+  jobs; validated report generation и Query LLM optimizer generation являются
+  explicit actions для одного selected case.
 - Details-page Query LLM optimizer должен показывать только validated read-only
   draft, safe recommendations/no-rewrite guidance, validation-failure-only
   external rewrite validation categories и safe status fields.

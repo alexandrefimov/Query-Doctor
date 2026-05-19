@@ -35,20 +35,37 @@ UNSUPPORTED_STATS_FRESHNESS_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 STATS_FRESHNESS_MISSING_EVIDENCE = (
-    "- Свежесть статистики таблиц/столбцов не подтверждена в analysis_facts.md; "
+    "- Свежесть статистики таблиц/столбцов не подтверждена в analyzer facts; "
     "проверяйте ее только через read-only metadata."
 )
+STATS_FRESHNESS_MISSING_EVIDENCE_EN = (
+    "- Table/column statistics freshness is not confirmed in analyzer facts; "
+    "check it only through read-only metadata."
+)
 BACKEND_DATA_SKEW_SUPPORTED_NOTE = (
-    "- Backend data skew поддержан analysis_facts.md: rows/records неравномерно распределены "
+    "- Backend data skew поддержан analyzer facts: rows/records неравномерно распределены "
     "по parsed backends; execution skew / single tail host не доказаны без отдельного факта."
+)
+BACKEND_DATA_SKEW_SUPPORTED_NOTE_EN = (
+    "- Backend data skew is supported by analyzer facts: rows/records are unevenly "
+    "distributed across parsed backends; execution skew / a single tail host is not proven "
+    "without a separate fact."
 )
 BACKEND_DATA_SKEW_UNSUPPORTED_NOTE = (
     "- Backend data skew по RowsProduced не подтверждён: Backend / Host Tail Evidence не показывает "
     "неравномерное распределение строк по comparable backends."
 )
+BACKEND_DATA_SKEW_UNSUPPORTED_NOTE_EN = (
+    "- Backend data skew by RowsProduced is not confirmed: Backend / Host Tail Evidence "
+    "does not show uneven row distribution across comparable backends."
+)
 SPILL_SCRATCH_SUPPORTED_NOTE = (
-    "- В analysis_facts.md есть ненулевые spill/scratch metrics; это подтверждает наличие "
+    "- В analyzer facts есть ненулевые spill/scratch metrics; это подтверждает наличие "
     "метрик, но не доказывает spill/scratch как причину без дополнительных фактов."
+)
+SPILL_SCRATCH_SUPPORTED_NOTE_EN = (
+    "- Analyzer facts contain non-zero spill/scratch metrics; this confirms the "
+    "metrics exist but does not prove spill/scratch as the cause without additional facts."
 )
 UNSAFE_OPERATOR_WALL_CLOCK_RE = re.compile(
     r"(?:оператор|operator|\b\d{2,}:[A-Z][A-Z _]+)[^.\n]{0,120}"
@@ -163,6 +180,13 @@ CM_CONTEXT_ONLY_CAUSAL_RE = re.compile(
     r"неправильн\w+\s+оценк\w*|неэффективн\w+\s+использован\w+|bottleneck|узк\w+\s+мест)\b",
     re.IGNORECASE,
 )
+CM_CONTEXT_ONLY_SAFE_CONTEXT_RE = re.compile(
+    r"\b(?:not\s+(?:treated\s+as\s+)?(?:a\s+)?cause|not\s+standalone\s+root[- ]cause\s+proof|"
+    r"not\s+(?:proof|proven|causal)|do\s+not\s+treat[^.\n]{0,120}root\s+cause|"
+    r"do\s+not\s+use[^.\n]{0,120}(?:cause|bottleneck)|context\s+only|context-only|"
+    r"не\s+счита\w+ся\s+причин\w*|не\s+явля\w+ся\s+причин\w*|не\s+доказ\w*)\b",
+    re.IGNORECASE,
+)
 CM_DAEMON_MEMORY_WORD_RE = re.compile(
     r"\b(?:daemon\s+memory|памят\w+\s+демон\w+|рост\s+памят\w+)\b", re.IGNORECASE
 )
@@ -170,6 +194,10 @@ CM_NETWORK_WORD_RE = re.compile(
     r"\b(?:network\s+I/O|network\s+io|сетев\w+\s+I/O|сеть|сети|сетев\w+)\b", re.IGNORECASE
 )
 CM_CONTEXT_ONLY_SAFE_NOTE = "- Runtime metrics context-only: наблюдаемый runtime signal не считается причиной без matching profile evidence."
+CM_CONTEXT_ONLY_SAFE_NOTE_EN = (
+    "- Runtime metrics context-only: the observed runtime signal is not treated as a "
+    "cause without matching profile evidence."
+)
 CLUSTER_EVENT_CONTEXT_WORD_RE = re.compile(
     r"\b(?:CM\s+events?|Cluster\s+Event\s+Context|event\s+context|service\s+restart|restart\s+event|"
     r"daemon\s+error|catalog\s+error|metastore\s+error|disk\s+capacity|HDFS\s+event|YARN\s+event|"
@@ -208,9 +236,23 @@ PRIMARY_BOTTLENECK_NEGATION_RE = re.compile(
     re.IGNORECASE,
 )
 PRIMARY_BOTTLENECK_SAFE_NOTE = (
-    "- В analysis_facts.md нет прямого causal evidence для такого вывода; "
+    "- В analyzer facts нет прямого causal evidence для такого вывода; "
     "описывайте только подтверждённые profile signals."
 )
+PRIMARY_BOTTLENECK_SAFE_NOTE_EN = (
+    "- Analyzer facts do not contain direct causal evidence for that conclusion; "
+    "describe only confirmed profile signals."
+)
+
+
+def _localized(language: str, ru_text: str, en_text: str) -> str:
+    return ru_text if language == "ru" else en_text
+
+
+def stats_freshness_missing_evidence_note(language: str = "ru") -> str:
+    return _localized(
+        language, STATS_FRESHNESS_MISSING_EVIDENCE, STATS_FRESHNESS_MISSING_EVIDENCE_EN
+    )
 
 
 def find_unsafe_operator_time_wording(report_text: str, facts_text: str) -> list[str]:
@@ -314,6 +356,8 @@ def find_cm_context_only_claim_errors(report_text: str, facts_text: str) -> list
     for line in report_text.splitlines():
         if not CM_CONTEXT_ONLY_CAUSAL_RE.search(line):
             continue
+        if CM_CONTEXT_ONLY_SAFE_CONTEXT_RE.search(line):
+            continue
         if daemon_context_only and CM_DAEMON_MEMORY_WORD_RE.search(line):
             errors.append("CM daemon memory context-only signal is described as causal")
             break
@@ -351,21 +395,23 @@ def find_primary_bottleneck_overclaim_errors(report_text: str) -> list[str]:
     return []
 
 
-def normalize_primary_bottleneck_overclaim(line: str) -> str:
+def normalize_primary_bottleneck_overclaim(line: str, *, language: str = "ru") -> str:
     if line_has_primary_bottleneck_overclaim(line):
-        return PRIMARY_BOTTLENECK_SAFE_NOTE
+        return _localized(language, PRIMARY_BOTTLENECK_SAFE_NOTE, PRIMARY_BOTTLENECK_SAFE_NOTE_EN)
     return line
 
 
-def normalize_cm_context_only_overclaim(line: str, facts_text: str) -> str:
+def normalize_cm_context_only_overclaim(line: str, facts_text: str, *, language: str = "ru") -> str:
     if not CM_CONTEXT_ONLY_CAUSAL_RE.search(line):
+        return line
+    if CM_CONTEXT_ONLY_SAFE_CONTEXT_RE.search(line):
         return line
     if cm_metric_context_only(
         facts_text, "daemon_memory_growth"
     ) and CM_DAEMON_MEMORY_WORD_RE.search(line):
-        return CM_CONTEXT_ONLY_SAFE_NOTE
+        return _localized(language, CM_CONTEXT_ONLY_SAFE_NOTE, CM_CONTEXT_ONLY_SAFE_NOTE_EN)
     if cm_metric_context_only(facts_text, "network_io_spike") and CM_NETWORK_WORD_RE.search(line):
-        return CM_CONTEXT_ONLY_SAFE_NOTE
+        return _localized(language, CM_CONTEXT_ONLY_SAFE_NOTE, CM_CONTEXT_ONLY_SAFE_NOTE_EN)
     return line
 
 
@@ -386,7 +432,7 @@ def find_spill_scratch_claim_errors(report_text: str, facts_text: str) -> list[s
         if SPILL_SCRATCH_ABSENT_RE.search(line) and not CAUSE_WORD_RE.search(line):
             return [
                 "spill/scratch absence claim contradicts parsed facts: "
-                "analysis_facts.md contains spill/scratch metric evidence"
+                "analyzer facts contain spill/scratch metric evidence"
             ]
     return []
 
@@ -399,7 +445,7 @@ def should_rewrite_stats_freshness_claim(line: str) -> bool:
     return bool(UNSUPPORTED_STATS_FRESHNESS_CLAIM_RE.search(line))
 
 
-def normalize_operator_time_wording(line: str, facts_text: str) -> str:
+def normalize_operator_time_wording(line: str, facts_text: str, *, language: str = "ru") -> str:
     if re.search(r"\bwall[- ]clock\b|настенн\w+\s+врем", facts_text, re.IGNORECASE):
         return line
     line = RUSSIAN_OPERATOR_TIME_AS_WALL_CLOCK_RE.sub(
@@ -414,31 +460,51 @@ def normalize_operator_time_wording(line: str, facts_text: str) -> str:
         r"\g<prefix> has operator/profile time counter \g<duration>",
         line,
     )
-    line = RUSSIAN_QUERY_TIME_AS_WALL_CLOCK_RE.sub(
-        r"\g<prefix>: в profile/operator time counters указано значение \g<duration>; это не обязательно равно полной wall-clock длительности запроса",
-        line,
+    query_time_note = (
+        r"\g<prefix>: в profile/operator time counters указано значение \g<duration>; "
+        r"это не обязательно равно полной wall-clock длительности запроса"
+        if language == "ru"
+        else r"\g<prefix>: profile/operator time counters show \g<duration>; "
+        r"this is not necessarily the full query wall-clock duration"
     )
+    line = RUSSIAN_QUERY_TIME_AS_WALL_CLOCK_RE.sub(query_time_note, line)
     return line
 
 
-def normalize_supported_evidence_contradiction(line: str, facts_text: str) -> str:
+def normalize_supported_evidence_contradiction(
+    line: str, facts_text: str, *, language: str = "ru"
+) -> str:
     notes: list[str] = []
     if facts_has_backend_tail_evidence(facts_text):
         summary = parse_backend_tail_summary(facts_text)
         if backend_data_skew_is_supported(summary) and BACKEND_DATA_SKEW_NEGATED_RE.search(line):
-            notes.append(BACKEND_DATA_SKEW_SUPPORTED_NOTE)
+            notes.append(
+                _localized(
+                    language,
+                    BACKEND_DATA_SKEW_SUPPORTED_NOTE,
+                    BACKEND_DATA_SKEW_SUPPORTED_NOTE_EN,
+                )
+            )
         if (
             not backend_data_skew_is_supported(summary)
             and BACKEND_DATA_SKEW_POSITIVE_RE.search(line)
             and not BACKEND_SAFE_DIAGNOSTIC_NEGATION_RE.search(line)
         ):
-            notes.append(BACKEND_DATA_SKEW_UNSUPPORTED_NOTE)
+            notes.append(
+                _localized(
+                    language,
+                    BACKEND_DATA_SKEW_UNSUPPORTED_NOTE,
+                    BACKEND_DATA_SKEW_UNSUPPORTED_NOTE_EN,
+                )
+            )
     if (
         facts_have_spill_scratch_evidence(facts_text)
         and SPILL_SCRATCH_ABSENT_RE.search(line)
         and not CAUSE_WORD_RE.search(line)
     ):
-        notes.append(SPILL_SCRATCH_SUPPORTED_NOTE)
+        notes.append(
+            _localized(language, SPILL_SCRATCH_SUPPORTED_NOTE, SPILL_SCRATCH_SUPPORTED_NOTE_EN)
+        )
     if notes:
         return "\n".join(dict.fromkeys(notes))
     return line
