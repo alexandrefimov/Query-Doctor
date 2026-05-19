@@ -60,9 +60,12 @@ place:
   GitHub OIDC; the GitHub `pypi` and `testpypi` environments require maintainer
   approval and block admin bypass. Pre-commit also enforces ruff check, ruff
   format, staged public-safety checks, whitespace, and Markdown links.
-- The pending 0.2.0 release candidate must pass the local release gate, PR CI,
-  manual Release Gate, package build/check, and a bounded no-LLM Recent batch
-  smoke with metadata collection enabled before tagging.
+- The pending 0.2.0 release candidate has passed the local release gate, PR CI,
+  package build/check, installed-wheel smoke, and bounded no-LLM Known Query ID
+  plus Recent batch smokes with metadata collection enabled. Final pre-publish
+  checks are the manual Release Gate workflow, TestPyPI dry-run when desired,
+  protected release tag, GitHub release publish, and production PyPI install
+  smoke.
 - Repository metadata, topics, issue labels, issue templates, pull request
   template, and curated sanitized starter issues are in place.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample

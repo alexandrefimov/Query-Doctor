@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
