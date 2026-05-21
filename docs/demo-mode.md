@@ -1,18 +1,25 @@
 # Synthetic Demo Mode
 
+Last reviewed: 2026-05-21
+
+Language: English | [Russian](i18n/ru/demo-mode.md)
+
 Query Doctor can generate a local synthetic demo pack that works without
 Cloudera Manager, Impala, network access, or LLM calls.
 
-Generate the pack under a dedicated temp directory:
+Generate the pack under a dedicated `query-doctor-*` temp directory. The
+generator refuses repository paths, generic temp roots, and unsafe shallow
+output paths:
 
 ```bash
-query-doctor-demo --out /tmp/query-doctor-demo-pack --overwrite
+DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
+query-doctor-demo --out "$DEMO_PACK" --overwrite
 ```
 
 Then launch the web UI with the generated batch summary:
 
 ```bash
-query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary /tmp/query-doctor-demo-pack/batch_summary.json
+query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
 Open:
@@ -42,8 +49,9 @@ UI or workflow layout changes. Use only the synthetic demo pack, and keep
 generated demo output outside the repository:
 
 ```bash
-query-doctor-demo --out /tmp/query-doctor-demo-pack --overwrite
-query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary /tmp/query-doctor-demo-pack/batch_summary.json
+DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
+query-doctor-demo --out "$DEMO_PACK" --overwrite
+query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
 Open the printed localhost URL and capture:

@@ -1,13 +1,14 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-22
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
 Query Doctor keeps fact extraction deterministic. LLMs may write report wording
-only from facts that Python has already extracted and validated. English is the
-default trusted report language; Russian remains an explicit localized output
-path.
+only from facts that Python has already extracted and validated. The global
+`language` config controls Help, Details static UI copy, and newly generated
+trusted reports; English is the default and Russian uses the same
+language-specific prompt, normalizer, and validator boundary.
 
 ## Current Architecture
 

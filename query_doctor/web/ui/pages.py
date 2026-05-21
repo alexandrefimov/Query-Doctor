@@ -22,6 +22,7 @@ from query_doctor.web.presenters.recent_scan import RecentScanCaseDetailView
 from query_doctor.web.ui.llm_actions import present_optimized_query_action
 from query_doctor.web.ui.progress import render_job_panel
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
+from query_doctor.web.ui.i18n import normalize_ui_language
 from query_doctor.web.ui.recent_scan_details import render_recent_scan_case_detail_view
 from query_doctor.web.ui.recent_scan_form import render_batch_run_panel
 from query_doctor.web.ui.recent_scan_results import render_batch_card
@@ -43,7 +44,7 @@ def render_page(
 ) -> str:
     body = [
         "<!doctype html>",
-        '<html lang="en">',
+        f'<html lang="{normalize_ui_language(getattr(settings, "language", "en"))}">',
         "<head>",
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -55,7 +56,7 @@ def render_page(
         "</head>",
         "<body>",
         '<main class="page" id="top">',
-        render_app_header(active_nav),
+        render_app_header(active_nav, settings),
     ]
     if show_run_panel:
         body.append(render_run_panel(query_id=query_id, report_mode=report_mode))
@@ -137,30 +138,52 @@ def render_batch_page(
     form_values: dict[str, Any] | None = None,
     query_group: str = "bad",
     only_with_spills: bool = False,
+    workload_admin_scope: str = "all",
+    workload_admin_signal: str = "all",
+    workload_group_scope: str = "",
+    workload_group_name: str = "",
+    workload_group_signal: str = "all",
 ) -> str:
     effective_form_values = form_values
     if effective_form_values is None and job is not None:
         effective_form_values = getattr(job, "batch_form_values", None)
+    batch_card = None
+    if job is None or job.status != "ok":
+        batch_card = render_batch_card(
+            settings,
+            query_group=query_group,
+            only_with_spills=only_with_spills,
+            workload_admin_scope=workload_admin_scope,
+            workload_admin_signal=workload_admin_signal,
+            workload_group_scope=workload_group_scope,
+            workload_group_name=workload_group_name,
+            workload_group_signal=workload_group_signal,
+        )
+    collapse_run_panel = bool(batch_card) and job is None and error is None
     sections = [
         render_batch_run_panel(
             settings,
             effective_form_values,
             run_disabled=job is not None and job.status == "running",
+            collapsed=collapse_run_panel,
         )
     ]
     if job is not None:
         result_html = None
         if job.status == "ok" and getattr(job, "kind", "") == "batch":
             result_html = render_batch_card(
-                settings, query_group=query_group, only_with_spills=only_with_spills
+                settings,
+                query_group=query_group,
+                only_with_spills=only_with_spills,
+                workload_admin_scope=workload_admin_scope,
+                workload_admin_signal=workload_admin_signal,
+                workload_group_scope=workload_group_scope,
+                workload_group_name=workload_group_name,
+                workload_group_signal=workload_group_signal,
             )
         sections.append(render_job_panel(job, result_html_override=result_html))
-    if job is None or job.status != "ok":
-        batch_card = render_batch_card(
-            settings, query_group=query_group, only_with_spills=only_with_spills
-        )
-        if batch_card:
-            sections.append(batch_card)
+    if batch_card:
+        sections.append(batch_card)
     return render_page(
         settings,
         active_nav="batch",
@@ -203,6 +226,7 @@ def render_batch_case_detail_view_page(
             list_href=list_href,
             detail_base_path=detail_base_path,
             llm_enabled=not getattr(settings, "no_llm", False),
+            language=getattr(settings, "language", "en"),
         )
     ]
     return render_page(

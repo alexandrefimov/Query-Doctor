@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-22
 
 Query Doctor reads non-secret local settings from a JSON config file. Keep
 passwords, tokens, keytabs, ticket contents, Authorization headers, and API keys
@@ -8,7 +8,10 @@ out of this file. Put those values in environment variables or local env files
 described in [credentials.md](credentials.md).
 
 The committed [query-doctor-config.example.json](../query-doctor-config.example.json)
-is the full template. Copy it locally, then remove fields you do not use.
+is a starter template, not a dump of every supported field. It keeps only the
+settings that are normally environment-specific or useful to make routing
+explicit. Add optional fields from the reference below only when you need to
+override a built-in default.
 
 ## Config Location
 
@@ -27,9 +30,9 @@ Most packaged commands that support automatic local config discovery use this
 order when `--config` is omitted:
 
 1. `query-doctor-config.json` in the current working directory.
-2. `query-doctor-config.json` in the repository root, when the command allows
+2. `~/.qdcreds/query-doctor-config.json`.
+3. `query-doctor-config.json` in the repository root, when the command allows
    the repository default.
-3. `~/.qdcreds/query-doctor-config.json`.
 4. Legacy `.query-doctor-cm.local.json` in the current working directory.
 5. Legacy `.query-doctor-cm.local.json` in the repository root, when allowed.
 
@@ -53,19 +56,17 @@ Use this shape for the normal Cloudera Manager workflow:
 
 ```json
 {
-  "host": "127.0.0.1",
-  "port": 8765,
   "cm_url": "https://cm.example.com:7183/",
   "cluster": "example_cluster",
   "service": "impala",
-  "username": "query_doctor_user",
-  "ca_bundle": "~/.qdcreds/cm-chain.pem",
-  "privacy_mode": true
+  "ca_bundle": "~/.qdcreds/cm-chain.pem"
 }
 ```
 
-Provide `CM_PASSWORD` or `CM_TOKEN` through the shell environment, for example
-from `~/.qdcreds/cm-ro.env`.
+Provide `CM_USERNAME` plus `CM_PASSWORD` or `CM_TOKEN` through the shell
+environment, for example from `~/.qdcreds/cm-ro.env`. The `username` config
+field remains supported as a non-secret fallback, but keeping the CM auth user
+with the CM auth secret avoids drift between files.
 
 Direct `query_doctor.cli.batch_recent` runs also read the local Cloudera
 Manager env file before preflight. Discovery order is:
@@ -76,8 +77,10 @@ Manager env file before preflight. Discovery order is:
 
 The file is parsed as simple `KEY=value` or `export KEY=value` assignments
 without shell evaluation. Only `CM_USERNAME`, `CM_USER`, `CM_PASSWORD`,
-`CM_TOKEN`, `KRB5CCNAME`, and `KRB5_PRINCIPAL` are accepted from this file.
-Already-exported environment variables win over file values.
+and `CM_TOKEN` are accepted from this file. Already-exported environment
+variables win over file values. Kerberos cache and principal settings should
+come from the shell environment, wrapper defaults, keytab inference, or JSON
+config where appropriate, not from `cm-ro.env`.
 
 ## Minimal Direct Impala Config
 
@@ -85,24 +88,15 @@ Use this shape when Cloudera Manager is not the profile source:
 
 ```json
 {
-  "host": "127.0.0.1",
-  "port": 8765,
-  "query_profile_source": "impala",
+  "cluster_type": "impala",
   "impala_profile_hosts": [
     "impalad-worker-1.example.com",
     "impalad-worker-2.example.com"
   ],
-  "impala_profile_port": 25000,
-  "impala_profile_scheme": "http",
-  "impala_profile_timeout_sec": 15,
   "impala_kerberos_service_name": "hive",
   "metadata_coordinator": "impala-coordinator.example.com:21000",
   "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell",
-  "metadata_auth": "kerberos",
-  "metadata_protocol": "beeswax",
-  "metadata_kerberos_service_name": "hive",
-  "metadata_redact": true,
-  "privacy_mode": true
+  "metadata_kerberos_service_name": "hive"
 }
 ```
 
@@ -115,6 +109,80 @@ references extracted from discovery statements before profile identifier
 redaction. Those identifiers are passed only to the bounded metadata subprocess;
 progress, summaries, trusted reports, and pipeline plan output remain raw-free.
 
+## Multiple Clusters
+
+Prefer `clusters[]` when one workstation talks to more than one target. Keep
+cluster-specific settings inside each cluster object. Avoid top-level
+`cm_url`, `cluster`, or `service` when mixing Cloudera Manager and direct
+Impala clusters; otherwise direct clusters inherit irrelevant CM defaults.
+
+```json
+{
+  "clusters": [
+    {
+      "id": "cm-prod",
+      "label": "Cloudera Manager production",
+      "cluster_type": "cm",
+      "cm_url": "https://cm-prod.example.com:7183/",
+      "cluster": "prod_cluster",
+      "service": "impala",
+      "ca_bundle": "~/.qdcreds/cm-chain.pem",
+      "metadata_coordinator": "impala-prod-coordinator.example.com:21000",
+      "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell"
+    },
+    {
+      "id": "direct-impala",
+      "label": "Direct Impala",
+      "cluster_type": "impala",
+      "impala_profile_hosts": ["impalad-worker-1.example.com"],
+      "metadata_coordinator": "impala-coordinator.example.com:21000",
+      "metadata_impala_shell": ".venv-impala-shell/bin/impala-shell"
+    }
+  ]
+}
+```
+
+Cluster entries may define target, TLS, direct Impala, Prometheus, metadata,
+privacy, redaction, and `recent_scan_timezone` fields. `language`, `no_llm`, web
+`host`/`port`, Recent scan limits, and output paths are global. Cluster `id`
+values must use only letters, digits, `.`, `_`, or `-`.
+
+Direct `query_doctor.cli.batch_recent` runs can select one of these entries
+with `--config-cluster <id>`. The selected cluster supplies source, metadata,
+runtime-metrics, redaction, and `source_visibility` settings; explicit CLI
+flags still override the selected cluster. For local web runs, omit
+`source_owner_user` unless you intentionally need a fixed owner that differs
+from the keytab-derived user.
+
+## LLM Routes
+
+Reports and Query LLM optimizer can use separate routes. For local Ollama, the
+provider and models are enough; the default base URL is
+`http://localhost:11434`.
+
+```json
+{
+  "report_llm_provider": "ollama",
+  "report_llm_model": "qwen3-coder:30b-a3b-q8_0",
+  "optimizer_llm_provider": "ollama",
+  "optimizer_llm_model": "deepseek-coder-v2:16b"
+}
+```
+
+To switch either route to an external OpenAI-compatible API, change the provider
+and add the non-secret base URL. Keep the token in `~/.qdcreds/llm-api.env`.
+
+```json
+{
+  "report_llm_provider": "openai_compatible",
+  "report_llm_model": "report-route-model",
+  "report_llm_base_url": "https://llm-gateway.example.com",
+  "optimizer_llm_provider": "openai_compatible",
+  "optimizer_llm_model": "optimizer-route-model",
+  "optimizer_llm_base_url": "https://llm-gateway.example.com"
+}
+```
+
 ## Safety And Privacy
 
 | Field | Type | Scope | Notes |
@@ -125,11 +193,29 @@ progress, summaries, trusted reports, and pipeline plan output remain raw-free.
 | `redact_identifiers` | boolean | global or cluster | Redacts database, table, and SQL-like identifiers in collected/displayed safe artifacts. |
 | `redact_hosts` | boolean | global or cluster | Replaces infrastructure hostnames/IPs with stable aliases. |
 | `metadata_redact` | boolean | global or cluster | Redacts collected metadata context. Leave enabled unless inspecting private local artifacts only. |
-| `optimizer_model` | string | global | Local optimizer model route name. Ignored when `no_llm=true`. |
+| `source_visibility` | string | global or cluster | `safe` or `owner_raw`. Default `safe`. `owner_raw` enables fail-closed owner gating for Recent and Running scans; it does not expose raw browser/report fields by itself. |
+| `source_owner_user` | string | global or cluster | Optional query owner user for `owner_raw`. Prefer omitting this for local web runs: Query Doctor derives a simple user from `QD_SOURCE_OWNER_USER`, `QD_KRB5_PRINCIPAL`, `KRB5_PRINCIPAL`, or simple principals in `QD_KEYTAB`. Service principals with `/` are not accepted for inference. Keytab-derived users are sorted alphabetically, and the first user becomes the default Username selection. |
+| `language` | string | global | Global language mode shown in the web header. It controls Help, Details static UI, and newly generated trusted report language. Supported values: `en`, `ru`. Default: `en`. Existing reports are not regenerated automatically after changing this field. The web header points to this config key without rendering the absolute config path. |
+| `report_llm_provider` | string | global | Report LLM provider: `ollama` or `openai_compatible`. |
+| `report_llm_model` | string | global | Report model route name. |
+| `report_llm_base_url` | string URL | global | Non-secret report provider base URL. For external providers, keep tokens in `~/.qdcreds/llm-api.env`, not JSON. |
+| `report_llm_chat_path` | string | global | Optional OpenAI-compatible report chat path override. Omit unless your gateway needs a non-standard path. |
+| `optimizer_llm_provider` | string | global | Query LLM optimizer provider: `ollama` or `openai_compatible`. |
+| `optimizer_llm_model` | string | global | Query LLM optimizer model route name. `optimizer_model` remains a legacy alias. |
+| `optimizer_llm_base_url` | string URL | global | Non-secret optimizer provider base URL. For external providers, keep tokens in `~/.qdcreds/llm-api.env`, not JSON. |
+| `optimizer_llm_chat_path` | string | global | Optional OpenAI-compatible optimizer chat path override. Omit unless your gateway needs a non-standard path. |
 | `out` | string path | global | Local generated output directory for collector workflows. Do not commit generated output. |
 
 Browser-visible UI and trusted reports must remain raw-free regardless of these
 settings. Disabling privacy controls is for private local artifacts only.
+`source_visibility=owner_raw` is not an "unhide everything" switch. It only
+narrows Cloudera Manager or direct Impala Recent and Running scans to the owner
+user before any raw source-view feature is allowed to exist.
+When the local web wrapper exposes `QD_KEYTAB`, Query Doctor reads simple
+account names from that keytab, sorts them alphabetically, and uses the first
+account as the default Username for `owner_raw`. The keytab path and full
+Kerberos principals remain local process data and are not rendered in the
+browser.
 
 ## Web Server
 
@@ -137,6 +223,8 @@ settings. Disabling privacy controls is for private local artifacts only.
 | --- | --- | --- |
 | `host` | string | Web bind host. Use `127.0.0.1` for normal local operation. |
 | `port` | positive integer | Web bind port. |
+| `web_advanced_settings_enabled` | boolean | Shows the Diagnose Advanced settings disclosure when set to `true`. Default is hidden. |
+| `web_advanced_filters` | string list | Optional editable filters inside Diagnose Advanced settings. Supported values: `user`, `pool`. When omitted and advanced settings are enabled, both filters are shown. |
 
 Non-local binds require the explicit web CLI risk flag and are not the
 supported shared-service deployment model.
@@ -186,6 +274,7 @@ supported shared-service deployment model.
 | `recent_include_running` | boolean | Include running queries in candidate selection. |
 | `recent_user` | string | Optional recent-query user filter. |
 | `recent_pool` | string | Optional recent-query pool filter. |
+| `recent_scan_timezone` | string | IANA timezone used for the web Finished queries Scan date/hour selector and UTC CM bounds, for example `Europe/Moscow`. Default is `Europe/Moscow`; the form label shows the current UTC offset, such as `UTC+3`. This field can also be set per cluster. |
 | `recent_parallelism` | positive integer | Overall Recent scan worker limit. |
 | `recent_cm_jobs` | positive integer | CM profile/context worker limit. |
 | `recent_cm_summary_limit` | positive integer | CM summary scan cap. |
@@ -201,12 +290,19 @@ supported shared-service deployment model.
 | `workload_history_max_bytes` / `recent_workload_history_max_bytes` | positive integer | Rotate the local workload history file before appending when it exceeds this size. |
 
 Recent and Running web workflows do not auto-run LLM reports or optimizer jobs.
+The default Diagnose form keeps source, scan target, time window, duration, and
+required owner filters in the browser. Optional `recent_user` and `recent_pool`
+filters can remain config defaults, or can be made editable by setting
+`web_advanced_settings_enabled=true` and `web_advanced_filters`. Worker-count
+settings such as `recent_parallelism` and `recent_metadata_jobs` are intended
+as local config defaults or explicit request overrides, not normal per-scan
+browser choices.
 
 ## Direct Impala Profiles
 
 | Field | Type | Scope | Notes |
 | --- | --- | --- | --- |
-| `query_profile_source` | string | global or cluster | `cm` or `impala`. Use `impala` for direct daemon endpoints. |
+| `cluster_type` / `query_profile_source` | string | global or cluster | `cm` or `impala`. Prefer `cluster_type` in user configs; `query_profile_source` remains the internal/legacy name. Use `impala` for direct daemon endpoints. |
 | `impala_profile_hosts` | string list | global or cluster | One or more impalad debug web hosts or host:port values. |
 | `impala_profile_port` | positive integer | global or cluster | Default daemon web port for hosts without a port. |
 | `impala_profile_scheme` | string | global or cluster | `http` or `https`. |
@@ -237,52 +333,14 @@ It does not write raw time-series responses or labels.
 | `metadata_ssl` | boolean | global or cluster | Enables TLS for `impala-shell`. |
 | `metadata_ca_cert` | string path | global or cluster | CA certificate for metadata TLS. |
 | `metadata_kerberos_service_name` | string | global or cluster | Kerberos service token for metadata, such as `impala` or `hive`. |
-| `metadata_timeout_sec` | positive integer | global or cluster | Per-command timeout. |
-| `metadata_max_tables` | positive integer | global or cluster | Maximum tables to inspect per metadata run. |
-| `metadata_max_output_bytes` | positive integer | global or cluster | Maximum metadata output bytes. |
+| `metadata_timeout_sec` | positive integer | global or cluster | Optional per-command timeout override. Omit to use the built-in default. |
+| `metadata_max_tables` | positive integer | global or cluster | Optional maximum tables override for each metadata run. Omit to use the workflow default. |
+| `metadata_max_output_bytes` | positive integer | global or cluster | Optional metadata output byte limit override. Omit to use the built-in default. |
 | `metadata_redact` | boolean | global or cluster | Redacts metadata output before artifacts are written. |
 
 Metadata collection is read-only, allowlisted, bounded, explicit, and redacted.
-
-## Multiple Clusters
-
-Use `clusters` when one workstation needs several configured targets:
-
-```json
-{
-  "host": "127.0.0.1",
-  "port": 8765,
-  "privacy_mode": true,
-  "clusters": [
-    {
-      "id": "prod",
-      "label": "Production",
-      "cm_url": "https://cm-prod.example.com:7183/",
-      "cluster": "prod_cluster",
-      "service": "impala",
-      "cm_metrics_profile": "cm7",
-      "metadata_coordinator": "impala-prod-coordinator.example.com:21000"
-    },
-    {
-      "id": "direct-impala",
-      "label": "Ambari Direct Impala",
-      "query_profile_source": "impala",
-      "impala_profile_hosts": ["impalad-worker-1.example.com"],
-      "impala_kerberos_service_name": "hive",
-      "metadata_coordinator": "impala-coordinator.example.com:21000",
-      "metadata_auth": "kerberos",
-      "metadata_protocol": "beeswax",
-      "metadata_kerberos_service_name": "hive"
-    }
-  ]
-}
-```
-
-Cluster entries may define target, TLS, direct Impala, Prometheus, metadata,
-privacy, and redaction fields. `no_llm`, web `host`/`port`, Recent scan limits,
-and output paths are global.
-
-Cluster `id` values must use only letters, digits, `.`, `_`, or `-`.
+Default metadata limits are intentionally omitted from the example config; add
+these fields only when a local environment needs different bounds.
 
 ## Validation Rules
 

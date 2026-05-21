@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import html
 from importlib.resources import files
+from typing import Any
 from urllib.parse import quote
+
+from query_doctor.web.ui.i18n import language_label, normalize_ui_language, text
 
 
 BRAND_MARK_SVG = (
@@ -33,7 +37,7 @@ def render_static_stylesheet_link() -> str:
     return '<link rel="stylesheet" href="/static/app.css">'
 
 
-def render_app_header(active: str) -> str:
+def render_app_header(active: str, settings: Any | None = None) -> str:
     return (
         '<header class="app-header" aria-label="Application header">'
         '<a class="brand" href="/" aria-label="Query Doctor home">'
@@ -48,7 +52,7 @@ def render_app_header(active: str) -> str:
         "</a>"
         '<div class="header-actions">'
         f"{render_top_nav(active)}"
-        f"{render_design_toggle()}"
+        f"{render_language_indicator(settings)}"
         f"{render_theme_toggle()}"
         "</div>"
         "</header>"
@@ -68,6 +72,28 @@ def render_top_nav(active: str) -> str:
     )
 
 
+def render_language_indicator(settings: Any | None = None) -> str:
+    language = normalize_ui_language(getattr(settings, "language", "en"))
+    label = language_label(language)
+    code = language.upper()
+    tooltip = text(
+        language,
+        f"Global language setting: {label}. It controls Help, Details, and newly generated reports. Change config field language in local config.",
+        f"Глобальная настройка языка: {label}. Она управляет Help, Details и новыми отчетами. Измените поле language в локальном конфиге.",
+    )
+    aria_label = text(
+        language,
+        f"Global language setting: {label}. Change config field language in local config.",
+        f"Глобальная настройка языка: {label}. Измените поле language в локальном конфиге.",
+    )
+    return (
+        '<span class="language-indicator" role="status" '
+        f'aria-label="{html.escape(aria_label, quote=True)}" '
+        f'title="{html.escape(tooltip, quote=True)}">'
+        f"{html.escape(code)}</span>"
+    )
+
+
 def render_theme_toggle() -> str:
     return (
         '<button class="theme-toggle" type="button" id="theme-toggle" aria-label="Switch to dark theme" '
@@ -80,24 +106,6 @@ def render_theme_toggle() -> str:
         '<svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
         'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
         '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
-        "</svg>"
-        "</button>"
-    )
-
-
-def render_design_toggle() -> str:
-    return (
-        '<button class="design-toggle" type="button" id="design-toggle" '
-        'aria-label="Switch to green design" aria-pressed="false" title="Switch to green design">'
-        '<svg class="design-icon-serious" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-        '<rect x="4" y="4" width="16" height="16" rx="1"/>'
-        '<path d="M4 9h16M9 4v16"/>'
-        "</svg>"
-        '<svg class="design-icon-command" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-        '<path d="M4 7l5 5-5 5"/>'
-        '<path d="M12 17h8"/>'
         "</svg>"
         "</button>"
     )

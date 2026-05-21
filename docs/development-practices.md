@@ -1,6 +1,6 @@
 # Development Practices
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-21
 
 This document records the engineering practices that keep Query Doctor
 maintainable as it grows. It complements the mandatory safety rules in
@@ -70,6 +70,18 @@ rendering, split it into reviewable commits or at least reviewable file groups.
 
 Do not add speculative engine support, placeholder packages, service layers, or
 generic framework seams. The only implemented engine is Impala.
+
+## Parallel Worktrees
+
+Use separate worktrees for parallel agent work:
+
+- create worktrees under `$HOME/query-doctor-worktrees`;
+- start from the latest local `main` unless the task explicitly targets another
+  branch;
+- when a follow-up slice depends on an earlier unmerged branch, cherry-pick or
+  merge only the needed reviewed commits into the new branch;
+- do not merge back to `main`, push, rebase, amend, or force-push unless the
+  user explicitly asks for that integration operation.
 
 ## Test Strategy
 

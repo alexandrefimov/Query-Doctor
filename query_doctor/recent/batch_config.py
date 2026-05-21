@@ -27,6 +27,13 @@ from query_doctor.prometheus.timeseries import (
 )
 from query_doctor.recent.batch_models import BatchConfig
 from query_doctor.recent.workload_history import DEFAULT_WORKLOAD_HISTORY_MAX_BYTES
+from query_doctor.source_visibility import (
+    SOURCE_VISIBILITY_OWNER_RAW,
+    SOURCE_VISIBILITY_SAFE,
+    normalize_source_owner_user,
+    normalize_source_visibility,
+    source_owner_user_from_env,
+)
 
 
 MAX_CM_INSPECT_LIMIT = 5000
@@ -144,6 +151,7 @@ def build_batch_config(
         # implicit local config in the current working directory.
         config_values = {}
         effective_config_path = None
+    config_values = apply_config_cluster(config_values, getattr(args, "config_cluster", None))
     query_profile_source = (
         first_string(
             getattr(args, "query_profile_source", None),
@@ -154,6 +162,20 @@ def build_batch_config(
     )
     if query_profile_source not in {"cm", "impala"}:
         raise ValueError("--query-profile-source must be one of: cm, impala")
+    source_visibility = normalize_source_visibility(
+        first_string(
+            getattr(args, "source_visibility", None),
+            config_values.get("source_visibility"),
+            SOURCE_VISIBILITY_SAFE,
+        )
+    )
+    source_owner_user = normalize_source_owner_user(
+        first_string(
+            getattr(args, "source_owner_user", None),
+            config_values.get("source_owner_user"),
+            source_owner_user_from_env(env),
+        )
+    )
     cm_url = first_string(args.cm_url, env.get("CM_URL"), config_values.get("cm_url"))
     cluster = first_string(args.cluster, config_values.get("cluster"))
     service = first_string(args.service, config_values.get("service"))
@@ -382,6 +404,18 @@ def build_batch_config(
         args.metadata_redact, config_values.get("metadata_redact"), default=privacy_mode
     )
 
+    recent_user = first_string(args.user, config_values.get("recent_user"))
+    if source_visibility == SOURCE_VISIBILITY_OWNER_RAW:
+        if not source_owner_user:
+            raise ValueError(
+                "source_visibility=owner_raw requires source_owner_user or a simple Kerberos principal."
+            )
+        if recent_user and recent_user != source_owner_user:
+            raise ValueError(
+                "source_visibility=owner_raw requires recent_user to match source_owner_user."
+            )
+        recent_user = source_owner_user
+
     return BatchConfig(
         out=out,
         cm_url=str(cm_url) if cm_url else None,
@@ -409,7 +443,7 @@ def build_batch_config(
         only_running=first_bool(
             args.only_running, config_values.get("recent_only_running"), default=False
         ),
-        user=first_string(args.user, config_values.get("recent_user")),
+        user=recent_user,
         pool=first_string(args.pool, config_values.get("recent_pool")),
         query_type=first_string(args.query_type, config_values.get("query_type")),
         max_profile_bytes=first_int(
@@ -515,7 +549,34 @@ def build_batch_config(
         privacy_mode=privacy_mode,
         redact_identifiers=redact_identifiers,
         redact_hosts=redact_hosts,
+        source_visibility=source_visibility,
+        source_owner_user=source_owner_user,
     )
+
+
+def apply_config_cluster(
+    config_values: dict[str, object],
+    cluster_id: str | None,
+) -> dict[str, object]:
+    requested = (cluster_id or "").strip()
+    if not requested:
+        return config_values
+    clusters = config_values.get("clusters")
+    if not isinstance(clusters, list):
+        raise ValueError("--config-cluster requires local config clusters[].")
+    for cluster in clusters:
+        if not isinstance(cluster, dict):
+            continue
+        if str(cluster.get("id") or "") != requested:
+            continue
+        merged = {key: value for key, value in config_values.items() if key != "clusters"}
+        merged.update(cluster_config_overrides(cluster))
+        return merged
+    raise ValueError(f"--config-cluster {requested!r} was not found in local config clusters[].")
+
+
+def cluster_config_overrides(cluster: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in cluster.items() if key not in {"id", "label"}}
 
 
 def validate_jobs_config(

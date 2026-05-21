@@ -12,6 +12,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Callable
 
+from query_doctor.safety.artifact_names import RAW_ARTIFACT_FILENAMES
+
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 
@@ -53,24 +55,7 @@ CONFIG_PATHS = (
     "query-doctor-config.example.json",
 )
 
-RAW_ARTIFACT_TOKENS = (
-    "profile_digest.md",
-    "query_metadata.json",
-    "cm_metadata.json",
-    "collection_warnings.txt",
-    "analysis_facts.md",
-    "diagnosis.md",
-    "diagnosis.partial.md",
-    "optimized_query.sql",
-    "optimized_query.validated.json",
-    "optimized_query.partial.txt",
-    "optimized_query_recommendations.md",
-    "impala_context.md",
-    "impala_context.json",
-    "original_query.sql",
-    "referenced_tables.txt",
-    "explain.txt",
-)
+RAW_ARTIFACT_TOKENS = RAW_ARTIFACT_FILENAMES
 
 UNSAFE_PATTERNS = (
     (

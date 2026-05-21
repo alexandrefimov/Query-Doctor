@@ -4,7 +4,8 @@ This backlog gives maintainers ready-to-open public issues. Each item is scoped
 to sanitized examples, synthetic demo data, or docs-only changes. Do not attach
 raw production query text, profiles, metadata output, hostnames, usernames,
 local paths, credentials, command output, model/runtime internals, or raw
-artifact names.
+artifact names. Do not use screenshots, logs, generated reports, or browser
+captures from real clusters.
 
 ## Good First Issues
 

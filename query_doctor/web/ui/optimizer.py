@@ -35,31 +35,37 @@ def render_optimizer_panel() -> str:
         '<h1 class="section-title">Query Optimizer</h1>'
         '<div class="section-kicker">Read-only parse and deterministic optimization hints for one Impala SELECT/WITH statement.</div>'
         "</div></div>"
-        '<div class="scope-line" aria-label="Optimizer trust scope">'
-        "<strong>Read-only SQL parse -&gt; referenced tables -&gt; allowlisted metadata -&gt; safe optimization hints</strong>"
-        "</div>"
         '<form class="optimizer-form" method="post" action="/optimizer">'
         '<div class="field">'
         '<div class="label-row"><label for="optimizer_sql">SQL query</label>'
         '<details class="info-popover"><summary aria-label="SQL query help">i</summary>'
-        '<div class="info-body">Paste a single SELECT or WITH query only. Query Doctor validates this text before '
-        "table extraction or metadata collection, never executes it, and does not display it back after submit.</div>"
+        '<div class="info-body">Paste a single SELECT or WITH query only. Unsafe or multi-statement input is rejected '
+        "before referenced-table extraction and metadata collection. Query Doctor never executes the query and does "
+        "not display it back after submit.</div>"
         "</details></div>"
         '<textarea class="input optimizer-sql" id="optimizer_sql" name="sql" required></textarea>'
-        '<p class="helper">Accepted input: one read-only SELECT or WITH query. Unsafe or multi-statement input is rejected '
-        "before referenced-table extraction and before metadata collection.</p>"
         "</div>"
+        '<div class="optimizer-actions-row">'
         '<button class="run-button" type="submit">Analyze</button>'
-        '<div class="scope-line" aria-label="Optimizer collection scope">'
-        "<strong>Scope:</strong> local parse · no execution · submitted SQL not echoed · referenced tables only"
         "</div>"
-        '<div class="scope-line" aria-label="Optimizer output scope">'
-        "<strong>Metadata:</strong> optional bounded collection uses only table DDL, table stats, and column stats facts"
-        "</div>"
-        '<div class="scope-line" aria-label="Optimizer output scope">'
-        "<strong>Output:</strong> referenced tables · metadata status · findings · limitations · next checks"
-        "</div>"
+        f"{render_optimizer_scope_details()}"
         "</form></section>"
+    )
+
+
+def render_optimizer_scope_details() -> str:
+    return (
+        '<details class="compact-details optimizer-scope-details">'
+        "<summary>Scope and safety</summary>"
+        '<div class="compact-details-body">'
+        '<ul class="optimizer-scope-list">'
+        "<li><strong>Trust path:</strong> read-only SQL parse -&gt; referenced tables -&gt; allowlisted metadata -&gt; safe optimization hints.</li>"
+        "<li><strong>Collection:</strong> local parse · no execution · submitted SQL not echoed · referenced tables only.</li>"
+        "<li><strong>Metadata:</strong> optional bounded collection uses only table DDL, table stats, and column stats facts.</li>"
+        "<li><strong>Output:</strong> referenced tables · metadata status · findings · limitations · next checks.</li>"
+        "</ul>"
+        "</div>"
+        "</details>"
     )
 
 
@@ -72,8 +78,8 @@ def render_optimizer_result(result: OptimizerAnalysis) -> str:
         "</div></div>"
         f"{render_extracted_tables(result)}"
         f"{render_metadata_status(result)}"
-        f"{render_optimizer_interpretation()}"
         f"{render_findings(result)}"
+        f"{render_optimizer_interpretation()}"
         "</section>"
     )
 
@@ -114,12 +120,14 @@ def render_metadata_status(result: OptimizerAnalysis) -> str:
 
 def render_optimizer_interpretation() -> str:
     return (
-        '<div class="optimizer-block">'
-        "<h3>How to read this output</h3>"
-        '<p class="helper">Referenced tables are extracted from the validated statement shape. Metadata status explains '
+        '<details class="compact-details optimizer-reading-guide">'
+        "<summary>How to read this output</summary>"
+        '<div class="compact-details-body">'
+        "<p>Referenced tables are extracted from the validated statement shape. Metadata status explains "
         "whether bounded table facts were available. Findings are deterministic candidate checks; limitations describe "
         "what this page could not prove; next checks are read-only follow-up actions for the query author.</p>"
         "</div>"
+        "</details>"
     )
 
 

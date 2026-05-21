@@ -147,8 +147,12 @@ def build_report_command(
         str(case_dir),
         "--model",
         settings.model,
+        "--llm-provider",
+        settings.report_llm_provider,
         "--mode",
         report_mode,
+        "--language",
+        settings.language,
         "--out",
         report_name,
         "--keep-alive",
@@ -156,6 +160,10 @@ def build_report_command(
         "--validation-mode",
         WEB_REPORT_VALIDATION_MODE,
     ]
+    if settings.report_llm_base_url:
+        cmd.extend(["--llm-base-url", settings.report_llm_base_url])
+    if settings.report_llm_chat_path:
+        cmd.extend(["--llm-chat-path", settings.report_llm_chat_path])
     if settings.no_llm:
         cmd.append("--no-llm")
     return cmd
@@ -166,8 +174,12 @@ def build_batch_case_report_command(case_dir: Path, settings: WebSettings) -> li
         str(case_dir),
         "--mode",
         "admin",
+        "--language",
+        settings.language,
         "--model",
         settings.model,
+        "--llm-provider",
+        settings.report_llm_provider,
         "--out",
         BATCH_REPORT_NAME,
         "--metadata-mode",
@@ -177,6 +189,10 @@ def build_batch_case_report_command(case_dir: Path, settings: WebSettings) -> li
         "--report-validation-mode",
         WEB_REPORT_VALIDATION_MODE,
     ]
+    if settings.report_llm_base_url:
+        cmd.extend(["--llm-base-url", settings.report_llm_base_url])
+    if settings.report_llm_chat_path:
+        cmd.extend(["--llm-chat-path", settings.report_llm_chat_path])
     if settings.no_llm:
         cmd.append("--no-llm")
     return cmd
@@ -187,11 +203,17 @@ def build_optimized_query_command(case_dir: Path, settings: WebSettings) -> list
         str(case_dir),
         "--model",
         optimizer_model_for_settings(settings),
+        "--llm-provider",
+        settings.optimizer_llm_provider,
         "--out",
         OPTIMIZED_QUERY_NAME,
         "--keep-alive",
         "0",
     ]
+    if settings.optimizer_llm_base_url:
+        cmd.extend(["--llm-base-url", settings.optimizer_llm_base_url])
+    if settings.optimizer_llm_chat_path:
+        cmd.extend(["--llm-chat-path", settings.optimizer_llm_chat_path])
     if settings.no_llm:
         cmd.append("--no-llm")
     return cmd

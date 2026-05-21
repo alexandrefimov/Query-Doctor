@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import quote
 
 from query_doctor.web.ui.html_helpers import SafeHtml, compact_cell
+from query_doctor.web.ui.i18n import text as ui_text
 from query_doctor.web.ui.llm_actions import (
     OptimizedQueryActionView,
     OPTIMIZER_RESULT_ANCHOR_ID,
@@ -15,11 +16,9 @@ from query_doctor.web.ui.llm_actions import (
     render_llm_actions_block,
 )
 from query_doctor.web.ui.recent_scan_details import (
-    render_analysis_details,
-    render_case_analysis_summary,
-    render_case_detail_toc,
-    render_case_detail_overview,
-    render_case_status_summary,
+    render_case_action_plan,
+    render_case_diagnostics,
+    render_case_verdict,
 )
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseDetailView,
@@ -51,7 +50,8 @@ def render_specific_query_results(
         "<p>Deterministic analyzer result for one explicit Impala Query ID. No LLM report is generated.</p></div></div>",
         '<div class="batch-table-wrap"><table class="batch-table">',
         "<thead><tr>",
-        "<th>Query ID</th><th>Score</th><th>Duration</th><th>STATS</th><th>META</th><th>Summary</th>",
+        "<th>Query ID</th><th>Priority</th><th>Duration</th>"
+        "<th>Table stats</th><th>Metadata</th><th>Summary</th>",
         "</tr></thead>",
         f"<tbody>{rows}</tbody>",
         "</table></div>",
@@ -93,6 +93,7 @@ def render_specific_query_detail_view(
     optimizer_manual_guidance: str | None = None,
     optimizer_validation_result: dict[str, Any] | None = None,
     llm_enabled: bool = True,
+    language: str = "en",
 ) -> str:
     trusted_report_html = (
         SafeHtml(render_details_inline_report_html(trusted_report_text))
@@ -106,18 +107,22 @@ def render_specific_query_detail_view(
     optimizer_validation_url = specific_query_validate_rewrite_href(query_id)
     actions_url = specific_query_actions_href(query_id, llm_enabled=llm_enabled)
     optimizer_view = present_optimized_query_action(optimized_query_state)
+    title = ui_text(language, "Known Query ID details", "Детали Known Query ID")
+    intro = ui_text(
+        language,
+        "Start with the verdict and recommended changes, then expand evidence only when needed.",
+        "Начните с вердикта и рекомендуемых изменений; раскрывайте доказательства только когда они нужны.",
+    )
     return (
-        '<section class="panel batch-panel" aria-label="Known Query ID details">'
+        '<section class="panel batch-panel case-detail-panel" aria-label="Known Query ID details">'
         '<div class="breadcrumb"><a href="/query">Known Query ID</a><span>/</span>'
         f"<span>{escaped_query_id}</span></div>"
-        '<div class="batch-head"><div><h1>Known Query ID details</h1>'
-        "<p>Deterministic facts for one analyzed query.</p></div></div>"
-        f"{render_case_detail_toc(llm_enabled=llm_enabled)}"
-        f"{render_case_detail_overview(view)}"
-        f"{render_case_status_summary(view, llm_enabled=llm_enabled)}"
-        f"{render_case_analysis_summary(view)}"
-        f"{render_analysis_details(view)}"
-        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled)}"
+        f'<div class="batch-head"><div><h1>{html.escape(title)}</h1>'
+        f"<p>{html.escape(intro)}</p></div></div>"
+        f"{render_case_verdict(view, language=language)}"
+        f"{render_case_action_plan(view, language=language)}"
+        f"{render_case_diagnostics(view, llm_enabled=llm_enabled, language=language)}"
+        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
         "</section>"
     )
 

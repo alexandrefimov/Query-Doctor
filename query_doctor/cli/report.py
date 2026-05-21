@@ -191,8 +191,12 @@ from query_doctor.report.recommendations import (
 )
 from query_doctor.report.llm_client import (
     DEFAULT_KEEP_ALIVE,
+    DEFAULT_LLM_API_BASE_URL,
+    DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
+    LLM_PROVIDER_CHOICES,
+    LLM_PROVIDER_OLLAMA,
     NUM_CTX,
     NUM_PREDICT,
     PROGRESS_PREFIX,
@@ -202,8 +206,8 @@ from query_doctor.report.llm_client import (
     ollama_chat_url,
     parse_ollama_ps_models,
     stop_other_ollama_models,
+    stream_llm_report,
     stream_ollama_report,
-    stream_ollama_report_with_meta,
 )
 from query_doctor.report.trusted_text import (
     MIN_MARKDOWN_SECTIONS,
@@ -448,7 +452,33 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Generate a deterministic Python-owned report without calling Ollama.",
     )
     parser.add_argument("--temperature", type=float, default=0.1)
-    parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
+    parser.add_argument(
+        "--llm-provider",
+        choices=LLM_PROVIDER_CHOICES,
+        default=os.getenv("QD_REPORT_LLM_PROVIDER", DEFAULT_LLM_PROVIDER),
+        help="LLM provider for report generation. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--llm-base-url",
+        default=(
+            os.getenv("QD_REPORT_LLM_API_BASE_URL")
+            or os.getenv("QD_REPORT_LLM_BASE_URL")
+            or DEFAULT_LLM_API_BASE_URL
+            or os.getenv("QD_LLM_BASE_URL")
+        ),
+        help="Base URL for the configured LLM provider.",
+    )
+    parser.add_argument(
+        "--llm-chat-path",
+        default=os.getenv("QD_REPORT_LLM_CHAT_PATH") or os.getenv("QD_LLM_CHAT_PATH"),
+        help="Optional OpenAI-compatible chat completions path override.",
+    )
+    parser.add_argument(
+        "--llm-api-key-env",
+        default=os.getenv("QD_REPORT_LLM_API_KEY_ENV", "QD_REPORT_LLM_API_KEY"),
+        help="Environment variable name containing the external LLM API token.",
+    )
+    parser.add_argument("--ollama-url", default=None)
     parser.add_argument(
         "--keep-alive",
         default=DEFAULT_KEEP_ALIVE,
@@ -474,6 +504,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     return parser.parse_args(argv)
+
+
+def effective_llm_base_url(args: argparse.Namespace) -> str:
+    if args.llm_provider == LLM_PROVIDER_OLLAMA:
+        return args.llm_base_url or args.ollama_url or DEFAULT_OLLAMA_URL
+    return args.llm_base_url
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -519,7 +555,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{PROGRESS_PREFIX} generation: deterministic_python", file=sys.stderr)
     else:
         print(f"{PROGRESS_PREFIX} model: {args.model}", file=sys.stderr)
-        print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
+        print(f"{PROGRESS_PREFIX} llm provider: {args.llm_provider}", file=sys.stderr)
+        if args.llm_provider == LLM_PROVIDER_OLLAMA:
+            print(
+                f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(effective_llm_base_url(args))}",
+                file=sys.stderr,
+            )
         print(f"{PROGRESS_PREFIX} keep_alive: {args.keep_alive}", file=sys.stderr)
 
     if args.stop_other_models and not args.no_llm:
@@ -543,14 +584,27 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
         )
     else:
-        generated_body = stream_ollama_report(
-            prompt=prompt,
-            model=args.model,
-            ollama_url=args.ollama_url,
-            temperature=args.temperature,
-            keep_alive=args.keep_alive,
-            system_prompt=report_contract.system_prompt,
-        )
+        if args.llm_provider == LLM_PROVIDER_OLLAMA:
+            generated_body = stream_ollama_report(
+                prompt=prompt,
+                model=args.model,
+                ollama_url=effective_llm_base_url(args),
+                temperature=args.temperature,
+                keep_alive=args.keep_alive,
+                system_prompt=report_contract.system_prompt,
+            )
+        else:
+            generated_body = stream_llm_report(
+                provider=args.llm_provider,
+                prompt=prompt,
+                model=args.model,
+                base_url=effective_llm_base_url(args),
+                temperature=args.temperature,
+                keep_alive=args.keep_alive,
+                system_prompt=report_contract.system_prompt,
+                api_key_env=args.llm_api_key_env,
+                chat_path=args.llm_chat_path,
+            )
         narrative_text = normalize_report_text(
             report_header(facts_path, facts_sha256, args.model) + generated_body,
             facts_text=facts_text,

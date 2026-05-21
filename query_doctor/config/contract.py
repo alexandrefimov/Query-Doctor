@@ -11,6 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from query_doctor.source_visibility import (
+    SOURCE_VISIBILITY_CHOICES,
+    normalize_source_owner_user,
+)
+from query_doctor.report.llm_client import LLM_PROVIDER_CHOICES
 
 
 DEFAULT_CONFIG_PATH = "query-doctor-config.json"
@@ -32,15 +39,18 @@ RECENT_ORDER_CHOICES = (
     "recent-duration-desc",
     "status-priority",
 )
+LANGUAGE_CHOICES = ("en", "ru")
 METADATA_AUTH_CHOICES = ("kerberos",)
 METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
 QUERY_PROFILE_SOURCE_CHOICES = ("cm", "impala")
 IMPALA_PROFILE_SCHEME_CHOICES = ("http", "https")
+WEB_ADVANCED_FILTER_CHOICES = ("user", "pool")
 KERBEROS_SERVICE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 
 ALLOWED_CONFIG_KEYS = {
     "ca_bundle",
     "cluster",
+    "cluster_type",
     "clusters",
     "cm_user",
     "cm_url",
@@ -57,7 +67,12 @@ ALLOWED_CONFIG_KEYS = {
     "impala_profile_timeout_sec",
     "insecure_skip_verify",
     "krb5ccname",
+    "language",
     "limit",
+    "optimizer_llm_base_url",
+    "optimizer_llm_chat_path",
+    "optimizer_llm_model",
+    "optimizer_llm_provider",
     "max_profile_bytes",
     "max_timeseries_bytes",
     "max_timeseries_points",
@@ -75,8 +90,14 @@ ALLOWED_CONFIG_KEYS = {
     "redact",
     "redact_hosts",
     "redact_identifiers",
+    "report_llm_base_url",
+    "report_llm_chat_path",
+    "report_llm_model",
+    "report_llm_provider",
     "service",
     "since_hours",
+    "source_owner_user",
+    "source_visibility",
     "status",
     "query_profile_source",
     "query_type",
@@ -91,6 +112,7 @@ ALLOWED_CONFIG_KEYS = {
     "recent_output_json",
     "recent_pool",
     "recent_parallelism",
+    "recent_scan_timezone",
     "recent_workload_history_max_bytes",
     "recent_workload_history_path",
     "recent_cm_jobs",
@@ -106,6 +128,8 @@ ALLOWED_CONFIG_KEYS = {
     "recent_window_minutes",
     "user",
     "username",
+    "web_advanced_filters",
+    "web_advanced_settings_enabled",
     "workload_history_max_bytes",
     "workload_history_path",
     "metadata_krb5ccname",
@@ -122,12 +146,15 @@ ALLOWED_CONFIG_KEYS = {
     "metadata_timeout_sec",
 }
 CONFIG_ALIASES = {
+    "cluster_type": "query_profile_source",
     "cm_user": "username",
     "metadata_krb5ccname": "krb5ccname",
+    "optimizer_llm_model": "optimizer_model",
 }
 CLUSTER_CONFIG_KEYS = {
     "ca_bundle",
     "cluster",
+    "cluster_type",
     "cm_metrics_profile",
     "cm_url",
     "id",
@@ -154,12 +181,15 @@ CLUSTER_CONFIG_KEYS = {
     "privacy_mode",
     "redact_hosts",
     "redact_identifiers",
+    "recent_scan_timezone",
     "prometheus_metrics_profile",
     "prometheus_step_sec",
     "prometheus_timeseries_padding_sec",
     "prometheus_url",
     "query_profile_source",
     "service",
+    "source_owner_user",
+    "source_visibility",
     "username",
 }
 CLUSTER_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -244,13 +274,13 @@ def _discover_default_path(
     home_dir: Path | None = None,
 ) -> Path | None:
     candidates = [cwd / DEFAULT_CONFIG_PATH]
+    qdcreds_candidate = qdcreds_config_path(home_dir=home_dir)
+    if qdcreds_candidate not in candidates:
+        candidates.append(qdcreds_candidate)
     if repo_root is not None:
         repo_candidate = Path(repo_root) / DEFAULT_CONFIG_PATH
         if use_repo_default and repo_candidate != candidates[0]:
             candidates.append(repo_candidate)
-    qdcreds_candidate = qdcreds_config_path(home_dir=home_dir)
-    if qdcreds_candidate not in candidates:
-        candidates.append(qdcreds_candidate)
     candidates.append(cwd / LEGACY_CONFIG_PATH)
     if repo_root is not None:
         repo_legacy_candidate = Path(repo_root) / LEGACY_CONFIG_PATH
@@ -386,6 +416,14 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError(
                 "Config field prometheus_timeseries_padding_sec must be a non-negative integer."
             )
+        if key == "web_advanced_settings_enabled":
+            raise ConfigError("Config field web_advanced_settings_enabled must be true or false.")
+        if key == "web_advanced_filters":
+            raise ConfigError("Config field web_advanced_filters must be a list of strings.")
+        if key == "recent_scan_timezone":
+            raise ConfigError("Config field recent_scan_timezone must be a non-empty string.")
+        if key == "language":
+            raise ConfigError("Config field language must be a non-empty string.")
         return None
     if key == "krb5ccname":
         if not isinstance(value, str):
@@ -402,8 +440,12 @@ def normalize_config_value(key: str, value: object) -> object:
         "cm_metrics_profile",
         "cm_url",
         "host",
+        "optimizer_llm_base_url",
+        "optimizer_llm_chat_path",
+        "optimizer_llm_provider",
         "impala_kerberos_service_name",
         "impala_profile_scheme",
+        "language",
         "optimizer_model",
         "out",
         "pool",
@@ -413,11 +455,19 @@ def normalize_config_value(key: str, value: object) -> object:
         "recent_output_json",
         "recent_order",
         "recent_pool",
+        "recent_scan_timezone",
         "recent_user",
         "recent_workload_history_path",
+        "report_llm_base_url",
+        "report_llm_chat_path",
+        "report_llm_model",
+        "report_llm_provider",
         "service",
+        "source_owner_user",
+        "source_visibility",
         "status",
         "workload_history_path",
+        "cluster_type",
         "query_profile_source",
         "user",
         "username",
@@ -438,6 +488,17 @@ def normalize_config_value(key: str, value: object) -> object:
                 "Config field query_profile_source must be one of: "
                 f"{', '.join(QUERY_PROFILE_SOURCE_CHOICES)}."
             )
+        if key in {"report_llm_provider", "optimizer_llm_provider"} and normalized not in (
+            LLM_PROVIDER_CHOICES
+        ):
+            raise ConfigError(
+                f"Config field {key} must be one of: {', '.join(LLM_PROVIDER_CHOICES)}."
+            )
+        if key == "source_visibility" and normalized not in SOURCE_VISIBILITY_CHOICES:
+            raise ConfigError(
+                "Config field source_visibility must be one of: "
+                f"{', '.join(SOURCE_VISIBILITY_CHOICES)}."
+            )
         if key == "impala_profile_scheme" and normalized not in IMPALA_PROFILE_SCHEME_CHOICES:
             raise ConfigError(
                 "Config field impala_profile_scheme must be one of: "
@@ -447,6 +508,14 @@ def normalize_config_value(key: str, value: object) -> object:
             raise ConfigError(
                 f"Config field recent_order must be one of: {', '.join(RECENT_ORDER_CHOICES)}."
             )
+        if key == "recent_scan_timezone":
+            validate_recent_scan_timezone(normalized)
+        if key == "language":
+            normalized = normalized.lower()
+            if normalized not in LANGUAGE_CHOICES:
+                raise ConfigError(
+                    f"Config field language must be one of: {', '.join(LANGUAGE_CHOICES)}."
+                )
         if key == "metadata_auth" and normalized not in METADATA_AUTH_CHOICES:
             raise ConfigError(
                 f"Config field metadata_auth must be one of: {', '.join(METADATA_AUTH_CHOICES)}."
@@ -457,8 +526,15 @@ def normalize_config_value(key: str, value: object) -> object:
             )
         if key == "prometheus_url":
             validate_safe_http_url(normalized, field_name="prometheus_url")
+        if key in {"report_llm_base_url", "optimizer_llm_base_url"}:
+            validate_safe_http_url(normalized, field_name=key)
         if key in {"impala_kerberos_service_name", "metadata_kerberos_service_name"}:
             validate_kerberos_service_name(normalized, field_name=key)
+        if key == "source_owner_user":
+            try:
+                return normalize_source_owner_user(normalized)
+            except ValueError as exc:
+                raise ConfigError(str(exc)) from exc
         return normalized or None
     if key in {
         "since_hours",
@@ -546,10 +622,26 @@ def normalize_config_value(key: str, value: object) -> object:
         "redact_identifiers",
         "metadata_redact",
         "metadata_ssl",
+        "web_advanced_settings_enabled",
     }:
         if not isinstance(value, bool):
             raise ConfigError(f"Config field {key} must be true or false.")
         return value
+    if key == "web_advanced_filters":
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise ConfigError("Config field web_advanced_filters must be a list of strings.")
+        normalized_filters: list[str] = []
+        seen_filters: set[str] = set()
+        for item in value:
+            normalized = item.strip().lower()
+            if normalized not in WEB_ADVANCED_FILTER_CHOICES:
+                allowed = ", ".join(WEB_ADVANCED_FILTER_CHOICES)
+                raise ConfigError(f"Config field web_advanced_filters only supports: {allowed}.")
+            if normalized in seen_filters:
+                continue
+            normalized_filters.append(normalized)
+            seen_filters.add(normalized)
+        return normalized_filters
     raise ConfigError(f"Unknown config field {key}.")
 
 
@@ -647,6 +739,17 @@ def validate_safe_http_url(value: str, *, field_name: str) -> None:
         raise ConfigError(
             f"Config field {field_name} must not include credentials, query parameters, or fragments."
         )
+
+
+def validate_recent_scan_timezone(value: str) -> None:
+    if not value:
+        raise ConfigError("Config field recent_scan_timezone must be a non-empty string.")
+    try:
+        ZoneInfo(value)
+    except ZoneInfoNotFoundError as exc:
+        raise ConfigError(
+            "Config field recent_scan_timezone must be a valid IANA timezone name."
+        ) from exc
 
 
 def validate_kerberos_service_name(value: str, *, field_name: str) -> None:

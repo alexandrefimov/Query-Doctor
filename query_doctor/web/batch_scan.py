@@ -7,6 +7,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from query_doctor.cli.commands import command_prefix
+from query_doctor.source_visibility import SOURCE_VISIBILITY_OWNER_RAW, SOURCE_VISIBILITY_SAFE
 from query_doctor.web.cluster_selection import (
     require_cm_cluster_settings,
     selected_cluster_key_from_mapping,
@@ -35,6 +36,7 @@ from query_doctor.web.form_helpers import (
 )
 from query_doctor.web.models import (
     BATCH_CM_INSPECT_LIMIT_MAX,
+    DEFAULT_RECENT_SCAN_TIMEZONE,
     WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT,
     WEB_CM_EVENTS_MAX_EVENTS_DEFAULT,
     WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT,
@@ -44,6 +46,7 @@ from query_doctor.web.models import (
     batch_output_dir,
     batch_progress_path,
 )
+from query_doctor.web.recent_scan_timezone import configured_recent_scan_timezone
 
 
 BATCH_ORDER_VALUES = {
@@ -63,34 +66,39 @@ BATCH_CM_JOBS_MAX = 100
 BATCH_METADATA_JOBS_MAX = 5
 WEB_RUNNING_SCAN_WINDOW_MINUTES = 120
 WEB_RUNNING_CM_INSPECT_LIMIT_DEFAULT = 500
-RECENT_SCAN_TIMEZONE = ZoneInfo("Europe/Moscow")
+SCAN_PRESET_STANDARD = "standard"
+SCAN_PRESET_FREQUENT_SHORT = "frequent_short"
+SCAN_PRESET_VALUES = {SCAN_PRESET_STANDARD, SCAN_PRESET_FREQUENT_SHORT}
+RECENT_SCAN_TIMEZONE = ZoneInfo(DEFAULT_RECENT_SCAN_TIMEZONE)
 RECENT_SCAN_LOOKBACK_DAYS = 2
 RECENT_SCAN_BUCKET_HOURS = 1
 
 
-def default_recent_scan_bucket(now: datetime | None = None) -> tuple[str, int]:
-    current = now.astimezone(RECENT_SCAN_TIMEZONE) if now else datetime.now(RECENT_SCAN_TIMEZONE)
+def default_recent_scan_bucket(
+    now: datetime | None = None, *, scan_timezone: ZoneInfo = RECENT_SCAN_TIMEZONE
+) -> tuple[str, int]:
+    current = now.astimezone(scan_timezone) if now else datetime.now(scan_timezone)
     bucket = current.replace(minute=0, second=0, microsecond=0)
     return bucket.date().isoformat(), bucket.hour
 
 
-def allowed_recent_scan_dates(now: datetime | None = None) -> set[str]:
-    current = (
-        now.astimezone(RECENT_SCAN_TIMEZONE).date()
-        if now
-        else datetime.now(RECENT_SCAN_TIMEZONE).date()
-    )
+def allowed_recent_scan_dates(
+    now: datetime | None = None, *, scan_timezone: ZoneInfo = RECENT_SCAN_TIMEZONE
+) -> set[str]:
+    current = now.astimezone(scan_timezone).date() if now else datetime.now(scan_timezone).date()
     return {
         (current - timedelta(days=days)).isoformat()
         for days in range(RECENT_SCAN_LOOKBACK_DAYS + 1)
     }
 
 
-def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str, str]:
-    default_date, default_hour = default_recent_scan_bucket()
+def parse_recent_scan_window(
+    form: dict[str, list[str]], *, scan_timezone: ZoneInfo = RECENT_SCAN_TIMEZONE
+) -> tuple[str, int, str, str]:
+    default_date, default_hour = default_recent_scan_bucket(scan_timezone=scan_timezone)
     scan_date = first_form_value(form, "scan_date") or default_date
     scan_hour_text = first_form_value(form, "scan_hour") or str(default_hour)
-    if scan_date not in allowed_recent_scan_dates():
+    if scan_date not in allowed_recent_scan_dates(scan_timezone=scan_timezone):
         raise WebError("Scan date must be today or one of the previous two days.")
     try:
         parsed_date = date.fromisoformat(scan_date)
@@ -102,12 +110,10 @@ def parse_recent_scan_window(form: dict[str, list[str]]) -> tuple[str, int, str,
         raise WebError("Scan hour must be an integer from 0 to 23.") from exc
     if scan_hour < 0 or scan_hour > 23:
         raise WebError("Scan hour must be an integer from 0 to 23.")
-    latest_date, latest_hour = default_recent_scan_bucket()
+    latest_date, latest_hour = default_recent_scan_bucket(scan_timezone=scan_timezone)
     if scan_date > latest_date or (scan_date == latest_date and scan_hour > latest_hour):
         raise WebError("Scan hour must not be in the future.")
-    start_local = datetime.combine(
-        parsed_date, datetime_time(scan_hour), tzinfo=RECENT_SCAN_TIMEZONE
-    )
+    start_local = datetime.combine(parsed_date, datetime_time(scan_hour), tzinfo=scan_timezone)
     end_local = start_local + timedelta(hours=RECENT_SCAN_BUCKET_HOURS)
     from_time = start_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     to_time = end_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -130,7 +136,11 @@ def parse_batch_run_config(
         settings_for_cluster_key(settings, cluster_key) if settings is not None else None
     )
     local_config = _local_config_values(settings)
-    scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(form)
+    scan_preset = normalize_scan_preset(first_form_value(form, "scan_preset"))
+    scan_timezone = configured_recent_scan_timezone(selected_settings, local_config)
+    scan_date, scan_hour, from_time, to_time = parse_recent_scan_window(
+        form, scan_timezone=scan_timezone
+    )
     recent_window_minutes = RECENT_SCAN_BUCKET_HOURS * 60
     cm_inspect_limit = BATCH_CM_INSPECT_LIMIT_MAX
     triage_profile_limit = parse_positive_form_int(
@@ -161,23 +171,42 @@ def parse_batch_run_config(
         raise WebError(
             "Order must be one of: recent, duration-desc, duration-asc, recent-duration-desc, status-priority."
         )
+    if scan_preset == SCAN_PRESET_FREQUENT_SHORT:
+        min_duration_sec = None
+        order = "recent"
     parallelism_text = first_form_value(form, "parallelism")
     if not parallelism_text and first_form_value(form, "jobs"):
         parallelism_text = first_form_value(form, "jobs")
     if not parallelism_text and first_form_value(form, "cm_jobs"):
         parallelism_text = first_form_value(form, "cm_jobs")
     parallelism_form = {"parallelism": [parallelism_text]} if parallelism_text else {}
+    parallelism_default = _config_int(
+        local_config,
+        "recent_parallelism",
+        fallback=_config_int(local_config, "recent_cm_jobs", fallback=default_parallelism),
+    )
     parallelism = parse_positive_form_int(
         parallelism_form,
         "parallelism",
-        default=default_parallelism,
+        default=parallelism_default,
         maximum=min(BATCH_CM_JOBS_MAX, BATCH_JOBS_MAX),
     )
     metadata_jobs = parse_positive_form_int(
-        form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX
+        form,
+        "metadata_jobs",
+        default=_config_int(local_config, "recent_metadata_jobs", fallback=5),
+        maximum=BATCH_METADATA_JOBS_MAX,
     )
-    user = first_form_value(form, "user")
-    pool = first_form_value(form, "pool")
+    user = (
+        first_form_value(form, "user")
+        if "user" in form
+        else _config_string(local_config, "recent_user")
+    )
+    pool = (
+        first_form_value(form, "pool")
+        if "pool" in form
+        else _config_string(local_config, "recent_pool")
+    )
     collect_cm_events = _config_bool(
         local_config,
         "recent_collect_cm_events",
@@ -215,6 +244,7 @@ def parse_batch_run_config(
         maximum=BATCH_CM_TIMESERIES_TOP_LIMIT_MAX,
     )
     return BatchRunConfig(
+        scan_preset=scan_preset,
         recent_window_minutes=recent_window_minutes,
         scan_date=scan_date,
         scan_hour=scan_hour,
@@ -270,14 +300,22 @@ def parse_running_run_config(
     min_duration_sec = parse_optional_non_negative_form_float(form, "min_duration_sec")
     parallelism_text = first_form_value(form, "parallelism")
     parallelism_form = {"parallelism": [parallelism_text]} if parallelism_text else {}
+    parallelism_default = _config_int(
+        local_config,
+        "recent_parallelism",
+        fallback=_config_int(local_config, "recent_cm_jobs", fallback=default_parallelism),
+    )
     parallelism = parse_positive_form_int(
         parallelism_form,
         "parallelism",
-        default=default_parallelism,
+        default=parallelism_default,
         maximum=min(BATCH_CM_JOBS_MAX, BATCH_JOBS_MAX),
     )
     metadata_jobs = parse_positive_form_int(
-        form, "metadata_jobs", default=5, maximum=BATCH_METADATA_JOBS_MAX
+        form,
+        "metadata_jobs",
+        default=_config_int(local_config, "recent_metadata_jobs", fallback=5),
+        maximum=BATCH_METADATA_JOBS_MAX,
     )
     cm_events_max_events = parse_positive_form_int(
         form,
@@ -319,8 +357,16 @@ def parse_running_run_config(
         cm_jobs=parallelism,
         jobs=parallelism,
         metadata_jobs=metadata_jobs,
-        user=first_form_value(form, "user"),
-        pool=first_form_value(form, "pool"),
+        user=(
+            first_form_value(form, "user")
+            if "user" in form
+            else _config_string(local_config, "recent_user")
+        ),
+        pool=(
+            first_form_value(form, "pool")
+            if "pool" in form
+            else _config_string(local_config, "recent_pool")
+        ),
         query_type="",
         include_failed=False,
         include_running=True,
@@ -342,6 +388,11 @@ def _local_config_values(settings: WebSettings | None) -> dict[str, object]:
         return {}
 
 
+def normalize_scan_preset(value: object) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in SCAN_PRESET_VALUES else SCAN_PRESET_STANDARD
+
+
 def _config_bool(
     config_values: dict[str, object],
     primary_key: str,
@@ -360,9 +411,15 @@ def _config_int(config_values: dict[str, object], key: str, *, fallback: int) ->
     return fallback if value is None else value
 
 
+def _config_string(config_values: dict[str, object], key: str) -> str:
+    value = config_values.get(key)
+    return value if isinstance(value, str) else ""
+
+
 def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for name in (
+        "scan_preset",
         "scan_target",
         "scan_date",
         "scan_hour",
@@ -390,6 +447,7 @@ def form_values_from_form(form: dict[str, list[str]]) -> dict[str, object]:
 
 def form_values_from_config(config: BatchRunConfig) -> dict[str, object]:
     return {
+        "scan_preset": config.scan_preset,
         "scan_target": "running" if config.only_running else "finished",
         "scan_date": config.scan_date,
         "scan_hour": str(config.scan_hour),
@@ -424,6 +482,16 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
             )
     elif settings.clusters or any((settings.cm_url, settings.cm_cluster, settings.cm_service)):
         require_cm_cluster_settings(settings)
+    if settings.source_visibility == SOURCE_VISIBILITY_OWNER_RAW:
+        if config.user and config.user not in source_owner_user_choices(settings):
+            raise WebError(
+                "Owner source visibility requires the User filter to match a configured source owner."
+            )
+        owner_user = effective_source_owner_user(config, settings)
+        if not owner_user:
+            raise WebError(
+                "Owner source visibility requires source_owner_user, a keytab Username selection, or a simple Kerberos principal in the web environment."
+            )
     if config.metadata_top_limit > 0:
         if not metadata_configured(settings):
             raise WebError(
@@ -433,11 +501,32 @@ def validate_batch_config_for_settings(config: BatchRunConfig, settings: WebSett
             raise WebError("--metadata-ca-cert requires --metadata-ssl for web batch metadata.")
 
 
+def source_owner_user_choices(settings: WebSettings) -> tuple[str, ...]:
+    choices: list[str] = []
+    seen: set[str] = set()
+    for owner in (settings.source_owner_user, *settings.source_owner_user_options):
+        if not owner or owner in seen:
+            continue
+        seen.add(owner)
+        choices.append(owner)
+    return tuple(choices)
+
+
+def effective_source_owner_user(config: BatchRunConfig, settings: WebSettings) -> str | None:
+    if settings.source_visibility != SOURCE_VISIBILITY_OWNER_RAW:
+        return settings.source_owner_user
+    choices = source_owner_user_choices(settings)
+    if config.user:
+        return config.user if config.user in choices else None
+    return settings.source_owner_user
+
+
 def build_batch_command(
     job_id: str, config: BatchRunConfig, settings: WebSettings
 ) -> tuple[list[str], Path]:
     settings = settings_for_cluster_key(settings, config.cluster_key)
     validate_batch_config_for_settings(config, settings)
+    source_owner_user = effective_source_owner_user(config, settings)
     out_dir = batch_output_dir(job_id)
     progress_path = batch_progress_path(job_id)
     metadata_enabled = config.metadata_top_limit > 0
@@ -480,6 +569,10 @@ def build_batch_command(
         append_web_impala_profile_args(cmd, settings)
     else:
         append_web_cm_args(cmd, settings)
+    if settings.source_visibility != SOURCE_VISIBILITY_SAFE:
+        cmd.extend(["--source-visibility", settings.source_visibility])
+        if source_owner_user:
+            cmd.extend(["--source-owner-user", source_owner_user])
     if config.only_running:
         cmd.extend(["--recent-window-minutes", str(config.recent_window_minutes)])
     else:

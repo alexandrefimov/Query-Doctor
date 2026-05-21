@@ -19,6 +19,7 @@
 - [ ] Query Optimizer changes, if any, do not execute user SQL or optimizer draft SQL.
 - [ ] LLM-facing changes, if any, keep Python/analyzer facts as the source of truth.
 - [ ] Unsupported evidence remains `unknown`, `not_observed`, or explicitly unsupported.
+- [ ] No screenshots, logs, generated reports, or browser captures from real clusters are added.
 
 ## Validation
 

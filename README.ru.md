@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-22
 
 Язык: [English](README.md) | Русский
 
@@ -11,9 +11,9 @@ Query Doctor - local-first инструмент диагностики Apache Im
 Инструмент работает рядом с credentials оператора, собирает ограниченный
 read-only контекст из Cloudera Manager или прямых Impala daemon endpoints,
 извлекает deterministic facts в Python и может генерировать validated reports,
-не считая LLM источником истины. По умолчанию trusted reports пишутся на
-английском; русский вывод использует тот же language-specific prompt,
-normalizer и validator boundary.
+не считая LLM источником истины. Общий config `language` управляет Help,
+Details static UI copy и новыми trusted reports; русский вывод использует тот
+же language-specific prompt, normalizer и validator boundary.
 
 Главное правило:
 
@@ -103,8 +103,9 @@ Impala, Ollama или сеть:
 
 ```bash
 query-doctor-demo-preflight
-query-doctor-demo --out /tmp/query-doctor-demo-pack --overwrite
-query-doctor-web --batch-summary /tmp/query-doctor-demo-pack/batch_summary.json
+DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
+query-doctor-demo --out "$DEMO_PACK" --overwrite
+query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
 Откройте localhost URL, который напечатает `query-doctor-web`. Synthetic demo
@@ -132,6 +133,7 @@ query-doctor-cm-events --help
 query-doctor-cm-sample-smoke --help
 query-doctor-collect-cm-profiles --help
 query-doctor-collect-impala-context --help
+query-doctor-collect-impala-profile --help
 query-doctor-corpus-smoke --help
 query-doctor-demo --help
 query-doctor-demo-preflight --help
@@ -159,7 +161,7 @@ Local web UI содержит:
   по умолчанию; `Running now` доступен как lower-confidence live context.
 - `Known Query ID`: вторичный режим внутри `Diagnose` для одного explicit
   Impala query ID. По умолчанию использует Cloudera Manager или direct Impala
-  daemon profile endpoints, когда настроен `query_profile_source=impala`.
+  daemon profile endpoints, когда настроен `cluster_type=impala`.
 - Details pages с deterministic findings, evidence context и explicit LLM
   Report / Query LLM optimizer actions.
 - `Help`: curated workflow, safety и documentation guidance внутри продукта.
@@ -283,23 +285,32 @@ use cases, где AGPL obligations не подходят. См.
 ## Документация
 
 Начинайте с [docs/README.md](docs/README.md). Он разделяет current user docs,
-операторские guides, architecture contracts, internal audits и historical
-planning notes.
+операторские guides, architecture contracts, текущие audit docs и supporting
+references.
 
 Английский язык является каноническим для документации. Русские companion pages
 живут в [docs/i18n/ru/](docs/i18n/ru/) там, где полезны длинные
 operator-facing explanations. Если английская и русская версии расходятся,
 английская страница остается источником истины до обновления перевода.
 
+Public demo и release paths:
+
+- [docs/demo-mode.md](docs/demo-mode.md): generation synthetic demo pack и
+  refresh path для README screenshots.
+- [docs/DEMO.md](docs/DEMO.md): localhost UI demo runbook и talk track.
+- [docs/demo-cases.md](docs/demo-cases.md): sanitized public demo scenarios.
+- [docs/demo-preflight.md](docs/demo-preflight.md): deterministic demo и
+  public-release guard.
+- [docs/public-release-readiness.md](docs/public-release-readiness.md):
+  checklist готовности публичного release.
+- [docs/release-checklist.md](docs/release-checklist.md): final tag,
+  package-index и visibility-change checklist.
+
 Полезные ссылки:
 
 - [docs/local-smoke.md](docs/local-smoke.md): локальные validation и smoke
   checks.
 - [docs/credentials.md](docs/credentials.md): локальная раскладка credentials.
-- [docs/public-release-readiness.md](docs/public-release-readiness.md):
-  checklist готовности публичного release.
-- [docs/release-checklist.md](docs/release-checklist.md): maintainer checklist
-  для release и visibility changes.
 - [docs/repository-hardening.md](docs/repository-hardening.md): repository
   security, CI hardening, release automation и backlog сильных проверок.
 - [docs/architecture.md](docs/architecture.md): текущие и будущие component

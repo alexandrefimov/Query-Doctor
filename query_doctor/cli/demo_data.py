@@ -138,6 +138,8 @@ def case_summary(out_dir: Path, spec: DemoCaseSpec) -> dict[str, Any]:
         "score_reasons": list(spec.score_reasons),
         "query_optimization_candidate": spec.query_optimization_candidate,
         "query_optimization_rank": spec.case_index if spec.query_optimization_candidate else None,
+        "optimizer_rewrite_support": spec.optimizer_rewrite_support,
+        "source_locators": spec.source_locators,
         "stats_optimization_candidate": spec.stats_optimization_candidate,
         "stats_optimization_rank": 1 if spec.stats_optimization_candidate else None,
         "cardinality_anomaly_count": spec.cardinality_anomaly_count,

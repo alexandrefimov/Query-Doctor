@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-05-13
+Last updated: 2026-05-21
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -19,6 +19,7 @@ Before larger or safety-sensitive work:
 - run `git status --short --branch` and preserve unrelated user changes;
 - run `python3 scripts/check_staged_public_safety.py` before committing
   public-facing docs, config examples, or generated-artifact boundary changes;
+- create parallel work in a dedicated `$HOME/query-doctor-worktrees` worktree;
 - prefer existing package boundaries and helpers over new abstractions;
 - keep browser/report output raw-free.
 
@@ -59,6 +60,7 @@ Watch for:
 - unexpanded `CM` in user-facing sections where Cloudera Manager is not already
   obvious;
 - historical notes presented as active contracts.
+- runbook commands that no longer match current console-script constraints.
 
 Validate:
 
@@ -68,6 +70,7 @@ Validate:
 - `python3 scripts/check_markdown_links.py` for public docs index or link
   changes;
 - `pre-commit run --all-files` before public-sharing or release cleanup;
+- `scripts/local_gate.sh` before broad release handoff when time permits;
 - no full test suite unless browser-rendered help/UI text changed.
 
 ## Web Details And UI

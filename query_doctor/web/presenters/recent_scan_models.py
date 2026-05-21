@@ -99,10 +99,129 @@ class RecentScanWorkloadGroupsView:
 
 
 @dataclass(frozen=True)
+class RecentScanWorkloadHistoryView:
+    enabled: bool
+    loaded_record_count: int
+    appended_record_count: int
+    append_status: str
+    regression_counts: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True)
+class RecentScanWorkloadDigestEntryView:
+    fingerprint: str
+    fingerprint_short: str
+    member_count: int
+    duration_sec_total: Any
+    duration_sec_p95: Any
+    pool_top: str
+    owner_top: str
+    priority: str
+    evidence: str
+    outcome_summary: str
+
+
+@dataclass(frozen=True)
+class RecentScanWorkloadAdminDigestEntryView:
+    scope: str
+    name: str
+    group_count: int
+    run_count: int
+    duration_sec_total: Any
+    top_fingerprint: str
+    top_fingerprint_short: str
+    top_group_impact: Any
+    group_fingerprints: tuple[str, ...]
+    signal_group_fingerprints: tuple[tuple[str, tuple[str, ...]], ...]
+    signal_counts: tuple[tuple[str, int], ...]
+    signals: str
+    evidence: str
+
+
+@dataclass(frozen=True)
+class RecentScanWorkloadActionQueueEntryView:
+    fingerprint: str
+    fingerprint_short: str
+    priority: str
+    signal: str
+    group_impact: Any
+    pool_top: str
+    owner_top: str
+    evidence: str
+    next_step: str
+    review_anchor: str
+    verification_metric: str
+    verification: str
+    outcome_summary: str
+
+
+@dataclass(frozen=True)
+class RecentScanWorkloadDigestView:
+    regressions: tuple[RecentScanWorkloadDigestEntryView, ...]
+    admission_runtime: tuple[RecentScanWorkloadDigestEntryView, ...]
+    stats: tuple[RecentScanWorkloadDigestEntryView, ...]
+    spill: tuple[RecentScanWorkloadDigestEntryView, ...]
+    status_issues: tuple[RecentScanWorkloadDigestEntryView, ...]
+    low_value: tuple[RecentScanWorkloadDigestEntryView, ...]
+    admin: tuple[RecentScanWorkloadAdminDigestEntryView, ...]
+    action_queue: tuple[RecentScanWorkloadActionQueueEntryView, ...]
+
+
+@dataclass(frozen=True)
+class RecentScanWorkloadRepresentativeCaseView:
+    role: str
+    reason: str
+    case_id: str
+    query_id: Any
+    user: Any
+    duration_sec: Any
+    score: Any
+    score_severity: str
+    primary_bottleneck: str
+
+
+@dataclass(frozen=True)
+class RecentScanWorkloadActionHintView:
+    title: str
+    priority: str
+    evidence: str
+    next_step: str
+
+
+@dataclass(frozen=True)
+class RecentScanWorkloadDetailView:
+    fingerprint: str
+    fingerprint_short: str
+    member_count: int
+    duration_sec_p50: Any
+    duration_sec_p95: Any
+    duration_sec_total: Any
+    pool_top: str
+    owner_top: str
+    primary_bottleneck_top: str
+    score_top: str
+    impact_summary: str
+    frequent_short_summary: str
+    bottleneck_distribution: str
+    limitations: tuple[str, ...]
+    baseline_duration_sec_p95: Any
+    baseline_sample_count: int
+    regression: str
+    shape_summary: str
+    table_summary: str
+    outcome_summary: str
+    member_case_ids: tuple[str, ...]
+    action_hints: tuple[RecentScanWorkloadActionHintView, ...]
+    representatives: tuple[RecentScanWorkloadRepresentativeCaseView, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanSummaryView:
     header_items: tuple[tuple[str, Any], ...]
     rows: tuple[RecentScanCaseRowView, ...]
     workload_groups: RecentScanWorkloadGroupsView
+    workload_history: RecentScanWorkloadHistoryView | None
+    workload_digest: RecentScanWorkloadDigestView
     scope_parts: tuple[str, ...]
     empty_message: str | None
     warning_messages: tuple[str, ...]
@@ -174,6 +293,12 @@ class RecentScanCmMetricsView:
 
 
 @dataclass(frozen=True)
+class RecentScanQueryContextView:
+    unavailable: bool
+    summary_items: tuple[tuple[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class RecentScanRuntimeDiagnosisSignalView:
     title: str
     status: Any
@@ -229,25 +354,30 @@ class RecentScanStatsQualityView:
 
 
 @dataclass(frozen=True)
-class RecentScanEvidenceGuideCardView:
+class RecentScanDiagnosticFactView:
+    fact_id: str
+    question: str
     label: str
-    value: str
+    value: Any
+    unit: str = ""
+    severity: str = "neutral"
+    relevance: int = 0
+    interpretation: str = ""
+    source_anchor: str = ""
+    value_kind: str = "text"
 
 
 @dataclass(frozen=True)
-class RecentScanEvidenceGuideView:
-    cards: tuple[RecentScanEvidenceGuideCardView, ...]
+class RecentScanDiagnosticQuestionGroupView:
+    group_id: str
+    title: str
+    prompt: str
+    facts: tuple[RecentScanDiagnosticFactView, ...]
 
 
 @dataclass(frozen=True)
-class RecentScanAnalysisSummaryRowView:
-    label: str
-    value: str
-
-
-@dataclass(frozen=True)
-class RecentScanAnalysisSummaryView:
-    rows: tuple[RecentScanAnalysisSummaryRowView, ...]
+class RecentScanDiagnosticQuestionsView:
+    groups: tuple[RecentScanDiagnosticQuestionGroupView, ...]
 
 
 @dataclass(frozen=True)
@@ -274,24 +404,24 @@ class RecentScanStatusSummaryView:
 
 
 @dataclass(frozen=True)
-class RecentScanCaseOverviewCardView:
-    label: str
-    value: Any
-    value_kind: str
-    severity: str = ""
-
-
-@dataclass(frozen=True)
-class RecentScanCaseOverviewView:
-    query_id: Any
-    cards: tuple[RecentScanCaseOverviewCardView, ...]
-
-
-@dataclass(frozen=True)
 class RecentScanActionCandidateCardView:
     title: str
     body: str
     recommendation_id: str = ""
+    source_locators: tuple["RecentScanSourceLocatorView", ...] = ()
+    supporting_facts: tuple[RecentScanDiagnosticFactView, ...] = ()
+    why: str = ""
+    guardrails: str = ""
+    change_direction: str = ""
+    verification: str = ""
+
+
+@dataclass(frozen=True)
+class RecentScanSourceLocatorView:
+    kind: str
+    label: str
+    coordinate: str
+    detail: str
 
 
 @dataclass(frozen=True)
@@ -326,8 +456,10 @@ class RecentScanCaseDetailView:
     score_reasons: tuple[str, ...]
     optimization_candidate: dict[str, Any]
     stats_candidate: dict[str, Any]
+    source_locators: dict[str, tuple[RecentScanSourceLocatorView, ...]]
     metadata: RecentScanMetadataView
     cm_metrics: RecentScanCmMetricsView
+    query_context: RecentScanQueryContextView
     runtime_diagnosis: RecentScanRuntimeDiagnosisView
     cluster_runtime_context: RecentScanClusterRuntimeContextView
     runtime_verdict: RecentScanRuntimeVerdictView
@@ -343,3 +475,4 @@ class RecentScanCaseDetailView:
     workload_regression: str
     report_action: ReportActionView
     score_severity: str
+    diagnostic_facts: tuple[RecentScanDiagnosticFactView, ...] = ()

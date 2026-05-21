@@ -85,6 +85,8 @@ class BatchConfig:
     privacy_mode: bool = True
     redact_identifiers: bool = True
     redact_hosts: bool = True
+    source_visibility: str = "safe"
+    source_owner_user: str | None = None
 
 
 @dataclass

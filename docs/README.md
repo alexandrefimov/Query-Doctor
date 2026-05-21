@@ -1,13 +1,13 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-22
 
 Language: English | [Russian](i18n/ru/README.md)
 
-This directory contains the current Query Doctor documentation plus a small
-archive of historical planning notes. English is the canonical language for
-public documentation. Russian copies are best-effort companion translations; if
-they conflict with the English source, the English document wins.
+This directory contains the current Query Doctor documentation and supporting
+reference material. English is the canonical language for public documentation.
+Russian copies are best-effort companion translations; if they conflict with
+the English source, the English document wins.
 
 ## Hard Rules Summary
 
@@ -40,14 +40,29 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [repository-hardening.md](repository-hardening.md): repository security,
   pipeline hardening, and maintainer automation backlog.
 
+## Public Demo And Release Paths
+
+- [demo-mode.md](demo-mode.md): generate the synthetic demo pack, launch it in
+  the local web UI, and refresh public README screenshots from synthetic data.
+- [DEMO.md](DEMO.md): localhost UI demo runbook, main surfaces, safety rules,
+  and public demo storyline.
+- [demo-cases.md](demo-cases.md): sanitized synthetic scenario list for public
+  demos.
+- [demo-data-engineer-brief.md](demo-data-engineer-brief.md): data-engineer
+  talk track for scoring, metadata, metrics, reports, and optimizer boundaries.
+- [demo-preflight.md](demo-preflight.md): deterministic demo, release, and
+  public-sharing guard.
+- [public-release-readiness.md](public-release-readiness.md): public-release
+  readiness snapshot and P0 gates.
+- [release-checklist.md](release-checklist.md): final release-candidate,
+  tag, package-index, and visibility-change procedure.
+
 ## Document Status Index
 
 Status legend:
 
 - `active`: current contract or required working guidance.
 - `reference`: useful supporting material, not the first source of truth.
-- `archived`: history, older planning, or demo/release notes; do not use as a
-  behavior contract.
 
 | Document | Status | Use |
 | --- | --- | --- |
@@ -71,17 +86,16 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
-| [documentation-audit.md](documentation-audit.md) | reference | Sensitive-information and Russian-localization documentation audit. |
 | [configuration.md](configuration.md) | reference | Local JSON config locations, discovery order, field groups, and examples. |
 | [local-smoke.md](local-smoke.md) | reference | Local validation workflows. |
 | [credentials.md](credentials.md) | reference | Local credential layout and secret handling. |
 | [security-model.md](security-model.md) | reference | Public security/privacy overview; defer to `safety-contract.md` for rules. |
+| [ui-ux-audit.md](ui-ux-audit.md) | reference | Accepted UI/UX audit takeaways and follow-up backlog. |
 | [public-release-readiness.md](public-release-readiness.md) | reference | Public-release checklist. |
 | [release-checklist.md](release-checklist.md) | reference | Maintainer release checklist. |
 | [repository-hardening.md](repository-hardening.md) | reference | Repository security, CI hardening, release automation, and maintainer time-saving backlog. |
 | [community-starter-issues.md](community-starter-issues.md) | reference | Curated public issue backlog. |
 | [contributor-architecture.md](contributor-architecture.md) | reference | Contributor map; defer to `architecture.md` and `code-map.md` for current boundaries. |
-| [ui/query-doctor-design-notes.md](ui/query-doctor-design-notes.md) | reference | Internal localhost UI visual direction; not a behavior contract. |
 | [cluster-doctor-contract.md](cluster-doctor-contract.md) | reference | Future Cluster Doctor seam. |
 | [model-bakeoff.md](model-bakeoff.md) | reference | Local model route protocol and historical decisions. |
 | [demo-mode.md](demo-mode.md) | reference | Synthetic demo pack generation. |
@@ -89,6 +103,3 @@ Status legend:
 | [demo-preflight.md](demo-preflight.md) | reference | Demo/release preflight. |
 | [demo-cases.md](demo-cases.md) | reference | Demo case notes. |
 | [demo-data-engineer-brief.md](demo-data-engineer-brief.md) | reference | Data-engineer demo brief. |
-
-Archived documents live under [archive/](archive/) and are kept for history
-only.

@@ -19,6 +19,19 @@ def render_action_outcomes_page() -> str:
     records = tuple(reversed(load_action_outcomes()))
     count = action_outcome_count()
     metrics = load_action_outcome_metrics()
+    if not records and not metrics:
+        return (
+            '<section class="panel batch-panel" aria-label="Action outcomes">'
+            '<div class="batch-head"><div><h1>Action outcomes</h1>'
+            "<p>Local recommendation feedback for recent workload fingerprints.</p></div>"
+            '<span class="badge gray">0 recorded</span></div>'
+            '<div class="outcomes-empty-state">'
+            "<h2>No feedback recorded yet</h2>"
+            "<p>Use Mark result on a Details recommendation after checking whether the suggested action was applied and helped.</p>"
+            '<a class="button primary" href="/">Open Diagnose</a>'
+            "</div>"
+            "</section>"
+        )
     rows = "".join(render_action_outcome_row(record) for record in records)
     if not rows:
         rows = '<tr><td colspan="5" class="empty-cell">No action outcomes recorded yet.</td></tr>'
@@ -27,7 +40,9 @@ def render_action_outcomes_page() -> str:
         '<div class="batch-head"><div><h1>Action outcomes</h1>'
         "<p>Local recommendation feedback for recent workload fingerprints.</p></div>"
         f'<span class="badge gray">{html.escape(str(count))} recorded</span></div>'
-        '<div class="batch-note">This table shows local feedback only. Case-local navigation ids are not displayed.</div>'
+        '<details class="compact-details outcomes-scope-details"><summary>What is recorded</summary>'
+        '<div class="compact-details-body"><p>This table shows local feedback only. Case-local navigation ids are not displayed.</p></div>'
+        "</details>"
         f"{render_action_outcome_metrics(metrics)}"
         '<div class="batch-table-wrap"><table class="batch-table">'
         "<thead><tr>"

@@ -14,6 +14,7 @@ from query_doctor.web.models import (
     DEFAULT_PORT,
     DEFAULT_TIMEOUT_SEC,
 )
+from query_doctor.report.llm_client import DEFAULT_LLM_PROVIDER, LLM_PROVIDER_CHOICES
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -49,8 +50,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default=DEFAULT_MODEL,
+        default=None,
         help=f"Ollama model for reports. Default: {DEFAULT_MODEL}.",
+    )
+    parser.add_argument(
+        "--report-llm-provider",
+        choices=LLM_PROVIDER_CHOICES,
+        help=f"LLM provider for reports. Default comes from config or {DEFAULT_LLM_PROVIDER}.",
+    )
+    parser.add_argument(
+        "--report-llm-base-url",
+        help="Base URL for the report LLM provider.",
+    )
+    parser.add_argument(
+        "--report-llm-chat-path",
+        help="OpenAI-compatible report chat path override.",
     )
     parser.add_argument(
         "--optimizer-model",
@@ -58,6 +72,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Ollama model for Query LLM optimizer. "
             f"Default: {DEFAULT_OPTIMIZER_MODEL}. Override with config, QD_OPTIMIZER_MODEL, or this flag."
         ),
+    )
+    parser.add_argument(
+        "--optimizer-llm-provider",
+        choices=LLM_PROVIDER_CHOICES,
+        help=(
+            "LLM provider for Query LLM optimizer. "
+            f"Default comes from config or {DEFAULT_LLM_PROVIDER}."
+        ),
+    )
+    parser.add_argument(
+        "--optimizer-llm-base-url",
+        help="Base URL for the optimizer LLM provider.",
+    )
+    parser.add_argument(
+        "--optimizer-llm-chat-path",
+        help="OpenAI-compatible optimizer chat path override.",
     )
     parser.add_argument(
         "--no-llm",

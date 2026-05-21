@@ -32,6 +32,8 @@ class DemoCaseSpec:
     score_reasons: tuple[str, ...]
     facts_text: str
     source_sql: str
+    optimizer_rewrite_support: dict[str, Any] | None = None
+    source_locators: dict[str, Any] | None = None
     report_text: str | None = None
     optimizer_recommendations: str | None = None
     optimizer_output_kind: str = "recommendations_only"
@@ -83,6 +85,29 @@ def optimization_recommendations_case() -> DemoCaseSpec:
             ],
         },
         stats_optimization_candidate=None,
+        optimizer_rewrite_support={
+            "status": "guidance_only",
+            "label": "Guidance only",
+            "reason": "Synthetic demo case requires manual review",
+            "rewriteability_bucket": "recipe_adjacent_shape",
+            "rewriteability_label": "Recipe-adjacent shape",
+            "cte_count": 1,
+            "cte_graph_shape": "linear_chain",
+            "cte_predicate_origin_status": "final_select_filter",
+        },
+        source_locators={
+            "query_optimization": [
+                {
+                    "id": "sql_final_select_filter",
+                    "coordinate": "line 9",
+                    "detail": "predicate near final SELECT",
+                },
+                {
+                    "id": "plan_cardinality_anomaly",
+                    "detail": "node 03 HASH JOIN (inner join, partitioned)",
+                },
+            ]
+        },
         score_reasons=(
             "cardinality estimate anomalies: 4",
             "memory estimate anomalies: 3",
@@ -219,7 +244,19 @@ def optimization_facts_text() -> str:
             "",
             "## CM Query Context",
             "- duration: 315s",
+            "- available: yes",
             "- query status: finished",
+            "- query_type: QUERY",
+            "- pool: demo_pool",
+            "- start_time: 2026-05-21T09:04:00Z",
+            "- end_time: 2026-05-21T09:09:15Z",
+            "- admission_result: admitted",
+            "- admission_wait: 4.20s",
+            "- rows_produced: 12.80M",
+            "- bytes_read: 148.00 GiB",
+            "- bytes_sent: 8.40 GiB",
+            "- memory_aggregate_peak: 36.00 GiB",
+            "- memory_per_node_peak: 9.20 GiB",
             "",
             "## Backend / Host Tail Evidence",
             "- host tail candidates: 1",
@@ -259,7 +296,19 @@ def stats_facts_text() -> str:
             "",
             "## CM Query Context",
             "- duration: 96s",
+            "- available: yes",
             "- query status: finished",
+            "- query_type: QUERY",
+            "- pool: demo_pool",
+            "- start_time: 2026-05-21T10:15:00Z",
+            "- end_time: 2026-05-21T10:16:36Z",
+            "- admission_result: admitted",
+            "- admission_wait: 0.40s",
+            "- rows_produced: 2.10M",
+            "- bytes_read: 24.00 GiB",
+            "- bytes_sent: 1.10 GiB",
+            "- memory_aggregate_peak: 8.00 GiB",
+            "- memory_per_node_peak: 2.10 GiB",
             "",
             "## Backend / Host Tail Evidence",
             "- host tail candidates: 0",
@@ -330,7 +379,19 @@ def rejected_draft_facts_text() -> str:
             "",
             "## CM Query Context",
             "- duration: 188s",
+            "- available: yes",
             "- query status: finished",
+            "- query_type: QUERY",
+            "- pool: demo_pool",
+            "- start_time: 2026-05-21T11:30:00Z",
+            "- end_time: 2026-05-21T11:33:08Z",
+            "- admission_result: admitted",
+            "- admission_wait: 1.10s",
+            "- rows_produced: 5.60M",
+            "- bytes_read: 64.00 GiB",
+            "- bytes_sent: 3.20 GiB",
+            "- memory_aggregate_peak: 22.00 GiB",
+            "- memory_per_node_peak: 6.40 GiB",
             "",
             "## Backend / Host Tail Evidence",
             "- host tail candidates: 1",
@@ -399,8 +460,18 @@ def optimization_report_text() -> str:
 
 
 def optimization_source_sql() -> str:
-    return (
-        "SELECT customer_id, SUM(amount) AS total_amount FROM demo.fact_orders GROUP BY customer_id"
+    return "\n".join(
+        [
+            "WITH customer_orders AS (",
+            "    SELECT d.segment, f.customer_id, SUM(f.amount) AS total_amount",
+            "    FROM demo.fact_orders f",
+            "    JOIN demo.dim_customer d ON f.customer_id = d.customer_id",
+            "    GROUP BY d.segment, f.customer_id",
+            ")",
+            "SELECT segment, customer_id, total_amount",
+            "FROM customer_orders",
+            "WHERE total_amount > 1000",
+        ]
     )
 
 

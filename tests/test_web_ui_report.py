@@ -116,6 +116,7 @@ def test_details_inline_report_keeps_summary_open_and_appendix_collapsed():
     from query_doctor.web.ui import markdown
 
     rendered = module.render_details_inline_report_html(
+        "# Query Doctor Report\n\n"
         "## Краткий вывод\n\n"
         "Safe summary.\n\n"
         "## Практические рекомендации\n\n"
@@ -135,6 +136,8 @@ def test_details_inline_report_keeps_summary_open_and_appendix_collapsed():
         '<details class="analysis-subdetails report-appendix" aria-label="Report details">'
         in rendered
     )
+    assert "<h1>" not in rendered
+    assert "<h2>Query Doctor Report</h2>" in rendered[appendix_index:]
     assert "Detailed evidence." in rendered[appendix_index:]
     assert "Follow-up check." in rendered[appendix_index:]
     assert module.render_details_inline_report_html is markdown.render_details_inline_report_html

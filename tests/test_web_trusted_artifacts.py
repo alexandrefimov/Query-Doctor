@@ -106,6 +106,7 @@ def test_report_evidence_inventory_returns_safe_categories_without_filenames(tmp
     (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
     (case_dir / "impala_context.json").write_text("{}\n", encoding="utf-8")
+    (case_dir / "query_metadata.json").write_text("{}\n", encoding="utf-8")
 
     inventory = trusted_artifacts.report_evidence_inventory(case_dir)
 
@@ -114,6 +115,8 @@ def test_report_evidence_inventory_returns_safe_categories_without_filenames(tmp
     assert "Profile digest" in category_labels
     assert "Analyzer facts" in category_labels
     assert "Impala metadata JSON" in category_labels
+    assert "Query metadata" in category_labels
+    assert "CM metadata" not in category_labels
     assert completeness["Profile"] == "available"
     assert completeness["SQL"] == "not collected"
     assert completeness["Metadata"] == "available"
@@ -129,10 +132,13 @@ def test_report_evidence_inventory_ignores_symlinked_artifacts_outside_case_dir(
     case_dir.mkdir()
     outside_profile = tmp_path / "profile_digest.md"
     outside_facts = tmp_path / "analysis_facts.md"
+    outside_metadata = tmp_path / "query_metadata.json"
     outside_profile.write_text("PROFILE\n", encoding="utf-8")
     outside_facts.write_text("FACTS\n", encoding="utf-8")
+    outside_metadata.write_text("{}\n", encoding="utf-8")
     (case_dir / "profile_digest.md").symlink_to(outside_profile)
     (case_dir / "analysis_facts.md").symlink_to(outside_facts)
+    (case_dir / "query_metadata.json").symlink_to(outside_metadata)
 
     inventory = trusted_artifacts.report_evidence_inventory(case_dir)
 
@@ -140,9 +146,36 @@ def test_report_evidence_inventory_ignores_symlinked_artifacts_outside_case_dir(
     completeness = {item.label: item.state for item in inventory.completeness}
     assert "Profile digest" not in category_labels
     assert "Analyzer facts" not in category_labels
+    assert "Query metadata" not in category_labels
     assert completeness["Profile"] == "not collected"
+    assert completeness["Metadata"] == "not collected"
     assert inventory.profile_evidence_state == "not observed"
     assert inventory.analyzer_facts_state == "not observed"
+
+
+def test_report_evidence_inventory_counts_legacy_metadata_as_query_metadata(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "cm_metadata.json").write_text("{}\n", encoding="utf-8")
+
+    inventory = trusted_artifacts.report_evidence_inventory(case_dir)
+
+    category_labels = tuple(category.label for category in inventory.categories)
+    completeness = {item.label: item.state for item in inventory.completeness}
+    assert "Query metadata" in category_labels
+    assert "CM metadata" not in category_labels
+    assert completeness["Metadata"] == "available"
+
+
+def test_case_has_safe_source_sql_accepts_canonical_metadata(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "query_metadata.json").write_text(
+        json.dumps({"statement": "SELECT secret_col FROM db.source_table WHERE secret_flag = 1"}),
+        encoding="utf-8",
+    )
+
+    assert trusted_artifacts.case_has_safe_source_sql(case_dir) is True
 
 
 def test_case_has_analyzer_facts_hides_raw_filename_contract(tmp_path):

@@ -9,6 +9,7 @@ import shutil
 import uuid
 from pathlib import Path
 
+from query_doctor.case_metadata import QUERY_METADATA_FILENAMES
 from query_doctor.cli import batch_recent
 from query_doctor.cli import collect_cm_profiles as cm_collector
 
@@ -16,7 +17,7 @@ from query_doctor.web.models import WebError, WebSettings
 
 
 OUTPUT_CASE_RE = re.compile(r"^Output case directory:\s*(?P<path>.+)$", re.MULTILINE)
-COLLECTED_CASE_FILES = ("profile_digest.md", "cm_metadata.json", "collection_warnings.txt")
+COLLECTED_CASE_FILES = ("profile_digest.md", "collection_warnings.txt")
 PROFILE_SUMMARY_READ_CHARS = 65536
 
 
@@ -53,7 +54,7 @@ def build_query_id_summary_case(
 
 
 def read_case_metadata(case_dir: Path) -> dict[str, object]:
-    metadata_path = case_relative_file_path(case_dir, "cm_metadata.json")
+    metadata_path = query_metadata_file_path(case_dir)
     if metadata_path is None:
         return {}
     try:
@@ -61,6 +62,14 @@ def read_case_metadata(case_dir: Path) -> dict[str, object]:
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def query_metadata_file_path(case_dir: Path) -> Path | None:
+    for filename in QUERY_METADATA_FILENAMES:
+        path = case_relative_file_path(case_dir, filename)
+        if path is not None:
+            return path
+    return None
 
 
 def case_metadata_string(metadata: dict[str, object], key: str) -> str | None:
@@ -166,7 +175,7 @@ def ensure_complete_existing_case(case_dir: Path) -> None:
     missing = [
         name for name in COLLECTED_CASE_FILES if case_relative_file_path(case_dir, name) is None
     ]
-    if missing:
+    if missing or query_metadata_file_path(case_dir) is None:
         raise WebError(
             "Existing Query ID case is incomplete. "
             "Re-run analysis to regenerate required artifacts."

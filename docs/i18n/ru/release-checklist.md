@@ -1,6 +1,6 @@
 # Release Checklist
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-21
 
 Язык: [English](../../release-checklist.md) | Русский
 
@@ -16,7 +16,13 @@ Last reviewed: 2026-05-15
 - Public-release preflight с history scan.
 - Package build/install smoke.
 - Version/tag alignment.
+- README screenshots из synthetic demo pack, если релиз включает material UI
+  layout changes.
 - Green CI на release branch.
+
+Pre-release audits могут менять checklist wording, docs и release automation.
+Version bump, tag, TestPyPI и PyPI publish выполняются только после выбора
+final release candidate и merge всех запланированных product/docs изменений.
 
 ## Safety
 

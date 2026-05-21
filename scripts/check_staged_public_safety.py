@@ -9,10 +9,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from query_doctor.cli.demo_preflight import scan_public_release_text
-
-
 REPO_DIR = Path(__file__).resolve().parents[1]
+if str(REPO_DIR) not in sys.path:
+    sys.path.insert(0, str(REPO_DIR))
+
+from query_doctor.cli.demo_preflight import scan_public_release_text
+from query_doctor.safety.artifact_names import RAW_ARTIFACT_FILENAMES
+
 
 BLOCKED_PATH_PARTS = (
     ".pytest_cache/",
@@ -26,24 +29,7 @@ BLOCKED_FILENAMES = {
     ".DS_Store",
     ".metadata-source-tables.json",
     ".query-doctor-cm.local.json",
-    "analysis_facts.md",
-    "cluster_event_context.json",
-    "collection_warnings.txt",
-    "diagnosis.md",
-    "diagnosis.partial.md",
-    "explain.txt",
-    "impala_context.json",
-    "impala_context.md",
-    "optimized_query.partial.txt",
-    "optimized_query.sql",
-    "optimized_query.validated.json",
-    "original_query.sql",
-    "profile.txt",
-    "profile_digest.md",
-    "query_metadata.json",
-    "referenced_tables.txt",
-    "runtime_metrics_context.json",
-    "validated_report.json",
+    *RAW_ARTIFACT_FILENAMES,
 }
 BLOCKED_SUFFIXES = (
     ".partial",

@@ -6,13 +6,15 @@ import html
 from typing import Any
 
 from query_doctor.web.ui.recent_scan_form import (
-    WEB_RECENT_SCAN_DEFAULTS,
+    configured_web_advanced_filters,
     form_or_config_value,
     read_local_config_values,
     render_batch_number_field,
     render_batch_text_field,
+    render_batch_user_field,
     render_cluster_select,
     render_running_scan_framing_note,
+    user_filter_options,
 )
 from query_doctor.web.cluster_selection import default_cluster_key, settings_for_cluster_key
 from query_doctor.web.models import WebError
@@ -29,6 +31,11 @@ def render_running_queries_page(
     form_values: dict[str, Any] | None = None,
     query_group: str = "bad",
     only_with_spills: bool = False,
+    workload_admin_scope: str = "all",
+    workload_admin_signal: str = "all",
+    workload_group_scope: str = "",
+    workload_group_name: str = "",
+    workload_group_signal: str = "all",
 ) -> str:
     effective_form_values = form_values
     if effective_form_values is None and job is not None:
@@ -47,6 +54,11 @@ def render_running_queries_page(
                 settings,
                 query_group=query_group,
                 only_with_spills=only_with_spills,
+                workload_admin_scope=workload_admin_scope,
+                workload_admin_signal=workload_admin_signal,
+                workload_group_scope=workload_group_scope,
+                workload_group_name=workload_group_name,
+                workload_group_signal=workload_group_signal,
                 title="Running Queries",
                 details_base_path="/running/case",
             )
@@ -56,6 +68,11 @@ def render_running_queries_page(
             settings,
             query_group=query_group,
             only_with_spills=only_with_spills,
+            workload_admin_scope=workload_admin_scope,
+            workload_admin_signal=workload_admin_signal,
+            workload_group_scope=workload_group_scope,
+            workload_group_name=workload_group_name,
+            workload_group_signal=workload_group_signal,
             title="Running Queries",
             details_base_path="/running/case",
         )
@@ -77,8 +94,6 @@ def render_running_queries_run_panel(
     run_disabled: bool = False,
 ) -> str:
     local_config = read_local_config_values(settings)
-    if "recent_parallelism" not in local_config and "recent_cm_jobs" in local_config:
-        local_config["recent_parallelism"] = local_config["recent_cm_jobs"]
     values = {
         "cluster_key": form_or_config_value(
             form_values,
@@ -91,20 +106,6 @@ def render_running_queries_run_panel(
             "min_duration_sec",
             config_values=local_config,
             config_key="recent_min_duration_sec",
-        ),
-        "parallelism": form_or_config_value(
-            form_values,
-            "parallelism",
-            config_values=local_config,
-            config_key="recent_parallelism",
-            fallback=WEB_RECENT_SCAN_DEFAULTS["parallelism"],
-        ),
-        "metadata_jobs": form_or_config_value(
-            form_values,
-            "metadata_jobs",
-            config_values=local_config,
-            config_key="recent_metadata_jobs",
-            fallback=WEB_RECENT_SCAN_DEFAULTS["metadata_jobs"],
         ),
         "user": form_or_config_value(
             form_values, "user", config_values=local_config, config_key="recent_user"
@@ -119,6 +120,12 @@ def render_running_queries_run_panel(
         selected_settings = settings_for_cluster_key(settings, str(values.get("cluster_key") or ""))
     except WebError:
         selected_settings = settings
+    if getattr(selected_settings, "source_visibility", "") == "owner_raw" and not values.get(
+        "user"
+    ):
+        values["user"] = getattr(selected_settings, "source_owner_user", "") or ""
+    owner_required = getattr(selected_settings, "source_visibility", "") == "owner_raw"
+    user_options = user_filter_options(selected_settings)
     metadata_configured = bool(getattr(selected_settings, "metadata_coordinator", None))
 
     def value(name: str) -> str:
@@ -132,37 +139,82 @@ def render_running_queries_run_panel(
     )
     button_disabled = " disabled" if run_disabled else ""
     button_label = "Running" if run_disabled else "Run scan"
+    owner_field = render_batch_user_field(
+        "user",
+        "Username",
+        value("user"),
+        user_options=user_options,
+        owner_required=owner_required,
+        help_text=(
+            "Required owner filter for this source visibility. It is prefilled from local config."
+            if owner_required
+            else "Optional exact query user filter. Empty means all users."
+        ),
+    )
+    primary_owner_field = owner_field if owner_required else ""
+    advanced_filter_names = configured_web_advanced_filters(local_config)
+    advanced_fields = ""
+    if "user" in advanced_filter_names and not owner_required:
+        advanced_fields += owner_field
+    if "pool" in advanced_filter_names:
+        advanced_fields += render_batch_text_field(
+            "pool",
+            "Resource pool",
+            value("pool"),
+            help_text="Optional resource pool filter. Empty means all pools.",
+        )
+    advanced_panel_html = render_running_advanced_settings(
+        metadata_note_html=metadata_note_html,
+        advanced_fields=advanced_fields,
+    )
+    running_grid_class = (
+        "batch-form-grid running-form-grid running-form-grid--owner"
+        if owner_required
+        else "batch-form-grid running-form-grid"
+    )
     return (
         '<section class="panel batch-run-panel" aria-label="Run running query scan">'
         '<div class="section-heading"><div>'
         '<h1 class="section-title">Running Queries</h1>'
-        '<div class="section-kicker">Scan currently running Impala queries from the selected source.</div>'
         "</div></div>"
         '<form id="running-form" class="batch-form" method="post" action="/running/run">'
-        f"{metadata_note_html}"
-        '<div class="scope-line" aria-label="Running query collection scope">'
-        "<strong>Scope:</strong> current running query summaries → analyzable profiles → ranked cases → bounded automatic metadata · no auto LLM. "
-        "Runtime context is collected automatically when the selected source supports it."
+        '<div class="batch-source-settings">'
+        f"{render_cluster_select(settings, value('cluster_key'), field_id='running_cluster_key', field_class='field diagnosis-cluster-field', label_text='Source cluster')}"
         "</div>"
-        f"{render_running_scan_framing_note()}"
         '<div class="batch-form-sections">'
-        '<fieldset class="batch-form-section"><legend>Query filters</legend>'
-        '<div class="batch-form-grid">'
-        f"{render_cluster_select(settings, value('cluster_key'), field_id='running_cluster_key')}"
-        f"{render_batch_number_field('min_duration_sec', 'Minimum duration (sec)', value('min_duration_sec'), step='0.001', required=False, help_text='Only include running queries at least this long. Empty means no duration filter.')}"
-        f"{render_batch_text_field('user', 'Username', value('user'), help_text='Optional exact query user filter. Empty means all users.')}"
-        f"{render_batch_text_field('pool', 'Resource pool', value('pool'), help_text='Optional resource pool filter. Empty means all pools.')}"
-        "</div>"
-        "</fieldset>"
-        '<fieldset class="batch-form-section"><legend>Analysis settings</legend>'
-        '<div class="batch-form-grid">'
-        f"{render_batch_number_field('parallelism', 'Parallelism', value('parallelism'), help_text='Parallel workers for profile downloads and local analysis. Hard cap: 100.')}"
-        f"{render_batch_number_field('metadata_jobs', 'Metadata parallelism', value('metadata_jobs'), help_text='Parallel read-only metadata refresh workers for top queries. Keep this bounded to protect Impala and the metastore. Hard cap: 5.')}"
-        "</div>"
-        "</fieldset>"
-        "</div>"
-        '<div class="batch-actions">'
+        '<fieldset class="batch-form-section batch-form-section--primary"><legend>Live scan</legend>'
+        f'<div class="{running_grid_class}" aria-label="Running scan filters">'
+        f"{render_batch_number_field('min_duration_sec', 'Minimum duration (sec)', value('min_duration_sec'), step='0.001', required=False, help_text='Only include running queries at least this long. Empty means no duration filter. Running scans use the current running-query snapshot. No date or hour window is used. Profiles can be incomplete while queries execute, and Query Doctor may show fewer deterministic findings than after completion. No LLM report or optimizer draft runs automatically.')}"
+        f"{primary_owner_field}"
+        '<div class="running-run-action">'
         f'<button class="run-button" type="submit"{button_disabled}>{button_label}</button>'
         "</div>"
+        "</div>"
+        "</fieldset>"
+        "</div>"
+        f"{advanced_panel_html}"
         "</form></section>"
+    )
+
+
+def render_running_advanced_settings(*, metadata_note_html: str, advanced_fields: str) -> str:
+    if not advanced_fields:
+        return ""
+    return (
+        '<details class="batch-advanced"><summary>Advanced settings</summary>'
+        '<div class="batch-advanced-body">'
+        f"{metadata_note_html}"
+        f"{render_running_scan_framing_note()}"
+        '<fieldset class="batch-form-section"><legend>Secondary filters</legend>'
+        '<div class="batch-filter-rows">'
+        '<div class="batch-filter-row">'
+        '<div class="batch-filter-row-label">Optional</div>'
+        '<div class="batch-form-grid batch-form-grid--query-limits" aria-label="Secondary running query filters">'
+        f"{advanced_fields}"
+        "</div>"
+        "</div>"
+        "</div>"
+        "</fieldset>"
+        "</div>"
+        "</details>"
     )

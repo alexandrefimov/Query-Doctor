@@ -33,11 +33,8 @@ from query_doctor.web.ui.metadata_details import (
     render_metadata_facts_view,
 )
 from query_doctor.web.ui.recent_scan_details import (
-    render_case_analysis_summary_view,
-    render_case_detail_overview_view,
     render_case_status_summary,
     render_case_status_summary_view,
-    render_evidence_action_guide_view,
     render_recent_scan_case_detail_view,
     render_score_reason_card_view,
     render_score_reason_explanations,

@@ -1,6 +1,6 @@
 # Локальный UI demo Query Doctor
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-21
 
 Язык: [English](../../DEMO.md) | Русский
 
@@ -10,10 +10,32 @@ Last reviewed: 2026-05-19
 
 `query-doctor-web` запускает небольшой localhost-only UI для Query Doctor.
 Текущая навигация строится вокруг Diagnose, Details pages, Help и explicit
-selected-case LLM actions. В Diagnose находятся Recent queries и вторичный
-режим Known Query ID.
+selected-case report/optimizer actions. В Diagnose находятся Recent queries и
+вторичный режим Known Query ID.
 
-Это не production UI.
+Это не production UI. Для публичных repeatable demo используйте synthetic pack
+из `query-doctor-demo`; не используйте старые prepared-pack case IDs, account
+names, local deep links или environment-specific query IDs.
+
+## Synthetic demo startup
+
+```bash
+DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
+query-doctor-demo --out "$DEMO_PACK" --overwrite
+query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
+```
+
+Откройте localhost URL, который напечатает `query-doctor-web`. Demo generator
+требует dedicated `query-doctor-*` temp output path; generated pack держите вне
+репозитория. Полезные фильтры:
+
+```text
+/?query_group=optimization#recent-results
+/?query_group=stats#recent-results
+```
+
+Synthetic pack не вызывает Cloudera Manager, Impala, Prometheus, local
+generation backend или network и не является performance evidence.
 
 ## Запуск
 
@@ -64,10 +86,11 @@ http://127.0.0.1:8765
 set -a
 source ~/.qdcreds/cm-ro.env
 set +a
+DEMO_CASE_OUT="$(mktemp -d)"
 query-doctor-collect-cm-profiles \
   --query-id QUERY_ID_WITH_COLON \
   --limit 1 \
-  --out /tmp/query-doctor-demo-case \
+  --out "$DEMO_CASE_OUT" \
   --redact \
   --ca-bundle ~/.qdcreds/cm-chain.pem
 ```
@@ -106,46 +129,34 @@ surface для одного safe `SELECT` / `WITH ... SELECT`; pasted SQL не �
 - Raw profile text, raw SQL, raw provider API responses, raw metadata и
   credentials не должны появляться в UI, logs, docs или reports.
 
-## Generated files
-
-UI пишет ignored local files under the configured corpus directory:
-
-```text
-cases/cm-corpus/<safe_query_slug>/
-  profile_digest.md
-  provider metadata summaries
-  cm_metadata.json
-  runtime_metrics_context.json
-  collection_warnings.txt
-  analysis_facts.md
-  diagnosis.md
-  optimized_query.sql
-```
-
-Эти файлы generated и могут оставаться sensitive даже после redaction. Не
-коммитьте их и local config files.
+Generated local case data может оставаться sensitive даже после redaction. Не
+коммитьте generated cases, reports, metadata, local config, browser output,
+screenshots from real clusters или credentials.
 
 ## Demo storyline
 
 Показывайте Query Doctor как engineering diagnostic and validation tool:
 
-1. deterministic candidate ranking from CM/profile facts;
-2. Details page before any LLM action;
-3. explicit LLM Report, который формулирует Python-owned facts;
-4. explicit Query LLM optimizer с validated SQL draft или safe no-draft outcome;
-5. optional external read-only Impala smoke benchmark для одного validated
-   draft.
+1. deterministic candidate ranking from generated profile/analyzer facts;
+2. Details page before any report or optimizer action;
+3. explicit trusted report, который формулирует Python-owned facts;
+4. explicit Query LLM optimizer с trusted recommendations, trusted no-rewrite
+   guidance или validated SQL draft только там, где это поддержано;
+5. statistics-maintenance candidate evidence с required confirmation steps;
+6. rejected/partial optimizer output остается untrusted и hidden.
 
-Prepared case pack описан в `docs/demo-cases.md`; detailed talk-track для data
-engineers - в `docs/demo-data-engineer-brief.md`.
+Synthetic scenarios описаны в [demo-cases.md](demo-cases.md); detailed
+talk-track для data engineers - в
+[demo-data-engineer-brief.md](demo-data-engineer-brief.md).
 
 Не показывайте raw SQL, raw profiles, raw metadata, local artifact paths,
-model/runtime internals или subprocess output в demo.
+model/runtime internals, command output, account names, real query IDs или
+local config details в demo.
 
 ## Pre-demo smoke
 
 ```bash
-python3 -m pytest -q tests/test_analyzer_cli.py tests/test_report_sanitizer.py tests/test_query_optimizer.py tests/test_optimizer_sql.py
-python3 -m pytest -q tests/test_web_server.py tests/test_web_optimizer.py tests/test_web_ui_home.py tests/test_web_ui_help.py
+python3 -m pytest -q tests/test_demo_data.py tests/test_web_ui_home.py tests/test_web_ui_help.py
+python3 -m pytest -q tests/test_web_server.py tests/test_web_optimizer.py tests/test_query_optimizer.py
 git diff --check
 ```

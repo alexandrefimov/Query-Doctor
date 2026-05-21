@@ -127,15 +127,41 @@ def build_progress_view(
     default_index: int = 0,
 ) -> JobProgressView:
     current_index = progress_step_index(steps, current_stage, progress, default_index=default_index)
+    current_done = current_step_is_done(steps, current_index, current_stage, progress)
     return JobProgressView(
         current_stage=current_stage,
         current_index=current_index,
         percent=indexed_progress_percent(steps, current_index),
         steps=tuple(
-            progress_step_view(step, index, current_index, current_stage)
+            progress_step_view(
+                step,
+                index,
+                current_index,
+                current_stage,
+                current_done=current_done,
+            )
             for index, step in enumerate(steps)
         ),
     )
+
+
+def current_step_is_done(
+    steps: tuple[JobProgressStep, ...],
+    current_index: int,
+    current_stage: str,
+    progress: int | float | None,
+) -> bool:
+    if not steps or current_index != len(steps) - 1 or progress is None:
+        return False
+    try:
+        bounded_progress = max(0, min(100, int(progress)))
+    except (TypeError, ValueError):
+        return False
+    if bounded_progress < 100:
+        return False
+    step = steps[current_index]
+    normalized = current_stage.strip().lower()
+    return normalized in {label.lower() for label in step.stage_labels}
 
 
 def progress_steps_for_job_kind(kind: str) -> tuple[JobProgressStep, ...]:
@@ -186,9 +212,13 @@ def progress_step_view(
     step_index: int,
     current_index: int,
     current_stage: str,
+    *,
+    current_done: bool = False,
 ) -> JobProgressStepView:
     if step_index < current_index:
         return JobProgressStepView(step.label, "done", "✓", "Done")
     if step_index == current_index:
+        if current_done:
+            return JobProgressStepView(step.label, "done", "✓", "Done")
         return JobProgressStepView(step.label, "running", "…", current_stage)
     return JobProgressStepView(step.label, "neutral", "−", "Pending")

@@ -9,6 +9,8 @@ from query_doctor.web.action_outcomes import (
     append_action_outcome,
     load_action_outcomes,
     summarize_action_outcomes,
+    summarize_workload_action_outcomes,
+    workload_outcome_summary_text,
 )
 from query_doctor.web.models import WebError
 from query_doctor.web.ui.outcomes import render_action_outcomes_page
@@ -131,6 +133,43 @@ def test_action_outcome_metrics_apply_min_sample_threshold():
     assert metrics[1].min_sample_met is False
 
 
+def test_workload_action_outcome_metrics_group_safe_workload_rollups():
+    metrics = summarize_workload_action_outcomes(
+        [
+            outcome_record(workload_fingerprint="wf_aaaaaaaaaaaaaaaaaaaaaaaa"),
+            outcome_record(
+                workload_fingerprint="wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                outcome="no_change",
+            ),
+            outcome_record(
+                workload_fingerprint="wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                recommendation_id="runtime_admission_check.v1",
+                applied="skip",
+                outcome="not_applicable",
+            ),
+            outcome_record(workload_fingerprint="wf_bbbbbbbbbbbbbbbbbbbbbbbb"),
+            outcome_record(workload_fingerprint="/tmp/raw-path"),
+        ]
+    )
+
+    assert sorted(metrics) == [
+        "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+        "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+    ]
+    metric = metrics["wf_aaaaaaaaaaaaaaaaaaaaaaaa"]
+    assert metric.total_records == 3
+    assert metric.applied_count == 2
+    assert metric.skipped_count == 1
+    assert metric.improved_count == 1
+    assert metric.no_change_count == 1
+    assert metric.last_recommendation_id == "runtime_admission_check.v1"
+    assert metric.last_applied == "skip"
+    assert metric.last_outcome == "not_applicable"
+    assert workload_outcome_summary_text(metric) == (
+        "3 recorded; 2 applied; improved 1, no change 1; last Admission/runtime check: skipped"
+    )
+
+
 def test_action_outcome_metrics_page_renders_safe_aggregate_only(tmp_path, monkeypatch):
     outcome_path = tmp_path / "action_outcomes.jsonl"
     monkeypatch.setenv("QUERY_DOCTOR_ACTION_OUTCOMES_PATH", str(outcome_path))
@@ -151,3 +190,17 @@ def test_action_outcome_metrics_page_renders_safe_aggregate_only(tmp_path, monke
     assert "case-001" not in html
     assert "cf_1234567890abcdef12345678" not in html
     assert str(outcome_path) not in html
+
+
+def test_action_outcomes_page_uses_compact_empty_state(tmp_path, monkeypatch):
+    outcome_path = tmp_path / "action_outcomes.jsonl"
+    monkeypatch.setenv("QUERY_DOCTOR_ACTION_OUTCOMES_PATH", str(outcome_path))
+
+    html = render_action_outcomes_page()
+
+    assert "0 recorded" in html
+    assert "No feedback recorded yet" in html
+    assert 'class="outcomes-empty-state"' in html
+    assert 'href="/">Open Diagnose</a>' in html
+    assert "No recommendation metrics yet." not in html
+    assert "No action outcomes recorded yet." not in html

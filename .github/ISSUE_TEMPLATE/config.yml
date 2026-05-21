@@ -2,7 +2,7 @@ blank_issues_enabled: false
 contact_links:
   - name: Report a vulnerability privately
     url: https://github.com/alexandrefimov/Query-Doctor/security/advisories/new
-    about: Use this for exploitable vulnerabilities or reports containing private operational details.
+    about: Use this for exploitable vulnerabilities or reports containing private operational details, screenshots, logs, or generated artifacts.
   - name: Security model
     url: https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/security-model.md
     about: Read the public security and privacy overview before sharing safety details.

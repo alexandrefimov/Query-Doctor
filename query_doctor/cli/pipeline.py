@@ -26,6 +26,8 @@ from query_doctor.impala.metadata_workflow import (
     resolve_metadata_mode,
     validate_metadata_args,
 )
+from query_doctor.report.language_contract import SUPPORTED_REPORT_LANGUAGES
+from query_doctor.report.llm_client import DEFAULT_LLM_PROVIDER, LLM_PROVIDER_CHOICES
 
 
 DEFAULT_MODEL = "qwen3-coder:30b-a3b-q8_0"
@@ -112,10 +114,42 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"Ollama model for report writer. Default: {DEFAULT_MODEL}",
     )
     parser.add_argument(
+        "--llm-provider",
+        choices=LLM_PROVIDER_CHOICES,
+        default=os.getenv("QD_REPORT_LLM_PROVIDER", DEFAULT_LLM_PROVIDER),
+        help="LLM provider for report writer. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--llm-base-url",
+        default=(
+            os.getenv("QD_REPORT_LLM_API_BASE_URL")
+            or os.getenv("QD_REPORT_LLM_BASE_URL")
+            or os.getenv("QD_LLM_API_BASE_URL")
+            or os.getenv("QD_LLM_BASE_URL")
+        ),
+        help="Base URL for the configured LLM provider.",
+    )
+    parser.add_argument(
+        "--llm-chat-path",
+        default=os.getenv("QD_REPORT_LLM_CHAT_PATH") or os.getenv("QD_LLM_CHAT_PATH"),
+        help="OpenAI-compatible report chat path override.",
+    )
+    parser.add_argument(
+        "--llm-api-key-env",
+        default=os.getenv("QD_REPORT_LLM_API_KEY_ENV", "QD_REPORT_LLM_API_KEY"),
+        help="Environment variable name containing the external report LLM API token.",
+    )
+    parser.add_argument(
         "--mode",
         choices=("admin", "user"),
         default="admin",
         help="Report audience mode passed to query-doctor-report. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--language",
+        choices=SUPPORTED_REPORT_LANGUAGES,
+        default="en",
+        help="Report language passed to query-doctor-report. Default: %(default)s",
     )
     parser.add_argument(
         "--out",
@@ -318,8 +352,12 @@ def main(
         str(case_dir),
         "--model",
         args.model,
+        "--llm-provider",
+        args.llm_provider,
         "--mode",
         args.mode,
+        "--language",
+        args.language,
         "--out",
         args.out,
         "--keep-alive",
@@ -327,6 +365,12 @@ def main(
         "--validation-mode",
         args.report_validation_mode,
     ]
+    if args.llm_base_url:
+        report_cmd.extend(["--llm-base-url", args.llm_base_url])
+    if args.llm_chat_path:
+        report_cmd.extend(["--llm-chat-path", args.llm_chat_path])
+    if args.llm_api_key_env:
+        report_cmd.extend(["--llm-api-key-env", args.llm_api_key_env])
 
     if args.stop_other_models:
         report_cmd.append("--stop-other-models")

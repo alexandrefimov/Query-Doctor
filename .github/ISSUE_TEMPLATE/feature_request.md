@@ -51,4 +51,6 @@ What simpler workaround or narrower version should be considered?
 
 ## Notes
 
-Add links to public docs, sanitized examples, or synthetic cases only.
+Add links to public docs, sanitized examples, or synthetic cases only. Do not
+include real schema names, table names, query IDs, hostnames, screenshots, logs,
+generated reports, or local paths.

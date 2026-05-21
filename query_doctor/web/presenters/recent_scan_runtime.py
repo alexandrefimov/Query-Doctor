@@ -9,6 +9,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanCmMetricCorrelationView,
     RecentScanCmMetricSignalView,
     RecentScanCmMetricsView,
+    RecentScanQueryContextView,
     RecentScanRuntimeDiagnosisSignalView,
     RecentScanRuntimeDiagnosisView,
     RecentScanRuntimeVerdictView,
@@ -92,6 +93,44 @@ def present_recent_scan_cm_metrics(
         correlations=correlation_views,
         limitations=limitation_views,
     )
+
+
+def present_recent_scan_query_context(
+    query_context_facts: dict[str, Any] | None,
+) -> RecentScanQueryContextView:
+    if not query_context_facts:
+        return RecentScanQueryContextView(unavailable=True, summary_items=())
+    summary = query_context_facts.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    summary_items = tuple(
+        (label, safe_display_value(summary.get(key)))
+        for key, label in (
+            ("source", "source"),
+            ("status", "status"),
+            ("query_state", "query state"),
+            ("query_type", "query type"),
+            ("pool", "pool"),
+            ("start_time", "start time"),
+            ("end_time", "end time"),
+            ("duration", "duration"),
+            ("admission_result", "admission result"),
+            ("admission_wait", "admission wait"),
+            ("rows_produced", "rows produced"),
+            ("bytes_read", "bytes read"),
+            ("bytes_sent", "bytes sent"),
+            ("memory_aggregate_peak", "peak memory"),
+            ("memory_per_node_peak", "peak memory per node"),
+        )
+        if summary.get(key) is not None
+    )
+    available = str(summary.get("available") or "").strip().lower()
+    unavailable = (
+        available in {"no", "false", "0"}
+        or not summary_items
+        or all(value in {None, "", "unknown"} for _, value in summary_items)
+    )
+    return RecentScanQueryContextView(unavailable=unavailable, summary_items=summary_items)
 
 
 def present_recent_scan_runtime_diagnosis(

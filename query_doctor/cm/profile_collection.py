@@ -135,8 +135,13 @@ def write_collected_case(
     if cm_timeseries_context is not None:
         timeseries_text = json.dumps(cm_timeseries_context, indent=2, sort_keys=True) + "\n"
         (case_dir / "cm_timeseries_context.json").write_text(timeseries_text, encoding="utf-8")
-    if runtime_metrics_context is not None:
-        runtime_metrics_text = json.dumps(runtime_metrics_context, indent=2, sort_keys=True) + "\n"
+    canonical_runtime_context = (
+        runtime_metrics_context if runtime_metrics_context is not None else cm_timeseries_context
+    )
+    if canonical_runtime_context is not None:
+        runtime_metrics_text = (
+            json.dumps(canonical_runtime_context, indent=2, sort_keys=True) + "\n"
+        )
         (case_dir / "runtime_metrics_context.json").write_text(
             runtime_metrics_text, encoding="utf-8"
         )

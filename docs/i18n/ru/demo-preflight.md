@@ -1,6 +1,6 @@
 # Demo Preflight
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-21
 
 Язык: [English](../../demo-preflight.md) | Русский
 
@@ -22,5 +22,8 @@ deterministic preflight перед demo или release cleanup.
 
 Preflight не вызывает LLM, network, Cloudera Manager или Impala. Он не заменяет
 human review, но ловит частые ошибки до commit/release.
+
+Для final public release readiness не используйте быстрый `--skip-history`:
+history scan должен пройти полностью.
 
 Подробности: [английский demo-preflight](../../demo-preflight.md).

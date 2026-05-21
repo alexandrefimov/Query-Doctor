@@ -64,6 +64,22 @@ class RecommendationOutcomeMetric:
     min_applied: int
 
 
+@dataclass(frozen=True)
+class WorkloadOutcomeMetric:
+    workload_fingerprint: str
+    total_records: int
+    applied_count: int
+    not_applied_count: int
+    skipped_count: int
+    improved_count: int
+    no_change_count: int
+    worsened_count: int
+    unsure_count: int
+    last_recommendation_id: str
+    last_applied: str
+    last_outcome: str
+
+
 def action_outcomes_path() -> Path:
     configured = os.environ.get(OUTCOME_PATH_ENV)
     if configured:
@@ -216,6 +232,14 @@ def action_outcome_metrics_by_recommendation(
     }
 
 
+def workload_outcome_metrics_by_fingerprint(
+    *,
+    path: Path | None = None,
+    limit: int = DEFAULT_METRIC_LOAD_LIMIT,
+) -> dict[str, WorkloadOutcomeMetric]:
+    return summarize_workload_action_outcomes(load_action_outcomes(path=path, limit=limit))
+
+
 def summarize_action_outcomes(
     records: list[ActionOutcomeRecord],
     *,
@@ -245,6 +269,28 @@ def summarize_action_outcomes(
     )
 
 
+def summarize_workload_action_outcomes(
+    records: list[ActionOutcomeRecord],
+) -> dict[str, WorkloadOutcomeMetric]:
+    grouped: dict[str, list[ActionOutcomeRecord]] = {}
+    for record in records:
+        workload_fingerprint = safe_workload_fingerprint(record.workload_fingerprint)
+        if (
+            workload_fingerprint
+            and recommendation_id_allowed(record.recommendation_id)
+            and record.applied in ALLOWED_APPLIED
+            and record.outcome in ALLOWED_OUTCOMES
+        ):
+            grouped.setdefault(workload_fingerprint, []).append(record)
+    return {
+        workload_fingerprint: workload_outcome_metric(
+            workload_fingerprint=workload_fingerprint,
+            records=group_records,
+        )
+        for workload_fingerprint, group_records in grouped.items()
+    }
+
+
 def recommendation_outcome_metric(
     *,
     recommendation_id: str,
@@ -270,6 +316,65 @@ def recommendation_outcome_metric(
         min_sample_met=applied_count >= min_applied,
         min_applied=min_applied,
     )
+
+
+def workload_outcome_metric(
+    *,
+    workload_fingerprint: str,
+    records: list[ActionOutcomeRecord],
+) -> WorkloadOutcomeMetric:
+    applied_counts = Counter(record.applied for record in records)
+    outcome_counts = Counter(record.outcome for record in records if record.applied == "yes")
+    last_record = records[-1]
+    return WorkloadOutcomeMetric(
+        workload_fingerprint=workload_fingerprint,
+        total_records=len(records),
+        applied_count=applied_counts.get("yes", 0),
+        not_applied_count=applied_counts.get("no", 0),
+        skipped_count=applied_counts.get("skip", 0),
+        improved_count=outcome_counts.get("improved", 0),
+        no_change_count=outcome_counts.get("no_change", 0),
+        worsened_count=outcome_counts.get("worsened", 0),
+        unsure_count=outcome_counts.get("unsure", 0),
+        last_recommendation_id=last_record.recommendation_id,
+        last_applied=last_record.applied,
+        last_outcome=last_record.outcome,
+    )
+
+
+def workload_outcome_summary_text(metric: WorkloadOutcomeMetric | None) -> str:
+    if metric is None or metric.total_records <= 0:
+        return "none"
+    outcome_parts = []
+    for label, count in (
+        ("improved", metric.improved_count),
+        ("no change", metric.no_change_count),
+        ("worsened", metric.worsened_count),
+        ("unsure", metric.unsure_count),
+    ):
+        if count > 0:
+            outcome_parts.append(f"{label} {count}")
+    outcome_summary = ", ".join(outcome_parts) if outcome_parts else "no applied outcomes"
+    last_label = safe_recommendation_label(metric.last_recommendation_id)
+    last_outcome = workload_last_outcome_label(metric)
+    return (
+        f"{metric.total_records} recorded; {metric.applied_count} applied; "
+        f"{outcome_summary}; last {last_label}: {last_outcome}"
+    )
+
+
+def workload_last_outcome_label(metric: WorkloadOutcomeMetric) -> str:
+    if metric.last_applied == "no":
+        return "not applied"
+    if metric.last_applied == "skip":
+        return "skipped"
+    return {
+        "improved": "improved",
+        "no_change": "no change",
+        "worsened": "worsened",
+        "unsure": "unsure",
+        "not_applicable": "not applicable",
+    }.get(metric.last_outcome, "unknown")
 
 
 def parse_action_outcome_line(line: str) -> ActionOutcomeRecord | None:

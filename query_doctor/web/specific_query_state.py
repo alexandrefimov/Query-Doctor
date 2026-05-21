@@ -12,6 +12,7 @@ from query_doctor.web.details_facts import (
     load_specific_query_cluster_runtime_context_facts,
     load_specific_query_evidence_quality_facts,
     load_specific_query_metadata_facts,
+    load_specific_query_query_context_facts,
     load_specific_query_runtime_diagnosis_facts,
     load_specific_query_runtime_metrics_facts,
     load_specific_query_stats_quality_facts,
@@ -91,6 +92,7 @@ def build_specific_query_detail_render_context(
     evidence_quality_facts = load_specific_query_evidence_quality_facts(case_dir)
     stats_quality_facts = load_specific_query_stats_quality_facts(case_dir)
     runtime_metrics_facts = load_specific_query_runtime_metrics_facts(case_dir)
+    query_context_facts = load_specific_query_query_context_facts(case_dir)
     runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
     cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
     artifacts = load_specific_query_trusted_detail_artifacts(
@@ -113,6 +115,7 @@ def build_specific_query_detail_render_context(
         cluster_runtime_context_facts,
         evidence_quality_facts,
         stats_quality_facts,
+        query_context_facts,
         report_state=report_state,
     )
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")

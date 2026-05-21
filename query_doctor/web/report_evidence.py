@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from query_doctor.case_metadata import QUERY_METADATA_FILENAMES
 from query_doctor.web.case_files import case_has_any_artifact, case_relative_file_path
 from query_doctor.web.command_builders import BATCH_REPORT_NAME
 
@@ -41,14 +42,14 @@ REPORT_ARTIFACT_CANDIDATES = (
     ("Impala metadata", ("impala_context.md",)),
     ("Impala metadata JSON", ("impala_context.json",)),
     ("CM query details", ("cm_query_details.json",)),
-    ("CM metadata", ("cm_metadata.json",)),
+    ("Query metadata", QUERY_METADATA_FILENAMES),
     ("Collection warnings", ("collection_warnings.txt",)),
 )
 REPORT_EVIDENCE_COMPLETENESS_GROUPS = (
     ("Profile", ("profile_digest.md", "profile.txt", "profile.json")),
     ("SQL", ("sql.sql", "query.sql", "original_query.sql")),
     ("EXPLAIN", ("explain.txt",)),
-    ("Metadata", ("impala_context.md", "impala_context.json")),
+    ("Metadata", ("impala_context.md", "impala_context.json", *QUERY_METADATA_FILENAMES)),
     ("Host metrics", ()),
 )
 

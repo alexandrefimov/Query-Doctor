@@ -35,9 +35,12 @@ What happened instead?
 ## Reproduction
 
 List the smallest local reproduction steps using sanitized or synthetic inputs.
+Use the synthetic demo pack when possible. Do not attach real cluster
+screenshots, generated reports, logs, profiles, metadata dumps, or browser
+captures.
 
 ```bash
-# commands, with secrets and raw production inputs removed
+# sanitized commands only; do not paste subprocess output from a real cluster
 ```
 
 ## Environment
@@ -53,4 +56,5 @@ List the smallest local reproduction steps using sanitized or synthetic inputs.
 Do not include raw production SQL, raw profiles, raw metadata, hostnames,
 usernames, local paths, credentials, tokens, Authorization headers, Kerberos
 ticket data, subprocess output, raw artifact filenames, or model/runtime
-internals.
+internals. If reproduction requires those details, use the private vulnerability
+flow or describe the boundary without the payload.

@@ -183,11 +183,15 @@ from query_doctor.report.recommendations import (
 )
 from query_doctor.report.llm_client import (
     DEFAULT_KEEP_ALIVE,
+    DEFAULT_LLM_API_BASE_URL,
+    DEFAULT_LLM_PROVIDER,
     DEFAULT_OLLAMA_URL,
+    LLM_PROVIDER_CHOICES,
+    LLM_PROVIDER_OLLAMA,
     PROGRESS_PREFIX,
     StreamedLLMResponse,
     ollama_chat_url,
-    stream_ollama_report_with_meta as _stream_ollama_report_with_meta,
+    stream_llm_report_with_meta as _stream_llm_report_with_meta,
 )
 
 
@@ -271,7 +275,11 @@ INCOMPLETE_TRAILING_CHARS = {",", ".", "(", "+", "-", "*", "/", "=", "<", ">"}
 
 
 def stream_ollama_report(**kwargs: object) -> StreamedLLMResponse | str:
-    return _stream_ollama_report_with_meta(**kwargs)  # type: ignore[arg-type]
+    if "provider" not in kwargs:
+        kwargs["provider"] = LLM_PROVIDER_OLLAMA
+    if "base_url" not in kwargs and "ollama_url" in kwargs:
+        kwargs["base_url"] = kwargs.pop("ollama_url")
+    return _stream_llm_report_with_meta(**kwargs)  # type: ignore[arg-type]
 
 
 def stream_optimizer_response(**kwargs: object) -> StreamedLLMResponse:
@@ -333,7 +341,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("case_dir")
     parser.add_argument("--out", default=OUTPUT_NAME)
     parser.add_argument("--model", default=DEFAULT_OPTIMIZER_MODEL)
-    parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
+    parser.add_argument(
+        "--llm-provider",
+        choices=LLM_PROVIDER_CHOICES,
+        default=os.getenv("QD_OPTIMIZER_LLM_PROVIDER", DEFAULT_LLM_PROVIDER),
+    )
+    parser.add_argument(
+        "--llm-base-url",
+        default=(
+            os.getenv("QD_OPTIMIZER_LLM_API_BASE_URL")
+            or os.getenv("QD_OPTIMIZER_LLM_BASE_URL")
+            or DEFAULT_LLM_API_BASE_URL
+            or os.getenv("QD_LLM_BASE_URL")
+        ),
+    )
+    parser.add_argument(
+        "--llm-chat-path",
+        default=os.getenv("QD_OPTIMIZER_LLM_CHAT_PATH") or os.getenv("QD_LLM_CHAT_PATH"),
+    )
+    parser.add_argument(
+        "--llm-api-key-env",
+        default=os.getenv("QD_OPTIMIZER_LLM_API_KEY_ENV", "QD_OPTIMIZER_LLM_API_KEY"),
+    )
+    parser.add_argument("--ollama-url", default=None)
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--keep-alive", default=DEFAULT_KEEP_ALIVE)
     parser.add_argument(
@@ -342,6 +372,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Use only Python-owned deterministic rewrites or recommendations; do not call Ollama.",
     )
     return parser.parse_args(argv)
+
+
+def effective_llm_base_url(args: argparse.Namespace) -> str:
+    if args.llm_provider == LLM_PROVIDER_OLLAMA:
+        return args.llm_base_url or args.ollama_url or DEFAULT_OLLAMA_URL
+    return args.llm_base_url
 
 
 def resolve_optimizer_case_dir(case_dir: Path) -> Path:
@@ -514,14 +550,22 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text=facts_text,
                 risk_decision=risk_decision,
             )
-            print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
+            print(f"{PROGRESS_PREFIX} llm provider: {args.llm_provider}", file=sys.stderr)
+            if args.llm_provider == LLM_PROVIDER_OLLAMA:
+                print(
+                    f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(effective_llm_base_url(args))}",
+                    file=sys.stderr,
+                )
             response = stream_optimizer_response(
+                provider=args.llm_provider,
                 prompt=recommendations_prompt,
                 model=args.model,
-                ollama_url=args.ollama_url,
+                base_url=effective_llm_base_url(args),
                 temperature=optimizer_temperature(args.temperature, risk_decision),
                 keep_alive=args.keep_alive,
                 num_predict=OPTIMIZER_NUM_PREDICT,
+                api_key_env=args.llm_api_key_env,
+                chat_path=args.llm_chat_path,
             )
             generated = response.text
             normalized_recommendations = normalize_optimizer_recommendations_with_telemetry(
@@ -613,14 +657,22 @@ def main(argv: list[str] | None = None) -> int:
             facts_text=facts_text,
             risk_decision=risk_decision,
         )
-        print(f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(args.ollama_url)}", file=sys.stderr)
+        print(f"{PROGRESS_PREFIX} llm provider: {args.llm_provider}", file=sys.stderr)
+        if args.llm_provider == LLM_PROVIDER_OLLAMA:
+            print(
+                f"{PROGRESS_PREFIX} ollama: {ollama_chat_url(effective_llm_base_url(args))}",
+                file=sys.stderr,
+            )
         response = stream_optimizer_response(
+            provider=args.llm_provider,
             prompt=prompt,
             model=args.model,
-            ollama_url=args.ollama_url,
+            base_url=effective_llm_base_url(args),
             temperature=optimizer_temperature(args.temperature, risk_decision),
             keep_alive=args.keep_alive,
             num_predict=OPTIMIZER_NUM_PREDICT,
+            api_key_env=args.llm_api_key_env,
+            chat_path=args.llm_chat_path,
         )
         generated = response.text
         generation_metadata = llm_generation_metadata(

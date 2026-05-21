@@ -10,15 +10,16 @@ assignees: ""
 
 Do not paste secrets, raw production SQL, raw profiles, raw metadata, raw CM
 JSON, local paths, hostnames, usernames, emails, tokens, cookies, Authorization
-headers, Kerberos ticket data, or private cluster details.
+headers, Kerberos ticket data, screenshots, logs, generated reports, browser
+captures, or private cluster details.
 
 Use GitHub's private "Report a vulnerability" flow for exploitable
 vulnerabilities. Use this public template only for sanitized safety concerns
 that do not disclose an exploitable issue or private operational data.
 
 If you are unsure whether the issue is exploitable or contains private
-operational details, use the private vulnerability flow instead of a public
-issue.
+operational details, screenshots, logs, reports, or generated artifacts, use the
+private vulnerability flow instead of a public issue.
 
 ## Summary
 
@@ -41,7 +42,7 @@ What safety boundary may be affected?
 Describe the issue using synthetic placeholders only.
 
 ```text
-example_db.example_table
+synthetic_db.synthetic_table
 synthetic_query_id
 [local path hidden]
 [secret hidden]

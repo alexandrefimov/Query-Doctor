@@ -93,6 +93,7 @@ def render_specific_query_detail_page(
                 ),
                 optimizer_manual_guidance=render_context.optimizer_manual_guidance,
                 optimizer_validation_result=render_context.optimizer_validation_result,
+                language=settings.language,
             )
         ],
     )

@@ -10,6 +10,7 @@ def test_recent_scan_facade_renderers_are_available():
 def test_recent_scan_results_helpers_are_available():
     assert callable(recent_scan_results.render_batch_summary)
     assert recent_scan_results.normalize_query_group("stats") == "stats"
+    assert recent_scan_results.normalize_query_group("workloads") == "workloads"
     assert (
         recent_scan_results.normalize_query_group("missing")
         == recent_scan_results.DEFAULT_QUERY_GROUP

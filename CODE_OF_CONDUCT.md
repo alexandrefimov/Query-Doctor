@@ -10,16 +10,16 @@ systems.
 - Focus criticism on code, documentation, tests, safety boundaries, and product
   behavior.
 - Use sanitized examples only. Do not post raw production SQL, profiles,
-  metadata, hostnames, users, credentials, local paths, or private cluster
-  details.
+  metadata, hostnames, users, credentials, local paths, screenshots, logs,
+  generated reports, or private cluster details.
 - Assume maintainers will choose conservative safety behavior over convenience
   when trust boundaries are involved.
 
 ## Unacceptable Behavior
 
 - Harassment, insults, threats, or discriminatory language.
-- Publishing or requesting secrets, raw production diagnostics, or private
-  operational data.
+- Publishing or requesting secrets, raw production diagnostics, screenshots,
+  logs, generated reports, or private operational data.
 - Pressuring maintainers to weaken validators, redaction, read-only collection,
   or browser/report safety controls without a reviewed safety design.
 - Repeated off-topic or promotional comments.

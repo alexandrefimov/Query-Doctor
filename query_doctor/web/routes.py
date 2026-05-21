@@ -50,6 +50,7 @@ from query_doctor.web.trusted_artifacts import (
     load_specific_query_trusted_report_artifact,
     trusted_report_download_filename,
 )
+from query_doctor.web.workload_pages import render_workload_detail_for_request
 from query_doctor.web.ui.help import render_demo_guide_page, render_help_page
 from query_doctor.web.ui.optimizer import render_optimizer_page
 from query_doctor.web.ui.outcomes import render_action_outcomes_page
@@ -133,6 +134,11 @@ def route_get_request(
                 batch_page_settings(settings, store),
                 query_group=first_form_value(query, "query_group"),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                workload_admin_scope=first_form_value(query, "workload_admin_scope"),
+                workload_admin_signal=first_form_value(query, "workload_admin_signal"),
+                workload_group_scope=first_form_value(query, "workload_group_scope"),
+                workload_group_name=first_form_value(query, "workload_group_name"),
+                workload_group_signal=first_form_value(query, "workload_group_signal"),
             ),
         )
     static_response = route_static_asset_get(parsed.path)
@@ -141,6 +147,9 @@ def route_get_request(
     batch_detail = route_batch_detail_get(parsed.path, settings, store)
     if batch_detail is not None:
         return batch_detail
+    workload_detail = route_workload_detail_get(parsed.path, settings, store)
+    if workload_detail is not None:
+        return workload_detail
     specific_detail = route_specific_detail_get(parsed.path, settings, store)
     if specific_detail is not None:
         return specific_detail
@@ -156,6 +165,11 @@ def route_get_request(
                 running_page_settings(settings, store),
                 query_group=first_form_value(query, "query_group"),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                workload_admin_scope=first_form_value(query, "workload_admin_scope"),
+                workload_admin_signal=first_form_value(query, "workload_admin_signal"),
+                workload_group_scope=first_form_value(query, "workload_group_scope"),
+                workload_group_name=first_form_value(query, "workload_group_name"),
+                workload_group_signal=first_form_value(query, "workload_group_signal"),
             ),
         )
     if parsed.path == "/help":
@@ -255,6 +269,24 @@ def route_batch_detail_get(
     return None
 
 
+def route_workload_detail_get(
+    path: str,
+    settings: WebSettings,
+    store: WebJobStore,
+) -> WebRouteResponse | None:
+    match = re.fullmatch(r"/(?P<source>batch|running)/workload/(?P<fingerprint>[^/]+)", path)
+    if not match:
+        return None
+    source = match.group("source")
+    status, body = render_workload_detail_for_request(
+        settings,
+        match.group("fingerprint"),
+        store,
+        source="running" if source == "running" else "batch",
+    )
+    return WebRouteResponse.html(status, body)
+
+
 def route_specific_detail_get(
     path: str,
     settings: WebSettings,
@@ -321,6 +353,11 @@ def route_job_get(
                 job=job,
                 query_group=first_form_value(query, "query_group"),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                workload_admin_scope=first_form_value(query, "workload_admin_scope"),
+                workload_admin_signal=first_form_value(query, "workload_admin_signal"),
+                workload_group_scope=first_form_value(query, "workload_group_scope"),
+                workload_group_name=first_form_value(query, "workload_group_name"),
+                workload_group_signal=first_form_value(query, "workload_group_signal"),
             ),
         )
     if job.kind == "running":
@@ -331,6 +368,11 @@ def route_job_get(
                 job=job,
                 query_group=first_form_value(query, "query_group"),
                 only_with_spills=form_flag_enabled(query, "only_with_spills"),
+                workload_admin_scope=first_form_value(query, "workload_admin_scope"),
+                workload_admin_signal=first_form_value(query, "workload_admin_signal"),
+                workload_group_scope=first_form_value(query, "workload_group_scope"),
+                workload_group_name=first_form_value(query, "workload_group_name"),
+                workload_group_signal=first_form_value(query, "workload_group_signal"),
             ),
         )
     if job.kind in {"batch_report", "batch_llm_actions", "batch_optimized_query"}:

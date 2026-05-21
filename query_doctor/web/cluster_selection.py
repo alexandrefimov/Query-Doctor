@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from typing import Mapping
 
 from query_doctor.cm.metrics_catalog import DEFAULT_CM_METRICS_PROFILE, normalize_cm_metrics_profile
+from query_doctor.source_visibility import (
+    SOURCE_VISIBILITY_SAFE,
+    normalize_source_owner_user,
+    normalize_source_visibility,
+    source_owner_user_from_env,
+)
 from query_doctor.web.models import (
     DEFAULT_IMPALA_PROFILE_PORT,
     DEFAULT_IMPALA_PROFILE_SCHEME,
@@ -17,6 +24,7 @@ from query_doctor.web.models import (
     DEFAULT_PROMETHEUS_STEP_SEC,
     DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
     DEFAULT_QUERY_PROFILE_SOURCE,
+    DEFAULT_RECENT_SCAN_TIMEZONE,
     WebClusterConfig,
     WebError,
     WebSettings,
@@ -73,6 +81,20 @@ def build_web_cluster_config(
         )
     )
     privacy_mode = first_bool(values, defaults, "privacy_mode", default=True)
+    source_visibility = normalize_source_visibility(
+        first_string(
+            string_value(values, "source_visibility"),
+            string_value(defaults, "source_visibility"),
+            SOURCE_VISIBILITY_SAFE,
+        )
+    )
+    source_owner_user = normalize_source_owner_user(
+        first_string(
+            string_value(values, "source_owner_user"),
+            string_value(defaults, "source_owner_user"),
+            source_owner_user_from_env(dict(os.environ)),
+        )
+    )
     return WebClusterConfig(
         key=key,
         label=label,
@@ -180,10 +202,18 @@ def build_web_cluster_config(
         privacy_mode=privacy_mode,
         redact_identifiers=first_bool(values, defaults, "redact_identifiers", default=privacy_mode),
         redact_hosts=first_bool(values, defaults, "redact_hosts", default=privacy_mode),
+        source_visibility=source_visibility,
+        source_owner_user=source_owner_user,
         krb5ccname=first_string(
             string_value(values, "krb5ccname"),
             string_value(defaults, "krb5ccname"),
         ),
+        recent_scan_timezone=first_string(
+            string_value(values, "recent_scan_timezone"),
+            string_value(defaults, "recent_scan_timezone"),
+            DEFAULT_RECENT_SCAN_TIMEZONE,
+        )
+        or DEFAULT_RECENT_SCAN_TIMEZONE,
     )
 
 
@@ -332,7 +362,10 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 privacy_mode=cluster.privacy_mode,
                 redact_identifiers=cluster.redact_identifiers,
                 redact_hosts=cluster.redact_hosts,
+                source_visibility=cluster.source_visibility,
+                source_owner_user=cluster.source_owner_user or settings.source_owner_user,
                 krb5ccname=cluster.krb5ccname,
+                recent_scan_timezone=cluster.recent_scan_timezone,
             )
     raise WebError("Selected cluster is not configured in local config.")
 

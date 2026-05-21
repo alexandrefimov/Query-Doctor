@@ -2,12 +2,16 @@ import json
 from pathlib import Path
 
 from query_doctor.web.models import WebSettings
+from query_doctor.web.details_facts import load_case_analysis_query_context_facts
 from query_doctor.web.trusted_artifacts import (
     batch_case_validated_report_exists,
     load_validated_optimizer_recommendations,
     optimized_query_validated_exists,
     resolve_batch_case_report_dir,
 )
+from query_doctor.web.presenters.recent_scan import present_recent_scan_case_detail
+from query_doctor.web.ui.action_candidates import render_action_candidate_findings
+from query_doctor.web.ui.recent_scan_details import render_recent_scan_case_detail_view
 from query_doctor.web.ui.recent_scan_results import render_batch_summary
 
 
@@ -66,6 +70,60 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
         encoding="utf-8"
     )
     assert (Path(cases[2]["case_dir"]) / "optimized_query.partial.txt").is_file()
+
+
+def test_generated_demo_optimizer_case_renders_safe_review_locations(tmp_path):
+    module = load_demo_module()
+    out_dir = tmp_path / "query-doctor-demo-pack"
+    module.main(["--out", str(out_dir)])
+    summary = json.loads((out_dir / "batch_summary.json").read_text(encoding="utf-8"))
+
+    view = present_recent_scan_case_detail("case-001", summary["cases"][0])
+    html = render_action_candidate_findings(view)
+
+    assert "Where to look" in html
+    assert "SQL: final SELECT filter (line 9): predicate near final SELECT" in html
+    assert "Plan: estimate-mismatch operator: node 03 HASH JOIN (inner join, partitioned)" in html
+    assert "What to change" in html
+    assert "Try to reduce rows earlier: move the final SELECT filter closer" in html
+    assert str(out_dir) not in html
+    assert "original_query.sql" not in html
+    assert "SELECT segment" not in html
+
+
+def test_generated_demo_details_renders_safe_query_context(tmp_path):
+    module = load_demo_module()
+    out_dir = tmp_path / "query-doctor-demo-pack"
+    module.main(["--out", str(out_dir)])
+    summary = json.loads((out_dir / "batch_summary.json").read_text(encoding="utf-8"))
+    case = summary["cases"][0]
+
+    query_context_facts = load_case_analysis_query_context_facts(Path(case["case_dir"]))
+    view = present_recent_scan_case_detail(
+        "case-001",
+        case,
+        query_context_facts=query_context_facts,
+    )
+    html = render_recent_scan_case_detail_view(view)
+
+    assert query_context_facts is not None
+    assert query_context_facts["summary"]["available"] == "yes"
+    assert query_context_facts["summary"]["start_time"] == "2026-05-21T09:04:00Z"
+    assert query_context_facts["summary"]["admission_wait"] == "4.20s"
+    assert query_context_facts["summary"]["bytes_read"] == "148.00 GiB"
+    assert query_context_facts["summary"]["memory_aggregate_peak"] == "36.00 GiB"
+    assert "query window" in html
+    assert "2026-05-21T09:04:00Z to 2026-05-21T09:09:15Z" in html
+    assert "admission wait" in html
+    assert "4.20s" in html
+    assert "resource footprint" in html
+    assert "read 148.00 GiB; peak memory 36.00 GiB" in html
+    assert "When and how much?" in html
+    assert "Queue or cluster?" in html
+    assert "Diagnostic questions" in html
+    assert str(out_dir) not in html
+    assert "original_query.sql" not in html
+    assert "SELECT segment" not in html
 
 
 def test_demo_pack_launch_instructions_use_console_script(tmp_path, capsys):

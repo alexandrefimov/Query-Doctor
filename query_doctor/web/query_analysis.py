@@ -55,7 +55,7 @@ MISSING_CM_CREDENTIALS_MESSAGE = (
 )
 MISSING_IMPALA_PROFILE_SOURCE_MESSAGE = (
     "Impala profile source is not configured for this web session. Add "
-    "impala_profile_hosts to the local config or switch query_profile_source back to cm."
+    "impala_profile_hosts to the local config or switch cluster_type back to cm."
 )
 ProgressFunc = Callable[[int], None]
 

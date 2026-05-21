@@ -33,6 +33,7 @@ from query_doctor.safety.browser_display import redact_local_paths_for_display
 from query_doctor.web.case_files import (
     case_has_any_artifact,
     case_relative_file_path,
+    query_metadata_file_path,
     read_case_relative_text,
 )
 from query_doctor.web.report_evidence import (
@@ -417,7 +418,7 @@ def case_has_safe_source_sql(case_dir: Path) -> bool:
         return True
     except (OSError, OptimizerSqlError, QueryOptimizationError):
         pass
-    metadata_path = case_relative_file_path(case_dir, "cm_metadata.json")
+    metadata_path = query_metadata_file_path(case_dir)
     if metadata_path is None:
         return False
     try:

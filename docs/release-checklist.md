@@ -42,6 +42,7 @@ If you need to run the gate manually, use:
 DEMO_OUT="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 python scripts/agent_preflight.py
 python scripts/check_staged_public_safety.py
+pre-commit run --all-files
 git diff --check
 python scripts/check_active_docs.py
 python scripts/check_markdown_links.py
@@ -60,7 +61,7 @@ public branch.
 The demo pack smoke verifies that the public synthetic demo can be generated
 without LLM, network, Cloudera Manager, Impala, or private artifacts. The demo
 report must remain English by default; localized report output should be
-available only through explicit language selection.
+available only through the explicit `language` config selection.
 
 ## CI Parity
 
@@ -95,7 +96,7 @@ when fast PR CI is green.
 Confirm public docs state only implemented behavior:
 
 - Apache Impala is the only implemented query engine.
-- Current Cloudera Manager collection is validated against the local CM 6.2.1
+- Current Cloudera Manager collection is validated against the maintained test
   environment.
 - Direct Impala daemon collection supports bounded Recent and Running scans
   plus one explicit Known Query ID, without Cloudera Manager events.
@@ -106,6 +107,11 @@ Confirm public docs state only implemented behavior:
 - Query Optimizer is read-only and does not execute pasted query text.
 - Validated reports and details-page optimizer drafts are explicit selected-case
   actions.
+- README and demo runbooks use the current synthetic demo pack flow:
+  `query-doctor-demo` writes to a dedicated `query-doctor-*` temp directory and
+  `query-doctor-web` opens that pack through `--batch-summary`.
+- README screenshots are refreshed from the synthetic demo pack before tagging
+  any release that includes material web UI layout changes.
 - Public issue and PR templates route sensitive data away from public issues and
   remind contributors of the safety contract.
 
@@ -147,6 +153,12 @@ TestPyPI and PyPI Trusted Publishing. Keep the one-time setup below in place and
 recheck it before changing publisher settings, repository ownership, workflow
 names, or environment names.
 
+Pre-release audits may update checklist wording, package metadata validation,
+or release automation before the final release candidate. Do not bump
+`pyproject.toml` / `setup.py`, cut a tag, publish to TestPyPI, or publish to
+PyPI until all planned product and documentation changes for the release are
+merged and the final release candidate is selected.
+
 One-time package-index setup:
 
 - Confirm the PyPI project is [query-doctor](https://pypi.org/project/query-doctor/).
@@ -166,6 +178,8 @@ One-time package-index setup:
 Before every PyPI release:
 
 - Bump the package version in `pyproject.toml` and `setup.py` together.
+- Confirm `python -m pytest -q tests/test_pyproject.py` passes so legacy
+  editable-install metadata still matches `pyproject.toml`.
 - Run the release gate from a clean synced branch:
 
 ```bash

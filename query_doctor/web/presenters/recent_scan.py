@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 import re
 from typing import Any
 
+from query_doctor.web.action_outcomes import (
+    WorkloadOutcomeMetric,
+    workload_outcome_summary_text,
+)
 from query_doctor.web.presenters.recent_scan_models import (
     RecentScanActionCandidateCardView,
     RecentScanActionCandidatesView,
     RecentScanCaseDetailView,
-    RecentScanCaseOverviewCardView,
-    RecentScanCaseOverviewView,
     RecentScanCaseRowView,
     RecentScanClusterRuntimeContextView,
     RecentScanCmMetricCorrelationView,
@@ -26,12 +29,18 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanRuntimeVerdictView,
     RecentScanScoreReasonView,
     RecentScanScoreReasonsView,
+    RecentScanSourceLocatorView,
     RecentScanStatusCardView,
     RecentScanStatusSummaryView,
     RecentScanSummaryView,
     RecentScanTechnicalDetailsView,
+    RecentScanWorkloadAdminDigestEntryView,
+    RecentScanWorkloadActionQueueEntryView,
+    RecentScanWorkloadDigestEntryView,
+    RecentScanWorkloadDigestView,
     RecentScanWorkloadGroupView,
     RecentScanWorkloadGroupsView,
+    RecentScanWorkloadHistoryView,
     ReportActionView,
 )
 from query_doctor.web.job_progress import JobProgressView
@@ -78,12 +87,13 @@ from query_doctor.web.presenters.recent_scan_metadata import (
 from query_doctor.web.presenters.recent_scan_action_candidates import (
     present_recent_scan_action_candidates,
 )
-from query_doctor.web.presenters.recent_scan_overview import (
-    present_recent_scan_case_overview,
+from query_doctor.web.presenters.recent_scan_diagnostic_facts import (
+    present_recent_scan_diagnostic_facts,
 )
 from query_doctor.web.presenters.recent_scan_runtime import (
     present_recent_scan_cluster_runtime_context,
     present_recent_scan_cm_metrics,
+    present_recent_scan_query_context,
     present_recent_scan_runtime_diagnosis,
     present_recent_scan_runtime_verdict,
 )
@@ -99,7 +109,11 @@ from query_doctor.web.presenters.recent_scan_technical import (
 )
 
 
-def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryView:
+def present_recent_scan_summary(
+    summary: dict[str, Any],
+    *,
+    workload_outcome_metrics: dict[str, WorkloadOutcomeMetric] | None = None,
+) -> RecentScanSummaryView:
     cases = summary.get("cases")
     raw_cases = (
         [case for case in cases if isinstance(case, dict)] if isinstance(cases, list) else []
@@ -132,10 +146,17 @@ def present_recent_scan_summary(summary: dict[str, Any]) -> RecentScanSummaryVie
         ("CM inspected", safe_display_value(summary.get("summaries_inspected"))),
         ("metadata", metadata_count),
     )
+    workload_groups = present_workload_groups(summary)
     return RecentScanSummaryView(
         header_items=header_items,
         rows=rows,
-        workload_groups=present_workload_groups(summary),
+        workload_groups=workload_groups,
+        workload_history=present_workload_history(summary),
+        workload_digest=present_workload_digest(
+            workload_groups,
+            rows,
+            workload_outcome_metrics=workload_outcome_metrics,
+        ),
         scope_parts=recent_scan_scope_parts(summary),
         empty_message=recent_scan_empty_message(summary, case_count=len(rows)),
         warning_messages=recent_scan_warning_messages(summary),
@@ -167,6 +188,25 @@ def optimizer_funnel_header_counts(rows: tuple[RecentScanCaseRowView, ...]) -> t
 
 WORKLOAD_FINGERPRINT_RE = re.compile(r"^wf_[0-9a-f]{24}$")
 WORKLOAD_TABLE_RE = re.compile(r"^[a-z_][a-z0-9_$]*(?:\.[a-z_][a-z0-9_$]*){0,2}$")
+
+SOURCE_LOCATOR_GROUPS = {"query_optimization", "stats_refresh", "runtime_admission"}
+SOURCE_LOCATOR_LABELS = {
+    "metadata_referenced_stats": ("metadata", "Metadata: referenced table stats"),
+    "metadata_table_stats": ("metadata", "Metadata: table stats status"),
+    "plan_cardinality_anomaly": ("plan", "Plan: estimate-mismatch operator"),
+    "plan_data_movement_operator": ("plan", "Plan: data movement operator"),
+    "plan_memory_anomaly": ("plan", "Plan: memory-pressure operator"),
+    "plan_top_time_operator": ("plan", "Plan: top-time operator"),
+    "runtime_admission_window": ("runtime", "Runtime: admission and pool timeline"),
+    "sql_cte_block": ("sql", "SQL: CTE block"),
+    "sql_derived_table": ("sql", "SQL: derived table"),
+    "sql_downstream_cte_filter": ("sql", "SQL: downstream CTE filter"),
+    "sql_final_select_filter": ("sql", "SQL: final SELECT filter"),
+    "sql_join_filter_review": ("sql", "SQL: join/filter placement"),
+    "sql_mixed_downstream_filters": ("sql", "SQL: mixed downstream filters"),
+    "sql_union_branch": ("sql", "SQL: UNION branch"),
+}
+STATUS_ISSUE_STATUSES = {"failed", "cancelled", "canceled"}
 
 
 def present_workload_groups(summary: dict[str, Any]) -> RecentScanWorkloadGroupsView:
@@ -221,6 +261,632 @@ def present_workload_groups(summary: dict[str, Any]) -> RecentScanWorkloadGroups
             )
         )
     return RecentScanWorkloadGroupsView(groups=tuple(groups))
+
+
+def present_workload_history(summary: dict[str, Any]) -> RecentScanWorkloadHistoryView | None:
+    payload = summary.get("workload_history")
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        return None
+    regression_counts = payload.get("regression_counts")
+    safe_counts: list[tuple[str, int]] = []
+    if isinstance(regression_counts, dict):
+        for label in ("strong", "mild", "none", "unknown"):
+            count = numeric_count(regression_counts.get(label))
+            if count > 0:
+                safe_counts.append((label, count))
+    append_status = str(payload.get("append_status") or "unknown").strip().lower()
+    if append_status not in {"ok", "empty", "failed", "unknown"}:
+        append_status = "unknown"
+    return RecentScanWorkloadHistoryView(
+        enabled=safe_truthy(payload.get("enabled")),
+        loaded_record_count=numeric_count(payload.get("loaded_record_count")),
+        appended_record_count=numeric_count(payload.get("appended_record_count")),
+        append_status=append_status,
+        regression_counts=tuple(safe_counts),
+    )
+
+
+def present_workload_digest(
+    groups: RecentScanWorkloadGroupsView,
+    rows: tuple[RecentScanCaseRowView, ...],
+    *,
+    limit: int = 3,
+    workload_outcome_metrics: dict[str, WorkloadOutcomeMetric] | None = None,
+) -> RecentScanWorkloadDigestView:
+    workload_outcome_metrics = workload_outcome_metrics or {}
+    grouped_rows = {
+        group.fingerprint: tuple(
+            row for row in rows if row.workload_fingerprint == group.fingerprint
+        )
+        for group in groups.groups
+    }
+    return RecentScanWorkloadDigestView(
+        regressions=tuple(
+            workload_digest_entry(
+                group,
+                group_rows=grouped_rows.get(group.fingerprint, ()),
+                priority="High" if group.regression == "strong" else "Medium",
+                evidence=(
+                    f"{group.regression} regression; current p95 {display_seconds(group.duration_sec_p95)}; "
+                    f"baseline p95 {display_seconds(group.baseline_duration_sec_p95)}; "
+                    f"history samples {group.baseline_sample_count}."
+                ),
+                outcome_metric=workload_outcome_metrics.get(group.fingerprint),
+            )
+            for group in sorted(
+                (
+                    group
+                    for group in groups.groups
+                    if group.baseline_sample_count > 0 and group.regression in {"strong", "mild"}
+                ),
+                key=lambda group: (
+                    -workload_regression_order(group.regression),
+                    -workload_group_impact(group),
+                    group.fingerprint,
+                ),
+            )[:limit]
+        ),
+        admission_runtime=top_workload_signal_entries(
+            groups,
+            grouped_rows,
+            label="Admission/runtime",
+            row_count=admission_runtime_row_count,
+            group_matches=lambda group: group.primary_bottleneck_top == "runtime_admission",
+            limit=limit,
+            workload_outcome_metrics=workload_outcome_metrics,
+        ),
+        stats=top_workload_signal_entries(
+            groups,
+            grouped_rows,
+            label="Stats gaps",
+            row_count=stats_row_count,
+            group_matches=lambda group: group.primary_bottleneck_top == "stats",
+            limit=limit,
+            workload_outcome_metrics=workload_outcome_metrics,
+        ),
+        spill=top_workload_signal_entries(
+            groups,
+            grouped_rows,
+            label="Spill-heavy",
+            row_count=lambda group_rows: sum(1 for row in group_rows if row.has_spill),
+            group_matches=lambda _group: False,
+            limit=limit,
+            workload_outcome_metrics=workload_outcome_metrics,
+        ),
+        status_issues=top_workload_signal_entries(
+            groups,
+            grouped_rows,
+            label="Status issues",
+            row_count=status_issue_row_count,
+            group_matches=lambda group: (
+                _normalized_status(group.score_top) in STATUS_ISSUE_STATUSES
+            ),
+            limit=limit,
+            workload_outcome_metrics=workload_outcome_metrics,
+        ),
+        low_value=tuple(
+            workload_digest_entry(
+                group,
+                group_rows=grouped_rows.get(group.fingerprint, ()),
+                priority="Low",
+                evidence=(
+                    "No regression, no failed/high/suspicious rows, no spill, "
+                    "and no stats/admission/runtime or rewrite-review hints."
+                ),
+                outcome_metric=workload_outcome_metrics.get(group.fingerprint),
+            )
+            for group in sorted(
+                (
+                    group
+                    for group in groups.groups
+                    if is_low_value_workload_group(
+                        group,
+                        grouped_rows.get(group.fingerprint, ()),
+                    )
+                ),
+                key=lambda group: (-workload_group_impact(group), group.fingerprint),
+            )[:limit]
+        ),
+        admin=workload_admin_digest_entries(groups, grouped_rows, limit=limit),
+        action_queue=workload_action_queue_entries(
+            groups,
+            grouped_rows,
+            limit=5,
+            workload_outcome_metrics=workload_outcome_metrics,
+        ),
+    )
+
+
+def workload_admin_digest_entries(
+    groups: RecentScanWorkloadGroupsView,
+    grouped_rows: dict[str, tuple[RecentScanCaseRowView, ...]],
+    *,
+    limit: int,
+) -> tuple[RecentScanWorkloadAdminDigestEntryView, ...]:
+    entries: list[RecentScanWorkloadAdminDigestEntryView] = []
+    for scope, grouped in (
+        ("Pool", workload_groups_by_pool(groups.groups)),
+        ("Owner", workload_groups_by_owner(groups.groups, grouped_rows)),
+    ):
+        entries.extend(
+            workload_admin_digest_entry(
+                scope,
+                name,
+                grouped_groups,
+                grouped_rows=grouped_rows,
+            )
+            for name, grouped_groups in sorted(
+                grouped.items(),
+                key=lambda item: (
+                    -sum(workload_group_impact(group) for group in item[1]),
+                    -sum(group.member_count for group in item[1]),
+                    item[0],
+                ),
+            )[:limit]
+        )
+    return tuple(entries)
+
+
+def workload_groups_by_pool(
+    groups: tuple[RecentScanWorkloadGroupView, ...],
+) -> dict[str, tuple[RecentScanWorkloadGroupView, ...]]:
+    grouped: dict[str, list[RecentScanWorkloadGroupView]] = {}
+    for group in groups:
+        pool = str(group.pool_top or "unknown").strip() or "unknown"
+        grouped.setdefault(pool, []).append(group)
+    return {key: tuple(value) for key, value in grouped.items()}
+
+
+def workload_groups_by_owner(
+    groups: tuple[RecentScanWorkloadGroupView, ...],
+    grouped_rows: dict[str, tuple[RecentScanCaseRowView, ...]],
+) -> dict[str, tuple[RecentScanWorkloadGroupView, ...]]:
+    grouped: dict[str, list[RecentScanWorkloadGroupView]] = {}
+    for group in groups:
+        owner = dominant_owner(grouped_rows.get(group.fingerprint, ()))
+        grouped.setdefault(owner, []).append(group)
+    return {key: tuple(value) for key, value in grouped.items()}
+
+
+def dominant_owner(rows: tuple[RecentScanCaseRowView, ...]) -> str:
+    counts: dict[str, int] = {}
+    for row in rows:
+        owner = str(row.user or "").strip()
+        if not owner:
+            continue
+        counts[owner] = counts.get(owner, 0) + 1
+    if not counts:
+        return "unknown"
+    owner, _count = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0]
+    return owner
+
+
+def workload_admin_digest_entry(
+    scope: str,
+    name: str,
+    groups: tuple[RecentScanWorkloadGroupView, ...],
+    *,
+    grouped_rows: dict[str, tuple[RecentScanCaseRowView, ...]],
+) -> RecentScanWorkloadAdminDigestEntryView:
+    top_group = max(groups, key=lambda group: (workload_group_impact(group), group.fingerprint))
+    total_impact = sum(workload_group_impact(group) for group in groups)
+    run_count = sum(group.member_count for group in groups)
+    signal_group_fingerprints = workload_admin_signal_group_fingerprints(groups, grouped_rows)
+    signal_counts = workload_admin_signal_counts(signal_group_fingerprints)
+    return RecentScanWorkloadAdminDigestEntryView(
+        scope=scope,
+        name=name,
+        group_count=len(groups),
+        run_count=run_count,
+        duration_sec_total=display_seconds(total_impact),
+        top_fingerprint=top_group.fingerprint,
+        top_fingerprint_short=top_group.fingerprint_short,
+        top_group_impact=display_seconds(workload_group_impact(top_group)),
+        group_fingerprints=tuple(group.fingerprint for group in groups),
+        signal_group_fingerprints=signal_group_fingerprints,
+        signal_counts=signal_counts,
+        signals=workload_admin_signal_summary(signal_counts),
+        evidence=(
+            f"{len(groups)} repeated groups; {run_count} selected runs; "
+            f"top group impact {display_seconds(workload_group_impact(top_group))}."
+        ),
+    )
+
+
+def workload_admin_signal_group_fingerprints(
+    groups: tuple[RecentScanWorkloadGroupView, ...],
+    grouped_rows: dict[str, tuple[RecentScanCaseRowView, ...]],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    signal_groups = {
+        "regressions": tuple(
+            group.fingerprint for group in groups if group.regression in {"strong", "mild"}
+        ),
+        "admission/runtime": tuple(
+            group.fingerprint
+            for group in groups
+            if group.primary_bottleneck_top == "runtime_admission"
+            or admission_runtime_row_count(grouped_rows.get(group.fingerprint, ())) > 0
+        ),
+        "stats": tuple(
+            group.fingerprint
+            for group in groups
+            if group.primary_bottleneck_top == "stats"
+            or stats_row_count(grouped_rows.get(group.fingerprint, ())) > 0
+        ),
+        "spill": tuple(
+            group.fingerprint
+            for group in groups
+            if any(row.has_spill for row in grouped_rows.get(group.fingerprint, ()))
+        ),
+        "status issues": tuple(
+            group.fingerprint
+            for group in groups
+            if is_status_issue_workload_group(group, grouped_rows.get(group.fingerprint, ()))
+        ),
+        "low-value": tuple(
+            group.fingerprint
+            for group in groups
+            if is_low_value_workload_group(group, grouped_rows.get(group.fingerprint, ()))
+        ),
+    }
+    return tuple(
+        (label, fingerprints) for label, fingerprints in signal_groups.items() if fingerprints
+    )
+
+
+def workload_admin_signal_counts(
+    signal_group_fingerprints: tuple[tuple[str, tuple[str, ...]], ...],
+) -> tuple[tuple[str, int], ...]:
+    return tuple((label, len(fingerprints)) for label, fingerprints in signal_group_fingerprints)
+
+
+def workload_admin_signal_summary(signal_counts: tuple[tuple[str, int], ...]) -> str:
+    visible = [f"{label} {count}" for label, count in signal_counts]
+    return "; ".join(visible) if visible else "no high-signal repeated groups"
+
+
+def workload_action_queue_entries(
+    groups: RecentScanWorkloadGroupsView,
+    grouped_rows: dict[str, tuple[RecentScanCaseRowView, ...]],
+    *,
+    limit: int,
+    workload_outcome_metrics: dict[str, WorkloadOutcomeMetric],
+) -> tuple[RecentScanWorkloadActionQueueEntryView, ...]:
+    candidates: list[tuple[int, float, str, RecentScanWorkloadActionQueueEntryView]] = []
+    for group in groups.groups:
+        group_rows = grouped_rows.get(group.fingerprint, ())
+        action = workload_action_queue_entry(
+            group,
+            group_rows=group_rows,
+            outcome_metric=workload_outcome_metrics.get(group.fingerprint),
+        )
+        if action is None:
+            continue
+        candidates.append(
+            (
+                -workload_action_priority_order(action.priority),
+                -workload_group_impact(group),
+                group.fingerprint,
+                action,
+            )
+        )
+    return tuple(action for _priority, _impact, _fingerprint, action in sorted(candidates)[:limit])
+
+
+def workload_action_queue_entry(
+    group: RecentScanWorkloadGroupView,
+    *,
+    group_rows: tuple[RecentScanCaseRowView, ...],
+    outcome_metric: WorkloadOutcomeMetric | None,
+) -> RecentScanWorkloadActionQueueEntryView | None:
+    signal = workload_action_signal(group, group_rows)
+    if signal is None:
+        return None
+    return RecentScanWorkloadActionQueueEntryView(
+        fingerprint=group.fingerprint,
+        fingerprint_short=group.fingerprint_short,
+        priority=signal.priority,
+        signal=signal.title,
+        group_impact=display_seconds(workload_group_impact(group)),
+        pool_top=group.pool_top,
+        owner_top=top_owner_summary(group_rows),
+        evidence=signal.evidence,
+        next_step=signal.next_step,
+        review_anchor=signal.review_anchor,
+        verification_metric=signal.verification_metric,
+        verification=signal.verification,
+        outcome_summary=workload_outcome_summary_text(outcome_metric),
+    )
+
+
+@dataclass(frozen=True)
+class WorkloadActionSignal:
+    priority: str
+    title: str
+    evidence: str
+    next_step: str
+    review_anchor: str
+    verification_metric: str
+    verification: str
+
+
+def workload_action_signal(
+    group: RecentScanWorkloadGroupView,
+    rows: tuple[RecentScanCaseRowView, ...],
+) -> WorkloadActionSignal | None:
+    total = max(len(rows), group.member_count)
+    if group.baseline_sample_count > 0 and group.regression in {"strong", "mild"}:
+        priority = "High" if group.regression == "strong" else "Medium"
+        return WorkloadActionSignal(
+            priority=priority,
+            title="Baseline slowdown",
+            evidence=(
+                f"{group.regression} regression; current p95 {display_seconds(group.duration_sec_p95)}; "
+                f"baseline p95 {display_seconds(group.baseline_duration_sec_p95)}."
+            ),
+            next_step="Open workload details and compare representative cases before planning one change.",
+            review_anchor="Workload details: representative cases and local baseline block.",
+            verification_metric="Workload p95 versus baseline p95 under comparable scan scope.",
+            verification="Rerun a comparable scan after the change and confirm p95 moves toward the baseline.",
+        )
+    runtime_count = admission_runtime_row_count(rows) or group_primary_match_count(
+        group, "runtime_admission", total
+    )
+    if runtime_count:
+        return WorkloadActionSignal(
+            priority="High" if runtime_count >= total and total > 0 else "Medium",
+            title="Admission/runtime review",
+            evidence=workload_action_count_evidence(
+                runtime_count, total, "rows have admission/runtime as the primary signal"
+            ),
+            next_step="Check pool, admission, and runtime context on representative cases before SQL or stats work.",
+            review_anchor="Representative Details: pool, admission wait, and runtime context facts.",
+            verification_metric="Admission/runtime signal count and group p95 under comparable load.",
+            verification="Rerun under comparable load and confirm admission/runtime no longer dominates the group.",
+        )
+    stats_count = stats_row_count(rows) or group_primary_match_count(group, "stats", total)
+    if stats_count:
+        return WorkloadActionSignal(
+            priority="High" if stats_count >= total and total > 0 else "Medium",
+            title="Stats review",
+            evidence=workload_action_count_evidence(
+                stats_count, total, "rows have stats candidate or primary-signal facts"
+            ),
+            next_step="Open the top stats case and verify table or partition stats before query-shape work.",
+            review_anchor="Top stats case Details: table or partition stats status and stats facts.",
+            verification_metric="Stats signal count plus group p95 after stats are fixed or confirmed.",
+            verification="After stats are fixed or confirmed, rerun and compare stats signal count plus p95.",
+        )
+    status_count = status_issue_row_count(rows)
+    if status_count <= 0 and _normalized_status(group.score_top) in STATUS_ISSUE_STATUSES:
+        status_count = total
+    if status_count:
+        return WorkloadActionSignal(
+            priority="Medium",
+            title="Status follow-up",
+            evidence=workload_action_count_evidence(
+                status_count, total, "rows failed collection, analysis, or were cancelled"
+            ),
+            next_step="Rerun or inspect row status before using group aggregates for a diagnosis.",
+            review_anchor="Action queue row status and representative case collection/analysis status.",
+            verification_metric="Clean collection/analysis status before interpreting remaining group signals.",
+            verification="Confirm collection/analysis status is clean before treating remaining signals as diagnostic.",
+        )
+    spill_count = sum(1 for row in rows if row.has_spill)
+    if spill_count:
+        return WorkloadActionSignal(
+            priority="Medium",
+            title="Spill follow-up",
+            evidence=workload_action_count_evidence(
+                spill_count, total, "rows have explicit spill or scratch evidence"
+            ),
+            next_step="Inspect memory and spill evidence on representative cases before choosing stats or SQL work.",
+            review_anchor="Representative Details: memory, spill, and scratch evidence.",
+            verification_metric="Spill evidence count and group p95 in the next scan.",
+            verification="After one change, compare spill evidence and group p95 in the next scan.",
+        )
+    rewrite_count = rewrite_review_row_count(rows)
+    if rewrite_count:
+        return WorkloadActionSignal(
+            priority="Medium",
+            title="Query-shape review",
+            evidence=workload_action_count_evidence(
+                rewrite_count, total, "rows have query-shape or rewrite-review signals"
+            ),
+            next_step="Use per-case Details for the supported rewrite or manual review boundary.",
+            review_anchor="Per-case Details: supported rewrite boundary and review locations.",
+            verification_metric="Validated selected-case change, then repeated-group p95 and signal count.",
+            verification="Validate any accepted change on a selected case, then rerun the repeated group.",
+        )
+    if is_low_value_workload_group(group, rows):
+        return WorkloadActionSignal(
+            priority="Low",
+            title="Low-value repeat",
+            evidence="No regression, failed/high/suspicious rows, spill, stats, runtime, or rewrite-review hints.",
+            next_step="Deprioritize unless the pool or owner needs batch-shaping review.",
+            review_anchor="Workload digest impact, pool/owner aggregate, and next scan priority.",
+            verification_metric="Low priority plus bounded total impact in the next comparable scan.",
+            verification="Confirm the next scan still shows low priority and bounded total impact.",
+        )
+    return None
+
+
+def group_primary_match_count(
+    group: RecentScanWorkloadGroupView,
+    label: str,
+    total: int,
+) -> int:
+    return total if str(group.primary_bottleneck_top).strip().lower() == label else 0
+
+
+def workload_action_count_evidence(count: int, total: int, detail: str) -> str:
+    return f"{count} of {total} selected {detail}."
+
+
+def workload_action_priority_order(priority: str) -> int:
+    return {"high": 3, "medium": 2, "low": 1}.get(str(priority or "").strip().lower(), 0)
+
+
+def top_workload_signal_entries(
+    groups: RecentScanWorkloadGroupsView,
+    grouped_rows: dict[str, tuple[RecentScanCaseRowView, ...]],
+    *,
+    label: str,
+    row_count: Any,
+    group_matches: Any,
+    limit: int,
+    workload_outcome_metrics: dict[str, WorkloadOutcomeMetric],
+) -> tuple[RecentScanWorkloadDigestEntryView, ...]:
+    candidates: list[tuple[int, RecentScanWorkloadGroupView, str, str]] = []
+    for group in groups.groups:
+        group_rows = grouped_rows.get(group.fingerprint, ())
+        count = int(row_count(group_rows))
+        priority = "High" if count >= group.member_count and group.member_count > 0 else "Medium"
+        if count > 0:
+            evidence = f"{label}: {count} of {group.member_count} member rows."
+            sort_count = count
+        elif group_matches(group):
+            evidence = f"{label}: group primary aggregate; {group.member_count} member rows."
+            sort_count = group.member_count
+            priority = "Medium"
+        else:
+            continue
+        candidates.append((sort_count, group, priority, evidence))
+    return tuple(
+        workload_digest_entry(
+            group,
+            group_rows=grouped_rows.get(group.fingerprint, ()),
+            priority=priority,
+            evidence=evidence,
+            outcome_metric=workload_outcome_metrics.get(group.fingerprint),
+        )
+        for _count, group, priority, evidence in sorted(
+            candidates,
+            key=lambda item: (-item[0], -workload_group_impact(item[1]), item[1].fingerprint),
+        )[:limit]
+    )
+
+
+def workload_digest_entry(
+    group: RecentScanWorkloadGroupView,
+    *,
+    group_rows: tuple[RecentScanCaseRowView, ...],
+    priority: str,
+    evidence: str,
+    outcome_metric: WorkloadOutcomeMetric | None = None,
+) -> RecentScanWorkloadDigestEntryView:
+    return RecentScanWorkloadDigestEntryView(
+        fingerprint=group.fingerprint,
+        fingerprint_short=group.fingerprint_short,
+        member_count=group.member_count,
+        duration_sec_total=group.duration_sec_total,
+        duration_sec_p95=group.duration_sec_p95,
+        pool_top=group.pool_top,
+        owner_top=top_owner_summary(group_rows),
+        priority=priority,
+        evidence=evidence,
+        outcome_summary=workload_outcome_summary_text(outcome_metric),
+    )
+
+
+def top_owner_summary(rows: tuple[RecentScanCaseRowView, ...]) -> str:
+    counts: dict[str, int] = {}
+    for row in rows:
+        owner = str(row.user or "").strip()
+        if not owner:
+            continue
+        counts[owner] = counts.get(owner, 0) + 1
+    if not counts:
+        return "unknown"
+    owner, count = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0]
+    return f"{owner} ({count}/{len(rows)})"
+
+
+def is_low_value_workload_group(
+    group: RecentScanWorkloadGroupView,
+    rows: tuple[RecentScanCaseRowView, ...],
+) -> bool:
+    if group.regression in {"strong", "mild"}:
+        return False
+    if is_status_issue_workload_group(group, rows):
+        return False
+    if str(group.score_top).lower() in {"high", "suspicious"}:
+        return False
+    if group.primary_bottleneck_top in {"stats", "runtime_admission"}:
+        return False
+    if any(row.score_severity in {"failed", "high", "suspicious"} for row in rows):
+        return False
+    if any(row.has_spill for row in rows):
+        return False
+    if admission_runtime_row_count(rows) or stats_row_count(rows) or rewrite_review_row_count(rows):
+        return False
+    return True
+
+
+def is_status_issue_workload_group(
+    group: RecentScanWorkloadGroupView,
+    rows: tuple[RecentScanCaseRowView, ...],
+) -> bool:
+    return (
+        _normalized_status(group.score_top) in STATUS_ISSUE_STATUSES
+        or status_issue_row_count(rows) > 0
+    )
+
+
+def status_issue_row_count(rows: tuple[RecentScanCaseRowView, ...]) -> int:
+    return sum(1 for row in rows if row_has_status_issue(row))
+
+
+def row_has_status_issue(row: RecentScanCaseRowView) -> bool:
+    if row.has_failure or row.score_severity == "failed":
+        return True
+    return any(
+        _normalized_status(status) in STATUS_ISSUE_STATUSES
+        for status in (row.collection_status, row.analysis_status)
+    )
+
+
+def _normalized_status(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
+def admission_runtime_row_count(rows: tuple[RecentScanCaseRowView, ...]) -> int:
+    return sum(1 for row in rows if row.primary_bottleneck.label.lower() == "admission/runtime")
+
+
+def stats_row_count(rows: tuple[RecentScanCaseRowView, ...]) -> int:
+    return sum(
+        1
+        for row in rows
+        if row.stats_tier in {"high", "medium"} or row.primary_bottleneck.label.lower() == "stats"
+    )
+
+
+def rewrite_review_row_count(rows: tuple[RecentScanCaseRowView, ...]) -> int:
+    return sum(
+        1
+        for row in rows
+        if row.optimization_tier in {"high", "medium"}
+        or row.primary_bottleneck.label.lower() == "sql shape"
+    )
+
+
+def workload_regression_order(value: str) -> int:
+    return {"strong": 2, "mild": 1}.get(value, 0)
+
+
+def workload_group_impact(group: RecentScanWorkloadGroupView) -> float:
+    return numeric_value(group.duration_sec_total) or (
+        group.member_count * numeric_value(group.duration_sec_p95)
+    )
+
+
+def display_seconds(value: Any) -> str:
+    seconds = numeric_value(value)
+    if seconds > 0:
+        return f"{int(seconds)}s" if float(seconds).is_integer() else f"{seconds:.1f}s"
+    text = str(value or "").strip()
+    return text if text else "unknown"
 
 
 def safe_workload_fingerprint(value: Any) -> str:
@@ -370,6 +1036,7 @@ def present_recent_scan_case_detail(
     cluster_runtime_context_facts: dict[str, Any] | None = None,
     evidence_quality_facts: dict[str, Any] | None = None,
     stats_quality_facts: dict[str, Any] | None = None,
+    query_context_facts: dict[str, Any] | None = None,
     *,
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
@@ -386,11 +1053,12 @@ def present_recent_scan_case_detail(
     stats_candidate = stats_optimization_candidate_view(case)
     primary_bottleneck = present_case_primary_bottleneck(case)
     cm_metrics = present_recent_scan_cm_metrics(cm_metrics_facts)
+    query_context = present_recent_scan_query_context(query_context_facts)
     runtime_diagnosis = present_recent_scan_runtime_diagnosis(runtime_diagnosis_facts)
     cluster_runtime_context = present_recent_scan_cluster_runtime_context(
         cluster_runtime_context_facts
     )
-    return RecentScanCaseDetailView(
+    view = RecentScanCaseDetailView(
         case_id=safe_display_text(case_id),
         query_id=safe_display_value(case.get("query_id")),
         user=safe_display_value(case.get("user")),
@@ -446,8 +1114,10 @@ def present_recent_scan_case_detail(
         ),
         optimization_candidate=optimization,
         stats_candidate=stats_candidate,
+        source_locators=present_source_locators(case.get("source_locators")),
         metadata=present_recent_scan_metadata(case, metadata_facts),
         cm_metrics=cm_metrics,
+        query_context=query_context,
         runtime_diagnosis=runtime_diagnosis,
         cluster_runtime_context=cluster_runtime_context,
         runtime_verdict=present_recent_scan_runtime_verdict(
@@ -476,6 +1146,7 @@ def present_recent_scan_case_detail(
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
     )
+    return replace(view, diagnostic_facts=present_recent_scan_diagnostic_facts(view))
 
 
 PRIMARY_BOTTLENECK_LABELS = {
@@ -798,6 +1469,69 @@ def safe_optimizer_rewriteability_bucket(value: Any) -> str:
 def safe_optimizer_rewriteability_label(value: Any) -> str:
     text = safe_optimization_display_text(value)
     return text or "Unknown"
+
+
+def present_source_locators(
+    value: Any,
+) -> dict[str, tuple[RecentScanSourceLocatorView, ...]]:
+    if not isinstance(value, dict):
+        return {}
+    groups: dict[str, tuple[RecentScanSourceLocatorView, ...]] = {}
+    for group in SOURCE_LOCATOR_GROUPS:
+        locators = source_locator_group_views(value.get(group))
+        if locators:
+            groups[group] = locators
+    return groups
+
+
+def source_locator_group_views(value: Any) -> tuple[RecentScanSourceLocatorView, ...]:
+    if not isinstance(value, list):
+        return ()
+    views: list[RecentScanSourceLocatorView] = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        locator_id = str(item.get("id") or "").strip()
+        label_info = SOURCE_LOCATOR_LABELS.get(locator_id)
+        if label_info is None:
+            continue
+        kind, label = label_info
+        coordinate = safe_source_locator_coordinate(item.get("coordinate"))
+        detail = safe_source_locator_detail(item.get("detail"))
+        key = (label, coordinate, detail)
+        if key in seen:
+            continue
+        seen.add(key)
+        views.append(
+            RecentScanSourceLocatorView(
+                kind=kind,
+                label=label,
+                coordinate=coordinate,
+                detail=detail,
+            )
+        )
+        if len(views) >= 5:
+            break
+    return tuple(views)
+
+
+def safe_source_locator_detail(value: Any) -> str:
+    if value is None:
+        return ""
+    return safe_optimization_display_text(value).strip()[:120]
+
+
+def safe_source_locator_coordinate(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    if re.fullmatch(r"line [1-9]\d{0,5}", text):
+        return text
+    if re.fullmatch(r"lines [1-9]\d{0,5}-[1-9]\d{0,5}", text):
+        start, end = (int(part) for part in text.removeprefix("lines ").split("-", 1))
+        return text if start <= end else ""
+    return ""
 
 
 def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:

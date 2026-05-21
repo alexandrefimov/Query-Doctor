@@ -89,6 +89,26 @@ def test_progress_view_from_snapshot_matches_direct_job_progress_view():
     assert progress_view_from_snapshot(None) is None
 
 
+def test_successful_job_progress_marks_done_step_complete():
+    progress_view = progress_view_for_job("query", "Done", 100)
+
+    assert progress_view.percent == 100
+    assert progress_view.steps[-1].label == "Done"
+    assert progress_view.steps[-1].state == "done"
+    assert progress_view.steps[-1].icon == "✓"
+    assert progress_view.steps[-1].detail == "Done"
+    assert {step.state for step in progress_view.steps} == {"done"}
+
+
+def test_failed_job_progress_does_not_mark_done_step_complete():
+    progress_view = progress_view_for_job("query", "Failed", 100)
+
+    assert progress_view.percent == 100
+    assert progress_view.steps[-1].label == "Done"
+    assert progress_view.steps[-1].state != "done"
+    assert progress_view.steps[-1].detail == "Failed"
+
+
 def test_web_job_store_updates_terminal_ttl_when_job_finishes():
     clock = FakeClock()
     store = WebJobStore(terminal_job_ttl_sec=10, clock=clock)

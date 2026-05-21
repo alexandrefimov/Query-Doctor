@@ -20,7 +20,7 @@ about unsupported scope.
 - Public docs state current support honestly: Query Doctor is a Big Data query
   diagnostic tool focused today on Apache Impala workloads; Apache Impala is the
   only implemented engine; Cloudera Manager is the full Recent
-  discovery/profile/metrics/events source validated against the local CM 6.2.1
+  discovery/profile/metrics/events source validated against the maintained test
   environment; direct Impala supports bounded Recent, Running, and Known Query
   ID workflows without Cloudera Manager events; optional Prometheus runtime
   metrics are bounded direct Impala context; and future Big Data engines,
@@ -28,18 +28,21 @@ about unsupported scope.
   seams only.
 - Public docs use English as canonical language, with Russian pages only as
   localized companions under `docs/i18n/ru/`.
+- README screenshots are current for any material web UI layout changes included
+  in the release and are generated only from the synthetic demo pack.
 - No generated cases, reports, profiles, metadata outputs, local configs,
   credentials, caches, or temporary artifacts are tracked.
 
 ## Current Snapshot
 
-As of 2026-05-19, the public repository has the main best-practice baseline in
+As of 2026-05-22, the public repository has the main best-practice baseline in
 place:
 
 - Canonical public docs and default browser-visible copy are English.
 - Russian docs are localized companions only under `docs/i18n/ru/`.
-- Trusted reports default to English, with Russian available through explicit
-  report language selection.
+- The global `language` config controls Help, Details static UI copy, and newly
+  generated trusted reports. English remains the default; Russian uses the same
+  language-specific prompt, normalizer, and validator boundary.
 - Public packaging metadata, release checklist, contributor docs, security
   reporting, code of conduct, Dependabot, and CI matrix coverage are present.
 - Private Vulnerability Reporting, secret scanning, secret scanning push
@@ -48,8 +51,8 @@ place:
 - `main` branch protection includes admins, strict required checks, pull request
   review/conversation gates, force-push blocking, and deletion blocking.
 - Agent instructions, roadmap, architecture docs, release docs, and Russian
-  companion pages are aligned with the current direct Impala and Prometheus
-  baseline.
+  companion pages are aligned with the current direct Impala, Prometheus,
+  workload-diagnostics, and config-driven language baseline.
 - CI runs deterministic safety checks on pull requests and main, including a
   current-tree public-release scan, and the full Python 3.11 test suite is a
   required default-branch check.
@@ -65,13 +68,19 @@ place:
   Known Query ID plus Recent batch smokes with metadata collection enabled,
   TestPyPI dry run, GitHub release publish, production PyPI Trusted Publishing,
   and production PyPI install smoke.
-- Post-0.2.0 follow-up issues track language selection, query-type grouping,
-  optimizer score calibration, Known Query ID progress, and elapsed-time
-  progress display.
+- Post-0.2.0 release work is tracked in the `Unreleased` changelog; finalize
+  release notes from that section before tagging the next package version.
+- README screenshots have been refreshed from the synthetic demo pack for the
+  current material UI baseline. Package version bump, TestPyPI upload, release
+  tag creation, production PyPI publishing, and final changelog release notes
+  remain final-release-candidate steps, not pre-release audit steps.
 - Repository metadata, topics, issue labels, issue templates, pull request
   template, and curated sanitized starter issues are in place.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample
   cases and an English trusted demo report by default.
+- Superseded archive notes, old UI prototypes, documentation-audit snapshots,
+  and legacy demo screenshots have been removed from the current documentation
+  tree; use git history for historical context.
 
 Keep this snapshot current when release gates or public-surface assumptions
 change.
@@ -100,8 +109,8 @@ change.
 - Architecture docs show current implemented boundaries and future roadmap
   seams without presenting roadmap work as supported behavior.
 - README keeps the "why not a chat wrapper" safety-design explanation current.
-- Report language selection remains covered by language-specific validator and
-  prompt-shape tests.
+- Config-driven report language selection remains covered by language-specific
+  validator and prompt-shape tests.
 - Large test buckets are split gradually when touched.
 - Coverage is added only if maintainers intend to review and enforce it.
 
@@ -115,7 +124,6 @@ fresh demo smoke, not only focused safety tests.
 
 ## Remaining Public Polish
 
-- Update the README screenshot after material UI layout changes.
 - Expand the synthetic fixture corpus when new diagnostic scenarios are stable.
 - Keep the current and future architecture diagrams in sync with UI, report,
   optimizer, and provider-boundary changes.

@@ -25,13 +25,16 @@ Do not file public issues containing:
   passwords, Authorization headers, embedded URL credentials, local config
   contents, or production profile text;
 - local paths or generated artifact contents from real environments.
+- screenshots, terminal logs, generated reports, browser captures, or
+  downloaded artifacts from real environments.
 
 When reporting a security issue, include a minimal sanitized reproduction,
 affected command or workflow, expected behavior, actual behavior, and why the
 output crosses a trust boundary.
 
 For public issues, describe the affected boundary and use synthetic placeholders
-only. Do not attach real generated artifacts from production environments.
+only. Do not attach real generated artifacts, screenshots, reports, or logs
+from production environments.
 
 ## Security Boundaries
 

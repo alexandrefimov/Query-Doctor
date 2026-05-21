@@ -13,6 +13,7 @@ from query_doctor.web.presenters.recent_scan import (
     safe_display_value,
 )
 from query_doctor.web.ui.html_helpers import SafeHtml
+from query_doctor.web.ui.i18n import text as ui_text
 from query_doctor.web.ui.report_actions import (
     render_llm_report_status,
     render_progress_steps,
@@ -117,6 +118,7 @@ def render_llm_actions_block(
     optimizer_manual_guidance: str | None = None,
     optimizer_validation_result: dict[str, Any] | None = None,
     llm_enabled: bool = True,
+    language: str = "en",
 ) -> str:
     optimizer_view = optimized_query_state or present_optimized_query_action(None)
     escaped_case_id = html.escape(case_id, quote=True)
@@ -148,47 +150,146 @@ def render_llm_actions_block(
         report_view.button_disabled or not report_enabled or report_status == "running"
     )
     optimizer_button_disabled = optimizer_status in {"running", "unavailable"}
+    section_label = ui_text(language, "Reports and optimizer", "Отчеты и оптимизатор")
+    report_title = ui_text(
+        language,
+        "LLM Report" if llm_enabled else "Python Report",
+        "LLM-отчет" if llm_enabled else "Python-отчет",
+    )
+    report_description = ui_text(
+        language,
+        "Creates a browser-safe explanation for review or sharing with colleagues.",
+        "Создает browser-safe объяснение для проверки или передачи коллегам.",
+    )
+    optimizer_title = ui_text(
+        language,
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+    )
+    optimizer_description = ui_text(
+        language,
+        "Looks for validated rewrite guidance or a trusted draft without executing SQL.",
+        "Ищет валидированное направление rewrite или trusted draft без выполнения SQL.",
+    )
+    report_compact_unavailable = (
+        not report_enabled
+        and not report_view.show_open_link
+        and report_status not in {"running", "generated"}
+    )
+    optimizer_compact_unavailable = optimizer_status == "unavailable"
     combined_disabled = (
         report_button_disabled
         or optimizer_button_disabled
         or (report_view.show_open_link and optimizer_status == "generated")
     )
-    if report_view.show_open_link:
-        report_action_html = (
-            f'<a class="button" href="{report_open}">Open full report</a>'
-            f'<a class="button" href="{report_export}" download>Export as Markdown</a>'
-        )
-    else:
-        report_button_label = report_view.button_label
-        if not llm_enabled:
-            report_button_label = (
-                "Generating Python report"
-                if report_status == "running"
-                else "Generate Python report"
+    action_cards: list[str] = []
+    if not report_compact_unavailable:
+        if report_view.show_open_link:
+            report_action_html = (
+                f'<a class="button" href="{report_open}">{html.escape(ui_text(language, "Open full report", "Открыть полный отчет"))}</a>'
+                f'<a class="button" href="{report_export}" download>{html.escape(ui_text(language, "Export as Markdown", "Экспорт Markdown"))}</a>'
             )
-        report_action_html = render_post_button(
-            report_action, report_button_label, disabled=report_button_disabled
+        else:
+            report_button_label = report_view.button_label
+            if not llm_enabled:
+                report_button_label = (
+                    "Generating Python report"
+                    if report_status == "running"
+                    else "Generate Python report"
+                )
+            if language == "ru":
+                if report_status == "running":
+                    report_button_label = (
+                        "Генерируется Python-отчет" if not llm_enabled else "Генерируется LLM-отчет"
+                    )
+                else:
+                    report_button_label = (
+                        "Сгенерировать Python-отчет"
+                        if not llm_enabled
+                        else "Сгенерировать LLM-отчет"
+                    )
+            report_action_html = render_post_button(
+                report_action, report_button_label, disabled=report_button_disabled
+            )
+        action_cards.append(
+            render_llm_action_card(report_title, report_description, report_action_html)
         )
-    optimizer_action_html = render_optimizer_action_button(
-        optimizer_view, optimizer_action, optimizer_open, llm_enabled=llm_enabled
-    )
-    combined_card_html = ""
+    if not optimizer_compact_unavailable:
+        optimizer_action_html = render_optimizer_action_button(
+            optimizer_view,
+            optimizer_action,
+            optimizer_open,
+            llm_enabled=llm_enabled,
+            language=language,
+        )
+        action_cards.append(
+            render_llm_action_card(optimizer_title, optimizer_description, optimizer_action_html)
+        )
     if not combined_disabled:
         combined_html = render_post_button(
             combined_action,
-            "Generate report + optimizer",
+            ui_text(language, "Generate report + optimizer", "Сгенерировать отчет + optimizer"),
             primary=True,
         )
-        combined_title = "Full LLM pass" if llm_enabled else "Full Python pass"
-        combined_card_html = (
-            '<div class="llm-action-card llm-action-card--primary">'
-            f"<strong>{combined_title}</strong>"
-            f"{combined_html}</div>"
+        combined_title = ui_text(
+            language,
+            "Full LLM pass" if llm_enabled else "Full Python pass",
+            "Полный LLM-прогон" if llm_enabled else "Полный Python-прогон",
         )
+        combined_description = ui_text(
+            language,
+            "Runs both explicit actions for this selected case only.",
+            "Запускает оба явных действия только для выбранного кейса.",
+        )
+        action_cards.append(
+            render_llm_action_card(
+                combined_title, combined_description, combined_html, primary=True
+            )
+        )
+    action_cards_html = (
+        f'<div class="llm-action-grid">{"".join(action_cards)}</div>' if action_cards else ""
+    )
+    unavailable_rows: list[str] = []
+    if report_compact_unavailable:
+        unavailable_rows.append(
+            render_unavailable_action_note(
+                report_title,
+                ui_text(
+                    language,
+                    f"{report_title} is available only for suspicious or bad queries.",
+                    f"{report_title} доступен только для suspicious или bad запросов.",
+                ),
+            )
+        )
+    if optimizer_compact_unavailable:
+        unavailable_rows.append(
+            render_unavailable_action_note(
+                optimizer_title,
+                ui_text(
+                    language,
+                    "Source SQL is unavailable or outside the optimizer read-only scope for this case.",
+                    "Source SQL недоступен или находится вне read-only scope оптимизатора для этого кейса.",
+                ),
+            )
+        )
+    unavailable_html = (
+        '<div class="llm-action-unavailable-list" aria-label="Unavailable actions">'
+        + "".join(unavailable_rows)
+        + "</div>"
+        if unavailable_rows
+        else ""
+    )
     notes: list[str] = []
     if not report_enabled:
-        report_note_label = "LLM Report" if llm_enabled else "Report"
-        notes.append(f"{report_note_label} is available only for suspicious or bad queries.")
+        if not report_compact_unavailable:
+            report_note_label = "LLM Report" if llm_enabled else "Report"
+            notes.append(
+                ui_text(
+                    language,
+                    f"{report_note_label} is available only for suspicious or bad queries.",
+                    f"{report_title} доступен только для suspicious или bad запросов.",
+                )
+            )
     elif report_view.note:
         report_note = report_view.note
         if not llm_enabled:
@@ -198,26 +299,36 @@ def render_llm_actions_block(
                 else "Runs one Python-owned report for this selected case only. "
                 "No batch-wide report generation is started."
             )
+        if language == "ru":
+            report_note = ui_text(
+                language,
+                report_note,
+                "Запускает один отчет для выбранного кейса. Массовая генерация отчетов не стартует.",
+            )
         notes.append(html.escape(report_note))
-    if optimizer_status == "unavailable":
+    if optimizer_status == "unavailable" and not optimizer_compact_unavailable:
         notes.append(
-            "Source SQL is unavailable or outside the optimizer read-only scope for this case."
+            ui_text(
+                language,
+                "Source SQL is unavailable or outside the optimizer read-only scope for this case.",
+                "Source SQL недоступен или находится вне read-only scope оптимизатора для этого кейса.",
+            )
         )
     notes_html = f'<p class="helper">{"<br>".join(notes)}</p>' if notes else ""
     combined_status = combined_llm_actions_job_status(report_view, optimizer_view)
     if combined_status == "running":
         report_status_html = render_llm_actions_job_progress(
-            report_view, optimizer_view, llm_enabled=llm_enabled
+            report_view, optimizer_view, llm_enabled=llm_enabled, language=language
         )
         optimizer_status_html = ""
     elif combined_status == "cancelled":
         report_status_html = render_llm_actions_job_stopped(
-            report_view, optimizer_view, llm_enabled=llm_enabled
+            report_view, optimizer_view, llm_enabled=llm_enabled, language=language
         )
         optimizer_status_html = ""
     else:
         report_status_html = render_llm_report_status(
-            report_view, trusted_report_html, llm_enabled=llm_enabled
+            report_view, trusted_report_html, llm_enabled=llm_enabled, language=language
         )
         optimizer_status_html = render_optimizer_status(
             optimizer_view,
@@ -227,19 +338,35 @@ def render_llm_actions_block(
             optimizer_validation_action_url=optimizer_validation_action,
             optimizer_validation_result=optimizer_validation_result,
             llm_enabled=llm_enabled,
+            language=language,
         )
-    section_label = "LLM actions" if llm_enabled else "Python-only actions"
-    report_title = "LLM Report" if llm_enabled else "Python Report"
-    optimizer_title = "Query LLM optimizer" if llm_enabled else "Query optimizer"
+    if (
+        unavailable_rows
+        and not action_cards_html
+        and not notes_html
+        and not report_status_html
+        and not optimizer_status_html
+    ):
+        return (
+            f'<section id="{section_id}" '
+            'class="panel docs-panel llm-actions-panel llm-actions-panel--unavailable" '
+            f'aria-label="{section_label}">'
+            '<details class="llm-actions-status-details">'
+            f"<summary><span>{section_label}</span>"
+            f"<small>{html.escape(ui_text(language, 'No action is available for this case', 'Для этого кейса нет доступного действия'))}</small></summary>"
+            '<div class="report-body">'
+            f"{unavailable_html}"
+            "</div>"
+            "</details>"
+            "</section>"
+        )
     return (
-        f'<section id="{section_id}" class="panel docs-panel" aria-label="{section_label}">'
-        f"<h1>{section_label}</h1>"
+        f'<section id="{section_id}" class="panel docs-panel llm-actions-panel" '
+        f'aria-label="{section_label}">'
+        f'<h2 class="docs-panel-title">{section_label}</h2>'
         '<div class="report-body">'
-        '<div class="llm-action-grid">'
-        f'<div class="llm-action-card"><strong>{report_title}</strong>{report_action_html}</div>'
-        f'<div class="llm-action-card"><strong>{optimizer_title}</strong>{optimizer_action_html}</div>'
-        f"{combined_card_html}"
-        "</div>"
+        f"{action_cards_html}"
+        f"{unavailable_html}"
         f"{notes_html}"
         f"{report_status_html}"
         f"{optimizer_status_html}"
@@ -261,6 +388,27 @@ def render_post_button(
         f'<form method="post" action="{action_url}">'
         f'<button class="{class_name}" type="submit"{disabled_attr}>{html.escape(label)}</button>'
         "</form>"
+    )
+
+
+def render_llm_action_card(
+    title: str, description: str, action_html: str, *, primary: bool = False
+) -> str:
+    primary_class = " llm-action-card--primary" if primary else ""
+    return (
+        f'<div class="llm-action-card{primary_class}">'
+        f"<strong>{html.escape(title)}</strong>"
+        f'<p class="llm-action-card-copy">{html.escape(description)}</p>'
+        f"{action_html}</div>"
+    )
+
+
+def render_unavailable_action_note(title: str, message: str) -> str:
+    return (
+        '<div class="llm-action-unavailable">'
+        f"<strong>{html.escape(title)}</strong>"
+        f"<span>{html.escape(message)}</span>"
+        "</div>"
     )
 
 
@@ -290,6 +438,7 @@ def render_llm_actions_job_progress(
     optimizer_view: OptimizedQueryActionView,
     *,
     llm_enabled: bool = True,
+    language: str = "en",
 ) -> str:
     progress_view = report_view.progress_view or optimizer_view.progress_view
     if progress_view is None:
@@ -302,17 +451,27 @@ def render_llm_actions_job_progress(
         f' data-report-job-status-url="/jobs/{escaped_job_id}/status"'
         f' data-report-job-url="/jobs/{escaped_job_id}"'
     )
+    action_kind = "LLM" if llm_enabled else "Python"
+    stop_actions_label = ui_text(language, f"Stop {action_kind} actions", "Остановить действия")
     cancel_html = (
         f'<form method="post" action="/jobs/{escaped_job_id}/cancel">'
-        f'<button class="button danger" type="submit">Stop {"LLM" if llm_enabled else "Python"} actions</button>'
+        f'<button class="button danger" type="submit">{html.escape(stop_actions_label)}</button>'
         "</form>"
     )
     step_html = render_progress_steps(progress_view)
-    progress_label = "LLM actions" if llm_enabled else "Python actions"
-    progress_title = (
+    progress_label = ui_text(
+        language,
+        "LLM actions" if llm_enabled else "Python actions",
+        "LLM-действия" if llm_enabled else "Python-действия",
+    )
+    progress_title = ui_text(
+        language,
         "Generating LLM report + optimizer"
         if llm_enabled
-        else "Generating Python report + optimizer"
+        else "Generating Python report + optimizer",
+        "Генерируется LLM-отчет + optimizer"
+        if llm_enabled
+        else "Генерируется Python-отчет + optimizer",
     )
     return (
         f'<div class="report-progress" aria-label="{progress_label} progress"{status_attrs}>'
@@ -331,12 +490,21 @@ def render_llm_actions_job_stopped(
     optimizer_view: OptimizedQueryActionView,
     *,
     llm_enabled: bool = True,
+    language: str = "en",
 ) -> str:
     current_stage = report_view.stage_label or optimizer_view.stage_label or "Cancelled"
     message = report_view.error
     if message in {None, "", "unknown"}:
-        message = optimizer_view.error or "Job stopped by user."
-    progress_label = "LLM actions" if llm_enabled else "Python actions"
+        message = optimizer_view.error or ui_text(
+            language, "Job stopped by user.", "Задание остановлено пользователем."
+        )
+    progress_label = ui_text(
+        language,
+        "LLM actions" if llm_enabled else "Python actions",
+        "LLM-действия" if llm_enabled else "Python-действия",
+    )
+    stopped = ui_text(language, "Stopped", "Остановлено")
+    stopped_by_user = ui_text(language, "Stopped by user", "Остановлено пользователем")
     return (
         f'<div class="report-progress" aria-label="{progress_label} progress">'
         f'<div class="progress-head"><span class="progress-title">{progress_label} stopped</span>'
@@ -346,7 +514,7 @@ def render_llm_actions_job_stopped(
         "</div>"
         '<div class="batch-progress"><div class="batch-progress-steps">'
         '<div class="batch-progress-step batch-progress-step--failed">'
-        "<strong>! Stopped</strong><span>Stopped by user</span></div>"
+        f"<strong>! {html.escape(stopped)}</strong><span>{html.escape(stopped_by_user)}</span></div>"
         "</div></div>"
         f'<div class="error-card" role="alert">{html.escape(str(message))}</div>'
         "</div>"
@@ -359,21 +527,28 @@ def render_optimizer_action_button(
     open_url: str,
     *,
     llm_enabled: bool = True,
+    language: str = "en",
 ) -> str:
     status = view.status
     output_kind = view.output_kind
-    optimizer_label = "Query LLM optimizer" if llm_enabled else "Query optimizer"
+    optimizer_label = ui_text(
+        language,
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+    )
     if status == "generated" and output_kind == "no_rewrite":
-        return f'<a class="button" href="{open_url}">Open {optimizer_label} outcome</a>'
+        return f'<a class="button" href="{open_url}">{html.escape(ui_text(language, f"Open {optimizer_label} outcome", f"Открыть результат {optimizer_label}"))}</a>'
     if status == "generated" and output_kind == "recommendations_only":
-        return f'<a class="button" href="{open_url}">Open {optimizer_label} recommendations</a>'
+        return f'<a class="button" href="{open_url}">{html.escape(ui_text(language, f"Open {optimizer_label} recommendations", f"Открыть рекомендации {optimizer_label}"))}</a>'
     if status == "generated":
-        return f'<a class="button" href="{open_url}">Open {optimizer_label} draft</a>'
+        return f'<a class="button" href="{open_url}">{html.escape(ui_text(language, f"Open {optimizer_label} draft", f"Открыть draft {optimizer_label}"))}</a>'
     if status == "unavailable":
-        return f'<button class="button" type="button" disabled>Run {optimizer_label}</button>'
+        return f'<button class="button" type="button" disabled>{html.escape(ui_text(language, f"Run {optimizer_label}", f"Запустить {optimizer_label}"))}</button>'
     if status == "running":
-        return f'<button class="button" type="button" disabled>Running {optimizer_label}</button>'
-    return render_post_button(action_url, f"Run {optimizer_label}")
+        return f'<button class="button" type="button" disabled>{html.escape(ui_text(language, f"Running {optimizer_label}", f"Выполняется {optimizer_label}"))}</button>'
+    return render_post_button(
+        action_url, ui_text(language, f"Run {optimizer_label}", f"Запустить {optimizer_label}")
+    )
 
 
 def render_optimizer_status(
@@ -385,17 +560,22 @@ def render_optimizer_status(
     optimizer_validation_action_url: str | None = None,
     optimizer_validation_result: dict[str, Any] | None = None,
     llm_enabled: bool = True,
+    language: str = "en",
 ) -> str:
     status = view.status
     output_kind = view.output_kind
     if status == "running":
-        status_html = render_optimized_query_progress(view, llm_enabled=llm_enabled)
+        status_html = render_optimized_query_progress(
+            view, llm_enabled=llm_enabled, language=language
+        )
     elif status in {"failed", "cancelled"}:
-        status_html = render_optimized_query_failure(view, llm_enabled=llm_enabled)
+        status_html = render_optimized_query_failure(
+            view, llm_enabled=llm_enabled, language=language
+        )
     elif status == "partial_untrusted":
-        status_html = render_optimized_query_outcome(view)
+        status_html = render_optimized_query_outcome(view, language=language)
     elif status == "generated":
-        status_html = render_optimized_query_outcome(view)
+        status_html = render_optimized_query_outcome(view, language=language)
     else:
         status_html = ""
     draft_html = render_optimizer_trusted_output(
@@ -405,21 +585,28 @@ def render_optimizer_status(
         trusted_optimized_query=trusted_optimized_query,
         trusted_optimizer_recommendations=trusted_optimizer_recommendations,
         llm_enabled=llm_enabled,
+        language=language,
     )
     guidance_html = render_optimizer_manual_guidance(
         optimizer_manual_guidance,
         status=status,
         manual_rewrite_allowed=optimizer_manual_rewrite_available(view),
         has_trusted_output=bool(trusted_optimized_query or trusted_optimizer_recommendations),
+        language=language,
     )
     validation_html = render_external_rewrite_validation(
         view,
         optimizer_validation_action_url,
         optimizer_validation_result,
+        language=language,
     )
     if not status_html and not draft_html and not guidance_html and not validation_html:
         return ""
-    optimizer_label = "Query LLM optimizer" if llm_enabled else "Query optimizer"
+    optimizer_label = ui_text(
+        language,
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+    )
     return (
         f'<div id="{OPTIMIZER_RESULT_ANCHOR_ID}" class="llm-result-block" aria-label="{optimizer_label} result">'
         f"<h2>{optimizer_label}</h2>"
@@ -436,13 +623,18 @@ def render_optimizer_trusted_output(
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
     llm_enabled: bool = True,
+    language: str = "en",
 ) -> str:
-    optimizer_label = "Query LLM optimizer" if llm_enabled else "Query optimizer"
+    optimizer_label = ui_text(
+        language,
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+    )
     if status == "generated" and trusted_optimized_query:
         return (
-            f'<details class="analysis-subdetails" open aria-label="{optimizer_label} draft">'
+            f'<details class="analysis-subdetails action-result-details" aria-label="{optimizer_label} draft">'
             f"<summary>{optimizer_label} draft</summary>"
-            '<p class="helper">Draft only. The query was not executed and requires review before use.</p>'
+            f'<p class="helper">{html.escape(ui_text(language, "Draft only. The query was not executed and requires review before use.", "Только draft. Запрос не выполнялся и требует проверки перед использованием."))}</p>'
             f"{render_trusted_optimized_query_draft(trusted_optimized_query)}"
             "</details>"
         )
@@ -452,11 +644,13 @@ def render_optimizer_trusted_output(
             helper = no_rewrite_recommendations_helper(fallback_reason)
         else:
             summary = f"{optimizer_label} recommendations"
-            helper = (
-                "Deterministic risk checks skipped SQL rewrite; review the recommendations instead."
+            helper = ui_text(
+                language,
+                "Deterministic risk checks skipped SQL rewrite; review the recommendations instead.",
+                "Детерминированные risk checks пропустили SQL rewrite; проверьте рекомендации.",
             )
         return (
-            f'<details class="analysis-subdetails" open aria-label="{optimizer_label} recommendations">'
+            f'<details class="analysis-subdetails action-result-details" aria-label="{optimizer_label} recommendations">'
             f"<summary>{html.escape(summary)}</summary>"
             f'<p class="helper">{html.escape(helper)}</p>'
             f"<div>{render_safe_markdown_paragraphs(trusted_optimizer_recommendations)}</div>"
@@ -471,13 +665,14 @@ def render_optimizer_manual_guidance(
     status: str,
     manual_rewrite_allowed: bool,
     has_trusted_output: bool,
+    language: str = "en",
 ) -> str:
     if not guidance or not manual_rewrite_allowed or has_trusted_output or status == "running":
         return ""
     return (
         '<details class="analysis-subdetails" aria-label="Manual optimizer guidance">'
-        "<summary>Manual rewrite guidance</summary>"
-        '<p class="helper">Python-owned bullets for manual rewrite review.</p>'
+        f"<summary>{html.escape(ui_text(language, 'Manual rewrite guidance', 'Ручная rewrite-проверка'))}</summary>"
+        f'<p class="helper">{html.escape(ui_text(language, "Python-owned bullets for manual rewrite review.", "Python-owned пункты для ручной проверки rewrite."))}</p>'
         f"<div>{render_safe_markdown_paragraphs(guidance)}</div>"
         "</details>"
     )
@@ -487,19 +682,21 @@ def render_external_rewrite_validation(
     view: OptimizedQueryActionView,
     action_url: str | None,
     result: dict[str, Any] | None,
+    *,
+    language: str = "en",
 ) -> str:
     if not action_url or not view.source_available or not optimizer_manual_rewrite_available(view):
         return ""
     result_html = render_external_rewrite_validation_result(result)
     return (
         '<details class="analysis-subdetails" aria-label="Validate rewritten SQL">'
-        "<summary>Validate rewritten SQL</summary>"
+        f"<summary>{html.escape(ui_text(language, 'Validate rewritten SQL', 'Проверить rewritten SQL'))}</summary>"
         f"{result_html}"
         f'<form class="optimizer-form" method="post" action="{html.escape(action_url, quote=True)}">'
-        '<div class="label-row"><label for="external_rewritten_sql">Rewritten SQL</label>'
-        '<span class="hint">read-only validation only</span></div>'
+        f'<div class="label-row"><label for="external_rewritten_sql">{html.escape(ui_text(language, "Rewritten SQL", "Rewritten SQL"))}</label>'
+        f'<span class="hint">{html.escape(ui_text(language, "read-only validation only", "только read-only validation"))}</span></div>'
         '<textarea class="input optimizer-sql" id="external_rewritten_sql" name="rewritten_sql" required></textarea>'
-        '<button class="button" type="submit">Validate rewrite</button>'
+        f'<button class="button" type="submit">{html.escape(ui_text(language, "Validate rewrite", "Проверить rewrite"))}</button>'
         "</form>"
         "</details>"
     )
@@ -543,7 +740,7 @@ def render_trusted_optimized_query_draft(trusted_optimized_query: str) -> str:
 
 
 def render_optimized_query_progress(
-    view: OptimizedQueryActionView, *, llm_enabled: bool = True
+    view: OptimizedQueryActionView, *, llm_enabled: bool = True, language: str = "en"
 ) -> str:
     progress_view = view.progress_view
     if progress_view is None:
@@ -561,16 +758,23 @@ def render_optimized_query_progress(
         )
         cancel_html = (
             f'<form method="post" action="/jobs/{escaped_job_id}/cancel">'
-            '<button class="button danger" type="submit">Stop job</button>'
+            f'<button class="button danger" type="submit">{html.escape(ui_text(language, "Stop job", "Остановить задание"))}</button>'
             "</form>"
         )
     else:
         cancel_html = ""
     step_html = render_progress_steps(progress_view)
-    optimizer_label = "Query LLM optimizer" if llm_enabled else "Query optimizer"
+    optimizer_label = ui_text(
+        language,
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+    )
+    progress_title = ui_text(
+        language, f"Running {optimizer_label}", f"Выполняется {optimizer_label}"
+    )
     return (
         f'<div class="report-progress" aria-label="Optimized query progress"{status_attrs}>'
-        f'<div class="progress-head"><span class="progress-title">Running {optimizer_label}</span>'
+        f'<div class="progress-head"><span class="progress-title">{html.escape(progress_title)}</span>'
         f'<span class="progress-stage">{html.escape(current_stage)}</span>{cancel_html}</div>'
         '<div class="progress-bar" aria-hidden="true">'
         f'<span class="progress-fill" style="width:{progress_view.percent}%"></span>'
@@ -580,40 +784,47 @@ def render_optimized_query_progress(
     )
 
 
-def render_optimized_query_outcome(view: OptimizedQueryActionView) -> str:
+def render_optimized_query_outcome(view: OptimizedQueryActionView, *, language: str = "en") -> str:
     status = view.status
     output_kind = view.output_kind
     manual_validation = (
-        "Available"
+        ui_text(language, "Available", "Доступно")
         if optimizer_manual_rewrite_available(view) and view.source_available
-        else "Not needed"
+        else ui_text(language, "Not needed", "Не требуется")
     )
     if status == "partial_untrusted":
-        title = "Validation failed"
-        summary = (
-            "The generated SQL draft failed deterministic validation. "
-            "It remains hidden; use manual rewrite validation for a reviewed alternative."
+        title = ui_text(language, "Validation failed", "Validation failed")
+        summary = ui_text(
+            language,
+            "The generated SQL draft failed deterministic validation. It remains hidden; use manual rewrite validation for a reviewed alternative.",
+            "Сгенерированный SQL draft не прошел детерминированную validation. Он скрыт; используйте ручную validation для проверенной альтернативы.",
         )
         card_class = "error-card"
         role = "alert"
-        manual_validation = "Available" if view.source_available else "Unavailable"
+        manual_validation = (
+            ui_text(language, "Available", "Доступно")
+            if view.source_available
+            else ui_text(language, "Unavailable", "Недоступно")
+        )
     elif status == "generated" and output_kind == "no_rewrite":
         title, summary, is_error = no_rewrite_outcome_copy(view.fallback_reason)
         card_class = "error-card" if is_error else "success-card"
         role = "alert" if is_error else "status"
     elif status == "generated" and output_kind == "recommendations_only":
-        title = "Recommendations only"
-        summary = (
-            "The query shape was not safe enough for a trusted SQL draft, "
-            "so the optimizer returned review guidance only."
+        title = ui_text(language, "Recommendations only", "Только рекомендации")
+        summary = ui_text(
+            language,
+            "The query shape was not safe enough for a trusted SQL draft, so the optimizer returned review guidance only.",
+            "Форма запроса недостаточно безопасна для trusted SQL draft, поэтому optimizer вернул только guidance для проверки.",
         )
         card_class = "success-card"
         role = "status"
     elif status == "generated":
-        title = "Validated SQL draft"
-        summary = (
-            "A trusted SQL draft passed deterministic validation. "
-            "It was not executed and still requires review before use."
+        title = ui_text(language, "Validated SQL draft", "Validated SQL draft")
+        summary = ui_text(
+            language,
+            "A trusted SQL draft passed deterministic validation. It was not executed and still requires review before use.",
+            "Trusted SQL draft прошел deterministic validation. Он не выполнялся и все равно требует проверки перед использованием.",
         )
         card_class = "success-card"
         role = "status"
@@ -623,12 +834,15 @@ def render_optimized_query_outcome(view: OptimizedQueryActionView) -> str:
     items = []
     risk_reasons = "; ".join(optimizer_risk_reason_labels(view.risk_reasons))
     for label, value in (
-        ("Outcome", optimizer_output_label(output_kind)),
-        ("Source scope", optimizer_source_scope_label(view.source_scope)),
-        ("Risk mode", optimizer_risk_label(view.risk_mode)),
-        ("Guardrails", risk_reasons),
-        ("Reason", optimizer_fallback_label(view.fallback_reason)),
-        ("Manual validation", manual_validation),
+        (ui_text(language, "Outcome", "Результат"), optimizer_output_label(output_kind)),
+        (
+            ui_text(language, "Source scope", "Source scope"),
+            optimizer_source_scope_label(view.source_scope),
+        ),
+        (ui_text(language, "Risk mode", "Risk mode"), optimizer_risk_label(view.risk_mode)),
+        (ui_text(language, "Guardrails", "Guardrails"), risk_reasons),
+        (ui_text(language, "Reason", "Причина"), optimizer_fallback_label(view.fallback_reason)),
+        (ui_text(language, "Manual validation", "Ручная validation"), manual_validation),
     ):
         value = str(value or "").strip()
         if value:
@@ -754,14 +968,33 @@ def render_safe_markdown_paragraphs(text: str) -> str:
 
 
 def render_optimized_query_failure(
-    view: OptimizedQueryActionView, *, llm_enabled: bool = True
+    view: OptimizedQueryActionView, *, llm_enabled: bool = True, language: str = "en"
 ) -> str:
     cancelled = view.status == "cancelled"
-    message = str(view.error or "Optimized query generation failed. Unsafe output is hidden.")
-    optimizer_label = "Query LLM optimizer" if llm_enabled else "Query optimizer"
-    title = f"{optimizer_label} stopped" if cancelled else f"{optimizer_label} failed"
-    label = "Stopped" if cancelled else "Error"
-    detail = "Stopped by user" if cancelled else "Unsafe output is hidden"
+    message = str(
+        view.error
+        or ui_text(
+            language,
+            "Optimized query generation failed. Unsafe output is hidden.",
+            "Генерация optimized query не удалась. Unsafe output скрыт.",
+        )
+    )
+    optimizer_label = ui_text(
+        language,
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+        "Query LLM optimizer" if llm_enabled else "Query optimizer",
+    )
+    title = (
+        ui_text(language, f"{optimizer_label} stopped", f"{optimizer_label} остановлен")
+        if cancelled
+        else ui_text(language, f"{optimizer_label} failed", f"{optimizer_label} завершился ошибкой")
+    )
+    label = ui_text(language, "Stopped", "Остановлено") if cancelled else "Error"
+    detail = (
+        ui_text(language, "Stopped by user", "Остановлено пользователем")
+        if cancelled
+        else ui_text(language, "Unsafe output is hidden", "Unsafe output скрыт")
+    )
     return (
         '<div class="report-progress" aria-label="Optimized query progress">'
         f'<div class="progress-head"><span class="progress-title">{title}</span>'

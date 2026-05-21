@@ -4,22 +4,33 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_collector
 from query_doctor.config.contract import load_and_validate_config
+from query_doctor.report.llm_client import (
+    DEFAULT_LLM_API_BASE_URL,
+    DEFAULT_LLM_PROVIDER,
+    DEFAULT_OLLAMA_URL,
+    LLM_PROVIDER_OLLAMA,
+    normalize_llm_provider,
+)
 from query_doctor.web.cluster_selection import build_web_cluster_configs, settings_for_cluster_key
 from query_doctor.web.models import (
     DEFAULT_HOST,
     DEFAULT_IMPALA_PROFILE_PORT,
     DEFAULT_IMPALA_PROFILE_SCHEME,
     DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
+    DEFAULT_LANGUAGE,
     DEFAULT_METADATA_AUTH,
     DEFAULT_METADATA_PROTOCOL,
     DEFAULT_METADATA_TIMEOUT_SEC,
+    DEFAULT_MODEL,
     DEFAULT_OPTIMIZER_MODEL,
     DEFAULT_PORT,
     DEFAULT_QUERY_PROFILE_SOURCE,
+    DEFAULT_RECENT_SCAN_TIMEZONE,
     WebError,
     WebClusterConfig,
     WebSettings,
@@ -29,10 +40,19 @@ from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_STEP_SEC,
     DEFAULT_PROMETHEUS_TIMESERIES_PADDING_SEC,
 )
+from query_doctor.source_visibility import (
+    SOURCE_VISIBILITY_SAFE,
+    normalize_source_owner_user,
+    normalize_source_visibility,
+    owner_user_from_kerberos_principal,
+    source_owner_user_from_env,
+)
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCAL_BIND_HOSTS = {"127.0.0.1", "localhost", "::1"}
+KEYTAB_OWNER_USERS_TIMEOUT_SEC = 2
+MAX_KEYTAB_OWNER_USER_OPTIONS = 50
 
 
 def positive_int(value: str) -> int:
@@ -91,6 +111,87 @@ def load_krb5ccname_from_local_config(config_path: Path, *, cwd: Path) -> str | 
     values = load_web_local_config(config_path, cwd=cwd)
     value = values.get("krb5ccname")
     return value if isinstance(value, str) else None
+
+
+def keytab_path_from_env(env: dict[str, str] | os._Environ[str]) -> str | None:
+    value = (env.get("QD_KEYTAB") or "").strip()
+    if not value:
+        return None
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        return None
+    path_text = value[5:] if value.startswith("FILE:") else value
+    path = Path(path_text).expanduser()
+    if not path.is_file():
+        return None
+    return str(path)
+
+
+def source_owner_user_options_from_keytab(
+    env: dict[str, str] | os._Environ[str] | None = None,
+    *,
+    runner=subprocess.run,
+) -> tuple[str, ...]:
+    env = os.environ if env is None else env
+    keytab = keytab_path_from_env(env)
+    if keytab is None:
+        return ()
+    for command in (["klist", "-k", keytab], ["ktutil", "-k", keytab, "list"]):
+        try:
+            result = runner(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=KEYTAB_OWNER_USERS_TIMEOUT_SEC,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if getattr(result, "returncode", 1) != 0:
+            continue
+        options = source_owner_user_options_from_klist(getattr(result, "stdout", ""))
+        if options:
+            return options
+    return ()
+
+
+def source_owner_user_options_from_klist(text: str) -> tuple[str, ...]:
+    options: list[str] = []
+    for line in text.splitlines():
+        tokens = line.strip().split()
+        if not tokens or not tokens[0].isdigit():
+            continue
+        principal = tokens[-1]
+        if principal.startswith("("):
+            continue
+        owner = owner_user_from_kerberos_principal(principal)
+        if owner is None:
+            continue
+        options.append(owner)
+    return sorted_source_owner_user_options(tuple(options))
+
+
+def sorted_source_owner_user_options(options: tuple[str, ...]) -> tuple[str, ...]:
+    unique: dict[str, str] = {}
+    for option in options:
+        owner = normalize_source_owner_user(option)
+        if owner and owner not in unique:
+            unique[owner] = owner
+    return tuple(sorted(unique, key=lambda value: (value.casefold(), value)))[
+        :MAX_KEYTAB_OWNER_USER_OPTIONS
+    ]
+
+
+def source_owner_user_from_keytab_options(options: tuple[str, ...]) -> str | None:
+    sorted_options = sorted_source_owner_user_options(options)
+    return sorted_options[0] if sorted_options else None
+
+
+def llm_base_url_for_provider(provider: str, configured: str | None) -> str | None:
+    if configured:
+        return configured
+    if provider == LLM_PROVIDER_OLLAMA:
+        return DEFAULT_OLLAMA_URL
+    return DEFAULT_LLM_API_BASE_URL or None
 
 
 def validate_web_startup_config(
@@ -235,6 +336,9 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
     config_path = resolve_web_config_path(args.config, cwd=cwd)
     config_values = load_web_local_config(args.config, cwd=cwd)
     clusters = build_web_cluster_configs(config_values)
+    source_owner_user_options = sorted_source_owner_user_options(
+        source_owner_user_options_from_keytab(dict(os.environ))
+    )
     privacy_mode = optional_config_bool(config_values, "privacy_mode")
     if privacy_mode is None:
         privacy_mode = True
@@ -244,6 +348,59 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
     redact_hosts = optional_config_bool(config_values, "redact_hosts")
     if redact_hosts is None:
         redact_hosts = privacy_mode
+    source_visibility = normalize_source_visibility(
+        first_string_value(
+            optional_config_string(config_values, "source_visibility"),
+            SOURCE_VISIBILITY_SAFE,
+        )
+    )
+    source_owner_user = normalize_source_owner_user(
+        first_string_value(
+            optional_config_string(config_values, "source_owner_user"),
+            source_owner_user_from_env(dict(os.environ)),
+            source_owner_user_from_keytab_options(source_owner_user_options),
+        )
+    )
+    report_llm_provider = normalize_llm_provider(
+        first_string_value(
+            getattr(args, "report_llm_provider", None),
+            optional_config_string(config_values, "report_llm_provider"),
+            os.environ.get("QD_REPORT_LLM_PROVIDER"),
+            os.environ.get("QD_LLM_PROVIDER"),
+            DEFAULT_LLM_PROVIDER,
+        )
+    )
+    optimizer_llm_provider = normalize_llm_provider(
+        first_string_value(
+            getattr(args, "optimizer_llm_provider", None),
+            optional_config_string(config_values, "optimizer_llm_provider"),
+            os.environ.get("QD_OPTIMIZER_LLM_PROVIDER"),
+            os.environ.get("QD_LLM_PROVIDER"),
+            DEFAULT_LLM_PROVIDER,
+        )
+    )
+    report_llm_base_url = llm_base_url_for_provider(
+        report_llm_provider,
+        first_string_value(
+            getattr(args, "report_llm_base_url", None),
+            optional_config_string(config_values, "report_llm_base_url"),
+            os.environ.get("QD_REPORT_LLM_API_BASE_URL"),
+            os.environ.get("QD_REPORT_LLM_BASE_URL"),
+            os.environ.get("QD_LLM_API_BASE_URL"),
+            os.environ.get("QD_LLM_BASE_URL"),
+        ),
+    )
+    optimizer_llm_base_url = llm_base_url_for_provider(
+        optimizer_llm_provider,
+        first_string_value(
+            getattr(args, "optimizer_llm_base_url", None),
+            optional_config_string(config_values, "optimizer_llm_base_url"),
+            os.environ.get("QD_OPTIMIZER_LLM_API_BASE_URL"),
+            os.environ.get("QD_OPTIMIZER_LLM_BASE_URL"),
+            os.environ.get("QD_LLM_API_BASE_URL"),
+            os.environ.get("QD_LLM_BASE_URL"),
+        ),
+    )
     settings = WebSettings(
         config=config_path,
         host=first_string_value(
@@ -281,18 +438,45 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             optional_config_int(config_values, "max_profile_bytes"),
             default=None,
         ),
-        model=args.model,
+        model=first_string_value(
+            args.model,
+            optional_config_string(config_values, "report_llm_model"),
+            os.environ.get("QD_REPORT_LLM_MODEL"),
+            os.environ.get("OLLAMA_MODEL"),
+            DEFAULT_MODEL,
+        )
+        or DEFAULT_MODEL,
         optimizer_model=first_string_value(
             args.optimizer_model,
+            optional_config_string(config_values, "optimizer_llm_model"),
             optional_config_string(config_values, "optimizer_model"),
+            os.environ.get("QD_OPTIMIZER_LLM_MODEL"),
+            os.environ.get("QD_OPTIMIZER_MODEL"),
             DEFAULT_OPTIMIZER_MODEL,
-            args.model,
+        ),
+        report_llm_provider=report_llm_provider,
+        report_llm_base_url=report_llm_base_url,
+        report_llm_chat_path=first_string_value(
+            getattr(args, "report_llm_chat_path", None),
+            optional_config_string(config_values, "report_llm_chat_path"),
+            os.environ.get("QD_REPORT_LLM_CHAT_PATH"),
+            os.environ.get("QD_LLM_CHAT_PATH"),
+        ),
+        optimizer_llm_provider=optimizer_llm_provider,
+        optimizer_llm_base_url=optimizer_llm_base_url,
+        optimizer_llm_chat_path=first_string_value(
+            getattr(args, "optimizer_llm_chat_path", None),
+            optional_config_string(config_values, "optimizer_llm_chat_path"),
+            os.environ.get("QD_OPTIMIZER_LLM_CHAT_PATH"),
+            os.environ.get("QD_LLM_CHAT_PATH"),
         ),
         no_llm=getattr(args, "no_llm", False)
         or optional_config_bool(config_values, "no_llm") is True,
         privacy_mode=privacy_mode,
         redact_identifiers=redact_identifiers,
         redact_hosts=redact_hosts,
+        source_visibility=source_visibility,
+        source_owner_user=source_owner_user,
         timeout_sec=args.timeout_sec,
         batch_summary=Path(args.batch_summary).expanduser() if args.batch_summary else None,
         query_profile_source=first_string_value(
@@ -390,6 +574,17 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             default=privacy_mode,
         ),
         krb5ccname=optional_config_string(config_values, "krb5ccname"),
+        recent_scan_timezone=first_string_value(
+            optional_config_string(config_values, "recent_scan_timezone"),
+            DEFAULT_RECENT_SCAN_TIMEZONE,
+        )
+        or DEFAULT_RECENT_SCAN_TIMEZONE,
+        language=first_string_value(
+            optional_config_string(config_values, "language"),
+            DEFAULT_LANGUAGE,
+        )
+        or DEFAULT_LANGUAGE,
+        source_owner_user_options=source_owner_user_options,
     )
     if clusters:
         return settings_for_cluster_key(settings, clusters[0].key)

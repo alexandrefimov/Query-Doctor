@@ -68,13 +68,14 @@ def test_recent_direct_impala_config_defaults_to_private_prometheus_metadata(tmp
             "metadata_impala_shell": "impala-shell",
             "metadata_kerberos_service_name": "hive",
             "metadata_max_tables": 4,
+            "source_visibility": "owner_raw",
             "out": str(tmp_path / "query-doctor-direct-output"),
         },
     )
 
     config = batch_recent.build_batch_config(
         batch_recent.parse_args(["--config", str(config_path), "--metadata-mode", "on"]),
-        env={},
+        env={"KRB5_PRINCIPAL": "analyst_one@EXAMPLE.COM"},
         cwd=tmp_path,
         repo_root=REPO_DIR,
     )
@@ -92,6 +93,36 @@ def test_recent_direct_impala_config_defaults_to_private_prometheus_metadata(tmp
     assert config.redact_identifiers is True
     assert config.redact_hosts is True
     assert config.privacy_mode is True
+    assert config.source_visibility == "owner_raw"
+    assert config.source_owner_user == "analyst_one"
+    assert config.user == "analyst_one"
+
+
+def test_recent_cm_owner_visibility_sets_recent_user_filter(tmp_path):
+    from query_doctor.cli import batch_recent
+
+    config_path = write_config(
+        tmp_path / "query-doctor-config.json",
+        cm_payload(
+            tmp_path,
+            source_visibility="owner_raw",
+            source_owner_user="analyst_one",
+        ),
+    )
+
+    config = batch_recent.build_batch_config(
+        batch_recent.parse_args(
+            ["--config", str(config_path), "--metadata-mode", "off", "--no-min-duration-filter"]
+        ),
+        env={"CM_PASSWORD": "secret", "CM_USERNAME": "collector"},
+        cwd=tmp_path,
+        repo_root=REPO_DIR,
+    )
+
+    assert config.query_profile_source == "cm"
+    assert config.source_visibility == "owner_raw"
+    assert config.source_owner_user == "analyst_one"
+    assert config.user == "analyst_one"
 
 
 def test_web_config_no_llm_and_privacy_mode_reach_action_commands(tmp_path):
@@ -168,3 +199,48 @@ def test_web_cluster_config_can_override_privacy_for_direct_impala_target(tmp_pa
     assert settings.redact_identifiers is False
     assert settings.redact_hosts is True
     assert settings.metadata_redact is False
+
+
+def test_recent_batch_can_select_cluster_config_owner_visibility(tmp_path):
+    from query_doctor.cli import batch_recent
+
+    config_path = write_config(
+        tmp_path / "query-doctor-config.json",
+        {
+            "out": str(tmp_path / "query-doctor-direct-output"),
+            "privacy_mode": True,
+            "clusters": [
+                {
+                    "id": "direct-impala",
+                    "query_profile_source": "impala",
+                    "impala_profile_hosts": ["impalad-1.example.com:25000"],
+                    "metadata_kerberos_service_name": "hive",
+                    "source_visibility": "owner_raw",
+                    "source_owner_user": "analyst_one",
+                }
+            ],
+        },
+    )
+
+    config = batch_recent.build_batch_config(
+        batch_recent.parse_args(
+            [
+                "--config",
+                str(config_path),
+                "--config-cluster",
+                "direct-impala",
+                "--metadata-mode",
+                "off",
+            ]
+        ),
+        env={},
+        cwd=tmp_path,
+        repo_root=REPO_DIR,
+    )
+
+    assert config.query_profile_source == "impala"
+    assert config.impala_profile_hosts == ("impalad-1.example.com:25000",)
+    assert config.metadata_kerberos_service_name == "hive"
+    assert config.source_visibility == "owner_raw"
+    assert config.source_owner_user == "analyst_one"
+    assert config.user == "analyst_one"

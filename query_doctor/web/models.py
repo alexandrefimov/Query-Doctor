@@ -7,6 +7,10 @@ from pathlib import Path
 
 from query_doctor.cli.collect_cm_profiles import DEFAULT_CM_METRICS_PROFILE
 from query_doctor.optimizer.defaults import DEFAULT_OPTIMIZER_MODEL
+from query_doctor.report.llm_client import (
+    DEFAULT_LLM_PROVIDER,
+    DEFAULT_OLLAMA_URL,
+)
 from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_METRICS_PROFILE,
     DEFAULT_PROMETHEUS_STEP_SEC,
@@ -19,6 +23,7 @@ DEFAULT_PORT = 8765
 DEFAULT_TIMEOUT_SEC = 1800
 DEFAULT_MODEL = "qwen3-coder:30b-a3b-q8_0"
 DEFAULT_CORPUS_DIR = Path("cases/cm-corpus")
+DEFAULT_RECENT_SCAN_TIMEZONE = "Europe/Moscow"
 DEFAULT_QUERY_PROFILE_SOURCE = "cm"
 DEFAULT_IMPALA_PROFILE_PORT = 25000
 DEFAULT_IMPALA_PROFILE_SCHEME = "http"
@@ -26,6 +31,7 @@ DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC = 15
 DEFAULT_METADATA_AUTH = "kerberos"
 DEFAULT_METADATA_PROTOCOL = "beeswax"
 DEFAULT_METADATA_TIMEOUT_SEC = 30
+DEFAULT_LANGUAGE = "en"
 BATCH_CM_INSPECT_LIMIT_MAX = 5000
 WEB_BATCH_METADATA_TOP_LIMIT_DEFAULT = 70
 WEB_CM_TIMESERIES_TOP_LIMIT_DEFAULT = 10
@@ -81,7 +87,10 @@ class WebClusterConfig:
     privacy_mode: bool = True
     redact_identifiers: bool = True
     redact_hosts: bool = True
+    source_visibility: str = "safe"
+    source_owner_user: str | None = None
     krb5ccname: str | None = None
+    recent_scan_timezone: str = DEFAULT_RECENT_SCAN_TIMEZONE
 
 
 @dataclass(frozen=True)
@@ -102,6 +111,12 @@ class WebSettings:
     max_profile_bytes: int | None = None
     model: str = DEFAULT_MODEL
     optimizer_model: str | None = DEFAULT_OPTIMIZER_MODEL
+    report_llm_provider: str = DEFAULT_LLM_PROVIDER
+    report_llm_base_url: str | None = DEFAULT_OLLAMA_URL
+    report_llm_chat_path: str | None = None
+    optimizer_llm_provider: str = DEFAULT_LLM_PROVIDER
+    optimizer_llm_base_url: str | None = DEFAULT_OLLAMA_URL
+    optimizer_llm_chat_path: str | None = None
     no_llm: bool = False
     privacy_mode: bool = True
     redact_identifiers: bool = True
@@ -131,7 +146,12 @@ class WebSettings:
     metadata_max_tables: int | None = None
     metadata_max_output_bytes: int | None = None
     metadata_redact: bool = True
+    source_visibility: str = "safe"
+    source_owner_user: str | None = None
     krb5ccname: str | None = None
+    recent_scan_timezone: str = DEFAULT_RECENT_SCAN_TIMEZONE
+    language: str = DEFAULT_LANGUAGE
+    source_owner_user_options: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -155,6 +175,7 @@ class WebQueryAnalysisResult:
 
 @dataclass(frozen=True)
 class BatchRunConfig:
+    scan_preset: str = "standard"
     recent_window_minutes: int = 30
     scan_date: str = ""
     scan_hour: int = 0

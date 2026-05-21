@@ -85,7 +85,7 @@ def test_aggregate_metrics_use_generic_repeat_medians_for_pair_latency_ratio():
             "report_chars": 1200,
         },
         {
-            "provider": "gpt_lst",
+            "provider": "openai_compatible",
             "requested_model": "gpt-oss:20b",
             "resolved_model_id": "gpt-oss:20b",
             "case_name": "fixtures:case-a",
@@ -96,7 +96,7 @@ def test_aggregate_metrics_use_generic_repeat_medians_for_pair_latency_ratio():
             "report_chars": 800,
         },
         {
-            "provider": "gpt_lst",
+            "provider": "openai_compatible",
             "requested_model": "gpt-oss:20b",
             "resolved_model_id": "gpt-oss:20b",
             "case_name": "fixtures:case-a",

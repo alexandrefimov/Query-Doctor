@@ -206,7 +206,6 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 states["collection"] = "running"
             elif status == "collection_done":
                 counters["collection_done"] += 1
-                add_duration(counters, "collection_seconds", event.get("seconds"))
             elif status == "analysis_started" and states["analysis"] != "done":
                 counters["analysis_started"] += 1
                 if states["collection"] != "failed":
@@ -214,15 +213,12 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 states["analysis"] = "running"
             elif status == "analysis_done":
                 counters["analysis_done"] += 1
-                add_duration(counters, "analysis_seconds", event.get("seconds"))
             elif status == "failed":
                 counters["failed"] += 1
                 if event.get("phase") == "collection":
                     counters["collection_failed"] += 1
-                    add_duration(counters, "collection_seconds", event.get("seconds"))
                 elif event.get("phase") == "analysis":
                     counters["analysis_failed"] += 1
-                    add_duration(counters, "analysis_seconds", event.get("seconds"))
         elif stage == "summary":
             if status == "started":
                 if states["cm_events"] == "running":
@@ -257,7 +253,6 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                 if event.get("case_id"):
                     counters["cm_metrics_done"] += 1
                     counters["cm_metrics_active"] = max(0, counters["cm_metrics_active"] - 1)
-                    add_duration(counters, "cm_metrics_seconds", event.get("seconds"))
                 else:
                     states["cm_metrics"] = "done"
                     if event.get("total") is not None:
@@ -268,7 +263,6 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
             elif status == "failed":
                 counters["cm_metrics_failed"] += 1
                 counters["cm_metrics_active"] = max(0, counters["cm_metrics_active"] - 1)
-                add_duration(counters, "cm_metrics_seconds", event.get("seconds"))
             elif status == "skipped":
                 states["cm_metrics"] = "skipped"
                 counters["cm_metrics_skip_reason"] = event.get("reason")
@@ -288,7 +282,6 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
             elif status == "done":
                 if event.get("case_id"):
                     counters["metadata_done"] += 1
-                    add_duration(counters, "metadata_seconds", event.get("seconds"))
                 else:
                     states["metadata"] = "done"
                     if event.get("total") is not None:
@@ -296,7 +289,6 @@ def summarize_batch_progress(events: list[dict[str, Any]], *, job_status: str) -
                     set_duration(counters, "metadata_seconds", event.get("seconds"))
             elif status == "failed":
                 counters["failed"] += 1
-                add_duration(counters, "metadata_seconds", event.get("seconds"))
             elif status == "skipped":
                 states["metadata"] = "skipped"
                 counters["metadata_skip_reason"] = event.get("reason")
@@ -485,28 +477,20 @@ def detail_with_time(detail: str, seconds: object) -> str:
     formatted = format_duration(seconds)
     if formatted is None:
         return detail
-    return f"{detail}, time {formatted}"
+    return f"{detail}, elapsed {formatted}"
 
 
 def detail_with_total_time(detail: str, seconds: object) -> str:
     formatted = format_duration(seconds)
     if formatted is None:
         return detail
-    return f"{detail}, total {formatted}"
+    return f"{detail}, total elapsed {formatted}"
 
 
 def set_duration(counters: dict[str, Any], key: str, value: object) -> None:
     seconds = numeric_duration(value)
     if seconds is not None:
         counters[key] = seconds
-
-
-def add_duration(counters: dict[str, Any], key: str, value: object) -> None:
-    seconds = numeric_duration(value)
-    if seconds is None:
-        return
-    current = numeric_duration(counters.get(key)) or 0.0
-    counters[key] = round(current + seconds, 3)
 
 
 def numeric_duration(value: object) -> float | None:

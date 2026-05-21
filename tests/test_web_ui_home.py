@@ -20,7 +20,6 @@ def test_package_layout_renderers_are_available():
     assert callable(layout.render_favicon_link)
     assert callable(layout.render_shared_styles)
     assert callable(layout.render_app_header)
-    assert callable(layout.render_design_toggle)
     assert callable(layout.render_client_script)
     assert callable(layout.render_static_stylesheet_link)
     assert callable(layout.render_script_link)
@@ -57,6 +56,7 @@ def test_detail_job_polling_applies_progress_view():
         "applyProgressView(progressElement, data.progress_view, data.stage, data.progress)"
         in script
     )
+    assert "applyProgressView(jobPanel, data.progress_view, data.stage, data.progress)" in script
 
 
 def test_package_progress_renderers_are_available():
@@ -102,18 +102,14 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "run-panel" in body
     assert "Known Query ID" in body
     assert "Analyze one explicit Impala query by Query ID." in body
-    assert (
-        "one explicit Query ID → profile collection or reuse → deterministic analyzer facts → automatic metadata"
-        in body
-    )
+    assert "One explicit Query ID. Query Doctor collects or reuses the profile" in body
+    assert "does not auto-run LLM actions" in body
     assert '<label for="query_id">Query ID</label>' in body
     assert "Query ID or case path" not in body
     assert "Analyze one explicit Impala query with deterministic profile facts." not in body
     assert "Saved case paths are supported by the CLI pipeline for now." not in body
     assert "case path" not in body
-    assert (
-        '<details class="info-popover"><summary aria-label="Query ID help">i</summary>' not in body
-    )
+    assert '<details class="info-popover"><summary aria-label="Query ID help">i</summary>' in body
     assert "CM: unknown/not checked" not in body
     assert "Kerberos: unknown/not checked" not in body
     assert "Metadata collector: CLI only" not in body
@@ -199,22 +195,17 @@ def test_web_render_page_contains_theme_toggle():
     assert "Switch to light theme" in scripts
     assert_css_contains(
         styles,
-        ".theme-toggle,.design-toggle{display:inline-grid;place-items:center;width:34px;"
-        "height:34px;min-width:34px;flex:0 0 34px;border:1px solid var(--border-strong)",
+        ".theme-toggle{display:inline-grid;place-items:center;width:38px;"
+        "height:38px;min-width:38px;flex:0 0 38px;border:1px solid var(--border-strong)",
     )
     assert_css_contains(styles, "background:var(--control);color:var(--accent-strong)")
     assert_css_contains(
         styles,
-        "html[data-theme=dark] .theme-toggle,html[data-theme=dark] .design-toggle{"
+        "html[data-theme=dark] .theme-toggle{"
         "border-color:var(--border-strong);background:var(--control);color:var(--accent-strong)",
     )
-    assert_css_contains(styles, ".theme-toggle svg,.design-toggle svg{width:18px;height:18px}")
-    assert_css_contains(
-        styles,
-        ".theme-toggle .theme-icon-light,"
-        ".design-toggle .design-icon-serious,"
-        ".design-toggle .design-icon-command{display:none}",
-    )
+    assert_css_contains(styles, ".theme-toggle svg{width:18px;height:18px}")
+    assert_css_contains(styles, ".theme-toggle .theme-icon-light{display:none}")
     assert_css_contains(styles, ".theme-toggle .theme-icon-dark{display:block}")
     assert_css_contains(
         styles, "html[data-theme=dark] .theme-toggle .theme-icon-light{display:block}"
@@ -224,7 +215,28 @@ def test_web_render_page_contains_theme_toggle():
     )
 
 
-def test_web_render_page_contains_design_toggle():
+def test_web_render_page_shows_config_language_indicator_without_local_path(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "query-doctor-config.json"
+    settings = module.WebSettings(config=config, language="ru")
+
+    body = module.render_page(settings)
+    styles = layout.render_shared_styles()
+
+    assert '<html lang="ru">' in body
+    assert 'class="language-indicator"' in body
+    assert ">RU</span>" in body
+    assert "Глобальная настройка языка" in body
+    assert "Help, Details и новыми отчетами" in body
+    assert "поле language" in body
+    assert "локальном конфиге" in body
+    assert "query-doctor-config.json" not in body
+    assert str(tmp_path) not in body
+    assert_css_contains(styles, ".language-indicator{display:inline-grid;")
+    assert_css_contains(styles, "grid-template-columns:minmax(0,1fr)auto44px")
+
+
+def test_web_render_page_omits_design_toggle():
     module = load_web_module()
     settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
 
@@ -232,31 +244,30 @@ def test_web_render_page_contains_design_toggle():
     styles = layout.render_shared_styles()
     scripts = layout.render_client_script()
 
-    assert 'id="design-toggle"' in body
-    assert 'aria-label="Switch to green design"' in body
-    assert "query-doctor-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
+    assert 'id="design-toggle"' not in body
+    assert 'aria-label="Switch to green design"' not in body
+    assert "query-doctor-design" not in (
+        layout.read_static_asset_text("theme-bootstrap.js") + scripts
+    )
     assert "data-design" in (layout.read_static_asset_text("theme-bootstrap.js") + scripts)
-    assert "['serious', 'command']" in (
+    assert "['serious', 'command']" not in (
         layout.read_static_asset_text("theme-bootstrap.js") + scripts
     )
     assert (
         "document.documentElement.setAttribute('data-design', 'serious')"
         in layout.read_static_asset_text("theme-bootstrap.js")
     )
-    assert "Switch to blue design" in scripts
-    assert "Switch to green design" in scripts
-    assert_css_contains(
-        styles,
-        "html[data-design=serious] .design-toggle .design-icon-serious,"
-        "html[data-design=command] .design-toggle .design-icon-command{display:block}",
-    )
+    assert "Switch to blue design" not in scripts
+    assert "Switch to green design" not in scripts
+    assert "design-toggle" not in styles
     assert "Switch to classic design" not in scripts
     assert "Switch to command design" not in scripts
     assert "Switch to review design" not in scripts
     assert "['serious', 'classic', 'command', 'review']" not in scripts
     assert "design-icon-classic" not in body
     assert "design-icon-review" not in body
-    assert body.index('id="design-toggle"') < body.index('id="theme-toggle"')
+    assert 'id="theme-toggle"' in body
+    assert ".query-doctor-cm.local.json" not in body
 
 
 def test_web_render_page_contains_optimizer_copy_handler():
@@ -278,7 +289,10 @@ def test_web_static_script_contains_csp_safe_row_navigation_handler():
 
     assert "[data-href]" in script
     assert "rowNavigationTarget" in script
-    assert "window.open(row.getAttribute('data-href'), '_blank', 'noopener')" in script
+    assert "a, button, input, select, textarea, summary, form" in script
+    assert "summary, details, form" not in script
+    assert "window.location.assign(row.getAttribute('data-href'))" in script
+    assert "window.open(row.getAttribute('data-href')" not in script
     assert "onclick=" not in script
     assert "onkeydown=" not in script
 
@@ -302,9 +316,8 @@ def test_recent_scan_default_empty_group_points_to_follow_up_tabs():
         }
     )
 
-    assert "No bad queries were found in this scan." in body
-    assert "Check Suspicious, Optimization candidates, or Stats refresh candidates" in body
-    assert "Suspicious queries <span>1</span>" in body
+    assert "No queries requiring attention were found." in body
+    assert "Worth reviewing <span>1</span>" in body
 
 
 def test_recent_scan_optimizer_ready_group_is_removed():
@@ -334,8 +347,9 @@ def test_recent_scan_optimizer_ready_group_is_removed():
     )
 
     assert "Optimizer-ready" not in body
-    assert "No bad queries were found in this scan." in body
-    assert "Optimization candidates <span>1</span>" in body
+    assert "No queries requiring attention were found." in body
+    assert "<summary>More groups</summary>" in body
+    assert "Rewrite opportunities <span>1</span>" in body
 
 
 def test_web_render_page_omits_modes_even_when_report_mode_is_passed():

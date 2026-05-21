@@ -26,7 +26,15 @@ def project_scripts() -> dict[str, str]:
     return scripts
 
 
-def setup_py_console_scripts() -> dict[str, str]:
+def project_version() -> str:
+    for line in (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("version = "):
+            return stripped.split("=", 1)[1].strip().strip('"')
+    raise AssertionError("pyproject.toml project version is missing")
+
+
+def setup_py_metadata() -> dict[str, object]:
     captured: dict[str, object] = {}
 
     def fake_setup(**kwargs):
@@ -34,6 +42,11 @@ def setup_py_console_scripts() -> dict[str, str]:
 
     with patch("setuptools.setup", fake_setup):
         runpy.run_path(str(REPO_DIR / "setup.py"))
+    return captured
+
+
+def setup_py_console_scripts() -> dict[str, str]:
+    captured = setup_py_metadata()
     scripts = captured["entry_points"]["console_scripts"]
     return dict(item.split("=", 1) for item in scripts)
 
@@ -88,6 +101,10 @@ def test_public_packaging_metadata_is_present():
         '"Programming Language :: Python :: 3.11"',
     ):
         assert expected in setup_text
+
+
+def test_legacy_setup_py_version_matches_pyproject():
+    assert setup_py_metadata()["version"] == project_version()
 
 
 def test_legacy_setup_py_console_scripts_match_pyproject():

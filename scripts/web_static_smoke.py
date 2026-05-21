@@ -18,7 +18,7 @@ SECURITY_HEADERS = {
 }
 STATIC_ASSETS = {
     "/static/app.css": ("text/css; charset=utf-8", "color-scheme:light"),
-    "/static/app.js": ("application/javascript; charset=utf-8", "query-doctor-design"),
+    "/static/app.js": ("application/javascript; charset=utf-8", "data-action-outcome-show-result"),
     "/static/theme-bootstrap.js": (
         "application/javascript; charset=utf-8",
         "query-doctor-theme",

@@ -1,6 +1,6 @@
 # Test Matrix
 
-Last updated: 2026-05-13
+Last updated: 2026-05-21
 
 This matrix helps agents choose focused validation before broader tests. It is
 not a replacement for judgment: run more when a change crosses boundaries.
@@ -15,6 +15,7 @@ format, whitespace, staged public-safety, and Markdown link hooks all execute.
 | --- | --- | --- |
 | `docs/**` only | `docs/README.md`, changed doc | `git diff --check`; `python3 scripts/check_markdown_links.py` when links change |
 | Active docs routing/baseline | `docs/codex-handoff.md`, `docs/code-map.md` | `python3 scripts/check_active_docs.py`; `python3 scripts/check_markdown_links.py` |
+| Agent operating docs | `AGENTS.md`, `docs/agent-quickstart.md`, `docs/agent-playbook.md` | `python3 scripts/check_active_docs.py`; `python3 scripts/check_markdown_links.py`; `python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_staged_public_safety.py` |
 | `query_doctor/web/ui/**` | `docs/safety-contract.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_web_ui_home.py tests/test_web_ui_help.py tests/test_web_ui_readme.py` |
 | Web routes/jobs | `docs/codex-handoff.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_web_server.py tests/test_web_optimizer.py` |
 | Browser safety text | `docs/safety-contract.md` | `python3 -m pytest -q tests/test_web_display_safety.py tests/test_web_server.py` |
@@ -30,7 +31,7 @@ format, whitespace, staged public-safety, and Markdown link hooks all execute.
 | Batch/recent scan | `docs/codex-handoff.md`, `docs/code-audit.md` | `python3 -m pytest -q tests/test_batch_recent_cli.py tests/test_web_ui_recent_scan.py tests/test_web_ui_recent_scan_presenter.py tests/test_web_server.py` |
 | CLI command building | `docs/development-practices.md` | `python3 -m pytest -q tests/test_cli_* tests/test_web_server.py` |
 | Config behavior | `docs/development-practices.md`, `docs/credentials.md` | `python3 -m pytest -q tests/test_config* tests/test_*config*` |
-| Agent tooling | `docs/agent-playbook.md`, `docs/test-matrix.md` | `python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_staged_public_safety.py` |
+| Agent tooling scripts | `docs/agent-playbook.md`, `docs/test-matrix.md` | `python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_staged_public_safety.py` |
 
 If a listed test file does not exist in a future checkout, run the nearest
 existing focused tests and record the gap in the final note.

@@ -17,6 +17,7 @@ from query_doctor.recent.batch_models import BatchConfig, CaseResult, DiscoveryR
 from query_doctor.recent.query_optimization_score import optimizer_adjacent_actionability
 from query_doctor.recent.query_optimization_score import optimizer_no_draft_actionability
 from query_doctor.recent.query_optimization_score import query_optimization_sort_key
+from query_doctor.recent.source_locators import build_source_locators
 from query_doctor.recent.stats_optimization_score import stats_optimization_sort_key
 from query_doctor.recent.workload_fingerprint import WorkloadFingerprint
 from query_doctor.recent.workload_fingerprint import compute_workload_fingerprint
@@ -164,7 +165,13 @@ def build_summary(
     primary_unknown_breakdown = case_primary_unknown_breakdown(cases)
     rewriteability_distribution = optimizer_rewriteability_distribution(cases)
     optimizer_funnel_summary = optimizer_funnel(cases, rewriteability_distribution)
-    ranked_case_summaries, workload_groups = case_summaries_with_workload_groups(cases)
+    include_source_coordinates = config.source_visibility == "owner_raw" and bool(
+        config.source_owner_user
+    )
+    ranked_case_summaries, workload_groups = case_summaries_with_workload_groups(
+        cases,
+        include_source_coordinates=include_source_coordinates,
+    )
     return {
         "mode": "recent-query-batch",
         "out": str(config.out),
@@ -175,6 +182,10 @@ def build_summary(
         "collect_cm_timeseries": config.collect_cm_timeseries,
         "cm_timeseries_top_limit": config.cm_timeseries_top_limit,
         "query_profile_source": config.query_profile_source,
+        "source_visibility": config.source_visibility,
+        "source_owner_filter_present": bool(
+            config.source_visibility == "owner_raw" and config.source_owner_user
+        ),
         "collect_prometheus_timeseries": config.collect_prometheus_timeseries,
         "prometheus_metrics_profile": config.prometheus_metrics_profile,
         "runtime_metrics_provider": runtime_metrics_provider(config),
@@ -784,27 +795,48 @@ def ratio(numerator: int, denominator: int) -> float:
 
 def case_summaries_with_workload_groups(
     cases: list[CaseResult],
+    *,
+    include_source_coordinates: bool = False,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     records: list[tuple[dict[str, object], WorkloadFingerprint]] = []
     for case in sorted(cases, key=batch_ranking_key):
-        summary = _case_to_summary_base(case)
-        workload = compute_workload_fingerprint(summary, load_case_analysis(case))
+        analysis = load_case_analysis(case)
+        summary = _case_to_summary_base(
+            case,
+            analysis=analysis,
+            include_source_coordinates=include_source_coordinates,
+        )
+        workload = compute_workload_fingerprint(summary, analysis)
         attach_workload_fingerprint_fields(summary, workload)
         records.append((summary, workload))
     workload_groups = build_workload_groups(records)
     return [summary for summary, _workload in records], workload_groups
 
 
-def case_to_summary(case: CaseResult) -> dict[str, object]:
-    summary = _case_to_summary_base(case)
+def case_to_summary(
+    case: CaseResult,
+    *,
+    include_source_coordinates: bool = False,
+) -> dict[str, object]:
+    analysis = load_case_analysis(case)
+    summary = _case_to_summary_base(
+        case,
+        analysis=analysis,
+        include_source_coordinates=include_source_coordinates,
+    )
     attach_workload_fingerprint_fields(
         summary,
-        compute_workload_fingerprint(summary, load_case_analysis(case)),
+        compute_workload_fingerprint(summary, analysis),
     )
     return summary
 
 
-def _case_to_summary_base(case: CaseResult) -> dict[str, object]:
+def _case_to_summary_base(
+    case: CaseResult,
+    *,
+    analysis: dict[str, object] | None = None,
+    include_source_coordinates: bool = False,
+) -> dict[str, object]:
     stage_seconds = [
         value
         for value in (case.cm_collect_seconds, case.analysis_seconds, case.report_seconds)
@@ -843,6 +875,11 @@ def _case_to_summary_base(case: CaseResult) -> dict[str, object]:
         else None,
         "stats_optimization_rank": case.stats_optimization_rank,
         "case_primary_bottleneck": case.case_primary_bottleneck,
+        "source_locators": build_source_locators(
+            case,
+            analysis,
+            include_source_coordinates=include_source_coordinates,
+        ),
         "cardinality_anomaly_count": case.cardinality_anomaly_count,
         "memory_anomaly_count": case.memory_anomaly_count,
         "zero_row_estimate_gap_count": case.zero_row_estimate_gap_count,

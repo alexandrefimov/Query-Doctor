@@ -1,6 +1,6 @@
 # Demo Cases
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-21
 
 Язык: [English](../../demo-cases.md) | Русский
 
@@ -14,12 +14,11 @@ expected signals и demo storyline. Эти notes помогают показат
 Details, validated report action и optimizer action без real SQL, profiles,
 metadata, hostnames, users, query IDs, account names или credentials.
 
-Сценарии:
+Текущие synthetic scenarios:
 
-- trusted SQL optimization draft;
-- validator rejects unsafe rewrite;
-- stats refresh candidate;
-- recommendations-only optimizer mode.
+- optimization candidate with trusted recommendations;
+- statistics-maintenance candidate;
+- validator rejects unsafe rewrite.
 
 ## Safety
 

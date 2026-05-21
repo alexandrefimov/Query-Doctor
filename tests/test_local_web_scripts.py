@@ -11,6 +11,11 @@ def test_local_web_script_forwards_query_doctor_web_flags():
     text = script.read_text(encoding="utf-8")
 
     assert os.access(script, os.X_OK)
+    assert 'export QD_KEYTAB="$KEYTAB"' in text
+    assert 'source "$CM_ENV"' not in text
+    assert '"CM_USERNAME", "CM_USER", "CM_PASSWORD", "CM_TOKEN"' in text
+    assert 'explicit_principal="${QD_KRB5_PRINCIPAL:-${KRB5_PRINCIPAL:-}}"' in text
+    assert 'export KRB5_PRINCIPAL="$principal"' not in text
     assert 'exec python3 -m query_doctor.cli.web --config "$CONFIG" "$@"' in text
 
 

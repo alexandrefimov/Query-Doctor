@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-22
 
 Язык: [English](../../configuration.md) | Русский
 
@@ -15,12 +15,16 @@ environment variables или local env files, описанных в
 
 ## Discovery order
 
-Типичный preferred path:
+Типичный порядок, когда `--config` не указан:
 
-- `~/.qdcreds/query-doctor-config.json`;
-- explicit `--config`;
-- repository-local `query-doctor-config.json`;
-- legacy ignored `.query-doctor-cm.local.json`.
+1. `query-doctor-config.json` в current working directory;
+2. `~/.qdcreds/query-doctor-config.json`;
+3. repository-local `query-doctor-config.json`, если команда разрешает
+   repository default;
+4. legacy ignored `.query-doctor-cm.local.json`.
+
+Explicit `--config` always wins. Для обычного workstation setup preferred path
+остается `~/.qdcreds/query-doctor-config.json`.
 
 ## Что можно хранить в config
 
@@ -31,8 +35,22 @@ environment variables или local env files, описанных в
 - `krb5ccname`;
 - metadata coordinator and `impala-shell` settings;
 - direct Impala profile/query source settings;
+- `cluster_type` для различения `cm` и direct `impala` clusters;
+- общий language mode: `language` = `en` или `ru`; он показывается в web
+  header и управляет Help, Details static UI и новыми trusted reports;
+- `recent_scan_timezone`, например `Europe/Moscow`; web Finished queries
+  использует его для Scan date/hour окна и показывает в label текущий UTC
+  offset, например `UTC+3`;
+- non-secret LLM route settings: `report_llm_provider`,
+  `report_llm_model`, `optimizer_llm_provider`, `optimizer_llm_model` и
+  provider base URLs;
 - optional bounded Prometheus settings;
 - privacy controls such as `privacy_mode` and `no_llm`.
+- `source_visibility`; для local web обычно не нужно фиксировать
+  `source_owner_user` в JSON, потому что Query Doctor может вывести simple user
+  из `QD_SOURCE_OWNER_USER`, Kerberos principal или simple principals в
+  `QD_KEYTAB`. Keytab users сортируются по алфавиту, первый становится
+  Username default.
 
 ## CM env files
 
@@ -41,9 +59,12 @@ web и batch CLI могут загрузить local env file из `QD_CM_ENV`,
 `$QD_CREDS_DIR/cm-ro.env` или `~/.qdcreds/cm-ro.env`.
 
 Файл читается whitelist-only, без shell evaluation. Разрешены только
-`CM_USERNAME`, `CM_USER`, `CM_PASSWORD`, `CM_TOKEN`, `KRB5CCNAME` и
-`KRB5_PRINCIPAL`. Уже exported environment variables имеют приоритет над file
-values.
+`CM_USERNAME`, `CM_USER`, `CM_PASSWORD` и `CM_TOKEN`. Уже exported environment
+variables имеют приоритет над file values. `username` в JSON config остается
+supported как non-secret fallback, но для local web лучше держать CM auth user
+рядом с CM auth secret в `cm-ro.env`. Kerberos cache и principal должны идти из
+shell environment, wrapper defaults, keytab inference или JSON config, а не из
+`cm-ro.env`.
 
 ## Recent batch metadata
 
@@ -59,8 +80,9 @@ eligible for metadata refresh. Placeholder-only/generic references не долж
 
 ## Что нельзя хранить
 
-Нельзя хранить passwords, tokens, cookies, Authorization headers, embedded URL
-credentials, keytab contents или secret-bearing query parameters.
+Нельзя хранить passwords, tokens, cookies, Authorization headers, LLM API keys,
+embedded URL credentials, keytab contents или secret-bearing query parameters.
+External LLM tokens должны жить в `~/.qdcreds/llm-api.env`, а не в JSON.
 
 Полная field reference и examples находятся в
 [английской configuration reference](../../configuration.md).

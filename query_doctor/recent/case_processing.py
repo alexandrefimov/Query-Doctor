@@ -452,9 +452,10 @@ def refresh_case_cm_timeseries(
             collect_cm_timeseries=True,
             out_dir=refresh_dir,
         )
-        context_paths = sorted(refresh_dir.rglob("runtime_metrics_context.json")) or sorted(
-            refresh_dir.rglob("cm_timeseries_context.json")
-        )
+        canonical_context_paths = sorted(refresh_dir.rglob("runtime_metrics_context.json"))
+        legacy_context_paths = sorted(refresh_dir.rglob("cm_timeseries_context.json"))
+        context_paths = canonical_context_paths or legacy_context_paths
+        context_paths_to_copy = canonical_context_paths + list(legacy_context_paths)
         if case.cm_collect_seconds is None:
             case.cm_collect_seconds = refresh_case.cm_collect_seconds
         elif refresh_case.cm_collect_seconds is not None:
@@ -462,8 +463,9 @@ def refresh_case_cm_timeseries(
                 case.cm_collect_seconds + refresh_case.cm_collect_seconds, 3
             )
         if refresh_case.collection_status == "ok" and context_paths:
-            target = case.actual_case_dir / context_paths[0].name
-            shutil.copyfile(context_paths[0], target)
+            for context_path in context_paths_to_copy:
+                target = case.actual_case_dir / context_path.name
+                shutil.copyfile(context_path, target)
             run_analysis_pass(config, case, env=env, repo_root=repo_root, metadata_mode="off")
             if case.analysis_status == "ok":
                 score_case(case)

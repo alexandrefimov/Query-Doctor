@@ -1,5 +1,9 @@
 # Demo Preflight
 
+Last reviewed: 2026-05-21
+
+Language: English | [Russian](i18n/ru/demo-preflight.md)
+
 `query-doctor-demo-preflight` is a deterministic local guard for deciding
 whether the current checkout is ready enough for a demo, release, or public
 sharing review.

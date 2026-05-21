@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-19
+Last updated: 2026-05-22
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -30,8 +30,18 @@ is not a historical audit log. For engineering risks, use
 - Finished queries is the default completed-query scan target.
 - Running now is a lower-confidence live scan target inside Recent queries.
 - Known Query ID is the secondary Diagnose mode for one known Impala query ID.
+- Recent results now include raw-free workload diagnostics for repeated,
+  frequent-short, and regressed workload fingerprints, plus workload detail
+  pages, admin pool/owner digests, an analyst action queue, and compact action
+  outcome rollups.
 - Details pages show deterministic findings and explicit LLM Report / Query LLM
   optimizer actions.
+- Help, Details static UI copy, and newly generated trusted reports are
+  controlled by the global `language` config. English is the default; Russian
+  remains a localized companion mode, not a separately generated second report.
+- Finished-query Scan date/hour selection reads `recent_scan_timezone` from
+  config, renders the current UTC offset in the Scan Hour label, and still
+  sends Cloudera Manager UTC bounds.
 - Query Optimizer is a separate pasted-SQL parse/analyze workflow. It never
   executes SQL and does not echo submitted SQL after submit.
 - Bounded Impala metadata collection is read-only, allowlisted, explicit, and
@@ -179,20 +189,35 @@ Cloudera Manager deployments:
 - Metadata and stats diagnosis: structured stats/query-shape facts, partition
   and join/filter column coverage, bottleneck calibration, and unknown-rate
   measurement on real batches.
-- Workload-level diagnosis: raw-free fingerprint grouping, baseline/regression
-  detection, and action outcome tracking.
+- Workload-level diagnosis: raw-free fingerprint grouping, frequent-short
+  workload triage, baseline/regression detection, and action outcome tracking.
 - Optimizer usefulness: fresh optimizer funnel measurement, expression-projection
   predicate pushdown, UNION ALL branch predicate pushdown, narrow Python-owned
   recipes for repeated expensive ETL shapes, and action-quality feedback.
+- Diagnose and Recent results usability: keep the main page focused on which
+  queries deserve attention, not on explaining every technical cause inline.
+  The default result table should prioritize priority, short analyst-readable
+  summary, duration, user/owner context, and a clear Details path. Table
+  stats, metadata status, score reasons, result-group explanations, and other
+  "why" evidence should move to Details or an explicit collapsed row/context
+  disclosure unless they are needed to choose the next row to open.
+- Web UI audit remains desktop-first. The next cleanup slices should keep
+  reducing first-screen noise without hiding primary decisions: make the
+  standalone Query Optimizer page feel less empty, continue simplifying Recent
+  result rows, and re-audit Details, Running, Help, and Outcomes after each
+  visible workflow change. Mobile polish is secondary until the desktop
+  analyst flow is stable.
 
 When choosing P1 product-growth work after required P0 contract work, target
-these product areas first. The first concrete PR sequence is defined in the Next
-Pull Queue below and may start with the narrower admission slice when it is the
-lower-risk way to reduce unknown diagnoses.
+these product areas first. The first workload-diagnostics slice has landed, so
+the next product-growth work should stabilize it on real sanitized batches
+before adding broader grouping dimensions.
 
-1. Workload fingerprinting, baselines, and regression detection.
+1. Validate workload grouping, Frequent short, regressed workload labels,
+   action queues, and outcome rollups on sanitized real batches.
 2. Pool and admission diagnostics as analyzer-owned first-class causes.
-3. Minimal action outcome tracking for applied recommendations.
+3. Safe query-type grouping for Recent results, derived from deterministic
+   facts rather than raw SQL.
 4. Direct Impala daemon depth, fixtures, Prometheus coverage, and profile action
    cards.
 5. Metadata and stats depth for join/filter column coverage, freshness,
@@ -226,28 +251,32 @@ generic SQL execution, broad package reorganization, and fake adapters.
 This is the short ordered queue for the next roadmap pulls. Pull a different
 item first only when the touched area has a direct P0 safety or contract risk.
 
-1. Finish the remaining provider-neutral runtime contract tail:
-   report-validator heading tests when aliases or headings change, plus any
-   remaining UI/presenter naming cleanup that can stay compatibility-safe.
-2. Use source provenance for safe Details/report coverage and limitation
+1. Continue the desktop Web UI audit with the standalone Query Optimizer page:
+   tighten the first screen around the SQL input, Analyze action, and
+   scope/safety disclosure without weakening the no-echo or read-only trust
+   boundary.
+2. Finish the Diagnose results-table simplification pass: reduce the default
+   Recent results table to "which queries are bad and worth opening", move
+   technical status/context such as stats, metadata, table key, score reasons,
+   and group explanations behind Details or explicit disclosures, and then run
+   a short repeat UI audit against the local web page.
+3. Finish the remaining provider-neutral runtime contract tail: report-validator
+   heading tests when aliases or headings change, plus compatibility-safe
+   UI/presenter naming cleanup.
+4. Use source provenance for safe Details/report coverage and limitation
    wording, including explicit direct Impala coverage for profile, optional
    Prometheus metrics, unavailable events, and metadata status.
-3. Analyze the 7 recipe-detected/no-draft and 13 recipe-adjacent structural
+5. Stabilize the new workload-diagnostics surfaces on sanitized real batches:
+   repeated/frequent-short/regressed groups, admin digest, action queue,
+   workload detail pages, and action outcome rollups.
+6. Analyze the 7 recipe-detected/no-draft and 13 recipe-adjacent structural
    boundary cases from the fresh Cloudera Manager `QUERY >=60s` sample, then
    decide whether a narrow deterministic recipe, safer structural explanation,
    or metadata-enabled rerun is the next highest-value optimizer step.
-4. Continue replacing report-side stats/query-shape extraction with structured
+7. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
-
-First concrete product-growth PR sequence after those contract items:
-
-1. Add in-scan workload grouping in `batch_summary.json`, Recent scan rows, and
-   case Details. Use `schema_version: 1`, hide singleton groups from the group
-   panel, and render only safe aggregate fields through typed presenters.
-2. Add local rolling workload baselines and regression labels only after the
-   in-scan grouping is validated on real batches.
-3. Add minimal action outcome tracking after recommendation IDs and workload
-   fingerprints are stable.
+8. Add safe query-type grouping only after deterministic classifier facts can
+   explain unknown or unsupported shapes without reading raw SQL.
 
 ## Dependency And Readiness Rules
 
@@ -328,10 +357,17 @@ it into a shared service.
 Make Details efficient for Recent queries, Running now, and Known Query ID
 workflows.
 
-- Keep deterministic findings first.
+- Keep the visible page question-oriented: why this query deserves attention,
+  where to inspect it, what supported change direction to try, and how to
+  verify the change.
+- Keep deterministic findings first, but phrase them as decision support rather
+  than as a dump of collector-source facts.
 - Make evidence quality, runtime context, Cloudera Manager metrics, Cloudera
   Manager events, metadata status, and limitations easy to scan.
 - Remove duplicated or low-value blocks when they make the page harder to use.
+- Keep pipeline status, profile sections, metric-provider details, and broad
+  fact tables in collapsed Diagnostics unless they directly support the
+  verdict, recommendation, verification step, or an explicit limitation.
 - Keep all dynamic browser text behind presenter/display safety helpers.
 - Do not render raw artifacts or arbitrary docs in the browser.
 
@@ -341,7 +377,7 @@ Improve how runtime context supports diagnosis without overclaiming.
 
 - Show collection status, coverage, observed signals, correlated signals,
   context-only signals, and limitations.
-- Keep the explicit Details Analysis summary current so Details separate strong
+- Keep Details verdict and diagnostic facts current so Details separate strong
   analyzer-backed findings, plausible follow-up checks, context-only runtime
   signals, unknown evidence, metadata coverage, and stats evidence without
   duplicating the same triage cards in multiple visible blocks.
@@ -359,27 +395,28 @@ Improve how runtime context supports diagnosis without overclaiming.
   stats on join/filter columns, partition coverage, selectivity mismatch, and
   real-fixture validation for stats-present-but-not-explanatory cases.
 
-Short-term workload-level diagnostics:
+Current workload-level diagnostics baseline and follow-ups:
 
-- Promote similar-query fingerprinting from a future idea to near-term
-  diagnostic work. Group repeated query shapes by raw-free normalized
-  signatures and show aggregate count, runtime, p95, scan, spill, memory, pool,
-  and trend signals without exposing SQL.
-- The first fingerprint primitive now attaches only a safe `wf_<24hex>` value
-  to each batch case from structured case/analyzer facts. It must stay free of
-  raw SQL files, raw profile files, raw metadata, optimizer source SQL, column
-  lists, predicates, literals, aliases, comments, host/daemon identifiers, raw
-  artifact names, and free-form analyzer wording.
-- Store the next grouping slice under an isolated `workload_groups` block in
-  `batch_summary.json` with `schema_version: 1`, a `wf_` fingerprint, raw-free
-  shape fields, safe aggregates, and local member case IDs. Older readers must
-  be able to ignore the block.
-- Add workload baseline and regression detection for query fingerprints, so
-  chronic expensive shapes and recent slowdowns are separated before choosing
-  stats, SQL-shape, or runtime actions.
-- Add minimal action outcome tracking: manually record whether a recommendation
-  was applied and whether the observed runtime, score, or failure rate changed.
-  This is needed to learn which recommendation families are useful in practice.
+- Current-scan workload groups are implemented with `schema_version: 1`, safe
+  `wf_` fingerprints, raw-free aggregate fields, result groups for repeated,
+  frequent-short, and regressed workload fingerprints, plus workload detail
+  pages, admin pool/owner digest, analyst action queue, and action outcome
+  rollups.
+- Frequent short is now a scan preset and result group. It removes the
+  minimum-duration default for that preset and ranks repeated fingerprints by
+  current-scan impact, while keeping bounded scan caps and raw-free
+  limitations visible.
+- Local workload history and action outcomes remain local, raw-free, and
+  explicit. Do not expose local history paths, raw SQL, raw profiles, raw
+  metadata, optimizer source SQL, column lists, predicates, literals, aliases,
+  comments, host/daemon identifiers, raw artifact names, or free-form analyzer
+  wording.
+- Follow-up work is to validate group ranking and limitations on sanitized real
+  batches, improve baseline/regression calibration, add safe query-type
+  grouping (#67) from deterministic classifier facts, and add stable
+  demo/operator notes for synthetic scenarios (#47).
+- Keep LLM group summaries out until deterministic group facts and
+  browser-safe validation boundaries exist.
 
 Current pool/admission baseline and follow-ups:
 
@@ -432,16 +469,22 @@ Provider-neutral runtime context cleanup:
   with Cloudera Manager wrappers over existing helpers. Avoid one broad
   provider object, fake implementations, or placeholder packages.
 
-Next product-growth PR acceptance details:
+Workload stabilization acceptance details:
 
-1. In-scan workload groups:
-   - build `workload_groups` from current-scan cases only, filter singleton
-     groups out of the panel, and sort groups by duration impact;
-   - render the group panel through the existing Recent scan grouping seam,
-     plus a compact row badge and one Details line for similar queries in the
-     same scan;
-   - keep persistence, baselines, regression labels, action outcomes, a
-     dedicated workload view, and LLM group summaries out of this PR.
+1. Real-batch workload validation:
+   - compare repeated, frequent-short, and regressed grouping against sanitized
+     real batches;
+   - record false positives and false negatives in raw-free terms;
+   - keep singleton or noisy groups out of the primary table unless there is a
+     regression, status, spill, stats, or runtime signal.
+2. Safe query-type grouping:
+   - derive type labels from deterministic classifier facts only;
+   - keep unknown or unsupported types explicit;
+   - do not leak raw SQL, identifiers, predicates, or literals.
+3. Action outcome learning:
+   - keep recorded/applied/outcome labels whitelisted and local;
+   - use outcomes to validate recommendation families rather than to inflate
+     confidence.
 
 ### 4. Query Optimizer Usefulness
 
@@ -660,7 +703,7 @@ Keep active docs short enough to be read before implementation.
 - `docs/changelog.md`: significant behavior, safety, workflow, and baseline
   changes only.
 - `docs/README.md`: document status index. Every listed document should be
-  marked `active`, `reference`, or `archived`.
+  marked `active` or `reference`.
 - `docs/agent-playbook.md`: change-type routing for required reading, focused
   tests, and documentation updates.
 
@@ -669,11 +712,12 @@ current decision.
 
 Documentation cleanup priorities:
 
-1. Keep historical release, collector, and audit notes under `docs/archive/` or
-   behind explicit `reference` labels. Do not re-promote archived material as a
-   behavior contract without updating `docs/README.md`.
+1. Remove historical release, collector, audit, and prototype notes from the
+   current tree unless they remain useful as explicitly listed `reference`
+   documents in `docs/README.md`.
 2. Keep `docs/code-audit.md` and `docs/analyzer-audit.md` as the only active
-   audit files. Older audit snapshots should be references or archive material.
+   audit files. Older audit snapshots should stay out of the current tree
+   unless they are explicitly listed reference documents.
 3. Keep `docs/safety-contract.md` as the canonical safety document. Security
    overview and roadmap safety sections should link to it instead of redefining
    the contract.
@@ -858,7 +902,10 @@ or a new safety contract before they return.
   runtime context correlation.
 - Documentation drift remains a product risk; active docs should be updated as
   part of safety-sensitive feature work.
-- Post-0.2.0 UI and diagnosis follow-ups are tracked for scan-side language
-  selection (#66), safe query-type grouping (#67), optimization score
-  calibration (#68), Known Query ID progress (#69), and elapsed-time progress
-  display (#70).
+- Remote issue triage as of 2026-05-22: safe query-type grouping (#67) and
+  optimization score calibration (#68) remain active product backlog; public
+  starter/help-wanted issues (#47, #48, #49) remain valid. Scan-side language
+  selection (#66) is superseded by config-driven global language selection,
+  Known Query ID progress (#69) is implemented, and elapsed-time progress
+  display (#70) is partially addressed by elapsed wording/progress tests and
+  should either be closed or narrowed during remote issue cleanup.

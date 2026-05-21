@@ -30,6 +30,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build pytest twine
 
+      - name: Check package metadata contract
+        run: python -m pytest -q tests/test_pyproject.py
+
       - name: Build source and wheel distributions
         run: python -m build
 

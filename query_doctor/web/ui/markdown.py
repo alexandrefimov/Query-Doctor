@@ -24,7 +24,9 @@ def render_details_inline_report_html(report_text: str) -> str:
     visible_html: list[str] = []
     appendix_html: list[str] = []
     for title, section_text in sections:
-        rendered = render_report_markdown_html(section_text, with_heading_ids=False)
+        rendered = render_report_markdown_html(
+            section_text, with_heading_ids=False, heading_offset=1
+        )
         if title in visible_titles:
             visible_html.append(rendered)
         else:
@@ -61,7 +63,9 @@ def split_report_markdown_h2_sections(report_text: str) -> list[tuple[str, str]]
     ]
 
 
-def render_report_markdown_html(markdown_text: str, *, with_heading_ids: bool = False) -> str:
+def render_report_markdown_html(
+    markdown_text: str, *, with_heading_ids: bool = False, heading_offset: int = 0
+) -> str:
     lines = markdown_text.splitlines()
     blocks: list[str] = []
     paragraph: list[str] = []
@@ -142,7 +146,7 @@ def render_report_markdown_html(markdown_text: str, *, with_heading_ids: bool = 
         if heading_match:
             flush_paragraph()
             flush_list()
-            level = len(heading_match.group(1))
+            level = min(6, len(heading_match.group(1)) + max(heading_offset, 0))
             heading_counter += 1
             heading_id = f' id="section-{heading_counter}"' if with_heading_ids else ""
             blocks.append(

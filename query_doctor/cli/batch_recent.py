@@ -142,6 +142,7 @@ from query_doctor.recent.stats_optimization_score import (
     StatsOptimizationCandidateScore,
     score_stats_optimization_candidate,
 )
+from query_doctor.source_visibility import SOURCE_VISIBILITY_CHOICES, SOURCE_VISIBILITY_OWNER_RAW
 from query_doctor.recent.metadata_refresh import (
     mark_metadata_not_requested,
     metadata_refresh_candidates,
@@ -159,8 +160,6 @@ CM_ENV_FILE_KEYS = {
     "CM_USER",
     "CM_PASSWORD",
     "CM_TOKEN",
-    "KRB5CCNAME",
-    "KRB5_PRINCIPAL",
 }
 
 
@@ -257,6 +256,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"{cm_profiles.LEGACY_LOCAL_CONFIG_NAME}."
         ),
     )
+    parser.add_argument(
+        "--config-cluster",
+        help=(
+            "Cluster id from local config clusters[] to use for source, metadata, and "
+            "runtime-metric settings. CLI flags still override selected cluster fields."
+        ),
+    )
     parser.add_argument("--cm-url", help="Cloudera Manager base URL. May also use CM_URL.")
     parser.add_argument("--cluster", help="Cloudera Manager cluster name.")
     parser.add_argument("--service", help="Impala service name.")
@@ -277,6 +283,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--impala-profile-port", type=positive_int)
     parser.add_argument("--impala-profile-scheme", choices=("http", "https"))
     parser.add_argument("--impala-profile-timeout-sec", type=positive_int)
+    parser.add_argument(
+        "--source-visibility",
+        choices=SOURCE_VISIBILITY_CHOICES,
+        help=(
+            "Source display mode. safe keeps browser/report output raw-free; owner_raw "
+            "only enables owner-gated source workflows and does not expose raw fields by itself."
+        ),
+    )
+    parser.add_argument(
+        "--source-owner-user",
+        help=(
+            "Query owner user allowed for owner_raw source visibility. "
+            "If omitted, a simple Kerberos principal may be used."
+        ),
+    )
     parser.add_argument(
         "--prometheus-url",
         help="Prometheus base URL for direct Impala runtime metric summaries. No credentials in the URL.",
@@ -698,6 +719,7 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
             timeout_sec=config.impala_profile_timeout_sec,
         )
         summaries = filter_impala_summaries_for_window(config, result.summaries)
+        summaries = filter_impala_summaries_for_owner(config, summaries)
         candidates = cm_profiles.select_recent_query_candidates(
             summaries,
             select_limit=config.triage_profile_limit,
@@ -725,6 +747,18 @@ def discover_candidates(config: BatchConfig, *, env: dict[str, str]) -> Discover
             summaries_inspected=len(summaries),
         )
     return discover_candidates_impl(config, env=env, make_client=make_cm_http_client)
+
+
+def filter_impala_summaries_for_owner(
+    config: BatchConfig,
+    summaries: list[cm_profiles.CMQuerySummary],
+) -> list[cm_profiles.CMQuerySummary]:
+    if config.source_visibility != SOURCE_VISIBILITY_OWNER_RAW:
+        return summaries
+    owner_user = config.source_owner_user
+    if not owner_user:
+        return []
+    return [summary for summary in summaries if summary.user == owner_user]
 
 
 def filter_impala_summaries_for_window(

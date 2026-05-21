@@ -1,6 +1,6 @@
 # Архитектура Query Doctor
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-22
 
 Язык: [English](../../architecture.md) | Русский
 
@@ -10,7 +10,10 @@ Last reviewed: 2026-05-15
 частью интерфейса или тестового контракта.
 
 Query Doctor держит fact extraction детерминированным, а LLM использует только
-уже извлеченные факты для формулировки validated report.
+уже извлеченные факты для формулировки validated report. Общий config
+`language` управляет Help, Details static UI copy и новыми trusted reports;
+английский остается default, русский использует тот же prompt, normalizer и
+validator boundary.
 
 ## Pipeline
 
@@ -107,9 +110,10 @@ Future source seam:
 - Может в будущем рендерить multi-signal diagnosis, но только из normalized
   Python-owned facts, produced by profile, metadata, metrics и log analyzers.
 - Генерирует trusted LLM report с одной fact boundary.
-- Требует user-facing narrative sections `## Краткий вывод`,
+- Требует language-specific user-facing narrative sections: English sections
+  for default `en`, and `## Краткий вывод`,
   `## Практические рекомендации`, `## Подробный разбор` и
-  `## Админские проверки`.
+  `## Админские проверки` for `ru`.
 - Детерминированно добавляет `## Факты анализатора` из `analysis_facts.md`; LLM
   не должен писать appendix section.
 - Сейчас исключает detailed context sections из prompt LLM, когда они должны

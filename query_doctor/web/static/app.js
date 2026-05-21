@@ -23,39 +23,6 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
   }
-  function setDesign(design) {
-    var designOrder = ['serious', 'command'];
-    var designLabels = {
-      serious: 'Switch to blue design',
-      command: 'Switch to green design'
-    };
-    var nextDesign = designOrder.indexOf(design) >= 0 ? design : 'serious';
-    document.documentElement.setAttribute('data-design', nextDesign);
-    var toggle = document.getElementById('design-toggle');
-    if (toggle) {
-      var currentIndex = designOrder.indexOf(nextDesign);
-      var followingDesign = designOrder[(currentIndex + 1) % designOrder.length];
-      var label = designLabels[followingDesign] || designLabels.serious;
-      toggle.setAttribute('aria-pressed', nextDesign === 'command' ? 'true' : 'false');
-      toggle.setAttribute('aria-label', label);
-      toggle.setAttribute('title', label);
-    }
-  }
-  var designToggle = document.getElementById('design-toggle');
-  if (designToggle) {
-    setDesign(document.documentElement.getAttribute('data-design'));
-    designToggle.addEventListener('click', function () {
-      var designOrder = ['serious', 'command'];
-      var currentDesign = document.documentElement.getAttribute('data-design');
-      var currentIndex = designOrder.indexOf(currentDesign);
-      var nextDesign = designOrder[(currentIndex >= 0 ? currentIndex + 1 : 0) % designOrder.length];
-      setDesign(nextDesign);
-      try {
-        window.localStorage.setItem('query-doctor-design', nextDesign);
-      } catch (error) {
-      }
-    });
-  }
   function setCopyButtonText(button, label, restore) {
     button.textContent = label;
     if (restore) {
@@ -110,14 +77,14 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!event.target.closest) {
       return null;
     }
-    if (event.target.closest('a, button, input, select, textarea, summary, details, form')) {
+    if (event.target.closest('a, button, input, select, textarea, summary, form')) {
       return null;
     }
     var row = event.target.closest('[data-href]');
     return row && row.getAttribute('data-href') ? row : null;
   }
   function openRowDetails(row) {
-    window.open(row.getAttribute('data-href'), '_blank', 'noopener');
+    window.location.assign(row.getAttribute('data-href'));
   }
   document.addEventListener('click', function (event) {
     var row = rowNavigationTarget(event);
@@ -199,16 +166,47 @@ document.addEventListener('DOMContentLoaded', function () {
       closeInfoPopovers(null);
     }
   });
+  function workflowSelection(root) {
+    var selected = root && root.querySelector('input[name="diagnosis_workflow"]:checked');
+    return selected ? selected.value : '';
+  }
+  function syncWorkflowState(root) {
+    var workflow = workflowSelection(root);
+    if (!workflow) {
+      return;
+    }
+    var diagnosisTarget = workflow === 'query' ? 'query' : 'recent';
+    var scanTarget = workflow === 'running' ? 'running' : 'finished';
+    Array.prototype.slice.call(root.querySelectorAll('input[name="diagnosis_target"]')).forEach(function (choice) {
+      choice.checked = choice.value === diagnosisTarget;
+    });
+    Array.prototype.slice.call(root.querySelectorAll('input[name="scan_target"][data-scan-target-choice]')).forEach(function (choice) {
+      choice.checked = choice.value === scanTarget;
+    });
+    Array.prototype.slice.call(root.querySelectorAll('input[name="scan_target"][data-scan-target-hidden]')).forEach(function (input) {
+      input.value = scanTarget;
+    });
+  }
   function applyDiagnosisTarget(root) {
-    var selected = root.querySelector('input[name="diagnosis_target"]:checked');
-    var target = selected && selected.value === 'query' ? 'query' : 'recent';
+    syncWorkflowState(root);
+    var target = currentDiagnosisTarget(root);
     Array.prototype.slice.call(root.querySelectorAll('[data-diagnosis-target-field]')).forEach(function (element) {
       var visible = element.getAttribute('data-diagnosis-target-field') === target;
       element.classList.toggle('manual-inputs-hidden', !visible);
     });
+    var scanForm = root.querySelector('[data-scan-target-form]');
+    if (scanForm) {
+      applyScanTarget(scanForm);
+      return;
+    }
+    var scanTarget = currentScanTarget(root);
+    updateRecentResultsContext(scanTarget, target);
   }
   Array.prototype.slice.call(document.querySelectorAll('[data-diagnosis-target-root]')).forEach(function (root) {
     applyDiagnosisTarget(root);
+    Array.prototype.slice.call(root.querySelectorAll('input[name="diagnosis_workflow"]')).forEach(function (choice) {
+      choice.addEventListener('change', function () { applyDiagnosisTarget(root); });
+    });
     Array.prototype.slice.call(root.querySelectorAll('input[name="diagnosis_target"]')).forEach(function (choice) {
       choice.addEventListener('change', function () { applyDiagnosisTarget(root); });
     });
@@ -229,17 +227,66 @@ document.addEventListener('DOMContentLoaded', function () {
       selector.addEventListener('change', function () { syncDiagnosisCluster(root); });
     }
   });
-  function applyScanTarget(form) {
-    var selected = form.querySelector('input[name="scan_target"]:checked');
-    if (!selected) {
+  function currentDiagnosisTarget(root) {
+    var workflow = workflowSelection(root);
+    if (workflow) {
+      return workflow === 'query' ? 'query' : 'recent';
+    }
+    var selected = root && root.querySelector('input[name="diagnosis_target"]:checked');
+    return selected && selected.value === 'query' ? 'query' : 'recent';
+  }
+  function currentScanTarget(root) {
+    var workflow = workflowSelection(root);
+    if (workflow) {
+      return workflow === 'running' ? 'running' : 'finished';
+    }
+    var selected = root && root.querySelector('input[name="scan_target"]:checked');
+    if (!selected && root) {
+      selected = root.querySelector('input[name="scan_target"][data-scan-target-hidden]');
+    }
+    return selected && selected.value === 'running' ? 'running' : 'finished';
+  }
+  function updateRecentResultsContext(scanTarget, diagnosisTarget) {
+    var results = document.getElementById('recent-results');
+    var heading = results && results.querySelector('.batch-head h1');
+    if (!heading) {
       return;
     }
-    var target = selected.value === 'running' ? 'running' : 'finished';
+    if (!heading.getAttribute('data-default-title')) {
+      heading.setAttribute('data-default-title', heading.textContent || '');
+    }
+    var defaultTitle = heading.getAttribute('data-default-title') || '';
+    if (diagnosisTarget === 'query') {
+      heading.textContent = 'Previous Recent Results';
+      if (results.tagName === 'DETAILS') {
+        results.removeAttribute('open');
+        results.setAttribute('data-query-mode-results', 'true');
+      }
+      return;
+    }
+    if (results.tagName === 'DETAILS' && results.getAttribute('data-query-mode-results') === 'true') {
+      results.setAttribute('open', '');
+      results.removeAttribute('data-query-mode-results');
+    }
+    if (scanTarget === 'running' && defaultTitle === 'Finished Queries') {
+      heading.textContent = 'Previous Finished Queries';
+      return;
+    }
+    heading.textContent = defaultTitle;
+  }
+  function applyScanTarget(form) {
+    var root = form.closest('[data-diagnosis-target-root]');
+    var target = currentScanTarget(root || form);
     form.setAttribute('action', target === 'running' ? '/running/run' : '/batch/run');
+    form.setAttribute('data-active-scan-target', target);
+    Array.prototype.slice.call(form.querySelectorAll('input[name="scan_target"][data-scan-target-hidden]')).forEach(function (input) {
+      input.value = target;
+    });
     Array.prototype.slice.call(form.querySelectorAll('[data-scan-target-field]')).forEach(function (element) {
       var visible = element.getAttribute('data-scan-target-field') === target;
       element.classList.toggle('manual-inputs-hidden', !visible);
     });
+    updateRecentResultsContext(target, currentDiagnosisTarget(root));
   }
   function parseScanHourOptions(dateSelect) {
     var raw = dateSelect.getAttribute('data-scan-hour-options') || '{}';
@@ -378,8 +425,6 @@ document.addEventListener('DOMContentLoaded', function () {
     pollDetailJobProgressElements();
     return;
   }
-  var stage = document.getElementById('job-stage');
-  var fill = document.getElementById('job-progress-fill');
   var resultSlot = document.getElementById('job-result-slot');
   var errorSlot = document.getElementById('job-error-slot');
   var title = jobPanel.querySelector('.progress-title');
@@ -405,10 +450,7 @@ document.addEventListener('DOMContentLoaded', function () {
     fetch(jobPanel.getAttribute('data-job-status-url'), {cache: 'no-store'})
       .then(function (response) { return response.json(); })
       .then(function (data) {
-        var progressView = data.progress_view || {};
-        var nextProgress = typeof progressView.percent === 'number' ? progressView.percent : data.progress;
-        if (stage) { stage.textContent = progressView.current_stage || data.stage || ''; }
-        if (fill) { fill.style.width = clampedProgressPercent(nextProgress); }
+        applyProgressView(jobPanel, data.progress_view, data.stage, data.progress);
         var runningProgressSlot = document.getElementById('batch-progress-slot');
         if (runningProgressSlot) { runningProgressSlot.innerHTML = data.progress_html || ''; }
         if (data.status === 'ok') {

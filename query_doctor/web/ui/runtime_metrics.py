@@ -12,6 +12,7 @@ from query_doctor.web.presenters.recent_scan import (
     RecentScanRuntimeDiagnosisView,
     RecentScanRuntimeVerdictView,
 )
+from query_doctor.web.presenters.recent_scan_models import RecentScanQueryContextView
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
     cm_metric_status_badge,
@@ -45,6 +46,18 @@ def render_runtime_signals(view: RecentScanCaseDetailView) -> str:
     return (
         '<details class="analysis-subdetails" aria-label="Runtime signals">'
         "<summary>Runtime signals</summary>"
+        f'<div class="report-body"><div class="meta-list">{rows}</div></div>'
+        "</details>"
+    )
+
+
+def render_query_context_section(view: RecentScanQueryContextView) -> str:
+    if view.unavailable:
+        return ""
+    rows = metadata_rows(list(view.summary_items))
+    return (
+        '<details class="analysis-subdetails" aria-label="Query context">'
+        "<summary>Query context</summary>"
         f'<div class="report-body"><div class="meta-list">{rows}</div></div>'
         "</details>"
     )
@@ -205,16 +218,12 @@ def render_cm_metrics_section(view: RecentScanCmMetricsView) -> str:
         "<th>Correlation</th><th>Strength</th><th>Interpretation</th></tr></thead>"
         f"<tbody>{correlated_rows}</tbody>"
         "</table></div>"
-        '<details class="compact-details">'
-        "<summary>All collected runtime metrics</summary>"
-        '<div class="compact-details-body">'
+        "<h3>All collected runtime metrics</h3>"
         '<div class="batch-table-wrap"><table class="batch-table">'
         "<thead><tr><th>Metric</th><th>Metric status</th><th>Metric basis</th>"
         "<th>Correlation</th><th>Strength</th><th>Interpretation</th></tr></thead>"
         f"<tbody>{all_metric_rows}</tbody>"
         "</table></div>"
-        "</div>"
-        "</details>"
         "</div>"
         "</details>"
     )

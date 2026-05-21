@@ -7,6 +7,7 @@ import pytest
 from query_doctor.web.case_files import (
     case_has_any_artifact,
     ensure_complete_existing_case,
+    query_metadata_file_path,
     read_case_metadata,
     read_case_relative_text,
     read_profile_summary_fields,
@@ -25,17 +26,51 @@ def write_collected_case_files(case_dir):
 def test_case_summary_readers_ignore_symlinked_inputs_outside_case_dir(tmp_path):
     case_dir = tmp_path / "case"
     case_dir.mkdir()
+    outside_query_metadata = tmp_path / "query_metadata.json"
     outside_metadata = tmp_path / "cm_metadata.json"
     outside_profile = tmp_path / "profile_digest.md"
+    outside_query_metadata.write_text(
+        json.dumps({"duration_sec": 88, "user": "canonical-leak"}), encoding="utf-8"
+    )
     outside_metadata.write_text(
         json.dumps({"duration_sec": 99, "user": "leaked-user"}), encoding="utf-8"
     )
     outside_profile.write_text("User: leaked-user\nPool: leaked-pool\n", encoding="utf-8")
+    (case_dir / "query_metadata.json").symlink_to(outside_query_metadata)
     (case_dir / "cm_metadata.json").symlink_to(outside_metadata)
     (case_dir / "profile_digest.md").symlink_to(outside_profile)
 
     assert read_case_metadata(case_dir) == {}
     assert read_profile_summary_fields(case_dir) == {}
+
+
+def test_read_case_metadata_prefers_canonical_and_falls_back_to_legacy(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "query_metadata.json").write_text(
+        json.dumps({"duration_sec": 12, "user": "canonical-user"}), encoding="utf-8"
+    )
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"duration_sec": 99, "user": "legacy-user"}), encoding="utf-8"
+    )
+
+    assert query_metadata_file_path(case_dir) == case_dir / "query_metadata.json"
+    assert read_case_metadata(case_dir)["user"] == "canonical-user"
+
+    (case_dir / "query_metadata.json").unlink()
+
+    assert query_metadata_file_path(case_dir) == case_dir / "cm_metadata.json"
+    assert read_case_metadata(case_dir)["user"] == "legacy-user"
+
+
+def test_complete_existing_case_accepts_canonical_metadata_only(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
+    (case_dir / "query_metadata.json").write_text("{}\n", encoding="utf-8")
+    (case_dir / "collection_warnings.txt").write_text("", encoding="utf-8")
+
+    ensure_complete_existing_case(case_dir)
 
 
 def test_case_has_any_artifact_matches_relative_file_predicate(tmp_path):

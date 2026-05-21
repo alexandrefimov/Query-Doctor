@@ -18,6 +18,19 @@ Read [docs/safety-contract.md](docs/safety-contract.md) before changing
 collection, analyzer facts, report validation, optimizer validation, browser
 display, config loading, or trusted artifacts.
 
+## Public Data Rule
+
+Use synthetic demo data or placeholders in public issues, pull requests,
+screenshots, examples, tests, and documentation. Do not post or attach real
+cluster screenshots, logs, generated reports, profiles, metadata dumps, query
+text, query IDs, table names, hostnames, usernames, local paths, secrets,
+subprocess output, raw artifact filenames, model/runtime internals, or local
+config contents.
+
+If a useful reproduction requires private operational detail, describe the
+affected boundary at a high level and use GitHub's private vulnerability flow
+or another maintainer-approved private channel before sharing details.
+
 ## Local Tooling
 
 Install the package with development tools when working on code:
@@ -68,6 +81,7 @@ run `python3 -m query_doctor.cli.demo_preflight` from the repository root.
 - Do not commit real hostnames, IPs, users, emails, tokens, cookies, passwords,
   Authorization headers, embedded URL credentials, local config contents, or
   production profile text.
+- Do not commit screenshots, logs, or generated reports from real clusters.
 
 ## Documentation
 

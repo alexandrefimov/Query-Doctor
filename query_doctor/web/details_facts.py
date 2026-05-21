@@ -56,6 +56,27 @@ CM_METRIC_SIGNAL_LABELS = {
     "hdfs_datanode_io_pressure": "HDFS DataNode I/O pressure",
     "network_io_spike": "Network I/O spike",
 }
+QUERY_CONTEXT_HEADINGS = {"## CM Query Context", "## Query Profile Context"}
+QUERY_CONTEXT_SUMMARY_KEYS = {
+    "available": "available",
+    "source": "source",
+    "source_label": "source",
+    "status": "status",
+    "query status": "status",
+    "query_state": "query_state",
+    "query_type": "query_type",
+    "pool": "pool",
+    "start_time": "start_time",
+    "end_time": "end_time",
+    "duration": "duration",
+    "admission_result": "admission_result",
+    "admission_wait": "admission_wait",
+    "rows_produced": "rows_produced",
+    "bytes_read": "bytes_read",
+    "bytes_sent": "bytes_sent",
+    "memory_aggregate_peak": "memory_aggregate_peak",
+    "memory_per_node_peak": "memory_per_node_peak",
+}
 
 
 def load_specific_query_metadata_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -98,6 +119,14 @@ def load_specific_query_runtime_metrics_facts(case_dir: Path) -> dict[str, Any] 
 
 def load_specific_query_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
     return load_specific_query_runtime_metrics_facts(case_dir)
+
+
+def load_specific_query_query_context_facts(case_dir: Path) -> dict[str, Any] | None:
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_query_context_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
 
 
 def load_specific_query_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -180,6 +209,19 @@ def load_batch_case_cm_metrics_facts(
     return load_batch_case_runtime_metrics_facts(settings, case)
 
 
+def load_batch_case_query_context_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
+        return None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_query_context_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_batch_case_runtime_diagnosis_facts(
     settings: WebSettings, case: dict[str, object]
 ) -> dict[str, Any] | None:
@@ -236,6 +278,13 @@ def load_case_analysis_runtime_metrics_facts(case_dir: Path) -> dict[str, Any] |
 
 def load_case_analysis_cm_metrics_facts(case_dir: Path) -> dict[str, Any] | None:
     return load_case_analysis_runtime_metrics_facts(case_dir)
+
+
+def load_case_analysis_query_context_facts(case_dir: Path) -> dict[str, Any] | None:
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
+        return None
+    return parse_query_context_facts(text)
 
 
 def load_case_analysis_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -585,6 +634,26 @@ def parse_runtime_metrics_facts(text: str) -> dict[str, Any] | None:
 
 def parse_cm_metrics_facts(text: str) -> dict[str, Any] | None:
     return parse_runtime_metrics_facts(text)
+
+
+def parse_query_context_facts(text: str) -> dict[str, Any] | None:
+    in_section = False
+    summary: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            in_section = line in QUERY_CONTEXT_HEADINGS
+            continue
+        if not in_section or not line.startswith("- ") or ": " not in line:
+            continue
+        key, value = line[2:].split(": ", 1)
+        key = key.strip()
+        mapped_key = QUERY_CONTEXT_SUMMARY_KEYS.get(key.lower())
+        if mapped_key:
+            summary[mapped_key] = clean_metadata_fact_value(value)
+    if not summary:
+        return None
+    return {"summary": summary}
 
 
 def parse_runtime_diagnosis_facts(text: str) -> dict[str, Any] | None:
