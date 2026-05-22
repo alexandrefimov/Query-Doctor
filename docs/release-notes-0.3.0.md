@@ -150,7 +150,7 @@ engine contracts without adding unsupported live engines.
   divergence from `main`, merged status, and conservative cleanup/merge
   recommendations for parallel-agent work.
 - Package workflows now validate package metadata before build/publish jobs,
-  and 0.3.0 removes the obsolete license classifier that conflicts with SPDX
+  and 0.3.0 removes the old license classifier that conflicts with SPDX
   metadata under modern setuptools.
 
 ## Upgrade Notes

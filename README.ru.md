@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-23
 
 Язык: [English](README.md) | Русский
 
