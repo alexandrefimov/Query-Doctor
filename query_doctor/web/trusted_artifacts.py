@@ -66,6 +66,20 @@ OPTIMIZER_STATUS_ORDER = {
     "unknown": 0,
 }
 REPORT_DOWNLOAD_ID_RE = re.compile(r"[^a-zA-Z0-9_-]")
+REPORT_CASE_UNAVAILABLE_REASON = (
+    "Report generation requires a complete server-owned case. Re-run analysis first."
+)
+REPORT_ANALYSIS_UNAVAILABLE_REASON = (
+    "Report generation requires completed deterministic analysis facts for this case. "
+    "Re-run analysis first."
+)
+OPTIMIZER_SOURCE_UNAVAILABLE_REASON = (
+    "Source SQL is unavailable or outside the optimizer read-only scope for this case."
+)
+OPTIMIZER_ANALYSIS_UNAVAILABLE_REASON = (
+    "Optimizer requires completed deterministic analysis facts and source SQL for this case. "
+    "Re-run analysis first."
+)
 
 
 @dataclass(frozen=True)
@@ -456,10 +470,18 @@ def load_batch_case_report_state(
     artifact_dir = resolve_batch_case_report_dir(settings, case)
     trusted = False
     partial = False
+    unavailable_reason = ""
     if artifact_dir is not None:
         trusted = batch_case_validated_report_exists(artifact_dir, case)
         partial = case_relative_file_path(artifact_dir, BATCH_REPORT_PARTIAL_NAME) is not None
     status = "generated" if trusted else "not_run"
+    if not trusted and not partial:
+        if artifact_dir is None:
+            status = "unavailable"
+            unavailable_reason = REPORT_CASE_UNAVAILABLE_REASON
+        elif not case_has_analyzer_facts(artifact_dir):
+            status = "unavailable"
+            unavailable_reason = REPORT_ANALYSIS_UNAVAILABLE_REASON
     if partial and not trusted:
         status = "partial_untrusted"
     if running_job is not None:
@@ -486,6 +508,7 @@ def load_batch_case_report_state(
         "running": running_job is not None,
         "trusted": trusted,
         "partial": partial,
+        "unavailable_reason": unavailable_reason,
         "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
         "job_id": report_job.job_id if report_job is not None else "",
         "job_kind": report_job.kind if report_job is not None else "",
@@ -513,7 +536,11 @@ def load_specific_query_report_state(
         running_job = job_store.running_query_report(query_id)
     trusted = batch_case_validated_report_exists(case_dir)
     partial = case_relative_file_path(case_dir, BATCH_REPORT_PARTIAL_NAME) is not None
+    unavailable_reason = ""
     status = "generated" if trusted else "not_run"
+    if not trusted and not partial and not case_has_analyzer_facts(case_dir):
+        status = "unavailable"
+        unavailable_reason = REPORT_ANALYSIS_UNAVAILABLE_REASON
     if partial and not trusted:
         status = "partial_untrusted"
     if running_job is not None:
@@ -540,6 +567,7 @@ def load_specific_query_report_state(
         "running": running_job is not None,
         "trusted": trusted,
         "partial": partial,
+        "unavailable_reason": unavailable_reason,
         "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
         "job_id": report_job.job_id if report_job is not None else "",
         "job_kind": report_job.kind if report_job is not None else "",
@@ -582,9 +610,15 @@ def load_optimized_query_state(
         or (case_relative_file_path(case_dir, OPTIMIZED_QUERY_NAME) is not None and not trusted)
     )
     source_available = case_dir is not None and case_has_safe_source_sql(case_dir)
+    analyzer_available = case_dir is not None and case_has_analyzer_facts(case_dir)
+    unavailable_reason = ""
     status = "generated" if trusted else "not_run"
     if not source_available and not trusted:
         status = "unavailable"
+        unavailable_reason = OPTIMIZER_SOURCE_UNAVAILABLE_REASON
+    elif not analyzer_available and not trusted:
+        status = "unavailable"
+        unavailable_reason = OPTIMIZER_ANALYSIS_UNAVAILABLE_REASON
     if partial and not trusted:
         status = "partial_untrusted"
     if running_job is not None:
@@ -624,6 +658,8 @@ def load_optimized_query_state(
         "trusted": trusted,
         "partial": partial,
         "source_available": source_available,
+        "analyzer_available": analyzer_available,
+        "unavailable_reason": unavailable_reason,
         "output_kind": marker.get("output_kind") or "sql_draft",
         "fallback_reason": marker.get("fallback_reason") or "",
         "risk_mode": marker.get("risk_mode") or "",

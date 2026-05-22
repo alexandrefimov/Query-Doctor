@@ -4,9 +4,12 @@ Last reviewed: 2026-05-22
 
 Язык: [English](README.md) | Русский
 
-Query Doctor - local-first инструмент диагностики Apache Impala запросов. Он
-помогает data engineers объяснять медленные, подозрительные или
-ресурсоемкие запросы без вставки raw operational data в чат.
+Query Doctor - local-first Big Data query diagnostic tool, сфокусированный
+сегодня на Apache Impala production triage. Он помогает операторам ранжировать
+подозрительные Recent queries, собирать bounded profile context, выводить
+deterministic evidence, опционально обогащать его safe metadata и генерировать
+validated human-readable reports без показа raw SQL или raw profiles в trusted
+UI/report surfaces.
 
 Инструмент работает рядом с credentials оператора, собирает ограниченный
 read-only контекст из Cloudera Manager или прямых Impala daemon endpoints,
@@ -21,13 +24,39 @@ Details static UI copy и новыми trusted reports; русский выво�
 Python owns facts. LLM owns wording only.
 ```
 
-Query Doctor не является free-form chat wrapper над raw profiles и не является
-инструментом выполнения SQL.
+Recent scan - flagship workflow. Query ID diagnosis вторичен и предназначен
+для одного known Impala query. Query Optimizer отдельный, read-only, не
+выполняет SQL и не echo submitted SQL. Report generation использует LLM только
+для wording из Python-owned facts.
+
+## Что Query Doctor делает / не делает
+
+Query Doctor это:
+
+- local-first Impala production triage workbench;
+- deterministic evidence extractor;
+- Recent-query ranking workflow для operators и administrators;
+- safe report generator на validated facts;
+- практический инструмент для решения, что смотреть, что менять и как
+  проверять;
+- Big Data SQL/lakehouse diagnostics wedge, где реализованный engine сегодня -
+  Apache Impala.
+
+Query Doctor это не:
+
+- generic AI chatbot over raw profiles;
+- replacement for Impala Web UI;
+- инструмент выполнения user SQL или optimizer draft SQL;
+- инструмент, который по умолчанию отправляет raw SQL/profile data в remote
+  services;
+- root-cause oracle;
+- multi-engine продукт сегодня.
 
 ## Что он делает
 
-- Сканирует завершенные Recent queries, Running queries или один explicit Known
-  Query ID для Apache Impala.
+- Сканирует завершенные Recent queries как основной workflow; Running queries и
+  один explicit Known Query ID остаются focused secondary modes для Apache
+  Impala.
 - Работает с Cloudera Manager, когда он доступен, или напрямую с Impala daemon
   profile/query-list endpoints для vanilla, Ambari-style и других
   non-Cloudera-Manager кластеров.
@@ -37,8 +66,8 @@ Query Doctor не является free-form chat wrapper над raw profiles и
   facts, а не по LLM scoring.
 - Генерирует trusted reports только после deterministic normalization,
   sanitization и validation.
-- Дает read-only Query Optimizer workflow для pasted SQL review и отдельное
-  details-page optimizer action для server-owned analyzed cases.
+- Дает отдельный read-only Query Optimizer workflow для pasted SQL review и
+  отдельное details-page optimizer action для server-owned analyzed cases.
 - Не показывает raw SQL, raw profiles, raw metadata, local paths, secrets,
   subprocess output, model/runtime internals и raw artifact filenames в browser
   и trusted report surfaces.
@@ -57,6 +86,12 @@ Query Doctor не является free-form chat wrapper над raw profiles и
 Будущие Big Data SQL/lakehouse engines, broader providers, prepared event/log
 sources и Cluster Doctor workflows остаются roadmap seams, а не текущей
 поддержкой.
+
+В Apache Impala также появилась upstream работа над native AI query profile
+analysis. Query Doctor выравнивается с этим направлением и остается
+local-first production triage по многим queries, deterministic evidence, safe
+enrichment и validated raw-free reports. См.
+[docs/upstream-impala-ai-analyzer.md](docs/upstream-impala-ai-analyzer.md).
 
 ## Установка
 
@@ -157,8 +192,9 @@ query-doctor-web --help
 
 Local web UI содержит:
 
-- `Diagnose`: основной экран Recent query triage. `Finished queries` - target
-  по умолчанию; `Running now` доступен как lower-confidence live context.
+- `Diagnose`: основной экран Recent Scan triage по многим queries.
+  `Finished queries` - target по умолчанию; `Running now` доступен как
+  lower-confidence live context.
 - `Known Query ID`: вторичный режим внутри `Diagnose` для одного explicit
   Impala query ID. По умолчанию использует Cloudera Manager или direct Impala
   daemon profile endpoints, когда настроен `cluster_type=impala`.
@@ -315,6 +351,8 @@ Public demo и release paths:
   security, CI hardening, release automation и backlog сильных проверок.
 - [docs/architecture.md](docs/architecture.md): текущие и будущие component
   boundary diagrams.
+- [docs/upstream-impala-ai-analyzer.md](docs/upstream-impala-ai-analyzer.md):
+  alignment с Apache Impala native AI profile-analysis direction.
 - [docs/roadmap.md](docs/roadmap.md): реализованный scope и planned seams.
 - [docs/query-optimizer-contract.md](docs/query-optimizer-contract.md):
   trust boundary оптимизатора.

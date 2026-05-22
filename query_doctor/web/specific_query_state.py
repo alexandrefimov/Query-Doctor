@@ -68,8 +68,9 @@ def build_specific_query_detail_action_context(
         case_dir=case_dir,
         case=case,
         analyzer_facts_available=case_has_analyzer_facts(case_dir),
-        report_allowed=case_allows_llm_report(case),
-        source_sql_available=case_has_safe_source_sql(case_dir),
+        report_allowed=case_allows_llm_report(case) and case_has_analyzer_facts(case_dir),
+        source_sql_available=case_has_safe_source_sql(case_dir)
+        and case_has_analyzer_facts(case_dir),
         report_running=job_store.running_query_report(query_id) is not None,
         optimizer_running=job_store.running_query_optimized_query(query_id) is not None,
     )

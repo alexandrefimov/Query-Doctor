@@ -16,6 +16,8 @@ from query_doctor.web.ui.llm_actions import (
     render_llm_actions_block,
 )
 from query_doctor.web.ui.recent_scan_details import (
+    report_generation_disabled_reason,
+    report_generation_enabled,
     render_case_action_plan,
     render_case_diagnostics,
     render_case_verdict,
@@ -122,7 +124,7 @@ def render_specific_query_detail_view(
         f"{render_case_verdict(view, language=language)}"
         f"{render_case_action_plan(view, language=language)}"
         f"{render_case_diagnostics(view, llm_enabled=llm_enabled, language=language)}"
-        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
+        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=report_generation_enabled(view), report_disabled_reason=report_generation_disabled_reason(view, language=language), report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
         "</section>"
     )
 

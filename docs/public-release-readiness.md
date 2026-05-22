@@ -68,12 +68,14 @@ place:
   Known Query ID plus Recent batch smokes with metadata collection enabled,
   TestPyPI dry run, GitHub release publish, production PyPI Trusted Publishing,
   and production PyPI install smoke.
-- Post-0.2.0 release work is tracked in the `Unreleased` changelog; finalize
-  release notes from that section before tagging the next package version.
+- The 0.3.0 release notes are finalized from the post-0.2.0 changelog plus
+  release-candidate UI and agent-workflow polish, the package metadata is
+  prepared for `v0.3.0`, and the local release gate plus built-wheel smoke have
+  passed for the release candidate.
 - README screenshots have been refreshed from the synthetic demo pack for the
-  current material UI baseline. Package version bump, TestPyPI upload, release
-  tag creation, production PyPI publishing, and final changelog release notes
-  remain final-release-candidate steps, not pre-release audit steps.
+  current material UI baseline. TestPyPI upload, release tag creation,
+  production PyPI publishing, and post-publish install smoke remain
+  final-release-candidate steps.
 - Repository metadata, topics, issue labels, issue templates, pull request
   template, and curated sanitized starter issues are in place.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample

@@ -10,6 +10,7 @@ from query_doctor.web.action_outcomes import (
     WorkloadOutcomeMetric,
     workload_outcome_summary_text,
 )
+from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.presenters.recent_scan_models import (
     RecentScanActionCandidateCardView,
     RecentScanActionCandidatesView,
@@ -164,7 +165,7 @@ def present_recent_scan_summary(
 
 
 def optimizer_funnel_header_counts(rows: tuple[RecentScanCaseRowView, ...]) -> tuple[int, int, int]:
-    candidates = tuple(row for row in rows if row.optimization_tier in {"high", "medium"})
+    candidates = tuple(row for row in rows if row_has_optimizer_rewrite_support(row))
     draft_ready = sum(
         1
         for row in candidates
@@ -184,6 +185,12 @@ def optimizer_funnel_header_counts(rows: tuple[RecentScanCaseRowView, ...]) -> t
         if row.optimizer_rewriteability_bucket in {"not_rewriteable", "human_review_only"}
     )
     return draft_ready, recipe_backlog, review_only
+
+
+def row_has_optimizer_rewrite_support(row: RecentScanCaseRowView) -> bool:
+    if row.optimization_tier in {"high", "medium"}:
+        return True
+    return row.optimizer_rewrite_support not in {"", "unknown", "not_candidate"}
 
 
 WORKLOAD_FINGERPRINT_RE = re.compile(r"^wf_[0-9a-f]{24}$")
@@ -1102,6 +1109,7 @@ def present_recent_scan_case_detail(
         ),
         technical_fields=(
             ("failure category", safe_display_value(case.get("failure_category"))),
+            ("failure reason", safe_display_value(case.get("failure_reason"))),
             ("cm collect seconds", safe_display_value(case.get("cm_collect_seconds"))),
             ("analysis seconds", safe_display_value(case.get("analysis_seconds"))),
             ("report seconds", safe_display_value(case.get("report_seconds"))),
@@ -1156,6 +1164,7 @@ PRIMARY_BOTTLENECK_LABELS = {
     "runtime_skew": "Runtime skew",
     "runtime_data_movement": "Data movement",
     "runtime_storage": "Storage/HDFS",
+    "client_fetch_tail": "Client fetch tail",
     "mixed": "Competing signals",
     "unknown": "Unknown",
 }
@@ -1166,6 +1175,7 @@ PRIMARY_BOTTLENECK_REASON_LABELS = {
     "large_intermediate_or_exchange_top_finding": "exchange or intermediate data movement is the top finding",
     "storage_or_hdfs_top_finding": "storage/HDFS evidence is the top finding",
     "storage_or_hdfs_runtime_diagnosis": "storage/HDFS evidence is the strongest runtime follow-up",
+    "client_fetch_wait_top_finding": "client fetch wait is the top finding",
     "join_top_finding": "join shape is the top finding",
     "sort_top_finding": "sort shape is the top finding",
     "analytic_top_finding": "analytic operator shape is the top finding",
@@ -1179,6 +1189,7 @@ PRIMARY_BOTTLENECK_REASON_LABELS = {
     "competing_runtime_skew": "runtime skew also needs review",
     "competing_runtime_data_movement": "exchange/data movement also needs review",
     "competing_runtime_storage": "storage/HDFS also needs review",
+    "competing_client_fetch_tail": "client fetch tail also needs review",
     "admission_timed_out": "admission timed out before execution",
     "admission_rejected": "admission was rejected before execution",
     "admission_wait_explicit": "explicit admission wait was observed",
@@ -1239,6 +1250,9 @@ def primary_bottleneck_reason_label(value: Any) -> str:
     admission_match = re.fullmatch(r"admission_wait_share_(\d{1,3})pct", text)
     if admission_match:
         return f"admission wait share {admission_match.group(1)}%"
+    client_fetch_match = re.fullmatch(r"client_fetch_wait_share_(\d{1,3})pct", text)
+    if client_fetch_match:
+        return f"client fetch wait share {client_fetch_match.group(1)}%"
     return "unrecognized reason category"
 
 
@@ -1309,7 +1323,7 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
         running=running,
         trusted=trusted,
         partial_untrusted=partial_untrusted,
-        error=safe_display_value(state.get("error")),
+        error=safe_display_text(sanitize_browser_error_text(state.get("error") or "")),
         job_id=safe_display_text(state.get("job_id") or ""),
         stage_label=safe_display_text(state.get("stage_label") or ""),
         progress=clamped_progress(state.get("progress")),
@@ -1323,6 +1337,7 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
         show_open_link=trusted,
         job_kind=safe_display_text(state.get("job_kind") or ""),
         progress_view=progress_view,
+        unavailable_reason=safe_display_text(state.get("unavailable_reason") or ""),
     )
 
 
@@ -1424,13 +1439,15 @@ def safe_optimizer_rewrite_support_label(
         "draft_disabled": "Recipe detected; draft disabled",
         "guidance_only": "Guidance only",
         "source_unavailable": "Source unavailable",
-        "not_candidate": "Not an optimization candidate",
+        "not_candidate": "Optimizer not applicable",
         "unknown": "Unknown",
     }
     if bucket == "human_review_only" and status in {"draft_disabled", "guidance_only"}:
         return "Human review only"
     if bucket == "not_rewriteable" and status == "guidance_only":
         return "Review guidance only"
+    if status == "not_candidate":
+        return labels[status]
     text = safe_optimization_display_text(value)
     if status == "sql_draft_attemptable" and text.lower() == "sql draft attemptable":
         return labels[status]

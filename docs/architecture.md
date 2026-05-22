@@ -10,6 +10,14 @@ only from facts that Python has already extracted and validated. The global
 trusted reports; English is the default and Russian uses the same
 language-specific prompt, normalizer, and validator boundary.
 
+The product architecture is a local-first Big Data query diagnostic tool
+focused today on Apache Impala production triage: Recent Scan ranks many
+suspicious queries first, Query ID diagnosis handles one known query as a
+secondary mode, and Query Optimizer remains a separate read-only SQL analysis
+workflow. Native Impala AI profile-analysis work tracked upstream should be
+treated as a compatibility direction and a signal to prepare real cross-engine
+diagnostic contracts, not a reason to duplicate a one-profile AI tab.
+
 ## Current Architecture
 
 ```mermaid
@@ -91,6 +99,15 @@ Current support is intentionally narrow:
   selected-case action.
 - The pasted-query optimizer is read-only, does not execute input, and does not
   echo submitted text after submit.
+- Future upstream Impala profile JSON/parser/redactor compatibility must map
+  into the same Python-owned fact and raw-free browser/report boundary before it
+  becomes product behavior.
+- Future multi-engine support must enter through an engine fact contract with
+  real fixtures and safety tests, not through placeholder adapters.
+- The initial engine fact contract exists only as internal contract-shaping
+  code, an Impala analyzer projection, and a synthetic Trino fixture mapper; it
+  is not a supported Trino workflow and is not connected to browser, report,
+  collector, or optimizer paths.
 
 ## Source-Provider Architecture
 
@@ -163,6 +180,9 @@ Future direction:
 - follow [engine-expansion-plan.md](engine-expansion-plan.md) for the transition
   order: Direct Impala profile source first, engine fact contract second, and a
   second engine only after demand and Impala readiness signals;
+- use stable upstream Impala profile JSON, parser, and redactor contracts as
+  compatibility targets when they exist, with fixtures and redaction tests
+  before any adapter is trusted;
 - treat query engine and storage/table-format context as orthogonal axes:
   engine adapters parse how a query ran, while storage context adapters publish
   bounded facts about HDFS, object storage, table formats or internal analytical
@@ -409,10 +429,11 @@ The local UI:
 - is implemented as server-rendered Python HTML with shared CSS and small
   vanilla JavaScript helpers; there is no JavaScript build pipeline or SPA
   framework in the current baseline;
-- uses Recent queries as the default Diagnose mode, discovers Cloudera Manager
-  summaries for Finished queries by default or direct Impala daemon query lists
-  when configured, then collects bounded selected profiles, ranks
-  deterministically, and leaves report/optimizer generation explicit per case;
+- uses Recent Scan as the flagship production triage workflow, with Recent
+  queries as the default Diagnose mode; it discovers Cloudera Manager summaries
+  for Finished queries by default or direct Impala daemon query lists when
+  configured, then collects bounded selected profiles, ranks deterministically,
+  and leaves report/optimizer generation explicit per case;
 - can collect bounded Cloudera Manager metrics/events or configured Prometheus
   runtime metrics as runtime context for selected cases;
 - uses the same result shape for Running now scans, with lower-confidence live

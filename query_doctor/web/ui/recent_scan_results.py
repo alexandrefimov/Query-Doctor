@@ -210,6 +210,8 @@ def render_batch_summary(
     )
     escaped_title = html.escape(title)
     aria_label = html.escape(title.lower())
+    safe_active_group = html.escape(active_group, quote=True)
+    table_class = f"batch-table batch-results-table batch-results-table--{safe_active_group}"
     return (
         f'<details id="recent-results" class="panel batch-panel batch-results-disclosure" aria-label="{aria_label}" open data-results-disclosure>'
         '<summary class="batch-head">'
@@ -219,7 +221,7 @@ def render_batch_summary(
         f"{header}"
         f"{switcher}"
         f"{critical_results_notices}"
-        '<div class="batch-table-wrap"><table class="batch-table">'
+        f'<div class="batch-table-wrap"><table class="{table_class}">'
         f"{batch_table_head(active_group)}"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
@@ -916,11 +918,13 @@ def optimizer_rewrite_support_view(status: Any, label: Any, reason: Any) -> tupl
         "draft_disabled": ("Draft disabled", "batch-status--neutral"),
         "guidance_only": ("Guidance only", "batch-status--neutral"),
         "source_unavailable": ("No source", "batch-status--neutral"),
-        "not_candidate": ("Not candidate", "batch-status--neutral"),
+        "not_candidate": ("Not applicable", "batch-status--neutral"),
         "unknown": ("Unknown", "batch-status--neutral"),
     }
     fallback_label, class_name = fallback_labels.get(normalized, fallback_labels["unknown"])
     title_label = str(label or fallback_label).strip() or fallback_label
+    if normalized == "not_candidate":
+        title_label = "Optimizer not applicable"
     if title_label.lower() == "human review only":
         fallback_label = "Human review"
     if title_label.lower() == "review guidance only":

@@ -42,6 +42,7 @@ If you need to run the gate manually, use:
 DEMO_OUT="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 python scripts/agent_preflight.py
 python scripts/check_staged_public_safety.py
+python scripts/check_staged_public_safety.py --changed
 pre-commit run --all-files
 git diff --check
 python scripts/check_active_docs.py

@@ -243,6 +243,7 @@ class ReportActionView:
     show_open_link: bool
     job_kind: str
     progress_view: JobProgressView | None = None
+    unavailable_reason: str = ""
 
 
 @dataclass(frozen=True)

@@ -28,6 +28,8 @@ ACTIVE_DOCS = (
     "docs/safety-contract.md",
     "docs/brand-voice.md",
     "docs/architecture.md",
+    "docs/upstream-impala-ai-analyzer.md",
+    "docs/impala-profile-counter-caveats.md",
     "docs/engine-expansion-plan.md",
     "docs/query-optimizer-contract.md",
     "docs/roadmap.md",

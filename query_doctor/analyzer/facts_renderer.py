@@ -104,6 +104,8 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
     features = profile.get("features") if isinstance(profile.get("features"), dict) else {}
     lines = ["## Profile Format", ""]
     lines.append(f"- family: {profile.get('profile_family') or 'unknown'}")
+    lines.append(f"- dialect: {profile.get('profile_dialect') or 'unknown'}")
+    lines.append(f"- dialect_confidence: {profile.get('dialect_confidence') or 'low'}")
     lines.append(
         f"- source: {profile.get('source_label') or profile.get('profile_source') or 'unknown'}"
     )
@@ -118,6 +120,11 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
         lines.append(f"- daemon_local_catalog_mode: {value}")
     lines.append(f"- layout: {profile.get('layout') or 'unknown'}")
     lines.append(f"- compatibility: {profile.get('compatibility') or 'unknown'}")
+    lines.append(f"- analysis_support: {profile.get('analysis_support') or 'unknown'}")
+    lines.append(
+        f"- primary_bottleneck_policy: {profile.get('primary_bottleneck_policy') or 'unknown'}"
+    )
+    lines.append(f"- per_instance_evidence: {profile.get('per_instance_evidence') or 'unknown'}")
     lines.append(
         "- sections: "
         f"summary={'yes' if features.get('summary') else 'no'}, "
@@ -142,6 +149,55 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
         f"per_node_system_time={'yes' if features.get('per_node_system_time') else 'no'}, "
         f"per_host_fragment_instances={'yes' if features.get('per_host_fragment_instances') else 'no'}"
     )
+    limitations = [item for item in profile.get("limitations") or [] if isinstance(item, dict)]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(
+                f"  - {item.get('id') or 'profile_limitation'}: "
+                f"{item.get('summary') or 'Profile analysis is limited.'}"
+            )
+    lines.append("")
+    return lines
+
+
+def render_exec_node_completeness(analysis: dict[str, Any]) -> list[str]:
+    completeness = analysis.get("exec_node_completeness")
+    if not isinstance(completeness, dict):
+        return []
+    lines = ["## Exec Node Completeness", ""]
+    lines.append(f"- profile_wide_state: {completeness.get('profile_wide_state') or 'unknown'}")
+    reasons = [str(item) for item in completeness.get("profile_wide_reasons") or [] if item]
+    lines.append(f"- profile_wide_reasons: {', '.join(reasons) if reasons else 'none'}")
+    lines.append(
+        f"- row_count_conclusions: {completeness.get('row_count_conclusions') or 'unknown'}"
+    )
+    lines.append(
+        "- guarded_conclusions: row/cardinality, scan-selectivity, runtime-filter-effectiveness"
+    )
+    lines.append(f"- affected_operator_count: {completeness.get('unsafe_operator_count') or 0}")
+    affected = [
+        item for item in completeness.get("affected_operators") or [] if isinstance(item, dict)
+    ]
+    if affected:
+        lines.append("- affected_operators:")
+        for item in affected[:10]:
+            item_reasons = [str(reason) for reason in item.get("reasons") or [] if reason]
+            lines.append(
+                f"  - {item.get('label') or item.get('operator_id')}: "
+                f"state={item.get('state') or 'unknown'}, "
+                f"reasons={', '.join(item_reasons) if item_reasons else 'none'}"
+            )
+        if len(affected) > 10:
+            lines.append(f"  - ... {len(affected) - 10} more affected operators")
+    limitations = [item for item in completeness.get("limitations") or [] if isinstance(item, dict)]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(
+                f"  - {item.get('id') or 'exec_node_completeness_limitation'}: "
+                f"{item.get('summary') or 'Exec-node completeness is limited.'}"
+            )
     lines.append("")
     return lines
 
@@ -297,6 +353,49 @@ def render_profile_timing_facts(analysis: dict[str, Any]) -> list[str]:
                 f"min={fmt_duration(item.get('min_ms'))}, "
                 f"max={fmt_duration(item.get('max_ms'))}"
             )
+    lines.append("")
+    return lines
+
+
+def render_client_fetch_facts(analysis: dict[str, Any]) -> list[str]:
+    facts = analysis.get("client_fetch")
+    if not isinstance(facts, dict):
+        return []
+    if facts.get("evidence_tier") == "unsupported" and not facts.get("wait_counters"):
+        return []
+
+    lines = ["## Client Fetch Tail Facts", ""]
+    lines.append(f"- status: {facts.get('status') or 'not_observed'}")
+    lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
+    lines.append(f"- counter_status: {facts.get('counter_status') or 'not_observed'}")
+    lines.append(f"- promotion_policy: {facts.get('promotion_policy') or 'unknown'}")
+    lines.append(f"- finding_supported: {'yes' if facts.get('finding_supported') else 'no'}")
+    counter = facts.get("dominant_wait_counter")
+    if isinstance(counter, dict):
+        lines.append(
+            "- client_fetch_wait: "
+            f"{facts.get('client_fetch_wait_human') or 'n/a'} "
+            f"(counter={counter.get('counter') or 'unknown'}, "
+            f"share={facts.get('wait_share_human') or 'n/a'}, "
+            f"query_duration={facts.get('query_duration_human') or 'n/a'})"
+        )
+    if facts.get("timeline_fetch_ms") is not None:
+        lines.append(f"- query_timeline_fetch: {facts.get('timeline_fetch_human') or 'n/a'}")
+    serialization = facts.get("profile_serialization_context")
+    if isinstance(serialization, dict):
+        lines.append(
+            "- profile_serialization_context: "
+            f"{serialization.get('duration_human') or 'n/a'} "
+            f"(counter={serialization.get('counter') or 'unknown'})"
+        )
+    lines.append(
+        f"- guardrail: {facts.get('guardrail') or 'Client fetch facts are deterministic context.'}"
+    )
+    limitations = [str(item) for item in facts.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {item}")
     lines.append("")
     return lines
 
@@ -567,8 +666,10 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_summary(analysis)
     lines += render_primary_bottleneck(analysis)
     lines += render_profile_format(analysis)
+    lines += render_exec_node_completeness(analysis)
     lines += render_profile_resource_facts(analysis)
     lines += render_profile_timing_facts(analysis)
+    lines += render_client_fetch_facts(analysis)
     lines += render_source_provenance(analysis)
     lines += render_query_wall_clock(analysis)
     lines += render_runtime_counter_context(analysis)

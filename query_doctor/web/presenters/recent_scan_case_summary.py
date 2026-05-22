@@ -21,14 +21,22 @@ PRIMARY_BOTTLENECK_VERDICT_TITLES = {
     "Runtime skew": "Runtime skew may be stretching execution",
     "Data movement": "Data movement may be inflating runtime",
     "Storage/HDFS": "Storage or HDFS signals need follow-up",
+    "Client fetch tail": "Client fetch wait may be stretching the tail",
     "Competing signals": "Multiple supported signals need review",
     "Unknown": "No single supported bottleneck is classified yet",
 }
 
 
 def primary_bottleneck_summary(view: RecentScanCaseDetailView) -> str:
+    severity = str(view.score_severity or "").strip().lower()
+    if severity == "failed":
+        return "Processing did not finish - diagnosis is not trustworthy yet"
+    if severity == "clean":
+        return unclassified_case_summary(view)
     primary = view.primary_bottleneck
     if primary.unavailable:
+        return unclassified_case_summary(view)
+    if primary.label == "Unknown" and view.signal_summary != "no positive analyzer signals":
         return unclassified_case_summary(view)
     title = PRIMARY_BOTTLENECK_VERDICT_TITLES.get(
         primary.label,

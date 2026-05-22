@@ -143,6 +143,7 @@ class CaseResult:
     report_generated: bool = False
     report_validation_status: str = "not_run"
     failure_category: str | None = None
+    failure_reason: str | None = None
     candidate_rank: int | None = None
     triage_rank: int | None = None
     metadata_refreshed: bool = False

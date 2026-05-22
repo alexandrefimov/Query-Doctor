@@ -25,6 +25,7 @@ QUERY_CAP_SIGNALS = {
     "runtime_skew": "primary_bottleneck_is_runtime_skew",
     "runtime_data_movement": "primary_bottleneck_is_runtime_data_movement",
     "runtime_storage": "primary_bottleneck_is_runtime_storage",
+    "client_fetch_tail": "primary_bottleneck_is_client_fetch_tail; rewrite is secondary",
 }
 STATS_CAP_SIGNALS = {
     "sql_shape": "primary_bottleneck_is_sql_shape; stats refresh unlikely primary",
@@ -32,6 +33,7 @@ STATS_CAP_SIGNALS = {
     "runtime_skew": "primary_bottleneck_is_runtime_skew",
     "runtime_data_movement": "primary_bottleneck_is_runtime_data_movement",
     "runtime_storage": "primary_bottleneck_is_runtime_storage",
+    "client_fetch_tail": "primary_bottleneck_is_client_fetch_tail",
 }
 MIXED_STATS_CAP_SIGNALS = {
     "competing_sql_shape": "mixed_primary_includes_sql_shape; stats refresh requires EXPLAIN confirmation",
@@ -40,6 +42,7 @@ MIXED_STATS_CAP_SIGNALS = {
         "mixed_primary_includes_runtime_data_movement; stats refresh is not first action"
     ),
     "competing_runtime_storage": "mixed_primary_includes_runtime_storage; stats refresh is not first action",
+    "competing_client_fetch_tail": "mixed_primary_includes_client_fetch_tail; stats refresh is not first action",
 }
 
 

@@ -1,6 +1,6 @@
 # Development Practices
 
-Last reviewed: 2026-05-21
+Last reviewed: 2026-05-22
 
 This document records the engineering practices that keep Query Doctor
 maintainable as it grows. It complements the mandatory safety rules in
@@ -73,15 +73,18 @@ generic framework seams. The only implemented engine is Impala.
 
 ## Parallel Worktrees
 
-Use separate worktrees for parallel agent work:
+Use separate worktrees so feature slices do not block each other or the main
+working tree. Operational agent steps for branch creation, validation,
+committing, merging, and cleanup live in
+[agent-quickstart.md](agent-quickstart.md).
+Use `python3 scripts/worktree_status.py` to inventory active worktrees,
+divergence from `main`, dirty state, merge candidates, and cleanup candidates
+before starting cleanup or integration work.
 
-- create worktrees under `$HOME/query-doctor-worktrees`;
-- start from the latest local `main` unless the task explicitly targets another
-  branch;
-- when a follow-up slice depends on an earlier unmerged branch, cherry-pick or
-  merge only the needed reviewed commits into the new branch;
-- do not merge back to `main`, push, rebase, amend, or force-push unless the
-  user explicitly asks for that integration operation.
+This practice exists to keep unrelated user changes isolated, keep review diffs
+small, and let dependent follow-up slices start from only the reviewed commits
+they need. Do not use worktree cleanup as a way to discard unmerged or user
+changes.
 
 ## Test Strategy
 
@@ -111,10 +114,11 @@ checks before handoff or release work:
 scripts/local_gate.sh
 ```
 
-The gate runs agent preflight, staged public-safety checks, whitespace checks,
-active-doc checks, Markdown link checks, ruff correctness checks, full pytest,
-demo preflight, and synthetic demo generation. Run `pre-commit run --all-files`
-when you also need the full hook set, including `ruff format --check`.
+The gate runs agent preflight, staged and changed-worktree public-safety checks,
+whitespace checks, active-doc checks, Markdown link checks, ruff correctness
+checks, full pytest, demo preflight, and synthetic demo generation. Run
+`pre-commit run --all-files` when you also need the full hook set, including
+`ruff format --check`.
 Set `PUBLIC_RELEASE=1` to add the slower public-release tracked-tree and
 history scan:
 
@@ -140,6 +144,9 @@ caches, virtualenv paths, private-looking hostnames/domains, user home paths,
 embedded URL credentials, private keys, and high-confidence tokens before they
 enter repository history. It is intentionally a guardrail, not a replacement
 for release review or `query-doctor-demo-preflight --public-release`.
+Use `python3 scripts/check_staged_public_safety.py --changed` before broad
+handoff or merge-ready cleanup to apply the same scan to staged, unstaged, and
+untracked non-ignored files.
 
 ## Dependency Policy
 
@@ -168,7 +175,10 @@ When adding an error path:
 ## Documentation Rules
 
 Update docs when behavior, safety boundaries, workflows, public commands, or
-trust contracts change. Keep public docs concise and implementation-accurate.
+trust contracts change. Treat this as part of every code change, not a later
+cleanup pass: check the docs that describe the touched behavior, update them in
+the same slice when needed, and record in the handoff/final note when reviewed
+docs remain accurate. Keep public docs concise and implementation-accurate.
 
 Use:
 

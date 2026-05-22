@@ -29,6 +29,7 @@ PRIMARY_BOTTLENECK_LABELS = {
     "runtime_skew",
     "runtime_data_movement",
     "runtime_storage",
+    "client_fetch_tail",
     "mixed",
     "unknown",
 }
@@ -40,6 +41,7 @@ UNKNOWN_FINDING_IDS = {
     "host_execution_tail_suspected",
     "join_bottleneck",
     "large_intermediate_or_exchange_traffic",
+    "client_fetch_tail",
     "memory_estimate_errors",
     "sort_bottleneck",
 }
@@ -892,6 +894,9 @@ def _case_to_summary_base(
         "report_validation_status": case.report_validation_status,
         "metadata_refreshed": case.metadata_refreshed,
         "failure_category": case.failure_category,
+        "failure_reason": cm_profiles.sanitize_text_for_log(case.failure_reason)
+        if case.failure_reason
+        else None,
         "cm_collect_seconds": case.cm_collect_seconds,
         "analysis_seconds": case.analysis_seconds,
         "report_seconds": case.report_seconds,
@@ -1025,7 +1030,7 @@ def numeric_float(value: object) -> float | None:
 
 
 def case_score_severity(case: CaseResult) -> str:
-    if case.collection_status == "failed" or case.analysis_status == "failed":
+    if case_has_processing_failure(case):
         return "failed"
     if case.score <= 0:
         return "clean"
@@ -1050,6 +1055,17 @@ def case_score_severity(case: CaseResult) -> str:
     ):
         return "high"
     return "suspicious"
+
+
+def case_has_processing_failure(case: CaseResult) -> bool:
+    if case.failure_category:
+        return True
+    return (
+        case.collection_status == "failed"
+        or case.analysis_status == "failed"
+        or case.metadata_status == "failed"
+        or case.report_validation_status == "failed"
+    )
 
 
 def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:

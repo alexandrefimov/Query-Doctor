@@ -1,0 +1,29 @@
+{
+  "fixtureVersion": "synthetic-trino-event-listener-completed-v1",
+  "queryCompletedEvent": {
+    "metadata": {
+      "queryState": "FINISHED"
+    },
+    "statistics": {
+      "elapsedTimeMillis": 187000,
+      "queuedTimeMillis": 8500,
+      "planningTimeMillis": 3200,
+      "executionTimeMillis": 175000,
+      "cpuTimeMillis": 99000,
+      "wallTimeMillis": 180000,
+      "processedRows": 9800000,
+      "processedBytes": 10737418240,
+      "outputRows": 120000,
+      "outputBytes": 18874368,
+      "peakMemoryBytes": 3221225472,
+      "spilledBytes": 536870912,
+      "completedSplits": 96,
+      "stageCount": 4,
+      "fullyBlocked": false
+    },
+    "resource": {
+      "queued": true,
+      "queueTimeMillis": 8500
+    }
+  }
+}

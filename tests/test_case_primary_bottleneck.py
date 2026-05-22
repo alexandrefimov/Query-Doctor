@@ -214,6 +214,97 @@ def test_runtime_admission_preserves_primary_when_stats_evidence_coexists():
     )
 
 
+def test_unknown_profile_dialect_blocks_primary_classification_even_with_signals():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            profile_format={
+                "profile_dialect": "unknown",
+                "primary_bottleneck_policy": "unsupported",
+            },
+            cm_query_context={
+                "admission_result": "Admitted (queued)",
+                "admission_wait_ms": 45_000,
+            },
+            cardinality_anomalies=anomaly(4),
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "backend_data_skew",
+            },
+            backend_tail={
+                "data_skew": "yes",
+                "execution_skew": "yes",
+                "execution_tail_candidate_count": 2,
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("profile_dialect_not_supported_for_primary",)
+
+
+def test_experimental_profile_v2_allows_query_context_admission_only():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            profile_format={
+                "profile_dialect": "experimental_profile_v2",
+                "primary_bottleneck_policy": "non_profile_only",
+                "per_instance_evidence": "unknown",
+            },
+            cm_query_context={
+                "admission_result": "Admitted (queued)",
+                "admission_wait_ms": 45_000,
+            },
+            backend_tail={
+                "data_skew": "yes",
+                "execution_skew": "yes",
+                "execution_tail_candidate_count": 2,
+            },
+        )
+    )
+
+    assert result.label == "runtime_admission"
+    assert result.confidence == "high"
+    assert result.reasons == (
+        "admission_wait_share_450pct",
+        "admission_wait_source_query_context",
+    )
+
+
+def test_experimental_profile_v2_blocks_profile_derived_primary_claims():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            profile_format={
+                "profile_dialect": "experimental_profile_v2",
+                "primary_bottleneck_policy": "non_profile_only",
+                "per_instance_evidence": "unknown",
+            },
+            profile_resources={
+                "available": True,
+                "admission_result": "queued",
+                "admission_wait_ms": 45_000,
+            },
+            top_elapsed_finding_id="host_execution_tail_suspected",
+            backend_tail={
+                "data_skew": "yes",
+                "execution_skew": "yes",
+                "execution_tail_candidate_count": 2,
+            },
+            cardinality_anomalies=anomaly(4),
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "backend_data_skew",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("no_primary_branch_supported",)
+
+
 def test_runtime_skew_requires_top_execution_tail_finding():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
@@ -250,6 +341,118 @@ def test_runtime_skew_uses_elapsed_ranking_not_finding_order():
 
     assert result.label == "runtime_skew"
     assert result.confidence == "high"
+
+
+def test_client_fetch_tail_can_be_primary_with_strong_counter_evidence():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 100_000, "confidence": "high"},
+            client_fetch={
+                "primary_supported": True,
+                "evidence_tier": "strong",
+                "client_fetch_wait_ms": 45_000,
+                "wait_share": 0.45,
+            },
+            findings=[{"id": "client_fetch_tail"}],
+        )
+    )
+
+    assert result.label == "client_fetch_tail"
+    assert result.confidence == "high"
+    assert result.reasons == (
+        "client_fetch_wait_top_finding",
+        "client_fetch_wait_share_45pct",
+    )
+
+
+def test_client_fetch_tail_requires_strong_evidence_for_primary():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 100_000, "confidence": "high"},
+            client_fetch={
+                "primary_supported": False,
+                "evidence_tier": "medium",
+                "client_fetch_wait_ms": 12_000,
+                "wait_share": 0.12,
+            },
+            findings=[{"id": "client_fetch_tail"}],
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
+
+
+def test_client_fetch_tail_does_not_override_stronger_backend_tail():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 120_000, "confidence": "high"},
+            client_fetch={
+                "primary_supported": True,
+                "evidence_tier": "strong",
+                "client_fetch_wait_ms": 45_000,
+                "wait_share": 0.37,
+            },
+            backend_tail={
+                "execution_skew": "yes",
+                "execution_tail_candidate_count": 1,
+                "execution_tail_candidates": [{"worst_value": 60_000}],
+            },
+            findings=[
+                {"id": "client_fetch_tail"},
+                {"id": "host_execution_tail_suspected"},
+            ],
+        )
+    )
+
+    assert result.label == "runtime_skew"
+    assert result.reasons == ("execution_tail_top_finding", "tail_candidates_1")
+
+
+def test_client_fetch_tail_and_stats_signal_become_mixed_primary():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 120_000, "confidence": "high"},
+            client_fetch={
+                "primary_supported": True,
+                "evidence_tier": "strong",
+                "client_fetch_wait_ms": 45_000,
+                "wait_share": 0.37,
+            },
+            findings=[{"id": "client_fetch_tail"}],
+            cardinality_anomalies=anomaly(3),
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "mixed"
+    assert result.reasons == ("competing_stats", "competing_client_fetch_tail")
+
+
+def test_experimental_profile_v2_blocks_client_fetch_primary_claims():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            profile_format={
+                "profile_dialect": "experimental_profile_v2",
+                "primary_bottleneck_policy": "non_profile_only",
+            },
+            query_wall_clock={"duration_ms": 100_000, "confidence": "high"},
+            client_fetch={
+                "primary_supported": True,
+                "evidence_tier": "strong",
+                "client_fetch_wait_ms": 45_000,
+                "wait_share": 0.45,
+            },
+            findings=[{"id": "client_fetch_tail"}],
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
 
 
 def test_backend_data_skew_routes_to_medium_runtime_skew():
@@ -315,6 +518,59 @@ def test_stats_primary_when_metadata_gap_and_anomalies_have_no_competing_signals
     assert result.label == "stats"
     assert result.confidence == "high"
     assert result.reasons == ("stats_candidate_supported", "cardinality_anomalies_4")
+
+
+def test_stats_primary_is_blocked_when_exec_node_rows_are_limited():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(4),
+            exec_node_completeness={
+                "row_count_conclusions": "limited",
+                "affected_operators": [
+                    {
+                        "operator_id": "01",
+                        "operator_name": "HASH JOIN",
+                        "state": "cancelled",
+                    }
+                ],
+            },
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("no_primary_branch_supported",)
+
+
+def test_stats_primary_can_use_cardinality_anomalies_from_unaffected_nodes():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=[{"operator_id": "02", "label": "02:HASH JOIN"}],
+            exec_node_completeness={
+                "row_count_conclusions": "limited",
+                "affected_operators": [
+                    {
+                        "operator_id": "01",
+                        "operator_name": "HASH JOIN",
+                        "state": "cancelled",
+                    }
+                ],
+            },
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "stats"
+    assert result.reasons == ("stats_candidate_supported", "cardinality_anomalies_1")
 
 
 def test_stats_candidate_with_competing_non_stats_signal_becomes_mixed():

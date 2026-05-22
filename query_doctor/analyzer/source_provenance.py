@@ -110,11 +110,13 @@ def profile_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
     )
     layout = safe_detail_value(profile.get("layout"))
     compatibility = safe_detail_value(profile.get("compatibility"))
+    dialect = safe_detail_value(profile.get("profile_dialect"))
+    analysis_support = safe_detail_value(profile.get("analysis_support"))
     return provenance_item(
         "profile",
         "available" if compatibility == "supported" else "partial",
         label,
-        f"layout={layout}, compatibility={compatibility}",
+        f"dialect={dialect}, layout={layout}, compatibility={compatibility}, analysis={analysis_support}",
     )
 
 

@@ -11,6 +11,10 @@ from query_doctor.analyzer.backend_tail import (
     build_backend_tail_analysis,
     parse_backend_host_facts,
 )
+from query_doctor.analyzer.client_fetch import (
+    apply_client_fetch_profile_policy,
+    build_client_fetch_facts,
+)
 from query_doctor.analyzer.context_collection import build_query_wall_clock
 from query_doctor.analyzer.operators import (
     op_label,
@@ -32,6 +36,10 @@ from query_doctor.analyzer.profile_signals import (
     find_nonzero_spill_metric_lines,
 )
 from query_doctor.analyzer.profile_format import build_profile_format_facts
+from query_doctor.analyzer.node_lifecycle import (
+    build_exec_node_completeness_facts,
+    operator_row_conclusions_supported,
+)
 from query_doctor.analyzer.profile_resources import build_profile_resource_facts
 from query_doctor.analyzer.profile_text import normalize_profile_text
 from query_doctor.analyzer.profile_timings import build_profile_timing_facts
@@ -66,14 +74,41 @@ def make_finding(
     }
 
 
+def op_to_json_with_row_guardrail(
+    op,
+    exec_node_completeness: dict[str, Any],
+) -> dict[str, Any]:
+    payload = op_to_json(op)
+    if operator_row_conclusions_supported(op, exec_node_completeness):
+        payload["row_conclusion_state"] = "supported"
+        return payload
+    payload.update(
+        {
+            "actual_rows": None,
+            "actual_rows_human": "n/a",
+            "estimated_rows": None,
+            "estimated_rows_human": "n/a",
+            "rows_actual_to_estimated_ratio": None,
+            "rows_ratio_human": "n/a",
+            "row_conclusion_state": "limited_by_exec_node_completeness",
+        }
+    )
+    return payload
+
+
 def analyze(
     text: str,
     args: argparse.Namespace,
     cm_query_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    raw_text = text
     text = normalize_profile_text(text)
     operators = parse_operators(text)
-    profile_format = build_profile_format_facts(text, cm_query_context)
+    profile_format = build_profile_format_facts(text, cm_query_context, raw_text=raw_text)
+    exec_node_completeness = build_exec_node_completeness_facts(text, operators, cm_query_context)
+    row_conclusion_operators = [
+        op for op in operators if operator_row_conclusions_supported(op, exec_node_completeness)
+    ]
     profile_resources = build_profile_resource_facts(text)
     profile_timings = build_profile_timing_facts(text)
     backend_tail = build_backend_tail_analysis(parse_backend_host_facts(text))
@@ -84,6 +119,10 @@ def analyze(
     }
     query_wall_clock = build_query_wall_clock(
         totals, cm_query_context, extract_query_timeline_duration_ms(text)
+    )
+    client_fetch = apply_client_fetch_profile_policy(
+        build_client_fetch_facts(text, profile_timings, query_wall_clock),
+        profile_format,
     )
 
     top_by_time = sorted(
@@ -100,7 +139,7 @@ def analyze(
     cardinality_anomalies = sorted(
         [
             anomaly
-            for op in operators
+            for op in row_conclusion_operators
             if (anomaly := operator_with_best_rows_ratio(op, args.rows_ratio_threshold)) is not None
         ],
         key=lambda x: x.rows_ratio or 0,
@@ -117,7 +156,11 @@ def analyze(
         reverse=True,
     )
     zero_row_estimate_gaps = sorted(
-        [gap for op in operators if (gap := operator_with_zero_row_estimate_gap(op)) is not None],
+        [
+            gap
+            for op in row_conclusion_operators
+            if (gap := operator_with_zero_row_estimate_gap(op)) is not None
+        ],
         key=lambda x: x.actual_rows or 0,
         reverse=True,
     )
@@ -137,9 +180,17 @@ def analyze(
         if op.is_join
         and (
             (op.time_ms is not None and op.time_ms >= args.slow_operator_ms)
-            or (op.actual_rows is not None and op.actual_rows >= args.large_rows_threshold)
             or op.is_partitioned
-            or (op.rows_ratio is not None and op.rows_ratio >= args.rows_ratio_threshold)
+            or (
+                operator_row_conclusions_supported(op, exec_node_completeness)
+                and op.actual_rows is not None
+                and op.actual_rows >= args.large_rows_threshold
+            )
+            or (
+                operator_row_conclusions_supported(op, exec_node_completeness)
+                and op.rows_ratio is not None
+                and op.rows_ratio >= args.rows_ratio_threshold
+            )
         )
     ]
     sort_bottlenecks = [
@@ -148,8 +199,12 @@ def analyze(
         if op.is_sort
         and (
             (op.time_ms is not None and op.time_ms >= args.slow_operator_ms)
-            or (op.actual_rows is not None and op.actual_rows >= args.large_rows_threshold)
             or (op.mem_ratio is not None and op.mem_ratio >= args.mem_ratio_threshold)
+            or (
+                operator_row_conclusions_supported(op, exec_node_completeness)
+                and op.actual_rows is not None
+                and op.actual_rows >= args.large_rows_threshold
+            )
         )
     ]
     analytic_bottlenecks = [
@@ -158,7 +213,11 @@ def analyze(
         if op.is_analytic
         and (
             (op.time_ms is not None and op.time_ms >= args.slow_operator_ms)
-            or (op.actual_rows is not None and op.actual_rows >= args.large_rows_threshold)
+            or (
+                operator_row_conclusions_supported(op, exec_node_completeness)
+                and op.actual_rows is not None
+                and op.actual_rows >= args.large_rows_threshold
+            )
         )
     ]
 
@@ -186,6 +245,15 @@ def analyze(
 
     findings: list[dict[str, Any]] = []
     not_supported_causes: list[str] = []
+    for limitation in profile_format.get("limitations") or []:
+        if isinstance(limitation, dict) and limitation.get("summary"):
+            not_supported_causes.append(str(limitation["summary"]))
+    for limitation in exec_node_completeness.get("limitations") or []:
+        if isinstance(limitation, dict) and limitation.get("summary"):
+            not_supported_causes.append(str(limitation["summary"]))
+    for limitation in client_fetch.get("limitations") or []:
+        if limitation:
+            not_supported_causes.append(str(limitation))
 
     network_exchange_evidence: list[str] = []
     total_sent = totals.get("TotalBytesSent")
@@ -250,7 +318,10 @@ def analyze(
                     f"{op_label(worst)} = {fmt_ratio(worst.rows_ratio)} "
                     f"({fmt_rows(worst.actual_rows)} actual vs {fmt_rows(worst.estimated_rows)} estimated)."
                 ),
-                operators=[op_to_json(op) for op in cardinality_anomalies],
+                operators=[
+                    op_to_json_with_row_guardrail(op, exec_node_completeness)
+                    for op in cardinality_anomalies
+                ],
             )
         )
     elif not zero_row_estimate_gaps:
@@ -270,7 +341,10 @@ def analyze(
                     f"Worst parsed gap: {op_label(worst)} = {fmt_rows(worst.actual_rows)} "
                     f"actual rows vs {fmt_rows(worst.estimated_rows)} estimated rows."
                 ),
-                operators=[op_to_json(op) for op in zero_row_estimate_gaps],
+                operators=[
+                    op_to_json_with_row_guardrail(op, exec_node_completeness)
+                    for op in zero_row_estimate_gaps
+                ],
             )
         )
 
@@ -286,7 +360,10 @@ def analyze(
                     f"{op_label(worst)} = {fmt_ratio(worst.mem_ratio)} "
                     f"({fmt_bytes(worst.peak_mem_bytes)} peak vs {fmt_bytes(worst.estimated_peak_mem_bytes)} estimated)."
                 ),
-                operators=[op_to_json(op) for op in memory_anomalies],
+                operators=[
+                    op_to_json_with_row_guardrail(op, exec_node_completeness)
+                    for op in memory_anomalies
+                ],
             )
         )
 
@@ -302,7 +379,10 @@ def analyze(
                     f"Worst parsed gap: {op_label(worst)} = {fmt_bytes(worst.peak_mem_bytes)} "
                     f"peak memory vs {fmt_bytes(worst.estimated_peak_mem_bytes)} estimated peak memory."
                 ),
-                operators=[op_to_json(op) for op in zero_memory_estimate_gaps],
+                operators=[
+                    op_to_json_with_row_guardrail(op, exec_node_completeness)
+                    for op in zero_memory_estimate_gaps
+                ],
             )
         )
 
@@ -314,7 +394,7 @@ def analyze(
                 "Join bottleneck",
                 "Detected heavy join operators by time, row volume, partitioned join mode, or bad estimates.",
                 operators=[
-                    op_to_json(op)
+                    op_to_json_with_row_guardrail(op, exec_node_completeness)
                     for op in sorted(join_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True)
                 ],
             )
@@ -328,7 +408,7 @@ def analyze(
                 "Sort bottleneck",
                 "Detected expensive SORT/TOP-N operators by time, row volume, or memory estimate mismatch.",
                 operators=[
-                    op_to_json(op)
+                    op_to_json_with_row_guardrail(op, exec_node_completeness)
                     for op in sorted(sort_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True)
                 ],
             )
@@ -342,7 +422,7 @@ def analyze(
                 "Analytic bottleneck",
                 "Detected ANALYTIC operators with notable time or row volume.",
                 operators=[
-                    op_to_json(op)
+                    op_to_json_with_row_guardrail(op, exec_node_completeness)
                     for op in sorted(
                         analytic_bottlenecks, key=lambda x: x.time_ms or 0, reverse=True
                     )
@@ -422,6 +502,36 @@ def analyze(
                 "Codegen/LLVM share was not evaluated because Query Wall Clock duration is unknown."
             )
         not_supported_causes.append("No codegen/LLVM candidate signal was parsed.")
+
+    if client_fetch.get("finding_supported"):
+        counter = client_fetch.get("dominant_wait_counter")
+        counter_name = (
+            counter.get("counter")
+            if isinstance(counter, dict) and counter.get("counter")
+            else "ClientFetchWait"
+        )
+        findings.append(
+            make_finding(
+                "client_fetch_tail",
+                "medium",
+                "Client fetch tail",
+                (
+                    "Detected query-specific client fetch wait as a large share of query duration. "
+                    "Treat this as fetch-tail evidence, not proof of an external client, Hue, "
+                    "BI tool, or network root cause."
+                ),
+                evidence_lines=[
+                    f"{counter_name}: wait={client_fetch.get('client_fetch_wait_human') or 'n/a'}",
+                    f"wait_share={client_fetch.get('wait_share_human') or 'n/a'}",
+                    f"query_duration={client_fetch.get('query_duration_human') or 'n/a'}",
+                ],
+                missing_evidence=[
+                    "External client, Hue, or BI-tool timing.",
+                    "End-user network path metrics.",
+                    "Comparable rerun showing the same fetch-tail pattern.",
+                ],
+            )
+        )
 
     if backend_tail["execution_tail_candidates"]:
         findings.append(
@@ -503,17 +613,36 @@ def analyze(
         "totals": totals,
         "query_wall_clock": query_wall_clock,
         "profile_format": profile_format,
+        "exec_node_completeness": exec_node_completeness,
         "profile_resources": profile_resources,
         "profile_timings": profile_timings,
+        "client_fetch": client_fetch,
         "backend_tail": backend_tail,
         "runtime_counter_context": runtime_counter_context,
-        "operators": [op_to_json(op) for op in operators],
-        "top_operators_by_time": [op_to_json(op) for op in top_by_time],
-        "top_operators_by_peak_memory": [op_to_json(op) for op in top_by_memory],
-        "cardinality_anomalies": [op_to_json(op) for op in cardinality_anomalies],
-        "memory_anomalies": [op_to_json(op) for op in memory_anomalies],
-        "zero_row_estimate_gaps": [op_to_json(op) for op in zero_row_estimate_gaps],
-        "zero_memory_estimate_gaps": [op_to_json(op) for op in zero_memory_estimate_gaps],
+        "operators": [
+            op_to_json_with_row_guardrail(op, exec_node_completeness) for op in operators
+        ],
+        "top_operators_by_time": [
+            op_to_json_with_row_guardrail(op, exec_node_completeness) for op in top_by_time
+        ],
+        "top_operators_by_peak_memory": [
+            op_to_json_with_row_guardrail(op, exec_node_completeness) for op in top_by_memory
+        ],
+        "cardinality_anomalies": [
+            op_to_json_with_row_guardrail(op, exec_node_completeness)
+            for op in cardinality_anomalies
+        ],
+        "memory_anomalies": [
+            op_to_json_with_row_guardrail(op, exec_node_completeness) for op in memory_anomalies
+        ],
+        "zero_row_estimate_gaps": [
+            op_to_json_with_row_guardrail(op, exec_node_completeness)
+            for op in zero_row_estimate_gaps
+        ],
+        "zero_memory_estimate_gaps": [
+            op_to_json_with_row_guardrail(op, exec_node_completeness)
+            for op in zero_memory_estimate_gaps
+        ],
         "stats_evidence_lines": stats_lines[: args.max_evidence_lines],
         "spill_evidence_lines": spill_lines[: args.max_evidence_lines],
         "spill_nonzero_evidence_lines": spill_nonzero_lines[: args.max_evidence_lines],

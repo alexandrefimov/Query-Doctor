@@ -20,6 +20,7 @@ CARDINALITY_ANOMALY_HIGH_COUNT = 3
 EXECUTION_TAIL_MIN_CANDIDATES = 1
 DATA_MOVEMENT_FINDING_ID = "large_intermediate_or_exchange_traffic"
 STORAGE_FINDING_ID = "hdfs_or_storage_bottleneck"
+CLIENT_FETCH_FINDING_ID = "client_fetch_tail"
 QUERY_SHAPE_FINDING_IDS = {
     "analytic_bottleneck",
     "join_bottleneck",
@@ -40,6 +41,7 @@ COMPETING_PRIMARY_ORDER = (
     "runtime_skew",
     "runtime_data_movement",
     "runtime_storage",
+    "client_fetch_tail",
 )
 
 
@@ -63,13 +65,22 @@ class AdmissionEvidence:
 def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBottleneck:
     """Classify one conservative primary bottleneck from structured analyzer facts."""
 
+    profile_policy = primary_bottleneck_profile_policy(analysis)
+    if profile_policy == "unsupported":
+        return CasePrimaryBottleneck(
+            "unknown",
+            "low",
+            ("profile_dialect_not_supported_for_primary",),
+        )
+
     wall_clock_sec = query_wall_clock_sec(analysis)
     wall_clock_confidence = normalized_confidence(
         (analysis.get("query_wall_clock") or {}).get("confidence")
     )
     admission = classify_runtime_admission(analysis, wall_clock_sec, wall_clock_confidence)
     if admission is not None:
-        return admission
+        if profile_policy != "non_profile_only" or admission_uses_non_profile_evidence(analysis):
+            return admission
 
     if wall_clock_sec is None or wall_clock_sec < WALL_CLOCK_MIN_FOR_CLASSIFICATION_SEC:
         return CasePrimaryBottleneck(
@@ -82,7 +93,9 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     execution_tail_count = int_value(backend.get("execution_tail_candidate_count"))
     backend_data_skew_detected = str(backend.get("data_skew") or "").strip().lower() == "yes"
     if (
-        str(backend.get("execution_skew") or "").strip().lower() == "yes"
+        profile_policy == "supported"
+        and per_instance_evidence_supports_profile_claims(analysis)
+        and str(backend.get("execution_skew") or "").strip().lower() == "yes"
         and execution_tail_count >= EXECUTION_TAIL_MIN_CANDIDATES
         and top_finding_id(analysis) == "host_execution_tail_suspected"
     ):
@@ -101,34 +114,51 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     elapsed_top_finding = top_finding_id(analysis)
     is_data_movement_top = elapsed_top_finding == DATA_MOVEMENT_FINDING_ID
     is_storage_top = elapsed_top_finding == STORAGE_FINDING_ID
+    is_client_fetch_top = elapsed_top_finding == CLIENT_FETCH_FINDING_ID
     is_query_shape_top = elapsed_top_finding in QUERY_SHAPE_FINDING_IDS
     storage_runtime_diagnosis_supported = runtime_diagnosis_supports_storage(analysis)
+    profile_derived_primary_allowed = profile_policy == "supported"
+    row_count_primary_allowed = (
+        profile_derived_primary_allowed and row_count_conclusions_support_profile_claims(analysis)
+    )
 
-    stats_signal = stats_primary == "candidate_supported" and has_anomaly
+    stats_signal = (
+        row_count_primary_allowed and stats_primary == "candidate_supported" and has_anomaly
+    )
     stats_competing_signal = (
-        has_anomaly
+        row_count_primary_allowed
+        and has_anomaly
         and stats_primary in {"candidate_supported", "mixed_candidate"}
         and bool(non_stats_categories)
     )
     stats_supports_primary = stats_signal and not non_stats_categories
-    sql_supports_primary = has_anomaly and stats_primary in {
-        "not_primary_supported",
-        "not_supported_by_metadata",
-    }
+    sql_supports_primary = (
+        row_count_primary_allowed
+        and has_anomaly
+        and stats_primary
+        in {
+            "not_primary_supported",
+            "not_supported_by_metadata",
+        }
+    )
     query_shape_supports_primary = (
-        is_query_shape_top
+        profile_derived_primary_allowed
+        and is_query_shape_top
         and not stats_signal
         and not sql_supports_primary
         and not stats_competing_signal
     )
     data_movement_supports_primary = (
-        is_data_movement_top
+        profile_derived_primary_allowed
+        and is_data_movement_top
         and not stats_signal
         and not sql_supports_primary
         and not stats_competing_signal
     )
     backend_data_skew_supports_primary = (
-        backend_data_skew_detected
+        profile_policy == "supported"
+        and per_instance_evidence_supports_profile_claims(analysis)
+        and backend_data_skew_detected
         and not is_query_shape_top
         and not is_data_movement_top
         and not is_storage_top
@@ -138,9 +168,16 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         and not stats_competing_signal
     )
     runtime_storage_supports_primary = (
-        (is_storage_top or storage_runtime_diagnosis_supported)
+        profile_derived_primary_allowed
+        and (is_storage_top or storage_runtime_diagnosis_supported)
         and not stats_signal
         and not sql_supports_primary
+        and not stats_competing_signal
+    )
+    client_fetch_supports_primary = (
+        profile_derived_primary_allowed
+        and is_client_fetch_top
+        and client_fetch_primary_supported(analysis)
         and not stats_competing_signal
     )
 
@@ -152,6 +189,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
             ("runtime_skew", backend_data_skew_supports_primary),
             ("runtime_data_movement", data_movement_supports_primary),
             ("runtime_storage", runtime_storage_supports_primary),
+            ("client_fetch_tail", client_fetch_supports_primary),
         )
         if supported
     ]
@@ -175,6 +213,73 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         return CasePrimaryBottleneck("mixed", "medium", reasons)
 
     return CasePrimaryBottleneck("unknown", "low", ("no_primary_branch_supported",))
+
+
+def primary_bottleneck_profile_policy(analysis: dict[str, Any]) -> str:
+    profile = analysis.get("profile_format")
+    profile = profile if isinstance(profile, dict) else {}
+    policy = str(profile.get("primary_bottleneck_policy") or "").strip().lower()
+    if policy in {"supported", "non_profile_only", "unsupported"}:
+        return policy
+
+    dialect = str(profile.get("profile_dialect") or "").strip().lower()
+    if dialect == "unknown":
+        return "unsupported"
+    if dialect == "experimental_profile_v2":
+        return "non_profile_only"
+    return "supported"
+
+
+def admission_uses_non_profile_evidence(analysis: dict[str, Any]) -> bool:
+    evidence = admission_evidence(analysis)
+    if evidence.result in {"timed_out", "rejected"}:
+        context = query_context(analysis) or {}
+        return normalized_admission_result(context.get("admission_result")) == evidence.result
+    return evidence.wait_source == "query_context"
+
+
+def per_instance_evidence_supports_profile_claims(analysis: dict[str, Any]) -> bool:
+    profile = analysis.get("profile_format")
+    profile = profile if isinstance(profile, dict) else {}
+    if not profile:
+        return True
+    status = str(profile.get("per_instance_evidence") or "").strip().lower()
+    if not status:
+        return True
+    if status == "supported":
+        return True
+    features = profile.get("features") if isinstance(profile.get("features"), dict) else {}
+    return bool(
+        features.get("fragment_instance_count")
+        or features.get("per_host_fragment_instances")
+        or features.get("fragment_instance_lifecycle")
+    )
+
+
+def row_count_conclusions_support_profile_claims(analysis: dict[str, Any]) -> bool:
+    completeness = analysis.get("exec_node_completeness")
+    completeness = completeness if isinstance(completeness, dict) else {}
+    if not completeness:
+        return True
+    status = str(completeness.get("row_count_conclusions") or "").strip().lower()
+    if status in {"", "supported"}:
+        return True
+    if status != "limited":
+        return False
+
+    affected = completeness.get("affected_operators")
+    if not isinstance(affected, list):
+        return False
+    affected_ids = {str(item.get("operator_id") or "") for item in affected}
+    anomalies = analysis.get("cardinality_anomalies")
+    if not isinstance(anomalies, list) or not anomalies:
+        return False
+    anomaly_ids = [
+        str(item.get("operator_id") or "") for item in anomalies if isinstance(item, dict)
+    ]
+    if len(anomaly_ids) != len(anomalies) or any(not item for item in anomaly_ids):
+        return False
+    return all(operator_id not in affected_ids for operator_id in anomaly_ids)
 
 
 def query_wall_clock_sec(analysis: dict[str, Any]) -> float | None:
@@ -327,6 +432,15 @@ def runtime_diagnosis_supports_storage(analysis: dict[str, Any]) -> bool:
     return "storage/hdfs" in summary and "strongest plausible" in summary
 
 
+def client_fetch_primary_supported(analysis: dict[str, Any]) -> bool:
+    facts = analysis.get("client_fetch")
+    facts = facts if isinstance(facts, dict) else {}
+    return bool(
+        facts.get("primary_supported")
+        and str(facts.get("evidence_tier") or "").strip().lower() == "strong"
+    )
+
+
 def finding_elapsed_ms(finding: dict[str, Any], analysis: dict[str, Any]) -> float:
     finding_id = str(finding.get("id") or "")
     if finding_id == "host_execution_tail_suspected":
@@ -351,6 +465,10 @@ def finding_elapsed_ms(finding: dict[str, Any], analysis: dict[str, Any]) -> flo
             ),
             default=0.0,
         )
+    if finding_id == "client_fetch_tail":
+        facts = analysis.get("client_fetch")
+        facts = facts if isinstance(facts, dict) else {}
+        return numeric_value(facts.get("client_fetch_wait_ms")) or 0.0
     return max(
         (
             numeric_value(operator.get("time_ms")) or 0.0
@@ -388,6 +506,8 @@ def primary_confidence(primary: str, analysis: dict[str, Any], wall_clock_confid
         level = "medium"
     elif primary == "runtime_storage":
         level = "medium"
+    elif primary == "client_fetch_tail":
+        level = "high"
     else:
         level = "medium"
     return min_confidence(level, wall_clock_confidence)
@@ -412,6 +532,16 @@ def primary_reasons(primary: str, analysis: dict[str, Any]) -> tuple[str, ...]:
         ) == STORAGE_FINDING_ID and runtime_diagnosis_supports_storage(analysis):
             return ("storage_or_hdfs_runtime_diagnosis",)
         return ("storage_or_hdfs_top_finding",)
+    if primary == "client_fetch_tail":
+        facts = analysis.get("client_fetch")
+        facts = facts if isinstance(facts, dict) else {}
+        share = numeric_value(facts.get("wait_share"))
+        if share is not None:
+            return (
+                "client_fetch_wait_top_finding",
+                f"client_fetch_wait_share_{int(share * 100)}pct",
+            )
+        return ("client_fetch_wait_top_finding",)
     return (f"{primary}_supported",)
 
 

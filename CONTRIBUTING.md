@@ -46,24 +46,30 @@ separate cleanup slice after existing findings are triaged.
 
 ## Development Workflow
 
-1. Keep changes small and focused.
-2. Prefer existing package modules and local helper APIs.
-3. Keep files reviewable. Avoid adding new large code files; when extending an
+1. Work in a fork or task branch and open a pull request. Do not push directly
+   to `main`.
+2. Keep changes small and focused.
+3. Prefer existing package modules and local helper APIs.
+4. Keep files reviewable. Avoid adding new large code files; when extending an
    already large module, split along a real behavior boundary if the new code is
    not part of the module's existing responsibility.
-4. Use packaged `query-doctor-*` entry points for new docs and smoke commands.
-5. Add focused tests for changed behavior and broader tests for safety-boundary
+5. Use packaged `query-doctor-*` entry points for new docs and smoke commands.
+6. Add focused tests for changed behavior and broader tests for safety-boundary
    changes.
+7. Check documentation drift before opening the PR. Update affected docs in the
+   same branch when behavior, contracts, commands, routes, or safety wording
+   change.
 
 See [docs/development-practices.md](docs/development-practices.md) for the
 module-size, dependency, test, error-handling, and documentation practices used
 for review.
 
-Before committing:
+Before opening a pull request:
 
 ```bash
-python -m ruff check query_doctor tests
-python3 -m pytest -q
+python3 scripts/agent_preflight.py
+python3 scripts/check_staged_public_safety.py --changed
+pre-commit run --all-files
 git diff --check
 query-doctor-demo-preflight
 git status --short
@@ -76,6 +82,10 @@ run `python3 -m query_doctor.cli.demo_preflight` from the repository root.
 
 - Stage only explicit files.
 - Do not use broad staging for generated outputs.
+- Keep pull requests branch-based and reviewable; do not push directly to
+  `main`.
+- If your branch is behind `main`, merge or rebase current `main` into your
+  branch and rerun focused validation before requesting review.
 - Do not commit local configs, generated cases, profiles, reports, metadata
   outputs, caches, virtual environments, credentials, or temporary outputs.
 - Do not commit real hostnames, IPs, users, emails, tokens, cookies, passwords,

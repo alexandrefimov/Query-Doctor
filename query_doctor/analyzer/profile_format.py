@@ -2,8 +2,43 @@
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import asdict, dataclass
+from enum import Enum
 from typing import Any
+
+
+class ProfileDialect(str, Enum):
+    CLASSIC_TEXT = "classic_text_profile"
+    CLASSIC_JSON = "classic_json_profile"
+    CLASSIC_THRIFT = "classic_thrift_profile"
+    EXPERIMENTAL_V2 = "experimental_profile_v2"
+    UNKNOWN = "unknown"
+
+
+class ProfileAnalysisSupport(str, Enum):
+    SUPPORTED = "supported"
+    LIMITED = "limited"
+    UNSUPPORTED = "unsupported"
+
+
+class PrimaryBottleneckPolicy(str, Enum):
+    SUPPORTED = "supported"
+    NON_PROFILE_ONLY = "non_profile_only"
+    UNSUPPORTED = "unsupported"
+
+
+@dataclass(frozen=True)
+class ProfileDialectDetection:
+    dialect: ProfileDialect
+    confidence: str
+    reasons: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["dialect"] = self.dialect.value
+        return payload
 
 
 IMPALA_VERSION_LINE_RE = re.compile(
@@ -18,6 +53,42 @@ RAW_RUNTIME_NODE_RE = re.compile(r"^\s*[A-Z][A-Z0-9_]+_NODE\s+\(id=\d{1,3}\)", r
 FRAGMENT_SECTION_RE = re.compile(r"^\s*F\d{2,}\s*:", re.MULTILINE)
 AVERAGED_FRAGMENT_RE = re.compile(r"^\s*Averaged\s+Fragment\s+F\d+\b", re.IGNORECASE | re.MULTILINE)
 INSTANCE_HOST_RE = re.compile(r"^\s*Instance\s+\S+\s+\(host=", re.IGNORECASE | re.MULTILINE)
+CLASSIC_TEXT_MARKER_RE = re.compile(
+    r"^\s*(?:Summary|ExecSummary|Query\s+Timeline|Plan)\s*:"
+    r"|^\s*#{1,6}\s*(?:ExecSummary|Backend counters|Metric lines)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+THRIFT_PROFILE_RE = re.compile(
+    r"\b(?:TQueryProfile|TRuntimeProfileTree|TRuntimeProfileNode|TExecSummary)\b",
+    re.IGNORECASE,
+)
+PROFILE_V2_TEXT_RE = re.compile(
+    r"\b(?:experimental[_\s-]*profile(?:[_\s-]*v?2)?|profile[_\s-]*v2|"
+    r"aggregated[_\s-]*profile|gen_experimental_profile)\b",
+    re.IGNORECASE,
+)
+CLASSIC_JSON_KEYS = {
+    "profile",
+    "queryprofile",
+    "runtimeprofile",
+    "runtime_profile",
+    "profiletree",
+    "profile_tree",
+    "counters",
+    "children",
+    "nodes",
+}
+PROFILE_V2_KEYS = {
+    "aggregatedprofile",
+    "aggregated_profile",
+    "experimentalprofile",
+    "experimental_profile",
+    "profilev2",
+    "profile_v2",
+    "genexperimentalprofile",
+    "gen_experimental_profile",
+}
+TEXT_PROFILE_FIELDS = ("details", "profile", "profiletext", "profile_text", "text")
 
 
 def parse_impala_version_label(value: object) -> dict[str, str | None]:
@@ -67,6 +138,125 @@ def infer_impala_distribution(version_label: object, metadata_product: object = 
     return "unknown"
 
 
+def detect_profile_dialect(
+    raw_text: str,
+    *,
+    normalized_text: str | None = None,
+) -> ProfileDialectDetection:
+    """Detect the profile representation before profile-derived analysis.
+
+    The reasons are stable reason IDs, not raw profile excerpts, so the result
+    can be threaded into browser-visible facts and trusted reports.
+    """
+
+    raw = raw_text or ""
+    effective = normalized_text if normalized_text is not None else raw
+    stripped = raw.lstrip()
+    if not stripped:
+        return ProfileDialectDetection(ProfileDialect.UNKNOWN, "low", ("empty_profile_input",))
+
+    json_payload = parse_json_object(stripped)
+    if json_payload is not None:
+        if json_payload_has_profile_v2_marker(json_payload):
+            return ProfileDialectDetection(
+                ProfileDialect.EXPERIMENTAL_V2,
+                "medium",
+                ("json_profile_v2_marker",),
+            )
+        if json_payload_wraps_classic_text_profile(json_payload):
+            return ProfileDialectDetection(
+                ProfileDialect.CLASSIC_TEXT,
+                "medium",
+                ("json_wrapped_classic_text_profile",),
+            )
+        if json_payload_has_classic_profile_marker(json_payload):
+            return ProfileDialectDetection(
+                ProfileDialect.CLASSIC_JSON,
+                "medium",
+                ("classic_json_profile_marker",),
+            )
+        return ProfileDialectDetection(ProfileDialect.UNKNOWN, "low", ("json_profile_unmapped",))
+
+    if PROFILE_V2_TEXT_RE.search(raw):
+        return ProfileDialectDetection(
+            ProfileDialect.EXPERIMENTAL_V2,
+            "low",
+            ("text_profile_v2_marker",),
+        )
+    if THRIFT_PROFILE_RE.search(raw):
+        return ProfileDialectDetection(
+            ProfileDialect.CLASSIC_THRIFT,
+            "medium",
+            ("classic_thrift_profile_marker",),
+        )
+    if CLASSIC_TEXT_MARKER_RE.search(effective) or RAW_RUNTIME_NODE_RE.search(effective):
+        return ProfileDialectDetection(
+            ProfileDialect.CLASSIC_TEXT,
+            "medium",
+            ("classic_text_profile_marker",),
+        )
+    return ProfileDialectDetection(ProfileDialect.UNKNOWN, "low", ("profile_markers_not_found",))
+
+
+def parse_json_object(text: str) -> Any | None:
+    if not text.startswith(("{", "[")):
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+
+def normalize_json_key(value: object) -> str:
+    return re.sub(r"[^a-z0-9_]", "", str(value or "").strip().lower())
+
+
+def json_payload_has_profile_v2_marker(value: Any) -> bool:
+    for key, item in iter_json_items(value):
+        normalized_key = normalize_json_key(key)
+        if normalized_key in PROFILE_V2_KEYS:
+            return True
+        if normalized_key in {"profileversion", "profile_version", "version"}:
+            if str(item).strip().lower() in {"2", "v2", "profile_v2", "experimental_profile_v2"}:
+                return True
+        if isinstance(item, str) and PROFILE_V2_TEXT_RE.search(item):
+            return True
+    return False
+
+
+def json_payload_wraps_classic_text_profile(value: Any) -> bool:
+    for key, item in iter_json_items(value):
+        if normalize_json_key(key) not in TEXT_PROFILE_FIELDS or not isinstance(item, str):
+            continue
+        if CLASSIC_TEXT_MARKER_RE.search(item) or RAW_RUNTIME_NODE_RE.search(item):
+            return True
+    return False
+
+
+def json_payload_has_classic_profile_marker(value: Any) -> bool:
+    for key, item in iter_json_items(value):
+        normalized_key = normalize_json_key(key)
+        if normalized_key in CLASSIC_JSON_KEYS:
+            if isinstance(item, (dict, list)):
+                return True
+            if normalized_key in {"counters", "children", "nodes"}:
+                return True
+        if normalized_key in {"profileversion", "profile_version"}:
+            if str(item).strip().lower() in {"1", "classic", "classic_json"}:
+                return True
+    return False
+
+
+def iter_json_items(value: Any):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield key, item
+            yield from iter_json_items(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from iter_json_items(item)
+
+
 def profile_layout_name(features: dict[str, bool | int]) -> str:
     if features.get("raw_runtime_nodes") and features.get("fragment_instance_lifecycle"):
         return "raw_runtime_nodes_with_lifecycle"
@@ -82,8 +272,12 @@ def profile_layout_name(features: dict[str, bool | int]) -> str:
 def build_profile_format_facts(
     text: str,
     query_context: dict[str, Any] | None = None,
+    raw_text: str | None = None,
 ) -> dict[str, Any]:
     context = query_context or {}
+    detection = detect_profile_dialect(
+        raw_text if raw_text is not None else text, normalized_text=text
+    )
     version_facts = {
         "version": context.get("impala_daemon_version"),
         "build_type": context.get("impala_daemon_build_type"),
@@ -99,7 +293,11 @@ def build_profile_format_facts(
         ),
         "plan": bool(re.search(r"^\s*Plan\s*:", text, re.IGNORECASE | re.MULTILINE)),
         "exec_summary_table": bool(
-            re.search(r"^\s*ExecSummary\s*:", text, re.IGNORECASE | re.MULTILINE)
+            re.search(
+                r"^\s*(?:ExecSummary\s*:|#{1,6}\s*ExecSummary\b)",
+                text,
+                re.IGNORECASE | re.MULTILINE,
+            )
         ),
         "admission": "Admission result:" in text,
         "backend_startup_latencies": "Backend startup latencies" in text,
@@ -117,10 +315,19 @@ def build_profile_format_facts(
     }
     layout = profile_layout_name(features)
     version = version_facts.get("version")
+    compatibility = profile_compatibility_status(layout, detection.dialect)
+    analysis_support = profile_analysis_support(compatibility, detection.dialect)
+    primary_policy = primary_bottleneck_policy(detection.dialect, analysis_support)
+    per_instance_evidence = per_instance_evidence_status(detection.dialect, features)
     return {
         "profile_family": "impala_runtime_profile"
-        if features["summary"] or features["raw_runtime_nodes"]
+        if detection.dialect != ProfileDialect.UNKNOWN
+        or features["summary"]
+        or features["raw_runtime_nodes"]
         else "unknown",
+        "profile_dialect": detection.dialect.value,
+        "dialect_confidence": detection.confidence,
+        "dialect_reasons": list(detection.reasons),
         "profile_source": context.get("profile_source") or "unknown",
         "source_label": context.get("source_label")
         or context.get("profile_source_label")
@@ -136,13 +343,157 @@ def build_profile_format_facts(
         "daemon_local_catalog_mode": context.get("impala_daemon_local_catalog_mode"),
         "layout": layout,
         "features": features,
-        "compatibility": profile_compatibility_status(layout),
+        "compatibility": compatibility,
+        "analysis_support": analysis_support.value,
+        "primary_bottleneck_policy": primary_policy.value,
+        "per_instance_evidence": per_instance_evidence,
+        "limitations": profile_format_limitations(
+            detection.dialect,
+            analysis_support,
+            primary_policy,
+            per_instance_evidence,
+        ),
     }
 
 
-def profile_compatibility_status(layout: str) -> str:
+def profile_compatibility_status(
+    layout: str, dialect: ProfileDialect = ProfileDialect.CLASSIC_TEXT
+) -> str:
+    if dialect == ProfileDialect.UNKNOWN:
+        return "unknown"
+    if dialect == ProfileDialect.EXPERIMENTAL_V2:
+        return "partial"
+    if dialect in {ProfileDialect.CLASSIC_JSON, ProfileDialect.CLASSIC_THRIFT}:
+        return "partial" if layout != "unknown" else "unknown"
     if layout in {"raw_runtime_nodes_with_lifecycle", "raw_runtime_nodes", "exec_summary_table"}:
         return "supported"
     if layout == "summary_only":
         return "partial"
     return "unknown"
+
+
+def profile_analysis_support(
+    compatibility: str,
+    dialect: ProfileDialect,
+) -> ProfileAnalysisSupport:
+    if dialect == ProfileDialect.UNKNOWN:
+        return ProfileAnalysisSupport.UNSUPPORTED
+    if dialect == ProfileDialect.EXPERIMENTAL_V2:
+        return ProfileAnalysisSupport.LIMITED
+    if dialect in {ProfileDialect.CLASSIC_JSON, ProfileDialect.CLASSIC_THRIFT}:
+        return ProfileAnalysisSupport.LIMITED
+    if compatibility == "supported":
+        return ProfileAnalysisSupport.SUPPORTED
+    if compatibility == "partial":
+        return ProfileAnalysisSupport.LIMITED
+    return ProfileAnalysisSupport.UNSUPPORTED
+
+
+def primary_bottleneck_policy(
+    dialect: ProfileDialect,
+    support: ProfileAnalysisSupport,
+) -> PrimaryBottleneckPolicy:
+    if dialect == ProfileDialect.CLASSIC_TEXT and support in {
+        ProfileAnalysisSupport.SUPPORTED,
+        ProfileAnalysisSupport.LIMITED,
+    }:
+        return PrimaryBottleneckPolicy.SUPPORTED
+    if support == ProfileAnalysisSupport.SUPPORTED:
+        return PrimaryBottleneckPolicy.SUPPORTED
+    if dialect == ProfileDialect.EXPERIMENTAL_V2:
+        return PrimaryBottleneckPolicy.NON_PROFILE_ONLY
+    return PrimaryBottleneckPolicy.UNSUPPORTED
+
+
+def per_instance_evidence_status(
+    dialect: ProfileDialect,
+    features: dict[str, bool | int],
+) -> str:
+    if dialect == ProfileDialect.EXPERIMENTAL_V2:
+        return "unknown"
+    if dialect in {
+        ProfileDialect.UNKNOWN,
+        ProfileDialect.CLASSIC_JSON,
+        ProfileDialect.CLASSIC_THRIFT,
+    }:
+        return "unknown"
+    if (
+        features.get("fragment_instance_count")
+        or features.get("per_host_fragment_instances")
+        or features.get("fragment_instance_lifecycle")
+    ):
+        return "supported"
+    return "not_observed"
+
+
+def profile_format_limitations(
+    dialect: ProfileDialect,
+    support: ProfileAnalysisSupport,
+    primary_policy: PrimaryBottleneckPolicy,
+    per_instance_evidence: str,
+) -> list[dict[str, str]]:
+    limitations: list[dict[str, str]] = []
+    if dialect == ProfileDialect.UNKNOWN:
+        limitations.append(
+            {
+                "id": "profile_dialect_unknown",
+                "state": "unknown",
+                "summary": (
+                    "Profile dialect is unknown; profile-derived primary bottleneck "
+                    "classification is disabled."
+                ),
+            }
+        )
+    elif dialect == ProfileDialect.EXPERIMENTAL_V2:
+        limitations.append(
+            {
+                "id": "profile_v2_limited",
+                "state": "unknown",
+                "summary": (
+                    "Experimental profile-v2 was detected; only explicitly mapped "
+                    "query-specific sections may support findings."
+                ),
+            }
+        )
+    elif dialect in {ProfileDialect.CLASSIC_JSON, ProfileDialect.CLASSIC_THRIFT}:
+        limitations.append(
+            {
+                "id": "profile_dialect_partially_mapped",
+                "state": "unknown",
+                "summary": (
+                    f"{dialect.value} was detected, but this analyzer slice only has "
+                    "limited mapped-section coverage."
+                ),
+            }
+        )
+    if primary_policy != PrimaryBottleneckPolicy.SUPPORTED:
+        limitations.append(
+            {
+                "id": "primary_bottleneck_policy_limited",
+                "state": "unknown",
+                "summary": (
+                    "Primary bottleneck routing is limited until the profile dialect "
+                    "has mapped evidence for the relevant claim family."
+                ),
+            }
+        )
+    if per_instance_evidence != "supported":
+        limitations.append(
+            {
+                "id": "per_instance_evidence_limited",
+                "state": "unknown",
+                "summary": (
+                    "Per-instance or equivalent aggregate evidence is not mapped; "
+                    "scan-skew and backend-tail claims must not be promoted."
+                ),
+            }
+        )
+    if support == ProfileAnalysisSupport.UNSUPPORTED and dialect != ProfileDialect.UNKNOWN:
+        limitations.append(
+            {
+                "id": "profile_analysis_unsupported",
+                "state": "unknown",
+                "summary": "Profile-derived deterministic analysis is unsupported for this layout.",
+            }
+        )
+    return limitations

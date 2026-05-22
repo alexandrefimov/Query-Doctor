@@ -3,6 +3,7 @@
   --bg:#eef2f6;
   --panel:#fff;
   --panel-muted:#f5f7fa;
+  --surface:#fff;
   --border:#cfd8e3;
   --border-strong:#b7c4d2;
   --text:#111827;
@@ -46,6 +47,7 @@ html[data-theme=dark] {
   --bg:#0f1419;
   --panel:#151b22;
   --panel-muted:#1c242d;
+  --surface:#151b22;
   --border:#303b46;
   --border-strong:#465461;
   --text:#e8edf2;
@@ -794,30 +796,34 @@ html[data-theme=dark] select.input {
 }
 
 .workflow-control {
-  display:flex;
-  align-items:center;
-  flex-wrap:wrap;
-  gap:8px 12px;
+  display:grid;
+  align-items:start;
+  gap:6px;
+  width:min(660px,100%);
   margin-bottom:12px
 }
 
 .workflow-control .label-row {
-  flex:0 0 auto;
   margin:0
 }
 
 .workflow-segmented {
   grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:1px;
-  width:min(660px,100%);
+  gap:0;
+  width:100%;
   min-height:44px;
-  padding:1px;
-  background:var(--border-strong)
+  padding:0;
+  background:var(--surface);
+  overflow:hidden
 }
 
 .workflow-segmented label {
-  min-width:142px;
+  min-width:0;
   border-radius:0
+}
+
+.workflow-segmented label+label {
+  border-left:1px solid var(--border-strong)
 }
 
 .workflow-segmented label:first-child {
@@ -833,6 +839,7 @@ html[data-theme=dark] select.input {
   justify-items:start;
   gap:1px;
   border-radius:0;
+  background:var(--surface);
   padding:7px 12px;
   text-align:left
 }
@@ -1726,12 +1733,14 @@ html[data-theme=dark] select.input {
 }
 
 .batch-filter-more[open]>summary {
-  margin-bottom:6px;
   color:var(--strong)
 }
 
 .batch-result-filters--query-toolbar .batch-filter-more[open] {
-  flex-basis:100%
+  display:inline-flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px
 }
 
 .batch-filter-tabs--secondary {
@@ -2226,13 +2235,17 @@ html[data-theme=dark] select.input {
   color:var(--text)
 }
 
-.action-candidate-section--locations,.action-candidate-reason {
+.action-candidate-section--why,.action-candidate-section--locations,.action-candidate-reason {
   grid-column:1/-1
+}
+
+.action-candidate-section--why {
+  padding-bottom:7px;
+  border-bottom:1px solid var(--border)
 }
 
 .action-candidate-section--locations {
   padding-top:7px;
-  border-top:1px solid var(--border)
 }
 
 .action-candidate-section--locations .source-locator-block {
@@ -2316,23 +2329,23 @@ html[data-theme=dark] select.input {
 }
 
 .case-detail-panel>#case-actions,.case-detail-panel>#llm-actions {
-  margin-top:32px;
-  padding:18px;
+  margin-top:24px;
+  padding:14px;
   border:1px solid var(--border);
-  border-left:4px solid var(--accent);
+  border-left:3px solid var(--accent);
   border-radius:var(--radius-lg);
   background:var(--panel-muted);
   box-shadow:none
 }
 
 .case-detail-panel>#case-actions .docs-panel-title,.case-detail-panel>#llm-actions .docs-panel-title {
-  padding:0 0 12px;
+  padding:0 0 10px;
   border-bottom:1px solid var(--border);
   background:transparent
 }
 
 .case-detail-panel>#case-actions .report-body,.case-detail-panel>#llm-actions .report-body {
-  padding:14px 0 0
+  padding:10px 0 0
 }
 
 .case-detail-panel>#case-actions .llm-action-card,.case-detail-panel>#llm-actions .llm-action-card {
@@ -3405,7 +3418,7 @@ html[data-theme=dark] select.input {
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
   gap:8px;
-  margin-bottom:12px
+  margin-bottom:10px
 }
 
 .llm-actions-status-details {
@@ -3424,7 +3437,7 @@ html[data-theme=dark] select.input {
   cursor:pointer;
   list-style:none;
   color:var(--strong);
-  font-weight:800
+  font-weight:700
 }
 
 .llm-actions-status-details>summary::-webkit-details-marker {
@@ -3520,25 +3533,25 @@ html[data-theme=dark] select.input {
 
 .llm-action-card {
   display:grid;
-  gap:8px;
+  gap:6px;
   align-content:start;
-  padding:10px;
+  padding:9px;
   border:1px solid var(--border);
-  border-radius:7px;
+  border-radius:6px;
   background:var(--panel-muted);
   min-width:0
 }
 
 .llm-action-card strong {
-  font-size:14px;
+  font-size:13px;
   color:var(--strong)
 }
 
 .llm-action-card-copy {
   margin:0;
   color:var(--muted);
-  font-size:13px;
-  line-height:1.45
+  font-size:12px;
+  line-height:1.4
 }
 
 .llm-action-card form,.llm-action-card .button {
@@ -3547,7 +3560,8 @@ html[data-theme=dark] select.input {
 
 .llm-action-card .button {
   height:auto;
-  min-height:36px;
+  min-height:32px;
+  padding:0 10px;
   text-align:center;
   white-space:normal
 }
@@ -3627,6 +3641,7 @@ html[data-design=command] {
   --bg:#eef4f1;
   --panel:#fff;
   --panel-muted:#e3ece7;
+  --surface:#fbfdfc;
   --border:#c5d4cc;
   --border-strong:#9eb5aa;
   --text:#17221d;
@@ -3661,6 +3676,7 @@ html[data-theme=dark][data-design=command] {
   --bg:#101314;
   --panel:#171b1d;
   --panel-muted:#202629;
+  --surface:#171b1d;
   --border:#334047;
   --border-strong:#50616a;
   --text:#edf4f2;
@@ -4063,6 +4079,161 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
 
 .batch-table-wrap {
   margin-top:10px
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap {
+  border:0;
+  overflow:visible
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table {
+  display:block;
+  background:transparent
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table thead {
+  display:none
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table tbody {
+  display:grid;
+  gap:8px
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table tr {
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr);
+  align-items:start;
+  border:1px solid var(--border);
+  border-radius:4px;
+  background:var(--control);
+  overflow:hidden
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table td {
+  border-bottom:0;
+  padding:6px 9px
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table td:first-child {
+  grid-column:1;
+  grid-row:1/-1;
+  align-self:stretch;
+  display:grid;
+  place-items:start center;
+  width:auto;
+  padding:11px 4px;
+  border-right:1px solid var(--border);
+  background:var(--panel-muted);
+  color:var(--muted)
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table .batch-cell--summary {
+  grid-column:2;
+  width:auto;
+  min-width:0;
+  padding:9px 9px 5px
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table td:not(:first-child):not(.batch-cell--summary) {
+  grid-column:2;
+  justify-self:start;
+  display:inline-flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:4px;
+  max-width:100%;
+  padding:3px 9px;
+  color:var(--muted)
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table td:not(:first-child):not(.batch-cell--summary)::before {
+  color:var(--muted);
+  font-family:var(--sans);
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase
+}
+
+.batch-results-table td:nth-child(3)::before {
+  content:"Query ID"
+}
+
+.batch-results-table td:nth-child(4)::before {
+  content:"User"
+}
+
+.batch-results-table td:nth-child(6)::before {
+  content:"Duration"
+}
+
+.batch-results-table--bad td:nth-child(5)::before,.batch-results-table--suspicious td:nth-child(5)::before {
+  content:"Priority"
+}
+
+.batch-results-table--bad td:nth-child(7)::before,.batch-results-table--suspicious td:nth-child(7)::before {
+  content:"Table stats"
+}
+
+.batch-results-table--bad td:nth-child(8)::before,.batch-results-table--suspicious td:nth-child(8)::before {
+  content:"Metadata"
+}
+
+.batch-results-table--optimization td:nth-child(5)::before,.batch-results-table--stats td:nth-child(5)::before {
+  content:"Candidate"
+}
+
+.batch-results-table--optimization td:nth-child(7)::before {
+  content:"Impact"
+}
+
+.batch-results-table--optimization td:nth-child(8)::before {
+  content:"Confidence"
+}
+
+.batch-results-table--optimization td:nth-child(9)::before {
+  content:"Rewrite support"
+}
+
+.batch-results-table--stats td:nth-child(7)::before {
+  content:"Need"
+}
+
+.batch-results-table--stats td:nth-child(8)::before {
+  content:"Speed benefit"
+}
+
+.batch-results-table--stats td:nth-child(9)::before {
+  content:"Confidence"
+}
+
+.batch-results-table--workloads td:nth-child(5)::before,.batch-results-table--regressions td:nth-child(5)::before,.batch-results-table--frequent_short td:nth-child(5)::before {
+  content:"Similar"
+}
+
+.batch-results-table--workloads td:nth-child(7)::before,.batch-results-table--regressions td:nth-child(7)::before,.batch-results-table--frequent_short td:nth-child(7)::before {
+  content:"Group p95"
+}
+
+.batch-results-table--workloads td:nth-child(8)::before,.batch-results-table--regressions td:nth-child(8)::before {
+  content:"Regression"
+}
+
+.batch-results-table--frequent_short td:nth-child(8)::before {
+  content:"Impact"
+}
+
+.batch-results-table--workloads td:nth-child(9)::before,.batch-results-table--regressions td:nth-child(9)::before,.batch-results-table--frequent_short td:nth-child(9)::before {
+  content:"Primary"
+}
+
+.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table .batch-cell--query-id,.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table .batch-cell--user,.batch-results-disclosure>.batch-results-body>.batch-table-wrap>.batch-results-table .batch-cell--compact {
+  width:auto;
+  min-width:0;
+  max-width:100%;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip
 }
 
 .batch-table-legend {

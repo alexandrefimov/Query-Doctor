@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-05-21
+Last updated: 2026-05-22
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -8,27 +8,21 @@ shortest safe path through the repository. For exact test selection, also use
 
 ## Universal Preflight
 
-Before larger or safety-sensitive work:
+Follow [agent-quickstart.md](agent-quickstart.md) first. It is the canonical
+source for universal agent rules: worktrees, git status, staged public-safety,
+explicit staging, `git diff --check`, commit/merge boundaries, and broad
+validation commands.
 
-- read `AGENTS.md`;
-- read `docs/agent-quickstart.md` for the short current read path;
-- read `docs/codex-handoff.md`;
+Use this playbook after that baseline is clear. It only adds change-type
+routing:
+
+- read `docs/codex-handoff.md` for larger, safety-sensitive, web, report,
+  optimizer, collector, config, or architecture work;
 - use `docs/code-map.md` when you need to find the owner of a behavior quickly;
-- read `docs/code-audit.md` if the work touches web details, browser safety,
-  report validation, optimizer, collectors, config, or architecture;
-- run `git status --short --branch` and preserve unrelated user changes;
-- run `python3 scripts/check_staged_public_safety.py` before committing
-  public-facing docs, config examples, or generated-artifact boundary changes;
-- create parallel work in a dedicated `$HOME/query-doctor-worktrees` worktree;
-- prefer existing package boundaries and helpers over new abstractions;
-- keep browser/report output raw-free.
-
-Always finish with `git diff --check`. Use `scripts/local_gate.sh` before
-broad handoff or release work when time permits, and `pre-commit run --all-files`
-before public-sharing cleanup so ruff check, ruff format, whitespace, staged
-public-safety, and Markdown link hooks run together. Stage intended files
-explicitly. Run `python3 scripts/agent_preflight.py` when test selection is
-unclear.
+- read `docs/code-audit.md` when touching web details, browser safety, report
+  validation, optimizer, collectors, config, or architecture;
+- use `docs/test-matrix.md` or `python3 scripts/agent_preflight.py` for exact
+  test selection.
 
 ## Change Routing Table
 
@@ -39,7 +33,7 @@ unclear.
 | Browser route or Details UI | `docs/safety-contract.md`, `docs/code-audit.md`, touched web presenters/routes | focused web route/presenter tests | code audit if trust boundary changes; changelog for workflow changes | redaction/no-raw-output regressions and job-state tests |
 | Report writer or validator | `docs/safety-contract.md`, `docs/code-audit.md`, touched report modules | report sanitizer/validator tests | safety/optimizer/report contract docs when trust rules change | unsupported-root-cause rejection, hidden partial output, trusted marker behavior |
 | Collector or metadata | `docs/safety-contract.md`, `docs/codex-handoff.md`, touched provider modules | collector/config/allowlist tests | safety or roadmap docs when collection contract changes | bounded read-only behavior, redaction, failure-state rendering |
-| Docs-only baseline | `docs/README.md`, `docs/codex-handoff.md`, target doc | `python3 scripts/check_active_docs.py`; `git diff --check` | changelog only for significant baseline/workflow/safety changes | no full suite unless browser-rendered docs/help changed |
+| Docs-only baseline | `docs/README.md`, target doc, plus `docs/codex-handoff.md` for baseline or safety-sensitive docs | `python3 scripts/check_active_docs.py`; `git diff --check` | changelog only for significant baseline/workflow/safety changes | no full suite unless browser-rendered docs/help changed |
 
 ## Docs-Only
 
@@ -48,8 +42,9 @@ Use for documentation wording, routing, index, roadmap, audit, or runbook work.
 Read:
 
 - `docs/README.md`;
-- `docs/codex-handoff.md`;
 - the doc being edited;
+- `docs/codex-handoff.md` for baseline, agent routing, architecture,
+  trust-boundary, or safety-sensitive docs;
 - `docs/changelog.md` only when behavior, safety, workflow, or baseline changes
   are significant.
 
@@ -106,6 +101,10 @@ Validate:
 
 - focused web route/UI tests for touched pages;
 - browser-safety tests for new dynamic text;
+- for real Recent scan smoke output, run
+  `python3 scripts/audit_recent_details.py <batch_summary.json>` to render each
+  Details page through production presenters and check problem explanations,
+  action gating, and browser-visible safety;
 - `git diff --check`.
 
 ## Report And Validator
@@ -262,4 +261,7 @@ Validate:
 
 - batch/recent candidate tests;
 - mocked subprocess timeout/failure tests;
-- web progress tests if stage rendering changes.
+- web progress tests if stage rendering changes;
+- after large smoke scans, run
+  `python3 scripts/audit_recent_details.py <batch_summary.json>` and pass prior
+  smoke summaries with `--baseline-summary` when checking sample overlap.

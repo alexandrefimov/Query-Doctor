@@ -93,7 +93,7 @@ def render_supporting_facts(
     items = "".join(render_supporting_fact(fact) for fact in facts[:4])
     return (
         '<div class="action-supporting-facts" aria-label="Evidence behind recommendation">'
-        f'<span class="source-locator-heading">{html.escape(ui_text(language, "Evidence behind this recommendation", "Доказательства за этой рекомендацией"))}</span>'
+        f'<span class="source-locator-heading">{html.escape(ui_text(language, "Evidence behind this recommendation", "Доказательства для этой рекомендации"))}</span>'
         f'<ul class="action-supporting-fact-list">{items}</ul>'
         "</div>"
     )
@@ -138,14 +138,18 @@ def render_action_candidate_sections(
     card: RecentScanActionCandidateCardView, *, language: str = "en"
 ) -> str:
     sections = (
+        render_action_candidate_reason_section(card.why, language=language),
+        render_action_candidate_location_section(
+            card.source_locators,
+            card.supporting_facts,
+            language=language,
+        ),
         render_action_candidate_section(
             ui_text(language, "What to change", "Что изменить"), card.change_direction
         ),
         render_action_candidate_section(
             ui_text(language, "How to verify", "Как проверить"), card.verification
         ),
-        render_action_candidate_location_section(card.source_locators, language=language),
-        render_action_candidate_reason_details(card.why, language=language),
     )
     rendered = "".join(section for section in sections if section)
     if not rendered:
@@ -165,35 +169,37 @@ def render_action_candidate_guardrails(text: str, *, language: str = "en") -> st
     )
 
 
-def render_action_candidate_section(label: str, text: str) -> str:
+def render_action_candidate_section(label: str, text: str, *, modifier_class: str = "") -> str:
     if not text:
         return ""
+    class_name = "action-candidate-section"
+    if modifier_class:
+        class_name = f"{class_name} {modifier_class}"
     return (
-        '<section class="action-candidate-section">'
+        f'<section class="{class_name}">'
         f"<span>{html.escape(label)}</span>"
         f"<p>{escape_value(text)}</p>"
         "</section>"
     )
 
 
-def render_action_candidate_reason_details(text: str, *, language: str = "en") -> str:
-    if not text:
-        return ""
-    return (
-        '<details class="analysis-subdetails action-candidate-reason" '
-        'aria-label="Recommendation reason">'
-        f"<summary>{html.escape(ui_text(language, 'Why this deserves attention', 'Почему это требует внимания'))}</summary>"
-        f'<p class="helper">{escape_value(text)}</p>'
-        "</details>"
+def render_action_candidate_reason_section(text: str, *, language: str = "en") -> str:
+    return render_action_candidate_section(
+        ui_text(language, "Why this deserves attention", "Почему это требует внимания"),
+        text,
+        modifier_class="action-candidate-section--why",
     )
 
 
 def render_action_candidate_location_section(
     locators: tuple[RecentScanSourceLocatorView, ...],
+    fallback_facts: tuple[RecentScanDiagnosticFactView, ...] = (),
     *,
     language: str = "en",
 ) -> str:
     locator_html = render_source_locators(locators)
+    if not locator_html:
+        locator_html = render_fact_review_anchors(fallback_facts)
     if not locator_html:
         return ""
     return (
@@ -201,6 +207,32 @@ def render_action_candidate_location_section(
         f"<span>{html.escape(ui_text(language, 'Where to look', 'Где смотреть'))}</span>"
         f"{locator_html}"
         "</section>"
+    )
+
+
+def render_fact_review_anchors(facts: tuple[RecentScanDiagnosticFactView, ...]) -> str:
+    anchor_facts = tuple(
+        fact for fact in facts if fact.source_anchor and fact.source_anchor != "action-plan"
+    )[:3]
+    if not anchor_facts:
+        return ""
+    items = "".join(render_fact_review_anchor(fact) for fact in anchor_facts)
+    return (
+        '<div class="source-locator-block" aria-label="Safe review locations">'
+        f'<ul class="source-locator-list">{items}</ul>'
+        "</div>"
+    )
+
+
+def render_fact_review_anchor(fact: RecentScanDiagnosticFactView) -> str:
+    anchor = html.escape(f"#{fact.source_anchor}", quote=True)
+    label = escape_value(fact.label)
+    value = escape_value(fact.value)
+    return (
+        '<li class="source-locator source-locator--fact">'
+        f'<a href="{anchor}">{label}</a>'
+        f"<span>: {value}</span>"
+        "</li>"
     )
 
 

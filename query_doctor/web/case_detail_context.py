@@ -147,4 +147,8 @@ def find_batch_case(summary: dict[str, object], case_id: str) -> dict[str, objec
 
 
 def case_allows_llm_report(case: dict[str, object]) -> bool:
-    return case_score_severity(case) != "clean"
+    return case_score_severity(case) in {"high", "suspicious"}
+
+
+def case_allows_query_optimizer(case: dict[str, object]) -> bool:
+    return case_score_severity(case) in {"high", "suspicious"}

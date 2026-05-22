@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "query-doctor"
-version = "0.2.0"
-description = "Local-first Big Data query diagnostics for Apache Impala."
+version = "0.3.0"
+description = "Local-first Big Data query diagnostics focused today on Apache Impala."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.9"

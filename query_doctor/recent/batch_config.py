@@ -18,6 +18,7 @@ from query_doctor.impala.profile_source import (
     normalize_impala_profile_hosts,
     normalize_impala_profile_scheme,
 )
+from query_doctor.impala.kerberos_preflight import check_kerberos_ticket_cache
 from query_doctor.prometheus.timeseries import (
     DEFAULT_PROMETHEUS_METRICS_PROFILE,
     DEFAULT_PROMETHEUS_STEP_SEC,
@@ -772,9 +773,11 @@ def path_is_relative_to(path: Path, parent: Path) -> bool:
 def preflight(config: BatchConfig, *, env: dict[str, str], repo_root: Path) -> None:
     if config.query_profile_source == "cm" and not (env.get("CM_PASSWORD") or env.get("CM_TOKEN")):
         raise ValueError("CM auth env is not set in this execution environment.")
-    if config.metadata_mode != "off" and config.metadata_coordinator:
-        if not env.get("KRB5CCNAME"):
-            raise ValueError("KRB5CCNAME is required when metadata collection is configured.")
+    if metadata_kerberos_preflight_required(config):
+        ticket_status = check_kerberos_ticket_cache(env)
+        if not ticket_status.ok:
+            raise ValueError(ticket_status.reason or "Kerberos ticket preflight failed.")
+    if metadata_configuration_preflight_required(config):
         if config.metadata_impala_shell:
             shell_path = Path(config.metadata_impala_shell)
             if "/" in config.metadata_impala_shell and not shell_path.is_absolute():
@@ -783,6 +786,20 @@ def preflight(config: BatchConfig, *, env: dict[str, str], repo_root: Path) -> N
                 raise ValueError(
                     f"metadata impala-shell is not available: {config.metadata_impala_shell}"
                 )
+
+
+def metadata_configuration_preflight_required(config: BatchConfig) -> bool:
+    if config.discover_only or not config.metadata_coordinator:
+        return False
+    if config.metadata_mode not in {"auto", "on"}:
+        return False
+    return config.metadata_top_limit > 0 or config.top_reports > 0
+
+
+def metadata_kerberos_preflight_required(config: BatchConfig) -> bool:
+    if not metadata_configuration_preflight_required(config):
+        return False
+    return config.metadata_auth == "kerberos"
 
 
 def secret_values(env: dict[str, str]) -> list[str]:

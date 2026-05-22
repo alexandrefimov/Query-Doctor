@@ -16,6 +16,8 @@ from query_doctor.web.presenters.recent_scan_models import (
 def present_recent_scan_action_candidates(
     view: RecentScanCaseDetailView,
 ) -> RecentScanActionCandidatesView:
+    if processing_failure_is_visible(view):
+        return RecentScanActionCandidatesView(cards=(processing_failure_follow_up_card(view),))
     cards: list[RecentScanActionCandidateCardView] = []
     optimization = view.optimization_candidate
     if candidate_is_visible(optimization):
@@ -24,7 +26,10 @@ def present_recent_scan_action_candidates(
         summary = str(optimization.get("summary") or "query-shape evidence").strip()
         review_areas = str(optimization.get("review_areas") or "query shape").strip()
         counter_text = candidate_counter_signal_note(optimization)
-        source_locators = view.source_locators.get("query_optimization", ())
+        source_locators = view.source_locators.get(
+            "query_optimization",
+            (),
+        ) or generic_source_locator("query", "Query-shape evidence")
         cards.append(
             RecentScanActionCandidateCardView(
                 "Query-shape recommendation",
@@ -69,7 +74,10 @@ def present_recent_scan_action_candidates(
             stats.get("required_confirmation") or "compare EXPLAIN and rerun under comparable load"
         ).strip()
         counter_sentence = candidate_counter_signal_note(stats)
-        source_locators = view.source_locators.get("stats_refresh", ())
+        source_locators = view.source_locators.get(
+            "stats_refresh",
+            (),
+        ) or generic_source_locator("metadata", "Stats or estimate evidence")
         cards.append(
             RecentScanActionCandidateCardView(
                 "Stats maintenance recommendation",
@@ -116,7 +124,8 @@ def present_recent_scan_action_candidates(
                     f"Confidence: {view.primary_bottleneck.confidence}."
                 ),
                 recommendation_id="runtime_admission_check.v1",
-                source_locators=view.source_locators.get("runtime_admission", ()),
+                source_locators=view.source_locators.get("runtime_admission", ())
+                or generic_source_locator("runtime", "Runtime/admission evidence"),
                 supporting_facts=supporting_facts_for_action(
                     view,
                     (
@@ -136,7 +145,257 @@ def present_recent_scan_action_candidates(
                 verification="Rerun under comparable load and confirm admission wait no longer dominates.",
             )
         )
+    if not cards and processing_failure_is_visible(view):
+        cards.append(processing_failure_follow_up_card(view))
+    if not cards and diagnostic_follow_up_is_visible(view):
+        cards.append(diagnostic_follow_up_card(view))
     return RecentScanActionCandidatesView(cards=tuple(cards))
+
+
+def processing_failure_is_visible(view: RecentScanCaseDetailView) -> bool:
+    severity = str(view.score_severity or "").strip().lower()
+    return severity == "failed"
+
+
+def processing_failure_follow_up_card(
+    view: RecentScanCaseDetailView,
+) -> RecentScanActionCandidateCardView:
+    statuses = "; ".join(processing_failure_statuses(view)) or "processing failure recorded"
+    reason = processing_failure_reason_text(view)
+    reason_sentence = f" Reason: {reason}" if reason else ""
+    return RecentScanActionCandidateCardView(
+        "Processing failure follow-up",
+        (
+            "Collection, deterministic analysis, metadata, or report processing did not "
+            "complete cleanly, so this case "
+            "needs attention before diagnostic conclusions are trusted. "
+            f"Status: {statuses}.{reason_sentence}"
+        ),
+        recommendation_id="processing_failure_follow_up.v1",
+        supporting_facts=supporting_facts_for_action(
+            view,
+            (
+                "priority",
+                "main_signal",
+                "confidence",
+            ),
+        ),
+        why=(
+            "The row is marked failed by selected-case status, not by a root-cause diagnosis. "
+            "Regenerate deterministic facts before relying on report or optimizer actions."
+        ),
+        guardrails=(
+            "Do not treat this as a SQL rewrite, stats, or admission recommendation until "
+            "the failed processing step completes successfully."
+        ),
+        change_direction=(
+            "Fix the failed processing step for this case, then rerun or regenerate the "
+            "selected action before changing SQL, stats, or runtime settings."
+        ),
+        verification=(
+            "Confirm the failed processing step completes successfully; Details should "
+            "then show typed score evidence or a specific supported action candidate."
+        ),
+    )
+
+
+def processing_failure_statuses(view: RecentScanCaseDetailView) -> tuple[str, ...]:
+    failures: list[str] = []
+    for label, value in view.status_fields:
+        normalized_label = str(label or "").strip().lower()
+        normalized_value = str(value or "").strip().lower()
+        if normalized_label in {"collection", "analysis", "metadata", "report"} and (
+            normalized_value == "failed"
+        ):
+            failures.append(f"{normalized_label} failed")
+    if not failures and processing_failure_category_recorded(view):
+        failures.append("processing failure category recorded")
+    return tuple(failures)
+
+
+def processing_failure_category_recorded(view: RecentScanCaseDetailView) -> bool:
+    for label, value in view.technical_fields:
+        normalized_label = str(label or "").strip().lower()
+        normalized_value = str(value or "").strip().lower()
+        if normalized_label == "failure category" and normalized_value not in {
+            "",
+            "none",
+            "unknown",
+        }:
+            return True
+    return False
+
+
+def processing_failure_reason_text(view: RecentScanCaseDetailView) -> str:
+    for label, value in view.technical_fields:
+        normalized_label = str(label or "").strip().lower()
+        normalized_value = str(value or "").strip()
+        if normalized_label == "failure reason" and normalized_value.lower() not in {
+            "",
+            "none",
+            "unknown",
+        }:
+            return normalized_value
+    return ""
+
+
+def diagnostic_follow_up_is_visible(view: RecentScanCaseDetailView) -> bool:
+    severity = str(view.score_severity or "").strip().lower()
+    if severity not in {"high", "suspicious", "failed"}:
+        return False
+    if view.signal_summary != "no positive analyzer signals":
+        return True
+    primary = str(view.primary_bottleneck.label or "").strip()
+    return bool(primary and primary not in {"Unknown", "Not classified"})
+
+
+def diagnostic_follow_up_card(
+    view: RecentScanCaseDetailView,
+) -> RecentScanActionCandidateCardView:
+    primary = str(view.primary_bottleneck.label or "Diagnostic evidence").strip()
+    confidence = str(view.primary_bottleneck.confidence or "unknown").strip()
+    signal = meaningful_text(view.signal_summary, "supported analyzer signals")
+    reason = (
+        f" Primary signal: {view.primary_bottleneck.reason_summary}."
+        if view.primary_bottleneck.reason_summary
+        else ""
+    )
+    return RecentScanActionCandidateCardView(
+        diagnostic_follow_up_title(primary),
+        (
+            "No Medium/High rewrite or stats candidate was selected, but deterministic "
+            f"scoring still marked this case as {candidate_title(view.score_severity)}. "
+            f"Score: {view.score}. Confidence: {candidate_title(confidence)}.{reason}"
+        ),
+        recommendation_id="diagnostic_follow_up.v1",
+        source_locators=diagnostic_follow_up_locators(view),
+        supporting_facts=supporting_facts_for_action(
+            view,
+            (
+                "main_signal",
+                "signals",
+                "resource_footprint",
+                "cluster_context",
+                "table_stats",
+            ),
+        ),
+        why=(
+            f"Deterministic analysis found {signal}. "
+            "This is a review direction, not a root-cause claim."
+        ),
+        guardrails=(
+            "No trusted SQL draft is implied by this recommendation. Keep changes limited to "
+            "directions supported by analyzer facts or by a later trusted optimizer outcome."
+        ),
+        change_direction=diagnostic_follow_up_change_direction(primary),
+        verification=diagnostic_follow_up_verification(primary),
+    )
+
+
+def diagnostic_follow_up_locators(
+    view: RecentScanCaseDetailView,
+) -> tuple[RecentScanSourceLocatorView, ...]:
+    for group in ("query_optimization", "stats_refresh", "runtime_admission"):
+        locators = view.source_locators.get(group, ())
+        if locators:
+            return locators
+    return diagnostic_generic_source_locator(view)
+
+
+def diagnostic_generic_source_locator(
+    view: RecentScanCaseDetailView,
+) -> tuple[RecentScanSourceLocatorView, ...]:
+    primary = str(view.primary_bottleneck.label or "").strip()
+    if primary == "SQL shape":
+        return generic_source_locator("query", "SQL-shape diagnostic evidence")
+    if primary == "Runtime skew":
+        return generic_source_locator("runtime", "Runtime skew evidence")
+    if primary == "Data movement":
+        return generic_source_locator("plan", "Data-movement evidence")
+    if primary == "Storage/HDFS":
+        return generic_source_locator("runtime", "Storage or HDFS evidence")
+    if primary == "Stats":
+        return generic_source_locator("metadata", "Stats or estimate evidence")
+    if primary == "Competing signals":
+        return generic_source_locator("diagnostics", "Mixed diagnostic evidence")
+    if view.signal_summary != "no positive analyzer signals":
+        return generic_source_locator("diagnostics", "Deterministic score evidence")
+    return ()
+
+
+def generic_source_locator(kind: str, label: str) -> tuple[RecentScanSourceLocatorView, ...]:
+    return (RecentScanSourceLocatorView(kind=kind, label=label, coordinate="", detail=""),)
+
+
+def diagnostic_follow_up_title(primary: str) -> str:
+    if primary == "SQL shape":
+        return "SQL shape follow-up"
+    if primary == "Runtime skew":
+        return "Runtime skew follow-up"
+    if primary == "Data movement":
+        return "Data movement follow-up"
+    if primary == "Storage/HDFS":
+        return "Storage/HDFS follow-up"
+    if primary == "Stats":
+        return "Stats evidence follow-up"
+    if primary == "Competing signals":
+        return "Mixed-signal follow-up"
+    return "Diagnostic follow-up"
+
+
+def diagnostic_follow_up_change_direction(primary: str) -> str:
+    if primary == "SQL shape":
+        return (
+            "Inspect the join, aggregation, filter, and exchange shape behind the score signals. "
+            "Prefer reducing rows before joins, exchanges, or memory-heavy operators; keep result "
+            "columns and join semantics unchanged."
+        )
+    if primary == "Runtime skew":
+        return (
+            "Inspect data distribution and hot-key behavior before changing SQL. If a query-shape "
+            "change is attempted, it should reduce skewed rows or improve join distribution."
+        )
+    if primary == "Data movement":
+        return (
+            "Inspect exchange and intermediate-volume evidence. Prefer pre-filtering or "
+            "pre-aggregation that reduces rows before data movement while preserving output shape."
+        )
+    if primary == "Storage/HDFS":
+        return (
+            "Inspect storage and scan-footprint evidence first. Separate HDFS or storage pressure "
+            "from SQL-shape changes before tuning joins or admission settings."
+        )
+    if primary == "Stats":
+        return (
+            "Confirm table and column statistics around the estimate-mismatch evidence before "
+            "trying a rewrite. Treat stats maintenance as a hypothesis to verify, not proof."
+        )
+    if primary == "Competing signals":
+        return (
+            "Split the review into small checks: estimates and query shape first, then runtime "
+            "skew or data movement if the plan remains suspicious."
+        )
+    return (
+        "Use the diagnostics evidence as the review anchor and make only changes that can be "
+        "confirmed by EXPLAIN and a comparable rerun."
+    )
+
+
+def diagnostic_follow_up_verification(primary: str) -> str:
+    if primary == "Runtime skew":
+        return (
+            "Rerun under comparable load and confirm backend row/time spread, runtime metrics, "
+            "and elapsed time improve without new spill or admission pressure."
+        )
+    if primary == "Storage/HDFS":
+        return (
+            "Rerun under comparable load and confirm scan, storage, or HDFS signals improve "
+            "before attributing the case to SQL shape."
+        )
+    return (
+        "Compare EXPLAIN before and after the change, then rerun under comparable load and confirm "
+        "the flagged score signals, exchange volume, memory pressure, skew, or runtime metrics improve."
+    )
 
 
 def supporting_facts_for_action(

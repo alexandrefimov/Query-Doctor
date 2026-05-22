@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -45,6 +46,7 @@ RUNTIME_METRICS_REFRESH_TIMEOUT_SEC = 300
 DEFAULT_SUBPROCESS_TIMEOUT_SEC = 900
 SUBPROCESS_TIMEOUT_RETURN_CODE = 124
 MAX_CM_TIMESERIES_REFRESH_JOBS = 5
+HTTP_STATUS_RE = re.compile(r"\bHTTP(?:\s+Error)?\s+([1-5][0-9][0-9])\b", re.IGNORECASE)
 
 
 def collect_scan_cm_events(
@@ -207,11 +209,13 @@ def collect_case_profile(
             else:
                 case.collection_status = "failed"
                 case.failure_category = "profile_collection_failed"
+            case.failure_reason = profile_collection_failure_reason(config, result)
             return
         profile_paths = sorted(target_out_dir.rglob("profile_digest.md"))
         if not profile_paths:
             case.collection_status = "failed"
             case.failure_category = "profile_digest_missing"
+            case.failure_reason = "Profile collection finished but no profile digest was produced."
             return
         case.collection_status = "ok"
         if out_dir is None:
@@ -552,6 +556,9 @@ def run_analysis_pass(
     if case.actual_case_dir is None:
         case.analysis_status = "failed"
         case.failure_category = "case_dir_missing"
+        case.failure_reason = (
+            "Case artifacts are missing; rerun collection before relying on Details."
+        )
         case.analysis_seconds = elapsed_seconds(started)
         return
     try:
@@ -568,11 +575,21 @@ def run_analysis_pass(
         if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
             case.analysis_status = "timeout"
             case.failure_category = "analysis_or_metadata_timeout"
+            case.failure_reason = (
+                "Deterministic analysis or metadata collection timed out before it completed."
+            )
         if result.returncode != 0:
             case.failure_category = case.failure_category or "analysis_or_metadata_failed"
+            case.failure_reason = case.failure_reason or (
+                "Deterministic analysis or metadata collection failed before it completed."
+            )
         inspect_case_outputs(case)
         if case.analysis_status == "ok" and case.metadata_status == "failed":
             case.failure_category = "metadata_collection_failed"
+            case.failure_reason = (
+                "Metadata collection failed for this case; deterministic profile facts may still "
+                "be available."
+            )
     finally:
         case.analysis_seconds = elapsed_seconds(started)
 
@@ -746,14 +763,19 @@ def run_top_reports(
             if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
                 case.report_validation_status = "timeout"
                 case.failure_category = case.failure_category or "report_generation_timeout"
+                case.failure_reason = case.failure_reason or "Report generation timed out."
             elif result.returncode == 0 and diagnosis.exists():
                 case.report_validation_status = "passed"
             elif partial.exists():
                 case.report_validation_status = "failed_partial_untrusted"
                 case.failure_category = case.failure_category or "report_validation_failed"
+                case.failure_reason = case.failure_reason or (
+                    "Report generation finished, but deterministic validation rejected the output."
+                )
             else:
                 case.report_validation_status = "failed"
                 case.failure_category = case.failure_category or "report_generation_failed"
+                case.failure_reason = case.failure_reason or "Report generation failed."
         finally:
             case.report_seconds = elapsed_seconds(started)
             print(
@@ -804,6 +826,9 @@ def run_subprocess(
     cmd: list[str], *, cwd: Path, env: dict[str, str]
 ) -> subprocess.CompletedProcess:
     timeout_sec = subprocess_timeout_sec(cmd)
+    capture_output = command_uses_role(cmd, "collect_cm") or command_uses_role(
+        cmd, "collect_impala_profile"
+    )
     try:
         return subprocess.run(
             cmd,
@@ -811,9 +836,34 @@ def run_subprocess(
             env=env,
             shell=False,
             text=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if capture_output else subprocess.DEVNULL,
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, SUBPROCESS_TIMEOUT_RETURN_CODE)
+
+
+def profile_collection_failure_reason(
+    config: BatchConfig,
+    result: subprocess.CompletedProcess,
+) -> str:
+    if result.returncode == SUBPROCESS_TIMEOUT_RETURN_CODE:
+        return "Profile collection timed out before a profile digest was produced."
+    http_status = subprocess_http_status(result)
+    if http_status is not None:
+        source = (
+            "Cloudera Manager" if config.query_profile_source == "cm" else "Impala profile endpoint"
+        )
+        return f"{source} profile collection returned HTTP {http_status}."
+    return "Profile collection command failed before a profile digest was produced."
+
+
+def subprocess_http_status(result: subprocess.CompletedProcess) -> str | None:
+    for value in (getattr(result, "stderr", None), getattr(result, "stdout", None)):
+        if not isinstance(value, str):
+            continue
+        match = HTTP_STATUS_RE.search(value)
+        if match:
+            return match.group(1)
+    return None

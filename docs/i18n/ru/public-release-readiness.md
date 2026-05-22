@@ -28,9 +28,10 @@ Repository должен оставаться reproducible, safe to inspect и cl
 unsupported scope.
 
 README screenshots обновлены из synthetic demo pack для текущего material UI
-baseline. Package version bump, TestPyPI upload, release tag, PyPI publish и
-финальные release notes остаются шагами final release candidate, а не
-pre-release audit cleanup. Current product baseline включает config-driven
+baseline. Package metadata и release notes подготовлены для `v0.3.0`;
+local release gate и built-wheel smoke уже прошли для release candidate.
+TestPyPI upload, release tag, PyPI publish и post-publish install smoke
+остаются шагами final release candidate. Current product baseline включает config-driven
 `language`, Recent Scan Hour UTC offset label, Known Query ID progress,
 elapsed scan-progress wording и workload diagnostics для repeated,
 frequent-short и regressed fingerprints.

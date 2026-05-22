@@ -123,6 +123,8 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "html[data-theme=dark]" in styles
     assert "--bg:#eef2f6" in styles
     assert "--bg:#0f1419" in styles
+    assert "--surface:#fff" in styles
+    assert "--surface:#151b22" in styles
     assert_css_contains(styles, "html[data-design=command]{--bg:#eef4f1")
     assert_css_contains(styles, "html[data-theme=dark][data-design=command]{--bg:#101314")
     assert_css_contains(

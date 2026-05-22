@@ -138,7 +138,7 @@ def filter_rows_by_query_group(
 ) -> tuple[RecentScanCaseRowView, ...]:
     normalized = normalize_query_group(query_group)
     if normalized == "optimization":
-        return tuple(row for row in rows if row.optimization_tier in {"high", "medium"})
+        return tuple(row for row in rows if is_optimization_row(row))
     if normalized == "stats":
         return tuple(row for row in rows if row.stats_tier in {"high", "medium"})
     if normalized == "workloads":
@@ -219,6 +219,12 @@ def sort_rows_for_query_group(
             ),
         )
     )
+
+
+def is_optimization_row(row: RecentScanCaseRowView) -> bool:
+    if row.optimization_tier in {"high", "medium"}:
+        return True
+    return row.optimizer_rewrite_support not in {"", "unknown", "not_candidate"}
 
 
 def is_repeated_workload_row(row: RecentScanCaseRowView) -> bool:
@@ -359,7 +365,7 @@ def query_group_count(
     severities: set[str],
 ) -> int:
     if key == "optimization":
-        return sum(1 for row in rows if row.optimization_tier in {"high", "medium"})
+        return sum(1 for row in rows if is_optimization_row(row))
     if key == "stats":
         return sum(1 for row in rows if row.stats_tier in {"high", "medium"})
     if key == "workloads":

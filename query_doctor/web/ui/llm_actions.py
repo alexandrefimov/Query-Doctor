@@ -6,11 +6,11 @@ from dataclasses import dataclass
 import html
 from typing import Any
 
+from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.job_progress import JobProgressView
 from query_doctor.web.presenters.recent_scan import (
     ReportActionView,
     safe_display_text,
-    safe_display_value,
 )
 from query_doctor.web.ui.html_helpers import SafeHtml
 from query_doctor.web.ui.i18n import text as ui_text
@@ -28,11 +28,23 @@ OPTIMIZER_OUTPUT_LABELS = {
     "no_rewrite": "No trusted rewrite",
     "recommendations_only": "Recommendations only",
 }
+OPTIMIZER_OUTPUT_LABELS_RU = {
+    "sql_draft": "Валидированный SQL draft",
+    "no_rewrite": "Нет trusted rewrite",
+    "recommendations_only": "Только рекомендации",
+}
 OPTIMIZER_RISK_LABELS = {
     "rewrite_allowed": "Rewrite allowed",
     "recommendations_only": "Recommendations only",
 }
+OPTIMIZER_RISK_LABELS_RU = {
+    "rewrite_allowed": "Rewrite разрешен",
+    "recommendations_only": "Только рекомендации",
+}
 OPTIMIZER_SOURCE_SCOPE_LABELS = {
+    "read_only_statement": "Read-only statement",
+}
+OPTIMIZER_SOURCE_SCOPE_LABELS_RU = {
     "read_only_statement": "Read-only statement",
 }
 OPTIMIZER_FALLBACK_LABELS = {
@@ -42,6 +54,16 @@ OPTIMIZER_FALLBACK_LABELS = {
     "no_material_change": "No material rewrite",
     "output_limit": "Optimizer output limit reached",
     "output_budget": "Optimizer output limit reached",
+    "synthetic_demo_recommendations": "Synthetic demo recommendations",
+}
+OPTIMIZER_FALLBACK_LABELS_RU = {
+    "no_python_owned_recipe": "Нет поддержанного Python-owned rewrite recipe",
+    "deterministic_draft_unavailable": "Детерминированный draft недоступен",
+    "validation_failed": "Draft не прошел детерминированную validation",
+    "no_material_change": "Нет существенного rewrite",
+    "output_limit": "Достигнут лимит optimizer output",
+    "output_budget": "Достигнут лимит optimizer output",
+    "synthetic_demo_recommendations": "Рекомендации synthetic demo",
 }
 OPTIMIZER_RISK_REASON_LABELS = {
     "cte_body_validation_not_proven": "CTE body equivalence is not proven by deterministic validation",
@@ -52,6 +74,16 @@ OPTIMIZER_RISK_REASON_LABELS = {
     "many_top_level_joins": "Many top-level joins require conservative validation",
     "long_sql_payload": "Long SQL payload requires conservative validation",
     "set_operations": "Set operations require conservative validation",
+}
+OPTIMIZER_RISK_REASON_LABELS_RU = {
+    "cte_body_validation_not_proven": "Эквивалентность CTE body не доказана детерминированной validation",
+    "too_many_ctes_for_safe_rewrite": "Количество CTE превышает безопасный порог для SQL draft",
+    "too_many_top_level_joins_for_safe_rewrite": "Количество top-level JOIN превышает безопасный порог для SQL draft",
+    "sql_payload_too_large_for_safe_rewrite": "SQL payload слишком большой для trusted draft",
+    "many_ctes": "Несколько CTE требуют консервативной validation",
+    "many_top_level_joins": "Много top-level JOIN требуют консервативной validation",
+    "long_sql_payload": "Длинный SQL payload требует консервативной validation",
+    "set_operations": "Set operations требуют консервативной validation",
 }
 
 
@@ -69,6 +101,7 @@ class OptimizedQueryActionView:
     risk_reasons: tuple[str, ...]
     source_scope: str
     progress_view: JobProgressView | None = None
+    unavailable_reason: str = ""
 
 
 def present_optimized_query_action(
@@ -84,7 +117,7 @@ def present_optimized_query_action(
         job_id=safe_display_text(raw.get("job_id") or ""),
         job_kind=safe_display_text(raw.get("job_kind") or ""),
         stage_label=safe_display_text(raw.get("stage_label") or ""),
-        error=safe_display_value(raw.get("error") or ""),
+        error=safe_display_text(sanitize_browser_error_text(raw.get("error") or "")),
         output_kind=safe_display_text(raw.get("output_kind") or "sql_draft"),
         source_available=raw.get("source_available") is True,
         fallback_reason=safe_display_text(raw.get("fallback_reason") or ""),
@@ -96,6 +129,7 @@ def present_optimized_query_action(
         ),
         source_scope=safe_display_text(raw.get("source_scope") or ""),
         progress_view=(progress_view if isinstance(progress_view, JobProgressView) else None),
+        unavailable_reason=safe_display_text(raw.get("unavailable_reason") or ""),
     )
 
 
@@ -105,6 +139,7 @@ def render_llm_actions_block(
     optimized_query_state: OptimizedQueryActionView | None,
     *,
     report_enabled: bool = True,
+    report_disabled_reason: str = "",
     report_action_url: str | None = None,
     report_open_url: str | None = None,
     report_export_url: str | None = None,
@@ -147,9 +182,14 @@ def render_llm_actions_block(
     report_status = str(report_view.status or "not_run")
     optimizer_status = optimizer_view.status
     report_button_disabled = (
-        report_view.button_disabled or not report_enabled or report_status == "running"
+        report_view.button_disabled
+        or not report_enabled
+        or report_status in {"running", "unavailable"}
     )
-    optimizer_button_disabled = optimizer_status in {"running", "unavailable"}
+    optimizer_hidden = optimizer_status == "hidden"
+    optimizer_compact_unavailable = optimizer_status == "unavailable"
+    optimizer_action_hidden = optimizer_hidden or optimizer_compact_unavailable
+    optimizer_button_disabled = optimizer_status in {"running", "unavailable", "hidden"}
     section_label = ui_text(language, "Reports and optimizer", "Отчеты и оптимизатор")
     report_title = ui_text(
         language,
@@ -172,11 +212,10 @@ def render_llm_actions_block(
         "Ищет валидированное направление rewrite или trusted draft без выполнения SQL.",
     )
     report_compact_unavailable = (
-        not report_enabled
+        (not report_enabled or report_status == "unavailable")
         and not report_view.show_open_link
         and report_status not in {"running", "generated"}
     )
-    optimizer_compact_unavailable = optimizer_status == "unavailable"
     combined_disabled = (
         report_button_disabled
         or optimizer_button_disabled
@@ -214,7 +253,7 @@ def render_llm_actions_block(
         action_cards.append(
             render_llm_action_card(report_title, report_description, report_action_html)
         )
-    if not optimizer_compact_unavailable:
+    if not optimizer_action_hidden:
         optimizer_action_html = render_optimizer_action_button(
             optimizer_view,
             optimizer_action,
@@ -228,7 +267,7 @@ def render_llm_actions_block(
     if not combined_disabled:
         combined_html = render_post_button(
             combined_action,
-            ui_text(language, "Generate report + optimizer", "Сгенерировать отчет + optimizer"),
+            ui_text(language, "Generate report + optimizer", "Сгенерировать отчет + оптимизатор"),
             primary=True,
         )
         combined_title = ui_text(
@@ -254,10 +293,12 @@ def render_llm_actions_block(
         unavailable_rows.append(
             render_unavailable_action_note(
                 report_title,
-                ui_text(
-                    language,
-                    f"{report_title} is available only for suspicious or bad queries.",
-                    f"{report_title} доступен только для suspicious или bad запросов.",
+                report_unavailable_message(
+                    report_view,
+                    report_title,
+                    report_enabled=report_enabled,
+                    report_disabled_reason=report_disabled_reason,
+                    language=language,
                 ),
             )
         )
@@ -265,11 +306,7 @@ def render_llm_actions_block(
         unavailable_rows.append(
             render_unavailable_action_note(
                 optimizer_title,
-                ui_text(
-                    language,
-                    "Source SQL is unavailable or outside the optimizer read-only scope for this case.",
-                    "Source SQL недоступен или находится вне read-only scope оптимизатора для этого кейса.",
-                ),
+                optimizer_unavailable_message(optimizer_view, language=language),
             )
         )
     unavailable_html = (
@@ -409,6 +446,44 @@ def render_unavailable_action_note(title: str, message: str) -> str:
         f"<strong>{html.escape(title)}</strong>"
         f"<span>{html.escape(message)}</span>"
         "</div>"
+    )
+
+
+def report_unavailable_message(
+    view: ReportActionView,
+    report_title: str,
+    *,
+    report_enabled: bool,
+    report_disabled_reason: str = "",
+    language: str = "en",
+) -> str:
+    if view.status == "unavailable":
+        reason = str(view.unavailable_reason or view.error or "").strip()
+        if reason:
+            return reason
+    if not report_enabled and report_disabled_reason.strip():
+        return report_disabled_reason.strip()
+    if not report_enabled:
+        return ui_text(
+            language,
+            f"{report_title} is available only for suspicious or bad queries.",
+            f"{report_title} доступен только для suspicious или bad запросов.",
+        )
+    return ui_text(
+        language,
+        f"{report_title} is unavailable for this case.",
+        f"{report_title} недоступен для этого кейса.",
+    )
+
+
+def optimizer_unavailable_message(view: OptimizedQueryActionView, *, language: str = "en") -> str:
+    reason = str(view.unavailable_reason or "").strip()
+    if reason:
+        return reason
+    return ui_text(
+        language,
+        "Source SQL is unavailable or outside the optimizer read-only scope for this case.",
+        "Source SQL недоступен или находится вне read-only scope оптимизатора для этого кейса.",
     )
 
 
@@ -633,17 +708,23 @@ def render_optimizer_trusted_output(
     if status == "generated" and trusted_optimized_query:
         return (
             f'<details class="analysis-subdetails action-result-details" aria-label="{optimizer_label} draft">'
-            f"<summary>{optimizer_label} draft</summary>"
+            f"<summary>{html.escape(ui_text(language, f'{optimizer_label} draft', f'Draft {optimizer_label}'))}</summary>"
             f'<p class="helper">{html.escape(ui_text(language, "Draft only. The query was not executed and requires review before use.", "Только draft. Запрос не выполнялся и требует проверки перед использованием."))}</p>'
             f"{render_trusted_optimized_query_draft(trusted_optimized_query)}"
             "</details>"
         )
     if status == "generated" and trusted_optimizer_recommendations:
         if output_kind == "no_rewrite":
-            summary = f"{optimizer_label} outcome"
-            helper = no_rewrite_recommendations_helper(fallback_reason)
+            summary = ui_text(
+                language, f"{optimizer_label} outcome", f"Результат {optimizer_label}"
+            )
+            helper = no_rewrite_recommendations_helper(fallback_reason, language=language)
         else:
-            summary = f"{optimizer_label} recommendations"
+            summary = ui_text(
+                language,
+                f"{optimizer_label} recommendations",
+                f"Рекомендации {optimizer_label}",
+            )
             helper = ui_text(
                 language,
                 "Deterministic risk checks skipped SQL rewrite; review the recommendations instead.",
@@ -793,11 +874,11 @@ def render_optimized_query_outcome(view: OptimizedQueryActionView, *, language: 
         else ui_text(language, "Not needed", "Не требуется")
     )
     if status == "partial_untrusted":
-        title = ui_text(language, "Validation failed", "Validation failed")
+        title = ui_text(language, "Validation failed", "Validation не прошла")
         summary = ui_text(
             language,
             "The generated SQL draft failed deterministic validation. It remains hidden; use manual rewrite validation for a reviewed alternative.",
-            "Сгенерированный SQL draft не прошел детерминированную validation. Он скрыт; используйте ручную validation для проверенной альтернативы.",
+            "Сгенерированный SQL draft не прошел детерминированную проверку. Он скрыт; используйте ручную validation для проверенной альтернативы.",
         )
         card_class = "error-card"
         role = "alert"
@@ -807,7 +888,7 @@ def render_optimized_query_outcome(view: OptimizedQueryActionView, *, language: 
             else ui_text(language, "Unavailable", "Недоступно")
         )
     elif status == "generated" and output_kind == "no_rewrite":
-        title, summary, is_error = no_rewrite_outcome_copy(view.fallback_reason)
+        title, summary, is_error = no_rewrite_outcome_copy(view.fallback_reason, language=language)
         card_class = "error-card" if is_error else "success-card"
         role = "alert" if is_error else "status"
     elif status == "generated" and output_kind == "recommendations_only":
@@ -815,16 +896,16 @@ def render_optimized_query_outcome(view: OptimizedQueryActionView, *, language: 
         summary = ui_text(
             language,
             "The query shape was not safe enough for a trusted SQL draft, so the optimizer returned review guidance only.",
-            "Форма запроса недостаточно безопасна для trusted SQL draft, поэтому optimizer вернул только guidance для проверки.",
+            "Форма запроса недостаточно безопасна для trusted SQL draft, поэтому optimizer вернул только рекомендации для проверки.",
         )
         card_class = "success-card"
         role = "status"
     elif status == "generated":
-        title = ui_text(language, "Validated SQL draft", "Validated SQL draft")
+        title = ui_text(language, "Validated SQL draft", "Валидированный SQL draft")
         summary = ui_text(
             language,
             "A trusted SQL draft passed deterministic validation. It was not executed and still requires review before use.",
-            "Trusted SQL draft прошел deterministic validation. Он не выполнялся и все равно требует проверки перед использованием.",
+            "Trusted SQL draft прошел детерминированную validation. Он не выполнялся и все равно требует проверки перед использованием.",
         )
         card_class = "success-card"
         role = "status"
@@ -832,17 +913,26 @@ def render_optimized_query_outcome(view: OptimizedQueryActionView, *, language: 
         return ""
 
     items = []
-    risk_reasons = "; ".join(optimizer_risk_reason_labels(view.risk_reasons))
+    risk_reasons = "; ".join(optimizer_risk_reason_labels(view.risk_reasons, language=language))
     for label, value in (
-        (ui_text(language, "Outcome", "Результат"), optimizer_output_label(output_kind)),
         (
-            ui_text(language, "Source scope", "Source scope"),
-            optimizer_source_scope_label(view.source_scope),
+            ui_text(language, "Outcome", "Результат"),
+            optimizer_output_label(output_kind, language=language),
         ),
-        (ui_text(language, "Risk mode", "Risk mode"), optimizer_risk_label(view.risk_mode)),
-        (ui_text(language, "Guardrails", "Guardrails"), risk_reasons),
-        (ui_text(language, "Reason", "Причина"), optimizer_fallback_label(view.fallback_reason)),
-        (ui_text(language, "Manual validation", "Ручная validation"), manual_validation),
+        (
+            ui_text(language, "Source scope", "Источник"),
+            optimizer_source_scope_label(view.source_scope, language=language),
+        ),
+        (
+            ui_text(language, "Risk mode", "Режим проверки"),
+            optimizer_risk_label(view.risk_mode, language=language),
+        ),
+        (ui_text(language, "Guardrails", "Ограничения"), risk_reasons),
+        (
+            ui_text(language, "Reason", "Причина"),
+            optimizer_fallback_label(view.fallback_reason, language=language),
+        ),
+        (ui_text(language, "Manual validation", "Ручная проверка"), manual_validation),
     ):
         value = str(value or "").strip()
         if value:
@@ -857,91 +947,146 @@ def render_optimized_query_outcome(view: OptimizedQueryActionView, *, language: 
     )
 
 
-def optimizer_output_label(value: str) -> str:
-    return OPTIMIZER_OUTPUT_LABELS.get(value, humanize_optimizer_token(value))
+def optimizer_output_label(value: str, *, language: str = "en") -> str:
+    labels = OPTIMIZER_OUTPUT_LABELS_RU if language == "ru" else OPTIMIZER_OUTPUT_LABELS
+    return labels.get(value, humanize_optimizer_token(value))
 
 
-def optimizer_source_scope_label(value: str) -> str:
-    return OPTIMIZER_SOURCE_SCOPE_LABELS.get(value, humanize_optimizer_token(value))
+def optimizer_source_scope_label(value: str, *, language: str = "en") -> str:
+    labels = OPTIMIZER_SOURCE_SCOPE_LABELS_RU if language == "ru" else OPTIMIZER_SOURCE_SCOPE_LABELS
+    return labels.get(value, humanize_optimizer_token(value))
 
 
-def optimizer_risk_label(value: str) -> str:
-    return OPTIMIZER_RISK_LABELS.get(value, humanize_optimizer_token(value))
+def optimizer_risk_label(value: str, *, language: str = "en") -> str:
+    labels = OPTIMIZER_RISK_LABELS_RU if language == "ru" else OPTIMIZER_RISK_LABELS
+    return labels.get(value, humanize_optimizer_token(value))
 
 
-def optimizer_fallback_label(value: str) -> str:
-    return OPTIMIZER_FALLBACK_LABELS.get(value, humanize_optimizer_token(value))
+def optimizer_fallback_label(value: str, *, language: str = "en") -> str:
+    labels = OPTIMIZER_FALLBACK_LABELS_RU if language == "ru" else OPTIMIZER_FALLBACK_LABELS
+    return labels.get(value, humanize_optimizer_token(value))
 
 
-def no_rewrite_outcome_copy(fallback_reason: str) -> tuple[str, str, bool]:
+def no_rewrite_outcome_copy(fallback_reason: str, *, language: str = "en") -> tuple[str, str, bool]:
     if fallback_reason == "validation_failed":
         return (
-            "No trusted rewrite",
-            (
-                "A generated draft was rejected by deterministic validation. "
-                "The page shows safe guidance instead of exposing the rejected SQL."
+            ui_text(language, "No trusted rewrite", "Нет trusted rewrite"),
+            ui_text(
+                language,
+                "A generated draft was rejected by deterministic validation. The page shows safe guidance instead of exposing the rejected SQL.",
+                "Сгенерированный draft отклонен детерминированной validation. Страница показывает safe guidance и не раскрывает отклоненный SQL.",
             ),
             True,
         )
     if fallback_reason == "no_material_change":
         return (
-            "No material rewrite",
-            "The optimizer did not produce a SQL draft with a material, validated change.",
+            ui_text(language, "No material rewrite", "Нет существенного rewrite"),
+            ui_text(
+                language,
+                "The optimizer did not produce a SQL draft with a material, validated change.",
+                "Optimizer не создал SQL draft с существенным валидированным изменением.",
+            ),
             False,
         )
     if fallback_reason == "no_python_owned_recipe":
         return (
-            "No supported rewrite recipe",
-            (
-                "Python did not find a supported deterministic rewrite recipe, "
-                "so no trusted SQL draft is shown."
+            ui_text(language, "No supported rewrite recipe", "Нет поддержанного rewrite recipe"),
+            ui_text(
+                language,
+                "Python did not find a supported deterministic rewrite recipe, so no trusted SQL draft is shown.",
+                "Python не нашел поддержанный детерминированный rewrite recipe, поэтому trusted SQL draft не показан.",
             ),
             False,
         )
     if fallback_reason == "deterministic_draft_unavailable":
         return (
-            "Deterministic draft unavailable",
-            (
-                "Python found a supported rewrite recipe but could not construct "
-                "a deterministic draft for this exact shape, so safe guidance is shown."
+            ui_text(
+                language,
+                "Deterministic draft unavailable",
+                "Детерминированный draft недоступен",
+            ),
+            ui_text(
+                language,
+                "Python found a supported rewrite recipe but could not construct a deterministic draft for this exact shape, so safe guidance is shown.",
+                "Python нашел поддержанный rewrite recipe, но не смог построить детерминированный draft для этой формы; показан safe guidance.",
             ),
             False,
         )
     if fallback_reason in {"output_limit", "output_budget"}:
         return (
-            "Optimizer output limit reached",
-            "The optimizer did not complete a trusted SQL draft within the output budget.",
+            ui_text(
+                language,
+                "Optimizer output limit reached",
+                "Достигнут лимит optimizer output",
+            ),
+            ui_text(
+                language,
+                "The optimizer did not complete a trusted SQL draft within the output budget.",
+                "Optimizer не успел подготовить trusted SQL draft в пределах output budget.",
+            ),
             True,
         )
     return (
-        "No trusted rewrite",
-        "The optimizer did not produce a trusted SQL draft; review the safe outcome reason below.",
+        ui_text(language, "No trusted rewrite", "Нет trusted rewrite"),
+        ui_text(
+            language,
+            "The optimizer did not produce a trusted SQL draft; review the safe outcome reason below.",
+            "Optimizer не создал trusted SQL draft; проверьте safe-причину ниже.",
+        ),
         False,
     )
 
 
-def no_rewrite_recommendations_helper(fallback_reason: str) -> str:
+def no_rewrite_recommendations_helper(fallback_reason: str, *, language: str = "en") -> str:
     if fallback_reason == "validation_failed":
-        return "A draft was rejected by deterministic validation; safe guidance is shown instead."
+        return ui_text(
+            language,
+            "A draft was rejected by deterministic validation; safe guidance is shown instead.",
+            "Draft отклонен детерминированной validation; вместо него показан safe guidance.",
+        )
     if fallback_reason == "no_material_change":
-        return "The optimizer did not find a material validated SQL change; safe guidance is shown instead."
+        return ui_text(
+            language,
+            "The optimizer did not find a material validated SQL change; safe guidance is shown instead.",
+            "Optimizer не нашел существенное валидированное SQL-изменение; вместо него показан safe guidance.",
+        )
     if fallback_reason == "no_python_owned_recipe":
-        return (
-            "No supported deterministic rewrite recipe was found; safe guidance is shown instead."
+        return ui_text(
+            language,
+            "No supported deterministic rewrite recipe was found; safe guidance is shown instead.",
+            "Поддержанный детерминированный rewrite recipe не найден; вместо него показан safe guidance.",
         )
     if fallback_reason == "deterministic_draft_unavailable":
-        return "A supported recipe was found, but Python could not construct a deterministic draft for this shape."
-    if fallback_reason in {"output_limit", "output_budget"}:
-        return "The optimizer reached its output budget before a trusted draft was available."
-    return "No trusted SQL draft was produced; safe guidance is shown instead."
-
-
-def optimizer_risk_reason_labels(values: tuple[str, ...]) -> list[str]:
-    labels: list[str] = []
-    for value in values:
-        label = OPTIMIZER_RISK_REASON_LABELS.get(
-            str(value), "Additional deterministic risk guardrail"
+        return ui_text(
+            language,
+            "A supported recipe was found, but Python could not construct a deterministic draft for this shape.",
+            "Поддержанный recipe найден, но Python не смог построить детерминированный draft для этой формы.",
         )
+    if fallback_reason in {"output_limit", "output_budget"}:
+        return ui_text(
+            language,
+            "The optimizer reached its output budget before a trusted draft was available.",
+            "Optimizer достиг output budget до появления trusted draft.",
+        )
+    return ui_text(
+        language,
+        "No trusted SQL draft was produced; safe guidance is shown instead.",
+        "Trusted SQL draft не создан; вместо него показан safe guidance.",
+    )
+
+
+def optimizer_risk_reason_labels(values: tuple[str, ...], *, language: str = "en") -> list[str]:
+    labels: list[str] = []
+    label_map = (
+        OPTIMIZER_RISK_REASON_LABELS_RU if language == "ru" else OPTIMIZER_RISK_REASON_LABELS
+    )
+    default_label = ui_text(
+        language,
+        "Additional deterministic risk guardrail",
+        "Дополнительное детерминированное ограничение риска",
+    )
+    for value in values:
+        label = label_map.get(str(value), default_label)
         if label not in labels:
             labels.append(label)
     return labels

@@ -88,7 +88,15 @@ def render_recent_scan_case_detail_view(
         }.get(workflow_title, workflow_title),
     )
     safe_workflow_title = html.escape(localized_workflow_title)
-    safe_details_label = html.escape(ui_text(language, "details", "детали"))
+    details_title = ui_text(
+        language,
+        f"{localized_workflow_title} details",
+        {
+            "Finished Queries": "Детали завершенного запроса",
+            "Running Queries": "Детали выполняющегося запроса",
+        }.get(workflow_title, f"Детали: {localized_workflow_title}"),
+    )
+    safe_details_title = html.escape(details_title)
     safe_list_href = html.escape(list_href, quote=True)
     escaped_case_id_for_url = html.escape(view.case_id, quote=True)
     report_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/report"
@@ -102,18 +110,34 @@ def render_recent_scan_case_detail_view(
     actions_id = actions_section_id(llm_enabled=llm_enabled)
     actions_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/{actions_id}"
     return (
-        f'<section class="panel batch-panel case-detail-panel" aria-label="{safe_workflow_title} {safe_details_label}">'
+        f'<section class="panel batch-panel case-detail-panel" aria-label="{safe_details_title}">'
         f'<div class="breadcrumb"><a href="{safe_list_href}">{safe_workflow_title}</a><span>/</span>'
         f"<span>{html.escape(view.case_id)}</span></div>"
-        f'<div class="batch-head"><div><h1>{safe_workflow_title} {safe_details_label}</h1>'
+        f'<div class="batch-head"><div><h1>{safe_details_title}</h1>'
         f"<p>{html.escape(ui_text(language, 'Start with the verdict and recommended changes, then expand evidence only when needed.', 'Начните с вердикта и рекомендуемых изменений; раскрывайте доказательства только когда они нужны.'))}</p></div>"
         f'<span class="badge blue">{html.escape(view.case_id)}</span></div>'
         f"{render_case_verdict(view, language=language)}"
         f"{render_case_action_plan(view, detail_base_path=detail_base_path, language=language)}"
         f"{render_case_diagnostics(view, llm_enabled=llm_enabled, language=language)}"
-        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=view.score_severity != 'clean', report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
+        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=report_generation_enabled(view), report_disabled_reason=report_generation_disabled_reason(view, language=language), report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
         "</section>"
     )
+
+
+def report_generation_enabled(view: RecentScanCaseDetailView) -> bool:
+    return str(view.score_severity or "").strip().lower() in {"high", "suspicious"}
+
+
+def report_generation_disabled_reason(
+    view: RecentScanCaseDetailView, *, language: str = "en"
+) -> str:
+    if str(view.score_severity or "").strip().lower() == "failed":
+        return ui_text(
+            language,
+            "Re-run analysis successfully before generating an LLM report for this case.",
+            "Сначала успешно перезапустите анализ, затем генерируйте LLM report для этого кейса.",
+        )
+    return ""
 
 
 def render_case_verdict(view: RecentScanCaseDetailView, *, language: str = "en") -> str:

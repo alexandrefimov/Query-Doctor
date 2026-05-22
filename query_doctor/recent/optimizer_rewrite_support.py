@@ -128,6 +128,13 @@ PREDICATE_NOT_COPYABLE_DECISIONS = {
     "unsupported_predicate_unknown_identifier",
     "unsupported_signature",
 }
+REWRITE_SUPPORT_REVIEW_MIN_SCORE = 30
+NO_REWRITE_SUPPORT_COUNTER_SIGNALS = {
+    "no query-shape opportunity evidence",
+    "primary_bottleneck_is_stats; rewrite is secondary",
+    "primary_bottleneck_is_runtime_admission",
+    "primary_bottleneck_is_runtime_storage",
+}
 
 
 @dataclass(frozen=True)
@@ -172,6 +179,27 @@ class OptimizerRewriteSupport:
         return asdict(self)
 
 
+def candidate_has_rewrite_support_evidence(
+    candidate: QueryOptimizationCandidateScore | None,
+    *,
+    primary_bottleneck: dict[str, object] | None = None,
+) -> bool:
+    if candidate is None:
+        return False
+    tier = str(candidate.tier or "not_likely").strip().lower()
+    if tier in {"high", "medium"}:
+        return True
+    if tier != "low":
+        return False
+    counter_signals = {str(signal).strip() for signal in candidate.counter_signals}
+    if counter_signals & NO_REWRITE_SUPPORT_COUNTER_SIGNALS:
+        return False
+    primary = primary_bottleneck if isinstance(primary_bottleneck, dict) else {}
+    if str(primary.get("label") or "").strip().lower() == "sql_shape":
+        return True
+    return int(candidate.score or 0) >= REWRITE_SUPPORT_REVIEW_MIN_SCORE
+
+
 def classify_optimizer_rewrite_support(
     case_dir: Path | None,
     candidate: QueryOptimizationCandidateScore | None,
@@ -181,16 +209,19 @@ def classify_optimizer_rewrite_support(
     stats_candidate: object | None = None,
 ) -> OptimizerRewriteSupport:
     stats_likely = case_is_stats_likely(primary_bottleneck, stats_candidate)
-    if candidate is None or candidate.tier not in {"high", "medium"}:
+    if not candidate_has_rewrite_support_evidence(
+        candidate,
+        primary_bottleneck=primary_bottleneck,
+    ):
         bucket = "stats_likely" if stats_likely else "not_rewriteable"
         return OptimizerRewriteSupport(
             status="not_candidate",
-            label="Not an optimization candidate",
-            reason="No medium/high optimization candidate evidence",
+            label="Optimizer not applicable",
+            reason="No supported query-shape optimizer evidence above the review threshold",
             risk_mode="unknown",
             risk_reasons=(),
             draft_eligibility="not_candidate",
-            draft_eligibility_label="Not an optimization candidate",
+            draft_eligibility_label="Optimizer not applicable",
             **rewriteability_kwargs(bucket),
         )
     if case_dir is None:

@@ -14,6 +14,7 @@ from query_doctor.cli.commands import (
     command_prefix,
     resolve_command_backend,
 )
+from query_doctor.impala.kerberos_preflight import check_kerberos_ticket_cache
 from query_doctor.impala.metadata_workflow import (
     METADATA_SOURCE_TABLES_ENV,
     add_metadata_arguments,
@@ -297,6 +298,14 @@ def main(
             )
             return 0
         if metadata_plan.selected_tables:
+            if args.metadata_auth == "kerberos" and metadata_runner is DEFAULT_RUN_METADATA_CMD:
+                ticket_status = check_kerberos_ticket_cache(os.environ)
+                if not ticket_status.ok:
+                    print(
+                        f"[pipeline] ERROR: {ticket_status.reason}",
+                        file=sys.stderr,
+                    )
+                    return 2
             metadata_cmd = build_metadata_collector_cmd(
                 args,
                 collector_prefix=command_prefix(

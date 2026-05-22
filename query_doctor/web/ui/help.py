@@ -73,10 +73,10 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <section class="panel docs-panel help-panel" aria-label="Query Doctor help">
 <h1>Help</h1>
 <div class="report-body help-body">
-<p class="help-lede">Query Doctor is a local-first Big Data Query Diagnostic Tool for Apache Impala workloads. It combines deterministic profile analysis, bounded metadata checks, bounded runtime context when the selected source supports it, and validated report generation. The implemented engine is Apache Impala only.</p>
+<p class="help-lede">Query Doctor is a local-first Big Data Query Diagnostic Tool focused today on Apache Impala production triage for operators. It ranks suspicious Recent queries, collects bounded profile context, derives deterministic evidence, optionally enriches it with safe metadata and runtime context, and generates validated raw-free reports. The implemented engine is Apache Impala only.</p>
 
 <nav class="help-card-grid" aria-label="Help shortcuts">
-<a class="help-card" href="/"><span>Diagnose</span><strong>Run Recent queries or one Known Query ID.</strong></a>
+<a class="help-card" href="/"><span>Diagnose</span><strong>Triage Recent queries or inspect one Known Query ID.</strong></a>
 <a class="help-card" href="/#recent-results"><span>Results</span><strong>Read priority groups, findings, metadata, and stats signals.</strong></a>
 <a class="help-card" href="#details-actions"><span>Details</span><strong>Start with Recommended changes, then expand evidence.</strong></a>
 <a class="help-card" href="#safety"><span>Safety</span><strong>See what browser output intentionally hides.</strong></a>
@@ -109,11 +109,11 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <details id="workflows" class="help-topic" open>
 <summary><span>Workflows</span><small>Recent queries, Running now, Known Query ID</small></summary>
 <div class="help-topic-body">
-<p>Most demos and investigations start from <strong>Recent queries</strong>. Use <strong>Known Query ID</strong> only when you already have one query ID and want to skip batch discovery.</p>
+<p>Most demos and investigations start from <strong>Recent queries</strong>, the flagship production triage workflow. Use <strong>Known Query ID</strong> only when you already have one query ID and want to skip batch discovery.</p>
 
 <details>
 <summary>Recent queries</summary>
-<p>Recent queries is the primary administrator workflow. It reads query summaries from the selected source, applies filters, collects bounded profiles for selected queries, runs deterministic analysis, and shows action-oriented groups. {web_scan_boundary}</p>
+<p>Recent queries is the primary operator workflow. It reads query summaries from the selected source, applies filters, collects bounded profiles for selected queries, runs deterministic analysis, and shows action-oriented groups. {web_scan_boundary}</p>
 <ul>
 <li>Verify <strong>Source cluster</strong> first. Credentials and endpoints stay in local config; the browser only selects among configured sources.</li>
 <li>The first workflow control selects <strong>Finished queries</strong>, <strong>Running now</strong>, or <strong>One Query ID</strong>. Finished queries remain the default triage path.</li>
@@ -170,7 +170,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <details id="details-actions" class="help-topic">
 <summary><span>{actions_label}</span><small>Recommended changes, diagnostics, reports, optimizer</small></summary>
 <div class="help-topic-body">
-<p>Details shows a browser-safe summary for one analyzed query. <strong>Recommended changes</strong> leads with where to inspect, how to change the query shape, and how to verify the result. <strong>Diagnostics and evidence</strong> keeps pipeline state, supporting findings, runtime, metadata, runtime metrics, and technical signals available without turning the first screen into a low-level evidence dump.</p>
+<p>Details shows a browser-safe summary for one analyzed query. <strong>Recommended changes</strong> leads with why it deserves attention, where to inspect, what supported change direction to try, and how to verify the result. <strong>Diagnostics and evidence</strong> keeps pipeline state, supporting findings, runtime, metadata, runtime metrics, and technical signals available without turning the first screen into a low-level evidence dump.</p>
 {action_copy}
 
 <details>
@@ -314,24 +314,24 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <section class="panel docs-panel help-panel" aria-label="Query Doctor help">
 <h1>Справка</h1>
 <div class="report-body help-body">
-<p class="help-lede">Query Doctor - local-first Big Data Query Diagnostic Tool для Apache Impala. Он сочетает детерминированный анализ профиля, bounded metadata checks, bounded runtime context, когда источник это поддерживает, и валидированную генерацию отчетов. Реализованный engine сейчас только Apache Impala.</p>
+<p class="help-lede">Query Doctor - local-first Big Data Query Diagnostic Tool, сфокусированный сегодня на Apache Impala production triage для operators. Он ранжирует подозрительные Recent queries, собирает bounded profile context, выводит deterministic evidence, опционально обогащает его safe metadata и runtime context и генерирует validated raw-free reports. Реализованный движок сейчас только Apache Impala.</p>
 
 <nav class="help-card-grid" aria-label="Help shortcuts">
-<a class="help-card" href="/"><span>Diagnose</span><strong>Запустить Recent queries или один Known Query ID.</strong></a>
-<a class="help-card" href="/#recent-results"><span>Results</span><strong>Смотреть priority groups, findings, metadata и stats signals.</strong></a>
-<a class="help-card" href="#details-actions"><span>Details</span><strong>Начать с Recommended changes, затем раскрывать evidence.</strong></a>
-<a class="help-card" href="#safety"><span>Safety</span><strong>Что browser output намеренно скрывает.</strong></a>
+<a class="help-card" href="/"><span>Диагностика</span><strong>Разобрать Recent queries или один Known Query ID.</strong></a>
+<a class="help-card" href="/#recent-results"><span>Результаты</span><strong>Смотреть priority groups, findings, metadata и stats signals.</strong></a>
+<a class="help-card" href="#details-actions"><span>Детали</span><strong>Начать с Recommended changes, затем раскрывать evidence.</strong></a>
+<a class="help-card" href="#safety"><span>Безопасность</span><strong>Что browser output намеренно скрывает.</strong></a>
 </nav>
 
 <h2>На этой странице</h2>
 <ul class="help-toc">
 <li><a href="#quick-start">Быстрый старт</a></li>
-<li><a href="#workflows">Workflows</a></li>
-<li><a href="#results-table">Results table</a></li>
+<li><a href="#workflows">Рабочие режимы</a></li>
+<li><a href="#results-table">Таблица результатов</a></li>
 <li><a href="#details-actions">{actions_label}</a></li>
-<li><a href="#metadata">Metadata</a></li>
-<li><a href="#safety">Safety boundary</a></li>
-<li><a href="#github-docs">GitHub documentation</a></li>
+<li><a href="#metadata">Метаданные</a></li>
+<li><a href="#safety">Граница безопасности</a></li>
+<li><a href="#github-docs">Документация GitHub</a></li>
 <li><a href="#common-questions">Частые вопросы</a></li>
 </ul>
 
@@ -348,9 +348,9 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 
 <div class="help-topic-stack">
 <details id="workflows" class="help-topic" open>
-<summary><span>Workflows</span><small>Recent queries, Running now, Known Query ID</small></summary>
+<summary><span>Рабочие режимы</span><small>Recent queries, Running now, Known Query ID</small></summary>
 <div class="help-topic-body">
-<p>Основной workflow для администраторского triage - <strong>Recent queries</strong>. <strong>Known Query ID</strong> нужен, когда уже известен один query ID и batch discovery не требуется.</p>
+<p>Flagship workflow для operator triage - <strong>Recent queries</strong>. <strong>Known Query ID</strong> нужен, когда уже известен один query ID и batch discovery не требуется.</p>
 <details><summary>Recent queries</summary>
 <p>Recent queries читает summaries из выбранного источника, применяет фильтры, собирает bounded profiles, запускает детерминированный analysis и показывает action-oriented groups. {web_scan_boundary}</p>
 <ul>
@@ -372,7 +372,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 </details>
 
 <details id="results-table" class="help-topic">
-<summary><span>Results table</span><small>Группы, колонки и triage wording</small></summary>
+<summary><span>Таблица результатов</span><small>Группы, колонки и triage wording</small></summary>
 <div class="help-topic-body">
 <p>Таблица - triage surface. Перед production changes открывайте строку в Details.</p>
 <ul>
@@ -386,9 +386,9 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 </details>
 
 <details id="details-actions" class="help-topic">
-<summary><span>{actions_label}</span><small>Recommended changes, diagnostics, reports, optimizer</small></summary>
+<summary><span>{actions_label}</span><small>Рекомендации, диагностика, отчеты, optimizer</small></summary>
 <div class="help-topic-body">
-<p>Details - browser-safe summary для одного analyzed query. <strong>Recommended changes</strong> показывает, где смотреть, какое направление изменения поддержано фактами и как подтвердить результат. <strong>Diagnostics and evidence</strong> держит pipeline state, findings, runtime, metadata и technical signals в collapsed виде.</p>
+<p>Details - browser-safe summary для одного analyzed query. <strong>Recommended changes</strong> показывает, почему query заслуживает внимания, где смотреть, какое направление изменения поддержано фактами и как подтвердить результат. <strong>Diagnostics and evidence</strong> держит pipeline state, findings, runtime, metadata и technical signals в collapsed виде.</p>
 {action_copy}
 <details><summary>Validated reports</summary>{report_copy}<p>Report writer читает deterministic facts, Python-owned report contract digest, differentiators и recommendation candidates. Он не должен выводить из raw profile text или raw SQL.</p></details>
 <details><summary>Details-page {optimizer_label}</summary><p>{optimizer_copy}</p><p>Если validation fails, Query Doctor может показать trusted recommendations-only или no-rewrite guidance вместо unsafe draft.</p></details>
@@ -396,7 +396,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 </details>
 
 <details id="metadata" class="help-topic">
-<summary><span>Metadata</span><small>Bounded read-only table facts</small></summary>
+<summary><span>Метаданные</span><small>Bounded read-only table facts</small></summary>
 <div class="help-topic-body">
 <p>Metadata collection явная, bounded, read-only и allowlisted. Partial или unavailable metadata - нормальное degraded state.</p>
 <details><summary>Metadata allowlist</summary>
@@ -406,7 +406,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 </details>
 
 <details id="safety" class="help-topic">
-<summary><span>Safety boundary</span><small>Что browser output показывает и скрывает</small></summary>
+<summary><span>Граница безопасности</span><small>Что browser output показывает и скрывает</small></summary>
 <div class="help-topic-body">
 <p>Browser UI намеренно скрывает raw query text, raw profile text, raw metadata output, filesystem locations, case directory details, process output, secrets, environment secret values, runtime internals и raw evidence links.</p>
 <p>Safe browser output - это summarized deterministic facts, statuses, validated reports, trusted optimizer outcomes и bounded limitations.</p>
@@ -414,7 +414,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 </details>
 
 <details id="github-docs" class="help-topic">
-<summary><span>GitHub documentation</span><small>Поддерживаемые внешние docs</small></summary>
+<summary><span>Документация GitHub</span><small>Поддерживаемые внешние docs</small></summary>
 <div class="help-topic-body">
 <p>Эта страница остается короткой и task-oriented. Полная documentation живет в repository на GitHub:</p>
 <ul class="help-link-list">
@@ -428,7 +428,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 </details>
 
 <details id="common-questions" class="help-topic">
-<summary><span>Частые вопросы</span><small>Safety, metadata, reports и scope</small></summary>
+<summary><span>Частые вопросы</span><small>Безопасность, metadata, reports и scope</small></summary>
 <div class="help-topic-body">
 <details><summary>Почему не видно query SQL?</summary><p>Raw query text может содержать sensitive business logic, table names и literals. Query Doctor показывает safe summaries и deterministic findings.</p></details>
 <details><summary>Почему не видно полный profile?</summary><p>Full profiles могут быть большими и sensitive. UI показывает analyzer-owned facts и bounded status summaries.</p></details>

@@ -1,6 +1,6 @@
 # Code Map
 
-Last updated: 2026-05-13
+Last updated: 2026-05-22
 
 This is the practical lookup map for coding agents. Use it to find the likely
 owner of a behavior before reading large modules.
@@ -19,6 +19,7 @@ owner of a behavior before reading large modules.
 | Prometheus runtime metrics | `query_doctor/prometheus/`, `query_doctor/impala/`, analyzer runtime metrics modules | Optional bounded runtime context for configured direct Impala workflows; allowlisted PromQL only. |
 | Impala metadata | `query_doctor/impala/` | Allowlisted `SHOW` statements only. |
 | Analyzer facts and scoring | `query_doctor/analyzer/`, `query_doctor/recent/` | Deterministic facts, score reasons, and action candidates. |
+| Engine fact contract | `query_doctor/analyzer/engine_facts.py`, `query_doctor/analyzer/engine_fact_consumer.py`, `query_doctor/analyzer/impala_engine_facts.py`, `query_doctor/analyzer/trino_fixture_facts.py`, `tests/engine_fact_contract_harness.py` | Typed normalized facts, raw-free boundary payloads, and a read-only consumer probe for parser-output contract shaping; not a public engine selector. |
 | Browser safety | `query_doctor/safety/browser_display.py`, web presenters | Dynamic browser text should cross this boundary. |
 
 ## Common Change Targets

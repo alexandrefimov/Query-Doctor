@@ -15,6 +15,9 @@ is not a historical audit log. For engineering risks, use
 ## Current Scope
 
 - Apache Impala is the only implemented SQL engine.
+- Query Doctor is positioned as a local-first Big Data query diagnostic tool
+  focused today on Impala production triage, not as a generic AI query profile
+  analyzer.
 - Cloudera Manager is the full implemented query discovery, profile, metrics,
   and events source for Recent queries.
 - Direct Impala daemon collection supports bounded Recent scans, Running scans,
@@ -26,6 +29,8 @@ is not a historical audit log. For engineering risks, use
   Timeline, and fragment lifecycle timing facts, and can use profile resource
   and timing signals in Runtime Diagnosis.
 - Diagnose is the primary UI screen.
+- Recent Scan is the flagship workflow for production triage across many
+  queries.
 - Recent queries is the default Diagnose mode.
 - Finished queries is the default completed-query scan target.
 - Running now is a lower-confidence live scan target inside Recent queries.
@@ -44,6 +49,14 @@ is not a historical audit log. For engineering risks, use
   sends Cloudera Manager UTC bounds.
 - Query Optimizer is a separate pasted-SQL parse/analyze workflow. It never
   executes SQL and does not echo submitted SQL after submit.
+- Apache Impala upstream work around IMPALA-14953 is an explicit alignment
+  point. Query Doctor should consume or compare against stable upstream profile
+  JSON/parser/redactor contracts when they become available instead of
+  duplicating the native one-profile AI analysis surface.
+- Apache Impala aggregated / experimental profile-v2 work is an additional
+  compatibility risk. Query Doctor should treat profile representation as a
+  dialect, detect it before deterministic analysis, and fail closed when the
+  dialect or required evidence sections are unknown or only partially mapped.
 - Bounded Impala metadata collection is read-only, allowlisted, explicit, and
   redacted.
 - Cloudera Manager metrics and events are runtime context. They can strengthen
@@ -55,11 +68,24 @@ is not a historical audit log. For engineering risks, use
 
 ## Product Direction
 
-Query Doctor should be positioned and developed as a diagnostic product first,
-not as an "AI SQL optimizer" whose primary promise is automatic SQL rewriting.
+Query Doctor should be positioned and developed as a local-first Big Data query
+diagnostic tool focused today on Impala production triage, not as an "AI
+profile analyzer" button or an "AI SQL optimizer" whose primary promise is
+automatic SQL rewriting.
 
-- The primary product value is explaining why expensive Impala workloads are
-  slow, with explicit evidence quality and conservative action routing.
+- Keep Big Data SQL/lakehouse diagnostics as the long-term category, but make
+  the current product promise Impala-first until another engine has implemented
+  facts, fixtures, collection contracts, and safety tests.
+- Treat upstream native Impala AI profile analysis as a reason to strengthen
+  Query Doctor's cross-engine operator-workbench direction, not as permission to
+  claim multi-engine support early.
+- Start second-engine exploration when it helps shape the real engine fact
+  contract, even before support-claim gates are complete. Keep that work
+  fixture-driven, non-public, and unable to affect normal Impala workflows until
+  it has safety coverage and diagnostic value.
+- The primary product value is ranking suspicious Recent queries, explaining
+  which evidence is supported, not observed, or unknown, and routing operators
+  toward a safe inspection/change/verification loop.
 - A trusted SQL draft is a useful outcome only when Python-owned facts,
   deterministic execution, and validation prove the rewrite boundary. It is not
   the flagship success metric.
@@ -68,15 +94,22 @@ not as an "AI SQL optimizer" whose primary promise is automatic SQL rewriting.
   learning.
 - The LLM's durable role is report wording, recommendation wording, and
   engineering review support. It should not be treated as the trusted SQL writer
-  for supported optimizer recipes.
+  for supported optimizer recipes or as the source of diagnostic facts.
 - Marketing, demos, and benchmarks should lead with evidence-backed diagnosis:
   stats vs SQL shape vs runtime/admission/skew/data movement vs unknown, then
   show SQL rewrites only for recipe-backed cases.
-- Product growth should deepen the current Impala wedge before broadening the
-  engine surface. Spark SQL is not a near-term direction: it would require a
-  different runtime/profile fact model, collector surface, optimizer contract,
-  and market positioning before Query Doctor has proven enough value on Impala
-  workloads.
+- Upstream Impala profile-analysis work should become a compatibility target:
+  profile JSON ingestion, parser coverage, redaction edge cases, and confidence
+  labels are useful seams; duplicating the Impala Web UI native AI tab is not.
+- Profile dialect and counter semantics are part of the trust contract. The
+  analyzer should not assume that classic text, classic JSON, classic Thrift,
+  and experimental profile-v2 expose equivalent sections, counter totals, or
+  instance-level detail.
+- Product growth should deepen the current Impala wedge while preparing the
+  engine fact contract that makes a future second engine real. Spark SQL is not
+  a near-term direction: it would require a different runtime/profile fact
+  model, collector surface, optimizer contract, and market positioning before
+  Query Doctor has proven enough value on Impala workloads.
 
 ## Success Metrics
 
@@ -99,6 +132,10 @@ Optimizer-specific metrics:
 - A low `safe_to_attempt` rate on broad real Impala workloads is acceptable
   when no Python-owned recipe can prove the transform. It should be measured as
   recipe coverage, not as model failure.
+- Broad Recent smoke runs should track optimizer funnel coverage with
+  `scripts/audit_optimizer_funnel.py`, separating not-applicable, no-recipe,
+  source-unavailable, safety-threshold, recipe-adjacent, and draft-ready cases
+  before recipe yield is interpreted.
 
 ## Safety Baseline
 
@@ -112,6 +149,9 @@ Planning summary:
 - External collection stays explicit, bounded, read-only, redacted, and safe by
   default.
 - Report and optimizer generation stays explicit and validation-gated.
+- Profile-derived findings need a known profile dialect and an evidence tier
+  before they can influence primary bottleneck classification or trusted report
+  wording.
 
 ## Web UI And Deployment Direction
 
@@ -158,6 +198,13 @@ items compete.
 Do first when touched, because these items protect the trust boundary or unlock
 multiple later changes:
 
+- Product positioning contract: keep public docs and in-product help aligned on
+  local-first Impala production triage, Recent Scan as the flagship workflow,
+  Query ID as secondary, Query Optimizer as separate/read-only, and LLM wording
+  downstream of Python-owned facts.
+- Upstream alignment tracker: keep
+  [upstream-impala-ai-analyzer.md](upstream-impala-ai-analyzer.md) current when
+  IMPALA-14953 changes materially enough to affect Query Doctor scope.
 - Browser and trusted-report safety: keep typed raw-free view models,
   presenter-owned display strings, consolidated trusted artifact loading,
   export of validated safe Markdown, and browser-safety tests for any new
@@ -172,6 +219,12 @@ multiple later changes:
   canonical context keys/headings, legacy `cm_*` fallbacks, metrics reads by
   abstract `signal_id`, source provenance coverage wording, and legacy-safe
   compatibility.
+- Profile dialect and evidence-tier contract: detect `classic_text_profile`,
+  `classic_json_profile`, `classic_thrift_profile`,
+  `experimental_profile_v2`, or `unknown` before profile-derived analysis;
+  classify profile signals as `strong`, `medium`, `context_only`, or
+  `unsupported`; and prevent unknown or partially mapped dialects from driving
+  primary bottleneck claims.
 
 ### P1 - Diagnostic Quality
 
@@ -186,11 +239,26 @@ Cloudera Manager deployments:
 - Direct Impala quality: sanitized real fixtures for fresh daemon profile
   layouts, Prometheus metric coverage, profile resource/timing action cards,
   and safe limitation wording when metrics, events, or metadata are unavailable.
+- Profile dialect quality: add fixtures for classic text, classic JSON,
+  classic Thrift, and experimental profile-v2 layouts; map only explicitly
+  supported sections; and add regression tests that keep profile-v2 limitations
+  visible without inventing missing instance-level evidence.
 - Metadata and stats diagnosis: structured stats/query-shape facts, partition
   and join/filter column coverage, bottleneck calibration, and unknown-rate
   measurement on real batches.
 - Workload-level diagnosis: raw-free fingerprint grouping, frequent-short
   workload triage, baseline/regression detection, and action outcome tracking.
+- Upstream compatibility preparation: design a narrow profile JSON /
+  parser/redactor compatibility plan and golden-profile quality harness before
+  implementing any adapter.
+- Multi-engine preparation: shape the engine fact contract from implemented
+  Impala behavior so a later second engine can publish supported, not observed,
+  and unknown facts without pretending every engine has Impala counters.
+- Experimental second-engine discovery: choose one named analytical SQL engine
+  from available artifacts or design-partner demand, then build a fixture-only
+  parser/fact spike that exists to test the engine fact contract. It must not
+  add public support claims, a runtime engine selector, or browser/report output
+  before safety tests exist.
 - Optimizer usefulness: fresh optimizer funnel measurement, expression-projection
   predicate pushdown, UNION ALL branch predicate pushdown, narrow Python-owned
   recipes for repeated expensive ETL shapes, and action-quality feedback.
@@ -233,49 +301,77 @@ real Impala workloads:
 - Direct Impala daemon source follow-up: add real fixture coverage, profile
   action cards, and a normalized engine fact contract before broadening beyond
   the current bounded Recent/Running/Known Query ID workflows.
+- Profile JSON compatibility adapter only after a stable upstream contract,
+  dialect detection, parser fixtures, redaction tests, evidence-tier mapping,
+  and raw-free fact mapping exist.
 - Prometheus-style metrics source follow-up: add sanitized real Ambari/Hadoop
   fixtures, strengthen direct Impala workflow coverage, and add additional
   allowlisted metric profiles only with tests.
-- Engine profile-fact contract refactor before adding any second SQL engine.
+- Engine profile-fact contract refactor before supporting any second SQL engine.
+- Fixture-only second-engine spike may run in parallel with the engine
+  fact-contract refactor when it is explicitly non-product behavior and cannot
+  affect the default Impala workflow.
+- Supported second-engine product path only after parser/fact fixtures,
+  collection contracts, metadata allowlists, browser/report safety tests, and
+  a documented support gap matrix exist.
 - Storage/table-format facts only after provider and engine boundaries
   stabilize.
 
 ### Deferred - Not Current Support
 
 Keep these out of implementation plans until their explicit readiness signal is
-met: shared deployment, multi-tenancy, a second SQL engine, plugin framework,
-generic SQL execution, broad package reorganization, and fake adapters.
+met: shared deployment, multi-tenancy, public second-engine support, plugin
+framework, generic SQL execution, broad package reorganization, and fake
+adapters.
 
 ## Next Pull Queue
 
 This is the short ordered queue for the next roadmap pulls. Pull a different
 item first only when the touched area has a direct P0 safety or contract risk.
 
-1. Continue the desktop Web UI audit with the standalone Query Optimizer page:
+1. Continue the profile evidence-tier contract before broadening upstream
+   profile compatibility: the dialect detector is in place, so the next pulls
+   should add the remaining promotion-specific fixtures that prove scan-skew,
+   exchange-wait, disk-I/O, admission, and memory claims require the right
+   supporting sections. The first client-fetch-tail detector is implemented and
+   should now be validated against sanitized real profiles. The next focused
+   analyzer implementation slice should harden `runtime_admission`: keep the
+   existing label, promote only selected-query admission wait/result/timeline
+   evidence, and keep pool/cluster/runtime context-only signals from becoming
+   primary on their own.
+2. Continue the desktop Web UI audit with the standalone Query Optimizer page:
    tighten the first screen around the SQL input, Analyze action, and
    scope/safety disclosure without weakening the no-echo or read-only trust
    boundary.
-2. Finish the Diagnose results-table simplification pass: reduce the default
+3. Keep the IMPALA-14953 upstream tracker current and turn stable upstream
+   profile JSON/parser/redactor signals into a narrow compatibility plan before
+   coding an adapter.
+4. Define the first engine fact-contract slice and a fixture-only second-engine
+   discovery spike, starting from
+   [trino-discovery-spike.md](trino-discovery-spike.md), that can validate the
+   contract without changing current Impala support or public claims.
+5. Finish the Diagnose results-table simplification pass: reduce the default
    Recent results table to "which queries are bad and worth opening", move
    technical status/context such as stats, metadata, table key, score reasons,
    and group explanations behind Details or explicit disclosures, and then run
    a short repeat UI audit against the local web page.
-3. Finish the remaining provider-neutral runtime contract tail: report-validator
+6. Finish the remaining provider-neutral runtime contract tail: report-validator
    heading tests when aliases or headings change, plus compatibility-safe
    UI/presenter naming cleanup.
-4. Use source provenance for safe Details/report coverage and limitation
+7. Use source provenance for safe Details/report coverage and limitation
    wording, including explicit direct Impala coverage for profile, optional
    Prometheus metrics, unavailable events, and metadata status.
-5. Stabilize the new workload-diagnostics surfaces on sanitized real batches:
+8. Stabilize the new workload-diagnostics surfaces on sanitized real batches:
    repeated/frequent-short/regressed groups, admin digest, action queue,
    workload detail pages, and action outcome rollups.
-6. Analyze the 7 recipe-detected/no-draft and 13 recipe-adjacent structural
-   boundary cases from the fresh Cloudera Manager `QUERY >=60s` sample, then
-   decide whether a narrow deterministic recipe, safer structural explanation,
-   or metadata-enabled rerun is the next highest-value optimizer step.
-7. Continue replacing report-side stats/query-shape extraction with structured
+9. Use `scripts/audit_optimizer_funnel.py` on the latest broad Recent smoke to
+   choose the next optimizer slice from repeated workload groups and no-recipe
+   shape families. Start with the largest repeated family where analyzer facts
+   and validation can prove a safe Python-owned transform; otherwise keep the
+   result as review guidance rather than a trusted SQL draft.
+10. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
-8. Add safe query-type grouping only after deterministic classifier facts can
+11. Add safe query-type grouping only after deterministic classifier facts can
    explain unknown or unsupported shapes without reading raw SQL.
 
 ## Dependency And Readiness Rules
@@ -291,14 +387,24 @@ when a tempting implementation would skip a contract boundary.
   depends on are in place. Do not add placeholder provider packages; expand
   provider boundaries only from implemented Cloudera Manager, direct Impala, and
   Prometheus paths.
-- A second SQL engine must wait until all of these are true:
+- Profile-derived classification order is fixed: detect dialect, map supported
+  sections, assign evidence tiers, then classify. Unknown profiles must not
+  produce primary bottleneck classification. Experimental profile-v2 sections
+  may produce only limited findings until each section has explicit mapping,
+  fixtures, and safety tests. Scan-skew and backend-tail claims require
+  per-instance or equivalent aggregate evidence, not just operator totals.
+- Second-engine exploration and second-engine support are different gates.
+  Exploration may start earlier when it is fixture-only, scoped to shaping the
+  engine fact contract, does not add a public support claim, does not add fake
+  adapters, and cannot affect default Impala workflows.
+- A supported second SQL engine must wait until all of these are true:
   `case_primary_bottleneck = unknown` is below roughly 20% on a representative
-  100+ case real Impala batch, workload fingerprinting and baselines work on
-  real data, action outcome tracking has at least 50 applied/not-applied
-  records, direct Impala diagnosis is stable on at least two non-Cloudera
-  Manager deployments, a real design partner asks for a specific second engine
-  with a real workload, and an engine profile-fact contract already exists from
-  implemented behavior.
+  100+ case real Impala batch or there is a design-partner workload that proves
+  cross-engine urgency, workload fingerprinting and baselines work on real data,
+  action outcome tracking has applied/not-applied records, direct Impala
+  diagnosis is stable on non-Cloudera-Manager deployments, a real design
+  partner or real artifact set identifies a specific second engine, and an
+  engine profile-fact contract already exists from implemented behavior.
 - Shared deployment work must wait for an explicit shared-deploy product
   decision, a real design partner, and a design for authentication, ownership,
   audit, persistence, and operational support.
@@ -370,6 +476,12 @@ workflows.
   verdict, recommendation, verification step, or an explicit limitation.
 - Keep all dynamic browser text behind presenter/display safety helpers.
 - Do not render raw artifacts or arbitrary docs in the browser.
+- Post-release Details audit follow-ups: align the Recent Results `Finding`
+  wording with Details verdict wording, replace vague score-summary copy such
+  as "positive score from detailed analyzer reasons" with a signal-class
+  summary, and evaluate whether local `batch_summary.json` still needs to store
+  `case_dir` or can move to a narrower server-owned case reference without
+  disrupting Details, report, or optimizer routes.
 
 ### 3. Runtime Context Quality
 
@@ -469,6 +581,97 @@ Provider-neutral runtime context cleanup:
   with Cloudera Manager wrappers over existing helpers. Avoid one broad
   provider object, fake implementations, or placeholder packages.
 
+Profile dialect and counter evidence acceptance details:
+
+Implemented baseline:
+
+- profile dialect detection and primary-bottleneck policy are in place;
+- incomplete/cancelled exec-node guardrails are in place for mapped profile
+  signals;
+- client-fetch-tail facts and primary routing are in place for mapped
+  `ClientFetchWait*` counters, with Query Timeline fetch and
+  `GetInFlightProfileTimeStats` kept as context unless corroborated.
+
+Next P0 analyzer slices:
+
+1. Harden `runtime_admission` evidence tiers:
+   - keep `runtime_admission` as the existing primary label;
+   - treat selected-query admission wait/result and profile/query-timeline
+     admission facts as strong;
+   - treat pool saturation, cluster pressure, statestore warnings, events,
+     metrics, and duration alone as context-only unless tied to the selected
+     query by deterministic facts;
+   - add regression tests for both promotion and non-promotion paths.
+2. Harden memory-pressure promotion:
+   - non-zero spill/scratch counters can be strong query-specific evidence;
+   - memory estimates, reservations, and runtime context alone remain
+     context-only.
+3. Harden scan-skew, exchange-wait, and disk-I/O promotion:
+   - scan skew requires per-instance scan bytes/rows/time or mapped equivalent
+     aggregate evidence;
+   - exchange/network/inactive timers need mapped exchange context and
+     correlation before exceeding medium evidence;
+   - disk I/O wait needs bytes and operator context before promotion.
+
+1. Dialect detection:
+   - classify profiles as `classic_text_profile`, `classic_json_profile`,
+     `classic_thrift_profile`, `experimental_profile_v2`, or `unknown` before
+     profile-derived analyzer work begins;
+   - emit a safe limitation for unknown or partially mapped dialects;
+   - keep raw profile payload, local paths, hostnames, users, and artifact names
+     out of browser-visible text and trusted reports.
+2. Evidence tiers:
+   - `strong`: query-specific profile evidence from a mapped dialect section,
+     with required corroborating fields for that finding family;
+   - `medium`: query-specific evidence that is mapped but missing one
+     corroborating dimension, suitable for follow-up direction but not a root
+     cause claim;
+   - `context_only`: runtime, estimate, or aggregate context that can support a
+     recommendation only when stronger analyzer facts exist;
+   - `unsupported`: missing, unknown, or unmapped evidence that must not
+     influence primary bottleneck classification.
+3. Bottleneck promotion rules:
+   - admission wait is strong only from query timeline, admission wait, or
+     admission result facts for the selected query;
+   - memory pressure is strong with explicit non-zero spill or scratch counters,
+     while estimates and reservations alone stay context-only;
+   - scan skew is strong only with per-instance scan bytes, rows, time, or a
+     mapped equivalent aggregate section;
+   - exchange wait, network, and inactive timers require correlation before they
+     can exceed medium evidence;
+   - disk I/O wait requires bytes and operator context before promotion;
+   - baseline implemented: mapped `ClientFetchWait*` counters can strongly
+     support a client-fetch-tail finding only when they are a large share of
+     selected-query duration; primary bottleneck routing requires that finding
+     to be the top elapsed runtime finding. They are not a Hue, network, BI
+     tool, or client root-cause claim by themselves.
+4. Incomplete/cancelled node guardrail:
+   - baseline implemented: mapped profile-wide and per-node incomplete or
+     cancelled signals now emit raw-free Exec Node Completeness facts and block
+     affected row/cardinality promotion;
+   - detect mapped profile signals that an exec node may be incomplete,
+     closed-early, or cancelled;
+   - downgrade cardinality, row-count, scan-selectivity, and
+     runtime-filter-effectiveness conclusions for affected nodes;
+   - never infer an empty table, meaningful zero-row selectivity, or runtime
+     filters filtering everything from incomplete node evidence.
+5. Runtime filter and storage limitations:
+   - treat HDFS runtime-filter counters as interpretable only when the scan
+     section and node-completion state are mapped;
+   - keep Kudu runtime-filter effectiveness `unknown` or `unsupported` until a
+     Kudu-specific counter contract and fixtures exist;
+   - downgrade raw throughput interpretation for mixed data-cache and
+     remote/object-store I/O, and do not claim remote storage slowness without
+     source-specific evidence.
+6. Heuristic-only backlog:
+   - keep exchange-partition skew as heuristic-only until receiver distribution
+     counters or equivalent aggregate evidence exists;
+   - treat `GetInFlightProfileTimeStats`, huge profiles, and high `mt_dop`
+     profile overhead as profile-serialization context, not client-fetch root
+     cause proof;
+   - keep planner mode / Calcite estimate-drift awareness as P2 context until
+     mapped fixtures can compare plan mode, estimates, and runtime rows.
+
 Workload stabilization acceptance details:
 
 1. Real-batch workload validation:
@@ -522,6 +725,13 @@ Keep optimizer trust strict while making useful outcomes more common.
   candidates can still produce zero trusted SQL drafts. The bottleneck was not
   validation failure or missing table stats; it was insufficient Python-owned
   proof for a safe rewrite, high-risk SQL shape, or no material LLM change.
+- A 1,000-case Recent smoke audit showed that the largest current optimizer
+  gap is no-recipe coverage rather than the old `not_candidate` bucket. After
+  recomputation with current rewrite-support classification, broad cases split
+  roughly into `not_candidate` 496, `guidance_only` 492,
+  `source_unavailable` 11, and `draft_disabled` 1. The no-recipe layer was
+  dominated by plain SQL workload groups, not by current CTE/derived
+  predicate-pushdown surfaces.
 - Add anonymized real fixtures for long `WITH`, CTE-heavy,
   join/filter/projection-preservation, and model-discipline failure cases.
 - Add Python-owned recipes only where analyzer facts and validation can prove
@@ -565,46 +775,50 @@ completed implementation inventory.
 
 Remaining near-term optimizer work:
 
-1. Re-run the real optimizer benchmark after the prompt-route split, model
+1. Run `scripts/audit_optimizer_funnel.py` on the latest broad Recent smoke and
+   use repeated workload groups plus no-recipe shape-family counts as the
+   recipe-candidate backlog. The first target should be the largest repeated
+   family where analyzer facts and validation can prove a safe transform.
+2. Re-run the real optimizer benchmark after the prompt-route split, model
    default split, rewriteability taxonomy, recipe-aware ranking, and
    per-conjunct predicate-pushdown baseline. Compare trusted SQL drafts,
    deterministic no-recipe outcomes, recommendations-only outcomes, and
    validation failures before adding another recipe.
-2. Target new recipes at expensive ETL patterns rather than low-value small
+3. Target new recipes at expensive ETL patterns rather than low-value small
    queries: partition-limited `INSERT OVERWRITE ... anti-join staging UNION ALL
    staging`, large-fact joins to small distinct key sets, wider post-UNION
    rollups, pre-aggregation before exchange, and repeated-scan / redundant CTE
    shapes.
-3. Add narrow expression-projection predicate pushdown. The first version
+4. Add narrow expression-projection predicate pushdown. The first version
    should allow only deterministic scalar projection expressions with no
    aggregate/window/subquery inputs and should substitute output aliases back to
    exact source expressions under validation.
-4. Extend UNION ALL branch predicate pushdown after branch lineage facts can
+5. Extend UNION ALL branch predicate pushdown after branch lineage facts can
    prove which branch owns the filtered output column. Validation must preserve
    branch count/order/schema and keep untouched branches byte-equivalent.
-5. Treat `pre_aggregate_join_input` as a larger follow-up project, not the next
+6. Treat `pre_aggregate_join_input` as a larger follow-up project, not the next
    quick recipe: additive measure proof, join-key/group-key containment, outer
    joins, `AVG`, and `COUNT(DISTINCT ...)` make this high value but high risk.
-6. Turn any repeated successful generic rewrite into an analyzer-owned fact plus
+7. Turn any repeated successful generic rewrite into an analyzer-owned fact plus
    Python-owned recipe only when validation can prove the boundary.
-7. Validate the expanded CTE facts against sanitized real fixtures and add only
+8. Validate the expanded CTE facts against sanitized real fixtures and add only
    missing analyzer-owned categories that block proof of specific future
    recipes.
-8. Add more focused deterministic recipes for CTE simplification only after
+9. Add more focused deterministic recipes for CTE simplification only after
    recipe-specific validation exists, especially single-use CTE inlining and
    wider pass-through variants with aliases or downstream CTE consumers.
-9. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
+10. Validate analyzer-owned stats-evidence facts with real sanitized fixtures,
    especially stats-present-but-not-primary cases and mixed stats/runtime
    bottleneck signals.
-10. Use repeated real-case batches to measure the full optimizer funnel after
+11. Use repeated real-case batches to measure the full optimizer funnel after
    each facts or recipe change: optimization candidate, stats/query context,
    recipe detected, safe to attempt, trusted draft, and no-draft reason.
-11. Automate the optimizer funnel against fixture and sanitized real corpora
+12. Automate the optimizer funnel against fixture and sanitized real corpora
    outside the normal fast CI path. Each run should produce a raw-free
    `funnel.json` with candidate, recipe-detected, draft-ready, trusted-draft,
    no-rewrite, recommendations-only, and failure counts, and alert on material
    regressions.
-12. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
+13. Keep LLM prompts constrained to applying analyzer-proven rewrite tasks with
    minimal diffs.
 
 Stop condition for the trusted SQL-draft direction:
@@ -808,9 +1022,12 @@ StarRocks, Apache Doris, ClickHouse, and Dremio. They require engine-specific
 collectors, parsers, metadata allowlists, validators, browser safety tests, and
 report coverage before being documented as supported.
 
-Do not add a second engine until Impala diagnosis is useful on real workloads.
-A practical readiness bar is `case_primary_bottleneck = unknown` below roughly
-20% on a representative real-case batch.
+Do not claim a second supported engine until Impala diagnosis is useful on real
+workloads or a design-partner workload proves cross-engine urgency. A practical
+support-claim readiness bar remains `case_primary_bottleneck = unknown` below
+roughly 20% on a representative real-case batch, plus the support gates above.
+Exploratory fixture-only work can start earlier when it is used to shape the
+engine fact contract and stays out of public support surfaces.
 
 Spark SQL is explicitly deferred for now. Its useful diagnostic surface is a
 different model from Impala: SQL plans plus per-stage/per-task metrics,
@@ -826,12 +1043,17 @@ Recommended expansion order is documented in
    engine fact contracts.
 2. Engine fact contract refactor so analyzer services consume normalized
    parser outputs rather than raw Impala profile internals.
-3. Second engine only after real design partner demand. Trino is the default
-   candidate to validate because of migration-path fit, but it is not a public
-   commitment.
-4. Broaden Prometheus-style metrics profiles only after the first direct Impala
+3. Fixture-only second-engine discovery for one named candidate when it answers
+   an engine fact-contract question. Trino is the default candidate to validate
+   because of migration-path fit, but it is not a public commitment. See
+   [engines/trino-diagnostic-contract.md](engines/trino-diagnostic-contract.md)
+   for Trino source and evidence rules.
+4. Supported second engine only after real design partner demand, collection
+   contracts, parser/fact fixtures, metadata allowlists, browser/report safety
+   tests, and a support gap matrix.
+5. Broaden Prometheus-style metrics profiles only after the first direct Impala
    metrics contract is stable.
-5. Storage/table-format facts after provider and engine boundaries stabilize.
+6. Storage/table-format facts after provider and engine boundaries stabilize.
 
 Storage and table-format context is a separate axis from query engines. Future
 context may cover HDFS, object storage, Apache Kudu, Apache Iceberg, Apache

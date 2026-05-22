@@ -49,6 +49,9 @@ jobs:
       - name: Check local Markdown links
         run: python scripts/check_markdown_links.py
 
+      - name: Check active docs
+        run: python scripts/check_active_docs.py
+
       - name: Build source and wheel distributions
         run: python -m build
 

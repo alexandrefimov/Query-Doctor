@@ -31,6 +31,30 @@ RULES: tuple[Rule, ...] = (
         notes=("Keep active docs current and avoid presenting historical notes as contracts.",),
     ),
     Rule(
+        name="Agent operating docs",
+        patterns=(
+            "AGENTS.md",
+            "docs/agent-quickstart.md",
+            "docs/agent-playbook.md",
+            "docs/codex-handoff.md",
+            "docs/code-audit.md",
+            "docs/code-map.md",
+            "docs/test-matrix.md",
+        ),
+        read=("AGENTS.md", "docs/agent-quickstart.md", "docs/agent-playbook.md"),
+        tests=(
+            "python3 scripts/check_active_docs.py",
+            "python3 scripts/check_markdown_links.py",
+            "python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_staged_public_safety.py",
+            "git diff --check",
+        ),
+        changelog="yes, for major agent-facing documentation baseline changes",
+        notes=(
+            "Keep AGENTS.md as the concise hard-rules entry point; link to "
+            "canonical docs instead of copying full contracts.",
+        ),
+    ),
+    Rule(
         name="Web UI / routes",
         patterns=("query_doctor/web/**", "tests/test_web*.py"),
         read=("docs/codex-handoff.md", "docs/code-audit.md", "docs/safety-contract.md"),
@@ -118,6 +142,10 @@ RULES: tuple[Rule, ...] = (
             "scripts/check_active_docs.py",
             "scripts/check_staged_public_safety.py",
             "scripts/local_gate.sh",
+            "scripts/worktree_status.py",
+            ".github/workflows/docs.yml",
+            ".github/workflows/release-gate.yml",
+            ".pre-commit-config.yaml",
             "docs/agent-playbook.md",
             "docs/test-matrix.md",
             "docs/code-map.md",
@@ -125,10 +153,11 @@ RULES: tuple[Rule, ...] = (
             "tests/test_agent_preflight.py",
             "tests/test_check_active_docs.py",
             "tests/test_check_staged_public_safety.py",
+            "tests/test_worktree_status.py",
         ),
         read=("docs/codex-handoff.md", "docs/test-matrix.md", "docs/code-map.md"),
         tests=(
-            "python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_staged_public_safety.py",
+            "python3 -m pytest -q tests/test_agent_preflight.py tests/test_check_active_docs.py tests/test_check_staged_public_safety.py tests/test_worktree_status.py",
             "python3 scripts/check_active_docs.py",
             "git diff --check",
         ),
@@ -141,8 +170,15 @@ def path_matches(path: str, pattern: str) -> bool:
     return fnmatch.fnmatch(path, pattern) or path == pattern.rstrip("/")
 
 
+def normalize_path(path: str) -> str:
+    normalized = path.strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
 def matching_rules(paths: Iterable[str]) -> list[Rule]:
-    normalized = [path.strip().lstrip("./") for path in paths if path.strip()]
+    normalized = [normalize_path(path) for path in paths if path.strip()]
     found: list[Rule] = []
     for rule in RULES:
         if any(path_matches(path, pattern) for path in normalized for pattern in rule.patterns):
@@ -198,6 +234,7 @@ def unique_ordered(items: Iterable[str]) -> list[str]:
 
 def validation_scope_notes(rules: Sequence[Rule]) -> list[str]:
     names = {rule.name for rule in rules}
+    agent_names = {"Agent operating docs", "Agent tooling"}
     notes = [
         "Start with the listed focused validation; run full `python3 -m pytest` "
         "only for shared helpers, trust-boundary moves, cross-workflow behavior, "
@@ -208,12 +245,12 @@ def validation_scope_notes(rules: Sequence[Rule]) -> list[str]:
             "Full pytest is not needed for docs-only changes unless "
             "browser-rendered Help/UI text changed."
         )
-    elif names <= {"Docs", "Agent tooling"}:
+    elif names <= {"Docs"} | agent_names:
         notes.append(
             "Full pytest is not usually needed for agent docs/tooling; run the "
             "listed agent tests and doc checks."
         )
-    if names == {"Agent tooling"}:
+    if names & agent_names and names <= {"Docs"} | agent_names:
         notes.append(
             "Web, optimizer, report, collector, and analyzer suites are not "
             "needed unless their routing rules changed."

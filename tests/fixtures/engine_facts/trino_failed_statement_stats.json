@@ -1,0 +1,44 @@
+{
+  "fixtureVersion": "synthetic-trino-failed-statement-stats-v1",
+  "statementStats": {
+    "state": "FAILED",
+    "queued": false,
+    "scheduled": true,
+    "nodes": 3,
+    "totalSplits": 18,
+    "queuedSplits": 0,
+    "runningSplits": 0,
+    "completedSplits": 8,
+    "elapsedTimeMillis": 42000,
+    "queuedTimeMillis": 300,
+    "planningTimeMillis": 1200,
+    "executionTimeMillis": 40500,
+    "cpuTimeMillis": 26000,
+    "wallTimeMillis": 41000,
+    "processedRows": 640000,
+    "processedBytes": 67108864,
+    "peakMemoryBytes": 805306368,
+    "spilledBytes": 0,
+    "fullyBlocked": false,
+    "rootStage": {
+      "state": "FAILED",
+      "done": false,
+      "nodes": 3,
+      "totalSplits": 18,
+      "completedSplits": 8,
+      "processedRows": 640000,
+      "processedBytes": 67108864,
+      "subStages": [
+        {
+          "state": "FINISHED",
+          "done": true,
+          "nodes": 3,
+          "totalSplits": 8,
+          "completedSplits": 8,
+          "processedRows": 640000,
+          "processedBytes": 67108864
+        }
+      ]
+    }
+  }
+}

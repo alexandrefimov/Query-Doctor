@@ -42,6 +42,16 @@ includes stats-present-but-not-primary, mixed stats/runtime, and context-only
 runtime cases. Use these for routing regressions where profile parsing is not
 the behavior under test.
 
+## Engine Fact Contract Fixtures
+
+`engine_facts/trino_statement_stats.json`,
+`engine_facts/trino_failed_statement_stats.json`, and
+`engine_facts/trino_completed_event.json` are synthetic Trino fixtures for the
+fixture-only engine fact contract spike. They cover statement-statistics and
+offline event-listener shapes. They must stay free of SQL text, identities,
+hostnames, URLs, object names, stack traces, local paths, raw connector details,
+and production payloads. They do not imply Trino product support.
+
 ## Optimizer Fixtures
 
 Optimizer fixtures live under `optimizer_cases/` and each case should include:

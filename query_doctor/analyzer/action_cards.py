@@ -58,6 +58,8 @@ def build_action_cards(analysis: dict[str, Any], max_cards: int = 5) -> list[dic
         cards.append(admission_card)
 
     for op in analysis.get("cardinality_anomalies", []):
+        if not row_conclusions_supported_for_operator(analysis, op):
+            continue
         if (op.get("rows_actual_to_estimated_ratio") or 0) < 100:
             continue
         if (op.get("actual_rows") or 0) < large_rows_threshold:
@@ -74,6 +76,7 @@ def build_action_cards(analysis: dict[str, Any], max_cards: int = 5) -> list[dic
                 total_sent=total_sent,
                 large_bytes_threshold=large_bytes_threshold,
                 analysis=analysis,
+                row_evidence_supported=True,
             )
         )
 
@@ -94,10 +97,21 @@ def build_action_cards(analysis: dict[str, Any], max_cards: int = 5) -> list[dic
                 total_sent=total_sent,
                 large_bytes_threshold=large_bytes_threshold,
                 analysis=analysis,
+                row_evidence_supported=row_conclusions_supported_for_operator(analysis, op),
             )
         )
 
     return sorted(cards, key=action_card_score, reverse=True)[:max_cards]
+
+
+def row_conclusions_supported_for_operator(analysis: dict[str, Any], op: dict[str, Any]) -> bool:
+    completeness = analysis.get("exec_node_completeness")
+    completeness = completeness if isinstance(completeness, dict) else {}
+    affected = completeness.get("affected_operators")
+    if not isinstance(affected, list):
+        return True
+    operator_id = str(op.get("operator_id") or "")
+    return not any(str(item.get("operator_id") or "") == operator_id for item in affected)
 
 
 def make_runtime_admission_action_card(analysis: dict[str, Any]) -> dict[str, Any] | None:
@@ -172,13 +186,19 @@ def make_action_card(
     total_sent: dict[str, Any],
     large_bytes_threshold: float,
     analysis: dict[str, Any],
+    row_evidence_supported: bool,
 ) -> dict[str, Any]:
-    evidence = [
-        f"operator: {op['label']}",
-        f"actual rows: {op['actual_rows_human']}",
-        f"estimated rows: {op['estimated_rows_human']}",
-        f"actual/estimated ratio: {op['rows_ratio_human']}",
-    ]
+    evidence = [f"operator: {op['label']}"]
+    if row_evidence_supported:
+        evidence.extend(
+            [
+                f"actual rows: {op['actual_rows_human']}",
+                f"estimated rows: {op['estimated_rows_human']}",
+                f"actual/estimated ratio: {op['rows_ratio_human']}",
+            ]
+        )
+    else:
+        evidence.append("row-count evidence: limited by exec-node completeness guardrail")
     if related_memory:
         evidence.extend(
             [
@@ -207,10 +227,9 @@ def make_action_card(
         if line and line not in evidence:
             evidence.append(line)
 
-    admin_actions = [
-        "Check per-host RowsProduced for this operator.",
-        "Check spill/scratch counters for this operator if available in profile.",
-    ]
+    admin_actions = ["Check spill/scratch counters for this operator if available in profile."]
+    if row_evidence_supported:
+        admin_actions.insert(0, "Check per-host RowsProduced for this operator.")
     if related_memory:
         admin_actions.append("Check per-host PeakMemUsage for this operator.")
         admin_actions.append("Check whether admission pool memory limits were hit.")
@@ -223,31 +242,49 @@ def make_action_card(
 
     tables = context_referenced_tables(analysis)
     user_actions: list[str] = []
-    if tables:
-        user_actions.append(
-            "Run SHOW TABLE STATS for referenced tables involved in this query: "
-            + ", ".join(f"`{table}`" for table in tables)
-            + "."
+    if row_evidence_supported:
+        if tables:
+            user_actions.append(
+                "Run SHOW TABLE STATS for referenced tables involved in this query: "
+                + ", ".join(f"`{table}`" for table in tables)
+                + "."
+            )
+        else:
+            user_actions.append(
+                "Run SHOW TABLE STATS for referenced tables involved in this query."
+            )
+        user_actions.extend(
+            [
+                "Run SHOW COLUMN STATS for join/filter columns once join/filter columns are identified.",
+                "Check whether the query creates many-to-many JOIN amplification before SORT/ANALYTIC/AGGREGATE.",
+                "If stats are missing or stale, refresh stats through the approved operational process, then re-run the query.",
+            ]
         )
     else:
-        user_actions.append("Run SHOW TABLE STATS for referenced tables involved in this query.")
-    user_actions.extend(
-        [
-            "Run SHOW COLUMN STATS for join/filter columns once join/filter columns are identified.",
-            "Check whether the query creates many-to-many JOIN amplification before SORT/ANALYTIC/AGGREGATE.",
-            "If stats are missing or stale, refresh stats through the approved operational process, then re-run the query.",
-        ]
-    )
+        user_actions.extend(
+            [
+                "Collect a completed profile before using row/cardinality evidence for this operator.",
+                "Review peak memory, spill/scratch counters, and admission pool memory limits for this operator.",
+            ]
+        )
 
-    missing_evidence = [
-        "Exact join/filter keys unless parsed deterministically.",
-        "Per-host operator distribution.",
-        "Table/column stats freshness unless parsed from context.",
-        "Hot key distribution.",
-        "Skew is suspected but not proven.",
-    ]
-    for missing in context_missing_metadata(analysis, {"SHOW TABLE STATS", "SHOW COLUMN STATS"}):
-        missing_evidence.append(f"Collector metadata missing: {missing}.")
+    missing_evidence = ["Per-host operator distribution."]
+    if row_evidence_supported:
+        missing_evidence.extend(
+            [
+                "Exact join/filter keys unless parsed deterministically.",
+                "Table/column stats freshness unless parsed from context.",
+                "Hot key distribution.",
+                "Skew is suspected but not proven.",
+            ]
+        )
+    else:
+        missing_evidence.append("Completed exec-node evidence for row/cardinality conclusions.")
+    if row_evidence_supported:
+        for missing in context_missing_metadata(
+            analysis, {"SHOW TABLE STATS", "SHOW COLUMN STATS"}
+        ):
+            missing_evidence.append(f"Collector metadata missing: {missing}.")
 
     return {
         "title": title,
@@ -257,7 +294,11 @@ def make_action_card(
         "admin_actions": admin_actions,
         "user_actions": user_actions,
         "how_to_verify": [
-            "Re-run the query and compare actual vs estimated rows for the same operator.",
+            (
+                "Re-run the query and compare actual vs estimated rows for the same operator."
+                if row_evidence_supported
+                else "Re-run the query and confirm exec-node completeness before comparing row counts."
+            ),
             "Compare PeakMemUsage and spill counters before/after.",
             "Compare runtime and bytes sent/read before/after.",
         ],

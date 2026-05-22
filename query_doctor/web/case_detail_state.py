@@ -8,6 +8,7 @@ from typing import Any
 
 from query_doctor.web.case_detail_context import (
     case_allows_llm_report,
+    case_allows_query_optimizer,
     resolve_case_detail_settings,
     resolve_running_case_detail_settings,
     running_detail_kwargs,
@@ -29,18 +30,36 @@ from query_doctor.web.optimizer_validation import (
 )
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseDetailView,
+    case_score_severity,
     present_recent_scan_case_detail,
 )
 from query_doctor.web.trusted_artifacts import (
+    REPORT_CASE_UNAVAILABLE_REASON,
+    case_has_analyzer_facts,
     case_has_safe_source_sql,
     load_batch_case_trusted_detail_artifacts,
     resolve_batch_case_report_dir,
 )
 
 
-SERVER_OWNED_CASE_REQUIRED_REPORT_ERROR = (
-    "Report generation requires a complete server-owned case. Re-run analysis first."
+SERVER_OWNED_CASE_REQUIRED_REPORT_ERROR = REPORT_CASE_UNAVAILABLE_REASON
+OPTIMIZER_CASE_NOT_ACTIONABLE_REASON = (
+    "Optimizer is available only for suspicious or bad selected cases."
 )
+FAILED_CASE_REPORT_UNAVAILABLE_REASON = (
+    "Report generation requires successful deterministic processing for this case. "
+    "Re-run analysis first."
+)
+FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON = (
+    "Optimizer requires successful deterministic processing for this case. Re-run analysis first."
+)
+ACTION_TERMINAL_OR_VISIBLE_STATUSES = {
+    "running",
+    "generated",
+    "partial_untrusted",
+    "failed",
+    "cancelled",
+}
 
 
 @dataclass(frozen=True)
@@ -92,8 +111,19 @@ def build_batch_case_detail_action_context(
         case=case,
         detail_kwargs=detail_kwargs,
         case_dir=case_dir,
-        report_allowed=case_allows_llm_report(case) if case else False,
-        source_sql_available=case_has_safe_source_sql(case_dir) if case_dir else False,
+        report_allowed=(
+            bool(case and case_dir is not None)
+            and case_allows_llm_report(case)
+            and case_has_analyzer_facts(case_dir)
+        ),
+        source_sql_available=(
+            bool(case)
+            and case_allows_query_optimizer(case)
+            and case_has_safe_source_sql(case_dir)
+            and case_has_analyzer_facts(case_dir)
+            if case_dir
+            else False
+        ),
         report_running=job_store.running_batch_report(case_id) is not None,
         optimizer_running=job_store.running_batch_optimized_query(case_id) is not None,
         job_source="running" if source == "running" else "batch",
@@ -102,12 +132,73 @@ def build_batch_case_detail_action_context(
 
 def server_owned_case_required_report_state() -> dict[str, object]:
     return {
-        "status": "failed",
+        "status": "unavailable",
         "running": False,
         "trusted": False,
         "partial": False,
         "error": SERVER_OWNED_CASE_REQUIRED_REPORT_ERROR,
+        "unavailable_reason": SERVER_OWNED_CASE_REQUIRED_REPORT_ERROR,
     }
+
+
+def report_state_for_case(
+    case: dict[str, object],
+    report_state: dict[str, Any],
+) -> dict[str, Any]:
+    severity = case_score_severity(case)
+    status = str(report_state.get("status") or "not_run")
+    if severity != "failed" or status in ACTION_TERMINAL_OR_VISIBLE_STATUSES:
+        return report_state
+    unavailable = dict(report_state)
+    unavailable.update(
+        {
+            "status": "unavailable",
+            "running": False,
+            "trusted": False,
+            "partial": False,
+            "error": "",
+            "unavailable_reason": FAILED_CASE_REPORT_UNAVAILABLE_REASON,
+        }
+    )
+    return unavailable
+
+
+def optimizer_state_for_case(
+    case: dict[str, object],
+    optimized_query_state: dict[str, Any],
+) -> dict[str, Any]:
+    if case_allows_query_optimizer(case):
+        return optimized_query_state
+    severity = case_score_severity(case)
+    status = str(optimized_query_state.get("status") or "not_run")
+    if status in ACTION_TERMINAL_OR_VISIBLE_STATUSES:
+        return optimized_query_state
+    if severity == "failed":
+        unavailable = dict(optimized_query_state)
+        unavailable.update(
+            {
+                "status": "unavailable",
+                "running": False,
+                "trusted": False,
+                "partial": False,
+                "source_available": False,
+                "unavailable_reason": FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON,
+                "error": "",
+            }
+        )
+        return unavailable
+    if status == "unavailable" and severity != "clean":
+        return optimized_query_state
+    hidden = dict(optimized_query_state)
+    hidden.update(
+        {
+            "status": "hidden",
+            "running": False,
+            "source_available": False,
+            "unavailable_reason": OPTIMIZER_CASE_NOT_ACTIONABLE_REASON,
+        }
+    )
+    return hidden
 
 
 def build_batch_case_detail_render_context(
@@ -137,7 +228,8 @@ def build_batch_case_detail_render_context(
     report_state = (
         dict(report_state_override) if report_state_override is not None else artifacts.report_state
     )
-    optimized_query_state = artifacts.optimized_query_state
+    report_state = report_state_for_case(case, report_state)
+    optimized_query_state = optimizer_state_for_case(case, artifacts.optimized_query_state)
     view = present_recent_scan_case_detail(
         case_id,
         case,

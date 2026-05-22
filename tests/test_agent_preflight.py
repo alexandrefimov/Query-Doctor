@@ -61,12 +61,38 @@ def test_render_report_calls_out_docs_only_scope():
     assert "Full pytest is not needed for docs-only changes" in report
 
 
+def test_agent_operating_docs_get_active_doc_validation():
+    rules = agent_preflight.matching_rules(["AGENTS.md", "docs/agent-quickstart.md"])
+    report = agent_preflight.render_report(["AGENTS.md", "docs/agent-quickstart.md"], rules)
+
+    assert "- Docs" in report
+    assert "- Agent operating docs" in report
+    assert "- `python3 scripts/check_active_docs.py`" in report
+    assert "- `python3 scripts/check_markdown_links.py`" in report
+    assert "tests/test_agent_preflight.py" in report
+    assert "Full pytest is not usually needed for agent docs/tooling" in report
+    assert "Web, optimizer, report, collector, and analyzer suites are not needed" in report
+
+
 def test_render_report_calls_out_agent_tooling_scope():
     rules = agent_preflight.matching_rules(["scripts/agent_preflight.py"])
     report = agent_preflight.render_report(["scripts/agent_preflight.py"], rules)
 
     assert "Full pytest is not usually needed for agent docs/tooling" in report
     assert "Web, optimizer, report, collector, and analyzer suites are not needed" in report
+
+
+def test_agent_guardrail_workflows_route_as_agent_tooling():
+    rules = agent_preflight.matching_rules(["./.github/workflows/docs.yml"])
+    names = {rule.name for rule in rules}
+
+    assert "Agent tooling" in names
+
+
+def test_normalize_path_preserves_dot_directories():
+    assert agent_preflight.normalize_path("./.github/workflows/docs.yml") == (
+        ".github/workflows/docs.yml"
+    )
 
 
 def test_render_report_handles_no_matches():
