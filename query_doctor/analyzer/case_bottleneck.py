@@ -9,6 +9,7 @@ from query_doctor.analyzer.runtime_admission import (
     runtime_admission_facts_from_analysis,
     runtime_admission_uses_non_profile_evidence,
 )
+from query_doctor.analyzer.scan_skew import scan_skew_facts_from_analysis
 
 WALL_CLOCK_MIN_FOR_CLASSIFICATION_SEC = 5.0
 CARDINALITY_ANOMALY_MIN_COUNT = 1
@@ -80,7 +81,10 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
 
     backend = analysis.get("backend_tail") if isinstance(analysis.get("backend_tail"), dict) else {}
     execution_tail_count = int_value(backend.get("execution_tail_candidate_count"))
-    backend_data_skew_detected = str(backend.get("data_skew") or "").strip().lower() == "yes"
+    scan_skew = scan_skew_facts_from_analysis(analysis)
+    backend_data_skew_supported = (
+        scan_skew.primary_supported and scan_skew.evidence_tier == "strong"
+    )
     if (
         profile_policy == "supported"
         and per_instance_evidence_supports_profile_claims(analysis)
@@ -97,7 +101,10 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     stats_quality = analysis.get("stats_metadata_quality")
     stats_quality = stats_quality if isinstance(stats_quality, dict) else {}
     stats_primary = str(stats_quality.get("stats_primary_bottleneck") or "unknown")
-    non_stats_categories = category_set(stats_quality.get("non_stats_bottleneck_categories"))
+    non_stats_categories = supported_non_stats_categories(
+        analysis,
+        category_set(stats_quality.get("non_stats_bottleneck_categories")),
+    )
     cardinality_count = len(analysis.get("cardinality_anomalies") or [])
     has_anomaly = cardinality_count >= CARDINALITY_ANOMALY_MIN_COUNT
     elapsed_top_finding = top_finding_id(analysis)
@@ -147,7 +154,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     backend_data_skew_supports_primary = (
         profile_policy == "supported"
         and per_instance_evidence_supports_profile_claims(analysis)
-        and backend_data_skew_detected
+        and backend_data_skew_supported
         and not is_query_shape_top
         and not is_data_movement_top
         and not is_storage_top
@@ -413,6 +420,9 @@ def primary_reasons(primary: str, analysis: dict[str, Any]) -> tuple[str, ...]:
     if primary == "runtime_data_movement":
         return ("large_intermediate_or_exchange_top_finding",)
     if primary == "runtime_skew":
+        scan_skew = scan_skew_facts_from_analysis(analysis)
+        if scan_skew.primary_supported and scan_skew.skew_metric:
+            return (f"scan_skew_{scan_skew.skew_metric}",)
         return ("backend_data_skew_detected",)
     if primary == "runtime_storage":
         if not top_finding_id(
@@ -463,6 +473,17 @@ def category_set(value: Any) -> set[str]:
     if isinstance(value, (list, tuple, set)):
         return {str(item).strip() for item in value if str(item).strip()}
     return set()
+
+
+def supported_non_stats_categories(analysis: dict[str, Any], categories: set[str]) -> set[str]:
+    if "backend_data_skew" not in categories:
+        return categories
+    scan_skew = scan_skew_facts_from_analysis(analysis)
+    if scan_skew.primary_supported and scan_skew.evidence_tier == "strong":
+        return categories
+    kept = set(categories)
+    kept.discard("backend_data_skew")
+    return kept
 
 
 def competing_primary_reasons(

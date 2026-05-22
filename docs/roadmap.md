@@ -331,11 +331,11 @@ item first only when the touched area has a direct P0 safety or contract risk.
 
 1. Continue the profile evidence-tier contract before broadening upstream
    profile compatibility: the dialect detector is in place, so the next pulls
-   should add the remaining promotion-specific fixtures that prove scan-skew,
-   exchange-wait, and disk-I/O claims require the right supporting sections.
-   The client-fetch-tail, runtime-admission, and memory-pressure evidence
-   slices are implemented and should now be validated against sanitized real
-   profiles.
+   should add the remaining promotion-specific fixtures that prove
+   exchange-wait and disk-I/O claims require the right supporting sections. The
+   client-fetch-tail, runtime-admission, memory-pressure, and scan-skew
+   evidence slices are implemented and should now be validated against
+   sanitized real profiles.
 2. Continue the desktop Web UI audit with the standalone Query Optimizer page:
    tighten the first screen around the SQL input, Analyze action, and
    scope/safety disclosure without weakening the no-echo or read-only trust
@@ -596,12 +596,13 @@ Implemented baseline:
   spill/scratch counters are the current strong evidence path, while memory
   estimates, reservations, peak-memory footprints, daemon metrics, and runtime
   context remain context-only.
+- scan-skew facts are evidence-tiered: per-instance scan bytes, bytes-read,
+  rows, or mapped equivalent spread are the current strong evidence path, while
+  backend data-skew summaries without those mapped fields remain context-only.
 
 Next P0 analyzer slices:
 
-1. Harden scan-skew, exchange-wait, and disk-I/O promotion:
-   - scan skew requires per-instance scan bytes/rows/time or mapped equivalent
-     aggregate evidence;
+1. Harden exchange-wait and disk-I/O promotion:
    - exchange/network/inactive timers need mapped exchange context and
      correlation before exceeding medium evidence;
    - disk I/O wait needs bytes and operator context before promotion.
@@ -628,8 +629,8 @@ Next P0 analyzer slices:
      admission result facts for the selected query;
    - memory pressure is strong with explicit non-zero spill or scratch counters,
      while estimates and reservations alone stay context-only;
-   - scan skew is strong only with per-instance scan bytes, rows, time, or a
-     mapped equivalent aggregate section;
+   - baseline implemented: scan skew is strong only with per-instance scan
+     bytes, bytes-read, rows, or a mapped equivalent spread section;
    - exchange wait, network, and inactive timers require correlation before they
      can exceed medium evidence;
    - disk I/O wait requires bytes and operator context before promotion;

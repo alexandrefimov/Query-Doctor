@@ -592,6 +592,13 @@ def test_backend_data_skew_routes_to_medium_runtime_skew():
                 "execution_skew": "unknown",
                 "execution_tail_candidate_count": 0,
             },
+            scan_skew={
+                "status": "supported",
+                "evidence_tier": "strong",
+                "finding_supported": True,
+                "primary_supported": True,
+                "skew_metric": "rows_produced",
+            },
             stats_metadata_quality={
                 "status": "available",
                 "stats_primary_bottleneck": "not_supported",
@@ -602,7 +609,28 @@ def test_backend_data_skew_routes_to_medium_runtime_skew():
 
     assert result.label == "runtime_skew"
     assert result.confidence == "medium"
-    assert result.reasons == ("backend_data_skew_detected",)
+    assert result.reasons == ("scan_skew_rows_produced",)
+
+
+def test_backend_data_skew_summary_without_scan_skew_evidence_does_not_route():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            backend_tail={
+                "data_skew": "yes",
+                "execution_skew": "unknown",
+                "execution_tail_candidate_count": 0,
+            },
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "backend_data_skew",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("no_primary_branch_supported",)
 
 
 def test_backend_data_skew_does_not_override_query_shape_top_finding():
@@ -612,6 +640,13 @@ def test_backend_data_skew_does_not_override_query_shape_top_finding():
                 "data_skew": "yes",
                 "execution_skew": "unknown",
                 "execution_tail_candidate_count": 0,
+            },
+            scan_skew={
+                "status": "supported",
+                "evidence_tier": "strong",
+                "finding_supported": True,
+                "primary_supported": True,
+                "skew_metric": "rows_produced",
             },
             findings=[
                 {
@@ -706,6 +741,13 @@ def test_stats_candidate_with_competing_non_stats_signal_becomes_mixed():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
             cardinality_anomalies=anomaly(4),
+            scan_skew={
+                "status": "supported",
+                "evidence_tier": "strong",
+                "finding_supported": True,
+                "primary_supported": True,
+                "skew_metric": "rows_produced",
+            },
             stats_metadata_quality={
                 "status": "limited",
                 "stats_primary_bottleneck": "candidate_supported",
@@ -717,6 +759,23 @@ def test_stats_candidate_with_competing_non_stats_signal_becomes_mixed():
     assert result.label == "mixed"
     assert result.confidence == "medium"
     assert result.reasons == ("competing_stats", "competing_runtime_skew")
+
+
+def test_stats_candidate_ignores_context_only_scan_skew_competing_signal():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(4),
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "backend_data_skew",
+            },
+        )
+    )
+
+    assert result.label == "stats"
+    assert result.confidence == "high"
+    assert result.reasons == ("stats_candidate_supported", "cardinality_anomalies_4")
 
 
 def test_stats_candidate_with_competing_query_shape_signal_keeps_both_reasons():

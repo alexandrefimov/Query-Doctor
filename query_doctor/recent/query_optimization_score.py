@@ -576,10 +576,20 @@ def ratio_from_text(value: str) -> float | None:
 
 
 def backend_data_skew_evidence(facts: str) -> bool:
+    scan_skew_facts = scoring_section_text(facts, "## Scan Skew Evidence")
+    scan_tier = first_fact_value(scan_skew_facts, "evidence_tier").lower()
+    scan_supported = first_fact_value(scan_skew_facts, "finding_supported").lower()
+    if scan_tier or scan_supported:
+        return scan_tier == "strong" and scan_supported == "yes"
     backend_facts = scoring_section_text(facts, "## Backend / Host Tail Evidence")
     return any(
         value.strip().lower().startswith("yes") for value in fact_values(backend_facts, "data skew")
     )
+
+
+def first_fact_value(facts: str, label: str) -> str:
+    values = fact_values(facts, label)
+    return values[0] if values else ""
 
 
 def metadata_status_is_usable(value: str) -> bool:

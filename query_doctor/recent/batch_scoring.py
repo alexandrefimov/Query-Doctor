@@ -328,6 +328,7 @@ def score_analysis_facts(
 
 def extract_scoring_components(facts: str) -> dict[str, object]:
     summary_facts = scoring_section_text(facts, "## Summary")
+    scan_skew_facts = scoring_section_text(facts, "## Scan Skew Evidence")
     backend_facts = scoring_section_text(facts, "## Backend / Host Tail Evidence")
     cm_query_facts = scoring_section_text(facts, "## CM Query Context")
     cm_correlation_facts = first_scoring_section_text(
@@ -355,8 +356,10 @@ def extract_scoring_components(facts: str) -> dict[str, object]:
         "zero_memory_estimate_gap_count": fact_int(
             summary_facts, "Zero/unknown memory estimate gaps"
         ),
-        "backend_data_skew": backend_data_skew_value(backend_facts),
-        "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(backend_facts),
+        "backend_data_skew": backend_data_skew_value(backend_facts, scan_skew_facts),
+        "severe_backend_data_skew_ratio": severe_backend_data_skew_ratio(
+            backend_facts, scan_skew_facts
+        ),
         "host_tail_candidate_count": host_tail_candidates,
         "execution_tail_candidate_count": execution_tail_candidates,
         "duration_sec": duration_seconds_value(cm_query_facts),
@@ -438,7 +441,11 @@ def has_supported_spill_scratch_evidence(facts: str) -> bool:
     return "detected non-zero spill/scratch metric evidence" in facts.lower()
 
 
-def backend_data_skew_value(facts: str) -> bool | str:
+def backend_data_skew_value(facts: str, scan_skew_facts: str = "") -> bool | str:
+    scan_tier = first_fact_value(scan_skew_facts, "evidence_tier").lower()
+    scan_supported = first_fact_value(scan_skew_facts, "finding_supported").lower()
+    if scan_tier or scan_supported:
+        return scan_tier == "strong" and scan_supported == "yes"
     values = [value.lower() for value in fact_values(facts, "data skew")]
     if any(value.startswith("yes") for value in values):
         return True
@@ -447,9 +454,12 @@ def backend_data_skew_value(facts: str) -> bool | str:
     return "unknown"
 
 
-def severe_backend_data_skew_ratio(facts: str) -> float | None:
-    if backend_data_skew_value(facts) is not True:
+def severe_backend_data_skew_ratio(facts: str, scan_skew_facts: str = "") -> float | None:
+    if backend_data_skew_value(facts, scan_skew_facts) is not True:
         return None
+    scan_ratio = ratio_from_fact_value(first_fact_value(scan_skew_facts, "skew_ratio"))
+    if scan_ratio is not None:
+        return scan_ratio if scan_ratio >= 10 else None
     for value in fact_values(facts, "data skew"):
         match = re.search(r"(\d+(?:\.\d+)?)x", value, re.IGNORECASE)
         if not match:
@@ -458,6 +468,18 @@ def severe_backend_data_skew_ratio(facts: str) -> float | None:
         if ratio >= 10:
             return ratio
     return None
+
+
+def first_fact_value(facts: str, label: str) -> str:
+    values = fact_values(facts, label)
+    return values[0] if values else ""
+
+
+def ratio_from_fact_value(value: str) -> float | None:
+    match = re.search(r"(\d+(?:\.\d+)?)x", value, re.IGNORECASE)
+    if not match:
+        return None
+    return float(match.group(1))
 
 
 def has_metadata_error_status(facts: str) -> bool:

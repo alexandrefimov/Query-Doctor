@@ -279,6 +279,30 @@ def parse_backend_tail_summary(facts_text: str) -> dict[str, str | int]:
             continue
         if key in {"data skew", "execution skew", "write-path anomaly"}:
             summary[key] = value.split()[0].lower()
+    scan_skew = scan_skew_summary(facts_text)
+    if scan_skew:
+        supported = (
+            str(scan_skew.get("evidence_tier") or "").lower() == "strong"
+            and str(scan_skew.get("finding_supported") or "").lower() == "yes"
+        )
+        summary["data skew"] = "yes" if supported else "no"
+    return summary
+
+
+def scan_skew_summary(facts_text: str) -> dict[str, str]:
+    lines = extract_markdown_section(facts_text, "## Scan Skew Evidence")
+    summary: dict[str, str] = {}
+    for label in (
+        "status",
+        "evidence_tier",
+        "finding_supported",
+        "primary_supported",
+        "skew_metric",
+        "skew_ratio",
+    ):
+        value = first_bullet_value(lines, label)
+        if value is not None:
+            summary[label] = value
     return summary
 
 

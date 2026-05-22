@@ -556,6 +556,41 @@ def render_backend_tail_evidence(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_scan_skew_facts(analysis: dict[str, Any]) -> list[str]:
+    facts = analysis.get("scan_skew")
+    if not isinstance(facts, dict):
+        return []
+    if facts.get("status") == "not_observed" and facts.get("evidence_tier") == "unsupported":
+        return []
+
+    lines = ["## Scan Skew Evidence", ""]
+    lines.append(f"- status: {facts.get('status') or 'unknown'}")
+    lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
+    lines.append(f"- finding_supported: {'yes' if facts.get('finding_supported') else 'no'}")
+    lines.append(f"- primary_supported: {'yes' if facts.get('primary_supported') else 'no'}")
+    lines.append(f"- evidence_source: {facts.get('evidence_source') or 'none'}")
+    lines.append(f"- fragment_group: {facts.get('fragment_group') or 'none'}")
+    lines.append(f"- skew_metric: {facts.get('skew_metric') or 'none'}")
+    lines.append(f"- skew_metric_label: {facts.get('skew_metric_label') or 'none'}")
+    lines.append(f"- skew_ratio: {facts.get('skew_ratio_human') or 'n/a'}")
+    lines.append(f"- backend_rows_parsed: {facts.get('backend_rows_parsed') or 0}")
+    lines.append(f"- skew_group_count: {facts.get('skew_group_count') or 0}")
+    lines.append(f"- comparable_group_count: {facts.get('comparable_group_count') or 0}")
+    lines.append(
+        f"- aggregate_summary_observed: {'yes' if facts.get('aggregate_summary_observed') else 'no'}"
+    )
+    lines.append(
+        f"- guardrail: {facts.get('guardrail') or 'Scan skew facts are deterministic context.'}"
+    )
+    limitations = [str(item) for item in facts.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {md_escape(item)}")
+    lines.append("")
+    return lines
+
+
 def render_source_provenance(analysis: dict[str, Any]) -> list[str]:
     provenance = analysis.get("source_provenance")
     if not isinstance(provenance, dict):
@@ -706,6 +741,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_table_metadata_context(analysis)
     lines += render_stats_metadata_quality(analysis)
     lines += render_impala_context(analysis)
+    lines += render_scan_skew_facts(analysis)
     lines += render_backend_tail_evidence(analysis)
     lines += render_action_cards(analysis)
 

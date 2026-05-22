@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from query_doctor.analyzer.scan_skew import scan_skew_facts_from_analysis
+
 
 NON_STATS_BOTTLENECK_FINDINGS = {
     "large_intermediate_or_exchange_traffic": "exchange_or_data_movement",
@@ -477,7 +479,8 @@ def non_stats_bottleneck_categories(analysis: dict[str, Any]) -> tuple[str, ...]
 
     backend_tail = analysis.get("backend_tail")
     if isinstance(backend_tail, dict):
-        if str(backend_tail.get("data_skew") or "").strip().lower() == "yes":
+        scan_skew = scan_skew_facts_from_analysis(analysis)
+        if scan_skew.primary_supported and scan_skew.evidence_tier == "strong":
             categories.append("backend_data_skew")
         if int_value(backend_tail.get("execution_tail_candidate_count")) > 0:
             categories.append("backend_execution_tail")

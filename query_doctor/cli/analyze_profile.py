@@ -25,6 +25,7 @@ from query_doctor.analyzer.memory_pressure import build_memory_pressure_facts
 from query_doctor.analyzer.metadata_renderer import stats_metadata_quality
 from query_doctor.analyzer.runtime_admission import build_runtime_admission_facts
 from query_doctor.analyzer.runtime_diagnosis import build_runtime_diagnosis
+from query_doctor.analyzer.scan_skew import build_scan_skew_facts
 from query_doctor.analyzer.service import analyze
 from query_doctor.analyzer.source_provenance import build_source_provenance
 from query_doctor.analyzer.sql_sources import extract_default_database
@@ -116,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         text,
         analysis["table_metadata_context"],
     )
+    analysis["scan_skew"] = build_scan_skew_facts(analysis)
     analysis["stats_metadata_quality"] = stats_metadata_quality(
         analysis["table_metadata_context"] or {},
         analysis,

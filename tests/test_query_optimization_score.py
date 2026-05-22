@@ -279,6 +279,35 @@ def test_backend_data_skew_adds_distribution_review_context():
     assert "hot keys" in result.suggested_review_areas
 
 
+def test_context_only_scan_skew_does_not_add_distribution_review_context():
+    facts = (
+        high_shape_facts()
+        + """
+
+## Scan Skew Evidence
+
+- status: context_only
+- evidence_tier: context_only
+- finding_supported: no
+
+## Backend / Host Tail Evidence
+
+### Summary
+
+- data skew: yes (F07: rows produced max/min ratio is 10.5x)
+- execution skew: no
+"""
+    )
+
+    result = score_query_optimization_candidate(
+        facts,
+        duration_sec=120,
+        metadata_status="collected",
+    )
+
+    assert "backend data skew supports distribution and hot-key review" not in result.reasons
+
+
 def test_structured_cardinality_count_wins_over_rendered_summary_text():
     result = score_query_optimization_candidate(
         cardinality_only_facts().replace(
