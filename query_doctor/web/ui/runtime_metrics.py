@@ -339,9 +339,9 @@ def cm_metric_interpretation(value: Any) -> Any:
         "No deterministic optimizer or report action is derived from this metric status.": (
             "No deterministic optimizer or report action is derived from this metric status."
         ),
-        "Daemon memory growth is correlated with parsed memory, spill, or high-memory operator evidence; prioritize reducing intermediate memory footprint.": (
-            "Daemon memory growth is correlated with parsed memory, spill, or high-memory operator evidence; "
-            "prioritize reducing intermediate memory footprint."
+        "Daemon memory growth is correlated with selected-query non-zero spill/scratch evidence; use it only as runtime context for reducing intermediate memory footprint.": (
+            "Daemon memory growth is correlated with selected-query non-zero spill/scratch evidence; "
+            "use it only as runtime context for reducing intermediate memory footprint."
         ),
         "Network I/O spike is correlated with parsed large exchange/data movement evidence; prioritize reducing exchange rows or payload.": (
             "Network I/O spike is correlated with parsed large exchange/data movement evidence; "

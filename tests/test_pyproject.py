@@ -69,8 +69,10 @@ def test_project_license_metadata_is_consistent():
     pyproject_text = (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8")
     setup_text = setup_py_text()
 
-    assert 'license = "AGPL-3.0-or-later"' in pyproject_text
-    assert 'license="AGPL-3.0-or-later"' in setup_text
+    assert 'license = "Apache-2.0"' in pyproject_text
+    assert 'license="Apache-2.0"' in setup_text
+    assert "License :: OSI Approved ::" not in pyproject_text
+    assert "License :: OSI Approved ::" not in setup_text
 
 
 def test_public_packaging_metadata_is_present():

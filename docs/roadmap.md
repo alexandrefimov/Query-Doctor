@@ -332,13 +332,10 @@ item first only when the touched area has a direct P0 safety or contract risk.
 1. Continue the profile evidence-tier contract before broadening upstream
    profile compatibility: the dialect detector is in place, so the next pulls
    should add the remaining promotion-specific fixtures that prove scan-skew,
-   exchange-wait, disk-I/O, admission, and memory claims require the right
-   supporting sections. The first client-fetch-tail detector is implemented and
-   should now be validated against sanitized real profiles. The next focused
-   analyzer implementation slice should harden `runtime_admission`: keep the
-   existing label, promote only selected-query admission wait/result/timeline
-   evidence, and keep pool/cluster/runtime context-only signals from becoming
-   primary on their own.
+   exchange-wait, and disk-I/O claims require the right supporting sections.
+   The client-fetch-tail, runtime-admission, and memory-pressure evidence
+   slices are implemented and should now be validated against sanitized real
+   profiles.
 2. Continue the desktop Web UI audit with the standalone Query Optimizer page:
    tighten the first screen around the SQL input, Analyze action, and
    scope/safety disclosure without weakening the no-echo or read-only trust
@@ -590,23 +587,19 @@ Implemented baseline:
   signals;
 - client-fetch-tail facts and primary routing are in place for mapped
   `ClientFetchWait*` counters, with Query Timeline fetch and
-  `GetInFlightProfileTimeStats` kept as context unless corroborated.
+  `GetInFlightProfileTimeStats` kept as context unless corroborated;
+- runtime-admission facts and primary routing are evidence-tiered: selected
+  query admission result/wait and profile/query-timeline admission facts can
+  promote `runtime_admission`, materially conflicting waits stay context-only,
+  and pool, cluster, metric, event, or duration-only signals cannot promote it.
+- memory-pressure facts are evidence-tiered: selected-query non-zero
+  spill/scratch counters are the current strong evidence path, while memory
+  estimates, reservations, peak-memory footprints, daemon metrics, and runtime
+  context remain context-only.
 
 Next P0 analyzer slices:
 
-1. Harden `runtime_admission` evidence tiers:
-   - keep `runtime_admission` as the existing primary label;
-   - treat selected-query admission wait/result and profile/query-timeline
-     admission facts as strong;
-   - treat pool saturation, cluster pressure, statestore warnings, events,
-     metrics, and duration alone as context-only unless tied to the selected
-     query by deterministic facts;
-   - add regression tests for both promotion and non-promotion paths.
-2. Harden memory-pressure promotion:
-   - non-zero spill/scratch counters can be strong query-specific evidence;
-   - memory estimates, reservations, and runtime context alone remain
-     context-only.
-3. Harden scan-skew, exchange-wait, and disk-I/O promotion:
+1. Harden scan-skew, exchange-wait, and disk-I/O promotion:
    - scan skew requires per-instance scan bytes/rows/time or mapped equivalent
      aggregate evidence;
    - exchange/network/inactive timers need mapped exchange context and

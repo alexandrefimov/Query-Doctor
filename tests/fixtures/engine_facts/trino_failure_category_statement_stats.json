@@ -1,0 +1,31 @@
+{
+  "fixtureVersion": "synthetic-trino-failure-category-statement-stats-v1",
+  "statementStats": {
+    "state": "FAILED",
+    "queued": false,
+    "scheduled": true,
+    "nodes": 4,
+    "totalSplits": 28,
+    "queuedSplits": 0,
+    "runningSplits": 0,
+    "completedSplits": 12,
+    "elapsedTimeMillis": 58000,
+    "queuedTimeMillis": 400,
+    "planningTimeMillis": 1700,
+    "executionTimeMillis": 55900,
+    "cpuTimeMillis": 33000,
+    "wallTimeMillis": 57100,
+    "processedRows": 1100000,
+    "processedBytes": 268435456,
+    "outputRows": 0,
+    "outputBytes": 0,
+    "peakMemoryBytes": 1207959552,
+    "spilledBytes": 0,
+    "fullyBlocked": false,
+    "stageCount": 2,
+    "safeFailureSummary": {
+      "checked": true,
+      "category": "resource_limit"
+    }
+  }
+}

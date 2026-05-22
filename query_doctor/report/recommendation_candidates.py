@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 
 from query_doctor.report.facts_extractors import (
+    cm_metrics_correlation_status,
     cm_metrics_profile_supported,
+    cm_metrics_signal_observed,
     facts_cardinality_anomaly_count,
     facts_have_large_intermediate_or_exchange,
     facts_have_metadata_stats_gap,
@@ -60,6 +62,20 @@ def _safe_operator_anchor(operator: str) -> str:
     normalized = re.sub(r"\s*\[[^\]]*\]", "", operator)
     normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized[:80]
+
+
+def _runtime_memory_metric_supported(facts_text: str) -> bool:
+    for key in ("daemon_memory_growth", "daemon_memory_pressure"):
+        status = cm_metrics_correlation_status(facts_text, key)
+        if status is not None:
+            if status == "correlated":
+                return True
+            continue
+        if facts_have_spill_scratch_evidence(facts_text) and cm_metrics_signal_observed(
+            facts_text, key
+        ):
+            return True
+    return False
 
 
 def _total_bytes_sent_anchor(facts_text: str) -> str | None:
@@ -206,12 +222,7 @@ def recommendation_candidate_lines(
             ),
         )
 
-    if cm_metrics_profile_supported(
-        facts_text, "daemon_memory_growth"
-    ) or cm_metrics_profile_supported(
-        facts_text,
-        "daemon_memory_pressure",
-    ):
+    if _runtime_memory_metric_supported(facts_text):
         add(
             "reduce_runtime_memory_footprint",
             _localized(

@@ -28,8 +28,38 @@ TRINO_STATEMENT_STATS_FIXTURE = (
 TRINO_FAILED_STATEMENT_STATS_FIXTURE = (
     Path(__file__).parent / "fixtures" / "engine_facts" / "trino_failed_statement_stats.json"
 )
+TRINO_FAILURE_CATEGORY_STATEMENT_STATS_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_failure_category_statement_stats.json"
+)
+TRINO_BLOCKED_STATEMENT_STATS_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_blocked_statement_stats.json"
+)
+TRINO_STAGE_SKEW_STATEMENT_STATS_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_stage_skew_statement_stats.json"
+)
+TRINO_CONNECTOR_METRIC_PRESENT_STATEMENT_STATS_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_connector_metric_present_statement_stats.json"
+)
+TRINO_CONNECTOR_METRIC_ABSENT_STATEMENT_STATS_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_connector_metric_absent_statement_stats.json"
+)
 TRINO_COMPLETED_EVENT_FIXTURE = (
     Path(__file__).parent / "fixtures" / "engine_facts" / "trino_completed_event.json"
+)
+TRINO_COMPLETED_EVENT_MISSING_FIELDS_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_completed_event_missing_fields.json"
 )
 PUBLIC_ENGINE_FACT_KEYS = {
     "identity",
@@ -51,6 +81,8 @@ class EngineFactContractCase:
     expected_lifecycle: str | None = None
     expected_blocked: DiagnosticState | None = None
     expected_failure: DiagnosticState | None = None
+    expected_failure_category_state: DiagnosticState | None = None
+    expected_failure_category: str | None = None
     required_fact_values: Mapping[str, object] | None = None
     forbidden_tokens: tuple[str, ...] = ()
     forbidden_public_substrings: tuple[str, ...] = ()
@@ -81,7 +113,13 @@ def trino_golden_cases() -> tuple[EngineFactContractCase, ...]:
     return (
         trino_fixture_golden_case(),
         trino_failed_fixture_golden_case(),
+        trino_failure_category_fixture_golden_case(),
+        trino_blocked_fixture_golden_case(),
+        trino_stage_skew_fixture_golden_case(),
+        trino_connector_metric_present_fixture_golden_case(),
+        trino_connector_metric_absent_fixture_golden_case(),
         trino_completed_event_fixture_golden_case(),
+        trino_completed_event_missing_fields_fixture_golden_case(),
     )
 
 
@@ -278,6 +316,7 @@ def trino_fixture_golden_case() -> EngineFactContractCase:
             "input_bytes": "supported",
             "output_rows": "unknown",
             "spilled_bytes": "not_observed",
+            "connector_metric_signal": "unknown",
             "stage_count": "supported",
             "stage_skew_candidate": "unknown",
             "admission_control": "unknown",
@@ -330,6 +369,7 @@ def trino_failed_fixture_golden_case() -> EngineFactContractCase:
             "input_bytes": "supported",
             "output_rows": "unknown",
             "spilled_bytes": "not_observed",
+            "connector_metric_signal": "unknown",
             "stage_count": "supported",
             "blocked_signal": "not_observed",
             "admission_control": "unknown",
@@ -369,6 +409,296 @@ def trino_failed_fixture_golden_case() -> EngineFactContractCase:
     )
 
 
+def trino_failure_category_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_failure_category_statement_stats_fixture",
+        bundle=build_trino_fixture_engine_facts(
+            _load_trino_fixture(TRINO_FAILURE_CATEGORY_STATEMENT_STATS_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        required_fact_states={
+            "elapsed_time_ms": "supported",
+            "planning_time_ms": "supported",
+            "execution_time_ms": "supported",
+            "input_bytes": "supported",
+            "output_rows": "supported",
+            "output_bytes": "supported",
+            "spilled_bytes": "not_observed",
+            "connector_metric_signal": "unknown",
+            "stage_count": "supported",
+            "blocked_signal": "not_observed",
+            "stage_skew_candidate": "unknown",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="failed",
+        expected_blocked="not_observed",
+        expected_failure="supported",
+        expected_failure_category_state="supported",
+        expected_failure_category="resource_limit",
+        required_fact_values={
+            "elapsed_time_ms": 58000,
+            "spilled_bytes": 0,
+            "stage_count": 2,
+        },
+        forbidden_tokens=(
+            "queryText",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "statementStats",
+            "rootStage",
+            "safeFailureSummary",
+            "queryText",
+            "stageId",
+        ),
+    )
+
+
+def trino_blocked_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_blocked_statement_stats_fixture",
+        bundle=build_trino_fixture_engine_facts(
+            _load_trino_fixture(TRINO_BLOCKED_STATEMENT_STATS_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        required_fact_states={
+            "elapsed_time_ms": "supported",
+            "planning_time_ms": "supported",
+            "execution_time_ms": "supported",
+            "input_bytes": "supported",
+            "output_rows": "supported",
+            "output_bytes": "supported",
+            "spilled_bytes": "not_observed",
+            "connector_metric_signal": "unknown",
+            "stage_count": "supported",
+            "blocked_signal": "supported",
+            "stage_skew_candidate": "unknown",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="blocked",
+        expected_blocked="supported",
+        expected_failure="not_observed",
+        required_fact_values={
+            "elapsed_time_ms": 96000,
+            "blocked_signal": True,
+            "spilled_bytes": 0,
+            "stage_count": 2,
+        },
+        forbidden_tokens=(
+            "queryText",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "statementStats",
+            "rootStage",
+            "queryText",
+            "stageId",
+        ),
+    )
+
+
+def trino_stage_skew_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_stage_skew_statement_stats_fixture",
+        bundle=build_trino_fixture_engine_facts(
+            _load_trino_fixture(TRINO_STAGE_SKEW_STATEMENT_STATS_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        required_fact_states={
+            "elapsed_time_ms": "supported",
+            "planning_time_ms": "supported",
+            "execution_time_ms": "supported",
+            "input_bytes": "supported",
+            "output_rows": "supported",
+            "output_bytes": "supported",
+            "spilled_bytes": "not_observed",
+            "connector_metric_signal": "unknown",
+            "stage_count": "supported",
+            "blocked_signal": "not_observed",
+            "stage_skew_candidate": "supported",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="finished",
+        expected_blocked="not_observed",
+        expected_failure="not_observed",
+        required_fact_values={
+            "elapsed_time_ms": 220000,
+            "stage_skew_candidate": 8.25,
+            "spilled_bytes": 0,
+            "stage_count": 3,
+        },
+        forbidden_tokens=(
+            "queryText",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "statementStats",
+            "rootStage",
+            "safeStageSkewSummary",
+            "queryText",
+            "stageId",
+        ),
+    )
+
+
+def trino_connector_metric_present_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_connector_metric_present_statement_stats_fixture",
+        bundle=build_trino_fixture_engine_facts(
+            _load_trino_fixture(TRINO_CONNECTOR_METRIC_PRESENT_STATEMENT_STATS_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        required_fact_states={
+            "elapsed_time_ms": "supported",
+            "planning_time_ms": "supported",
+            "execution_time_ms": "supported",
+            "input_bytes": "supported",
+            "output_rows": "supported",
+            "output_bytes": "supported",
+            "spilled_bytes": "not_observed",
+            "connector_metric_signal": "supported",
+            "stage_count": "supported",
+            "blocked_signal": "not_observed",
+            "stage_skew_candidate": "unknown",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="finished",
+        expected_blocked="not_observed",
+        expected_failure="not_observed",
+        required_fact_values={
+            "elapsed_time_ms": 178000,
+            "connector_metric_signal": True,
+            "spilled_bytes": 0,
+            "stage_count": 3,
+        },
+        forbidden_tokens=(
+            "queryText",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "statementStats",
+            "rootStage",
+            "safeConnectorMetricSummary",
+            "queryText",
+            "stageId",
+        ),
+    )
+
+
+def trino_connector_metric_absent_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_connector_metric_absent_statement_stats_fixture",
+        bundle=build_trino_fixture_engine_facts(
+            _load_trino_fixture(TRINO_CONNECTOR_METRIC_ABSENT_STATEMENT_STATS_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        required_fact_states={
+            "elapsed_time_ms": "supported",
+            "planning_time_ms": "supported",
+            "execution_time_ms": "supported",
+            "input_bytes": "supported",
+            "output_rows": "supported",
+            "output_bytes": "supported",
+            "spilled_bytes": "not_observed",
+            "connector_metric_signal": "not_observed",
+            "stage_count": "supported",
+            "blocked_signal": "not_observed",
+            "stage_skew_candidate": "unknown",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="finished",
+        expected_blocked="not_observed",
+        expected_failure="not_observed",
+        required_fact_values={
+            "elapsed_time_ms": 64000,
+            "connector_metric_signal": False,
+            "spilled_bytes": 0,
+            "stage_count": 2,
+        },
+        forbidden_tokens=(
+            "queryText",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "statementStats",
+            "rootStage",
+            "safeConnectorMetricSummary",
+            "queryText",
+            "stageId",
+        ),
+    )
+
+
 def trino_completed_event_fixture_golden_case() -> EngineFactContractCase:
     return EngineFactContractCase(
         case_id="trino_completed_event_fixture",
@@ -385,6 +715,7 @@ def trino_completed_event_fixture_golden_case() -> EngineFactContractCase:
             "input_bytes": "supported",
             "output_rows": "supported",
             "spilled_bytes": "supported",
+            "connector_metric_signal": "unknown",
             "resource_group_queue_time_ms": "supported",
             "stage_count": "supported",
             "blocked_signal": "not_observed",
@@ -427,6 +758,64 @@ def trino_completed_event_fixture_golden_case() -> EngineFactContractCase:
     )
 
 
+def trino_completed_event_missing_fields_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_completed_event_missing_fields_fixture",
+        bundle=build_trino_event_listener_fixture_engine_facts(
+            _load_trino_fixture(TRINO_COMPLETED_EVENT_MISSING_FIELDS_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        required_fact_states={
+            "elapsed_time_ms": "unknown",
+            "queued_time_ms": "unknown",
+            "planning_time_ms": "unknown",
+            "execution_time_ms": "unknown",
+            "input_rows": "unknown",
+            "input_bytes": "unknown",
+            "output_rows": "unknown",
+            "output_bytes": "unknown",
+            "peak_memory_bytes": "unknown",
+            "spilled_bytes": "unknown",
+            "connector_metric_signal": "unknown",
+            "resource_group_queue_time_ms": "unknown",
+            "stage_count": "unknown",
+            "completed_split_count": "unknown",
+            "blocked_signal": "unknown",
+            "stage_skew_candidate": "unknown",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="unknown",
+        expected_blocked="unknown",
+        expected_failure="unknown",
+        forbidden_tokens=(
+            "queryText",
+            "queryId",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "queryCompletedEvent",
+            "metadata",
+            "statistics",
+            "queryText",
+            "queryId",
+        ),
+    )
+
+
 def assert_engine_fact_contract_case(case: EngineFactContractCase) -> None:
     public = case.bundle.to_public_dict()
     assert set(public) == PUBLIC_ENGINE_FACT_KEYS
@@ -438,6 +827,12 @@ def assert_engine_fact_contract_case(case: EngineFactContractCase) -> None:
         assert public["lifecycle"]["blocked"] == case.expected_blocked
     if case.expected_failure is not None:
         assert public["lifecycle"]["failure"] == case.expected_failure
+    if case.expected_failure_category_state is not None:
+        assert (
+            public["lifecycle"]["failure_category"]["state"] == case.expected_failure_category_state
+        )
+    if case.expected_failure_category is not None:
+        assert public["lifecycle"]["failure_category"]["value"] == case.expected_failure_category
 
     facts = case.bundle.facts_by_id()
     for fact_id, expected_state in case.required_fact_states.items():

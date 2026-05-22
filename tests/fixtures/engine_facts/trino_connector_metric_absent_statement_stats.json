@@ -1,0 +1,31 @@
+{
+  "fixtureVersion": "synthetic-trino-connector-metric-absent-statement-stats-v1",
+  "statementStats": {
+    "state": "FINISHED",
+    "queued": false,
+    "scheduled": true,
+    "nodes": 4,
+    "totalSplits": 48,
+    "queuedSplits": 0,
+    "runningSplits": 0,
+    "completedSplits": 48,
+    "elapsedTimeMillis": 64000,
+    "queuedTimeMillis": 500,
+    "planningTimeMillis": 1900,
+    "executionTimeMillis": 61600,
+    "cpuTimeMillis": 42000,
+    "wallTimeMillis": 62800,
+    "processedRows": 8000000,
+    "processedBytes": 9663676416,
+    "outputRows": 180000,
+    "outputBytes": 28311552,
+    "peakMemoryBytes": 1073741824,
+    "spilledBytes": 0,
+    "fullyBlocked": false,
+    "stageCount": 2,
+    "safeConnectorMetricSummary": {
+      "checked": true,
+      "present": false
+    }
+  }
+}

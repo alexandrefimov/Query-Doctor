@@ -195,8 +195,8 @@ profile evidence.
 
 Examples:
 
-- daemon memory growth plus parsed memory/spill/high-memory operator evidence
-  can support memory-pressure context;
+- daemon memory growth plus selected-query non-zero spill/scratch evidence can
+  support memory-pressure context;
 - network I/O spike plus large exchange evidence can support data-movement
   context;
 - CPU pressure without profile evidence stays context-only.

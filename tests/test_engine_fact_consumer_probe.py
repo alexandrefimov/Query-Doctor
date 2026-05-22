@@ -73,7 +73,19 @@ def test_engine_fact_consumer_probe_is_raw_free_for_golden_cases():
         ("impala_missing_sections", "parser_coverage_unknown"),
         ("trino_statement_stats_fixture", "limitation_unknown:admission_control"),
         ("trino_failed_statement_stats_fixture", "query_failed"),
+        (
+            "trino_failure_category_statement_stats_fixture",
+            "failure_category:resource_limit",
+        ),
+        ("trino_blocked_statement_stats_fixture", "blocked_or_admission_wait"),
+        ("trino_stage_skew_statement_stats_fixture", "stage_skew_candidate"),
+        ("trino_connector_metric_present_statement_stats_fixture", "connector_metric_signal"),
+        (
+            "trino_connector_metric_absent_statement_stats_fixture",
+            "limitation_unknown:admission_control",
+        ),
         ("trino_completed_event_fixture", "spill_or_scratch_evidence"),
+        ("trino_completed_event_missing_fields_fixture", "limitation_unknown:admission_control"),
     ),
 )
 def test_engine_fact_consumer_probe_attention_signals_are_state_backed(
@@ -106,4 +118,29 @@ def test_engine_fact_consumer_probe_rejects_invalid_boundary_state():
     payload["fact_groups"]["timing"][0]["state"] = "observed"
 
     with pytest.raises(EngineFactContractError, match="unsupported boundary diagnostic state"):
+        engine_fact_consumer_probe_from_boundary(payload)
+
+
+@pytest.mark.parametrize(
+    ("state", "value", "expected_error"),
+    (
+        ("supported", "RawException", "unsafe failure category"),
+        ("unknown", "resource_limit", "unsupported failure category value"),
+    ),
+)
+def test_engine_fact_consumer_probe_rejects_invalid_failure_category(
+    state,
+    value,
+    expected_error,
+):
+    case = next(
+        case for case in engine_fact_contract_cases() if case.case_id == "impala_finished_clean"
+    )
+    payload = engine_fact_boundary_payload(case.bundle)
+    payload["lifecycle"]["failure_category"] = {
+        "state": state,
+        "value": value,
+    }
+
+    with pytest.raises(EngineFactContractError, match=expected_error):
         engine_fact_consumer_probe_from_boundary(payload)

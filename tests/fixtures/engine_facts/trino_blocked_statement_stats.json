@@ -1,0 +1,46 @@
+{
+  "fixtureVersion": "synthetic-trino-blocked-statement-stats-v1",
+  "statementStats": {
+    "state": "BLOCKED",
+    "queued": false,
+    "scheduled": true,
+    "nodes": 5,
+    "totalSplits": 44,
+    "queuedSplits": 0,
+    "runningSplits": 12,
+    "completedSplits": 32,
+    "elapsedTimeMillis": 96000,
+    "queuedTimeMillis": 800,
+    "planningTimeMillis": 2400,
+    "executionTimeMillis": 92800,
+    "cpuTimeMillis": 47000,
+    "wallTimeMillis": 94000,
+    "processedRows": 7200000,
+    "processedBytes": 8589934592,
+    "outputRows": 0,
+    "outputBytes": 0,
+    "peakMemoryBytes": 1879048192,
+    "spilledBytes": 0,
+    "fullyBlocked": true,
+    "rootStage": {
+      "state": "RUNNING",
+      "done": false,
+      "nodes": 5,
+      "totalSplits": 44,
+      "completedSplits": 32,
+      "processedRows": 7200000,
+      "processedBytes": 8589934592,
+      "subStages": [
+        {
+          "state": "FINISHED",
+          "done": true,
+          "nodes": 5,
+          "totalSplits": 32,
+          "completedSplits": 32,
+          "processedRows": 7200000,
+          "processedBytes": 8589934592
+        }
+      ]
+    }
+  }
+}

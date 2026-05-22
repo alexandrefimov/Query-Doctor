@@ -21,7 +21,9 @@ from query_doctor.analyzer.context_collection import (
 )
 from query_doctor.analyzer.evidence_quality import build_evidence_quality
 from query_doctor.analyzer.facts_renderer import render_md
+from query_doctor.analyzer.memory_pressure import build_memory_pressure_facts
 from query_doctor.analyzer.metadata_renderer import stats_metadata_quality
+from query_doctor.analyzer.runtime_admission import build_runtime_admission_facts
 from query_doctor.analyzer.runtime_diagnosis import build_runtime_diagnosis
 from query_doctor.analyzer.service import analyze
 from query_doctor.analyzer.source_provenance import build_source_provenance
@@ -118,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
         analysis["table_metadata_context"] or {},
         analysis,
     )
+    analysis["runtime_admission"] = build_runtime_admission_facts(analysis)
+    analysis["memory_pressure"] = build_memory_pressure_facts(analysis)
     analysis["case_primary_bottleneck"] = classify_case_primary_bottleneck(analysis).to_dict()
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
     analysis["default_database"] = extract_default_database(text)

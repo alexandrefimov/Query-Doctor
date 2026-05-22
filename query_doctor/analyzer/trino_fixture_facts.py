@@ -25,6 +25,16 @@ from query_doctor.safety import redaction
 
 TRINO_FIXTURE_SOURCE = "trino_statement_stats_fixture"
 TRINO_EVENT_LISTENER_FIXTURE_SOURCE = "trino_event_listener_fixture"
+TRINO_FAILURE_CATEGORIES = frozenset(
+    {
+        "access_control",
+        "external_system",
+        "internal_error",
+        "planning_error",
+        "query_canceled",
+        "resource_limit",
+    }
+)
 TRINO_EVENT_FIXTURE_MAX_JSON_BYTES = 64 * 1024
 TRINO_EVENT_FIXTURE_MAX_DEPTH = 16
 TRINO_EVENT_FORBIDDEN_FIELD_NAMES = frozenset(
@@ -115,16 +125,13 @@ def build_trino_fixture_engine_facts(payload: Mapping[str, Any]) -> EngineFactBu
             _count_fact("output_bytes", stats.get("outputBytes"), unit="bytes"),
             _count_fact("peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
             _spilled_bytes_fact(stats.get("spilledBytes")),
+            _connector_metric_signal_fact(stats),
         ),
         stages=(
             _stage_count_fact(stats),
             _count_fact("completed_split_count", stats.get("completedSplits"), unit="splits"),
             _blocked_signal_fact(stats),
-            MetricFact(
-                fact_id="stage_skew_candidate",
-                state="unknown",
-                summary="No safe per-task distribution facts are present in this fixture.",
-            ),
+            _stage_skew_candidate_fact(stats),
         ),
         limitations=_trino_fixture_limitations(),
     )
@@ -162,16 +169,13 @@ def build_trino_event_listener_fixture_engine_facts(payload: Mapping[str, Any]) 
             _count_fact("output_bytes", stats.get("outputBytes"), unit="bytes"),
             _count_fact("peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
             _spilled_bytes_fact(stats.get("spilledBytes")),
+            _connector_metric_signal_fact(stats),
         ),
         stages=(
             _stage_count_fact(stats),
             _count_fact("completed_split_count", stats.get("completedSplits"), unit="splits"),
             _blocked_signal_fact(stats),
-            MetricFact(
-                fact_id="stage_skew_candidate",
-                state="unknown",
-                summary="No safe per-task distribution facts are present in this fixture.",
-            ),
+            _stage_skew_candidate_fact(stats),
         ),
         limitations=_trino_fixture_limitations(),
     )
@@ -216,14 +220,18 @@ def _build_lifecycle(stats: Mapping[str, Any]) -> QueryLifecycleFacts:
     lifecycle = _normalize_lifecycle(raw_state)
     if lifecycle == "unknown":
         state = "unknown"
+        failed = "unknown"
     else:
         state = "supported"
-    failed = "supported" if lifecycle == "failed" else "not_observed"
+        failed = "supported" if lifecycle == "failed" else "not_observed"
+    failure_category_state, failure_category = _failure_category_fact(stats, lifecycle)
     return QueryLifecycleFacts(
         state=state,
         lifecycle=lifecycle,
         blocked=_blocked_state(stats),
         failure=failed,
+        failure_category_state=failure_category_state,
+        failure_category=failure_category,
     )
 
 
@@ -259,6 +267,30 @@ def _blocked_state(stats: Mapping[str, Any]) -> str:
     if "fullyBlocked" not in stats:
         return "unknown"
     return "supported" if bool(stats.get("fullyBlocked")) else "not_observed"
+
+
+def _failure_category_fact(
+    stats: Mapping[str, Any],
+    lifecycle: str,
+) -> tuple[str, str | None]:
+    if lifecycle == "unknown":
+        return "unknown", None
+    if lifecycle != "failed":
+        return "not_observed", None
+
+    summary = _mapping(stats.get("safeFailureSummary"))
+    if not summary:
+        return "unknown", None
+
+    checked = summary.get("checked")
+    category = _text_or_none(summary.get("category"))
+    if (
+        set(summary) - {"checked", "category"}
+        or checked is not True
+        or category not in TRINO_FAILURE_CATEGORIES
+    ):
+        return "unknown", None
+    return "supported", category
 
 
 def _millis_fact(fact_id: str, value: Any) -> MetricFact:
@@ -323,6 +355,82 @@ def _blocked_signal_fact(stats: Mapping[str, Any]) -> MetricFact:
         state="not_observed",
         value=False,
         summary="Trino statement stats did not mark the query as fully blocked.",
+    )
+
+
+def _stage_skew_candidate_fact(stats: Mapping[str, Any]) -> MetricFact:
+    summary = _mapping(stats.get("safeStageSkewSummary"))
+    if not summary:
+        return MetricFact(
+            fact_id="stage_skew_candidate",
+            state="unknown",
+            summary="No safe per-task distribution facts are present in this fixture.",
+        )
+
+    checked = summary.get("checked")
+    candidate = summary.get("candidate")
+    ratio = _number_or_none(summary.get("maxToMedianInputBytesRatio"))
+    if checked is not True or not isinstance(candidate, bool):
+        return MetricFact(
+            fact_id="stage_skew_candidate",
+            state="unknown",
+            summary="The fixture did not provide a complete safe stage-skew summary.",
+        )
+    if not candidate:
+        return MetricFact(
+            fact_id="stage_skew_candidate",
+            state="not_observed",
+            value=False,
+            summary="Safe per-task distribution facts did not report a stage-skew candidate.",
+        )
+    if ratio is None:
+        return MetricFact(
+            fact_id="stage_skew_candidate",
+            state="unknown",
+            summary="The fixture reported a stage-skew candidate without a safe ratio.",
+        )
+    return MetricFact(
+        fact_id="stage_skew_candidate",
+        state="supported",
+        value=ratio,
+        unit="ratio",
+        summary="Safe per-task distribution facts reported a stage-skew candidate.",
+    )
+
+
+def _connector_metric_signal_fact(stats: Mapping[str, Any]) -> MetricFact:
+    summary = _mapping(stats.get("safeConnectorMetricSummary"))
+    if not summary:
+        return MetricFact(
+            fact_id="connector_metric_signal",
+            state="unknown",
+            summary="No safe query-specific connector metric summary is present in this fixture.",
+        )
+
+    checked = summary.get("checked")
+    present = summary.get("present")
+    if (
+        set(summary) - {"checked", "present"}
+        or checked is not True
+        or not isinstance(present, bool)
+    ):
+        return MetricFact(
+            fact_id="connector_metric_signal",
+            state="unknown",
+            summary="The fixture did not provide a complete safe connector metric summary.",
+        )
+    if not present:
+        return MetricFact(
+            fact_id="connector_metric_signal",
+            state="not_observed",
+            value=False,
+            summary="Safe query-specific connector metric summary did not report a connector signal.",
+        )
+    return MetricFact(
+        fact_id="connector_metric_signal",
+        state="supported",
+        value=True,
+        summary="Safe query-specific connector metric summary reported a connector signal.",
     )
 
 

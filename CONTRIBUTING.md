@@ -110,11 +110,9 @@ being quoted.
 
 ## Licensing Contributions
 
-Query Doctor uses dual licensing: public `AGPL-3.0-or-later` terms plus a
-separate commercial licensing path. To keep that model possible, contributions
-may require a Contributor License Agreement or another explicit written
-permission that allows the project owner to relicense contributed code under
-both the public AGPL terms and commercial terms.
+Query Doctor is licensed under the Apache License, Version 2.0
+(`Apache-2.0`). Unless you explicitly state otherwise, contributions submitted
+for inclusion in the project are submitted under the same license.
 
 Do not contribute code copied from third-party projects unless the license is
 compatible and you have the right to submit it under this contribution model.

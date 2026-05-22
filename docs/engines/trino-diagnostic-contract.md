@@ -1,6 +1,6 @@
 # Trino Diagnostic Contract
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-23
 
 This document defines the current research contract for future Trino diagnosis.
 It is not a support announcement. Query Doctor remains Apache Impala only until
@@ -194,7 +194,8 @@ Required boundary shape:
   source-version label. It must not expose parser source labels, artifact
   filenames, query IDs, endpoint names, cluster names, or collector internals.
 - lifecycle must carry `supported`, `not_observed`, or `unknown` states for
-  query lifecycle, blocked status, and failure status.
+  query lifecycle, blocked status, failure status, and any redacted failure
+  category.
 - fact groups must use the typed timing, resource, stage, and limitation
   buckets. Consumers must not read raw Trino JSON directly.
 - limitations must be explicit for fields that are absent, unparsed, or
@@ -206,12 +207,33 @@ Minimum accepted fixture facts:
   `supported` only when the accepted source provides numeric values;
 - resources: input rows, input bytes, peak memory, and spilled bytes are
   explicit facts; output rows and output bytes remain `unknown` when absent;
+- connector metric signal is a resource fact and may be `supported` or
+  `not_observed` only from an accepted compact query-specific summary with an
+  explicit checked/present result. It must not expose connector names, catalog
+  names, object names, endpoint details, metric names, or raw connector
+  payloads;
+- redacted failure category may be `supported` only for failed queries from an
+  accepted compact checked/category summary whose value is an allowlisted safe
+  category. It must not expose raw exception classes, stack traces, failure
+  messages, query IDs, endpoint details, object names, or connector internals;
 - stages: stage count, completed split count, blocked signal, and stage-skew
   candidate are explicit facts; stage skew stays `unknown` until safe per-task
   distribution facts exist;
-- limitations: admission/resource-group semantics, connector metrics,
-  metadata enrichment, cluster events, and Impala-only profile concepts remain
-  `unknown` until their own source contracts and tests exist;
+- a stage-skew candidate may be `supported` only from an accepted compact
+  aggregate per-task distribution summary. Do not expose stage IDs, task IDs,
+  worker identifiers, split identifiers, connector internals, or raw per-task
+  payloads at the boundary;
+- blocked query state may be `supported` only when the bounded fixture/source
+  explicitly reports `BLOCKED` lifecycle or a checked blocked signal such as
+  `fullyBlocked`; blocked timing/category remains separate future evidence;
+- limitations: admission/resource-group semantics, connector metric
+  interpretation beyond the compact signal, metadata enrichment, cluster
+  events, and Impala-only profile concepts remain `unknown` until their own
+  source contracts and tests exist;
+- missing source-version, lifecycle, timing, resource, stage, blocked, or
+  failure fields remain absent or `unknown` at the boundary and must not be
+  converted into zero values or `not_observed` facts unless the bounded source
+  explicitly checked that signal;
 - `not_observed` may be used only when the bounded source explicitly checked
   the field and reported an absent/false/zero signal, for example no spill or
   not fully blocked.

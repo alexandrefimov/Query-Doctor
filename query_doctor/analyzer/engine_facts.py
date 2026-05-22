@@ -107,19 +107,36 @@ class QueryLifecycleFacts:
     lifecycle: str
     blocked: DiagnosticState = "unknown"
     failure: DiagnosticState = "unknown"
+    failure_category_state: DiagnosticState = "unknown"
+    failure_category: str | None = None
 
     def __post_init__(self) -> None:
         _validate_state(self.state)
         _validate_safe_label(self.lifecycle, "lifecycle")
         _validate_state(self.blocked)
         _validate_state(self.failure)
+        _validate_state(self.failure_category_state)
+        if self.failure_category_state == "supported":
+            if self.failure_category is None:
+                raise EngineFactContractError("supported failure category facts need a category")
+            _validate_identifier(self.failure_category, "failure_category")
+        elif self.failure_category is not None:
+            raise EngineFactContractError(
+                "unsupported failure category facts must not carry a category"
+            )
 
-    def to_public_dict(self) -> dict[str, str]:
+    def to_public_dict(self) -> dict[str, Any]:
+        failure_category: dict[str, str] = {
+            "state": self.failure_category_state,
+        }
+        if self.failure_category is not None:
+            failure_category["value"] = self.failure_category
         return {
             "state": self.state,
             "lifecycle": self.lifecycle,
             "blocked": self.blocked,
             "failure": self.failure,
+            "failure_category": failure_category,
         }
 
 

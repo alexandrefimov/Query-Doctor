@@ -25,8 +25,49 @@ FIXTURE = Path(__file__).parent / "fixtures" / "engine_facts" / "trino_statement
 FAILED_FIXTURE = (
     Path(__file__).parent / "fixtures" / "engine_facts" / "trino_failed_statement_stats.json"
 )
+FAILURE_CATEGORY_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_failure_category_statement_stats.json"
+)
+BLOCKED_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_blocked_statement_stats.json"
+)
+STAGE_SKEW_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_stage_skew_statement_stats.json"
+)
+CONNECTOR_METRIC_PRESENT_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_connector_metric_present_statement_stats.json"
+)
+CONNECTOR_METRIC_ABSENT_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_connector_metric_absent_statement_stats.json"
+)
 EVENT_FIXTURE = Path(__file__).parent / "fixtures" / "engine_facts" / "trino_completed_event.json"
-TRINO_FIXTURES = (FIXTURE, FAILED_FIXTURE, EVENT_FIXTURE)
+MISSING_EVENT_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "engine_facts"
+    / "trino_completed_event_missing_fields.json"
+)
+EVENT_FIXTURES = (EVENT_FIXTURE, MISSING_EVENT_FIXTURE)
+TRINO_FIXTURES = (
+    FIXTURE,
+    FAILED_FIXTURE,
+    FAILURE_CATEGORY_FIXTURE,
+    BLOCKED_FIXTURE,
+    STAGE_SKEW_FIXTURE,
+    CONNECTOR_METRIC_PRESENT_FIXTURE,
+    CONNECTOR_METRIC_ABSENT_FIXTURE,
+    EVENT_FIXTURE,
+    MISSING_EVENT_FIXTURE,
+)
 
 
 def test_trino_fixture_maps_to_normalized_engine_facts_without_support_claim():
@@ -42,6 +83,7 @@ def test_trino_fixture_maps_to_normalized_engine_facts_without_support_claim():
     assert facts["input_bytes"].value == 19327352832
     assert facts["spilled_bytes"].state == "not_observed"
     assert facts["spilled_bytes"].value == 0
+    assert facts["connector_metric_signal"].state == "unknown"
     assert facts["stage_count"].value == 3
     assert facts["stage_skew_candidate"].state == "unknown"
     assert facts["output_rows"].state == "unknown"
@@ -91,6 +133,8 @@ def test_trino_fixture_public_facts_are_raw_free():
         assert "trino" in public_text
         assert "statementStats" not in public_text
         assert "rootStage" not in public_text
+        assert "safeConnectorMetricSummary" not in public_text
+        assert "safeFailureSummary" not in public_text
         assert "queryCompletedEvent" not in public_text
 
 
@@ -113,6 +157,167 @@ def test_trino_failed_fixture_maps_lifecycle_without_support_claim():
         get_engine_adapter("trino")
 
 
+def test_trino_failure_category_fixture_maps_safe_category_without_support_claim():
+    bundle = build_trino_fixture_engine_facts(_load_fixture(FAILURE_CATEGORY_FIXTURE))
+    facts = bundle.facts_by_id()
+    lifecycle = bundle.to_public_dict()["lifecycle"]
+
+    assert bundle.identity.engine == "trino"
+    assert bundle.lifecycle.lifecycle == "failed"
+    assert bundle.lifecycle.failure == "supported"
+    assert bundle.lifecycle.failure_category_state == "supported"
+    assert bundle.lifecycle.failure_category == "resource_limit"
+    assert lifecycle["failure_category"] == {
+        "state": "supported",
+        "value": "resource_limit",
+    }
+    assert facts["elapsed_time_ms"].value == 58000
+    assert facts["stage_count"].value == 2
+    assert "safeFailureSummary" not in public_engine_facts_text(bundle)
+
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
+    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
+        get_engine_adapter("trino")
+
+
+def test_trino_failure_category_missing_summary_stays_unknown_without_fake_signal():
+    bundle = build_trino_fixture_engine_facts(_load_fixture(FAILED_FIXTURE))
+    lifecycle = bundle.to_public_dict()["lifecycle"]
+
+    assert bundle.lifecycle.lifecycle == "failed"
+    assert bundle.lifecycle.failure == "supported"
+    assert lifecycle["failure_category"] == {"state": "unknown"}
+
+
+def test_trino_failure_category_extra_fields_stay_unknown_and_raw_free():
+    payload = _load_fixture(FAILURE_CATEGORY_FIXTURE)
+    payload["statementStats"]["safeFailureSummary"]["failureClass"] = "redacted_failure"
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    public_text = public_engine_facts_text(bundle)
+
+    assert bundle.lifecycle.failure_category_state == "unknown"
+    assert bundle.lifecycle.failure_category is None
+    assert "redacted_failure" not in public_text
+
+
+def test_trino_failure_category_unknown_category_stays_unknown():
+    payload = _load_fixture(FAILURE_CATEGORY_FIXTURE)
+    payload["statementStats"]["safeFailureSummary"]["category"] = "raw_exception_class"
+
+    bundle = build_trino_fixture_engine_facts(payload)
+
+    assert bundle.lifecycle.failure_category_state == "unknown"
+    assert bundle.lifecycle.failure_category is None
+
+
+def test_trino_blocked_fixture_maps_lifecycle_and_blocked_signal_without_support_claim():
+    bundle = build_trino_fixture_engine_facts(_load_fixture(BLOCKED_FIXTURE))
+    facts = bundle.facts_by_id()
+
+    assert bundle.identity.engine == "trino"
+    assert bundle.lifecycle.state == "supported"
+    assert bundle.lifecycle.lifecycle == "blocked"
+    assert bundle.lifecycle.failure == "not_observed"
+    assert bundle.lifecycle.blocked == "supported"
+    assert facts["elapsed_time_ms"].value == 96000
+    assert facts["blocked_signal"].state == "supported"
+    assert facts["blocked_signal"].value is True
+    assert facts["spilled_bytes"].state == "not_observed"
+    assert facts["spilled_bytes"].value == 0
+    assert facts["stage_count"].value == 2
+    assert facts["admission_control"].state == "unknown"
+
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
+    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
+        get_engine_adapter("trino")
+
+
+def test_trino_stage_skew_fixture_maps_safe_skew_summary_without_support_claim():
+    bundle = build_trino_fixture_engine_facts(_load_fixture(STAGE_SKEW_FIXTURE))
+    facts = bundle.facts_by_id()
+
+    assert bundle.identity.engine == "trino"
+    assert bundle.lifecycle.lifecycle == "finished"
+    assert bundle.lifecycle.blocked == "not_observed"
+    assert facts["input_bytes"].value == 34359738368
+    assert facts["stage_count"].value == 3
+    assert facts["stage_skew_candidate"].state == "supported"
+    assert facts["stage_skew_candidate"].value == 8.25
+    assert facts["stage_skew_candidate"].unit == "ratio"
+    assert "safeStageSkewSummary" not in public_engine_facts_text(bundle)
+
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
+    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
+        get_engine_adapter("trino")
+
+
+def test_trino_stage_skew_incomplete_summary_stays_unknown_without_fake_signal():
+    payload = _load_fixture(STAGE_SKEW_FIXTURE)
+    del payload["statementStats"]["safeStageSkewSummary"]["maxToMedianInputBytesRatio"]
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    fact = bundle.facts_by_id()["stage_skew_candidate"]
+
+    assert fact.state == "unknown"
+    assert fact.value is None
+
+
+def test_trino_connector_metric_present_fixture_maps_safe_summary_without_support_claim():
+    bundle = build_trino_fixture_engine_facts(_load_fixture(CONNECTOR_METRIC_PRESENT_FIXTURE))
+    facts = bundle.facts_by_id()
+
+    assert bundle.identity.engine == "trino"
+    assert bundle.lifecycle.lifecycle == "finished"
+    assert bundle.lifecycle.blocked == "not_observed"
+    assert facts["connector_metric_signal"].state == "supported"
+    assert facts["connector_metric_signal"].value is True
+    assert facts["stage_count"].value == 3
+    assert "safeConnectorMetricSummary" not in public_engine_facts_text(bundle)
+
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
+    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
+        get_engine_adapter("trino")
+
+
+def test_trino_connector_metric_absent_fixture_maps_safe_not_observed_signal():
+    bundle = build_trino_fixture_engine_facts(_load_fixture(CONNECTOR_METRIC_ABSENT_FIXTURE))
+    facts = bundle.facts_by_id()
+
+    assert bundle.identity.engine == "trino"
+    assert bundle.lifecycle.lifecycle == "finished"
+    assert facts["connector_metric_signal"].state == "not_observed"
+    assert facts["connector_metric_signal"].value is False
+    assert facts["stage_count"].value == 2
+
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
+    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
+        get_engine_adapter("trino")
+
+
+def test_trino_connector_metric_incomplete_summary_stays_unknown_without_fake_signal():
+    payload = _load_fixture(CONNECTOR_METRIC_PRESENT_FIXTURE)
+    del payload["statementStats"]["safeConnectorMetricSummary"]["present"]
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    fact = bundle.facts_by_id()["connector_metric_signal"]
+
+    assert fact.state == "unknown"
+    assert fact.value is None
+
+
+def test_trino_connector_metric_summary_with_extra_fields_stays_unknown():
+    payload = _load_fixture(CONNECTOR_METRIC_PRESENT_FIXTURE)
+    payload["statementStats"]["safeConnectorMetricSummary"]["metricName"] = "redacted_metric"
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    fact = bundle.facts_by_id()["connector_metric_signal"]
+
+    assert fact.state == "unknown"
+    assert fact.value is None
+    assert "redacted_metric" not in public_engine_facts_text(bundle)
+
+
 def test_trino_event_fixture_maps_completed_event_without_support_claim():
     bundle = build_trino_event_listener_fixture_engine_facts(_load_fixture(EVENT_FIXTURE))
     facts = bundle.facts_by_id()
@@ -130,6 +335,46 @@ def test_trino_event_fixture_maps_completed_event_without_support_claim():
     assert facts["resource_group_queue_time_ms"].state == "supported"
     assert facts["resource_group_queue_time_ms"].value == 8500
     assert facts["stage_count"].value == 4
+
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
+    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
+        get_engine_adapter("trino")
+
+
+def test_trino_event_fixture_missing_fields_stay_unknown_without_fake_zeros():
+    bundle = build_trino_event_listener_fixture_engine_facts(_load_fixture(MISSING_EVENT_FIXTURE))
+    facts = bundle.facts_by_id()
+    public_identity = bundle.identity.to_public_dict()
+
+    assert bundle.identity.engine == "trino"
+    assert bundle.identity.source == "trino_event_listener_fixture"
+    assert "source_version" not in public_identity
+    assert bundle.lifecycle.state == "unknown"
+    assert bundle.lifecycle.lifecycle == "unknown"
+    assert bundle.lifecycle.failure == "unknown"
+    assert bundle.lifecycle.blocked == "unknown"
+
+    for fact_id in (
+        "elapsed_time_ms",
+        "queued_time_ms",
+        "planning_time_ms",
+        "execution_time_ms",
+        "cpu_time_ms",
+        "wall_time_ms",
+        "input_rows",
+        "input_bytes",
+        "output_rows",
+        "output_bytes",
+        "peak_memory_bytes",
+        "spilled_bytes",
+        "connector_metric_signal",
+        "resource_group_queue_time_ms",
+        "stage_count",
+        "completed_split_count",
+        "blocked_signal",
+    ):
+        assert facts[fact_id].state == "unknown", fact_id
+        assert facts[fact_id].value is None, fact_id
 
     assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
     with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
@@ -231,6 +476,38 @@ def test_engine_fact_contract_rejects_duplicate_fact_ids():
         bundle.to_public_dict()
 
 
+def test_engine_fact_contract_requires_supported_failure_category_value():
+    with pytest.raises(EngineFactContractError, match="need a category"):
+        QueryLifecycleFacts(
+            state="supported",
+            lifecycle="failed",
+            failure="supported",
+            failure_category_state="supported",
+        )
+
+
+def test_engine_fact_contract_rejects_unsupported_failure_category_value():
+    with pytest.raises(EngineFactContractError, match="must not carry a category"):
+        QueryLifecycleFacts(
+            state="supported",
+            lifecycle="failed",
+            failure="supported",
+            failure_category_state="unknown",
+            failure_category="resource_limit",
+        )
+
+
+def test_engine_fact_contract_rejects_unsafe_failure_category_value():
+    with pytest.raises(EngineFactContractError, match="lower-case snake_case identifier"):
+        QueryLifecycleFacts(
+            state="supported",
+            lifecycle="failed",
+            failure="supported",
+            failure_category_state="supported",
+            failure_category="RawException",
+        )
+
+
 def test_engine_fact_raw_free_validator_flags_unsafe_summary_text():
     bundle = build_trino_fixture_engine_facts(_load_fixture())
     unsafe_timing = (
@@ -256,6 +533,6 @@ def _event_payload_with(section: str, field_name: str, value: object) -> dict:
 
 
 def _build_trino_bundle_for_fixture(path: Path, payload: dict) -> EngineFactBundle:
-    if path == EVENT_FIXTURE:
+    if path in EVENT_FIXTURES:
         return build_trino_event_listener_fixture_engine_facts(payload)
     return build_trino_fixture_engine_facts(payload)

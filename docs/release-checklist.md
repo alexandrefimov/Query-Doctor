@@ -141,8 +141,8 @@ Review at minimum:
 - CodeQL, Dependabot security updates, secret scanning, secret scanning push
   protection, and Private Vulnerability Reporting are enabled.
 - Issue templates avoid asking for raw production inputs.
-- `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE`, and
-  `COMMERCIAL-LICENSE.md` are present.
+- `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `LICENSE` are
+  present.
 - Future visibility changes happen only after final human review.
 - Repository and pipeline follow-ups are tracked in
   [repository-hardening.md](repository-hardening.md).

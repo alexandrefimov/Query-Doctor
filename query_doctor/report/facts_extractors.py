@@ -306,7 +306,9 @@ def backend_data_skew_is_supported(summary: dict[str, str | int]) -> bool:
 def facts_have_spill_scratch_evidence(facts_text: str) -> bool:
     return bool(
         re.search(
-            r"Spill or scratch I/O|non-zero spill/scratch metric evidence",
+            r"Spill or scratch I/O|non-zero spill/scratch metric evidence|"
+            r"non-zero spill/scratch counters were parsed|"
+            r"spill_or_scratch_evidence_count:\s*[1-9]",
             facts_text,
             re.IGNORECASE,
         )

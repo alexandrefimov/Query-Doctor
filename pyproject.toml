@@ -7,7 +7,7 @@ name = "query-doctor"
 version = "0.3.0"
 description = "Local-first Big Data query diagnostics focused today on Apache Impala."
 readme = "README.md"
-license = "AGPL-3.0-or-later"
+license = "Apache-2.0"
 requires-python = ">=3.9"
 authors = [
     { name = "Aleksandr Efimov" },

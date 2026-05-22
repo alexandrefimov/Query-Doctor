@@ -111,6 +111,11 @@ Admission wait:
 
 - Strong evidence: query timeline, admission wait duration, or admission result
   for the selected query.
+- Analyzer fact: `Runtime Admission Evidence` records the selected wait/result
+  source, evidence tier, primary support flag, safe wait sources, and
+  limitations.
+- Conflict rule: materially conflicting Cloudera Manager and profile-derived
+  waits are preserved as safe facts but stay context-only for primary routing.
 - Context-only evidence: pool saturation, cluster metrics, or concurrent
   workload signals without query-specific admission facts.
 
@@ -120,6 +125,15 @@ Memory pressure:
   failure/status facts for the selected query.
 - Context-only evidence: estimates, reservations, or limits without spill,
   scratch, failure, or query-specific pressure facts.
+- Current analyzer fact: `Memory Pressure Evidence` records the evidence tier,
+  finding support flag, runtime-metric correlation support flag, spill/scratch
+  count, memory-estimate context counts, peak-memory context, guardrail, and
+  limitations.
+- Current implementation note: selected-query non-zero spill/scratch counters
+  are the implemented strong evidence path. Memory estimates, reservations,
+  peak-memory footprints, profile resource memory, daemon metrics, and runtime
+  context remain context-only by themselves. Separate mapped memory
+  failure/status facts still require explicit parser support and fixtures.
 
 Scan skew:
 

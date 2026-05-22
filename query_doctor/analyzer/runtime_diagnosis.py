@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from query_doctor.analyzer.cm_metrics import cm_metric_correlation_signal
-from query_doctor.analyzer.query_context import query_context
-from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio, numeric_context_value
+from query_doctor.analyzer.memory_pressure import memory_pressure_facts_from_analysis
+from query_doctor.analyzer.runtime_admission import runtime_admission_facts_from_analysis
+from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio
 
 
 PROFILE_BACKEND_STARTUP_PLAUSIBLE_MS = 5_000.0
@@ -87,6 +88,7 @@ def runtime_diagnosis_profile_resource_signal(analysis: dict[str, Any]) -> dict[
         )
 
     admission_result = str(resources.get("admission_result") or "unknown")
+    admission_facts = runtime_admission_facts_from_analysis(analysis)
     startup = resources.get("backend_startup_latencies")
     startup = startup if isinstance(startup, dict) else {}
     fragments = resources.get("fragment_instances_per_host")
@@ -142,16 +144,25 @@ def runtime_diagnosis_profile_resource_signal(analysis: dict[str, Any]) -> dict[
             f"max_min_ratio={fmt_ratio(system_time_ratio)}."
         )
 
-    if admission_result in {"queued", "rejected"}:
+    profile_admission_supported = admission_facts.primary_supported and (
+        admission_facts.wait_source == "profile_resource_facts"
+        or admission_facts.admission_result_source == "profile_resource_facts"
+    )
+    if profile_admission_supported:
         return runtime_diagnosis_signal(
             "profile_resource_balance",
             "Profile resource balance",
             "plausible_follow_up",
             (
-                "Profile admission evidence indicates queueing or rejection. Validate pool limits, queued "
-                "query count, and admission-control metrics before treating this as the cause."
+                "Selected-query admission evidence is strong enough for admission/runtime follow-up. "
+                "Validate pool limits, queued query count, and admission-control metrics before treating "
+                "this as the cause."
             ),
             evidence,
+        )
+    if admission_result in {"queued", "rejected"}:
+        evidence.append(
+            "Runtime Admission Evidence: admission result is context-only without material selected-query wait or terminal admission-control support."
         )
     if startup_max_ms is not None and startup_max_ms >= PROFILE_BACKEND_STARTUP_PLAUSIBLE_MS:
         return runtime_diagnosis_signal(
@@ -338,6 +349,49 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
             )
         )
 
+    memory_facts = memory_pressure_facts_from_analysis(analysis)
+    memory_growth_status = runtime_diagnosis_metric_status(analysis, "daemon_memory_growth")
+    memory_pressure_status = runtime_diagnosis_metric_status(analysis, "daemon_memory_pressure")
+    memory_evidence: list[str] = []
+    memory_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "daemon_memory_growth"))
+    memory_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "daemon_memory_pressure"))
+    if memory_facts.spill_or_scratch_evidence_count:
+        memory_evidence.append(
+            "Memory Pressure Evidence: non-zero spill/scratch counters were parsed "
+            f"(count={memory_facts.spill_or_scratch_evidence_count})."
+        )
+    if memory_facts.memory_estimate_anomaly_count or memory_facts.zero_memory_estimate_gap_count:
+        memory_evidence.append(
+            "Memory Pressure Evidence: memory estimate gaps are context-only without selected-query non-zero spill/scratch evidence."
+        )
+    if memory_facts.finding_supported:
+        memory_status = "plausible_follow_up"
+        memory_interpretation = (
+            "Memory pressure is a plausible follow-up hypothesis because selected-query "
+            "non-zero spill/scratch evidence was parsed. Validate operator memory footprint, "
+            "spill counters, and comparable reruns before treating memory as a cause."
+        )
+    elif memory_growth_status == "context_only" or memory_pressure_status == "context_only":
+        memory_status = "context_only"
+        memory_interpretation = (
+            "Memory runtime metrics or estimate gaps were observed, but selected-query spill/scratch "
+            "evidence was not parsed. Treat memory as context only."
+        )
+    else:
+        memory_status = "unknown"
+        memory_interpretation = (
+            "Memory pressure was not established by the available deterministic facts."
+        )
+    signals.append(
+        runtime_diagnosis_signal(
+            "memory_pressure",
+            "Memory pressure",
+            memory_status,
+            memory_interpretation,
+            memory_evidence,
+        )
+    )
+
     storage_finding = runtime_diagnosis_finding(analysis, "hdfs_or_storage_bottleneck")
     disk_status = runtime_diagnosis_metric_status(analysis, "host_disk_io_pressure")
     hdfs_status = runtime_diagnosis_metric_status(analysis, "hdfs_datanode_io_pressure")
@@ -392,7 +446,8 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
 
     cpu_status = runtime_diagnosis_metric_status(analysis, "host_cpu_pressure")
     admission_status = runtime_diagnosis_metric_status(analysis, "admission_pool_pressure")
-    admission_wait_ms = numeric_context_value(query_context(analysis) or {}, "admission_wait_ms")
+    admission_facts = runtime_admission_facts_from_analysis(analysis)
+    admission_wait_ms = admission_facts.wait_ms
     cpu_evidence = runtime_diagnosis_metric_evidence(analysis, "host_cpu_pressure")
     cpu_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "admission_pool_pressure"))
     if admission_wait_ms is not None:

@@ -311,12 +311,12 @@ reviewer-oriented обзор: [docs/security-model.md](docs/security-model.md).
 
 ## Licensing
 
-Query Doctor лицензирован под GNU Affero General Public License version 3 or
-later (`AGPL-3.0-or-later`). См. [LICENSE](LICENSE).
+Query Doctor лицензирован под Apache License, Version 2.0 (`Apache-2.0`).
+См. [LICENSE](LICENSE).
 
-Commercial licensing доступно для proprietary, hosted, embedded или enterprise
-use cases, где AGPL obligations не подходят. См.
-[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+Apache, Apache Impala и Impala являются товарными знаками The Apache Software
+Foundation. Query Doctor - независимый проект; он не одобрен The Apache
+Software Foundation или проектом Apache Impala.
 
 ## Документация
 
@@ -378,10 +378,9 @@ configs, credentials, raw profiles, raw metadata или temporary outputs.
 ## Public status
 
 Репозиторий публичный. `v0.1.0` - initial public GitHub release baseline,
-`v0.1.1` - первый PyPI release, а `v0.2.0` - текущий package-index release:
+`v0.1.1` - первый PyPI release, а `v0.3.0` - текущий package-index release:
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) показывает
-текущий package-index status. Public license is AGPL-3.0-or-later, commercial
-licensing available separately.
+текущий package-index status. Public license is Apache-2.0.
 
 PyPI publishing использует GitHub OIDC Trusted Publishing. Repository-side
 `testpypi` и `pypi` environments требуют maintainer approval и не используют

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from query_doctor.analyzer.case_bottleneck import classify_case_primary_bottleneck
 from query_doctor.analyzer.facts_renderer import render_primary_bottleneck
+from query_doctor.analyzer.runtime_admission import build_runtime_admission_facts
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -102,6 +103,27 @@ def test_runtime_admission_routes_medium_for_material_explicit_wait():
     )
 
 
+def test_runtime_admission_evidence_tier_tracks_selected_query_wait():
+    analysis = analysis_fixture(
+        query_wall_clock={"duration_ms": 120_000, "confidence": "high"},
+        cm_query_context={
+            "admission_result": "Admitted (queued)",
+            "admission_wait_ms": 45_000,
+        },
+    )
+
+    facts = build_runtime_admission_facts(analysis)
+
+    assert facts["status"] == "supported"
+    assert facts["evidence_tier"] == "strong"
+    assert facts["primary_supported"] is True
+    assert facts["primary_confidence"] == "high"
+    assert facts["primary_reasons"] == (
+        "admission_wait_share_37pct",
+        "admission_wait_source_query_context",
+    )
+
+
 def test_runtime_admission_ignores_tiny_queued_wait():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
@@ -115,6 +137,23 @@ def test_runtime_admission_ignores_tiny_queued_wait():
 
     assert result.label == "unknown"
     assert result.reasons == ("no_primary_branch_supported",)
+
+
+def test_runtime_admission_tiny_queued_wait_stays_context_only():
+    facts = build_runtime_admission_facts(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 2_000_000, "confidence": "high"},
+            cm_query_context={
+                "admission_result": "Admitted (queued)",
+                "admission_wait_ms": 5,
+            },
+        )
+    )
+
+    assert facts["status"] == "supported"
+    assert facts["evidence_tier"] == "context_only"
+    assert facts["primary_supported"] is False
+    assert any("below the minimum duration" in item for item in facts["limitations"])
 
 
 def test_runtime_admission_uses_profile_resource_wait():
@@ -135,6 +174,25 @@ def test_runtime_admission_uses_profile_resource_wait():
         "admission_wait_share_15pct",
         "admission_wait_source_profile_resource_facts",
     )
+
+
+def test_runtime_admission_profile_queue_result_without_wait_stays_context_only():
+    analysis = analysis_fixture(
+        query_wall_clock={"duration_ms": 80_000, "confidence": "high"},
+        profile_resources={
+            "available": True,
+            "admission_result": "queued",
+        },
+    )
+
+    facts = build_runtime_admission_facts(analysis)
+    result = classify_case_primary_bottleneck(analysis)
+
+    assert facts["status"] == "context_only"
+    assert facts["evidence_tier"] == "context_only"
+    assert facts["primary_supported"] is False
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
 
 
 def test_runtime_admission_uses_profile_timeline_wait():
@@ -160,6 +218,27 @@ def test_runtime_admission_uses_profile_timeline_wait():
     )
 
 
+def test_runtime_admission_profile_timeline_wait_gets_strong_tier():
+    facts = build_runtime_admission_facts(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 70_000, "confidence": "medium"},
+            profile_resources={"available": True, "admission_result": "queued"},
+            profile_timings={
+                "available": True,
+                "query_timeline": {
+                    "available": True,
+                    "phase_durations": {"admission_ms": 25_000},
+                },
+            },
+        )
+    )
+
+    assert facts["status"] == "supported"
+    assert facts["evidence_tier"] == "strong"
+    assert facts["wait_source"] == "profile_timing_facts"
+    assert facts["primary_supported"] is True
+
+
 def test_runtime_admission_immediate_profile_result_is_negative_evidence():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
@@ -176,6 +255,31 @@ def test_runtime_admission_immediate_profile_result_is_negative_evidence():
     assert result.reasons == ("no_primary_branch_supported",)
 
 
+def test_runtime_admission_conflicting_wait_sources_do_not_promote_primary():
+    analysis = analysis_fixture(
+        query_wall_clock={"duration_ms": 120_000, "confidence": "high"},
+        cm_query_context={
+            "admission_result": "Admitted immediately",
+            "admission_wait_ms": 0,
+        },
+        profile_resources={
+            "available": True,
+            "admission_result": "queued",
+            "admission_wait_ms": 45_000,
+        },
+    )
+
+    facts = build_runtime_admission_facts(analysis)
+    result = classify_case_primary_bottleneck(analysis)
+
+    assert facts["status"] == "negative"
+    assert facts["evidence_tier"] == "context_only"
+    assert facts["primary_supported"] is False
+    assert len(facts["wait_evidence"]) == 2
+    assert any("disagree materially" in item for item in facts["limitations"])
+    assert result.label == "unknown"
+
+
 def test_runtime_admission_terminal_timeout_does_not_require_wall_clock():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
@@ -187,6 +291,31 @@ def test_runtime_admission_terminal_timeout_does_not_require_wall_clock():
     assert result.label == "runtime_admission"
     assert result.confidence == "high"
     assert result.reasons == ("admission_timed_out",)
+
+
+def test_runtime_admission_ignores_runtime_context_without_selected_query_evidence():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 180_000, "confidence": "high"},
+            metrics_correlation={
+                "status": "available",
+                "signals": [
+                    {
+                        "key": "admission_pool_pressure",
+                        "metric_status": "observed",
+                        "correlation_status": "context_only",
+                    }
+                ],
+            },
+            runtime_diagnosis={
+                "status": "available",
+                "summary": "CPU/admission pressure is the strongest plausible follow-up hypothesis from deterministic facts.",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
 
 
 def test_runtime_admission_preserves_primary_when_stats_evidence_coexists():

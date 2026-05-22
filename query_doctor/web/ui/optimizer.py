@@ -6,7 +6,8 @@ import html
 from typing import Any
 
 from query_doctor.optimizer.analysis import OptimizerAnalysis
-from query_doctor.web.ui.pages import render_error_panel, render_page
+from query_doctor.web.display_safety import sanitize_browser_error_text
+from query_doctor.web.ui.pages import render_page
 
 
 def render_optimizer_page(
@@ -17,7 +18,7 @@ def render_optimizer_page(
 ) -> str:
     sections = [render_optimizer_panel()]
     if error is not None:
-        sections.append(render_error_panel(error))
+        sections.append(render_optimizer_error_panel(error))
     if result is not None:
         sections.append(render_optimizer_result(result))
     return render_page(
@@ -37,19 +38,30 @@ def render_optimizer_panel() -> str:
         "</div></div>"
         '<form class="optimizer-form" method="post" action="/optimizer">'
         '<div class="field">'
-        '<div class="label-row"><label for="optimizer_sql">SQL query</label>'
-        '<details class="info-popover"><summary aria-label="SQL query help">i</summary>'
-        '<div class="info-body">Paste a single SELECT or WITH query only. Unsafe or multi-statement input is rejected '
-        "before referenced-table extraction and metadata collection. Query Doctor never executes the query and does "
-        "not display it back after submit.</div>"
-        "</details></div>"
-        '<textarea class="input optimizer-sql" id="optimizer_sql" name="sql" required></textarea>'
+        '<label for="optimizer_sql">SQL query</label>'
+        '<textarea class="input optimizer-sql" id="optimizer_sql" name="sql" '
+        'aria-describedby="optimizer_sql_help" required></textarea>'
+        '<p class="helper optimizer-field-help" id="optimizer_sql_help">'
+        "Paste one SELECT or WITH statement. Query Doctor parses it locally, never executes it, "
+        "rejects unsafe or multi-statement input before metadata collection, and clears the SQL after submit."
+        "</p>"
         "</div>"
         '<div class="optimizer-actions-row">'
         '<button class="run-button" type="submit">Analyze</button>'
         "</div>"
         f"{render_optimizer_scope_details()}"
         "</form></section>"
+    )
+
+
+def render_optimizer_error_panel(error: object) -> str:
+    safe_error = sanitize_browser_error_text(error, max_chars=None)
+    return (
+        '<section class="error-card" role="alert">'
+        "<strong>Safe optimizer state</strong>"
+        f"{html.escape(safe_error)}<br>"
+        "Submitted SQL is not displayed back, and unvalidated optimizer output is hidden."
+        "</section>"
     )
 
 
@@ -136,7 +148,7 @@ def render_findings(result: OptimizerAnalysis) -> str:
         return (
             '<div class="optimizer-block">'
             "<h3>Findings, limitations, and next checks</h3>"
-            '<p class="helper">No deterministic suggestions were produced for this first slice.</p>'
+            '<p class="helper">No deterministic optimizer suggestions were produced. Use the referenced tables and metadata status above as safe review context.</p>'
             "</div>"
         )
     cards = "".join(render_finding_card(finding) for finding in result.findings)

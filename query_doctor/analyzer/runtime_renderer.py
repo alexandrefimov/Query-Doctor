@@ -76,6 +76,92 @@ def render_query_wall_clock(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_runtime_admission_facts(analysis: dict[str, Any]) -> list[str]:
+    facts = analysis.get("runtime_admission")
+    if not isinstance(facts, dict):
+        return []
+    if facts.get("status") == "not_observed" and facts.get("evidence_tier") == "unsupported":
+        return []
+
+    lines = ["## Runtime Admission Evidence", ""]
+    lines.append(f"- status: {facts.get('status') or 'unknown'}")
+    lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
+    lines.append(f"- primary_supported: {'yes' if facts.get('primary_supported') else 'no'}")
+    result = facts.get("admission_result")
+    if result and result != "unknown":
+        source = facts.get("admission_result_source") or "unknown"
+        lines.append(f"- admission_result: {result} (source={source})")
+    if facts.get("wait_ms") is not None:
+        lines.append(
+            "- selected_wait: "
+            f"{facts.get('wait_human') or 'n/a'} "
+            f"(source={facts.get('wait_source') or 'unknown'}, "
+            f"share={facts.get('wait_share_human') or 'n/a'})"
+        )
+    wait_evidence = [item for item in facts.get("wait_evidence") or [] if isinstance(item, dict)]
+    if len(wait_evidence) > 1:
+        lines.append("- wait_sources:")
+        for item in wait_evidence[:5]:
+            lines.append(
+                f"  - {item.get('source') or 'unknown'}: {item.get('wait_human') or 'n/a'}"
+            )
+    lines.append(
+        f"- guardrail: {facts.get('guardrail') or 'Runtime admission facts are deterministic context.'}"
+    )
+    limitations = [str(item) for item in facts.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {md_escape(item)}")
+    lines.append("")
+    return lines
+
+
+def render_memory_pressure_facts(analysis: dict[str, Any]) -> list[str]:
+    facts = analysis.get("memory_pressure")
+    if not isinstance(facts, dict):
+        return []
+    if facts.get("status") == "not_observed" and facts.get("evidence_tier") == "unsupported":
+        return []
+
+    lines = ["## Memory Pressure Evidence", ""]
+    lines.append(f"- status: {facts.get('status') or 'unknown'}")
+    lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
+    lines.append(f"- finding_supported: {'yes' if facts.get('finding_supported') else 'no'}")
+    lines.append(
+        "- runtime_metric_correlation_supported: "
+        f"{'yes' if facts.get('runtime_metric_correlation_supported') else 'no'}"
+    )
+    lines.append(
+        f"- spill_or_scratch_evidence_count: {facts.get('spill_or_scratch_evidence_count') or 0}"
+    )
+    lines.append(
+        f"- memory_estimate_anomaly_count: {facts.get('memory_estimate_anomaly_count') or 0}"
+    )
+    lines.append(
+        f"- zero_memory_estimate_gap_count: {facts.get('zero_memory_estimate_gap_count') or 0}"
+    )
+    lines.append(
+        f"- high_peak_memory_operator_count: {facts.get('high_peak_memory_operator_count') or 0}"
+    )
+    context_flags: list[str] = []
+    if facts.get("query_context_memory_observed"):
+        context_flags.append("query_context_memory")
+    if facts.get("profile_resource_memory_observed"):
+        context_flags.append("profile_resource_memory")
+    lines.append(f"- context_signals: {', '.join(context_flags) if context_flags else 'none'}")
+    lines.append(
+        f"- guardrail: {facts.get('guardrail') or 'Memory pressure facts are deterministic context.'}"
+    )
+    limitations = [str(item) for item in facts.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {md_escape(item)}")
+    lines.append("")
+    return lines
+
+
 def render_runtime_counter_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("runtime_counter_context") or {}
     families = context.get("families") or {}

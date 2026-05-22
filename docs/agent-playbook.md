@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-05-22
+Last updated: 2026-05-23
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -33,7 +33,7 @@ routing:
 | Browser route or Details UI | `docs/safety-contract.md`, `docs/code-audit.md`, touched web presenters/routes | focused web route/presenter tests | code audit if trust boundary changes; changelog for workflow changes | redaction/no-raw-output regressions and job-state tests |
 | Report writer or validator | `docs/safety-contract.md`, `docs/code-audit.md`, touched report modules | report sanitizer/validator tests | safety/optimizer/report contract docs when trust rules change | unsupported-root-cause rejection, hidden partial output, trusted marker behavior |
 | Collector or metadata | `docs/safety-contract.md`, `docs/codex-handoff.md`, touched provider modules | collector/config/allowlist tests | safety or roadmap docs when collection contract changes | bounded read-only behavior, redaction, failure-state rendering |
-| Docs-only baseline | `docs/README.md`, target doc, plus `docs/codex-handoff.md` for baseline or safety-sensitive docs | `python3 scripts/check_active_docs.py`; `git diff --check` | changelog only for significant baseline/workflow/safety changes | no full suite unless browser-rendered docs/help changed |
+| Docs-only baseline | `docs/README.md`, public README when user-facing behavior is affected, target doc, plus `docs/codex-handoff.md` for baseline or safety-sensitive docs | `python3 scripts/check_active_docs.py`; `git diff --check` | public README and screenshots when current capabilities or material UI paths changed; changelog only for significant baseline/workflow/safety changes | no full suite unless browser-rendered docs/help changed |
 
 ## Docs-Only
 
@@ -50,6 +50,10 @@ Read:
 
 Watch for:
 
+- public README gaps for current workflows, CLI commands, config behavior,
+  demo/release paths, packaging, and product positioning;
+- stale README screenshots after material web UI layout or first-screen
+  workflow changes;
 - stale behavior claims;
 - old root wrapper commands;
 - unexpanded `CM` in user-facing sections where Cloudera Manager is not already

@@ -20,7 +20,9 @@ from query_doctor.analyzer.runtime_renderer import (
     render_cluster_event_context,
     render_cluster_runtime_context,
     render_evidence_quality,
+    render_memory_pressure_facts,
     render_query_wall_clock,
+    render_runtime_admission_facts,
     render_runtime_counter_context,
     render_runtime_diagnosis,
 )
@@ -672,6 +674,8 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_client_fetch_facts(analysis)
     lines += render_source_provenance(analysis)
     lines += render_query_wall_clock(analysis)
+    lines += render_runtime_admission_facts(analysis)
+    lines += render_memory_pressure_facts(analysis)
     lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)
     report_top_n = int(analysis.get("thresholds", {}).get("report_top_n", 10))

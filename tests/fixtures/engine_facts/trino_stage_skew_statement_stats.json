@@ -1,0 +1,61 @@
+{
+  "fixtureVersion": "synthetic-trino-stage-skew-statement-stats-v1",
+  "statementStats": {
+    "state": "FINISHED",
+    "queued": false,
+    "scheduled": true,
+    "nodes": 6,
+    "totalSplits": 84,
+    "queuedSplits": 0,
+    "runningSplits": 0,
+    "completedSplits": 84,
+    "elapsedTimeMillis": 220000,
+    "queuedTimeMillis": 900,
+    "planningTimeMillis": 3100,
+    "executionTimeMillis": 216000,
+    "cpuTimeMillis": 101000,
+    "wallTimeMillis": 218000,
+    "processedRows": 31000000,
+    "processedBytes": 34359738368,
+    "outputRows": 480000,
+    "outputBytes": 75497472,
+    "peakMemoryBytes": 3758096384,
+    "spilledBytes": 0,
+    "fullyBlocked": false,
+    "safeStageSkewSummary": {
+      "checked": true,
+      "candidate": true,
+      "maxToMedianInputBytesRatio": 8.25,
+      "sampledTaskCount": 18
+    },
+    "rootStage": {
+      "state": "FINISHED",
+      "done": true,
+      "nodes": 6,
+      "totalSplits": 84,
+      "completedSplits": 84,
+      "processedRows": 31000000,
+      "processedBytes": 34359738368,
+      "subStages": [
+        {
+          "state": "FINISHED",
+          "done": true,
+          "nodes": 6,
+          "totalSplits": 60,
+          "completedSplits": 60,
+          "processedRows": 26000000,
+          "processedBytes": 30064771072
+        },
+        {
+          "state": "FINISHED",
+          "done": true,
+          "nodes": 6,
+          "totalSplits": 24,
+          "completedSplits": 24,
+          "processedRows": 5000000,
+          "processedBytes": 4294967296
+        }
+      ]
+    }
+  }
+}

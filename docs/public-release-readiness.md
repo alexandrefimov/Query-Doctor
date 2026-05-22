@@ -68,10 +68,11 @@ place:
   Known Query ID plus Recent batch smokes with metadata collection enabled,
   TestPyPI dry run, GitHub release publish, production PyPI Trusted Publishing,
   and production PyPI install smoke.
-- The 0.3.0 release notes are finalized from the post-0.2.0 changelog plus
-  release-candidate UI and agent-workflow polish, the package metadata is
-  prepared for `v0.3.0`, and the local release gate plus built-wheel smoke have
-  passed for the release candidate.
+- The 0.3.0 release notes are finalized in
+  [release-notes-0.3.0.md](release-notes-0.3.0.md) from the post-0.2.0
+  changelog plus release-candidate UI and agent-workflow polish, the package
+  metadata is prepared for `v0.3.0`, and the local release gate plus
+  built-wheel smoke have passed for the release candidate.
 - README screenshots have been refreshed from the synthetic demo pack for the
   current material UI baseline. TestPyPI upload, release tag creation,
   production PyPI publishing, and post-publish install smoke remain

@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-23
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -51,6 +51,8 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
+- [release-notes-0.3.0.md](release-notes-0.3.0.md): curated 0.3.0 release
+  notes for GitHub Release and package-index handoff.
 - [release-checklist.md](release-checklist.md): final release-candidate,
   tag, package-index, and visibility-change procedure.
 
@@ -90,6 +92,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [release-notes-0.3.0.md](release-notes-0.3.0.md) | reference | Curated 0.3.0 release notes. |
 | [configuration.md](configuration.md) | reference | Local JSON config locations, discovery order, field groups, and examples. |
 | [local-smoke.md](local-smoke.md) | reference | Local validation workflows. |
 | [credentials.md](credentials.md) | reference | Local credential layout and secret handling. |

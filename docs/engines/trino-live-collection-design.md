@@ -1,6 +1,6 @@
 # Trino Live Collection Design
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-23
 
 This document defines a future live-collection path for Trino research. It is
 not a support announcement, does not add a collector, and does not change the
@@ -47,10 +47,19 @@ Rejected source families:
 Purpose: prove parser and redaction behavior without touching a live Trino
 cluster.
 
-Current status: a synthetic compacted query-completed event fixture exists for
-contract tests only. It is not a live source adapter and does not imply Trino
-support. The fixture mapper rejects oversized payloads and unsafe raw event
-fields before converting anything into normalized facts.
+Current status: synthetic statement-statistics and compacted query-completed
+event fixtures exist for contract tests only, including a blocked
+statement-statistics fixture, a safe aggregate stage-skew fixture, and a
+missing-field event fixture that keeps absent detail fields as `unknown`.
+Connector metric present/absent statement-statistics fixtures now cover only a
+compact checked/present signal and intentionally omit connector names, metric
+names, endpoints, object names, and raw connector payloads. A failed-query
+category statement-statistics fixture now covers only a compact
+checked/category signal and intentionally omits raw exception classes, failure
+messages, stack traces, endpoint details, object names, and connector
+internals. They are not live source adapters and do not imply Trino support.
+The fixture mapper rejects oversized payloads and unsafe raw event fields
+before converting anything into normalized facts.
 
 Allowed inputs:
 

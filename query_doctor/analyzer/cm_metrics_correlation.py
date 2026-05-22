@@ -5,14 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
-from query_doctor.analyzer.query_context import query_context
+from query_doctor.analyzer.memory_pressure import memory_pressure_facts_from_analysis
+from query_doctor.analyzer.runtime_admission import runtime_admission_facts_from_analysis
 from query_doctor.analyzer.runtime_metrics import (
     runtime_metrics_context,
     runtime_metrics_correlation,
     runtime_metrics_facts,
 )
-from query_doctor.analyzer.scalars import numeric_context_value
-from query_doctor.analyzer.thresholds import DEFAULT_LARGE_BYTES_THRESHOLD
 
 
 def finding_ids(analysis: dict[str, Any]) -> set[str]:
@@ -24,18 +23,8 @@ def finding_ids(analysis: dict[str, Any]) -> set[str]:
 
 
 def has_memory_profile_evidence(analysis: dict[str, Any]) -> bool:
-    thresholds = analysis.get("thresholds", {})
-    large_bytes_threshold = float(
-        thresholds.get("large_bytes_threshold") or DEFAULT_LARGE_BYTES_THRESHOLD
-    )
-    if analysis.get("memory_anomalies") or analysis.get("zero_memory_estimate_gaps"):
-        return True
-    if analysis.get("spill_nonzero_evidence_lines"):
-        return True
-    for op in analysis.get("top_operators_by_peak_memory") or []:
-        if (op.get("peak_mem_bytes") or 0) >= large_bytes_threshold:
-            return True
-    return False
+    facts = memory_pressure_facts_from_analysis(analysis)
+    return facts.runtime_metric_correlation_supported and facts.evidence_tier == "strong"
 
 
 def has_network_profile_evidence(analysis: dict[str, Any]) -> bool:
@@ -47,8 +36,8 @@ def has_storage_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 
 def has_admission_profile_evidence(analysis: dict[str, Any]) -> bool:
-    admission_wait_ms = numeric_context_value(query_context(analysis) or {}, "admission_wait_ms")
-    return admission_wait_ms is not None and admission_wait_ms >= 1000
+    facts = runtime_admission_facts_from_analysis(analysis)
+    return facts.primary_supported and facts.evidence_tier in {"strong", "medium"}
 
 
 def has_cpu_profile_evidence(analysis: dict[str, Any]) -> bool:
@@ -166,11 +155,11 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
             title="Daemon memory growth",
             profile_support=memory_support,
             correlated_reason=(
-                "Daemon memory growth is correlated with parsed memory, spill, or high-memory operator evidence; "
-                "prioritize reducing intermediate memory footprint."
+                "Daemon memory growth is correlated with selected-query non-zero spill/scratch evidence; "
+                "use it only as runtime context for reducing intermediate memory footprint."
             ),
             context_reason=(
-                "Daemon memory growth was observed, but parsed profile facts did not identify memory-heavy SQL evidence."
+                "Daemon memory growth was observed, but selected-query non-zero spill/scratch evidence was not parsed."
             ),
         ),
         signal_row(
@@ -178,10 +167,10 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
             title="Daemon memory pressure",
             profile_support=memory_support,
             correlated_reason=(
-                "Daemon memory pressure is correlated with parsed memory evidence; treat it as runtime context, "
-                "not standalone proof."
+                "Daemon memory pressure is correlated with selected-query non-zero spill/scratch evidence; "
+                "treat it as runtime context, not standalone proof."
             ),
-            context_reason="Daemon memory pressure is observed only as runtime context without matching profile evidence.",
+            context_reason="Daemon memory pressure is observed only as runtime context without selected-query non-zero spill/scratch evidence.",
         ),
         signal_row(
             "host_disk_io_pressure",

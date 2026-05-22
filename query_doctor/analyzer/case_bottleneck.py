@@ -5,15 +5,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from query_doctor.analyzer.query_context import query_context
+from query_doctor.analyzer.runtime_admission import (
+    runtime_admission_facts_from_analysis,
+    runtime_admission_uses_non_profile_evidence,
+)
 
-ADMISSION_HIGH_WAIT_MS = 10_000.0
-ADMISSION_HIGH_RATIO = 0.20
-ADMISSION_MEDIUM_WAIT_MS = 5_000.0
-ADMISSION_MEDIUM_RATIO_WAIT_MS = 2_000.0
-ADMISSION_MEDIUM_RATIO = 0.10
-ADMISSION_MIN_WAIT_MS = 1_000.0
-ADMISSION_MIN_RATIO = 0.05
 WALL_CLOCK_MIN_FOR_CLASSIFICATION_SEC = 5.0
 CARDINALITY_ANOMALY_MIN_COUNT = 1
 CARDINALITY_ANOMALY_HIGH_COUNT = 3
@@ -53,13 +49,6 @@ class CasePrimaryBottleneck:
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
-
-
-@dataclass(frozen=True)
-class AdmissionEvidence:
-    wait_ms: float | None
-    result: str
-    wait_source: str
 
 
 def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBottleneck:
@@ -231,11 +220,7 @@ def primary_bottleneck_profile_policy(analysis: dict[str, Any]) -> str:
 
 
 def admission_uses_non_profile_evidence(analysis: dict[str, Any]) -> bool:
-    evidence = admission_evidence(analysis)
-    if evidence.result in {"timed_out", "rejected"}:
-        context = query_context(analysis) or {}
-        return normalized_admission_result(context.get("admission_result")) == evidence.result
-    return evidence.wait_source == "query_context"
+    return runtime_admission_uses_non_profile_evidence(analysis)
 
 
 def per_instance_evidence_supports_profile_claims(analysis: dict[str, Any]) -> bool:
@@ -295,111 +280,14 @@ def classify_runtime_admission(
     wall_clock_sec: float | None,
     wall_clock_confidence: str,
 ) -> CasePrimaryBottleneck | None:
-    evidence = admission_evidence(analysis)
-    if evidence.result in {"timed_out", "rejected"}:
-        return CasePrimaryBottleneck(
-            "runtime_admission",
-            "high",
-            (f"admission_{evidence.result}",),
-        )
-    if evidence.result in {"admitted_immediately", "admitted_trivial"}:
+    facts = runtime_admission_facts_from_analysis(analysis)
+    if not facts.primary_supported:
         return None
-    if evidence.wait_ms is None:
-        return None
-    wait_ms = evidence.wait_ms
-    wall_clock_ms = wall_clock_sec * 1000.0 if wall_clock_sec is not None else None
-    wait_share = wait_ms / wall_clock_ms if wall_clock_ms and wall_clock_ms > 0 else None
-    if wait_ms < ADMISSION_MIN_WAIT_MS:
-        return None
-    if wait_share is not None and wait_share < ADMISSION_MIN_RATIO:
-        return None
-
-    reasons = admission_wait_reasons(wait_share, evidence.wait_source)
-    if (
-        wait_share is not None
-        and wait_ms >= ADMISSION_HIGH_WAIT_MS
-        and wait_share >= ADMISSION_HIGH_RATIO
-    ):
-        return CasePrimaryBottleneck("runtime_admission", "high", reasons)
-    if wait_ms >= ADMISSION_MEDIUM_WAIT_MS or (
-        wait_share is not None
-        and wait_ms >= ADMISSION_MEDIUM_RATIO_WAIT_MS
-        and wait_share >= ADMISSION_MEDIUM_RATIO
-    ):
-        return CasePrimaryBottleneck("runtime_admission", "medium", reasons)
-    return None
-
-
-def admission_wait_reasons(wait_share: float | None, wait_source: str) -> tuple[str, ...]:
-    reasons: list[str] = []
-    if wait_share is not None:
-        reasons.append(f"admission_wait_share_{int(wait_share * 100)}pct")
-    else:
-        reasons.append("admission_wait_explicit")
-    if wait_source:
-        reasons.append(f"admission_wait_source_{wait_source}")
-    return tuple(reasons)
-
-
-def admission_evidence(analysis: dict[str, Any]) -> AdmissionEvidence:
-    context = query_context(analysis) or {}
-    profile_resources = analysis.get("profile_resources")
-    profile_resources = profile_resources if isinstance(profile_resources, dict) else {}
-
-    context_result = normalized_admission_result(context.get("admission_result"))
-    profile_result = normalized_admission_result(profile_resources.get("admission_result"))
-    result = context_result if context_result != "unknown" else profile_result
-
-    for source, value in (
-        ("query_context", context.get("admission_wait_ms")),
-        ("query_context", context.get("admission_wait")),
-        ("query_context", context.get("resources_reserved_wait_time")),
-        ("profile_resource_facts", profile_resources.get("admission_wait_ms")),
-        ("profile_resource_facts", structured_wait_delta_ms(profile_resources)),
-        ("profile_timing_facts", profile_timeline_admission_ms(analysis)),
-    ):
-        wait_ms = numeric_value(value)
-        if wait_ms is not None and wait_ms >= 0:
-            return AdmissionEvidence(wait_ms=wait_ms, result=result, wait_source=source)
-    return AdmissionEvidence(wait_ms=None, result=result, wait_source="")
-
-
-def normalized_admission_result(value: object) -> str:
-    text = str(value or "").strip().lower()
-    if not text:
-        return "unknown"
-    normalized = "".join(ch if ch.isalnum() else "_" for ch in text).strip("_")
-    if "timed_out" in normalized or "timeout" in normalized:
-        return "timed_out"
-    if "reject" in normalized:
-        return "rejected"
-    if "immediate" in normalized:
-        return "admitted_immediately"
-    if "trivial" in normalized:
-        return "admitted_trivial"
-    if "queued" in normalized or "queue" in normalized:
-        return "queued"
-    if normalized.startswith("admitted"):
-        return "admitted"
-    return "other"
-
-
-def structured_wait_delta_ms(profile_resources: dict[str, Any]) -> float | None:
-    start = numeric_value(profile_resources.get("wait_start_time_ms"))
-    end = numeric_value(profile_resources.get("wait_end_time_ms"))
-    if start is None or end is None or end < start:
-        return None
-    return end - start
-
-
-def profile_timeline_admission_ms(analysis: dict[str, Any]) -> float | None:
-    timings = analysis.get("profile_timings")
-    timings = timings if isinstance(timings, dict) else {}
-    query_timeline = timings.get("query_timeline")
-    query_timeline = query_timeline if isinstance(query_timeline, dict) else {}
-    phases = query_timeline.get("phase_durations")
-    phases = phases if isinstance(phases, dict) else {}
-    return numeric_value(phases.get("admission_ms"))
+    return CasePrimaryBottleneck(
+        "runtime_admission",
+        facts.primary_confidence,
+        facts.primary_reasons,
+    )
 
 
 def top_finding_id(analysis: dict[str, Any]) -> str:

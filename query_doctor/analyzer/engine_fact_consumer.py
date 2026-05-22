@@ -8,6 +8,7 @@ raw-free payloads that are already safe for trusted surfaces.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -77,6 +78,11 @@ def _attention_signal_ids(
     signals: set[str] = set()
     if lifecycle["failure"] == "supported":
         signals.add("query_failed")
+    failure_category = _mapping(lifecycle.get("failure_category"))
+    if failure_category.get("state") == "supported":
+        category = str(failure_category.get("value", ""))
+        if category:
+            signals.add(f"failure_category:{category}")
     if lifecycle["blocked"] == "supported":
         signals.add("blocked_or_admission_wait")
     if identity["parser_coverage"] == "unknown":
@@ -89,6 +95,10 @@ def _attention_signal_ids(
             signals.add("spill_or_scratch_evidence")
         if state == "supported" and fact_id in {"backend_execution_tail_candidates"}:
             signals.add("execution_tail_candidate")
+        if state == "supported" and fact_id == "stage_skew_candidate":
+            signals.add("stage_skew_candidate")
+        if state == "supported" and fact_id == "connector_metric_signal":
+            signals.add("connector_metric_signal")
         if state == "unknown" and _is_limitation_fact(fact_id, fact_groups):
             signals.add(f"limitation_unknown:{fact_id}")
     return tuple(sorted(signals))
@@ -113,6 +123,7 @@ def _validate_boundary_payload(payload: Mapping[str, Any]) -> None:
         if not isinstance(lifecycle.get(key), str):
             raise EngineFactContractError(f"boundary lifecycle missing {key}")
         _validate_state(str(lifecycle[key]))
+    _validate_failure_category(lifecycle)
 
     for group in FACT_GROUPS:
         facts = fact_groups.get(group)
@@ -135,6 +146,22 @@ def _validate_fact(value: Any, group: str) -> None:
 def _validate_state(state: str) -> None:
     if state not in {"supported", "not_observed", "unknown"}:
         raise EngineFactContractError(f"unsupported boundary diagnostic state: {state}")
+
+
+def _validate_failure_category(lifecycle: Mapping[str, Any]) -> None:
+    if "failure_category" not in lifecycle:
+        return
+    failure_category = _required_mapping(lifecycle, "failure_category")
+    if not isinstance(failure_category.get("state"), str):
+        raise EngineFactContractError("boundary lifecycle missing failure category state")
+    state = str(failure_category["state"])
+    _validate_state(state)
+    value = failure_category.get("value")
+    if state == "supported":
+        if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", value):
+            raise EngineFactContractError("boundary lifecycle has unsafe failure category")
+    elif value is not None:
+        raise EngineFactContractError("boundary lifecycle has unsupported failure category value")
 
 
 def _required_mapping(payload: Mapping[str, Any], key: str) -> Mapping[str, Any]:

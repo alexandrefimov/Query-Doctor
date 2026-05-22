@@ -41,7 +41,7 @@ setup(
         "Issues": "https://github.com/alexandrefimov/Query-Doctor/issues",
         "Documentation": "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md",
     },
-    license="AGPL-3.0-or-later",
+    license="Apache-2.0",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Environment :: Console",
