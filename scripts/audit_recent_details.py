@@ -257,20 +257,22 @@ def audit_case(
     job_store: WebJobStore,
     case_id: str,
     case: dict[str, Any],
-    severity: str,
+    summary_severity: str,
 ) -> None:
     result.audited_cases += 1
-    result.severity_counts[severity] += 1
     result.metadata_counts[str(case.get("metadata_status") or "unknown").strip().lower()] += 1
     try:
         context, rendered = render_details_html(settings, job_store, case_id, case)
     except Exception as exc:  # pragma: no cover - includes unexpected renderer regressions.
         result.issues.append(
-            AuditIssue(case_id, severity, f"Details rendering failed: {type(exc).__name__}")
+            AuditIssue(case_id, summary_severity, f"Details rendering failed: {type(exc).__name__}")
         )
+        result.severity_counts[summary_severity] += 1
         return
 
     view = context.view
+    severity = str(view.score_severity or "").strip().lower() or summary_severity
+    result.severity_counts[severity] += 1
     score_reasons = present_recent_scan_score_reasons(view)
     action_cards = present_recent_scan_action_candidates(view).cards
     optimizer_status = str(context.optimized_query_state.get("status") or "unknown")

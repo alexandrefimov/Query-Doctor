@@ -1603,12 +1603,18 @@ def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
 
 def case_score_severity(case: dict[str, Any]) -> str:
     explicit = str(case.get("score_severity") or "").strip().lower()
-    if explicit in {"failed", "high", "suspicious", "clean"}:
+    if explicit in {"failed", "high", "suspicious"}:
         return explicit
     if case_has_failure(case):
         return "failed"
+    if explicit == "clean":
+        if primary_bottleneck_promotes_attention(case.get("case_primary_bottleneck")):
+            return "suspicious"
+        return "clean"
     score = numeric_value(case.get("score"))
     if score <= 0:
+        if primary_bottleneck_promotes_attention(case.get("case_primary_bottleneck")):
+            return "suspicious"
         return "clean"
     cardinality = numeric_count(case.get("cardinality_anomaly_count"))
     memory = numeric_count(case.get("memory_anomaly_count"))
@@ -1627,3 +1633,13 @@ def case_score_severity(case: dict[str, Any]) -> str:
     ):
         return "high"
     return "suspicious"
+
+
+def primary_bottleneck_promotes_attention(primary: Any) -> bool:
+    if not isinstance(primary, dict):
+        return False
+    label = str(primary.get("label") or "").strip().lower()
+    confidence = str(primary.get("confidence") or "").strip().lower()
+    if label in {"", "unknown", "not_classified", "not classified"}:
+        return False
+    return confidence in {"medium", "high"}

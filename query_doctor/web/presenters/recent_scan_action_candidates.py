@@ -316,6 +316,8 @@ def diagnostic_generic_source_locator(
         return generic_source_locator("runtime", "Storage or HDFS evidence")
     if primary == "Stats":
         return generic_source_locator("metadata", "Stats or estimate evidence")
+    if primary == "Client fetch tail":
+        return generic_source_locator("runtime", "Client fetch wait evidence")
     if primary == "Competing signals":
         return generic_source_locator("diagnostics", "Mixed diagnostic evidence")
     if view.signal_summary != "no positive analyzer signals":

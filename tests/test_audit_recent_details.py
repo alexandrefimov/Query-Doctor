@@ -160,6 +160,41 @@ def test_recent_details_audit_allows_runtime_follow_up_without_optimizer_source(
     )
 
 
+def test_recent_details_audit_uses_rendered_severity_for_strong_clean_primary(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case_dir(tmp_path, 1),
+                "query_id": "client-fetch-follow-up-query",
+                "user": "analyst",
+                "score": 0,
+                "score_severity": "clean",
+                "duration_sec": 120.0,
+                "collection_status": "ok",
+                "analysis_status": "ok",
+                "metadata_status": "not_requested",
+                "report_validation_status": "not_run",
+                "score_reasons": ["client fetch wait evidence"],
+                "case_primary_bottleneck": {
+                    "label": "client_fetch_tail",
+                    "confidence": "high",
+                    "reasons": ["client_fetch_wait_top_finding"],
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert result.ok
+    assert result.severity_counts == {"suspicious": 1}
+    assert result.action_counts == {"suspicious:Diagnostic follow-up": 1}
+
+
 def test_recent_details_audit_accepts_failed_collection_with_fallbacks(tmp_path: Path):
     summary_path = write_summary(
         tmp_path,

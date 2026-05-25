@@ -1036,6 +1036,8 @@ def case_score_severity(case: CaseResult) -> str:
     if case_has_processing_failure(case):
         return "failed"
     if case.score <= 0:
+        if primary_bottleneck_promotes_attention(case.case_primary_bottleneck):
+            return "suspicious"
         return "clean"
     cardinality = case.cardinality_anomaly_count or 0
     memory = case.memory_anomaly_count or 0
@@ -1058,6 +1060,16 @@ def case_score_severity(case: CaseResult) -> str:
     ):
         return "high"
     return "suspicious"
+
+
+def primary_bottleneck_promotes_attention(primary: object) -> bool:
+    if not isinstance(primary, dict):
+        return False
+    label = str(primary.get("label") or "").strip().lower()
+    confidence = str(primary.get("confidence") or "").strip().lower()
+    if label in {"", "unknown", "not_classified", "not classified"}:
+        return False
+    return confidence in {"medium", "high"}
 
 
 def case_has_processing_failure(case: CaseResult) -> bool:
