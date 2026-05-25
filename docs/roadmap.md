@@ -620,21 +620,26 @@ Implemented baseline:
 - scan-skew facts are evidence-tiered: per-instance scan bytes, bytes-read,
   rows, or mapped equivalent spread are the current strong evidence path, while
   backend data-skew summaries without those mapped fields remain context-only.
+- exchange/data-movement promotion requires mapped `EXCHANGE` operator context
+  and large `TotalBytesSent`; storage/HDFS promotion requires mapped
+  scan/storage operator context and large `TotalBytesRead`.
 
-Next P0 analyzer slices:
+Open P0 analyzer status:
 
-1. Harden exchange-wait and disk-I/O promotion:
-   - exchange/network/inactive timers need mapped exchange context and
-     correlation before exceeding medium evidence;
-   - disk I/O wait needs bytes and operator context before promotion.
+- No separate next P0 analyzer slice is currently queued. The remaining
+  profile work is validation and P1 diagnostic-quality depth unless a new
+  trust-boundary risk appears.
+- Keep the rules below as acceptance criteria for future profile-derived
+  evidence work.
 
-1. Dialect detection:
-   - classify profiles as `classic_text_profile`, `classic_json_profile`,
-     `classic_thrift_profile`, `experimental_profile_v2`, or `unknown` before
-     profile-derived analyzer work begins;
-   - emit a safe limitation for unknown or partially mapped dialects;
-   - keep raw profile payload, local paths, hostnames, users, and artifact names
-     out of browser-visible text and trusted reports.
+1. Dialect and safety:
+   - profiles must be classified as `classic_text_profile`,
+     `classic_json_profile`, `classic_thrift_profile`,
+     `experimental_profile_v2`, or `unknown` before profile-derived analyzer
+     work begins;
+   - unknown or partially mapped dialects need a safe limitation;
+   - raw profile payload, local paths, hostnames, users, and artifact names must
+     stay out of browser-visible text and trusted reports.
 2. Evidence tiers:
    - `strong`: query-specific profile evidence from a mapped dialect section,
      with required corroborating fields for that finding family;
@@ -650,16 +655,17 @@ Next P0 analyzer slices:
      admission result facts for the selected query;
    - memory pressure is strong with explicit non-zero spill or scratch counters,
      while estimates and reservations alone stay context-only;
-   - baseline implemented: scan skew is strong only with per-instance scan
-     bytes, bytes-read, rows, or a mapped equivalent spread section;
-   - exchange wait, network, and inactive timers require correlation before they
-     can exceed medium evidence;
-   - disk I/O wait requires bytes and operator context before promotion;
-   - baseline implemented: mapped `ClientFetchWait*` counters can strongly
-     support a client-fetch-tail finding only when they are a large share of
-     selected-query duration; primary bottleneck routing requires that finding
-     to be the top elapsed runtime finding. They are not a Hue, network, BI
-     tool, or client root-cause claim by themselves.
+   - scan skew is strong only with per-instance scan bytes, bytes-read, rows, or
+     a mapped equivalent spread section;
+   - exchange wait, network, and inactive timers require mapped exchange context
+     before they can exceed medium evidence;
+   - disk I/O wait requires bytes and scan/storage operator context before
+     promotion;
+   - mapped `ClientFetchWait*` counters can strongly support a client-fetch-tail
+     finding only when they are a large share of selected-query duration;
+     primary bottleneck routing requires that finding to be the top elapsed
+     runtime finding. They are not a Hue, network, BI tool, or client root-cause
+     claim by themselves.
 4. Incomplete/cancelled node guardrail:
    - baseline implemented: mapped profile-wide and per-node incomplete or
      cancelled signals now emit raw-free Exec Node Completeness facts and block
