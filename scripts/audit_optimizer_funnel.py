@@ -82,6 +82,11 @@ class WorkloadRollup:
     primary_labels: Counter[str] = field(default_factory=Counter)
     candidate_reasons: Counter[str] = field(default_factory=Counter)
     feature_clusters: Counter[str] = field(default_factory=Counter)
+    cte_graph_shapes: Counter[str] = field(default_factory=Counter)
+    cte_predicate_pushdown_statuses: Counter[str] = field(default_factory=Counter)
+    cte_simplification_statuses: Counter[str] = field(default_factory=Counter)
+    derived_predicate_pushdown_statuses: Counter[str] = field(default_factory=Counter)
+    risk_modes: Counter[str] = field(default_factory=Counter)
 
 
 @dataclass
@@ -102,6 +107,14 @@ class OptimizerFunnelAuditResult:
     no_recipe_family_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_hint_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_family_reason_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_cte_graph_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_cte_predicate_pushdown_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_cte_simplification_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_cte_boundary_reason_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_derived_predicate_pushdown_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_derived_boundary_reason_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_risk_mode_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_risk_reason_counts: Counter[str] = field(default_factory=Counter)
     plain_feature_cluster_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_workloads: dict[str, WorkloadRollup] = field(default_factory=dict)
 
@@ -325,12 +338,31 @@ def collect_no_recipe_case(
     result.no_recipe_family_counts[family] += 1
     result.no_recipe_hint_counts[hint] += 1
     result.no_recipe_family_reason_counts[f"{family}:{support.reason or '<missing>'}"] += 1
+    result.no_recipe_risk_mode_counts[support.risk_mode or "unknown"] += 1
+    result.no_recipe_risk_reason_counts.update(support.risk_reasons)
+    if support.cte_count:
+        result.no_recipe_cte_graph_counts[support.cte_graph_shape] += 1
+        result.no_recipe_cte_predicate_pushdown_counts[support.cte_predicate_pushdown_status] += 1
+        result.no_recipe_cte_simplification_counts[support.cte_simplification_status] += 1
+        result.no_recipe_cte_boundary_reason_counts.update(support.cte_boundary_reasons)
+    if support.derived_table_count:
+        result.no_recipe_derived_predicate_pushdown_counts[
+            support.derived_predicate_pushdown_status
+        ] += 1
+        result.no_recipe_derived_boundary_reason_counts.update(support.derived_boundary_reasons)
     workload = workload_key(case)
     rollup = result.no_recipe_workloads.setdefault(workload, WorkloadRollup(key=workload))
     rollup.count += 1
     rollup.shape_families[family] += 1
     rollup.primary_labels[primary] += 1
     rollup.candidate_reasons[candidate_reason] += 1
+    rollup.risk_modes[support.risk_mode or "unknown"] += 1
+    if support.cte_count:
+        rollup.cte_graph_shapes[support.cte_graph_shape] += 1
+        rollup.cte_predicate_pushdown_statuses[support.cte_predicate_pushdown_status] += 1
+        rollup.cte_simplification_statuses[support.cte_simplification_status] += 1
+    if support.derived_table_count:
+        rollup.derived_predicate_pushdown_statuses[support.derived_predicate_pushdown_status] += 1
     if family == "plain":
         cluster = sql_feature_cluster(source_sql_for_case(case, summary_path=summary_path))
         result.plain_feature_cluster_counts[cluster] += 1
@@ -499,9 +531,27 @@ def print_workload_rollups(
         features = ", ".join(
             f"{key}={count}" for key, count in rollup.feature_clusters.most_common(1)
         )
+        cte_graph = ", ".join(
+            f"{key}={count}" for key, count in rollup.cte_graph_shapes.most_common(1)
+        )
+        cte_pushdown = ", ".join(
+            f"{key}={count}" for key, count in rollup.cte_predicate_pushdown_statuses.most_common(1)
+        )
+        cte_simplification = ", ".join(
+            f"{key}={count}" for key, count in rollup.cte_simplification_statuses.most_common(1)
+        )
+        derived_pushdown = ", ".join(
+            f"{key}={count}"
+            for key, count in rollup.derived_predicate_pushdown_statuses.most_common(1)
+        )
+        risk = ", ".join(f"{key}={count}" for key, count in rollup.risk_modes.most_common(1))
         print(
             f"  {rollup.key}: cases={rollup.count}; family={family}; "
-            f"primary={primary}; reason={reason}; features={features or '<none>'}",
+            f"primary={primary}; reason={reason}; risk={risk or '<none>'}; "
+            f"cte_graph={cte_graph or '<none>'}; cte_pushdown={cte_pushdown or '<none>'}; "
+            f"cte_simplification={cte_simplification or '<none>'}; "
+            f"derived_pushdown={derived_pushdown or '<none>'}; "
+            f"features={features or '<none>'}",
             file=out,
         )
 
@@ -535,6 +585,49 @@ def print_result(
     print_counter(
         "No-recipe family / reason",
         result.no_recipe_family_reason_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter("No-recipe risk modes", result.no_recipe_risk_mode_counts, limit=limit, out=out)
+    print_counter(
+        "No-recipe risk reasons",
+        result.no_recipe_risk_reason_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "No-recipe CTE graph shapes",
+        result.no_recipe_cte_graph_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "No-recipe CTE predicate pushdown",
+        result.no_recipe_cte_predicate_pushdown_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "No-recipe CTE simplification",
+        result.no_recipe_cte_simplification_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "No-recipe CTE boundary reasons",
+        result.no_recipe_cte_boundary_reason_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "No-recipe derived predicate pushdown",
+        result.no_recipe_derived_predicate_pushdown_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "No-recipe derived boundary reasons",
+        result.no_recipe_derived_boundary_reason_counts,
         limit=limit,
         out=out,
     )
