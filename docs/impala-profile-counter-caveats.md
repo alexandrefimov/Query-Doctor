@@ -144,8 +144,10 @@ Current implementation note: `query_doctor.analyzer.profile_counter_registry`
 contains the bundled registry and a safe context loader for optional direct
 `/profile_docs` collection. Direct collection writes only allowlisted
 `name/significance`-derived labels for counter families Query Doctor already
-interprets; it does not write raw profile-doc descriptions or unrelated counter
-dumps. Client-fetch facts emit a safe `counter_stability` summary, and
+interprets. The collector accepts JSON-style docs and the Web UI HTML table
+shape, normalizing labels such as `STABLE & HIGH` and `STABLE & LOW` into the
+internal stability contract. It does not write raw profile-doc descriptions or
+unrelated counter dumps. Client-fetch facts emit a safe `counter_stability` summary, and
 client-fetch plus spill/scratch parsing cap or ignore counters whose registry
 label is not strong enough for the requested evidence tier. Broader
 Impala-version selection and registry refresh tooling remain future work.

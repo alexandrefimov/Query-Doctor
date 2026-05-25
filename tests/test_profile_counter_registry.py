@@ -7,6 +7,7 @@ from query_doctor.analyzer.profile_counter_registry import (
     profile_counter_registry_context_summary,
     profile_counter_registry_from_context,
     unavailable_profile_counter_registry_context,
+    normalize_counter_stability_label,
 )
 
 
@@ -52,6 +53,12 @@ def test_stable_low_counter_caps_strong_to_medium():
 
     assert cap_profile_evidence_tier_for_counter_stability("strong", definition) == "medium"
     assert cap_profile_evidence_tier_for_counter_stability("medium", definition) == "medium"
+
+
+def test_counter_stability_label_normalizes_profile_docs_html_variants():
+    assert normalize_counter_stability_label("STABLE & HIGH") == "STABLE_HIGH"
+    assert normalize_counter_stability_label("STABLE & LOW") == "STABLE_LOW"
+    assert normalize_counter_stability_label("UNSTABLE") == "UNSTABLE"
 
 
 def test_profile_docs_context_overrides_bundled_stability_for_known_counters():

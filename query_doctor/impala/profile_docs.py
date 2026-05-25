@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from html.parser import HTMLParser
 
 from query_doctor.analyzer.profile_counter_registry import (
     CounterStabilityLabel,
@@ -109,8 +110,11 @@ def fetch_profile_docs_payload(
     if len(raw) > max_profile_docs_bytes:
         raise CMClientError("response_too_large")
     try:
-        return json.loads(raw.decode("utf-8", errors="replace"))
+        text = raw.decode("utf-8", errors="replace")
+        return json.loads(text)
     except json.JSONDecodeError as exc:
+        if text.lstrip().startswith("<"):
+            return text
         raise CMClientError("invalid_json") from exc
 
 
@@ -118,6 +122,12 @@ def profile_docs_counter_labels(payload: object) -> dict[str, CounterStabilityLa
     docs: object
     if isinstance(payload, Mapping):
         docs = payload.get("profile_docs")
+        if not isinstance(docs, list):
+            html = payload.get("profile_docs_html")
+            if isinstance(html, str):
+                return profile_docs_counter_labels_from_html(html)
+    elif isinstance(payload, str):
+        return profile_docs_counter_labels_from_html(payload)
     else:
         docs = payload
     if not isinstance(docs, list):
@@ -132,6 +142,59 @@ def profile_docs_counter_labels(payload: object) -> dict[str, CounterStabilityLa
             continue
         label = first_string(item, "significance", "stability_label", "stabilityLabel")
         labels[name] = normalize_counter_stability_label(label)
+    return labels
+
+
+class ProfileDocsHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[list[str]] = []
+        self._row: list[str] = []
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del attrs
+        if tag.lower() in {"td", "th"}:
+            self._cell = []
+
+    def handle_data(self, data: str) -> None:
+        if self._cell is not None:
+            self._cell.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized_tag = tag.lower()
+        if normalized_tag in {"td", "th"} and self._cell is not None:
+            self._row.append(" ".join("".join(self._cell).split()))
+            self._cell = None
+        elif normalized_tag == "tr" and self._row:
+            self.rows.append(self._row)
+            self._row = []
+
+
+def profile_docs_counter_labels_from_html(text: str) -> dict[str, CounterStabilityLabel]:
+    parser = ProfileDocsHTMLParser()
+    parser.feed(text)
+    labels: dict[str, CounterStabilityLabel] = {}
+    name_index: int | None = None
+    significance_index: int | None = None
+    for row in parser.rows:
+        normalized = [cell.strip().lower() for cell in row]
+        if "name" in normalized and "significance" in normalized:
+            name_index = normalized.index("name")
+            significance_index = normalized.index("significance")
+            continue
+        if "significance" in normalized:
+            name_index = None
+            significance_index = None
+            continue
+        if name_index is None or significance_index is None:
+            continue
+        if len(row) <= max(name_index, significance_index):
+            continue
+        name = row[name_index].strip()
+        if not name:
+            continue
+        labels[name] = normalize_counter_stability_label(row[significance_index])
     return labels
 
 

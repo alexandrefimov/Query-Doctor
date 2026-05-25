@@ -9,6 +9,7 @@ families Query Doctor already interprets.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,7 +177,7 @@ def profile_counter_stability_payload(definition: ProfileCounterDefinition) -> d
 
 
 def normalize_counter_stability_label(value: object) -> CounterStabilityLabel:
-    label = str(value or "").strip().upper()
+    label = re.sub(r"[^A-Z0-9]+", "_", str(value or "").strip().upper()).strip("_")
     if label in KNOWN_COUNTER_STABILITY_LABELS:
         return label  # type: ignore[return-value]
     return "UNKNOWN"
