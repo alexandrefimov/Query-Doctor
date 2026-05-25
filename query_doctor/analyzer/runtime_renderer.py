@@ -117,6 +117,44 @@ def render_runtime_admission_facts(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_admission_context(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("admission_context")
+    if not isinstance(context, dict):
+        return []
+
+    lines = ["## Admission Context", ""]
+    lines.append(f"- status: {context.get('status') or 'unknown'}")
+    lines.append(f"- available: {'yes' if context.get('available') else 'no'}")
+    lines.append(f"- source: {context.get('source_label') or 'Impala admission debug endpoint'}")
+    lines.append(f"- scope: {context.get('scope') or 'unknown'}")
+    if context.get("reason"):
+        lines.append(f"- reason: {context.get('reason')}")
+    for field in (
+        "pool_count",
+        "matched_pool_count",
+        "queue_present",
+        "running_present",
+        "queued_pool_count",
+        "running_pool_count",
+        "max_queue_depth_bucket",
+        "max_running_bucket",
+        "avg_queue_time_bucket",
+        "pool_pressure",
+        "freshness",
+    ):
+        lines.append(f"- {field}: {context.get(field, 'unknown')}")
+    lines.append(
+        f"- guardrail: {context.get('guardrail') or 'Admission context is aggregate context only.'}"
+    )
+    limitations = [str(item) for item in context.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {md_escape(item)}")
+    lines.append("")
+    return lines
+
+
 def render_memory_pressure_facts(analysis: dict[str, Any]) -> list[str]:
     facts = analysis.get("memory_pressure")
     if not isinstance(facts, dict):

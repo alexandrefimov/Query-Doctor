@@ -506,6 +506,10 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             config_values, "impala_profile_collect_docs"
         )
         is True,
+        impala_collect_admission_context=optional_config_bool(
+            config_values, "impala_collect_admission_context"
+        )
+        is True,
         collect_prometheus_timeseries=optional_config_bool(
             config_values, "collect_prometheus_timeseries"
         )

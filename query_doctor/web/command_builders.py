@@ -102,6 +102,8 @@ def append_web_impala_profile_args(cmd: list[str], settings: WebSettings) -> Non
         cmd.append("--impala-profile-prefer-json")
     if settings.impala_profile_collect_docs:
         cmd.append("--impala-profile-collect-docs")
+    if settings.impala_collect_admission_context:
+        cmd.append("--impala-collect-admission-context")
     if settings.collect_prometheus_timeseries or settings.prometheus_url:
         if not settings.prometheus_url:
             raise WebError(

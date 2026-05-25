@@ -314,6 +314,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Do not collect direct impalad profile counter docs.",
     )
     parser.add_argument(
+        "--impala-collect-admission-context",
+        action="store_true",
+        default=None,
+        help=(
+            "Collect bounded aggregate pool context from direct impalad /admission?json. "
+            "Missing endpoints are non-fatal."
+        ),
+    )
+    parser.add_argument(
+        "--no-impala-collect-admission-context",
+        action="store_false",
+        dest="impala_collect_admission_context",
+        help="Do not collect direct impalad admission aggregate context.",
+    )
+    parser.add_argument(
         "--source-visibility",
         choices=SOURCE_VISIBILITY_CHOICES,
         help=(

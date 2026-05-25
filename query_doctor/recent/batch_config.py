@@ -212,6 +212,11 @@ def build_batch_config(
         config_values.get("impala_profile_collect_docs"),
         default=False,
     )
+    impala_collect_admission_context = first_bool(
+        getattr(args, "impala_collect_admission_context", None),
+        config_values.get("impala_collect_admission_context"),
+        default=False,
+    )
     prometheus_url = first_string(
         getattr(args, "prometheus_url", None),
         config_values.get("prometheus_url"),
@@ -546,6 +551,7 @@ def build_batch_config(
         ),
         impala_profile_prefer_json=impala_profile_prefer_json,
         impala_profile_collect_docs=impala_profile_collect_docs,
+        impala_collect_admission_context=impala_collect_admission_context,
         collect_prometheus_timeseries=collect_prometheus_timeseries,
         prometheus_url=prometheus_url,
         prometheus_metrics_profile=prometheus_metrics_profile,

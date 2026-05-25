@@ -186,6 +186,7 @@ def build_summary(
         "query_profile_source": config.query_profile_source,
         "impala_profile_prefer_json": config.impala_profile_prefer_json,
         "impala_profile_collect_docs": config.impala_profile_collect_docs,
+        "impala_collect_admission_context": config.impala_collect_admission_context,
         "source_visibility": config.source_visibility,
         "source_owner_filter_present": bool(
             config.source_visibility == "owner_raw" and config.source_owner_user

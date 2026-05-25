@@ -258,10 +258,50 @@ CM_QUERY_CONTEXT_FIELDS = (
     "profile_json_probe_enabled",
     "profile_docs_probe_enabled",
     "profile_docs_fetch_attempt_count",
+    "admission_context_probe_enabled",
+    "admission_context_fetch_attempt_count",
 )
 UNSAFE_CLUSTER_TEXT_RE = re.compile(
     r"(/[^ \n\t]+|[A-Za-z]:\\|https?://|RAW_[A-Z0-9_]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)"
 )
+ADMISSION_CONTEXT_FILENAME = "admission_context.json"
+ADMISSION_CONTEXT_GUARDRAIL = (
+    "Admission context is bounded aggregate evidence only. It cannot promote "
+    "runtime_admission without selected-query admission wait or result evidence."
+)
+ALLOWED_ADMISSION_STATUS = {"available", "unavailable"}
+ALLOWED_ADMISSION_SOURCE = {"impala_admission_debug"}
+ALLOWED_ADMISSION_SCOPE = {
+    "selected_pool",
+    "all_pools_selected_pool_not_found",
+    "all_pools",
+    "unknown",
+}
+ALLOWED_ADMISSION_YES_NO_UNKNOWN = {"yes", "no", "unknown"}
+ALLOWED_ADMISSION_COUNT_BUCKET = {"none", "1", "2_4", "5_9", "10_plus", "unknown"}
+ALLOWED_ADMISSION_DURATION_BUCKET = {
+    "none",
+    "lt_1s",
+    "1s_5s",
+    "5s_30s",
+    "30s_plus",
+    "unknown",
+}
+ALLOWED_ADMISSION_PRESSURE = {"low", "medium", "high", "unknown"}
+ALLOWED_ADMISSION_FRESHNESS = {"fresh", "stale", "unknown"}
+ALLOWED_ADMISSION_REASON = {
+    "request_failed",
+    "response_too_large",
+    "invalid_json",
+    "no_pool_entries",
+}
+ALLOWED_ADMISSION_LIMITATIONS = {
+    "Admission debug context is aggregate pool context. It must not promote runtime_admission without selected-query admission wait or result evidence.",
+    "Selected-query pool was not found in the admission debug context; only all-pool aggregate context is available.",
+    "Admission debug context may be stale according to the safe statestore freshness signal.",
+    "Admission debug context did not expose a safe queue depth or queue-time aggregate.",
+    "Impala admission debug context was unavailable or unmapped; keep pool/admission context unknown.",
+}
 
 
 def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
@@ -318,6 +358,121 @@ def collect_cm_timeseries_context(case_dir: Path) -> dict[str, Any] | None:
             if isinstance(warning, str)
         ][:5],
     }
+
+
+def collect_admission_context(case_dir: Path) -> dict[str, Any] | None:
+    context_path = case_dir / ADMISSION_CONTEXT_FILENAME
+    if not context_path.exists():
+        return None
+    try:
+        raw = json.loads(context_path.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return unavailable_safe_admission_context("invalid_json")
+    if not isinstance(raw, dict):
+        return unavailable_safe_admission_context("invalid_json")
+    return sanitize_admission_context(raw)
+
+
+def sanitize_admission_context(raw: dict[str, Any]) -> dict[str, Any]:
+    """Whitelist direct Impala admission aggregate context before rendering."""
+
+    status = safe_token(raw.get("status"), default="unavailable")
+    if status not in ALLOWED_ADMISSION_STATUS:
+        status = "unavailable"
+    source = safe_token(raw.get("source"), default="impala_admission_debug")
+    if source not in ALLOWED_ADMISSION_SOURCE:
+        source = "impala_admission_debug"
+    available = bool(raw.get("available")) and status == "available"
+    context: dict[str, Any] = {
+        "schema_version": 1,
+        "available": available,
+        "status": status,
+        "source": source,
+        "source_label": "Impala admission debug endpoint",
+        "scope": safe_admission_token(raw.get("scope"), ALLOWED_ADMISSION_SCOPE),
+        "pool_count": nonnegative_count(raw.get("pool_count")),
+        "matched_pool_count": nonnegative_count(raw.get("matched_pool_count")),
+        "queue_present": safe_admission_token(
+            raw.get("queue_present"), ALLOWED_ADMISSION_YES_NO_UNKNOWN
+        ),
+        "running_present": safe_admission_token(
+            raw.get("running_present"), ALLOWED_ADMISSION_YES_NO_UNKNOWN
+        ),
+        "queued_pool_count": nonnegative_count(raw.get("queued_pool_count")),
+        "running_pool_count": nonnegative_count(raw.get("running_pool_count")),
+        "max_queue_depth_bucket": safe_admission_token(
+            raw.get("max_queue_depth_bucket"), ALLOWED_ADMISSION_COUNT_BUCKET
+        ),
+        "max_running_bucket": safe_admission_token(
+            raw.get("max_running_bucket"), ALLOWED_ADMISSION_COUNT_BUCKET
+        ),
+        "avg_queue_time_bucket": safe_admission_token(
+            raw.get("avg_queue_time_bucket"), ALLOWED_ADMISSION_DURATION_BUCKET
+        ),
+        "pool_pressure": safe_admission_token(raw.get("pool_pressure"), ALLOWED_ADMISSION_PRESSURE),
+        "freshness": safe_admission_token(raw.get("freshness"), ALLOWED_ADMISSION_FRESHNESS),
+        "guardrail": ADMISSION_CONTEXT_GUARDRAIL,
+        "limitations": safe_admission_limitations(raw.get("limitations")),
+    }
+    if not available:
+        context["reason"] = safe_admission_token(
+            raw.get("reason"), ALLOWED_ADMISSION_REASON, default="request_failed"
+        )
+    return context
+
+
+def unavailable_safe_admission_context(reason: object) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "available": False,
+        "status": "unavailable",
+        "source": "impala_admission_debug",
+        "source_label": "Impala admission debug endpoint",
+        "scope": "unknown",
+        "pool_count": 0,
+        "matched_pool_count": 0,
+        "queue_present": "unknown",
+        "running_present": "unknown",
+        "queued_pool_count": 0,
+        "running_pool_count": 0,
+        "max_queue_depth_bucket": "unknown",
+        "max_running_bucket": "unknown",
+        "avg_queue_time_bucket": "unknown",
+        "pool_pressure": "unknown",
+        "freshness": "unknown",
+        "reason": safe_admission_token(reason, ALLOWED_ADMISSION_REASON, default="request_failed"),
+        "guardrail": ADMISSION_CONTEXT_GUARDRAIL,
+        "limitations": [
+            "Impala admission debug context was unavailable or unmapped; keep pool/admission context unknown."
+        ],
+    }
+
+
+def safe_admission_token(
+    value: object,
+    allowed: set[str],
+    *,
+    default: str = "unknown",
+) -> str:
+    token = safe_token(value, default=default)
+    return token if token in allowed else default
+
+
+def nonnegative_count(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return 0
+    return value
+
+
+def safe_admission_limitations(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    limitations: list[str] = []
+    for item in value[:8]:
+        text = str(item).strip()
+        if text in ALLOWED_ADMISSION_LIMITATIONS:
+            limitations.append(text)
+    return list(dict.fromkeys(limitations))
 
 
 def safe_runtime_metrics_source_label(value: object, source: object = None) -> str:

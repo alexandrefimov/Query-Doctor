@@ -142,6 +142,8 @@ def collect_case_profile(
                 cmd.append("--prefer-json-profile")
             if config.impala_profile_collect_docs:
                 cmd.append("--collect-profile-docs")
+            if config.impala_collect_admission_context:
+                cmd.append("--collect-admission-context")
             if config.redact_identifiers:
                 cmd.append("--redact-identifiers")
             if not config.redact_hosts:

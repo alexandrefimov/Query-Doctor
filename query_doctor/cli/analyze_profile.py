@@ -12,6 +12,7 @@ from query_doctor.analyzer.case_bottleneck import classify_case_primary_bottlene
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_correlation, build_cm_metrics_facts
 from query_doctor.analyzer.cluster_runtime_context import build_cluster_runtime_context
 from query_doctor.analyzer.context_collection import (
+    collect_admission_context,
     collect_cluster_context,
     collect_cm_query_context,
     collect_cm_timeseries_context,
@@ -127,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     analysis["metrics_facts"] = metrics_facts
     analysis["cm_metrics_facts"] = metrics_facts
     analysis["cluster_context"] = collect_cluster_context(digest_path.parent)
+    analysis["admission_context"] = collect_admission_context(digest_path.parent)
     analysis["impala_context"] = collect_impala_context(digest_path.parent)
     analysis["table_metadata_context"] = collect_table_metadata_context(digest_path.parent)
     analysis["sql_column_context"] = collect_sql_column_context(

@@ -15,6 +15,11 @@ from query_doctor.cm.profile_parsing import (
     merge_profile_summary_metadata,
 )
 from query_doctor.impala.daemon_identity import fetch_impala_daemon_identity, identity_metadata
+from query_doctor.impala.admission_context import (
+    DEFAULT_MAX_ADMISSION_CONTEXT_BYTES,
+    fetch_impala_admission_context,
+    write_admission_context,
+)
 from query_doctor.impala.profile_docs import (
     DEFAULT_MAX_PROFILE_DOCS_BYTES,
     fetch_impala_profile_docs_context,
@@ -111,6 +116,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=positive_int,
         default=DEFAULT_MAX_PROFILE_DOCS_BYTES,
         help=f"Maximum /profile_docs response bytes. Default: {DEFAULT_MAX_PROFILE_DOCS_BYTES}.",
+    )
+    parser.add_argument(
+        "--collect-admission-context",
+        action="store_true",
+        help=(
+            "Collect bounded aggregate pool context from impalad /admission?json. "
+            "Unavailable or old endpoints are treated as unknown and do not fail collection."
+        ),
+    )
+    parser.add_argument(
+        "--max-admission-context-bytes",
+        type=positive_int,
+        default=DEFAULT_MAX_ADMISSION_CONTEXT_BYTES,
+        help=(
+            "Maximum /admission?json response bytes. "
+            f"Default: {DEFAULT_MAX_ADMISSION_CONTEXT_BYTES}."
+        ),
     )
     parser.add_argument("--out", type=Path, required=True, help="Output corpus directory.")
     parser.add_argument(
@@ -288,6 +310,26 @@ def main(
                 warnings.append("Impala profile counter stability docs collected")
             else:
                 warnings.append("Impala profile counter stability docs unavailable")
+        admission_context = None
+        admission_context_attempted = 0
+        if args.collect_admission_context:
+            admission_kwargs = {
+                "hosts": args.host,
+                "port": args.port,
+                "scheme": args.scheme,
+                "timeout_sec": args.timeout_sec,
+                "max_admission_context_bytes": args.max_admission_context_bytes,
+                "target_pool": summary.pool,
+            }
+            if opener is not None:
+                admission_kwargs["opener"] = opener
+            admission_result = fetch_impala_admission_context(**admission_kwargs)
+            admission_context = admission_result.context
+            admission_context_attempted = admission_result.attempted_endpoints
+            if admission_context.get("status") == "available":
+                warnings.append("Impala admission aggregate context collected")
+            else:
+                warnings.append("Impala admission aggregate context unavailable")
         runtime_metrics_context = None
         if collect_prometheus:
             runtime_metrics_context = collect_prometheus_timeseries_context(
@@ -318,6 +360,8 @@ def main(
                 "profile_json_probe_enabled": bool(args.prefer_json_profile),
                 "profile_docs_probe_enabled": bool(args.collect_profile_docs),
                 "profile_docs_fetch_attempt_count": profile_docs_attempted,
+                "admission_context_probe_enabled": bool(args.collect_admission_context),
+                "admission_context_fetch_attempt_count": admission_context_attempted,
                 **identity_metadata(identity),
             },
             warnings=warnings,
@@ -329,6 +373,8 @@ def main(
             write_metadata_source_tables(metadata_source_tables_out, summary.statement)
         if profile_counter_registry_context is not None:
             write_profile_counter_registry_context(case_dir, profile_counter_registry_context)
+        if admission_context is not None:
+            write_admission_context(case_dir, admission_context)
     except (CMClientError, OutputError, OSError) as exc:
         print("[Impala profile collector] Collection result: FAILED", file=sys.stderr)
         print(
@@ -351,6 +397,9 @@ def main(
     if args.collect_profile_docs:
         print("Profile counter docs context: enabled")
         print(f"Attempted profile docs endpoint count: {profile_docs_attempted}")
+    if args.collect_admission_context:
+        print("Admission aggregate context: enabled")
+        print(f"Attempted admission endpoint count: {admission_context_attempted}")
     print("Raw provider output was not printed to stdout.")
     return 0
 

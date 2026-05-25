@@ -70,6 +70,7 @@ class WebClusterConfig:
     impala_profile_timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
     impala_profile_prefer_json: bool = False
     impala_profile_collect_docs: bool = False
+    impala_collect_admission_context: bool = False
     collect_prometheus_timeseries: bool = False
     prometheus_url: str | None = None
     prometheus_metrics_profile: str = DEFAULT_PROMETHEUS_METRICS_PROFILE
@@ -134,6 +135,7 @@ class WebSettings:
     impala_profile_timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
     impala_profile_prefer_json: bool = False
     impala_profile_collect_docs: bool = False
+    impala_collect_admission_context: bool = False
     collect_prometheus_timeseries: bool = False
     prometheus_url: str | None = None
     prometheus_metrics_profile: str = DEFAULT_PROMETHEUS_METRICS_PROFILE

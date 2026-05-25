@@ -64,6 +64,7 @@ def test_recent_direct_impala_config_defaults_to_private_prometheus_metadata(tmp
             "impala_profile_hosts": ["impalad-1.example.com:25000"],
             "impala_profile_prefer_json": True,
             "impala_profile_collect_docs": True,
+            "impala_collect_admission_context": True,
             "impala_kerberos_service_name": "hive",
             "prometheus_url": "https://prometheus.example.com",
             "metadata_coordinator": "impala-coordinator.example.com:21000",
@@ -86,6 +87,7 @@ def test_recent_direct_impala_config_defaults_to_private_prometheus_metadata(tmp
     assert config.impala_profile_hosts == ("impalad-1.example.com:25000",)
     assert config.impala_profile_prefer_json is True
     assert config.impala_profile_collect_docs is True
+    assert config.impala_collect_admission_context is True
     assert config.metadata_kerberos_service_name == "hive"
     assert config.collect_prometheus_timeseries is True
     assert config.prometheus_url == "https://prometheus.example.com"
@@ -178,6 +180,7 @@ def test_web_cluster_config_can_override_privacy_for_direct_impala_target(tmp_pa
                     "impala_profile_hosts": ["impalad-1.example.com"],
                     "impala_profile_prefer_json": True,
                     "impala_profile_collect_docs": True,
+                    "impala_collect_admission_context": True,
                     "impala_kerberos_service_name": "hive",
                     "collect_prometheus_timeseries": True,
                     "prometheus_url": "https://prometheus.example.com",
@@ -198,6 +201,7 @@ def test_web_cluster_config_can_override_privacy_for_direct_impala_target(tmp_pa
     assert settings.impala_profile_hosts == ("impalad-1.example.com",)
     assert settings.impala_profile_prefer_json is True
     assert settings.impala_profile_collect_docs is True
+    assert settings.impala_collect_admission_context is True
     assert settings.metadata_kerberos_service_name == "hive"
     assert settings.collect_prometheus_timeseries is True
     assert settings.prometheus_url == "https://prometheus.example.com"
