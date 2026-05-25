@@ -33,6 +33,14 @@ from query_doctor.web.ui.pages import render_batch_case_detail_view_page
 PROBLEM_SEVERITIES = {"failed", "high", "suspicious"}
 FAILED_VERDICT_TITLE = "Processing did not finish - diagnosis is not trustworthy yet"
 CLEAN_VERDICT_TITLE = "No supported problem signal is classified yet"
+CLEAN_FOLLOW_UP_VERDICT_PREFIXES = (
+    "Query shape is worth a rewrite review",
+    "Stats gaps are worth checking before a rewrite",
+)
+CLEAN_FOLLOW_UP_ACTION_TITLES = {
+    "Query-shape recommendation",
+    "Stats maintenance recommendation",
+}
 DETAILS_TITLE_RE = re.compile(r'<h2 class="case-verdict-title">(.*?)</h2>', re.DOTALL)
 TAG_RE = re.compile(r"<[^>]+>")
 LOCAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:/Users/|/private/tmp/|/tmp/)")
@@ -382,16 +390,35 @@ def audit_clean_case(
     rendered: str,
     action_cards: tuple[Any, ...],
 ) -> None:
-    if action_cards:
+    follow_up_title = clean_follow_up_title(title)
+    follow_up_cards = clean_follow_up_cards(action_cards)
+    if action_cards and not follow_up_cards:
         result.issues.append(AuditIssue(case_id, severity, "clean case has action cards"))
-    if title != CLEAN_VERDICT_TITLE:
+    if title != CLEAN_VERDICT_TITLE and not follow_up_title:
         result.issues.append(
             AuditIssue(case_id, severity, f"clean verdict title is {title or '<missing>'!r}")
+        )
+    if follow_up_title and not follow_up_cards:
+        result.issues.append(
+            AuditIssue(case_id, severity, "clean follow-up verdict has no matching action card")
         )
     if contains_any(rendered, REPORT_RUN_LABELS):
         result.issues.append(AuditIssue(case_id, severity, "clean case offers report run action"))
     if "Query LLM optimizer" in rendered or "Query optimizer" in rendered:
         result.issues.append(AuditIssue(case_id, severity, "clean case exposes optimizer UI"))
+
+
+def clean_follow_up_title(title: str) -> bool:
+    return any(title.startswith(prefix) for prefix in CLEAN_FOLLOW_UP_VERDICT_PREFIXES)
+
+
+def clean_follow_up_cards(action_cards: tuple[Any, ...]) -> bool:
+    if not action_cards:
+        return False
+    return all(
+        str(getattr(card, "title", "")).strip() in CLEAN_FOLLOW_UP_ACTION_TITLES
+        for card in action_cards
+    )
 
 
 def audit_actionable_case(

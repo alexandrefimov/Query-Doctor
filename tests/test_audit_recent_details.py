@@ -62,6 +62,49 @@ def test_recent_details_audit_accepts_clean_with_hidden_optimizer(tmp_path: Path
     assert result.action_counts == {"clean:<none>": 1}
 
 
+def test_recent_details_audit_accepts_clean_follow_up_candidate(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case_dir(tmp_path, 1),
+                "query_id": "follow-up-query",
+                "user": "analyst",
+                "score": 0,
+                "score_severity": "clean",
+                "duration_sec": 120.0,
+                "collection_status": "ok",
+                "analysis_status": "ok",
+                "metadata_status": "not_requested",
+                "report_validation_status": "not_run",
+                "score_reasons": ["no analyzer-supported suspicious facts"],
+                "case_primary_bottleneck": {
+                    "label": "sql_shape",
+                    "confidence": "low",
+                    "reasons": ["join_top_finding"],
+                },
+                "query_optimization_candidate": {
+                    "tier": "medium",
+                    "score": 47,
+                    "impact": "high",
+                    "confidence": "medium",
+                    "reasons": ["large exchange volume before downstream processing"],
+                    "suggested_review_areas": ["exchange payload"],
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert result.ok
+    assert result.severity_counts == {"clean": 1}
+    assert result.action_counts == {"clean:Query-shape recommendation": 1}
+
+
 def test_recent_details_audit_accepts_failed_collection_with_fallbacks(tmp_path: Path):
     summary_path = write_summary(
         tmp_path,
