@@ -80,10 +80,14 @@ profile facts:
 Unknown and partially mapped profiles may still produce safe collection status
 and limitation facts. They must not produce high-confidence diagnostic claims.
 
-Current implementation note: the first analyzer slice emits profile dialect,
+Current implementation note: the first analyzer slices emit profile dialect,
 analysis support, primary-bottleneck policy, per-instance evidence status, and
-raw-free profile limitation facts. It does not implement full profile-v2,
-classic JSON, or classic Thrift section mapping yet.
+raw-free profile limitation facts. Classic JSON profiles can feed a limited
+mapped-counter view for allowlisted counters such as client-fetch and
+spill/scratch evidence, but primary bottleneck routing remains disabled for
+classic JSON until fuller mapped-section coverage exists. Full profile-v2,
+classic JSON operator/instance mapping, and classic Thrift section mapping are
+not implemented yet.
 
 ## Evidence Tiers
 

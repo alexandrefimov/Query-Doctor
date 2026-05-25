@@ -2,6 +2,7 @@ from query_doctor.analyzer.profile_format import (
     build_profile_format_facts,
     detect_profile_dialect,
 )
+from query_doctor.analyzer.profile_text import normalize_profile_text
 
 
 def test_detects_classic_text_profile():
@@ -41,6 +42,56 @@ def test_detects_classic_json_profile_without_claiming_full_parser_support():
     assert facts["analysis_support"] == "limited"
     assert facts["primary_bottleneck_policy"] == "unsupported"
     assert any(item["id"] == "profile_dialect_partially_mapped" for item in facts["limitations"])
+
+
+def test_classic_json_profile_maps_allowlisted_counters_without_primary_support():
+    raw_profile = """
+{
+  "profile_version": 1,
+  "runtime_profile": {
+    "name": "Query",
+    "counters": [
+      {"name": "TotalTime", "value": "100s"},
+      {"name": "ClientFetchWaitTimer", "value": "45s"},
+      {"name": "ScratchBytesWritten", "value": "4.0 KiB"},
+      {"name": "SensitiveFutureCounter", "value": "do not expose"}
+    ]
+  }
+}
+"""
+
+    normalized = normalize_profile_text(raw_profile)
+    facts = build_profile_format_facts(normalized, raw_text=raw_profile)
+
+    assert normalized.startswith("# JSON mapped profile counters")
+    assert "- TotalTime: 100s" in normalized
+    assert "- ClientFetchWaitTimer: 45s" in normalized
+    assert "- ScratchBytesWritten: 4.0 KiB" in normalized
+    assert "SensitiveFutureCounter" not in normalized
+    assert facts["profile_dialect"] == "classic_json_profile"
+    assert facts["layout"] == "json_mapped_counters"
+    assert facts["features"]["json_mapped_counter_count"] == 3
+    assert facts["analysis_support"] == "limited"
+    assert facts["primary_bottleneck_policy"] == "unsupported"
+
+
+def test_classic_json_profile_maps_numeric_counter_units():
+    raw_profile = """
+{
+  "profile_version": 1,
+  "runtime_profile": {
+    "counters": [
+      {"name": "TotalTime", "value": 1000000000, "unit": "TIME_NS"},
+      {"name": "ScratchBytesWritten", "value": 4096, "unit": "BYTES"}
+    ]
+  }
+}
+"""
+
+    normalized = normalize_profile_text(raw_profile)
+
+    assert "- TotalTime: 1s" in normalized
+    assert "- ScratchBytesWritten: 4.00 KiB" in normalized
 
 
 def test_detects_json_wrapped_classic_text_as_effective_text_profile():

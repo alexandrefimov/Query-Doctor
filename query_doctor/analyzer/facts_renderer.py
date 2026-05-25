@@ -141,6 +141,11 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
         f"instances={features.get('fragment_instance_count', 0)}, "
         f"lifecycle_headers={'yes' if features.get('fragment_instance_lifecycle') else 'no'}"
     )
+    if features.get("json_mapped_counter_count"):
+        lines.append(
+            "- json_profile_mapping: "
+            f"mapped_counter_count={features.get('json_mapped_counter_count', 0)}"
+        )
     lines.append(
         "- resource_sections: "
         f"admission={'yes' if features.get('admission') else 'no'}, "

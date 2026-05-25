@@ -258,6 +258,8 @@ def iter_json_items(value: Any):
 
 
 def profile_layout_name(features: dict[str, bool | int]) -> str:
+    if features.get("json_mapped_counter_count"):
+        return "json_mapped_counters"
     if features.get("raw_runtime_nodes") and features.get("fragment_instance_lifecycle"):
         return "raw_runtime_nodes_with_lifecycle"
     if features.get("raw_runtime_nodes"):
@@ -307,6 +309,11 @@ def build_profile_format_facts(
         "per_node_system_time": "Per Node System Time" in text,
         "per_host_fragment_instances": "Per Host Number of Fragment Instances" in text,
         "fragment_instance_lifecycle": "Fragment Instance Lifecycle" in text,
+        "json_mapped_counter_count": len(
+            re.findall(r"^\s*-\s+[A-Za-z][A-Za-z0-9_]*\s*:", text, re.MULTILINE)
+        )
+        if "# JSON mapped profile counters" in text
+        else 0,
         "raw_runtime_nodes": bool(RAW_RUNTIME_NODE_RE.search(text)),
         "runtime_node_count": len(RAW_RUNTIME_NODE_RE.findall(text)),
         "fragment_section_count": len(FRAGMENT_SECTION_RE.findall(text))
