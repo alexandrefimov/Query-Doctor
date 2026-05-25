@@ -403,9 +403,9 @@ def parse_table_metadata_context_facts(text: str) -> dict[str, Any] | None:
             continue
         statement = parse_table_metadata_statement_status_key(key)
         if statement:
-            current.setdefault("statements", {})[statement] = value
+            current.setdefault("statements", {})[statement] = normalize_metadata_placeholder(value)
         elif key_lower in TABLE_METADATA_TABLE_KEYS:
-            current[TABLE_METADATA_TABLE_KEYS[key_lower]] = value
+            current[TABLE_METADATA_TABLE_KEYS[key_lower]] = normalize_metadata_placeholder(value)
     if not summary and not tables:
         return None
     return {
@@ -512,7 +512,14 @@ def parse_stats_quality_facts(text: str) -> dict[str, Any] | None:
         key, value = line[2:].split(": ", 1)
         key = key.strip()
         if key in allowed:
-            summary[key] = clean_metadata_fact_value(value)
+            cleaned_value = clean_metadata_fact_value(value)
+            if key not in {
+                "non_stats_bottleneck_categories",
+                "interpretation",
+                "guardrail",
+            }:
+                cleaned_value = normalize_metadata_placeholder(cleaned_value)
+            summary[key] = cleaned_value
     if not summary:
         return None
     return summary
@@ -799,6 +806,10 @@ def clean_metadata_fact_value(value: str) -> str:
     if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
         return text[1:-1]
     return text
+
+
+def normalize_metadata_placeholder(value: str) -> str:
+    return "unknown" if table_metadata_facts.is_unknown_marker(value) else value
 
 
 def metadata_statement_counts(tables: list[dict[str, Any]]) -> dict[str, int]:

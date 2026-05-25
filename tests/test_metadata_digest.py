@@ -1,5 +1,8 @@
 from query_doctor.analyzer.context_collection import collect_sql_column_context
-from query_doctor.analyzer.metadata_renderer import render_stats_metadata_quality
+from query_doctor.analyzer.metadata_renderer import (
+    render_stats_metadata_quality,
+    render_table_metadata_context,
+)
 from query_doctor.impala import metadata_digest, table_metadata_facts
 
 
@@ -10,6 +13,7 @@ def test_metadata_digest_exposes_table_metadata_contract():
         "SHOW TABLE STATS",
         "SHOW COLUMN STATS",
     )
+    assert table_metadata_facts.is_unknown_marker("-2")
 
 
 def test_parse_table_stats_counts_partition_row_coverage_without_values():
@@ -32,6 +36,7 @@ def test_parse_table_stats_counts_partition_row_coverage_without_values():
     assert facts["partitions_with_known_row_count"] == 2
     assert facts["partitions_with_unknown_row_count"] == 1
     assert facts["partitions_with_zero_row_count"] == 1
+    assert "-1" not in repr(facts)
     assert "2026-05-01" not in repr(facts)
     assert "2026-05-02" not in repr(facts)
 
@@ -97,7 +102,90 @@ def test_parse_column_stats_classifies_per_column_statuses_without_values():
     assert facts["column_stats_ndv_missing_columns"] == 1
     assert facts["column_stats_size_missing_columns"] == 1
     assert facts["column_stats_all_missing_columns"] == 1
+    assert "-1" not in repr(facts)
+    assert "NULL" not in repr(facts)
+    assert "unknown" not in repr(facts["column_stats_per_column"])
     assert "100" not in repr(facts["column_stats_per_column"])
+
+
+def test_metadata_digest_normalizes_legacy_stats_placeholders():
+    digest = metadata_digest.build_metadata_facts_digest(
+        "\n".join(
+            [
+                "## Table Metadata Context",
+                "",
+                "- context file: present",
+                "- table metadata facts: supported",
+                "- tables requested: 1",
+                "",
+                "### Table: db.fact",
+                "",
+                "- SHOW TABLE STATS status: ok",
+                "- SHOW COLUMN STATS status: ok",
+                "- table stats rows: -1",
+                "- table stats row-count completeness: -1",
+                "- table stats size: NULL",
+                "- column stats columns observed: -1",
+                "- column stats missing/unknown markers: -1",
+                "- column stats completeness: N/A",
+            ]
+        ),
+        language="en",
+    )
+
+    assert "- table stats rows: unknown" in digest
+    assert "- table stats row-count completeness: unknown" in digest
+    assert "- table stats size: unknown" in digest
+    assert "- column stats columns observed: unknown" in digest
+    assert "- column stats missing/unknown markers: unknown" in digest
+    assert "- column stats completeness: unknown" in digest
+    assert ": -1" not in digest
+    assert ": NULL" not in digest
+    assert ": N/A" not in digest
+
+
+def test_table_metadata_context_renderer_normalizes_stats_placeholders():
+    text = "\n".join(
+        render_table_metadata_context(
+            {
+                "table_metadata_context": {
+                    "context_file": "present",
+                    "table_metadata_facts": "supported",
+                    "tables_requested": 1,
+                    "tables": [
+                        {
+                            "table": "db.fact",
+                            "statements": {
+                                "SHOW TABLE STATS": "ok",
+                                "SHOW COLUMN STATS": "ok",
+                            },
+                            "table_rows": -1,
+                            "table_stats_row_count_completeness": "-1",
+                            "table_size": "NULL",
+                            "partition_count": 3,
+                            "partitions_with_known_row_count": 2,
+                            "partitions_with_unknown_row_count": -1,
+                            "partitions_with_zero_row_count": 0,
+                            "column_stats_columns_observed": "-1",
+                            "column_stats_missing_markers": "N/A",
+                            "column_stats_completeness": "NULL",
+                        }
+                    ],
+                }
+            }
+        )
+    )
+
+    assert "- table stats rows: unknown" in text
+    assert "- table stats row-count completeness: unknown" in text
+    assert "- table stats size: unknown" in text
+    assert "- partitions with unknown row count: unknown" in text
+    assert "- column stats columns observed: unknown" in text
+    assert "- column stats missing/unknown markers: unknown" in text
+    assert "- column stats completeness: unknown" in text
+    assert ": -1" not in text
+    assert ": NULL" not in text
+    assert ": N/A" not in text
 
 
 def test_parse_show_create_extracts_only_safe_storage_location_facts():

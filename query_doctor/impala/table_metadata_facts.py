@@ -13,7 +13,7 @@ STATEMENTS = (
     "SHOW TABLE STATS",
     "SHOW COLUMN STATS",
 )
-UNKNOWN_MARKERS = {"", "-1", "null", "unknown", "n/a"}
+UNKNOWN_MARKERS = {"", "-1", "null", "none", "unknown", "n/a", "nan"}
 SIZE_VALUE_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)\b", re.I)
 LOCATION_RE = re.compile(
     r"\bLOCATION\s+(?:'(?P<single>[^']*)'|\"(?P<double>[^\"]*)\"|`(?P<backtick>[^`]*)`|(?P<bare>\S+))",
@@ -388,8 +388,18 @@ def classify_column_stats_row(
     return "complete"
 
 
-def is_unknown_marker(value: str) -> bool:
-    return value.strip().lower() in UNKNOWN_MARKERS
+def is_unknown_marker(value: Any) -> bool:
+    if isinstance(value, bool) or value is None:
+        return value is None
+    if isinstance(value, (int, float)):
+        return value < 0
+    text = str(value).strip().lower()
+    if text in UNKNOWN_MARKERS:
+        return True
+    try:
+        return float(text.replace(",", "")) < 0
+    except ValueError:
+        return False
 
 
 def parse_show_create(text: str) -> dict[str, Any]:

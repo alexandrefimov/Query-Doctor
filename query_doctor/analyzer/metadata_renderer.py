@@ -11,6 +11,7 @@ from query_doctor.analyzer.profile_evidence import (
     profile_storage_supported,
 )
 from query_doctor.analyzer.scan_skew import scan_skew_facts_from_analysis
+from query_doctor.impala.table_metadata_facts import is_unknown_marker
 
 
 NON_STATS_BOTTLENECK_FINDINGS = {
@@ -53,50 +54,53 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
             lines.append(
                 f"- {statement} status: {table.get('statements', {}).get(statement, 'unknown')}"
             )
-        lines.append(f"- table stats rows: {table.get('table_rows', 'unknown')}")
+        lines.append(f"- table stats rows: {metadata_value(table.get('table_rows'))}")
         lines.append(
             "- table stats row-count completeness: "
-            f"{table.get('table_stats_row_count_completeness', 'unknown')}"
+            f"{metadata_value(table.get('table_stats_row_count_completeness'))}"
         )
-        lines.append(f"- table stats size: {table.get('table_size', 'unknown')}")
+        lines.append(f"- table stats size: {metadata_value(table.get('table_size'))}")
         if has_partition_row_count_facts(table):
-            lines.append(f"- partition count: {int_value(table.get('partition_count'))}")
+            lines.append(f"- partition count: {metadata_count(table.get('partition_count'))}")
             lines.append(
                 "- partitions with known row count: "
-                f"{int_value(table.get('partitions_with_known_row_count'))}"
+                f"{metadata_count(table.get('partitions_with_known_row_count'))}"
             )
             lines.append(
                 "- partitions with unknown row count: "
-                f"{int_value(table.get('partitions_with_unknown_row_count'))}"
+                f"{metadata_count(table.get('partitions_with_unknown_row_count'))}"
             )
             lines.append(
                 "- partitions with zero row count: "
-                f"{int_value(table.get('partitions_with_zero_row_count'))}"
+                f"{metadata_count(table.get('partitions_with_zero_row_count'))}"
             )
         lines.append(
-            f"- column stats columns observed: {table.get('column_stats_columns_observed', 'unknown')}"
+            "- column stats columns observed: "
+            f"{metadata_count(table.get('column_stats_columns_observed'))}"
         )
         lines.append(
-            f"- column stats missing/unknown markers: {table.get('column_stats_missing_markers', 'unknown')}"
+            "- column stats missing/unknown markers: "
+            f"{metadata_count(table.get('column_stats_missing_markers'))}"
         )
         lines.append(
-            f"- column stats completeness: {table.get('column_stats_completeness', 'unknown')}"
+            f"- column stats completeness: {metadata_value(table.get('column_stats_completeness'))}"
         )
         if has_column_stats_status_counts(table):
             lines.append(
-                f"- column stats complete columns: {int_value(table.get('column_stats_complete_columns'))}"
+                "- column stats complete columns: "
+                f"{metadata_count(table.get('column_stats_complete_columns'))}"
             )
             lines.append(
                 "- column stats NDV-missing columns: "
-                f"{int_value(table.get('column_stats_ndv_missing_columns'))}"
+                f"{metadata_count(table.get('column_stats_ndv_missing_columns'))}"
             )
             lines.append(
                 "- column stats size-missing columns: "
-                f"{int_value(table.get('column_stats_size_missing_columns'))}"
+                f"{metadata_count(table.get('column_stats_size_missing_columns'))}"
             )
             lines.append(
                 "- column stats all-missing columns: "
-                f"{int_value(table.get('column_stats_all_missing_columns'))}"
+                f"{metadata_count(table.get('column_stats_all_missing_columns'))}"
             )
         columns = table.get("column_stats_columns") or []
         if columns:
@@ -512,6 +516,23 @@ def dedupe_preserve_order(values: list[str]) -> list[str]:
         seen.add(value)
         result.append(value)
     return result
+
+
+def metadata_value(value: Any) -> str:
+    if is_unknown_marker(value):
+        return "unknown"
+    text = str(value).strip()
+    return text if text else "unknown"
+
+
+def metadata_count(value: Any) -> int | str:
+    if is_unknown_marker(value):
+        return "unknown"
+    try:
+        parsed = int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return "unknown"
+    return parsed if parsed >= 0 else "unknown"
 
 
 def int_value(value: Any) -> int:

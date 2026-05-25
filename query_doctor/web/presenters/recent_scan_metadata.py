@@ -15,6 +15,7 @@ from query_doctor.web.presenters.recent_scan_values import (
     metadata_statement_counts_summary,
     numeric_value,
     safe_display_value,
+    safe_metadata_stat_value,
     safe_statement_statuses,
 )
 
@@ -60,10 +61,10 @@ def present_metadata_table(table: dict[str, Any]) -> RecentScanMetadataTableView
         table=safe_display_value(table.get("table")),
         object_type=safe_display_value(table.get("object type")),
         statements=safe_statements,
-        row_count_stats=safe_display_value(table.get("table stats row-count completeness")),
-        column_stats=safe_display_value(table.get("column stats completeness")),
-        observed_columns=safe_display_value(table.get("column stats columns observed")),
-        missing_markers=safe_display_value(table.get("column stats missing/unknown markers")),
+        row_count_stats=safe_metadata_stat_value(table.get("table stats row-count completeness")),
+        column_stats=safe_metadata_stat_value(table.get("column stats completeness")),
+        observed_columns=safe_metadata_stat_value(table.get("column stats columns observed")),
+        missing_markers=safe_metadata_stat_value(table.get("column stats missing/unknown markers")),
         partition_columns=safe_display_value(table.get("partition columns")),
         file_format=safe_display_value(table.get("file format")),
         limitations=metadata_fact_limitations(table, safe_statements),

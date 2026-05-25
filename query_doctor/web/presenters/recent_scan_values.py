@@ -13,6 +13,7 @@ STATEMENT_LABELS = {
     "SHOW TABLE STATS": "table stats",
     "SHOW COLUMN STATS": "column stats",
 }
+METADATA_UNKNOWN_MARKERS = {"", "-1", "null", "none", "unknown", "n/a", "nan"}
 
 
 def safe_truthy(value: Any) -> bool:
@@ -31,8 +32,8 @@ def safe_statement_statuses(statements: dict[Any, Any]) -> dict[str, Any]:
 def metadata_fact_limitations(table: dict[str, Any], statements: dict[str, Any]) -> str:
     limitations: list[str] = []
     object_type = str(table.get("object type") or "unknown")
-    table_stats = str(table.get("table stats row-count completeness") or "unknown")
-    column_stats = str(table.get("column stats completeness") or "unknown")
+    table_stats = metadata_stat_text(table.get("table stats row-count completeness"))
+    column_stats = metadata_stat_text(table.get("column stats completeness"))
     partition_count = numeric_count(table.get("partition count"))
     known_partitions = numeric_count(table.get("partitions with known row count"))
     unknown_partitions = numeric_count(table.get("partitions with unknown row count"))
@@ -178,6 +179,31 @@ def safe_display_value(value: Any) -> Any:
     if isinstance(value, (int, float)):
         return value
     return safe_display_text(value)
+
+
+def safe_metadata_stat_value(value: Any) -> Any:
+    if isinstance(value, bool) or value is None:
+        return "unknown" if value is None else value
+    if isinstance(value, (int, float)):
+        return "unknown" if value < 0 else value
+    text = str(value).strip()
+    if is_metadata_unknown_marker(text):
+        return "unknown"
+    return safe_display_text(text)
+
+
+def metadata_stat_text(value: Any) -> str:
+    return str(safe_metadata_stat_value(value) or "unknown")
+
+
+def is_metadata_unknown_marker(value: str) -> bool:
+    text = str(value).strip().lower()
+    if text in METADATA_UNKNOWN_MARKERS:
+        return True
+    try:
+        return float(text.replace(",", "")) < 0
+    except ValueError:
+        return False
 
 
 def safe_display_text(value: Any) -> str:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from query_doctor.impala.table_metadata_facts import is_unknown_marker
+
 
 TABLE_METADATA_CONTEXT_HEADING = "## Table Metadata Context"
 METADATA_DIGEST_MAX_TABLES = 10
@@ -150,7 +152,7 @@ def _parse_metadata_section(section: str) -> tuple[list[str], list[dict[str, obj
         if not fact_match:
             continue
         key = fact_match.group("key").strip()
-        value = _sanitize_inline_value(fact_match.group("value"))
+        value = _sanitize_metadata_value(key, fact_match.group("value"))
         if current_table is None:
             if key in _CONTEXT_KEYS:
                 context.append(f"- {key}: {value or 'unknown'}")
@@ -170,3 +172,10 @@ def _sanitize_inline_value(value: str) -> str:
     cleaned = cleaned.replace("\x00", "")
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned[:300]
+
+
+def _sanitize_metadata_value(key: str, value: str) -> str:
+    cleaned = _sanitize_inline_value(value)
+    if key in _CONTEXT_KEYS or key in _TABLE_KEYS:
+        return "unknown" if is_unknown_marker(cleaned) else cleaned
+    return cleaned
