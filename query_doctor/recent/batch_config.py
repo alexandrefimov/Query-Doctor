@@ -207,6 +207,11 @@ def build_batch_config(
         config_values.get("impala_profile_prefer_json"),
         default=False,
     )
+    impala_profile_collect_docs = first_bool(
+        getattr(args, "impala_profile_collect_docs", None),
+        config_values.get("impala_profile_collect_docs"),
+        default=False,
+    )
     prometheus_url = first_string(
         getattr(args, "prometheus_url", None),
         config_values.get("prometheus_url"),
@@ -540,6 +545,7 @@ def build_batch_config(
             impala_profile_timeout_sec or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
         ),
         impala_profile_prefer_json=impala_profile_prefer_json,
+        impala_profile_collect_docs=impala_profile_collect_docs,
         collect_prometheus_timeseries=collect_prometheus_timeseries,
         prometheus_url=prometheus_url,
         prometheus_metrics_profile=prometheus_metrics_profile,

@@ -74,6 +74,7 @@ class BatchConfig:
     impala_profile_scheme: str = "http"
     impala_profile_timeout_sec: int = 15
     impala_profile_prefer_json: bool = False
+    impala_profile_collect_docs: bool = False
     collect_prometheus_timeseries: bool = False
     prometheus_url: str | None = None
     prometheus_metrics_profile: str = "ambari-hadoop"

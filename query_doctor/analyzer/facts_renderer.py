@@ -364,6 +364,27 @@ def render_profile_timing_facts(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_profile_counter_registry(analysis: dict[str, Any]) -> list[str]:
+    registry = analysis.get("profile_counter_registry")
+    if not isinstance(registry, dict):
+        return []
+    lines = ["## Profile Counter Registry", ""]
+    lines.append(f"- status: {registry.get('status') or 'unknown'}")
+    lines.append(f"- source: {registry.get('source') or 'unknown'}")
+    if registry.get("source_counter_count") is not None:
+        lines.append(f"- source_counter_count: {registry.get('source_counter_count')}")
+    lines.append(f"- registry_entry_count: {registry.get('registry_entry_count') or 0}")
+    lines.append(f"- missing_counter_count: {registry.get('missing_counter_count') or 0}")
+    if registry.get("impala_version"):
+        lines.append(f"- impala_version: {registry['impala_version']}")
+    limitations = [str(item) for item in registry.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        lines.extend(f"  - {item}" for item in limitations)
+    lines.append("")
+    return lines
+
+
 def render_client_fetch_facts(analysis: dict[str, Any]) -> list[str]:
     facts = analysis.get("client_fetch")
     if not isinstance(facts, dict):
@@ -709,6 +730,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_summary(analysis)
     lines += render_primary_bottleneck(analysis)
     lines += render_profile_format(analysis)
+    lines += render_profile_counter_registry(analysis)
     lines += render_exec_node_completeness(analysis)
     lines += render_profile_resource_facts(analysis)
     lines += render_profile_timing_facts(analysis)

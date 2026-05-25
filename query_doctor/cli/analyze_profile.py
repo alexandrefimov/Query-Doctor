@@ -23,6 +23,11 @@ from query_doctor.analyzer.evidence_quality import build_evidence_quality
 from query_doctor.analyzer.facts_renderer import render_md
 from query_doctor.analyzer.memory_pressure import build_memory_pressure_facts
 from query_doctor.analyzer.metadata_renderer import stats_metadata_quality
+from query_doctor.analyzer.profile_counter_registry import (
+    load_profile_counter_registry_context,
+    profile_counter_registry_context_summary,
+    profile_counter_registry_from_context,
+)
 from query_doctor.analyzer.runtime_admission import build_runtime_admission_facts
 from query_doctor.analyzer.runtime_diagnosis import build_runtime_diagnosis
 from query_doctor.analyzer.scan_skew import build_scan_skew_facts
@@ -100,7 +105,19 @@ def main(argv: list[str] | None = None) -> int:
 
     text = digest_path.read_text(encoding="utf-8", errors="replace")
     collected_query_context = collect_cm_query_context(digest_path.parent)
-    analysis = analyze(text, args, cm_query_context=collected_query_context)
+    profile_counter_registry_context = load_profile_counter_registry_context(digest_path.parent)
+    profile_counter_registry = profile_counter_registry_from_context(
+        profile_counter_registry_context
+    )
+    analysis = analyze(
+        text,
+        args,
+        cm_query_context=collected_query_context,
+        counter_registry=profile_counter_registry,
+    )
+    analysis["profile_counter_registry"] = profile_counter_registry_context_summary(
+        profile_counter_registry_context
+    )
     analysis["query_context"] = collected_query_context
     analysis["cm_query_context"] = collected_query_context
     metrics_context = collect_cm_timeseries_context(digest_path.parent)
@@ -123,7 +140,9 @@ def main(argv: list[str] | None = None) -> int:
         analysis,
     )
     analysis["runtime_admission"] = build_runtime_admission_facts(analysis)
-    analysis["memory_pressure"] = build_memory_pressure_facts(analysis)
+    analysis["memory_pressure"] = build_memory_pressure_facts(
+        analysis, counter_registry=profile_counter_registry
+    )
     analysis["case_primary_bottleneck"] = classify_case_primary_bottleneck(analysis).to_dict()
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)
     analysis["default_database"] = extract_default_database(text)

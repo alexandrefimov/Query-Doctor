@@ -258,6 +258,8 @@ def collect_case(
             collector_cmd.extend(["--host", host])
         if settings.impala_profile_prefer_json:
             collector_cmd.append("--prefer-json-profile")
+        if settings.impala_profile_collect_docs:
+            collector_cmd.append("--collect-profile-docs")
         if settings.max_profile_bytes is not None:
             collector_cmd.extend(["--max-profile-bytes", str(settings.max_profile_bytes)])
         if metadata_source_tables_out is not None:

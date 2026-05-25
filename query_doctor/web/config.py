@@ -502,6 +502,10 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
         or DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
         impala_profile_prefer_json=optional_config_bool(config_values, "impala_profile_prefer_json")
         is True,
+        impala_profile_collect_docs=optional_config_bool(
+            config_values, "impala_profile_collect_docs"
+        )
+        is True,
         collect_prometheus_timeseries=optional_config_bool(
             config_values, "collect_prometheus_timeseries"
         )

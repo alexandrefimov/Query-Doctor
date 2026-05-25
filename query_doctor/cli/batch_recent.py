@@ -299,6 +299,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Use direct impalad text profile endpoints first.",
     )
     parser.add_argument(
+        "--impala-profile-collect-docs",
+        action="store_true",
+        default=None,
+        help=(
+            "Collect safe profile counter stability labels from direct impalad "
+            "/profile_docs. Missing endpoints are non-fatal."
+        ),
+    )
+    parser.add_argument(
+        "--no-impala-profile-collect-docs",
+        action="store_false",
+        dest="impala_profile_collect_docs",
+        help="Do not collect direct impalad profile counter docs.",
+    )
+    parser.add_argument(
         "--source-visibility",
         choices=SOURCE_VISIBILITY_CHOICES,
         help=(

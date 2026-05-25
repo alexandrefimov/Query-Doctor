@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from query_doctor.analyzer.profile_counter_registry import (
+    DEFAULT_PROFILE_COUNTER_REGISTRY,
+    ProfileCounterRegistry,
     profile_counter_definition,
     profile_counter_supports_strong_evidence,
 )
@@ -33,14 +35,20 @@ class MemoryPressureFacts:
         return asdict(self)
 
 
-def build_memory_pressure_facts(analysis: dict[str, Any]) -> dict[str, Any]:
+def build_memory_pressure_facts(
+    analysis: dict[str, Any],
+    counter_registry: ProfileCounterRegistry = DEFAULT_PROFILE_COUNTER_REGISTRY,
+) -> dict[str, Any]:
     """Build raw-free memory-pressure evidence facts for the selected query."""
 
-    return memory_pressure_facts(analysis).to_dict()
+    return memory_pressure_facts(analysis, counter_registry).to_dict()
 
 
-def memory_pressure_facts(analysis: dict[str, Any]) -> MemoryPressureFacts:
-    spill_count = supported_spill_or_scratch_evidence_count(analysis)
+def memory_pressure_facts(
+    analysis: dict[str, Any],
+    counter_registry: ProfileCounterRegistry = DEFAULT_PROFILE_COUNTER_REGISTRY,
+) -> MemoryPressureFacts:
+    spill_count = supported_spill_or_scratch_evidence_count(analysis, counter_registry)
     memory_anomaly_count = len(
         [item for item in analysis.get("memory_anomalies") or [] if isinstance(item, dict)]
     )
@@ -100,7 +108,10 @@ def memory_pressure_facts_from_analysis(analysis: dict[str, Any]) -> MemoryPress
     return memory_pressure_facts(analysis)
 
 
-def supported_spill_or_scratch_evidence_count(analysis: dict[str, Any]) -> int:
+def supported_spill_or_scratch_evidence_count(
+    analysis: dict[str, Any],
+    counter_registry: ProfileCounterRegistry = DEFAULT_PROFILE_COUNTER_REGISTRY,
+) -> int:
     count = 0
     for item in analysis.get("spill_nonzero_evidence_lines") or []:
         if not item:
@@ -110,7 +121,7 @@ def supported_spill_or_scratch_evidence_count(analysis: dict[str, Any]) -> int:
         counter_name = spill_metric_counter_name(line)
         if value is None or value <= 0 or counter_name is None:
             continue
-        definition = profile_counter_definition(counter_name)
+        definition = profile_counter_definition(counter_name, counter_registry)
         if profile_counter_supports_strong_evidence(definition):
             count += 1
     return count

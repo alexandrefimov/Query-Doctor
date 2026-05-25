@@ -7,6 +7,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+from query_doctor.analyzer.profile_counter_registry import write_profile_counter_registry_context
 from query_doctor.cm.models import CMClientError, CMQuerySummary, OutputError
 from query_doctor.cm.profile_collection import write_collected_case
 from query_doctor.cm.profile_parsing import (
@@ -14,6 +15,10 @@ from query_doctor.cm.profile_parsing import (
     merge_profile_summary_metadata,
 )
 from query_doctor.impala.daemon_identity import fetch_impala_daemon_identity, identity_metadata
+from query_doctor.impala.profile_docs import (
+    DEFAULT_MAX_PROFILE_DOCS_BYTES,
+    fetch_impala_profile_docs_context,
+)
 from query_doctor.impala.profile_source import (
     DEFAULT_IMPALA_PROFILE_PORT,
     DEFAULT_IMPALA_PROFILE_SCHEME,
@@ -92,6 +97,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=positive_int,
         default=DEFAULT_MAX_PROFILE_BYTES,
         help=f"Maximum profile response bytes. Default: {DEFAULT_MAX_PROFILE_BYTES}.",
+    )
+    parser.add_argument(
+        "--collect-profile-docs",
+        action="store_true",
+        help=(
+            "Collect safe profile counter stability labels from impalad /profile_docs. "
+            "Unavailable or old endpoints are treated as unknown and do not fail collection."
+        ),
+    )
+    parser.add_argument(
+        "--max-profile-docs-bytes",
+        type=positive_int,
+        default=DEFAULT_MAX_PROFILE_DOCS_BYTES,
+        help=f"Maximum /profile_docs response bytes. Default: {DEFAULT_MAX_PROFILE_DOCS_BYTES}.",
     )
     parser.add_argument("--out", type=Path, required=True, help="Output corpus directory.")
     parser.add_argument(
@@ -249,6 +268,26 @@ def main(
         warnings.extend(profile_metadata_warnings)
         if identity is None:
             warnings.append("Impala daemon identity unavailable")
+        profile_counter_registry_context = None
+        profile_docs_attempted = 0
+        if args.collect_profile_docs:
+            profile_docs_kwargs = {
+                "hosts": args.host,
+                "port": args.port,
+                "scheme": args.scheme,
+                "timeout_sec": args.timeout_sec,
+                "max_profile_docs_bytes": args.max_profile_docs_bytes,
+                "impala_version": identity.version if identity is not None else None,
+            }
+            if opener is not None:
+                profile_docs_kwargs["opener"] = opener
+            profile_docs_result = fetch_impala_profile_docs_context(**profile_docs_kwargs)
+            profile_counter_registry_context = profile_docs_result.context
+            profile_docs_attempted = profile_docs_result.attempted_endpoints
+            if profile_counter_registry_context.get("status") == "available":
+                warnings.append("Impala profile counter stability docs collected")
+            else:
+                warnings.append("Impala profile counter stability docs unavailable")
         runtime_metrics_context = None
         if collect_prometheus:
             runtime_metrics_context = collect_prometheus_timeseries_context(
@@ -284,6 +323,8 @@ def main(
         )
         if isinstance(metadata_source_tables_out, Path):
             write_metadata_source_tables(metadata_source_tables_out, summary.statement)
+        if profile_counter_registry_context is not None:
+            write_profile_counter_registry_context(case_dir, profile_counter_registry_context)
     except (CMClientError, OutputError, OSError) as exc:
         print("[Impala profile collector] Collection result: FAILED", file=sys.stderr)
         print(
@@ -303,6 +344,9 @@ def main(
     if collect_prometheus:
         print("Prometheus runtime metrics context: enabled")
         print(f"Prometheus metrics profile: {args.prometheus_metrics_profile}")
+    if args.collect_profile_docs:
+        print("Profile counter docs context: enabled")
+        print(f"Attempted profile docs endpoint count: {profile_docs_attempted}")
     print("Raw provider output was not printed to stdout.")
     return 0
 

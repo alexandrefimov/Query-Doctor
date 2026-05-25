@@ -141,11 +141,14 @@ Future analyzer facts may include `evidence.counter_stability` and
 `finding.evidence_quality`.
 
 Current implementation note: `query_doctor.analyzer.profile_counter_registry`
-contains the first bundled registry. Client-fetch facts emit a safe
-`counter_stability` summary, and client-fetch plus spill/scratch parsing cap or
-ignore counters whose registry label is not strong enough for the requested
-evidence tier. Live `/profile_docs` fetch, Impala-version selection, and
-registry refresh tooling are not implemented.
+contains the bundled registry and a safe context loader for optional direct
+`/profile_docs` collection. Direct collection writes only allowlisted
+`name/significance`-derived labels for counter families Query Doctor already
+interprets; it does not write raw profile-doc descriptions or unrelated counter
+dumps. Client-fetch facts emit a safe `counter_stability` summary, and
+client-fetch plus spill/scratch parsing cap or ignore counters whose registry
+label is not strong enough for the requested evidence tier. Broader
+Impala-version selection and registry refresh tooling remain future work.
 
 ## Incomplete Or Cancelled Nodes
 

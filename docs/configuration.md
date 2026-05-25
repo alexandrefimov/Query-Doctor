@@ -308,6 +308,7 @@ browser choices.
 | `impala_profile_scheme` | string | global or cluster | `http` or `https`. |
 | `impala_profile_timeout_sec` | positive integer | global or cluster | Per-request timeout. |
 | `impala_profile_prefer_json` | boolean | global or cluster | Optional compatibility probe. When true, direct Impala collection tries a JSON profile endpoint first and falls back to text endpoints for older Impala versions. Default is false. |
+| `impala_profile_collect_docs` | boolean | global or cluster | Optional `/profile_docs` counter-stability probe. When true, direct Impala collection writes a safe allowlisted counter registry context when the endpoint is available. Missing endpoints are non-fatal. Default is false. |
 | `impala_kerberos_service_name` | string | global or cluster | Kerberos service token, such as `impala` or `hive`. |
 
 ## Prometheus Runtime Metrics

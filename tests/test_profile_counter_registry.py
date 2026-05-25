@@ -1,8 +1,12 @@
 from query_doctor.analyzer.profile_counter_registry import (
     ProfileCounterDefinition,
+    build_profile_counter_registry_context,
     build_profile_counter_registry,
     cap_profile_evidence_tier_for_counter_stability,
     profile_counter_definition,
+    profile_counter_registry_context_summary,
+    profile_counter_registry_from_context,
+    unavailable_profile_counter_registry_context,
 )
 
 
@@ -48,3 +52,50 @@ def test_stable_low_counter_caps_strong_to_medium():
 
     assert cap_profile_evidence_tier_for_counter_stability("strong", definition) == "medium"
     assert cap_profile_evidence_tier_for_counter_stability("medium", definition) == "medium"
+
+
+def test_profile_docs_context_overrides_bundled_stability_for_known_counters():
+    context = build_profile_counter_registry_context(
+        {
+            "ClientFetchWaitTimer": "STABLE_LOW",
+            "SpilledBytes": "STABLE_HIGH",
+        },
+        impala_version="4.5.0",
+    )
+    registry = profile_counter_registry_from_context(context)
+
+    client_fetch = profile_counter_definition("ClientFetchWaitTimer", registry)
+    scratch = profile_counter_definition("ScratchBytesWritten", registry)
+
+    assert client_fetch.stability_label == "STABLE_LOW"
+    assert client_fetch.source == "profile_docs"
+    assert client_fetch.impala_version == "4.5.0"
+    assert scratch.stability_label == "UNKNOWN"
+    assert scratch.source == "profile_docs"
+    assert context["missing_counter_count"] > 0
+
+
+def test_profile_docs_context_summary_does_not_expose_counter_dump():
+    context = build_profile_counter_registry_context(
+        {"ClientFetchWaitTimer": "STABLE_HIGH"},
+        source_counter_count=100,
+    )
+
+    summary = profile_counter_registry_context_summary(context)
+
+    assert summary["status"] == "available"
+    assert summary["source"] == "profile_docs"
+    assert summary["source_counter_count"] == 100
+    assert "entries" not in summary
+
+
+def test_unavailable_profile_docs_summary_reports_bundled_fallback():
+    context = unavailable_profile_counter_registry_context("request_failed")
+
+    summary = profile_counter_registry_context_summary(context)
+
+    assert summary["status"] == "unavailable"
+    assert summary["source"] == "bundled"
+    assert summary["registry_entry_count"] > 0
+    assert summary["missing_counter_count"] == 0
+    assert "entries" not in summary

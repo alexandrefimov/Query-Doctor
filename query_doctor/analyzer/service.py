@@ -36,6 +36,10 @@ from query_doctor.analyzer.profile_signals import (
     find_nonzero_spill_metric_lines,
 )
 from query_doctor.analyzer.profile_format import build_profile_format_facts
+from query_doctor.analyzer.profile_counter_registry import (
+    DEFAULT_PROFILE_COUNTER_REGISTRY,
+    ProfileCounterRegistry,
+)
 from query_doctor.analyzer.node_lifecycle import (
     build_exec_node_completeness_facts,
     operator_row_conclusions_supported,
@@ -100,6 +104,7 @@ def analyze(
     text: str,
     args: argparse.Namespace,
     cm_query_context: dict[str, Any] | None = None,
+    counter_registry: ProfileCounterRegistry = DEFAULT_PROFILE_COUNTER_REGISTRY,
 ) -> dict[str, Any]:
     raw_text = text
     text = normalize_profile_text(text)
@@ -121,7 +126,7 @@ def analyze(
         totals, cm_query_context, extract_query_timeline_duration_ms(text)
     )
     client_fetch = apply_client_fetch_profile_policy(
-        build_client_fetch_facts(text, profile_timings, query_wall_clock),
+        build_client_fetch_facts(text, profile_timings, query_wall_clock, counter_registry),
         profile_format,
     )
 
@@ -222,7 +227,7 @@ def analyze(
     ]
 
     spill_lines = find_matching_lines(text, SPILL_RE)
-    spill_nonzero_lines = find_nonzero_spill_metric_lines(text)
+    spill_nonzero_lines = find_nonzero_spill_metric_lines(text, counter_registry)
     stats_lines = find_matching_lines(
         text, re.compile("|".join(p.pattern for p in STATS_PATTERNS), re.IGNORECASE)
     )

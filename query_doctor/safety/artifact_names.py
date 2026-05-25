@@ -13,6 +13,7 @@ RAW_ARTIFACT_FILENAMES = (
     "cm_timeseries_context.json",
     "cluster_event_context.json",
     "cluster_context.json",
+    "profile_counter_registry_context.json",
     "collection_warnings.txt",
     "analysis_facts.md",
     "analysis.json",

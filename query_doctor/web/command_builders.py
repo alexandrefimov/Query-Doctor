@@ -100,6 +100,8 @@ def append_web_impala_profile_args(cmd: list[str], settings: WebSettings) -> Non
         cmd.extend(["--impala-profile-host", host])
     if settings.impala_profile_prefer_json:
         cmd.append("--impala-profile-prefer-json")
+    if settings.impala_profile_collect_docs:
+        cmd.append("--impala-profile-collect-docs")
     if settings.collect_prometheus_timeseries or settings.prometheus_url:
         if not settings.prometheus_url:
             raise WebError(

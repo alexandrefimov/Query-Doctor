@@ -35,7 +35,8 @@ Explicit `--config` always wins. Для обычного workstation setup prefe
 - `krb5ccname`;
 - metadata coordinator and `impala-shell` settings;
 - direct Impala profile/query source settings, including optional JSON profile
-  probing with text fallback;
+  probing with text fallback and optional safe `/profile_docs` counter-stability
+  probing;
 - `cluster_type` для различения `cm` и direct `impala` clusters;
 - общий language mode: `language` = `en` или `ru`; он показывается в web
   header и управляет Help, Details static UI и новыми trusted reports;
