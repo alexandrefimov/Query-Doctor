@@ -120,9 +120,14 @@ such as "stable profile evidence" or "unknown-stability supporting signal" only
 after those summaries are emitted as analyzer facts.
 
 Implementation sketch: a future `profile_counter_registry` can store
-`counter_name`, `stability_label`, `source`, and `impala_version` or
-`profile_docs_source_version` when available. Future analyzer facts may include
-`evidence.counter_stability` and `finding.evidence_quality`.
+`canonical_name`, `aliases`, `stability_label`, `source`, `evidence_role`, and
+`impala_version` or `profile_docs_source_version` when available. Counter
+aliases are compatibility metadata, not diagnostic proof. For example, spill
+write-byte evidence may need to normalize versioned names such as
+`WriteIoBytes`, `ScratchBytesWritten`, and `BytesWritten` before the analyzer
+decides whether the mapped counter is actually query-specific spill evidence.
+Future analyzer facts may include `evidence.counter_stability` and
+`finding.evidence_quality`.
 
 ## Incomplete Or Cancelled Nodes
 

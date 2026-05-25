@@ -327,6 +327,24 @@ met: shared deployment, multi-tenancy, public second-engine support, plugin
 framework, generic SQL execution, broad package reorganization, and fake
 adapters.
 
+## Impala Implemented-Signal Backlog
+
+These are roadmap items from already-visible Impala or adjacent Cloudera
+diagnostic surfaces. They are not current Query Doctor behavior unless the
+status says an analyzer baseline already exists.
+
+| Item | Priority | Why it matters | Safety rule | Status |
+| --- | --- | --- | --- | --- |
+| Profile counter stability and versioned aliases | P0 | Impala counter significance labels and versioned counter names can reduce name-based guesswork. | Stability and aliases are eligibility only; deterministic interpretation, thresholds, query-specific support, and raw-free summaries are still required. | Roadmap; documented in `docs/impala-profile-counter-caveats.md`. |
+| Profile input dialect and Web UI JSON export | P0 | The Impala Web UI can export profiles as text, Thrift, or Json; JSON may become a less fragile ingestion path than text parsing when fixtures prove it. | Unknown, partial, or experimental dialects fail closed for primary bottleneck claims; no raw profile rendering. | Dialect detection baseline exists; fuller JSON/Thrift/profile-v2 mapping is future work. |
+| Admission context collector | P1 | `/admission?json` exposes pool queue/running context and pool stats that can explain workload pressure around a selected query. | Collect only bounded aggregate facts such as queue present, queue-time bucket, pressure, and freshness; never expose raw queued/running lists or promote admission without query-specific wait/result evidence. | Future; selected-query admission facts already gate current `runtime_admission` promotion. |
+| Storage-aware scan diagnostics | P1 | HDFS locality, remote HDFS, S3, ADLS/ABFS, Ozone, and remote-read data cache have different scan semantics. | Derive a safe `storage_context`; do not expose paths, object URIs, credentials, hosts, or treat object-store remote reads as HDFS locality failures. | Future; current docs keep mixed cache/remote I/O as a caveat. |
+| Runtime filter diagnostics | P1 | EXPLAIN and PROFILE can expose runtime filter producer/consumer and routing details. | Do not claim missing or late runtime filters as a root cause without deterministic producer, consumer, target scan, timing, and spill-context evidence. | Future; current docs only record runtime-filter limitations. |
+| Skew detection refinement | P1 | Stronger skew findings should prefer multi-host, long-running phases with Max Time vs Avg Time imbalance and corroborating bytes, memory, or network spread. | Avoid timing-ratio-only findings and keep aggregate-only skew context below primary-bottleneck promotion. | Partially implemented for scan-skew; additional exchange/execution skew hardening remains. |
+| Statistics UNKNOWN normalization | P1 | Impala uses placeholders such as `-1` for unavailable table or column stats. | Normalize placeholders to `unknown` or `missing`; trusted reports must not present placeholder values as literal business facts. | Current stats quality exists; keep this as a regression rule for metadata parser and report work. |
+| Observability health-check parity matrix | P2 / research | Cloudera Observability health checks are a useful benchmark for missing/corrupt stats, spilling, slow scan/hash join/planning/materialization/sorting, and skew categories. | Do not copy health-check wording blindly; map each category to Query Doctor support status, deterministic evidence required, safe report wording, and unsupported/unknown gaps. | Future research/backlog matrix. |
+| Built-in Impala AI analyzer watchlist | P2 / research | Upstream native Impala AI profile-analysis work shifts Query Doctor away from a one-profile AI button. | Keep positioning around local-first Recent triage, Cloudera Manager integration, bounded metadata/context, deterministic analyzer facts, validation, and raw-free reports. | Existing upstream tracker; keep current when IMPALA-14953 changes materially. |
+
 ## Next Pull Queue
 
 This is the short ordered queue for the next roadmap pulls. Pull a different
