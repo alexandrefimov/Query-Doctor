@@ -1,6 +1,6 @@
 # Impala Profile Counter Caveats
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-25
 
 This document defines the roadmap contract for interpreting Apache Impala
 profile counters and profile dialects in Query Doctor. It is planning guidance,
@@ -50,6 +50,11 @@ Relevant upstream threads and issues:
   runtime estimate drift by itself.
 - [IMPALA-14953](https://issues.apache.org/jira/browse/IMPALA-14953): native AI
   query profile analyzer direction inside Impala.
+- Community discussion around
+  [IMPALA-7550](https://issues.apache.org/jira/browse/IMPALA-7550): runtime
+  profile counter `significance` labels exposed through the Impala Web UI
+  `/profile_docs` handler can help external tooling decide which counters are
+  stable enough to interpret.
 
 These are compatibility targets, not automatic Query Doctor support. Stable
 profile JSON, parser, and redactor contracts still need fixtures and raw-free
@@ -89,6 +94,35 @@ Profile-derived facts should carry one of these tiers:
 
 Evidence quality is not certainty. It is the analyzer's statement about whether
 the available profile representation supports the claim being made.
+
+## Profile Counter Stability Contract
+
+Future analyzer work should classify Impala runtime profile counter evidence
+with Impala-provided significance/stability labels from `/profile_docs` when
+available. Treat `/profile_docs` as a compatibility input, not a guaranteed
+stable machine-readable API, until upstream documentation and fixtures make that
+safe enough. If live consumption is not stable enough, Query Doctor should keep
+a bundled, versioned profile counter registry.
+
+`STABLE_HIGH` counters may contribute strong profile evidence only when the
+counter is query-specific, mapped for the detected profile dialect, and backed
+by analyzer-owned interpretation, thresholds, and corroborating signals where
+the finding family requires them. `STABLE_LOW` counters may contribute medium or
+supporting evidence under the same constraints. `UNSTABLE` and `DEBUG` counters
+must not independently promote a root-cause or primary-bottleneck finding.
+Unlabeled counters, counters missing from `/profile_docs`, or counters that
+cannot be matched to the collected profile should be treated as `UNKNOWN`
+stability.
+
+Stability labels do not replace deterministic support. Trusted reports and
+browser UI must not expose raw counter dumps. They may expose safe summaries
+such as "stable profile evidence" or "unknown-stability supporting signal" only
+after those summaries are emitted as analyzer facts.
+
+Implementation sketch: a future `profile_counter_registry` can store
+`counter_name`, `stability_label`, `source`, and `impala_version` or
+`profile_docs_source_version` when available. Future analyzer facts may include
+`evidence.counter_stability` and `finding.evidence_quality`.
 
 ## Incomplete Or Cancelled Nodes
 

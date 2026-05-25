@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-22
+Last updated: 2026-05-25
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -104,7 +104,9 @@ automatic SQL rewriting.
 - Profile dialect and counter semantics are part of the trust contract. The
   analyzer should not assume that classic text, classic JSON, classic Thrift,
   and experimental profile-v2 expose equivalent sections, counter totals, or
-  instance-level detail.
+  instance-level detail. Impala-provided counter significance/stability labels
+  should improve future profile evidence quality when available, but they do
+  not replace deterministic analyzer support.
 - Product growth should deepen the current Impala wedge while preparing the
   engine fact contract that makes a future second engine real. Spark SQL is not
   a near-term direction: it would require a different runtime/profile fact
@@ -223,8 +225,9 @@ multiple later changes:
   `classic_json_profile`, `classic_thrift_profile`,
   `experimental_profile_v2`, or `unknown` before profile-derived analysis;
   classify profile signals as `strong`, `medium`, `context_only`, or
-  `unsupported`; and prevent unknown or partially mapped dialects from driving
-  primary bottleneck claims.
+  `unsupported`; map Impala-provided counter significance/stability labels into
+  evidence quality when available; and prevent unknown or partially mapped
+  dialects from driving primary bottleneck claims.
 
 ### P1 - Diagnostic Quality
 
