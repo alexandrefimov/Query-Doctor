@@ -3,8 +3,17 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
+from query_doctor.analyzer.profile_counter_registry import (
+    DEFAULT_PROFILE_COUNTER_REGISTRY,
+    ProfileCounterRegistry,
+    cap_profile_evidence_tier_for_counter_stability,
+    canonical_profile_counter_name,
+    profile_counter_definition,
+    profile_counter_stability_payload,
+)
 from query_doctor.analyzer.scalars import DURATION_TOKEN_RE, duration_group_to_ms, fmt_duration
 
 
@@ -38,6 +47,7 @@ def build_client_fetch_facts(
     text: str,
     profile_timings: dict[str, Any],
     query_wall_clock: dict[str, Any],
+    counter_registry: ProfileCounterRegistry = DEFAULT_PROFILE_COUNTER_REGISTRY,
 ) -> dict[str, Any]:
     """Build raw-free client fetch tail facts from known query-specific counters."""
 
@@ -47,7 +57,8 @@ def build_client_fetch_facts(
         match = CLIENT_FETCH_COUNTER_RE.match(line)
         if not match:
             continue
-        counter_name = canonical_counter_name(match.group("name"))
+        definition = profile_counter_definition(match.group("name"), counter_registry)
+        counter_name = definition.canonical_name
         duration_ms = max_duration_ms(match.group("value"))
         if duration_ms is None or duration_ms <= 0:
             continue
@@ -55,6 +66,9 @@ def build_client_fetch_facts(
             "counter": counter_name,
             "duration_ms": duration_ms,
             "duration_human": fmt_duration(duration_ms),
+            "counter_stability": definition.stability_label,
+            "counter_registry_source": definition.source,
+            "evidence_role": definition.evidence_role,
         }
         if counter_name in CLIENT_FETCH_WAIT_COUNTERS:
             wait_counters.append(item)
@@ -84,6 +98,14 @@ def build_client_fetch_facts(
     timeline_fetch_ms = profile_timeline_fetch_ms(profile_timings)
 
     evidence_tier = client_fetch_evidence_tier(wait_ms, wait_share)
+    if dominant_wait is not None:
+        definition = profile_counter_definition(
+            str(dominant_wait.get("counter") or ""), counter_registry
+        )
+        evidence_tier = cap_profile_evidence_tier_for_counter_stability(
+            evidence_tier,
+            definition,
+        )
     if evidence_tier == "unsupported" and (timeline_fetch_ms is not None or serialization_context):
         evidence_tier = "context_only"
     finding_supported = evidence_tier == "strong"
@@ -92,14 +114,29 @@ def build_client_fetch_facts(
         has_serialization_context=serialization_context is not None,
         has_timeline_fetch=timeline_fetch_ms is not None,
         finding_supported=finding_supported,
+        counter_stability_label=counter_stability_label(dominant_wait),
+        counter_registry_source=counter_registry_source(dominant_wait),
     )
 
     return {
         "status": client_fetch_status(
             has_wait_counter=dominant_wait is not None,
             has_context=timeline_fetch_ms is not None or serialization_context is not None,
+            dominant_wait_counter=dominant_wait,
         ),
-        "counter_status": "supported" if dominant_wait else "not_observed",
+        "counter_status": client_fetch_counter_status(dominant_wait),
+        "counter_stability": counter_stability_label(dominant_wait),
+        "counter_registry_source": counter_registry_source(dominant_wait),
+        "counter_evidence_role": counter_evidence_role(dominant_wait),
+        "counter_stability_summary": (
+            profile_counter_stability_payload(
+                profile_counter_definition(
+                    str(dominant_wait.get("counter") or ""), counter_registry
+                )
+            )
+            if isinstance(dominant_wait, Mapping)
+            else None
+        ),
         "evidence_tier": evidence_tier,
         "finding_supported": finding_supported,
         "primary_supported": finding_supported,
@@ -155,11 +192,7 @@ def apply_client_fetch_profile_policy(
 
 
 def canonical_counter_name(value: str) -> str:
-    normalized = value.strip().lower()
-    for name in CLIENT_FETCH_WAIT_COUNTERS | PROFILE_SERIALIZATION_COUNTERS:
-        if normalized == name.lower():
-            return name
-    return value.strip()
+    return canonical_profile_counter_name(value)
 
 
 def max_duration_ms(value: str) -> float | None:
@@ -216,12 +249,54 @@ def client_fetch_evidence_tier(wait_ms: float | None, wait_share: float | None) 
     return "context_only"
 
 
-def client_fetch_status(*, has_wait_counter: bool, has_context: bool) -> str:
+def client_fetch_status(
+    *,
+    has_wait_counter: bool,
+    has_context: bool,
+    dominant_wait_counter: Mapping[str, Any] | None = None,
+) -> str:
     if has_wait_counter:
-        return "supported"
+        return (
+            "supported"
+            if counter_stability_label(dominant_wait_counter)
+            in {
+                "STABLE_HIGH",
+                "STABLE_LOW",
+            }
+            else "unknown"
+        )
     if has_context:
         return "unknown"
     return "not_observed"
+
+
+def client_fetch_counter_status(dominant_wait_counter: Mapping[str, Any] | None) -> str:
+    if dominant_wait_counter is None:
+        return "not_observed"
+    label = counter_stability_label(dominant_wait_counter)
+    if label in {"STABLE_HIGH", "STABLE_LOW"}:
+        return "supported"
+    if label in {"UNSTABLE", "DEBUG"}:
+        return "unsupported"
+    return "unknown"
+
+
+def counter_stability_label(counter: Mapping[str, Any] | None) -> str:
+    if counter is None:
+        return "UNKNOWN"
+    return str(counter.get("counter_stability") or "UNKNOWN")
+
+
+def counter_registry_source(counter: Mapping[str, Any] | None) -> str:
+    if counter is None:
+        return "unknown"
+    return str(counter.get("counter_registry_source") or "unknown")
+
+
+def counter_evidence_role(counter: Mapping[str, Any] | None) -> str:
+    if counter is None:
+        return "unknown"
+    return str(counter.get("evidence_role") or "unknown")
 
 
 def client_fetch_limitations(
@@ -230,6 +305,8 @@ def client_fetch_limitations(
     has_serialization_context: bool,
     has_timeline_fetch: bool,
     finding_supported: bool,
+    counter_stability_label: str | None = None,
+    counter_registry_source: str | None = None,
 ) -> list[str]:
     limitations: list[str] = []
     if not has_wait_counter and has_timeline_fetch:
@@ -239,6 +316,12 @@ def client_fetch_limitations(
     if has_wait_counter and not finding_supported:
         limitations.append(
             "Client fetch wait counter was parsed, but it was not large enough relative to query duration for a high-confidence fetch-tail finding."
+        )
+    if has_wait_counter and counter_stability_label != "STABLE_HIGH":
+        limitations.append(
+            "Client fetch wait counter stability is "
+            f"{counter_stability_label or 'UNKNOWN'} from {counter_registry_source or 'unknown'}; "
+            "it cannot independently promote a high-confidence fetch-tail finding."
         )
     if has_serialization_context:
         limitations.append(

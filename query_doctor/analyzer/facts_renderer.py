@@ -370,6 +370,7 @@ def render_client_fetch_facts(analysis: dict[str, Any]) -> list[str]:
     lines.append(f"- status: {facts.get('status') or 'not_observed'}")
     lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
     lines.append(f"- counter_status: {facts.get('counter_status') or 'not_observed'}")
+    lines.append(f"- counter_stability: {facts.get('counter_stability') or 'UNKNOWN'}")
     lines.append(f"- promotion_policy: {facts.get('promotion_policy') or 'unknown'}")
     lines.append(f"- finding_supported: {'yes' if facts.get('finding_supported') else 'no'}")
     counter = facts.get("dominant_wait_counter")

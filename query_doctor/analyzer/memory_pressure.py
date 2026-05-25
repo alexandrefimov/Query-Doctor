@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from query_doctor.analyzer.profile_counter_registry import (
+    profile_counter_definition,
+    profile_counter_supports_strong_evidence,
+)
+from query_doctor.analyzer.profile_signals import spill_metric_counter_name, spill_metric_value
 from query_doctor.analyzer.query_context import query_context
 from query_doctor.analyzer.thresholds import DEFAULT_LARGE_BYTES_THRESHOLD
 
@@ -35,7 +40,7 @@ def build_memory_pressure_facts(analysis: dict[str, Any]) -> dict[str, Any]:
 
 
 def memory_pressure_facts(analysis: dict[str, Any]) -> MemoryPressureFacts:
-    spill_count = len([item for item in analysis.get("spill_nonzero_evidence_lines") or [] if item])
+    spill_count = supported_spill_or_scratch_evidence_count(analysis)
     memory_anomaly_count = len(
         [item for item in analysis.get("memory_anomalies") or [] if isinstance(item, dict)]
     )
@@ -93,6 +98,22 @@ def memory_pressure_facts_from_analysis(analysis: dict[str, Any]) -> MemoryPress
     if isinstance(existing, dict):
         return memory_pressure_facts_from_mapping(existing)
     return memory_pressure_facts(analysis)
+
+
+def supported_spill_or_scratch_evidence_count(analysis: dict[str, Any]) -> int:
+    count = 0
+    for item in analysis.get("spill_nonzero_evidence_lines") or []:
+        if not item:
+            continue
+        line = str(item)
+        value = spill_metric_value(line)
+        counter_name = spill_metric_counter_name(line)
+        if value is None or value <= 0 or counter_name is None:
+            continue
+        definition = profile_counter_definition(counter_name)
+        if profile_counter_supports_strong_evidence(definition):
+            count += 1
+    return count
 
 
 def memory_pressure_facts_from_mapping(payload: dict[str, Any]) -> MemoryPressureFacts:

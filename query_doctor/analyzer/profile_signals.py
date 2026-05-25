@@ -5,6 +5,12 @@ from __future__ import annotations
 import re
 
 from query_doctor.analyzer.context_files import compact_line
+from query_doctor.analyzer.profile_counter_registry import (
+    DEFAULT_PROFILE_COUNTER_REGISTRY,
+    ProfileCounterRegistry,
+    profile_counter_definition,
+    profile_counter_supports_strong_evidence,
+)
 from query_doctor.analyzer.scalars import (
     SIZE_PATTERN,
     SIZE_RE,
@@ -70,11 +76,25 @@ def spill_metric_value(line: str) -> float | None:
     return parse_scaled_number(raw)
 
 
-def find_nonzero_spill_metric_lines(text: str) -> list[str]:
+def spill_metric_counter_name(line: str) -> str | None:
+    match = SPILL_METRIC_RE.search(line)
+    if not match:
+        return None
+    return match.group("name")
+
+
+def find_nonzero_spill_metric_lines(
+    text: str,
+    counter_registry: ProfileCounterRegistry = DEFAULT_PROFILE_COUNTER_REGISTRY,
+) -> list[str]:
     lines: list[str] = []
     for line in text.splitlines():
         value = spill_metric_value(line)
-        if value is not None and value > 0:
+        counter_name = spill_metric_counter_name(line)
+        if counter_name is None:
+            continue
+        definition = profile_counter_definition(counter_name, counter_registry)
+        if value is not None and value > 0 and profile_counter_supports_strong_evidence(definition):
             lines.append(compact_line(line))
     return lines
 

@@ -1,5 +1,10 @@
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_correlation
 from query_doctor.analyzer.memory_pressure import build_memory_pressure_facts
+from query_doctor.analyzer.profile_counter_registry import (
+    ProfileCounterDefinition,
+    build_profile_counter_registry,
+)
+from query_doctor.analyzer.profile_signals import find_nonzero_spill_metric_lines
 
 
 def test_memory_estimates_are_context_only_for_memory_pressure():
@@ -37,6 +42,45 @@ def test_nonzero_spill_or_scratch_is_strong_memory_pressure_evidence():
     assert facts["finding_supported"] is True
     assert facts["runtime_metric_correlation_supported"] is True
     assert facts["spill_or_scratch_evidence_count"] == 2
+
+
+def test_unknown_stability_spill_counter_cannot_be_strong_memory_evidence():
+    registry = build_profile_counter_registry(
+        (
+            ProfileCounterDefinition(
+                canonical_name="SpilledBytes",
+                stability_label="UNKNOWN",
+                source="unknown",
+                evidence_role="spill_scratch_evidence",
+            ),
+        )
+    )
+    spill_lines = find_nonzero_spill_metric_lines(
+        "- SpilledBytes: 2.0 GiB\n",
+        counter_registry=registry,
+    )
+
+    facts = build_memory_pressure_facts({"spill_nonzero_evidence_lines": spill_lines})
+
+    assert spill_lines == []
+    assert facts["status"] == "not_observed"
+    assert facts["evidence_tier"] == "unsupported"
+    assert facts["finding_supported"] is False
+
+
+def test_memory_pressure_fact_builder_rechecks_counter_stability():
+    facts = build_memory_pressure_facts(
+        {
+            "spill_nonzero_evidence_lines": [
+                "- BytesWritten: 2.0 GiB",
+            ],
+        }
+    )
+
+    assert facts["status"] == "not_observed"
+    assert facts["evidence_tier"] == "unsupported"
+    assert facts["finding_supported"] is False
+    assert facts["spill_or_scratch_evidence_count"] == 0
 
 
 def test_daemon_memory_metrics_need_strong_memory_pressure_evidence_to_correlate():

@@ -2,6 +2,10 @@ from query_doctor.analyzer.client_fetch import (
     apply_client_fetch_profile_policy,
     build_client_fetch_facts,
 )
+from query_doctor.analyzer.profile_counter_registry import (
+    ProfileCounterDefinition,
+    build_profile_counter_registry,
+)
 
 
 def test_client_fetch_wait_counter_can_be_strong_evidence():
@@ -16,6 +20,8 @@ def test_client_fetch_wait_counter_can_be_strong_evidence():
     assert facts["client_fetch_wait_ms"] == 45_000
     assert facts["wait_share_human"] == "45%"
     assert facts["dominant_wait_counter"]["counter"] == "ClientFetchWaitTimer"
+    assert facts["counter_status"] == "supported"
+    assert facts["counter_stability"] == "STABLE_HIGH"
 
 
 def test_client_fetch_wait_stats_uses_largest_duration_value():
@@ -26,6 +32,60 @@ def test_client_fetch_wait_stats_uses_largest_duration_value():
     )
 
     assert facts["client_fetch_wait_ms"] == 12_000
+    assert facts["evidence_tier"] == "medium"
+    assert facts["finding_supported"] is False
+
+
+def test_client_fetch_wait_counter_unknown_stability_cannot_be_strong_evidence():
+    registry = build_profile_counter_registry(
+        (
+            ProfileCounterDefinition(
+                canonical_name="ClientFetchWaitTimer",
+                stability_label="UNKNOWN",
+                source="unknown",
+                evidence_role="client_fetch_wait",
+            ),
+        )
+    )
+
+    facts = build_client_fetch_facts(
+        "- ClientFetchWaitTimer: 45s\n",
+        {},
+        {"duration_ms": 100_000, "source": "profile TotalTime", "confidence": "high"},
+        counter_registry=registry,
+    )
+
+    assert facts["status"] == "unknown"
+    assert facts["counter_status"] == "unknown"
+    assert facts["counter_stability"] == "UNKNOWN"
+    assert facts["evidence_tier"] == "context_only"
+    assert facts["finding_supported"] is False
+    assert facts["primary_supported"] is False
+    assert any("cannot independently promote" in item for item in facts["limitations"])
+
+
+def test_client_fetch_wait_counter_stable_low_caps_strong_to_medium():
+    registry = build_profile_counter_registry(
+        (
+            ProfileCounterDefinition(
+                canonical_name="ClientFetchWaitTimer",
+                stability_label="STABLE_LOW",
+                source="profile_docs",
+                evidence_role="client_fetch_wait",
+            ),
+        )
+    )
+
+    facts = build_client_fetch_facts(
+        "- ClientFetchWaitTimer: 45s\n",
+        {},
+        {"duration_ms": 100_000, "source": "profile TotalTime", "confidence": "high"},
+        counter_registry=registry,
+    )
+
+    assert facts["status"] == "supported"
+    assert facts["counter_status"] == "supported"
+    assert facts["counter_stability"] == "STABLE_LOW"
     assert facts["evidence_tier"] == "medium"
     assert facts["finding_supported"] is False
 

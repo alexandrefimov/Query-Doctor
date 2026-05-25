@@ -101,12 +101,15 @@ the available profile representation supports the claim being made.
 
 ## Profile Counter Stability Contract
 
-Future analyzer work should classify Impala runtime profile counter evidence
-with Impala-provided significance/stability labels from `/profile_docs` when
-available. Treat `/profile_docs` as a compatibility input, not a guaranteed
-stable machine-readable API, until upstream documentation and fixtures make that
-safe enough. If live consumption is not stable enough, Query Doctor should keep
-a bundled, versioned profile counter registry.
+Analyzer work should classify Impala runtime profile counter evidence with a
+counter stability label before allowing profile counters to promote strong
+findings. The current baseline has a bundled registry for the client-fetch and
+spill/scratch counter families that Query Doctor already interprets. Future
+work should add Impala-provided significance/stability labels from
+`/profile_docs` when available. Treat `/profile_docs` as a compatibility input,
+not a guaranteed stable machine-readable API, until upstream documentation and
+fixtures make that safe enough. If live consumption is not stable enough, Query
+Doctor should keep extending a bundled, versioned profile counter registry.
 
 `STABLE_HIGH` counters may contribute strong profile evidence only when the
 counter is query-specific, mapped for the detected profile dialect, and backed
@@ -132,6 +135,13 @@ write-byte evidence may need to normalize versioned names such as
 decides whether the mapped counter is actually query-specific spill evidence.
 Future analyzer facts may include `evidence.counter_stability` and
 `finding.evidence_quality`.
+
+Current implementation note: `query_doctor.analyzer.profile_counter_registry`
+contains the first bundled registry. Client-fetch facts emit a safe
+`counter_stability` summary, and client-fetch plus spill/scratch parsing cap or
+ignore counters whose registry label is not strong enough for the requested
+evidence tier. Live `/profile_docs` fetch, Impala-version selection, and
+registry refresh tooling are not implemented.
 
 ## Incomplete Or Cancelled Nodes
 
