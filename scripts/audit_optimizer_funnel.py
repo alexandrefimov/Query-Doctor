@@ -29,6 +29,9 @@ from query_doctor.recent.optimizer_rewrite_support import (  # noqa: E402
 )
 from query_doctor.recent.query_optimization_score import (  # noqa: E402
     QueryOptimizationCandidateScore,
+    optimizer_adjacent_actionability,
+    optimizer_no_draft_actionability,
+    optimizer_rewriteability_rank,
 )
 
 
@@ -59,6 +62,9 @@ class SupportView:
     draft_eligibility: str
     risk_mode: str
     risk_reasons: tuple[str, ...]
+    recipe_id: str = ""
+    draft_unavailable_class: str = "not_applicable"
+    draft_unavailable_reasons: tuple[str, ...] = ()
     cte_count: int = 0
     cte_graph_shape: str = "no_cte"
     cte_predicate_pushdown_status: str = "no_cte"
@@ -98,8 +104,11 @@ class OptimizerFunnelAuditResult:
     severity_counts: Counter[str] = field(default_factory=Counter)
     status_counts: Counter[str] = field(default_factory=Counter)
     bucket_counts: Counter[str] = field(default_factory=Counter)
+    effective_rewriteability_rank_counts: Counter[str] = field(default_factory=Counter)
     status_bucket_counts: Counter[str] = field(default_factory=Counter)
     severity_status_bucket_counts: Counter[str] = field(default_factory=Counter)
+    adjacent_actionability_counts: Counter[str] = field(default_factory=Counter)
+    no_draft_actionability_counts: Counter[str] = field(default_factory=Counter)
     review_reason_counts: Counter[str] = field(default_factory=Counter)
     review_primary_counts: Counter[str] = field(default_factory=Counter)
     review_risk_mode_counts: Counter[str] = field(default_factory=Counter)
@@ -163,6 +172,18 @@ def audit_summary(
         result.severity_counts[severity] += 1
         result.status_counts[support.status] += 1
         result.bucket_counts[support.rewriteability_bucket] += 1
+        support_payload = support_actionability_payload(support)
+        result.effective_rewriteability_rank_counts[
+            str(optimizer_rewriteability_rank(support_payload))
+        ] += 1
+        if support.rewriteability_bucket == "recipe_adjacent_shape":
+            result.adjacent_actionability_counts[
+                optimizer_adjacent_actionability(support_payload)
+            ] += 1
+        elif support.rewriteability_bucket == "recipe_detected_no_draft":
+            result.no_draft_actionability_counts[
+                optimizer_no_draft_actionability(support_payload)
+            ] += 1
         result.status_bucket_counts[f"{support.status}:{support.rewriteability_bucket}"] += 1
         result.severity_status_bucket_counts[
             f"{severity}:{support.status}:{support.rewriteability_bucket}"
@@ -255,6 +276,11 @@ def support_view_from_support(support: OptimizerRewriteSupport) -> SupportView:
         draft_eligibility=safe_token(support.draft_eligibility, default="unknown"),
         risk_mode=safe_token(support.risk_mode, default="unknown"),
         risk_reasons=tuple(safe_reason_list(support.risk_reasons)),
+        recipe_id=safe_token(support.recipe_id, default=""),
+        draft_unavailable_class=safe_token(
+            support.draft_unavailable_class, default="not_applicable"
+        ),
+        draft_unavailable_reasons=tuple(safe_reason_list(support.draft_unavailable_reasons)),
         cte_count=int_value(support.cte_count),
         cte_graph_shape=safe_token(support.cte_graph_shape, default="no_cte"),
         cte_predicate_pushdown_status=safe_token(
@@ -292,6 +318,11 @@ def support_view_from_dict(value: Any) -> SupportView:
         draft_eligibility=safe_token(support.get("draft_eligibility"), default="unknown"),
         risk_mode=safe_token(support.get("risk_mode"), default="unknown"),
         risk_reasons=tuple(safe_reason_list(support.get("risk_reasons"))),
+        recipe_id=safe_token(support.get("recipe_id"), default=""),
+        draft_unavailable_class=safe_token(
+            support.get("draft_unavailable_class"), default="not_applicable"
+        ),
+        draft_unavailable_reasons=tuple(safe_reason_list(support.get("draft_unavailable_reasons"))),
         cte_count=int_value(support.get("cte_count")),
         cte_graph_shape=safe_token(support.get("cte_graph_shape"), default="no_cte"),
         cte_predicate_pushdown_status=safe_token(
@@ -322,6 +353,22 @@ def support_view_from_dict(value: Any) -> SupportView:
         ),
         derived_boundary_reasons=tuple(safe_reason_list(support.get("derived_boundary_reasons"))),
     )
+
+
+def support_actionability_payload(support: SupportView) -> dict[str, object]:
+    return {
+        "status": support.status,
+        "rewriteability_bucket": support.rewriteability_bucket,
+        "draft_eligibility": support.draft_eligibility,
+        "recipe_id": support.recipe_id,
+        "draft_unavailable_class": support.draft_unavailable_class,
+        "draft_unavailable_reasons": support.draft_unavailable_reasons,
+        "cte_predicate_pushdown_status": support.cte_predicate_pushdown_status,
+        "cte_simplification_status": support.cte_simplification_status,
+        "cte_boundary_reasons": support.cte_boundary_reasons,
+        "derived_predicate_pushdown_status": support.derived_predicate_pushdown_status,
+        "derived_boundary_reasons": support.derived_boundary_reasons,
+    }
 
 
 def collect_no_recipe_case(
@@ -569,6 +616,24 @@ def print_result(
     print_counter("Severity", result.severity_counts, limit=limit, out=out)
     print_counter("Optimizer status", result.status_counts, limit=limit, out=out)
     print_counter("Rewriteability buckets", result.bucket_counts, limit=limit, out=out)
+    print_counter(
+        "Effective rewriteability ranks",
+        result.effective_rewriteability_rank_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "Recipe-adjacent actionability",
+        result.adjacent_actionability_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "Recipe-detected no-draft actionability",
+        result.no_draft_actionability_counts,
+        limit=limit,
+        out=out,
+    )
     print_counter("Status / bucket", result.status_bucket_counts, limit=limit, out=out)
     print_counter(
         "Severity / status / bucket",
