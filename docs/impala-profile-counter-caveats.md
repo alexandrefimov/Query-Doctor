@@ -55,6 +55,10 @@ Relevant upstream threads and issues:
   profile counter `significance` labels exposed through the Impala Web UI
   `/profile_docs` handler can help external tooling decide which counters are
   stable enough to interpret.
+- [RESOURCE_TRACE_RATIO](https://impala.apache.org/docs/build/html/topics/impala_resource_trace_ratio.html):
+  Impala can include additional resource traces in query profiles, including
+  CPU and host I/O metrics in Per Node Profiles, when trace collection is
+  enabled or sampled for the query.
 
 These are compatibility targets, not automatic Query Doctor support. Stable
 profile JSON, parser, and redactor contracts still need fixtures and raw-free
@@ -202,6 +206,20 @@ Disk I/O:
 - Medium or stronger evidence requires I/O wait timers plus bytes and mapped
   operator context.
 - I/O wait without bytes or operator context is context-only.
+
+Resource trace CPU/I/O:
+
+- Resource traces are optional and may be sampled. Missing resource trace
+  metrics mean `unknown`, not `not observed`.
+- `CpuIoWaitPercentage`, `CpuSysPercentage`, and `CpuUserPercentage` can become
+  CPU-vs-I/O context only after the profile dialect, counter stability, and
+  selected-query mapping are proven with fixtures.
+- Host disk and network throughput counters can include work from the selected
+  query, other queries, and other processes on the host. Treat them as
+  context-only unless analyzer facts can isolate selected-query evidence and
+  corroborate it with operator bytes, timing, and storage context.
+- Trusted reports and browser UI must not expose raw Per Node Profiles rows,
+  host identifiers, or raw resource-trace counter dumps.
 
 Client fetch tail:
 
