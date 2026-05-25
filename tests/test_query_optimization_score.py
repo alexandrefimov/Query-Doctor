@@ -117,6 +117,29 @@ def test_structural_recipe_adjacent_shapes_rank_below_actionable_adjacent_shapes
     assert optimizer_rewriteability_rank(actionable) > optimizer_rewriteability_rank(structural)
 
 
+def test_unproven_cte_adjacent_shape_is_not_actionable_backlog():
+    support = {
+        "rewriteability_bucket": "recipe_adjacent_shape",
+        "cte_predicate_pushdown_status": "candidate",
+        "cte_simplification_status": "single_use_candidate",
+        "cte_boundary_reasons": ["cte_body_validation_not_proven"],
+    }
+
+    assert optimizer_adjacent_actionability(support) == "structural_boundary"
+    assert optimizer_rewriteability_rank(support) == 1
+
+
+def test_unproven_nested_adjacent_shape_is_not_actionable_backlog():
+    support = {
+        "rewriteability_bucket": "recipe_adjacent_shape",
+        "derived_predicate_pushdown_status": "candidate",
+        "derived_boundary_reasons": ["nested_body_validation_required"],
+    }
+
+    assert optimizer_adjacent_actionability(support) == "structural_boundary"
+    assert optimizer_rewriteability_rank(support) == 1
+
+
 def test_structural_no_draft_cases_rank_below_actionable_no_draft_cases():
     actionable = {
         "rewriteability_bucket": "recipe_detected_no_draft",

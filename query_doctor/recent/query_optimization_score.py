@@ -22,6 +22,8 @@ ADJACENT_ACTIONABLE_STATUSES = {"candidate"}
 ADJACENT_ACTIONABLE_SIMPLIFICATION_STATUSES = {"pass_through_candidate", "single_use_candidate"}
 ADJACENT_STRUCTURAL_BOUNDARY_REASONS = {
     "aggregate_boundary",
+    "cte_body_validation_not_proven",
+    "nested_body_validation_required",
     "no_downstream_filter_for_pushdown",
     "outer_join_boundary",
     "outer_join_or_multiple_relations",
