@@ -206,11 +206,15 @@ Scan skew:
   equivalent aggregate spread.
 - Current analyzer fact: `Scan Skew Evidence` records the evidence tier,
   finding/primary support flags, evidence source, fragment group, skew metric,
-  skew ratio, backend row/group counts, guardrail, and limitations.
+  skew ratio, group host count, corroborating metric count, phase runtime,
+  Max Time vs Avg Time ratio, backend row/group counts, guardrail, and
+  limitations.
 - Current implementation note: per-instance assigned scan bytes, bytes read,
   rows produced, or mapped backend group summaries derived from those spread
-  fields are the implemented strong evidence path. Backend data-skew summaries
-  without mapped spread fields, operator-level scan totals, runtime duration,
+  fields are the implemented finding path. Primary `runtime_skew` promotion
+  requires a long-running phase with material Max Time vs Avg Time imbalance
+  when execution timing is available. Backend data-skew summaries without
+  mapped spread fields, operator-level scan totals, runtime duration,
   exchange/network timers, and runtime metrics remain context-only by
   themselves.
 

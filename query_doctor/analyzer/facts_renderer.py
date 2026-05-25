@@ -666,6 +666,19 @@ def render_scan_skew_facts(analysis: dict[str, Any]) -> list[str]:
     lines.append(f"- skew_metric: {facts.get('skew_metric') or 'none'}")
     lines.append(f"- skew_metric_label: {facts.get('skew_metric_label') or 'none'}")
     lines.append(f"- skew_ratio: {facts.get('skew_ratio_human') or 'n/a'}")
+    lines.append(f"- skew_group_host_count: {facts.get('skew_group_host_count') or 0}")
+    lines.append(f"- corroborating_metric_count: {facts.get('corroborating_metric_count') or 0}")
+    lines.append(
+        f"- group_max_execution_time: {facts.get('group_max_execution_time_human') or 'n/a'}"
+    )
+    lines.append(
+        f"- group_avg_execution_time: {facts.get('group_avg_execution_time_human') or 'n/a'}"
+    )
+    lines.append(
+        "- group_max_avg_execution_ratio: "
+        f"{facts.get('group_max_avg_execution_ratio_human') or 'n/a'}"
+    )
+    lines.append(f"- runtime_status: {facts.get('runtime_status') or 'unknown'}")
     lines.append(f"- backend_rows_parsed: {facts.get('backend_rows_parsed') or 0}")
     lines.append(f"- skew_group_count: {facts.get('skew_group_count') or 0}")
     lines.append(f"- comparable_group_count: {facts.get('comparable_group_count') or 0}")

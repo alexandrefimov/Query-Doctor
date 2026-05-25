@@ -341,7 +341,7 @@ status says an analyzer baseline already exists.
 | Storage-aware scan diagnostics | P1 | HDFS locality, remote HDFS, S3, ADLS/ABFS, Ozone, and remote-read data cache have different scan semantics. | Derive a safe `storage_context`; do not expose paths, object URIs, credentials, hosts, or treat object-store remote reads as HDFS locality failures. | Baseline exists: analyzer derives safe storage family from metadata location scheme when available, emits aggregate `storage_context`, and keeps object-store HDFS/DataNode locality signals from promoting HDFS findings. Data-cache counters, finer remote-HDFS semantics, and richer S3/ADLS/Ozone interpretation remain future work. |
 | Resource-trace CPU/I/O facts | P1 | `RESOURCE_TRACE_RATIO` can add Per Node Profiles metrics for CPU usage, I/O wait, disk throughput, and network throughput when enabled. | Treat absence as unknown; host-wide throughput is context-only unless mapped to selected-query evidence, and raw per-node or host rows must not reach UI/reports. | Future; current profile timing/resource facts do not parse resource traces. |
 | Runtime filter diagnostics | P1 | EXPLAIN and PROFILE can expose runtime filter producer/consumer and routing details. | Do not claim missing or late runtime filters as a root cause without deterministic producer, consumer, target scan, timing, and spill-context evidence. | Baseline exists: analyzer emits raw-free context counts for runtime-filter plan arrows, filter IDs, arrival gaps/waits, and BloomFilterBytes counters. These facts remain `context_only`; missing/late filter diagnosis and root-cause promotion remain future work. |
-| Skew detection refinement | P1 | Stronger skew findings should prefer multi-host, long-running phases with Max Time vs Avg Time imbalance and corroborating bytes, memory, or network spread. | Avoid timing-ratio-only findings and keep aggregate-only skew context below primary-bottleneck promotion. | Partially implemented for scan-skew. Exchange/data-movement promotion now requires mapped exchange context and large `TotalBytesSent`; additional exchange/execution skew hardening remains. |
+| Skew detection refinement | P1 | Stronger skew findings should prefer multi-host, long-running phases with Max Time vs Avg Time imbalance and corroborating bytes, memory, or network spread. | Avoid timing-ratio-only findings and keep aggregate-only skew context below primary-bottleneck promotion. | Scan-skew baseline refined: selected evidence now records group host count, corroborating metric count, phase runtime, and Max/Avg execution ratio; primary `runtime_skew` routing requires a long-running imbalanced phase when timing is available. Exchange/execution skew hardening beyond scan skew remains. |
 | Statistics UNKNOWN normalization | P1 | Impala uses placeholders such as `-1` for unavailable table or column stats. | Normalize placeholders to `unknown` or `missing`; trusted reports must not present placeholder values as literal business facts. | Current stats quality exists; keep this as a regression rule for metadata parser and report work. |
 | Observability health-check parity matrix | P2 / research | Cloudera Observability health checks are a useful benchmark for missing/corrupt stats, spilling, slow scan/hash join/planning/materialization/sorting, and skew categories. | Do not copy health-check wording blindly; map each category to Query Doctor support status, deterministic evidence required, safe report wording, and unsupported/unknown gaps. | Future research/backlog matrix. |
 | Built-in Impala AI analyzer watchlist | P2 / research | Upstream native Impala AI profile-analysis work shifts Query Doctor away from a one-profile AI button. | Keep positioning around local-first Recent triage, Cloudera Manager integration, bounded metadata/context, deterministic analyzer facts, validation, and raw-free reports. | Existing upstream tracker; keep current when IMPALA-14953 changes materially. |
@@ -618,8 +618,10 @@ Implemented baseline:
   estimates, reservations, peak-memory footprints, daemon metrics, and runtime
   context remain context-only.
 - scan-skew facts are evidence-tiered: per-instance scan bytes, bytes-read,
-  rows, or mapped equivalent spread are the current strong evidence path, while
-  backend data-skew summaries without those mapped fields remain context-only.
+  rows, or mapped equivalent spread are the current finding path; primary
+  `runtime_skew` promotion requires a long-running phase with material Max/Avg
+  execution imbalance when timing is available. Backend data-skew summaries
+  without those mapped fields remain context-only.
 - exchange/data-movement promotion requires mapped `EXCHANGE` operator context
   and large `TotalBytesSent`; storage/HDFS promotion requires mapped
   scan/storage operator context and large `TotalBytesRead`.
@@ -655,8 +657,9 @@ Open P0 analyzer status:
      admission result facts for the selected query;
    - memory pressure is strong with explicit non-zero spill or scratch counters,
      while estimates and reservations alone stay context-only;
-   - scan skew is strong only with per-instance scan bytes, bytes-read, rows, or
-     a mapped equivalent spread section;
+   - scan skew can become primary only with per-instance scan bytes,
+     bytes-read, rows, or a mapped equivalent spread section plus a
+     long-running imbalanced phase when timing is available;
    - exchange wait, network, and inactive timers require mapped exchange context
      before they can exceed medium evidence;
    - disk I/O wait requires bytes and scan/storage operator context before
