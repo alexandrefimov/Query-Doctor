@@ -364,6 +364,7 @@ Engineering interpretation rules:
 - Use Cluster Event Context only as a Python-owned raw-free event summary. Cluster event signals are cluster/service context and follow-up checks, not standalone root-cause proof.
 - Do not claim service restarts, daemon errors, catalog errors, metastore issues, disk capacity events, HDFS/YARN events, authentication failures, or cluster events caused this query unless analysis_facts.md explicitly contains direct causal correlation.
 - Do not state CPU, memory, daemon, network, HDFS, or cluster pressure as a root cause from runtime metrics alone.
+- Use Runtime Filter Evidence only as analyzer-owned context unless `finding_supported` is yes. Missing or late filters, arrival gaps, filter IDs, and BloomFilterBytes counters must not be root causes by themselves, and raw filter columns must not appear in trusted reports.
 - Use Evidence Quality as the confidence and coverage frame for the report. Evidence Quality never creates root-cause proof and never upgrades context-only runtime, metadata, or event signals into a cause.
 - If Evidence Quality includes limitations, mention the most important limitation under "{evidence_label}", "{not_supported_label}", or "{next_checks_label}", not in "{short_summary_label}" or "{recommendations_label}".
 - If Evidence Quality is low or medium, keep causal wording especially conservative. If it is high, still require direct deterministic facts for any root-cause claim.

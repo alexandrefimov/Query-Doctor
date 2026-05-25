@@ -52,6 +52,7 @@ from query_doctor.analyzer.runtime_counters import (
     extract_query_timeline_duration_ms,
     extract_total_counter,
 )
+from query_doctor.analyzer.runtime_filters import build_runtime_filter_facts
 from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio, fmt_rows
 from query_doctor.analyzer.thresholds import MEDIUM_DATA_MOVEMENT_BYTES
 
@@ -129,6 +130,7 @@ def analyze(
         build_client_fetch_facts(text, profile_timings, query_wall_clock, counter_registry),
         profile_format,
     )
+    runtime_filters = build_runtime_filter_facts(text, profile_format, exec_node_completeness)
 
     top_by_time = sorted(
         [op for op in operators if op.time_ms is not None],
@@ -271,6 +273,9 @@ def analyze(
         if isinstance(limitation, dict) and limitation.get("summary"):
             not_supported_causes.append(str(limitation["summary"]))
     for limitation in client_fetch.get("limitations") or []:
+        if limitation:
+            not_supported_causes.append(str(limitation))
+    for limitation in runtime_filters.get("limitations") or []:
         if limitation:
             not_supported_causes.append(str(limitation))
 
@@ -639,6 +644,7 @@ def analyze(
         "profile_resources": profile_resources,
         "profile_timings": profile_timings,
         "client_fetch": client_fetch,
+        "runtime_filters": runtime_filters,
         "backend_tail": backend_tail,
         "runtime_counter_context": runtime_counter_context,
         "operators": [

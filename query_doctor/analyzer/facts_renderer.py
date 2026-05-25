@@ -445,6 +445,56 @@ def render_client_fetch_facts(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_runtime_filter_facts(analysis: dict[str, Any]) -> list[str]:
+    facts = analysis.get("runtime_filters")
+    if not isinstance(facts, dict):
+        return []
+    if facts.get("status") == "not_observed" and facts.get("evidence_tier") == "unsupported":
+        return []
+
+    lines = ["## Runtime Filter Evidence", ""]
+    lines.append(f"- status: {facts.get('status') or 'unknown'}")
+    lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
+    lines.append(f"- finding_supported: {'yes' if facts.get('finding_supported') else 'no'}")
+    lines.append(f"- primary_supported: {'yes' if facts.get('primary_supported') else 'no'}")
+    lines.append(f"- profile_dialect: {facts.get('profile_dialect') or 'unknown'}")
+    lines.append(f"- runtime_filter_lines: {facts.get('runtime_filter_lines') or 0}")
+    lines.append(f"- plan_filter_lines: {facts.get('plan_filter_lines') or 0}")
+    lines.append(f"- runtime_filter_id_count: {facts.get('runtime_filter_id_count') or 0}")
+    lines.append(f"- plan_producer_lines: {facts.get('plan_producer_lines') or 0}")
+    lines.append(f"- plan_consumer_lines: {facts.get('plan_consumer_lines') or 0}")
+    filter_kind_counts = facts.get("filter_kind_counts")
+    if isinstance(filter_kind_counts, dict) and filter_kind_counts:
+        summary = ", ".join(
+            f"{md_escape(str(kind))}={count}" for kind, count in sorted(filter_kind_counts.items())
+        )
+        lines.append(f"- filter_kind_counts: {summary}")
+    lines.append(f"- arrival_status: {facts.get('arrival_status') or 'unknown'}")
+    lines.append(f"- arrival_status_lines: {facts.get('arrival_status_lines') or 0}")
+    lines.append(f"- missing_arrival_lines: {facts.get('missing_arrival_lines') or 0}")
+    lines.append(f"- all_arrived_lines: {facts.get('all_arrived_lines') or 0}")
+    lines.append(f"- max_arrival_wait: {facts.get('max_arrival_wait_human') or 'n/a'}")
+    lines.append(f"- bloom_filter_counter_lines: {facts.get('bloom_filter_counter_lines') or 0}")
+    lines.append(
+        "- bloom_filter_counter_nonzero_lines: "
+        f"{facts.get('bloom_filter_counter_nonzero_lines') or 0}"
+    )
+    lines.append(
+        "- exec_node_runtime_filter_effectiveness: "
+        f"{facts.get('exec_node_runtime_filter_effectiveness') or 'unknown'}"
+    )
+    lines.append(
+        f"- guardrail: {facts.get('guardrail') or 'Runtime filter facts are context-only.'}"
+    )
+    limitations = [str(item) for item in facts.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {md_escape(item)}")
+    lines.append("")
+    return lines
+
+
 def render_action_cards(analysis: dict[str, Any]) -> list[str]:
     lines = ["## Action Cards", ""]
     cards = analysis.get("action_cards") or []
@@ -756,6 +806,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_runtime_admission_facts(analysis)
     lines += render_admission_context(analysis)
     lines += render_memory_pressure_facts(analysis)
+    lines += render_runtime_filter_facts(analysis)
     lines += render_storage_context(analysis)
     lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)

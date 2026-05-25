@@ -266,6 +266,13 @@ Runtime filter effectiveness:
 - Zero runtime-filter counters are not enough to claim that filters were
   ineffective or filtered all rows when the scan type or node-completion state
   is unsupported.
+- Current implementation note: `Runtime Filter Evidence` emits safe aggregate
+  context from classic text profiles, including runtime-filter plan-line counts,
+  unique filter ID counts, producer/consumer arrow counts, arrival gap/wait
+  counts, and BloomFilterBytes counter presence. This is `context_only` and
+  cannot create a finding or primary bottleneck. Missing or late filter
+  diagnosis still requires deterministic producer, consumer, target scan,
+  timing, spill-context, and node-completion support.
 
 Exchange and partition skew:
 
