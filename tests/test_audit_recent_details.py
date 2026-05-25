@@ -105,6 +105,61 @@ def test_recent_details_audit_accepts_clean_follow_up_candidate(
     assert result.action_counts == {"clean:Query-shape recommendation": 1}
 
 
+def test_recent_details_audit_allows_runtime_follow_up_without_optimizer_source(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case_dir(tmp_path, 1, source_sql=False),
+                "query_id": "runtime-follow-up-query",
+                "user": "analyst",
+                "score": 2,
+                "score_severity": "suspicious",
+                "duration_sec": 120.0,
+                "collection_status": "ok",
+                "analysis_status": "ok",
+                "metadata_status": "not_requested",
+                "report_validation_status": "not_run",
+                "score_reasons": ["backend data skew evidence"],
+                "case_primary_bottleneck": {
+                    "label": "mixed",
+                    "confidence": "medium",
+                    "reasons": ["competing_runtime_skew", "competing_client_fetch_tail"],
+                },
+                "query_optimization_candidate": {
+                    "tier": "low",
+                    "score": 1,
+                    "impact": "low",
+                    "confidence": "low",
+                    "reasons": ["moderate runtime"],
+                    "counter_signals": ["no query-shape opportunity evidence"],
+                    "suggested_review_areas": [],
+                },
+                "optimizer_rewrite_support": {
+                    "status": "not_candidate",
+                    "label": "Optimizer not applicable",
+                    "reason": "No supported query-shape optimizer evidence above the review threshold",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "rewriteability_label": "Not rewriteable",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert result.ok
+    assert result.optimizer_counts == {"suspicious:unavailable": 1}
+    assert result.action_counts == {"suspicious:Mixed-signal follow-up": 1}
+    assert not any(
+        observation.message == "optimizer is unavailable for actionable case"
+        for observation in result.observations
+    )
+
+
 def test_recent_details_audit_accepts_failed_collection_with_fallbacks(tmp_path: Path):
     summary_path = write_summary(
         tmp_path,

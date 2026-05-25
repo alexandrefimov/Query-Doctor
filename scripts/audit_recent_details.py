@@ -41,6 +41,7 @@ CLEAN_FOLLOW_UP_ACTION_TITLES = {
     "Query-shape recommendation",
     "Stats maintenance recommendation",
 }
+OPTIMIZER_RELEVANT_ACTION_TITLES = {"Query-shape recommendation"}
 DETAILS_TITLE_RE = re.compile(r'<h2 class="case-verdict-title">(.*?)</h2>', re.DOTALL)
 TAG_RE = re.compile(r"<[^>]+>")
 LOCAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:/Users/|/private/tmp/|/tmp/)")
@@ -305,7 +306,7 @@ def audit_case(
     elif severity == "clean":
         audit_clean_case(result, case_id, severity, title, rendered, action_cards)
     elif severity in {"high", "suspicious"}:
-        audit_actionable_case(result, case_id, severity, optimizer_status)
+        audit_actionable_case(result, case_id, severity, optimizer_status, action_cards)
 
 
 def audit_problem_case(
@@ -426,11 +427,19 @@ def audit_actionable_case(
     case_id: str,
     severity: str,
     optimizer_status: str,
+    action_cards: tuple[Any, ...],
 ) -> None:
-    if optimizer_status == "unavailable":
+    if optimizer_status == "unavailable" and optimizer_relevant_action_cards(action_cards):
         result.observations.append(
             AuditObservation(case_id, severity, "optimizer is unavailable for actionable case")
         )
+
+
+def optimizer_relevant_action_cards(action_cards: tuple[Any, ...]) -> bool:
+    return any(
+        str(getattr(card, "title", "")).strip() in OPTIMIZER_RELEVANT_ACTION_TITLES
+        for card in action_cards
+    )
 
 
 def print_counter(title: str, counter: Counter[str], *, limit: int = 12) -> None:
