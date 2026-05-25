@@ -838,6 +838,28 @@ def test_data_movement_primary_requires_exchange_and_bytes_context():
     assert result.reasons == ("no_primary_branch_supported",)
 
 
+def test_data_movement_primary_requires_material_exchange_elapsed_share():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 120_000, "confidence": "high"},
+            totals={"TotalBytesSent": {"bytes": 42 * 1024**3}},
+            top_operators_by_time=[
+                {"operator_name": "HASH JOIN", "time_ms": 90_000},
+                {"operator_name": "EXCHANGE", "time_ms": 2_000},
+            ],
+            findings=[{"id": "large_intermediate_or_exchange_traffic"}],
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "exchange_or_data_movement",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
+
+
 def test_sql_shape_high_requires_metadata_and_anomaly_pattern():
     result = classify_case_primary_bottleneck(
         analysis_fixture(

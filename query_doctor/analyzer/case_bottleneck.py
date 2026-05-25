@@ -12,6 +12,7 @@ from query_doctor.analyzer.runtime_admission import (
 from query_doctor.analyzer.profile_evidence import (
     DATA_MOVEMENT_FINDING_ID,
     STORAGE_FINDING_ID,
+    profile_data_movement_primary_supported,
     profile_data_movement_supported,
     profile_storage_supported,
 )
@@ -151,7 +152,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     data_movement_supports_primary = (
         profile_derived_primary_allowed
         and is_data_movement_top
-        and profile_data_movement_supported(analysis)
+        and profile_data_movement_primary_supported(analysis)
         and not stats_signal
         and not sql_supports_primary
         and not stats_competing_signal

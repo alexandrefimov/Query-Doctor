@@ -9,6 +9,8 @@ from query_doctor.analyzer.thresholds import MEDIUM_DATA_MOVEMENT_BYTES
 
 DATA_MOVEMENT_FINDING_ID = "large_intermediate_or_exchange_traffic"
 STORAGE_FINDING_ID = "hdfs_or_storage_bottleneck"
+DATA_MOVEMENT_PRIMARY_MIN_EXCHANGE_MS = 1_000.0
+DATA_MOVEMENT_PRIMARY_MIN_EXCHANGE_SHARE = 0.10
 
 
 def profile_data_movement_supported(analysis: dict[str, Any]) -> bool:
@@ -17,6 +19,24 @@ def profile_data_movement_supported(analysis: dict[str, Any]) -> bool:
         and total_counter_bytes(analysis, "TotalBytesSent")
         >= medium_data_movement_threshold(analysis)
         and any_exchange_operator_context(analysis)
+    )
+
+
+def profile_data_movement_primary_supported(analysis: dict[str, Any]) -> bool:
+    if not profile_data_movement_supported(analysis):
+        return False
+
+    exchange_ms = exchange_operator_elapsed_ms(analysis)
+    if exchange_ms <= 0:
+        return False
+
+    wall_clock_ms = query_wall_clock_ms(analysis)
+    if wall_clock_ms is None:
+        return False
+
+    return (
+        exchange_ms >= DATA_MOVEMENT_PRIMARY_MIN_EXCHANGE_MS
+        and exchange_ms / wall_clock_ms >= DATA_MOVEMENT_PRIMARY_MIN_EXCHANGE_SHARE
     )
 
 
@@ -55,6 +75,16 @@ def any_exchange_operator_context(analysis: dict[str, Any]) -> bool:
     return any(operator_matches(analysis, ("exchange",), require_time=True))
 
 
+def exchange_operator_elapsed_ms(analysis: dict[str, Any]) -> float:
+    return max(
+        (
+            nonnegative_number(operator.get("time_ms"))
+            for operator in operator_matches(analysis, ("exchange",), require_time=True)
+        ),
+        default=0.0,
+    )
+
+
 def any_scan_operator_context(analysis: dict[str, Any]) -> bool:
     return any(operator_matches(analysis, ("scan", "hdfs"), require_time=True))
 
@@ -91,3 +121,10 @@ def nonnegative_number(value: object) -> float:
         return max(0.0, float(value))
     except (TypeError, ValueError):
         return 0.0
+
+
+def query_wall_clock_ms(analysis: dict[str, Any]) -> float | None:
+    clock = analysis.get("query_wall_clock")
+    clock = clock if isinstance(clock, dict) else {}
+    value = nonnegative_number(clock.get("duration_ms"))
+    return value if value > 0 else None
