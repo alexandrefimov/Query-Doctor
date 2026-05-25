@@ -200,6 +200,43 @@ def render_memory_pressure_facts(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_storage_context(analysis: dict[str, Any]) -> list[str]:
+    context = analysis.get("storage_context")
+    if not isinstance(context, dict):
+        return []
+
+    lines = ["## Storage Context", ""]
+    for field in (
+        "status",
+        "storage_family",
+        "storage_semantics",
+        "source",
+        "metadata_table_count",
+        "location_scheme_count",
+        "hdfs_location_count",
+        "object_store_location_count",
+        "local_location_count",
+        "unknown_table_count",
+        "profile_scan_operator_count",
+        "hdfs_locality_applicable",
+        "remote_reads_expected",
+    ):
+        lines.append(f"- {field}: {context.get(field, 'unknown')}")
+    lines.append(
+        f"- profile_scan_observed: {'yes' if context.get('profile_scan_observed') else 'no'}"
+    )
+    lines.append(
+        f"- guardrail: {context.get('guardrail') or 'Storage context is a safe analyzer summary.'}"
+    )
+    limitations = [str(item) for item in context.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {md_escape(item)}")
+    lines.append("")
+    return lines
+
+
 def render_runtime_counter_context(analysis: dict[str, Any]) -> list[str]:
     context = analysis.get("runtime_counter_context") or {}
     families = context.get("families") or {}

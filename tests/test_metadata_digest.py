@@ -100,6 +100,41 @@ def test_parse_column_stats_classifies_per_column_statuses_without_values():
     assert "100" not in repr(facts["column_stats_per_column"])
 
 
+def test_parse_show_create_extracts_only_safe_storage_location_facts():
+    facts = table_metadata_facts.parse_show_create(
+        "\n".join(
+            [
+                "CREATE TABLE db.fact (id BIGINT)",
+                "STORED AS PARQUET",
+                "LOCATION 's3a://raw-lake-prod/warehouse/db.fact'",
+            ]
+        )
+    )
+
+    assert facts["object_type"] == "table"
+    assert facts["file_format"] == "PARQUET"
+    assert facts["storage_scheme"] == "s3a"
+    assert facts["storage_family"] == "s3"
+    assert "raw-lake-prod" not in repr(facts)
+    assert "warehouse/db.fact" not in repr(facts)
+
+
+def test_parse_show_create_maps_hdfs_and_unknown_storage_without_raw_location():
+    hdfs_facts = table_metadata_facts.parse_show_create(
+        "CREATE TABLE db.fact (id BIGINT)\n"
+        "LOCATION 'hdfs://warehouse01.example.invalid:8020/warehouse/db.fact'\n"
+    )
+    relative_facts = table_metadata_facts.parse_show_create(
+        "CREATE TABLE db.fact (id BIGINT)\nLOCATION '/warehouse/db.fact'\n"
+    )
+
+    assert hdfs_facts["storage_scheme"] == "hdfs"
+    assert hdfs_facts["storage_family"] == "hdfs"
+    assert "warehouse01" not in repr(hdfs_facts)
+    assert "storage_scheme" not in relative_facts
+    assert "storage_family" not in relative_facts
+
+
 def test_sql_column_context_counts_join_filter_column_stats_statuses(tmp_path):
     query_dir = tmp_path / "case"
     context_dir = query_dir / "impala_context"

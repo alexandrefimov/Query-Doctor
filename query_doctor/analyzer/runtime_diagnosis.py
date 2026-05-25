@@ -12,6 +12,7 @@ from query_doctor.analyzer.profile_evidence import (
 )
 from query_doctor.analyzer.runtime_admission import runtime_admission_facts_from_analysis
 from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio
+from query_doctor.analyzer.storage_context import OBJECT_STORE_FAMILIES
 
 
 PROFILE_BACKEND_STARTUP_PLAUSIBLE_MS = 5_000.0
@@ -306,6 +307,51 @@ def numeric_profile_value(value: Any) -> float | None:
         return None
 
 
+def runtime_storage_context(analysis: dict[str, Any]) -> dict[str, Any]:
+    context = analysis.get("storage_context")
+    return context if isinstance(context, dict) else {}
+
+
+def runtime_storage_family(context: dict[str, Any]) -> str:
+    return str(context.get("storage_family") or "unknown").strip().lower()
+
+
+def runtime_storage_semantics(context: dict[str, Any]) -> str:
+    return str(context.get("storage_semantics") or "unknown").strip().lower()
+
+
+def runtime_storage_is_object_store(context: dict[str, Any]) -> bool:
+    family = runtime_storage_family(context)
+    return (
+        family in OBJECT_STORE_FAMILIES
+        or runtime_storage_semantics(context) == "object_store_remote_reads_expected"
+    )
+
+
+def runtime_storage_signal_title(context: dict[str, Any]) -> str:
+    family = runtime_storage_family(context)
+    if runtime_storage_is_object_store(context):
+        return "Object-store scan path"
+    if family == "hdfs":
+        return "HDFS/storage path"
+    if family == "mixed":
+        return "Mixed storage path"
+    if family == "local":
+        return "Local storage path"
+    return "Storage/HDFS path"
+
+
+def runtime_storage_context_evidence(context: dict[str, Any]) -> list[str]:
+    if not context:
+        return []
+    return [
+        "Storage Context: "
+        f"family={runtime_storage_family(context)}, "
+        f"semantics={runtime_storage_semantics(context)}, "
+        f"source={context.get('source') or 'unknown'}."
+    ]
+
+
 def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
     signals: list[dict[str, Any]] = []
     network_status = runtime_diagnosis_metric_status(analysis, "network_io_spike")
@@ -406,21 +452,53 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
     disk_status = runtime_diagnosis_metric_status(analysis, "host_disk_io_pressure")
     hdfs_status = runtime_diagnosis_metric_status(analysis, "hdfs_datanode_io_pressure")
     total_read = (analysis.get("totals") or {}).get("TotalBytesRead") or {}
+    storage_context = runtime_storage_context(analysis)
+    object_store_storage = runtime_storage_is_object_store(storage_context)
+    storage_title = runtime_storage_signal_title(storage_context)
     storage_evidence: list[str] = []
+    storage_evidence.extend(runtime_storage_context_evidence(storage_context))
     storage_evidence.extend(runtime_diagnosis_metric_evidence(analysis, "host_disk_io_pressure"))
-    storage_evidence.extend(
-        runtime_diagnosis_metric_evidence(analysis, "hdfs_datanode_io_pressure")
-    )
+    if object_store_storage:
+        if hdfs_status in {"correlated", "context_only"}:
+            storage_evidence.append(
+                "Storage Context: HDFS DataNode metrics are not used as object-store locality evidence."
+            )
+    else:
+        storage_evidence.extend(
+            runtime_diagnosis_metric_evidence(analysis, "hdfs_datanode_io_pressure")
+        )
     if total_read.get("bytes") is not None:
         storage_evidence.append(f"TotalBytesRead={fmt_bytes(float(total_read['bytes']))}.")
     if storage_finding:
         if profile_storage_supported(analysis):
-            storage_evidence.append("Profile finding: Storage/HDFS candidate signal.")
+            storage_evidence.append("Profile finding: storage scan candidate signal.")
         else:
             storage_evidence.append(
                 "Profile finding: storage/HDFS signal is context-only without both bytes-read and scan operator evidence."
             )
-    if hdfs_status == "correlated":
+    if object_store_storage:
+        if profile_storage_supported(analysis):
+            storage_status = "plausible_follow_up"
+            storage_interpretation = (
+                "Object-store scan path is a plausible follow-up hypothesis because selected-query "
+                "scan evidence and large read volume were parsed. Remote reads can be expected for "
+                "this storage context; do not treat them as an HDFS locality failure. Validate "
+                "object-store, client, cache, and comparable-rerun evidence before treating storage "
+                "as a cause."
+            )
+        elif total_read.get("bytes") is not None:
+            storage_status = "context_only"
+            storage_interpretation = (
+                "Large read volume is an I/O footprint. For object-store storage context, remote "
+                "reads can be expected; this does not prove HDFS locality, DataNode latency, or "
+                "object-store latency by itself."
+            )
+        else:
+            storage_status = "unknown"
+            storage_interpretation = (
+                "Object-store scan path was not established by the available deterministic facts."
+            )
+    elif hdfs_status == "correlated":
         storage_status = "plausible_follow_up"
         storage_interpretation = (
             "HDFS/DataNode read path is a plausible follow-up hypothesis because DataNode I/O pressure "
@@ -441,8 +519,9 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
     elif total_read.get("bytes") is not None:
         storage_status = "context_only"
         storage_interpretation = (
-            "Large read volume is an I/O footprint. Without slow scan/storage share evidence it does not prove "
-            "HDFS service latency, block-size issues, or replication-factor problems."
+            "Large read volume is an I/O footprint. Without slow scan/storage share evidence and known "
+            "storage-family context it does not prove storage service latency, HDFS block-size issues, "
+            "or replication-factor problems."
         )
     else:
         storage_status = "unknown"
@@ -452,7 +531,7 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
     signals.append(
         runtime_diagnosis_signal(
             "storage_hdfs",
-            "Storage/HDFS path",
+            storage_title,
             storage_status,
             storage_interpretation,
             storage_evidence,

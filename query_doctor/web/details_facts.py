@@ -44,6 +44,8 @@ TABLE_METADATA_TABLE_KEYS = {
     "column stats all-missing columns": "column stats all-missing columns",
     "column stats columns": "column stats columns",
     "file format": "file format",
+    "storage family": "storage family",
+    "storage scheme": "storage scheme",
     "partition columns": "partition columns",
 }
 TABLE_METADATA_TABLE_KEYS_START = {"table", "table name", "referenced table"}
@@ -356,6 +358,8 @@ def convert_table_metadata_table_for_web(table: dict[str, Any]) -> dict[str, Any
         "column stats size-missing columns": table.get("column_stats_size_missing_columns", 0),
         "column stats all-missing columns": table.get("column_stats_all_missing_columns", 0),
         "file format": table.get("file_format", "unknown"),
+        "storage family": table.get("storage_family", "unknown"),
+        "storage scheme": table.get("storage_scheme", "unknown"),
         "partition columns": ", ".join(str(item) for item in table.get("partition_columns") or [])
         or "unknown",
     }

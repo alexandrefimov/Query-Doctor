@@ -104,6 +104,8 @@ def render_table_metadata_context(analysis: dict[str, Any]) -> list[str]:
                 "- column stats columns: " + ", ".join(f"`{column}`" for column in columns)
             )
         lines.append(f"- file format: {table.get('file_format', 'unknown')}")
+        lines.append(f"- storage family: {table.get('storage_family', 'unknown')}")
+        lines.append(f"- storage scheme: {table.get('storage_scheme', 'unknown')}")
         partitions = table.get("partition_columns") or []
         if partitions:
             lines.append(

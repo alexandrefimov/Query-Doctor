@@ -263,7 +263,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <h3>Can Query Doctor support Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio, or another Big Data SQL engine?</h3>
 <p>Not yet. Future engine work is scoped to actively developed Big Data SQL, MPP analytical, and lakehouse runtimes, not generic OLTP databases. Each engine needs a safe read-only collection contract, metadata allowlist, parser/profile support, browser safety tests, and report validator coverage before it becomes supported behavior.</p>
 <h3>Does the storage backend matter?</h3>
-<p>Yes, but it is a separate dimension from the query engine. Future storage context for HDFS, S3-compatible object storage, Iceberg, Hudi, Delta, Kudu, or engine-internal analytical storage must be collected as bounded analyzer-owned facts. Storage context can support candidates such as small-file risk or planning pressure, but it cannot prove root cause by itself.</p>
+<p>Yes, but it is a separate dimension from the query engine. Query Doctor can keep bounded storage-family context such as HDFS or object-store when metadata exposes a safe location scheme. It does not expose table locations or object URIs, and object-store remote reads are not treated as HDFS locality failures. Future table-layout context may support candidates such as small-file risk or planning pressure, but storage context cannot prove root cause by itself.</p>
 </details>
 </div>
 </details>
@@ -441,7 +441,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <h3>Может ли Query Doctor поддерживать Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio или другой Big Data SQL engine?</h3>
 <p>Пока нет. Future engine work ограничен actively developed Big Data SQL, MPP analytical и lakehouse runtimes, а не generic OLTP databases. Каждый engine требует safe read-only collection contract, metadata allowlist, parser/profile support, browser safety tests и report validator coverage.</p>
 <h3>Имеет ли значение storage backend?</h3>
-<p>Да, но это отдельное измерение от query engine. Future storage context для HDFS, S3-compatible object storage, Iceberg, Hudi, Delta, Kudu или engine-internal analytical storage должен собираться как bounded analyzer-owned facts. Storage context может поддерживать candidates вроде small-file risk или planning pressure, но сам по себе не доказывает root cause.</p>
+<p>Да, но это отдельное измерение от query engine. Query Doctor может сохранять bounded storage-family context, например HDFS или object-store, когда metadata дает безопасную location scheme. Он не показывает table locations или object URIs, а object-store remote reads не трактуются как HDFS locality failures. Future table-layout context может поддерживать candidates вроде small-file risk или planning pressure, но storage context сам по себе не доказывает root cause.</p>
 </details>
 </div>
 </details>

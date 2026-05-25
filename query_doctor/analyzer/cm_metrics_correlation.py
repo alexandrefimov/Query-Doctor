@@ -16,6 +16,7 @@ from query_doctor.analyzer.runtime_metrics import (
     runtime_metrics_correlation,
     runtime_metrics_facts,
 )
+from query_doctor.analyzer.storage_context import OBJECT_STORE_FAMILIES
 
 
 def finding_ids(analysis: dict[str, Any]) -> set[str]:
@@ -37,6 +38,18 @@ def has_network_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 def has_storage_profile_evidence(analysis: dict[str, Any]) -> bool:
     return profile_storage_supported(analysis)
+
+
+def has_hdfs_storage_profile_evidence(analysis: dict[str, Any]) -> bool:
+    return profile_storage_supported(analysis) and not storage_context_is_object_store(analysis)
+
+
+def storage_context_is_object_store(analysis: dict[str, Any]) -> bool:
+    context = analysis.get("storage_context")
+    context = context if isinstance(context, dict) else {}
+    family = str(context.get("storage_family") or "").strip().lower()
+    semantics = str(context.get("storage_semantics") or "").strip().lower()
+    return family in OBJECT_STORE_FAMILIES or semantics == "object_store_remote_reads_expected"
 
 
 def has_admission_profile_evidence(analysis: dict[str, Any]) -> bool:
@@ -86,8 +99,18 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
     memory_support = has_memory_profile_evidence(analysis)
     network_support = has_network_profile_evidence(analysis)
     storage_support = has_storage_profile_evidence(analysis)
+    hdfs_storage_support = has_hdfs_storage_profile_evidence(analysis)
     admission_support = has_admission_profile_evidence(analysis)
     cpu_support = has_cpu_profile_evidence(analysis)
+    hdfs_context_reason = (
+        "HDFS DataNode I/O pressure was observed, but selected table metadata indicates "
+        "object-store storage semantics. Do not use it as HDFS locality evidence."
+        if storage_context_is_object_store(analysis)
+        else (
+            "HDFS DataNode I/O pressure was observed, but parsed profile facts did not identify matching "
+            "scan/storage elapsed-time evidence."
+        )
+    )
 
     def signal_row(
         key: str,
@@ -192,15 +215,12 @@ def build_cm_metrics_correlation(analysis: dict[str, Any]) -> dict[str, Any]:
         signal_row(
             "hdfs_datanode_io_pressure",
             title="HDFS DataNode I/O pressure",
-            profile_support=storage_support,
+            profile_support=hdfs_storage_support,
             correlated_reason=(
                 "HDFS DataNode I/O pressure is correlated with parsed scan/storage evidence; "
                 "treat it as HDFS/storage-path context and validate with comparable reruns."
             ),
-            context_reason=(
-                "HDFS DataNode I/O pressure was observed, but parsed profile facts did not identify matching "
-                "scan/storage elapsed-time evidence."
-            ),
+            context_reason=hdfs_context_reason,
         ),
         signal_row(
             "network_io_spike",

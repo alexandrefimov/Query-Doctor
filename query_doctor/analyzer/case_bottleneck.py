@@ -332,7 +332,16 @@ def runtime_diagnosis_supports_storage(analysis: dict[str, Any]) -> bool:
     diagnosis = analysis.get("runtime_diagnosis")
     diagnosis = diagnosis if isinstance(diagnosis, dict) else {}
     summary = str(diagnosis.get("summary") or "").strip().lower()
-    if "storage/hdfs" not in summary or "strongest plausible" not in summary:
+    storage_summary_markers = (
+        "storage/hdfs",
+        "hdfs/storage",
+        "object-store scan path",
+        "mixed storage path",
+        "local storage path",
+    )
+    if "strongest plausible" not in summary or not any(
+        marker in summary for marker in storage_summary_markers
+    ):
         return False
     signals = diagnosis.get("signals")
     if not isinstance(signals, list):

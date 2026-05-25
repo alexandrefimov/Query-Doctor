@@ -26,6 +26,7 @@ from query_doctor.analyzer.runtime_renderer import (
     render_runtime_admission_facts,
     render_runtime_counter_context,
     render_runtime_diagnosis,
+    render_storage_context,
 )
 from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio
 
@@ -755,6 +756,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_runtime_admission_facts(analysis)
     lines += render_admission_context(analysis)
     lines += render_memory_pressure_facts(analysis)
+    lines += render_storage_context(analysis)
     lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)
     report_top_n = int(analysis.get("thresholds", {}).get("report_top_n", 10))

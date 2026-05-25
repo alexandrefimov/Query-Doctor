@@ -15,6 +15,10 @@ STATEMENTS = (
 )
 UNKNOWN_MARKERS = {"", "-1", "null", "unknown", "n/a"}
 SIZE_VALUE_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:KiB|MiB|GiB|TiB|KB|MB|GB|TB|B)\b", re.I)
+LOCATION_RE = re.compile(
+    r"\bLOCATION\s+(?:'(?P<single>[^']*)'|\"(?P<double>[^\"]*)\"|`(?P<backtick>[^`]*)`|(?P<bare>\S+))",
+    re.I,
+)
 COLUMN_STATS_STATUS_KEYS = (
     "column_stats_complete_columns",
     "column_stats_ndv_missing_columns",
@@ -140,6 +144,8 @@ def empty_table_context(table: str) -> dict[str, Any]:
         "column_stats_size_missing_columns": 0,
         "column_stats_all_missing_columns": 0,
         "file_format": "unknown",
+        "storage_scheme": "unknown",
+        "storage_family": "unknown",
         "partition_columns": [],
     }
 
@@ -397,10 +403,41 @@ def parse_show_create(text: str) -> dict[str, Any]:
     if format_match:
         facts["file_format"] = format_match.group(1).upper()
 
+    location_scheme = parse_location_scheme(text)
+    if location_scheme:
+        facts["storage_scheme"] = location_scheme
+        facts["storage_family"] = storage_family_for_scheme(location_scheme)
+
     partition_match = re.search(r"\bPARTITIONED\s+BY\s*\((?P<body>.*?)\)", text, re.I | re.S)
     if partition_match:
         facts["partition_columns"] = parse_column_names(partition_match.group("body"))
     return facts
+
+
+def parse_location_scheme(text: str) -> str | None:
+    match = LOCATION_RE.search(text)
+    if not match:
+        return None
+    location = next((value for value in match.groupdict().values() if value), "")
+    scheme_match = re.match(r"\s*([A-Za-z][A-Za-z0-9+.-]*)://", location)
+    if not scheme_match:
+        return None
+    return scheme_match.group(1).strip().lower()
+
+
+def storage_family_for_scheme(scheme: str) -> str:
+    normalized = str(scheme or "").strip().lower()
+    if normalized in {"hdfs", "viewfs", "webhdfs"}:
+        return "hdfs"
+    if normalized in {"s3", "s3a", "s3n"}:
+        return "s3"
+    if normalized in {"abfs", "abfss", "adl", "wasb", "wasbs"}:
+        return "adls"
+    if normalized in {"ofs", "o3fs", "ozone"}:
+        return "ozone"
+    if normalized == "file":
+        return "local"
+    return "unknown"
 
 
 def parse_column_names(body: str) -> list[str]:

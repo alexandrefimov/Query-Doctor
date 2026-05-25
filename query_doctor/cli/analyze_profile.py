@@ -34,6 +34,7 @@ from query_doctor.analyzer.runtime_diagnosis import build_runtime_diagnosis
 from query_doctor.analyzer.scan_skew import build_scan_skew_facts
 from query_doctor.analyzer.service import analyze
 from query_doctor.analyzer.source_provenance import build_source_provenance
+from query_doctor.analyzer.storage_context import build_storage_context
 from query_doctor.analyzer.sql_sources import extract_default_database
 from query_doctor.impala.table_metadata_facts import collect_table_metadata_context
 
@@ -137,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         analysis["table_metadata_context"],
     )
     analysis["scan_skew"] = build_scan_skew_facts(analysis)
+    analysis["storage_context"] = build_storage_context(analysis)
     analysis["stats_metadata_quality"] = stats_metadata_quality(
         analysis["table_metadata_context"] or {},
         analysis,
