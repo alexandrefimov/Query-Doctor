@@ -68,6 +68,7 @@ class WebClusterConfig:
     impala_profile_port: int = DEFAULT_IMPALA_PROFILE_PORT
     impala_profile_scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME
     impala_profile_timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
+    impala_profile_prefer_json: bool = False
     collect_prometheus_timeseries: bool = False
     prometheus_url: str | None = None
     prometheus_metrics_profile: str = DEFAULT_PROMETHEUS_METRICS_PROFILE
@@ -130,6 +131,7 @@ class WebSettings:
     impala_profile_port: int = DEFAULT_IMPALA_PROFILE_PORT
     impala_profile_scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME
     impala_profile_timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC
+    impala_profile_prefer_json: bool = False
     collect_prometheus_timeseries: bool = False
     prometheus_url: str | None = None
     prometheus_metrics_profile: str = DEFAULT_PROMETHEUS_METRICS_PROFILE

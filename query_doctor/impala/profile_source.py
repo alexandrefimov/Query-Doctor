@@ -18,10 +18,11 @@ DEFAULT_IMPALA_PROFILE_PORT = 25000
 DEFAULT_IMPALA_PROFILE_SCHEME = "http"
 DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC = 15
 PROFILE_MARKER_SCAN_CHARS = 128 * 1024
-IMPALA_PROFILE_PATHS = (
+IMPALA_TEXT_PROFILE_PATHS = (
     "/query_profile?query_id={query_id}&format=text",
     "/query_profile?query_id={query_id}",
 )
+IMPALA_JSON_PROFILE_PATHS = ("/query_profile?query_id={query_id}&format=json",)
 PROFILE_NOT_FOUND_MARKERS = (
     "Could not find query",
     "Query id not found",
@@ -40,6 +41,13 @@ PROFILE_STRUCTURAL_MARKERS = (
     "fragment_instance_id",
     "query state:",
 )
+JSON_PROFILE_CONTENT_MARKERS = (
+    '"runtime_profile"',
+    '"runtimeprofile"',
+    '"profile_version"',
+    '"counters"',
+    '"children"',
+)
 PRE_RE = re.compile(r"<pre[^>]*>(?P<body>.*?)</pre>", re.IGNORECASE | re.DOTALL)
 TAG_RE = re.compile(r"<[^>]+>")
 
@@ -52,6 +60,7 @@ class ImpalaProfileFetchResult:
     query_id: str
     profile_text: str
     attempted_endpoints: int
+    profile_endpoint_format: str = "unknown"
 
 
 def normalize_impala_profile_scheme(value: str | None) -> str:
@@ -89,16 +98,56 @@ def impala_profile_urls(
     query_id: str,
     port: int = DEFAULT_IMPALA_PROFILE_PORT,
     scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME,
+    prefer_json: bool = False,
 ) -> tuple[str, ...]:
+    return tuple(
+        url
+        for url, _format in impala_profile_url_candidates(
+            hosts,
+            query_id=query_id,
+            port=port,
+            scheme=scheme,
+            prefer_json=prefer_json,
+        )
+    )
+
+
+def impala_profile_url_candidates(
+    hosts: Iterable[str],
+    *,
+    query_id: str,
+    port: int = DEFAULT_IMPALA_PROFILE_PORT,
+    scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME,
+    prefer_json: bool = False,
+) -> tuple[tuple[str, str], ...]:
     normalized_query_id = validate_cm_query_id_path_segment(query_id)
     normalized_scheme = normalize_impala_profile_scheme(scheme)
     encoded_query_id = urllib.parse.quote(normalized_query_id, safe="")
-    urls: list[str] = []
+    paths = (
+        IMPALA_JSON_PROFILE_PATHS + IMPALA_TEXT_PROFILE_PATHS
+        if prefer_json
+        else IMPALA_TEXT_PROFILE_PATHS
+    )
+    candidates: list[tuple[str, str]] = []
     for host in normalize_impala_profile_hosts(tuple(hosts)):
         netloc = host if ":" in host else f"{host}:{port}"
-        for path in IMPALA_PROFILE_PATHS:
-            urls.append(f"{normalized_scheme}://{netloc}{path.format(query_id=encoded_query_id)}")
-    return tuple(urls)
+        for path in paths:
+            candidate_format = profile_endpoint_format_for_path(path)
+            candidates.append(
+                (
+                    f"{normalized_scheme}://{netloc}{path.format(query_id=encoded_query_id)}",
+                    candidate_format,
+                )
+            )
+    return tuple(candidates)
+
+
+def profile_endpoint_format_for_path(path: str) -> str:
+    if "format=json" in path:
+        return "json"
+    if "format=text" in path:
+        return "text"
+    return "default"
 
 
 def fetch_impala_profile_text(
@@ -109,14 +158,21 @@ def fetch_impala_profile_text(
     scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME,
     timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     max_profile_bytes: int,
+    prefer_json: bool = False,
     opener: UrlOpener = urllib.request.urlopen,
 ) -> ImpalaProfileFetchResult:
-    urls = impala_profile_urls(hosts, query_id=query_id, port=port, scheme=scheme)
-    if not urls:
+    candidates = impala_profile_url_candidates(
+        hosts,
+        query_id=query_id,
+        port=port,
+        scheme=scheme,
+        prefer_json=prefer_json,
+    )
+    if not candidates:
         raise CMAdapterError("Impala profile collection requires at least one impalad host.")
     attempted = 0
     last_error = "profile endpoint unavailable"
-    for url in urls:
+    for url, endpoint_format in candidates:
         attempted += 1
         try:
             text = fetch_profile_url(
@@ -136,6 +192,7 @@ def fetch_impala_profile_text(
                 query_id=validate_cm_query_id_path_segment(query_id),
                 profile_text=text,
                 attempted_endpoints=attempted,
+                profile_endpoint_format=endpoint_format,
             )
         if text.strip():
             last_error = "profile endpoint returned non-profile content"
@@ -152,7 +209,10 @@ def fetch_profile_url(
     max_profile_bytes: int,
     opener: UrlOpener,
 ) -> str:
-    request = urllib.request.Request(url, headers={"Accept": "text/plain,text/html"})
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json,text/plain,text/html"},
+    )
     try:
         with opener(request, timeout=timeout_sec) as response:
             raw = response.read(max_profile_bytes + 1)
@@ -180,6 +240,11 @@ def profile_response_is_not_found(text: str) -> bool:
 
 def profile_text_looks_like_runtime_profile(text: str) -> bool:
     normalized = text[:PROFILE_MARKER_SCAN_CHARS].lower()
+    stripped = normalized.lstrip()
+    if stripped.startswith(("{", "[")) and any(
+        marker in normalized for marker in JSON_PROFILE_CONTENT_MARKERS
+    ):
+        return True
     if any(marker in normalized for marker in PROFILE_CONTENT_MARKERS):
         return True
     if "query id:" in normalized and any(

@@ -134,6 +134,9 @@ def build_web_cluster_config(
             "impala_profile_timeout_sec",
             default=DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
         ),
+        impala_profile_prefer_json=first_bool(
+            values, defaults, "impala_profile_prefer_json", default=False
+        ),
         collect_prometheus_timeseries=first_bool(
             values, defaults, "collect_prometheus_timeseries", default=False
         ),
@@ -343,6 +346,7 @@ def settings_for_cluster_key(settings: WebSettings, cluster_key: str | None) -> 
                 impala_profile_port=cluster.impala_profile_port,
                 impala_profile_scheme=cluster.impala_profile_scheme,
                 impala_profile_timeout_sec=cluster.impala_profile_timeout_sec,
+                impala_profile_prefer_json=cluster.impala_profile_prefer_json,
                 collect_prometheus_timeseries=cluster.collect_prometheus_timeseries,
                 prometheus_url=cluster.prometheus_url,
                 prometheus_metrics_profile=cluster.prometheus_metrics_profile,

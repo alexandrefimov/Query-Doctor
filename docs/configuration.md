@@ -307,6 +307,7 @@ browser choices.
 | `impala_profile_port` | positive integer | global or cluster | Default daemon web port for hosts without a port. |
 | `impala_profile_scheme` | string | global or cluster | `http` or `https`. |
 | `impala_profile_timeout_sec` | positive integer | global or cluster | Per-request timeout. |
+| `impala_profile_prefer_json` | boolean | global or cluster | Optional compatibility probe. When true, direct Impala collection tries a JSON profile endpoint first and falls back to text endpoints for older Impala versions. Default is false. |
 | `impala_kerberos_service_name` | string | global or cluster | Kerberos service token, such as `impala` or `hive`. |
 
 ## Prometheus Runtime Metrics

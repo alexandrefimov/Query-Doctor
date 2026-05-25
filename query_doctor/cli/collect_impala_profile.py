@@ -80,6 +80,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=f"Timeout per impalad profile endpoint. Default: {DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC}.",
     )
     parser.add_argument(
+        "--prefer-json-profile",
+        action="store_true",
+        help=(
+            "Try the impalad JSON profile endpoint before text. Text endpoints remain "
+            "the fallback for older Impala versions."
+        ),
+    )
+    parser.add_argument(
         "--max-profile-bytes",
         type=positive_int,
         default=DEFAULT_MAX_PROFILE_BYTES,
@@ -199,6 +207,7 @@ def main(
             "scheme": args.scheme,
             "timeout_sec": args.timeout_sec,
             "max_profile_bytes": args.max_profile_bytes,
+            "prefer_json": args.prefer_json_profile,
         }
         if opener is not None:
             fetch_kwargs["opener"] = opener
@@ -234,6 +243,7 @@ def main(
             "redaction enabled",
             "Impala daemon profile endpoint",
             f"attempted impalad profile endpoint count: {result.attempted_endpoints}",
+            f"selected impalad profile endpoint format: {result.profile_endpoint_format}",
             "analyzer/report were not run automatically",
         ]
         warnings.extend(profile_metadata_warnings)
@@ -264,6 +274,7 @@ def main(
             extra_metadata={
                 "profile_source": "impala_daemon",
                 "profile_source_label": "Impala daemon profile endpoint",
+                "profile_response_format": result.profile_endpoint_format,
                 **identity_metadata(identity),
             },
             warnings=warnings,
@@ -285,6 +296,7 @@ def main(
     print("Collected count: 1")
     print(f"Output case directory: {case_dir}")
     print(f"Profile text length: {len(result.profile_text)}")
+    print(f"Selected profile endpoint format: {result.profile_endpoint_format}")
     print("Redaction: enabled")
     print(f"Host redaction: {'enabled' if args.redact_hosts else 'disabled'}")
     print(f"Max profile bytes: {args.max_profile_bytes}")

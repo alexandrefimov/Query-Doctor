@@ -284,6 +284,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--impala-profile-scheme", choices=("http", "https"))
     parser.add_argument("--impala-profile-timeout-sec", type=positive_int)
     parser.add_argument(
+        "--impala-profile-prefer-json",
+        action="store_true",
+        default=None,
+        help=(
+            "Try direct impalad JSON profile endpoints before text. Text endpoints "
+            "remain the fallback for older Impala versions."
+        ),
+    )
+    parser.add_argument(
+        "--no-impala-profile-prefer-json",
+        action="store_false",
+        dest="impala_profile_prefer_json",
+        help="Use direct impalad text profile endpoints first.",
+    )
+    parser.add_argument(
         "--source-visibility",
         choices=SOURCE_VISIBILITY_CHOICES,
         help=(

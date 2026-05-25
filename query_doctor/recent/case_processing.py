@@ -138,6 +138,8 @@ def collect_case_profile(
             ]
             for host in config.impala_profile_hosts:
                 cmd.extend(["--host", host])
+            if config.impala_profile_prefer_json:
+                cmd.append("--prefer-json-profile")
             if config.redact_identifiers:
                 cmd.append("--redact-identifiers")
             if not config.redact_hosts:
