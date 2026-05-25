@@ -292,11 +292,14 @@ def test_stats_metadata_quality_marks_present_stats_as_not_primary_when_runtime_
                 ]
             },
             "cardinality_anomalies": [{"label": "01:HASH JOIN"}],
+            "totals": {"TotalBytesSent": {"bytes": 42 * 1024**3}},
+            "top_operators_by_time": [{"operator_name": "EXCHANGE", "time_ms": 8_000}],
             "findings": [
                 {"id": "large_intermediate_or_exchange_traffic"},
                 {"id": "spill_or_scratch_io"},
                 {"id": "cardinality_estimate_errors"},
             ],
+            "scan_skew": {"primary_supported": True, "evidence_tier": "strong"},
             "backend_tail": {
                 "data_skew": "yes",
                 "execution_tail_candidate_count": 1,
@@ -330,6 +333,8 @@ def test_stats_metadata_quality_keeps_stats_mixed_when_stats_gap_and_runtime_sig
                 ]
             },
             "cardinality_anomalies": [{"label": "01:HASH JOIN"}],
+            "totals": {"TotalBytesRead": {"bytes": 42 * 1024**3}},
+            "top_operators_by_time": [{"operator_name": "HDFS SCAN", "time_ms": 12_000}],
             "findings": [{"id": "hdfs_or_storage_bottleneck"}],
         }
     )
@@ -340,4 +345,31 @@ def test_stats_metadata_quality_keeps_stats_mixed_when_stats_gap_and_runtime_sig
     assert "- non_stats_bottleneck_categories: storage_or_hdfs" in text
     assert "Missing or incomplete stats coverage aligns with row-estimate mismatch evidence" in text
     assert "competing non-stats bottleneck signals are also present" in text
+    assert "db.fact_orders" not in text
+
+
+def test_stats_metadata_quality_ignores_context_only_exchange_storage_categories():
+    lines = render_stats_metadata_quality(
+        {
+            "table_metadata_context": {
+                "tables": [
+                    {
+                        "table": "db.fact_orders",
+                        "table_stats_row_count_completeness": "available",
+                        "column_stats_completeness": "complete",
+                    },
+                ]
+            },
+            "cardinality_anomalies": [{"label": "01:HASH JOIN"}],
+            "findings": [
+                {"id": "large_intermediate_or_exchange_traffic"},
+                {"id": "hdfs_or_storage_bottleneck"},
+            ],
+        }
+    )
+    text = "\n".join(lines)
+
+    assert "- stats_primary_bottleneck: not_supported_by_metadata" in text
+    assert "- non_stats_bottleneck_categories: none" in text
+    assert "competing non-stats bottleneck signals are supported" not in text
     assert "db.fact_orders" not in text

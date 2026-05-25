@@ -9,14 +9,18 @@ from query_doctor.analyzer.runtime_admission import (
     runtime_admission_facts_from_analysis,
     runtime_admission_uses_non_profile_evidence,
 )
+from query_doctor.analyzer.profile_evidence import (
+    DATA_MOVEMENT_FINDING_ID,
+    STORAGE_FINDING_ID,
+    profile_data_movement_supported,
+    profile_storage_supported,
+)
 from query_doctor.analyzer.scan_skew import scan_skew_facts_from_analysis
 
 WALL_CLOCK_MIN_FOR_CLASSIFICATION_SEC = 5.0
 CARDINALITY_ANOMALY_MIN_COUNT = 1
 CARDINALITY_ANOMALY_HIGH_COUNT = 3
 EXECUTION_TAIL_MIN_CANDIDATES = 1
-DATA_MOVEMENT_FINDING_ID = "large_intermediate_or_exchange_traffic"
-STORAGE_FINDING_ID = "hdfs_or_storage_bottleneck"
 CLIENT_FETCH_FINDING_ID = "client_fetch_tail"
 QUERY_SHAPE_FINDING_IDS = {
     "analytic_bottleneck",
@@ -147,6 +151,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     data_movement_supports_primary = (
         profile_derived_primary_allowed
         and is_data_movement_top
+        and profile_data_movement_supported(analysis)
         and not stats_signal
         and not sql_supports_primary
         and not stats_competing_signal
@@ -165,7 +170,10 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     )
     runtime_storage_supports_primary = (
         profile_derived_primary_allowed
-        and (is_storage_top or storage_runtime_diagnosis_supported)
+        and (
+            (is_storage_top and profile_storage_supported(analysis))
+            or storage_runtime_diagnosis_supported
+        )
         and not stats_signal
         and not sql_supports_primary
         and not stats_competing_signal
@@ -324,7 +332,17 @@ def runtime_diagnosis_supports_storage(analysis: dict[str, Any]) -> bool:
     diagnosis = analysis.get("runtime_diagnosis")
     diagnosis = diagnosis if isinstance(diagnosis, dict) else {}
     summary = str(diagnosis.get("summary") or "").strip().lower()
-    return "storage/hdfs" in summary and "strongest plausible" in summary
+    if "storage/hdfs" not in summary or "strongest plausible" not in summary:
+        return False
+    signals = diagnosis.get("signals")
+    if not isinstance(signals, list):
+        return False
+    return any(
+        isinstance(signal, dict)
+        and signal.get("key") == "storage_hdfs"
+        and signal.get("status") == "plausible_follow_up"
+        for signal in signals
+    )
 
 
 def client_fetch_primary_supported(analysis: dict[str, Any]) -> bool:
@@ -476,13 +494,18 @@ def category_set(value: Any) -> set[str]:
 
 
 def supported_non_stats_categories(analysis: dict[str, Any], categories: set[str]) -> set[str]:
-    if "backend_data_skew" not in categories:
-        return categories
-    scan_skew = scan_skew_facts_from_analysis(analysis)
-    if scan_skew.primary_supported and scan_skew.evidence_tier == "strong":
-        return categories
     kept = set(categories)
-    kept.discard("backend_data_skew")
+    scan_skew = scan_skew_facts_from_analysis(analysis)
+    if "backend_data_skew" in kept and not (
+        scan_skew.primary_supported and scan_skew.evidence_tier == "strong"
+    ):
+        kept.discard("backend_data_skew")
+    if "exchange_or_data_movement" in kept and not profile_data_movement_supported(analysis):
+        kept.discard("exchange_or_data_movement")
+    if "storage_or_hdfs" in kept and not (
+        profile_storage_supported(analysis) or runtime_diagnosis_supports_storage(analysis)
+    ):
+        kept.discard("storage_or_hdfs")
     return kept
 
 

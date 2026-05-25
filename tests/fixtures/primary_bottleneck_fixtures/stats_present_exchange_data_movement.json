@@ -5,6 +5,11 @@
       "confidence": "high"
     },
     "cardinality_anomalies": [],
+    "totals": {
+      "TotalBytesSent": {
+        "bytes": 45097156608
+      }
+    },
     "findings": [
       {
         "id": "large_intermediate_or_exchange_traffic"

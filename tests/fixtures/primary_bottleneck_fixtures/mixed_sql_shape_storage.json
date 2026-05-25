@@ -20,7 +20,13 @@
       }
     ],
     "runtime_diagnosis": {
-      "summary": "Storage/HDFS path is the strongest plausible follow-up hypothesis from deterministic facts."
+      "summary": "Storage/HDFS path is the strongest plausible follow-up hypothesis from deterministic facts.",
+      "signals": [
+        {
+          "key": "storage_hdfs",
+          "status": "plausible_follow_up"
+        }
+      ]
     },
     "stats_metadata_quality": {
       "status": "available",

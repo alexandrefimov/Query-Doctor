@@ -6,6 +6,10 @@ from typing import Any
 
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_facts
 from query_doctor.analyzer.memory_pressure import memory_pressure_facts_from_analysis
+from query_doctor.analyzer.profile_evidence import (
+    profile_data_movement_supported,
+    profile_storage_supported,
+)
 from query_doctor.analyzer.runtime_admission import runtime_admission_facts_from_analysis
 from query_doctor.analyzer.runtime_metrics import (
     runtime_metrics_context,
@@ -28,11 +32,11 @@ def has_memory_profile_evidence(analysis: dict[str, Any]) -> bool:
 
 
 def has_network_profile_evidence(analysis: dict[str, Any]) -> bool:
-    return "large_intermediate_or_exchange_traffic" in finding_ids(analysis)
+    return profile_data_movement_supported(analysis)
 
 
 def has_storage_profile_evidence(analysis: dict[str, Any]) -> bool:
-    return "hdfs_or_storage_bottleneck" in finding_ids(analysis)
+    return profile_storage_supported(analysis)
 
 
 def has_admission_profile_evidence(analysis: dict[str, Any]) -> bool:

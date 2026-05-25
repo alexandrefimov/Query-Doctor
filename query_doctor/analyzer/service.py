@@ -237,13 +237,27 @@ def analyze(
     scan_top_ops = [op for op in top_by_time[:3] if op.is_scan]
     query_wall_clock_ms = query_wall_clock.get("duration_ms")
     codegen_bottleneck_lines = find_codegen_bottleneck_lines(text, query_wall_clock_ms)
+    total_read = totals.get("TotalBytesRead")
+    total_read_bytes = (
+        total_read.get("bytes")
+        if total_read and isinstance(total_read.get("bytes"), (int, float))
+        else None
+    )
+    total_read_large = (
+        total_read_bytes is not None and total_read_bytes >= MEDIUM_DATA_MOVEMENT_BYTES
+    )
     storage_bottleneck_evidence: list[str] = []
     for op in scan_top_ops:
         if op.time_ms is not None and op.time_ms >= args.slow_operator_ms:
+            if not total_read_large:
+                continue
             if isinstance(query_wall_clock_ms, (int, float)) and query_wall_clock_ms > 0:
                 share = op.time_ms / query_wall_clock_ms
                 if share < 0.10:
                     continue
+                storage_bottleneck_evidence.append(
+                    f"TotalBytesRead is large: {total_read['raw']} ({fmt_bytes(total_read_bytes)})"
+                )
                 storage_bottleneck_evidence.append(
                     f"{op_label(op)} is among top time operators: {fmt_duration(op.time_ms)}"
                 )
@@ -290,7 +304,6 @@ def analyze(
                     f"{op_label(op)} has notable time: {fmt_duration(op.time_ms)}"
                 )
 
-    total_read = totals.get("TotalBytesRead")
     if (
         total_read
         and total_read.get("bytes") is not None
@@ -471,6 +484,10 @@ def analyze(
         if scan_top_ops and not isinstance(query_wall_clock_ms, (int, float)):
             not_supported_causes.append(
                 "Storage/HDFS share was not evaluated because Query Wall Clock duration is unknown."
+            )
+        elif scan_top_ops and not total_read_large:
+            not_supported_causes.append(
+                "Storage/HDFS candidate signal requires both slow scan/storage operator context and parsed TotalBytesRead above the large I/O footprint threshold."
             )
         not_supported_causes.append(
             "No direct HDFS/storage candidate signal was parsed. Large TotalBytesRead is an I/O footprint, not proof that HDFS/block size/replication is the root cause."

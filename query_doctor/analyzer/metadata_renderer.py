@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from query_doctor.analyzer.profile_evidence import (
+    DATA_MOVEMENT_FINDING_ID,
+    STORAGE_FINDING_ID,
+    profile_data_movement_supported,
+    profile_storage_supported,
+)
 from query_doctor.analyzer.scan_skew import scan_skew_facts_from_analysis
 
 
@@ -473,7 +479,12 @@ def non_stats_bottleneck_categories(analysis: dict[str, Any]) -> tuple[str, ...]
     for finding in analysis.get("findings") or []:
         if not isinstance(finding, dict):
             continue
-        category = NON_STATS_BOTTLENECK_FINDINGS.get(str(finding.get("id") or ""))
+        finding_id = str(finding.get("id") or "")
+        if finding_id == DATA_MOVEMENT_FINDING_ID and not profile_data_movement_supported(analysis):
+            continue
+        if finding_id == STORAGE_FINDING_ID and not profile_storage_supported(analysis):
+            continue
+        category = NON_STATS_BOTTLENECK_FINDINGS.get(finding_id)
         if category:
             categories.append(category)
 

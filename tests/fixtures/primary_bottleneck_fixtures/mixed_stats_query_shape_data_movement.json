@@ -14,6 +14,11 @@
         "rows_actual_to_estimated_ratio": 80
       }
     ],
+    "totals": {
+      "TotalBytesSent": {
+        "bytes": 45097156608
+      }
+    },
     "findings": [
       {
         "id": "join_bottleneck",

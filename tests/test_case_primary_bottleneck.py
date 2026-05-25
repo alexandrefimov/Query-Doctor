@@ -805,6 +805,7 @@ def test_mixed_candidate_is_not_overridden_by_data_movement_top_finding():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
             cardinality_anomalies=anomaly(4),
+            totals={"TotalBytesSent": {"bytes": 42 * 1024**3}},
             top_operators_by_time=[{"operator_name": "EXCHANGE", "time_ms": 8_000}],
             findings=[{"id": "large_intermediate_or_exchange_traffic"}],
             stats_metadata_quality={
@@ -818,6 +819,23 @@ def test_mixed_candidate_is_not_overridden_by_data_movement_top_finding():
     assert result.label == "mixed"
     assert result.confidence == "medium"
     assert result.reasons == ("competing_stats", "competing_runtime_data_movement")
+
+
+def test_data_movement_primary_requires_exchange_and_bytes_context():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            top_operators_by_time=[{"operator_name": "HASH JOIN", "time_ms": 8_000}],
+            findings=[{"id": "large_intermediate_or_exchange_traffic"}],
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "exchange_or_data_movement",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
 
 
 def test_sql_shape_high_requires_metadata_and_anomaly_pattern():
@@ -899,6 +917,7 @@ def test_sort_top_finding_routes_to_sql_shape_without_stats_signal():
 def test_data_movement_is_fallback_after_stats_and_sql_shape_do_not_match():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
+            totals={"TotalBytesSent": {"bytes": 42 * 1024**3}},
             top_operators_by_time=[
                 {"operator_name": "EXCHANGE", "time_ms": 7_000},
                 {"operator_name": "SCAN HDFS", "time_ms": 1_000},
@@ -922,6 +941,7 @@ def test_data_movement_is_fallback_after_stats_and_sql_shape_do_not_match():
 def test_storage_or_hdfs_is_fallback_after_stats_and_sql_shape_do_not_match():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
+            totals={"TotalBytesRead": {"bytes": 42 * 1024**3}},
             findings=[
                 {
                     "id": "hdfs_or_storage_bottleneck",
@@ -961,7 +981,8 @@ def test_storage_or_hdfs_runtime_diagnosis_can_route_medium_primary():
                 "summary": (
                     "Storage/HDFS path is the strongest plausible follow-up "
                     "hypothesis from deterministic facts."
-                )
+                ),
+                "signals": [{"key": "storage_hdfs", "status": "plausible_follow_up"}],
             },
             stats_metadata_quality={
                 "status": "available",
@@ -980,6 +1001,10 @@ def test_mixed_candidate_is_not_overridden_by_storage_top_finding():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
             cardinality_anomalies=anomaly(2),
+            totals={"TotalBytesRead": {"bytes": 42 * 1024**3}},
+            top_operators_by_time=[
+                {"operator_name": "HDFS SCAN", "time_ms": 7_000},
+            ],
             findings=[
                 {
                     "id": "hdfs_or_storage_bottleneck",

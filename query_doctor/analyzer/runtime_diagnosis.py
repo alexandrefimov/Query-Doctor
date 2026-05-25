@@ -6,6 +6,10 @@ from typing import Any, Iterable
 
 from query_doctor.analyzer.cm_metrics import cm_metric_correlation_signal
 from query_doctor.analyzer.memory_pressure import memory_pressure_facts_from_analysis
+from query_doctor.analyzer.profile_evidence import (
+    profile_data_movement_supported,
+    profile_storage_supported,
+)
 from query_doctor.analyzer.runtime_admission import runtime_admission_facts_from_analysis
 from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio
 
@@ -308,8 +312,14 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
     network_evidence = runtime_diagnosis_metric_evidence(analysis, "network_io_spike")
     network_evidence.extend(runtime_diagnosis_counter_evidence(analysis))
     exchange_finding = runtime_diagnosis_finding(analysis, "large_intermediate_or_exchange_traffic")
+    exchange_supported = profile_data_movement_supported(analysis)
     if exchange_finding:
-        network_evidence.append("Profile finding: Large intermediate or exchange traffic.")
+        if exchange_supported:
+            network_evidence.append("Profile finding: Large intermediate or exchange traffic.")
+        else:
+            network_evidence.append(
+                "Profile finding: large data movement is context-only without mapped EXCHANGE operator evidence."
+            )
 
     if network_status == "correlated":
         signals.append(
@@ -404,7 +414,12 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
     if total_read.get("bytes") is not None:
         storage_evidence.append(f"TotalBytesRead={fmt_bytes(float(total_read['bytes']))}.")
     if storage_finding:
-        storage_evidence.append("Profile finding: Storage/HDFS candidate signal.")
+        if profile_storage_supported(analysis):
+            storage_evidence.append("Profile finding: Storage/HDFS candidate signal.")
+        else:
+            storage_evidence.append(
+                "Profile finding: storage/HDFS signal is context-only without both bytes-read and scan operator evidence."
+            )
     if hdfs_status == "correlated":
         storage_status = "plausible_follow_up"
         storage_interpretation = (
@@ -417,7 +432,7 @@ def build_runtime_diagnosis(analysis: dict[str, Any]) -> dict[str, Any]:
             "Storage/local disk path is a plausible follow-up hypothesis because host disk I/O pressure "
             "aligns with parsed scan/storage evidence. Validate it with comparable reruns and host/HDFS metrics."
         )
-    elif storage_finding:
+    elif profile_storage_supported(analysis):
         storage_status = "plausible_follow_up"
         storage_interpretation = (
             "Storage/HDFS path is a plausible follow-up hypothesis because scan/storage operators "
