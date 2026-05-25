@@ -111,6 +111,20 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
     lines.append(
         f"- source: {profile.get('source_label') or profile.get('profile_source') or 'unknown'}"
     )
+    capabilities = (
+        profile.get("source_capabilities")
+        if isinstance(profile.get("source_capabilities"), dict)
+        else {}
+    )
+    if capabilities:
+        lines.append(
+            "- source_capabilities: "
+            f"endpoint_format={capabilities.get('profile_response_format') or 'unknown'}, "
+            f"json_probe={capabilities.get('json_profile_probe') or 'unknown'}, "
+            f"json_payload={capabilities.get('json_profile_payload') or 'unknown'}, "
+            f"text_payload={capabilities.get('text_profile_payload') or 'unknown'}, "
+            f"profile_docs_probe={capabilities.get('profile_docs_probe') or 'unknown'}"
+        )
     lines.append(f"- distribution: {profile.get('impala_distribution') or 'unknown'}")
     lines.append(f"- version: {profile.get('impala_version') or 'unknown'}")
     if profile.get("impala_build_type"):

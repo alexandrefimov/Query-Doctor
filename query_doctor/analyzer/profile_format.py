@@ -29,6 +29,9 @@ class PrimaryBottleneckPolicy(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
+SAFE_PROFILE_ENDPOINT_FORMATS = {"json", "text", "default", "unknown"}
+
+
 @dataclass(frozen=True)
 class ProfileDialectDetection:
     dialect: ProfileDialect
@@ -326,6 +329,12 @@ def build_profile_format_facts(
     analysis_support = profile_analysis_support(compatibility, detection.dialect)
     primary_policy = primary_bottleneck_policy(detection.dialect, analysis_support)
     per_instance_evidence = per_instance_evidence_status(detection.dialect, features)
+    source_capabilities = profile_source_capabilities(
+        detection,
+        features,
+        context,
+        primary_policy,
+    )
     return {
         "profile_family": "impala_runtime_profile"
         if detection.dialect != ProfileDialect.UNKNOWN
@@ -348,12 +357,14 @@ def build_profile_format_facts(
         "impala_build_type": version_facts.get("build_type"),
         "daemon_server_mode": context.get("impala_daemon_server_mode"),
         "daemon_local_catalog_mode": context.get("impala_daemon_local_catalog_mode"),
+        "profile_response_format": source_capabilities["profile_response_format"],
         "layout": layout,
         "features": features,
         "compatibility": compatibility,
         "analysis_support": analysis_support.value,
         "primary_bottleneck_policy": primary_policy.value,
         "per_instance_evidence": per_instance_evidence,
+        "source_capabilities": source_capabilities,
         "limitations": profile_format_limitations(
             detection.dialect,
             analysis_support,
@@ -504,3 +515,82 @@ def profile_format_limitations(
             }
         )
     return limitations
+
+
+def profile_source_capabilities(
+    detection: ProfileDialectDetection,
+    features: dict[str, bool | int],
+    context: dict[str, Any],
+    primary_policy: PrimaryBottleneckPolicy,
+) -> dict[str, str | int]:
+    """Return safe observed capability facts for profile ingestion.
+
+    These are feature-detected observations from the collected artifact and
+    collector metadata. They are not promises that a given Impala version or
+    Web UI endpoint supports the same capability in general.
+    """
+
+    response_format = safe_profile_response_format(context.get("profile_response_format"))
+    json_payload = json_profile_payload_status(detection, features, response_format)
+    text_payload = text_profile_payload_status(detection, response_format)
+    return {
+        "profile_response_format": response_format,
+        "profile_fetch_attempt_count": nonnegative_int(context.get("profile_fetch_attempt_count")),
+        "json_profile_probe": enabled_status(context.get("profile_json_probe_enabled")),
+        "profile_docs_probe": enabled_status(context.get("profile_docs_probe_enabled")),
+        "profile_docs_fetch_attempt_count": nonnegative_int(
+            context.get("profile_docs_fetch_attempt_count")
+        ),
+        "json_profile_payload": json_payload,
+        "text_profile_payload": text_payload,
+        "primary_profile_routing": primary_policy.value,
+    }
+
+
+def safe_profile_response_format(value: object) -> str:
+    text = str(value or "unknown").strip().lower()
+    return text if text in SAFE_PROFILE_ENDPOINT_FORMATS else "unknown"
+
+
+def enabled_status(value: object) -> str:
+    if isinstance(value, bool):
+        return "enabled" if value else "not_configured"
+    return "unknown"
+
+
+def nonnegative_int(value: object) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def json_profile_payload_status(
+    detection: ProfileDialectDetection,
+    features: dict[str, bool | int],
+    response_format: str,
+) -> str:
+    if response_format == "json" or detection.dialect == ProfileDialect.CLASSIC_JSON:
+        return "mapped_limited" if features.get("json_mapped_counter_count") else "observed"
+    if detection.reasons == ("json_wrapped_classic_text_profile",):
+        return "wrapped_text_observed"
+    if response_format in {"text", "default"}:
+        return "not_selected"
+    return "unknown"
+
+
+def text_profile_payload_status(
+    detection: ProfileDialectDetection,
+    response_format: str,
+) -> str:
+    if detection.dialect == ProfileDialect.CLASSIC_TEXT:
+        if detection.reasons == ("json_wrapped_classic_text_profile",):
+            return "wrapped_text_observed"
+        return "observed"
+    if response_format in {"text", "default"}:
+        return "selected_but_unmapped"
+    if response_format == "json":
+        return "not_selected"
+    return "unknown"

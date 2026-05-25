@@ -22,6 +22,8 @@ F00:
     assert facts["profile_dialect"] == "classic_text_profile"
     assert facts["analysis_support"] == "supported"
     assert facts["primary_bottleneck_policy"] == "supported"
+    assert facts["source_capabilities"]["profile_response_format"] == "unknown"
+    assert facts["source_capabilities"]["text_profile_payload"] == "observed"
 
 
 def test_detects_classic_json_profile_without_claiming_full_parser_support():
@@ -41,6 +43,7 @@ def test_detects_classic_json_profile_without_claiming_full_parser_support():
     assert facts["profile_dialect"] == "classic_json_profile"
     assert facts["analysis_support"] == "limited"
     assert facts["primary_bottleneck_policy"] == "unsupported"
+    assert facts["source_capabilities"]["json_profile_payload"] == "observed"
     assert any(item["id"] == "profile_dialect_partially_mapped" for item in facts["limitations"])
 
 
@@ -73,6 +76,7 @@ def test_classic_json_profile_maps_allowlisted_counters_without_primary_support(
     assert facts["features"]["json_mapped_counter_count"] == 3
     assert facts["analysis_support"] == "limited"
     assert facts["primary_bottleneck_policy"] == "unsupported"
+    assert facts["source_capabilities"]["json_profile_payload"] == "mapped_limited"
 
 
 def test_classic_json_profile_maps_numeric_counter_units():
@@ -107,6 +111,8 @@ def test_detects_json_wrapped_classic_text_as_effective_text_profile():
     assert facts["profile_dialect"] == "classic_text_profile"
     assert facts["dialect_reasons"] == ["json_wrapped_classic_text_profile"]
     assert facts["analysis_support"] == "supported"
+    assert facts["source_capabilities"]["json_profile_payload"] == "wrapped_text_observed"
+    assert facts["source_capabilities"]["text_profile_payload"] == "wrapped_text_observed"
 
 
 def test_detects_experimental_profile_v2_as_limited():
@@ -146,3 +152,12 @@ def test_unknown_profile_fails_closed():
     assert facts["analysis_support"] == "unsupported"
     assert facts["primary_bottleneck_policy"] == "unsupported"
     assert any(item["id"] == "profile_dialect_unknown" for item in facts["limitations"])
+
+
+def test_profile_source_capabilities_do_not_echo_untrusted_format_values():
+    facts = build_profile_format_facts(
+        "Summary:\nExecSummary:\n",
+        {"profile_response_format": "https://internal-host.example/path"},
+    )
+
+    assert facts["source_capabilities"]["profile_response_format"] == "unknown"

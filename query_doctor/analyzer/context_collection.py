@@ -253,6 +253,11 @@ CM_QUERY_CONTEXT_FIELDS = (
     "impala_daemon_build_type",
     "impala_daemon_server_mode",
     "impala_daemon_local_catalog_mode",
+    "profile_response_format",
+    "profile_fetch_attempt_count",
+    "profile_json_probe_enabled",
+    "profile_docs_probe_enabled",
+    "profile_docs_fetch_attempt_count",
 )
 UNSAFE_CLUSTER_TEXT_RE = re.compile(
     r"(/[^ \n\t]+|[A-Za-z]:\\|https?://|RAW_[A-Z0-9_]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)"
