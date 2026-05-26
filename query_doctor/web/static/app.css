@@ -3532,9 +3532,9 @@ html[data-theme=dark] select.input {
 }
 
 .llm-action-card {
-  display:grid;
+  display:flex;
+  flex-direction:column;
   gap:6px;
-  align-content:start;
   padding:9px;
   border:1px solid var(--border);
   border-radius:6px;
@@ -3552,6 +3552,12 @@ html[data-theme=dark] select.input {
   color:var(--muted);
   font-size:12px;
   line-height:1.4
+}
+
+.llm-action-card-actions {
+  display:grid;
+  gap:6px;
+  margin-top:auto
 }
 
 .llm-action-card form,.llm-action-card .button {

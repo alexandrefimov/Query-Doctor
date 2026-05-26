@@ -1,5 +1,7 @@
 # Security Model
 
+Last reviewed: 2026-05-26
+
 This document is the public security and privacy overview for Query Doctor. The
 mandatory implementation contract lives in [safety-contract.md](safety-contract.md).
 
@@ -35,6 +37,9 @@ Current external collection support is Impala-only:
   and event context for Impala workflows.
 - Direct Impala daemon endpoints can provide bounded Recent scans, Running
   scans, and one explicit Known Query ID without Cloudera Manager events.
+- Direct Impala JSON profile, `/profile_docs`, and `/admission?json` collection
+  are optional bounded probes; missing old-cluster endpoints degrade to
+  unavailable or unknown rather than forcing unsupported claims.
 - Optional Prometheus runtime metrics can provide bounded context for configured
   direct Impala workflows.
 - Impala metadata collection uses allowlisted read-only metadata statements.

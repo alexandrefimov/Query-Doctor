@@ -1,5 +1,7 @@
 # Public Release Readiness
 
+Last reviewed: 2026-05-26
+
 This checklist tracks what Query Doctor needs before tags, announcements, and
 any future repository visibility changes. It is intentionally practical: public
 quality means the project is honest, reproducible, safe to inspect, and clear
@@ -35,7 +37,7 @@ about unsupported scope.
 
 ## Current Snapshot
 
-As of 2026-05-22, the public repository has the main best-practice baseline in
+As of 2026-05-26, the public repository has the main best-practice baseline in
 place:
 
 - Canonical public docs and default browser-visible copy are English.
@@ -51,8 +53,9 @@ place:
 - `main` branch protection includes admins, strict required checks, pull request
   review/conversation gates, force-push blocking, and deletion blocking.
 - Agent instructions, roadmap, architecture docs, release docs, and Russian
-  companion pages are aligned with the current direct Impala, Prometheus,
-  workload-diagnostics, and config-driven language baseline.
+  companion pages are aligned with the current direct Impala, optional
+  `/profile_docs`, optional `/admission?json`, Prometheus, workload-diagnostics,
+  and config-driven language baseline.
 - CI runs deterministic safety checks on pull requests and main, including a
   current-tree public-release scan, and the full Python 3.11 test suite is a
   required default-branch check.
@@ -70,13 +73,16 @@ place:
   and production PyPI install smoke.
 - The 0.3.0 release notes are finalized in
   [release-notes-0.3.0.md](release-notes-0.3.0.md) from the post-0.2.0
-  changelog plus release-candidate UI and agent-workflow polish, the package
-  metadata is prepared for `v0.3.0`, and the local release gate plus
-  built-wheel smoke have passed for the release candidate.
+  changelog plus release-candidate UI and agent-workflow polish. The `v0.3.0`
+  tag and package-index release are published.
 - README screenshots have been refreshed from the synthetic demo pack for the
-  current material UI baseline. TestPyPI upload, release tag creation,
-  production PyPI publishing, and post-publish install smoke remain
-  final-release-candidate steps.
+  current material UI baseline. The 2026-05-26 README screenshot drift check
+  found the Finished Queries screenshot byte-identical with the current
+  synthetic render; the search screenshot still matches the current layout, with
+  only dynamic date text differing.
+- Post-merge readiness smoke on 2026-05-26 covered one-hour, six-hour, and
+  metadata-enabled Cloudera Manager Recent scans, with Details audit reporting
+  no issues on all three runs.
 - Repository metadata, topics, issue labels, issue templates, pull request
   template, and curated sanitized starter issues are in place.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample

@@ -1,22 +1,24 @@
 # Query Doctor
 
-Last reviewed: 2026-05-23
+Last reviewed: 2026-05-26
 
 Язык: [English](README.md) | Русский
 
-Query Doctor - local-first Big Data query diagnostic tool, сфокусированный
-сегодня на Apache Impala production triage. Он помогает операторам ранжировать
-подозрительные Recent queries, собирать bounded profile context, выводить
-deterministic evidence, опционально обогащать его safe metadata и генерировать
-validated human-readable reports без показа raw SQL или raw profiles в trusted
-UI/report surfaces.
+Query Doctor - локальный диагностический инструмент для Big Data-запросов,
+сфокусированный сегодня на разборе рабочих запросов Apache Impala. Он
+помогает операторам ранжировать подозрительные запросы из Recent, собирать
+ограниченный контекст профиля, извлекать детерминированные диагностические
+сигналы, опционально обогащать их безопасными метаданными и генерировать
+проверенные отчеты без показа сырого SQL или сырых профилей в доверенном UI и
+отчетах.
 
-Инструмент работает рядом с credentials оператора, собирает ограниченный
-read-only контекст из Cloudera Manager или прямых Impala daemon endpoints,
-извлекает deterministic facts в Python и может генерировать validated reports,
-не считая LLM источником истины. Общий config `language` управляет Help,
-Details static UI copy и новыми trusted reports; русский вывод использует тот
-же language-specific prompt, normalizer и validator boundary.
+Инструмент работает рядом с учетными данными оператора, собирает ограниченный
+контекст только для чтения из Cloudera Manager или прямых endpoints демонов
+Impala, извлекает детерминированные факты в Python и может генерировать
+проверенные отчеты, не считая LLM источником истины. Общий параметр `language`
+управляет Help, статическим текстом Details и новыми доверенными отчетами;
+русский вывод использует тот же language-specific prompt, normalizer и границу
+валидатора.
 
 Главное правило:
 
@@ -24,73 +26,88 @@ Details static UI copy и новыми trusted reports; русский выво�
 Python owns facts. LLM owns wording only.
 ```
 
-Recent scan - flagship workflow. Query ID diagnosis вторичен и предназначен
-для одного known Impala query. Query Optimizer отдельный, read-only, не
-выполняет SQL и не echo submitted SQL. Report generation использует LLM только
-для wording из Python-owned facts.
+Recent scan - основной рабочий процесс. Диагностика по Query ID вторична и
+предназначена для одного известного запроса Impala. Query Optimizer отдельный,
+только для чтения, не выполняет SQL и не показывает отправленный SQL обратно
+после submit. Генерация отчета использует LLM только для формулировок на
+основе фактов, которыми владеет Python.
 
 ## Что Query Doctor делает / не делает
 
 Query Doctor это:
 
-- local-first Impala production triage workbench;
-- deterministic evidence extractor;
-- Recent-query ranking workflow для operators и administrators;
-- safe report generator на validated facts;
+- локальный рабочий инструмент для разбора рабочих запросов Impala;
+- извлекатель детерминированных диагностических сигналов;
+- рабочий процесс ранжирования Recent queries для операторов и
+  администраторов;
+- безопасный генератор отчетов на проверенных фактах;
 - практический инструмент для решения, что смотреть, что менять и как
   проверять;
-- Big Data SQL/lakehouse diagnostics wedge, где реализованный engine сегодня -
-  Apache Impala.
+- первый узкий слой диагностики Big Data SQL/lakehouse, где реализованный
+  движок сегодня - Apache Impala.
 
 Query Doctor это не:
 
-- generic AI chatbot over raw profiles;
-- replacement for Impala Web UI;
-- инструмент выполнения user SQL или optimizer draft SQL;
-- инструмент, который по умолчанию отправляет raw SQL/profile data в remote
-  services;
-- root-cause oracle;
+- универсальный AI-чатбот поверх сырых профилей;
+- замена Impala Web UI;
+- инструмент выполнения пользовательского SQL или чернового SQL из optimizer;
+- инструмент, который по умолчанию отправляет сырой SQL или данные профилей во
+  внешние сервисы;
+- оракул первопричин;
 - multi-engine продукт сегодня.
 
 ## Что он делает
 
-- Сканирует завершенные Recent queries как основной workflow; Running queries и
-  один explicit Known Query ID остаются focused secondary modes для Apache
-  Impala.
+- Сканирует завершенные Recent queries как основной рабочий процесс; Running
+  queries и один explicit Known Query ID остаются сфокусированными вторичными
+  режимами для Apache Impala.
 - Работает с Cloudera Manager, когда он доступен, или напрямую с Impala daemon
   profile/query-list endpoints для vanilla, Ambari-style и других
   non-Cloudera-Manager кластеров.
-- Опционально собирает bounded Prometheus runtime metric summaries для direct
-  Impala workflows и bounded read-only Impala metadata через `impala-shell`.
-- Ранжирует подозрительные cases и action candidates по deterministic analyzer
-  facts, а не по LLM scoring.
-- Генерирует trusted reports только после deterministic normalization,
-  sanitization и validation.
-- Дает отдельный read-only Query Optimizer workflow для pasted SQL review и
-  отдельное details-page optimizer action для server-owned analyzed cases.
-- Не показывает raw SQL, raw profiles, raw metadata, local paths, secrets,
-  subprocess output, model/runtime internals и raw artifact filenames в browser
-  и trusted report surfaces.
+- Прямой сбор профилей Impala использует text endpoints как compatibility path
+  по умолчанию; JSON profile probing опционален и откатывается к text для
+  старых версий Impala. Analyzer facts сохраняют только безопасные capability
+  summaries, например выбранный endpoint format и probe status.
+- Direct Impala может опционально пробовать ограниченный `/profile_docs` для
+  меток стабильности счетчиков. Query Doctor сохраняет только безопасный
+  allowlisted registry context, а не сырую документацию счетчиков.
+- Direct Impala может опционально собирать ограниченный агрегированный контекст
+  `/admission?json`. Отсутствующие старые endpoints не считаются ошибкой, а
+  analyzer использует результат только как context, если нет query-specific
+  evidence по admission wait/result.
+- Опционально собирает ограниченные сводки runtime-метрик Prometheus для direct
+  Impala workflows и ограниченные read-only метаданные Impala через
+  `impala-shell`.
+- Ранжирует подозрительные cases и action candidates по детерминированным
+  analyzer facts, а не по LLM scoring.
+- Генерирует доверенные отчеты только после детерминированной нормализации,
+  очистки и проверки.
+- Дает отдельный read-only Query Optimizer workflow для разбора вставленного
+  SQL и отдельное Details-page optimizer action для уже разобранных сервером
+  случаев.
+- Не показывает сырой SQL, сырые профили, сырые метаданные, локальные пути,
+  секреты, subprocess output, model/runtime internals и raw artifact filenames
+  в browser и trusted report surfaces.
 
-## Поддерживаемый scope
+## Поддерживаемая область
 
-| Area | Поддержано сейчас | Не является текущей поддержкой |
+| Область | Поддержано сейчас | Не является текущей поддержкой |
 | --- | --- | --- |
 | Query engine | Apache Impala | Другие engines остаются только roadmap seams. |
-| Cloudera Manager | Full Recent discovery/profile/metrics/events context для Impala workflows | Generic cluster diagnosis вне Query Doctor flow. |
-| Direct Impala | Bounded Recent scans, Running scans и один Known Query ID через impalad daemon endpoints | Cloudera Manager events, broad log scraping или SQL execution. |
-| Runtime metrics | Optional bounded Prometheus summaries для configured direct Impala workflows | Raw time-series output или arbitrary PromQL from users. |
+| Cloudera Manager | Полный Recent discovery/profile/metrics/events context для Impala workflows | Generic cluster diagnosis вне Query Doctor flow. |
+| Direct Impala | Ограниченные Recent scans, Running scans и один Known Query ID через impalad daemon endpoints | Cloudera Manager events, broad log scraping или SQL execution. |
+| Runtime metrics | Опциональные ограниченные Prometheus summaries для configured direct Impala workflows | Raw time-series output или arbitrary PromQL from users. |
 | Metadata | Read-only allowlisted metadata statements через `impala-shell` | User SQL execution или unbounded metadata crawling. |
 | Reports and optimizer | Python-owned facts, validation и explicit selected-case actions | LLM output как trusted evidence или automatic batch LLM jobs. |
 
-Будущие Big Data SQL/lakehouse engines, broader providers, prepared event/log
-sources и Cluster Doctor workflows остаются roadmap seams, а не текущей
-поддержкой.
+Будущие Big Data SQL/lakehouse engines, более широкие providers,
+подготовленные event/log sources и Cluster Doctor workflows остаются roadmap
+seams, а не текущей поддержкой.
 
 В Apache Impala также появилась upstream работа над native AI query profile
-analysis. Query Doctor выравнивается с этим направлением и остается
-local-first production triage по многим queries, deterministic evidence, safe
-enrichment и validated raw-free reports. См.
+analysis. Query Doctor выравнивается с этим направлением и остается локальным
+production triage по многим queries, с детерминированными доказательствами,
+безопасным enrichment и проверенными отчетами без сырых данных. См.
 [docs/upstream-impala-ai-analyzer.md](docs/upstream-impala-ai-analyzer.md).
 
 ## Установка
@@ -113,28 +130,29 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-Для contributor tooling установите development extra:
+Для инструментов разработки установите development extra:
 
 ```bash
 python -m pip install -e ".[dev]"
 pre-commit install
 ```
 
-В network-restricted окружении устанавливайте из prebuilt wheel или убедитесь,
-что build dependencies уже доступны локально:
+В окружении с ограниченной сетью устанавливайте из готового wheel или
+убедитесь, что зависимости сборки уже доступны локально:
 
 ```bash
 python -m pip install .
 ```
 
-Локальная JSON configuration описана в [docs/configuration.md](docs/configuration.md).
-Предпочтительный workstation path: `~/.qdcreds/query-doctor-config.json`.
-Secrets остаются в environment variables или local env files.
+Локальная JSON-конфигурация описана в
+[docs/configuration.md](docs/configuration.md). Предпочтительный путь на
+рабочей станции: `~/.qdcreds/query-doctor-config.json`. Секреты остаются в
+environment variables или local env files.
 
 ## Quickstart smoke
 
-Сначала запустите deterministic local checks. Они не вызывают Cloudera Manager,
-Impala, Ollama или сеть:
+Сначала запустите детерминированные локальные проверки. Они не вызывают
+Cloudera Manager, Impala, Ollama или сеть:
 
 ```bash
 query-doctor-demo-preflight
@@ -144,11 +162,11 @@ query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_
 ```
 
 Откройте localhost URL, который напечатает `query-doctor-web`. Synthetic demo
-pack локальный и не содержит real SQL, profiles, metadata, hostnames, users или
-credentials.
+pack локальный и не содержит настоящих SQL-запросов, профилей, метаданных,
+hostnames, users или credentials.
 
-Локальный web UI начинается с bounded search form и показывает synthetic
-Finished Queries results для review:
+Локальный web UI начинается с ограниченной формы поиска и показывает synthetic
+Finished Queries results для разбора:
 
 ![Synthetic Query Doctor demo search form](docs/assets/demo_search.png)
 

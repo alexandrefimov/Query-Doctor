@@ -1,6 +1,6 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-26
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
@@ -88,8 +88,13 @@ Current support is intentionally narrow:
   scans, Running scans, and one explicit Known Query ID. They do not provide
   Cloudera Manager events; optional Prometheus runtime metrics can be collected
   only when explicitly configured.
+- Direct Impala profile collection keeps text profile endpoints as the default
+  compatibility path. Optional JSON profile probing, `/profile_docs` counter
+  stability probing, and `/admission?json` aggregate context degrade safely to
+  unavailable/unknown on older Impala or Cloudera distributions.
 - Direct Impala profile analysis publishes raw-free Profile Format, Source
-  Provenance, Profile Resource Facts, and Profile Timing Facts.
+  Provenance, Profile Resource Facts, Profile Timing Facts, Runtime Diagnosis
+  resource/timing signals, and safe capability/limitation summaries.
 - Cloudera Manager (CM) and Prometheus time-series support is bounded and
   summarized before becoming facts.
 - Cloudera Manager events support is bounded and summarized before becoming
@@ -215,9 +220,11 @@ Cloudera Manager profile summary
 The Cloudera Manager collection path is currently validated against the local
 Cloudera Manager 6.2.1 environment. Direct Impala daemon collection is also
 implemented for bounded Recent, Running, and Known Query ID workflows when
-configured. Treat newer Cloudera Manager versions, broader non-Cloudera
-provider behavior, and prepared event/log sources as future source-provider
-work, not as automatic support.
+configured. Optional JSON profile, `/profile_docs`, `/admission?json`, and
+Prometheus surfaces are compatibility inputs, not required dependencies. Treat
+newer Cloudera Manager versions, broader non-Cloudera provider behavior, and
+prepared event/log sources as future source-provider work, not as automatic
+support.
 
 The same boundary applies to every workflow: collectors and parsers prepare
 bounded inputs, Python-owned analyzers create facts, LLMs phrase those facts

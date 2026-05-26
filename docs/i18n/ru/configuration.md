@@ -1,19 +1,19 @@
-# Configuration Reference
+# Справочник конфигурации
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-26
 
 Язык: [English](../../configuration.md) | Русский
 
-Английская версия является канонической. Эта companion-страница описывает
-основной смысл local JSON configuration.
+Английская версия является канонической. Эта сопроводительная страница
+описывает основной смысл локальной JSON-конфигурации.
 
 ## Назначение
 
-Query Doctor читает non-secret settings из JSON config. Secrets должны жить в
+Query Doctor читает non-secret settings из JSON config. Секреты должны жить в
 environment variables или local env files, описанных в
 [credentials](credentials.md).
 
-## Discovery order
+## Порядок discovery
 
 Типичный порядок, когда `--config` не указан:
 
@@ -23,8 +23,8 @@ environment variables или local env files, описанных в
    repository default;
 4. legacy ignored `.query-doctor-cm.local.json`.
 
-Explicit `--config` always wins. Для обычного workstation setup preferred path
-остается `~/.qdcreds/query-doctor-config.json`.
+Явный `--config` всегда имеет приоритет. Для обычной рабочей станции
+предпочтительный путь остается `~/.qdcreds/query-doctor-config.json`.
 
 ## Что можно хранить в config
 
@@ -37,6 +37,7 @@ Explicit `--config` always wins. Для обычного workstation setup prefe
 - direct Impala profile/query source settings, including optional JSON profile
   probing with text fallback and optional safe `/profile_docs` counter-stability
   probing;
+- optional direct Impala `/admission?json` aggregate context collection;
 - `cluster_type` для различения `cm` и direct `impala` clusters;
 - общий language mode: `language` = `en` или `ru`; он показывается в web
   header и управляет Help, Details static UI и новыми trusted reports;
@@ -60,7 +61,7 @@ Cloudera Manager credentials держите в environment, а не в JSON conf
 web и batch CLI могут загрузить local env file из `QD_CM_ENV`,
 `$QD_CREDS_DIR/cm-ro.env` или `~/.qdcreds/cm-ro.env`.
 
-Файл читается whitelist-only, без shell evaluation. Разрешены только
+Файл читается только по allowlist, без shell evaluation. Разрешены только
 `CM_USERNAME`, `CM_USER`, `CM_PASSWORD` и `CM_TOKEN`. Уже exported environment
 variables имеют приоритет над file values. `username` в JSON config остается
 supported как non-secret fallback, но для local web лучше держать CM auth user
@@ -68,7 +69,7 @@ supported как non-secret fallback, но для local web лучше держ�
 shell environment, wrapper defaults, keytab inference или JSON config, а не из
 `cm-ro.env`.
 
-## Recent batch metadata
+## Метаданные Recent batch
 
 Для Cloudera Manager Recent batches metadata refresh может использовать real
 table references, извлеченные из discovery statements до profile identifier
@@ -78,13 +79,13 @@ subprocess; progress, summaries, trusted reports и pipeline plan output дол�
 
 `recent_metadata_top_limit` означает maximum number of top collectable cases,
 eligible for metadata refresh. Placeholder-only/generic references не должны
-тратить этот budget.
+тратить этот бюджет.
 
 ## Что нельзя хранить
 
 Нельзя хранить passwords, tokens, cookies, Authorization headers, LLM API keys,
-embedded URL credentials, keytab contents или secret-bearing query parameters.
+embedded URL credentials, keytab contents или query parameters с секретами.
 External LLM tokens должны жить в `~/.qdcreds/llm-api.env`, а не в JSON.
 
-Полная field reference и examples находятся в
+Полный field reference и examples находятся в
 [английской configuration reference](../../configuration.md).

@@ -436,7 +436,8 @@ def render_llm_action_card(
         f'<div class="llm-action-card{primary_class}">'
         f"<strong>{html.escape(title)}</strong>"
         f'<p class="llm-action-card-copy">{html.escape(description)}</p>'
-        f"{action_html}</div>"
+        f'<div class="llm-action-card-actions">{action_html}</div>'
+        "</div>"
     )
 
 

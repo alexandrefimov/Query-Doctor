@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-05-23
+Last reviewed: 2026-05-26
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -82,6 +82,10 @@ Status legend:
 | [research/diagnostic-gap-log.md](research/diagnostic-gap-log.md) | reference | Safe template for recording production diagnostic gaps and backlog implications. |
 | [engines/trino-diagnostic-contract.md](engines/trino-diagnostic-contract.md) | reference | Trino evidence-source, safety, metadata, and readiness contract for future work. |
 | [engines/trino-live-collection-design.md](engines/trino-live-collection-design.md) | reference | Future Trino live-collection source, auth, bounds, redaction, and fixture gates. |
+| [engines/i18n/ru/trino-diagnostic-contract.md](engines/i18n/ru/trino-diagnostic-contract.md) | reference | Russian companion for the Trino diagnostic contract. |
+| [engines/i18n/ru/trino-live-collection-design.md](engines/i18n/ru/trino-live-collection-design.md) | reference | Russian companion for the future Trino live-collection design. |
+| [research/i18n/ru/upstream-watch.md](research/i18n/ru/upstream-watch.md) | reference | Russian companion for the upstream and adjacent-market watch loop. |
+| [research/i18n/ru/diagnostic-gap-log.md](research/i18n/ru/diagnostic-gap-log.md) | reference | Russian companion for the safe diagnostic gap log. |
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |
 | [roadmap.md](roadmap.md) | active | Product direction, priorities, deferred work, and anti-features. |
 | [code-audit.md](code-audit.md) | active | Open engineering and safety risks. |

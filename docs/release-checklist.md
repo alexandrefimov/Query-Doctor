@@ -101,6 +101,9 @@ Confirm public docs state only implemented behavior:
   environment.
 - Direct Impala daemon collection supports bounded Recent and Running scans
   plus one explicit Known Query ID, without Cloudera Manager events.
+- Direct Impala JSON profile, `/profile_docs`, and `/admission?json` collection
+  are optional compatibility probes that degrade safely when absent on older
+  Impala or Cloudera distributions.
 - Prometheus runtime metrics are optional bounded context for explicitly
   configured direct Impala workflows.
 - Broader engine support and Cluster Doctor product workflows are roadmap seams
