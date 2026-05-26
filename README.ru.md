@@ -399,9 +399,9 @@ configs, credentials, raw profiles, raw metadata или temporary outputs.
 ## Public status
 
 Репозиторий публичный. `v0.1.0` - initial public GitHub release baseline,
-`v0.1.1` - первый PyPI release, а `v0.3.0` - текущий package-index release:
-[query-doctor on PyPI](https://pypi.org/project/query-doctor/) показывает
-текущий package-index status. Public license is Apache-2.0.
+`v0.1.1` - первый PyPI release, а package metadata и release notes для `0.4.0`
+готовы к следующему package-index release: [query-doctor on PyPI](https://pypi.org/project/query-doctor/)
+показывает текущий package-index status. Public license is Apache-2.0.
 
 PyPI publishing использует GitHub OIDC Trusted Publishing. Repository-side
 `testpypi` и `pypi` environments требуют maintainer approval и не используют

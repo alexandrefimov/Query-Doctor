@@ -33,10 +33,12 @@ Repository должен оставаться воспроизводимым, б�
 
 README screenshots обновлены из synthetic demo pack для текущего material UI
 baseline, включая product-brand header `Query Doctor` и subtitle `Big Data
-query diagnostics`. `v0.3.0` tag и package-index release опубликованы. Current
-product baseline включает config-driven `language`, Recent Scan Hour UTC offset
-label, Known Query ID progress, elapsed scan-progress wording, workload
-diagnostics для repeated, frequent-short и regressed fingerprints, optional
-direct Impala `/profile_docs` и optional `/admission?json` context.
+query diagnostics`. Release notes и package metadata для `0.4.0` готовы; tag и
+package-index publish остаются следующими release actions. Current product
+baseline включает config-driven `language`, Recent Scan Hour UTC offset label,
+Known Query ID progress, elapsed scan-progress wording, workload diagnostics для
+repeated, frequent-short и regressed fingerprints, optional direct Impala
+`/profile_docs`, optional `/admission?json` context и Trino private-preview
+groundwork без public Trino support claim.
 
 Полный контрольный список: [английская версия](../../public-release-readiness.md).
