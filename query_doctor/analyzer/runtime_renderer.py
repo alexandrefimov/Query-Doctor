@@ -216,6 +216,7 @@ def render_storage_context(analysis: dict[str, Any]) -> list[str]:
         "hdfs_location_count",
         "object_store_location_count",
         "local_location_count",
+        "view_table_count",
         "unknown_table_count",
         "profile_scan_operator_count",
         "hdfs_locality_applicable",

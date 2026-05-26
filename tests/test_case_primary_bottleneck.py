@@ -633,6 +633,42 @@ def test_backend_data_skew_summary_without_scan_skew_evidence_does_not_route():
     assert result.reasons == ("no_primary_branch_supported",)
 
 
+def test_unknown_primary_explains_medium_scan_skew_as_supporting_only():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            scan_skew={
+                "status": "supported",
+                "evidence_tier": "medium",
+                "finding_supported": True,
+                "primary_supported": False,
+                "skew_metric": "rows_produced",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("scan_skew_medium_supporting_only",)
+
+
+def test_unknown_primary_explains_context_only_data_movement():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            data_movement={
+                "status": "context_only",
+                "evidence_tier": "context_only",
+                "finding_supported": False,
+                "primary_supported": False,
+                "exchange_operator_count": 1,
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("data_movement_context_only",)
+
+
 def test_backend_data_skew_does_not_override_query_shape_top_finding():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
@@ -858,6 +894,39 @@ def test_data_movement_primary_requires_material_exchange_elapsed_share():
 
     assert result.label == "unknown"
     assert result.reasons == ("no_primary_branch_supported",)
+
+
+def test_unknown_primary_explains_codegen_without_primary_support():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(findings=[{"id": "codegen_bottleneck"}])
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("codegen_finding_not_primary_supported",)
+
+
+def test_unknown_primary_explains_view_only_storage_context():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(storage_context={"source": "table_metadata_view_only"})
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("storage_context_view_only",)
+
+
+def test_unknown_primary_explains_wall_clock_not_mapped_to_operator_time():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            query_wall_clock={"duration_ms": 40_000, "confidence": "high"},
+            top_operators_by_time=[{"operator_name": "HDFS_SCAN_NODE", "time_ms": 5_000}],
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.confidence == "low"
+    assert result.reasons == ("wall_clock_not_explained_by_mapped_operators",)
 
 
 def test_sql_shape_high_requires_metadata_and_anomaly_pattern():

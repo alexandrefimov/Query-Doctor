@@ -31,3 +31,18 @@ Last reviewed: 2026-05-26
 Для Impala нужно сохранять стабильность текущего контракта. Для Trino
 допустим только исследовательский fixture-only путь, пока не появятся
 безопасные, ограниченные и проверенные источники фактов.
+Текущий Trino fixture-only слой уже покрывает compact resource-group
+queue-delay event, но без live reader, browser/report surfaces или claims о
+поддержке. Unknown source-contract event теперь отдельно фиксирует
+fail-closed поведение для неподдержанного source contract version.
+Statement-stats fixture input теперь тоже reject-ится при oversized payloads,
+unsafe raw field names или unsafe text values до mapping.
+Compact summaries для connector metric, failure category и stage skew
+принимают только exact checked fields; extra fields или nested details оставляют
+derived fact в `unknown`.
+Nested objects/arrays проверяются теми же правилами, а payloads глубже
+accepted maximum depth reject-ятся до mapping.
+Non-finite numeric values (`NaN`, `Infinity`, `-Infinity`) reject-ятся до
+mapping.
+Отрицательные timing/resource/count values в Trino fixture-only фактах
+остаются `unknown`.

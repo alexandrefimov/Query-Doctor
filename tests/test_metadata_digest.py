@@ -3,6 +3,7 @@ from query_doctor.analyzer.metadata_renderer import (
     render_stats_metadata_quality,
     render_table_metadata_context,
 )
+from query_doctor.analyzer.storage_context import build_storage_context
 from query_doctor.impala import metadata_digest, table_metadata_facts
 
 
@@ -221,6 +222,61 @@ def test_parse_show_create_maps_hdfs_and_unknown_storage_without_raw_location():
     assert "warehouse01" not in repr(hdfs_facts)
     assert "storage_scheme" not in relative_facts
     assert "storage_family" not in relative_facts
+
+
+def test_parse_show_create_accepts_impala_shell_pipe_table_output():
+    view_facts = table_metadata_facts.parse_show_create(
+        "\n".join(
+            [
+                "| result |",
+                "| --- |",
+                "| CREATE VIEW db.view_a AS SELECT id FROM db.table_a |",
+            ]
+        )
+    )
+    table_facts = table_metadata_facts.parse_show_create(
+        "\n".join(
+            [
+                "| result |",
+                "| --- |",
+                "| CREATE TABLE db.fact (id BIGINT) |",
+                "| STORED AS PARQUET |",
+                "| LOCATION 'hdfs://warehouse01.example.invalid/warehouse/db.fact' |",
+            ]
+        )
+    )
+
+    assert view_facts["object_type"] == "view"
+    assert "storage_scheme" not in view_facts
+    assert "storage_family" not in view_facts
+    assert table_facts["object_type"] == "table"
+    assert table_facts["file_format"] == "PARQUET"
+    assert table_facts["storage_scheme"] == "hdfs"
+    assert table_facts["storage_family"] == "hdfs"
+    assert "warehouse01" not in repr(table_facts)
+
+
+def test_storage_context_marks_view_only_metadata_without_storage_family():
+    facts = build_storage_context(
+        {
+            "table_metadata_context": {
+                "tables": [
+                    {
+                        "object_type": "view",
+                        "storage_family": "unknown",
+                    }
+                ]
+            },
+            "operators": [{"operator_name": "HDFS SCAN", "time_ms": 1000}],
+        }
+    )
+
+    assert facts["status"] == "unknown"
+    assert facts["storage_family"] == "unknown"
+    assert facts["source"] == "table_metadata_view_only"
+    assert facts["view_table_count"] == 1
+    assert facts["location_scheme_count"] == 0
+    assert any("views without safe physical storage" in item for item in facts["limitations"])
 
 
 def test_sql_column_context_counts_join_filter_column_stats_statuses(tmp_path):

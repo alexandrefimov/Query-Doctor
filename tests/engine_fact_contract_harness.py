@@ -19,6 +19,7 @@ from query_doctor.analyzer.service import analyze
 from query_doctor.analyzer.trino_fixture_facts import (
     build_trino_event_listener_fixture_engine_facts,
     build_trino_fixture_engine_facts,
+    build_trino_query_list_contract_probe_engine_facts,
 )
 
 
@@ -55,11 +56,20 @@ TRINO_CONNECTOR_METRIC_ABSENT_STATEMENT_STATS_FIXTURE = (
 TRINO_COMPLETED_EVENT_FIXTURE = (
     Path(__file__).parent / "fixtures" / "engine_facts" / "trino_completed_event.json"
 )
+TRINO_RESOURCE_GROUP_QUEUED_EVENT_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_resource_group_queued_event.json"
+)
+TRINO_UNKNOWN_SOURCE_CONTRACT_EVENT_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_unknown_source_contract_event.json"
+)
 TRINO_COMPLETED_EVENT_MISSING_FIELDS_FIXTURE = (
     Path(__file__).parent
     / "fixtures"
     / "engine_facts"
     / "trino_completed_event_missing_fields.json"
+)
+TRINO_QUERY_LIST_CONTRACT_PROBE_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_query_list_contract_probe.json"
 )
 PUBLIC_ENGINE_FACT_KEYS = {
     "identity",
@@ -119,7 +129,10 @@ def trino_golden_cases() -> tuple[EngineFactContractCase, ...]:
         trino_connector_metric_present_fixture_golden_case(),
         trino_connector_metric_absent_fixture_golden_case(),
         trino_completed_event_fixture_golden_case(),
+        trino_resource_group_queued_event_fixture_golden_case(),
+        trino_unknown_source_contract_event_fixture_golden_case(),
         trino_completed_event_missing_fields_fixture_golden_case(),
+        trino_query_list_contract_probe_fixture_golden_case(),
     )
 
 
@@ -758,6 +771,127 @@ def trino_completed_event_fixture_golden_case() -> EngineFactContractCase:
     )
 
 
+def trino_resource_group_queued_event_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_resource_group_queued_event_fixture",
+        bundle=build_trino_event_listener_fixture_engine_facts(
+            _load_trino_fixture(TRINO_RESOURCE_GROUP_QUEUED_EVENT_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        required_fact_states={
+            "elapsed_time_ms": "supported",
+            "queued_time_ms": "supported",
+            "planning_time_ms": "supported",
+            "execution_time_ms": "supported",
+            "input_bytes": "supported",
+            "output_rows": "supported",
+            "spilled_bytes": "not_observed",
+            "connector_metric_signal": "unknown",
+            "resource_group_queue_time_ms": "supported",
+            "stage_count": "supported",
+            "blocked_signal": "not_observed",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="finished",
+        expected_blocked="not_observed",
+        expected_failure="not_observed",
+        required_fact_values={
+            "elapsed_time_ms": 126000,
+            "queued_time_ms": 94000,
+            "resource_group_queue_time_ms": 94000,
+            "spilled_bytes": 0,
+            "stage_count": 2,
+        },
+        forbidden_tokens=(
+            "queryText",
+            "queryId",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "queryCompletedEvent",
+            "metadata",
+            "statistics",
+            "queryText",
+            "queryId",
+        ),
+    )
+
+
+def trino_unknown_source_contract_event_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_unknown_source_contract_event_fixture",
+        bundle=build_trino_event_listener_fixture_engine_facts(
+            _load_trino_fixture(TRINO_UNKNOWN_SOURCE_CONTRACT_EVENT_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="unknown",
+        required_fact_states={
+            "elapsed_time_ms": "unknown",
+            "queued_time_ms": "unknown",
+            "planning_time_ms": "unknown",
+            "execution_time_ms": "unknown",
+            "input_rows": "unknown",
+            "input_bytes": "unknown",
+            "output_rows": "unknown",
+            "output_bytes": "unknown",
+            "peak_memory_bytes": "unknown",
+            "spilled_bytes": "unknown",
+            "connector_metric_signal": "unknown",
+            "resource_group_queue_time_ms": "unknown",
+            "stage_count": "unknown",
+            "completed_split_count": "unknown",
+            "blocked_signal": "unknown",
+            "stage_skew_candidate": "unknown",
+            "source_contract": "unknown",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="unknown",
+        expected_blocked="unknown",
+        expected_failure="unknown",
+        forbidden_tokens=(
+            "queryText",
+            "queryId",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "queryCompletedEvent",
+            "metadata",
+            "statistics",
+            "sourceContractVersion",
+            "unknown_event_contract",
+            "queryText",
+            "queryId",
+        ),
+    )
+
+
 def trino_completed_event_missing_fields_fixture_golden_case() -> EngineFactContractCase:
     return EngineFactContractCase(
         case_id="trino_completed_event_missing_fields_fixture",
@@ -810,6 +944,87 @@ def trino_completed_event_missing_fields_fixture_golden_case() -> EngineFactCont
             "queryCompletedEvent",
             "metadata",
             "statistics",
+            "queryText",
+            "queryId",
+        ),
+    )
+
+
+def trino_query_list_contract_probe_fixture_golden_case() -> EngineFactContractCase:
+    return EngineFactContractCase(
+        case_id="trino_query_list_contract_probe_fixture",
+        bundle=build_trino_query_list_contract_probe_engine_facts(
+            _load_trino_fixture(TRINO_QUERY_LIST_CONTRACT_PROBE_FIXTURE)
+        ),
+        expected_engine="trino",
+        expected_parser_coverage="supported",
+        required_fact_states={
+            "query_list_records_seen": "supported",
+            "query_list_records_summarized": "supported",
+            "query_list_stats_present_count": "supported",
+            "query_list_elapsed_duration_present_count": "supported",
+            "query_list_queued_duration_present_count": "supported",
+            "query_list_planning_duration_present_count": "supported",
+            "query_list_execution_duration_present_count": "supported",
+            "query_list_cpu_duration_present_count": "supported",
+            "query_list_peak_user_memory_present_count": "supported",
+            "query_list_peak_total_memory_present_count": "supported",
+            "query_list_physical_input_size_present_count": "supported",
+            "query_list_processed_input_rows_present_count": "supported",
+            "query_list_spilled_data_size_present_count": "supported",
+            "query_list_output_size_present_count": "supported",
+            "query_list_finished_count": "supported",
+            "query_list_failed_count": "supported",
+            "query_list_user_error_count": "supported",
+            "query_list_external_error_count": "supported",
+            "query_list_fully_blocked_present_count": "supported",
+            "query_list_blocked_reason_count": "supported",
+            "query_list_source_granularity": "unknown",
+            "query_detail_fetch": "not_observed",
+            "statement_execution": "not_observed",
+            "admission_control": "unknown",
+        },
+        expected_lifecycle="unknown",
+        expected_blocked="unknown",
+        expected_failure="unknown",
+        expected_failure_category_state="unknown",
+        required_fact_values={
+            "query_list_records_seen": 12,
+            "query_list_records_summarized": 12,
+            "query_list_finished_count": 9,
+            "query_list_failed_count": 3,
+            "query_list_user_error_count": 2,
+            "query_list_external_error_count": 1,
+            "query_list_blocked_reason_count": 1,
+        },
+        forbidden_tokens=(
+            "queryText",
+            "queryId",
+            "actor_context_values",
+            "client_context_values",
+            "record_markers",
+            "submitted_text",
+            "catalog",
+            "schema",
+            "table",
+            "http://",
+            "https://",
+            "worker",
+            "coordinator",
+            "alice",
+            "bob",
+            "Exception",
+            "/Users/",
+            "query_id",
+            "stageId",
+            "prod",
+        ),
+        forbidden_public_substrings=(
+            "record_summary",
+            "contract_shape",
+            "redaction",
+            "actor_context",
+            "submitted_text",
             "queryText",
             "queryId",
         ),

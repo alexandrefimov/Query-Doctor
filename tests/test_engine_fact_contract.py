@@ -17,6 +17,7 @@ from query_doctor.analyzer.trino_fixture_facts import (
     build_trino_event_listener_fixture_engine_facts,
     build_trino_fixture_engine_facts,
     validate_trino_event_listener_fixture_payload,
+    validate_trino_statement_stats_fixture_payload,
 )
 from query_doctor.engines import UnknownEngineError, get_engine_adapter, list_engine_adapters
 
@@ -50,13 +51,24 @@ CONNECTOR_METRIC_ABSENT_FIXTURE = (
     / "trino_connector_metric_absent_statement_stats.json"
 )
 EVENT_FIXTURE = Path(__file__).parent / "fixtures" / "engine_facts" / "trino_completed_event.json"
+RESOURCE_GROUP_QUEUED_EVENT_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_resource_group_queued_event.json"
+)
+UNKNOWN_SOURCE_CONTRACT_EVENT_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "engine_facts" / "trino_unknown_source_contract_event.json"
+)
 MISSING_EVENT_FIXTURE = (
     Path(__file__).parent
     / "fixtures"
     / "engine_facts"
     / "trino_completed_event_missing_fields.json"
 )
-EVENT_FIXTURES = (EVENT_FIXTURE, MISSING_EVENT_FIXTURE)
+EVENT_FIXTURES = (
+    EVENT_FIXTURE,
+    RESOURCE_GROUP_QUEUED_EVENT_FIXTURE,
+    UNKNOWN_SOURCE_CONTRACT_EVENT_FIXTURE,
+    MISSING_EVENT_FIXTURE,
+)
 TRINO_FIXTURES = (
     FIXTURE,
     FAILED_FIXTURE,
@@ -66,6 +78,8 @@ TRINO_FIXTURES = (
     CONNECTOR_METRIC_PRESENT_FIXTURE,
     CONNECTOR_METRIC_ABSENT_FIXTURE,
     EVENT_FIXTURE,
+    RESOURCE_GROUP_QUEUED_EVENT_FIXTURE,
+    UNKNOWN_SOURCE_CONTRACT_EVENT_FIXTURE,
     MISSING_EVENT_FIXTURE,
 )
 
@@ -201,6 +215,20 @@ def test_trino_failure_category_extra_fields_stay_unknown_and_raw_free():
     assert "redacted_failure" not in public_text
 
 
+def test_trino_failure_category_nested_extra_details_stay_unknown_and_raw_free():
+    payload = _load_fixture(FAILURE_CATEGORY_FIXTURE)
+    payload["statementStats"]["safeFailureSummary"]["safeDetails"] = {
+        "safeFailureClass": "redacted_failure_class",
+    }
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    public_text = public_engine_facts_text(bundle)
+
+    assert bundle.lifecycle.failure_category_state == "unknown"
+    assert bundle.lifecycle.failure_category is None
+    assert "redacted_failure_class" not in public_text
+
+
 def test_trino_failure_category_unknown_category_stays_unknown():
     payload = _load_fixture(FAILURE_CATEGORY_FIXTURE)
     payload["statementStats"]["safeFailureSummary"]["category"] = "raw_exception_class"
@@ -255,6 +283,32 @@ def test_trino_stage_skew_fixture_maps_safe_skew_summary_without_support_claim()
 def test_trino_stage_skew_incomplete_summary_stays_unknown_without_fake_signal():
     payload = _load_fixture(STAGE_SKEW_FIXTURE)
     del payload["statementStats"]["safeStageSkewSummary"]["maxToMedianInputBytesRatio"]
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    fact = bundle.facts_by_id()["stage_skew_candidate"]
+
+    assert fact.state == "unknown"
+    assert fact.value is None
+
+
+def test_trino_stage_skew_extra_summary_fields_stay_unknown_and_raw_free():
+    payload = _load_fixture(STAGE_SKEW_FIXTURE)
+    payload["statementStats"]["safeStageSkewSummary"]["safeDetails"] = {
+        "safeTaskBucket": "redacted_task_bucket",
+    }
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    fact = bundle.facts_by_id()["stage_skew_candidate"]
+    public_text = public_engine_facts_text(bundle)
+
+    assert fact.state == "unknown"
+    assert fact.value is None
+    assert "redacted_task_bucket" not in public_text
+
+
+def test_trino_stage_skew_invalid_sample_count_stays_unknown():
+    payload = _load_fixture(STAGE_SKEW_FIXTURE)
+    payload["statementStats"]["safeStageSkewSummary"]["sampledTaskCount"] = -1
 
     bundle = build_trino_fixture_engine_facts(payload)
     fact = bundle.facts_by_id()["stage_skew_candidate"]
@@ -318,6 +372,53 @@ def test_trino_connector_metric_summary_with_extra_fields_stays_unknown():
     assert "redacted_metric" not in public_engine_facts_text(bundle)
 
 
+def test_trino_connector_metric_nested_extra_details_stay_unknown_and_raw_free():
+    payload = _load_fixture(CONNECTOR_METRIC_PRESENT_FIXTURE)
+    payload["statementStats"]["safeConnectorMetricSummary"]["safeDetails"] = {
+        "safeMetricBucket": "redacted_connector_metric",
+    }
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    fact = bundle.facts_by_id()["connector_metric_signal"]
+    public_text = public_engine_facts_text(bundle)
+
+    assert fact.state == "unknown"
+    assert fact.value is None
+    assert "redacted_connector_metric" not in public_text
+
+
+def test_trino_statement_stats_negative_numeric_fields_stay_unknown():
+    payload = _load_fixture(CONNECTOR_METRIC_PRESENT_FIXTURE)
+    payload["statementStats"]["elapsedTimeMillis"] = -1
+    payload["statementStats"]["processedBytes"] = -10
+    payload["statementStats"]["spilledBytes"] = -5
+    payload["statementStats"]["completedSplits"] = -2
+    payload["statementStats"]["stageCount"] = -3
+
+    bundle = build_trino_fixture_engine_facts(payload)
+    facts = bundle.facts_by_id()
+
+    for fact_id in (
+        "elapsed_time_ms",
+        "input_bytes",
+        "spilled_bytes",
+        "completed_split_count",
+        "stage_count",
+    ):
+        assert facts[fact_id].state == "unknown", fact_id
+        assert facts[fact_id].value is None, fact_id
+
+
+@pytest.mark.parametrize("raw_value", (float("nan"), float("inf"), float("-inf")))
+def test_trino_statement_stats_fixture_rejects_nonfinite_numeric_values_before_mapping(
+    raw_value: float,
+):
+    payload = _statement_payload_with("elapsedTimeMillis", raw_value)
+
+    with pytest.raises(EngineFactContractError, match="must be JSON serializable"):
+        build_trino_fixture_engine_facts(payload)
+
+
 def test_trino_event_fixture_maps_completed_event_without_support_claim():
     bundle = build_trino_event_listener_fixture_engine_facts(_load_fixture(EVENT_FIXTURE))
     facts = bundle.facts_by_id()
@@ -335,6 +436,107 @@ def test_trino_event_fixture_maps_completed_event_without_support_claim():
     assert facts["resource_group_queue_time_ms"].state == "supported"
     assert facts["resource_group_queue_time_ms"].value == 8500
     assert facts["stage_count"].value == 4
+
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
+    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
+        get_engine_adapter("trino")
+
+
+def test_trino_event_fixture_negative_numeric_fields_stay_unknown():
+    payload = _load_fixture(EVENT_FIXTURE)
+    stats = payload["queryCompletedEvent"]["statistics"]
+    stats["elapsedTimeMillis"] = -1
+    stats["processedRows"] = -10
+    stats["spilledBytes"] = -5
+    stats["completedSplits"] = -2
+    stats["stageCount"] = -3
+    payload["queryCompletedEvent"]["resource"]["queueTimeMillis"] = -20
+
+    bundle = build_trino_event_listener_fixture_engine_facts(payload)
+    facts = bundle.facts_by_id()
+
+    for fact_id in (
+        "elapsed_time_ms",
+        "input_rows",
+        "spilled_bytes",
+        "completed_split_count",
+        "stage_count",
+        "resource_group_queue_time_ms",
+    ):
+        assert facts[fact_id].state == "unknown", fact_id
+        assert facts[fact_id].value is None, fact_id
+
+
+@pytest.mark.parametrize("raw_value", (float("nan"), float("inf"), float("-inf")))
+def test_trino_event_fixture_rejects_nonfinite_numeric_values_before_mapping(raw_value: float):
+    payload = _event_payload_with("statistics", "elapsedTimeMillis", raw_value)
+
+    with pytest.raises(EngineFactContractError, match="must be JSON serializable"):
+        build_trino_event_listener_fixture_engine_facts(payload)
+
+
+def test_trino_event_fixture_maps_resource_group_queue_delay_without_support_claim():
+    bundle = build_trino_event_listener_fixture_engine_facts(
+        _load_fixture(RESOURCE_GROUP_QUEUED_EVENT_FIXTURE)
+    )
+    facts = bundle.facts_by_id()
+
+    assert bundle.identity.engine == "trino"
+    assert bundle.identity.source == "trino_event_listener_fixture"
+    assert bundle.lifecycle.lifecycle == "finished"
+    assert bundle.lifecycle.failure == "not_observed"
+    assert bundle.lifecycle.blocked == "not_observed"
+    assert facts["elapsed_time_ms"].value == 126000
+    assert facts["queued_time_ms"].value == 94000
+    assert facts["resource_group_queue_time_ms"].state == "supported"
+    assert facts["resource_group_queue_time_ms"].value == 94000
+    assert facts["resource_group_queue_time_ms"].value > facts["execution_time_ms"].value
+    assert facts["spilled_bytes"].state == "not_observed"
+    assert facts["spilled_bytes"].value == 0
+    assert facts["stage_count"].value == 2
+    assert facts["admission_control"].state == "unknown"
+
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
+    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
+        get_engine_adapter("trino")
+
+
+def test_trino_event_fixture_unknown_source_contract_fails_closed_without_fake_facts():
+    bundle = build_trino_event_listener_fixture_engine_facts(
+        _load_fixture(UNKNOWN_SOURCE_CONTRACT_EVENT_FIXTURE)
+    )
+    facts = bundle.facts_by_id()
+
+    assert bundle.identity.engine == "trino"
+    assert bundle.identity.parser_coverage == "unknown"
+    assert bundle.lifecycle.state == "unknown"
+    assert bundle.lifecycle.lifecycle == "unknown"
+    assert bundle.lifecycle.failure == "unknown"
+    assert bundle.lifecycle.blocked == "unknown"
+    assert facts["source_contract"].state == "unknown"
+    assert facts["source_contract"].summary
+
+    for fact_id in (
+        "elapsed_time_ms",
+        "queued_time_ms",
+        "planning_time_ms",
+        "execution_time_ms",
+        "cpu_time_ms",
+        "wall_time_ms",
+        "input_rows",
+        "input_bytes",
+        "output_rows",
+        "output_bytes",
+        "peak_memory_bytes",
+        "spilled_bytes",
+        "resource_group_queue_time_ms",
+        "stage_count",
+        "completed_split_count",
+        "blocked_signal",
+        "stage_skew_candidate",
+    ):
+        assert facts[fact_id].state == "unknown", fact_id
+        assert facts[fact_id].value is None, fact_id
 
     assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
     with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'trino'"):
@@ -393,6 +595,30 @@ def test_trino_event_fixture_rejects_oversized_payload_before_mapping():
         )
 
 
+def test_trino_statement_stats_fixture_rejects_oversized_payload_before_mapping():
+    payload = _load_fixture(FIXTURE)
+    payload["statementStats"]["safePadding"] = "x" * 1024
+
+    with pytest.raises(EngineFactContractError, match="payload is too large"):
+        validate_trino_statement_stats_fixture_payload(payload, max_json_bytes=256)
+    with pytest.raises(EngineFactContractError, match="payload is too large"):
+        build_trino_fixture_engine_facts(_statement_payload_with("safePadding", "x" * 70_000))
+
+
+def test_trino_event_fixture_rejects_deeply_nested_payload_before_mapping():
+    payload = _event_payload_with("statistics", "safeNested", _nested_fixture_branch(5))
+
+    with pytest.raises(EngineFactContractError, match="too deeply nested"):
+        validate_trino_event_listener_fixture_payload(payload, max_depth=4)
+
+
+def test_trino_statement_stats_fixture_rejects_deeply_nested_payload_before_mapping():
+    payload = _statement_payload_with("safeNested", _nested_fixture_branch(5))
+
+    with pytest.raises(EngineFactContractError, match="too deeply nested"):
+        validate_trino_statement_stats_fixture_payload(payload, max_depth=4)
+
+
 @pytest.mark.parametrize(
     ("section", "field_name", "raw_value", "expected_error"),
     (
@@ -417,6 +643,59 @@ def test_trino_event_fixture_rejects_unsafe_raw_fields_before_mapping(
 
     with pytest.raises(EngineFactContractError, match=expected_error) as excinfo:
         build_trino_event_listener_fixture_engine_facts(payload)
+
+    assert raw_value not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "raw_value", "expected_error"),
+    (
+        (
+            "queryText",
+            "SELECT " + "secret_col FROM sensitive_table",
+            "field: querytext",
+        ),
+        ("queryId", "20260522_120000_00001_abcd1", "field: queryid"),
+        ("host", "worker-a.example.net", "field: host"),
+        ("extraCredentials", "token=" + "secret-value", "field: extracredentials"),
+    ),
+)
+def test_trino_statement_stats_fixture_rejects_unsafe_raw_fields_before_mapping(
+    field_name: str,
+    raw_value: str,
+    expected_error: str,
+):
+    payload = _statement_payload_with(field_name, raw_value)
+
+    with pytest.raises(EngineFactContractError, match=expected_error) as excinfo:
+        build_trino_fixture_engine_facts(payload)
+
+    assert raw_value not in str(excinfo.value)
+
+
+def test_trino_event_fixture_rejects_nested_unsafe_raw_fields_before_mapping():
+    raw_value = "SELECT " + "secret_col FROM sensitive_table"
+    payload = _event_payload_with(
+        "statistics",
+        "safeNested",
+        [{"safeWrapper": {"queryText": raw_value}}],
+    )
+
+    with pytest.raises(EngineFactContractError, match="field: querytext") as excinfo:
+        build_trino_event_listener_fixture_engine_facts(payload)
+
+    assert raw_value not in str(excinfo.value)
+
+
+def test_trino_statement_stats_fixture_rejects_nested_unsafe_raw_fields_before_mapping():
+    raw_value = "token=" + "secret-value"
+    payload = _statement_payload_with(
+        "safeNested",
+        [{"safeWrapper": {"extraCredentials": raw_value}}],
+    )
+
+    with pytest.raises(EngineFactContractError, match="field: extracredentials") as excinfo:
+        build_trino_fixture_engine_facts(payload)
 
     assert raw_value not in str(excinfo.value)
 
@@ -451,6 +730,62 @@ def test_trino_event_fixture_rejects_unsafe_text_values_before_mapping(
         build_trino_event_listener_fixture_engine_facts(payload)
 
     assert raw_value not in str(excinfo.value)
+
+
+def test_trino_event_fixture_rejects_unsafe_text_inside_lists_before_mapping():
+    raw_value = "https://" + "worker-a.example.net/query"
+    payload = _event_payload_with("statistics", "safeNested", [{"safeValues": [raw_value]}])
+
+    with pytest.raises(EngineFactContractError, match="text: hostname|url") as excinfo:
+        build_trino_event_listener_fixture_engine_facts(payload)
+
+    assert raw_value not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "raw_value", "expected_error"),
+    (
+        (
+            "safeBucket",
+            "SELECT " + "secret_col FROM sensitive_table",
+            "text: sql",
+        ),
+        (
+            "safeBucket",
+            "https://" + "worker-a.example.net/query",
+            "text: hostname|url",
+        ),
+        ("safeBucket", "/" + "Users/alice/query.json", "text: local_path"),
+    ),
+)
+def test_trino_statement_stats_fixture_rejects_unsafe_text_values_before_mapping(
+    field_name: str,
+    raw_value: str,
+    expected_error: str,
+):
+    payload = _statement_payload_with(field_name, raw_value)
+
+    with pytest.raises(EngineFactContractError, match=expected_error) as excinfo:
+        build_trino_fixture_engine_facts(payload)
+
+    assert raw_value not in str(excinfo.value)
+
+
+def test_trino_statement_stats_fixture_rejects_unsafe_text_inside_lists_before_mapping():
+    raw_value = "/" + "Users/alice/query.json"
+    payload = _statement_payload_with("safeNested", [{"safeValues": [raw_value]}])
+
+    with pytest.raises(EngineFactContractError, match="text: local_path") as excinfo:
+        build_trino_fixture_engine_facts(payload)
+
+    assert raw_value not in str(excinfo.value)
+
+
+def test_trino_statement_stats_fixture_rejects_non_json_values_before_mapping():
+    payload = _statement_payload_with("safeBucket", object())
+
+    with pytest.raises(EngineFactContractError, match="must be JSON serializable"):
+        build_trino_fixture_engine_facts(payload)
 
 
 def test_engine_fact_contract_requires_explicit_unknowns_without_values():
@@ -530,6 +865,19 @@ def _event_payload_with(section: str, field_name: str, value: object) -> dict:
     payload = _load_fixture(EVENT_FIXTURE)
     payload["queryCompletedEvent"][section][field_name] = value
     return payload
+
+
+def _statement_payload_with(field_name: str, value: object) -> dict:
+    payload = _load_fixture(FIXTURE)
+    payload["statementStats"][field_name] = value
+    return payload
+
+
+def _nested_fixture_branch(depth: int) -> dict:
+    branch: object = {"safeLeaf": "safe"}
+    for index in range(depth):
+        branch = {"safeLevel": index, "safeChild": [branch]}
+    return {"safeRoot": branch}
 
 
 def _build_trino_bundle_for_fixture(path: Path, payload: dict) -> EngineFactBundle:

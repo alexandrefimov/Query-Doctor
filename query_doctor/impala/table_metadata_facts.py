@@ -404,24 +404,36 @@ def is_unknown_marker(value: Any) -> bool:
 
 def parse_show_create(text: str) -> dict[str, Any]:
     facts: dict[str, Any] = {}
-    if re.search(r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", text, re.I | re.M):
+    ddl_text = show_create_body(text)
+    if re.search(r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", ddl_text, re.I | re.M):
         facts["object_type"] = "view"
-    elif re.search(r"^\s*CREATE\s+(?:EXTERNAL\s+)?TABLE\b", text, re.I | re.M):
+    elif re.search(r"^\s*CREATE\s+(?:EXTERNAL\s+)?TABLE\b", ddl_text, re.I | re.M):
         facts["object_type"] = "table"
 
-    format_match = re.search(r"\bSTORED\s+AS\s+([A-Za-z0-9_]+)", text, re.I)
+    format_match = re.search(r"\bSTORED\s+AS\s+([A-Za-z0-9_]+)", ddl_text, re.I)
     if format_match:
         facts["file_format"] = format_match.group(1).upper()
 
-    location_scheme = parse_location_scheme(text)
+    location_scheme = parse_location_scheme(ddl_text)
     if location_scheme:
         facts["storage_scheme"] = location_scheme
         facts["storage_family"] = storage_family_for_scheme(location_scheme)
 
-    partition_match = re.search(r"\bPARTITIONED\s+BY\s*\((?P<body>.*?)\)", text, re.I | re.S)
+    partition_match = re.search(r"\bPARTITIONED\s+BY\s*\((?P<body>.*?)\)", ddl_text, re.I | re.S)
     if partition_match:
         facts["partition_columns"] = parse_column_names(partition_match.group("body"))
     return facts
+
+
+def show_create_body(text: str) -> str:
+    headers, rows = parse_pipe_table(text)
+    if not headers or not rows:
+        return text
+    cells = [cell.strip() for row in rows for cell in row if cell.strip()]
+    if not cells:
+        return text
+    joined = "\n".join(cells)
+    return joined if re.search(r"\bCREATE\b", joined, re.I) else text
 
 
 def parse_location_scheme(text: str) -> str | None:

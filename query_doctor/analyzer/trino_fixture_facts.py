@@ -8,6 +8,7 @@ without live collection, SQL execution, UI output, or report output.
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -25,6 +26,12 @@ from query_doctor.safety import redaction
 
 TRINO_FIXTURE_SOURCE = "trino_statement_stats_fixture"
 TRINO_EVENT_LISTENER_FIXTURE_SOURCE = "trino_event_listener_fixture"
+TRINO_QUERY_LIST_CONTRACT_PROBE_SOURCE = "trino_query_list_contract_probe_fixture"
+TRINO_EVENT_ACCEPTED_SOURCE_CONTRACT_VERSIONS = frozenset(
+    {
+        "synthetic_trino_event_listener_v1",
+    }
+)
 TRINO_FAILURE_CATEGORIES = frozenset(
     {
         "access_control",
@@ -37,6 +44,120 @@ TRINO_FAILURE_CATEGORIES = frozenset(
 )
 TRINO_EVENT_FIXTURE_MAX_JSON_BYTES = 64 * 1024
 TRINO_EVENT_FIXTURE_MAX_DEPTH = 16
+TRINO_STATEMENT_FIXTURE_MAX_JSON_BYTES = 64 * 1024
+TRINO_STATEMENT_FIXTURE_MAX_DEPTH = 16
+TRINO_QUERY_LIST_FIXTURE_MAX_JSON_BYTES = 64 * 1024
+TRINO_QUERY_LIST_FIXTURE_MAX_DEPTH = 16
+TRINO_QUERY_LIST_SUMMARY_KIND = "trino_query_list_contract_probe_v1"
+TRINO_QUERY_LIST_REQUIRED_TOP_LEVEL_GROUPS = frozenset(
+    {
+        "actor_context",
+        "client_context",
+        "failure_category",
+        "failure_detail",
+        "object_context",
+        "protocol_pointer",
+        "record_marker",
+        "runtime_stats_block",
+        "submitted_text",
+    }
+)
+TRINO_QUERY_LIST_REQUIRED_STATS_GROUPS = frozenset(
+    {
+        "analysis_duration",
+        "blocked_reason_list",
+        "completed_splits",
+        "cpu_duration",
+        "elapsed_duration",
+        "execution_duration",
+        "fully_blocked",
+        "output_rows",
+        "output_size",
+        "peak_total_memory",
+        "peak_user_memory",
+        "physical_input_rows",
+        "physical_input_size",
+        "planning_duration",
+        "processed_input_rows",
+        "processed_input_size",
+        "progress_percent",
+        "queued_duration",
+        "queued_splits",
+        "running_splits",
+        "scheduled_duration",
+        "spilled_data_size",
+        "written_output_rows",
+        "written_output_size",
+    }
+)
+TRINO_QUERY_LIST_REQUIRED_REDACTION_FIELDS = frozenset(
+    {
+        "actor_context_values",
+        "client_context_values",
+        "failure_detail_values",
+        "location_values",
+        "object_context_values",
+        "raw_payload",
+        "record_markers",
+        "submitted_text",
+    }
+)
+TRINO_QUERY_LIST_REQUIRED_LIMITATIONS = frozenset(
+    {
+        "readonly_list_endpoint_only",
+        "no_statement_submission",
+        "no_detail_fetch",
+        "aggregate_shape_probe_only",
+        "not_query_doctor_trino_product_support",
+    }
+)
+TRINO_QUERY_LIST_STATES = frozenset(
+    {
+        "QUEUED",
+        "PLANNING",
+        "STARTING",
+        "RUNNING",
+        "FINISHING",
+        "FINISHED",
+        "FAILED",
+    }
+)
+TRINO_QUERY_LIST_FAILURE_TYPES = frozenset(
+    {
+        "USER_ERROR",
+        "INTERNAL_ERROR",
+        "INSUFFICIENT_RESOURCES",
+        "EXTERNAL",
+    }
+)
+TRINO_QUERY_LIST_DURATION_BUCKETS = frozenset(
+    {
+        "unknown",
+        "under_1s",
+        "1s_to_10s",
+        "10s_to_1m",
+        "1m_to_10m",
+        "over_10m",
+    }
+)
+TRINO_QUERY_LIST_SIZE_BUCKETS = frozenset(
+    {
+        "unknown",
+        "under_1mb",
+        "1mb_to_1gb",
+        "1gb_to_100gb",
+        "over_100gb",
+    }
+)
+TRINO_QUERY_LIST_BLOCKED_REASONS = frozenset(
+    {
+        "WAITING_FOR_MEMORY",
+        "SPLIT_QUEUES_FULL",
+        "MIXED_SPLIT_QUEUES_FULL_AND_WAITING_FOR_MEMORY",
+        "WAITING_FOR_SOURCE",
+        "NO_ACTIVE_DRIVER_GROUP",
+    }
+)
 TRINO_EVENT_FORBIDDEN_FIELD_NAMES = frozenset(
     {
         "catalog",
@@ -86,6 +207,34 @@ TRINO_EVENT_FORBIDDEN_FIELD_NAMES = frozenset(
         "warnings",
     }
 )
+
+
+def validate_trino_safe_fixture_json_size(
+    payload: Mapping[str, Any],
+    *,
+    max_json_bytes: int,
+    payload_label: str,
+) -> None:
+    _validate_fixture_json_size(
+        payload,
+        max_json_bytes=max_json_bytes,
+        payload_label=payload_label,
+    )
+
+
+def validate_trino_safe_fixture_tree(
+    value: Any,
+    *,
+    max_depth: int,
+    fixture_label: str,
+) -> None:
+    _validate_trino_fixture_tree(
+        value,
+        max_depth=max_depth,
+        fixture_label=fixture_label,
+    )
+
+
 LOCAL_PATH_RE = re.compile(
     r"(?<![\w/])(?:/private)?/(?:Users|home|tmp|var|etc)/[^\s<>'\"]+"
     r"|(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+"
@@ -99,6 +248,7 @@ SQL_SNIPPET_RE = re.compile(
 
 
 def build_trino_fixture_engine_facts(payload: Mapping[str, Any]) -> EngineFactBundle:
+    validate_trino_statement_stats_fixture_payload(payload)
     stats = _mapping(payload.get("statementStats"))
     fixture_version = _text_or_none(payload.get("fixtureVersion"))
 
@@ -144,6 +294,8 @@ def build_trino_event_listener_fixture_engine_facts(payload: Mapping[str, Any]) 
     stats = _mapping(event.get("statistics"))
     resource = _mapping(event.get("resource"))
     fixture_version = _text_or_none(payload.get("fixtureVersion"))
+    if _event_source_contract_unsupported(payload):
+        return _unknown_event_source_contract_bundle(fixture_version)
 
     return EngineFactBundle(
         identity=EngineIdentityFacts(
@@ -181,6 +333,176 @@ def build_trino_event_listener_fixture_engine_facts(payload: Mapping[str, Any]) 
     )
 
 
+def build_trino_query_list_contract_probe_engine_facts(
+    payload: Mapping[str, Any],
+) -> EngineFactBundle:
+    validate_trino_query_list_contract_probe_payload(payload)
+    fixture_version = _text_or_none(payload.get("fixtureVersion"))
+    bounds = _mapping(payload.get("bounds"))
+    record_summary = _mapping(payload.get("record_summary"))
+    contract_shape = _mapping(payload.get("contract_shape"))
+    stats_presence = _counter_mapping(
+        _mapping(contract_shape.get("stats_group_presence")),
+        field_name="stats_group_presence",
+        allowed_keys=TRINO_QUERY_LIST_REQUIRED_STATS_GROUPS,
+        exact_keys=TRINO_QUERY_LIST_REQUIRED_STATS_GROUPS,
+    )
+    state_counts = _counter_mapping(
+        _mapping(record_summary.get("state_counts")),
+        field_name="state_counts",
+        allowed_keys=TRINO_QUERY_LIST_STATES,
+    )
+    failure_counts = _counter_mapping(
+        _mapping(record_summary.get("failure_type_counts")),
+        field_name="failure_type_counts",
+        allowed_keys=TRINO_QUERY_LIST_FAILURE_TYPES,
+    )
+    blocked_reason_counts = _counter_mapping(
+        _mapping(record_summary.get("blocked_reason_counts")),
+        field_name="blocked_reason_counts",
+        allowed_keys=TRINO_QUERY_LIST_BLOCKED_REASONS,
+    )
+    stats_block = _counter_mapping(
+        _mapping(record_summary.get("stats_block")),
+        field_name="stats_block",
+        allowed_keys=frozenset({"present", "missing"}),
+        exact_keys=frozenset({"present", "missing"}),
+    )
+
+    return EngineFactBundle(
+        identity=EngineIdentityFacts(
+            engine="trino",
+            source=TRINO_QUERY_LIST_CONTRACT_PROBE_SOURCE,
+            source_version=fixture_version,
+            parser_coverage="supported",
+        ),
+        lifecycle=QueryLifecycleFacts(
+            state="unknown",
+            lifecycle="unknown",
+            blocked="unknown",
+            failure="unknown",
+            failure_category_state="unknown",
+        ),
+        timing=(
+            _count_fact("query_list_records_seen", bounds.get("records_seen"), unit="queries"),
+            _count_fact(
+                "query_list_records_summarized",
+                bounds.get("records_summarized"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_stats_present_count",
+                stats_block.get("present"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_elapsed_duration_present_count",
+                stats_presence.get("elapsed_duration"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_queued_duration_present_count",
+                stats_presence.get("queued_duration"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_planning_duration_present_count",
+                stats_presence.get("planning_duration"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_execution_duration_present_count",
+                stats_presence.get("execution_duration"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_cpu_duration_present_count",
+                stats_presence.get("cpu_duration"),
+                unit="queries",
+            ),
+        ),
+        resources=(
+            _count_fact(
+                "query_list_peak_user_memory_present_count",
+                stats_presence.get("peak_user_memory"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_peak_total_memory_present_count",
+                stats_presence.get("peak_total_memory"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_physical_input_size_present_count",
+                stats_presence.get("physical_input_size"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_processed_input_rows_present_count",
+                stats_presence.get("processed_input_rows"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_spilled_data_size_present_count",
+                stats_presence.get("spilled_data_size"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_output_size_present_count",
+                stats_presence.get("output_size"),
+                unit="queries",
+            ),
+        ),
+        stages=(
+            _count_fact(
+                "query_list_finished_count", state_counts.get("FINISHED", 0), unit="queries"
+            ),
+            _count_fact("query_list_failed_count", state_counts.get("FAILED", 0), unit="queries"),
+            _count_fact(
+                "query_list_user_error_count",
+                failure_counts.get("USER_ERROR", 0),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_external_error_count",
+                failure_counts.get("EXTERNAL", 0),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_fully_blocked_present_count",
+                stats_presence.get("fully_blocked"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_blocked_reason_count",
+                sum(blocked_reason_counts.values()),
+                unit="reasons",
+            ),
+        ),
+        limitations=(
+            *_trino_fixture_limitations(),
+            LimitationFact(
+                fact_id="query_list_source_granularity",
+                state="unknown",
+                summary=(
+                    "Trino query-list contract probe is an aggregate source, "
+                    "not one selected query diagnosis."
+                ),
+            ),
+            LimitationFact(
+                fact_id="query_detail_fetch",
+                state="not_observed",
+                summary="Trino query-list contract probe did not fetch query-detail payloads.",
+            ),
+            LimitationFact(
+                fact_id="statement_execution",
+                state="not_observed",
+                summary="Trino query-list contract probe did not submit SQL statements.",
+            ),
+        ),
+    )
+
+
 def validate_trino_event_listener_fixture_payload(
     payload: Mapping[str, Any],
     *,
@@ -190,21 +512,11 @@ def validate_trino_event_listener_fixture_payload(
     if not isinstance(payload, Mapping):
         raise EngineFactContractError("Trino event fixture payload must be a JSON object")
 
-    try:
-        size_bytes = len(
-            json.dumps(
-                payload,
-                ensure_ascii=True,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        )
-    except TypeError as exc:
-        raise EngineFactContractError(
-            "Trino event fixture payload must be JSON serializable"
-        ) from exc
-    if size_bytes > max_json_bytes:
-        raise EngineFactContractError("Trino event fixture payload is too large")
+    validate_trino_safe_fixture_json_size(
+        payload,
+        max_json_bytes=max_json_bytes,
+        payload_label="Trino event fixture payload",
+    )
 
     event = payload.get("queryCompletedEvent")
     if not isinstance(event, Mapping):
@@ -212,7 +524,168 @@ def validate_trino_event_listener_fixture_payload(
     if not isinstance(event.get("statistics"), Mapping):
         raise EngineFactContractError("Trino event fixture payload missing statistics")
 
-    _validate_event_fixture_tree(payload, max_depth=max_depth)
+    validate_trino_safe_fixture_tree(payload, max_depth=max_depth, fixture_label="event fixture")
+
+
+def validate_trino_statement_stats_fixture_payload(
+    payload: Mapping[str, Any],
+    *,
+    max_json_bytes: int = TRINO_STATEMENT_FIXTURE_MAX_JSON_BYTES,
+    max_depth: int = TRINO_STATEMENT_FIXTURE_MAX_DEPTH,
+) -> None:
+    if not isinstance(payload, Mapping):
+        raise EngineFactContractError("Trino statement stats fixture payload must be a JSON object")
+
+    validate_trino_safe_fixture_json_size(
+        payload,
+        max_json_bytes=max_json_bytes,
+        payload_label="Trino statement stats fixture payload",
+    )
+
+    if not isinstance(payload.get("statementStats"), Mapping):
+        raise EngineFactContractError(
+            "Trino statement stats fixture payload missing statementStats"
+        )
+
+    validate_trino_safe_fixture_tree(
+        payload,
+        max_depth=max_depth,
+        fixture_label="statement stats fixture",
+    )
+
+
+def validate_trino_query_list_contract_probe_payload(
+    payload: Mapping[str, Any],
+    *,
+    max_json_bytes: int = TRINO_QUERY_LIST_FIXTURE_MAX_JSON_BYTES,
+    max_depth: int = TRINO_QUERY_LIST_FIXTURE_MAX_DEPTH,
+) -> None:
+    if not isinstance(payload, Mapping):
+        raise EngineFactContractError("Trino query-list fixture payload must be a JSON object")
+
+    validate_trino_safe_fixture_json_size(
+        payload,
+        max_json_bytes=max_json_bytes,
+        payload_label="Trino query-list fixture payload",
+    )
+    validate_trino_safe_fixture_tree(
+        payload,
+        max_depth=max_depth,
+        fixture_label="query-list fixture",
+    )
+
+    if _text_or_none(payload.get("summary_kind")) != TRINO_QUERY_LIST_SUMMARY_KIND:
+        raise EngineFactContractError("Trino query-list fixture summary kind is unsupported")
+
+    bounds = _mapping_required(payload, "bounds", payload_label="query-list fixture")
+    records_seen = _non_negative_int_value(bounds.get("records_seen"), "records_seen")
+    records_summarized = _non_negative_int_value(
+        bounds.get("records_summarized"),
+        "records_summarized",
+    )
+    _non_negative_int_value(bounds.get("response_bytes"), "response_bytes")
+    max_records = _non_negative_int_value(bounds.get("max_records"), "max_records")
+    _non_negative_int_value(bounds.get("max_bytes"), "max_bytes")
+    if records_summarized > records_seen or records_summarized > max_records:
+        raise EngineFactContractError("Trino query-list fixture bounds are inconsistent")
+
+    record_summary = _mapping_required(
+        payload,
+        "record_summary",
+        payload_label="query-list fixture",
+    )
+    state_counts = _counter_mapping(
+        _mapping_required(record_summary, "state_counts", payload_label="record_summary"),
+        field_name="state_counts",
+        allowed_keys=TRINO_QUERY_LIST_STATES,
+    )
+    failure_counts = _counter_mapping(
+        _mapping_required(record_summary, "failure_type_counts", payload_label="record_summary"),
+        field_name="failure_type_counts",
+        allowed_keys=TRINO_QUERY_LIST_FAILURE_TYPES,
+    )
+    _counter_mapping(
+        _mapping_required(record_summary, "blocked_reason_counts", payload_label="record_summary"),
+        field_name="blocked_reason_counts",
+        allowed_keys=TRINO_QUERY_LIST_BLOCKED_REASONS,
+    )
+    _counter_mapping(
+        _mapping_required(
+            record_summary, "elapsed_duration_buckets", payload_label="record_summary"
+        ),
+        field_name="elapsed_duration_buckets",
+        allowed_keys=TRINO_QUERY_LIST_DURATION_BUCKETS,
+    )
+    _counter_mapping(
+        _mapping_required(
+            record_summary, "queued_duration_buckets", payload_label="record_summary"
+        ),
+        field_name="queued_duration_buckets",
+        allowed_keys=TRINO_QUERY_LIST_DURATION_BUCKETS,
+    )
+    _counter_mapping(
+        _mapping_required(
+            record_summary, "peak_user_memory_buckets", payload_label="record_summary"
+        ),
+        field_name="peak_user_memory_buckets",
+        allowed_keys=TRINO_QUERY_LIST_SIZE_BUCKETS,
+    )
+    _counter_mapping(
+        _mapping_required(
+            record_summary, "processed_input_buckets", payload_label="record_summary"
+        ),
+        field_name="processed_input_buckets",
+        allowed_keys=TRINO_QUERY_LIST_SIZE_BUCKETS,
+    )
+    stats_block = _counter_mapping(
+        _mapping_required(record_summary, "stats_block", payload_label="record_summary"),
+        field_name="stats_block",
+        allowed_keys=frozenset({"present", "missing"}),
+        exact_keys=frozenset({"present", "missing"}),
+    )
+    if sum(state_counts.values()) != records_summarized:
+        raise EngineFactContractError("Trino query-list fixture state counts mismatch")
+    if sum(failure_counts.values()) > state_counts.get("FAILED", 0):
+        raise EngineFactContractError("Trino query-list fixture failure counts mismatch")
+    if stats_block["present"] + stats_block["missing"] != records_summarized:
+        raise EngineFactContractError("Trino query-list fixture stats count mismatch")
+
+    contract_shape = _mapping_required(
+        payload,
+        "contract_shape",
+        payload_label="query-list fixture",
+    )
+    _bounded_presence_mapping(
+        _mapping_required(
+            contract_shape, "top_level_group_presence", payload_label="contract_shape"
+        ),
+        field_name="top_level_group_presence",
+        exact_keys=TRINO_QUERY_LIST_REQUIRED_TOP_LEVEL_GROUPS,
+        max_value=records_summarized,
+    )
+    _bounded_presence_mapping(
+        _mapping_required(contract_shape, "stats_group_presence", payload_label="contract_shape"),
+        field_name="stats_group_presence",
+        exact_keys=TRINO_QUERY_LIST_REQUIRED_STATS_GROUPS,
+        max_value=records_summarized,
+    )
+
+    redaction = _mapping_required(payload, "redaction", payload_label="query-list fixture")
+    if set(redaction) != TRINO_QUERY_LIST_REQUIRED_REDACTION_FIELDS:
+        raise EngineFactContractError("Trino query-list fixture redaction fields are incomplete")
+    for value in redaction.values():
+        if value != "not_written":
+            raise EngineFactContractError("Trino query-list fixture redaction assertion failed")
+
+    limitations = payload.get("limitations")
+    if not isinstance(limitations, list):
+        raise EngineFactContractError("Trino query-list fixture limitations must be a list")
+    limitation_labels = set()
+    for value in limitations:
+        label = _safe_summary_label(value, field_name="limitation")
+        limitation_labels.add(label)
+    if not TRINO_QUERY_LIST_REQUIRED_LIMITATIONS.issubset(limitation_labels):
+        raise EngineFactContractError("Trino query-list fixture limitations are incomplete")
 
 
 def _build_lifecycle(stats: Mapping[str, Any]) -> QueryLifecycleFacts:
@@ -370,7 +843,13 @@ def _stage_skew_candidate_fact(stats: Mapping[str, Any]) -> MetricFact:
     checked = summary.get("checked")
     candidate = summary.get("candidate")
     ratio = _number_or_none(summary.get("maxToMedianInputBytesRatio"))
-    if checked is not True or not isinstance(candidate, bool):
+    sampled_task_count = _number_or_none(summary.get("sampledTaskCount"))
+    if (
+        set(summary) - {"checked", "candidate", "maxToMedianInputBytesRatio", "sampledTaskCount"}
+        or checked is not True
+        or not isinstance(candidate, bool)
+        or ("sampledTaskCount" in summary and sampled_task_count is None)
+    ):
         return MetricFact(
             fact_id="stage_skew_candidate",
             state="unknown",
@@ -460,6 +939,57 @@ def _resource_group_queue_time_fact(resource: Mapping[str, Any]) -> MetricFact:
     )
 
 
+def _event_source_contract_unsupported(payload: Mapping[str, Any]) -> bool:
+    if "sourceContractVersion" not in payload:
+        return False
+    version = _text_or_none(payload.get("sourceContractVersion"))
+    return version not in TRINO_EVENT_ACCEPTED_SOURCE_CONTRACT_VERSIONS
+
+
+def _unknown_event_source_contract_bundle(fixture_version: str | None) -> EngineFactBundle:
+    return EngineFactBundle(
+        identity=EngineIdentityFacts(
+            engine="trino",
+            source=TRINO_EVENT_LISTENER_FIXTURE_SOURCE,
+            source_version=fixture_version,
+            parser_coverage="unknown",
+        ),
+        lifecycle=_build_lifecycle({}),
+        timing=(
+            _millis_fact("elapsed_time_ms", None),
+            _millis_fact("queued_time_ms", None),
+            _millis_fact("planning_time_ms", None),
+            _millis_fact("execution_time_ms", None),
+            _millis_fact("cpu_time_ms", None),
+            _millis_fact("wall_time_ms", None),
+            _resource_group_queue_time_fact({}),
+        ),
+        resources=(
+            _count_fact("input_rows", None, unit="rows"),
+            _count_fact("input_bytes", None, unit="bytes"),
+            _count_fact("output_rows", None, unit="rows"),
+            _count_fact("output_bytes", None, unit="bytes"),
+            _count_fact("peak_memory_bytes", None, unit="bytes"),
+            _spilled_bytes_fact(None),
+            _connector_metric_signal_fact({}),
+        ),
+        stages=(
+            _stage_count_fact({}),
+            _count_fact("completed_split_count", None, unit="splits"),
+            _blocked_signal_fact({}),
+            _stage_skew_candidate_fact({}),
+        ),
+        limitations=(
+            *_trino_fixture_limitations(),
+            LimitationFact(
+                fact_id="source_contract",
+                state="unknown",
+                summary="Trino event fixture source contract version is unknown or unsupported.",
+            ),
+        ),
+    )
+
+
 def _count_stages(stage: Mapping[str, Any]) -> int:
     children = stage.get("subStages")
     if not isinstance(children, list):
@@ -492,50 +1022,85 @@ def _trino_fixture_limitations() -> tuple[LimitationFact, ...]:
     )
 
 
-def _validate_event_fixture_tree(
+def _validate_fixture_json_size(
+    payload: Mapping[str, Any],
+    *,
+    max_json_bytes: int,
+    payload_label: str,
+) -> None:
+    try:
+        size_bytes = len(
+            json.dumps(
+                payload,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        )
+    except (TypeError, ValueError) as exc:
+        raise EngineFactContractError(f"{payload_label} must be JSON serializable") from exc
+    if size_bytes > max_json_bytes:
+        raise EngineFactContractError(f"{payload_label} is too large")
+
+
+def _validate_trino_fixture_tree(
     value: Any,
     *,
     max_depth: int,
+    fixture_label: str,
     depth: int = 0,
 ) -> None:
     if depth > max_depth:
-        raise EngineFactContractError("Trino event fixture payload is too deeply nested")
+        raise EngineFactContractError(f"Trino {fixture_label} payload is too deeply nested")
     if isinstance(value, Mapping):
         for raw_key, nested in value.items():
             if not isinstance(raw_key, str):
-                raise EngineFactContractError("Trino event fixture field name must be text")
+                raise EngineFactContractError(f"Trino {fixture_label} field name must be text")
             normalized_key = _normalize_field_name(raw_key)
             if normalized_key in TRINO_EVENT_FORBIDDEN_FIELD_NAMES:
-                raise EngineFactContractError(f"unsafe Trino event fixture field: {normalized_key}")
-            _validate_event_fixture_tree(nested, max_depth=max_depth, depth=depth + 1)
+                raise EngineFactContractError(
+                    f"unsafe Trino {fixture_label} field: {normalized_key}"
+                )
+            _validate_trino_fixture_tree(
+                nested,
+                max_depth=max_depth,
+                fixture_label=fixture_label,
+                depth=depth + 1,
+            )
         return
     if isinstance(value, list):
         for nested in value:
-            _validate_event_fixture_tree(nested, max_depth=max_depth, depth=depth + 1)
+            _validate_trino_fixture_tree(
+                nested,
+                max_depth=max_depth,
+                fixture_label=fixture_label,
+                depth=depth + 1,
+            )
         return
     if isinstance(value, str):
-        _validate_event_fixture_text(value)
+        _validate_trino_fixture_text(value, fixture_label=fixture_label)
         return
     if value is None or isinstance(value, (bool, float, int)):
         return
-    raise EngineFactContractError("Trino event fixture payload contains non-JSON value")
+    raise EngineFactContractError(f"Trino {fixture_label} payload contains non-JSON value")
 
 
-def _validate_event_fixture_text(value: str) -> None:
+def _validate_trino_fixture_text(value: str, *, fixture_label: str) -> None:
     if redaction.EMAIL_RE.search(value):
-        raise EngineFactContractError("unsafe Trino event fixture text: email")
+        raise EngineFactContractError(f"unsafe Trino {fixture_label} text: email")
     if redaction.IPV4_RE.search(value):
-        raise EngineFactContractError("unsafe Trino event fixture text: ipv4")
+        raise EngineFactContractError(f"unsafe Trino {fixture_label} text: ipv4")
     if redaction.HOSTLIKE_FQDN_RE.search(value):
-        raise EngineFactContractError("unsafe Trino event fixture text: hostname")
+        raise EngineFactContractError(f"unsafe Trino {fixture_label} text: hostname")
     if URL_RE.search(value):
-        raise EngineFactContractError("unsafe Trino event fixture text: url")
+        raise EngineFactContractError(f"unsafe Trino {fixture_label} text: url")
     if LOCAL_PATH_RE.search(value):
-        raise EngineFactContractError("unsafe Trino event fixture text: local_path")
+        raise EngineFactContractError(f"unsafe Trino {fixture_label} text: local_path")
     if redaction.SECRET_VALUE_RE.search(value):
-        raise EngineFactContractError("unsafe Trino event fixture text: secret")
+        raise EngineFactContractError(f"unsafe Trino {fixture_label} text: secret")
     if SQL_SNIPPET_RE.search(value):
-        raise EngineFactContractError("unsafe Trino event fixture text: sql")
+        raise EngineFactContractError(f"unsafe Trino {fixture_label} text: sql")
 
 
 def _normalize_field_name(value: str) -> str:
@@ -546,11 +1111,76 @@ def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _mapping_required(
+    payload: Mapping[str, Any],
+    field_name: str,
+    *,
+    payload_label: str,
+) -> Mapping[str, Any]:
+    value = payload.get(field_name)
+    if not isinstance(value, Mapping):
+        raise EngineFactContractError(f"Trino {payload_label} missing {field_name}")
+    return value
+
+
+def _counter_mapping(
+    value: Mapping[str, Any],
+    *,
+    field_name: str,
+    allowed_keys: frozenset[str],
+    exact_keys: frozenset[str] | None = None,
+) -> dict[str, int]:
+    if exact_keys is not None and set(value) != exact_keys:
+        raise EngineFactContractError(f"Trino query-list fixture {field_name} keys mismatch")
+    counters: dict[str, int] = {}
+    for key, raw_count in value.items():
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_]*", key):
+            raise EngineFactContractError(f"Trino query-list fixture {field_name} key is not safe")
+        if key not in allowed_keys:
+            raise EngineFactContractError(
+                f"Trino query-list fixture {field_name} key is unsupported"
+            )
+        counters[key] = _non_negative_int_value(raw_count, field_name)
+    return counters
+
+
+def _bounded_presence_mapping(
+    value: Mapping[str, Any],
+    *,
+    field_name: str,
+    exact_keys: frozenset[str],
+    max_value: int,
+) -> dict[str, int]:
+    counters = _counter_mapping(
+        value,
+        field_name=field_name,
+        allowed_keys=exact_keys,
+        exact_keys=exact_keys,
+    )
+    if any(count > max_value for count in counters.values()):
+        raise EngineFactContractError(f"Trino query-list fixture {field_name} exceeds records")
+    return counters
+
+
+def _non_negative_int_value(value: Any, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise EngineFactContractError(f"Trino query-list fixture {field_name} must be a count")
+    return value
+
+
+def _safe_summary_label(value: Any, *, field_name: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", value):
+        raise EngineFactContractError(f"Trino query-list fixture {field_name} is not safe")
+    return value
+
+
 def _number_or_none(value: Any) -> float | int | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, (float, int)):
-        return value
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        return value if value >= 0 else None
     return None
 
 

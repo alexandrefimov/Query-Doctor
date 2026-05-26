@@ -1,0 +1,29 @@
+{
+  "fixtureVersion": "synthetic-trino-event-listener-unknown-version-v1",
+  "sourceContractVersion": "unknown_event_contract",
+  "queryCompletedEvent": {
+    "metadata": {
+      "queryState": "FINISHED"
+    },
+    "statistics": {
+      "elapsedTimeMillis": 144000,
+      "queuedTimeMillis": 1200,
+      "planningTimeMillis": 4100,
+      "executionTimeMillis": 138700,
+      "cpuTimeMillis": 83000,
+      "wallTimeMillis": 142000,
+      "processedRows": 8800000,
+      "processedBytes": 9663676416,
+      "outputRows": 210000,
+      "outputBytes": 33030144,
+      "peakMemoryBytes": 2147483648,
+      "spilledBytes": 268435456,
+      "completedSplits": 72,
+      "stageCount": 3,
+      "fullyBlocked": false
+    },
+    "resource": {
+      "queued": false
+    }
+  }
+}

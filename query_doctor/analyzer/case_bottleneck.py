@@ -22,6 +22,9 @@ CARDINALITY_ANOMALY_MIN_COUNT = 1
 CARDINALITY_ANOMALY_HIGH_COUNT = 3
 EXECUTION_TAIL_MIN_CANDIDATES = 1
 CLIENT_FETCH_FINDING_ID = "client_fetch_tail"
+CODEGEN_FINDING_ID = "codegen_bottleneck"
+UNKNOWN_REASON_WALL_CLOCK_MIN_SEC = 10.0
+UNKNOWN_REASON_MAPPED_OPERATOR_LOW_SHARE = 0.25
 QUERY_SHAPE_FINDING_IDS = {
     "analytic_bottleneck",
     "join_bottleneck",
@@ -218,7 +221,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
             reasons = ("competing_stats_and_non_stats",)
         return CasePrimaryBottleneck("mixed", "medium", reasons)
 
-    return CasePrimaryBottleneck("unknown", "low", ("no_primary_branch_supported",))
+    return CasePrimaryBottleneck("unknown", "low", unknown_primary_reasons(analysis))
 
 
 def primary_bottleneck_profile_policy(analysis: dict[str, Any]) -> str:
@@ -470,6 +473,86 @@ def primary_reasons(primary: str, analysis: dict[str, Any]) -> tuple[str, ...]:
             )
         return ("client_fetch_wait_top_finding",)
     return (f"{primary}_supported",)
+
+
+def unknown_primary_reasons(analysis: dict[str, Any]) -> tuple[str, ...]:
+    """Explain why the case stayed unknown without promoting a root cause."""
+
+    reasons: list[str] = []
+    finding_ids = analysis_finding_ids(analysis)
+    if CODEGEN_FINDING_ID in finding_ids or top_finding_id(analysis) == CODEGEN_FINDING_ID:
+        reasons.append("codegen_finding_not_primary_supported")
+
+    scan_skew = scan_skew_facts_from_analysis(analysis)
+    if (
+        scan_skew.finding_supported
+        and scan_skew.evidence_tier == "medium"
+        and not scan_skew.primary_supported
+    ):
+        reasons.append("scan_skew_medium_supporting_only")
+
+    data_movement = data_movement_facts_from_analysis(analysis)
+    if data_movement.status == "context_only" and data_movement.exchange_operator_count > 0:
+        reasons.append("data_movement_context_only")
+
+    storage_context = analysis.get("storage_context")
+    storage_context = storage_context if isinstance(storage_context, dict) else {}
+    if str(storage_context.get("source") or "").strip().lower() == "table_metadata_view_only":
+        reasons.append("storage_context_view_only")
+
+    operator_time_reason = mapped_operator_time_unknown_reason(analysis)
+    if operator_time_reason:
+        reasons.append(operator_time_reason)
+
+    return tuple(dedupe_preserve_order(reasons)) or ("no_primary_branch_supported",)
+
+
+def analysis_finding_ids(analysis: dict[str, Any]) -> set[str]:
+    findings = analysis.get("findings")
+    findings = findings if isinstance(findings, list) else []
+    return {
+        finding_id
+        for finding in findings
+        if isinstance(finding, dict) and (finding_id := str(finding.get("id") or "").strip())
+    }
+
+
+def mapped_operator_time_unknown_reason(analysis: dict[str, Any]) -> str:
+    wall_clock_sec = query_wall_clock_sec(analysis)
+    if wall_clock_sec is None or wall_clock_sec < UNKNOWN_REASON_WALL_CLOCK_MIN_SEC:
+        return ""
+
+    max_operator_ms = max_mapped_operator_elapsed_ms(analysis)
+    if max_operator_ms is None:
+        return ""
+
+    wall_clock_ms = wall_clock_sec * 1000.0
+    if max_operator_ms / wall_clock_ms < UNKNOWN_REASON_MAPPED_OPERATOR_LOW_SHARE:
+        return "wall_clock_not_explained_by_mapped_operators"
+    return ""
+
+
+def max_mapped_operator_elapsed_ms(analysis: dict[str, Any]) -> float | None:
+    operators = analysis.get("top_operators_by_time")
+    operators = operators if isinstance(operators, list) else []
+    values = [
+        value
+        for operator in operators
+        if isinstance(operator, dict)
+        and (value := numeric_value(operator.get("time_ms"))) is not None
+        and value > 0
+    ]
+    return max(values) if values else None
+
+
+def dedupe_preserve_order(values: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            deduped.append(value)
+    return tuple(deduped)
 
 
 def metadata_status_from_analysis(analysis: dict[str, Any]) -> str:

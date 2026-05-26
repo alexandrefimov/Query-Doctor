@@ -99,6 +99,10 @@ def _attention_signal_ids(
             signals.add("stage_skew_candidate")
         if state == "supported" and fact_id == "connector_metric_signal":
             signals.add("connector_metric_signal")
+        if state == "supported" and fact_id == "resource_group_queue_time_ms":
+            value = fact.get("value")
+            if isinstance(value, (float, int)) and not isinstance(value, bool) and value > 0:
+                signals.add("blocked_or_admission_wait")
         if state == "unknown" and _is_limitation_fact(fact_id, fact_groups):
             signals.add(f"limitation_unknown:{fact_id}")
     return tuple(sorted(signals))

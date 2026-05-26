@@ -518,6 +518,54 @@ def render_runtime_filter_facts(analysis: dict[str, Any]) -> list[str]:
     lines.append(f"- runtime_filter_id_count: {facts.get('runtime_filter_id_count') or 0}")
     lines.append(f"- plan_producer_lines: {facts.get('plan_producer_lines') or 0}")
     lines.append(f"- plan_consumer_lines: {facts.get('plan_consumer_lines') or 0}")
+    lines.append(f"- plan_filter_id_count: {facts.get('plan_filter_id_count') or 0}")
+    lines.append(f"- producer_filter_id_count: {facts.get('producer_filter_id_count') or 0}")
+    lines.append(f"- consumer_filter_id_count: {facts.get('consumer_filter_id_count') or 0}")
+    lines.append(f"- paired_filter_id_count: {facts.get('paired_filter_id_count') or 0}")
+    lines.append(
+        f"- producer_only_filter_id_count: {facts.get('producer_only_filter_id_count') or 0}"
+    )
+    lines.append(
+        f"- consumer_only_filter_id_count: {facts.get('consumer_only_filter_id_count') or 0}"
+    )
+    lines.append(
+        "- producer_consumer_mapping_status: "
+        f"{facts.get('producer_consumer_mapping_status') or 'unknown'}"
+    )
+    lines.append(f"- target_scan_consumer_lines: {facts.get('target_scan_consumer_lines') or 0}")
+    lines.append(f"- non_scan_consumer_lines: {facts.get('non_scan_consumer_lines') or 0}")
+    lines.append(
+        f"- unknown_target_consumer_lines: {facts.get('unknown_target_consumer_lines') or 0}"
+    )
+    lines.append(f"- target_scan_filter_id_count: {facts.get('target_scan_filter_id_count') or 0}")
+    lines.append(
+        "- paired_target_scan_filter_id_count: "
+        f"{facts.get('paired_target_scan_filter_id_count') or 0}"
+    )
+    lines.append(
+        f"- target_scan_mapping_status: {facts.get('target_scan_mapping_status') or 'unknown'}"
+    )
+    target_scan_family_counts = facts.get("target_scan_family_counts")
+    if isinstance(target_scan_family_counts, dict) and target_scan_family_counts:
+        summary = ", ".join(
+            f"{md_escape(str(kind))}={count}"
+            for kind, count in sorted(target_scan_family_counts.items())
+        )
+        lines.append(f"- target_scan_family_counts: {summary}")
+    lines.append(f"- routing_table_status: {facts.get('routing_table_status') or 'unknown'}")
+    lines.append(f"- routing_filter_count: {facts.get('routing_filter_count') or 0}")
+    lines.append(f"- final_filter_count: {facts.get('final_filter_count') or 0}")
+    lines.append(f"- enabled_filter_count: {facts.get('enabled_filter_count') or 0}")
+    lines.append(f"- partition_filter_count: {facts.get('partition_filter_count') or 0}")
+    lines.append(f"- pending_nonzero_count: {facts.get('pending_nonzero_count') or 0}")
+    lines.append(f"- arrival_observed_count: {facts.get('arrival_observed_count') or 0}")
+    lines.append(f"- completed_observed_count: {facts.get('completed_observed_count') or 0}")
+    target_type_counts = facts.get("target_type_counts")
+    if isinstance(target_type_counts, dict) and target_type_counts:
+        summary = ", ".join(
+            f"{md_escape(str(kind))}={count}" for kind, count in sorted(target_type_counts.items())
+        )
+        lines.append(f"- target_type_counts: {summary}")
     filter_kind_counts = facts.get("filter_kind_counts")
     if isinstance(filter_kind_counts, dict) and filter_kind_counts:
         summary = ", ".join(

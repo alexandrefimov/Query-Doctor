@@ -108,6 +108,38 @@ CASE_SPECIFIC_TRINO_FACT_STATES = {
         "stage_skew_candidate": "unknown",
         "resource_group_queue_time_ms": "supported",
     },
+    "trino_resource_group_queued_event_fixture": {
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "spilled_bytes": "not_observed",
+        "connector_metric_signal": "unknown",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "unknown",
+        "resource_group_queue_time_ms": "supported",
+    },
+    "trino_unknown_source_contract_event_fixture": {
+        "elapsed_time_ms": "unknown",
+        "queued_time_ms": "unknown",
+        "planning_time_ms": "unknown",
+        "execution_time_ms": "unknown",
+        "cpu_time_ms": "unknown",
+        "wall_time_ms": "unknown",
+        "input_rows": "unknown",
+        "input_bytes": "unknown",
+        "output_rows": "unknown",
+        "output_bytes": "unknown",
+        "peak_memory_bytes": "unknown",
+        "spilled_bytes": "unknown",
+        "connector_metric_signal": "unknown",
+        "stage_count": "unknown",
+        "completed_split_count": "unknown",
+        "blocked_signal": "unknown",
+        "stage_skew_candidate": "unknown",
+        "resource_group_queue_time_ms": "unknown",
+        "source_contract": "unknown",
+    },
     "trino_completed_event_missing_fields_fixture": {
         "elapsed_time_ms": "unknown",
         "queued_time_ms": "unknown",
@@ -128,6 +160,16 @@ CASE_SPECIFIC_TRINO_FACT_STATES = {
         "stage_skew_candidate": "unknown",
         "resource_group_queue_time_ms": "unknown",
     },
+    "trino_query_list_contract_probe_fixture": {
+        "query_list_records_seen": "supported",
+        "query_list_records_summarized": "supported",
+        "query_list_stats_present_count": "supported",
+        "query_list_finished_count": "supported",
+        "query_list_failed_count": "supported",
+        "query_list_source_granularity": "unknown",
+        "query_detail_fetch": "not_observed",
+        "statement_execution": "not_observed",
+    },
 }
 EXPECTED_TRINO_LIFECYCLE_STATES = {
     "trino_statement_stats_fixture": "supported",
@@ -138,7 +180,10 @@ EXPECTED_TRINO_LIFECYCLE_STATES = {
     "trino_connector_metric_present_statement_stats_fixture": "supported",
     "trino_connector_metric_absent_statement_stats_fixture": "supported",
     "trino_completed_event_fixture": "supported",
+    "trino_resource_group_queued_event_fixture": "supported",
+    "trino_unknown_source_contract_event_fixture": "unknown",
     "trino_completed_event_missing_fields_fixture": "unknown",
+    "trino_query_list_contract_probe_fixture": "unknown",
 }
 FORBIDDEN_TRINO_BOUNDARY_TOKENS = (
     "queryText",
@@ -148,6 +193,7 @@ FORBIDDEN_TRINO_BOUNDARY_TOKENS = (
     "query_id",
     "trino_statement_stats_fixture",
     "trino_event_listener_fixture",
+    "trino_query_list_contract_probe_fixture",
     ".json",
     "http://",
     "https://",
@@ -166,7 +212,7 @@ def test_trino_readiness_fixtures_keep_minimum_fact_states_explicit(case):
     assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
     assert case.expected_engine == "trino"
     assert case.bundle.identity.engine == "trino"
-    assert case.bundle.identity.parser_coverage == "supported"
+    assert case.bundle.identity.parser_coverage == case.expected_parser_coverage
     assert case.bundle.lifecycle.state == EXPECTED_TRINO_LIFECYCLE_STATES[case.case_id]
 
     states = _fact_states(case.bundle.to_public_dict())
@@ -189,6 +235,8 @@ def test_trino_readiness_fixtures_keep_minimum_fact_states_explicit(case):
         ("trino_stage_skew_statement_stats_fixture", "not_observed"),
         ("trino_connector_metric_present_statement_stats_fixture", "not_observed"),
         ("trino_connector_metric_absent_statement_stats_fixture", "not_observed"),
+        ("trino_resource_group_queued_event_fixture", "not_observed"),
+        ("trino_unknown_source_contract_event_fixture", "unknown"),
         ("trino_completed_event_missing_fields_fixture", "unknown"),
     ),
 )
@@ -213,6 +261,8 @@ def test_trino_readiness_lifecycle_failure_state_is_state_backed(
         ("trino_failed_statement_stats_fixture", "unknown", None),
         ("trino_failure_category_statement_stats_fixture", "supported", "resource_limit"),
         ("trino_blocked_statement_stats_fixture", "not_observed", None),
+        ("trino_resource_group_queued_event_fixture", "not_observed", None),
+        ("trino_unknown_source_contract_event_fixture", "unknown", None),
         ("trino_completed_event_missing_fields_fixture", "unknown", None),
     ),
 )
@@ -284,6 +334,43 @@ def test_trino_readiness_connector_metric_signal_is_state_backed():
     assert "connector_metric_signal" not in absent_probe["attention_signal_ids"]
 
 
+def test_trino_readiness_resource_group_queue_signal_is_state_backed():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_resource_group_queued_event_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+
+    assert states["resource_group_queue_time_ms"] == "supported"
+    assert facts["resource_group_queue_time_ms"].value == 94000
+    assert facts["resource_group_queue_time_ms"].value > facts["execution_time_ms"].value
+    assert "blocked_or_admission_wait" in probe["attention_signal_ids"]
+
+
+def test_trino_readiness_unknown_source_contract_fails_closed():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_unknown_source_contract_event_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    payload = engine_fact_boundary_payload(case.bundle)
+    text = engine_fact_boundary_text(case.bundle)
+
+    assert case.bundle.identity.parser_coverage == "unknown"
+    assert states["source_contract"] == "unknown"
+    assert all(state != "supported" for state in states.values())
+    assert "parser_coverage_unknown" in probe["attention_signal_ids"]
+    assert "limitation_unknown:source_contract" in probe["attention_signal_ids"]
+    assert payload["identity"]["parser_coverage"] == "unknown"
+    assert "sourceContractVersion" not in text
+    assert "unknown_event_contract" not in text
+
+
 def test_trino_readiness_missing_event_source_version_stays_out_of_boundary_identity():
     case = next(
         case
@@ -320,6 +407,14 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "Consumers must not read raw Trino JSON directly.",
         "connector metric signal",
         "redacted failure category",
+        "resource-group queue time",
+        "Compact summary shapes accept only their documented checked fields",
+        "source contract version",
+        "statement-statistics, event-listener, and query-list fixture payloads",
+        "aggregate query-list facts may be supported only from an accepted sanitized summary",
+        "Validation must walk nested objects and arrays",
+        "non-finite numeric values are rejected before mapping",
+        "negative timing, resource, split, stage-count, queue-time, or ratio values",
         "Unknown remains a valid result.",
         "Trino remains fixture-only until the following are true:",
         "Browser and trusted-report safety tests exist before any Trino facts render.",

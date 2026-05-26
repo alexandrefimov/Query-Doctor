@@ -1,0 +1,29 @@
+{
+  "fixtureVersion": "synthetic-trino-event-listener-resource-group-queued-v1",
+  "queryCompletedEvent": {
+    "metadata": {
+      "queryState": "FINISHED"
+    },
+    "statistics": {
+      "elapsedTimeMillis": 126000,
+      "queuedTimeMillis": 94000,
+      "planningTimeMillis": 2100,
+      "executionTimeMillis": 29800,
+      "cpuTimeMillis": 17000,
+      "wallTimeMillis": 124000,
+      "processedRows": 2400000,
+      "processedBytes": 3221225472,
+      "outputRows": 64000,
+      "outputBytes": 10066329,
+      "peakMemoryBytes": 939524096,
+      "spilledBytes": 0,
+      "completedSplits": 24,
+      "stageCount": 2,
+      "fullyBlocked": false
+    },
+    "resource": {
+      "queued": true,
+      "queueTimeMillis": 94000
+    }
+  }
+}

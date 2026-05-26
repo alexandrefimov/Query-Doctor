@@ -85,6 +85,8 @@ def test_engine_fact_consumer_probe_is_raw_free_for_golden_cases():
             "limitation_unknown:admission_control",
         ),
         ("trino_completed_event_fixture", "spill_or_scratch_evidence"),
+        ("trino_resource_group_queued_event_fixture", "blocked_or_admission_wait"),
+        ("trino_unknown_source_contract_event_fixture", "parser_coverage_unknown"),
         ("trino_completed_event_missing_fields_fixture", "limitation_unknown:admission_control"),
     ),
 )

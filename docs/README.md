@@ -82,8 +82,12 @@ Status legend:
 | [research/diagnostic-gap-log.md](research/diagnostic-gap-log.md) | reference | Safe template for recording production diagnostic gaps and backlog implications. |
 | [engines/trino-diagnostic-contract.md](engines/trino-diagnostic-contract.md) | reference | Trino evidence-source, safety, metadata, and readiness contract for future work. |
 | [engines/trino-live-collection-design.md](engines/trino-live-collection-design.md) | reference | Future Trino live-collection source, auth, bounds, redaction, and fixture gates. |
+| [engines/trino-test-cluster-evidence-checklist.md](engines/trino-test-cluster-evidence-checklist.md) | reference | Safe operator-export checklist for the first sanitized Trino test-cluster evidence handoff. |
+| [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md) | reference | Safe manifest and redaction-note templates for the first sanitized Trino evidence package. |
 | [engines/i18n/ru/trino-diagnostic-contract.md](engines/i18n/ru/trino-diagnostic-contract.md) | reference | Russian companion for the Trino diagnostic contract. |
 | [engines/i18n/ru/trino-live-collection-design.md](engines/i18n/ru/trino-live-collection-design.md) | reference | Russian companion for the future Trino live-collection design. |
+| [engines/i18n/ru/trino-test-cluster-evidence-checklist.md](engines/i18n/ru/trino-test-cluster-evidence-checklist.md) | reference | Russian companion for the Trino test-cluster evidence checklist. |
+| [engines/i18n/ru/trino-evidence-package-templates.md](engines/i18n/ru/trino-evidence-package-templates.md) | reference | Russian companion for the Trino evidence package templates. |
 | [research/i18n/ru/upstream-watch.md](research/i18n/ru/upstream-watch.md) | reference | Russian companion for the upstream and adjacent-market watch loop. |
 | [research/i18n/ru/diagnostic-gap-log.md](research/i18n/ru/diagnostic-gap-log.md) | reference | Russian companion for the safe diagnostic gap log. |
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |

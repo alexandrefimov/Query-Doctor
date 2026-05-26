@@ -70,7 +70,10 @@ def test_primary_bottleneck_uses_structured_data_movement_gate_when_present():
     )
 
     assert result.label == "unknown"
-    assert result.reasons == ("no_primary_branch_supported",)
+    assert result.reasons == (
+        "data_movement_context_only",
+        "wall_clock_not_explained_by_mapped_operators",
+    )
 
 
 def test_primary_bottleneck_requires_strong_structured_data_movement_gate():
@@ -87,4 +90,4 @@ def test_primary_bottleneck_requires_strong_structured_data_movement_gate():
     )
 
     assert result.label == "unknown"
-    assert result.reasons == ("no_primary_branch_supported",)
+    assert result.reasons == ("wall_clock_not_explained_by_mapped_operators",)

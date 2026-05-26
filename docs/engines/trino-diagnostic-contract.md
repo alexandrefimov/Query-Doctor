@@ -1,6 +1,6 @@
 # Trino Diagnostic Contract
 
-Last reviewed: 2026-05-23
+Last reviewed: 2026-05-26
 
 This document defines the current research contract for future Trino diagnosis.
 It is not a support announcement. Query Doctor remains Apache Impala only until
@@ -42,6 +42,7 @@ These are future source classes, not implemented support.
 | HTTP/Kafka/MySQL event listener outputs | strong for accepted query-specific fields; context for storage/transport behavior | Useful because Trino has official event-listener plugins. Payload size and optional fields must be treated as a first-order product risk. |
 | Query info / query-detail exports with stage and task stats | strong or medium depending on field stability | Needs version-scoped fixtures and redaction. Web UI detail shape is a hint, not a stable public parser contract by itself. |
 | Client `QueryResults.statementStats` and `rootStage` | fixture-only or caller-owned result import | Useful for the current synthetic spike. Query Doctor must not POST SQL to obtain it. |
+| Sanitized `/v1/query` list summaries | aggregate contract probe only | Useful for source-shape discovery after operator redaction. It is not one-query diagnosis, must not include raw records, and must not trigger query-detail fetches or statement execution. |
 | Resource-group query fields | strong when attached to one query; context when only config or aggregate metrics | Candidate Trino analogue for Impala admission/queueing, but semantics differ and must stay engine-specific. |
 | Connector metrics in query metadata | strong or medium when query-specific and version-known | Interpret with connector identity and version. Do not compare Hive, Iceberg, Delta, JDBC, and object-storage metrics as if they are the same source. |
 | Stage, task, split, operator, blocked, spill, and exchange stats | medium until calibrated with fixtures | Good for bottleneck routing, but easy to overstate without missing-field and retry semantics. |
@@ -193,6 +194,9 @@ Required boundary shape:
 - `identity` may expose only the engine name, parser coverage, and an optional
   source-version label. It must not expose parser source labels, artifact
   filenames, query IDs, endpoint names, cluster names, or collector internals.
+- explicit unknown source contract or version status must fail closed to
+  `unknown` parser coverage and unknown facts. Numeric fields in that payload
+  must not become supported facts until the source contract is accepted.
 - lifecycle must carry `supported`, `not_observed`, or `unknown` states for
   query lifecycle, blocked status, failure status, and any redacted failure
   category.
@@ -200,13 +204,30 @@ Required boundary shape:
   buckets. Consumers must not read raw Trino JSON directly.
 - limitations must be explicit for fields that are absent, unparsed, or
   engine-specific. Unknown remains a valid result.
+- statement-statistics, event-listener, and query-list fixture payloads must reject
+  oversized input, unsafe raw field names and text values, and non-finite
+  numeric values before mapping.
+- Validation must walk nested objects and arrays. Forbidden field names and
+  unsafe text values remain forbidden wherever they appear inside compacted
+  fixture payloads, and payloads beyond the accepted maximum depth fail closed
+  before mapping.
 
 Minimum accepted fixture facts:
 
 - timing: elapsed, queued, planning, execution, CPU, and wall time are
-  `supported` only when the accepted source provides numeric values;
+  `supported` only when the accepted source provides finite non-negative numeric
+  values;
+- resource-group queue time may be `supported` only when a bounded
+  query-specific event fixture provides a compact finite non-negative numeric
+  queue duration. It must not expose resource-group names, configuration, users,
+  selectors, or admission-policy internals;
+- aggregate query-list facts may be supported only from an accepted sanitized
+  summary with bounded record counts, field-presence counts, safe state/failure
+  buckets, and explicit redaction assertions. They must stay aggregate
+  evidence, not one-query lifecycle or root-cause evidence;
 - resources: input rows, input bytes, peak memory, and spilled bytes are
-  explicit facts; output rows and output bytes remain `unknown` when absent;
+  explicit facts only when they are finite and non-negative; output rows and
+  output bytes remain `unknown` when absent;
 - connector metric signal is a resource fact and may be `supported` or
   `not_observed` only from an accepted compact query-specific summary with an
   explicit checked/present result. It must not expose connector names, catalog
@@ -223,17 +244,31 @@ Minimum accepted fixture facts:
   aggregate per-task distribution summary. Do not expose stage IDs, task IDs,
   worker identifiers, split identifiers, connector internals, or raw per-task
   payloads at the boundary;
+- Compact summary shapes accept only their documented checked fields:
+  `safeConnectorMetricSummary` is limited to `checked` and `present`,
+  `safeFailureSummary` is limited to `checked` and `category`, and
+  `safeStageSkewSummary` is limited to `checked`, `candidate`, and
+  `maxToMedianInputBytesRatio`, with optional finite non-negative compact
+  `sampledTaskCount`. Extra fields or nested detail objects keep the derived
+  fact `unknown`, even when the extra values look sanitized.
 - blocked query state may be `supported` only when the bounded fixture/source
   explicitly reports `BLOCKED` lifecycle or a checked blocked signal such as
   `fullyBlocked`; blocked timing/category remains separate future evidence;
-- limitations: admission/resource-group semantics, connector metric
-  interpretation beyond the compact signal, metadata enrichment, cluster
-  events, and Impala-only profile concepts remain `unknown` until their own
-  source contracts and tests exist;
+- limitations: Impala admission/control semantics, resource-group assignment
+  and configuration semantics, connector metric interpretation beyond the
+  compact signal, metadata enrichment, cluster events, and Impala-only profile
+  concepts remain `unknown` until their own source contracts and tests exist;
 - missing source-version, lifecycle, timing, resource, stage, blocked, or
   failure fields remain absent or `unknown` at the boundary and must not be
   converted into zero values or `not_observed` facts unless the bounded source
   explicitly checked that signal;
+- negative timing, resource, split, stage-count, queue-time, or ratio values
+  must remain `unknown`, not supported values or fake zeros;
+- non-finite numeric values are rejected before mapping. The fixture contract
+  treats `NaN`, `Infinity`, and `-Infinity` as invalid intake payload values,
+  not supported facts and not `unknown` measurements;
+- unknown or unsupported source contract version remains an explicit
+  limitation and must not expose raw source-contract fields at the boundary;
 - `not_observed` may be used only when the bounded source explicitly checked
   the field and reported an absent/false/zero signal, for example no spill or
   not fully blocked.

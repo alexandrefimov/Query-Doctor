@@ -1,6 +1,6 @@
 # Trino Live Collection Design
 
-Last reviewed: 2026-05-23
+Last reviewed: 2026-05-26
 
 This document defines a future live-collection path for Trino research. It is
 not a support announcement, does not add a collector, and does not change the
@@ -12,6 +12,8 @@ an Impala-shaped profile parser.
 
 Use this document with
 [trino-diagnostic-contract.md](trino-diagnostic-contract.md),
+[trino-test-cluster-evidence-checklist.md](trino-test-cluster-evidence-checklist.md),
+[trino-evidence-package-templates.md](trino-evidence-package-templates.md),
 [../trino-discovery-spike.md](../trino-discovery-spike.md), and
 [../engine-support-gap-matrix.md](../engine-support-gap-matrix.md).
 
@@ -25,6 +27,8 @@ Accepted source families for future design:
 - event listener outputs for query creation and completion events;
 - caller-provided, already-captured query info or query-detail exports;
 - caller-provided `QueryResults.statementStats` fixtures or imports;
+- caller-provided sanitized `/v1/query` list summaries only as aggregate
+  contract probes, not one-query diagnosis;
 - optional query-linked resource-group, stage, task, split, operator, connector,
   OpenTelemetry, OpenMetrics, or JMX facts only after separate source contracts
   prove linkage and bounds.
@@ -49,22 +53,35 @@ cluster.
 
 Current status: synthetic statement-statistics and compacted query-completed
 event fixtures exist for contract tests only, including a blocked
-statement-statistics fixture, a safe aggregate stage-skew fixture, and a
-missing-field event fixture that keeps absent detail fields as `unknown`.
+statement-statistics fixture, a safe aggregate stage-skew fixture, a
+resource-group queue-delay event fixture, an unknown source-contract event
+fixture that fails closed, and a missing-field event fixture that keeps absent
+detail fields as `unknown`. A synthetic query-list contract probe fixture now
+covers sanitized `/v1/query` aggregate list-shape evidence: record counts,
+field-presence counts, safe state/failure buckets, and explicit redaction
+assertions only. It does not fetch query-detail payloads and does not submit
+SQL statements.
 Connector metric present/absent statement-statistics fixtures now cover only a
 compact checked/present signal and intentionally omit connector names, metric
 names, endpoints, object names, and raw connector payloads. A failed-query
 category statement-statistics fixture now covers only a compact
 checked/category signal and intentionally omits raw exception classes, failure
 messages, stack traces, endpoint details, object names, and connector
-internals. They are not live source adapters and do not imply Trino support.
-The fixture mapper rejects oversized payloads and unsafe raw event fields
-before converting anything into normalized facts.
+internals. Stage-skew fixtures use only checked/candidate/ratio fields. Extra
+fields or nested detail objects in these compact summaries keep the derived
+fact `unknown`, even when the extra values look sanitized. They are not live
+source adapters and do not imply Trino support.
+The fixture mapper rejects oversized statement-statistics and event-listener
+payloads plus unsafe raw field names and text values before converting anything
+into normalized facts. It also rejects non-finite numeric values before mapping.
+The same checks walk nested objects and arrays, and payloads over the maximum
+nested depth fail closed.
 
 Allowed inputs:
 
 - synthetic fixtures;
 - sanitized event-listener payloads;
+- sanitized query-list summary exports;
 - sanitized query-detail or query-info exports;
 - sanitized caller-owned `QueryResults` JSON.
 
@@ -72,8 +89,21 @@ Required behavior:
 
 - read from an explicit local path only in tests or developer tools;
 - reject oversized files before parsing;
-- reject unsafe raw event fields and unsafe raw text values before mapping;
+- reject unsafe raw fixture field names and unsafe raw text values before
+  mapping;
+- apply raw-field and raw-text rejection inside nested objects and arrays, not
+  only at top-level fixture fields;
+- reject payloads over the accepted maximum nested depth before mapping;
+- reject non-finite numeric values (`NaN`, `Infinity`, and `-Infinity`) before
+  mapping;
+- keep negative timing, resource, split, stage-count, queue-time, and ratio
+  values as `unknown`, not supported facts or fake zeros;
 - compact input to the smallest schema needed for the contract;
+- keep compact summary shapes exact: connector metric checked/present, failure
+  checked/category, and stage-skew checked/candidate/ratio plus optional
+  finite non-negative sampled task count only;
+- keep query-list summary shapes aggregate-only: bounded counts, safe buckets,
+  and redaction assertions, without raw records or query-detail follow-up;
 - convert accepted fields into `EngineFactBundle`;
 - run raw-free validation before any prompt, report, browser, or committed
   fixture use.
@@ -82,6 +112,19 @@ Required behavior:
 
 Purpose: read bounded historical Trino query events from an operator-controlled
 store without requiring Query Doctor to install a Trino plugin.
+
+Phase B should start only after an operator-exported sample package satisfies
+the [test-cluster evidence checklist](trino-test-cluster-evidence-checklist.md).
+The first real-cluster handoff is sanitized fixture work, not a direct reader.
+Its manifest and redaction note should follow
+[trino-evidence-package-templates.md](trino-evidence-package-templates.md).
+The local package-intake validator accepts only explicit `manifest`,
+`redaction_note`, and `samples` JSON payloads and only sample source types that
+already have fixture validators, including statement-statistics,
+event-listener, and aggregate query-list summary exports.
+`scripts/validate_trino_evidence_package.py` is the current local dry-run
+command for those packages; it prints only a safe summary and does not add live
+collection.
 
 Candidate stores:
 
@@ -175,12 +218,17 @@ fixtures for:
 - stage/task skew candidate;
 - missing-field and unknown-version cases;
 - connector-specific metric present and connector metric absent;
+- sanitized query-list contract probe aggregate;
 - oversized payload rejection;
 - unsafe raw fields rejected by redaction tests.
 
 Every fixture must be raw-free before commit and must include an expected
 `EngineFactBundle` projection or boundary payload assertion. Real captured
 payloads must be reduced to the smallest safe shape before they enter the repo.
+Use [trino-test-cluster-evidence-checklist.md](trino-test-cluster-evidence-checklist.md)
+and
+[trino-evidence-package-templates.md](trino-evidence-package-templates.md)
+for the first operator-exported test-cluster handoff.
 
 ## Implementation Gates
 

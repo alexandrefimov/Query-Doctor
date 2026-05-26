@@ -20,6 +20,7 @@ KNOWN_STORAGE_FAMILIES = {
 def build_storage_context(analysis: dict[str, Any]) -> dict[str, Any]:
     tables = table_metadata_rows(analysis)
     families = Counter(table_storage_family(table) for table in tables)
+    view_table_count = sum(1 for table in tables if table_object_type(table) == "view")
     known_families = {
         family: count
         for family, count in families.items()
@@ -27,7 +28,7 @@ def build_storage_context(analysis: dict[str, Any]) -> dict[str, Any]:
     }
     observed_locations = sum(known_families.values())
     storage_family = aggregate_storage_family(known_families)
-    source = storage_context_source(tables, observed_locations)
+    source = storage_context_source(tables, observed_locations, view_table_count)
     scan_operator_count = scan_operator_count_from_analysis(analysis)
     semantics = storage_semantics(storage_family)
 
@@ -35,6 +36,10 @@ def build_storage_context(analysis: dict[str, Any]) -> dict[str, Any]:
     if not observed_locations:
         limitations.append(
             "No safe table storage location scheme was available from metadata context."
+        )
+    if tables and view_table_count == len(tables):
+        limitations.append(
+            "Metadata described views without safe physical storage locations; storage family remains unknown until base-table metadata is collected."
         )
     if storage_family == "mixed":
         limitations.append(
@@ -61,6 +66,7 @@ def build_storage_context(analysis: dict[str, Any]) -> dict[str, Any]:
             count for family, count in known_families.items() if family in OBJECT_STORE_FAMILIES
         ),
         "local_location_count": known_families.get("local", 0),
+        "view_table_count": view_table_count,
         "unknown_table_count": max(0, len(tables) - observed_locations),
         "profile_scan_operator_count": scan_operator_count,
         "profile_scan_observed": scan_operator_count > 0,
@@ -85,6 +91,11 @@ def table_storage_family(table: dict[str, Any]) -> str:
     return family if family in KNOWN_STORAGE_FAMILIES else "unknown"
 
 
+def table_object_type(table: dict[str, Any]) -> str:
+    text = str(table.get("object_type") or "").strip().lower()
+    return text if text in {"table", "view"} else "unknown"
+
+
 def aggregate_storage_family(families: dict[str, int]) -> str:
     observed = {family for family, count in families.items() if count > 0}
     if not observed:
@@ -100,9 +111,13 @@ def aggregate_storage_family(families: dict[str, int]) -> str:
     return "mixed"
 
 
-def storage_context_source(tables: list[dict[str, Any]], observed_locations: int) -> str:
+def storage_context_source(
+    tables: list[dict[str, Any]], observed_locations: int, view_table_count: int
+) -> str:
     if observed_locations:
         return "table_metadata_location"
+    if tables and view_table_count == len(tables):
+        return "table_metadata_view_only"
     if tables:
         return "table_metadata_no_location"
     return "unknown"

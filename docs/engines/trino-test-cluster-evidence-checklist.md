@@ -1,0 +1,151 @@
+# Trino Test Cluster Evidence Checklist
+
+Last reviewed: 2026-05-26
+
+Language: English | [Russian](i18n/ru/trino-test-cluster-evidence-checklist.md)
+
+This checklist defines the first safe handoff from a test Trino cluster to
+Query Doctor research. It is not a live collector, support announcement, engine
+selector, browser/report surface, or permission to execute Trino SQL.
+
+Use this with [trino-diagnostic-contract.md](trino-diagnostic-contract.md),
+[trino-live-collection-design.md](trino-live-collection-design.md), and
+[trino-evidence-package-templates.md](trino-evidence-package-templates.md),
+[../trino-discovery-spike.md](../trino-discovery-spike.md).
+
+## Goal
+
+Move from synthetic fixtures to operator-exported, sanitized evidence without
+giving Query Doctor direct cluster access. The first package should prove
+whether already-produced Trino evidence can be reduced to the existing raw-free
+fixture contract.
+
+## Non-Negotiable Boundaries
+
+- Do not run SQL through Query Doctor.
+- Do not use `POST /v1/statement` as a collection path.
+- Do not run Query Doctor-generated `EXPLAIN ANALYZE`.
+- Do not provide raw Web UI pages, raw event dumps, raw query-info JSON, logs,
+  stack traces, object-storage paths, or connector payloads.
+- Do not include query text, query IDs, users, groups, hostnames, endpoint URLs,
+  catalog/schema/table/column names, session properties, headers, trace tokens,
+  credentials, local paths, artifact names, or connector internals.
+- Do not include production payloads unless the operator has reduced and
+  sanitized them before handoff.
+
+## Accepted First Evidence
+
+The first export should contain compact evidence only:
+
+- completed event-listener records reduced to the accepted compact fields;
+- resource-group queue timing only as query-specific duration/count facts;
+- statement-statistics snippets reduced to supported timing, resource, stage,
+  lifecycle, blocked, spill, and compact summary fields;
+- sanitized `/v1/query` list summary exports only as aggregate contract probes,
+  with raw records, query text, identities, locations, object context, and
+  failure details removed before handoff;
+- query-detail exports only after raw identifiers, object names, endpoint
+  details, stack traces, and connector internals are removed;
+- a manifest that describes source type, Trino version, source schema version,
+  connector family category, export time window, record count, byte count,
+  redaction status, and known omissions.
+
+## Minimum Case Set
+
+Prepare the smallest safe sample set that covers:
+
+- successful completed query;
+- failed query with only an allowlisted failure category;
+- queued or resource-group delayed query;
+- blocked query;
+- spill observed;
+- stage or task skew candidate;
+- connector metric present;
+- connector metric absent;
+- missing-field case;
+- unknown or unsupported source-contract version case;
+- sanitized query-list contract probe aggregate;
+- oversized or over-deep payload rejection case using synthetic padding only;
+- unsafe raw field rejection case using synthetic sentinel values only.
+
+## Sanitization Checklist
+
+Before any file enters the repository or an issue attachment:
+
+- remove raw SQL and prepared statements;
+- remove query IDs, trace tokens, transaction IDs, session IDs, and request
+  headers;
+- remove users, groups, roles, client tags, client info, source labels, and
+  environment-derived metadata;
+- remove hostnames, endpoint URLs, object-storage paths, local paths, topic
+  names, database names, file names, and artifact names;
+- remove catalog, schema, table, column, partition, manifest, and object names;
+- remove stack traces, raw exception messages, warning payloads, and connector
+  internals;
+- remove secrets, credentials, tokens, passwords, keys, cookies, TLS material,
+  Kerberos caches, and extra credentials;
+- replace source-specific detail with compact checked booleans, durations,
+  counts, byte values, safe categories, and explicit `unknown` states;
+- reject or regenerate the export if redaction status is unknown.
+
+## Compact Output Shape
+
+Each accepted sample should reduce to one small JSON object with:
+
+- `fixtureVersion` or source-contract version label;
+- lifecycle state and checked blocked/failure fields;
+- finite non-negative timing, row, byte, memory, split, stage, queue, and ratio
+  values only;
+- compact connector, failure, and stage-skew summaries with exact documented
+  fields only;
+- aggregate query-list summaries with bounded record counts, field-presence
+  counts, safe state/failure buckets, and explicit redaction assertions only;
+- explicit omissions for fields that are unavailable, partial, unsupported, or
+  intentionally redacted.
+
+Negative numeric values must stay `unknown` after mapping. Non-finite values
+such as `NaN`, `Infinity`, and `-Infinity` are invalid intake values and should
+be rejected before mapping.
+
+## Handoff Package
+
+The first test-cluster handoff should include:
+
+- one sanitized compact sample per minimum case;
+- one manifest for the sample set;
+- one redaction note describing removed field classes, not removed values;
+- one known-gap note for missing connector families or source schema versions;
+- no raw companion archive.
+
+Use [trino-evidence-package-templates.md](trino-evidence-package-templates.md)
+for the manifest and redaction-note structure. Keep package labels local and
+safe: no cluster, query, user, host, catalog, schema, table, topic, path, file,
+or artifact names. The local package-intake wrapper is `manifest`,
+`redaction_note`, and `samples`; accepted sample payloads are still fixture
+work, not live collection.
+Run `python3 scripts/validate_trino_evidence_package.py <sanitized-package.json>`
+before fixture conversion. The command prints only a safe summary and must not
+echo raw payloads, raw values, or the input path.
+
+Keep raw exports outside the repository and outside prompts. If an operator
+needs to retain them for audit, retain them in the operator-controlled Trino
+environment, not in Query Doctor workspace artifacts.
+
+## Acceptance Gate
+
+The package is ready for Query Doctor fixture work only when:
+
+- every sample is manually inspected as raw-free;
+- every sample fits the maximum size and nested-depth bounds in the fixture
+  contract;
+- every supported fact is query-specific or explicitly aggregate and
+  version-scoped;
+- every unsupported or absent field has an explicit `unknown` or omission
+  reason;
+- no browser route, trusted report, optimizer behavior, live adapter, public
+  README claim, or engine registration is needed to consume it.
+
+The next implementation step after an accepted package is still fixture work:
+convert samples into committed sanitized fixtures and mapper tests. A live
+reader comes later, after source-contract and redaction tests prove the same
+boundary on exported evidence.

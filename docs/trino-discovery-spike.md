@@ -1,6 +1,6 @@
 # Trino Discovery Spike
 
-Last reviewed: 2026-05-23
+Last reviewed: 2026-05-26
 
 This document defines the first second-engine discovery slice. It is not a
 support announcement and it must not change the current support matrix:
@@ -122,7 +122,8 @@ The first code slice adds the contract-shaping pieces only:
   facts.
 - `query_doctor/analyzer/trino_fixture_facts.py` maps committed synthetic
   Trino statement-statistics and offline event-listener fixtures into that
-  bundle.
+  bundle, plus a sanitized query-list contract probe aggregate used only for
+  fixture/source-contract tests.
 - `tests/fixtures/engine_facts/trino_statement_stats.json` and
   `tests/fixtures/engine_facts/trino_failed_statement_stats.json`, and
   `tests/fixtures/engine_facts/trino_blocked_statement_stats.json`, and
@@ -132,23 +133,37 @@ The first code slice adds the contract-shaping pieces only:
   synthetic statement-statistics fixtures covering finished, failed, blocked,
   safe aggregate stage-skew, compact connector-metric signal states, and a
   redacted safe failure category.
-  `tests/fixtures/engine_facts/trino_completed_event.json`
-  and `tests/fixtures/engine_facts/trino_completed_event_missing_fields.json`
-  are synthetic compacted event-listener fixtures. They intentionally exclude
+  `tests/fixtures/engine_facts/trino_completed_event.json`,
+  `tests/fixtures/engine_facts/trino_resource_group_queued_event.json`,
+  `tests/fixtures/engine_facts/trino_unknown_source_contract_event.json`, and
+  `tests/fixtures/engine_facts/trino_completed_event_missing_fields.json` are
+  synthetic compacted event-listener fixtures. They intentionally exclude
   SQL text, identities, hostnames, URLs, object names, stack traces, local
-  paths, and raw connector details. The missing-field event fixture omits
-  source-version and optional detail fields so tests prove absent lifecycle,
-  timing, resource, stage, blocked, and failure signals remain `unknown`
-  instead of fake zeros. The blocked statement-statistics fixture proves
-  `BLOCKED` lifecycle and `fullyBlocked` signals remain state-backed without
-  implying live Trino support. The stage-skew fixture uses only a compact
-  aggregate per-task distribution summary and never exposes stage IDs, task IDs,
-  workers, connector details, or raw query data. The connector-metric fixtures
-  use only checked/present booleans in a compact safe summary and never expose
-  connector names, metric names, endpoints, object names, or raw connector
-  payloads. The failure-category fixture uses only checked/category fields in a
-  compact safe summary and never exposes raw exception classes, messages, stack
-  traces, endpoint details, object names, or connector internals.
+  paths, resource-group names, and raw connector details. The resource-group
+  queue fixture maps only compact query-specific queue duration fields into the
+  normalized timing facts. The unknown source-contract fixture contains
+  otherwise numeric event fields but maps to unknown parser coverage and
+  unknown facts until a source contract version is accepted. The missing-field
+  event fixture omits source-version and optional detail fields so tests prove
+  absent lifecycle, timing, resource, stage, blocked, and failure signals
+  remain `unknown` instead of fake zeros. The blocked statement-statistics
+  fixture proves `BLOCKED` lifecycle and `fullyBlocked` signals remain
+  state-backed without implying live Trino support. The stage-skew fixture uses
+  only a compact aggregate per-task distribution summary and never exposes stage
+  IDs, task IDs, workers, connector details, or raw query data. The
+  connector-metric fixtures use only checked/present booleans in a compact safe
+  summary and never expose connector names, metric names, endpoints, object
+  names, or raw connector payloads. The failure-category fixture uses only
+  checked/category fields in a compact safe summary and never exposes raw
+  exception classes, messages, stack traces, endpoint details, object names, or
+  connector internals. Extra fields or nested detail objects in connector,
+  failure, or stage-skew compact summaries keep the derived fact `unknown`,
+  even when the extra values look sanitized.
+  `tests/fixtures/engine_facts/trino_query_list_contract_probe.json` is a
+  synthetic aggregate `/v1/query` list-shape probe. It records bounded counts,
+  safe state/failure buckets, field-presence counts, and redaction assertions
+  only; it does not contain raw records, query text, identifiers, locations,
+  object context, failure details, or Trino query-detail payloads.
 - `tests/test_engine_fact_contract.py` checks supported / not observed /
   unknown semantics, raw-free public facts, and that Trino is still not a
   registered supported engine.
@@ -171,10 +186,28 @@ The first code slice adds the contract-shaping pieces only:
 - `tests/test_trino_readiness_contract.py` pins the fixture-only raw-free
   Trino intake floor: explicit supported / not observed / unknown fact states,
   minimal boundary identity, raw-free boundary text, and non-support wording in
-  the Trino contract document.
+  the Trino contract document. Negative timing, resource, split, stage-count,
+  queue-time, and ratio values stay `unknown` instead of becoming supported
+  facts or fake zeros. Non-finite numeric values such as `NaN`, `Infinity`, and
+  `-Infinity` are rejected before mapping.
 - Inline rejection tests for the compacted event-listener fixtures prove
   oversized payloads, unsafe raw field names, and unsafe raw text values fail
-  before normalized facts are built.
+  before normalized facts are built. Statement-statistics fixtures use the same
+  fail-closed checks before mapping, including strict rejection of non-finite
+  numeric values. Nested objects and arrays are checked the same way as
+  top-level fixture fields, and payloads beyond the accepted maximum depth fail
+  before mapping.
+- `query_doctor/analyzer/trino_evidence_package.py` validates the first local
+  sanitized package wrapper for fixture import: `manifest`, `redaction_note`,
+  and `samples`. It checks package counts, redaction assertions, synthetic
+  sentinel-test coverage, declared bounds, and existing statement-statistics /
+  event-listener / aggregate query-list fixture validators. Query-detail
+  exports remain unsupported as sample payloads until a separate fixture
+  contract exists.
+- `scripts/validate_trino_evidence_package.py` is the local dry-run command for
+  a sanitized package file. It prints only safe package and parser-coverage
+  summaries or safe rejection messages, without echoing input paths, raw
+  payloads, raw values, or rejected record contents.
 
 This slice still does not add a live Trino collector, a runtime engine
 selector, browser/report output, optimizer behavior, or public second-engine
@@ -200,7 +233,12 @@ The spike is done when:
 - Engine fact contract module for current Impala facts and the Trino spike.
 - Golden fixture harness for parser, fact, redaction, and report-boundary
   checks beyond the current public fact contract.
-- Trino live-collection source-contract slices based on
+- Trino source-contract slices based on
   [engines/trino-live-collection-design.md](engines/trino-live-collection-design.md),
   continuing from offline fixture import before any live source adapter.
+- A first sanitized test-cluster evidence handoff using
+  [engines/trino-test-cluster-evidence-checklist.md](engines/trino-test-cluster-evidence-checklist.md),
+  with manifest and redaction-note structure from
+  [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md),
+  still as fixture work rather than live collection.
 - A support gap matrix comparing Impala and Trino facts.

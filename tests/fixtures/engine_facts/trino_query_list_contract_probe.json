@@ -1,0 +1,105 @@
+{
+  "bounds": {
+    "max_bytes": 1048576,
+    "max_records": 200,
+    "records_seen": 12,
+    "records_summarized": 12,
+    "response_bytes": 28672
+  },
+  "connection": {
+    "auth_mode": "kerberos_spnego",
+    "client_identity": "redacted",
+    "coordinator": "redacted",
+    "kerberos_service_name": "HTTP",
+    "tls_verification": "default"
+  },
+  "contract_shape": {
+    "stats_group_presence": {
+      "analysis_duration": 12,
+      "blocked_reason_list": 12,
+      "completed_splits": 0,
+      "cpu_duration": 12,
+      "elapsed_duration": 12,
+      "execution_duration": 12,
+      "fully_blocked": 12,
+      "output_rows": 0,
+      "output_size": 0,
+      "peak_total_memory": 12,
+      "peak_user_memory": 12,
+      "physical_input_rows": 0,
+      "physical_input_size": 12,
+      "planning_duration": 12,
+      "processed_input_rows": 12,
+      "processed_input_size": 0,
+      "progress_percent": 11,
+      "queued_duration": 12,
+      "queued_splits": 0,
+      "running_splits": 0,
+      "scheduled_duration": 12,
+      "spilled_data_size": 12,
+      "written_output_rows": 0,
+      "written_output_size": 0
+    },
+    "top_level_group_presence": {
+      "actor_context": 12,
+      "client_context": 0,
+      "failure_category": 3,
+      "failure_detail": 0,
+      "object_context": 1,
+      "protocol_pointer": 12,
+      "record_marker": 12,
+      "runtime_stats_block": 12,
+      "submitted_text": 12
+    }
+  },
+  "fixtureVersion": "synthetic_trino_query_list_contract_probe_v1",
+  "generated_at_utc": "2026-05-26T00:00:00+00:00",
+  "limitations": [
+    "readonly_list_endpoint_only",
+    "no_statement_submission",
+    "no_detail_fetch",
+    "aggregate_shape_probe_only",
+    "not_query_doctor_trino_product_support"
+  ],
+  "record_summary": {
+    "blocked_reason_counts": {
+      "WAITING_FOR_MEMORY": 1
+    },
+    "elapsed_duration_buckets": {
+      "1s_to_10s": 2,
+      "under_1s": 10
+    },
+    "failure_type_counts": {
+      "EXTERNAL": 1,
+      "USER_ERROR": 2
+    },
+    "peak_user_memory_buckets": {
+      "under_1mb": 12
+    },
+    "processed_input_buckets": {
+      "unknown": 12
+    },
+    "queued_duration_buckets": {
+      "under_1s": 12
+    },
+    "state_counts": {
+      "FAILED": 3,
+      "FINISHED": 9
+    },
+    "stats_block": {
+      "missing": 0,
+      "present": 12
+    }
+  },
+  "redaction": {
+    "actor_context_values": "not_written",
+    "client_context_values": "not_written",
+    "failure_detail_values": "not_written",
+    "location_values": "not_written",
+    "object_context_values": "not_written",
+    "raw_payload": "not_written",
+    "record_markers": "not_written",
+    "submitted_text": "not_written"
+  },
+  "summary_kind": "trino_query_list_contract_probe_v1"
+}

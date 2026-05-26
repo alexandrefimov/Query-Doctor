@@ -27,9 +27,117 @@ F01:PLAN FRAGMENT
     assert facts["runtime_filter_id_count"] == 1
     assert facts["plan_producer_lines"] == 1
     assert facts["plan_consumer_lines"] == 1
+    assert facts["plan_filter_id_count"] == 1
+    assert facts["producer_filter_id_count"] == 1
+    assert facts["consumer_filter_id_count"] == 1
+    assert facts["paired_filter_id_count"] == 1
+    assert facts["producer_only_filter_id_count"] == 0
+    assert facts["consumer_only_filter_id_count"] == 0
+    assert facts["producer_consumer_mapping_status"] == "mapped"
+    assert facts["target_scan_consumer_lines"] == 1
+    assert facts["non_scan_consumer_lines"] == 0
+    assert facts["unknown_target_consumer_lines"] == 0
+    assert facts["target_scan_filter_id_count"] == 1
+    assert facts["paired_target_scan_filter_id_count"] == 1
+    assert facts["target_scan_mapping_status"] == "mapped"
+    assert facts["target_scan_family_counts"] == {"hdfs": 1}
     assert facts["filter_kind_counts"] == {"bloom": 2}
     assert facts["arrival_status"] == "not_reported"
     assert any("does not independently support" in item for item in facts["limitations"])
+    assert any("aggregate context only" in item for item in facts["limitations"])
+
+
+def test_runtime_filter_unpaired_plan_context_stays_context_only():
+    facts = build_runtime_filter_facts(
+        """
+F01:PLAN FRAGMENT
+|  02:HASH JOIN
+|  |  runtime filters: RF001[bloom] <- join_key
+|  |  runtime filters: RF003[min_max] <- another_key
+|  03:HDFS SCAN
+|     runtime filters: RF001[bloom] -> scan_key
+|     runtime filters: RF002[bloom] -> other_scan_key
+""",
+        CLASSIC_TEXT_FORMAT,
+        COMPLETE_NODES,
+    )
+
+    assert facts["status"] == "context_only"
+    assert facts["finding_supported"] is False
+    assert facts["primary_supported"] is False
+    assert facts["plan_filter_id_count"] == 3
+    assert facts["producer_filter_id_count"] == 2
+    assert facts["consumer_filter_id_count"] == 2
+    assert facts["paired_filter_id_count"] == 1
+    assert facts["producer_only_filter_id_count"] == 1
+    assert facts["consumer_only_filter_id_count"] == 1
+    assert facts["producer_consumer_mapping_status"] == "partial"
+    assert facts["target_scan_consumer_lines"] == 2
+    assert facts["target_scan_filter_id_count"] == 2
+    assert facts["paired_target_scan_filter_id_count"] == 1
+    assert facts["target_scan_mapping_status"] == "partial"
+    assert facts["target_scan_family_counts"] == {"hdfs": 2}
+    assert facts["filter_kind_counts"] == {"bloom": 3, "min_max": 1}
+    assert any("not paired" in item for item in facts["limitations"])
+
+
+def test_runtime_filter_non_scan_consumer_target_stays_context_only():
+    facts = build_runtime_filter_facts(
+        """
+F01:PLAN FRAGMENT
+|  02:HASH JOIN
+|  |  runtime filters: RF001[bloom] <- join_key
+|  04:EXCHANGE
+|     runtime filters: RF001[bloom] -> exchange_key
+""",
+        CLASSIC_TEXT_FORMAT,
+        COMPLETE_NODES,
+    )
+
+    assert facts["status"] == "context_only"
+    assert facts["finding_supported"] is False
+    assert facts["primary_supported"] is False
+    assert facts["target_scan_consumer_lines"] == 0
+    assert facts["non_scan_consumer_lines"] == 1
+    assert facts["unknown_target_consumer_lines"] == 0
+    assert facts["target_scan_filter_id_count"] == 0
+    assert facts["paired_target_scan_filter_id_count"] == 0
+    assert facts["target_scan_mapping_status"] == "missing_target_scan"
+    assert facts["target_scan_family_counts"] == {}
+    assert any(
+        "target-scan mapping is aggregate context only" in item for item in facts["limitations"]
+    )
+
+
+def test_runtime_filter_union_branch_scan_consumer_maps_target_scan():
+    facts = build_runtime_filter_facts(
+        """
+F01:PLAN FRAGMENT
+03:HASH JOIN
+|  runtime filters: RF001[min_max] <- build_key, RF002[bloom] <- other_key
+|
+00:UNION
+|--01:SCAN KUDU
+|     runtime filters: RF001[min_max] -> probe_key
+|
+02:SCAN HDFS
+   runtime filters: RF002[bloom] -> other_probe_key
+""",
+        CLASSIC_TEXT_FORMAT,
+        COMPLETE_NODES,
+    )
+
+    assert facts["status"] == "context_only"
+    assert facts["finding_supported"] is False
+    assert facts["primary_supported"] is False
+    assert facts["producer_consumer_mapping_status"] == "mapped"
+    assert facts["target_scan_consumer_lines"] == 2
+    assert facts["non_scan_consumer_lines"] == 0
+    assert facts["unknown_target_consumer_lines"] == 0
+    assert facts["target_scan_filter_id_count"] == 2
+    assert facts["paired_target_scan_filter_id_count"] == 2
+    assert facts["target_scan_mapping_status"] == "mapped"
+    assert facts["target_scan_family_counts"] == {"hdfs": 1, "kudu": 1}
 
 
 def test_runtime_filter_arrival_gaps_stay_context_only():
@@ -46,6 +154,9 @@ HDFS_SCAN_NODE (id=3)
     assert facts["status"] == "context_only"
     assert facts["runtime_filter_lines"] == 1
     assert facts["plan_filter_lines"] == 0
+    assert facts["plan_filter_id_count"] == 0
+    assert facts["producer_consumer_mapping_status"] == "not_observed"
+    assert facts["target_scan_mapping_status"] == "not_observed"
     assert facts["arrival_status"] == "missing_observed"
     assert facts["missing_arrival_lines"] == 1
     assert facts["max_arrival_wait_ms"] == 803
@@ -55,6 +166,70 @@ HDFS_SCAN_NODE (id=3)
     assert facts["finding_supported"] is False
     assert facts["primary_supported"] is False
     assert any("keeps them as context" in item for item in facts["limitations"])
+
+
+def test_runtime_filter_routing_tables_stay_aggregate_context():
+    facts = build_runtime_filter_facts(
+        """
+Execution Profile
+  Filter routing table:
+ ID  Src. Node  Tgt. Node(s)  Target type  Partition filter  Pending (Expected)  First arrived  Completed   Enabled
+-------------------------------------------------------------------------------------------------------------------
+  1          3             4        LOCAL             false              0 (4)           12ms       14ms      true
+  0          3             5       GLOBAL              true              2 (4)            N/A        N/A     false
+  Backend startup latencies: Count: 4
+  Final filter table:
+ ID  Src. Node  Tgt. Node(s)  Target type  Partition filter  Pending (Expected)  First arrived  Completed   Enabled
+-------------------------------------------------------------------------------------------------------------------
+  1          3             4        LOCAL             false              0 (4)           12ms       14ms      true
+  0          3             5       GLOBAL              true              1 (4)            N/A       20ms      true
+  Per Node Peak Memory Usage: host_01(1 B)
+""",
+        CLASSIC_TEXT_FORMAT,
+        COMPLETE_NODES,
+    )
+
+    assert facts["status"] == "context_only"
+    assert facts["finding_supported"] is False
+    assert facts["primary_supported"] is False
+    assert facts["routing_table_status"] == "observed"
+    assert facts["routing_filter_count"] == 2
+    assert facts["final_filter_count"] == 2
+    assert facts["enabled_filter_count"] == 2
+    assert facts["partition_filter_count"] == 1
+    assert facts["pending_nonzero_count"] == 1
+    assert facts["arrival_observed_count"] == 1
+    assert facts["completed_observed_count"] == 2
+    assert facts["target_type_counts"] == {"global": 1, "local": 1}
+    assert any("routing table context is aggregate only" in item for item in facts["limitations"])
+
+
+def test_empty_runtime_filter_tables_are_not_observed():
+    facts = build_runtime_filter_facts(
+        """
+Execution Profile
+  Number of filters: 0
+  Filter routing table:
+ ID  Src. Node  Tgt. Node(s)  Target type  Partition filter  Pending (Expected)  First arrived  Completed   Enabled
+-------------------------------------------------------------------------------------------------------------------
+  Backend startup latencies: Count: 4
+  Final filter table:
+ ID  Src. Node  Tgt. Node(s)  Target type  Partition filter  Pending (Expected)  First arrived  Completed   Enabled
+-------------------------------------------------------------------------------------------------------------------
+  Per Node Peak Memory Usage: Count: 1
+""",
+        CLASSIC_TEXT_FORMAT,
+        COMPLETE_NODES,
+    )
+
+    assert facts["status"] == "not_observed"
+    assert facts["routing_table_status"] == "not_observed"
+    assert facts["routing_filter_count"] == 0
+    assert facts["final_filter_count"] == 0
+    assert facts["target_type_counts"] == {}
+    assert not any(
+        "routing table context is aggregate only" in item for item in facts["limitations"]
+    )
 
 
 def test_runtime_filter_unknown_dialect_fails_closed():
@@ -69,6 +244,10 @@ def test_runtime_filter_unknown_dialect_fails_closed():
     assert facts["runtime_filter_lines"] == 0
     assert facts["plan_filter_lines"] == 0
     assert facts["runtime_filter_id_count"] == 0
+    assert facts["plan_filter_id_count"] == 0
+    assert facts["producer_consumer_mapping_status"] == "unknown"
+    assert facts["target_scan_mapping_status"] == "unknown"
+    assert facts["routing_table_status"] == "unknown"
     assert facts["finding_supported"] is False
     assert facts["primary_supported"] is False
     assert any("not interpreted for this profile dialect" in item for item in facts["limitations"])
@@ -92,5 +271,8 @@ def test_runtime_filter_absence_is_not_observed():
     assert facts["status"] == "not_observed"
     assert facts["evidence_tier"] == "unsupported"
     assert facts["arrival_status"] == "not_observed"
+    assert facts["producer_consumer_mapping_status"] == "not_observed"
+    assert facts["target_scan_mapping_status"] == "not_observed"
+    assert facts["routing_table_status"] == "not_observed"
     assert facts["finding_supported"] is False
     assert facts["primary_supported"] is False

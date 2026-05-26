@@ -48,7 +48,10 @@ the behavior under test.
 `engine_facts/trino_failed_statement_stats.json`, and
 `engine_facts/trino_completed_event.json` are synthetic Trino fixtures for the
 fixture-only engine fact contract spike. They cover statement-statistics and
-offline event-listener shapes. They must stay free of SQL text, identities,
+offline event-listener shapes, including a compact resource-group queue-delay
+event and an unknown source-contract event that fails closed to `unknown`
+facts. The fixture mappers reject oversized input and unsafe raw field names or
+text values before mapping. Fixtures must stay free of SQL text, identities,
 hostnames, URLs, object names, stack traces, local paths, raw connector details,
 and production payloads. They do not imply Trino product support.
 

@@ -278,11 +278,17 @@ Runtime filter effectiveness:
   is unsupported.
 - Current implementation note: `Runtime Filter Evidence` emits safe aggregate
   context from classic text profiles, including runtime-filter plan-line counts,
-  unique filter ID counts, producer/consumer arrow counts, arrival gap/wait
-  counts, and BloomFilterBytes counter presence. This is `context_only` and
-  cannot create a finding or primary bottleneck. Missing or late filter
-  diagnosis still requires deterministic producer, consumer, target scan,
-  timing, spill-context, and node-completion support.
+  unique filter ID counts, producer/consumer arrow counts, aggregate
+  producer/consumer pairing status and counts, aggregate target-scan mapping
+  status and counts, routing/final table row counts, enabled/partition/pending
+  counts, arrival/completion observation counts, target-type family counts,
+  arrival gap/wait counts, and BloomFilterBytes counter presence. Empty
+  zero-filter routing/final tables are `not_observed`, not partial evidence. It
+  does not expose raw filter IDs, raw filter columns, raw target names, source
+  node IDs, target node IDs, or target tables. This is `context_only` and cannot
+  create a finding or primary bottleneck. Missing or late filter diagnosis still
+  requires deterministic producer, consumer, target scan, timing,
+  spill-context, and node-completion support.
 
 Exchange and partition skew:
 

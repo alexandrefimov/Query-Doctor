@@ -409,9 +409,9 @@ def scan_skew_evidence_sort_key(evidence: ScanSkewEvidence | None) -> tuple[int,
         return (-1, 0, 0, 0.0)
     runtime_rank = {
         "long_running_imbalanced": 3,
-        "timing_unknown": 2,
-        "long_running_balanced": 1,
-        "short_running": 0,
+        "long_running_balanced": 2,
+        "short_running": 1,
+        "timing_unknown": 0,
     }.get(evidence.runtime_status, -1)
     return (
         runtime_rank,
