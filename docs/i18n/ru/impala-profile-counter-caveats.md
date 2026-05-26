@@ -50,3 +50,11 @@ Query Doctor должен иметь version-aware registry для счетчи�
 потому что имена счетчиков могут меняться между версиями Impala. Если live
 использование `/profile_docs` недостаточно стабильно для конкретного кластера,
 нужен bundled/versioned registry.
+
+## Resource trace
+
+Текущий analyzer уже умеет разбирать allowlisted CPU, диск и сеть из
+resource-trace samples в профиле Impala и превращать их в безопасные агрегаты.
+Эти факты остаются `context_only`: отсутствие трасс считается `unknown`, общий
+throughput хоста не доказывает причину сам по себе, а raw Per Node Profiles
+rows и host identifiers не должны попадать в UI или trusted reports.

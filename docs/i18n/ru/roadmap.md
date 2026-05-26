@@ -1,6 +1,6 @@
 # Roadmap
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-26
 
 Язык: [English](../../roadmap.md) | Русский
 
@@ -29,6 +29,9 @@ Last reviewed: 2026-05-22
 - Добавить safe query-type grouping только из deterministic classifier facts.
 - Откалибровать optimizer score и no-draft/recommendation boundaries.
 - Более сильные analyzer facts and scoring для stats/query-shape/runtime.
+- Базовый вариант Resource Trace Facts уже есть: analyzer разбирает безопасные
+  агрегаты CPU, диска и сети из resource-trace samples, считает отсутствие
+  `unknown` и не использует эти факты для primary bottleneck.
 - Поддерживать analyst-first Details без collector-internal first screen.
 - Лучше direct Impala fixtures and Prometheus context.
 - Optimizer recipes только при наличии deterministic detection/draft/validation.

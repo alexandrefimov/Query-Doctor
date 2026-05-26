@@ -72,6 +72,7 @@ class EvidenceGateAuditResult:
     scan_skew_counts: Counter[str] = field(default_factory=Counter)
     runtime_filter_counts: Counter[str] = field(default_factory=Counter)
     storage_context_counts: Counter[str] = field(default_factory=Counter)
+    resource_trace_counts: Counter[str] = field(default_factory=Counter)
     issue_counts: Counter[str] = field(default_factory=Counter)
     issues: list[EvidenceGateIssue] = field(default_factory=list)
 
@@ -225,6 +226,7 @@ def audit_analysis(
     audit_scan_skew(result, case, analysis)
     audit_runtime_filters(result, case, analysis)
     audit_storage_context(result, analysis)
+    audit_resource_trace(result, case, analysis)
     audit_primary_consistency(result, case, analysis, primary_label, profile_policy)
 
 
@@ -407,6 +409,31 @@ def audit_storage_context(result: EvidenceGateAuditResult, analysis: dict[str, A
     ] += 1
 
 
+def audit_resource_trace(
+    result: EvidenceGateAuditResult,
+    case: dict[str, Any],
+    analysis: dict[str, Any],
+) -> None:
+    facts = analysis.get("resource_trace")
+    facts = facts if isinstance(facts, dict) else {}
+    primary_supported = bool_value(facts.get("primary_supported"))
+    result.resource_trace_counts[
+        counter_bucket(
+            f"status={text_value(facts.get('status'))}",
+            f"tier={text_value(facts.get('evidence_tier'), 'unsupported')}",
+            f"primary={'yes' if primary_supported else 'no'}",
+            f"metrics={int_value(facts.get('observed_metric_count'))}",
+        )
+    ] += 1
+    if primary_supported:
+        add_issue(
+            result,
+            case,
+            "resource_trace_promoted",
+            "resource trace facts must remain context-only and not support primary routing",
+        )
+
+
 def audit_primary_consistency(
     result: EvidenceGateAuditResult,
     case: dict[str, Any],
@@ -514,6 +541,7 @@ def print_result(
     print_counter("Scan skew gate", result.scan_skew_counts, out=out, limit=limit)
     print_counter("Runtime filter gate", result.runtime_filter_counts, out=out, limit=limit)
     print_counter("Storage context", result.storage_context_counts, out=out, limit=limit)
+    print_counter("Resource trace", result.resource_trace_counts, out=out, limit=limit)
     if result.issues:
         print_counter("Issues", result.issue_counts, out=out, limit=limit)
         print("Issue examples:", file=out)

@@ -234,15 +234,21 @@ Resource trace CPU/I/O:
 
 - Resource traces are optional and may be sampled. Missing resource trace
   metrics mean `unknown`, not `not observed`.
-- `CpuIoWaitPercentage`, `CpuSysPercentage`, and `CpuUserPercentage` can become
-  CPU-vs-I/O context only after the profile dialect, counter stability, and
-  selected-query mapping are proven with fixtures.
+- `CpuIoWaitPercentage`, `CpuSysPercentage`, `CpuUserPercentage`, and their
+  host-level variants may be parsed only as CPU-vs-I/O context until the
+  profile dialect, counter stability, and selected-query mapping are proven
+  with fixtures.
 - Host disk and network throughput counters can include work from the selected
   query, other queries, and other processes on the host. Treat them as
   context-only unless analyzer facts can isolate selected-query evidence and
   corroborate it with operator bytes, timing, and storage context.
 - Trusted reports and browser UI must not expose raw Per Node Profiles rows,
   host identifiers, or raw resource-trace counter dumps.
+- Current implementation note: the analyzer emits `Resource Trace Facts` only
+  when allowlisted CPU, disk, or network resource-trace samples are parsed. The
+  facts contain aggregate sample counts/min/max/avg/ratio, `context_only`
+  evidence tier, `primary_supported=no`, and an explicit unproven
+  selected-query mapping. Missing traces remain `unknown`.
 
 Client fetch tail:
 

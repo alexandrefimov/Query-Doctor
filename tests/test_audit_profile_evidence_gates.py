@@ -77,6 +77,12 @@ def base_analysis(**overrides: object) -> dict[str, object]:
             "storage_semantics": "unknown",
             "hdfs_locality_applicable": "unknown",
         },
+        "resource_trace": {
+            "status": "unknown",
+            "evidence_tier": "unsupported",
+            "primary_supported": False,
+            "observed_metric_count": 0,
+        },
     }
     analysis.update(overrides)
     return analysis
@@ -204,6 +210,75 @@ def test_profile_evidence_gate_audit_accepts_execution_tail_runtime_skew(
     assert result.backend_tail_counts == {
         "execution_skew=yes/execution_tail_candidates=2/data_skew=no": 1
     }
+
+
+def test_profile_evidence_gate_audit_tracks_resource_trace_context(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        resource_trace={
+            "status": "available",
+            "evidence_tier": "context_only",
+            "primary_supported": False,
+            "observed_metric_count": 3,
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "clean",
+                "case_primary_bottleneck": {
+                    "label": "none",
+                    "confidence": "low",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert result.ok
+    assert result.resource_trace_counts == {
+        "status=available/tier=context_only/primary=no/metrics=3": 1
+    }
+    output = io.StringIO()
+    print_result(result, out=output)
+    assert "Resource trace:" in output.getvalue()
+
+
+def test_profile_evidence_gate_audit_flags_resource_trace_primary_support(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        resource_trace={
+            "status": "available",
+            "evidence_tier": "context_only",
+            "primary_supported": True,
+            "observed_metric_count": 2,
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "clean",
+                "case_primary_bottleneck": {
+                    "label": "none",
+                    "confidence": "low",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert not result.ok
+    assert result.issue_counts == {"resource_trace_promoted": 1}
 
 
 def test_profile_evidence_gate_audit_fail_on_issues_exit_code(tmp_path: Path) -> None:

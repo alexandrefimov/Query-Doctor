@@ -28,7 +28,7 @@ from query_doctor.analyzer.runtime_renderer import (
     render_runtime_diagnosis,
     render_storage_context,
 )
-from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_ratio
+from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_rate, fmt_ratio
 
 
 def md_escape(value: str) -> str:
@@ -320,6 +320,61 @@ def render_profile_resource_facts(analysis: dict[str, Any]) -> list[str]:
             f"max_min_ratio={fmt_ratio(system_time.get('ratio'))}"
         )
 
+    lines.append("")
+    return lines
+
+
+def fmt_percent(value: object) -> str:
+    if not isinstance(value, (int, float)):
+        return "n/a"
+    return f"{float(value):.2f}%"
+
+
+def render_resource_trace_metric(name: str, item: dict[str, Any]) -> str:
+    formatter = fmt_percent if item.get("unit") == "percent" else fmt_rate
+    return (
+        f"- {name}: "
+        f"samples={item.get('sample_count', 0)}, "
+        f"min={formatter(item.get('min'))}, "
+        f"max={formatter(item.get('max'))}, "
+        f"avg={formatter(item.get('avg'))}, "
+        f"max_min_ratio={fmt_ratio(item.get('max_min_ratio'))}"
+    )
+
+
+def render_resource_trace_facts(analysis: dict[str, Any]) -> list[str]:
+    facts = analysis.get("resource_trace")
+    if not isinstance(facts, dict) or not facts.get("available"):
+        return []
+    metrics = facts.get("metrics")
+    if not isinstance(metrics, dict):
+        metrics = {}
+
+    lines = ["## Resource Trace Facts", ""]
+    lines.append(f"- status: {facts.get('status') or 'unknown'}")
+    lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
+    lines.append(f"- primary_supported: {'yes' if facts.get('primary_supported') else 'no'}")
+    lines.append(f"- selected_query_mapping: {facts.get('selected_query_mapping') or 'unknown'}")
+    lines.append(
+        f"- guardrail: {facts.get('guardrail') or 'Resource trace facts are context only.'}"
+    )
+    for name in (
+        "cpu_io_wait_percentage",
+        "cpu_sys_percentage",
+        "cpu_user_percentage",
+        "disk_read_throughput",
+        "disk_write_throughput",
+        "network_receive_throughput",
+        "network_transmit_throughput",
+    ):
+        item = metrics.get(name)
+        if isinstance(item, dict) and item.get("available"):
+            lines.append(render_resource_trace_metric(name, item))
+    limitations = [str(item) for item in facts.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {md_escape(item)}")
     lines.append("")
     return lines
 
@@ -812,6 +867,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_profile_counter_registry(analysis)
     lines += render_exec_node_completeness(analysis)
     lines += render_profile_resource_facts(analysis)
+    lines += render_resource_trace_facts(analysis)
     lines += render_profile_timing_facts(analysis)
     lines += render_client_fetch_facts(analysis)
     lines += render_source_provenance(analysis)

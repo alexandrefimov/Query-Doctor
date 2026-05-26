@@ -47,6 +47,7 @@ from query_doctor.analyzer.node_lifecycle import (
 from query_doctor.analyzer.profile_resources import build_profile_resource_facts
 from query_doctor.analyzer.profile_text import normalize_profile_text
 from query_doctor.analyzer.profile_timings import build_profile_timing_facts
+from query_doctor.analyzer.resource_trace import build_resource_trace_facts
 from query_doctor.analyzer.runtime_counters import (
     build_runtime_counter_context,
     extract_query_timeline_duration_ms,
@@ -117,6 +118,7 @@ def analyze(
     ]
     profile_resources = build_profile_resource_facts(text)
     profile_timings = build_profile_timing_facts(text)
+    resource_trace = build_resource_trace_facts(text)
     backend_tail = build_backend_tail_analysis(parse_backend_host_facts(text))
     runtime_counter_context = build_runtime_counter_context(text)
     totals = {
@@ -643,6 +645,7 @@ def analyze(
         "exec_node_completeness": exec_node_completeness,
         "profile_resources": profile_resources,
         "profile_timings": profile_timings,
+        "resource_trace": resource_trace,
         "client_fetch": client_fetch,
         "runtime_filters": runtime_filters,
         "backend_tail": backend_tail,
