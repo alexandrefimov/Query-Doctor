@@ -18,6 +18,7 @@ SCAN_SKEW_METRICS = (
     ("bytes_read", "bytes read"),
     ("rows_produced", "rows produced"),
 )
+DIRECT_SCAN_SKEW_PRIMARY_METRICS = {"scan_bytes_assigned", "bytes_read"}
 SCAN_SKEW_LONG_PHASE_MIN_MS = 10_000.0
 SCAN_SKEW_RUNTIME_IMBALANCE_RATIO = 1.5
 
@@ -166,8 +167,9 @@ def scan_skew_facts(analysis: dict[str, Any]) -> ScanSkewFacts:
             "Scan skew can become supported only from per-instance scan bytes, "
             "bytes read, rows, or a mapped equivalent aggregate spread for the selected query. "
             "Primary runtime-skew routing also requires a long-running phase with material "
-            "Max Time vs Avg Time imbalance when execution timing is available. Operator-level "
-            "totals, runtime duration, network metrics, and aggregate-only timers remain "
+            "Max Time vs Avg Time imbalance and either direct scan/bytes spread or multiple "
+            "corroborating spread metrics. Operator-level totals, runtime duration, network "
+            "metrics, and aggregate-only timers remain "
             "context-only by themselves."
         ),
         limitations=tuple(
@@ -394,7 +396,10 @@ def runtime_status(
 
 
 def evidence_tier_for_scan_skew(evidence: ScanSkewEvidence) -> str:
-    if evidence.runtime_status == "long_running_imbalanced":
+    if evidence.runtime_status == "long_running_imbalanced" and (
+        evidence.metric_key in DIRECT_SCAN_SKEW_PRIMARY_METRICS
+        or evidence.corroborating_metric_count >= 2
+    ):
         return "strong"
     return "medium"
 
@@ -458,6 +463,10 @@ def scan_skew_limitations(
         elif evidence.runtime_status == "long_running_balanced":
             limitations.append(
                 "The skewed phase was long-running, but Max Time vs Avg Time imbalance was not material."
+            )
+        elif evidence.runtime_status == "long_running_imbalanced":
+            limitations.append(
+                "The skewed phase was long-running and imbalanced, but primary routing requires direct scan/bytes spread or multiple corroborating spread metrics."
             )
     elif aggregate_summary_observed:
         limitations.append(

@@ -21,7 +21,7 @@ Averaged Fragment F02
     - ExecutionTime: 21s
   Instance inst-c (host=synth-runtime-c)
     - RowsProduced: 6,300,000
-    - BytesRead: 1.1 GiB
+    - BytesRead: 6.0 GiB
     - ExecutionTime: 1m30s
 ```
 

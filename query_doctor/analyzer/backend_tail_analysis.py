@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from query_doctor.analyzer.models import BackendHostFact
 from query_doctor.analyzer.scalars import fmt_bytes, fmt_duration, fmt_rate, fmt_ratio, fmt_rows
+from query_doctor.safety.redaction import HostAliasRedactor, redact_host_identifiers
 
 
 BACKEND_MIN_HOSTS_FOR_SKEW = 3
@@ -19,9 +21,27 @@ BACKEND_EXECUTION_TAIL_HIGH_MS = 30 * 60 * 1000
 BACKEND_EXECUTION_TAIL_HIGH_GAP_MS = 15 * 60 * 1000
 
 
-def host_to_json(fact: BackendHostFact) -> dict[str, Any]:
+def backend_host_alias(value: str, host_redactor: HostAliasRedactor) -> str:
+    alias = host_redactor.redact_host_value(value)
+    match = re.match(r"^(host_\d{2})(?::\d+)?$", alias)
+    if match:
+        return match.group(1)
+    return host_redactor.alias_for(alias)
+
+
+def safe_backend_evidence_lines(lines: list[str], host_redactor: HostAliasRedactor) -> list[str]:
+    return [
+        re.sub(r"\b(host_\d{2}):\d+\b", r"\1", redact_host_identifiers(line, host_redactor))
+        for line in lines
+    ]
+
+
+def host_to_json(
+    fact: BackendHostFact, host_redactor: HostAliasRedactor | None = None
+) -> dict[str, Any]:
+    host_redactor = host_redactor or HostAliasRedactor()
     return {
-        "host": fact.host,
+        "host": backend_host_alias(fact.host, host_redactor),
         "fragment_instance": fact.fragment_instance,
         "fragment_group": fact.fragment_group,
         "scan_bytes_assigned": fact.scan_bytes_assigned,
@@ -53,7 +73,7 @@ def host_to_json(fact: BackendHostFact) -> dict[str, Any]:
         "peak_scanner_concurrency": fact.peak_scanner_concurrency,
         "execution_time_ms": fact.execution_time_ms,
         "execution_time_human": fmt_duration(fact.execution_time_ms),
-        "evidence_lines": fact.evidence_lines,
+        "evidence_lines": safe_backend_evidence_lines(fact.evidence_lines, host_redactor),
     }
 
 
@@ -167,7 +187,8 @@ def backend_tail_finding_severity(candidates: list[dict[str, Any]]) -> str:
 
 
 def build_backend_tail_analysis(host_facts: list[BackendHostFact]) -> dict[str, Any]:
-    hosts = [host_to_json(fact) for fact in host_facts]
+    host_redactor = HostAliasRedactor()
+    hosts = [host_to_json(fact, host_redactor) for fact in host_facts]
     grouped_hosts: dict[str, list[dict[str, Any]]] = {}
     for host in hosts:
         group = str(host.get("fragment_group") or "unknown")

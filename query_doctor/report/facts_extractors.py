@@ -19,6 +19,7 @@ from query_doctor.report.markdown import (
     extract_markdown_subsection,
     strip_markdown_section,
 )
+from query_doctor.safety.browser_display import redact_browser_display_text
 
 
 FACT_APPENDIX_MAX_ITEMS = 8
@@ -43,7 +44,14 @@ def facts_text_for_model_prompt(facts_text: str) -> str:
     ]
     prompt_facts = "\n".join(safe_lines)
     prompt_facts = strip_markdown_section(prompt_facts, TABLE_METADATA_CONTEXT_HEADING)
-    return strip_markdown_section(prompt_facts, CM_TIMESERIES_CONTEXT_HEADING)
+    prompt_facts = strip_markdown_section(prompt_facts, CM_TIMESERIES_CONTEXT_HEADING)
+    return redact_browser_display_text(
+        prompt_facts,
+        redact_artifact_markers=True,
+        redact_field_names=True,
+        redact_model_names=True,
+        redact_infrastructure=True,
+    )
 
 
 def facts_cardinality_anomaly_count(facts_text: str) -> int | None:
