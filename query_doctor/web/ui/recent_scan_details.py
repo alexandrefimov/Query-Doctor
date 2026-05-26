@@ -56,6 +56,7 @@ from query_doctor.web.ui.report_actions import (
 from query_doctor.web.ui.runtime_metrics import (
     render_cluster_runtime_context_section,
     render_cm_metrics_section,
+    render_data_movement_evidence_section,
     render_query_context_section,
     render_runtime_diagnosis_details,
     render_runtime_diagnosis_summary,
@@ -425,6 +426,7 @@ def render_runtime_diagnostics_section(
         '<div class="analysis-details-body">'
         f"{render_query_context_section(view.query_context)}"
         f"{render_runtime_diagnosis_details(view.runtime_diagnosis)}"
+        f"{render_data_movement_evidence_section(view.data_movement)}"
         f"{render_cluster_runtime_context_section(view.cluster_runtime_context)}"
         f"{render_runtime_signals(view)}"
         "</div>"

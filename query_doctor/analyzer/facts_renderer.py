@@ -752,6 +752,34 @@ def render_scan_skew_facts(analysis: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_data_movement_facts(analysis: dict[str, Any]) -> list[str]:
+    facts = analysis.get("data_movement")
+    if not isinstance(facts, dict):
+        return []
+    if facts.get("status") == "not_observed" and facts.get("evidence_tier") == "unsupported":
+        return []
+
+    lines = ["## Data Movement Evidence", ""]
+    lines.append(f"- status: {facts.get('status') or 'unknown'}")
+    lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
+    lines.append(f"- finding_supported: {'yes' if facts.get('finding_supported') else 'no'}")
+    lines.append(f"- primary_supported: {'yes' if facts.get('primary_supported') else 'no'}")
+    lines.append(f"- total_bytes_sent: {facts.get('total_bytes_sent_human') or 'n/a'}")
+    lines.append(f"- exchange_operator_count: {facts.get('exchange_operator_count') or 0}")
+    lines.append(f"- exchange_elapsed: {facts.get('exchange_elapsed_human') or 'n/a'}")
+    lines.append(f"- exchange_elapsed_share: {facts.get('exchange_elapsed_share_human') or 'n/a'}")
+    lines.append(
+        f"- guardrail: {facts.get('guardrail') or 'Data movement facts are deterministic context.'}"
+    )
+    limitations = [str(item) for item in facts.get("limitations") or [] if item]
+    if limitations:
+        lines.append("- limitations:")
+        for item in limitations:
+            lines.append(f"  - {md_escape(item)}")
+    lines.append("")
+    return lines
+
+
 def render_source_provenance(analysis: dict[str, Any]) -> list[str]:
     provenance = analysis.get("source_provenance")
     if not isinstance(provenance, dict):
@@ -877,6 +905,7 @@ def render_md(analysis: dict[str, Any], source_path: Path, verbose: bool = False
     lines += render_memory_pressure_facts(analysis)
     lines += render_runtime_filter_facts(analysis)
     lines += render_storage_context(analysis)
+    lines += render_data_movement_facts(analysis)
     lines += render_runtime_counter_context(analysis)
     lines += render_evidence_quality(analysis)
     report_top_n = int(analysis.get("thresholds", {}).get("report_top_n", 10))

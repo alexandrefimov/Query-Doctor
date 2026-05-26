@@ -10,6 +10,7 @@ from query_doctor.web.case_detail_context import case_allows_llm_report
 from query_doctor.web.case_files import build_query_id_summary_case
 from query_doctor.web.details_facts import (
     load_specific_query_cluster_runtime_context_facts,
+    load_specific_query_data_movement_facts,
     load_specific_query_evidence_quality_facts,
     load_specific_query_metadata_facts,
     load_specific_query_query_context_facts,
@@ -95,6 +96,7 @@ def build_specific_query_detail_render_context(
     runtime_metrics_facts = load_specific_query_runtime_metrics_facts(case_dir)
     query_context_facts = load_specific_query_query_context_facts(case_dir)
     runtime_diagnosis_facts = load_specific_query_runtime_diagnosis_facts(case_dir)
+    data_movement_facts = load_specific_query_data_movement_facts(case_dir)
     cluster_runtime_context_facts = load_specific_query_cluster_runtime_context_facts(case_dir)
     artifacts = load_specific_query_trusted_detail_artifacts(
         settings, query_id, case_dir, job_store, job=job
@@ -117,6 +119,7 @@ def build_specific_query_detail_render_context(
         evidence_quality_facts,
         stats_quality_facts,
         query_context_facts,
+        data_movement_facts=data_movement_facts,
         report_state=report_state,
     )
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")

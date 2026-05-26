@@ -281,6 +281,42 @@ def test_profile_evidence_gate_audit_flags_resource_trace_primary_support(
     assert result.issue_counts == {"resource_trace_promoted": 1}
 
 
+def test_profile_evidence_gate_audit_flags_data_movement_primary_without_exchange(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        data_movement={
+            "status": "supported",
+            "evidence_tier": "medium",
+            "finding_supported": True,
+            "primary_supported": True,
+            "exchange_operator_count": 0,
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "suspicious",
+                "case_primary_bottleneck": {
+                    "label": "runtime_data_movement",
+                    "confidence": "medium",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert not result.ok
+    assert result.issue_counts == {
+        "data_movement_weak_primary_promotion": 1,
+        "data_movement_primary_without_exchange_context": 1,
+    }
+
+
 def test_profile_evidence_gate_audit_fail_on_issues_exit_code(tmp_path: Path) -> None:
     analysis = base_analysis(
         client_fetch={

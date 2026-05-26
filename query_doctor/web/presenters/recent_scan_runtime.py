@@ -9,6 +9,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanCmMetricCorrelationView,
     RecentScanCmMetricSignalView,
     RecentScanCmMetricsView,
+    RecentScanDataMovementView,
     RecentScanQueryContextView,
     RecentScanRuntimeDiagnosisSignalView,
     RecentScanRuntimeDiagnosisView,
@@ -173,6 +174,39 @@ def present_recent_scan_runtime_diagnosis(
         summary=summary,
         guardrail=safe_display_value(runtime_diagnosis_facts.get("guardrail")),
         signals=signals,
+    )
+
+
+def present_recent_scan_data_movement(
+    data_movement_facts: dict[str, Any] | None,
+) -> RecentScanDataMovementView:
+    if not data_movement_facts:
+        return RecentScanDataMovementView(unavailable=True, summary_items=(), limitations=())
+    summary = data_movement_facts.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    raw_limitations = data_movement_facts.get("limitations")
+    limitations = raw_limitations if isinstance(raw_limitations, list) else []
+    summary_items = tuple(
+        (label, safe_display_value(summary.get(key)))
+        for key, label in (
+            ("status", "status"),
+            ("evidence_tier", "evidence tier"),
+            ("finding_supported", "finding supported"),
+            ("primary_supported", "primary supported"),
+            ("total_bytes_sent", "total bytes sent"),
+            ("exchange_operator_count", "exchange operators"),
+            ("exchange_elapsed", "exchange elapsed"),
+            ("exchange_elapsed_share", "exchange elapsed share"),
+            ("guardrail", "guardrail"),
+        )
+        if summary.get(key) is not None
+    )
+    limitation_views = tuple(safe_display_text(item) for item in limitations if item is not None)
+    return RecentScanDataMovementView(
+        unavailable=not bool(summary_items or limitation_views),
+        summary_items=summary_items,
+        limitations=limitation_views,
     )
 
 

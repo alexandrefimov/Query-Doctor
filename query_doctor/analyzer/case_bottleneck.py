@@ -9,11 +9,10 @@ from query_doctor.analyzer.runtime_admission import (
     runtime_admission_facts_from_analysis,
     runtime_admission_uses_non_profile_evidence,
 )
+from query_doctor.analyzer.data_movement import data_movement_facts_from_analysis
 from query_doctor.analyzer.profile_evidence import (
     DATA_MOVEMENT_FINDING_ID,
     STORAGE_FINDING_ID,
-    profile_data_movement_primary_supported,
-    profile_data_movement_supported,
     profile_storage_supported,
 )
 from query_doctor.analyzer.scan_skew import scan_skew_facts_from_analysis
@@ -118,6 +117,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     is_client_fetch_top = elapsed_top_finding == CLIENT_FETCH_FINDING_ID
     is_query_shape_top = elapsed_top_finding in QUERY_SHAPE_FINDING_IDS
     storage_runtime_diagnosis_supported = runtime_diagnosis_supports_storage(analysis)
+    data_movement = data_movement_facts_from_analysis(analysis)
     profile_derived_primary_allowed = profile_policy == "supported"
     row_count_primary_allowed = (
         profile_derived_primary_allowed and row_count_conclusions_support_profile_claims(analysis)
@@ -152,7 +152,8 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     data_movement_supports_primary = (
         profile_derived_primary_allowed
         and is_data_movement_top
-        and profile_data_movement_primary_supported(analysis)
+        and data_movement.primary_supported
+        and data_movement.evidence_tier == "strong"
         and not stats_signal
         and not sql_supports_primary
         and not stats_competing_signal
@@ -506,11 +507,12 @@ def category_set(value: Any) -> set[str]:
 def supported_non_stats_categories(analysis: dict[str, Any], categories: set[str]) -> set[str]:
     kept = set(categories)
     scan_skew = scan_skew_facts_from_analysis(analysis)
+    data_movement = data_movement_facts_from_analysis(analysis)
     if "backend_data_skew" in kept and not (
         scan_skew.primary_supported and scan_skew.evidence_tier == "strong"
     ):
         kept.discard("backend_data_skew")
-    if "exchange_or_data_movement" in kept and not profile_data_movement_supported(analysis):
+    if "exchange_or_data_movement" in kept and not data_movement.finding_supported:
         kept.discard("exchange_or_data_movement")
     if "storage_or_hdfs" in kept and not (
         profile_storage_supported(analysis) or runtime_diagnosis_supports_storage(analysis)

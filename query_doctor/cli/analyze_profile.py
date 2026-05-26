@@ -20,6 +20,7 @@ from query_doctor.analyzer.context_collection import (
     collect_referenced_tables,
     collect_sql_column_context,
 )
+from query_doctor.analyzer.data_movement import build_data_movement_facts
 from query_doctor.analyzer.evidence_quality import build_evidence_quality
 from query_doctor.analyzer.facts_renderer import render_md
 from query_doctor.analyzer.memory_pressure import build_memory_pressure_facts
@@ -139,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     analysis["scan_skew"] = build_scan_skew_facts(analysis)
     analysis["storage_context"] = build_storage_context(analysis)
+    analysis["data_movement"] = build_data_movement_facts(analysis)
     analysis["stats_metadata_quality"] = stats_metadata_quality(
         analysis["table_metadata_context"] or {},
         analysis,

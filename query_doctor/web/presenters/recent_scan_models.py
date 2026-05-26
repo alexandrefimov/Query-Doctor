@@ -317,6 +317,13 @@ class RecentScanRuntimeDiagnosisView:
 
 
 @dataclass(frozen=True)
+class RecentScanDataMovementView:
+    unavailable: bool
+    summary_items: tuple[tuple[str, Any], ...]
+    limitations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RecentScanClusterRuntimeContextView:
     unavailable: bool
     summary_items: tuple[tuple[str, Any], ...]
@@ -462,6 +469,7 @@ class RecentScanCaseDetailView:
     cm_metrics: RecentScanCmMetricsView
     query_context: RecentScanQueryContextView
     runtime_diagnosis: RecentScanRuntimeDiagnosisView
+    data_movement: RecentScanDataMovementView
     cluster_runtime_context: RecentScanClusterRuntimeContextView
     runtime_verdict: RecentScanRuntimeVerdictView
     evidence_quality: RecentScanEvidenceQualityView

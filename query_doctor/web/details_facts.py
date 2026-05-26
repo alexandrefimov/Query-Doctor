@@ -139,6 +139,14 @@ def load_specific_query_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any
     return None
 
 
+def load_specific_query_data_movement_facts(case_dir: Path) -> dict[str, Any] | None:
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_data_movement_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_specific_query_cluster_runtime_context_facts(case_dir: Path) -> dict[str, Any] | None:
     for artifact_dir in batch_case_artifact_dirs(case_dir):
         facts = load_case_analysis_cluster_runtime_context_facts(artifact_dir)
@@ -237,6 +245,19 @@ def load_batch_case_runtime_diagnosis_facts(
     return None
 
 
+def load_batch_case_data_movement_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
+        return None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_data_movement_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_batch_case_cluster_runtime_context_facts(
     settings: WebSettings, case: dict[str, object]
 ) -> dict[str, Any] | None:
@@ -294,6 +315,13 @@ def load_case_analysis_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any]
     if text is None:
         return None
     return parse_runtime_diagnosis_facts(text)
+
+
+def load_case_analysis_data_movement_facts(case_dir: Path) -> dict[str, Any] | None:
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
+        return None
+    return parse_data_movement_facts(text)
 
 
 def load_case_analysis_cluster_runtime_context_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -718,6 +746,50 @@ def parse_runtime_diagnosis_facts(text: str) -> dict[str, Any] | None:
         "summary": summary.get("summary", "unknown"),
         "guardrail": summary.get("guardrail", ""),
         "signals": signals,
+    }
+
+
+def parse_data_movement_facts(text: str) -> dict[str, Any] | None:
+    section = ""
+    summary: dict[str, str] = {}
+    limitations: list[str] = []
+    allowed_keys = {
+        "status",
+        "evidence_tier",
+        "finding_supported",
+        "primary_supported",
+        "total_bytes_sent",
+        "exchange_operator_count",
+        "exchange_elapsed",
+        "exchange_elapsed_share",
+        "guardrail",
+    }
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            section = "data_movement" if line == "## Data Movement Evidence" else ""
+            continue
+        if not section or not line.startswith("- "):
+            continue
+        bullet = line[2:].strip()
+        if section == "data_movement_limitations":
+            if bullet:
+                limitations.append(clean_metadata_fact_value(bullet))
+            continue
+        if bullet == "limitations:":
+            section = "data_movement_limitations"
+            continue
+        if ": " not in bullet:
+            continue
+        key, value = bullet.split(": ", 1)
+        key = key.strip()
+        if key in allowed_keys:
+            summary[key] = clean_metadata_fact_value(value)
+    if not summary and not limitations:
+        return None
+    return {
+        "summary": summary,
+        "limitations": limitations[:8],
     }
 
 

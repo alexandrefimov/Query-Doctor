@@ -12,7 +12,10 @@ from query_doctor.web.presenters.recent_scan import (
     RecentScanRuntimeDiagnosisView,
     RecentScanRuntimeVerdictView,
 )
-from query_doctor.web.presenters.recent_scan_models import RecentScanQueryContextView
+from query_doctor.web.presenters.recent_scan_models import (
+    RecentScanDataMovementView,
+    RecentScanQueryContextView,
+)
 from query_doctor.web.ui.html_helpers import (
     SafeHtml,
     cm_metric_status_badge,
@@ -99,6 +102,29 @@ def render_runtime_diagnosis_details(view: RecentScanRuntimeDiagnosisView) -> st
         "<thead><tr><th>Signal</th><th>Status</th><th>Interpretation</th><th>Evidence</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
+        "</div>"
+        "</details>"
+    )
+
+
+def render_data_movement_evidence_section(view: RecentScanDataMovementView) -> str:
+    if view.unavailable:
+        return ""
+    summary_rows = metadata_rows(list(view.summary_items))
+    limitations_html = ""
+    if view.limitations:
+        limitations_html = (
+            "<h3>Limitations</h3>"
+            '<ul class="compact-list">'
+            + "".join(f"<li>{escape_value(item)}</li>" for item in view.limitations)
+            + "</ul>"
+        )
+    return (
+        '<details class="analysis-subdetails" aria-label="Data movement evidence">'
+        "<summary>Data movement evidence</summary>"
+        '<div class="report-body">'
+        f'<div class="meta-list">{summary_rows}</div>'
+        f"{limitations_html}"
         "</div>"
         "</details>"
     )

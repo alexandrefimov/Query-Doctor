@@ -20,6 +20,7 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanCmMetricCorrelationView,
     RecentScanCmMetricSignalView,
     RecentScanCmMetricsView,
+    RecentScanDataMovementView,
     RecentScanMetadataTableView,
     RecentScanMetadataView,
     RecentScanPrimaryBottleneckView,
@@ -94,6 +95,7 @@ from query_doctor.web.presenters.recent_scan_diagnostic_facts import (
 from query_doctor.web.presenters.recent_scan_runtime import (
     present_recent_scan_cluster_runtime_context,
     present_recent_scan_cm_metrics,
+    present_recent_scan_data_movement,
     present_recent_scan_query_context,
     present_recent_scan_runtime_diagnosis,
     present_recent_scan_runtime_verdict,
@@ -1045,6 +1047,7 @@ def present_recent_scan_case_detail(
     stats_quality_facts: dict[str, Any] | None = None,
     query_context_facts: dict[str, Any] | None = None,
     *,
+    data_movement_facts: dict[str, Any] | None = None,
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
     report_status = batch_case_display_report_status(case, report_state)
@@ -1062,6 +1065,7 @@ def present_recent_scan_case_detail(
     cm_metrics = present_recent_scan_cm_metrics(cm_metrics_facts)
     query_context = present_recent_scan_query_context(query_context_facts)
     runtime_diagnosis = present_recent_scan_runtime_diagnosis(runtime_diagnosis_facts)
+    data_movement = present_recent_scan_data_movement(data_movement_facts)
     cluster_runtime_context = present_recent_scan_cluster_runtime_context(
         cluster_runtime_context_facts
     )
@@ -1127,6 +1131,7 @@ def present_recent_scan_case_detail(
         cm_metrics=cm_metrics,
         query_context=query_context,
         runtime_diagnosis=runtime_diagnosis,
+        data_movement=data_movement,
         cluster_runtime_context=cluster_runtime_context,
         runtime_verdict=present_recent_scan_runtime_verdict(
             cluster_runtime_context, runtime_diagnosis

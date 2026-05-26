@@ -23,8 +23,8 @@ from query_doctor.analyzer.case_bottleneck import (  # noqa: E402
     runtime_diagnosis_supports_storage,
     top_finding_id,
 )
+from query_doctor.analyzer.data_movement import data_movement_facts_from_analysis  # noqa: E402
 from query_doctor.analyzer.profile_evidence import (  # noqa: E402
-    profile_data_movement_primary_supported,
     profile_storage_supported,
 )
 from query_doctor.analyzer.runtime_admission import (  # noqa: E402
@@ -70,6 +70,7 @@ class EvidenceGateAuditResult:
     memory_pressure_counts: Counter[str] = field(default_factory=Counter)
     backend_tail_counts: Counter[str] = field(default_factory=Counter)
     scan_skew_counts: Counter[str] = field(default_factory=Counter)
+    data_movement_counts: Counter[str] = field(default_factory=Counter)
     runtime_filter_counts: Counter[str] = field(default_factory=Counter)
     storage_context_counts: Counter[str] = field(default_factory=Counter)
     resource_trace_counts: Counter[str] = field(default_factory=Counter)
@@ -224,6 +225,7 @@ def audit_analysis(
     audit_memory_pressure(result, case, analysis)
     audit_backend_tail(result, analysis)
     audit_scan_skew(result, case, analysis)
+    audit_data_movement(result, case, analysis)
     audit_runtime_filters(result, case, analysis)
     audit_storage_context(result, analysis)
     audit_resource_trace(result, case, analysis)
@@ -370,6 +372,37 @@ def audit_scan_skew(
         )
 
 
+def audit_data_movement(
+    result: EvidenceGateAuditResult,
+    case: dict[str, Any],
+    analysis: dict[str, Any],
+) -> None:
+    facts = data_movement_facts_from_analysis(analysis)
+    result.data_movement_counts[
+        counter_bucket(
+            facts.status,
+            facts.evidence_tier,
+            f"finding={facts.finding_supported}",
+            f"primary={facts.primary_supported}",
+            f"exchange_ops={min(facts.exchange_operator_count, 4)}",
+        )
+    ] += 1
+    if facts.primary_supported and facts.evidence_tier != "strong":
+        add_issue(
+            result,
+            case,
+            "data_movement_weak_primary_promotion",
+            "data-movement primary support lacks strong evidence",
+        )
+    if facts.primary_supported and facts.exchange_operator_count <= 0:
+        add_issue(
+            result,
+            case,
+            "data_movement_primary_without_exchange_context",
+            "data-movement primary support requires mapped EXCHANGE operator context",
+        )
+
+
 def audit_runtime_filters(
     result: EvidenceGateAuditResult,
     case: dict[str, Any],
@@ -486,7 +519,8 @@ def audit_primary_consistency(
                 "runtime_skew primary label is not backed by scan-skew or execution-tail support",
             )
     elif primary_label == "runtime_data_movement":
-        if not profile_data_movement_primary_supported(analysis):
+        facts = data_movement_facts_from_analysis(analysis)
+        if not facts.primary_supported:
             add_issue(
                 result,
                 case,
@@ -539,6 +573,7 @@ def print_result(
     print_counter("Memory pressure gate", result.memory_pressure_counts, out=out, limit=limit)
     print_counter("Backend execution-tail gate", result.backend_tail_counts, out=out, limit=limit)
     print_counter("Scan skew gate", result.scan_skew_counts, out=out, limit=limit)
+    print_counter("Data movement gate", result.data_movement_counts, out=out, limit=limit)
     print_counter("Runtime filter gate", result.runtime_filter_counts, out=out, limit=limit)
     print_counter("Storage context", result.storage_context_counts, out=out, limit=limit)
     print_counter("Resource trace", result.resource_trace_counts, out=out, limit=limit)
