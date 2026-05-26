@@ -1,6 +1,6 @@
 # Test Matrix
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-26
 
 Язык: [English](../../test-matrix.md) | Русский
 
@@ -21,5 +21,8 @@ Last reviewed: 2026-05-15
 - Report/validator changes: report sanitizer и trusted artifact tests.
 - Optimizer changes: parser, recipe и web optimizer tests.
 - Collector/config changes: focused config/collector tests.
+- Real Recent smoke summaries: `audit_recent_details.py` для Details UI и
+  `audit_profile_evidence_gates.py --fail-on-issues` для profile-derived
+  evidence gates.
 
 Полная matrix: [английская версия](../../test-matrix.md).
