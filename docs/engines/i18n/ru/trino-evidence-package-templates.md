@@ -56,11 +56,51 @@ redaction note, а не как accepted sample payloads.
 python3 scripts/validate_trino_evidence_package.py <sanitized-package.json>
 ```
 
-Validator печатает только package id, source type, parser coverage counts и
-sample counts. Он не должен печатать input path, raw payload, raw field values,
-SQL text, identifiers, hostnames, object names, connector details или rejected
-record contents. Для ранних operator dry runs можно использовать
-`--partial-ok`, пока minimum case set ещё собирается.
+Если operator уже подготовил compact sanitized sample JSON files, локальный
+builder может собрать wrapper и запустить тот же validator:
+
+```bash
+python3 scripts/build_trino_evidence_package.py \
+  --out <sanitized-package.json> \
+  --package-id <safe-package-label> \
+  --prepared-date-utc YYYY-MM-DD \
+  --export-window-start-utc YYYY-MM-DDTHH:00:00Z \
+  --export-window-end-utc YYYY-MM-DDTHH:00:00Z \
+  --redaction-reviewed \
+  --sentinel-tests-passed \
+  --sample <case>:<source_type>:<sanitized-sample-json>
+```
+
+Builder читает только local already-sanitized sample files, не подключается к
+Trino, не submit-ит SQL, пишет output только после успешной validation wrapper
+и печатает тот же path-free safe summary, что validator. Используйте
+`--partial-ok` только для early dry runs, пока minimum case set ещё собирается.
+Используйте `--synthetic-rejection <case>:<count>`, чтобы объявить synthetic
+rejection cases в manifest; эти cases всё равно не становятся accepted sample
+payloads.
+
+Для repeatable local walkthrough только на committed synthetic fixtures:
+
+```bash
+python3 scripts/demo_trino_evidence_package.py
+```
+
+Walkthrough собирает и валидирует такой же package in memory и печатает safe
+summary, который можно показывать в release-prep обсуждениях. Он не
+подключается к Trino, не выполняет SQL, не читает credentials, не печатает
+fixture paths и не заявляет live Trino support. Используйте
+`--out-dir <directory>` только когда нужен local sanitized demo package file;
+команда всё равно не печатает output paths.
+
+Validator печатает только package id, source type, safe manifest source summary
+fields, parser coverage counts и sample counts. Safe manifest summary
+ограничен broad version/source-contract labels, connector family categories,
+bounded UTC export window, declared byte/depth bounds, safe omission/source
+labels, raw-retention status и `fixture_import_only` contact surface. Он не
+должен печатать input path, raw payload, raw field values, SQL text,
+identifiers, hostnames, object names, connector details или rejected record
+contents. Для ранних operator dry runs можно использовать `--partial-ok`, пока
+minimum case set ещё собирается.
 
 ## Manifest Template
 

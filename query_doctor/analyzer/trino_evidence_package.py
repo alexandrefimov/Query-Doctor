@@ -120,6 +120,13 @@ TRINO_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS = (
     "no_credentials_tokens_cookies_keys_or_tls_material",
     "no_raw_companion_archive",
 )
+TRINO_EVIDENCE_PACKAGE_TOP_LEVEL_KEYS = frozenset(
+    {
+        "manifest",
+        "redaction_note",
+        "samples",
+    }
+)
 
 _SAFE_PACKAGE_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{2,80}$")
 _SAFE_CLASS_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{1,120}$")
@@ -136,9 +143,26 @@ class TrinoEvidencePackageSampleResult:
 
 
 @dataclass(frozen=True)
+class TrinoEvidencePackageSourceSummary:
+    trino_version_family: str
+    source_contract_version: str
+    connector_family_categories: tuple[str, ...]
+    export_window_start_utc: str
+    export_window_end_utc: str
+    byte_count_compacted: int
+    max_record_bytes: int
+    max_nested_depth: int
+    known_omissions: tuple[str, ...]
+    unsupported_sources: tuple[str, ...]
+    operator_retained_raw_exports: str
+    query_doctor_contact_surface: str
+
+
+@dataclass(frozen=True)
 class TrinoEvidencePackageIntakeResult:
     package_id: str
     source_type: str
+    source_summary: TrinoEvidencePackageSourceSummary
     sample_count: int
     sample_count_by_case: tuple[tuple[str, int], ...]
     samples: tuple[TrinoEvidencePackageSampleResult, ...]
@@ -166,6 +190,8 @@ def validate_trino_evidence_package_payload(
 
     if not isinstance(payload, Mapping):
         raise EngineFactContractError("Trino evidence package must be a JSON object")
+    if set(payload) != TRINO_EVIDENCE_PACKAGE_TOP_LEVEL_KEYS:
+        raise EngineFactContractError("Trino evidence package has unsupported top-level sections")
 
     validate_trino_safe_fixture_json_size(
         payload,
@@ -186,7 +212,7 @@ def validate_trino_evidence_package_payload(
     if len(sample_entries) > max_samples:
         raise EngineFactContractError("Trino evidence package has too many samples")
 
-    package_id, source_type, manifest_counts = _validate_manifest(manifest)
+    package_id, source_type, manifest_counts, source_summary = _validate_manifest(manifest)
     _validate_redaction_note(redaction_note, package_id=package_id)
 
     bundles: list[EngineFactBundle] = []
@@ -233,6 +259,7 @@ def validate_trino_evidence_package_payload(
     return TrinoEvidencePackageIntakeResult(
         package_id=package_id,
         source_type=source_type,
+        source_summary=source_summary,
         sample_count=len(sample_results),
         sample_count_by_case=tuple(
             (case, manifest_counts[case]) for case in TRINO_EVIDENCE_PACKAGE_CASES
@@ -242,7 +269,9 @@ def validate_trino_evidence_package_payload(
     )
 
 
-def _validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, str, dict[str, int]]:
+def _validate_manifest(
+    manifest: Mapping[str, Any],
+) -> tuple[str, str, dict[str, int], TrinoEvidencePackageSourceSummary]:
     package_id = _safe_package_label(manifest, "package_id")
     if _version_text(manifest, "package_version") != "1":
         raise EngineFactContractError("Trino evidence package manifest version is unsupported")
@@ -256,24 +285,49 @@ def _validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, str, dict[str,
     version_family = _required_text(manifest, "trino_version_family")
     if not _TRINO_VERSION_FAMILY_RE.fullmatch(version_family):
         raise EngineFactContractError("Trino evidence package version family is not safe")
-    _safe_source_contract_label(manifest, "source_contract_version")
-    _safe_label_list(manifest, "connector_family_categories", allow_empty=False)
-    _validate_export_window(_required_mapping(manifest, "export_window_utc"))
+    source_contract_version = _safe_source_contract_label(manifest, "source_contract_version")
+    connector_family_categories = _safe_label_list(
+        manifest,
+        "connector_family_categories",
+        allow_empty=False,
+    )
+    export_window_start, export_window_end = _validate_export_window(
+        _required_mapping(manifest, "export_window_utc")
+    )
 
     counts = _validate_sample_count_by_case(_required_mapping(manifest, "sample_count_by_case"))
-    _non_negative_int(manifest, "byte_count_compacted")
-    _non_negative_int(manifest, "max_record_bytes")
-    _non_negative_int(manifest, "max_nested_depth")
+    byte_count_compacted = _non_negative_int(manifest, "byte_count_compacted")
+    max_record_bytes = _non_negative_int(manifest, "max_record_bytes")
+    max_nested_depth = _non_negative_int(manifest, "max_nested_depth")
     if _safe_class_label(manifest, "redaction_status") != "checked":
         raise EngineFactContractError("Trino evidence package redaction status is not checked")
-    _safe_label_list(manifest, "known_omissions", allow_empty=True)
-    _safe_label_list(manifest, "unsupported_sources", allow_empty=True)
+    known_omissions = _safe_label_list(manifest, "known_omissions", allow_empty=True)
+    unsupported_sources = _safe_label_list(manifest, "unsupported_sources", allow_empty=True)
     retained_raw = _safe_class_label(manifest, "operator_retained_raw_exports")
     if retained_raw not in {"yes", "no"}:
         raise EngineFactContractError("Trino evidence package raw-retention flag is unsupported")
-    if _safe_class_label(manifest, "query_doctor_contact_surface") != "fixture_import_only":
+    contact_surface = _safe_class_label(manifest, "query_doctor_contact_surface")
+    if contact_surface != "fixture_import_only":
         raise EngineFactContractError("Trino evidence package contact surface is unsupported")
-    return package_id, source_type, counts
+    return (
+        package_id,
+        source_type,
+        counts,
+        TrinoEvidencePackageSourceSummary(
+            trino_version_family=version_family,
+            source_contract_version=source_contract_version,
+            connector_family_categories=connector_family_categories,
+            export_window_start_utc=export_window_start,
+            export_window_end_utc=export_window_end,
+            byte_count_compacted=byte_count_compacted,
+            max_record_bytes=max_record_bytes,
+            max_nested_depth=max_nested_depth,
+            known_omissions=known_omissions,
+            unsupported_sources=unsupported_sources,
+            operator_retained_raw_exports=retained_raw,
+            query_doctor_contact_surface=contact_surface,
+        ),
+    )
 
 
 def _validate_redaction_note(redaction_note: Mapping[str, Any], *, package_id: str) -> None:
@@ -412,7 +466,7 @@ def _validate_declared_bounds(
         raise EngineFactContractError("Trino evidence package max depth exceeds fixture limit")
 
 
-def _validate_export_window(window: Mapping[str, Any]) -> None:
+def _validate_export_window(window: Mapping[str, Any]) -> tuple[str, str]:
     start = _required_text(window, "start")
     end = _required_text(window, "end")
     if not _UTC_HOUR_RE.fullmatch(start) or not _UTC_HOUR_RE.fullmatch(end):
@@ -421,6 +475,7 @@ def _validate_export_window(window: Mapping[str, Any]) -> None:
         )
     if start >= end:
         raise EngineFactContractError("Trino evidence package export window is invalid")
+    return start, end
 
 
 def _required_mapping(payload: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:

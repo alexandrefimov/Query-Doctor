@@ -41,6 +41,13 @@ Trino discovery spike - это fixture-only работа для изучения
   sanitized package file; команда печатает только safe summary или safe
   rejection message, без input paths, raw payloads, raw values или rejected
   record contents;
+- запускать `scripts/demo_trino_evidence_package.py` как repeatable local
+  walkthrough по committed synthetic fixtures; команда показывает safe summary
+  без сети, credentials, SQL execution или live Trino support claim;
+- использовать
+  [Trino private preview release path](../../engines/i18n/ru/trino-private-preview-release.md)
+  как release-facing runbook для closed test-cluster smoke и sanitized package
+  intake без public Trino support;
 - проверять unsafe statement-stats fixture input до mapping, так же как для
   compact event-listener fixtures;
 - проверять nested objects/arrays и reject-ить payloads глубже accepted maximum

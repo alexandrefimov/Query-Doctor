@@ -48,7 +48,7 @@ def render_page(
         "<head>",
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        "<title>impala-query-doctor</title>",
+        "<title>Query Doctor</title>",
         render_favicon_link(),
         render_theme_bootstrap_script(),
         render_static_stylesheet_link(),

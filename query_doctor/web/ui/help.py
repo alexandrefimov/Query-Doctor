@@ -73,7 +73,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <section class="panel docs-panel help-panel" aria-label="Query Doctor help">
 <h1>Help</h1>
 <div class="report-body help-body">
-<p class="help-lede">Query Doctor is a local-first Big Data Query Diagnostic Tool focused today on Apache Impala production triage for operators. It ranks suspicious Recent queries, collects bounded profile context, derives deterministic evidence, optionally enriches it with safe metadata and runtime context, and generates validated raw-free reports. The implemented engine is Apache Impala only.</p>
+<p class="help-lede">Query Doctor is a local-first Big Data query diagnostics tool focused today on Apache Impala production triage for operators. It ranks suspicious Recent queries, collects bounded profile context, derives deterministic evidence, optionally enriches it with safe metadata and runtime context, and generates validated raw-free reports. The implemented production engine is Apache Impala.</p>
 
 <nav class="help-card-grid" aria-label="Help shortcuts">
 <a class="help-card" href="/"><span>Diagnose</span><strong>Triage Recent queries or inspect one Known Query ID.</strong></a>
@@ -314,7 +314,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <section class="panel docs-panel help-panel" aria-label="Query Doctor help">
 <h1>Справка</h1>
 <div class="report-body help-body">
-<p class="help-lede">Query Doctor - local-first Big Data Query Diagnostic Tool, сфокусированный сегодня на Apache Impala production triage для operators. Он ранжирует подозрительные Recent queries, собирает bounded profile context, выводит deterministic evidence, опционально обогащает его safe metadata и runtime context и генерирует validated raw-free reports. Реализованный движок сейчас только Apache Impala.</p>
+<p class="help-lede">Query Doctor - local-first Big Data query diagnostics tool, сфокусированный сегодня на Apache Impala production triage для operators. Он ранжирует подозрительные Recent queries, собирает bounded profile context, выводит deterministic evidence, опционально обогащает его safe metadata и runtime context и генерирует validated raw-free reports. Реализованный production engine сейчас Apache Impala.</p>
 
 <nav class="help-card-grid" aria-label="Help shortcuts">
 <a class="help-card" href="/"><span>Диагностика</span><strong>Разобрать Recent queries или один Known Query ID.</strong></a>

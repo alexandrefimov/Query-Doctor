@@ -32,6 +32,18 @@ def test_trino_evidence_package_accepts_sanitized_samples_without_support_claim(
 
     assert result.package_id == "trino_evidence_pkg"
     assert result.source_type == "mixed_sanitized_export"
+    assert result.source_summary.trino_version_family == "477"
+    assert result.source_summary.source_contract_version == "synthetic_trino_event_listener_v1"
+    assert result.source_summary.connector_family_categories == ("lakehouse",)
+    assert result.source_summary.export_window_start_utc == "2026-05-26T09:00:00Z"
+    assert result.source_summary.export_window_end_utc == "2026-05-26T10:00:00Z"
+    assert result.source_summary.byte_count_compacted == 200000
+    assert result.source_summary.max_record_bytes == 64000
+    assert result.source_summary.max_nested_depth == 16
+    assert result.source_summary.known_omissions == ("raw_identifiers",)
+    assert result.source_summary.unsupported_sources == ("query_detail_export",)
+    assert result.source_summary.operator_retained_raw_exports == "no"
+    assert result.source_summary.query_doctor_contact_surface == "fixture_import_only"
     assert result.sample_count == len(TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES)
     assert result.parser_coverage_counts() == {"supported": 10, "unknown": 1}
     assert dict(result.sample_count_by_case)["unsafe_raw_field_rejection_synthetic"] == 1
@@ -71,6 +83,17 @@ def test_trino_evidence_package_rejects_raw_sample_before_mapping():
     package["samples"][0]["payload"]["statementStats"]["queryText"] = raw_value
 
     with pytest.raises(EngineFactContractError, match="field: querytext") as excinfo:
+        validate_trino_evidence_package_payload(package)
+
+    assert raw_value not in str(excinfo.value)
+
+
+def test_trino_evidence_package_rejects_extra_top_level_section_without_echoing_value():
+    package = _package_payload()
+    raw_value = "SELECT " + "secret_col FROM sensitive_table"
+    package["operator_notes"] = {"notes": raw_value}
+
+    with pytest.raises(EngineFactContractError, match="unsupported top-level sections") as excinfo:
         validate_trino_evidence_package_payload(package)
 
     assert raw_value not in str(excinfo.value)

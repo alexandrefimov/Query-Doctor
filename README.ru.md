@@ -94,6 +94,7 @@ Query Doctor это не:
 | Область | Поддержано сейчас | Не является текущей поддержкой |
 | --- | --- | --- |
 | Query engine | Apache Impala | Другие engines остаются только roadmap seams. |
+| Trino private preview | Closed test-cluster smoke и sanitized evidence-package artifacts для maintainers | Public Trino engine support, live collection, browser/report output, optimizer behavior или Query Doctor-generated SQL. |
 | Cloudera Manager | Полный Recent discovery/profile/metrics/events context для Impala workflows | Generic cluster diagnosis вне Query Doctor flow. |
 | Direct Impala | Ограниченные Recent scans, Running scans и один Known Query ID через impalad daemon endpoints | Cloudera Manager events, broad log scraping или SQL execution. |
 | Runtime metrics | Опциональные ограниченные Prometheus summaries для configured direct Impala workflows | Raw time-series output или arbitrary PromQL from users. |
@@ -103,6 +104,8 @@ Query Doctor это не:
 Будущие Big Data SQL/lakehouse engines, более широкие providers,
 подготовленные event/log sources и Cluster Doctor workflows остаются roadmap
 seams, а не текущей поддержкой.
+Trino private-preview artifacts - только closed test-cluster groundwork; см.
+[docs/engines/trino-private-preview-release.md](docs/engines/trino-private-preview-release.md).
 
 В Apache Impala также появилась upstream работа над native AI query profile
 analysis. Query Doctor выравнивается с этим направлением и остается локальным

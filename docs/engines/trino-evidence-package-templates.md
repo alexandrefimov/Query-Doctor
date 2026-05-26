@@ -51,11 +51,50 @@ Use the local validator before committing or sharing a package:
 python3 scripts/validate_trino_evidence_package.py <sanitized-package.json>
 ```
 
-The validator prints only package id, source type, parser coverage counts, and
-sample counts. It must not print the input path, raw payload, raw field values,
-SQL text, identifiers, hostnames, object names, connector details, or rejected
-record contents. Early operator dry runs may use `--partial-ok` while the
-minimum case set is still being assembled.
+If an operator has already prepared compact sanitized sample JSON files, the
+local builder can assemble the wrapper and run the same validator:
+
+```bash
+python3 scripts/build_trino_evidence_package.py \
+  --out <sanitized-package.json> \
+  --package-id <safe-package-label> \
+  --prepared-date-utc YYYY-MM-DD \
+  --export-window-start-utc YYYY-MM-DDTHH:00:00Z \
+  --export-window-end-utc YYYY-MM-DDTHH:00:00Z \
+  --redaction-reviewed \
+  --sentinel-tests-passed \
+  --sample <case>:<source_type>:<sanitized-sample-json>
+```
+
+The builder reads only local already-sanitized sample files, never contacts
+Trino, never submits SQL, writes output only after validation accepts the
+wrapper, and prints the same path-free safe summary as the validator. Use
+`--partial-ok` only for early dry runs while the minimum case set is still being
+assembled. Use `--synthetic-rejection <case>:<count>` to declare synthetic
+rejection cases in the manifest; those cases still do not become accepted sample
+payloads.
+
+For a repeatable local walkthrough using only committed synthetic fixtures:
+
+```bash
+python3 scripts/demo_trino_evidence_package.py
+```
+
+The walkthrough builds and validates the same kind of package in memory and
+prints the safe summary that can be shown in release-prep discussions. It does
+not contact Trino, execute SQL, read credentials, echo fixture paths, or claim
+live Trino support. Use `--out-dir <directory>` only when a local sanitized demo
+package file is needed; the command still does not print output paths.
+
+The validator prints only package id, source type, safe manifest source summary
+fields, parser coverage counts, and sample counts. The safe manifest summary is
+limited to broad version/source-contract labels, connector family categories,
+the bounded UTC export window, declared byte/depth bounds, safe omission/source
+labels, raw-retention status, and `fixture_import_only` contact surface. It
+must not print the input path, raw payload, raw field values, SQL text,
+identifiers, hostnames, object names, connector details, or rejected record
+contents. Early operator dry runs may use `--partial-ok` while the minimum case
+set is still being assembled.
 
 ## Package Manifest Template
 

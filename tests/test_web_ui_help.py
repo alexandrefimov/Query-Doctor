@@ -46,9 +46,9 @@ def test_web_help_page_renders_curated_static_help():
     assert '<details id="workflows" class="help-topic" open>' in body
     assert "Quick start" in body
     assert "Workflows" in body
-    assert "Query Doctor is a local-first Big Data Query Diagnostic Tool" in body
+    assert "Query Doctor is a local-first Big Data query diagnostics tool" in body
     assert "focused today on Apache Impala production triage" in body
-    assert "The implemented engine is Apache Impala only." in body
+    assert "The implemented production engine is Apache Impala." in body
     assert "validated raw-free reports" in body
     assert "Recent queries" in body
     assert "flagship production triage workflow" in body
@@ -162,12 +162,12 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Таблица результатов" in body
     assert "Граница безопасности" in body
     assert "Документация GitHub" in body
-    assert "Big Data Query Diagnostic Tool" in body
+    assert "Big Data query diagnostics tool" in body
     assert "сфокусированный сегодня на Apache Impala production triage" in body
     assert "validated raw-free reports" in body
     assert "Детали Known Query ID" not in body
     assert "LLM-отчет" in body
-    assert "Реализованный движок сейчас только Apache Impala." in body
+    assert "Реализованный production engine сейчас Apache Impala." in body
     assert "Browser UI намеренно скрывает raw query text" in body
     assert "Synthetic demo docs" in body
     assert "Почему metadata partial или skipped?" in body
@@ -229,9 +229,9 @@ def test_web_help_route_serves_help_without_running_analysis():
     assert "On this page" in captured["body"]
     assert "Quick start" in captured["body"]
     assert "Workflows" in captured["body"]
-    assert "Big Data Query Diagnostic Tool" in captured["body"]
+    assert "Big Data query diagnostics tool" in captured["body"]
     assert "focused today on Apache Impala production triage" in captured["body"]
-    assert "The implemented engine is Apache Impala only." in captured["body"]
+    assert "The implemented production engine is Apache Impala." in captured["body"]
     assert "GitHub documentation" in captured["body"]
     assert "Common questions" in captured["body"]
     assert not any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in captured["body"])

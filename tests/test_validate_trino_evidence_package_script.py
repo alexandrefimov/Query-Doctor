@@ -27,6 +27,18 @@ def test_validate_trino_evidence_package_script_prints_safe_summary(tmp_path, ca
     assert "[trino-package] accepted" in captured.out
     assert "package_id: trino_evidence_pkg" in captured.out
     assert "source_type: mixed_sanitized_export" in captured.out
+    assert "source_summary:" in captured.out
+    assert "trino_version_family: 477" in captured.out
+    assert "source_contract_version: synthetic_trino_event_listener_v1" in captured.out
+    assert "connector_family_categories: lakehouse" in captured.out
+    assert "export_window_utc: 2026-05-26T09:00:00Z..2026-05-26T10:00:00Z" in captured.out
+    assert "byte_count_compacted: 200000" in captured.out
+    assert "max_record_bytes: 64000" in captured.out
+    assert "max_nested_depth: 16" in captured.out
+    assert "known_omissions: raw_identifiers" in captured.out
+    assert "unsupported_sources: query_detail_export" in captured.out
+    assert "operator_retained_raw_exports: no" in captured.out
+    assert "contact_surface: fixture_import_only" in captured.out
     assert "sample_count: 11" in captured.out
     assert "supported: 10" in captured.out
     assert "unknown: 1" in captured.out

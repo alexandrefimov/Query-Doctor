@@ -94,8 +94,9 @@ def test_web_render_page_contains_reference_local_ui_shell():
     body = module.render_page(settings)
     styles = layout.render_shared_styles()
 
-    assert "impala-query-doctor" in body
-    assert "Impala query performance diagnostics" in body
+    assert "Query Doctor" in body
+    assert "Big Data query diagnostics" in body
+    assert "impala-query-doctor" not in body
     assert "Impala Doctor" not in body
     assert "demo-watermark" not in body
     assert "page-shell" not in body
@@ -177,7 +178,7 @@ def test_web_render_page_sets_brand_favicon():
 
     assert '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,' in body
     assert "%3Cpath%20d%3D%22M5%2012h3l2-5%204%2010%202-5h3%22%2F%3E" in body
-    assert body.index("<title>impala-query-doctor</title>") < body.index('rel="icon"')
+    assert body.index("<title>Query Doctor</title>") < body.index('rel="icon"')
     assert body.index('rel="icon"') < body.index('src="/static/theme-bootstrap.js"')
     assert body.index('src="/static/theme-bootstrap.js"') < body.index('href="/static/app.css"')
 

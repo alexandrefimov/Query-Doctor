@@ -17,6 +17,10 @@ Last reviewed: 2026-05-26
 - отсутствие generated cases/reports/profiles/metadata/local configs/secrets/caches;
 - README quickstart из свежего окружения;
 - честная документация о текущей Impala-only support;
+- если Trino private preview упоминается, он описан только как closed
+  test-cluster smoke и sanitized evidence-package intake, без public engine
+  support, live collection, browser/report output, optimizer behavior,
+  metadata collection или Query Doctor-generated SQL;
 - demo runbooks используют current synthetic demo flow: dedicated
   `query-doctor-*` temp output path и `query-doctor-web --batch-summary`.
 - README screenshots актуальны для включенных в релиз material UI changes и
@@ -28,13 +32,11 @@ Repository должен оставаться воспроизводимым, б�
 честным об unsupported scope.
 
 README screenshots обновлены из synthetic demo pack для текущего material UI
-baseline. `v0.3.0` tag и package-index release опубликованы. Drift-check от
-2026-05-26 подтвердил, что Finished Queries screenshot побайтно совпадает с
-текущим synthetic render, а search screenshot сохраняет текущий layout и
-отличается только динамической датой. Current product baseline включает
-config-driven `language`, Recent Scan Hour UTC offset label, Known Query ID
-progress, elapsed scan-progress wording, workload diagnostics для repeated,
-frequent-short и regressed fingerprints, optional direct Impala `/profile_docs`
-и optional `/admission?json` context.
+baseline, включая product-brand header `Query Doctor` и subtitle `Big Data
+query diagnostics`. `v0.3.0` tag и package-index release опубликованы. Current
+product baseline включает config-driven `language`, Recent Scan Hour UTC offset
+label, Known Query ID progress, elapsed scan-progress wording, workload
+diagnostics для repeated, frequent-short и regressed fingerprints, optional
+direct Impala `/profile_docs` и optional `/admission?json` context.
 
 Полный контрольный список: [английская версия](../../public-release-readiness.md).

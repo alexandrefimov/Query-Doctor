@@ -27,7 +27,10 @@ about unsupported scope.
   ID workflows without Cloudera Manager events; optional Prometheus runtime
   metrics are bounded direct Impala context; and future Big Data engines,
   broader providers, prepared event/log sources, and Cluster Doctor are roadmap
-  seams only.
+  seams only. Trino private preview, when mentioned, is closed test-cluster
+  smoke plus sanitized evidence-package intake only; it is not public engine
+  support, live collection, browser/report output, optimizer behavior, metadata
+  collection, or Query Doctor-generated SQL.
 - Public docs use English as canonical language, with Russian pages only as
   localized companions under `docs/i18n/ru/`.
 - README screenshots are current for any material web UI layout changes included
@@ -76,10 +79,8 @@ place:
   changelog plus release-candidate UI and agent-workflow polish. The `v0.3.0`
   tag and package-index release are published.
 - README screenshots have been refreshed from the synthetic demo pack for the
-  current material UI baseline. The 2026-05-26 README screenshot drift check
-  found the Finished Queries screenshot byte-identical with the current
-  synthetic render; the search screenshot still matches the current layout, with
-  only dynamic date text differing.
+  current material UI baseline, including the Query Doctor product-brand header
+  and Big Data query diagnostics subtitle.
 - Post-merge readiness smoke on 2026-05-26 covered one-hour, six-hour, and
   metadata-enabled Cloudera Manager Recent scans, with Details audit reporting
   no issues on all three runs.

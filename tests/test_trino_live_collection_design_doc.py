@@ -12,7 +12,7 @@ def test_trino_live_collection_design_stays_non_supporting_and_no_execution():
     for required in (
         "not a support announcement",
         "does not add a collector",
-        "Query Doctor remains Apache Impala only",
+        "Query Doctor production engine support remains Apache Impala only",
         "start from already-produced query evidence",
         "POST /v1/statement as a collector shortcut",
         "runs the SQL string in the request body",

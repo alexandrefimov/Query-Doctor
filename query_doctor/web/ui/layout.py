@@ -47,8 +47,8 @@ def render_app_header(active: str, settings: Any | None = None) -> str:
         '<path d="M5 12h3l2-5 4 10 2-5h3"/>'
         '<path d="M12 3v3M12 18v3M3 12h2M19 12h2"/>'
         "</svg></span>"
-        '<span><span class="brand-title">impala-query-doctor</span>'
-        '<span class="brand-subtitle">Impala query performance diagnostics</span></span>'
+        '<span><span class="brand-title">Query Doctor</span>'
+        '<span class="brand-subtitle">Big Data query diagnostics</span></span>'
         "</a>"
         '<div class="header-actions">'
         f"{render_top_nav(active)}"

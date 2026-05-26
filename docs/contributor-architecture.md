@@ -20,7 +20,7 @@ Cloudera Manager / local case inputs
   -> localhost web UI
 ```
 
-The implemented engine is Apache Impala only. Future engine/source-provider
+The implemented production engine is Apache Impala. Future engine/source-provider
 work should add narrow seams and fixtures, not fake runtime support.
 
 ## Where To Change Things

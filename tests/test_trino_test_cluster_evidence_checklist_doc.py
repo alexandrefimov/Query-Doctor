@@ -43,6 +43,9 @@ def test_trino_test_cluster_evidence_checklist_requires_sanitized_operator_expor
         "trino-evidence-package-templates.md",
         "Keep package labels local and safe",
         "scripts/validate_trino_evidence_package.py",
+        "scripts/build_trino_evidence_package.py",
+        "requires explicit redaction-review and sentinel-test confirmations",
+        "writes output only after validation accepts the package",
         "must not echo raw payloads, raw values, or the input path",
         "Keep raw exports outside the repository and outside prompts.",
     ):

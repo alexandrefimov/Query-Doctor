@@ -38,6 +38,9 @@ aggregate query-list summary exports.
 `scripts/validate_trino_evidence_package.py` - текущая локальная dry-run
 команда для таких пакетов; она печатает только safe summary и не добавляет
 live collection.
+Release-facing wording для закрытого тестового кластера описано в
+[Trino private preview release path](trino-private-preview-release.md). Даже в
+этом режиме Apache Impala остается единственным production engine support.
 
 ## Возможные фазы
 

@@ -108,6 +108,10 @@ Confirm public docs state only implemented behavior:
   configured direct Impala workflows.
 - Broader engine support and Cluster Doctor product workflows are roadmap seams
   only.
+- If Trino private preview is mentioned, it is described only as closed
+  test-cluster smoke plus sanitized evidence-package intake; it is not public
+  engine support, live collection, browser/report output, optimizer behavior,
+  metadata collection, or Query Doctor-generated SQL.
 - Query Optimizer is read-only and does not execute pasted query text.
 - Validated reports and details-page optimizer drafts are explicit selected-case
   actions.

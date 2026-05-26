@@ -4,7 +4,7 @@ Last reviewed: 2026-05-26
 
 This document defines the first second-engine discovery slice. It is not a
 support announcement and it must not change the current support matrix:
-Query Doctor is still Apache Impala only.
+Query Doctor production engine support is still Apache Impala only.
 
 ## Purpose
 
@@ -199,15 +199,29 @@ The first code slice adds the contract-shaping pieces only:
   before mapping.
 - `query_doctor/analyzer/trino_evidence_package.py` validates the first local
   sanitized package wrapper for fixture import: `manifest`, `redaction_note`,
-  and `samples`. It checks package counts, redaction assertions, synthetic
-  sentinel-test coverage, declared bounds, and existing statement-statistics /
-  event-listener / aggregate query-list fixture validators. Query-detail
-  exports remain unsupported as sample payloads until a separate fixture
-  contract exists.
+  and `samples`. It rejects extra top-level package sections, checks package
+  counts, redaction assertions, synthetic sentinel-test coverage, declared
+  bounds, and existing statement-statistics / event-listener / aggregate
+  query-list fixture validators. Query-detail exports remain unsupported as
+  sample payloads until a separate fixture contract exists.
 - `scripts/validate_trino_evidence_package.py` is the local dry-run command for
-  a sanitized package file. It prints only safe package and parser-coverage
-  summaries or safe rejection messages, without echoing input paths, raw
-  payloads, raw values, or rejected record contents.
+  a sanitized package file. It prints only safe package, manifest source,
+  parser-coverage, and case-count summaries or safe rejection messages, without
+  echoing input paths, raw payloads, raw values, or rejected record contents.
+- `scripts/build_trino_evidence_package.py` is the local wrapper builder for
+  already-sanitized compact sample JSON files. It requires explicit
+  redaction-review and sentinel-test confirmations, writes output only after
+  the same package validator accepts the wrapper, and prints only path-free safe
+  summaries.
+- `scripts/demo_trino_evidence_package.py` is a repeatable local walkthrough
+  over the committed synthetic fixtures. It builds and validates the package
+  shape in memory, can optionally write a sanitized demo package, prints only
+  the validator's path-free safe summary, and does not contact Trino, execute
+  SQL, read credentials, or imply live Trino support.
+- `docs/engines/trino-private-preview-release.md` defines the release-facing
+  closed test-cluster preview storyline. It combines the dev-only
+  Kerberos/SPNEGO smoke, sanitized evidence-package intake, and public wording
+  gates without adding product Trino support.
 
 This slice still does not add a live Trino collector, a runtime engine
 selector, browser/report output, optimizer behavior, or public second-engine
@@ -241,4 +255,7 @@ The spike is done when:
   with manifest and redaction-note structure from
   [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md),
   still as fixture work rather than live collection.
+- Release-facing private-preview wording and gates from
+  [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md),
+  still without public Trino support.
 - A support gap matrix comparing Impala and Trino facts.

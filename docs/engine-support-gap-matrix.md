@@ -3,10 +3,10 @@
 Last reviewed: 2026-05-23
 
 This matrix describes current implementation status for engine fact coverage.
-It is not a public support promise. The public product remains Apache Impala
-only until a second engine has collection contracts, parser/fact fixtures,
-metadata allowlists, browser/report safety tests, and a documented support gap
-closure plan.
+It is not a public support promise. The product brand is Query Doctor; current
+production engine support remains Apache Impala until a second engine has
+collection contracts, parser/fact fixtures, metadata allowlists, browser/report
+safety tests, and a documented support gap closure plan.
 
 ## Status Legend
 

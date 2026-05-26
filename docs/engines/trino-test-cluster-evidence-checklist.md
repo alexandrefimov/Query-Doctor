@@ -11,6 +11,7 @@ selector, browser/report surface, or permission to execute Trino SQL.
 Use this with [trino-diagnostic-contract.md](trino-diagnostic-contract.md),
 [trino-live-collection-design.md](trino-live-collection-design.md), and
 [trino-evidence-package-templates.md](trino-evidence-package-templates.md),
+[trino-private-preview-release.md](trino-private-preview-release.md), and
 [../trino-discovery-spike.md](../trino-discovery-spike.md).
 
 ## Goal
@@ -126,6 +127,11 @@ work, not live collection.
 Run `python3 scripts/validate_trino_evidence_package.py <sanitized-package.json>`
 before fixture conversion. The command prints only a safe summary and must not
 echo raw payloads, raw values, or the input path.
+If the samples are already compact sanitized JSON files, use
+`python3 scripts/build_trino_evidence_package.py` to assemble the wrapper before
+validation. The builder is local-only, requires explicit redaction-review and
+sentinel-test confirmations, writes output only after validation accepts the
+package, and must not echo input paths or payloads.
 
 Keep raw exports outside the repository and outside prompts. If an operator
 needs to retain them for audit, retain them in the operator-controlled Trino

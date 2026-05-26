@@ -55,6 +55,9 @@ release work. Do not read every reference doc before small tasks.
   notes for GitHub Release and package-index handoff.
 - [release-checklist.md](release-checklist.md): final release-candidate,
   tag, package-index, and visibility-change procedure.
+- [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md):
+  release-facing private-preview path for closed test-cluster Trino evidence,
+  without public engine support.
 
 ## Document Status Index
 
@@ -84,10 +87,12 @@ Status legend:
 | [engines/trino-live-collection-design.md](engines/trino-live-collection-design.md) | reference | Future Trino live-collection source, auth, bounds, redaction, and fixture gates. |
 | [engines/trino-test-cluster-evidence-checklist.md](engines/trino-test-cluster-evidence-checklist.md) | reference | Safe operator-export checklist for the first sanitized Trino test-cluster evidence handoff. |
 | [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md) | reference | Safe manifest and redaction-note templates for the first sanitized Trino evidence package. |
+| [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md) | reference | Closed test-cluster private-preview release path for Trino without public engine support. |
 | [engines/i18n/ru/trino-diagnostic-contract.md](engines/i18n/ru/trino-diagnostic-contract.md) | reference | Russian companion for the Trino diagnostic contract. |
 | [engines/i18n/ru/trino-live-collection-design.md](engines/i18n/ru/trino-live-collection-design.md) | reference | Russian companion for the future Trino live-collection design. |
 | [engines/i18n/ru/trino-test-cluster-evidence-checklist.md](engines/i18n/ru/trino-test-cluster-evidence-checklist.md) | reference | Russian companion for the Trino test-cluster evidence checklist. |
 | [engines/i18n/ru/trino-evidence-package-templates.md](engines/i18n/ru/trino-evidence-package-templates.md) | reference | Russian companion for the Trino evidence package templates. |
+| [engines/i18n/ru/trino-private-preview-release.md](engines/i18n/ru/trino-private-preview-release.md) | reference | Russian companion for the Trino private-preview release path. |
 | [research/i18n/ru/upstream-watch.md](research/i18n/ru/upstream-watch.md) | reference | Russian companion for the upstream and adjacent-market watch loop. |
 | [research/i18n/ru/diagnostic-gap-log.md](research/i18n/ru/diagnostic-gap-log.md) | reference | Russian companion for the safe diagnostic gap log. |
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |

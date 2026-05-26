@@ -8,7 +8,9 @@ Last reviewed: 2026-05-26
 резюме первого безопасного handoff из тестового Trino-кластера.
 
 Manifest и redaction note оформляйте по
-[шаблонам evidence package](trino-evidence-package-templates.md).
+[шаблонам evidence package](trino-evidence-package-templates.md). Для
+release-facing private preview wording используйте
+[Trino private preview release path](trino-private-preview-release.md).
 
 ## Статус
 

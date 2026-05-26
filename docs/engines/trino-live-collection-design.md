@@ -4,7 +4,8 @@ Last reviewed: 2026-05-26
 
 This document defines a future live-collection path for Trino research. It is
 not a support announcement, does not add a collector, and does not change the
-current support matrix: Query Doctor remains Apache Impala only.
+current support matrix: Query Doctor production engine support remains Apache
+Impala only.
 
 The design goal is to let Query Doctor eventually ingest Trino query evidence
 without executing user SQL, exposing raw query payloads, or turning Trino into
@@ -14,6 +15,7 @@ Use this document with
 [trino-diagnostic-contract.md](trino-diagnostic-contract.md),
 [trino-test-cluster-evidence-checklist.md](trino-test-cluster-evidence-checklist.md),
 [trino-evidence-package-templates.md](trino-evidence-package-templates.md),
+[trino-private-preview-release.md](trino-private-preview-release.md),
 [../trino-discovery-spike.md](../trino-discovery-spike.md), and
 [../engine-support-gap-matrix.md](../engine-support-gap-matrix.md).
 

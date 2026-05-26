@@ -3,9 +3,10 @@
 Last reviewed: 2026-05-26
 
 This document defines the current research contract for future Trino diagnosis.
-It is not a support announcement. Query Doctor remains Apache Impala only until
-the support gates in [engine-expansion-plan.md](../engine-expansion-plan.md)
-and [engine-support-gap-matrix.md](../engine-support-gap-matrix.md) are closed.
+It is not a support announcement. Query Doctor production engine support remains
+Apache Impala only until the support gates in
+[engine-expansion-plan.md](../engine-expansion-plan.md) and
+[engine-support-gap-matrix.md](../engine-support-gap-matrix.md) are closed.
 Future live-source design is tracked in
 [trino-live-collection-design.md](trino-live-collection-design.md).
 
