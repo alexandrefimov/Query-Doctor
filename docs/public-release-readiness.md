@@ -77,7 +77,7 @@ place:
 - The 0.4.0 release notes are finalized in
   [release-notes-0.4.0.md](release-notes-0.4.0.md) from the post-0.3.0
   changelog plus Query Doctor branding and Trino private-preview groundwork.
-  The `v0.4.0` tag and package-index publish remain the next release actions.
+  The `v0.4.0` tag and package-index release are published.
 - README screenshots have been refreshed from the synthetic demo pack for the
   current material UI baseline, including the Query Doctor product-brand header
   and Big Data query diagnostics subtitle.

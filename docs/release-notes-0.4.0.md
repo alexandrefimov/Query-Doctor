@@ -69,11 +69,14 @@ The 0.4.0 release candidate was validated with:
   CodeQL passed.
 - Post-merge `main` CI on `ce761a5`: Package CI, Safety CI, Docs CI, Web E2E,
   and CodeQL passed.
+- PR #85 CI and post-merge `main` CI on `c3858b0` passed.
 - The local release gate passed, including the full test suite, demo preflight,
   and synthetic demo pack generation.
+- The manual Release Gate workflow passed on `main`.
 - Focused Trino validation passed.
 - `python3 scripts/demo_trino_evidence_package.py` printed only the safe
   fixture-package summary.
+- Production PyPI Trusted Publishing and production PyPI install smoke passed.
 
 ## Upgrade Notes
 

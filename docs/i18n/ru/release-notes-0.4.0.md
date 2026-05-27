@@ -30,8 +30,10 @@ browser/report surface, не optimizer workflow, не metadata collector и не
 
 ## Проверки
 
-Release candidate проверен через PR #84 CI, post-merge `main` CI, local release
-gate, focused Trino validation и `python3 scripts/demo_trino_evidence_package.py`.
+Release candidate проверен через PR #84/#85 CI, post-merge `main` CI, manual
+Release Gate, local public-release preflight, focused Trino validation,
+production PyPI Trusted Publishing, production PyPI install smoke и
+`python3 scripts/demo_trino_evidence_package.py`.
 
 ## Ограничение
 
