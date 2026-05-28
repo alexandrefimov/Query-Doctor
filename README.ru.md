@@ -179,7 +179,18 @@ Finished Queries results для разбора:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-Видео: [45-second synthetic demo](https://youtu.be/rtBmnmS-Y10).
+Текущий synthetic demo pack в `0.4.1` содержит одиннадцать sanitized cases.
+Используйте его, чтобы показать:
+
+- Workloads и Action Queue для repeated, regressed и
+  admission/runtime-sensitive query groups;
+- optimizer recommendations, которые остаются trusted только после
+  deterministic validation;
+- statistics-maintenance candidate с collected metadata;
+- storage/HDFS, frequent-short, mixed-signal, unknown и direct-Impala
+  compatibility stories.
+
+Полный список scenarios и talk track: [docs/demo-cases.md](docs/demo-cases.md).
 
 ## Console scripts
 
@@ -276,6 +287,20 @@ Query Optimizer принимает один safe read-only `SELECT` или `WITH
 analysis. Он никогда не выполняет SQL, не echo pasted SQL после submit и
 доверяет SQL drafts только когда Python-owned recipes и validation доказывают
 поддерживаемую transform.
+
+### Cloudera Manager Events and Cluster Context
+
+```bash
+query-doctor-cm-events --help
+```
+
+CM Events CLI - read-only Cluster Doctor seam для Cloudera Manager event
+summaries. Он может записывать normalized event summaries и schema-versioned
+raw-free `cluster_event_context.json` / `cluster_context.json` artifacts.
+Recent scan также может собрать один ограниченный Cluster Event Context из
+Cloudera Manager Events на scan window и показать в web UI только raw-free
+cluster context status. Эти artifacts еще не являются Cluster Doctor web
+workflow или report path.
 
 ### Demo Preflight
 
@@ -380,9 +405,13 @@ Public demo и release paths:
   boundary diagrams.
 - [docs/upstream-impala-ai-analyzer.md](docs/upstream-impala-ai-analyzer.md):
   alignment с Apache Impala native AI profile-analysis direction.
+- [docs/contributor-architecture.md](docs/contributor-architecture.md):
+  contributor-oriented architecture map.
 - [docs/roadmap.md](docs/roadmap.md): реализованный scope и planned seams.
 - [docs/query-optimizer-contract.md](docs/query-optimizer-contract.md):
   trust boundary оптимизатора.
+- [docs/cluster-doctor-contract.md](docs/cluster-doctor-contract.md): future
+  Cluster Doctor contract.
 
 ## Development checks
 
