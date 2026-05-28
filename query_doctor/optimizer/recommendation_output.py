@@ -178,12 +178,14 @@ def no_rewrite_recommendations(
         "- The model response passed validation but did not contain a material SQL rewrite, so no trusted optimized query is shown.",
         f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
     ]
+    verification = no_draft_verification_bullets(facts_text)
     specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))
     ]
     return "\n".join(
         [
             *prefix,
+            *verification,
             *specific,
         ]
     )
@@ -202,12 +204,14 @@ def no_supported_rewrite_recommendations(
         "- Python did not detect a supported SQL rewrite recipe for this query shape, so no LLM SQL draft was requested.",
         f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
     ]
+    verification = no_draft_verification_bullets(facts_text)
     specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, None)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))
     ]
     return "\n".join(
         [
             *prefix,
+            *verification,
             *specific,
         ]
     )
@@ -234,12 +238,14 @@ def deterministic_draft_unavailable_recommendations(
         f"- Safe no-draft reason: {safe_reason}.",
         f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
     ]
+    verification = no_draft_verification_bullets(facts_text)
     specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))
     ]
     return "\n".join(
         [
             *prefix,
+            *verification,
             *specific,
         ]
     )
@@ -254,12 +260,14 @@ def output_limit_no_rewrite_recommendations(
         "- The model did not finish a complete SQL draft within the optimizer output-token budget, so no trusted optimized query is shown.",
         "- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts.",
     ]
+    verification = no_draft_verification_bullets(facts_text)
     specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))
     ]
     return "\n".join(
         [
             *prefix,
+            *verification,
             *specific,
         ]
     )
@@ -283,15 +291,51 @@ def validation_failed_no_rewrite_recommendations(
         f"- Validation category: {categories}.",
         "- The bullets below are deterministic manual rewrite guidance from Python-owned analysis facts.",
     ]
+    verification = no_draft_verification_bullets(facts_text)
     specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))
+        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))
     ]
     if reasons:
         specific = [f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.", *specific]
-        specific = specific[: max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix))]
+        specific = specific[
+            : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))
+        ]
     return "\n".join(
         [
             *prefix,
+            *verification,
             *specific,
         ]
     )
+
+
+def no_draft_verification_bullets(facts_text: str) -> list[str]:
+    lowered = (facts_text or "").lower()
+    bullets = [
+        (
+            "- Treat these bullets as manual review guidance, not a trusted SQL draft: "
+            "compare EXPLAIN before and after one bounded change, then rerun under "
+            "comparable load before claiming benefit."
+        )
+    ]
+    if (
+        "large intermediate or exchange traffic" in lowered
+        or "totalbytessent" in lowered
+        or re.search(r"\bexchange\b", facts_text or "", re.IGNORECASE)
+    ):
+        bullets.append(
+            "- For exchange/data-movement guidance, verify that the comparable rerun "
+            "reduces rows or payload before EXCHANGE, TotalBytesSent, or the specific "
+            "profile counter that triggered the finding."
+        )
+    if (
+        "cardinality anomalies" in lowered
+        or "table stats row-count completeness" in lowered
+        or "column stats completeness" in lowered
+    ):
+        bullets.append(
+            "- If stats or cardinality mismatch is part of the evidence, check stats "
+            "freshness and compare EXPLAIN estimates before treating SQL shape as the "
+            "first change."
+        )
+    return bullets[:3]

@@ -12,6 +12,10 @@ Last reviewed: 2026-05-28
 - Только Apache Impala.
 - Cloudera Manager full Recent discovery/profile/metrics/events context.
 - Direct Impala bounded Recent, Running и one Known Query ID.
+- Current-upstream Kubernetes Impala smoke теперь идет через тот же Direct
+  Impala путь: локальный ignored cluster id `k8s-impala-master`, bounded daemon
+  discovery/profile collection и safe aggregate handoff. Это compatibility
+  smoke, а не публичный support claim.
 - Optional bounded Prometheus runtime metrics for direct Impala workflows.
 - Read-only allowlisted Impala metadata.
 - Raw-free workload diagnostics для repeated, frequent-short и regressed
@@ -27,14 +31,20 @@ Last reviewed: 2026-05-28
 
 - Стабилизировать workload diagnostics на sanitized real batches.
 - Добавить safe query-type grouping только из deterministic classifier facts.
-- Откалибровать optimizer score и no-draft/recommendation boundaries.
+- Продолжать optimizer calibration через raw-free funnel/shape audits:
+  medium/high candidates, guidance-only vs trusted-draft support,
+  source-unavailable cases и repeated no-recipe families. Не ослаблять
+  validation или prompt boundaries ради роста SQL draft count.
 - Более сильные analyzer facts and scoring для stats/query-shape/runtime.
 - Базовый вариант Resource Trace Facts уже есть: analyzer разбирает безопасные
   агрегаты CPU, диска и сети из resource-trace samples, считает отсутствие
   `unknown` и не использует эти факты для primary bottleneck.
 - Поддерживать analyst-first Details без collector-internal first screen.
-- Лучше direct Impala fixtures and Prometheus context.
-- Optimizer recipes только при наличии deterministic detection/draft/validation.
+- Лучше direct Impala fixtures, current-upstream Kubernetes Impala batches and
+  Prometheus context.
+- Optimizer recipes только при наличии deterministic detection/draft/validation;
+  если boundary не доказан, next slice должен улучшать no-draft guidance или
+  fixtures.
 - Synthetic demo pack уже расширен для workload action queue, local action
   outcomes, primary-bottleneck, runtime evidence, mixed/unknown limitations и
   direct Impala source-compatibility scenarios; оставшийся maintainer-owned

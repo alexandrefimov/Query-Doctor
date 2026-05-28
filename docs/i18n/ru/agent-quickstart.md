@@ -1,6 +1,6 @@
 # Agent Quickstart
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-28
 
 Язык: [English](../../agent-quickstart.md) | Русский
 
@@ -22,6 +22,10 @@ companion для безопасного старта агента в репоз�
 - Для larger, safety-sensitive, web/report/optimizer/collector/config changes
   читать `docs/codex-handoff.md`, а также `docs/code-audit.md` там, где это
   требуется.
+- Для продолжения current-upstream Kubernetes Impala smoke использовать
+  английский `docs/local-smoke.md`, ignored cluster id `k8s-impala-master` и
+  no-LLM bounded Recent scan; local config, endpoints, outputs, query IDs и raw
+  profiles не коммитить.
 
 ## Перед handoff
 

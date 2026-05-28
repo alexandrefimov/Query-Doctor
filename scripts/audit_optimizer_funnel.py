@@ -102,6 +102,13 @@ class OptimizerFunnelAuditResult:
     audited_cases: int = 0
     support_source_counts: Counter[str] = field(default_factory=Counter)
     severity_counts: Counter[str] = field(default_factory=Counter)
+    candidate_tier_counts: Counter[str] = field(default_factory=Counter)
+    candidate_confidence_counts: Counter[str] = field(default_factory=Counter)
+    candidate_score_band_counts: Counter[str] = field(default_factory=Counter)
+    medium_high_candidate_primary_counts: Counter[str] = field(default_factory=Counter)
+    medium_high_candidate_reason_counts: Counter[str] = field(default_factory=Counter)
+    medium_high_candidate_counter_signal_counts: Counter[str] = field(default_factory=Counter)
+    medium_high_candidate_status_bucket_counts: Counter[str] = field(default_factory=Counter)
     status_counts: Counter[str] = field(default_factory=Counter)
     bucket_counts: Counter[str] = field(default_factory=Counter)
     effective_rewriteability_rank_counts: Counter[str] = field(default_factory=Counter)
@@ -163,6 +170,7 @@ def audit_summary(
         result.audited_cases += 1
         severity = safe_token(case.get("score_severity"), default="unknown")
         primary = primary_label(case)
+        collect_candidate_distribution(result, case, primary)
         support, support_source = support_for_case(
             case,
             summary_path=summary_path,
@@ -197,8 +205,57 @@ def audit_summary(
 
         if support.status == "guidance_only" and support.draft_eligibility == "no_recipe":
             collect_no_recipe_case(result, case, support, primary, summary_path=summary_path)
+        if candidate_is_medium_or_high(case):
+            result.medium_high_candidate_status_bucket_counts[
+                f"{support.status}:{support.rewriteability_bucket}"
+            ] += 1
 
     return result
+
+
+def collect_candidate_distribution(
+    result: OptimizerFunnelAuditResult,
+    case: dict[str, Any],
+    primary: str,
+) -> None:
+    candidate = case.get("query_optimization_candidate")
+    if not isinstance(candidate, dict):
+        result.candidate_tier_counts["missing"] += 1
+        result.candidate_confidence_counts["missing"] += 1
+        result.candidate_score_band_counts["missing"] += 1
+        return
+    tier = safe_token(candidate.get("tier"), default="not_likely")
+    confidence = safe_token(candidate.get("confidence"), default="unknown")
+    score = int_value(candidate.get("score"))
+    result.candidate_tier_counts[tier] += 1
+    result.candidate_confidence_counts[confidence] += 1
+    result.candidate_score_band_counts[score_band(score)] += 1
+    if tier not in {"medium", "high"}:
+        return
+    result.medium_high_candidate_primary_counts[primary] += 1
+    reasons = safe_reason_list(candidate.get("reasons"))
+    counter_signals = safe_reason_list(candidate.get("counter_signals"))
+    result.medium_high_candidate_reason_counts.update(reasons or ["<none>"])
+    result.medium_high_candidate_counter_signal_counts.update(counter_signals or ["<none>"])
+
+
+def candidate_is_medium_or_high(case: dict[str, Any]) -> bool:
+    candidate = case.get("query_optimization_candidate")
+    if not isinstance(candidate, dict):
+        return False
+    return safe_token(candidate.get("tier"), default="not_likely") in {"medium", "high"}
+
+
+def score_band(score: int) -> str:
+    if score <= 0:
+        return "0"
+    if score <= 20:
+        return "1-20"
+    if score < 40:
+        return "21-39"
+    if score < 70:
+        return "40-69"
+    return "70-100"
 
 
 def support_for_case(
@@ -603,6 +660,47 @@ def print_workload_rollups(
         )
 
 
+def candidate_calibration_headline(result: OptimizerFunnelAuditResult) -> str:
+    medium = result.candidate_tier_counts.get("medium", 0)
+    high = result.candidate_tier_counts.get("high", 0)
+    medium_high = medium + high
+    total = result.audited_cases
+    status_counts = medium_high_status_counts(result.medium_high_candidate_status_bucket_counts)
+    return (
+        f"Candidate calibration: medium/high={medium_high}/{total} "
+        f"({percentage(medium_high, total)}); high={high}; medium={medium}; "
+        f"draft-supported={draft_supported_count(result.medium_high_candidate_status_bucket_counts)}; "
+        f"guidance-only={status_counts.get('guidance_only', 0)}; "
+        f"source-unavailable={status_counts.get('source_unavailable', 0)}"
+    )
+
+
+def medium_high_status_counts(counter: Counter[str]) -> Counter[str]:
+    statuses: Counter[str] = Counter()
+    for key, count in counter.items():
+        status, _, _bucket = key.partition(":")
+        statuses[status or "unknown"] += count
+    return statuses
+
+
+def draft_supported_count(counter: Counter[str]) -> int:
+    total = 0
+    for key, count in counter.items():
+        status, _separator, bucket = key.partition(":")
+        if bucket == "safe_material_draft" or status in {
+            "sql_draft_supported",
+            "sql_draft_attemptable",
+        }:
+            total += count
+    return total
+
+
+def percentage(numerator: int, denominator: int) -> str:
+    if denominator <= 0:
+        return "0.0%"
+    return f"{(numerator / denominator) * 100:.1f}%"
+
+
 def print_result(
     result: OptimizerFunnelAuditResult,
     *,
@@ -612,8 +710,36 @@ def print_result(
     out = out or sys.stdout
     print(f"Summary: {result.summary_name}", file=out)
     print(f"Cases: total={result.total_cases}, audited={result.audited_cases}", file=out)
+    print(candidate_calibration_headline(result), file=out)
     print_counter("Support source", result.support_source_counts, limit=limit, out=out)
     print_counter("Severity", result.severity_counts, limit=limit, out=out)
+    print_counter("Candidate tiers", result.candidate_tier_counts, limit=limit, out=out)
+    print_counter("Candidate confidence", result.candidate_confidence_counts, limit=limit, out=out)
+    print_counter("Candidate score bands", result.candidate_score_band_counts, limit=limit, out=out)
+    print_counter(
+        "Medium/high candidate primary labels",
+        result.medium_high_candidate_primary_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "Medium/high candidate reasons",
+        result.medium_high_candidate_reason_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "Medium/high candidate counter-signals",
+        result.medium_high_candidate_counter_signal_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "Medium/high candidate status / bucket",
+        result.medium_high_candidate_status_bucket_counts,
+        limit=limit,
+        out=out,
+    )
     print_counter("Optimizer status", result.status_counts, limit=limit, out=out)
     print_counter("Rewriteability buckets", result.bucket_counts, limit=limit, out=out)
     print_counter(

@@ -178,7 +178,9 @@ Validation is conservative and signature-based. It intentionally rejects
 safe-looking rewrites unless Python owns the safe transform.
 When no Python-owned recipe exists, the optimizer must not ask the LLM for a
 SQL draft; it should produce a trusted `no_rewrite` outcome with deterministic
-guidance instead.
+guidance instead. That guidance must make the no-draft boundary explicit and
+include a verification path, such as EXPLAIN comparison and a comparable rerun,
+before claiming benefit from any manual change.
 
 ## Shape Facts
 
@@ -363,6 +365,10 @@ Current behavior:
 - completed draft rejected by validation: show no trusted SQL draft and provide
   trusted no-rewrite or recommendations when Python can explain the rejection
   safely;
+- no-draft recommendations must be useful enough for manual review: state that
+  no trusted SQL draft is shown, identify the safe review direction from
+  Python-owned facts, and require EXPLAIN comparison plus comparable rerun
+  validation before any benefit claim;
 - always hide partial drafts and raw LLM output;
 - manual rewrite guidance may appear only when it is Python-owned and browser
   safe;

@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-05-23
+Last updated: 2026-05-28
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -156,6 +156,12 @@ Rules:
 - do not echo pasted SQL after submit;
 - trust only validated drafts with current markers;
 - prefer trusted `no_rewrite` or recommendations-only over speculative SQL;
+- treat medium/high optimization candidates as a calibration funnel, not as a
+  promise that a trusted SQL draft exists;
+- before threshold, ranking, or recipe work, run the raw-free optimizer funnel
+  audit and inspect repeated no-recipe shape families;
+- improve no-draft guidance or analyzer facts before loosening prompt freedom
+  or validation;
 - add Python-owned recipes only with specific fixtures and validation tests.
 
 Validate:
@@ -164,6 +170,10 @@ Validate:
 - recipe-specific accepted/rejected tests;
 - trust marker and stale artifact tests;
 - no-echo web tests for pasted SQL;
+- `tests/test_audit_optimizer_funnel.py` when audit output, calibration
+  counters, or raw-free summary fields change;
+- broad raw-free optimizer funnel audits when scoring thresholds, ranking, or
+  recipe selection strategy changes;
 - fixture bake-offs before prompt or model default changes.
 
 ## Cloudera Manager Collection
@@ -191,6 +201,36 @@ Validate:
 - Cloudera Manager client/config/collector tests for touched code;
 - metrics/events analyzer tests when facts change;
 - browser/report safety tests if new context is rendered.
+
+## Direct Impala Collection
+
+Use for daemon query-list/profile collection, Running scans, Known Query ID,
+optional direct JSON profile probing, `/profile_docs`, `/admission?json`, or
+direct Prometheus context.
+
+Read:
+
+- `docs/codex-handoff.md`;
+- `docs/safety-contract.md`;
+- `docs/local-smoke.md` for current smoke commands;
+- relevant `query_doctor/impala/`, `query_doctor/recent/`, and analyzer modules.
+
+Rules:
+
+- collection is bounded and per-query-id after daemon discovery;
+- direct Impala does not provide Cloudera Manager events;
+- optional JSON profile, `/profile_docs`, admission, and Prometheus surfaces
+  must degrade to unknown/not-configured/unavailable when absent;
+- current-upstream Kubernetes Impala validation uses ignored local config and a
+  local port-forward only; never commit real endpoints, generated cases, query
+  IDs, raw profiles, or local output paths.
+
+Validate:
+
+- direct profile/config/query-discovery tests for code changes;
+- a bounded no-LLM smoke for real-source compatibility when available;
+- `python3 scripts/audit_profile_evidence_gates.py <batch_summary.json> --fail-on-issues`
+  for real Recent smoke summaries before strengthening support wording.
 
 ## Impala Metadata
 

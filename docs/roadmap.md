@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-25
+Last updated: 2026-05-28
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -24,6 +24,12 @@ is not a historical audit log. For engineering risks, use
   and one explicit Known Query ID through daemon query-list/profile endpoints.
   It does not provide Cloudera Manager events. It can optionally collect
   bounded Prometheus runtime metrics when explicitly configured.
+- Current-upstream Apache Impala compatibility is being validated through the
+  direct Impala path. A 2026-05-28 Kubernetes smoke against an Apache Impala
+  `5.0.0-SNAPSHOT` build collected JSON daemon profiles and `/profile_docs`
+  counter context successfully, while `/admission?json` was unavailable and
+  degraded safely. This is a smoke proof of source compatibility, not yet a
+  representative support claim.
 - Direct Impala diagnosis now extracts raw-free profile format,
   source provenance, resource balance, per-node read/user/system time, Query
   Timeline, and fragment lifecycle timing facts, and can use profile resource
@@ -135,9 +141,10 @@ Optimizer-specific metrics:
   when no Python-owned recipe can prove the transform. It should be measured as
   recipe coverage, not as model failure.
 - Broad Recent smoke runs should track optimizer funnel coverage with
-  `scripts/audit_optimizer_funnel.py`, separating not-applicable, no-recipe,
-  source-unavailable, safety-threshold, recipe-adjacent, and draft-ready cases
-  before recipe yield is interpreted.
+  `scripts/audit_optimizer_funnel.py`, separating medium/high candidate share,
+  draft-supported, guidance-only, source-unavailable, not-applicable,
+  no-recipe, safety-threshold, recipe-adjacent, and draft-ready cases before
+  recipe yield is interpreted.
 
 ## Safety Baseline
 
@@ -240,8 +247,9 @@ Cloudera Manager deployments:
   signals, admission/pool context, host-tail diagnostics, and sanitized real
   fixtures.
 - Direct Impala quality: sanitized real fixtures for fresh daemon profile
-  layouts, Prometheus metric coverage, profile resource/timing action cards,
-  and safe limitation wording when metrics, events, or metadata are unavailable.
+  layouts, current-upstream Kubernetes Impala batches, Prometheus metric
+  coverage, profile resource/timing action cards, and safe limitation wording
+  when metrics, events, or metadata are unavailable.
 - Profile dialect quality: add fixtures for classic text, classic JSON,
   classic Thrift, and experimental profile-v2 layouts; map only explicitly
   supported sections; and add regression tests that keep profile-v2 limitations
@@ -355,8 +363,8 @@ item first only when the touched area has a direct P0 safety or contract risk.
    profiles before broadening upstream profile compatibility. The current
    client-fetch-tail, runtime-admission, memory-pressure, scan-skew,
    exchange/data-movement, and storage-aware scan gates are implemented; the
-   next proof point is real-case calibration and old-source compatibility, not
-   stronger wording.
+   next proof points are longer current-upstream Kubernetes Impala batches,
+   real-case calibration, and old-source compatibility, not stronger wording.
 2. Continue the desktop Web UI audit with the standalone Query Optimizer page:
    tighten the first screen around the SQL input, Analyze action, and
    scope/safety disclosure without weakening the no-echo or read-only trust
@@ -382,11 +390,14 @@ item first only when the touched area has a direct P0 safety or contract risk.
 8. Stabilize the new workload-diagnostics surfaces on sanitized real batches:
    repeated/frequent-short/regressed groups, admin digest, action queue,
    workload detail pages, and action outcome rollups.
-9. Use `scripts/audit_optimizer_funnel.py` on the latest broad Recent smoke to
-   choose the next optimizer slice from repeated workload groups and no-recipe
-   shape families. Start with the largest repeated family where analyzer facts
-   and validation can prove a safe Python-owned transform; otherwise keep the
-   result as review guidance rather than a trusted SQL draft.
+9. Use `scripts/audit_optimizer_funnel.py`,
+   `scripts/audit_optimizer_plain_shapes.py`, and
+   `scripts/audit_optimizer_representative_shapes.py` on the latest broad
+   Recent smoke to choose the next optimizer slice from repeated workload
+   groups and no-recipe shape families. Start with the largest repeated family
+   where analyzer facts and validation can prove a safe Python-owned transform;
+   otherwise improve family-specific review guidance rather than producing a
+   trusted SQL draft.
 10. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
 11. Add safe query-type grouping only after deterministic classifier facts can
@@ -802,10 +813,24 @@ completed implementation inventory.
 
 Remaining near-term optimizer work:
 
-1. Run `scripts/audit_optimizer_funnel.py` on the latest broad Recent smoke and
-   use repeated workload groups plus no-recipe shape-family counts as the
-   recipe-candidate backlog. The first target should be the largest repeated
-   family where analyzer facts and validation can prove a safe transform.
+Current calibration note as of 2026-05-28:
+
+- `scripts/audit_optimizer_funnel.py` now prints a compact candidate
+  calibration headline and raw-free medium/high candidate counters. Existing
+  local broad summaries showed medium/high candidates ending as guidance-only
+  rather than trusted-draft supported: 62/1000 on a 24h summary, 211/952 on a
+  6h safe summary, and 17/80 on a metadata-enabled summary. Treat that as an
+  optimizer usefulness and recipe-coverage signal. Do not change scoring
+  thresholds or validator strictness just to increase draft count.
+
+1. Run `scripts/audit_optimizer_funnel.py`,
+   `scripts/audit_optimizer_plain_shapes.py`, and
+   `scripts/audit_optimizer_representative_shapes.py` on the latest broad
+   Recent smoke and use repeated workload groups plus no-recipe shape-family
+   counts as the recipe-candidate or no-draft-guidance backlog. The first
+   target should be the largest repeated family where analyzer facts and
+   validation can prove a safe transform. If no transform boundary is provable,
+   improve review guidance and fixtures instead of producing SQL.
 2. Re-run the real optimizer benchmark after the prompt-route split, model
    default split, rewriteability taxonomy, recipe-aware ranking, and
    per-conjunct predicate-pushdown baseline. Compare trusted SQL drafts,
