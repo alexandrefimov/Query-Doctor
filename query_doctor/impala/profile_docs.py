@@ -28,6 +28,7 @@ from query_doctor.impala.profile_source import (
 
 DEFAULT_MAX_PROFILE_DOCS_BYTES = 2 * 1024 * 1024
 PROFILE_DOCS_PATH = "/profile_docs"
+PROFILE_DOCS_JSON_PATH = "/profile_docs/?json"
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,9 @@ def impala_profile_docs_urls(
     urls: list[str] = []
     for host in normalize_impala_profile_hosts(tuple(hosts)):
         netloc = host if ":" in host else f"{host}:{port}"
-        urls.append(f"{normalized_scheme}://{netloc}{PROFILE_DOCS_PATH}")
+        base_url = f"{normalized_scheme}://{netloc}"
+        urls.append(f"{base_url}{PROFILE_DOCS_JSON_PATH}")
+        urls.append(f"{base_url}{PROFILE_DOCS_PATH}")
     return tuple(urls)
 
 

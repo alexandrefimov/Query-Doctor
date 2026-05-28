@@ -1,6 +1,6 @@
 # Demo Cases
 
-Last reviewed: 2026-05-21
+Last reviewed: 2026-05-28
 
 Язык: [English](../../demo-cases.md) | Русский
 
@@ -18,7 +18,18 @@ metadata, hostnames, users, query IDs, account names или credentials.
 
 - optimization candidate with trusted recommendations;
 - statistics-maintenance candidate;
-- validator rejects unsafe rewrite.
+- validator rejects unsafe rewrite;
+- admission/runtime workload regression;
+- storage/HDFS runtime follow-up;
+- frequent short workload;
+- mixed stats/query-shape/runtime signals without false certainty;
+- unknown-but-useful bounded follow-up;
+- direct Impala compatibility with missing optional endpoints.
+
+Рекомендуемый public-demo вход теперь начинается с Workloads /
+Action Queue: `/?query_group=workloads#workload-action-queue`, чтобы сразу
+показать prioritization, next checks, verification и local synthetic action
+outcomes.
 
 ## Safety
 

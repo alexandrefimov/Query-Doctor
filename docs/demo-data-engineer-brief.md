@@ -1,6 +1,6 @@
 # Query Doctor Data-Engineer Demo Brief
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-28
 
 This brief is for a data-engineer demo discussion. It explains how Query Doctor
 prioritizes cases and which deterministic facts support the UI labels. It is
@@ -34,14 +34,15 @@ Query Doctor has three separate surfaces:
 
 The demo should make this order clear:
 
-1. Cloudera Manager (CM) summaries or configured direct Impala daemon query
+1. Workloads / Action Queue answers what to inspect, change, and verify first.
+2. Cloudera Manager (CM) summaries or configured direct Impala daemon query
    lists identify bounded query candidates.
-2. Selected profiles are collected and redacted from Cloudera Manager or direct
+3. Selected profiles are collected and redacted from Cloudera Manager or direct
    Impala daemon profile endpoints.
-3. The analyzer creates normalized facts.
-4. Recent scan ranks cases from those facts.
-5. Metadata is collected only when explicitly enabled and bounded.
-6. LLM Report and Query LLM optimizer run only for a selected case.
+4. The analyzer creates normalized facts.
+5. Recent scan ranks cases from those facts.
+6. Metadata is collected only when explicitly enabled and bounded.
+7. LLM Report and Query LLM optimizer run only for a selected case.
 
 ## What the analyzer reads
 

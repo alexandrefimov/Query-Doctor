@@ -1,6 +1,6 @@
 # Demo Data Engineer Brief
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-28
 
 Язык: [English](../../demo-data-engineer-brief.md) | Русский
 
@@ -16,6 +16,7 @@ Last reviewed: 2026-05-15
 Документ помогает провести demo через persona data engineer:
 
 - открыть synthetic Recent scan;
+- начать с Workloads / Action Queue, чтобы показать immediate value;
 - выбрать подозрительный case;
 - прочитать deterministic facts;
 - запустить explicit trusted report action;

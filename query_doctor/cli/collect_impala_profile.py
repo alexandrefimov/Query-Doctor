@@ -107,8 +107,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--collect-profile-docs",
         action="store_true",
         help=(
-            "Collect safe profile counter stability labels from impalad /profile_docs. "
-            "Unavailable or old endpoints are treated as unknown and do not fail collection."
+            "Collect safe profile counter stability labels from impalad /profile_docs/?json, "
+            "falling back to /profile_docs. Unavailable or old endpoints are treated as "
+            "unknown and do not fail collection."
         ),
     )
     parser.add_argument(

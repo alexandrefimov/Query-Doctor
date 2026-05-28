@@ -543,8 +543,11 @@ Current workload-level diagnostics baseline and follow-ups:
   wording.
 - Follow-up work is to validate group ranking and limitations on sanitized real
   batches, improve baseline/regression calibration, add safe query-type
-  grouping (#67) from deterministic classifier facts, and add stable
-  demo/operator notes for synthetic scenarios (#47).
+  grouping (#67) from deterministic classifier facts, add stable demo/operator
+  notes for synthetic scenarios (#47), and keep the expanded synthetic demo pack
+  aligned with current workload action queue, local action outcomes,
+  primary-bottleneck, runtime-evidence, and source compatibility diagnostics
+  (#89).
 - Keep LLM group summaries out until deterministic group facts and
   browser-safe validation boundaries exist.
 
@@ -1148,10 +1151,10 @@ or a new safety contract before they return.
   runtime context correlation.
 - Documentation drift remains a product risk; active docs should be updated as
   part of safety-sensitive feature work.
-- Remote issue triage as of 2026-05-22: safe query-type grouping (#67) and
-  optimization score calibration (#68) remain active product backlog; public
-  starter/help-wanted issues (#47, #48, #49) remain valid. Scan-side language
-  selection (#66) is superseded by config-driven global language selection,
-  Known Query ID progress (#69) is implemented, and elapsed-time progress
-  display (#70) is partially addressed by elapsed wording/progress tests and
-  should either be closed or narrowed during remote issue cleanup.
+- Remote issue triage as of 2026-05-28: safe query-type grouping (#67),
+  optimization score calibration (#68), Python-owned optimizer recipe research
+  (#88), and synthetic demo pack refresh (#89) remain maintainer-owned product
+  backlog; public starter/help-wanted issues (#47, #48, #49, #87) remain valid.
+  Scan-side language selection (#66), Known Query ID progress (#69), and
+  elapsed-time progress display (#70) are closed after the current
+  config/progress wording baseline.

@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable
 import json
+import shlex
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -32,6 +34,12 @@ from query_doctor.demo.specs import (
     stats_source_sql,
 )
 from query_doctor.report.trusted_text import validate_report_text
+from query_doctor.web.action_outcomes import (
+    SCHEMA_VERSION,
+    ActionOutcomeRecord,
+    append_action_outcome,
+    case_fingerprint,
+)
 from query_doctor.web.command_builders import (
     BATCH_REPORT_NAME,
     OPTIMIZED_QUERY_PARTIAL_NAME,
@@ -44,6 +52,7 @@ REPO_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_DEMO_OUT = Path(tempfile.gettempdir()) / "query-doctor-demo-pack"
 DEFAULT_DEMO_OUT_HELP = "system temp directory / query-doctor-demo-pack"
 SUMMARY_NAME = "batch_summary.json"
+ACTION_OUTCOMES_NAME = "action_outcomes.jsonl"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -70,6 +79,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def build_summary(out_dir: Path, specs: tuple[DemoCaseSpec, ...]) -> dict[str, Any]:
+    cases = [case_summary(out_dir, spec) for spec in specs]
+    workload_groups = build_demo_workload_groups(cases, specs)
     return {
         "mode": "synthetic-demo",
         "demo_mode": True,
@@ -81,7 +92,7 @@ def build_summary(out_dir: Path, specs: tuple[DemoCaseSpec, ...]) -> dict[str, A
         "recent_window_minutes": 60,
         "from_time": "synthetic",
         "to_time": "synthetic",
-        "min_duration_sec": 60,
+        "min_duration_sec": None,
         "query_type_filter": "QUERY",
         "include_failed": False,
         "include_running": False,
@@ -89,7 +100,7 @@ def build_summary(out_dir: Path, specs: tuple[DemoCaseSpec, ...]) -> dict[str, A
         "user_filter_present": False,
         "pool_filter_present": False,
         "order": "status-priority",
-        "duration_filter": ">= 60 sec",
+        "duration_filter": "synthetic mixed duration",
         "duration_filter_mode": "synthetic",
         "total_seconds": 0,
         "discovery_seconds": 0,
@@ -110,12 +121,14 @@ def build_summary(out_dir: Path, specs: tuple[DemoCaseSpec, ...]) -> dict[str, A
         "metadata_jobs": 0,
         "warnings": ["Synthetic demo data only. Do not use as performance evidence."],
         "discovery_failed": False,
-        "cases": [case_summary(out_dir, spec) for spec in specs],
+        "workload_groups": workload_groups,
+        "workload_history": demo_workload_history(workload_groups),
+        "cases": cases,
     }
 
 
 def case_summary(out_dir: Path, spec: DemoCaseSpec) -> dict[str, Any]:
-    return {
+    summary = {
         "case_index": spec.case_index,
         "candidate_rank": spec.case_index,
         "triage_rank": spec.case_index,
@@ -142,6 +155,7 @@ def case_summary(out_dir: Path, spec: DemoCaseSpec) -> dict[str, Any]:
         "source_locators": spec.source_locators,
         "stats_optimization_candidate": spec.stats_optimization_candidate,
         "stats_optimization_rank": 1 if spec.stats_optimization_candidate else None,
+        "case_primary_bottleneck": spec.case_primary_bottleneck,
         "cardinality_anomaly_count": spec.cardinality_anomaly_count,
         "memory_anomaly_count": spec.memory_anomaly_count,
         "zero_row_estimate_gap_count": spec.zero_row_estimate_gap_count,
@@ -159,6 +173,136 @@ def case_summary(out_dir: Path, spec: DemoCaseSpec) -> dict[str, Any]:
         "report_seconds": 0,
         "total_seconds": 0,
     }
+    if spec.workload_fingerprint:
+        summary.update(
+            {
+                "workload_fingerprint": spec.workload_fingerprint,
+                "group_fingerprint": spec.workload_fingerprint,
+                "workload_group_member_count": 1,
+                "workload_regression": spec.workload_regression,
+                "workload_baseline_sample_count": spec.workload_baseline_sample_count,
+            }
+        )
+        if spec.workload_baseline_duration_sec_p95 is not None:
+            summary["workload_baseline_duration_sec_p95"] = spec.workload_baseline_duration_sec_p95
+    return summary
+
+
+def build_demo_workload_groups(
+    cases: list[dict[str, Any]],
+    specs: tuple[DemoCaseSpec, ...],
+) -> dict[str, Any]:
+    grouped: dict[str, list[tuple[dict[str, Any], DemoCaseSpec]]] = {}
+    if len(cases) != len(specs):
+        raise ValueError("demo case summary/spec length mismatch")
+    for case, spec in zip(cases, specs):
+        if spec.workload_fingerprint:
+            grouped.setdefault(spec.workload_fingerprint, []).append((case, spec))
+
+    groups: list[dict[str, Any]] = []
+    for fingerprint, members in sorted(grouped.items()):
+        durations = sorted(float(case.get("duration_sec") or 0) for case, _spec in members)
+        member_count = len(members)
+        p95 = durations[-1] if durations else None
+        p50 = durations[(len(durations) - 1) // 2] if durations else None
+        duration_total = round(sum(durations), 3) if durations else None
+        for case, spec in members:
+            case["workload_group_member_count"] = member_count
+            if p95 is not None:
+                case["workload_group_duration_sec_p95"] = p95
+            if spec.workload_baseline_duration_sec_p95 is not None:
+                case["workload_baseline_duration_sec_p95"] = spec.workload_baseline_duration_sec_p95
+                case["workload_baseline_sample_count"] = spec.workload_baseline_sample_count
+                case["workload_regression"] = spec.workload_regression
+        if member_count < 2:
+            continue
+        baseline = demo_workload_baseline(members)
+        group: dict[str, Any] = {
+            "fingerprint": fingerprint,
+            "shape": members[0][1].workload_shape or {},
+            "aggregates": {
+                "count": member_count,
+                "member_count": member_count,
+                "duration_sec_total": duration_total,
+                "duration_sec_p50": p50,
+                "duration_sec_p95": p95,
+                "pool_top": "demo_pool",
+                "primary_bottleneck_top": demo_modal(
+                    case_primary_bottleneck_label(case) for case, _spec in members
+                ),
+                "score_top": demo_modal(case.get("score_severity") for case, _spec in members),
+            },
+            "member_count": member_count,
+            "member_case_ids": [f"case-{spec.case_index:03d}" for _case, spec in members],
+        }
+        if baseline:
+            group["baseline"] = baseline
+        groups.append(group)
+
+    groups.sort(
+        key=lambda group: (
+            -float(group.get("aggregates", {}).get("duration_sec_total") or 0),
+            -int(group.get("member_count") or 0),
+            str(group.get("fingerprint") or ""),
+        )
+    )
+    return {"schema_version": 1, "groups": groups}
+
+
+def demo_workload_baseline(
+    members: list[tuple[dict[str, Any], DemoCaseSpec]],
+) -> dict[str, Any] | None:
+    for _case, spec in members:
+        if spec.workload_baseline_sample_count <= 0:
+            continue
+        return {
+            "schema_version": 1,
+            "regression": spec.workload_regression,
+            "sample_count": spec.workload_baseline_sample_count,
+            "duration_sec_p95": spec.workload_baseline_duration_sec_p95,
+        }
+    return None
+
+
+def demo_workload_history(workload_groups: dict[str, Any]) -> dict[str, Any]:
+    groups = workload_groups.get("groups")
+    raw_groups = groups if isinstance(groups, list) else []
+    regression_counts = {"strong": 0, "mild": 0, "none": 0, "unknown": 0}
+    loaded_record_count = 0
+    for group in raw_groups:
+        baseline = group.get("baseline") if isinstance(group, dict) else None
+        if not isinstance(baseline, dict):
+            continue
+        label = str(baseline.get("regression") or "unknown").strip().lower()
+        if label not in regression_counts:
+            label = "unknown"
+        regression_counts[label] += 1
+        loaded_record_count += int(baseline.get("sample_count") or 0)
+    return {
+        "schema_version": 1,
+        "enabled": True,
+        "loaded_record_count": loaded_record_count,
+        "appended_record_count": sum(int(group.get("member_count") or 0) for group in raw_groups),
+        "append_status": "ok",
+        "regression_counts": regression_counts,
+    }
+
+
+def case_primary_bottleneck_label(case: dict[str, Any]) -> str:
+    primary = case.get("case_primary_bottleneck")
+    if isinstance(primary, dict):
+        return str(primary.get("label") or "unknown")
+    return "unknown"
+
+
+def demo_modal(values: Iterable[object]) -> str:
+    counts: dict[str, int] = {}
+    for value in values:
+        label = str(value or "unknown").strip().lower() or "unknown"
+        counts[label] = counts.get(label, 0) + 1
+    if not counts:
+        return "unknown"
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
 
 
 def generate_demo_pack(out_dir: Path, *, overwrite: bool) -> dict[str, Any]:
@@ -168,6 +312,7 @@ def generate_demo_pack(out_dir: Path, *, overwrite: bool) -> dict[str, Any]:
         write_demo_case(out_dir, spec)
     summary = build_summary(out_dir, specs)
     write_json(out_dir / SUMMARY_NAME, summary)
+    write_demo_action_outcomes(out_dir, summary)
     write_demo_notes(out_dir, summary_path=out_dir / SUMMARY_NAME)
     return summary
 
@@ -248,7 +393,56 @@ def write_optimizer_recommendations(case_dir: Path, spec: DemoCaseSpec) -> None:
     )
 
 
+def write_demo_action_outcomes(out_dir: Path, summary: dict[str, Any]) -> Path:
+    target = out_dir / ACTION_OUTCOMES_NAME
+    for record in demo_action_outcome_records(summary):
+        append_action_outcome(record, path=target)
+    return target
+
+
+def demo_action_outcome_records(summary: dict[str, Any]) -> tuple[ActionOutcomeRecord, ...]:
+    cases_by_index = {
+        int(case.get("case_index") or 0): case
+        for case in summary.get("cases", [])
+        if isinstance(case, dict)
+    }
+    specs = (
+        (1, "query_optimization_review.v1", "yes", "no_change", "2026-05-22T09:00:00+00:00"),
+        (2, "stats_refresh_review.v1", "yes", "improved", "2026-05-22T09:10:00+00:00"),
+        (4, "runtime_admission_check.v1", "yes", "improved", "2026-05-22T09:20:00+00:00"),
+        (5, "runtime_admission_check.v1", "yes", "no_change", "2026-05-22T09:30:00+00:00"),
+        (9, "stats_refresh_review.v1", "skip", "not_applicable", "2026-05-22T09:40:00+00:00"),
+    )
+    records = []
+    for case_index, recommendation_id, applied, outcome, recorded_at in specs:
+        case = cases_by_index.get(case_index)
+        if not case:
+            continue
+        workload_fingerprint = str(
+            case.get("group_fingerprint") or case.get("workload_fingerprint") or ""
+        )
+        if not workload_fingerprint:
+            continue
+        case_id = f"case-{case_index:03d}"
+        records.append(
+            ActionOutcomeRecord(
+                schema_version=SCHEMA_VERSION,
+                recorded_at_iso=recorded_at,
+                workload_fingerprint=workload_fingerprint,
+                case_fingerprint=case_fingerprint(workload_fingerprint, case.get("query_id")),
+                case_id_local=case_id,
+                recommendation_id=recommendation_id,
+                applied=applied,
+                outcome=outcome,
+                note_redacted="synthetic demo outcome",
+            )
+        )
+    return tuple(records)
+
+
 def write_demo_notes(out_dir: Path, *, summary_path: Path) -> None:
+    outcomes_path = out_dir / ACTION_OUTCOMES_NAME
+    launch_command = demo_launch_command(summary_path, outcomes_path)
     text = "\n".join(
         [
             "# Query Doctor Synthetic Demo Pack",
@@ -258,10 +452,10 @@ def write_demo_notes(out_dir: Path, *, summary_path: Path) -> None:
             "Launch the local web UI with:",
             "",
             "```bash",
-            f"query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary {summary_path}",
+            launch_command,
             "```",
             "",
-            "Open the Optimization candidates or Stats refresh candidates tabs to show the demo workflow.",
+            "Open Workloads first, then Optimization, Stats, or Frequent short tabs to show the demo workflow.",
             "",
         ]
     )
@@ -274,20 +468,33 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     )
 
 
+def demo_launch_command(summary_path: Path, outcomes_path: Path) -> str:
+    return (
+        f"QUERY_DOCTOR_ACTION_OUTCOMES_PATH={shlex.quote(str(outcomes_path))} "
+        f"query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "
+        f"{shlex.quote(str(summary_path))}"
+    )
+
+
 def render_success_message(out_dir: Path) -> str:
     summary_path = out_dir / SUMMARY_NAME
+    outcomes_path = out_dir / ACTION_OUTCOMES_NAME
     return "\n".join(
         [
             "Query Doctor synthetic demo pack",
             f"Output: {out_dir}",
             f"Batch summary: {summary_path}",
+            f"Action outcomes: {outcomes_path}",
             "",
             "Launch:",
-            f"  query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary {summary_path}",
+            f"  {demo_launch_command(summary_path, outcomes_path)}",
             "",
             "Open:",
+            "  http://127.0.0.1:8766/?query_group=workloads#workload-action-queue",
+            "  http://127.0.0.1:8766/?query_group=workloads#recent-results",
             "  http://127.0.0.1:8766/?query_group=optimization#recent-results",
             "  http://127.0.0.1:8766/?query_group=stats#recent-results",
+            "  http://127.0.0.1:8766/?query_group=frequent_short#recent-results",
         ]
     )
 

@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-28
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -39,8 +39,9 @@ release work. Do not read every reference doc before small tasks.
 
 ## Public Demo And Release Paths
 
-- [demo-mode.md](demo-mode.md): generate the synthetic demo pack, launch it in
-  the local web UI, and refresh public README screenshots from synthetic data.
+- [demo-mode.md](demo-mode.md): generate the synthetic demo pack and local
+  synthetic action outcomes, launch them in the local web UI, and refresh
+  public README screenshots from synthetic data.
 - [DEMO.md](DEMO.md): localhost UI demo runbook, main surfaces, safety rules,
   and public demo storyline.
 - [demo-cases.md](demo-cases.md): sanitized synthetic scenario list for public
@@ -51,6 +52,8 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
+- [release-notes-0.4.1.md](release-notes-0.4.1.md): curated 0.4.1 release
+  notes for the synthetic demo update.
 - [release-notes-0.4.0.md](release-notes-0.4.0.md): curated 0.4.0 release
   notes for GitHub Release and package-index handoff.
 - [release-checklist.md](release-checklist.md): final release-candidate,
@@ -105,6 +108,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [release-notes-0.4.1.md](release-notes-0.4.1.md) | reference | Curated 0.4.1 release notes. |
 | [release-notes-0.4.0.md](release-notes-0.4.0.md) | reference | Curated 0.4.0 release notes. |
 | [release-notes-0.3.0.md](release-notes-0.3.0.md) | reference | Curated 0.3.0 release notes. |
 | [configuration.md](configuration.md) | reference | Local JSON config locations, discovery order, field groups, and examples. |

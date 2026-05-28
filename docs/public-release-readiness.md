@@ -1,6 +1,6 @@
 # Public Release Readiness
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-28
 
 This checklist tracks what Query Doctor needs before tags, announcements, and
 any future repository visibility changes. It is intentionally practical: public
@@ -40,7 +40,7 @@ about unsupported scope.
 
 ## Current Snapshot
 
-As of 2026-05-26, the public repository has the main best-practice baseline in
+As of 2026-05-28, the public repository has the main best-practice baseline in
 place:
 
 - Canonical public docs and default browser-visible copy are English.
@@ -78,16 +78,21 @@ place:
   [release-notes-0.4.0.md](release-notes-0.4.0.md) from the post-0.3.0
   changelog plus Query Doctor branding and Trino private-preview groundwork.
   The `v0.4.0` tag and package-index release are published.
+- The 0.4.1 release notes are prepared in
+  [release-notes-0.4.1.md](release-notes-0.4.1.md) for the synthetic demo
+  update. The `v0.4.1` tag and package-index publishing remain pending final
+  maintainer release action.
 - README screenshots have been refreshed from the synthetic demo pack for the
-  current material UI baseline, including the Query Doctor product-brand header
-  and Big Data query diagnostics subtitle.
+  current material UI baseline, including the Query Doctor product-brand header,
+  Big Data query diagnostics subtitle, Workloads, and Action Queue demo path.
 - Post-merge readiness smoke on 2026-05-26 covered one-hour, six-hour, and
   metadata-enabled Cloudera Manager Recent scans, with Details audit reporting
   no issues on all three runs.
 - Repository metadata, topics, issue labels, issue templates, pull request
   template, and curated sanitized starter issues are in place.
 - The synthetic demo pack is the public demo artifact; it uses sanitized sample
-  cases and an English trusted demo report by default.
+  cases, local synthetic action outcomes, and an English trusted demo report by
+  default.
 - Superseded archive notes, old UI prototypes, documentation-audit snapshots,
   and legacy demo screenshots have been removed from the current documentation
   tree; use git history for historical context.
@@ -114,8 +119,8 @@ change.
 
 ## P2 Strong Public Product Signal
 
-- A small synthetic/anonymized fixture corpus covers three to five diagnostic
-  scenarios.
+- A small synthetic/anonymized fixture corpus covers current diagnostic
+  scenarios without needing live services.
 - Architecture docs show current implemented boundaries and future roadmap
   seams without presenting roadmap work as supported behavior.
 - README keeps the "why not a chat wrapper" safety-design explanation current.

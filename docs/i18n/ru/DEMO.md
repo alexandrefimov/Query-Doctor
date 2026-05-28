@@ -1,6 +1,6 @@
 # Локальный UI demo Query Doctor
 
-Last reviewed: 2026-05-21
+Last reviewed: 2026-05-28
 
 Язык: [English](../../DEMO.md) | Русский
 
@@ -22,7 +22,8 @@ names, local deep links или environment-specific query IDs.
 ```bash
 DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 query-doctor-demo --out "$DEMO_PACK" --overwrite
-query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
+QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
+  query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
 Откройте localhost URL, который напечатает `query-doctor-web`. Demo generator
@@ -30,8 +31,11 @@ query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_
 репозитория. Полезные фильтры:
 
 ```text
+/?query_group=workloads#workload-action-queue
+/?query_group=workloads#recent-results
 /?query_group=optimization#recent-results
 /?query_group=stats#recent-results
+/?query_group=frequent_short#recent-results
 ```
 
 Synthetic pack не вызывает Cloudera Manager, Impala, Prometheus, local
@@ -137,13 +141,16 @@ screenshots from real clusters или credentials.
 
 Показывайте Query Doctor как engineering diagnostic and validation tool:
 
-1. deterministic candidate ranking from generated profile/analyzer facts;
-2. Details page before any report or optimizer action;
-3. explicit trusted report, который формулирует Python-owned facts;
-4. explicit Query LLM optimizer с trusted recommendations, trusted no-rewrite
+1. Workloads / Action Queue как первый экран ценности;
+2. deterministic candidate ranking from generated profile/analyzer facts;
+3. Details page before any report or optimizer action;
+4. explicit trusted report, который формулирует Python-owned facts;
+5. explicit Query LLM optimizer с trusted recommendations, trusted no-rewrite
    guidance или validated SQL draft только там, где это поддержано;
-5. statistics-maintenance candidate evidence с required confirmation steps;
-6. rejected/partial optimizer output остается untrusted и hidden.
+6. statistics-maintenance candidate evidence с required confirmation steps;
+7. mixed-signal и unknown-but-useful cases без false certainty;
+8. direct Impala compatibility с non-fatal optional endpoint gaps;
+9. rejected/partial optimizer output остается untrusted и hidden.
 
 Synthetic scenarios описаны в [demo-cases.md](demo-cases.md); detailed
 talk-track для data engineers - в

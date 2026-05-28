@@ -1,6 +1,6 @@
 # Community Starter Issues
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-28
 
 Язык: [English](../../community-starter-issues.md) | Русский
 
@@ -15,6 +15,10 @@ Starter issues должны быть безопасными для внешни�
 - без local paths, hostnames, users, emails, command output или model/runtime
   internals;
 - с понятным scope и expected validation.
+
+Optimizer trust-boundary work, scoring calibration и broad product routing не
+считаются starter issues, пока maintainer не выделил узкий reviewed contributor
+slice.
 
 ## Как использовать
 

@@ -1,6 +1,6 @@
 # Synthetic Demo Mode
 
-Last reviewed: 2026-05-21
+Last reviewed: 2026-05-28
 
 Language: English | [Russian](i18n/ru/demo-mode.md)
 
@@ -16,16 +16,22 @@ DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 query-doctor-demo --out "$DEMO_PACK" --overwrite
 ```
 
-Then launch the web UI with the generated batch summary:
+Then launch the web UI with the generated batch summary and local synthetic
+action outcomes:
 
 ```bash
-query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
+QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
+  query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
 Open:
 
 ```text
+http://127.0.0.1:8766/?query_group=workloads#workload-action-queue
+http://127.0.0.1:8766/?query_group=workloads#recent-results
 http://127.0.0.1:8766/?query_group=optimization#recent-results
+http://127.0.0.1:8766/?query_group=stats#recent-results
+http://127.0.0.1:8766/?query_group=frequent_short#recent-results
 ```
 
 The generated pack includes synthetic Recent queries / Finished queries cases
@@ -34,6 +40,14 @@ for:
 - optimizer recommendation outcomes
 - stats maintenance candidate evidence
 - rejected/untrusted optimizer draft behavior
+- admission/runtime workload regression
+- Storage/HDFS runtime follow-up
+- frequent-short workload handling
+- mixed stats/query-shape/runtime signals without false certainty
+- an unknown-but-useful bounded follow-up case
+- direct Impala profile compatibility with missing optional endpoints treated
+  as non-fatal
+- local synthetic action outcomes for recommendation follow-up history
 
 The pack is intentionally local generated data, not committed fixtures. It is
 safe for demos because it does not contain real profiles, real metadata, real
@@ -51,7 +65,8 @@ generated demo output outside the repository:
 ```bash
 DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 query-doctor-demo --out "$DEMO_PACK" --overwrite
-query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
+QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
+  query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
 Open the printed localhost URL and capture:
@@ -59,10 +74,12 @@ Open the printed localhost URL and capture:
 - the main bounded search form for `docs/assets/demo_search.png`;
 - the Finished Queries results view for `docs/assets/demo_finished_queries.png`.
 
-For the results view, the Optimization candidates filter is a useful default:
+For the results view, the Workloads action queue is the useful default because
+it shows prioritization, next checks, verification, and local synthetic
+outcomes in one screen:
 
 ```text
-http://127.0.0.1:8766/?query_group=optimization#recent-results
+http://127.0.0.1:8766/?query_group=workloads#workload-action-queue
 ```
 
 Capture browser viewports and replace only the public synthetic screenshots.

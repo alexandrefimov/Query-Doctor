@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-28
 
 Язык: [English](README.md) | Русский
 
@@ -68,9 +68,10 @@ Query Doctor это не:
   по умолчанию; JSON profile probing опционален и откатывается к text для
   старых версий Impala. Analyzer facts сохраняют только безопасные capability
   summaries, например выбранный endpoint format и probe status.
-- Direct Impala может опционально пробовать ограниченный `/profile_docs` для
-  меток стабильности счетчиков. Query Doctor сохраняет только безопасный
-  allowlisted registry context, а не сырую документацию счетчиков.
+- Direct Impala может опционально пробовать ограниченный `/profile_docs/?json`
+  для меток стабильности счетчиков с fallback на HTML `/profile_docs`. Query
+  Doctor сохраняет только безопасный allowlisted registry context, а не сырую
+  документацию счетчиков.
 - Direct Impala может опционально собирать ограниченный агрегированный контекст
   `/admission?json`. Отсутствующие старые endpoints не считаются ошибкой, а
   analyzer использует результат только как context, если нет query-specific
@@ -161,12 +162,15 @@ Cloudera Manager, Impala, Ollama или сеть:
 query-doctor-demo-preflight
 DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 query-doctor-demo --out "$DEMO_PACK" --overwrite
-query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
+QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
+  query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
 Откройте localhost URL, который напечатает `query-doctor-web`. Synthetic demo
 pack локальный и не содержит настоящих SQL-запросов, профилей, метаданных,
-hostnames, users или credentials.
+hostnames, users или credentials. Начинайте public-demo с
+`/?query_group=workloads#workload-action-queue`, чтобы сразу показать
+приоритеты, next checks, verification и local synthetic action outcomes.
 
 Локальный web UI начинается с ограниченной формы поиска и показывает synthetic
 Finished Queries results для разбора:
@@ -360,6 +364,8 @@ Public demo и release paths:
   public-release guard.
 - [docs/public-release-readiness.md](docs/public-release-readiness.md):
   checklist готовности публичного release.
+- [docs/release-notes-0.4.1.md](docs/release-notes-0.4.1.md): release notes
+  для synthetic demo update в `0.4.1`.
 - [docs/release-checklist.md](docs/release-checklist.md): final tag,
   package-index и visibility-change checklist.
 
@@ -399,9 +405,10 @@ configs, credentials, raw profiles, raw metadata или temporary outputs.
 ## Public status
 
 Репозиторий публичный. `v0.1.0` - initial public GitHub release baseline,
-`v0.1.1` - первый PyPI release, а `v0.4.0` - текущий package-index release:
-[query-doctor on PyPI](https://pypi.org/project/query-doctor/) показывает
-текущий package-index status. Public license is Apache-2.0.
+`v0.1.1` - первый PyPI release, а `v0.4.1` - подготовленный package-index
+release для synthetic demo update: [query-doctor on PyPI](https://pypi.org/project/query-doctor/)
+показывает текущий опубликованный package-index status. Public license is
+Apache-2.0.
 
 PyPI publishing использует GitHub OIDC Trusted Publishing. Repository-side
 `testpypi` и `pypi` environments требуют maintainer approval и не используют

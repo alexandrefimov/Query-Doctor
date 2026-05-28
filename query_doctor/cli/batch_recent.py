@@ -304,7 +304,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Collect safe profile counter stability labels from direct impalad "
-            "/profile_docs. Missing endpoints are non-fatal."
+            "/profile_docs/?json, falling back to /profile_docs. Missing endpoints are "
+            "non-fatal."
         ),
     )
     parser.add_argument(

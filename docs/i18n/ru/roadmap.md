@@ -1,6 +1,6 @@
 # Roadmap
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-28
 
 Язык: [English](../../roadmap.md) | Русский
 
@@ -35,7 +35,10 @@ Last reviewed: 2026-05-26
 - Поддерживать analyst-first Details без collector-internal first screen.
 - Лучше direct Impala fixtures and Prometheus context.
 - Optimizer recipes только при наличии deterministic detection/draft/validation.
-- Больше synthetic demos и public-quality validation.
+- Synthetic demo pack уже расширен для workload action queue, local action
+  outcomes, primary-bottleneck, runtime evidence, mixed/unknown limitations и
+  direct Impala source-compatibility scenarios; оставшийся maintainer-owned
+  backlog - держать его синхронизированным с public-quality validation (#89).
 
 ## Отложенные seams
 

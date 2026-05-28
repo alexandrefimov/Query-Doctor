@@ -1,6 +1,6 @@
 # Release Checklist
 
-Last reviewed: 2026-05-21
+Last reviewed: 2026-05-28
 
 Язык: [English](../../release-checklist.md) | Русский
 
@@ -18,6 +18,8 @@ Last reviewed: 2026-05-21
 - Version/tag alignment.
 - README screenshots из synthetic demo pack, если релиз включает material UI
   layout changes.
+- Demo runbooks используют `QUERY_DOCTOR_ACTION_OUTCOMES_PATH` для generated
+  local synthetic outcomes.
 - Green CI на release branch.
 
 Pre-release audits могут менять checklist wording, docs и release automation.

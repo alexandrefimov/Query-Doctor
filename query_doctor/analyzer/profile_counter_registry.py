@@ -2,8 +2,9 @@
 
 The bundled registry is the default compatibility layer. A selected case may
 also carry a safe, allowlisted registry context derived from Impala Web UI
-`/profile_docs`; that context can override bundled stability labels for counter
-families Query Doctor already interprets.
+`/profile_docs/?json`, with `/profile_docs` HTML fallback; that context can
+override bundled stability labels for counter families Query Doctor already
+interprets.
 """
 
 from __future__ import annotations
@@ -202,7 +203,7 @@ def build_profile_counter_registry_context(
     profile_docs_source_version: str | None = None,
     source_counter_count: int | None = None,
 ) -> dict[str, object]:
-    """Build a safe registry context from `/profile_docs` counter labels.
+    """Build a safe registry context from profile-doc counter labels.
 
     The context stores only counter families Query Doctor already interprets.
     It deliberately omits profile-doc descriptions and unrelated counters.

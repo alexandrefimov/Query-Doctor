@@ -53,8 +53,9 @@ Relevant upstream threads and issues:
 - Community discussion around
   [IMPALA-7550](https://issues.apache.org/jira/browse/IMPALA-7550): runtime
   profile counter `significance` labels exposed through the Impala Web UI
-  `/profile_docs` handler can help external tooling decide which counters are
-  stable enough to interpret.
+  `/profile_docs/?json` handler can help external tooling consume the same
+  machine-readable input used by the human `/profile_docs` page and decide
+  which counters are stable enough to interpret.
 - [RESOURCE_TRACE_RATIO](https://impala.apache.org/docs/build/html/topics/impala_resource_trace_ratio.html):
   Impala can include additional resource traces in query profiles, including
   CPU and host I/O metrics in Per Node Profiles, when trace collection is
@@ -108,12 +109,13 @@ the available profile representation supports the claim being made.
 Analyzer work should classify Impala runtime profile counter evidence with a
 counter stability label before allowing profile counters to promote strong
 findings. The current baseline has a bundled registry for the client-fetch and
-spill/scratch counter families that Query Doctor already interprets. Future
-work should add Impala-provided significance/stability labels from
-`/profile_docs` when available. Treat `/profile_docs` as a compatibility input,
-not a guaranteed stable machine-readable API, until upstream documentation and
-fixtures make that safe enough. If live consumption is not stable enough, Query
-Doctor should keep extending a bundled, versioned profile counter registry.
+spill/scratch counter families that Query Doctor already interprets.
+Impala-provided significance/stability labels from `/profile_docs/?json` are
+intended to be reasonably stable and machine-readable, with `/profile_docs`
+HTML as a compatibility fallback. Query Doctor still consumes both defensively:
+missing endpoints, missing labels, unsupported shapes, and counters outside the
+interpreted allowlist must degrade to bundled or `UNKNOWN` stability instead of
+failed diagnosis or invented evidence.
 
 `STABLE_HIGH` counters may contribute strong profile evidence only when the
 counter is query-specific, mapped for the detected profile dialect, and backed
@@ -142,15 +144,16 @@ Future analyzer facts may include `evidence.counter_stability` and
 
 Current implementation note: `query_doctor.analyzer.profile_counter_registry`
 contains the bundled registry and a safe context loader for optional direct
-`/profile_docs` collection. Direct collection writes only allowlisted
-`name/significance`-derived labels for counter families Query Doctor already
-interprets. The collector accepts JSON-style docs and the Web UI HTML table
-shape, normalizing labels such as `STABLE & HIGH` and `STABLE & LOW` into the
-internal stability contract. It does not write raw profile-doc descriptions or
-unrelated counter dumps. Client-fetch facts emit a safe `counter_stability` summary, and
-client-fetch plus spill/scratch parsing cap or ignore counters whose registry
-label is not strong enough for the requested evidence tier. Broader
-Impala-version selection and registry refresh tooling remain future work.
+`/profile_docs/?json` collection with `/profile_docs` HTML fallback. Direct
+collection writes only allowlisted `name/significance`-derived labels for
+counter families Query Doctor already interprets. The collector accepts
+JSON-style docs and the Web UI HTML table shape, normalizing labels such as
+`STABLE & HIGH` and `STABLE & LOW` into the internal stability contract. It
+does not write raw profile-doc descriptions or unrelated counter dumps.
+Client-fetch facts emit a safe `counter_stability` summary, and client-fetch
+plus spill/scratch parsing cap or ignore counters whose registry label is not
+strong enough for the requested evidence tier. Broader Impala-version selection
+and registry refresh tooling remain future work.
 
 ## Incomplete Or Cancelled Nodes
 

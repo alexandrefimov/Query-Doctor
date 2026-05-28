@@ -7,6 +7,10 @@ local paths, credentials, command output, model/runtime internals, or raw
 artifact names. Do not use screenshots, logs, generated reports, or browser
 captures from real clusters.
 
+Optimizer trust-boundary work, scoring calibration, and broad product routing
+belong in maintainer-owned roadmap or audit items unless a maintainer has first
+split out a narrow reviewed contributor slice.
+
 ## Good First Issues
 
 ### Split One Focused Web Presenter Test
@@ -67,18 +71,3 @@ Acceptance criteria:
 - The diagram matches implemented behavior.
 - Future seams are clearly marked as roadmap, not current support.
 - The docs remain English-first.
-
-### Improve Optimizer Usefulness With Python-Owned Recipes
-
-Labels: `help wanted`, `optimizer`, `analyzer`, `safety`
-
-Design one narrow optimizer recipe where Query Doctor can prove a safe rewrite
-shape deterministically. Do not loosen prompt-only rewrite permission. The
-validator must prove table set, filters, joins, literals, and output shape are
-preserved or intentionally transformed by the recipe.
-
-Acceptance criteria:
-
-- The recipe has focused parser and validator tests.
-- Unsafe or ambiguous drafts remain untrusted.
-- Browser output does not echo pasted or server-owned query text.

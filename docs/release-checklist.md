@@ -117,7 +117,9 @@ Confirm public docs state only implemented behavior:
   actions.
 - README and demo runbooks use the current synthetic demo pack flow:
   `query-doctor-demo` writes to a dedicated `query-doctor-*` temp directory and
-  `query-doctor-web` opens that pack through `--batch-summary`.
+  `query-doctor-web` opens that pack through `--batch-summary` with
+  `QUERY_DOCTOR_ACTION_OUTCOMES_PATH` pointing at the generated local synthetic
+  outcomes file.
 - README screenshots are refreshed from the synthetic demo pack before tagging
   any release that includes material web UI layout changes.
 - Public issue and PR templates route sensitive data away from public issues and
