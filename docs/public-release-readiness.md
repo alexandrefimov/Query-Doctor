@@ -78,10 +78,11 @@ place:
   [release-notes-0.4.0.md](release-notes-0.4.0.md) from the post-0.3.0
   changelog plus Query Doctor branding and Trino private-preview groundwork.
   The `v0.4.0` tag and package-index release are published.
-- The 0.4.1 release notes are prepared in
+- The 0.4.1 release notes are finalized in
   [release-notes-0.4.1.md](release-notes-0.4.1.md) for the synthetic demo
-  update. The `v0.4.1` tag and package-index publishing remain pending final
-  maintainer release action.
+  update. The `v0.4.1` tag and package-index release are published after PR
+  CI, post-merge `main` CI, the manual Release Gate workflow, production PyPI
+  Trusted Publishing, and production PyPI install smoke.
 - README screenshots have been refreshed from the synthetic demo pack for the
   current material UI baseline, including the Query Doctor product-brand header,
   Big Data query diagnostics subtitle, Workloads, and Action Queue demo path.

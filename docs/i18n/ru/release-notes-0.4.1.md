@@ -37,7 +37,7 @@ generated query-text path.
 
 ## Проверки
 
-Release candidate проверен focused demo/action/web suites, packaging metadata
-tests, `git diff --check`, staged public-safety checks, package build/check и
-installed-wheel smoke с генерацией synthetic demo pack из установленных console
-scripts.
+Release проверен focused demo/action/web suites, PR #91 CI, post-merge `main`
+CI, manual Release Gate, packaging metadata tests, `git diff --check`, staged
+public-safety checks, package build/check, installed-wheel smoke, production
+PyPI Trusted Publishing и production PyPI install smoke.

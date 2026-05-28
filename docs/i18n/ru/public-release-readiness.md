@@ -35,13 +35,13 @@ Repository должен оставаться воспроизводимым, б�
 README screenshots обновлены из synthetic demo pack для текущего material UI
 baseline, включая product-brand header `Query Doctor`, subtitle `Big Data query
 diagnostics`, Workloads и Action Queue demo path. `v0.4.0` tag и package-index
-release опубликованы; release notes для `0.4.1` подготовлены для synthetic demo
-update, а `v0.4.1` tag и package-index publish ждут final maintainer release
-action. Current product baseline включает config-driven `language`, Recent Scan
-Hour UTC offset label, Known Query ID progress, elapsed scan-progress wording,
-workload diagnostics для repeated, frequent-short и regressed fingerprints,
-local synthetic action outcomes, optional direct Impala `/profile_docs`,
-optional `/admission?json` context и Trino private-preview groundwork без public
-Trino support claim.
+release опубликованы; `v0.4.1` tag и package-index release опубликованы после
+PR CI, post-merge `main` CI, manual Release Gate, production PyPI Trusted
+Publishing и production PyPI install smoke. Current product baseline включает
+config-driven `language`, Recent Scan Hour UTC offset label, Known Query ID
+progress, elapsed scan-progress wording, workload diagnostics для repeated,
+frequent-short и regressed fingerprints, local synthetic action outcomes,
+optional direct Impala `/profile_docs`, optional `/admission?json` context и
+Trino private-preview groundwork без public Trino support claim.
 
 Полный контрольный список: [английская версия](../../public-release-readiness.md).

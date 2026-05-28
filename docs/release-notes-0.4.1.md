@@ -48,21 +48,23 @@ collector behavior, optimizer trust boundaries, or configuration semantics.
 
 ## Release Validation
 
-The 0.4.1 release candidate was validated with:
+The 0.4.1 release was validated with:
 
 - Focused synthetic demo, action outcome, active-doc, web display safety,
   trusted artifact, Recent presenter, demo preflight, and web server tests.
+- PR #91 CI and post-merge `main` CI passed.
+- The manual Release Gate workflow passed on `main`.
 - Packaging metadata tests that keep `pyproject.toml` and legacy `setup.py`
   aligned.
 - `git diff --check` and staged public-safety checks.
 - Package build/check from the release branch.
 - Installed-wheel smoke that generates the synthetic demo pack from installed
   console scripts.
+- Production PyPI Trusted Publishing and production PyPI install smoke passed.
 
 ## Upgrade Notes
 
-- Upgrade with `pip install --upgrade query-doctor` after the package is
-  published.
+- Upgrade with `pip install --upgrade query-doctor`.
 - Regenerate the local demo pack with `query-doctor-demo --out <demo-dir>
   --overwrite`; use the printed `QUERY_DOCTOR_ACTION_OUTCOMES_PATH` value when
   launching `query-doctor-web`.
