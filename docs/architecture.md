@@ -1,6 +1,6 @@
 # Query Doctor Architecture
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-28
 
 Language: English | [Russian](i18n/ru/architecture.md)
 
@@ -31,25 +31,28 @@ flowchart TD
         CMEvents[Bounded Cloudera Manager events]
     end
 
-    subgraph Local["Local Query Doctor runtime"]
+    subgraph Local["Local Query Doctor runtime boundary"]
         Collector[Explicit bounded collectors]
         CaseStore[Ignored local case output]
         Analyzer[Deterministic analyzer]
         Facts[Analyzer-owned facts]
         Ranking[Ranking and action candidates]
+        Details[Safe Details view models]
         WebUI[Local web UI]
     end
 
-    subgraph Trust["Explicit trusted-output actions"]
-        ReportWriter[LLM report wording]
+    subgraph Trust["Explicit trusted-output boundary"]
+        ReportAction[Explicit report action]
+        ReportWriter[LLM wording from analyzer facts only]
         ReportValidator[Sanitizer and fail-closed report validator]
         TrustedReport[Trusted report]
-        OptimizerDraft[Details-page optimizer draft]
+        OptimizerAction[Explicit optimizer action]
+        OptimizerDraft[Details-page optimizer draft or no-draft guidance]
         OptimizerValidator[Deterministic optimizer validator]
         TrustedOptimizer[Trusted optimizer outcome]
     end
 
-    subgraph Pasted["Separate pasted-query workflow"]
+    subgraph Pasted["Separate pasted-query workflow boundary"]
         PastedInput[Submitted query text]
         QueryParser[Read-only parser and analyzer]
         QueryFindings[Safe findings and limitations]
@@ -66,10 +69,17 @@ flowchart TD
     Analyzer --> Facts
     Facts --> Ranking
     Ranking --> WebUI
+    Facts --> Details
+    Details --> WebUI
+    WebUI --> ReportAction
+    ReportAction --> ReportWriter
     Facts --> ReportWriter
     ReportWriter --> ReportValidator
     ReportValidator --> TrustedReport
     TrustedReport --> WebUI
+    WebUI --> OptimizerAction
+    OptimizerAction --> OptimizerDraft
+    Details --> OptimizerDraft
     Facts --> OptimizerDraft
     OptimizerDraft --> OptimizerValidator
     OptimizerValidator --> TrustedOptimizer
@@ -79,9 +89,14 @@ flowchart TD
     QueryFindings --> WebUI
 ```
 
+This diagram is the current product boundary. Future source-provider and engine
+work remains roadmap-only until contracts, fixtures, safety tests, and public
+docs exist; the diagram should not be read as a generic provider plugin system
+or automatic LLM execution path.
+
 Current support is intentionally narrow:
 
-- Apache Impala is the only implemented query engine.
+- Apache Impala is the only current production query engine support.
 - Cloudera Manager summaries, profiles, metrics, and events are the full
   implemented Recent queries source.
 - Direct Impala daemon query-list and profile endpoints support bounded Recent

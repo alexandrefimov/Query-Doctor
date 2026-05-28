@@ -1,6 +1,6 @@
 # Архитектура Query Doctor
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-05-28
 
 Язык: [English](../../architecture.md) | Русский
 
@@ -154,7 +154,7 @@ Future source seam:
 
 ## Текущая поддержка
 
-- Implemented engine: Apache Impala only.
+- Current production query engine support: Apache Impala only.
 - Full Recent discovery/profile/metrics/events provider: Cloudera Manager.
 - Direct Impala provider: bounded Recent, Running и one Known Query ID through
   impalad daemon endpoints.
@@ -164,7 +164,10 @@ Future source seam:
   `impala-shell`.
 
 Future Big Data SQL/lakehouse engines, broader source providers, prepared
-event/log sources и Cluster Doctor workflows остаются roadmap seams.
+event/log sources, storage/table-format context и Cluster Doctor workflows
+остаются roadmap seams until contracts, fixtures, safety tests и public docs
+exist. Эта companion-страница intentionally не добавляет live Trino support,
+generic provider plugin system или automatic LLM execution.
 
 ## Правило расширения
 

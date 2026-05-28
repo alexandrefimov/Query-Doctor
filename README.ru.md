@@ -192,6 +192,26 @@ Finished Queries results для разбора:
 
 Полный список scenarios и talk track: [docs/demo-cases.md](docs/demo-cases.md).
 
+Synthetic demo использует ту же safety shape, что и real local workflows:
+
+```mermaid
+flowchart LR
+    DemoPack[Synthetic demo pack] --> Web[Local web UI]
+    Web --> Ranked[Ranked cases]
+    Ranked --> Details[Details page]
+    Details --> Facts[Analyzer-owned facts]
+    Details --> ReportAction[Explicit report action]
+    Facts --> ReportAction
+    ReportAction --> ReportValidation[Sanitizer and report validator]
+    ReportValidation --> TrustedReport[Trusted report]
+    Details --> OptimizerAction[Explicit optimizer action]
+    Facts --> OptimizerAction
+    OptimizerAction --> OptimizerValidation[Deterministic optimizer validation]
+    OptimizerValidation --> TrustedOptimizer[Trusted optimizer outcome]
+    TrustedReport --> Web
+    TrustedOptimizer --> Web
+```
+
 ## Console scripts
 
 После установки используйте packaged entry points:
