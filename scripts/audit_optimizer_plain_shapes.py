@@ -17,6 +17,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from query_doctor.optimizer.sql import OptimizerSqlError  # noqa: E402
+from query_doctor.optimizer.shape_guidance import (  # noqa: E402
+    plain_set_operation_review_track,
+)
 from query_doctor.optimizer.sql_shape import (  # noqa: E402
     count_distinct_key_names,
     lower_sql_outside_quoted_text,
@@ -170,6 +173,7 @@ def plain_shape_facts(source_sql: str) -> PlainShapeFacts:
         nested_shape = count_shape(nested_count, "nested_query")
         projection_shape = projection_count_shape(source_sql)
         review_track = plain_review_track(
+            source_sql=source_sql,
             relation_shape=relation_shape,
             predicate_shape=predicate_shape,
             aggregate_shape=aggregate_shape,
@@ -277,6 +281,7 @@ def count_bucket(count: int) -> str:
 
 def plain_review_track(
     *,
+    source_sql: str = "",
     relation_shape: str,
     predicate_shape: str,
     aggregate_shape: str,
@@ -284,10 +289,26 @@ def plain_review_track(
     nested_query_shape: str,
 ) -> str:
     if set_shape != "no_set_operation":
+        if source_sql:
+            return plain_set_operation_review_track(source_sql)
         return "set_operation_research"
     if nested_query_shape != "no_nested_query":
         return "nested_query_boundary"
+    if (
+        relation_shape == "single_relation_or_projection"
+        and predicate_shape == "single_filter"
+        and aggregate_shape == "scalar_aggregate_1_functions"
+    ):
+        return "filtered_scalar_aggregate_review"
     if aggregate_shape != "no_aggregate":
+        if aggregate_shape == "distinct_aggregate":
+            return "distinct_aggregate_review"
+        if aggregate_shape.startswith("grouped_aggregate"):
+            return "grouped_aggregate_review"
+        if aggregate_shape == "scalar_aggregate_1_functions":
+            return "scalar_aggregate_review"
+        if aggregate_shape.startswith("scalar_aggregate"):
+            return "scalar_multi_aggregate_review"
         return "aggregate_or_distinct_review"
     if relation_shape in {"single_outer_join"} or relation_shape.startswith("multi_mixed_join"):
         return "outer_join_review"

@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from query_doctor.optimizer.sql import OptimizerSqlError  # noqa: E402
+from query_doctor.optimizer.shape_guidance import SET_OPERATION_REVIEW_TRACKS  # noqa: E402
 from query_doctor.optimizer.sql_shape import (  # noqa: E402
     cte_projection_preservation_status,
     nested_query_signatures,
@@ -128,7 +129,7 @@ def audit_set_operations(
 
         source_sql = source_sql_for_case(case, summary_path=summary_path)
         plain_facts = plain_shape_facts(source_sql)
-        if plain_facts.review_track != "set_operation_research":
+        if plain_facts.review_track not in SET_OPERATION_REVIEW_TRACKS | {"set_operation_research"}:
             continue
 
         result.set_operation_cases += 1

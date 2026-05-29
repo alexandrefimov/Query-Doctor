@@ -145,6 +145,11 @@ Optimizer-specific metrics:
   draft-supported, guidance-only, source-unavailable, not-applicable,
   no-recipe, safety-threshold, recipe-adjacent, and draft-ready cases before
   recipe yield is interpreted.
+- No-recipe usefulness work should track allowlisted
+  `no_recipe_review_track_counts`, including narrow guidance-only subtracks
+  such as filtered scalar aggregate review, grouped/distinct/scalar aggregate
+  review, and UNION ALL branch-boundary review, before turning any repeated
+  family into a recipe candidate.
 
 ## Safety Baseline
 

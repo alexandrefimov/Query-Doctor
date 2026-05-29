@@ -147,8 +147,22 @@ OPTIMIZER_CTE_GRAPH_LABELS = {
 }
 
 OPTIMIZER_NO_RECIPE_REVIEW_TRACK_LABELS = {
+    "filtered_scalar_aggregate_review": "Review track: filtered scalar aggregate",
+    "grouped_aggregate_review": "Review track: grouped aggregate",
+    "distinct_aggregate_review": "Review track: DISTINCT aggregate",
+    "scalar_multi_aggregate_review": "Review track: scalar multi-aggregate",
+    "scalar_aggregate_review": "Review track: scalar aggregate",
     "aggregate_or_distinct_review": "Review track: aggregate/distinct",
     "set_operation_research": "Review track: set operation",
+    "branch_projection_unknown_boundary": "Review track: UNION ALL projection boundary",
+    "branch_projection_mismatch_boundary": "Review track: UNION ALL projection mismatch",
+    "nested_branch_boundary": "Review track: nested UNION ALL branch",
+    "aggregate_branch_boundary": "Review track: aggregate UNION ALL branch",
+    "outer_or_mixed_join_branch_review": "Review track: UNION ALL join branch",
+    "filtered_union_all_branch_review": "Review track: filtered UNION ALL branches",
+    "unfiltered_union_all_branch_review": "Review track: unfiltered UNION ALL branches",
+    "mixed_filter_union_all_branch_review": "Review track: mixed-filter UNION ALL branches",
+    "mixed_or_distinct_set_boundary": "Review track: mixed/distinct set operation",
     "nested_query_boundary": "Review track: nested query boundary",
     "unfiltered_join_review": "Review track: unfiltered join",
     "filtered_join_review": "Review track: filtered join",
@@ -168,11 +182,47 @@ OPTIMIZER_NO_RECIPE_REVIEW_TRACK_LABELS = {
 }
 
 OPTIMIZER_NO_RECIPE_REVIEW_AREA_LABELS = {
+    "filtered_scalar_aggregate_review": (
+        "filter selectivity, partition pruning, stats freshness, and aggregate input rows"
+    ),
+    "grouped_aggregate_review": (
+        "grouping grain, aggregate input rows, stats freshness, and projected columns"
+    ),
+    "distinct_aggregate_review": (
+        "duplicate semantics, distinct input rows, grouping grain, and stats freshness"
+    ),
+    "scalar_multi_aggregate_review": (
+        "aggregate input rows, filter selectivity, stats freshness, and projected columns"
+    ),
+    "scalar_aggregate_review": (
+        "aggregate input rows, filter selectivity, partition pruning, and stats freshness"
+    ),
     "aggregate_or_distinct_review": (
         "aggregate input rows, filter selectivity, grouping grain, and projection width"
     ),
     "set_operation_research": (
         "set-operation branch grain, branch projection symmetry, and branch-local row reduction"
+    ),
+    "branch_projection_unknown_boundary": (
+        "UNION ALL branch projection lineage and output-column preservation"
+    ),
+    "branch_projection_mismatch_boundary": (
+        "UNION ALL branch projection-count symmetry and output shape"
+    ),
+    "nested_branch_boundary": "nested UNION ALL branch boundary and branch-local row counts",
+    "aggregate_branch_boundary": "UNION ALL branch grain, duplicate semantics, and aggregate input rows",
+    "outer_or_mixed_join_branch_review": "UNION ALL branch join cardinality and join semantics",
+    "filtered_union_all_branch_review": (
+        "UNION ALL branch filter selectivity, branch projection width, and row reduction"
+    ),
+    "unfiltered_union_all_branch_review": (
+        "UNION ALL branch-local row reduction and output-column stability"
+    ),
+    "mixed_filter_union_all_branch_review": (
+        "filtered versus unfiltered UNION ALL branch contribution and predicate scope"
+    ),
+    "mixed_or_distinct_set_boundary": (
+        "set-operation duplicate semantics, branch grain, and branch output shape"
     ),
     "nested_query_boundary": "nested-query boundary and upstream row reduction",
     "unfiltered_join_review": "join cardinality, join keys, and many-to-many amplification",
@@ -195,6 +245,26 @@ OPTIMIZER_NO_RECIPE_REVIEW_AREA_LABELS = {
 }
 
 OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS = {
+    "filtered_scalar_aggregate_review": (
+        "Review filtered scalar aggregate input first: check predicate selectivity, "
+        "partition pruning, stats freshness, and aggregate input rows before expecting SQL rewrite value."
+    ),
+    "grouped_aggregate_review": (
+        "Review grouped aggregate grain first: compare grouping keys, aggregate input rows, "
+        "stats freshness, and projected columns before changing SQL shape."
+    ),
+    "distinct_aggregate_review": (
+        "Review DISTINCT semantics first: preserve duplicate behavior while comparing input "
+        "rows, grouping grain, and stats freshness."
+    ),
+    "scalar_multi_aggregate_review": (
+        "Review scalar aggregate inputs first: compare filter selectivity, stats freshness, "
+        "and projected columns before expecting SQL rewrite value."
+    ),
+    "scalar_aggregate_review": (
+        "Review scalar aggregate input first: check input rows, filter selectivity, partition "
+        "pruning, and stats freshness before changing SQL shape."
+    ),
     "aggregate_or_distinct_review": (
         "Review aggregate input rows first: compare existing filter selectivity, grouping grain, "
         "and projected columns before changing aggregate or DISTINCT semantics."
@@ -202,6 +272,42 @@ OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS = {
     "set_operation_research": (
         "Review set-operation branches first: keep branch columns and semantics stable while "
         "checking branch-local filters, pre-aggregation, or projection pruning."
+    ),
+    "branch_projection_unknown_boundary": (
+        "Map UNION ALL branch projections first: confirm output-column lineage before changing "
+        "branch filters, projections, or aggregation."
+    ),
+    "branch_projection_mismatch_boundary": (
+        "Stabilize UNION ALL branch output shape first: compare branch projection counts before "
+        "testing row-reduction changes."
+    ),
+    "nested_branch_boundary": (
+        "Review one nested UNION ALL branch boundary at a time; verify branch row counts before "
+        "and after the nested result."
+    ),
+    "aggregate_branch_boundary": (
+        "Review UNION ALL branch grain first: preserve duplicate semantics and compare aggregate "
+        "input rows before changing branch filters."
+    ),
+    "outer_or_mixed_join_branch_review": (
+        "Review UNION ALL branch joins first: verify join keys, row-preservation semantics, and "
+        "branch cardinality before changing filters."
+    ),
+    "filtered_union_all_branch_review": (
+        "Compare filtered UNION ALL branches first: check branch-level selectivity and projection "
+        "width before expecting SQL rewrite value."
+    ),
+    "unfiltered_union_all_branch_review": (
+        "Look for branch-local row reduction first: keep UNION ALL branch outputs stable and "
+        "verify branch counts after any manual filter."
+    ),
+    "mixed_filter_union_all_branch_review": (
+        "Compare filtered and unfiltered UNION ALL branch contribution first; keep predicate "
+        "scope branch-local and output shape unchanged."
+    ),
+    "mixed_or_distinct_set_boundary": (
+        "Preserve set-operation semantics first: do not change duplicate behavior while reviewing "
+        "branch grain and branch output shape."
     ),
     "nested_query_boundary": (
         "Review the nested-query boundary first: reduce rows before the nested result is joined, "

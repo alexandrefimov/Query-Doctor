@@ -182,12 +182,20 @@ guidance instead. That guidance must make the no-draft boundary explicit and
 include a verification path, such as EXPLAIN comparison and a comparable rerun,
 before claiming benefit from any manual change.
 
-No-recipe guidance may identify raw-free SQL shape families such as plain
-aggregate or distinct review, set-operation research, nested-query boundary,
+No-recipe guidance may identify raw-free SQL shape families such as filtered
+scalar aggregate review, broader plain aggregate or distinct review,
+grouped aggregate review, distinct aggregate review, scalar aggregate review,
+set-operation branch review, set-operation research, nested-query boundary,
 join review, single-relation filter review, CTE boundary, or derived-table
-boundary. These labels are manual review directions only. They must not expose
-SQL text, identifiers, predicates, literals, paths, artifacts, model internals,
-or imply that a trusted SQL draft exists.
+boundary. Aggregate labels may describe only safe categories such as grouping
+grain, duplicate semantics, aggregate input rows, filter selectivity,
+partition pruning, stats freshness, or projection width. Set-operation branch
+labels may describe only safe categories such as
+projection boundary, projection mismatch, nested branch boundary, aggregate
+branch boundary, join-heavy branch, filtered/unfiltered branch review, or mixed
+or distinct set-operation boundary. These labels are manual review directions
+only. They must not expose SQL text, identifiers, predicates, literals, paths,
+artifacts, model internals, or imply that a trusted SQL draft exists.
 
 Recent scan summaries may persist the same boundary as an allowlisted
 `no_recipe_review_track` token. This token is telemetry and backlog routing
