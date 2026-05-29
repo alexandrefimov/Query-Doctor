@@ -19,9 +19,19 @@ def test_demo_trino_evidence_package_prints_safe_summary_without_writing(capsys)
     assert "trino_version_family: 477" in captured.out
     assert "source_contract_version: synthetic_trino_event_listener_v1" in captured.out
     assert "contact_surface: fixture_import_only" in captured.out
-    assert "sample_count: 11" in captured.out
-    assert "supported: 10" in captured.out
-    assert "unknown: 1" in captured.out
+    assert "sample_count: 22" in captured.out
+    assert "supported: 20" in captured.out
+    assert "unknown: 2" in captured.out
+    assert "failed_query_allowlisted_category: 2" in captured.out
+    assert "queued_or_resource_group_delayed_query: 2" in captured.out
+    assert "blocked_query: 2" in captured.out
+    assert "spill_observed: 2" in captured.out
+    assert "stage_or_task_skew_candidate: 2" in captured.out
+    assert "connector_metric_present: 2" in captured.out
+    assert "connector_metric_absent: 2" in captured.out
+    assert "missing_field_case: 2" in captured.out
+    assert "unknown_or_unsupported_source_contract: 2" in captured.out
+    assert "query_detail_stage_task_summary: 2" in captured.out
     assert captured.err == ""
 
     _assert_no_demo_leaks(captured.out)
@@ -49,7 +59,7 @@ def test_demo_trino_evidence_package_writes_valid_package_without_echoing_paths(
         json.loads(output_path.read_text(encoding="utf-8"))
     )
     assert result.package_id == "trino_fixture_demo"
-    assert result.parser_coverage_counts() == {"supported": 10, "unknown": 1}
+    assert result.parser_coverage_counts() == {"supported": 20, "unknown": 2}
     _assert_no_demo_leaks(captured.out)
 
 

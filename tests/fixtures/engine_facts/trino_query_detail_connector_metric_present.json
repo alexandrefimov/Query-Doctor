@@ -1,0 +1,40 @@
+{
+  "fixtureVersion": "synthetic-trino-query-detail-connector-metric-present-v1",
+  "sourceContractVersion": "synthetic_trino_query_detail_v1",
+  "queryDetail": {
+    "summary": {
+      "completedSplits": 240,
+      "cpuTimeMillis": 118000,
+      "elapsedTimeMillis": 126000,
+      "executionTimeMillis": 119000,
+      "fullyBlocked": false,
+      "outputBytes": 5242880,
+      "outputRows": 16000,
+      "peakMemoryBytes": 1879048192,
+      "planningTimeMillis": 4100,
+      "processedBytes": 21474836480,
+      "processedRows": 260000000,
+      "queuedTimeMillis": 900,
+      "safeConnectorMetricSummary": {
+        "checked": true,
+        "present": true
+      },
+      "safeStageSkewSummary": {
+        "candidate": false,
+        "checked": true,
+        "maxToMedianInputBytesRatio": 1.3,
+        "sampledTaskCount": 24
+      },
+      "safeTaskSummary": {
+        "checked": true,
+        "failedTaskCount": 0,
+        "retriedTaskCount": 0,
+        "taskCount": 48
+      },
+      "spilledBytes": 0,
+      "stageCount": 3,
+      "state": "FINISHED",
+      "wallTimeMillis": 226000
+    }
+  }
+}

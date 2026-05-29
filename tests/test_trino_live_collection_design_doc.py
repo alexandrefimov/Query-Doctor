@@ -48,6 +48,8 @@ def test_trino_live_collection_design_defines_source_phases_and_bounds():
         "already have fixture validators",
         "scripts/validate_trino_evidence_package.py",
         "prints only a safe summary and does not add live collection",
+        "non-boolean queued markers stay unknown",
+        "those counts must be non-negative integers",
     ):
         assert required in text
 
@@ -67,6 +69,7 @@ def test_trino_live_collection_design_requires_raw_free_boundary_and_fixtures():
         "queued/resource-group delayed query",
         "oversized payload rejection",
         "sanitized query-list contract probe aggregate",
+        "compact query-detail stage/task summary case",
         "unsafe raw fields rejected by redaction tests",
         "first operator-exported test-cluster handoff",
     ):

@@ -27,9 +27,15 @@ from query_doctor.safety import redaction
 TRINO_FIXTURE_SOURCE = "trino_statement_stats_fixture"
 TRINO_EVENT_LISTENER_FIXTURE_SOURCE = "trino_event_listener_fixture"
 TRINO_QUERY_LIST_CONTRACT_PROBE_SOURCE = "trino_query_list_contract_probe_fixture"
+TRINO_QUERY_DETAIL_FIXTURE_SOURCE = "trino_query_detail_fixture"
 TRINO_EVENT_ACCEPTED_SOURCE_CONTRACT_VERSIONS = frozenset(
     {
         "synthetic_trino_event_listener_v1",
+    }
+)
+TRINO_QUERY_DETAIL_ACCEPTED_SOURCE_CONTRACT_VERSIONS = frozenset(
+    {
+        "synthetic_trino_query_detail_v1",
     }
 )
 TRINO_FAILURE_CATEGORIES = frozenset(
@@ -48,6 +54,8 @@ TRINO_STATEMENT_FIXTURE_MAX_JSON_BYTES = 64 * 1024
 TRINO_STATEMENT_FIXTURE_MAX_DEPTH = 16
 TRINO_QUERY_LIST_FIXTURE_MAX_JSON_BYTES = 64 * 1024
 TRINO_QUERY_LIST_FIXTURE_MAX_DEPTH = 16
+TRINO_QUERY_DETAIL_FIXTURE_MAX_JSON_BYTES = 64 * 1024
+TRINO_QUERY_DETAIL_FIXTURE_MAX_DEPTH = 16
 TRINO_QUERY_LIST_SUMMARY_KIND = "trino_query_list_contract_probe_v1"
 TRINO_QUERY_LIST_REQUIRED_TOP_LEVEL_GROUPS = frozenset(
     {
@@ -191,11 +199,15 @@ TRINO_EVENT_FORBIDDEN_FIELD_NAMES = frozenset(
         "sessionid",
         "source",
         "sql",
+        "nodeid",
         "stack",
         "stacktrace",
         "statement",
         "table",
         "tables",
+        "splitid",
+        "stageid",
+        "taskid",
         "token",
         "tracetoken",
         "transactionid",
@@ -205,6 +217,8 @@ TRINO_EVENT_FORBIDDEN_FIELD_NAMES = frozenset(
         "userid",
         "warning",
         "warnings",
+        "worker",
+        "workerid",
     }
 )
 
@@ -503,6 +517,61 @@ def build_trino_query_list_contract_probe_engine_facts(
     )
 
 
+def build_trino_query_detail_fixture_engine_facts(payload: Mapping[str, Any]) -> EngineFactBundle:
+    validate_trino_query_detail_fixture_payload(payload)
+    fixture_version = _text_or_none(payload.get("fixtureVersion"))
+    if _query_detail_source_contract_unsupported(payload):
+        return _unknown_query_detail_source_contract_bundle(fixture_version)
+
+    detail = _mapping(payload.get("queryDetail"))
+    stats = _mapping(detail.get("summary"))
+
+    return EngineFactBundle(
+        identity=EngineIdentityFacts(
+            engine="trino",
+            source=TRINO_QUERY_DETAIL_FIXTURE_SOURCE,
+            source_version=fixture_version,
+            parser_coverage="supported",
+        ),
+        lifecycle=_build_lifecycle(stats),
+        timing=(
+            _millis_fact("elapsed_time_ms", stats.get("elapsedTimeMillis")),
+            _millis_fact("queued_time_ms", stats.get("queuedTimeMillis")),
+            _millis_fact("planning_time_ms", stats.get("planningTimeMillis")),
+            _millis_fact("execution_time_ms", stats.get("executionTimeMillis")),
+            _millis_fact("cpu_time_ms", stats.get("cpuTimeMillis")),
+            _millis_fact("wall_time_ms", stats.get("wallTimeMillis")),
+        ),
+        resources=(
+            _count_fact("input_rows", stats.get("processedRows"), unit="rows"),
+            _count_fact("input_bytes", stats.get("processedBytes"), unit="bytes"),
+            _count_fact("output_rows", stats.get("outputRows"), unit="rows"),
+            _count_fact("output_bytes", stats.get("outputBytes"), unit="bytes"),
+            _count_fact("peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
+            _spilled_bytes_fact(stats.get("spilledBytes")),
+            _connector_metric_signal_fact(stats),
+        ),
+        stages=(
+            _stage_count_fact(stats),
+            _count_fact("completed_split_count", stats.get("completedSplits"), unit="splits"),
+            _blocked_signal_fact(stats),
+            _stage_skew_candidate_fact(stats),
+            *_task_summary_facts(stats),
+        ),
+        limitations=(
+            *_trino_fixture_limitations(),
+            LimitationFact(
+                fact_id="query_detail_import",
+                state="supported",
+                summary=(
+                    "Trino query-detail fixture was accepted only as a compact "
+                    "sanitized local import."
+                ),
+            ),
+        ),
+    )
+
+
 def validate_trino_event_listener_fixture_payload(
     payload: Mapping[str, Any],
     *,
@@ -551,6 +620,34 @@ def validate_trino_statement_stats_fixture_payload(
         payload,
         max_depth=max_depth,
         fixture_label="statement stats fixture",
+    )
+
+
+def validate_trino_query_detail_fixture_payload(
+    payload: Mapping[str, Any],
+    *,
+    max_json_bytes: int = TRINO_QUERY_DETAIL_FIXTURE_MAX_JSON_BYTES,
+    max_depth: int = TRINO_QUERY_DETAIL_FIXTURE_MAX_DEPTH,
+) -> None:
+    if not isinstance(payload, Mapping):
+        raise EngineFactContractError("Trino query-detail fixture payload must be a JSON object")
+
+    validate_trino_safe_fixture_json_size(
+        payload,
+        max_json_bytes=max_json_bytes,
+        payload_label="Trino query-detail fixture payload",
+    )
+
+    detail = payload.get("queryDetail")
+    if not isinstance(detail, Mapping):
+        raise EngineFactContractError("Trino query-detail fixture payload missing queryDetail")
+    if not isinstance(detail.get("summary"), Mapping):
+        raise EngineFactContractError("Trino query-detail fixture payload missing summary")
+
+    validate_trino_safe_fixture_tree(
+        payload,
+        max_depth=max_depth,
+        fixture_label="query-detail fixture",
     )
 
 
@@ -739,7 +836,10 @@ def _normalize_lifecycle(value: str | None) -> str:
 def _blocked_state(stats: Mapping[str, Any]) -> str:
     if "fullyBlocked" not in stats:
         return "unknown"
-    return "supported" if bool(stats.get("fullyBlocked")) else "not_observed"
+    fully_blocked = stats.get("fullyBlocked")
+    if not isinstance(fully_blocked, bool):
+        return "unknown"
+    return "supported" if fully_blocked else "not_observed"
 
 
 def _failure_category_fact(
@@ -816,7 +916,14 @@ def _blocked_signal_fact(stats: Mapping[str, Any]) -> MetricFact:
             state="unknown",
             summary="The fixture does not contain Trino fullyBlocked status.",
         )
-    if bool(stats.get("fullyBlocked")):
+    fully_blocked = stats.get("fullyBlocked")
+    if not isinstance(fully_blocked, bool):
+        return MetricFact(
+            fact_id="blocked_signal",
+            state="unknown",
+            summary="The fixture did not provide a boolean Trino fullyBlocked status.",
+        )
+    if fully_blocked:
         return MetricFact(
             fact_id="blocked_signal",
             state="supported",
@@ -843,7 +950,7 @@ def _stage_skew_candidate_fact(stats: Mapping[str, Any]) -> MetricFact:
     checked = summary.get("checked")
     candidate = summary.get("candidate")
     ratio = _number_or_none(summary.get("maxToMedianInputBytesRatio"))
-    sampled_task_count = _number_or_none(summary.get("sampledTaskCount"))
+    sampled_task_count = _non_negative_int_or_none(summary.get("sampledTaskCount"))
     if (
         set(summary) - {"checked", "candidate", "maxToMedianInputBytesRatio", "sampledTaskCount"}
         or checked is not True
@@ -923,7 +1030,7 @@ def _resource_group_queue_time_fact(resource: Mapping[str, Any]) -> MetricFact:
             unit="ms",
             summary="Trino event fixture reported query-specific resource-group queue time.",
         )
-    if "queued" in resource and not bool(resource.get("queued")):
+    if resource.get("queued") is False:
         return MetricFact(
             fact_id="resource_group_queue_time_ms",
             state="not_observed",
@@ -939,11 +1046,101 @@ def _resource_group_queue_time_fact(resource: Mapping[str, Any]) -> MetricFact:
     )
 
 
+def _task_summary_facts(stats: Mapping[str, Any]) -> tuple[MetricFact, MetricFact, MetricFact]:
+    summary = _mapping(stats.get("safeTaskSummary"))
+    unknown = (
+        MetricFact(
+            fact_id="task_count",
+            state="unknown",
+            unit="tasks",
+            summary="No safe Trino task summary is present in this fixture.",
+        ),
+        MetricFact(
+            fact_id="failed_task_count",
+            state="unknown",
+            unit="tasks",
+            summary="No safe Trino task failure summary is present in this fixture.",
+        ),
+        MetricFact(
+            fact_id="retried_task_count",
+            state="unknown",
+            unit="tasks",
+            summary="No safe Trino task retry summary is present in this fixture.",
+        ),
+    )
+    if not summary:
+        return unknown
+
+    checked = summary.get("checked")
+    task_count = _non_negative_int_or_none(summary.get("taskCount"))
+    failed_task_count = _non_negative_int_or_none(summary.get("failedTaskCount"))
+    retried_task_count = _non_negative_int_or_none(summary.get("retriedTaskCount"))
+    if (
+        set(summary) - {"checked", "taskCount", "failedTaskCount", "retriedTaskCount"}
+        or checked is not True
+        or task_count is None
+        or failed_task_count is None
+        or retried_task_count is None
+    ):
+        return unknown
+
+    return (
+        MetricFact(
+            fact_id="task_count",
+            state="supported",
+            value=task_count,
+            unit="tasks",
+            summary="Safe Trino query-detail task summary reported task count.",
+        ),
+        _zero_aware_task_count_fact(
+            "failed_task_count",
+            failed_task_count,
+            observed_summary="Safe Trino query-detail task summary reported failed tasks.",
+            absent_summary="Safe Trino query-detail task summary reported no failed tasks.",
+        ),
+        _zero_aware_task_count_fact(
+            "retried_task_count",
+            retried_task_count,
+            observed_summary="Safe Trino query-detail task summary reported retried tasks.",
+            absent_summary="Safe Trino query-detail task summary reported no retried tasks.",
+        ),
+    )
+
+
+def _zero_aware_task_count_fact(
+    fact_id: str,
+    value: float | int,
+    *,
+    observed_summary: str,
+    absent_summary: str,
+) -> MetricFact:
+    if value > 0:
+        return MetricFact(
+            fact_id=fact_id,
+            state="supported",
+            value=value,
+            unit="tasks",
+            summary=observed_summary,
+        )
+    return MetricFact(
+        fact_id=fact_id,
+        state="not_observed",
+        value=value,
+        unit="tasks",
+        summary=absent_summary,
+    )
+
+
 def _event_source_contract_unsupported(payload: Mapping[str, Any]) -> bool:
     if "sourceContractVersion" not in payload:
         return False
     version = _text_or_none(payload.get("sourceContractVersion"))
     return version not in TRINO_EVENT_ACCEPTED_SOURCE_CONTRACT_VERSIONS
+
+
+def _query_detail_source_contract_unsupported(payload: Mapping[str, Any]) -> bool:
+    version = _text_or_none(payload.get("sourceContractVersion"))
+    return version not in TRINO_QUERY_DETAIL_ACCEPTED_SOURCE_CONTRACT_VERSIONS
 
 
 def _unknown_event_source_contract_bundle(fixture_version: str | None) -> EngineFactBundle:
@@ -985,6 +1182,55 @@ def _unknown_event_source_contract_bundle(fixture_version: str | None) -> Engine
                 fact_id="source_contract",
                 state="unknown",
                 summary="Trino event fixture source contract version is unknown or unsupported.",
+            ),
+        ),
+    )
+
+
+def _unknown_query_detail_source_contract_bundle(fixture_version: str | None) -> EngineFactBundle:
+    return EngineFactBundle(
+        identity=EngineIdentityFacts(
+            engine="trino",
+            source=TRINO_QUERY_DETAIL_FIXTURE_SOURCE,
+            source_version=fixture_version,
+            parser_coverage="unknown",
+        ),
+        lifecycle=_build_lifecycle({}),
+        timing=(
+            _millis_fact("elapsed_time_ms", None),
+            _millis_fact("queued_time_ms", None),
+            _millis_fact("planning_time_ms", None),
+            _millis_fact("execution_time_ms", None),
+            _millis_fact("cpu_time_ms", None),
+            _millis_fact("wall_time_ms", None),
+        ),
+        resources=(
+            _count_fact("input_rows", None, unit="rows"),
+            _count_fact("input_bytes", None, unit="bytes"),
+            _count_fact("output_rows", None, unit="rows"),
+            _count_fact("output_bytes", None, unit="bytes"),
+            _count_fact("peak_memory_bytes", None, unit="bytes"),
+            _spilled_bytes_fact(None),
+            _connector_metric_signal_fact({}),
+        ),
+        stages=(
+            _stage_count_fact({}),
+            _count_fact("completed_split_count", None, unit="splits"),
+            _blocked_signal_fact({}),
+            _stage_skew_candidate_fact({}),
+            *_task_summary_facts({}),
+        ),
+        limitations=(
+            *_trino_fixture_limitations(),
+            LimitationFact(
+                fact_id="query_detail_import",
+                state="unknown",
+                summary="Trino query-detail fixture source contract is not accepted.",
+            ),
+            LimitationFact(
+                fact_id="source_contract",
+                state="unknown",
+                summary="Trino query-detail fixture source contract version is unknown or unsupported.",
             ),
         ),
     )
@@ -1181,6 +1427,14 @@ def _number_or_none(value: Any) -> float | int | None:
         if isinstance(value, float) and not math.isfinite(value):
             return None
         return value if value >= 0 else None
+    return None
+
+
+def _non_negative_int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
     return None
 
 

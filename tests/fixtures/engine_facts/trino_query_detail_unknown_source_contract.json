@@ -1,0 +1,36 @@
+{
+  "fixtureVersion": "synthetic-trino-query-detail-unknown-contract-v1",
+  "sourceContractVersion": "unknown_query_detail_contract",
+  "queryDetail": {
+    "summary": {
+      "completedSplits": 54,
+      "cpuTimeMillis": 32000,
+      "elapsedTimeMillis": 28000,
+      "executionTimeMillis": 24000,
+      "fullyBlocked": false,
+      "outputBytes": 65536,
+      "outputRows": 800,
+      "peakMemoryBytes": 268435456,
+      "planningTimeMillis": 900,
+      "processedBytes": 134217728,
+      "processedRows": 1200000,
+      "queuedTimeMillis": 400,
+      "safeStageSkewSummary": {
+        "candidate": false,
+        "checked": true,
+        "maxToMedianInputBytesRatio": 1.2,
+        "sampledTaskCount": 8
+      },
+      "safeTaskSummary": {
+        "checked": true,
+        "failedTaskCount": 0,
+        "retriedTaskCount": 0,
+        "taskCount": 16
+      },
+      "spilledBytes": 0,
+      "stageCount": 2,
+      "state": "FINISHED",
+      "wallTimeMillis": 42000
+    }
+  }
+}

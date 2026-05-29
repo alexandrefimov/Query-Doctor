@@ -1,6 +1,6 @@
 # Trino Test Cluster Evidence Checklist
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-29
 
 Language: English | [Russian](i18n/ru/trino-test-cluster-evidence-checklist.md)
 
@@ -45,8 +45,9 @@ The first export should contain compact evidence only:
 - sanitized `/v1/query` list summary exports only as aggregate contract probes,
   with raw records, query text, identities, locations, object context, and
   failure details removed before handoff;
-- query-detail exports only after raw identifiers, object names, endpoint
-  details, stack traces, and connector internals are removed;
+- compact query-detail exports only after raw identifiers, object names,
+  endpoint details, stack traces, raw stage/task records, and connector
+  internals are removed;
 - a manifest that describes source type, Trino version, source schema version,
   connector family category, export time window, record count, byte count,
   redaction status, and known omissions.
@@ -66,6 +67,7 @@ Prepare the smallest safe sample set that covers:
 - missing-field case;
 - unknown or unsupported source-contract version case;
 - sanitized query-list contract probe aggregate;
+- compact query-detail stage/task summary case;
 - oversized or over-deep payload rejection case using synthetic padding only;
 - unsafe raw field rejection case using synthetic sentinel values only.
 
@@ -87,6 +89,9 @@ Before any file enters the repository or an issue attachment:
   Kerberos caches, and extra credentials;
 - replace source-specific detail with compact checked booleans, durations,
   counts, byte values, safe categories, and explicit `unknown` states;
+- keep compact boolean markers typed. For example, `fullyBlocked` and
+  resource `queued` must be booleans when they are used as blocked or
+  queue-absence evidence;
 - reject or regenerate the export if redaction status is unknown.
 
 ## Compact Output Shape

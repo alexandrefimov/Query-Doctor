@@ -37,7 +37,7 @@ def test_trino_test_cluster_evidence_checklist_requires_sanitized_operator_expor
         "completed event-listener records",
         "statement-statistics snippets",
         "sanitized /v1/query list summary exports only as aggregate contract probes",
-        "query-detail exports only after raw identifiers",
+        "compact query-detail exports only after raw identifiers",
         "manifest that describes source type, Trino version, source schema version",
         "redaction note describing removed field classes, not removed values",
         "trino-evidence-package-templates.md",
@@ -67,12 +67,14 @@ def test_trino_test_cluster_evidence_checklist_pins_minimum_case_set_and_redacti
         "missing-field case",
         "unknown or unsupported source-contract version case",
         "sanitized query-list contract probe aggregate",
+        "compact query-detail stage/task summary case",
         "oversized or over-deep payload rejection case using synthetic padding only",
         "unsafe raw field rejection case using synthetic sentinel values only",
         "remove raw SQL and prepared statements",
         "remove query IDs, trace tokens, transaction IDs, session IDs, and request headers",
         "remove catalog, schema, table, column, partition, manifest, and object names",
         "remove stack traces, raw exception messages, warning payloads, and connector internals",
+        "fullyBlocked and resource queued must be booleans",
     ):
         assert required in text
 

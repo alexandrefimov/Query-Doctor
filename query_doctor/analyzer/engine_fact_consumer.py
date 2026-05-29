@@ -103,9 +103,19 @@ def _attention_signal_ids(
             value = fact.get("value")
             if isinstance(value, (float, int)) and not isinstance(value, bool) and value > 0:
                 signals.add("blocked_or_admission_wait")
+        if state == "supported" and fact_id in {"failed_task_count", "retried_task_count"}:
+            value = fact.get("value")
+            if isinstance(value, (float, int)) and not isinstance(value, bool) and value > 0:
+                signals.add(_task_attention_signal_id(fact_id))
         if state == "unknown" and _is_limitation_fact(fact_id, fact_groups):
             signals.add(f"limitation_unknown:{fact_id}")
     return tuple(sorted(signals))
+
+
+def _task_attention_signal_id(fact_id: str) -> str:
+    if fact_id == "failed_task_count":
+        return "task_failures_observed"
+    return "task_retries_observed"
 
 
 def _validate_boundary_payload(payload: Mapping[str, Any]) -> None:

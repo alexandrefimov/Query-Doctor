@@ -10,6 +10,10 @@ from query_doctor.analyzer.engine_facts import (
     engine_fact_boundary_payload,
     engine_fact_boundary_text,
 )
+from query_doctor.analyzer.trino_fixture_facts import (
+    build_trino_event_listener_fixture_engine_facts,
+    build_trino_query_detail_fixture_engine_facts,
+)
 from query_doctor.engines import list_engine_adapters
 
 
@@ -170,6 +174,260 @@ CASE_SPECIFIC_TRINO_FACT_STATES = {
         "query_detail_fetch": "not_observed",
         "statement_execution": "not_observed",
     },
+    "trino_query_detail_export_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "cpu_time_ms": "supported",
+        "wall_time_ms": "supported",
+        "input_rows": "supported",
+        "input_bytes": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "peak_memory_bytes": "supported",
+        "spilled_bytes": "supported",
+        "connector_metric_signal": "unknown",
+        "stage_count": "supported",
+        "completed_split_count": "supported",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "supported",
+        "task_count": "supported",
+        "failed_task_count": "not_observed",
+        "retried_task_count": "supported",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_blocked_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "cpu_time_ms": "supported",
+        "wall_time_ms": "supported",
+        "input_rows": "supported",
+        "input_bytes": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "peak_memory_bytes": "supported",
+        "spilled_bytes": "not_observed",
+        "connector_metric_signal": "unknown",
+        "stage_count": "supported",
+        "completed_split_count": "supported",
+        "blocked_signal": "supported",
+        "stage_skew_candidate": "not_observed",
+        "task_count": "supported",
+        "failed_task_count": "not_observed",
+        "retried_task_count": "not_observed",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_failure_category_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "cpu_time_ms": "supported",
+        "wall_time_ms": "supported",
+        "input_rows": "supported",
+        "input_bytes": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "peak_memory_bytes": "supported",
+        "spilled_bytes": "not_observed",
+        "connector_metric_signal": "unknown",
+        "stage_count": "supported",
+        "completed_split_count": "supported",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "not_observed",
+        "task_count": "supported",
+        "failed_task_count": "not_observed",
+        "retried_task_count": "not_observed",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_spill_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "cpu_time_ms": "supported",
+        "wall_time_ms": "supported",
+        "input_rows": "supported",
+        "input_bytes": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "peak_memory_bytes": "supported",
+        "spilled_bytes": "supported",
+        "connector_metric_signal": "unknown",
+        "stage_count": "supported",
+        "completed_split_count": "supported",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "not_observed",
+        "task_count": "supported",
+        "failed_task_count": "not_observed",
+        "retried_task_count": "not_observed",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_stage_skew_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "cpu_time_ms": "supported",
+        "wall_time_ms": "supported",
+        "input_rows": "supported",
+        "input_bytes": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "peak_memory_bytes": "supported",
+        "spilled_bytes": "not_observed",
+        "connector_metric_signal": "unknown",
+        "stage_count": "supported",
+        "completed_split_count": "supported",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "supported",
+        "task_count": "supported",
+        "failed_task_count": "not_observed",
+        "retried_task_count": "not_observed",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_queued_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "unknown",
+        "execution_time_ms": "unknown",
+        "cpu_time_ms": "unknown",
+        "wall_time_ms": "unknown",
+        "input_rows": "unknown",
+        "input_bytes": "unknown",
+        "output_rows": "unknown",
+        "output_bytes": "unknown",
+        "peak_memory_bytes": "unknown",
+        "spilled_bytes": "unknown",
+        "connector_metric_signal": "unknown",
+        "stage_count": "unknown",
+        "completed_split_count": "unknown",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "unknown",
+        "task_count": "unknown",
+        "failed_task_count": "unknown",
+        "retried_task_count": "unknown",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_connector_metric_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "cpu_time_ms": "supported",
+        "wall_time_ms": "supported",
+        "input_rows": "supported",
+        "input_bytes": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "peak_memory_bytes": "supported",
+        "spilled_bytes": "not_observed",
+        "connector_metric_signal": "supported",
+        "stage_count": "supported",
+        "completed_split_count": "supported",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "not_observed",
+        "task_count": "supported",
+        "failed_task_count": "not_observed",
+        "retried_task_count": "not_observed",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_connector_metric_absent_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "cpu_time_ms": "supported",
+        "wall_time_ms": "supported",
+        "input_rows": "supported",
+        "input_bytes": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "peak_memory_bytes": "supported",
+        "spilled_bytes": "not_observed",
+        "connector_metric_signal": "not_observed",
+        "stage_count": "supported",
+        "completed_split_count": "supported",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "not_observed",
+        "task_count": "supported",
+        "failed_task_count": "not_observed",
+        "retried_task_count": "not_observed",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_task_failure_fixture": {
+        "elapsed_time_ms": "supported",
+        "queued_time_ms": "supported",
+        "planning_time_ms": "supported",
+        "execution_time_ms": "supported",
+        "cpu_time_ms": "supported",
+        "wall_time_ms": "supported",
+        "input_rows": "supported",
+        "input_bytes": "supported",
+        "output_rows": "supported",
+        "output_bytes": "supported",
+        "peak_memory_bytes": "supported",
+        "spilled_bytes": "not_observed",
+        "connector_metric_signal": "unknown",
+        "stage_count": "supported",
+        "completed_split_count": "supported",
+        "blocked_signal": "not_observed",
+        "stage_skew_candidate": "not_observed",
+        "task_count": "supported",
+        "failed_task_count": "supported",
+        "retried_task_count": "not_observed",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_missing_fields_fixture": {
+        "elapsed_time_ms": "unknown",
+        "queued_time_ms": "unknown",
+        "planning_time_ms": "unknown",
+        "execution_time_ms": "unknown",
+        "cpu_time_ms": "unknown",
+        "wall_time_ms": "unknown",
+        "input_rows": "unknown",
+        "input_bytes": "unknown",
+        "output_rows": "unknown",
+        "output_bytes": "unknown",
+        "peak_memory_bytes": "unknown",
+        "spilled_bytes": "unknown",
+        "connector_metric_signal": "unknown",
+        "stage_count": "unknown",
+        "completed_split_count": "unknown",
+        "blocked_signal": "unknown",
+        "stage_skew_candidate": "unknown",
+        "task_count": "unknown",
+        "failed_task_count": "unknown",
+        "retried_task_count": "unknown",
+        "query_detail_import": "supported",
+    },
+    "trino_query_detail_unknown_source_contract_fixture": {
+        "elapsed_time_ms": "unknown",
+        "queued_time_ms": "unknown",
+        "planning_time_ms": "unknown",
+        "execution_time_ms": "unknown",
+        "cpu_time_ms": "unknown",
+        "wall_time_ms": "unknown",
+        "input_rows": "unknown",
+        "input_bytes": "unknown",
+        "output_rows": "unknown",
+        "output_bytes": "unknown",
+        "peak_memory_bytes": "unknown",
+        "spilled_bytes": "unknown",
+        "connector_metric_signal": "unknown",
+        "stage_count": "unknown",
+        "completed_split_count": "unknown",
+        "blocked_signal": "unknown",
+        "stage_skew_candidate": "unknown",
+        "task_count": "unknown",
+        "failed_task_count": "unknown",
+        "retried_task_count": "unknown",
+        "query_detail_import": "unknown",
+        "source_contract": "unknown",
+    },
 }
 EXPECTED_TRINO_LIFECYCLE_STATES = {
     "trino_statement_stats_fixture": "supported",
@@ -184,6 +442,17 @@ EXPECTED_TRINO_LIFECYCLE_STATES = {
     "trino_unknown_source_contract_event_fixture": "unknown",
     "trino_completed_event_missing_fields_fixture": "unknown",
     "trino_query_list_contract_probe_fixture": "unknown",
+    "trino_query_detail_export_fixture": "supported",
+    "trino_query_detail_blocked_fixture": "supported",
+    "trino_query_detail_failure_category_fixture": "supported",
+    "trino_query_detail_spill_fixture": "supported",
+    "trino_query_detail_stage_skew_fixture": "supported",
+    "trino_query_detail_queued_fixture": "supported",
+    "trino_query_detail_connector_metric_fixture": "supported",
+    "trino_query_detail_connector_metric_absent_fixture": "supported",
+    "trino_query_detail_task_failure_fixture": "supported",
+    "trino_query_detail_missing_fields_fixture": "unknown",
+    "trino_query_detail_unknown_source_contract_fixture": "unknown",
 }
 FORBIDDEN_TRINO_BOUNDARY_TOKENS = (
     "queryText",
@@ -194,6 +463,7 @@ FORBIDDEN_TRINO_BOUNDARY_TOKENS = (
     "trino_statement_stats_fixture",
     "trino_event_listener_fixture",
     "trino_query_list_contract_probe_fixture",
+    "trino_query_detail_fixture",
     ".json",
     "http://",
     "https://",
@@ -236,7 +506,18 @@ def test_trino_readiness_fixtures_keep_minimum_fact_states_explicit(case):
         ("trino_connector_metric_present_statement_stats_fixture", "not_observed"),
         ("trino_connector_metric_absent_statement_stats_fixture", "not_observed"),
         ("trino_resource_group_queued_event_fixture", "not_observed"),
+        ("trino_query_detail_export_fixture", "not_observed"),
+        ("trino_query_detail_blocked_fixture", "not_observed"),
+        ("trino_query_detail_failure_category_fixture", "supported"),
+        ("trino_query_detail_spill_fixture", "not_observed"),
+        ("trino_query_detail_stage_skew_fixture", "not_observed"),
+        ("trino_query_detail_queued_fixture", "not_observed"),
+        ("trino_query_detail_connector_metric_fixture", "not_observed"),
+        ("trino_query_detail_connector_metric_absent_fixture", "not_observed"),
+        ("trino_query_detail_task_failure_fixture", "not_observed"),
+        ("trino_query_detail_missing_fields_fixture", "unknown"),
         ("trino_unknown_source_contract_event_fixture", "unknown"),
+        ("trino_query_detail_unknown_source_contract_fixture", "unknown"),
         ("trino_completed_event_missing_fields_fixture", "unknown"),
     ),
 )
@@ -262,7 +543,18 @@ def test_trino_readiness_lifecycle_failure_state_is_state_backed(
         ("trino_failure_category_statement_stats_fixture", "supported", "resource_limit"),
         ("trino_blocked_statement_stats_fixture", "not_observed", None),
         ("trino_resource_group_queued_event_fixture", "not_observed", None),
+        ("trino_query_detail_export_fixture", "not_observed", None),
+        ("trino_query_detail_blocked_fixture", "not_observed", None),
+        ("trino_query_detail_failure_category_fixture", "supported", "resource_limit"),
+        ("trino_query_detail_spill_fixture", "not_observed", None),
+        ("trino_query_detail_stage_skew_fixture", "not_observed", None),
+        ("trino_query_detail_queued_fixture", "not_observed", None),
+        ("trino_query_detail_connector_metric_fixture", "not_observed", None),
+        ("trino_query_detail_connector_metric_absent_fixture", "not_observed", None),
+        ("trino_query_detail_task_failure_fixture", "not_observed", None),
+        ("trino_query_detail_missing_fields_fixture", "unknown", None),
         ("trino_unknown_source_contract_event_fixture", "unknown", None),
+        ("trino_query_detail_unknown_source_contract_fixture", "unknown", None),
         ("trino_completed_event_missing_fields_fixture", "unknown", None),
     ),
 )
@@ -296,6 +588,23 @@ def test_trino_readiness_blocked_signal_is_state_backed():
 
     assert case.bundle.lifecycle.lifecycle == "blocked"
     assert case.bundle.lifecycle.blocked == "supported"
+    assert "blocked_or_admission_wait" in probe["attention_signal_ids"]
+
+
+def test_trino_readiness_query_detail_blocked_signal_is_state_backed():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_query_detail_blocked_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+
+    assert case.bundle.lifecycle.lifecycle == "running"
+    assert case.bundle.lifecycle.blocked == "supported"
+    assert states["blocked_signal"] == "supported"
+    assert facts["blocked_signal"].value is True
     assert "blocked_or_admission_wait" in probe["attention_signal_ids"]
 
 
@@ -350,6 +659,316 @@ def test_trino_readiness_resource_group_queue_signal_is_state_backed():
     assert "blocked_or_admission_wait" in probe["attention_signal_ids"]
 
 
+@pytest.mark.parametrize("queued_value", (0, "", [], {}, None))
+def test_trino_readiness_event_resource_queued_requires_boolean_for_not_observed(
+    queued_value: object,
+):
+    bundle = build_trino_event_listener_fixture_engine_facts(
+        {
+            "fixtureVersion": "synthetic-trino-event-listener-resource-queued-boundary-v1",
+            "queryCompletedEvent": {
+                "metadata": {"queryState": "FINISHED"},
+                "statistics": {},
+                "resource": {"queued": queued_value},
+            },
+        }
+    )
+    states = _fact_states(bundle.to_public_dict())
+    facts = bundle.facts_by_id()
+
+    assert states["resource_group_queue_time_ms"] == "unknown"
+    assert facts["resource_group_queue_time_ms"].value is None
+    assert (
+        "blocked_or_admission_wait"
+        not in engine_fact_consumer_probe(bundle)["attention_signal_ids"]
+    )
+
+
+def test_trino_readiness_event_resource_queued_boolean_false_is_not_observed():
+    bundle = build_trino_event_listener_fixture_engine_facts(
+        {
+            "fixtureVersion": "synthetic-trino-event-listener-resource-not-queued-v1",
+            "queryCompletedEvent": {
+                "metadata": {"queryState": "FINISHED"},
+                "statistics": {},
+                "resource": {"queued": False},
+            },
+        }
+    )
+    states = _fact_states(bundle.to_public_dict())
+    facts = bundle.facts_by_id()
+
+    assert states["resource_group_queue_time_ms"] == "not_observed"
+    assert facts["resource_group_queue_time_ms"].value == 0
+    assert (
+        "blocked_or_admission_wait"
+        not in engine_fact_consumer_probe(bundle)["attention_signal_ids"]
+    )
+
+
+def test_trino_readiness_query_detail_task_retry_signal_is_state_backed():
+    case = next(
+        case for case in trino_golden_cases() if case.case_id == "trino_query_detail_export_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+
+    assert states["retried_task_count"] == "supported"
+    assert facts["retried_task_count"].value == 3
+    assert states["failed_task_count"] == "not_observed"
+    assert facts["failed_task_count"].value == 0
+    assert "task_retries_observed" in probe["attention_signal_ids"]
+    assert "task_failures_observed" not in probe["attention_signal_ids"]
+
+
+def test_trino_readiness_query_detail_task_failure_signal_is_state_backed():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_query_detail_task_failure_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+
+    assert states["failed_task_count"] == "supported"
+    assert facts["failed_task_count"].value == 2
+    assert states["retried_task_count"] == "not_observed"
+    assert facts["retried_task_count"].value == 0
+    assert "task_failures_observed" in probe["attention_signal_ids"]
+    assert "task_retries_observed" not in probe["attention_signal_ids"]
+
+
+@pytest.mark.parametrize("count_field", ("taskCount", "failedTaskCount", "retriedTaskCount"))
+def test_trino_readiness_query_detail_task_summary_counts_require_integers(
+    count_field: str,
+):
+    summary = {
+        "checked": True,
+        "taskCount": 12,
+        "failedTaskCount": 0,
+        "retriedTaskCount": 0,
+    }
+    summary[count_field] = 1.5
+    bundle = build_trino_query_detail_fixture_engine_facts(
+        {
+            "fixtureVersion": "synthetic-trino-query-detail-task-count-boundary-v1",
+            "sourceContractVersion": "synthetic_trino_query_detail_v1",
+            "queryDetail": {
+                "summary": {
+                    "state": "FINISHED",
+                    "safeTaskSummary": summary,
+                },
+            },
+        }
+    )
+    states = _fact_states(bundle.to_public_dict())
+    facts = bundle.facts_by_id()
+    probe = engine_fact_consumer_probe(bundle)
+
+    assert states["task_count"] == "unknown"
+    assert states["failed_task_count"] == "unknown"
+    assert states["retried_task_count"] == "unknown"
+    assert facts["task_count"].value is None
+    assert facts["failed_task_count"].value is None
+    assert facts["retried_task_count"].value is None
+    assert "task_failures_observed" not in probe["attention_signal_ids"]
+    assert "task_retries_observed" not in probe["attention_signal_ids"]
+
+
+def test_trino_readiness_stage_skew_sampled_task_count_requires_integer():
+    bundle = build_trino_query_detail_fixture_engine_facts(
+        {
+            "fixtureVersion": "synthetic-trino-query-detail-skew-count-boundary-v1",
+            "sourceContractVersion": "synthetic_trino_query_detail_v1",
+            "queryDetail": {
+                "summary": {
+                    "state": "FINISHED",
+                    "safeStageSkewSummary": {
+                        "checked": True,
+                        "candidate": True,
+                        "maxToMedianInputBytesRatio": 7.0,
+                        "sampledTaskCount": 2.5,
+                    },
+                },
+            },
+        }
+    )
+    states = _fact_states(bundle.to_public_dict())
+    facts = bundle.facts_by_id()
+
+    assert states["stage_skew_candidate"] == "unknown"
+    assert facts["stage_skew_candidate"].value is None
+    assert "stage_skew_candidate" not in engine_fact_consumer_probe(bundle)["attention_signal_ids"]
+
+
+def test_trino_readiness_query_detail_failure_category_signal_is_state_backed():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_query_detail_failure_category_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    text = engine_fact_boundary_text(case.bundle)
+
+    assert case.bundle.lifecycle.lifecycle == "failed"
+    assert case.bundle.lifecycle.failure == "supported"
+    assert case.bundle.lifecycle.failure_category_state == "supported"
+    assert case.bundle.lifecycle.failure_category == "resource_limit"
+    assert states["query_detail_import"] == "supported"
+    assert states["failed_task_count"] == "not_observed"
+    assert "query_failed" in probe["attention_signal_ids"]
+    assert "failure_category:resource_limit" in probe["attention_signal_ids"]
+    assert "task_failures_observed" not in probe["attention_signal_ids"]
+    assert "safeFailureSummary" not in text
+
+
+def test_trino_readiness_query_detail_spill_signal_is_state_backed():
+    case = next(
+        case for case in trino_golden_cases() if case.case_id == "trino_query_detail_spill_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+    text = engine_fact_boundary_text(case.bundle)
+
+    assert case.bundle.lifecycle.lifecycle == "finished"
+    assert states["spilled_bytes"] == "supported"
+    assert facts["spilled_bytes"].value == 2147483648
+    assert states["stage_skew_candidate"] == "not_observed"
+    assert states["failed_task_count"] == "not_observed"
+    assert states["retried_task_count"] == "not_observed"
+    assert "spill_or_scratch_evidence" in probe["attention_signal_ids"]
+    assert "stage_skew_candidate" not in probe["attention_signal_ids"]
+    assert "task_failures_observed" not in probe["attention_signal_ids"]
+    assert "task_retries_observed" not in probe["attention_signal_ids"]
+    assert "queryDetail" not in text
+
+
+def test_trino_readiness_query_detail_stage_skew_signal_is_state_backed():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_query_detail_stage_skew_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+    text = engine_fact_boundary_text(case.bundle)
+
+    assert case.bundle.lifecycle.lifecycle == "finished"
+    assert states["stage_skew_candidate"] == "supported"
+    assert facts["stage_skew_candidate"].value == 7.4
+    assert states["spilled_bytes"] == "not_observed"
+    assert states["failed_task_count"] == "not_observed"
+    assert states["retried_task_count"] == "not_observed"
+    assert "stage_skew_candidate" in probe["attention_signal_ids"]
+    assert "spill_or_scratch_evidence" not in probe["attention_signal_ids"]
+    assert "task_failures_observed" not in probe["attention_signal_ids"]
+    assert "task_retries_observed" not in probe["attention_signal_ids"]
+    assert "safeStageSkewSummary" not in text
+
+
+def test_trino_readiness_query_detail_queued_lifecycle_is_state_backed():
+    case = next(
+        case for case in trino_golden_cases() if case.case_id == "trino_query_detail_queued_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+    text = engine_fact_boundary_text(case.bundle)
+
+    assert case.bundle.lifecycle.lifecycle == "queued"
+    assert case.bundle.lifecycle.blocked == "not_observed"
+    assert states["elapsed_time_ms"] == "supported"
+    assert states["queued_time_ms"] == "supported"
+    assert facts["queued_time_ms"].value == 88000
+    assert states["planning_time_ms"] == "unknown"
+    assert states["spilled_bytes"] == "unknown"
+    assert states["task_count"] == "unknown"
+    assert states["blocked_signal"] == "not_observed"
+    assert "blocked_or_admission_wait" not in probe["attention_signal_ids"]
+    assert "query_failed" not in probe["attention_signal_ids"]
+    assert "queryDetail" not in text
+
+
+def test_trino_readiness_query_detail_connector_metric_signal_is_state_backed():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_query_detail_connector_metric_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+    text = engine_fact_boundary_text(case.bundle)
+
+    assert case.bundle.lifecycle.lifecycle == "finished"
+    assert states["connector_metric_signal"] == "supported"
+    assert facts["connector_metric_signal"].value is True
+    assert states["spilled_bytes"] == "not_observed"
+    assert states["stage_skew_candidate"] == "not_observed"
+    assert states["failed_task_count"] == "not_observed"
+    assert states["retried_task_count"] == "not_observed"
+    assert "connector_metric_signal" in probe["attention_signal_ids"]
+    assert "spill_or_scratch_evidence" not in probe["attention_signal_ids"]
+    assert "stage_skew_candidate" not in probe["attention_signal_ids"]
+    assert "task_failures_observed" not in probe["attention_signal_ids"]
+    assert "task_retries_observed" not in probe["attention_signal_ids"]
+    assert "safeConnectorMetricSummary" not in text
+
+
+def test_trino_readiness_query_detail_connector_metric_absent_has_no_attention_signal():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_query_detail_connector_metric_absent_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+    text = engine_fact_boundary_text(case.bundle)
+
+    assert case.bundle.lifecycle.lifecycle == "finished"
+    assert states["connector_metric_signal"] == "not_observed"
+    assert facts["connector_metric_signal"].value is False
+    assert states["spilled_bytes"] == "not_observed"
+    assert states["stage_skew_candidate"] == "not_observed"
+    assert states["failed_task_count"] == "not_observed"
+    assert states["retried_task_count"] == "not_observed"
+    assert "connector_metric_signal" not in probe["attention_signal_ids"]
+    assert "spill_or_scratch_evidence" not in probe["attention_signal_ids"]
+    assert "stage_skew_candidate" not in probe["attention_signal_ids"]
+    assert "task_failures_observed" not in probe["attention_signal_ids"]
+    assert "task_retries_observed" not in probe["attention_signal_ids"]
+    assert "safeConnectorMetricSummary" not in text
+
+
+def test_trino_readiness_query_detail_missing_fields_stay_unknown_without_fake_zeros():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_query_detail_missing_fields_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    facts = case.bundle.facts_by_id()
+
+    assert case.bundle.identity.parser_coverage == "supported"
+    assert case.bundle.lifecycle.lifecycle == "unknown"
+    assert states["query_detail_import"] == "supported"
+    assert states["elapsed_time_ms"] == "unknown"
+    assert states["spilled_bytes"] == "unknown"
+    assert states["task_count"] == "unknown"
+    assert facts["elapsed_time_ms"].value is None
+    assert facts["spilled_bytes"].value is None
+    assert facts["task_count"].value is None
+    assert "task_failures_observed" not in probe["attention_signal_ids"]
+    assert "task_retries_observed" not in probe["attention_signal_ids"]
+
+
 def test_trino_readiness_unknown_source_contract_fails_closed():
     case = next(
         case
@@ -369,6 +988,28 @@ def test_trino_readiness_unknown_source_contract_fails_closed():
     assert payload["identity"]["parser_coverage"] == "unknown"
     assert "sourceContractVersion" not in text
     assert "unknown_event_contract" not in text
+
+
+def test_trino_readiness_query_detail_unknown_source_contract_fails_closed():
+    case = next(
+        case
+        for case in trino_golden_cases()
+        if case.case_id == "trino_query_detail_unknown_source_contract_fixture"
+    )
+    probe = engine_fact_consumer_probe(case.bundle)
+    states = _fact_states(case.bundle.to_public_dict())
+    payload = engine_fact_boundary_payload(case.bundle)
+    text = engine_fact_boundary_text(case.bundle)
+
+    assert case.bundle.identity.parser_coverage == "unknown"
+    assert states["query_detail_import"] == "unknown"
+    assert states["source_contract"] == "unknown"
+    assert all(state != "supported" for state in states.values())
+    assert "parser_coverage_unknown" in probe["attention_signal_ids"]
+    assert "limitation_unknown:source_contract" in probe["attention_signal_ids"]
+    assert payload["identity"]["parser_coverage"] == "unknown"
+    assert "sourceContractVersion" not in text
+    assert "unknown_query_detail_contract" not in text
 
 
 def test_trino_readiness_missing_event_source_version_stays_out_of_boundary_identity():
@@ -408,10 +1049,14 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "connector metric signal",
         "redacted failure category",
         "resource-group queue time",
+        "query-detail fixture",
+        "task summary",
         "Compact summary shapes accept only their documented checked fields",
         "source contract version",
-        "statement-statistics, event-listener, and query-list fixture payloads",
+        "statement-statistics, event-listener, query-detail, and query-list fixture payloads",
         "aggregate query-list facts may be supported only from an accepted sanitized summary",
+        "non-boolean resource queued markers remain `unknown`",
+        "those count fields must be non-negative integers",
         "Validation must walk nested objects and arrays",
         "non-finite numeric values are rejected before mapping",
         "negative timing, resource, split, stage-count, queue-time, or ratio values",

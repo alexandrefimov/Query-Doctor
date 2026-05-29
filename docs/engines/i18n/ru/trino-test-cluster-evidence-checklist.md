@@ -1,6 +1,6 @@
 # Чеклист evidence export из тестового Trino-кластера
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-29
 
 Язык: [English](../../trino-test-cluster-evidence-checklist.md) | Русский
 
@@ -46,8 +46,9 @@ browser/report surface. Query Doctor не получает прямой дост
 - sanitized `/v1/query` list summary exports только как aggregate contract
   probes, где raw records, query text, identities, locations, object context и
   failure details удалены до handoff;
-- query-detail exports только после удаления identifiers, object names,
-  endpoints, stack traces и connector internals;
+- compact query-detail exports только после удаления identifiers, object
+  names, endpoints, stack traces, raw stage/task records и connector
+  internals;
 - manifest с source type, Trino version, source schema version, connector
   family category, export window, record count, byte count, redaction status и
   known omissions.
@@ -66,6 +67,7 @@ browser/report surface. Query Doctor не получает прямой дост
 - missing-field case;
 - unknown или unsupported source-contract version;
 - sanitized query-list contract probe aggregate;
+- compact query-detail stage/task summary case;
 - oversized или over-deep rejection case на synthetic padding;
 - unsafe raw field rejection case на synthetic sentinel values.
 
@@ -82,6 +84,10 @@ browser/report surface. Query Doctor не получает прямой дост
 - stack traces, raw exception messages, warning payloads и connector internals;
 - secrets, credentials, tokens, passwords, keys, cookies, TLS material,
   Kerberos caches и extra credentials.
+
+Compact boolean markers должны оставаться booleans. Например, `fullyBlocked` и
+resource `queued` могут использоваться как blocked или queue-absence evidence
+только в typed boolean форме.
 
 Если redaction status неизвестен, export надо reject-ить или пересобрать.
 

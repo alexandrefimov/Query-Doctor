@@ -1,0 +1,12 @@
+{
+  "fixtureVersion": "synthetic-trino-query-detail-queued-v1",
+  "sourceContractVersion": "synthetic_trino_query_detail_v1",
+  "queryDetail": {
+    "summary": {
+      "elapsedTimeMillis": 90000,
+      "fullyBlocked": false,
+      "queuedTimeMillis": 88000,
+      "state": "QUEUED"
+    }
+  }
+}

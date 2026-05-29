@@ -1,6 +1,6 @@
 # Trino Diagnostic Contract
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-29
 
 This document defines the current research contract for future Trino diagnosis.
 It is not a support announcement. Query Doctor production engine support remains
@@ -205,9 +205,9 @@ Required boundary shape:
   buckets. Consumers must not read raw Trino JSON directly.
 - limitations must be explicit for fields that are absent, unparsed, or
   engine-specific. Unknown remains a valid result.
-- statement-statistics, event-listener, and query-list fixture payloads must reject
-  oversized input, unsafe raw field names and text values, and non-finite
-  numeric values before mapping.
+- statement-statistics, event-listener, query-detail, and query-list fixture
+  payloads must reject oversized input, unsafe raw field names and text values,
+  and non-finite numeric values before mapping.
 - Validation must walk nested objects and arrays. Forbidden field names and
   unsafe text values remain forbidden wherever they appear inside compacted
   fixture payloads, and payloads beyond the accepted maximum depth fail closed
@@ -221,11 +221,46 @@ Minimum accepted fixture facts:
 - resource-group queue time may be `supported` only when a bounded
   query-specific event fixture provides a compact finite non-negative numeric
   queue duration. It must not expose resource-group names, configuration, users,
-  selectors, or admission-policy internals;
+  selectors, or admission-policy internals. `not_observed` resource-group
+  queue time requires an explicit compact boolean `queued: false`; non-boolean
+  resource queued markers remain `unknown`;
 - aggregate query-list facts may be supported only from an accepted sanitized
   summary with bounded record counts, field-presence counts, safe state/failure
   buckets, and explicit redaction assertions. They must stay aggregate
   evidence, not one-query lifecycle or root-cause evidence;
+- query-detail fixture facts may be supported only from an accepted compact
+  sanitized local import with a known source contract. The fixture may expose
+  summary-level timings, resources, stage counts, split counts, a checked
+  connector metric summary, a checked stage-skew summary, a checked task
+  summary, and a checked failure summary;
+  raw query-detail records, query IDs, stage IDs, task IDs, worker identifiers,
+  endpoint details, object context, raw exception text, stack traces, and
+  connector internals must remain outside the mapper boundary;
+- query-detail fixtures with an unknown or unsupported source contract must
+  fail closed to `unknown` parser coverage and `unknown` facts, even when the
+  payload contains otherwise compact numeric fields;
+- accepted query-detail fixtures with missing optional summary fields must keep
+  the absent lifecycle, timing, resource, stage, and task facts `unknown`
+  rather than converting them into zero values or `not_observed`;
+- accepted query-detail fixtures may report blocked evidence only from an
+  explicit checked boolean lifecycle/blocking field such as `fullyBlocked`;
+  non-boolean values remain `unknown`. That signal remains raw-free and must
+  not expose resource groups, workers, endpoints, or task records;
+- positive task retry/failure counts from a checked task summary may become
+  raw-free internal consumer-probe attention signals only. They are not
+  browser/report findings, root-cause labels, live collection support, or public
+  Trino support claims;
+- accepted failed query-detail fixtures may support only an allowlisted safe
+  failure category from a checked `safeFailureSummary`; they must not expose raw
+  exception classes, stack traces, failure messages, query IDs, endpoint
+  details, object names, or connector internals;
+- accepted query-detail spill evidence may be supported only from finite,
+  non-negative compact `spilledBytes`; it must not expose task IDs, worker
+  identifiers, spill file paths, endpoint details, or connector internals;
+- accepted query-detail connector metric evidence may be `supported` or
+  `not_observed` only from a checked compact `safeConnectorMetricSummary` with
+  a boolean present result; it must not expose connector names, catalog names,
+  object names, endpoint details, metric names, or raw connector payloads;
 - resources: input rows, input bytes, peak memory, and spilled bytes are
   explicit facts only when they are finite and non-negative; output rows and
   output bytes remain `unknown` when absent;
@@ -245,16 +280,26 @@ Minimum accepted fixture facts:
   aggregate per-task distribution summary. Do not expose stage IDs, task IDs,
   worker identifiers, split identifiers, connector internals, or raw per-task
   payloads at the boundary;
+- accepted query-detail stage-skew evidence may support only the checked
+  aggregate candidate flag and ratio; it must not expose stage IDs, task IDs,
+  worker identifiers, split identifiers, or raw per-task payloads;
+- accepted queued query-detail evidence may support only lifecycle and queued
+  timing from compact summary fields; it must not infer resource-group
+  assignment, admission policy, or execution-stage facts from missing sections;
 - Compact summary shapes accept only their documented checked fields:
   `safeConnectorMetricSummary` is limited to `checked` and `present`,
   `safeFailureSummary` is limited to `checked` and `category`, and
   `safeStageSkewSummary` is limited to `checked`, `candidate`, and
-  `maxToMedianInputBytesRatio`, with optional finite non-negative compact
-  `sampledTaskCount`. Extra fields or nested detail objects keep the derived
-  fact `unknown`, even when the extra values look sanitized.
+  `maxToMedianInputBytesRatio`, with optional finite non-negative integer
+  `sampledTaskCount`. `safeTaskSummary` is limited to `checked`, `taskCount`,
+  `failedTaskCount`, and `retriedTaskCount`; those count fields must be
+  non-negative integers. Extra fields, nested detail objects, or fractional
+  counts keep the derived fact `unknown`, even when the extra values look
+  sanitized.
 - blocked query state may be `supported` only when the bounded fixture/source
-  explicitly reports `BLOCKED` lifecycle or a checked blocked signal such as
-  `fullyBlocked`; blocked timing/category remains separate future evidence;
+  explicitly reports `BLOCKED` lifecycle or a checked boolean blocked signal
+  such as `fullyBlocked`; non-boolean blocked-signal values remain `unknown`;
+  blocked timing/category remains separate future evidence;
 - limitations: Impala admission/control semantics, resource-group assignment
   and configuration semantics, connector metric interpretation beyond the
   compact signal, metadata enrichment, cluster events, and Impala-only profile
@@ -272,7 +317,8 @@ Minimum accepted fixture facts:
   limitation and must not expose raw source-contract fields at the boundary;
 - `not_observed` may be used only when the bounded source explicitly checked
   the field and reported an absent/false/zero signal, for example no spill or
-  not fully blocked.
+  not fully blocked. Boolean source markers must be typed booleans, not
+  truthy or falsey strings, numbers, or objects.
 
 Forbidden before commit, prompt, browser output, or trusted reports:
 

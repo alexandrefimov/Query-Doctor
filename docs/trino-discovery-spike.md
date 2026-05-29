@@ -1,6 +1,6 @@
 # Trino Discovery Spike
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-29
 
 This document defines the first second-engine discovery slice. It is not a
 support announcement and it must not change the current support matrix:
@@ -141,24 +141,35 @@ The first code slice adds the contract-shaping pieces only:
   SQL text, identities, hostnames, URLs, object names, stack traces, local
   paths, resource-group names, and raw connector details. The resource-group
   queue fixture maps only compact query-specific queue duration fields into the
-  normalized timing facts. The unknown source-contract fixture contains
-  otherwise numeric event fields but maps to unknown parser coverage and
-  unknown facts until a source contract version is accepted. The missing-field
-  event fixture omits source-version and optional detail fields so tests prove
-  absent lifecycle, timing, resource, stage, blocked, and failure signals
-  remain `unknown` instead of fake zeros. The blocked statement-statistics
-  fixture proves `BLOCKED` lifecycle and `fullyBlocked` signals remain
-  state-backed without implying live Trino support. The stage-skew fixture uses
-  only a compact aggregate per-task distribution summary and never exposes stage
-  IDs, task IDs, workers, connector details, or raw query data. The
+  normalized timing facts. The unknown source-contract fixtures contain
+  otherwise numeric event-listener and query-detail fields but map to unknown
+  parser coverage and unknown facts until a source contract version is
+  accepted. The missing-field event and query-detail fixtures omit optional
+  detail fields so tests prove absent lifecycle, timing, resource, stage,
+  blocked, task, and failure signals remain `unknown` instead of fake zeros.
+  The blocked statement-statistics fixture proves `BLOCKED` lifecycle and
+  boolean `fullyBlocked` signals remain state-backed without implying live
+  Trino support, while non-boolean `fullyBlocked` values fail closed to
+  `unknown`. The stage-skew fixture uses only a compact aggregate per-task
+  distribution summary and never exposes stage IDs, task IDs, workers,
+  connector details, or raw query data. The
   connector-metric fixtures use only checked/present booleans in a compact safe
   summary and never expose connector names, metric names, endpoints, object
   names, or raw connector payloads. The failure-category fixture uses only
   checked/category fields in a compact safe summary and never exposes raw
   exception classes, messages, stack traces, endpoint details, object names, or
+  connector internals. The compact query-detail fixtures are synthetic exports
+  with accepted summary-level timing/resource/stage facts, checked task
+  summaries, and a checked allowlisted failure-category summary. They cover
+  separate retry, failure-count, blocked-signal, safe failure-category,
+  spill-observed, stage-skew-candidate, queued lifecycle/timing,
+  connector-metric checked/present semantics for present and absent, accepted
+  missing-field, and unsupported source-contract variants. They do not contain
+  raw query-detail records, query IDs, stage IDs, task IDs, workers, endpoints,
+  resource-group names, object context, raw exception text, stack traces, or
   connector internals. Extra fields or nested detail objects in connector,
-  failure, or stage-skew compact summaries keep the derived fact `unknown`,
-  even when the extra values look sanitized.
+  failure, stage-skew, or task compact summaries keep the derived fact
+  `unknown`, even when the extra values look sanitized.
   `tests/fixtures/engine_facts/trino_query_list_contract_probe.json` is a
   synthetic aggregate `/v1/query` list-shape probe. It records bounded counts,
   safe state/failure buckets, field-presence counts, and redaction assertions
@@ -181,8 +192,14 @@ The first code slice adds the contract-shaping pieces only:
   into product surfaces.
 - `query_doctor/analyzer/engine_fact_consumer.py` and
   `tests/test_engine_fact_consumer_probe.py` exercise a read-only consumer
-  probe over those boundary payloads without adding a live collector, engine
-  selector, report output, or browser output.
+  probe over those boundary payloads. The probe now derives state-backed
+  internal attention signal IDs for positive task retry/failure counts,
+  allowlisted failed-query category, spill evidence, stage-skew candidates, and
+  positive connector-metric checked/present evidence
+  from compact query-detail facts, while zero `not_observed` counts and
+  `unknown` task summaries produce no task signal. This still does not add a
+  live collector, engine selector, report output, browser output, ranking
+  behavior, or Trino support claim.
 - `tests/test_trino_readiness_contract.py` pins the fixture-only raw-free
   Trino intake floor: explicit supported / not observed / unknown fact states,
   minimal boundary identity, raw-free boundary text, and non-support wording in
@@ -202,8 +219,9 @@ The first code slice adds the contract-shaping pieces only:
   and `samples`. It rejects extra top-level package sections, checks package
   counts, redaction assertions, synthetic sentinel-test coverage, declared
   bounds, and existing statement-statistics / event-listener / aggregate
-  query-list fixture validators. Query-detail exports remain unsupported as
-  sample payloads until a separate fixture contract exists.
+  query-list / query-detail fixture validators. Query-detail exports are
+  accepted only as compact sanitized fixture payloads under the query-detail
+  source contract; raw query-detail exports remain outside the intake boundary.
 - `scripts/validate_trino_evidence_package.py` is the local dry-run command for
   a sanitized package file. It prints only safe package, manifest source,
   parser-coverage, and case-count summaries or safe rejection messages, without

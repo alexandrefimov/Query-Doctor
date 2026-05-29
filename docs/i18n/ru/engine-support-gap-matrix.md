@@ -35,6 +35,10 @@ Last reviewed: 2026-05-26
 queue-delay event, но без live reader, browser/report surfaces или claims о
 поддержке. Unknown source-contract event теперь отдельно фиксирует
 fail-closed поведение для неподдержанного source contract version.
+Compact query-detail fixtures покрывают blocked, failure-category,
+spill-observed, stage-skew, queued lifecycle/timing и connector-metric
+supported/not-observed variants только как fixture-only mapping, без raw
+query-detail records или live query-info fetch.
 Statement-stats fixture input теперь тоже reject-ится при oversized payloads,
 unsafe raw field names или unsafe text values до mapping.
 Compact summaries для connector metric, failure category и stage skew

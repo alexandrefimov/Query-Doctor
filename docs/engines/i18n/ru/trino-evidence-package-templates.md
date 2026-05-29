@@ -1,6 +1,6 @@
 # Шаблоны Trino evidence package
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-29
 
 Язык: [English](../../trino-evidence-package-templates.md) | Русский
 
@@ -42,13 +42,37 @@ credentials, stack traces или connector internals.
 ```
 
 `samples` могут содержать только sanitized compact payloads, для которых уже
-есть fixture validators: `statement_stats_export`, `event_listener_export` и
-`query_list_summary_export`. `query_list_summary_export` - только aggregate
-contract probe shape: он проверяет bounded list-field availability и
-redaction, а не one-query diagnosis. `query_detail_export` остается
-manifest/source-contract пунктом до отдельного fixture validator. Synthetic
-oversized и unsafe-field rejection cases фиксируются в manifest counts и
-redaction note, а не как accepted sample payloads.
+есть fixture validators: `statement_stats_export`, `event_listener_export`,
+`query_detail_export` и `query_list_summary_export`.
+`query_list_summary_export` - только aggregate contract probe shape: он
+проверяет bounded list-field availability и redaction, а не one-query
+diagnosis. `query_detail_export` принимается только как compact sanitized
+query-detail fixture с summary-level timing/resource/stage fields и checked
+task summary. Case `query_detail_stage_task_summary` может включать несколько
+compact samples для отдельных retry/failure-count variants; raw query-detail
+exports остаются за intake boundary. Case
+`queued_or_resource_group_delayed_query` может включать несколько compact
+samples, чтобы проверить queued lifecycle/timing в разных source contracts.
+Case
+`failed_query_allowlisted_category` может включать несколько compact samples,
+чтобы проверить ту же safe allowlisted category в разных source contracts.
+Case `blocked_query` может включать
+несколько compact samples, чтобы проверить state-backed blocked evidence
+разных source contracts. Case `spill_observed` может включать несколько
+compact samples, чтобы проверить explicit spill evidence разных source
+contracts. Case `stage_or_task_skew_candidate` может включать несколько
+compact samples, чтобы проверить checked aggregate skew evidence разных source
+contracts. Case `connector_metric_present` может включать несколько compact
+samples, чтобы проверить checked/present connector metric evidence разных
+source contracts. Case `connector_metric_absent` может включать несколько
+compact samples, чтобы проверить checked/not-present connector metric evidence
+разных source contracts. Case
+`unknown_or_unsupported_source_contract` тоже может включать несколько compact
+samples, чтобы проверить fail-closed behavior разных source contracts.
+Case `missing_field_case` тоже может включать несколько compact samples, чтобы
+проверить unknown semantics разных source contracts.
+Synthetic oversized и unsafe-field rejection cases фиксируются в manifest
+counts и redaction note, а не как accepted sample payloads.
 
 Перед commit или handoff запускайте локальный validator:
 
@@ -123,16 +147,17 @@ export_window_utc:
   end: "YYYY-MM-DDTHH:00:00Z"
 sample_count_by_case:
   successful_completed_query: 0
-  failed_query_allowlisted_category: 0
-  queued_or_resource_group_delayed_query: 0
-  blocked_query: 0
-  spill_observed: 0
-  stage_or_task_skew_candidate: 0
-  connector_metric_present: 0
-  connector_metric_absent: 0
-  missing_field_case: 0
-  unknown_or_unsupported_source_contract: 0
+  failed_query_allowlisted_category: 0  # может быть >1 для разных source contracts
+  queued_or_resource_group_delayed_query: 0  # может быть >1 для разных source contracts
+  blocked_query: 0  # может быть >1 для разных source contracts
+  spill_observed: 0  # может быть >1 для разных source contracts
+  stage_or_task_skew_candidate: 0  # может быть >1 для разных source contracts
+  connector_metric_present: 0  # может быть >1 для разных source contracts
+  connector_metric_absent: 0  # может быть >1 для разных source contracts
+  missing_field_case: 0  # может быть >1 для разных source contracts
+  unknown_or_unsupported_source_contract: 0  # может быть >1 для разных source contracts
   query_list_contract_probe: 0
+  query_detail_stage_task_summary: 0  # может быть >1 для retry/failure variants
   oversized_or_over_deep_rejection_synthetic: 0
   unsafe_raw_field_rejection_synthetic: 0
 byte_count_compacted: 0

@@ -49,11 +49,30 @@ the behavior under test.
 `engine_facts/trino_completed_event.json` are synthetic Trino fixtures for the
 fixture-only engine fact contract spike. They cover statement-statistics and
 offline event-listener shapes, including a compact resource-group queue-delay
-event and an unknown source-contract event that fails closed to `unknown`
-facts. The fixture mappers reject oversized input and unsafe raw field names or
-text values before mapping. Fixtures must stay free of SQL text, identities,
+event and unknown source-contract event/query-detail fixtures that fail closed
+to `unknown` facts. The fixture mappers reject oversized input and unsafe raw
+field names or text values before mapping. Fixtures must stay free of SQL text, identities,
 hostnames, URLs, object names, stack traces, local paths, raw connector details,
-and production payloads. They do not imply Trino product support.
+and production payloads. `engine_facts/trino_query_detail_export.json` is a
+compact sanitized query-detail fixture for source-contract tests only; it
+contains summary-level timing/resource/stage facts and a checked task summary,
+not raw query-detail records. The query-detail fixtures cover separate checked
+task retry, task failure, and blocked-signal variants without task IDs, worker
+identifiers, endpoints, or raw task payloads. They also cover an accepted
+failed query-detail variant where only a checked allowlisted failure category
+is mapped, without raw exception text, stack traces, query IDs, or connector
+details, and an accepted spill-evidence variant where only compact
+`spilledBytes` becomes supported spill evidence. The accepted stage-skew
+variant maps only a checked aggregate ratio without stage IDs, task IDs, or
+worker details. The queued variant maps only lifecycle and queued timing,
+leaving absent resource, stage, and task facts `unknown`. The query-detail
+connector metric variants map only checked/present compact summaries to
+supported or not-observed facts without connector names, metric names,
+endpoints, object context, or connector details. They also include an
+unsupported query-detail source-contract fixture that must fail closed to
+`unknown` parser coverage and `unknown` facts, and an accepted missing-field
+query-detail fixture that keeps absent fields `unknown` instead of fake zeros.
+These fixtures do not imply Trino product support.
 
 ## Optimizer Fixtures
 

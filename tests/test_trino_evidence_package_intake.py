@@ -41,11 +41,21 @@ def test_trino_evidence_package_accepts_sanitized_samples_without_support_claim(
     assert result.source_summary.max_record_bytes == 64000
     assert result.source_summary.max_nested_depth == 16
     assert result.source_summary.known_omissions == ("raw_identifiers",)
-    assert result.source_summary.unsupported_sources == ("query_detail_export",)
+    assert result.source_summary.unsupported_sources == ()
     assert result.source_summary.operator_retained_raw_exports == "no"
     assert result.source_summary.query_doctor_contact_surface == "fixture_import_only"
-    assert result.sample_count == len(TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES)
-    assert result.parser_coverage_counts() == {"supported": 10, "unknown": 1}
+    assert result.sample_count == len(TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES) + 10
+    assert result.parser_coverage_counts() == {"supported": 20, "unknown": 2}
+    assert dict(result.sample_count_by_case)["failed_query_allowlisted_category"] == 2
+    assert dict(result.sample_count_by_case)["queued_or_resource_group_delayed_query"] == 2
+    assert dict(result.sample_count_by_case)["blocked_query"] == 2
+    assert dict(result.sample_count_by_case)["spill_observed"] == 2
+    assert dict(result.sample_count_by_case)["stage_or_task_skew_candidate"] == 2
+    assert dict(result.sample_count_by_case)["connector_metric_present"] == 2
+    assert dict(result.sample_count_by_case)["connector_metric_absent"] == 2
+    assert dict(result.sample_count_by_case)["missing_field_case"] == 2
+    assert dict(result.sample_count_by_case)["unknown_or_unsupported_source_contract"] == 2
+    assert dict(result.sample_count_by_case)["query_detail_stage_task_summary"] == 2
     assert dict(result.sample_count_by_case)["unsafe_raw_field_rejection_synthetic"] == 1
     assert all(bundle.identity.engine == "trino" for bundle in result.bundles)
     assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala"]
@@ -62,7 +72,7 @@ def test_trino_evidence_package_partial_mode_allows_missing_minimum_cases():
 
     result = validate_trino_evidence_package_payload(package, require_minimum_cases=False)
 
-    assert result.sample_count == len(TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES) - 1
+    assert result.sample_count == len(TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES) + 8
     assert dict(result.sample_count_by_case)["blocked_query"] == 0
 
 
@@ -146,7 +156,7 @@ def test_trino_evidence_package_rejects_incomplete_sentinel_tests():
 
 def test_trino_evidence_package_rejects_manifest_sample_count_mismatch():
     package = _package_payload()
-    package["manifest"]["sample_count_by_case"]["blocked_query"] = 2
+    package["manifest"]["sample_count_by_case"]["blocked_query"] = 3
 
     with pytest.raises(EngineFactContractError, match="sample count mismatch"):
         validate_trino_evidence_package_payload(package)
@@ -166,9 +176,151 @@ def test_trino_evidence_package_rejects_rejection_cases_as_payload_samples():
         validate_trino_evidence_package_payload(package)
 
 
-def test_trino_evidence_package_rejects_unsupported_sample_source_type():
+def test_trino_evidence_package_accepts_query_detail_sample_source_type():
     package = _package_payload()
-    package["samples"][0]["source_type"] = "query_detail_export"
+    query_detail_sample = next(
+        sample
+        for sample in package["samples"]
+        if sample["case"] == "query_detail_stage_task_summary"
+        and sample["source_type"] == "query_detail_export"
+    )
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_results = [
+        sample
+        for sample in result.samples
+        if sample.case == query_detail_sample["case"]
+        and sample.source_type == "query_detail_export"
+    ]
+
+    assert len(query_detail_results) == 2
+    assert {sample.parser_coverage for sample in query_detail_results} == {"supported"}
+
+
+def test_trino_evidence_package_query_detail_unknown_contract_fails_closed():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_unknown_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "unknown_or_unsupported_source_contract"
+        and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_unknown_result.parser_coverage == "unknown"
+
+
+def test_trino_evidence_package_query_detail_missing_fields_remains_supported_intake():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_missing_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "missing_field_case" and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_missing_result.parser_coverage == "supported"
+
+
+def test_trino_evidence_package_query_detail_blocked_remains_supported_intake():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_blocked_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "blocked_query" and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_blocked_result.parser_coverage == "supported"
+
+
+def test_trino_evidence_package_query_detail_failure_category_remains_supported_intake():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_failure_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "failed_query_allowlisted_category"
+        and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_failure_result.parser_coverage == "supported"
+
+
+def test_trino_evidence_package_query_detail_spill_remains_supported_intake():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_spill_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "spill_observed" and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_spill_result.parser_coverage == "supported"
+
+
+def test_trino_evidence_package_query_detail_stage_skew_remains_supported_intake():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_stage_skew_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "stage_or_task_skew_candidate"
+        and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_stage_skew_result.parser_coverage == "supported"
+
+
+def test_trino_evidence_package_query_detail_queued_remains_supported_intake():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_queued_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "queued_or_resource_group_delayed_query"
+        and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_queued_result.parser_coverage == "supported"
+
+
+def test_trino_evidence_package_query_detail_connector_metric_remains_supported_intake():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_connector_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "connector_metric_present" and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_connector_result.parser_coverage == "supported"
+
+
+def test_trino_evidence_package_query_detail_connector_metric_absent_remains_supported_intake():
+    package = _package_payload()
+
+    result = validate_trino_evidence_package_payload(package)
+    query_detail_connector_result = next(
+        sample
+        for sample in result.samples
+        if sample.case == "connector_metric_absent" and sample.source_type == "query_detail_export"
+    )
+
+    assert query_detail_connector_result.parser_coverage == "supported"
+
+
+def test_trino_evidence_package_rejects_unknown_sample_source_type():
+    package = _package_payload()
+    package["samples"][0]["source_type"] = "raw_query_detail_dump"
 
     with pytest.raises(EngineFactContractError, match="sample source type is unsupported"):
         validate_trino_evidence_package_payload(package)
@@ -248,16 +400,33 @@ def _package_payload() -> dict:
             "trino_failure_category_statement_stats.json",
         ),
         _sample(
+            "failed_query_allowlisted_category",
+            "query_detail_export",
+            "trino_query_detail_failure_category.json",
+        ),
+        _sample(
             "queued_or_resource_group_delayed_query",
             "event_listener_export",
             "trino_resource_group_queued_event.json",
         ),
+        _sample(
+            "queued_or_resource_group_delayed_query",
+            "query_detail_export",
+            "trino_query_detail_queued.json",
+        ),
         _sample("blocked_query", "statement_stats_export", "trino_blocked_statement_stats.json"),
+        _sample("blocked_query", "query_detail_export", "trino_query_detail_blocked.json"),
         _sample("spill_observed", "event_listener_export", "trino_completed_event.json"),
+        _sample("spill_observed", "query_detail_export", "trino_query_detail_spill_observed.json"),
         _sample(
             "stage_or_task_skew_candidate",
             "statement_stats_export",
             "trino_stage_skew_statement_stats.json",
+        ),
+        _sample(
+            "stage_or_task_skew_candidate",
+            "query_detail_export",
+            "trino_query_detail_stage_skew.json",
         ),
         _sample(
             "connector_metric_present",
@@ -265,9 +434,19 @@ def _package_payload() -> dict:
             "trino_connector_metric_present_statement_stats.json",
         ),
         _sample(
+            "connector_metric_present",
+            "query_detail_export",
+            "trino_query_detail_connector_metric_present.json",
+        ),
+        _sample(
             "connector_metric_absent",
             "statement_stats_export",
             "trino_connector_metric_absent_statement_stats.json",
+        ),
+        _sample(
+            "connector_metric_absent",
+            "query_detail_export",
+            "trino_query_detail_connector_metric_absent.json",
         ),
         _sample(
             "missing_field_case",
@@ -275,14 +454,34 @@ def _package_payload() -> dict:
             "trino_completed_event_missing_fields.json",
         ),
         _sample(
+            "missing_field_case",
+            "query_detail_export",
+            "trino_query_detail_missing_fields.json",
+        ),
+        _sample(
             "unknown_or_unsupported_source_contract",
             "event_listener_export",
             "trino_unknown_source_contract_event.json",
         ),
         _sample(
+            "unknown_or_unsupported_source_contract",
+            "query_detail_export",
+            "trino_query_detail_unknown_source_contract.json",
+        ),
+        _sample(
             "query_list_contract_probe",
             "query_list_summary_export",
             "trino_query_list_contract_probe.json",
+        ),
+        _sample(
+            "query_detail_stage_task_summary",
+            "query_detail_export",
+            "trino_query_detail_export.json",
+        ),
+        _sample(
+            "query_detail_stage_task_summary",
+            "query_detail_export",
+            "trino_query_detail_task_failure_export.json",
         ),
     ]
     counts = {case: 0 for case in TRINO_EVIDENCE_PACKAGE_CASES}
@@ -310,7 +509,7 @@ def _package_payload() -> dict:
             "max_nested_depth": 16,
             "redaction_status": "checked",
             "known_omissions": ["raw_identifiers"],
-            "unsupported_sources": ["query_detail_export"],
+            "unsupported_sources": [],
             "operator_retained_raw_exports": "no",
             "query_doctor_contact_surface": "fixture_import_only",
         },

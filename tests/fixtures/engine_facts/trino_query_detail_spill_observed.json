@@ -1,0 +1,36 @@
+{
+  "fixtureVersion": "synthetic-trino-query-detail-spill-observed-v1",
+  "sourceContractVersion": "synthetic_trino_query_detail_v1",
+  "queryDetail": {
+    "summary": {
+      "completedSplits": 420,
+      "cpuTimeMillis": 156000,
+      "elapsedTimeMillis": 142000,
+      "executionTimeMillis": 132000,
+      "fullyBlocked": false,
+      "outputBytes": 10485760,
+      "outputRows": 36000,
+      "peakMemoryBytes": 3221225472,
+      "planningTimeMillis": 5200,
+      "processedBytes": 25769803776,
+      "processedRows": 340000000,
+      "queuedTimeMillis": 1800,
+      "safeStageSkewSummary": {
+        "candidate": false,
+        "checked": true,
+        "maxToMedianInputBytesRatio": 1.5,
+        "sampledTaskCount": 32
+      },
+      "safeTaskSummary": {
+        "checked": true,
+        "failedTaskCount": 0,
+        "retriedTaskCount": 0,
+        "taskCount": 64
+      },
+      "spilledBytes": 2147483648,
+      "stageCount": 4,
+      "state": "FINISHED",
+      "wallTimeMillis": 248000
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "fixtureVersion": "synthetic-trino-query-detail-missing-fields-v1",
+  "sourceContractVersion": "synthetic_trino_query_detail_v1",
+  "queryDetail": {
+    "summary": {}
+  }
+}

@@ -23,16 +23,33 @@ SAMPLE_FIXTURES = (
         "trino_failure_category_statement_stats.json",
     ),
     (
+        "failed_query_allowlisted_category",
+        "query_detail_export",
+        "trino_query_detail_failure_category.json",
+    ),
+    (
         "queued_or_resource_group_delayed_query",
         "event_listener_export",
         "trino_resource_group_queued_event.json",
     ),
+    (
+        "queued_or_resource_group_delayed_query",
+        "query_detail_export",
+        "trino_query_detail_queued.json",
+    ),
     ("blocked_query", "statement_stats_export", "trino_blocked_statement_stats.json"),
+    ("blocked_query", "query_detail_export", "trino_query_detail_blocked.json"),
     ("spill_observed", "event_listener_export", "trino_completed_event.json"),
+    ("spill_observed", "query_detail_export", "trino_query_detail_spill_observed.json"),
     (
         "stage_or_task_skew_candidate",
         "statement_stats_export",
         "trino_stage_skew_statement_stats.json",
+    ),
+    (
+        "stage_or_task_skew_candidate",
+        "query_detail_export",
+        "trino_query_detail_stage_skew.json",
     ),
     (
         "connector_metric_present",
@@ -40,9 +57,19 @@ SAMPLE_FIXTURES = (
         "trino_connector_metric_present_statement_stats.json",
     ),
     (
+        "connector_metric_present",
+        "query_detail_export",
+        "trino_query_detail_connector_metric_present.json",
+    ),
+    (
         "connector_metric_absent",
         "statement_stats_export",
         "trino_connector_metric_absent_statement_stats.json",
+    ),
+    (
+        "connector_metric_absent",
+        "query_detail_export",
+        "trino_query_detail_connector_metric_absent.json",
     ),
     (
         "missing_field_case",
@@ -50,14 +77,34 @@ SAMPLE_FIXTURES = (
         "trino_completed_event_missing_fields.json",
     ),
     (
+        "missing_field_case",
+        "query_detail_export",
+        "trino_query_detail_missing_fields.json",
+    ),
+    (
         "unknown_or_unsupported_source_contract",
         "event_listener_export",
         "trino_unknown_source_contract_event.json",
     ),
     (
+        "unknown_or_unsupported_source_contract",
+        "query_detail_export",
+        "trino_query_detail_unknown_source_contract.json",
+    ),
+    (
         "query_list_contract_probe",
         "query_list_summary_export",
         "trino_query_list_contract_probe.json",
+    ),
+    (
+        "query_detail_stage_task_summary",
+        "query_detail_export",
+        "trino_query_detail_export.json",
+    ),
+    (
+        "query_detail_stage_task_summary",
+        "query_detail_export",
+        "trino_query_detail_task_failure_export.json",
     ),
 )
 
@@ -73,7 +120,7 @@ def test_trino_evidence_package_builder_assembles_valid_wrapper():
         source_contract_version="synthetic_trino_event_listener_v1",
         connector_family_categories=("lakehouse",),
         known_omissions=("raw_identifiers",),
-        unsupported_sources=("query_detail_export",),
+        unsupported_sources=(),
         synthetic_rejection_counts={
             "oversized_or_over_deep_rejection_synthetic": 1,
             "unsafe_raw_field_rejection_synthetic": 1,
@@ -119,7 +166,17 @@ def test_build_trino_evidence_package_script_writes_valid_package_without_echoin
     assert "[trino-package-builder] written" in captured.out
     assert "package_id: trino_evidence_pkg" in captured.out
     assert "source_summary:" in captured.out
-    assert "sample_count: 11" in captured.out
+    assert "sample_count: 22" in captured.out
+    assert "failed_query_allowlisted_category: 2" in captured.out
+    assert "queued_or_resource_group_delayed_query: 2" in captured.out
+    assert "blocked_query: 2" in captured.out
+    assert "spill_observed: 2" in captured.out
+    assert "stage_or_task_skew_candidate: 2" in captured.out
+    assert "connector_metric_present: 2" in captured.out
+    assert "connector_metric_absent: 2" in captured.out
+    assert "missing_field_case: 2" in captured.out
+    assert "unknown_or_unsupported_source_contract: 2" in captured.out
+    assert "query_detail_stage_task_summary: 2" in captured.out
     assert str(output_path) not in captured.out
     assert "trino_statement_stats.json" not in captured.out
     assert captured.err == ""
@@ -127,7 +184,7 @@ def test_build_trino_evidence_package_script_writes_valid_package_without_echoin
     result = validate_trino_evidence_package_payload(
         json.loads(output_path.read_text(encoding="utf-8"))
     )
-    assert result.parser_coverage_counts() == {"supported": 10, "unknown": 1}
+    assert result.parser_coverage_counts() == {"supported": 20, "unknown": 2}
 
 
 def test_build_trino_evidence_package_script_rejects_raw_sample_without_writing_output(
@@ -192,8 +249,6 @@ def _builder_args(output_path: Path) -> list[str]:
         "lakehouse",
         "--known-omission",
         "raw_identifiers",
-        "--unsupported-source",
-        "query_detail_export",
         "--synthetic-rejection",
         "oversized_or_over_deep_rejection_synthetic:1",
         "--synthetic-rejection",

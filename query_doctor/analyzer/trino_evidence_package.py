@@ -24,12 +24,16 @@ from query_doctor.analyzer.trino_fixture_facts import (
     TRINO_EVENT_FIXTURE_MAX_JSON_BYTES,
     TRINO_QUERY_LIST_FIXTURE_MAX_DEPTH,
     TRINO_QUERY_LIST_FIXTURE_MAX_JSON_BYTES,
+    TRINO_QUERY_DETAIL_FIXTURE_MAX_DEPTH,
+    TRINO_QUERY_DETAIL_FIXTURE_MAX_JSON_BYTES,
     TRINO_STATEMENT_FIXTURE_MAX_DEPTH,
     TRINO_STATEMENT_FIXTURE_MAX_JSON_BYTES,
     build_trino_event_listener_fixture_engine_facts,
     build_trino_fixture_engine_facts,
+    build_trino_query_detail_fixture_engine_facts,
     build_trino_query_list_contract_probe_engine_facts,
     validate_trino_event_listener_fixture_payload,
+    validate_trino_query_detail_fixture_payload,
     validate_trino_query_list_contract_probe_payload,
     validate_trino_safe_fixture_json_size,
     validate_trino_safe_fixture_tree,
@@ -52,6 +56,7 @@ TRINO_EVIDENCE_PACKAGE_SOURCE_TYPES = frozenset(
 TRINO_EVIDENCE_SAMPLE_SOURCE_TYPES = frozenset(
     {
         "event_listener_export",
+        "query_detail_export",
         "query_list_summary_export",
         "statement_stats_export",
     }
@@ -68,6 +73,7 @@ TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES = (
     "missing_field_case",
     "unknown_or_unsupported_source_contract",
     "query_list_contract_probe",
+    "query_detail_stage_task_summary",
 )
 TRINO_EVIDENCE_SYNTHETIC_REJECTION_CASES = (
     "oversized_or_over_deep_rejection_synthetic",
@@ -403,6 +409,9 @@ def _build_sample_bundle(source_type: str, payload: Mapping[str, Any]) -> Engine
     if source_type == "query_list_summary_export":
         validate_trino_query_list_contract_probe_payload(payload)
         return build_trino_query_list_contract_probe_engine_facts(payload)
+    if source_type == "query_detail_export":
+        validate_trino_query_detail_fixture_payload(payload)
+        return build_trino_query_detail_fixture_engine_facts(payload)
     raise EngineFactContractError("Trino evidence package sample source type is unsupported")
 
 
@@ -453,6 +462,7 @@ def _validate_declared_bounds(
     if declared_max_bytes > max(
         TRINO_EVENT_FIXTURE_MAX_JSON_BYTES,
         TRINO_QUERY_LIST_FIXTURE_MAX_JSON_BYTES,
+        TRINO_QUERY_DETAIL_FIXTURE_MAX_JSON_BYTES,
         TRINO_STATEMENT_FIXTURE_MAX_JSON_BYTES,
     ):
         raise EngineFactContractError(
@@ -461,6 +471,7 @@ def _validate_declared_bounds(
     if declared_max_depth > max(
         TRINO_EVENT_FIXTURE_MAX_DEPTH,
         TRINO_QUERY_LIST_FIXTURE_MAX_DEPTH,
+        TRINO_QUERY_DETAIL_FIXTURE_MAX_DEPTH,
         TRINO_STATEMENT_FIXTURE_MAX_DEPTH,
     ):
         raise EngineFactContractError("Trino evidence package max depth exceeds fixture limit")

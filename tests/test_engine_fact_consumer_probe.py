@@ -78,6 +78,7 @@ def test_engine_fact_consumer_probe_is_raw_free_for_golden_cases():
             "failure_category:resource_limit",
         ),
         ("trino_blocked_statement_stats_fixture", "blocked_or_admission_wait"),
+        ("trino_query_detail_blocked_fixture", "blocked_or_admission_wait"),
         ("trino_stage_skew_statement_stats_fixture", "stage_skew_candidate"),
         ("trino_connector_metric_present_statement_stats_fixture", "connector_metric_signal"),
         (
@@ -86,7 +87,20 @@ def test_engine_fact_consumer_probe_is_raw_free_for_golden_cases():
         ),
         ("trino_completed_event_fixture", "spill_or_scratch_evidence"),
         ("trino_resource_group_queued_event_fixture", "blocked_or_admission_wait"),
+        ("trino_query_detail_export_fixture", "task_retries_observed"),
+        ("trino_query_detail_failure_category_fixture", "failure_category:resource_limit"),
+        ("trino_query_detail_spill_fixture", "spill_or_scratch_evidence"),
+        ("trino_query_detail_stage_skew_fixture", "stage_skew_candidate"),
+        ("trino_query_detail_queued_fixture", "limitation_unknown:admission_control"),
+        ("trino_query_detail_connector_metric_fixture", "connector_metric_signal"),
+        (
+            "trino_query_detail_connector_metric_absent_fixture",
+            "limitation_unknown:admission_control",
+        ),
+        ("trino_query_detail_task_failure_fixture", "task_failures_observed"),
+        ("trino_query_detail_missing_fields_fixture", "limitation_unknown:admission_control"),
         ("trino_unknown_source_contract_event_fixture", "parser_coverage_unknown"),
+        ("trino_query_detail_unknown_source_contract_fixture", "parser_coverage_unknown"),
         ("trino_completed_event_missing_fields_fixture", "limitation_unknown:admission_control"),
     ),
 )
@@ -99,6 +113,29 @@ def test_engine_fact_consumer_probe_attention_signals_are_state_backed(
     probe = engine_fact_consumer_probe(case.bundle)
 
     assert expected_signal in probe["attention_signal_ids"]
+
+
+def test_engine_fact_consumer_probe_task_attention_signals_are_value_backed():
+    retry_case = next(
+        case
+        for case in engine_fact_contract_cases()
+        if case.case_id == "trino_query_detail_export_fixture"
+    )
+    failure_case = next(
+        case
+        for case in engine_fact_contract_cases()
+        if case.case_id == "trino_query_detail_task_failure_fixture"
+    )
+
+    retry_probe = engine_fact_consumer_probe(retry_case.bundle)
+    failure_probe = engine_fact_consumer_probe_from_boundary(
+        engine_fact_boundary_payload(failure_case.bundle)
+    )
+
+    assert "task_retries_observed" in retry_probe["attention_signal_ids"]
+    assert "task_failures_observed" not in retry_probe["attention_signal_ids"]
+    assert "task_failures_observed" in failure_probe["attention_signal_ids"]
+    assert "task_retries_observed" not in failure_probe["attention_signal_ids"]
 
 
 def test_engine_fact_consumer_probe_consumes_boundary_payload_without_bundle_access():

@@ -1,0 +1,40 @@
+{
+  "fixtureVersion": "synthetic-trino-query-detail-failure-category-v1",
+  "sourceContractVersion": "synthetic_trino_query_detail_v1",
+  "queryDetail": {
+    "summary": {
+      "completedSplits": 96,
+      "cpuTimeMillis": 72000,
+      "elapsedTimeMillis": 64000,
+      "executionTimeMillis": 58000,
+      "fullyBlocked": false,
+      "outputBytes": 2097152,
+      "outputRows": 4200,
+      "peakMemoryBytes": 1073741824,
+      "planningTimeMillis": 2600,
+      "processedBytes": 8589934592,
+      "processedRows": 88000000,
+      "queuedTimeMillis": 1200,
+      "safeFailureSummary": {
+        "checked": true,
+        "category": "resource_limit"
+      },
+      "safeStageSkewSummary": {
+        "candidate": false,
+        "checked": true,
+        "maxToMedianInputBytesRatio": 1.6,
+        "sampledTaskCount": 18
+      },
+      "safeTaskSummary": {
+        "checked": true,
+        "failedTaskCount": 0,
+        "retriedTaskCount": 0,
+        "taskCount": 36
+      },
+      "spilledBytes": 0,
+      "stageCount": 3,
+      "state": "FAILED",
+      "wallTimeMillis": 103000
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Engine Support Gap Matrix
 
-Last reviewed: 2026-05-23
+Last reviewed: 2026-05-29
 
 This matrix describes current implementation status for engine fact coverage.
 It is not a public support promise. The product brand is Query Doctor; current
@@ -26,25 +26,27 @@ safety tests, and a documented support gap closure plan.
 | Live query/profile collection | implemented through Cloudera Manager and direct Impala daemon workflows | not implemented |
 | Engine adapter registration | implemented | not registered |
 | Engine fact contract bundle | contracted through `impala_engine_facts.py` projection | fixture-only through `trino_fixture_facts.py` |
-| Golden contract harness | covered across clean finished, admission-queued, spill-observed, missing-section, and failed-query cases | covered by shared raw-free contract cases for finished/failed/failure-category/blocked/stage-skew/connector-metric statement stats, completed event, resource-group queue-delay event, unknown source-contract event, and missing-field event fixtures |
-| Lifecycle facts | projected from safe query context when available | fixture-only from synthetic finished/failed/blocked statement stats and completed event payloads |
+| Golden contract harness | covered across clean finished, admission-queued, spill-observed, missing-section, and failed-query cases | covered by shared raw-free contract cases for finished/failed/failure-category/blocked/stage-skew/connector-metric statement stats, completed event, resource-group queue-delay event, unknown source-contract event/query-detail fixtures, missing-field event/query-detail fixtures, blocked, safe-failure-category, spill-observed, stage-skew, queued, and connector-metric query-detail fixtures, query-list aggregate, and compact query-detail fixtures |
+| Lifecycle facts | projected from safe query context when available | fixture-only from synthetic finished/failed/blocked statement stats, completed event payloads, and compact query-detail exports, including queued lifecycle |
 | Failure category | projected only as failed lifecycle in the current Impala projection | fixture-only from exact compact checked/category safe summary; no raw exception classes, messages, stack traces, endpoint details, object names, connector internals, extra summary detail, or live source |
-| Query wall-clock / elapsed timing | projected from Query Wall Clock, profile TotalTime, and Query Timeline facts | fixture-only from statement stats |
-| Planning / admission / backend-start timing | projected when Impala Query Timeline phases are available | fixture-only planning and resource-group queue timing from compact event/statement fixtures; Impala admission/backend-start semantics remain unknown |
-| Input/output bytes and rows | projected from current analyzer totals where available | fixture-only from statement stats |
-| Peak memory | projected from profile resource facts where available | fixture-only from statement stats |
-| Spill / scratch evidence | projected as observed count or not observed from explicit spill/scratch evidence lines | fixture-only spilled bytes |
-| Connector metric signal | not applicable to current Impala profile projection | fixture-only checked/present signal from an exact compact safe summary; no connector names, metric names, endpoints, object names, raw connector payloads, extra summary detail, or live connector source |
-| Fragment / stage counts | projected from Impala profile format and lifecycle facts | fixture-only from rootStage shape |
-| Backend / stage skew candidates | projected from current backend-tail analysis when available | fixture-only from exact safe aggregate per-task stage-skew summary; no raw task or worker details or extra summary detail |
+| Query wall-clock / elapsed timing | projected from Query Wall Clock, profile TotalTime, and Query Timeline facts | fixture-only from statement stats and compact query-detail exports |
+| Planning / admission / backend-start timing | projected when Impala Query Timeline phases are available | fixture-only planning, queued timing, and resource-group queue timing from compact event/statement/query-detail fixtures; Impala admission/backend-start semantics remain unknown |
+| Input/output bytes and rows | projected from current analyzer totals where available | fixture-only from statement stats and compact query-detail exports |
+| Peak memory | projected from profile resource facts where available | fixture-only from statement stats and compact query-detail exports |
+| Spill / scratch evidence | projected as observed count or not observed from explicit spill/scratch evidence lines | fixture-only spilled bytes from accepted compact fixtures, including query-detail exports |
+| Connector metric signal | not applicable to current Impala profile projection | fixture-only checked/present signal from an exact compact safe summary, including query-detail supported and not-observed exports; no connector names, metric names, endpoints, object names, raw connector payloads, extra summary detail, or live connector source |
+| Fragment / stage counts | projected from Impala profile format and lifecycle facts | fixture-only from rootStage shape and compact query-detail stage counts |
+| Backend / stage skew candidates | projected from current backend-tail analysis when available | fixture-only from exact safe aggregate per-task stage-skew summary, including query-detail exports; no raw task or worker details or extra summary detail |
+| Task summary facts | not applicable to current Impala profile projection | fixture-only from exact compact query-detail `safeTaskSummary`; no task IDs, worker identifiers, raw task payloads, or extra summary detail |
 | Admission pool semantics | implemented for Impala profile/context facts | unknown |
 | Metadata enrichment | implemented through explicit bounded Impala metadata collection | not implemented |
 | Runtime metrics | implemented through Cloudera Manager and optional Prometheus context | not implemented |
 | Cluster events | implemented through bounded Cloudera Manager events | not implemented |
 | Offline event-listener fixture import | not applicable to implemented Impala workflows | fixture-only compacted completed-event and resource-group queue-delay mapping, unknown source-contract fail-closed behavior, missing-field `unknown` semantics, and oversized/over-deep/nested unsafe-field rejection tests; no event store reader or live adapter |
+| Offline query-detail fixture import | not applicable to implemented Impala workflows | fixture-only compact sanitized query-detail mapping for lifecycle/timing/resource/stage/task facts plus blocked-signal, safe failure-category, spill-evidence, stage-skew, queued lifecycle/timing, and connector-metric checked/present supported/not-observed mapping, unsupported source-contract fail-closed behavior, and missing-field `unknown` semantics; raw query-detail exports and live query-info fetch remain unsupported |
 | Live collection design | implemented for current Impala providers | documented as future-only in `trino-live-collection-design.md`; no adapter implemented |
 | Browser/report boundary payload from normalized engine facts | contracted and raw-free tested; not wired into existing Impala browser/report paths | fixture-only payload tested; blocked from product surfaces until support gates exist |
-| Boundary payload consumer probe | raw-free tested state-count and attention-signal probe; not wired into product ranking or UI | fixture-only probe tested; not a support claim |
+| Boundary payload consumer probe | raw-free tested state-count and attention-signal probe; not wired into product ranking or UI | fixture-only probe tested, including state-backed task retry/failure, allowlisted failure-category, spill-evidence, stage-skew, and connector-metric attention signals from compact query-detail facts; not a support claim |
 | Minimum raw-free intake contract | implicit in current Impala safety/report/browser tests | documented and tested for fixture-only Trino facts; blocks live intake and product surfaces until gates close |
 | Browser/report output from normalized engine facts | not wired; existing Impala browser/report paths remain unchanged | blocked until raw-free safety tests and support gates exist |
 

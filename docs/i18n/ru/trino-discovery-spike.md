@@ -1,6 +1,6 @@
 # Trino discovery spike
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-29
 
 Язык: [English](../../trino-discovery-spike.md) | Русский
 
@@ -22,11 +22,23 @@ Trino discovery spike - это fixture-only работа для изучения
   list-shape evidence: bounded counts, field-presence counts, safe
   state/failure buckets и redaction assertions, без raw records и без
   query-detail fetch;
-- проверить unknown source-contract event fixture, где mapper должен
-  fail-closed оставить parser coverage и facts в `unknown`;
+- проверить unknown source-contract event и query-detail fixtures, где mapper
+  должен fail-closed оставить parser coverage и facts в `unknown`;
+- проверить missing-field event и query-detail fixtures, где absent fields
+  остаются `unknown`, а не fake zeros;
 - закрепить exact compact summary shapes для connector metric, failure category
-  и stage skew: extra fields или nested details оставляют derived fact в
-  `unknown`;
+  stage skew и task summary: extra fields или nested details оставляют derived
+  fact в `unknown`;
+- проверить compact sanitized `query_detail_export` fixtures с accepted
+  source contract, summary-level timing/resource/stage facts и checked task
+  summary variants для retry/failure counts, boolean blocked signal и safe
+  allowlisted failure-category variant, plus spill-observed и stage-skew
+  variants, plus queued lifecycle/timing variant, plus connector-metric
+  checked/present semantics для present/absent variants, плюс missing-field,
+  non-boolean `fullyBlocked` fail-closed и unsupported source-contract
+  variants, без raw query-detail records, query
+  IDs, stage IDs, task IDs, workers, endpoints, resource-group names, raw
+  exception text, stack traces, object context или connector internals;
 - подготовить первый sanitized test-cluster handoff через
   [чеклист evidence export](../../engines/i18n/ru/trino-test-cluster-evidence-checklist.md),
   с manifest и redaction note по
@@ -34,9 +46,8 @@ Trino discovery spike - это fixture-only работа для изучения
   всё ещё как fixture work, а не live collection;
 - проверять локальный sanitized package wrapper `manifest` / `redaction_note` /
   `samples` через fixture-only intake validator; statement-statistics,
-  event-listener и aggregate query-list summary exports уже имеют validators,
-  а `query_detail_export` остается unsupported sample payload до отдельного
-  fixture contract;
+  event-listener, aggregate query-list summary и compact query-detail exports
+  уже имеют validators; raw query-detail exports остаются за boundary;
 - запускать `scripts/validate_trino_evidence_package.py` как local dry-run для
   sanitized package file; команда печатает только safe summary или safe
   rejection message, без input paths, raw payloads, raw values или rejected
@@ -44,6 +55,11 @@ Trino discovery spike - это fixture-only работа для изучения
 - запускать `scripts/demo_trino_evidence_package.py` как repeatable local
   walkthrough по committed synthetic fixtures; команда показывает safe summary
   без сети, credentials, SQL execution или live Trino support claim;
+- использовать read-only consumer probe только как test seam над raw-free
+  boundary payloads; positive task retry/failure counts из compact query-detail
+  facts, allowlisted failure category, spill evidence, stage-skew candidates и
+  positive connector-metric checked/present evidence дают internal attention
+  signals, но это не UI/report/ranking behavior и не Trino support claim;
 - использовать
   [Trino private preview release path](../../engines/i18n/ru/trino-private-preview-release.md)
   как release-facing runbook для closed test-cluster smoke и sanitized package

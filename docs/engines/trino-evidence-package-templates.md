@@ -1,6 +1,6 @@
 # Trino Evidence Package Templates
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-05-29
 
 Language: English | [Russian](i18n/ru/trino-evidence-package-templates.md)
 
@@ -37,11 +37,33 @@ top-level sections:
 ```
 
 `samples` may contain only sanitized compact sample payloads that already have
-fixture validators: `statement_stats_export`, `event_listener_export`, and
-`query_list_summary_export`. `query_list_summary_export` is an aggregate
-contract probe shape only; it proves bounded list-field availability and
-redaction, not one-query diagnosis. `query_detail_export` remains a
-manifest/source-contract item until a separate fixture validator exists.
+fixture validators: `statement_stats_export`, `event_listener_export`,
+`query_detail_export`, and `query_list_summary_export`.
+`query_list_summary_export` is an aggregate contract probe shape only; it
+proves bounded list-field availability and redaction, not one-query diagnosis.
+`query_detail_export` is accepted only as a compact sanitized query-detail
+fixture with summary-level timing/resource/stage fields and checked task
+summary fields. The `query_detail_stage_task_summary` case may include more
+than one compact sample to cover separate retry and failure-count variants; raw
+query-detail exports remain outside the intake boundary.
+The `queued_or_resource_group_delayed_query` case may include more than one
+compact sample to prove queued lifecycle/timing across source contracts.
+The `failed_query_allowlisted_category` case may include more than one compact
+sample to prove the same safe allowlisted category across source contracts.
+The `blocked_query` case may include more than one compact sample to prove
+state-backed blocked evidence across source contracts.
+The `spill_observed` case may include more than one compact sample to prove
+explicit spill evidence across source contracts.
+The `stage_or_task_skew_candidate` case may include more than one compact
+sample to prove checked aggregate skew evidence across source contracts.
+The `connector_metric_present` case may include more than one compact sample
+to prove checked/present connector metric evidence across source contracts.
+The `connector_metric_absent` case may include more than one compact sample to
+prove checked/not-present connector metric evidence across source contracts.
+The `unknown_or_unsupported_source_contract` case may also include more than
+one compact sample to prove fail-closed behavior across source contracts.
+The `missing_field_case` case may include more than one compact sample to prove
+unknown semantics across source contracts.
 Synthetic oversized and unsafe-field rejection cases belong in the manifest
 counts and redaction note, not as accepted sample payloads.
 
@@ -117,16 +139,17 @@ export_window_utc:
   end: "YYYY-MM-DDTHH:00:00Z"
 sample_count_by_case:
   successful_completed_query: 0
-  failed_query_allowlisted_category: 0
-  queued_or_resource_group_delayed_query: 0
-  blocked_query: 0
-  spill_observed: 0
-  stage_or_task_skew_candidate: 0
-  connector_metric_present: 0
-  connector_metric_absent: 0
-  missing_field_case: 0
-  unknown_or_unsupported_source_contract: 0
+  failed_query_allowlisted_category: 0  # may be >1 across source contracts
+  queued_or_resource_group_delayed_query: 0  # may be >1 across source contracts
+  blocked_query: 0  # may be >1 across source contracts
+  spill_observed: 0  # may be >1 across source contracts
+  stage_or_task_skew_candidate: 0  # may be >1 across source contracts
+  connector_metric_present: 0  # may be >1 across source contracts
+  connector_metric_absent: 0  # may be >1 across source contracts
+  missing_field_case: 0  # may be >1 across source contracts
+  unknown_or_unsupported_source_contract: 0  # may be >1 across source contracts
   query_list_contract_probe: 0
+  query_detail_stage_task_summary: 0  # may be >1 for retry/failure variants
   oversized_or_over_deep_rejection_synthetic: 0
   unsafe_raw_field_rejection_synthetic: 0
 byte_count_compacted: 0
