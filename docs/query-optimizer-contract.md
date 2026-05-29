@@ -1,6 +1,6 @@
 # Query Optimizer Contract
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-05-29
 
 This document is the active contract for both optimizer surfaces:
 
@@ -181,6 +181,22 @@ SQL draft; it should produce a trusted `no_rewrite` outcome with deterministic
 guidance instead. That guidance must make the no-draft boundary explicit and
 include a verification path, such as EXPLAIN comparison and a comparable rerun,
 before claiming benefit from any manual change.
+
+No-recipe guidance may identify raw-free SQL shape families such as plain
+aggregate or distinct review, set-operation research, nested-query boundary,
+join review, single-relation filter review, CTE boundary, or derived-table
+boundary. These labels are manual review directions only. They must not expose
+SQL text, identifiers, predicates, literals, paths, artifacts, model internals,
+or imply that a trusted SQL draft exists.
+
+Recent scan summaries may persist the same boundary as an allowlisted
+`no_recipe_review_track` token. This token is telemetry and backlog routing
+only; it is not recipe detection, draft eligibility, or proof of benefit.
+Browser presenters may render only allowlisted human-readable labels for these
+tokens and may derive only allowlisted review areas or first-change directions
+from them. Workload Action Queue may aggregate repeated rows by those
+allowlisted labels only. Unknown tokens must not be shown as sanitized free text
+or affect visible review guidance.
 
 ## Shape Facts
 
@@ -390,8 +406,9 @@ Current behavior:
   safely;
 - no-draft recommendations must be useful enough for manual review: state that
   no trusted SQL draft is shown, identify the safe review direction from
-  Python-owned facts, and require EXPLAIN comparison plus comparable rerun
-  validation before any benefit claim;
+  Python-owned facts, optionally include a raw-free no-recipe shape family, and
+  require EXPLAIN comparison plus comparable rerun validation before any
+  benefit claim;
 - always hide partial drafts and raw LLM output;
 - manual rewrite guidance may appear only when it is Python-owned and browser
   safe;

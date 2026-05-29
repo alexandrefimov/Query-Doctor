@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-28
+Last updated: 2026-05-29
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -770,6 +770,15 @@ Keep optimizer trust strict while making useful outcomes more common.
   `source_unavailable` 11, and `draft_disabled` 1. The no-recipe layer was
   dominated by plain SQL workload groups, not by current CTE/derived
   predicate-pushdown surfaces.
+- The current no-recipe product path is to make unsupported outcomes useful
+  before adding more SQL drafts: trusted `no_rewrite` and
+  recommendations-only output should distinguish aggregate/distinct,
+  set-operation, nested-query, join, single-relation filter, CTE, and
+  derived-table review directions without exposing SQL or implying automatic
+  rewrite support. Browser Details should use these tracks only through
+  allowlisted labels, review areas, and first-change directions, and Workload
+  Action Queue should roll repeated groups up to those same safe review anchors
+  instead of generic SQL-shape wording.
 - Add anonymized real fixtures for long `WITH`, CTE-heavy,
   join/filter/projection-preservation, and model-discipline failure cases.
 - Add Python-owned recipes only where analyzer facts and validation can prove
@@ -813,7 +822,7 @@ completed implementation inventory.
 
 Remaining near-term optimizer work:
 
-Current calibration note as of 2026-05-28:
+Current calibration note as of 2026-05-29:
 
 - `scripts/audit_optimizer_funnel.py` now prints a compact candidate
   calibration headline and raw-free medium/high candidate counters. Existing
@@ -822,6 +831,12 @@ Current calibration note as of 2026-05-28:
   6h safe summary, and 17/80 on a metadata-enabled summary. Treat that as an
   optimizer usefulness and recipe-coverage signal. Do not change scoring
   thresholds or validator strictness just to increase draft count.
+- A rerun over the 6h safe summary after family-specific no-recipe guidance
+  still produced `draft-supported=0`, while review reasons split into plain
+  aggregate/distinct, set-operation, single-relation filter, nested-query,
+  unfiltered join, plus existing CTE/derived categories. Treat this as the
+  current review-guidance baseline, not proof that a broad plain-SQL recipe is
+  safe.
 
 1. Run `scripts/audit_optimizer_funnel.py`,
    `scripts/audit_optimizer_plain_shapes.py`, and
@@ -830,7 +845,11 @@ Current calibration note as of 2026-05-28:
    counts as the recipe-candidate or no-draft-guidance backlog. The first
    target should be the largest repeated family where analyzer facts and
    validation can prove a safe transform. If no transform boundary is provable,
-   improve review guidance and fixtures instead of producing SQL.
+   improve review guidance and fixtures instead of producing SQL. Structural
+   and representative audit blockers should stay aligned with the raw-free
+   no-recipe review tracks used in product guidance, and broad batch summaries
+   should retain `no_recipe_review_track_counts` as the quick backlog mix
+   signal.
 2. Re-run the real optimizer benchmark after the prompt-route split, model
    default split, rewriteability taxonomy, recipe-aware ranking, and
    per-conjunct predicate-pushdown baseline. Compare trusted SQL drafts,

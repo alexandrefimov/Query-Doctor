@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from query_doctor.cli import collect_cm_profiles as cm_profiles
-from query_doctor.recent.optimizer_rewrite_support import RECIPE_LABELS
+from query_doctor.recent.optimizer_rewrite_support import NO_RECIPE_REVIEW_TRACKS, RECIPE_LABELS
 from query_doctor.recent.batch_config import (
     MAX_CM_INSPECT_LIMIT,
     MAX_RAW_CM_SUMMARY_SCAN_LIMIT,
@@ -536,6 +536,7 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
     no_draft_reason_counts: Counter[str] = Counter()
     no_draft_cte_pushdown_decision_counts: Counter[str] = Counter()
     no_draft_actionability_counts: Counter[str] = Counter()
+    no_recipe_review_track_counts: Counter[str] = Counter()
     adjacent_cte_graph_counts: Counter[str] = Counter()
     adjacent_cte_predicate_pushdown_counts: Counter[str] = Counter()
     adjacent_cte_boundary_reason_counts: Counter[str] = Counter()
@@ -556,6 +557,10 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         bucket = str(support.rewriteability_bucket or "unknown").strip().lower()
         normalized_bucket = bucket if bucket in REWRITEABILITY_BUCKETS else "unknown"
         bucket_counts[normalized_bucket] += 1
+        if support.draft_eligibility in {"no_recipe", "source_unavailable"}:
+            no_recipe_review_track_counts[
+                normalize_no_recipe_review_track(support.no_recipe_review_track)
+            ] += 1
         if normalized_bucket == "recipe_detected_no_draft":
             recipe_id = normalize_no_draft_recipe_id(support.recipe_id)
             eligibility = str(support.draft_eligibility or "unknown").strip() or "unknown"
@@ -650,6 +655,7 @@ def optimizer_rewriteability_distribution(cases: list[CaseResult]) -> dict[str, 
         "recipe_detected_no_draft_cte_pushdown_decision_counts": dict(
             sorted(no_draft_cte_pushdown_decision_counts.items())
         ),
+        "no_recipe_review_track_counts": dict(sorted(no_recipe_review_track_counts.items())),
         "recipe_adjacent_shape_cases": recipe_adjacent,
         "recipe_adjacent_actionable_cases": adjacent_actionable,
         "recipe_adjacent_structural_boundary_cases": adjacent_structural,
@@ -776,6 +782,13 @@ def normalize_no_draft_class(value: object) -> str:
 def normalize_no_draft_recipe_id(value: object) -> str:
     recipe_id = str(value or "unknown_recipe").strip()
     return recipe_id if recipe_id in NO_DRAFT_RECIPE_IDS else "unknown_recipe"
+
+
+def normalize_no_recipe_review_track(value: object) -> str:
+    track = str(value or "").strip().lower()
+    if not track or track == "not_applicable":
+        return "unknown"
+    return track if track in NO_RECIPE_REVIEW_TRACKS else "unknown"
 
 
 def normalize_adjacent_label(value: object) -> str:
@@ -1300,6 +1313,12 @@ def write_batch_outputs(out: Path, summary: dict[str, object]) -> None:
                 f"{reason}={count}" for reason, count in sorted(no_draft_reasons.items())
             )
             lines.append(f"- no-draft reasons: {rendered_reasons}")
+        no_recipe_review_tracks = rewriteability_distribution.get("no_recipe_review_track_counts")
+        if isinstance(no_recipe_review_tracks, dict) and no_recipe_review_tracks:
+            rendered_tracks = ", ".join(
+                f"{track}={count}" for track, count in sorted(no_recipe_review_tracks.items())
+            )
+            lines.append(f"- no-recipe review tracks: {rendered_tracks}")
         no_draft_decisions = rewriteability_distribution.get(
             "recipe_detected_no_draft_cte_pushdown_decision_counts"
         )

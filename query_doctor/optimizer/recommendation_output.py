@@ -96,12 +96,14 @@ def normalize_optimizer_recommendations(
     facts_text: str,
     risk_decision: OptimizerRiskDecision | None = None,
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
+    source_sql: str | None = None,
 ) -> str:
     return normalize_optimizer_recommendations_with_telemetry(
         generated,
         facts_text,
         risk_decision,
         rewrite_recipe,
+        source_sql=source_sql,
     ).text
 
 
@@ -110,6 +112,7 @@ def normalize_optimizer_recommendations_with_telemetry(
     facts_text: str,
     risk_decision: OptimizerRiskDecision | None = None,
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
+    source_sql: str | None = None,
 ) -> OptimizerRecommendationNormalization:
     text = extract_recommendations(generated)
     candidates = recommendation_candidate_lines(facts_text, language="en")
@@ -135,7 +138,9 @@ def normalize_optimizer_recommendations_with_telemetry(
     if not preserved:
         preserved = canonical_recommendation_bullets(candidates)
 
-    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)
+    specific = optimizer_specific_recommendation_bullets(
+        facts_text, risk_decision, rewrite_recipe, source_sql=source_sql
+    )
     final_lines = dedupe_preserve_order(specific + preserved)[:MAX_OPTIMIZER_RECOMMENDATION_ITEMS]
     specific_set = set(specific)
     preserved_set = set(preserved)
@@ -170,6 +175,7 @@ def no_rewrite_recommendations(
     risk_decision: OptimizerRiskDecision,
     facts_text: str,
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
+    source_sql: str | None = None,
 ) -> str:
     reasons = (
         ", ".join(risk_decision.reasons) if risk_decision.reasons else "no material SQL change"
@@ -179,9 +185,9 @@ def no_rewrite_recommendations(
         f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
     ]
     verification = no_draft_verification_bullets(facts_text)
-    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, rewrite_recipe)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))
-    ]
+    specific = optimizer_specific_recommendation_bullets(
+        facts_text, risk_decision, rewrite_recipe, source_sql=source_sql
+    )[: max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))]
     return "\n".join(
         [
             *prefix,
@@ -194,6 +200,7 @@ def no_rewrite_recommendations(
 def no_supported_rewrite_recommendations(
     risk_decision: OptimizerRiskDecision,
     facts_text: str,
+    source_sql: str | None = None,
 ) -> str:
     reasons = (
         ", ".join(risk_decision.reasons)
@@ -205,9 +212,9 @@ def no_supported_rewrite_recommendations(
         f"- Optimizer mode: {risk_decision.mode}; basis: {reasons}.",
     ]
     verification = no_draft_verification_bullets(facts_text)
-    specific = optimizer_specific_recommendation_bullets(facts_text, risk_decision, None)[
-        : max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))
-    ]
+    specific = optimizer_specific_recommendation_bullets(
+        facts_text, risk_decision, None, source_sql=source_sql
+    )[: max(0, MAX_OPTIMIZER_RECOMMENDATION_ITEMS - len(prefix) - len(verification))]
     return "\n".join(
         [
             *prefix,

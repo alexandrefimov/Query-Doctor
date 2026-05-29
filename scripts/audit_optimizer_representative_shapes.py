@@ -142,8 +142,20 @@ def audit_representative_shapes(
             continue
 
         family = shape_family(support)
-        blocker = blocker_key(support, actionability=actionability)
-        decision_shape = shape_descriptor(support, case=case, summary_path=summary_path)
+        plain_source_sql = (
+            source_sql_for_case(case, summary_path=summary_path) if family == "plain" else ""
+        )
+        blocker = blocker_key(
+            support,
+            actionability=actionability,
+            source_sql=plain_source_sql,
+        )
+        decision_shape = shape_descriptor(
+            support,
+            case=case,
+            summary_path=summary_path,
+            source_sql=plain_source_sql,
+        )
         group_key = (
             f"rank={rank}; actionability={actionability}; "
             f"bucket={support.rewriteability_bucket}; family={family}; "

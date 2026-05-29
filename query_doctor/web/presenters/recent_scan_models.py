@@ -49,6 +49,9 @@ class RecentScanCaseRowView:
     optimizer_rewriteability_label: str
     optimizer_fact_summary: str
     optimizer_guardrail_summary: str
+    optimizer_review_track_label: str
+    optimizer_review_area: str
+    optimizer_review_direction: str
     optimization_summary: str
     optimization_review_areas: str
     stats_tier: str

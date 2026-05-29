@@ -25,6 +25,7 @@ def present_recent_scan_action_candidates(
         rewrite_support_text = optimizer_rewrite_support_text(optimization)
         summary = str(optimization.get("summary") or "query-shape evidence").strip()
         review_areas = str(optimization.get("review_areas") or "query shape").strip()
+        rewrite_review_direction = str(optimization.get("rewrite_review_direction") or "").strip()
         counter_text = candidate_counter_signal_note(optimization)
         source_locators = view.source_locators.get(
             "query_optimization",
@@ -58,6 +59,7 @@ def present_recent_scan_action_candidates(
                 change_direction=query_optimization_change_direction(
                     review_areas,
                     source_locators,
+                    rewrite_review_direction,
                 ),
                 verification=(
                     "Compare EXPLAIN before and after the change, then rerun under comparable load "
@@ -540,6 +542,7 @@ def stats_location_hint(locators: tuple[RecentScanSourceLocatorView, ...]) -> st
 def query_optimization_change_direction(
     review_areas: str,
     locators: tuple[RecentScanSourceLocatorView, ...],
+    rewrite_review_direction: str = "",
 ) -> str:
     labels = source_locator_labels(locators)
     directions: list[str] = []
@@ -584,6 +587,9 @@ def query_optimization_change_direction(
             "Use the marked data-movement operator as the plan comparison anchor; prefer reducing "
             "unnecessary rows before exchange or large intermediate movement."
         )
+
+    if rewrite_review_direction:
+        directions.append(rewrite_review_direction)
 
     if directions:
         return " ".join(directions[:2])

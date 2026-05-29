@@ -24,6 +24,7 @@ from query_doctor.cli.optimize_query import (  # noqa: E402
 from query_doctor.optimizer.source_sql import QueryOptimizationError  # noqa: E402
 from query_doctor.optimizer.sql import OptimizerSqlError  # noqa: E402
 from query_doctor.recent.optimizer_rewrite_support import (  # noqa: E402
+    NO_RECIPE_REVIEW_TRACKS,
     OptimizerRewriteSupport,
     classify_optimizer_rewrite_support,
 )
@@ -65,6 +66,7 @@ class SupportView:
     recipe_id: str = ""
     draft_unavailable_class: str = "not_applicable"
     draft_unavailable_reasons: tuple[str, ...] = ()
+    no_recipe_review_track: str = "not_applicable"
     cte_count: int = 0
     cte_graph_shape: str = "no_cte"
     cte_predicate_pushdown_status: str = "no_cte"
@@ -122,6 +124,7 @@ class OptimizerFunnelAuditResult:
     review_risk_reason_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_family_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_hint_counts: Counter[str] = field(default_factory=Counter)
+    no_recipe_review_track_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_family_reason_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_cte_graph_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_cte_predicate_pushdown_counts: Counter[str] = field(default_factory=Counter)
@@ -338,6 +341,7 @@ def support_view_from_support(support: OptimizerRewriteSupport) -> SupportView:
             support.draft_unavailable_class, default="not_applicable"
         ),
         draft_unavailable_reasons=tuple(safe_reason_list(support.draft_unavailable_reasons)),
+        no_recipe_review_track=safe_no_recipe_review_track(support.no_recipe_review_track),
         cte_count=int_value(support.cte_count),
         cte_graph_shape=safe_token(support.cte_graph_shape, default="no_cte"),
         cte_predicate_pushdown_status=safe_token(
@@ -380,6 +384,7 @@ def support_view_from_dict(value: Any) -> SupportView:
             support.get("draft_unavailable_class"), default="not_applicable"
         ),
         draft_unavailable_reasons=tuple(safe_reason_list(support.get("draft_unavailable_reasons"))),
+        no_recipe_review_track=safe_no_recipe_review_track(support.get("no_recipe_review_track")),
         cte_count=int_value(support.get("cte_count")),
         cte_graph_shape=safe_token(support.get("cte_graph_shape"), default="no_cte"),
         cte_predicate_pushdown_status=safe_token(
@@ -441,6 +446,7 @@ def collect_no_recipe_case(
     candidate_reason = first_candidate_reason(case)
     result.no_recipe_family_counts[family] += 1
     result.no_recipe_hint_counts[hint] += 1
+    result.no_recipe_review_track_counts[support.no_recipe_review_track or "not_applicable"] += 1
     result.no_recipe_family_reason_counts[f"{family}:{support.reason or '<missing>'}"] += 1
     result.no_recipe_risk_mode_counts[support.risk_mode or "unknown"] += 1
     result.no_recipe_risk_reason_counts.update(support.risk_reasons)
@@ -573,6 +579,11 @@ def safe_token(value: Any, *, default: str) -> str:
     if not text:
         return default
     return re.sub(r"[^a-z0-9_+.-]+", "_", text)[:80] or default
+
+
+def safe_no_recipe_review_track(value: Any) -> str:
+    track = safe_token(value, default="not_applicable")
+    return track if track in NO_RECIPE_REVIEW_TRACKS else "unknown"
 
 
 def safe_reason(value: Any) -> str:
@@ -773,6 +784,12 @@ def print_result(
     print_counter("Review risk reasons", result.review_risk_reason_counts, limit=limit, out=out)
     print_counter("No-recipe shape families", result.no_recipe_family_counts, limit=limit, out=out)
     print_counter("No-recipe hints", result.no_recipe_hint_counts, limit=limit, out=out)
+    print_counter(
+        "No-recipe review tracks",
+        result.no_recipe_review_track_counts,
+        limit=limit,
+        out=out,
+    )
     print_counter(
         "No-recipe family / reason",
         result.no_recipe_family_reason_counts,

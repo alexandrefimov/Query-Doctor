@@ -21,6 +21,9 @@ def optimizer_rewrite_support_fact_summary(support: dict[str, Any]) -> str:
     if union_branch_count:
         suffix = "UNION branch" if union_branch_count == 1 else "UNION branches"
         parts.append(f"{union_branch_count} {suffix}")
+    track_label = optimizer_no_recipe_review_track_label(support.get("no_recipe_review_track"))
+    if track_label:
+        parts.append(track_label)
     parts.extend(
         label
         for label in (
@@ -101,6 +104,18 @@ def optimizer_rewrite_support_guardrail_summary(support: dict[str, Any]) -> str:
     return "; ".join(parts[:5])
 
 
+def optimizer_no_recipe_review_track_label(value: Any) -> str:
+    return optimizer_token_label(value, OPTIMIZER_NO_RECIPE_REVIEW_TRACK_LABELS)
+
+
+def optimizer_no_recipe_review_area(value: Any) -> str:
+    return optimizer_token_label(value, OPTIMIZER_NO_RECIPE_REVIEW_AREA_LABELS)
+
+
+def optimizer_no_recipe_change_direction(value: Any) -> str:
+    return optimizer_token_label(value, OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS)
+
+
 def optimizer_projection_count_label(simple_count: Any, expression_count: Any) -> str:
     simple = numeric_count(simple_count) or 0
     expression = numeric_count(expression_count) or 0
@@ -129,6 +144,129 @@ OPTIMIZER_CTE_GRAPH_LABELS = {
     "unsupported_graph": "unsupported CTE graph",
     "unsupported_reference_order": "unsupported CTE reference order",
     "no_cte": "no CTE shape",
+}
+
+OPTIMIZER_NO_RECIPE_REVIEW_TRACK_LABELS = {
+    "aggregate_or_distinct_review": "Review track: aggregate/distinct",
+    "set_operation_research": "Review track: set operation",
+    "nested_query_boundary": "Review track: nested query boundary",
+    "unfiltered_join_review": "Review track: unfiltered join",
+    "filtered_join_review": "Review track: filtered join",
+    "outer_join_review": "Review track: outer join",
+    "single_relation_filter_review": "Review track: single-relation filter",
+    "simple_scan_or_projection_review": "Review track: scan/projection",
+    "cte_predicate_pushdown_review": "Review track: CTE predicate pushdown",
+    "cte_simplification_review": "Review track: CTE simplification",
+    "cte_no_downstream_filter_review": "Review track: CTE with no downstream filter",
+    "cte_complex_graph_review": "Review track: complex CTE graph",
+    "cte_boundary_review": "Review track: CTE boundary",
+    "derived_predicate_pushdown_review": "Review track: derived-table predicate pushdown",
+    "derived_no_downstream_filter_review": "Review track: derived table with no outer filter",
+    "derived_unsupported_boundary_review": "Review track: derived-table boundary",
+    "derived_boundary_review": "Review track: derived-table boundary",
+    "source_unavailable": "Review track: source unavailable",
+}
+
+OPTIMIZER_NO_RECIPE_REVIEW_AREA_LABELS = {
+    "aggregate_or_distinct_review": (
+        "aggregate input rows, filter selectivity, grouping grain, and projection width"
+    ),
+    "set_operation_research": (
+        "set-operation branch grain, branch projection symmetry, and branch-local row reduction"
+    ),
+    "nested_query_boundary": "nested-query boundary and upstream row reduction",
+    "unfiltered_join_review": "join cardinality, join keys, and many-to-many amplification",
+    "filtered_join_review": "join filter scope and input cardinality",
+    "outer_join_review": "outer-join filter scope and join semantics",
+    "single_relation_filter_review": "partition pruning, filter selectivity, and projected columns",
+    "simple_scan_or_projection_review": "scan footprint and projection width",
+    "cte_predicate_pushdown_review": "CTE filter boundary and downstream filter placement",
+    "cte_simplification_review": "CTE pass-through layers and single-use boundaries",
+    "cte_no_downstream_filter_review": "CTE body filters, projection width, and join or aggregate grain",
+    "cte_complex_graph_review": "CTE dependency path and one boundary at a time",
+    "cte_boundary_review": "CTE boundary and projection/dependency stability",
+    "derived_predicate_pushdown_review": "derived-table filter boundary and projection stability",
+    "derived_no_downstream_filter_review": (
+        "derived-table body filters, grouping grain, and projection width"
+    ),
+    "derived_unsupported_boundary_review": "derived-table aggregate, window, join, or order boundary",
+    "derived_boundary_review": "derived-table boundary and output-shape stability",
+    "source_unavailable": "optimizer source availability before query-shape review",
+}
+
+OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS = {
+    "aggregate_or_distinct_review": (
+        "Review aggregate input rows first: compare existing filter selectivity, grouping grain, "
+        "and projected columns before changing aggregate or DISTINCT semantics."
+    ),
+    "set_operation_research": (
+        "Review set-operation branches first: keep branch columns and semantics stable while "
+        "checking branch-local filters, pre-aggregation, or projection pruning."
+    ),
+    "nested_query_boundary": (
+        "Review the nested-query boundary first: reduce rows before the nested result is joined, "
+        "aggregated, or redistributed without changing output shape."
+    ),
+    "unfiltered_join_review": (
+        "Review join cardinality first: verify join keys, stats, and many-to-many amplification "
+        "before changing join order or join type."
+    ),
+    "filtered_join_review": (
+        "Review join filter scope first: check whether existing filters reduce the intended input "
+        "before the expensive join while preserving join semantics."
+    ),
+    "outer_join_review": (
+        "Review outer-join semantics first: keep row-preservation behavior stable while checking "
+        "whether filters reduce the correct side of the join."
+    ),
+    "single_relation_filter_review": (
+        "Review pruning and projection first: check partition filters, stats, and projected columns "
+        "before expecting SQL rewrite benefit."
+    ),
+    "simple_scan_or_projection_review": (
+        "Confirm scan/projection value first: SQL rewrite benefit is limited unless filters or "
+        "projected columns can reduce scanned data."
+    ),
+    "cte_predicate_pushdown_review": (
+        "Review the CTE filter boundary first: move only filters tied to CTE output columns and "
+        "preserve projection and dependency shape."
+    ),
+    "cte_simplification_review": (
+        "Review one CTE simplification at a time: remove or merge only a proven pass-through or "
+        "single-use layer and compare output shape."
+    ),
+    "cte_no_downstream_filter_review": (
+        "Review inside the CTE bodies first because there is no downstream filter to push; focus on "
+        "existing source filters, projection width, aggregation grain, and join cardinality."
+    ),
+    "cte_complex_graph_review": (
+        "Map the CTE dependency path first; change only one boundary at a time and avoid inlining "
+        "or reordering the whole graph without validation."
+    ),
+    "cte_boundary_review": (
+        "Review the CTE boundary first: keep output columns, dependency path, and filter scope "
+        "stable while testing one bounded change."
+    ),
+    "derived_predicate_pushdown_review": (
+        "Review the derived-table filter boundary first: move only filters that map through simple "
+        "derived output columns and keep the outer filter in place."
+    ),
+    "derived_no_downstream_filter_review": (
+        "Review inside the derived table first because there is no outer filter to copy inward; "
+        "focus on source filters, grouping grain, and projection width."
+    ),
+    "derived_unsupported_boundary_review": (
+        "Review one derived-table boundary at a time; avoid moving filters across aggregate, "
+        "window, join, order, or limit boundaries without validation."
+    ),
+    "derived_boundary_review": (
+        "Review the derived-table boundary first: keep output shape stable and verify one bounded "
+        "row-reduction hypothesis at a time."
+    ),
+    "source_unavailable": (
+        "Collect or provide optimizer source SQL for selected-case review; do not infer a "
+        "query-shape change from missing source."
+    ),
 }
 
 OPTIMIZER_CTE_PREDICATE_ORIGIN_LABELS = {

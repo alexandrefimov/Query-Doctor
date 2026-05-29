@@ -518,9 +518,13 @@ def main(argv: list[str] | None = None) -> int:
             if args.no_llm:
                 recommendations_path = case_dir / RECOMMENDATIONS_NAME
                 recommendations = (
-                    no_rewrite_recommendations(risk_decision, facts_text, rewrite_recipe)
+                    no_rewrite_recommendations(
+                        risk_decision, facts_text, rewrite_recipe, source_sql=source_sql.sql
+                    )
                     if rewrite_recipe is not None
-                    else no_supported_rewrite_recommendations(risk_decision, facts_text)
+                    else no_supported_rewrite_recommendations(
+                        risk_decision, facts_text, source_sql=source_sql.sql
+                    )
                 )
                 recommendations_path.write_text(recommendations.rstrip() + "\n", encoding="utf-8")
                 write_recommendations_marker(
@@ -573,6 +577,7 @@ def main(argv: list[str] | None = None) -> int:
                 facts_text,
                 risk_decision,
                 rewrite_recipe,
+                source_sql=source_sql.sql,
             )
             recommendations = normalized_recommendations.text
             generation_metadata = llm_generation_metadata(
@@ -602,7 +607,10 @@ def main(argv: list[str] | None = None) -> int:
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
-                no_supported_rewrite_recommendations(risk_decision, facts_text) + "\n",
+                no_supported_rewrite_recommendations(
+                    risk_decision, facts_text, source_sql=source_sql.sql
+                )
+                + "\n",
                 encoding="utf-8",
             )
             write_recommendations_marker(
@@ -628,7 +636,10 @@ def main(argv: list[str] | None = None) -> int:
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
-                no_rewrite_recommendations(risk_decision, facts_text, rewrite_recipe) + "\n",
+                no_rewrite_recommendations(
+                    risk_decision, facts_text, rewrite_recipe, source_sql=source_sql.sql
+                )
+                + "\n",
                 encoding="utf-8",
             )
             write_recommendations_marker(
@@ -739,7 +750,10 @@ def main(argv: list[str] | None = None) -> int:
             remove_stale_trusted_optimizer_outputs(case_dir, Path(args.out).name)
             recommendations_path = case_dir / RECOMMENDATIONS_NAME
             recommendations_path.write_text(
-                no_rewrite_recommendations(risk_decision, facts_text, rewrite_recipe) + "\n",
+                no_rewrite_recommendations(
+                    risk_decision, facts_text, rewrite_recipe, source_sql=source_sql.sql
+                )
+                + "\n",
                 encoding="utf-8",
             )
             write_recommendations_marker(

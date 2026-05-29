@@ -47,6 +47,9 @@ from query_doctor.web.presenters.recent_scan_models import (
 )
 from query_doctor.web.job_progress import JobProgressView
 from query_doctor.web.presenters.optimizer_facts import (
+    optimizer_no_recipe_change_direction,
+    optimizer_no_recipe_review_area,
+    optimizer_no_recipe_review_track_label,
     optimizer_rewrite_support_fact_summary,
     optimizer_rewrite_support_guardrail_summary,
 )
@@ -619,6 +622,15 @@ class WorkloadActionSignal:
     verification: str
 
 
+@dataclass(frozen=True)
+class WorkloadQueryShapeReviewContext:
+    label: str
+    name: str
+    count: int
+    review_area: str
+    direction: str
+
+
 def workload_action_signal(
     group: RecentScanWorkloadGroupView,
     rows: tuple[RecentScanCaseRowView, ...],
@@ -696,6 +708,29 @@ def workload_action_signal(
         )
     rewrite_count = rewrite_review_row_count(rows)
     if rewrite_count:
+        review_context = workload_query_shape_review_context(rows)
+        if review_context is not None:
+            return WorkloadActionSignal(
+                priority="Medium",
+                title="Query-shape review",
+                evidence=(
+                    f"{rewrite_count} of {total} selected rows have query-shape or "
+                    f"rewrite-review signals; top review track {review_context.name} "
+                    f"({review_context.count})."
+                ),
+                next_step=review_context.direction,
+                review_anchor=(
+                    f"Representative Details: {review_context.label}; {review_context.review_area}."
+                ),
+                verification_metric=(
+                    f"{review_context.name} review count, selected-case validation, "
+                    "then repeated-group p95."
+                ),
+                verification=(
+                    "Test one bounded change from that review track, then rerun the repeated "
+                    "group and compare p95 plus query-shape signal count."
+                ),
+            )
         return WorkloadActionSignal(
             priority="Medium",
             title="Query-shape review",
@@ -718,6 +753,36 @@ def workload_action_signal(
             verification="Confirm the next scan still shows low priority and bounded total impact.",
         )
     return None
+
+
+def workload_query_shape_review_context(
+    rows: tuple[RecentScanCaseRowView, ...],
+) -> WorkloadQueryShapeReviewContext | None:
+    contexts: dict[str, tuple[int, str, str]] = {}
+    for row in rows:
+        label = str(row.optimizer_review_track_label or "").strip()
+        if not label:
+            continue
+        review_area = str(row.optimizer_review_area or "").strip()
+        direction = str(row.optimizer_review_direction or "").strip()
+        if not review_area or not direction:
+            continue
+        count, _, _ = contexts.get(label, (0, review_area, direction))
+        contexts[label] = (count + 1, review_area, direction)
+    if not contexts:
+        return None
+    label, (count, review_area, direction) = sorted(
+        contexts.items(),
+        key=lambda item: (-item[1][0], item[0]),
+    )[0]
+    name = label.removeprefix("Review track: ").strip() or "query-shape"
+    return WorkloadQueryShapeReviewContext(
+        label=label,
+        name=name,
+        count=count,
+        review_area=review_area,
+        direction=direction,
+    )
 
 
 def group_primary_match_count(
@@ -1000,6 +1065,9 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         optimizer_rewriteability_label=optimization["rewriteability_label"],
         optimizer_fact_summary=optimization["rewrite_support_facts"],
         optimizer_guardrail_summary=optimization["rewrite_support_guardrails"],
+        optimizer_review_track_label=optimization["rewrite_review_track_label"],
+        optimizer_review_area=optimization["rewrite_review_area"],
+        optimizer_review_direction=optimization["rewrite_review_direction"],
         optimization_summary=optimization["summary"],
         optimization_review_areas=optimization["review_areas"],
         stats_tier=stats_candidate["tier"],
@@ -1365,6 +1433,8 @@ def clamped_progress(value: Any) -> int:
 def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
     candidate = case.get("query_optimization_candidate")
     candidate = candidate if isinstance(candidate, dict) else {}
+    support = case.get("optimizer_rewrite_support")
+    support = support if isinstance(support, dict) else {}
     tier = safe_display_text(candidate.get("tier") or "not_likely")
     impact = safe_display_text(candidate.get("impact") or "low")
     confidence = safe_display_text(candidate.get("confidence") or "low")
@@ -1381,6 +1451,10 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         if isinstance(review, list)
         else []
     )
+    no_recipe_review_track = support.get("no_recipe_review_track")
+    no_recipe_review_area = optimizer_no_recipe_review_area(no_recipe_review_track)
+    if no_recipe_review_area and no_recipe_review_area not in safe_review:
+        safe_review.append(no_recipe_review_area)
     counter_signals = candidate.get("counter_signals")
     safe_counter_signals = (
         [safe_optimization_display_text(item) for item in counter_signals[:2]]
@@ -1396,6 +1470,11 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         **rewrite_support,
         "summary": "; ".join(safe_reasons),
         "review_areas": "; ".join(safe_review),
+        "rewrite_review_track_label": optimizer_no_recipe_review_track_label(
+            no_recipe_review_track
+        ),
+        "rewrite_review_area": no_recipe_review_area,
+        "rewrite_review_direction": optimizer_no_recipe_change_direction(no_recipe_review_track),
         "counter_signals": "; ".join(safe_counter_signals),
     }
 

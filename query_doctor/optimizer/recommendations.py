@@ -10,6 +10,7 @@ from query_doctor.optimizer.models import (
     OptimizerRewriteRecipe,
     OptimizerRiskDecision,
 )
+from query_doctor.optimizer.shape_guidance import optimizer_shape_guidance_bullets
 from query_doctor.optimizer.sql import collect_cte_names
 from query_doctor.optimizer.sql_shape import (
     dedupe_preserve_order,
@@ -125,6 +126,7 @@ def optimizer_prompt_rewrite_bullets(
     facts_text: str,
     risk_decision: OptimizerRiskDecision,
     rewrite_recipe: OptimizerRewriteRecipe | None,
+    source_sql: str | None = None,
 ) -> list[str]:
     bullets: list[str] = []
     if rewrite_recipe:
@@ -132,7 +134,9 @@ def optimizer_prompt_rewrite_bullets(
         return dedupe_preserve_order(bullets)[: MAX_OPTIMIZER_RECOMMENDATION_ITEMS + 4]
     bullets.extend(
         bullet.lstrip("- ").strip()
-        for bullet in optimizer_specific_recommendation_bullets(facts_text, risk_decision)
+        for bullet in optimizer_specific_recommendation_bullets(
+            facts_text, risk_decision, source_sql=source_sql
+        )
     )
     return dedupe_preserve_order(bullets)[: MAX_OPTIMIZER_RECOMMENDATION_ITEMS + 4]
 
@@ -141,6 +145,7 @@ def build_optimizer_fact_digest(
     facts_text: str,
     risk_decision: OptimizerRiskDecision | None = None,
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
+    source_sql: str | None = None,
 ) -> dict[str, object]:
     digest = build_report_contract_digest(facts_text)
     result = {
@@ -153,6 +158,7 @@ def build_optimizer_fact_digest(
             facts_text,
             risk_decision,
             rewrite_recipe,
+            source_sql=source_sql,
         ),
         "action_card_titles": digest.get("action_card_titles", []),
         "finding_titles": digest.get("finding_titles", []),
@@ -235,6 +241,7 @@ def optimizer_specific_recommendation_bullets(
     facts_text: str,
     risk_decision: OptimizerRiskDecision | None = None,
     rewrite_recipe: OptimizerRewriteRecipe | None = None,
+    source_sql: str | None = None,
 ) -> list[str]:
     cards = optimizer_action_cards(facts_text)
     bullets: list[str] = []
@@ -248,6 +255,8 @@ def optimizer_specific_recommendation_bullets(
             "the safe manual path is to change one CTE at a time, preserve CTE names, keep JOIN keys and filter scope stable, "
             "and verify the output columns after each step."
         )
+    if source_sql and rewrite_recipe is None:
+        bullets.extend(optimizer_shape_guidance_bullets(source_sql, risk_decision))
     if any("EXCHANGE" in card.operator.upper() for card in cards) or facts_have_finding(
         facts_text, "Large intermediate or exchange traffic"
     ):

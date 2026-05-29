@@ -20,6 +20,7 @@ from query_doctor.recent.query_optimization_score import (  # noqa: E402
     optimizer_no_draft_actionability,
     optimizer_rewriteability_rank,
 )
+from query_doctor.optimizer.shape_guidance import PLAIN_REVIEW_TRACKS, plain_review_track  # noqa: E402
 from scripts.audit_optimizer_funnel import (  # noqa: E402
     AuditInputError,
     SupportView,
@@ -92,8 +93,20 @@ def audit_structural_backlog(
             continue
 
         family = shape_family(support)
-        blocker = blocker_key(support, actionability=actionability)
-        shape = shape_descriptor(support, case=case, summary_path=summary_path)
+        plain_source_sql = (
+            source_sql_for_case(case, summary_path=summary_path) if family == "plain" else ""
+        )
+        blocker = blocker_key(
+            support,
+            actionability=actionability,
+            source_sql=plain_source_sql,
+        )
+        shape = shape_descriptor(
+            support,
+            case=case,
+            summary_path=summary_path,
+            source_sql=plain_source_sql,
+        )
         key = (
             f"rank={rank}; actionability={actionability}; "
             f"bucket={support.rewriteability_bucket}; family={family}; "
@@ -140,7 +153,12 @@ def support_actionability(support: SupportView, payload: dict[str, object]) -> s
     return "not_applicable"
 
 
-def blocker_key(support: SupportView, *, actionability: str) -> str:
+def blocker_key(
+    support: SupportView,
+    *,
+    actionability: str,
+    source_sql: str = "",
+) -> str:
     if support.status == "source_unavailable":
         return "source_unavailable"
     if support.rewriteability_bucket == "recipe_detected_no_draft":
@@ -158,7 +176,33 @@ def blocker_key(support: SupportView, *, actionability: str) -> str:
     if hint != "no_specific_recipe_hint":
         return hint
     family = shape_family(support)
+    if family == "plain":
+        plain_track = plain_no_recipe_track(support, source_sql=source_sql)
+        if plain_track:
+            return f"plain:{plain_track}"
     return f"{family}:no_specific_recipe"
+
+
+def plain_no_recipe_track(support: SupportView, *, source_sql: str = "") -> str:
+    if support.no_recipe_review_track in PLAIN_REVIEW_TRACKS:
+        return support.no_recipe_review_track
+    if source_sql.strip():
+        return plain_review_track(source_sql)
+    reason = support.reason.lower()
+    reason_tracks = {
+        "plain aggregate or distinct": "aggregate_or_distinct_review",
+        "plain set-operation": "set_operation_research",
+        "plain nested-query": "nested_query_boundary",
+        "plain unfiltered join": "unfiltered_join_review",
+        "plain filtered join": "filtered_join_review",
+        "plain outer-join": "outer_join_review",
+        "plain single-relation filter": "single_relation_filter_review",
+        "plain scan/projection": "simple_scan_or_projection_review",
+    }
+    for needle, track in reason_tracks.items():
+        if needle in reason:
+            return track
+    return ""
 
 
 def first_priority_boundary(reasons: tuple[str, ...]) -> str:
@@ -188,10 +232,13 @@ def shape_descriptor(
     *,
     case: dict[str, object],
     summary_path: Path,
+    source_sql: str = "",
 ) -> str:
     family = shape_family(support)
     if family == "plain":
-        return sql_feature_cluster(source_sql_for_case(case, summary_path=summary_path))
+        return sql_feature_cluster(
+            source_sql or source_sql_for_case(case, summary_path=summary_path)
+        )
     parts: list[str] = []
     if support.cte_count:
         parts.extend(

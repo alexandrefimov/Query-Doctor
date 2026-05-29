@@ -20,6 +20,7 @@ from query_doctor.optimizer.no_draft_observability import (
     deterministic_draft_unavailable_safe_reason,
 )
 from query_doctor.optimizer.recipes import detect_optimizer_rewrite_recipe
+from query_doctor.optimizer.shape_guidance import no_recipe_shape_reason, plain_review_track
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
 from query_doctor.optimizer.sql_shape import analyze_cte_shape
 from query_doctor.optimizer.sql_shape import analyze_derived_table_shape
@@ -69,6 +70,28 @@ REWRITEABILITY_LABELS = {
     "human_review_only": "Human review only",
     "not_rewriteable": "Not rewriteable",
     "unknown": "Unknown",
+}
+NO_RECIPE_REVIEW_TRACKS = {
+    "aggregate_or_distinct_review",
+    "set_operation_research",
+    "nested_query_boundary",
+    "unfiltered_join_review",
+    "filtered_join_review",
+    "outer_join_review",
+    "single_relation_filter_review",
+    "simple_scan_or_projection_review",
+    "cte_predicate_pushdown_review",
+    "cte_simplification_review",
+    "cte_no_downstream_filter_review",
+    "cte_complex_graph_review",
+    "cte_boundary_review",
+    "derived_predicate_pushdown_review",
+    "derived_no_downstream_filter_review",
+    "derived_unsupported_boundary_review",
+    "derived_boundary_review",
+    "source_unavailable",
+    "unknown",
+    "not_applicable",
 }
 NO_DRAFT_CLASS_LABELS = {
     "validation_or_materiality": "Validation or materiality",
@@ -162,6 +185,7 @@ class OptimizerRewriteSupport:
     draft_unavailable_reasons: tuple[str, ...] = ()
     draft_unavailable_class: str = "not_applicable"
     draft_unavailable_class_label: str = "Not applicable"
+    no_recipe_review_track: str = "not_applicable"
     cte_pushdown_conjunct_decision_counts: dict[str, int] = field(default_factory=dict)
     cte_count: int = 0
     cte_graph_shape: str = "no_cte"
@@ -450,11 +474,20 @@ def classify_optimizer_rewrite_support(
             cte_shape.predicate_pushdown_status,
             derived_shape.derived_table_count,
             derived_shape.predicate_pushdown_status,
+            source_sql.sql,
         ),
         risk_mode=risk.mode,
         risk_reasons=tuple(risk.reasons),
         draft_eligibility="no_recipe",
         draft_eligibility_label="No deterministic rewrite recipe",
+        no_recipe_review_track=no_recipe_review_track(
+            cte_count=cte_shape.cte_count,
+            cte_predicate_pushdown_status=cte_shape.predicate_pushdown_status,
+            cte_simplification_status=cte_shape.simplification_status,
+            derived_table_count=derived_shape.derived_table_count,
+            derived_predicate_pushdown_status=derived_shape.predicate_pushdown_status,
+            source_sql=source_sql.sql,
+        ),
         **rewriteability_kwargs(
             no_recipe_rewriteability_bucket(
                 stats_likely=stats_likely,
@@ -491,6 +524,7 @@ def source_unavailable_support(reason: str) -> OptimizerRewriteSupport:
         risk_reasons=(),
         draft_eligibility="source_unavailable",
         draft_eligibility_label="Source unavailable",
+        no_recipe_review_track="source_unavailable",
         **rewriteability_kwargs("human_review_only"),
     )
 
@@ -566,6 +600,38 @@ def no_recipe_rewriteability_bucket(
     return "not_rewriteable"
 
 
+def no_recipe_review_track(
+    *,
+    cte_count: int,
+    cte_predicate_pushdown_status: str,
+    cte_simplification_status: str,
+    derived_table_count: int = 0,
+    derived_predicate_pushdown_status: str = "no_derived_table",
+    source_sql: str | None = None,
+) -> str:
+    if derived_table_count > 0:
+        if derived_predicate_pushdown_status == "candidate":
+            return "derived_predicate_pushdown_review"
+        if derived_predicate_pushdown_status == "blocked_no_downstream_filter":
+            return "derived_no_downstream_filter_review"
+        if derived_predicate_pushdown_status == "blocked_unsupported_shape":
+            return "derived_unsupported_boundary_review"
+        return "derived_boundary_review"
+    if cte_count > 0:
+        if cte_predicate_pushdown_status == "candidate":
+            return "cte_predicate_pushdown_review"
+        if cte_simplification_status in {"pass_through_candidate", "single_use_candidate"}:
+            return "cte_simplification_review"
+        if cte_predicate_pushdown_status == "blocked_no_downstream_filter":
+            return "cte_no_downstream_filter_review"
+        if cte_predicate_pushdown_status == "blocked_unsupported_graph":
+            return "cte_complex_graph_review"
+        return "cte_boundary_review"
+    if source_sql and source_sql.strip():
+        return plain_review_track(source_sql)
+    return "unknown"
+
+
 def derived_shape_kwargs(derived_shape) -> dict[str, object]:
     return {
         "derived_table_count": derived_shape.derived_table_count,
@@ -581,6 +647,7 @@ def no_recipe_reason(
     cte_predicate_pushdown_status: str,
     derived_table_count: int = 0,
     derived_predicate_pushdown_status: str = "no_derived_table",
+    source_sql: str | None = None,
 ) -> str:
     if derived_table_count > 0:
         labels = {
@@ -593,6 +660,10 @@ def no_recipe_reason(
             return f"No Python-owned SQL rewrite recipe is available; {suffix}"
         return "No Python-owned SQL rewrite recipe is available for this derived-table shape"
     if cte_count <= 0:
+        if source_sql:
+            shape_reason = no_recipe_shape_reason(source_sql)
+            if shape_reason:
+                return f"No Python-owned SQL rewrite recipe is available; {shape_reason}"
         return "No Python-owned SQL rewrite recipe is available for this shape"
     labels = {
         "blocked_no_downstream_filter": "CTE predicate pushdown has no downstream filter to copy earlier",

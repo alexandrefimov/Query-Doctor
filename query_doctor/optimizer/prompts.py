@@ -17,7 +17,9 @@ from query_doctor.report.recommendation_candidates import recommendation_candida
 
 def build_prompt(*, source_sql: str, facts_text: str, risk_decision: OptimizerRiskDecision) -> str:
     rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
-    manual_bullets = optimizer_prompt_rewrite_bullets(facts_text, risk_decision, rewrite_recipe)
+    manual_bullets = optimizer_prompt_rewrite_bullets(
+        facts_text, risk_decision, rewrite_recipe, source_sql=source_sql
+    )
     mode_contract = optimizer_mode_contract(risk_decision, rewrite_recipe)
     if rewrite_recipe:
         manual_bullet_lines = "\n".join(f"- {bullet}" for bullet in manual_bullets)
@@ -75,8 +77,12 @@ def build_recommendations_prompt(
 ) -> str:
     candidates = recommendation_candidate_lines(facts_text, language="en")
     rewrite_recipe = detect_optimizer_rewrite_recipe(source_sql, facts_text)
-    manual_bullets = optimizer_prompt_rewrite_bullets(facts_text, risk_decision, rewrite_recipe)
-    digest = build_optimizer_fact_digest(facts_text, risk_decision, rewrite_recipe)
+    manual_bullets = optimizer_prompt_rewrite_bullets(
+        facts_text, risk_decision, rewrite_recipe, source_sql=source_sql
+    )
+    digest = build_optimizer_fact_digest(
+        facts_text, risk_decision, rewrite_recipe, source_sql=source_sql
+    )
     shape_digest = build_sql_shape_digest(source_sql, risk_decision, rewrite_recipe)
     candidate_lines = "\n".join(f"- {candidate_id}: {text}" for candidate_id, text in candidates)
     manual_bullet_lines = "\n".join(f"- {bullet}" for bullet in manual_bullets)
