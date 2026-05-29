@@ -17,12 +17,13 @@ baseline. Include both positive recipe drafts and negative safety cases such as
 changed predicates, changed joins, changed projection shape, or query shapes
 that must remain recommendations-only. Positive recipe fixtures currently cover
 single CTE, projection-alias single CTE, linear CTE, CTE DAG, derived-table
-predicate pushdown, pass-through CTE elimination, and UNION ALL aggregate
-rollup shapes. Recommendations-only fixtures cover complex CTE, join-heavy,
-nested-query, and aggregate join-heavy shapes where model wording is exercised
-without allowing a trusted SQL draft. Deterministic no-rewrite fixtures cover
-recipe-detected shapes where the Python-owned executor must fail closed before
-any LLM SQL draft path is used.
+predicate pushdown, projection-alias derived-table predicate pushdown,
+pass-through CTE elimination, UNION ALL branch-filter pushdown, and UNION ALL
+aggregate rollup shapes. Recommendations-only fixtures cover complex CTE,
+join-heavy, nested-query, and aggregate join-heavy shapes where model wording
+is exercised without allowing a trusted SQL draft.
+Deterministic no-rewrite fixtures cover recipe-detected shapes where the
+Python-owned executor must fail closed before any LLM SQL draft path is used.
 
 Use it with the optimizer bake-off helper:
 

@@ -20,6 +20,8 @@ from query_doctor.optimizer.deterministic_rewrites import (
     projection_alias_pushdown_predicates,
     projection_alias_source_column_map,
     simple_cte_filter_columns,
+    union_branch_filter_pushdown_branch_shape_supported,
+    union_branch_filter_pushdown_predicates_by_branch,
 )
 from query_doctor.optimizer.recommendation_output import (
     MAX_OPTIMIZER_RECOMMENDATION_ITEMS,
@@ -179,6 +181,15 @@ def validate_draft_sql(
         errors.extend(
             validate_single_derived_table_predicate_pushdown_rewrite(source_sql, draft_sql)
         )
+    if (
+        rewrite_recipe
+        and rewrite_recipe.recipe_id == "single_derived_table_projection_alias_predicate_pushdown"
+    ):
+        errors.extend(
+            validate_single_derived_table_projection_alias_predicate_pushdown_rewrite(
+                source_sql, draft_sql
+            )
+        )
     if rewrite_recipe is None and nested_query_signatures(source_sql) != nested_query_signatures(
         draft_sql
     ):
@@ -228,6 +239,10 @@ def validate_recipe_backed_cte_rewrite(
     # Recipe-backed rewrites are the narrow Python-owned exception to the default CTE-body freeze.
     if rewrite_recipe.recipe_id == "final_union_distinct_rollup":
         return validate_final_union_distinct_rollup_rewrite(source_sql, draft_sql, rewrite_recipe)
+    if rewrite_recipe.recipe_id == "cte_union_branch_filter_pushdown":
+        return validate_cte_union_branch_filter_pushdown_rewrite(
+            source_sql, draft_sql, rewrite_recipe
+        )
     if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
         return validate_single_cte_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id == "single_cte_projection_alias_predicate_pushdown":
@@ -240,6 +255,10 @@ def validate_recipe_backed_cte_rewrite(
         return validate_cte_dag_predicate_pushdown_rewrite(source_sql, draft_sql)
     if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
         return validate_single_derived_table_predicate_pushdown_rewrite(source_sql, draft_sql)
+    if rewrite_recipe.recipe_id == "single_derived_table_projection_alias_predicate_pushdown":
+        return validate_single_derived_table_projection_alias_predicate_pushdown_rewrite(
+            source_sql, draft_sql
+        )
     if rewrite_recipe.recipe_id == "pass_through_cte_elimination":
         return validate_pass_through_cte_elimination_rewrite(source_sql, draft_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id != "post_union_aggregate_pushdown":
@@ -556,6 +575,69 @@ def validate_single_derived_table_predicate_pushdown_rewrite(
     return dedupe_preserve_order(errors)
 
 
+def validate_single_derived_table_projection_alias_predicate_pushdown_rewrite(
+    source_sql: str, draft_sql: str
+) -> list[str]:
+    errors: list[str] = []
+    source_derived = parse_top_level_derived_table(source_sql)
+    draft_derived = parse_top_level_derived_table(draft_sql)
+    if source_derived is None or draft_derived is None:
+        return ["optimized draft violates rewrite recipe: required derived table is missing"]
+    if not derived_projection_alias_pushdown_shape_is_supported(source_sql):
+        errors.append(
+            "optimized draft violates rewrite recipe: source derived-table projection alias shape is unsupported"
+        )
+    if not derived_projection_alias_pushdown_shape_is_supported(draft_sql):
+        errors.append(
+            "optimized draft violates rewrite recipe: draft derived-table projection alias shape is unsupported"
+        )
+    if source_derived.alias != draft_derived.alias:
+        errors.append("optimized draft violates rewrite recipe: derived table alias changed")
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+    errors.extend(
+        validate_cte_segment_shape_preserved_except_where(
+            source_derived.body,
+            draft_derived.body,
+            "derived table",
+        )
+    )
+    source_predicates = sql_predicate_signature_counter(source_derived.body, "WHERE")
+    draft_predicates = sql_predicate_signature_counter(draft_derived.body, "WHERE")
+    if not counter_is_subset(source_predicates, draft_predicates):
+        errors.append("optimized draft violates rewrite recipe: source WHERE predicates changed")
+    extra_predicates = draft_predicates - source_predicates
+    if extra_predicates:
+        alias_map = projection_alias_source_column_map(source_derived.body)
+        allowed_predicates: Counter[str] = Counter()
+        for predicate in projection_alias_pushdown_predicates(
+            source_sql,
+            source_derived.body,
+            alias_map,
+            cte_qualifiers={source_derived.alias},
+        ):
+            allowed_predicates.update(
+                sql_predicate_signature_counter(f"SELECT 1 WHERE {predicate}", "WHERE")
+            )
+        if not counter_is_subset(extra_predicates, allowed_predicates):
+            errors.append(
+                "optimized draft violates rewrite recipe: added WHERE predicate was not copied through a projection alias"
+            )
+    return dedupe_preserve_order(errors)
+
+
+def derived_projection_alias_pushdown_shape_is_supported(sql: str) -> bool:
+    shape = analyze_derived_table_shape(sql)
+    boundary_reasons = set(shape.boundary_reasons)
+    return (
+        shape.derived_table_count == 1
+        and shape.has_downstream_filter
+        and shape.projection_preservation_status == "named_expression_projection"
+        and "projection_not_simple" in boundary_reasons
+        and boundary_reasons <= {"nested_body_validation_required", "projection_not_simple"}
+    )
+
+
 def cte_validation_segments(parsed: CteParseResult) -> list[tuple[str, str]]:
     return [(cte.name, cte.body) for cte in parsed.ctes] + [("final SELECT", parsed.final_sql)]
 
@@ -804,6 +886,102 @@ def validate_unrelated_cte_bodies_preserved(
             draft_body
         ):
             errors.append("optimized draft violates rewrite recipe: unrelated CTE body changed")
+    return dedupe_preserve_order(errors)
+
+
+def validate_cte_union_branch_filter_pushdown_rewrite(
+    source_sql: str,
+    draft_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> list[str]:
+    errors: list[str] = []
+    source_parsed = parse_with_query(source_sql)
+    draft_parsed = parse_with_query(draft_sql)
+    if source_parsed is None or draft_parsed is None:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    source_names = tuple(cte.name for cte in source_parsed.ctes)
+    draft_names = tuple(cte.name for cte in draft_parsed.ctes)
+    if source_names != draft_names:
+        return ["optimized draft violates rewrite recipe: CTE order changed"]
+    if len(source_names) != 1:
+        errors.append(
+            "optimized draft violates rewrite recipe: only one UNION ALL CTE is supported"
+        )
+    if referenced_cte_names(source_parsed.final_sql, source_names) != (rewrite_recipe.source_cte,):
+        errors.append(
+            "optimized draft violates rewrite recipe: final SELECT no longer reads the source CTE"
+        )
+    if referenced_cte_names(draft_parsed.final_sql, draft_names) != (rewrite_recipe.source_cte,):
+        errors.append(
+            "optimized draft violates rewrite recipe: final SELECT no longer reads the source CTE"
+        )
+    if top_level_join_signature(source_parsed.final_sql) or top_level_join_signature(
+        draft_parsed.final_sql
+    ):
+        errors.append("optimized draft violates rewrite recipe: final SELECT JOIN is unsupported")
+    if normalized_statement_signature(source_parsed.final_sql) != normalized_statement_signature(
+        draft_parsed.final_sql
+    ):
+        errors.append("optimized draft violates rewrite recipe: final SELECT changed")
+    if table_names(source_sql) != table_names(draft_sql):
+        errors.append("optimized draft violates rewrite recipe: physical table set changed")
+
+    source_ctes = cte_definition_map(source_sql)
+    draft_ctes = cte_definition_map(draft_sql)
+    source_union_body = source_ctes.get(rewrite_recipe.source_cte)
+    draft_union_body = draft_ctes.get(rewrite_recipe.source_cte)
+    if not source_union_body or not draft_union_body:
+        return ["optimized draft violates rewrite recipe: required CTEs are missing"]
+    errors.extend(
+        validate_unrelated_cte_bodies_preserved(
+            source_ctes, draft_ctes, {rewrite_recipe.source_cte}
+        )
+    )
+    source_branches = split_top_level_union_all_fragments(source_union_body)
+    draft_branches = split_top_level_union_all_fragments(draft_union_body)
+    if len(source_branches) != len(draft_branches) or len(source_branches) < 2:
+        return ["optimized draft violates rewrite recipe: UNION ALL branch count changed"]
+    allowed_by_branch = union_branch_filter_pushdown_predicates_by_branch(
+        source_parsed.final_sql,
+        source_union_body,
+        cte_name=rewrite_recipe.source_cte,
+    )
+    if allowed_by_branch is None:
+        errors.append(
+            "optimized draft violates rewrite recipe: source UNION branch filter shape is unsupported"
+        )
+        allowed_by_branch = tuple(() for _branch in source_branches)
+    for index, (source_branch, draft_branch) in enumerate(
+        zip(source_branches, draft_branches), start=1
+    ):
+        if not union_branch_filter_pushdown_branch_shape_supported(source_branch):
+            errors.append(
+                f"optimized draft violates rewrite recipe: branch {index} source shape is unsupported"
+            )
+        errors.extend(
+            validate_cte_segment_shape_preserved_except_where(
+                source_branch, draft_branch, f"UNION ALL branch {index}"
+            )
+        )
+        source_predicates = sql_predicate_signature_counter(source_branch, "WHERE")
+        draft_predicates = sql_predicate_signature_counter(draft_branch, "WHERE")
+        if not counter_is_subset(source_predicates, draft_predicates):
+            errors.append(
+                "optimized draft violates rewrite recipe: source WHERE predicates changed"
+            )
+            continue
+        extra_predicates = draft_predicates - source_predicates
+        if not extra_predicates:
+            continue
+        allowed_predicates: Counter[str] = Counter()
+        for predicate in allowed_by_branch[index - 1]:
+            allowed_predicates.update(
+                sql_predicate_signature_counter(f"SELECT 1 WHERE {predicate}", "WHERE")
+            )
+        if not counter_is_subset(extra_predicates, allowed_predicates):
+            errors.append(
+                "optimized draft violates rewrite recipe: added branch WHERE predicate was not copied from the final SELECT"
+            )
     return dedupe_preserve_order(errors)
 
 

@@ -39,6 +39,7 @@ NO_DRAFT_REASON_LABELS = {
     "post_union_projection_lineage_boundary": "branch projection lineage boundary",
     "source_cte_unavailable": "source CTE boundary",
     "target_cte_join_boundary": "target CTE join boundary",
+    "union_branch_filter_shape_boundary": "UNION branch filter shape boundary",
     "union_branch_rollup_unsupported": "branch-level rollup could not be constructed",
     "union_outputs_unavailable": "UNION output projection boundary",
 }
@@ -82,6 +83,13 @@ def deterministic_draft_unavailable_safe_reason(
         prefix = "Post-UNION aggregate no-draft reason"
     elif rewrite_recipe and rewrite_recipe.recipe_id == "final_union_distinct_rollup":
         prefix = "Final UNION DISTINCT rollup no-draft reason"
+    elif rewrite_recipe and rewrite_recipe.recipe_id == "cte_union_branch_filter_pushdown":
+        prefix = "UNION branch filter no-draft reason"
+    elif (
+        rewrite_recipe
+        and rewrite_recipe.recipe_id == "single_derived_table_projection_alias_predicate_pushdown"
+    ):
+        prefix = "Derived-table alias filter no-draft reason"
     elif any(key.startswith(POST_UNION_REASON_PREFIXES) for key in reason_keys):
         prefix = "Post-UNION aggregate no-draft reason"
     elif any(key.startswith("final_cte_lineage_") for key in reason_keys):

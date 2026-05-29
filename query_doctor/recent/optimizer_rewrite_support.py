@@ -32,16 +32,21 @@ from query_doctor.recent.query_optimization_score import QueryOptimizationCandid
 RECIPE_LABELS = {
     "post_union_aggregate_pushdown": "SQL draft eligible",
     "final_union_distinct_rollup": "SQL draft eligible",
+    "cte_union_branch_filter_pushdown": "SQL draft eligible",
     "pass_through_cte_elimination": "SQL draft eligible",
     "single_cte_predicate_pushdown": "SQL draft eligible",
     "single_cte_projection_alias_predicate_pushdown": "SQL draft eligible",
     "single_derived_table_predicate_pushdown": "SQL draft eligible",
+    "single_derived_table_projection_alias_predicate_pushdown": "SQL draft eligible",
     "linear_cte_predicate_pushdown": "Rewrite recipe detected",
     "cte_dag_predicate_pushdown": "Rewrite recipe detected",
 }
 RECIPE_REASONS = {
     "post_union_aggregate_pushdown": "Python-owned UNION ALL aggregate recipe is available",
     "final_union_distinct_rollup": "Python-owned UNION ALL DISTINCT rollup recipe is available",
+    "cte_union_branch_filter_pushdown": (
+        "Python-owned UNION ALL branch filter pushdown recipe is available"
+    ),
     "pass_through_cte_elimination": "Pass-through CTE elimination recipe is available",
     "single_cte_predicate_pushdown": "Single CTE predicate pushdown recipe is available",
     "single_cte_projection_alias_predicate_pushdown": (
@@ -49,6 +54,9 @@ RECIPE_REASONS = {
     ),
     "single_derived_table_predicate_pushdown": (
         "Single derived table predicate pushdown recipe is available"
+    ),
+    "single_derived_table_projection_alias_predicate_pushdown": (
+        "Single derived table projection-alias predicate pushdown recipe is available"
     ),
     "linear_cte_predicate_pushdown": "Linear CTE predicate pushdown recipe is available",
     "cte_dag_predicate_pushdown": "CTE DAG predicate pushdown recipe is available",
@@ -104,6 +112,7 @@ SHAPE_BOUNDARY_REASONS = {
     "post_union_downstream_rollup_boundary",
     "post_union_projection_lineage_boundary",
     "source_cte_unavailable",
+    "union_branch_filter_shape_boundary",
     "union_branch_rollup_unsupported",
     "union_outputs_unavailable",
 }

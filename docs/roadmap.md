@@ -1166,8 +1166,11 @@ or a new safety contract before they return.
 
 - Optimizer trusted SQL draft coverage remains narrow for complex CTE-heavy
   cases.
-- More Python-owned optimizer recipes and fixtures are needed before loosening
-  prompts.
+- The #88 optimizer recipe slice added narrow deterministic recipes for one
+  single-CTE `UNION ALL` branch-filter shape and one derived-table
+  projection-alias filter shape. More Python-owned optimizer recipes and
+  fixtures are still needed before loosening prompts or treating broader
+  set-operation or nested-query families as draft-ready.
 - Browser model-name redaction must be updated when new provider/model names
   are introduced.
 - Batch and pipeline subprocess timeouts may need configuration if real cluster
@@ -1176,10 +1179,11 @@ or a new safety contract before they return.
   runtime context correlation.
 - Documentation drift remains a product risk; active docs should be updated as
   part of safety-sensitive feature work.
-- Remote issue triage as of 2026-05-28: safe query-type grouping (#67),
-  optimization score calibration (#68), Python-owned optimizer recipe research
-  (#88), and synthetic demo pack refresh (#89) remain maintainer-owned product
-  backlog; public starter/help-wanted issues (#47, #48, #49, #87) remain valid.
-  Scan-side language selection (#66), Known Query ID progress (#69), and
-  elapsed-time progress display (#70) are closed after the current
-  config/progress wording baseline.
+- Remote issue triage as of 2026-05-28: safe query-type grouping (#67) and
+  optimization score calibration (#68) remain maintainer-owned product backlog;
+  sanitized diagnostic fixture expansion (#49) remains the guarded
+  `help wanted` issue. The simple presenter split (#48), architecture boundary
+  docs (#87), Python-owned optimizer recipe slice (#88), and synthetic demo
+  refresh (#89) are handled or in merge flow. Scan-side language selection
+  (#66), Known Query ID progress (#69), and elapsed-time progress display (#70)
+  are closed after the current config/progress wording baseline.

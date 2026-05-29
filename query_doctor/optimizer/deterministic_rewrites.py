@@ -118,10 +118,12 @@ RISK_THRESHOLD_BYPASS_RECIPE_IDS = frozenset(
     {
         "post_union_aggregate_pushdown",
         "final_union_distinct_rollup",
+        "cte_union_branch_filter_pushdown",
         "pass_through_cte_elimination",
         "single_cte_predicate_pushdown",
         "single_cte_projection_alias_predicate_pushdown",
         "single_derived_table_predicate_pushdown",
+        "single_derived_table_projection_alias_predicate_pushdown",
     }
 )
 
@@ -138,6 +140,8 @@ def deterministic_recipe_draft(
         return post_union_aggregate_pushdown_draft(source_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "final_union_distinct_rollup":
         return final_union_distinct_rollup_draft(source_sql, rewrite_recipe)
+    if rewrite_recipe.recipe_id == "cte_union_branch_filter_pushdown":
+        return cte_union_branch_filter_pushdown_draft(source_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "single_cte_predicate_pushdown":
         return single_cte_predicate_pushdown_draft(source_sql)
     if rewrite_recipe.recipe_id == "single_cte_projection_alias_predicate_pushdown":
@@ -148,6 +152,8 @@ def deterministic_recipe_draft(
         return cte_dag_predicate_pushdown_draft(source_sql, rewrite_recipe)
     if rewrite_recipe.recipe_id == "single_derived_table_predicate_pushdown":
         return single_derived_table_predicate_pushdown_draft(source_sql)
+    if rewrite_recipe.recipe_id == "single_derived_table_projection_alias_predicate_pushdown":
+        return single_derived_table_projection_alias_predicate_pushdown_draft(source_sql)
     return None
 
 
@@ -184,6 +190,19 @@ def deterministic_recipe_draft_diagnostics(
                     (
                         *reasons,
                         *post_union_aggregate_pushdown_draft_diagnostics(
+                            source_sql, rewrite_recipe
+                        ),
+                    )
+                )
+            )
+        )
+    if rewrite_recipe.recipe_id == "cte_union_branch_filter_pushdown":
+        return DeterministicDraftDiagnostics(
+            tuple(
+                dedupe_preserve_order(
+                    (
+                        *reasons,
+                        *cte_union_branch_filter_pushdown_draft_diagnostics(
                             source_sql, rewrite_recipe
                         ),
                     )
@@ -297,6 +316,53 @@ def unsupported_post_union_aggregate_rollup_reasons(
             reasons.append("aggregate_max_rollup_unsupported")
         if re.search(r"\bcount\s*\(\s*distinct\b", lowered, re.IGNORECASE):
             reasons.append("aggregate_count_distinct_rollup_unsupported")
+    return tuple(dedupe_preserve_order(reasons))
+
+
+def cte_union_branch_filter_pushdown_draft_diagnostics(
+    source_sql: str,
+    rewrite_recipe: OptimizerRewriteRecipe,
+) -> tuple[str, ...]:
+    parsed = parse_with_query(source_sql)
+    reasons: list[str] = []
+    if parsed is None:
+        return ("cte_parse_failed",)
+    if len(parsed.ctes) != 1:
+        reasons.append("union_branch_filter_shape_boundary")
+    if any_cte_has_column_list(source_sql):
+        reasons.append("cte_column_list")
+    union_cte, _aggregate_cte = recipe_ctes(parsed.ctes, rewrite_recipe)
+    if union_cte is None:
+        reasons.append("source_cte_unavailable")
+        return tuple(dedupe_preserve_order(reasons))
+    names = tuple(cte.name for cte in parsed.ctes)
+    if referenced_cte_names(parsed.final_sql, names) != (union_cte.name,):
+        reasons.append("final_cte_reference_boundary")
+    if top_level_join_signature(parsed.final_sql):
+        reasons.append("final_select_join_boundary")
+    if any(
+        top_level_keyword_count(parsed.final_sql, keyword)
+        for keyword in ("UNION", "EXCEPT", "INTERSECT")
+    ):
+        reasons.append("final_select_set_operation_boundary")
+    if clause_signature(parsed.final_sql, "WHERE") is None:
+        reasons.append("final_filter_absent")
+    branches = split_top_level_union_all_fragments(union_cte.body)
+    if len(branches) < 2:
+        reasons.append("union_branch_filter_shape_boundary")
+    if not union_projection_names(union_cte.body):
+        reasons.append("union_outputs_unavailable")
+    if any(not union_branch_filter_pushdown_branch_shape_supported(branch) for branch in branches):
+        reasons.append("union_branch_filter_shape_boundary")
+    if (
+        union_branch_filter_pushdown_predicates_by_branch(
+            parsed.final_sql,
+            union_cte.body,
+            cte_name=union_cte.name,
+        )
+        is None
+    ):
+        reasons.append("no_copyable_predicate")
     return tuple(dedupe_preserve_order(reasons))
 
 
@@ -879,6 +945,56 @@ def single_derived_table_predicate_pushdown_draft(source_sql: str) -> str | None
     )
 
 
+def single_derived_table_projection_alias_predicate_pushdown_draft(
+    source_sql: str,
+) -> str | None:
+    from query_doctor.optimizer.sql_shape import analyze_derived_table_shape
+    from query_doctor.optimizer.sql_shape import parse_top_level_derived_table
+
+    parsed = parse_top_level_derived_table(source_sql)
+    if parsed is None:
+        return None
+    shape = analyze_derived_table_shape(source_sql)
+    boundary_reasons = set(shape.boundary_reasons)
+    if not (
+        shape.derived_table_count == 1
+        and shape.has_downstream_filter
+        and shape.projection_preservation_status == "named_expression_projection"
+        and "projection_not_simple" in boundary_reasons
+        and boundary_reasons <= {"nested_body_validation_required", "projection_not_simple"}
+    ):
+        return None
+    from_tail = source_sql[parsed.relation_end : parsed.from_clause_end]
+    if "," in from_tail or top_level_join_signature(source_sql):
+        return None
+    if main_select_has_distinct(parsed.body) or top_level_join_signature(parsed.body):
+        return None
+    if any(
+        top_level_keyword_count(parsed.body, keyword)
+        for keyword in UNSUPPORTED_SINGLE_CTE_BODY_KEYWORDS
+    ):
+        return None
+    if any(top_level_keyword_count(parsed.body, keyword) for keyword in ("GROUP", "ORDER")):
+        return None
+    alias_map = projection_alias_source_column_map(parsed.body)
+    if not alias_map:
+        return None
+    predicates = projection_alias_pushdown_predicates(
+        source_sql,
+        parsed.body,
+        alias_map,
+        cte_qualifiers={parsed.alias},
+    )
+    if not predicates:
+        return None
+    modified_body = add_where_predicates_to_cte_body(parsed.body, predicates)
+    if modified_body is None:
+        return None
+    return (
+        f"{source_sql[: parsed.body_start]}{modified_body.strip()}{source_sql[parsed.body_end :]}"
+    )
+
+
 def post_union_aggregate_pushdown_draft(
     source_sql: str, rewrite_recipe: OptimizerRewriteRecipe
 ) -> str | None:
@@ -949,6 +1065,164 @@ def final_union_distinct_rollup_draft(
         return None
     return rebuild_with_cte_bodies(
         parsed.ctes, parsed.final_sql, {union_cte.name: "\n    UNION ALL\n".join(branch_bodies)}
+    )
+
+
+def cte_union_branch_filter_pushdown_draft(
+    source_sql: str, rewrite_recipe: OptimizerRewriteRecipe
+) -> str | None:
+    parsed = parse_with_query(source_sql)
+    if parsed is None or len(parsed.ctes) != 1 or any_cte_has_column_list(source_sql):
+        return None
+    union_cte, _aggregate_cte = recipe_ctes(parsed.ctes, rewrite_recipe)
+    if union_cte is None:
+        return None
+    names = tuple(cte.name for cte in parsed.ctes)
+    if referenced_cte_names(parsed.final_sql, names) != (union_cte.name,):
+        return None
+    if top_level_join_signature(parsed.final_sql):
+        return None
+    if any(
+        top_level_keyword_count(parsed.final_sql, keyword)
+        for keyword in ("UNION", "EXCEPT", "INTERSECT")
+    ):
+        return None
+    predicates_by_branch = union_branch_filter_pushdown_predicates_by_branch(
+        parsed.final_sql,
+        union_cte.body,
+        cte_name=union_cte.name,
+    )
+    if predicates_by_branch is None:
+        return None
+    branches = split_top_level_union_all_fragments(union_cte.body)
+    if len(branches) != len(predicates_by_branch):
+        return None
+    branch_bodies: list[str] = []
+    material_change = False
+    for branch, predicates in zip(branches, predicates_by_branch):
+        if not predicates:
+            branch_bodies.append(branch.strip())
+            continue
+        modified_branch = add_where_predicates_to_cte_body(branch, predicates)
+        if modified_branch is None:
+            return None
+        material_change = True
+        branch_bodies.append(modified_branch.strip())
+    if not material_change:
+        return None
+    return rebuild_with_cte_bodies(
+        parsed.ctes,
+        parsed.final_sql,
+        {union_cte.name: "\n    UNION ALL\n".join(branch_bodies)},
+    )
+
+
+def union_branch_filter_pushdown_predicates_by_branch(
+    final_sql: str,
+    union_body: str,
+    *,
+    cte_name: str,
+) -> tuple[tuple[str, ...], ...] | None:
+    branches = split_top_level_union_all_fragments(union_body)
+    output_names = union_projection_names(union_body)
+    if len(branches) < 2 or not output_names:
+        return None
+    if any(not union_branch_filter_pushdown_branch_shape_supported(branch) for branch in branches):
+        return None
+    output_name_set = set(output_names)
+    candidate_predicates = copyable_union_output_filter_predicates(
+        final_sql,
+        output_name_set,
+        cte_name=cte_name,
+    )
+    if not candidate_predicates:
+        return None
+    predicates_by_branch: list[tuple[str, ...]] = []
+    for branch in branches:
+        projection_map = simple_union_branch_projection_map(branch, output_names)
+        existing_predicates = sql_predicate_signature_counter(branch, "WHERE")
+        branch_predicates: list[str] = []
+        for predicate in candidate_predicates:
+            predicate_columns = predicate_column_references(predicate, output_name_set)
+            if predicate_columns is None or not predicate_columns <= set(projection_map):
+                continue
+            rewritten = rewrite_expression_identifiers(predicate, projection_map)
+            if rewritten is None:
+                continue
+            signature = sql_predicate_signature_counter(f"SELECT 1 WHERE {rewritten}", "WHERE")
+            if not signature or counter_is_subset(signature, existing_predicates):
+                continue
+            branch_predicates.append(rewritten)
+        predicates_by_branch.append(tuple(branch_predicates))
+    if not any(predicates_by_branch):
+        return None
+    return tuple(predicates_by_branch)
+
+
+def copyable_union_output_filter_predicates(
+    final_sql: str,
+    output_names: set[str],
+    *,
+    cte_name: str,
+) -> tuple[str, ...]:
+    return tuple(
+        decision.dequalified
+        for decision in per_conjunct_pushdown_plan(
+            final_sql,
+            "",
+            output_names,
+            cte_qualifiers=cte_reference_aliases(final_sql, cte_name),
+            grouped_columns=set(),
+        )
+        if decision.copyable and decision.dequalified is not None
+    )
+
+
+def union_branch_filter_pushdown_branch_shape_supported(branch: str) -> bool:
+    if main_select_has_distinct(branch) or top_level_join_signature(branch):
+        return False
+    return not any(
+        top_level_keyword_count(branch, keyword)
+        for keyword in ("GROUP", "HAVING", "ORDER", "LIMIT", "UNION", "EXCEPT", "INTERSECT")
+    )
+
+
+def simple_union_branch_projection_map(
+    branch: str,
+    output_names: tuple[str, ...],
+) -> dict[str, str]:
+    fragments = projection_item_fragments(branch)
+    if len(fragments) < len(output_names):
+        return {}
+    projection_map: dict[str, str] = {}
+    for output_name, fragment in zip(output_names, fragments):
+        simple_expression = simple_column_expression_text(projection_expression(fragment))
+        if simple_expression:
+            projection_map[output_name] = simple_expression
+    return projection_map
+
+
+def simple_column_expression_text(expression: str) -> str | None:
+    try:
+        tokens = tokenize_sql(expression)
+    except OptimizerSqlError:
+        return None
+    if len(tokens) == 1 and safe_projection_identifier_token(tokens[0]):
+        return tokens[0]
+    if (
+        len(tokens) == 3
+        and tokens[1] == "."
+        and safe_projection_identifier_token(tokens[0])
+        and safe_projection_identifier_token(tokens[2])
+    ):
+        return f"{tokens[0]}.{tokens[2]}"
+    return None
+
+
+def safe_projection_identifier_token(token: str) -> bool:
+    return (
+        predicate_token_is_identifier_like(token)
+        and token.upper() not in SAFE_SINGLE_CTE_PREDICATE_KEYWORDS
     )
 
 

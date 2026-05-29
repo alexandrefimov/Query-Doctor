@@ -36,6 +36,7 @@ BLOCKED_SUFFIXES = (
     ".pyc",
     ".pyo",
 )
+BLOCKED_PATH_ALLOWLIST_PREFIXES = ("tests/fixtures/",)
 BLOCKED_FILENAME_ALLOWLIST_PREFIXES = ("tests/fixtures/",)
 
 
@@ -109,7 +110,9 @@ def blocked_path_reason(path: str, *, scope: str = "staged") -> str | None:
         if any(normalized.startswith(prefix) for prefix in BLOCKED_FILENAME_ALLOWLIST_PREFIXES):
             return None
         return f"{scope} generated or local artifact filename: {filename}"
-    if any(part in normalized for part in BLOCKED_PATH_PARTS):
+    if any(part in normalized for part in BLOCKED_PATH_PARTS) and not any(
+        normalized.startswith(prefix) for prefix in BLOCKED_PATH_ALLOWLIST_PREFIXES
+    ):
         return f"{scope} generated, cache, virtualenv, or local case path"
     if normalized.endswith(BLOCKED_SUFFIXES):
         return f"{scope} generated partial/cache file"

@@ -1,6 +1,6 @@
 # Query Optimizer Contract
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-05-28
 
 This document is the active contract for both optimizer surfaces:
 
@@ -192,9 +192,10 @@ paths, or parser artifacts.
   of: candidate for all branches, candidate for a single branch, ambiguous
   branch lineage, unsupported branch projection, no filtered union output, no
   final filter, or no `UNION ALL`.
-- These facts are discovery and ranking inputs only. They do not authorize a
-  SQL draft unless a Python-owned recipe and validator are added for the exact
-  transform.
+- These facts are discovery and ranking inputs. They authorize a SQL draft only
+  for the exact `cte_union_branch_filter_pushdown` shape described below; all
+  other branch-filter categories remain triage context until a Python-owned
+  recipe and validator prove the transform.
 
 ## Recipe-Backed Exceptions
 
@@ -214,6 +215,18 @@ boundary.
   mapped to the CTE output order and additive final aggregate inputs can be
   pre-aggregated in each branch. Validation must preserve the final aggregate
   query and pre-aggregate branches to the CTE output grain plus distinct keys.
+- `cte_union_branch_filter_pushdown`: accepts copied final `WHERE` predicates
+  inside a single `UNION ALL` CTE when the final SELECT reads that CTE directly
+  and the filtered output columns map to simple branch columns. Deterministic
+  execution keeps the final `WHERE` predicate in place, copies only eligible
+  top-level conjuncts into eligible branch `WHERE` clauses, leaves branches
+  with unsupported filtered-column projections unchanged, and rejects CTE
+  column lists, final SELECT joins, branch joins, aggregates, DISTINCT,
+  ordering, limits, or nested set operations. Validation must preserve the CTE
+  name, branch count/order, `UNION ALL` operators, physical table set,
+  projections, literals, all original branch filters, and final SELECT shape;
+  added branch predicates must be copied from the final SELECT through simple
+  branch projection mapping.
 - `pass_through_cte_elimination`: accepts removing one single-use pass-through
   CTE when it only selects simple columns from exactly one upstream CTE and is
   consumed directly by the final SELECT. Detection and deterministic execution
@@ -248,6 +261,16 @@ boundary.
   physical table set, projections, joins, literals, all original filters, and
   outer output shape; added predicates must already exist in the outer SELECT
   or as a derived-alias-qualified equivalent.
+- `single_derived_table_projection_alias_predicate_pushdown`: accepts copied
+  WHERE predicates inside one top-level derived table when an outer predicate
+  targets a derived-table output alias that maps to exactly one unqualified
+  source column in the derived-table projection. Detection and deterministic
+  execution reject functions, casts, arithmetic, aggregates, windows,
+  subqueries, qualified source expressions, joins, set operations, DISTINCT,
+  ORDER BY, and LIMIT. Validation must preserve the derived-table alias,
+  physical table set, projections, joins, literals, all original filters, and
+  outer output shape; added predicates must be the outer predicate with that
+  output alias replaced by the exact projected source column.
 - `linear_cte_predicate_pushdown`: accepts copied WHERE predicates earlier in a
   single-chain CTE graph. Narrow deterministic execution is allowed when each
   CTE in the chain preserves simple projected columns and a final SELECT

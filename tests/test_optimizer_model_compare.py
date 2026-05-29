@@ -147,7 +147,7 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     assert result == 0
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     results = summary["results"]
-    assert len(results) == 20
+    assert len(results) == 22
     assert {item["expected_output_kind"] for item in results} == {
         "sql_draft",
         "validation_rejected",
@@ -158,33 +158,37 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     aggregate = summary["aggregates"]["by_model"]["qwen3-coder:30b-a3b-q8_0"]
     assert aggregate["expected_outcome_match_rate"] == 1.0
     funnel = summary["optimizer_funnel"]
-    assert funnel["total_runs"] == 20
-    assert funnel["dry_run_runs"] == 20
+    assert funnel["total_runs"] == 22
+    assert funnel["dry_run_runs"] == 22
     assert funnel["trusted_outcome_runs"] == 0
     assert summary["model_comparable"]["total_runs"] == 0
-    assert funnel["expected_matched_runs"] == 20
+    assert funnel["expected_matched_runs"] == 22
     assert funnel["offline_validator_fixture_runs"] == 0
-    assert funnel["scoring_scope_counts"] == {"dry_run": 20}
+    assert funnel["scoring_scope_counts"] == {"dry_run": 22}
     assert funnel["expected_match_rate"] == 1.0
     assert funnel["expected_output_kind_counts"] == {
         "no_rewrite": 4,
         "recommendations_only": 5,
-        "sql_draft": 8,
+        "sql_draft": 10,
         "validation_rejected": 3,
     }
     assert funnel["offline_output_kind_counts"] == {
         "no_rewrite": 4,
         "recommendations_only": 5,
-        "sql_draft": 8,
+        "sql_draft": 10,
         "validation_rejected": 3,
     }
     by_case = summary["aggregates"]["by_case"]
-    assert len(by_case) == 20
+    assert len(by_case) == 22
     assert (
         by_case["optimizer_cases:cte_dag_predicate_pushdown"]["expected_output_kind"] == "sql_draft"
     )
     assert (
         by_case["optimizer_cases:linear_cte_predicate_pushdown"]["expected_output_kind"]
+        == "sql_draft"
+    )
+    assert (
+        by_case["optimizer_cases:cte_union_branch_filter_pushdown"]["expected_output_kind"]
         == "sql_draft"
     )
     assert (
@@ -203,6 +207,12 @@ def test_fixture_corpus_dry_run_records_expected_outcomes(tmp_path):
     )
     assert (
         by_case["optimizer_cases:single_derived_table_predicate_pushdown"]["expected_output_kind"]
+        == "sql_draft"
+    )
+    assert (
+        by_case["optimizer_cases:single_derived_table_projection_alias_predicate_pushdown"][
+            "expected_output_kind"
+        ]
         == "sql_draft"
     )
     case_summary = by_case["optimizer_cases:reject_changed_predicate"]

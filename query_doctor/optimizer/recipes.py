@@ -5,11 +5,13 @@ from __future__ import annotations
 from query_doctor.optimizer.deterministic_rewrites import (
     any_cte_has_column_list,
     copyable_final_where_predicates,
+    cte_union_branch_filter_pushdown_draft,
     cte_reference_aliases,
     projection_alias_pushdown_predicates,
     projection_alias_source_column_map,
     simple_cte_filter_columns,
     simple_group_by_columns,
+    single_derived_table_projection_alias_predicate_pushdown_draft,
 )
 from query_doctor.optimizer.models import CteDefinition, OptimizerRewriteRecipe
 from query_doctor.optimizer.recommendations import facts_have_finding, optimizer_action_cards
@@ -65,13 +67,20 @@ def detect_optimizer_rewrite_recipe(
                 return build_post_union_aggregate_pushdown_recipe(union_cte, aggregate_cte)
             if not identifier_referenced(parsed.final_sql, union_cte.name):
                 continue
-            if keyword_count_any_depth(parsed.final_sql, "GROUP") == 0:
-                continue
-            if not aggregate_projection_names(parsed.final_sql):
-                continue
-            if not count_distinct_key_names(parsed.final_sql):
-                continue
-            recipe = build_final_union_distinct_rollup_recipe(union_cte, parsed.final_sql)
+            if (
+                keyword_count_any_depth(parsed.final_sql, "GROUP") > 0
+                and aggregate_projection_names(parsed.final_sql)
+                and count_distinct_key_names(parsed.final_sql)
+            ):
+                recipe = build_final_union_distinct_rollup_recipe(union_cte, parsed.final_sql)
+                if recipe:
+                    return recipe
+            recipe = build_cte_union_branch_filter_pushdown_recipe_if_supported(
+                source_sql,
+                parsed.ctes,
+                parsed.final_sql,
+                union_cte,
+            )
             if recipe:
                 return recipe
         cte_shape = analyze_cte_shape(source_sql)
@@ -95,23 +104,28 @@ def detect_optimizer_rewrite_recipe(
             return build_cte_dag_predicate_pushdown_recipe(parsed.ctes[-1])
         return None
     derived_shape = analyze_derived_table_shape(source_sql)
-    if derived_shape.predicate_pushdown_status != "candidate":
-        return None
     derived = parse_top_level_derived_table(source_sql)
     if derived is None:
         return None
-    available_columns = simple_cte_filter_columns(derived.body)
-    if not available_columns:
+    if derived_shape.predicate_pushdown_status == "candidate":
+        available_columns = simple_cte_filter_columns(derived.body)
+        if not available_columns:
+            return None
+        if not copyable_final_where_predicates(
+            source_sql,
+            derived.body,
+            available_columns,
+            cte_qualifiers={derived.alias},
+            grouped_columns=set(),
+        ):
+            return None
+        return build_single_derived_table_predicate_pushdown_recipe(derived.alias)
+    if not derived_projection_alias_pushdown_shape_is_supported(derived_shape):
         return None
-    if not copyable_final_where_predicates(
-        source_sql,
-        derived.body,
-        available_columns,
-        cte_qualifiers={derived.alias},
-        grouped_columns=set(),
-    ):
+    recipe = build_single_derived_table_projection_alias_predicate_pushdown_recipe(derived.alias)
+    if single_derived_table_projection_alias_predicate_pushdown_draft(source_sql) is None:
         return None
-    return build_single_derived_table_predicate_pushdown_recipe(derived.alias)
+    return recipe
 
 
 def build_pass_through_cte_elimination_recipe_if_supported(
@@ -170,6 +184,54 @@ def build_pass_through_cte_elimination_recipe(
     )
 
 
+def build_cte_union_branch_filter_pushdown_recipe_if_supported(
+    source_sql: str,
+    ctes: tuple[CteDefinition, ...],
+    final_sql: str,
+    union_cte: CteDefinition,
+) -> OptimizerRewriteRecipe | None:
+    if len(ctes) != 1:
+        return None
+    names = tuple(cte.name for cte in ctes)
+    if referenced_cte_names(final_sql, names) != (union_cte.name,):
+        return None
+    if top_level_join_signature(final_sql):
+        return None
+    if any(
+        top_level_keyword_count(final_sql, keyword) for keyword in ("UNION", "EXCEPT", "INTERSECT")
+    ):
+        return None
+    recipe = build_cte_union_branch_filter_pushdown_recipe(union_cte)
+    if cte_union_branch_filter_pushdown_draft(source_sql, recipe) is None:
+        return None
+    return recipe
+
+
+def build_cte_union_branch_filter_pushdown_recipe(
+    union_cte: CteDefinition,
+) -> OptimizerRewriteRecipe:
+    prompt_bullets = (
+        "Use recipe cte_union_branch_filter_pushdown.",
+        f"CTE {union_cte.name} is a UNION ALL CTE consumed directly by the final SELECT.",
+        "You may copy final SELECT WHERE predicates into UNION ALL branches only when the predicate references CTE output columns that map to simple branch columns.",
+        "Keep the original final SELECT WHERE predicate in place; do not remove or weaken filters.",
+        "Do not change branch count, branch order, UNION ALL operators, projections, physical tables, literals, JOIN predicates, or final SELECT shape.",
+        "If a branch projection does not map the filtered output column to one simple column, leave that branch unchanged.",
+    )
+    safe_bullets = (
+        "- Recipe detected: final filters on a UNION ALL CTE output can be copied into eligible branches.",
+        "- A trusted SQL draft is shown only if validation proves branch count/order, physical tables, filters, literals, and final output shape are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="cte_union_branch_filter_pushdown",
+        title="Copy final filters into UNION ALL branches",
+        source_cte=union_cte.name,
+        aggregate_cte=None,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
+
+
 def build_single_derived_table_predicate_pushdown_recipe(alias: str) -> OptimizerRewriteRecipe:
     prompt_bullets = (
         "Use recipe single_derived_table_predicate_pushdown.",
@@ -187,6 +249,43 @@ def build_single_derived_table_predicate_pushdown_recipe(alias: str) -> Optimize
     return OptimizerRewriteRecipe(
         recipe_id="single_derived_table_predicate_pushdown",
         title="Copy outer filters into a single derived table",
+        source_cte=alias,
+        aggregate_cte=None,
+        prompt_bullets=prompt_bullets,
+        safe_bullets=safe_bullets,
+    )
+
+
+def derived_projection_alias_pushdown_shape_is_supported(derived_shape) -> bool:
+    boundary_reasons = set(derived_shape.boundary_reasons)
+    return (
+        derived_shape.derived_table_count == 1
+        and derived_shape.has_downstream_filter
+        and derived_shape.projection_preservation_status == "named_expression_projection"
+        and "projection_not_simple" in boundary_reasons
+        and boundary_reasons <= {"nested_body_validation_required", "projection_not_simple"}
+    )
+
+
+def build_single_derived_table_projection_alias_predicate_pushdown_recipe(
+    alias: str,
+) -> OptimizerRewriteRecipe:
+    prompt_bullets = (
+        "Use recipe single_derived_table_projection_alias_predicate_pushdown.",
+        "The query has one top-level derived table consumed by the outer SELECT; preserve the derived-table alias and outer output column contract.",
+        "You may add a WHERE predicate inside the derived table only by copying an outer SELECT predicate through a simple projection alias such as source_col AS output_col.",
+        "Rewrite only the aliased output column back to its single source column; do not rewrite expressions, functions, constants, casts, or multi-column projections.",
+        "Keep the original outer SELECT WHERE predicate in place; do not remove or weaken filters.",
+        "Do not change JOIN predicates, JOIN types, GROUP BY, HAVING, ORDER BY, LIMIT, projection expressions, physical tables, literals, or outer SELECT shape.",
+        "If no predicate can be safely copied through the projection alias, return the original query with harmless formatting.",
+    )
+    safe_bullets = (
+        "- Recipe detected: a single derived table may benefit from copying an outer filter through a simple projection alias.",
+        "- A trusted SQL draft is shown only if validation proves projections, tables, joins, literals, outer output shape, and all original filters are preserved.",
+    )
+    return OptimizerRewriteRecipe(
+        recipe_id="single_derived_table_projection_alias_predicate_pushdown",
+        title="Copy outer alias filters into a single derived table",
         source_cte=alias,
         aggregate_cte=None,
         prompt_bullets=prompt_bullets,
