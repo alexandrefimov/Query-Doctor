@@ -781,9 +781,10 @@ Keep optimizer trust strict while making useful outcomes more common.
   set-operation, nested-query, join, single-relation filter, CTE, and
   derived-table review directions without exposing SQL or implying automatic
   rewrite support. Browser Details should use these tracks only through
-  allowlisted labels, review areas, and first-change directions, and Workload
-  Action Queue should roll repeated groups up to those same safe review anchors
-  instead of generic SQL-shape wording.
+  allowlisted labels, review areas, first-change directions, and verification
+  steps, and Workload Action Queue should roll repeated groups up to those same
+  safe review anchors and comparison metrics instead of generic SQL-shape
+  wording.
 - Add anonymized real fixtures for long `WITH`, CTE-heavy,
   join/filter/projection-preservation, and model-discipline failure cases.
 - Add Python-owned recipes only where analyzer facts and validation can prove

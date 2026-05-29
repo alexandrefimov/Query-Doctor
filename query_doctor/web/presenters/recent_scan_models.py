@@ -52,6 +52,7 @@ class RecentScanCaseRowView:
     optimizer_review_track_label: str
     optimizer_review_area: str
     optimizer_review_direction: str
+    optimizer_review_workload_metric: str
     optimization_summary: str
     optimization_review_areas: str
     stats_tier: str

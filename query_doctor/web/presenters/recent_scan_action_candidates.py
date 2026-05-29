@@ -26,6 +26,9 @@ def present_recent_scan_action_candidates(
         summary = str(optimization.get("summary") or "query-shape evidence").strip()
         review_areas = str(optimization.get("review_areas") or "query shape").strip()
         rewrite_review_direction = str(optimization.get("rewrite_review_direction") or "").strip()
+        rewrite_review_verification = str(
+            optimization.get("rewrite_review_verification") or ""
+        ).strip()
         counter_text = candidate_counter_signal_note(optimization)
         source_locators = view.source_locators.get(
             "query_optimization",
@@ -62,8 +65,12 @@ def present_recent_scan_action_candidates(
                     rewrite_review_direction,
                 ),
                 verification=(
-                    "Compare EXPLAIN before and after the change, then rerun under comparable load "
-                    "and confirm estimates, exchange, memory, spill, or runtime behavior improved."
+                    rewrite_review_verification
+                    or (
+                        "Compare EXPLAIN before and after the change, then rerun under comparable "
+                        "load and confirm estimates, exchange, memory, spill, or runtime behavior "
+                        "improved."
+                    )
                 ),
             )
         )

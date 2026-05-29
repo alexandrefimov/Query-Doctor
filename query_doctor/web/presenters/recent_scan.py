@@ -50,6 +50,8 @@ from query_doctor.web.presenters.optimizer_facts import (
     optimizer_no_recipe_change_direction,
     optimizer_no_recipe_review_area,
     optimizer_no_recipe_review_track_label,
+    optimizer_no_recipe_verification,
+    optimizer_no_recipe_workload_metric,
     optimizer_rewrite_support_fact_summary,
     optimizer_rewrite_support_guardrail_summary,
 )
@@ -629,6 +631,7 @@ class WorkloadQueryShapeReviewContext:
     count: int
     review_area: str
     direction: str
+    verification_metric: str
 
 
 def workload_action_signal(
@@ -723,8 +726,11 @@ def workload_action_signal(
                     f"Representative Details: {review_context.label}; {review_context.review_area}."
                 ),
                 verification_metric=(
-                    f"{review_context.name} review count, selected-case validation, "
-                    "then repeated-group p95."
+                    review_context.verification_metric
+                    or (
+                        f"{review_context.name} review count, selected-case validation, "
+                        "then repeated-group p95."
+                    )
                 ),
                 verification=(
                     "Test one bounded change from that review track, then rerun the repeated "
@@ -758,20 +764,26 @@ def workload_action_signal(
 def workload_query_shape_review_context(
     rows: tuple[RecentScanCaseRowView, ...],
 ) -> WorkloadQueryShapeReviewContext | None:
-    contexts: dict[str, tuple[int, str, str]] = {}
+    contexts: dict[str, tuple[int, str, str, str]] = {}
     for row in rows:
         label = str(row.optimizer_review_track_label or "").strip()
         if not label:
             continue
         review_area = str(row.optimizer_review_area or "").strip()
         direction = str(row.optimizer_review_direction or "").strip()
+        verification_metric = str(row.optimizer_review_workload_metric or "").strip()
         if not review_area or not direction:
             continue
-        count, _, _ = contexts.get(label, (0, review_area, direction))
-        contexts[label] = (count + 1, review_area, direction)
+        count, _, _, current_metric = contexts.get(label, (0, review_area, direction, ""))
+        contexts[label] = (
+            count + 1,
+            review_area,
+            direction,
+            current_metric or verification_metric,
+        )
     if not contexts:
         return None
-    label, (count, review_area, direction) = sorted(
+    label, (count, review_area, direction, verification_metric) = sorted(
         contexts.items(),
         key=lambda item: (-item[1][0], item[0]),
     )[0]
@@ -782,6 +794,7 @@ def workload_query_shape_review_context(
         count=count,
         review_area=review_area,
         direction=direction,
+        verification_metric=verification_metric,
     )
 
 
@@ -1068,6 +1081,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         optimizer_review_track_label=optimization["rewrite_review_track_label"],
         optimizer_review_area=optimization["rewrite_review_area"],
         optimizer_review_direction=optimization["rewrite_review_direction"],
+        optimizer_review_workload_metric=optimization["rewrite_review_workload_metric"],
         optimization_summary=optimization["summary"],
         optimization_review_areas=optimization["review_areas"],
         stats_tier=stats_candidate["tier"],
@@ -1475,6 +1489,10 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         ),
         "rewrite_review_area": no_recipe_review_area,
         "rewrite_review_direction": optimizer_no_recipe_change_direction(no_recipe_review_track),
+        "rewrite_review_verification": optimizer_no_recipe_verification(no_recipe_review_track),
+        "rewrite_review_workload_metric": optimizer_no_recipe_workload_metric(
+            no_recipe_review_track
+        ),
         "counter_signals": "; ".join(safe_counter_signals),
     }
 

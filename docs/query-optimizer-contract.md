@@ -202,9 +202,12 @@ Recent scan summaries may persist the same boundary as an allowlisted
 only; it is not recipe detection, draft eligibility, or proof of benefit.
 Browser presenters may render only allowlisted human-readable labels for these
 tokens and may derive only allowlisted review areas or first-change directions
-from them. Workload Action Queue may aggregate repeated rows by those
-allowlisted labels only. Unknown tokens must not be shown as sanitized free text
-or affect visible review guidance.
+from them. Details action cards and Workload Action Queue may also derive
+allowlisted verification wording or comparison metrics from specific review
+tracks, but they must not infer those from raw SQL, identifiers, artifacts, or
+free-form model text. Workload Action Queue may aggregate repeated rows by
+those allowlisted labels only. Unknown tokens must not be shown as sanitized
+free text or affect visible review guidance.
 
 ## Shape Facts
 

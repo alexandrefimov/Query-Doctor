@@ -116,6 +116,14 @@ def optimizer_no_recipe_change_direction(value: Any) -> str:
     return optimizer_token_label(value, OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS)
 
 
+def optimizer_no_recipe_verification(value: Any) -> str:
+    return optimizer_token_label(value, OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS)
+
+
+def optimizer_no_recipe_workload_metric(value: Any) -> str:
+    return optimizer_token_label(value, OPTIMIZER_NO_RECIPE_WORKLOAD_METRIC_LABELS)
+
+
 def optimizer_projection_count_label(simple_count: Any, expression_count: Any) -> str:
     simple = numeric_count(simple_count) or 0
     expression = numeric_count(expression_count) or 0
@@ -372,6 +380,236 @@ OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS = {
     "source_unavailable": (
         "Collect or provide optimizer source SQL for selected-case review; do not infer a "
         "query-shape change from missing source."
+    ),
+}
+
+OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
+    "filtered_scalar_aggregate_review": (
+        "Compare EXPLAIN scan pruning, aggregate input rows, and estimate quality before and "
+        "after one bounded change; then rerun under comparable load and confirm group p95 improves."
+    ),
+    "grouped_aggregate_review": (
+        "Compare grouping-grain estimates, aggregate input rows, and projected columns in EXPLAIN; "
+        "then rerun and confirm the grouped aggregate feeds fewer or better-estimated rows."
+    ),
+    "distinct_aggregate_review": (
+        "Compare duplicate semantics, DISTINCT input rows, grouping grain, and estimate quality in "
+        "EXPLAIN; rerun only after the manual change preserves duplicate behavior."
+    ),
+    "scalar_multi_aggregate_review": (
+        "Compare filter selectivity, aggregate input rows, stats freshness, and projected columns "
+        "in EXPLAIN before and after one bounded change; then check repeated-group p95."
+    ),
+    "scalar_aggregate_review": (
+        "Compare aggregate input rows, filter selectivity, partition pruning, and estimate quality "
+        "in EXPLAIN; then rerun under comparable load and confirm p95 improves."
+    ),
+    "aggregate_or_distinct_review": (
+        "Compare aggregate or DISTINCT input rows, grouping grain, projection width, and duplicate "
+        "semantics in EXPLAIN before rerunning one bounded manual change."
+    ),
+    "set_operation_research": (
+        "Compare set-operation branch projection symmetry, branch-local rows, and duplicate "
+        "semantics before and after one branch-local change; then rerun the repeated group."
+    ),
+    "branch_projection_unknown_boundary": (
+        "Confirm UNION ALL branch output-column lineage first; after any branch-local change, "
+        "compare branch output columns, rows feeding the set operation, and repeated-group p95."
+    ),
+    "branch_projection_mismatch_boundary": (
+        "Compare UNION ALL branch projection counts and output shape before changing branch filters "
+        "or projections; rerun only after the branch shape remains stable."
+    ),
+    "nested_branch_boundary": (
+        "Compare rows entering and leaving the nested UNION ALL branch boundary before and after "
+        "one branch-local change; keep branch output shape stable."
+    ),
+    "aggregate_branch_boundary": (
+        "Compare UNION ALL branch aggregate grain, aggregate input rows, and duplicate semantics "
+        "before changing branch filters; rerun only after branch output shape is stable."
+    ),
+    "outer_or_mixed_join_branch_review": (
+        "Confirm UNION ALL branch join row-preservation semantics first; after one branch-local "
+        "change, compare join input rows, branch output rows, and repeated-group p95."
+    ),
+    "filtered_union_all_branch_review": (
+        "Compare UNION ALL branch filter selectivity, projection width, and branch output rows "
+        "before and after one branch-local change; then rerun the repeated group."
+    ),
+    "unfiltered_union_all_branch_review": (
+        "Keep UNION ALL branch output columns stable, then compare branch rows before and after one "
+        "manual row-reduction change and rerun the repeated group."
+    ),
+    "mixed_filter_union_all_branch_review": (
+        "Compare filtered versus unfiltered UNION ALL branch contribution, predicate scope, and "
+        "branch output shape before rerunning one bounded change."
+    ),
+    "mixed_or_distinct_set_boundary": (
+        "Confirm set-operation duplicate semantics first, then compare branch grain and output "
+        "shape before and after one manual change."
+    ),
+    "nested_query_boundary": (
+        "Compare rows entering and leaving the nested-query boundary in EXPLAIN before and after "
+        "one bounded change; keep output shape stable and confirm repeated-group p95 improves."
+    ),
+    "unfiltered_join_review": (
+        "Compare join key cardinality, build/probe input rows, and estimated join output before "
+        "and after one bounded change; then rerun and check repeated-group p95."
+    ),
+    "filtered_join_review": (
+        "Compare filtered-side input rows, filter scope, join input rows, and estimated join output "
+        "before and after one bounded change; then rerun the repeated group."
+    ),
+    "outer_join_review": (
+        "Confirm outer-join row-preservation semantics first, then compare filter side, join input "
+        "rows, and join output estimates before rerunning one bounded change."
+    ),
+    "single_relation_filter_review": (
+        "Compare partition pruning, scan rows, filter selectivity, and projected columns in EXPLAIN; "
+        "then rerun under comparable load and confirm scan cost or group p95 improves."
+    ),
+    "simple_scan_or_projection_review": (
+        "Compare scan rows, partition pruning if present, and projected columns in EXPLAIN before "
+        "and after one bounded filter or projection change; then rerun the repeated group."
+    ),
+    "cte_predicate_pushdown_review": (
+        "Compare downstream filter placement, CTE output-column mapping, and rows around the CTE "
+        "boundary before and after one bounded filter-placement change."
+    ),
+    "cte_simplification_review": (
+        "Compare the CTE dependency path, output columns, and rows around the candidate layer before "
+        "and after one simplification; keep output shape stable and rerun the repeated group."
+    ),
+    "cte_no_downstream_filter_review": (
+        "Compare CTE body filters, projection width, and join or aggregate grain in EXPLAIN before "
+        "and after one body-local change; then confirm repeated-group p95 improves."
+    ),
+    "cte_complex_graph_review": (
+        "Map the CTE dependency path first, then compare rows and output columns at one changed "
+        "boundary; rerun only after that bounded boundary remains shape-stable."
+    ),
+    "cte_boundary_review": (
+        "Compare CTE output columns, dependency path, filter scope, and rows around one boundary "
+        "before and after a bounded manual change."
+    ),
+    "derived_predicate_pushdown_review": (
+        "Compare outer-filter mapping through derived output columns and rows around the derived "
+        "boundary; keep the outer filter in place when testing one manual change."
+    ),
+    "derived_no_downstream_filter_review": (
+        "Compare derived-table body filters, grouping grain, and projection width in EXPLAIN before "
+        "and after one body-local change; then confirm repeated-group p95 improves."
+    ),
+    "derived_unsupported_boundary_review": (
+        "Keep the derived-table aggregate, window, join, order, or limit boundary stable; compare "
+        "rows entering and leaving that boundary before rerunning the repeated group."
+    ),
+    "derived_boundary_review": (
+        "Compare derived-table output shape, row-reduction hypothesis, and rows entering and "
+        "leaving the boundary before rerunning one bounded manual change."
+    ),
+    "source_unavailable": (
+        "Collect optimizer source through an allowed selected-case path, then rerun optimizer review; "
+        "do not infer query-shape benefit from missing source."
+    ),
+}
+
+OPTIMIZER_NO_RECIPE_WORKLOAD_METRIC_LABELS = {
+    "filtered_scalar_aggregate_review": (
+        "Aggregate input rows, partition-pruning evidence, and repeated-group p95."
+    ),
+    "grouped_aggregate_review": (
+        "Grouped-aggregate input rows, grouping-grain estimates, and repeated-group p95."
+    ),
+    "distinct_aggregate_review": (
+        "DISTINCT input rows, duplicate-semantics check, grouping grain, and repeated-group p95."
+    ),
+    "scalar_multi_aggregate_review": (
+        "Aggregate input rows, filter selectivity, projected columns, and repeated-group p95."
+    ),
+    "scalar_aggregate_review": (
+        "Aggregate input rows, filter selectivity, partition-pruning evidence, and repeated-group p95."
+    ),
+    "aggregate_or_distinct_review": (
+        "Aggregate/DISTINCT input rows, grouping grain, projection width, and repeated-group p95."
+    ),
+    "set_operation_research": (
+        "Set-operation branch rows, projection symmetry, duplicate-semantics check, and repeated-group p95."
+    ),
+    "branch_projection_unknown_boundary": (
+        "UNION ALL projection-lineage review count, branch input rows, and repeated-group p95."
+    ),
+    "branch_projection_mismatch_boundary": (
+        "UNION ALL projection-count check, branch output-shape stability, and repeated-group p95."
+    ),
+    "nested_branch_boundary": (
+        "Nested UNION ALL branch input/output rows, branch shape stability, and repeated-group p95."
+    ),
+    "aggregate_branch_boundary": (
+        "UNION ALL branch aggregate input rows, branch grain, duplicate-semantics check, and repeated-group p95."
+    ),
+    "outer_or_mixed_join_branch_review": (
+        "UNION ALL branch join cardinality, branch output rows, and repeated-group p95."
+    ),
+    "filtered_union_all_branch_review": (
+        "UNION ALL branch filter selectivity, projection width, branch output rows, and repeated-group p95."
+    ),
+    "unfiltered_union_all_branch_review": (
+        "UNION ALL branch row-reduction check, output-column stability, and repeated-group p95."
+    ),
+    "mixed_filter_union_all_branch_review": (
+        "Filtered/unfiltered branch contribution, predicate-scope check, and repeated-group p95."
+    ),
+    "mixed_or_distinct_set_boundary": (
+        "Set-operation duplicate-semantics check, branch grain, output shape, and repeated-group p95."
+    ),
+    "nested_query_boundary": (
+        "Nested-boundary input and output rows, shape-stability check, and repeated-group p95."
+    ),
+    "unfiltered_join_review": (
+        "Join input rows, estimated join output, cardinality amplification, and repeated-group p95."
+    ),
+    "filtered_join_review": (
+        "Filtered-side input rows, join filter scope, estimated join output, and repeated-group p95."
+    ),
+    "outer_join_review": (
+        "Outer-join row-preservation check, filter side, join output estimates, and repeated-group p95."
+    ),
+    "single_relation_filter_review": (
+        "Partition-pruning evidence, scan rows, projected columns, and repeated-group p95."
+    ),
+    "simple_scan_or_projection_review": (
+        "Scan rows, projected-column width, partition-pruning evidence, and repeated-group p95."
+    ),
+    "cte_predicate_pushdown_review": (
+        "CTE filter-placement check, boundary rows, output-column mapping, and repeated-group p95."
+    ),
+    "cte_simplification_review": (
+        "CTE dependency-path stability, candidate-layer rows, output columns, and repeated-group p95."
+    ),
+    "cte_no_downstream_filter_review": (
+        "CTE body filter coverage, projection width, join or aggregate grain, and repeated-group p95."
+    ),
+    "cte_complex_graph_review": (
+        "CTE boundary review count, changed-boundary rows, output columns, and repeated-group p95."
+    ),
+    "cte_boundary_review": (
+        "CTE boundary rows, dependency-path stability, output columns, and repeated-group p95."
+    ),
+    "derived_predicate_pushdown_review": (
+        "Derived filter-mapping check, boundary rows, output-shape stability, and repeated-group p95."
+    ),
+    "derived_no_downstream_filter_review": (
+        "Derived-body filters, grouping grain, projection width, and repeated-group p95."
+    ),
+    "derived_unsupported_boundary_review": (
+        "Derived-boundary input/output rows, boundary-stability check, and repeated-group p95."
+    ),
+    "derived_boundary_review": (
+        "Derived-boundary input/output rows, output-shape stability, and repeated-group p95."
+    ),
+    "source_unavailable": (
+        "Source-availability count, selected-case source resolution status, and optimizer rerun status."
     ),
 }
 
