@@ -1,6 +1,6 @@
 # Development Practices
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-06-01
 
 Язык: [English](../../development-practices.md) | Русский
 
@@ -22,6 +22,8 @@ Last reviewed: 2026-05-15
 - focused pytest для touched area;
 - `git diff --check`;
 - staged public-safety check для public-facing docs/config/artifacts;
+- `python3 scripts/audit_public_docs.py` для agent docs, runbooks,
+  validation logs и release docs, где возможны local-only notes;
 - Markdown link checks при изменении docs links;
 - broader local gate перед release или public handoff.
 

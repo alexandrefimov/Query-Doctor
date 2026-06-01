@@ -1,6 +1,6 @@
 # Development Practices
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-06-01
 
 This document records the engineering practices that keep Query Doctor
 maintainable as it grows. It complements the mandatory safety rules in
@@ -141,12 +141,16 @@ pre-commit install
 
 The staged public-safety hook rejects generated case artifacts, local configs,
 caches, virtualenv paths, private-looking hostnames/domains, user home paths,
-embedded URL credentials, private keys, and high-confidence tokens before they
-enter repository history. It is intentionally a guardrail, not a replacement
-for release review or `query-doctor-demo-preflight --public-release`.
+embedded URL credentials, private keys, high-confidence tokens, and common
+local agent handoff markers before they enter repository history. It is
+intentionally a guardrail, not a replacement for release review or
+`query-doctor-demo-preflight --public-release`.
 Use `python3 scripts/check_staged_public_safety.py --changed` before broad
 handoff or merge-ready cleanup to apply the same scan to staged, unstaged, and
 untracked non-ignored files.
+Use `python3 scripts/audit_public_docs.py` when changing public docs that could
+otherwise pick up local continuation notes, workstation smoke target names, or
+private output paths.
 
 ## Dependency Policy
 

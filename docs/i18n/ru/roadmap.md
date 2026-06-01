@@ -1,6 +1,6 @@
 # Roadmap
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-01
 
 Язык: [English](../../roadmap.md) | Русский
 
@@ -12,10 +12,10 @@ Last reviewed: 2026-05-28
 - Только Apache Impala.
 - Cloudera Manager full Recent discovery/profile/metrics/events context.
 - Direct Impala bounded Recent, Running и one Known Query ID.
-- Current-upstream Kubernetes Impala smoke теперь идет через тот же Direct
-  Impala путь: локальный ignored cluster id `k8s-impala-master`, bounded daemon
-  discovery/profile collection и safe aggregate handoff. Это compatibility
-  smoke, а не публичный support claim.
+- Current-upstream Impala smoke идет через тот же Direct Impala путь: ignored
+  local config, bounded daemon discovery/profile collection и safe aggregate
+  summary. Это compatibility smoke, а не публичный support claim; real local
+  selectors и output paths не коммитятся.
 - Optional bounded Prometheus runtime metrics for direct Impala workflows.
 - Read-only allowlisted Impala metadata.
 - Raw-free workload diagnostics для repeated, frequent-short и regressed

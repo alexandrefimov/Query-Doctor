@@ -1,11 +1,11 @@
 # Repository Hardening
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-06-01
 
 Язык: [English](../../repository-hardening.md) | Русский
 
 Английская версия является канонической. Эта companion-страница кратко
-пересказывает repository security and automation backlog.
+пересказывает public repository security and automation baseline.
 
 ## Что уже важно
 
@@ -17,9 +17,9 @@ Last reviewed: 2026-05-15
 
 ## Backlog themes
 
-- Более сильная public release automation.
+- Более сильная public release automation без публикации private scratch notes.
 - Больше synthetic fixture coverage.
 - Лучше browser E2E и dependency review.
 - Более безопасные maintainer workflows для release и history cleanup.
 
-Подробности: [английская версия](../../repository-hardening.md).
+Durable public details: [английская версия](../../repository-hardening.md).

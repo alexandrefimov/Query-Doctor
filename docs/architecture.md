@@ -487,13 +487,14 @@ The current implementation remains Impala-only.
 
 Ignored local corpus and recent real-case checks cover important classes:
 
-- `e94fbeb93feb2ad1_edd9d52c00000000`: host/backend data-skew evidence without
-  proven execution-tail host.
-- `fa469f95f6fb7286_ea9f070d00000000`: bad-query case with supported
+- `host-skew-corpus` alias: host/backend data-skew evidence without proven
+  execution-tail host.
+- `cardinality-memory-corpus` alias: bad-query case with supported
   row/cardinality and memory estimate anomalies.
 - Details-page optimizer smoke covers read-only SELECT/WITH sources,
   SELECT/WITH payload extraction from supported DML/CTAS, conservative rewrite
   mode, and validation rejection for unsafe result-shape changes.
 
-Do not add raw SQL, raw hostnames, raw IP addresses, raw profiles, local config,
-or credentials to committed docs.
+Keep alias-to-case mappings local. Do not add raw SQL, query IDs, raw
+hostnames, raw IP addresses, raw profiles, local config, or credentials to
+committed docs.

@@ -36,6 +36,7 @@ run_ruff() {
 run_step "$PYTHON_BIN" scripts/agent_preflight.py
 run_step "$PYTHON_BIN" scripts/check_staged_public_safety.py
 run_step "$PYTHON_BIN" scripts/check_staged_public_safety.py --changed
+run_step "$PYTHON_BIN" scripts/audit_public_docs.py
 run_step git diff --check
 run_step "$PYTHON_BIN" scripts/check_active_docs.py
 run_step "$PYTHON_BIN" scripts/check_markdown_links.py

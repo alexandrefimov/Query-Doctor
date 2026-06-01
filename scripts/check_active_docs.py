@@ -20,6 +20,7 @@ ACTIVE_DOCS = (
     "docs/README.md",
     "docs/agent-quickstart.md",
     "docs/codex-handoff.md",
+    "docs/public-documentation-boundary.md",
     "docs/code-audit.md",
     "docs/code-map.md",
     "docs/agent-playbook.md",

@@ -12,9 +12,14 @@ from pathlib import Path
 REPO_DIR = Path(__file__).resolve().parents[1]
 if str(REPO_DIR) not in sys.path:
     sys.path.insert(0, str(REPO_DIR))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 from query_doctor.cli.demo_preflight import scan_public_release_text
 from query_doctor.safety.artifact_names import RAW_ARTIFACT_FILENAMES
+
+from audit_public_docs import is_public_markdown_path, scan_text_for_local_doc_notes
 
 
 BLOCKED_PATH_PARTS = (
@@ -149,6 +154,9 @@ def scan_staged_text(text: str, *, path: str) -> list[StagedFinding]:
                 path,
             )
         )
+    if is_public_markdown_path(path):
+        for finding in scan_text_for_local_doc_notes(text, path=path):
+            findings.append(StagedFinding(finding.severity, finding.message, finding.path))
     return findings
 
 

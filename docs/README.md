@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-01
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -29,7 +29,9 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [../README.ru.md](../README.ru.md): Russian companion for the public project
   README.
 - [agent-quickstart.md](agent-quickstart.md): shortest safe path for agents.
-- [codex-handoff.md](codex-handoff.md): current agent working baseline.
+- [codex-handoff.md](codex-handoff.md): public-safe agent baseline.
+- [public-documentation-boundary.md](public-documentation-boundary.md): split
+  committed public docs from ignored local agent notes.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
 
@@ -76,7 +78,8 @@ Status legend:
 | [../AGENTS.md](../AGENTS.md) | active | Hard rules for coding agents. |
 | [README.md](README.md) | active | Documentation status index. |
 | [agent-quickstart.md](agent-quickstart.md) | active | Shortest safe agent read path and validation bias. |
-| [codex-handoff.md](codex-handoff.md) | active | Current agent baseline and safety-sensitive context. |
+| [codex-handoff.md](codex-handoff.md) | active | Public-safe agent baseline and safety-sensitive context. |
+| [public-documentation-boundary.md](public-documentation-boundary.md) | active | Public vs ignored local documentation boundary and audit path. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
 | [brand-voice.md](brand-voice.md) | active | Voice and humor policy for safe outer surfaces. |
 | [architecture.md](architecture.md) | active | Current component boundaries and data flow. |
@@ -100,11 +103,11 @@ Status legend:
 | [research/i18n/ru/diagnostic-gap-log.md](research/i18n/ru/diagnostic-gap-log.md) | reference | Russian companion for the safe diagnostic gap log. |
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |
 | [roadmap.md](roadmap.md) | active | Product direction, priorities, deferred work, and anti-features. |
-| [code-audit.md](code-audit.md) | active | Open engineering and safety risks. |
-| [analyzer-audit.md](analyzer-audit.md) | active | Analyzer-specific risks and implementation order. |
+| [code-audit.md](code-audit.md) | active | Public engineering and safety risk summary. |
+| [analyzer-audit.md](analyzer-audit.md) | active | Public analyzer risk summary and fact-confidence rules. |
 | [agent-playbook.md](agent-playbook.md) | active | Change-type routing for agents. |
 | [test-matrix.md](test-matrix.md) | active | Focused validation matrix. |
-| [validation-log.md](validation-log.md) | active | Notable local validation runs and outcomes. |
+| [validation-log.md](validation-log.md) | active | Public validation policy and path-free release gate snapshots. |
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
@@ -112,18 +115,18 @@ Status legend:
 | [release-notes-0.4.0.md](release-notes-0.4.0.md) | reference | Curated 0.4.0 release notes. |
 | [release-notes-0.3.0.md](release-notes-0.3.0.md) | reference | Curated 0.3.0 release notes. |
 | [configuration.md](configuration.md) | reference | Local JSON config locations, discovery order, field groups, and examples. |
-| [local-smoke.md](local-smoke.md) | reference | Local validation workflows. |
+| [local-smoke.md](local-smoke.md) | reference | Public-safe local validation workflows with private targets kept local. |
 | [credentials.md](credentials.md) | reference | Local credential layout and secret handling. |
 | [security-model.md](security-model.md) | reference | Public security/privacy overview; defer to `safety-contract.md` for rules. |
 | [ui-ux-audit.md](ui-ux-audit.md) | reference | Accepted UI/UX audit takeaways and follow-up backlog. |
 | [public-release-readiness.md](public-release-readiness.md) | reference | Public-release checklist. |
 | [release-checklist.md](release-checklist.md) | reference | Maintainer release checklist. |
-| [repository-hardening.md](repository-hardening.md) | reference | Repository security, CI hardening, release automation, and maintainer time-saving backlog. |
+| [repository-hardening.md](repository-hardening.md) | reference | Public repository security and automation baseline. |
 | [community-starter-issues.md](community-starter-issues.md) | reference | Curated public issue backlog. |
 | [contributor-architecture.md](contributor-architecture.md) | reference | Contributor map; defer to `architecture.md` and `code-map.md` for current boundaries. |
 | [cluster-doctor-contract.md](cluster-doctor-contract.md) | reference | Future Cluster Doctor seam. |
 | [trino-discovery-spike.md](trino-discovery-spike.md) | reference | Fixture-only Trino discovery plan for shaping the future engine fact contract. |
-| [model-bakeoff.md](model-bakeoff.md) | reference | Local model route protocol and historical decisions. |
+| [model-bakeoff.md](model-bakeoff.md) | reference | Model route evaluation protocol without local bake-off results. |
 | [demo-mode.md](demo-mode.md) | reference | Synthetic demo pack generation. |
 | [DEMO.md](DEMO.md) | reference | Demo talk track. |
 | [demo-preflight.md](demo-preflight.md) | reference | Demo/release preflight. |

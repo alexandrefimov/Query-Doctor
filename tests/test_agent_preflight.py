@@ -68,8 +68,10 @@ def test_agent_operating_docs_get_active_doc_validation():
     assert "- Docs" in report
     assert "- Agent operating docs" in report
     assert "- `python3 scripts/check_active_docs.py`" in report
+    assert "- `python3 scripts/audit_public_docs.py`" in report
     assert "- `python3 scripts/check_markdown_links.py`" in report
     assert "tests/test_agent_preflight.py" in report
+    assert "tests/test_audit_public_docs.py" in report
     assert "Full pytest is not usually needed for agent docs/tooling" in report
     assert "Web, optimizer, report, collector, and analyzer suites are not needed" in report
 

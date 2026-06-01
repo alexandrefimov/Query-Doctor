@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-05-28
+Last updated: 2026-06-01
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -18,6 +18,8 @@ routing:
 
 - read `docs/codex-handoff.md` for larger, safety-sensitive, web, report,
   optimizer, collector, config, or architecture work;
+- read `docs/public-documentation-boundary.md` before changing agent handoffs,
+  local runbooks, validation logs, or public release docs;
 - use `docs/code-map.md` when you need to find the owner of a behavior quickly;
 - read `docs/code-audit.md` when touching web details, browser safety, report
   validation, optimizer, collectors, config, or architecture;
@@ -33,7 +35,7 @@ routing:
 | Browser route or Details UI | `docs/safety-contract.md`, `docs/code-audit.md`, touched web presenters/routes | focused web route/presenter tests | code audit if trust boundary changes; changelog for workflow changes | redaction/no-raw-output regressions and job-state tests |
 | Report writer or validator | `docs/safety-contract.md`, `docs/code-audit.md`, touched report modules | report sanitizer/validator tests | safety/optimizer/report contract docs when trust rules change | unsupported-root-cause rejection, hidden partial output, trusted marker behavior |
 | Collector or metadata | `docs/safety-contract.md`, `docs/codex-handoff.md`, touched provider modules | collector/config/allowlist tests | safety or roadmap docs when collection contract changes | bounded read-only behavior, redaction, failure-state rendering |
-| Docs-only baseline | `docs/README.md`, public README when user-facing behavior is affected, target doc, plus `docs/codex-handoff.md` for baseline or safety-sensitive docs | `python3 scripts/check_active_docs.py`; `git diff --check` | public README and screenshots when current capabilities or material UI paths changed; changelog only for significant baseline/workflow/safety changes | no full suite unless browser-rendered docs/help changed |
+| Docs-only baseline | `docs/README.md`, public README when user-facing behavior is affected, target doc, plus `docs/codex-handoff.md` and `docs/public-documentation-boundary.md` for baseline or safety-sensitive docs | `python3 scripts/check_active_docs.py`; `python3 scripts/audit_public_docs.py`; `git diff --check` | public README and screenshots when current capabilities or material UI paths changed; changelog only for significant baseline/workflow/safety changes | no full suite unless browser-rendered docs/help changed |
 
 ## Docs-Only
 
@@ -45,6 +47,8 @@ Read:
 - the doc being edited;
 - `docs/codex-handoff.md` for baseline, agent routing, architecture,
   trust-boundary, or safety-sensitive docs;
+- `docs/public-documentation-boundary.md` for agent handoff, runbook,
+  validation-log, or release-doc boundary changes;
 - `docs/changelog.md` only when behavior, safety, workflow, or baseline changes
   are significant.
 
@@ -60,12 +64,16 @@ Watch for:
   obvious;
 - historical notes presented as active contracts.
 - runbook commands that no longer match current console-script constraints.
+- local continuation notes, workstation target names, and private output paths
+  in committed docs.
 
 Validate:
 
 - `git diff --check`;
 - `python3 scripts/check_active_docs.py` for active-doc routing or baseline
   changes;
+- `python3 scripts/audit_public_docs.py` for public/local documentation
+  boundary changes;
 - `python3 scripts/check_markdown_links.py` for public docs index or link
   changes;
 - `pre-commit run --all-files` before public-sharing or release cleanup;
@@ -221,9 +229,9 @@ Rules:
 - direct Impala does not provide Cloudera Manager events;
 - optional JSON profile, `/profile_docs`, admission, and Prometheus surfaces
   must degrade to unknown/not-configured/unavailable when absent;
-- current-upstream Kubernetes Impala validation uses ignored local config and a
-  local port-forward only; never commit real endpoints, generated cases, query
-  IDs, raw profiles, or local output paths.
+- current-upstream Impala validation uses ignored local config and local
+  connectivity only; never commit real target selectors, endpoints, generated
+  cases, query IDs, raw profiles, or local output paths.
 
 Validate:
 

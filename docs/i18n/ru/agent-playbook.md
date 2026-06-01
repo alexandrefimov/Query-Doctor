@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-01
 
 Язык: [English](../../agent-playbook.md) | Русский
 
@@ -28,8 +28,9 @@ release cleanup.
   medium/high candidates calibration funnel, а не обещанием trusted SQL draft.
   Если safe transform не доказан Python-owned facts/validation, улучшать
   no-draft guidance или fixtures, не ослаблять prompt/validator boundaries.
-- Direct Impala follow-up по `k8s-impala-master` остается smoke workflow через
-  ignored local config и port-forward; перед support wording нужен
+- Direct Impala current-upstream follow-up остается generic smoke workflow через
+  ignored local config и local connectivity; local selectors, endpoints, output
+  paths и private evidence не коммитятся. Перед support wording нужен
   `audit_profile_evidence_gates.py --fail-on-issues`.
 
 ## Главное правило

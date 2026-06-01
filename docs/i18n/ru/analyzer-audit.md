@@ -1,17 +1,18 @@
 # Analyzer Audit
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-06-01
 
 Язык: [English](../../analyzer-audit.md) | Русский
 
 Английская версия является канонической. Эта companion-страница фиксирует
-смысл analyzer audit без замены подробного английского источника.
+смысл public-safe analyzer audit без private case identifiers и local smoke
+history.
 
 ## Назначение
 
-Analyzer audit описывает риски и порядок работ в deterministic analysis layer:
-profile parsing, scoring, action candidates, runtime diagnosis, metadata facts,
-metrics/event facts и ограничения confidence.
+Analyzer audit описывает durable risks в deterministic analysis layer: profile
+parsing, scoring, action candidates, runtime diagnosis, metadata facts,
+metrics/event facts и confidence limits.
 
 ## Принципы
 
