@@ -179,7 +179,8 @@ Finished Queries results для разбора:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-Текущий synthetic demo pack в `0.4.1` содержит одиннадцать sanitized cases.
+Текущий release-candidate synthetic demo pack в `0.4.2` содержит одиннадцать
+sanitized cases.
 Используйте его, чтобы показать:
 
 - Workloads и Action Queue для repeated, regressed и
@@ -409,6 +410,8 @@ Public demo и release paths:
   public-release guard.
 - [docs/public-release-readiness.md](docs/public-release-readiness.md):
   checklist готовности публичного release.
+- [docs/release-notes-0.4.2.md](docs/release-notes-0.4.2.md): release notes
+  для public release baseline в `0.4.2`.
 - [docs/release-notes-0.4.1.md](docs/release-notes-0.4.1.md): release notes
   для synthetic demo update в `0.4.1`.
 - [docs/release-checklist.md](docs/release-checklist.md): final tag,
@@ -453,10 +456,10 @@ configs, credentials, raw profiles, raw metadata или temporary outputs.
 
 ## Public status
 
-Репозиторий публичный. `v0.1.0` - initial public GitHub release baseline,
-`v0.1.1` - первый PyPI release, а `v0.4.1` - текущий package-index release:
-[query-doctor on PyPI](https://pypi.org/project/query-doctor/) показывает
-текущий опубликованный package-index status. Public license is Apache-2.0.
+Репозиторий публичный. Public source releases начинаются с `v0.4.2`. Older
+package-index releases остаются видимыми на
+[query-doctor on PyPI](https://pypi.org/project/query-doctor/) для
+installed-artifact history. Public license is Apache-2.0.
 
 PyPI publishing использует GitHub OIDC Trusted Publishing. Repository-side
 `testpypi` и `pypi` environments требуют maintainer approval и не используют

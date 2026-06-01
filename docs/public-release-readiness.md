@@ -74,15 +74,19 @@ place:
   Known Query ID plus Recent batch smokes with metadata collection enabled,
   TestPyPI dry run, GitHub release publish, production PyPI Trusted Publishing,
   and production PyPI install smoke.
-- The 0.4.0 release notes are finalized in
+- The 0.4.0 package-index release notes are finalized in
   [release-notes-0.4.0.md](release-notes-0.4.0.md) from the post-0.3.0
   changelog plus Query Doctor branding and Trino private-preview groundwork.
-  The `v0.4.0` tag and package-index release are published.
-- The 0.4.1 release notes are finalized in
+  The package-index release is part of older installed-artifact history.
+- The 0.4.1 package-index release notes are finalized in
   [release-notes-0.4.1.md](release-notes-0.4.1.md) for the synthetic demo
-  update. The `v0.4.1` tag and package-index release are published after PR
-  CI, post-merge `main` CI, the manual Release Gate workflow, production PyPI
-  Trusted Publishing, and production PyPI install smoke.
+  update. The package-index release is part of older installed-artifact
+  history after PR CI, post-merge `main` CI, the manual Release Gate workflow,
+  production PyPI Trusted Publishing, and production PyPI install smoke.
+- The 0.4.2 release notes are finalized in
+  [release-notes-0.4.2.md](release-notes-0.4.2.md) for the public release
+  baseline. Public source releases start at `v0.4.2`; older package-index
+  artifacts remain installed-version history.
 - README screenshots have been refreshed from the synthetic demo pack for the
   current material UI baseline, including the Query Doctor product-brand header,
   Big Data query diagnostics subtitle, Workloads, and Action Queue demo path.

@@ -6,7 +6,7 @@ future repository visibility changes.
 ## Repository Hygiene
 
 - Start from a clean working tree: `git status --short`.
-- Create release and public-readiness cleanup work in a clean branch or
+- Create release and public-readiness work in a clean branch or
   worktree. Do not mix it with local experiment, generated-output, or
   environment-specific changes.
 - Confirm no generated case, report, profile, metadata, local config, cache,
@@ -43,6 +43,7 @@ DEMO_OUT="${TMPDIR:-/tmp}/query-doctor-demo-pack"
 python scripts/agent_preflight.py
 python scripts/check_staged_public_safety.py
 python scripts/check_staged_public_safety.py --changed
+python scripts/audit_public_docs.py
 pre-commit run --all-files
 git diff --check
 python scripts/check_active_docs.py
@@ -56,8 +57,7 @@ python -m query_doctor.cli.demo_data --out "$DEMO_OUT" --overwrite
 
 The public-release preflight scans the tracked tree and git history for common
 private-data markers. It does not prove that history is clean. Any blocker
-requires manual review and, when needed, a dedicated history cleanup or a clean
-public branch.
+requires manual review and a clean release branch before publication.
 
 The demo pack smoke verifies that the public synthetic demo can be generated
 without LLM, network, Cloudera Manager, Impala, or private artifacts. The demo
@@ -71,6 +71,7 @@ gate:
 
 - deterministic whitespace checks;
 - public-release preflight;
+- public documentation local-note audits;
 - ruff correctness and format checks;
 - local Markdown link checks for repository docs;
 - focused browser, report, optimizer, and demo safety tests;

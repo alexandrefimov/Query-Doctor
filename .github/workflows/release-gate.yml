@@ -41,6 +41,9 @@ jobs:
       - name: Run public-release preflight
         run: query-doctor-demo-preflight --public-release
 
+      - name: Audit public docs for local-only notes
+        run: python scripts/audit_public_docs.py
+
       - name: Generate synthetic demo pack
         run: |
           query-doctor-demo --out /tmp/query-doctor-release-demo --overwrite

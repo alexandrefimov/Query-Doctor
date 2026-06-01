@@ -34,10 +34,9 @@ Repository должен оставаться воспроизводимым, б�
 
 README screenshots обновлены из synthetic demo pack для текущего material UI
 baseline, включая product-brand header `Query Doctor`, subtitle `Big Data query
-diagnostics`, Workloads и Action Queue demo path. `v0.4.0` tag и package-index
-release опубликованы; `v0.4.1` tag и package-index release опубликованы после
-PR CI, post-merge `main` CI, manual Release Gate, production PyPI Trusted
-Publishing и production PyPI install smoke. Current product baseline включает
+diagnostics`, Workloads и Action Queue demo path. `v0.4.0` и `v0.4.1` остаются
+package-index history для installed artifacts. Public source releases
+начинаются с `v0.4.2`. Current product baseline включает
 config-driven `language`, Recent Scan Hour UTC offset label, Known Query ID
 progress, elapsed scan-progress wording, workload diagnostics для repeated,
 frequent-short и regressed fingerprints, local synthetic action outcomes,

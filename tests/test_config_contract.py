@@ -279,7 +279,7 @@ def test_supported_keys_are_accepted(tmp_path):
         "recent_max_duration_sec": 10.0,
         "recent_order": "duration-desc",
         "recent_output_json": "/tmp/recent.json",
-        "recent_scan_timezone": "Europe/Moscow",
+        "recent_scan_timezone": "Europe/Berlin",
         "recent_include_failed": True,
         "recent_include_running": False,
         "recent_user": "",
@@ -321,7 +321,7 @@ def test_supported_keys_are_accepted(tmp_path):
     assert loaded["impala_kerberos_service_name"] == "hive"
     assert loaded["metadata_kerberos_service_name"] == "hive"
     assert loaded["prometheus_url"] == "https://prometheus.example.com"
-    assert loaded["recent_scan_timezone"] == "Europe/Moscow"
+    assert loaded["recent_scan_timezone"] == "Europe/Berlin"
     assert loaded["language"] == "ru"
 
 
@@ -336,7 +336,7 @@ def test_recent_scan_timezone_config_is_validated(tmp_path):
     assert loaded["recent_scan_timezone"] == "UTC"
 
 
-@pytest.mark.parametrize("value", ["", "UTC+3", "not/a-zone"])
+@pytest.mark.parametrize("value", ["", "UTC+offset", "not/a-zone"])
 def test_recent_scan_timezone_rejects_invalid_values(tmp_path, value):
     path = write_config(
         tmp_path / "config.json",

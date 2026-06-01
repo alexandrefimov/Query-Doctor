@@ -5975,7 +5975,7 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     class FixedDateTime(datetime):
         @classmethod
         def now(cls, tz=None):
-            fixed = datetime(2026, 5, 3, 18, 25, tzinfo=ZoneInfo("Europe/Moscow"))
+            fixed = datetime(2026, 5, 3, 18, 25, tzinfo=ZoneInfo("Etc/GMT-3"))
             return fixed if tz is None else fixed.astimezone(tz)
 
     monkeypatch.setattr(recent_scan_form, "datetime", FixedDateTime)
@@ -6023,11 +6023,11 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     assert '<select class="input" id="scan_date" name="scan_date" data-scan-hour-options="' in body
     hour_options_attr = body.split('data-scan-hour-options="', 1)[1].split('"', 1)[0]
     hour_options_by_date = json.loads(html.unescape(hour_options_attr))
-    assert hour_options_by_date["2026-05-03"][-1] == ["18", "18:00 - 19:00"]
+    assert hour_options_by_date["2026-05-03"][-1] == ["15", "15:00 - 16:00"]
     assert hour_options_by_date["2026-05-02"][-1] == ["23", "23:00 - 00:00"]
-    assert '<label for="scan_hour">Scan Hour (UTC+3)</label>' in body
+    assert '<label for="scan_hour">Scan Hour (UTC)</label>' in body
     assert (
-        '<details class="info-popover"><summary aria-label="Scan Hour (UTC+3) help">i</summary>'
+        '<details class="info-popover"><summary aria-label="Scan Hour (UTC) help">i</summary>'
         in body
     )
     assert (
@@ -6265,7 +6265,7 @@ def test_web_batch_status_filters_are_fixed_server_side():
 def test_web_batch_scan_date_labels_include_year_and_today_hours_exclude_later_hours():
     from query_doctor.web.ui import recent_scan_form as form
 
-    now = datetime(2026, 5, 3, 18, 25, tzinfo=ZoneInfo("Europe/Moscow"))
+    now = datetime(2026, 5, 3, 18, 25, tzinfo=ZoneInfo("Etc/GMT-3"))
 
     assert form.recent_scan_date_options(now=now) == [
         ("2026-05-03", "03.05.2026"),
@@ -6275,14 +6275,14 @@ def test_web_batch_scan_date_labels_include_year_and_today_hours_exclude_later_h
     today_hours = form.scan_hour_options("2026-05-03", now=now)
     previous_day_hours = form.scan_hour_options("2026-05-02", now=now)
 
-    assert today_hours[-1] == ("18", "18:00 - 19:00")
-    assert ("19", "19:00 - 20:00") not in today_hours
+    assert today_hours[-1] == ("15", "15:00 - 16:00")
+    assert ("16", "16:00 - 17:00") not in today_hours
     assert previous_day_hours[-1] == ("23", "23:00 - 00:00")
 
     hour_options_by_date = form.scan_hour_options_by_date(
         form.recent_scan_date_options(now=now), now=now
     )
-    assert hour_options_by_date["2026-05-03"][-1] == ("18", "18:00 - 19:00")
+    assert hour_options_by_date["2026-05-03"][-1] == ("15", "15:00 - 16:00")
     assert hour_options_by_date["2026-05-02"][-1] == ("23", "23:00 - 00:00")
 
 
@@ -6294,7 +6294,7 @@ def test_web_batch_form_uses_configured_recent_scan_timezone(tmp_path, monkeypat
     class FixedDateTime(datetime):
         @classmethod
         def now(cls, tz=None):
-            fixed = datetime(2026, 5, 3, 18, 25, tzinfo=ZoneInfo("Europe/Moscow"))
+            fixed = datetime(2026, 5, 3, 18, 25, tzinfo=ZoneInfo("Etc/GMT-3"))
             return fixed if tz is None else fixed.astimezone(tz)
 
     monkeypatch.setattr(recent_scan_form, "datetime", FixedDateTime)
@@ -7274,9 +7274,9 @@ def test_canonical_local_config_template_contains_web_metadata_placeholders():
     assert values["optimizer_llm_provider"] == "ollama"
     assert values["optimizer_llm_model"] == BUILTIN_OPTIMIZER_MODEL
     assert "optimizer_llm_base_url" not in values
-    assert values["recent_scan_timezone"] == "Europe/Moscow"
+    assert values["recent_scan_timezone"] == "UTC"
     assert loaded["optimizer_model"] == BUILTIN_OPTIMIZER_MODEL
-    assert loaded["recent_scan_timezone"] == "Europe/Moscow"
+    assert loaded["recent_scan_timezone"] == "UTC"
     assert set(values) == {
         "clusters",
         "language",
@@ -7488,7 +7488,7 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path)
                         "prometheus_timeseries_padding_sec": 300,
                         "metadata_coordinator": "impala-stage.example.com:21000",
                         "metadata_kerberos_service_name": "hive",
-                        "recent_scan_timezone": "Europe/Moscow",
+                        "recent_scan_timezone": "Europe/Berlin",
                         "source_visibility": "owner_raw",
                         "source_owner_user": "stage_user",
                     },
@@ -7513,7 +7513,7 @@ def test_web_settings_reads_cluster_selector_options_from_local_config(tmp_path)
     assert settings.clusters[1].prometheus_url == "https://prometheus-stage.example.com"
     assert settings.clusters[1].prometheus_timeseries_padding_sec == 300
     assert settings.clusters[1].metadata_kerberos_service_name == "hive"
-    assert settings.clusters[1].recent_scan_timezone == "Europe/Moscow"
+    assert settings.clusters[1].recent_scan_timezone == "Europe/Berlin"
     assert settings.clusters[1].source_visibility == "owner_raw"
     assert settings.clusters[1].source_owner_user == "stage_user"
     assert '<div class="batch-source-settings">' in body

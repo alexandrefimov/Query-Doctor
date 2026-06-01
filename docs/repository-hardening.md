@@ -60,7 +60,8 @@ These are public backlog themes, not a detailed private operations plan:
 - Do not require broad security linters, mutation testing, fuzzing, or coverage
   thresholds before the noisy baseline is reduced and actively maintained.
 - Do not publish private release scratch notes, CI failure transcripts, local
-  branch cleanup plans, or temporary maintainer checklists in committed docs.
+  branch maintenance plans, or temporary maintainer checklists in committed
+  docs.
 
 ## Update Rule
 

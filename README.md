@@ -177,8 +177,8 @@ Finished Queries results for review:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-The current `0.4.1` synthetic demo pack contains eleven sanitized cases. Use it
-to inspect:
+The current `0.4.2` release-candidate synthetic demo pack contains eleven
+sanitized cases. Use it to inspect:
 
 - Workloads and Action Queue entries for repeated, regressed, and
   admission/runtime-sensitive query groups;
@@ -410,6 +410,8 @@ Public demo and release paths:
   public-release guard.
 - [docs/public-release-readiness.md](docs/public-release-readiness.md): public
   release readiness checklist.
+- [docs/release-notes-0.4.2.md](docs/release-notes-0.4.2.md): curated 0.4.2
+  release notes for the public release baseline.
 - [docs/release-notes-0.4.1.md](docs/release-notes-0.4.1.md): curated 0.4.1
   release notes for the synthetic demo update.
 - [docs/release-checklist.md](docs/release-checklist.md): final tag,
@@ -453,11 +455,10 @@ configs, credentials, raw profiles, raw metadata, or temporary outputs.
 
 ## Public Status
 
-This repository is public. `v0.1.0` is the initial public GitHub release
-baseline, `v0.1.1` is the first PyPI release, and `v0.4.1` is the current
-package-index release: [query-doctor on PyPI](https://pypi.org/project/query-doctor/)
-shows the current published package-index status. The public license is
-Apache-2.0.
+This repository is public. Public source releases start at `v0.4.2`. Older
+package-index releases remain visible on
+[query-doctor on PyPI](https://pypi.org/project/query-doctor/) where needed for
+installed-artifact history. The public license is Apache-2.0.
 
 PyPI publishing uses GitHub OIDC Trusted Publishing. The repository-side
 `testpypi` and `pypi` environments require maintainer approval and do not use

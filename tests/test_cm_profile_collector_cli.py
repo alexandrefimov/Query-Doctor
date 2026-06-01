@@ -1834,8 +1834,8 @@ def test_committed_local_config_template_is_safe():
     assert template["language"] == "en"
     assert loaded["language"] == "en"
     assert template["out"] == "/tmp/query-doctor-local-output"
-    assert template["recent_scan_timezone"] == "Europe/Moscow"
-    assert loaded["recent_scan_timezone"] == "Europe/Moscow"
+    assert template["recent_scan_timezone"] == "UTC"
+    assert loaded["recent_scan_timezone"] == "UTC"
     assert template["recent_window_minutes"] == 60
     assert set(template) == {
         "clusters",

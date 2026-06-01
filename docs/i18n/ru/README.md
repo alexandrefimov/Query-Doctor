@@ -56,6 +56,8 @@ roadmap, development practices, codex handoff и code audit. Русские ст
 - [Ограничения счетчиков профиля Impala](impala-profile-counter-caveats.md):
   будущий контракт стабильности счетчиков, диалекты профилей и правила
   доказательств.
+- [Заметки к релизу 0.4.2](release-notes-0.4.2.md): краткое описание public
+  release baseline.
 - [Заметки к релизу 0.4.1](release-notes-0.4.1.md): краткое описание
   synthetic demo update.
 - [Заметки к релизу 0.4.0](release-notes-0.4.0.md): краткое описание
@@ -78,6 +80,8 @@ roadmap, development practices, codex handoff и code audit. Русские ст
   и public-sharing cleanup.
 - [Public Release Readiness](public-release-readiness.md): snapshot готовности
   к релизу и P0 gates.
+- [Заметки к релизу 0.4.2](release-notes-0.4.2.md): public release baseline
+  release notes.
 - [Заметки к релизу 0.4.1](release-notes-0.4.1.md): synthetic demo update
   release notes.
 - [Release Checklist](release-checklist.md): final release-candidate, tag,

@@ -274,7 +274,7 @@ supported shared-service deployment model.
 | `recent_include_running` | boolean | Include running queries in candidate selection. |
 | `recent_user` | string | Optional recent-query user filter. |
 | `recent_pool` | string | Optional recent-query pool filter. |
-| `recent_scan_timezone` | string | IANA timezone used for the web Finished queries Scan date/hour selector and UTC CM bounds, for example `Europe/Moscow`. Default is `Europe/Moscow`; the form label shows the current UTC offset, such as `UTC+3`. This field can also be set per cluster. |
+| `recent_scan_timezone` | string | IANA timezone used for the web Finished queries Scan date/hour selector and UTC CM bounds, for example `UTC`. Default is `UTC`; the form label shows the current UTC offset. This field can also be set per cluster. |
 | `recent_parallelism` | positive integer | Overall Recent scan worker limit. |
 | `recent_cm_jobs` | positive integer | CM profile/context worker limit. |
 | `recent_cm_summary_limit` | positive integer | CM summary scan cap. |

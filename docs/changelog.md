@@ -9,22 +9,29 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For curated 0.4.1 release notes suitable for GitHub Release and package-index
-handoff, see [release-notes-0.4.1.md](release-notes-0.4.1.md). Historical
-0.4.0 release notes remain in [release-notes-0.4.0.md](release-notes-0.4.0.md).
+For curated 0.4.2 release notes suitable for GitHub Release and package-index
+handoff, see [release-notes-0.4.2.md](release-notes-0.4.2.md). Historical
+0.4.1 release notes remain in [release-notes-0.4.1.md](release-notes-0.4.1.md).
 
 ## Unreleased
 
 ### Safety
 
-- Public-tree safety checks now include a repository-wide guard against known
-  private/domain-specific fixture tokens, real-looking local query IDs, and
-  internal provider aliases. Existing public fixtures and tests were sanitized
-  to use synthetic schemas, columns, Query IDs, Kerberos cache names, and host
-  markers.
+- Public-tree safety checks now include a repository-wide guard against
+  non-synthetic examples, real-looking local query IDs, and unsafe placeholder
+  patterns. Public fixtures and tests use synthetic schemas, columns, Query
+  IDs, Kerberos cache names, and host markers.
+- Public release preparation now verifies an explicit source candidate and
+  release tree before tagging the public source release line.
+- CI and release-gate public-safety coverage now run public documentation
+  audits and the full public-release preflight with git-history scanning
+  instead of a current-tree shortcut.
 
 ### Product
 
+- The default `recent_scan_timezone` is now `UTC` in the built-in web defaults
+  and canonical example config. Existing configs that set a different IANA
+  timezone keep their configured scan-hour behavior.
 - Recent scan optimizer Details and Workload Action Queue now use allowlisted
   track-specific verification wording and workload comparison metrics for every
   visible no-recipe review track, including aggregate, set-operation, join,
@@ -965,7 +972,7 @@ handoff, see [release-notes-0.4.1.md](release-notes-0.4.1.md). Historical
   metadata refresh stages are still running.
 - Recent scan date/hour selection now reads the scan timezone from local config
   through `recent_scan_timezone` and shows the current UTC offset in the Scan
-  Hour label, such as `UTC+3`, instead of the IANA timezone name. The canonical
+  Hour label, such as `UTC+2`, instead of the IANA timezone name. The canonical
   example config now includes the field.
 - The standalone Query Optimizer page now collapses repeated scope strips into
   one secondary scope/safety disclosure and moves accepted-input rules into the

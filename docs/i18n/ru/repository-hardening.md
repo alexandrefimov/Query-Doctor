@@ -20,6 +20,6 @@ Last reviewed: 2026-06-01
 - Более сильная public release automation без публикации private scratch notes.
 - Больше synthetic fixture coverage.
 - Лучше browser E2E и dependency review.
-- Более безопасные maintainer workflows для release и history cleanup.
+- Более безопасные maintainer workflows для release operations.
 
 Durable public details: [английская версия](../../repository-hardening.md).

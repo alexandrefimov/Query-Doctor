@@ -54,6 +54,8 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
+- [release-notes-0.4.2.md](release-notes-0.4.2.md): curated 0.4.2 release
+  notes for the public release baseline.
 - [release-notes-0.4.1.md](release-notes-0.4.1.md): curated 0.4.1 release
   notes for the synthetic demo update.
 - [release-notes-0.4.0.md](release-notes-0.4.0.md): curated 0.4.0 release
@@ -111,6 +113,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [release-notes-0.4.2.md](release-notes-0.4.2.md) | reference | Curated 0.4.2 release notes. |
 | [release-notes-0.4.1.md](release-notes-0.4.1.md) | reference | Curated 0.4.1 release notes. |
 | [release-notes-0.4.0.md](release-notes-0.4.0.md) | reference | Curated 0.4.0 release notes. |
 | [release-notes-0.3.0.md](release-notes-0.3.0.md) | reference | Curated 0.3.0 release notes. |

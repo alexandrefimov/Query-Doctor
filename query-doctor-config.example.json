@@ -30,7 +30,7 @@
   ],
   "language": "en",
   "out": "/tmp/query-doctor-local-output",
-  "recent_scan_timezone": "Europe/Moscow",
+  "recent_scan_timezone": "UTC",
   "recent_window_minutes": 60,
   "report_llm_provider": "ollama",
   "report_llm_model": "qwen3-coder:30b-a3b-q8_0",
