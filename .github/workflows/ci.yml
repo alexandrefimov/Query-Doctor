@@ -1,0 +1,138 @@
+name: Safety CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-safety:
+    name: Deterministic safety checks / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Check committed whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "${BASE_SHA}" ] && ! echo "${BASE_SHA}" | grep -Eq '^0+$' && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git diff --check "${BASE_SHA}" HEAD
+          else
+            git diff --check
+          fi
+
+      - name: Run demo preflight before install
+        run: python -m query_doctor.cli.demo_preflight
+
+      - name: Install local package and dev tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run ruff correctness checks
+        run: python -m ruff check query_doctor tests
+
+      - name: Run public-release preflight
+        run: query-doctor-demo-preflight --public-release
+
+      - name: Run focused safety tests
+        run: |
+          python -m pytest -q \
+            tests/test_web_display_safety.py \
+            tests/test_web_trusted_artifacts.py \
+            tests/test_report_sanitizer.py \
+            tests/test_demo_data.py \
+            tests/test_demo_preflight.py \
+            tests/test_recent_high_volume_scan.py \
+            tests/test_optimizer_sql.py \
+            tests/test_query_optimizer.py \
+            tests/test_web_optimizer.py
+
+      - name: Smoke CLI entry points
+        run: |
+          query-doctor-demo-preflight
+          query-doctor-demo --out /tmp/query-doctor-demo-pack --overwrite
+          test -f /tmp/query-doctor-demo-pack/batch_summary.json
+          query-doctor-web --help
+          query-doctor-report --help
+          query-doctor-optimize-query --help
+
+      - name: Smoke synthetic demo web UI
+        run: |
+          query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary /tmp/query-doctor-demo-pack/batch_summary.json &
+          web_pid="$!"
+          trap 'kill "$web_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import http.client
+          import time
+
+          deadline = time.time() + 10
+          while time.time() < deadline:
+              try:
+                  conn = http.client.HTTPConnection("127.0.0.1", 8766, timeout=1)
+                  conn.request("GET", "/")
+                  response = conn.getresponse()
+                  response.read()
+                  conn.close()
+                  if response.status == 200:
+                      raise SystemExit(0)
+              except OSError:
+                  time.sleep(0.2)
+          raise SystemExit("web server did not become ready")
+          PY
+          python scripts/web_static_smoke.py \
+            --url http://127.0.0.1:8766 \
+            --expect-text "Finished Queries" \
+            --expect-text "demo-optimizer-0001" \
+            --expect-text "demo-validator-0003" \
+            --expect-path-text "/?query_group=stats::demo-stats-0002"
+
+  full-test-suite:
+    name: Full test suite / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install local package and dev tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run full pytest suite
+        run: python -m pytest -q

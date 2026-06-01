@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CREDS_DIR="${QD_CREDS_DIR:-$HOME/.qdcreds}"
+CM_ENV="${QD_CM_ENV:-$CREDS_DIR/cm-ro.env}"
+LLM_ENV="${QD_LLM_ENV:-$CREDS_DIR/llm-api.env}"
+KEYTAB="${QD_KEYTAB:-$CREDS_DIR/query-doctor.keytab}"
+QDCREDS_CONFIG="$CREDS_DIR/query-doctor-config.json"
+REPO_CONFIG="$ROOT_DIR/query-doctor-config.json"
+LEGACY_CONFIG="$ROOT_DIR/.query-doctor-cm.local.json"
+KRB5_CACHE="${KRB5CCNAME:-FILE:/tmp/krb5cc_query_doctor}"
+IMPALA_SHELL="${QD_IMPALA_SHELL:-$ROOT_DIR/.venv-impala-shell/bin/impala-shell}"
+
+if [[ ! -r "$CM_ENV" ]]; then
+  echo "Missing CM credentials env file: $CM_ENV" >&2
+  exit 2
+fi
+
+if [[ -n "${QD_CONFIG:-}" ]]; then
+  CONFIG="$QD_CONFIG"
+elif [[ -r "$QDCREDS_CONFIG" ]]; then
+  CONFIG="$QDCREDS_CONFIG"
+elif [[ -r "$REPO_CONFIG" ]]; then
+  CONFIG="$REPO_CONFIG"
+else
+  CONFIG="$LEGACY_CONFIG"
+fi
+
+cm_env_exports="$(
+  python3 - "$CM_ENV" <<'PY'
+import os
+import shlex
+import sys
+from pathlib import Path
+
+allowed = {"CM_USERNAME", "CM_USER", "CM_PASSWORD", "CM_TOKEN"}
+path = Path(sys.argv[1])
+try:
+    lines = path.read_text(encoding="utf-8").splitlines()
+except OSError:
+    print("Could not read CM credentials env file.", file=sys.stderr)
+    raise SystemExit(2)
+
+for line_number, line in enumerate(lines, 1):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    try:
+        tokens = shlex.split(stripped, comments=True, posix=True)
+    except ValueError:
+        print(f"Invalid CM credentials env syntax at line {line_number}.", file=sys.stderr)
+        raise SystemExit(2)
+    if tokens and tokens[0] == "export":
+        tokens = tokens[1:]
+    if len(tokens) != 1 or "=" not in tokens[0]:
+        continue
+    key, value = tokens[0].split("=", 1)
+    if key not in allowed or os.environ.get(key):
+        continue
+    print(f"export {key}={shlex.quote(value)}")
+PY
+)"
+eval "$cm_env_exports"
+
+if [[ -r "$LLM_ENV" ]]; then
+  llm_env_exports="$(
+    python3 - "$LLM_ENV" <<'PY'
+import os
+import shlex
+import sys
+from pathlib import Path
+
+allowed = {
+    "QD_LLM_PROVIDER",
+    "QD_LLM_API_BASE_URL",
+    "QD_LLM_BASE_URL",
+    "QD_LLM_CHAT_PATH",
+    "QD_LLM_API_KEY",
+    "QD_REPORT_LLM_PROVIDER",
+    "QD_REPORT_LLM_MODEL",
+    "QD_REPORT_LLM_API_BASE_URL",
+    "QD_REPORT_LLM_BASE_URL",
+    "QD_REPORT_LLM_CHAT_PATH",
+    "QD_REPORT_LLM_API_KEY",
+    "QD_REPORT_LLM_API_KEY_ENV",
+    "QD_OPTIMIZER_LLM_PROVIDER",
+    "QD_OPTIMIZER_LLM_MODEL",
+    "QD_OPTIMIZER_LLM_API_BASE_URL",
+    "QD_OPTIMIZER_LLM_BASE_URL",
+    "QD_OPTIMIZER_LLM_CHAT_PATH",
+    "QD_OPTIMIZER_LLM_API_KEY",
+    "QD_OPTIMIZER_LLM_API_KEY_ENV",
+}
+path = Path(sys.argv[1])
+try:
+    lines = path.read_text(encoding="utf-8").splitlines()
+except OSError:
+    print("Could not read LLM env file.", file=sys.stderr)
+    raise SystemExit(2)
+
+for line_number, line in enumerate(lines, 1):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    try:
+        tokens = shlex.split(stripped, comments=True, posix=True)
+    except ValueError:
+        print(f"Invalid LLM env syntax at line {line_number}.", file=sys.stderr)
+        raise SystemExit(2)
+    if tokens and tokens[0] == "export":
+        tokens = tokens[1:]
+    if len(tokens) != 1 or "=" not in tokens[0]:
+        continue
+    key, value = tokens[0].split("=", 1)
+    if key not in allowed or os.environ.get(key):
+        continue
+    print(f"export {key}={shlex.quote(value)}")
+PY
+  )"
+  eval "$llm_env_exports"
+fi
+
+export CM_USERNAME="${CM_USERNAME:-${CM_USER:-}}"
+if [[ -z "${CM_USERNAME:-}" ]]; then
+  echo "CM_USERNAME is not set in $CM_ENV" >&2
+  exit 2
+fi
+if [[ -z "${CM_PASSWORD:-}" && -z "${CM_TOKEN:-}" ]]; then
+  echo "CM_PASSWORD or CM_TOKEN is not set in $CM_ENV" >&2
+  exit 2
+fi
+
+export KRB5CCNAME="$KRB5_CACHE"
+export QD_KEYTAB="$KEYTAB"
+if [[ "${QD_BOOTSTRAP_IMPALA_SHELL:-1}" != "0" && ! -x "$IMPALA_SHELL" ]]; then
+  "$ROOT_DIR/scripts/bootstrap-impala-shell"
+fi
+if [[ "${QD_SKIP_KINIT:-0}" != "1" ]]; then
+  if [[ ! -r "$KEYTAB" ]]; then
+    echo "Missing Kerberos keytab: $KEYTAB" >&2
+    exit 2
+  fi
+  explicit_principal="${QD_KRB5_PRINCIPAL:-${KRB5_PRINCIPAL:-}}"
+  principal="$explicit_principal"
+  if [[ -z "$principal" ]]; then
+    principal="$(klist -k "$KEYTAB" 2>/dev/null | awk 'NF >= 2 && $1 ~ /^[0-9]+$/ {print $2; exit}')"
+    if [[ -z "$principal" && "$(command -v ktutil || true)" != "" ]]; then
+      principal="$(ktutil -k "$KEYTAB" list | awk 'NF >= 3 && $1 ~ /^[0-9]+$/ {print $3; exit}')"
+    fi
+  fi
+  if [[ -z "$principal" ]]; then
+    echo "Could not infer Kerberos principal from $KEYTAB; set QD_KRB5_PRINCIPAL in the shell environment." >&2
+    exit 2
+  fi
+  if [[ -n "$explicit_principal" ]]; then
+    export KRB5_PRINCIPAL="$explicit_principal"
+  fi
+  kinit -c "$KRB5CCNAME" -kt "$KEYTAB" "$principal"
+fi
+
+cd "$ROOT_DIR"
+exec python3 -m query_doctor.cli.web --config "$CONFIG" "$@"

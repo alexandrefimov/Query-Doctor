@@ -1,0 +1,35 @@
+name: Docs CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs-health:
+    name: Docs health checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Check active docs
+        run: python scripts/check_active_docs.py
+
+      - name: Audit public docs for local-only notes
+        run: python scripts/audit_public_docs.py
+
+      - name: Check local Markdown links
+        run: python scripts/check_markdown_links.py

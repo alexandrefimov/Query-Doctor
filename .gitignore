@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs
+.venv/
+.venv-*/
+venv/
+
+# Backup/merge/editor leftovers
+*.bak
+*.tmp
+*.orig
+*.rej
+*~
+*.partial
+*.partial.md
+
+# Query Doctor generated outputs
+query-doctor-config.json
+!query-doctor-config.example.json
+.query-doctor-cm.local.json
+.query-doctor-cm.*.json
+cases/cm-corpus/
+cases/cm-corpus-*/
+cases/*/analysis_facts.md
+cases/*/analysis.json
+cases/**/analysis.json
+cases/*/impala_context/
+cases/*/impala_context.md
+cases/*/diagnosis*.md
+cases/*/report*.md
+cases/*/benchmark*/
+cases/*/bench*/
+cases/*/benchmarks*/
+cases/*/reports*/
+cases/*/llm_outputs*/
+cases/*/*.tmp
+cases/*/*.log
+.metadata-source-tables.json
+query-doctor-demo-pack/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.kubeconfig
+
+cm-chain.pem
