@@ -46,6 +46,7 @@ def render_batch_run_panel(
     query_id: str = "",
     diagnosis_target: str = "recent",
     collapsed: bool = False,
+    heading_title: str = "Diagnose queries",
 ) -> str:
     local_config = read_local_config_values(settings)
     if "recent_parallelism" not in local_config and "recent_cm_jobs" in local_config:
@@ -138,6 +139,7 @@ def render_batch_run_panel(
     scan_preset = normalize_scan_preset(values.get("scan_preset"))
     values["scan_preset"] = scan_preset
     owner_required = getattr(selected_settings, "source_visibility", "") == "owner_raw"
+    owner_missing = owner_required and not user_options
 
     def value(name: str) -> str:
         return html.escape(str(values.get(name, "")), quote=True)
@@ -148,8 +150,8 @@ def render_batch_run_panel(
     metadata_note_html = (
         f'<div class="batch-note">{html.escape(metadata_note)}</div>' if metadata_note else ""
     )
-    button_disabled = " disabled" if run_disabled else ""
-    button_label = "Running" if run_disabled else "Run scan"
+    button_disabled = " disabled" if run_disabled or owner_missing else ""
+    button_label = "Running" if run_disabled else "Owner required" if owner_missing else "Run scan"
     form_action = "/running/run" if scan_target == "running" else "/batch/run"
     finished_scope_class = "" if scan_target == "finished" else " manual-inputs-hidden"
     finished_window_class = "" if scan_target == "finished" else " manual-inputs-hidden"
@@ -165,6 +167,7 @@ def render_batch_run_panel(
         value("user"),
         user_options=user_options,
         owner_required=owner_required,
+        disabled_reason=owner_missing_reason() if owner_missing else "",
         help_text=(
             "Required owner filter for this source visibility. It is prefilled from local config."
             if owner_required
@@ -196,17 +199,18 @@ def render_batch_run_panel(
     panel_tag = "details" if collapsed else "section"
     panel_open = "" if collapsed else ""
     panel_summary = (
-        '<summary class="batch-run-summary"><span>New scan</span><small>Change source, window, or workflow</small></summary>'
+        '<summary class="batch-run-summary"><span>New scan</span>'
+        "<small>Change source, window, or workflow</small></summary>"
         if collapsed
         else ""
     )
     panel_heading = (
         ""
         if collapsed
-        else '<div class="section-heading"><div><h1 class="section-title">Diagnose queries</h1></div></div>'
+        else f'<div class="section-heading"><div><h1 class="section-title">{html.escape(heading_title)}</h1></div></div>'
     )
     return (
-        f'<{panel_tag} class="panel batch-run-panel{" batch-run-panel--disclosure" if collapsed else ""}" aria-label="Run query diagnosis" data-diagnosis-target-root{panel_open}>'
+        f'<{panel_tag} id="new-scan" class="panel batch-run-panel{" batch-run-panel--disclosure" if collapsed else ""}" aria-label="Run query diagnosis" data-diagnosis-target-root{panel_open}>'
         f"{panel_summary}"
         f"{panel_heading}"
         f"{render_source_settings(settings, value('cluster_key'))}"
@@ -765,7 +769,13 @@ def render_batch_number_field(
     )
 
 
-def render_batch_text_field(name: str, label: str, value: str, *, help_text: str = "") -> str:
+def render_batch_text_field(
+    name: str,
+    label: str,
+    value: str,
+    *,
+    help_text: str = "",
+) -> str:
     return (
         f'<div class="field">{render_label_with_info(name, label, help_text)}'
         f'<input class="input" id="{html.escape(name, quote=True)}" name="{html.escape(name, quote=True)}" '
@@ -780,10 +790,18 @@ def render_batch_user_field(
     *,
     user_options: tuple[str, ...],
     owner_required: bool = False,
+    disabled_reason: str = "",
     help_text: str = "",
 ) -> str:
     if not user_options:
-        return render_batch_text_field(name, label, value, help_text=help_text)
+        if disabled_reason:
+            return render_disabled_owner_select(name, label, help_text=help_text)
+        return render_batch_text_field(
+            name,
+            label,
+            value,
+            help_text=help_text,
+        )
     selected_raw = html.unescape(str(value or ""))
     options = sorted(
         dict.fromkeys(str(option) for option in user_options if option),
@@ -811,6 +829,16 @@ def render_batch_user_field(
     )
 
 
+def render_disabled_owner_select(name: str, label: str, *, help_text: str = "") -> str:
+    safe_name = html.escape(name, quote=True)
+    return (
+        f'<div class="field">{render_label_with_info(name, label, help_text)}'
+        f'<select class="input" id="{safe_name}" name="{safe_name}" disabled>'
+        '<option value="" selected>No configured owner</option>'
+        "</select></div>"
+    )
+
+
 def user_filter_options(settings: Any) -> tuple[str, ...]:
     options: list[str] = []
     seen: set[str] = set()
@@ -823,6 +851,10 @@ def user_filter_options(settings: Any) -> tuple[str, ...]:
         seen.add(owner)
         options.append(str(owner))
     return tuple(options)
+
+
+def owner_missing_reason() -> str:
+    return "Owner-gated scans require a configured Username."
 
 
 def render_batch_checkbox(name: str, label: str, checked: bool, *, help_text: str = "") -> str:

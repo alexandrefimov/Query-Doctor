@@ -898,6 +898,7 @@ html[data-theme=dark] select.input {
 
 .batch-run-panel--disclosure {
   padding:0;
+  border-color:rgba(15,111,131,.28);
   overflow:hidden
 }
 
@@ -910,7 +911,7 @@ html[data-theme=dark] select.input {
   align-items:center;
   justify-content:space-between;
   gap:12px;
-  padding:12px 14px;
+  padding:14px 16px;
   cursor:pointer;
   list-style:none
 }
@@ -926,6 +927,8 @@ html[data-theme=dark] select.input {
 }
 
 .batch-run-summary small {
+  display:block;
+  margin-top:2px;
   color:var(--muted);
   font-size:13px;
   font-weight:600
@@ -1104,6 +1107,17 @@ html[data-theme=dark] select.input {
   color:var(--strong);
   font-size:13px;
   font-weight:700
+}
+
+.batch-form-section--primary {
+  padding:0;
+  border:0;
+  background:transparent
+}
+
+.batch-form-section--primary legend {
+  margin-bottom:2px;
+  padding:0
 }
 
 .batch-actions {
@@ -1412,6 +1426,14 @@ html[data-theme=dark] select.input {
   margin:0;
   color:var(--muted);
   font-size:14px
+}
+
+.batch-head-actions {
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap
 }
 
 .batch-results-disclosure>.batch-head {
@@ -1876,7 +1898,13 @@ html[data-theme=dark] select.input {
 
 .case-detail-panel {
   display:grid;
-  gap:0
+  gap:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  overflow:visible
 }
 
 .case-detail-panel>.breadcrumb,.case-detail-panel>.batch-head {
@@ -2168,18 +2196,84 @@ html[data-theme=dark] select.input {
   overflow-wrap:anywhere
 }
 
+.action-candidate-card {
+  display:grid;
+  gap:12px;
+  padding:14px 12px;
+  border-radius:var(--radius-lg);
+  background:var(--panel)
+}
+
+.action-plan-panel .action-candidate-list {
+  margin:0;
+  padding:0;
+  list-style:none
+}
+
+.action-plan-panel .action-candidate-list>li {
+  margin:0
+}
+
+.action-plan-panel .action-candidate-card li {
+  margin:0
+}
+
+.action-candidate-card>strong {
+  margin:0;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+  font-size:14px
+}
+
+.action-candidate-card .source-locator-block {
+  gap:0;
+  margin-top:0;
+  padding-top:0;
+  border-top:0
+}
+
+.action-candidate-card .source-locator-list {
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  margin:0;
+  padding:0;
+  list-style:none
+}
+
+.action-candidate-card .source-locator {
+  display:inline-flex;
+  align-items:flex-start;
+  max-width:100%;
+  padding:6px 8px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  background:var(--surface);
+  line-height:1.35
+}
+
+.action-candidate-card .source-locator span,.action-candidate-card .source-locator a {
+  overflow-wrap:anywhere
+}
+
 .action-supporting-facts {
   display:grid;
-  gap:6px;
-  margin-top:9px;
-  padding-top:8px;
+  gap:8px;
+  margin-top:0;
+  padding-top:12px;
   border-top:1px solid var(--border)
 }
 
 .action-supporting-fact-list {
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-  gap:6px;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:8px;
+  margin:0;
+  padding:0;
+  list-style:none
+}
+
+.action-candidate-card .action-supporting-fact-list {
   margin:0;
   padding:0;
   list-style:none
@@ -2188,7 +2282,7 @@ html[data-theme=dark] select.input {
 .action-supporting-fact {
   display:grid;
   gap:2px;
-  padding:8px;
+  padding:10px;
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
   background:var(--surface)
@@ -2213,15 +2307,17 @@ html[data-theme=dark] select.input {
 .action-candidate-sections {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:8px 14px;
-  margin-top:9px;
-  padding-top:8px;
-  border-top:1px solid var(--border)
+  gap:12px 18px;
+  margin-top:0;
+  padding-top:0;
+  border-top:0
 }
 
 .action-candidate-section {
   display:grid;
-  gap:2px
+  align-content:start;
+  gap:6px;
+  min-width:0
 }
 
 .action-candidate-section span {
@@ -2232,7 +2328,13 @@ html[data-theme=dark] select.input {
 }
 
 .action-candidate-section p {
+  margin:0;
+  line-height:1.45;
   color:var(--text)
+}
+
+.action-plan-panel .action-candidate-section p,.action-plan-panel .action-plan-intro,.action-plan-panel .action-candidate-card .helper {
+  margin:0
 }
 
 .action-candidate-section--why,.action-candidate-section--locations,.action-candidate-reason {
@@ -2240,36 +2342,34 @@ html[data-theme=dark] select.input {
 }
 
 .action-candidate-section--why {
-  padding-bottom:7px;
+  padding-bottom:12px;
   border-bottom:1px solid var(--border)
 }
 
 .action-candidate-section--locations {
-  padding-top:7px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--border)
 }
 
 .action-candidate-section--locations .source-locator-block {
-  gap:5px;
-  margin-top:0;
-  padding-top:0;
-  border-top:0
+  margin-top:0
 }
 
 .action-candidate-reason {
   margin-top:0;
-  padding-top:7px;
+  padding-top:12px;
   border-top:1px solid var(--border);
   color:var(--muted);
   font-size:13px
 }
 
 .action-candidate-reason .helper {
-  margin-top:8px
+  margin-top:0
 }
 
 .action-candidate-meta {
-  margin-top:9px;
-  padding-top:8px;
+  margin-top:0;
+  padding-top:0;
   border-top:1px solid var(--border);
   font-size:13px;
   color:var(--muted)
@@ -2330,7 +2430,7 @@ html[data-theme=dark] select.input {
 
 .case-detail-panel>#case-actions,.case-detail-panel>#llm-actions {
   margin-top:24px;
-  padding:14px;
+  padding:16px;
   border:1px solid var(--border);
   border-left:3px solid var(--accent);
   border-radius:var(--radius-lg);
@@ -2339,13 +2439,13 @@ html[data-theme=dark] select.input {
 }
 
 .case-detail-panel>#case-actions .docs-panel-title,.case-detail-panel>#llm-actions .docs-panel-title {
-  padding:0 0 10px;
+  padding:0 0 12px;
   border-bottom:1px solid var(--border);
   background:transparent
 }
 
 .case-detail-panel>#case-actions .report-body,.case-detail-panel>#llm-actions .report-body {
-  padding:10px 0 0
+  padding:12px 0 0
 }
 
 .case-detail-panel>#case-actions .llm-action-card,.case-detail-panel>#llm-actions .llm-action-card {
@@ -2428,6 +2528,18 @@ html[data-theme=dark] select.input {
   color:var(--accent-strong);
   font-size:13px;
   font-weight:700
+}
+
+.action-candidate-card .action-outcome-control {
+  gap:8px;
+  margin-top:0;
+  padding-top:12px
+}
+
+.action-candidate-card .action-outcome-control summary {
+  min-height:32px;
+  color:var(--strong);
+  font-size:14px
 }
 
 .action-outcome-body {
@@ -2850,17 +2962,23 @@ html[data-theme=dark] select.input {
 }
 
 .case-detail-panel>.docs-panel.action-plan-panel {
-  margin-top:30px;
-  padding-top:22px;
-  border-top:1px solid var(--border-strong)
+  margin-top:16px;
+  padding:16px;
+  border:1px solid var(--border);
+  border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);
+  background:var(--panel-muted);
+  box-shadow:none
 }
 
 .case-detail-panel>.docs-panel.action-plan-panel .section-title {
-  font-size:22px
+  padding:0 0 12px;
+  border-bottom:1px solid var(--border);
+  font-size:20px
 }
 
 .case-detail-panel>.docs-panel.action-plan-panel .report-body {
-  padding-top:14px
+  padding:12px 0 0
 }
 
 .analysis-details-body {
@@ -3527,6 +3645,23 @@ html[data-theme=dark] select.input {
   background-image:var(--disclosure-chevron-up)
 }
 
+.action-candidate-card .action-outcome-control summary::after {
+  width:30px;
+  height:30px;
+  margin-left:auto;
+  border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+  background:var(--control) var(--disclosure-chevron-down) no-repeat center/14px 14px;
+  box-shadow:var(--surface-shadow);
+  flex:0 0 30px
+}
+
+.action-candidate-card .action-outcome-control[open] summary::after {
+  border-color:var(--border-strong);
+  background-color:var(--panel-muted);
+  background-image:var(--disclosure-chevron-up)
+}
+
 .llm-actions-status-details .report-body {
   padding:0 14px 12px
 }
@@ -3535,7 +3670,7 @@ html[data-theme=dark] select.input {
   display:flex;
   flex-direction:column;
   gap:6px;
-  padding:9px;
+  padding:10px;
   border:1px solid var(--border);
   border-radius:6px;
   background:var(--panel-muted);
@@ -3981,6 +4116,13 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
 
 .batch-panel {
   padding:14px 12px
+}
+
+.case-detail-panel {
+  padding:0;
+  border:0;
+  background:transparent;
+  box-shadow:none
 }
 
 .batch-head {

@@ -8,6 +8,7 @@ from typing import Any
 from query_doctor.web.ui.recent_scan_form import (
     configured_web_advanced_filters,
     form_or_config_value,
+    owner_missing_reason,
     read_local_config_values,
     render_batch_number_field,
     render_batch_text_field,
@@ -126,6 +127,7 @@ def render_running_queries_run_panel(
         values["user"] = getattr(selected_settings, "source_owner_user", "") or ""
     owner_required = getattr(selected_settings, "source_visibility", "") == "owner_raw"
     user_options = user_filter_options(selected_settings)
+    owner_missing = owner_required and not user_options
     metadata_configured = bool(getattr(selected_settings, "metadata_coordinator", None))
 
     def value(name: str) -> str:
@@ -137,14 +139,15 @@ def render_running_queries_run_panel(
     metadata_note_html = (
         f'<div class="batch-note">{html.escape(metadata_note)}</div>' if metadata_note else ""
     )
-    button_disabled = " disabled" if run_disabled else ""
-    button_label = "Running" if run_disabled else "Run scan"
+    button_disabled = " disabled" if run_disabled or owner_missing else ""
+    button_label = "Running" if run_disabled else "Owner required" if owner_missing else "Run scan"
     owner_field = render_batch_user_field(
         "user",
         "Username",
         value("user"),
         user_options=user_options,
         owner_required=owner_required,
+        disabled_reason=owner_missing_reason() if owner_missing else "",
         help_text=(
             "Required owner filter for this source visibility. It is prefilled from local config."
             if owner_required

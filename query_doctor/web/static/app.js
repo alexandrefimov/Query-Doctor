@@ -102,6 +102,36 @@ document.addEventListener('DOMContentLoaded', function () {
       openRowDetails(row);
     }
   });
+  function openNewScanPanel() {
+    var panel = document.getElementById('new-scan');
+    if (!panel) {
+      return false;
+    }
+    if (panel.tagName === 'DETAILS') {
+      panel.setAttribute('open', '');
+    }
+    panel.scrollIntoView({block: 'start'});
+    var focusTarget = panel.querySelector('select:not([disabled]), input:not([disabled]):not([type="hidden"]), button:not([disabled])');
+    if (focusTarget) {
+      window.setTimeout(function () { focusTarget.focus(); }, 0);
+    }
+    return true;
+  }
+  document.addEventListener('click', function (event) {
+    var trigger = event.target.closest && event.target.closest('[data-open-new-scan]');
+    if (!trigger) {
+      return;
+    }
+    if (openNewScanPanel()) {
+      event.preventDefault();
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', '#new-scan');
+      }
+    }
+  });
+  if (window.location.hash === '#new-scan') {
+    openNewScanPanel();
+  }
   function fallbackCopyCode(code) {
     if (!document.createRange || !window.getSelection || !document.execCommand) {
       return false;

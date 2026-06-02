@@ -11,10 +11,8 @@ from query_doctor.web.routes import (
     report_download_filename,
     route_get_request,
 )
-from query_doctor.web.trusted_artifacts import (
-    BATCH_REPORT_NAME,
-    write_batch_case_report_validation_marker,
-)
+from query_doctor.web.command_builders import PYTHON_REPORT_NAME, REPORT_VARIANT_PYTHON
+from query_doctor.web.trusted_artifacts import write_batch_case_report_validation_marker
 
 
 def web_settings(**kwargs) -> WebSettings:
@@ -25,9 +23,9 @@ def write_report_case(case_dir: Path, report_text: str, *, trusted: bool = True)
     case_dir.mkdir(parents=True, exist_ok=True)
     (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
-    (case_dir / BATCH_REPORT_NAME).write_text(report_text, encoding="utf-8")
+    (case_dir / PYTHON_REPORT_NAME).write_text(report_text, encoding="utf-8")
     if trusted:
-        write_batch_case_report_validation_marker(case_dir)
+        write_batch_case_report_validation_marker(case_dir, report_variant=REPORT_VARIANT_PYTHON)
 
 
 def write_batch_summary(summary_path: Path, case_dir: Path, *, query_id: str = "abc:def") -> None:
@@ -126,7 +124,9 @@ def test_untrusted_batch_report_download_returns_404_without_report_body(tmp_pat
 def test_stale_batch_report_marker_returns_404(tmp_path):
     case_dir = tmp_path / "cases" / "case-001" / "abc"
     write_report_case(case_dir, "# Report\n\nOriginal trusted body.\n")
-    (case_dir / BATCH_REPORT_NAME).write_text("# Report\n\nChanged stale body.\n", encoding="utf-8")
+    (case_dir / PYTHON_REPORT_NAME).write_text(
+        "# Report\n\nChanged stale body.\n", encoding="utf-8"
+    )
     summary = tmp_path / "batch_summary.json"
     write_batch_summary(summary, case_dir)
 
@@ -178,7 +178,7 @@ def test_specific_query_report_download_is_symmetric_for_trusted_and_untrusted(t
     assert sibling_path not in inline.body
     assert user_path not in inline.body
 
-    (case_dir / BATCH_REPORT_NAME).write_text(
+    (case_dir / PYTHON_REPORT_NAME).write_text(
         "# Report\n\nChanged stale specific body.\n", encoding="utf-8"
     )
     untrusted = route_get_request("/query/details/abc%3Adef/report.md", settings, WebJobStore())
@@ -246,15 +246,17 @@ def test_detail_pages_link_markdown_export_only_for_trusted_reports(tmp_path):
     )
 
     assert trusted is not None
-    assert 'href="/batch/case/case-001/report.md" download' in trusted.body
+    assert 'href="/batch/case/case-001/python-report.md" download' in trusted.body
 
-    (case_dir / BATCH_REPORT_NAME).write_text("# Report\n\nChanged stale body.\n", encoding="utf-8")
+    (case_dir / PYTHON_REPORT_NAME).write_text(
+        "# Report\n\nChanged stale body.\n", encoding="utf-8"
+    )
     untrusted = route_get_request(
         "/batch/case/case-001", web_settings(batch_summary=summary), WebJobStore()
     )
 
     assert untrusted is not None
-    assert 'href="/batch/case/case-001/report.md" download' not in untrusted.body
+    assert 'href="/batch/case/case-001/python-report.md" download' not in untrusted.body
 
 
 def test_specific_query_detail_links_markdown_export_for_trusted_report(tmp_path):
@@ -268,4 +270,4 @@ def test_specific_query_detail_links_markdown_export_for_trusted_report(tmp_path
 
     assert response is not None
     assert response.status == 200
-    assert 'href="/query/details/abc%3Adef/report.md" download' in response.body
+    assert 'href="/query/details/abc%3Adef/python-report.md" download' in response.body

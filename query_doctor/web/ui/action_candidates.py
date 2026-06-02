@@ -74,7 +74,7 @@ def render_action_candidate_card_view(
     language: str = "en",
 ) -> str:
     return (
-        '<li class="reason-card">'
+        '<li class="reason-card action-candidate-card">'
         f"<strong>{html.escape(card.title)}</strong>"
         f"{render_action_candidate_sections(card, language=language)}"
         f"{render_supporting_facts(card.supporting_facts, language=language)}"

@@ -1645,21 +1645,71 @@ def test_web_available_action_cards_explain_purpose():
     assert 'class="llm-action-card-actions"' in html
     assert_css_contains(
         styles,
+        ".case-detail-panel{display:grid;gap:0;padding:0;border:0;"
+        "border-radius:0;background:transparent;box-shadow:none;overflow:visible}",
+    )
+    assert_css_contains(
+        styles,
+        "@media(max-width:760px){",
+    )
+    assert_css_contains(
+        styles,
+        ".case-detail-panel{padding:0;border:0;background:transparent;box-shadow:none}",
+    )
+    assert_css_contains(
+        styles,
         ".case-detail-panel>#case-actions,.case-detail-panel>#llm-actions{"
-        "margin-top:24px;padding:14px;border:1px solid var(--border);"
+        "margin-top:24px;padding:16px;border:1px solid var(--border);"
         "border-left:3px solid var(--accent);",
     )
     assert_css_contains(
         styles,
         ".case-detail-panel>#case-actions .report-body,"
-        ".case-detail-panel>#llm-actions .report-body{padding:10px 0 0}",
+        ".case-detail-panel>#llm-actions .report-body{padding:12px 0 0}",
     )
     assert_css_contains(
         styles,
-        ".llm-action-card{display:flex;flex-direction:column;gap:6px;padding:9px;",
+        ".case-detail-panel>.docs-panel.action-plan-panel{"
+        "margin-top:16px;padding:16px;border:1px solid var(--border);"
+        "border-left:3px solid var(--accent);border-radius:var(--radius-lg);"
+        "background:var(--panel-muted);box-shadow:none}",
+    )
+    assert_css_contains(
+        styles,
+        ".case-detail-panel>.docs-panel.action-plan-panel .section-title{"
+        "padding:0 0 12px;border-bottom:1px solid var(--border);font-size:20px}",
+    )
+    assert_css_contains(
+        styles,
+        ".action-candidate-card{display:grid;gap:12px;padding:14px 12px;"
+        "border-radius:var(--radius-lg);background:var(--panel)}",
+    )
+    assert_css_contains(
+        styles,
+        ".action-candidate-card .source-locator-list{display:flex;flex-wrap:wrap;"
+        "gap:7px;margin:0;padding:0;list-style:none}",
+    )
+    assert_css_contains(
+        styles,
+        ".action-supporting-fact-list{display:grid;"
+        "grid-template-columns:repeat(auto-fit,minmax(220px,1fr));"
+        "gap:8px;margin:0;padding:0;list-style:none}",
+    )
+    assert_css_contains(
+        styles,
+        ".llm-action-card{display:flex;flex-direction:column;gap:6px;padding:10px;",
     )
     assert_css_contains(styles, ".llm-action-card-actions{display:grid;gap:6px;margin-top:auto}")
     assert_css_contains(styles, ".llm-action-card .button{height:auto;min-height:32px;")
+
+
+def test_web_static_js_opens_new_scan_deep_link():
+    script = (REPO_DIR / "query_doctor/web/static/app.js").read_text(encoding="utf-8")
+
+    assert "function openNewScanPanel()" in script
+    assert "document.getElementById('new-scan')" in script
+    assert "window.location.hash === '#new-scan'" in script
+    assert "[data-open-new-scan]" in script
 
 
 def test_web_unavailable_case_actions_render_compact_status():
@@ -2475,6 +2525,8 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "Finished Queries" in body
     assert "Batch query triage" not in body
     assert '<form id="batch-form"' in body
+    assert '<section id="new-scan" class="panel batch-run-panel"' in body
+    assert '<h1 class="section-title">New scan</h1>' in body
     assert body.index('<form id="batch-form"') < body.index('class="batch-table-wrap"')
     assert (
         '<details id="recent-results" class="panel batch-panel batch-results-disclosure" '
@@ -2495,6 +2547,10 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert_css_contains(styles, ".batch-results-context{margin-top:12px;")
     assert_css_contains(styles, ".batch-results-context>summary{cursor:pointer;")
     assert_css_contains(styles, ".batch-results-context-body{display:grid;gap:8px;")
+    assert_css_contains(
+        styles,
+        ".batch-head-actions{display:flex;align-items:center;justify-content:flex-end;",
+    )
     assert_css_contains(
         styles, ".batch-context-block{display:grid;grid-template-columns:minmax(92px,auto)"
     )
@@ -2898,6 +2954,8 @@ def test_web_batch_case_detail_renders_owner_coordinate_guidance(tmp_path):
 
     assert captured["status"] == 200
     assert "Finished Queries details" in body
+    assert '<a class="button primary" href="/#new-scan" data-open-new-scan>New scan</a>' in body
+    assert 'class="batch-head-actions"' in body
     assert "Recommended changes" in action_plan_html
     assert "Where to look" in action_plan_html
     assert "SQL: final SELECT filter (line 18): predicate near final SELECT" in action_plan_html
@@ -5721,6 +5779,22 @@ def test_web_running_queries_page_matches_finished_queries_without_date_hour_fil
     assert '<form id="batch-form"' not in body
 
 
+def test_web_running_queries_page_blocks_owner_raw_without_loaded_owner(tmp_path):
+    module = load_web_module()
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        source_visibility="owner_raw",
+    )
+    settings.config.write_text("{}", encoding="utf-8")
+
+    body = module.render_running_queries_page(settings)
+
+    assert '<form id="running-form"' in body
+    assert '<select class="input" id="user" name="user" disabled>' in body
+    assert '<option value="" selected>No configured owner</option>' in body
+    assert '<button class="run-button" type="submit" disabled>Owner required</button>' in body
+
+
 def test_web_running_queries_page_places_configured_source_before_live_scan():
     module = load_web_module()
     from query_doctor.web.models import WebClusterConfig
@@ -7598,6 +7672,21 @@ def test_web_batch_form_renders_keytab_usernames_as_dropdown(tmp_path):
     assert body.index("Basic scan") < body.index('<select class="input" id="user" name="user"')
     assert "Advanced settings" not in body
     assert '<input class="input" id="user" name="user" type="text"' not in body
+
+
+def test_web_batch_form_blocks_owner_raw_without_loaded_owner(tmp_path):
+    module = load_web_module()
+    settings = module.WebSettings(
+        config=tmp_path / "cm-config.json",
+        source_visibility="owner_raw",
+    )
+    settings.config.write_text("{}", encoding="utf-8")
+
+    body = module.render_batch_page(settings)
+
+    assert '<select class="input" id="user" name="user" disabled>' in body
+    assert '<option value="" selected>No configured owner</option>' in body
+    assert '<button class="run-button" type="submit" disabled>Owner required</button>' in body
 
 
 def test_web_batch_form_keeps_all_users_option_for_optional_user_filter(tmp_path):

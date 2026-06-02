@@ -122,7 +122,9 @@ def render_recent_scan_case_detail_view(
         f"<span>{html.escape(view.case_id)}</span></div>"
         f'<div class="batch-head"><div><h1>{safe_details_title}</h1>'
         f"<p>{html.escape(ui_text(language, 'Start with the verdict and recommended changes, then expand evidence only when needed.', 'Начните с вердикта и рекомендуемых изменений; раскрывайте доказательства только когда они нужны.'))}</p></div>"
-        f'<span class="badge blue">{html.escape(view.case_id)}</span></div>'
+        '<div class="batch-head-actions">'
+        f'<a class="button primary" href="/#new-scan" data-open-new-scan>{html.escape(ui_text(language, "New scan", "Новый скан"))}</a>'
+        f'<span class="badge blue">{html.escape(view.case_id)}</span></div></div>'
         f"{render_case_verdict(view, language=language)}"
         f"{render_case_action_plan(view, detail_base_path=detail_base_path, language=language)}"
         f"{render_case_diagnostics(view, llm_enabled=llm_enabled, language=language)}"

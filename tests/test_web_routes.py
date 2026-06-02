@@ -6,6 +6,7 @@ from query_doctor.web.action_outcomes import (
     ActionOutcomeRecord,
     append_action_outcome,
 )
+from query_doctor.web.command_builders import REPORT_VARIANT_PYTHON
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebSettings
 from query_doctor.web.routes import post_route_is_allowed, route_get_request, route_post_request
@@ -255,8 +256,10 @@ def test_route_post_batch_run_dispatches_running_scan_target(monkeypatch):
 def test_route_post_running_case_report_passes_running_source(monkeypatch):
     captured: dict[str, object] = {}
 
-    def fake_start_batch_case_report_job(case_id, settings, store, *, runner, source):
-        captured.update({"case_id": case_id, "source": source})
+    def fake_start_batch_case_report_job(
+        case_id, settings, store, *, runner, source, report_variant
+    ):
+        captured.update({"case_id": case_id, "source": source, "report_variant": report_variant})
         return 303, "/jobs/report"
 
     monkeypatch.setattr(
@@ -274,7 +277,11 @@ def test_route_post_running_case_report_passes_running_source(monkeypatch):
     assert response is not None
     assert response.status == 303
     assert response.location == "/jobs/report"
-    assert captured == {"case_id": "case-001", "source": "running"}
+    assert captured == {
+        "case_id": "case-001",
+        "source": "running",
+        "report_variant": REPORT_VARIANT_PYTHON,
+    }
 
 
 def test_route_post_batch_case_validation_uses_batch_source(monkeypatch):
@@ -308,8 +315,9 @@ def test_route_post_batch_case_validation_uses_batch_source(monkeypatch):
 def test_route_post_specific_query_action_unquotes_query_id(monkeypatch):
     captured: dict[str, object] = {}
 
-    def fake_start_specific_query_report_job(query_id, settings, store, *, runner):
+    def fake_start_specific_query_report_job(query_id, settings, store, *, runner, report_variant):
         captured["query_id"] = query_id
+        captured["report_variant"] = report_variant
         return 303, "/jobs/query-report"
 
     monkeypatch.setattr(
@@ -328,7 +336,7 @@ def test_route_post_specific_query_action_unquotes_query_id(monkeypatch):
     assert response is not None
     assert response.status == 303
     assert response.location == "/jobs/query-report"
-    assert captured == {"query_id": "abc:def"}
+    assert captured == {"query_id": "abc:def", "report_variant": REPORT_VARIANT_PYTHON}
 
 
 def test_route_post_unknown_path_returns_none():
