@@ -1,6 +1,6 @@
 # Готовность к публичному релизу
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-02
 
 Язык: [English](../../public-release-readiness.md) | Русский
 
@@ -34,9 +34,13 @@ Repository должен оставаться воспроизводимым, б�
 
 README screenshots обновлены из synthetic demo pack для текущего material UI
 baseline, включая product-brand header `Query Doctor`, subtitle `Big Data query
-diagnostics`, Workloads и Action Queue demo path. `v0.4.0` и `v0.4.1` остаются
+diagnostics`, Workloads и Action Queue demo path. Для `0.4.3` screenshots
+перепроверены: существующие synthetic search/results screenshots все еще
+соответствуют documented public demo path, а измененные Details/New scan
+surfaces не являются README screenshot surfaces. `v0.4.0` и `v0.4.1` остаются
 package-index history для installed artifacts. Public source releases
-начинаются с `v0.4.2`. Current product baseline включает
+начинаются с `v0.4.2`; `0.4.3` продолжает эту source release line. Current
+product baseline включает
 config-driven `language`, Recent Scan Hour UTC offset label, Known Query ID
 progress, elapsed scan-progress wording, workload diagnostics для repeated,
 frequent-short и regressed fingerprints, local synthetic action outcomes,

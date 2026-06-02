@@ -177,7 +177,7 @@ Finished Queries results for review:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-The current `0.4.2` release-candidate synthetic demo pack contains eleven
+The current `0.4.3` release-candidate synthetic demo pack contains eleven
 sanitized cases. Use it to inspect:
 
 - Workloads and Action Queue entries for repeated, regressed, and
@@ -411,6 +411,8 @@ Public demo and release paths:
   public-release guard.
 - [docs/public-release-readiness.md](docs/public-release-readiness.md): public
   release readiness checklist.
+- [docs/release-notes-0.4.3.md](docs/release-notes-0.4.3.md): curated 0.4.3
+  release notes for report-mode and web UI polish.
 - [docs/release-notes-0.4.2.md](docs/release-notes-0.4.2.md): curated 0.4.2
   release notes for the public release baseline.
 - [docs/release-notes-0.4.1.md](docs/release-notes-0.4.1.md): curated 0.4.1
@@ -456,8 +458,9 @@ configs, credentials, raw profiles, raw metadata, or temporary outputs.
 
 ## Public Status
 
-This repository is public. Public source releases start at `v0.4.2`. Older
-package-index releases remain visible on
+This repository is public. Public source releases start at `v0.4.2`; `v0.4.3`
+continues that public source release line. Older package-index releases remain
+visible on
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) where needed for
 installed-artifact history. The public license is Apache-2.0.
 
