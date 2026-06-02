@@ -16,7 +16,8 @@ The safe demo position is:
 
 - Python extracts facts and scores candidates.
 - LLM output is used only after explicit user action.
-- LLM Report phrases supported facts; it does not own diagnosis.
+- Python Report is the recommended baseline; optional LLM narrative phrases
+  supported facts for comparison and does not own diagnosis.
 - Query LLM optimizer can show SQL only after deterministic validation.
 - Raw SQL, raw profiles, raw metadata, local paths, subprocess output, model
   names, raw generated artifact names, account names and query IDs are not part
@@ -28,7 +29,10 @@ Query Doctor has three separate surfaces:
 
 - Diagnose: deterministic profile and metadata analysis through Recent queries,
   Running now, or Known Query ID.
-- LLM Report: a validated narrative report for one selected case.
+- Python Report: a deterministic validated baseline report for one selected
+  case.
+- Optional LLM narrative: a separate validated wording pass for one selected
+  case.
 - Query LLM optimizer: a details-page action that may produce a validated
   read-only draft or safe no-draft guidance.
 
@@ -42,7 +46,8 @@ The demo should make this order clear:
 4. The analyzer creates normalized facts.
 5. Recent scan ranks cases from those facts.
 6. Metadata is collected only when explicitly enabled and bounded.
-7. LLM Report and Query LLM optimizer run only for a selected case.
+7. Python Report, optional LLM narrative, and Query LLM optimizer run only for
+   a selected case.
 
 ## What the analyzer reads
 
@@ -239,10 +244,11 @@ Metadata status meanings for demo:
 Do not say "compute stats is required" unless the deterministic facts support a
 stats-refresh candidate and the wording stays as a candidate/check.
 
-## LLM Report
+## Reports
 
-The LLM Report should be treated as a readable rendering of analyzer-owned
-facts. The useful report questions are:
+The Python Report should be treated as the baseline readable rendering of
+analyzer-owned facts. Optional LLM narrative may be generated separately for
+wording comparison after explicit user action. The useful report questions are:
 
 - What is supported by facts?
 - What is not observed?

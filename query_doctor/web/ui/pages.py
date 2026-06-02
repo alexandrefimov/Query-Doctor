@@ -199,6 +199,8 @@ def render_batch_case_detail_view_page(
     *,
     optimized_query_state: dict[str, Any] | None = None,
     trusted_report_text: str | None = None,
+    llm_report_state: dict[str, Any] | None = None,
+    trusted_llm_report_text: str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
     optimizer_manual_guidance: str | None = None,
@@ -213,11 +215,18 @@ def render_batch_case_detail_view_page(
         if trusted_report_text
         else None
     )
+    trusted_llm_report_html = (
+        SafeHtml(render_details_inline_report_html(trusted_llm_report_text))
+        if trusted_llm_report_text
+        else None
+    )
     sections = [
         render_recent_scan_case_detail_view(
             view,
             optimized_query_state=present_optimized_query_action(optimized_query_state),
             trusted_report_html=trusted_report_html,
+            llm_report_state=llm_report_state,
+            trusted_llm_report_html=trusted_llm_report_html,
             trusted_optimized_query=trusted_optimized_query,
             trusted_optimizer_recommendations=trusted_optimizer_recommendations,
             optimizer_manual_guidance=optimizer_manual_guidance,

@@ -1409,6 +1409,10 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
     status = safe_display_text(state.get("status") or "not_run")
     running = bool(state.get("running"))
     trusted = bool(state.get("trusted"))
+    report_variant = safe_display_text(state.get("report_variant") or "llm")
+    python_report = report_variant == "python"
+    report_label = "Python report" if python_report else "LLM report"
+    report_owner = "Python-owned" if python_report else "LLM"
     partial_untrusted = bool(state.get("partial") and not trusted)
     progress_view = state.get("progress_view")
     if not isinstance(progress_view, JobProgressView):
@@ -1423,11 +1427,11 @@ def present_report_action(report_state: dict[str, Any] | None) -> ReportActionVi
         stage_label=safe_display_text(state.get("stage_label") or ""),
         progress=clamped_progress(state.get("progress")),
         note=(
-            "LLM report generation is running for this selected case."
+            f"{report_label} generation is running for this selected case."
             if running
-            else "Runs one LLM report for this selected case only. No batch-wide report generation is started."
+            else f"Runs one {report_owner} report for this selected case only. No batch-wide report generation is started."
         ),
-        button_label="Generating LLM report" if running else "Generate LLM report",
+        button_label=f"Generating {report_label}" if running else f"Generate {report_label}",
         button_disabled=running,
         show_open_link=trusted,
         job_kind=safe_display_text(state.get("job_kind") or ""),

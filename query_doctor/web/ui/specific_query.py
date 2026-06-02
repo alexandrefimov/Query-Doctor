@@ -25,6 +25,7 @@ from query_doctor.web.ui.recent_scan_details import (
 from query_doctor.web.presenters.recent_scan import (
     RecentScanCaseDetailView,
     present_recent_scan_case_row,
+    present_report_action,
 )
 from query_doctor.web.ui.recent_scan_results import (
     metadata_cell,
@@ -90,6 +91,8 @@ def render_specific_query_detail_view(
     *,
     optimized_query_state: dict[str, Any] | OptimizedQueryActionView | None = None,
     trusted_report_text: str | None = None,
+    llm_report_state: dict[str, Any] | None = None,
+    trusted_llm_report_text: str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
     optimizer_manual_guidance: str | None = None,
@@ -102,13 +105,21 @@ def render_specific_query_detail_view(
         if trusted_report_text
         else None
     )
+    trusted_llm_report_html = (
+        SafeHtml(render_details_inline_report_html(trusted_llm_report_text))
+        if trusted_llm_report_text
+        else None
+    )
     escaped_query_id = html.escape(query_id)
     report_url = specific_query_report_href(query_id)
     report_export_url = f"{report_url}.md" if report_url else None
+    llm_report_url = specific_query_llm_report_href(query_id)
+    llm_report_export_url = f"{llm_report_url}.md" if llm_report_url else None
     optimized_query_url = specific_query_optimized_query_href(query_id)
     optimizer_validation_url = specific_query_validate_rewrite_href(query_id)
     actions_url = specific_query_actions_href(query_id, llm_enabled=llm_enabled)
     optimizer_view = present_optimized_query_action(optimized_query_state)
+    llm_report_view = present_report_action(llm_report_state) if llm_report_state else None
     title = ui_text(language, "Known Query ID details", "Детали Known Query ID")
     intro = ui_text(
         language,
@@ -124,7 +135,7 @@ def render_specific_query_detail_view(
         f"{render_case_verdict(view, language=language)}"
         f"{render_case_action_plan(view, language=language)}"
         f"{render_case_diagnostics(view, llm_enabled=llm_enabled, language=language)}"
-        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=report_generation_enabled(view), report_disabled_reason=report_generation_disabled_reason(view, language=language), report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
+        f"{render_llm_actions_block('specific-query', view.report_action, optimizer_view, report_enabled=report_generation_enabled(view), report_disabled_reason=report_generation_disabled_reason(view, language=language), report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, llm_report_view=llm_report_view, llm_report_action_url=llm_report_url, llm_report_open_url=llm_report_url, llm_report_export_url=llm_report_export_url, trusted_llm_report_html=trusted_llm_report_html, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
         "</section>"
     )
 
@@ -132,7 +143,13 @@ def render_specific_query_detail_view(
 def specific_query_report_href(query_id: Any) -> str:
     if not isinstance(query_id, str) or not query_id.strip():
         return ""
-    return f"/query/details/{quote(query_id.strip(), safe='')}/report"
+    return f"/query/details/{quote(query_id.strip(), safe='')}/python-report"
+
+
+def specific_query_llm_report_href(query_id: Any) -> str:
+    if not isinstance(query_id, str) or not query_id.strip():
+        return ""
+    return f"/query/details/{quote(query_id.strip(), safe='')}/llm-report"
 
 
 def specific_query_optimized_query_href(query_id: Any) -> str:

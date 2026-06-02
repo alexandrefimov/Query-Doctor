@@ -45,8 +45,8 @@ is not a historical audit log. For engineering risks, use
   frequent-short, and regressed workload fingerprints, plus workload detail
   pages, admin pool/owner digests, an analyst action queue, and compact action
   outcome rollups.
-- Details pages show deterministic findings and explicit LLM Report / Query LLM
-  optimizer actions.
+- Details pages show deterministic findings, an explicit Python Report
+  baseline, optional LLM narrative, and Query LLM optimizer actions.
 - Help, Details static UI copy, and newly generated trusted reports are
   controlled by the global `language` config. English is the default; Russian
   remains a localized companion mode, not a separately generated second report.

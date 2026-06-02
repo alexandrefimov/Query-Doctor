@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from query_doctor.web.case_detail_context import case_allows_llm_report
+from query_doctor.web.case_detail_context import (
+    case_allows_llm_report,
+    case_allows_query_optimizer,
+    optimizer_state_for_case,
+)
 from query_doctor.web.case_files import build_query_id_summary_case
 from query_doctor.web.details_facts import (
     load_specific_query_cluster_runtime_context_facts,
@@ -40,6 +44,8 @@ class SpecificQueryDetailRenderContext:
     view: RecentScanCaseDetailView
     optimized_query_state: dict[str, Any]
     trusted_report_text: str | None
+    llm_report_state: dict[str, Any]
+    trusted_llm_report_text: str | None
     trusted_optimized_query: str | None
     trusted_optimizer_recommendations: str | None
     optimizer_manual_guidance: str | None
@@ -70,7 +76,8 @@ def build_specific_query_detail_action_context(
         case=case,
         analyzer_facts_available=case_has_analyzer_facts(case_dir),
         report_allowed=case_allows_llm_report(case) and case_has_analyzer_facts(case_dir),
-        source_sql_available=case_has_safe_source_sql(case_dir)
+        source_sql_available=case_allows_query_optimizer(case)
+        and case_has_safe_source_sql(case_dir)
         and case_has_analyzer_facts(case_dir),
         report_running=job_store.running_query_report(query_id) is not None,
         optimizer_running=job_store.running_query_optimized_query(query_id) is not None,
@@ -104,11 +111,13 @@ def build_specific_query_detail_render_context(
     report_state = (
         dict(report_state_override) if report_state_override is not None else artifacts.report_state
     )
+    llm_report_state = artifacts.llm_report_state
     optimized_query_state = (
         dict(optimized_query_state_override)
         if optimized_query_state_override is not None
         else artifacts.optimized_query_state
     )
+    optimized_query_state = optimizer_state_for_case(case, optimized_query_state)
     view = present_recent_scan_case_detail(
         "specific-query",
         case,
@@ -134,6 +143,10 @@ def build_specific_query_detail_render_context(
         view=view,
         optimized_query_state=optimized_query_state,
         trusted_report_text=artifacts.trusted_report_text if report_state.get("trusted") else None,
+        llm_report_state=llm_report_state,
+        trusted_llm_report_text=(
+            artifacts.trusted_llm_report_text if llm_report_state.get("trusted") else None
+        ),
         trusted_optimized_query=(
             artifacts.trusted_optimized_query if optimized_query_state.get("trusted") else None
         ),

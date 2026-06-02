@@ -19,7 +19,12 @@ from query_doctor.web.ui.report_actions import (
     render_progress_steps,
 )
 
-LLM_ACTIONS_JOB_KINDS = {"batch_llm_actions", "query_llm_actions"}
+LLM_ACTIONS_JOB_KINDS = {
+    "batch_case_actions",
+    "query_case_actions",
+    "batch_llm_actions",
+    "query_llm_actions",
+}
 OPTIMIZED_QUERY_JOB_KINDS = {"batch_optimized_query", "query_optimized_query"}
 OPTIMIZER_RESULT_ANCHOR_ID = "query-optimizer-result"
 
@@ -143,6 +148,11 @@ def render_llm_actions_block(
     report_action_url: str | None = None,
     report_open_url: str | None = None,
     report_export_url: str | None = None,
+    llm_report_view: ReportActionView | None = None,
+    llm_report_action_url: str | None = None,
+    llm_report_open_url: str | None = None,
+    llm_report_export_url: str | None = None,
+    trusted_llm_report_html: SafeHtml | str | None = None,
     optimizer_action_url: str | None = None,
     optimizer_open_url: str | None = None,
     optimizer_validation_url: str | None = None,
@@ -159,13 +169,22 @@ def render_llm_actions_block(
     escaped_case_id = html.escape(case_id, quote=True)
     section_id = actions_section_id(llm_enabled=llm_enabled)
     report_action = html.escape(
-        report_action_url or f"/batch/case/{escaped_case_id}/report", quote=True
+        report_action_url or f"/batch/case/{escaped_case_id}/python-report", quote=True
     )
     report_open = html.escape(
-        report_open_url or f"/batch/case/{escaped_case_id}/report", quote=True
+        report_open_url or f"/batch/case/{escaped_case_id}/python-report", quote=True
     )
     report_export = html.escape(
-        report_export_url or f"/batch/case/{escaped_case_id}/report.md", quote=True
+        report_export_url or f"/batch/case/{escaped_case_id}/python-report.md", quote=True
+    )
+    llm_report_action = html.escape(
+        llm_report_action_url or f"/batch/case/{escaped_case_id}/llm-report", quote=True
+    )
+    llm_report_open = html.escape(
+        llm_report_open_url or f"/batch/case/{escaped_case_id}/llm-report", quote=True
+    )
+    llm_report_export = html.escape(
+        llm_report_export_url or f"/batch/case/{escaped_case_id}/llm-report.md", quote=True
     )
     optimizer_action = html.escape(
         optimizer_action_url or f"/batch/case/{escaped_case_id}/optimized-query",
@@ -180,11 +199,18 @@ def render_llm_actions_block(
         combined_action_url or f"/batch/case/{escaped_case_id}/{section_id}", quote=True
     )
     report_status = str(report_view.status or "not_run")
+    llm_report_status = str(llm_report_view.status or "not_run") if llm_report_view else "hidden"
     optimizer_status = optimizer_view.status
     report_button_disabled = (
         report_view.button_disabled
         or not report_enabled
         or report_status in {"running", "unavailable"}
+    )
+    llm_report_button_disabled = (
+        not llm_enabled
+        or llm_report_view is None
+        or not report_enabled
+        or llm_report_status in {"running", "unavailable"}
     )
     optimizer_hidden = optimizer_status == "hidden"
     optimizer_compact_unavailable = optimizer_status == "unavailable"
@@ -193,13 +219,19 @@ def render_llm_actions_block(
     section_label = ui_text(language, "Reports and optimizer", "Отчеты и оптимизатор")
     report_title = ui_text(
         language,
-        "LLM Report" if llm_enabled else "Python Report",
-        "LLM-отчет" if llm_enabled else "Python-отчет",
+        "Python Report",
+        "Python-отчет",
     )
     report_description = ui_text(
         language,
-        "Creates a browser-safe explanation for review or sharing with colleagues.",
-        "Создает browser-safe объяснение для проверки или передачи коллегам.",
+        "Deterministic baseline from Python-owned facts. Recommended first.",
+        "Детерминированный baseline на Python-owned facts. Рекомендуется первым.",
+    )
+    llm_report_title = ui_text(language, "LLM narrative", "LLM narrative")
+    llm_report_description = ui_text(
+        language,
+        "Optional wording pass over the same validated facts for comparison.",
+        "Опциональный narrative по тем же валидированным фактам для сравнения.",
     )
     optimizer_title = ui_text(
         language,
@@ -216,6 +248,13 @@ def render_llm_actions_block(
         and not report_view.show_open_link
         and report_status not in {"running", "generated"}
     )
+    llm_report_compact_unavailable = (
+        llm_enabled
+        and llm_report_view is not None
+        and (not report_enabled or llm_report_status == "unavailable")
+        and not llm_report_view.show_open_link
+        and llm_report_status not in {"running", "generated"}
+    )
     combined_disabled = (
         report_button_disabled
         or optimizer_button_disabled
@@ -229,29 +268,48 @@ def render_llm_actions_block(
                 f'<a class="button" href="{report_export}" download>{html.escape(ui_text(language, "Export as Markdown", "Экспорт Markdown"))}</a>'
             )
         else:
-            report_button_label = report_view.button_label
-            if not llm_enabled:
-                report_button_label = (
-                    "Generating Python report"
-                    if report_status == "running"
-                    else "Generate Python report"
-                )
+            report_button_label = (
+                "Generating Python report"
+                if report_status == "running"
+                else "Generate Python report"
+            )
             if language == "ru":
-                if report_status == "running":
-                    report_button_label = (
-                        "Генерируется Python-отчет" if not llm_enabled else "Генерируется LLM-отчет"
-                    )
-                else:
-                    report_button_label = (
-                        "Сгенерировать Python-отчет"
-                        if not llm_enabled
-                        else "Сгенерировать LLM-отчет"
-                    )
+                report_button_label = (
+                    "Генерируется Python-отчет"
+                    if report_status == "running"
+                    else "Сгенерировать Python-отчет"
+                )
             report_action_html = render_post_button(
                 report_action, report_button_label, disabled=report_button_disabled
             )
         action_cards.append(
             render_llm_action_card(report_title, report_description, report_action_html)
+        )
+    if llm_enabled and llm_report_view is not None and not llm_report_compact_unavailable:
+        if llm_report_view.show_open_link:
+            llm_report_action_html = (
+                f'<a class="button" href="{llm_report_open}">{html.escape(ui_text(language, "Open LLM narrative", "Открыть LLM narrative"))}</a>'
+                f'<a class="button" href="{llm_report_export}" download>{html.escape(ui_text(language, "Export as Markdown", "Экспорт Markdown"))}</a>'
+            )
+        else:
+            llm_report_button_label = (
+                "Generating LLM narrative"
+                if llm_report_status == "running"
+                else "Generate LLM narrative"
+            )
+            if language == "ru":
+                llm_report_button_label = (
+                    "Генерируется LLM narrative"
+                    if llm_report_status == "running"
+                    else "Сгенерировать LLM narrative"
+                )
+            llm_report_action_html = render_post_button(
+                llm_report_action,
+                llm_report_button_label,
+                disabled=llm_report_button_disabled,
+            )
+        action_cards.append(
+            render_llm_action_card(llm_report_title, llm_report_description, llm_report_action_html)
         )
     if not optimizer_action_hidden:
         optimizer_action_html = render_optimizer_action_button(
@@ -267,18 +325,22 @@ def render_llm_actions_block(
     if not combined_disabled:
         combined_html = render_post_button(
             combined_action,
-            ui_text(language, "Generate report + optimizer", "Сгенерировать отчет + оптимизатор"),
+            ui_text(
+                language,
+                "Generate Python report + optimizer",
+                "Сгенерировать Python-отчет + optimizer",
+            ),
             primary=True,
         )
         combined_title = ui_text(
             language,
-            "Full LLM pass" if llm_enabled else "Full Python pass",
-            "Полный LLM-прогон" if llm_enabled else "Полный Python-прогон",
+            "Baseline pass",
+            "Baseline-прогон",
         )
         combined_description = ui_text(
             language,
-            "Runs both explicit actions for this selected case only.",
-            "Запускает оба явных действия только для выбранного кейса.",
+            "Runs the deterministic report and optimizer for this selected case only.",
+            "Запускает детерминированный отчет и optimizer только для выбранного кейса.",
         )
         action_cards.append(
             render_llm_action_card(
@@ -302,6 +364,19 @@ def render_llm_actions_block(
                 ),
             )
         )
+    if llm_report_compact_unavailable and llm_report_view is not None:
+        unavailable_rows.append(
+            render_unavailable_action_note(
+                llm_report_title,
+                report_unavailable_message(
+                    llm_report_view,
+                    llm_report_title,
+                    report_enabled=report_enabled,
+                    report_disabled_reason=report_disabled_reason,
+                    language=language,
+                ),
+            )
+        )
     if optimizer_compact_unavailable:
         unavailable_rows.append(
             render_unavailable_action_note(
@@ -319,28 +394,25 @@ def render_llm_actions_block(
     notes: list[str] = []
     if not report_enabled:
         if not report_compact_unavailable:
-            report_note_label = "LLM Report" if llm_enabled else "Report"
             notes.append(
                 ui_text(
                     language,
-                    f"{report_note_label} is available only for suspicious or bad queries.",
-                    f"{report_title} доступен только для suspicious или bad запросов.",
+                    "Reports are available only for suspicious or bad queries.",
+                    "Отчеты доступны только для suspicious или bad запросов.",
                 )
             )
     elif report_view.note:
-        report_note = report_view.note
-        if not llm_enabled:
-            report_note = (
-                "Python report generation is running for this selected case."
-                if report_status == "running"
-                else "Runs one Python-owned report for this selected case only. "
-                "No batch-wide report generation is started."
-            )
+        report_note = (
+            "Python report generation is running for this selected case."
+            if report_status == "running"
+            else "Runs one Python-owned baseline report for this selected case only. "
+            "No batch-wide report generation is started."
+        )
         if language == "ru":
             report_note = ui_text(
                 language,
                 report_note,
-                "Запускает один отчет для выбранного кейса. Массовая генерация отчетов не стартует.",
+                "Запускает один Python-owned baseline отчет для выбранного кейса. Массовая генерация отчетов не стартует.",
             )
         notes.append(html.escape(report_note))
     if optimizer_status == "unavailable" and not optimizer_compact_unavailable:
@@ -355,17 +427,53 @@ def render_llm_actions_block(
     combined_status = combined_llm_actions_job_status(report_view, optimizer_view)
     if combined_status == "running":
         report_status_html = render_llm_actions_job_progress(
-            report_view, optimizer_view, llm_enabled=llm_enabled, language=language
+            report_view, optimizer_view, llm_enabled=False, language=language
+        )
+        llm_report_status_html = (
+            render_llm_report_status(
+                llm_report_view,
+                trusted_llm_report_html,
+                llm_enabled=True,
+                language=language,
+                report_title_override=llm_report_title,
+                result_label_override=llm_report_title,
+            )
+            if llm_report_view is not None
+            else ""
         )
         optimizer_status_html = ""
     elif combined_status == "cancelled":
         report_status_html = render_llm_actions_job_stopped(
-            report_view, optimizer_view, llm_enabled=llm_enabled, language=language
+            report_view, optimizer_view, llm_enabled=False, language=language
+        )
+        llm_report_status_html = (
+            render_llm_report_status(
+                llm_report_view,
+                trusted_llm_report_html,
+                llm_enabled=True,
+                language=language,
+                report_title_override=llm_report_title,
+                result_label_override=llm_report_title,
+            )
+            if llm_report_view is not None
+            else ""
         )
         optimizer_status_html = ""
     else:
         report_status_html = render_llm_report_status(
-            report_view, trusted_report_html, llm_enabled=llm_enabled, language=language
+            report_view, trusted_report_html, llm_enabled=False, language=language
+        )
+        llm_report_status_html = (
+            render_llm_report_status(
+                llm_report_view,
+                trusted_llm_report_html,
+                llm_enabled=True,
+                language=language,
+                report_title_override=llm_report_title,
+                result_label_override=llm_report_title,
+            )
+            if llm_report_view is not None
+            else ""
         )
         optimizer_status_html = render_optimizer_status(
             optimizer_view,
@@ -382,6 +490,7 @@ def render_llm_actions_block(
         and not action_cards_html
         and not notes_html
         and not report_status_html
+        and not llm_report_status_html
         and not optimizer_status_html
     ):
         return (
@@ -406,6 +515,7 @@ def render_llm_actions_block(
         f"{unavailable_html}"
         f"{notes_html}"
         f"{report_status_html}"
+        f"{llm_report_status_html}"
         f"{optimizer_status_html}"
         "</div>"
         "</section>"
@@ -413,7 +523,8 @@ def render_llm_actions_block(
 
 
 def actions_section_id(*, llm_enabled: bool = True) -> str:
-    return "llm-actions" if llm_enabled else "case-actions"
+    del llm_enabled
+    return "case-actions"
 
 
 def render_post_button(

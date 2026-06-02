@@ -280,10 +280,16 @@ def fake_detail_action_runner(
             encoding="utf-8",
         )
     else:
-        (case_dir / "diagnosis.md").write_text(
+        report_name = cmd[cmd.index("--out") + 1] if "--out" in cmd else module.PYTHON_REPORT_NAME
+        report_variant = (
+            module.REPORT_VARIANT_LLM
+            if report_name == module.LLM_REPORT_NAME
+            else module.REPORT_VARIANT_PYTHON
+        )
+        (case_dir / report_name).write_text(
             "# Validated report\n\nSafe E2E report body.\n", encoding="utf-8"
         )
-        module.write_batch_case_report_validation_marker(case_dir)
+        module.write_batch_case_report_validation_marker(case_dir, report_variant=report_variant)
 
     return subprocess.CompletedProcess(
         cmd, 0, stdout="raw stdout hidden", stderr="raw stderr hidden"
@@ -612,11 +618,12 @@ def test_e2e_known_query_result_opens_details_without_auto_llm_actions(tmp_path,
 
         assert "/query/details/" in detail_page.url
         assert detail_page.get_by_role("heading", name="Known Query ID details").is_visible()
-        actions = detail_page.locator("#llm-actions")
+        actions = detail_page.locator("#case-actions")
         assert actions.get_by_role("heading", name="Reports and optimizer").is_visible()
-        assert actions.get_by_role("button", name="Generate LLM report").is_visible()
+        assert actions.get_by_role("button", name="Generate Python report", exact=True).is_visible()
+        assert actions.get_by_role("button", name="Generate LLM narrative").is_visible()
         assert actions.get_by_role("button", name="Run Query LLM optimizer").is_visible()
-        assert actions.get_by_role("button", name="Generate report + optimizer").is_visible()
+        assert actions.get_by_role("button", name="Generate Python report + optimizer").is_visible()
         assert not actions.locator(".report-progress").is_visible()
         assert not actions.get_by_text("Open full report").is_visible()
         assert not actions.get_by_text("Open Query LLM optimizer").is_visible()
@@ -631,15 +638,17 @@ def test_e2e_detail_report_action_renders_trusted_result(tmp_path, page):
     with run_test_server(settings, runner=fake_detail_action_runner) as base_url:
         page.goto(f"{base_url}/batch/case/case-001")
 
-        actions = page.locator("#llm-actions")
-        assert actions.locator("strong", has_text="LLM Report").is_visible()
-        actions.get_by_role("button", name="Generate LLM report").click()
-        page.wait_for_url("**/jobs/*#llm-actions")
+        actions = page.locator("#case-actions")
+        assert actions.locator("strong", has_text="Python Report").is_visible()
+        assert actions.locator("strong", has_text="LLM narrative").is_visible()
+        actions.get_by_role("button", name="Generate Python report", exact=True).click()
+        page.wait_for_url("**/jobs/*#case-actions")
         page.wait_for_selector("text=Open full report", timeout=5000)
 
         body = page.locator("body")
-        body.locator("summary", has_text="LLM Report body").click()
+        body.locator("summary", has_text="Python Report body").click()
         assert body.get_by_text("Safe E2E report body.").is_visible()
+        assert body.locator('[aria-label="Python report result"]').is_visible()
         assert not body.get_by_text("raw stdout hidden").is_visible()
         assert not body.get_by_text(str(case_dir)).is_visible()
 
@@ -650,8 +659,8 @@ def test_e2e_detail_optimizer_action_renders_trusted_recommendations(tmp_path, p
     with run_test_server(settings, runner=fake_detail_action_runner) as base_url:
         page.goto(f"{base_url}/batch/case/case-001")
 
-        page.locator("#llm-actions").get_by_role("button", name="Run Query LLM optimizer").click()
-        page.wait_for_url("**/jobs/*#llm-actions")
+        page.locator("#case-actions").get_by_role("button", name="Run Query LLM optimizer").click()
+        page.wait_for_url("**/jobs/*#case-actions")
         open_link = page.get_by_role("link", name="Open Query LLM optimizer recommendations")
         open_link.wait_for(timeout=5000)
         assert open_link.get_attribute("href") == "#query-optimizer-result"
@@ -684,14 +693,14 @@ def test_e2e_no_llm_detail_actions_use_case_actions_and_python_labels(tmp_path, 
         assert actions.get_by_role("heading", name="Reports and optimizer").is_visible()
         assert actions.locator("strong", has_text="Python Report").is_visible()
         assert actions.locator("strong", has_text="Query optimizer").is_visible()
-        assert actions.get_by_role("button", name="Generate Python report").is_visible()
+        assert actions.get_by_role("button", name="Generate Python report", exact=True).is_visible()
         assert actions.get_by_role("button", name="Run Query optimizer").is_visible()
-        assert actions.get_by_role("button", name="Generate report + optimizer").is_visible()
+        assert actions.get_by_role("button", name="Generate Python report + optimizer").is_visible()
         assert not page.locator("#llm-actions").is_visible()
-        assert not page.locator("body").get_by_text("Generate LLM report").is_visible()
+        assert not page.locator("body").get_by_text("Generate LLM narrative").is_visible()
         assert not page.locator("body").get_by_text("Query LLM optimizer").is_visible()
 
-        actions.get_by_role("button", name="Generate Python report").click()
+        actions.get_by_role("button", name="Generate Python report", exact=True).click()
         page.wait_for_url("**/jobs/*#case-actions")
         page.wait_for_selector("text=Open full report", timeout=5000)
 
@@ -720,7 +729,7 @@ def test_e2e_no_llm_combined_action_renders_report_and_optimizer(tmp_path, page)
         page.goto(f"{base_url}/batch/case/case-001")
 
         page.locator("#case-actions").get_by_role(
-            "button", name="Generate report + optimizer"
+            "button", name="Generate Python report + optimizer"
         ).click()
         page.wait_for_url("**/jobs/*#case-actions")
         page.wait_for_selector("text=Open full report", timeout=5000)
@@ -795,11 +804,11 @@ def test_e2e_known_query_no_llm_combined_action_renders_python_outputs(tmp_path,
 
         actions = detail_page.locator("#case-actions")
         assert actions.get_by_role("heading", name="Reports and optimizer").is_visible()
-        assert actions.get_by_role("button", name="Generate report + optimizer").is_visible()
+        assert actions.get_by_role("button", name="Generate Python report + optimizer").is_visible()
         assert not detail_page.locator("#llm-actions").is_visible()
         assert not detail_page.locator("body").get_by_text("Query LLM optimizer").is_visible()
 
-        actions.get_by_role("button", name="Generate report + optimizer").click()
+        actions.get_by_role("button", name="Generate Python report + optimizer").click()
         detail_page.wait_for_url("**/jobs/*#case-actions")
         detail_page.wait_for_selector("text=Open full report", timeout=5000)
         open_link = detail_page.get_by_role("link", name="Open Query optimizer recommendations")

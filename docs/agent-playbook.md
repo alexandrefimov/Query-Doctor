@@ -107,7 +107,8 @@ Rules:
 - use presenter/view-model or `query_doctor.safety.browser_display` helpers for
   dynamic text;
 - do not re-add arbitrary docs or artifact rendering in the browser;
-- keep LLM Report and Query LLM optimizer explicit user actions.
+- keep Python Report, optional LLM narrative, and Query LLM optimizer explicit
+  selected-case user actions.
 
 Validate:
 
@@ -121,7 +122,7 @@ Validate:
 
 ## Report And Validator
 
-Use for LLM Report prompts, normalization, sanitizer, validator, trusted report
+Use for report prompts, normalization, sanitizer, validator, trusted report
 loading, or report facts.
 
 Read:

@@ -11,6 +11,7 @@ from query_doctor.web.case_files import (
     ensure_complete_existing_case,
     expected_case_dir_for_query,
 )
+from query_doctor.web.command_builders import REPORT_VARIANT_PYTHON
 from query_doctor.web.jobs import WebJobSnapshot, WebJobStore
 from query_doctor.web.models import WebError, WebSettings
 from query_doctor.web.query_analysis import validate_query_id
@@ -87,6 +88,8 @@ def render_specific_query_detail_page(
                 llm_enabled=not settings.no_llm,
                 optimized_query_state=render_context.optimized_query_state,
                 trusted_report_text=render_context.trusted_report_text,
+                llm_report_state=render_context.llm_report_state,
+                trusted_llm_report_text=render_context.trusted_llm_report_text,
                 trusted_optimized_query=render_context.trusted_optimized_query,
                 trusted_optimizer_recommendations=(
                     render_context.trusted_optimizer_recommendations
@@ -100,7 +103,10 @@ def render_specific_query_detail_page(
 
 
 def render_specific_query_report_for_request(
-    settings: WebSettings, query_id: str
+    settings: WebSettings,
+    query_id: str,
+    *,
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> tuple[int, str]:
     try:
         validated_query_id = validate_query_id(query_id)
@@ -113,7 +119,9 @@ def render_specific_query_report_for_request(
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     case = build_query_id_summary_case(validated_query_id, case_dir)
-    report = load_specific_query_trusted_report_artifact(validated_query_id, case_dir)
+    report = load_specific_query_trusted_report_artifact(
+        validated_query_id, case_dir, report_variant=report_variant
+    )
     if report is None:
         return 404, render_specific_query_detail_page(
             settings,

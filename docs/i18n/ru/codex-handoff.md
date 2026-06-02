@@ -33,7 +33,8 @@ details, local output paths и планы следующей сессии дол
 - LLM отвечает только за wording.
 - Browser-visible UI и trusted reports не должны показывать raw
   SQL/profile/metadata/paths/secrets/subprocess output/model internals.
-- LLM Report и optimizer jobs являются explicit selected-case actions.
+- Python Report, optional LLM narrative и optimizer jobs являются explicit
+  selected-case actions.
 
 Полный handoff и code map находятся в
 [английском документе](../../codex-handoff.md).

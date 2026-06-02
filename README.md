@@ -253,8 +253,9 @@ The local web UI exposes:
 - `Known Query ID`: a secondary mode inside `Diagnose` for one explicit Impala
   query ID. It uses Cloudera Manager by default or direct Impala daemon profile
   endpoints when `cluster_type=impala` is configured.
-- Details pages with deterministic findings, evidence context, and explicit
-  LLM Report / Query LLM optimizer actions.
+- Details pages with deterministic findings, evidence context, an explicit
+  Python Report baseline, optional LLM narrative, and Query LLM optimizer
+  actions.
 - `Help`: curated in-product workflow, safety, and documentation guidance.
 
 The pasted-SQL `Query Optimizer` remains a read-only compatibility route and

@@ -15,6 +15,20 @@ from query_doctor.web.ui.recent_scan_results import (
     sort_rows_for_query_group,
 )
 
+OPTIMIZER_CASE_NOT_ACTIONABLE_REASON = (
+    "Optimizer is available only for suspicious or bad selected cases."
+)
+FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON = (
+    "Optimizer requires successful deterministic processing for this case. Re-run analysis first."
+)
+ACTION_TERMINAL_OR_VISIBLE_STATUSES = {
+    "running",
+    "generated",
+    "partial_untrusted",
+    "failed",
+    "cancelled",
+}
+
 
 def batch_page_settings(settings: WebSettings, job_store: WebJobStore) -> WebSettings:
     if settings.batch_summary is not None:
@@ -152,3 +166,41 @@ def case_allows_llm_report(case: dict[str, object]) -> bool:
 
 def case_allows_query_optimizer(case: dict[str, object]) -> bool:
     return case_score_severity(case) in {"high", "suspicious"}
+
+
+def optimizer_state_for_case(
+    case: dict[str, object],
+    optimized_query_state: dict[str, object],
+) -> dict[str, object]:
+    if case_allows_query_optimizer(case):
+        return optimized_query_state
+    severity = case_score_severity(case)
+    status = str(optimized_query_state.get("status") or "not_run")
+    if status in ACTION_TERMINAL_OR_VISIBLE_STATUSES:
+        return optimized_query_state
+    if severity == "failed":
+        unavailable = dict(optimized_query_state)
+        unavailable.update(
+            {
+                "status": "unavailable",
+                "running": False,
+                "trusted": False,
+                "partial": False,
+                "source_available": False,
+                "unavailable_reason": FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON,
+                "error": "",
+            }
+        )
+        return unavailable
+    if status == "unavailable" and severity != "clean":
+        return optimized_query_state
+    hidden = dict(optimized_query_state)
+    hidden.update(
+        {
+            "status": "hidden",
+            "running": False,
+            "source_available": False,
+            "unavailable_reason": OPTIMIZER_CASE_NOT_ACTIONABLE_REASON,
+        }
+    )
+    return hidden

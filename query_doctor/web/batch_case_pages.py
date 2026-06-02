@@ -40,6 +40,8 @@ def render_batch_case_detail_for_request(
         render_context.view,
         optimized_query_state=render_context.optimized_query_state,
         trusted_report_text=render_context.trusted_report_text,
+        llm_report_state=render_context.llm_report_state,
+        trusted_llm_report_text=render_context.trusted_llm_report_text,
         trusted_optimized_query=render_context.trusted_optimized_query,
         trusted_optimizer_recommendations=render_context.trusted_optimizer_recommendations,
         optimizer_manual_guidance=render_context.optimizer_manual_guidance,

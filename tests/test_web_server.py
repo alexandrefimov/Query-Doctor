@@ -585,6 +585,68 @@ def test_specific_query_detail_action_context_centralizes_action_state(tmp_path)
     assert running_context.optimizer_running is True
 
 
+def test_web_specific_query_clean_details_hide_report_and_optimizer_actions(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    case_dir = tmp_path / "cm-corpus" / "abc_def"
+    write_complete_collected_case(case_dir)
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    (case_dir / "original_query.sql").write_text(
+        "SELECT secret_col FROM db.source_table WHERE secret_flag = 1",
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+    )
+    store = module.WebJobStore()
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        raise AssertionError("runner should not be called")
+
+    action_context = module.build_specific_query_detail_action_context("abc:def", case_dir, store)
+    render_context = module.build_specific_query_detail_render_context(
+        settings, "abc:def", case_dir, store
+    )
+    page_status, page_body = module.render_specific_query_detail_for_request(
+        settings, "abc:def", store
+    )
+    report_status, report_body = module.start_specific_query_report_job(
+        "abc:def", settings, store, runner=fake_runner
+    )
+    optimizer_status, optimizer_body = module.start_specific_query_optimized_query_job(
+        "abc:def", settings, store, runner=fake_runner
+    )
+    combined_status, combined_body = module.start_specific_query_llm_actions_job(
+        "abc:def", settings, store, runner=fake_runner
+    )
+
+    assert action_context.case["score_severity"] == "clean"
+    assert action_context.report_allowed is False
+    assert action_context.source_sql_available is False
+    assert render_context.optimized_query_state["status"] == "hidden"
+    assert page_status == 200
+    assert report_status == 400
+    assert optimizer_status == 400
+    assert combined_status == 200
+    assert calls == []
+    for rendered in (page_body, report_body, optimizer_body, combined_body):
+        assert "Generate Python report</button>" not in rendered
+        assert "Generate LLM narrative</button>" not in rendered
+        assert "Run Query LLM optimizer" not in rendered
+        assert "Query LLM optimizer" not in rendered
+        assert "Generate Python report + optimizer" not in rendered
+        assert 'action="/query/details/abc%3Adef/optimized-query"' not in rendered
+        assert 'action="/query/details/abc%3Adef/llm-actions"' not in rendered
+        assert "SELECT secret_col" not in rendered
+        assert "secret_flag" not in rendered
+        assert str(case_dir) not in rendered
+
+
 def test_specific_query_detail_render_context_returns_typed_safe_view(tmp_path):
     module = load_web_module()
     from query_doctor.web.presenters.recent_scan_models import RecentScanCaseDetailView
@@ -1303,10 +1365,10 @@ def test_render_llm_actions_job_progress_fails_closed_without_progress_view():
     [
         ("create_batch_report", "case-001", "batch_report"),
         ("create_batch_optimized_query", "case-001", "batch_optimized_query"),
-        ("create_batch_llm_actions", "case-001", "batch_llm_actions"),
+        ("create_batch_case_actions", "case-001", "batch_case_actions"),
         ("create_query_report", "abc:def", "query_report"),
         ("create_query_optimized_query", "abc:def", "query_optimized_query"),
-        ("create_query_llm_actions", "abc:def", "query_llm_actions"),
+        ("create_query_case_actions", "abc:def", "query_case_actions"),
     ],
 )
 def test_detail_job_status_json_uses_safe_progress_view_contract(
@@ -1414,7 +1476,7 @@ def test_web_job_panel_uses_shared_progress_view_for_initial_render():
     assert "batch-progress-step--running" in html
 
 
-def test_web_combined_llm_actions_renders_single_cancel_button():
+def test_web_combined_case_actions_renders_single_cancel_button():
     from query_doctor.web.job_progress import LLM_ACTIONS_STAGES, progress_view_for_job
     from query_doctor.web.ui.llm_actions import (
         present_optimized_query_action,
@@ -1432,8 +1494,9 @@ def test_web_combined_llm_actions_renders_single_cancel_button():
         "status": "running",
         "running": True,
         "trusted": False,
+        "report_variant": "python",
         "job_id": job_id,
-        "job_kind": "batch_llm_actions",
+        "job_kind": "batch_case_actions",
         "stage_label": "Generating validated report",
         "progress": 38,
         "progress_view": progress_view,
@@ -1442,7 +1505,7 @@ def test_web_combined_llm_actions_renders_single_cancel_button():
         "status": "running",
         "running": True,
         "job_id": job_id,
-        "job_kind": "batch_llm_actions",
+        "job_kind": "batch_case_actions",
         "stage_label": "Generating validated report",
         "progress": 38,
         "progress_view": progress_view,
@@ -1455,14 +1518,14 @@ def test_web_combined_llm_actions_renders_single_cancel_button():
     )
 
     assert html.count(f'action="/jobs/{job_id}/cancel"') == 1
-    assert 'aria-label="LLM actions progress"' in html
-    assert 'aria-label="LLM report progress"' not in html
-    assert "Stop LLM actions" in html
+    assert 'aria-label="Python actions progress"' in html
+    assert 'aria-label="Python report progress"' not in html
+    assert "Stop Python actions" in html
     assert "Stop job" not in html
-    assert "Generating LLM report + optimizer" in html
+    assert "Generating Python report + optimizer" in html
 
 
-def test_web_combined_llm_actions_cancelled_uses_combined_status_label():
+def test_web_combined_case_actions_cancelled_uses_combined_status_label():
     from query_doctor.web.ui.llm_actions import (
         present_optimized_query_action,
         render_llm_actions_block,
@@ -1474,9 +1537,10 @@ def test_web_combined_llm_actions_cancelled_uses_combined_status_label():
         "status": "cancelled",
         "running": False,
         "trusted": False,
+        "report_variant": "python",
         "error": "Job stopped by user.",
         "job_id": job_id,
-        "job_kind": "batch_llm_actions",
+        "job_kind": "batch_case_actions",
         "stage_label": "Cancelled",
         "progress": 100,
     }
@@ -1485,7 +1549,7 @@ def test_web_combined_llm_actions_cancelled_uses_combined_status_label():
         "running": False,
         "error": "Job stopped by user.",
         "job_id": job_id,
-        "job_kind": "batch_llm_actions",
+        "job_kind": "batch_case_actions",
         "stage_label": "Cancelled",
         "progress": 100,
     }
@@ -1496,9 +1560,9 @@ def test_web_combined_llm_actions_cancelled_uses_combined_status_label():
         present_optimized_query_action(optimizer_state),
     )
 
-    assert "LLM actions stopped" in html
+    assert "Python actions stopped" in html
     assert "Query LLM optimizer stopped" not in html
-    assert "LLM report stopped" not in html
+    assert "Python report stopped" not in html
     assert "Job stopped by user." in html
     assert f'action="/jobs/{job_id}/cancel"' not in html
 
@@ -1513,7 +1577,7 @@ def test_web_no_llm_action_block_uses_python_only_labels():
 
     html = render_llm_actions_block(
         "case-001",
-        present_report_action({"status": "generated", "trusted": True}),
+        present_report_action({"status": "generated", "trusted": True, "report_variant": "python"}),
         present_optimized_query_action(
             {
                 "status": "generated",
@@ -1532,7 +1596,7 @@ def test_web_no_llm_action_block_uses_python_only_labels():
     assert "<h1>Reports and optimizer</h1>" not in html
     assert '<section id="case-actions"' in html
     assert '<section id="llm-actions"' not in html
-    assert "Creates a browser-safe explanation for review or sharing with colleagues." in html
+    assert "Deterministic baseline from Python-owned facts. Recommended first." in html
     assert "Looks for validated rewrite guidance or a trusted draft without executing SQL." in html
     assert "Python Report" in html
     assert "Python report result" in html
@@ -1552,9 +1616,9 @@ def test_web_no_llm_action_block_uses_python_only_labels():
     assert (
         '<details class="analysis-subdetails" open aria-label="Query optimizer recommendations">'
     ) not in html
-    assert "Generate LLM report" not in html
+    assert "Generate LLM narrative" not in html
     assert "Runs one LLM report" not in html
-    assert "LLM Report" not in html
+    assert "LLM narrative" not in html
     assert "Query LLM optimizer" not in html
 
 
@@ -1567,14 +1631,17 @@ def test_web_available_action_cards_explain_purpose():
 
     html = render_llm_actions_block(
         "case-001",
-        present_report_action({"status": "not_run"}),
+        present_report_action({"status": "not_run", "report_variant": "python"}),
         present_optimized_query_action({"status": "not_run"}),
+        llm_report_view=present_report_action({"status": "not_run", "report_variant": "llm"}),
     )
     styles = layout.render_shared_styles()
 
-    assert "Creates a browser-safe explanation for review or sharing with colleagues." in html
+    assert "Deterministic baseline from Python-owned facts. Recommended first." in html
+    assert "LLM narrative" in html
+    assert "Optional wording pass over the same validated facts for comparison." in html
     assert "Looks for validated rewrite guidance or a trusted draft without executing SQL." in html
-    assert "Runs both explicit actions for this selected case only." in html
+    assert "Runs the deterministic report and optimizer for this selected case only." in html
     assert 'class="llm-action-card-actions"' in html
     assert_css_contains(
         styles,
@@ -1595,7 +1662,7 @@ def test_web_available_action_cards_explain_purpose():
     assert_css_contains(styles, ".llm-action-card .button{height:auto;min-height:32px;")
 
 
-def test_web_unavailable_llm_actions_render_compact_status():
+def test_web_unavailable_case_actions_render_compact_status():
     from query_doctor.web.ui.llm_actions import (
         present_optimized_query_action,
         render_llm_actions_block,
@@ -1604,13 +1671,13 @@ def test_web_unavailable_llm_actions_render_compact_status():
 
     html = render_llm_actions_block(
         "case-001",
-        present_report_action({"status": "not_run"}),
+        present_report_action({"status": "not_run", "report_variant": "python"}),
         present_optimized_query_action({"status": "unavailable"}),
         report_enabled=False,
     )
 
     assert (
-        '<section id="llm-actions" '
+        '<section id="case-actions" '
         'class="panel docs-panel llm-actions-panel llm-actions-panel--unavailable"' in html
     )
     assert '<details class="llm-actions-status-details">' in html
@@ -1619,11 +1686,11 @@ def test_web_unavailable_llm_actions_render_compact_status():
         "<small>No action is available for this case</small></summary>" in html
     )
     assert '<h2 class="docs-panel-title">Reports and optimizer</h2>' not in html
-    assert "LLM Report is available only for suspicious or bad queries." in html
+    assert "Python Report is available only for suspicious or bad queries." in html
     assert (
         "Source SQL is unavailable or outside the optimizer read-only scope for this case." in html
     )
-    assert 'action="/batch/case/case-001/llm-actions"' not in html
+    assert 'action="/batch/case/case-001/case-actions"' not in html
 
 
 def test_web_no_llm_combined_action_uses_python_labels():
@@ -1636,22 +1703,23 @@ def test_web_no_llm_combined_action_uses_python_labels():
 
     job_id = "0123456789abcdef0123456789abcdef"
     progress_view = progress_view_for_job(
-        "batch_llm_actions",
+        "batch_case_actions",
         LLM_ACTIONS_STAGES[1][1],
         LLM_ACTIONS_STAGES[1][2],
     )
     report_state = {
         "status": "running",
         "running": True,
+        "report_variant": "python",
         "job_id": job_id,
-        "job_kind": "batch_llm_actions",
+        "job_kind": "batch_case_actions",
         "progress_view": progress_view,
     }
     optimizer_state = {
         "status": "running",
         "running": True,
         "job_id": job_id,
-        "job_kind": "batch_llm_actions",
+        "job_kind": "batch_case_actions",
         "progress_view": progress_view,
     }
 
@@ -2024,7 +2092,7 @@ def test_web_specific_query_details_route_renders_safe_deterministic_details(tmp
     assert 'href="#pipeline-status"' not in captured["body"]
     assert 'href="#findings"' not in captured["body"]
     assert 'href="#evidence-details"' not in captured["body"]
-    assert '<section id="llm-actions"' in captured["body"]
+    assert '<section id="case-actions"' in captured["body"]
     assert "Verdict" in captured["body"]
     assert "Start with the recommendation below" not in captured["body"]
     assert "confidence" in captured["body"]
@@ -2035,13 +2103,16 @@ def test_web_specific_query_details_route_renders_safe_deterministic_details(tmp
     )
     assert "profile operators parsed: 4" not in captured["body"]
     assert "Diagnostics and evidence" in captured["body"]
-    assert "LLM Report" in captured["body"]
-    assert captured["body"].index("Diagnostics and evidence") < captured["body"].index("LLM Report")
+    assert "Python Report" in captured["body"]
+    assert "LLM narrative" in captured["body"]
+    assert captured["body"].index("Diagnostics and evidence") < captured["body"].index(
+        "Python Report"
+    )
     assert '<details class="panel docs-panel diagnostics-details">' in captured["body"]
     assert '<details class="panel docs-panel diagnostics-details" open>' not in captured["body"]
     diagnostics_html = captured["body"][
         captured["body"].index('<section id="diagnostics"') : captured["body"].index(
-            '<section id="llm-actions"'
+            '<section id="case-actions"'
         )
     ]
     assert '<section id="evidence-details"' not in diagnostics_html
@@ -2134,12 +2205,14 @@ def test_web_specific_query_details_route_renders_safe_deterministic_details(tmp
     ]
     assert "<h3>Limitations</h3>" not in cluster_context_html
     assert '<details class="analysis-subdetails" aria-label="Metadata facts">' in analysis_html
-    assert 'action="/query/details/abc%3Adef/report"' in captured["body"]
-    assert "Generate LLM report</button>" in captured["body"]
-    assert "disabled>Generate LLM report</button>" not in captured["body"]
-    assert "Generate report + optimizer" not in captured["body"]
+    assert 'action="/query/details/abc%3Adef/python-report"' in captured["body"]
+    assert 'action="/query/details/abc%3Adef/llm-report"' in captured["body"]
+    assert "Generate Python report</button>" in captured["body"]
+    assert "Generate LLM narrative</button>" in captured["body"]
+    assert "disabled>Generate Python report</button>" not in captured["body"]
+    assert "Generate Python report + optimizer" not in captured["body"]
     assert 'action="/query/details/abc%3Adef/llm-actions"' not in captured["body"]
-    assert 'action="/batch/case/specific-query/report"' not in captured["body"]
+    assert 'action="/batch/case/specific-query/python-report"' not in captured["body"]
     assert "/tmp/" not in captured["body"]
     assert str(case_dir) not in captured["body"]
     assert "case_dir" not in captured["body"]
@@ -2164,7 +2237,9 @@ def test_web_specific_query_report_action_builds_validated_pipeline_command(tmp_
 
     def fake_runner(cmd, **kwargs):
         calls.append((cmd, kwargs))
-        (case_dir / "diagnosis.md").write_text("# Report\n\nSafe body.\n", encoding="utf-8")
+        (case_dir / module.PYTHON_REPORT_NAME).write_text(
+            "# Report\n\nSafe body.\n", encoding="utf-8"
+        )
         return subprocess.CompletedProcess(
             cmd, 0, stdout="raw stdout hidden", stderr="raw stderr hidden"
         )
@@ -2174,7 +2249,7 @@ def test_web_specific_query_report_action_builds_validated_pipeline_command(tmp_
     )
 
     assert status == 303
-    assert fragment_from_location(location) == "llm-actions"
+    assert fragment_from_location(location) == "case-actions"
     job_id = job_id_from_location(location)
     snapshot = store.get(job_id)
     for _ in range(50):
@@ -2187,14 +2262,15 @@ def test_web_specific_query_report_action_builds_validated_pipeline_command(tmp_
     assert snapshot.kind == "query_report"
     assert snapshot.status == "ok"
     cmd, kwargs = calls[0]
-    assert command_uses_role(cmd, "pipeline")
-    assert command_args(cmd, "pipeline")[0] == str(case_dir)
+    assert command_uses_role(cmd, "report")
+    assert command_args(cmd, "report")[0] == str(case_dir)
     assert cmd[cmd.index("--mode") + 1] == "admin"
     assert cmd[cmd.index("--model") + 1] == "configured-model"
-    assert cmd[cmd.index("--out") + 1] == "diagnosis.md"
-    assert cmd[cmd.index("--report-validation-mode") + 1] == "strict"
+    assert cmd[cmd.index("--out") + 1] == module.PYTHON_REPORT_NAME
+    assert cmd[cmd.index("--validation-mode") + 1] == "strict"
+    assert "--no-llm" in cmd
     assert kwargs["env"] is not None
-    assert (case_dir / "diagnosis.validated.json").is_file()
+    assert (case_dir / module.PYTHON_REPORT_VALIDATION_MARKER).is_file()
 
     handler = module.make_handler(
         settings, analysis_func=lambda *args, **kwargs: None, job_store=store, runner=fake_runner
@@ -2212,7 +2288,7 @@ def test_web_specific_query_report_action_builds_validated_pipeline_command(tmp_
 
     assert captured["status"] == 200
     assert "Open full report" in captured["body"]
-    assert 'href="/query/details/abc%3Adef/report"' in captured["body"]
+    assert 'href="/query/details/abc%3Adef/python-report"' in captured["body"]
     assert ">Report</h1>" in captured["body"]
     assert "Safe body." in captured["body"]
     assert "raw stdout hidden" not in captured["body"]
@@ -2659,7 +2735,7 @@ def test_web_batch_case_detail_renders_known_case_safely(tmp_path):
     assert 'href="#pipeline-status"' not in body
     assert 'href="#findings"' not in body
     assert 'href="#evidence-details"' not in body
-    assert '<section id="llm-actions"' in body
+    assert '<section id="case-actions"' in body
     assert "Read-only" not in body
     assert "This page does not render raw SQL" not in body
     assert "abc&lt;script&gt;" in body
@@ -2671,24 +2747,25 @@ def test_web_batch_case_detail_renders_known_case_safely(tmp_path):
     assert "no spill evidence observed" not in body
     assert "table stats available" in body
     assert "collection ok; analysis ok; metadata skipped; report validated report" not in body
-    assert "LLM report" in body
+    assert "Python Report" in body
     assert "cardinality anomalies" in body
     assert "memory anomalies" in body
     assert "zero row estimate gaps" in body
     assert "zero memory estimate gaps" in body
     assert "backend data skew" in body
     assert "host-tail candidates" in body
-    assert "LLM Report" in body
+    assert "Python Report" in body
+    assert "LLM narrative" in body
     assert "Diagnostics" in body
     assert "Verdict" in body
     assert "Recommended changes" in body
     assert "confidence" in body
     assert "Score" in body
-    assert body.index("Diagnostics") < body.index("LLM Report")
+    assert body.index("Diagnostics") < body.index("Python Report")
     assert '<details class="panel docs-panel diagnostics-details">' in body
     assert '<details class="panel docs-panel diagnostics-details" open>' not in body
     diagnostics_start = body.index('<section id="diagnostics"')
-    diagnostics_end = body.index('<section id="llm-actions"')
+    diagnostics_end = body.index('<section id="case-actions"')
     diagnostics_html = body[diagnostics_start:diagnostics_end]
     pipeline_start = diagnostics_html.index('<section id="pipeline-status"')
     runtime_start = diagnostics_html.index('<section id="runtime-evidence"')
@@ -2733,8 +2810,8 @@ def test_web_batch_case_detail_renders_known_case_safely(tmp_path):
     assert "Report generation requires a complete server-owned case. Re-run analysis first." in body
     assert "Generate LLM report" not in body
     assert "Generate report + optimizer" not in body
-    assert 'action="/batch/case/case-001/llm-actions"' not in body
-    assert 'action="/batch/case/case-001/report"' not in body
+    assert 'action="/batch/case/case-001/case-actions"' not in body
+    assert 'action="/batch/case/case-001/python-report"' not in body
     assert 'name="model"' not in body
     assert 'name="case_dir"' not in body
     assert "cardinality &lt;script&gt;alert(1)&lt;/script&gt;" in body
@@ -3295,7 +3372,7 @@ def test_web_batch_case_detail_handles_unknown_and_path_traversal_safely(tmp_pat
     assert "/tmp" not in traversal["body"]
 
 
-def test_web_batch_case_report_action_builds_validated_pipeline_command(tmp_path):
+def test_web_batch_case_report_action_builds_validated_python_report_command(tmp_path):
     module = load_web_module()
     summary = tmp_path / "batch_summary.json"
     case_dir = tmp_path / "cases" / "case-001" / "abc"
@@ -3334,7 +3411,7 @@ def test_web_batch_case_report_action_builds_validated_pipeline_command(tmp_path
         assert kwargs["cwd"] == str(REPO_DIR)
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
-        (case_dir / "diagnosis.md").write_text(
+        (case_dir / module.PYTHON_REPORT_NAME).write_text(
             "# Validated report\n\nSafe body.\n", encoding="utf-8"
         )
         return subprocess.CompletedProcess(
@@ -3346,7 +3423,7 @@ def test_web_batch_case_report_action_builds_validated_pipeline_command(tmp_path
     )
 
     assert status == 303
-    assert fragment_from_location(location) == "llm-actions"
+    assert fragment_from_location(location) == "case-actions"
     job_id = job_id_from_location(location)
     snapshot = store.get(job_id)
     for _ in range(50):
@@ -3360,18 +3437,18 @@ def test_web_batch_case_report_action_builds_validated_pipeline_command(tmp_path
     assert snapshot.status == "ok"
     assert len(calls) == 1
     cmd, kwargs = calls[0]
-    assert command_uses_role(cmd, "pipeline")
-    assert command_args(cmd, "pipeline")[0] == str(case_dir)
+    assert command_uses_role(cmd, "report")
+    assert command_args(cmd, "report")[0] == str(case_dir)
     assert cmd[cmd.index("--mode") + 1] == "admin"
     assert cmd[cmd.index("--model") + 1] == "configured-model"
-    assert cmd[cmd.index("--out") + 1] == "diagnosis.md"
-    assert cmd[cmd.index("--metadata-mode") + 1] == "off"
-    assert cmd[cmd.index("--report-validation-mode") + 1] == "strict"
+    assert cmd[cmd.index("--out") + 1] == module.PYTHON_REPORT_NAME
+    assert cmd[cmd.index("--validation-mode") + 1] == "strict"
+    assert "--no-llm" in cmd
     assert "--no-validate" not in cmd
     assert "--top-reports" not in cmd
     assert kwargs["env"] is not None
     assert str(case_dir) in cmd
-    assert (case_dir / "diagnosis.validated.json").is_file()
+    assert (case_dir / module.PYTHON_REPORT_VALIDATION_MARKER).is_file()
 
     handler = module.make_handler(
         settings, analysis_func=lambda *args, **kwargs: None, job_store=store, runner=fake_runner
@@ -3389,12 +3466,84 @@ def test_web_batch_case_report_action_builds_validated_pipeline_command(tmp_path
 
     assert captured["status"] == 200
     assert "Open full report" in captured["body"]
-    assert "Generate LLM report" not in captured["body"]
+    assert "Generate Python report" not in captured["body"]
     assert "validated report" in captured["body"]
     assert ">Validated report</h1>" in captured["body"]
     assert "Safe body." in captured["body"]
     assert "raw stdout hidden" not in captured["body"]
     assert str(case_dir) not in captured["body"]
+
+
+def test_web_batch_case_llm_report_action_builds_separate_validated_command(tmp_path):
+    module = load_web_module()
+    summary = tmp_path / "batch_summary.json"
+    case_dir = tmp_path / "cases" / "case-001" / "abc"
+    case_dir.mkdir(parents=True)
+    (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    summary.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "case_index": 1,
+                        "query_id": "abc...000001",
+                        "score": 22,
+                        "collection_status": "ok",
+                        "analysis_status": "ok",
+                        "metadata_status": "collected",
+                        "score_reasons": ["cardinality estimate anomalies: 5"],
+                        "case_dir": str(case_dir),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        batch_summary=summary,
+        model="configured-model",
+    )
+    store = module.WebJobStore()
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        (case_dir / module.LLM_REPORT_NAME).write_text(
+            "# Validated LLM narrative\n\nSafe body.\n", encoding="utf-8"
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    status, location = module.start_batch_case_report_job(
+        "case-001",
+        settings,
+        store,
+        runner=fake_runner,
+        report_variant=module.REPORT_VARIANT_LLM,
+    )
+
+    assert status == 303
+    assert fragment_from_location(location) == "case-actions"
+    job_id = job_id_from_location(location)
+    snapshot = store.get(job_id)
+    for _ in range(50):
+        if snapshot is not None and snapshot.status == "ok":
+            break
+        time.sleep(0.01)
+        snapshot = store.get(job_id)
+
+    assert snapshot is not None
+    assert snapshot.kind == "batch_llm_report"
+    assert snapshot.status == "ok"
+    cmd, kwargs = calls[0]
+    assert command_uses_role(cmd, "report")
+    assert cmd[cmd.index("--out") + 1] == module.LLM_REPORT_NAME
+    assert cmd[cmd.index("--validation-mode") + 1] == "strict"
+    assert "--no-llm" not in cmd
+    assert kwargs["env"] is not None
+    assert (case_dir / module.LLM_REPORT_VALIDATION_MARKER).is_file()
+    assert not (case_dir / module.PYTHON_REPORT_VALIDATION_MARKER).exists()
 
 
 def test_web_running_batch_report_renders_progress_steps(tmp_path):
@@ -3450,7 +3599,7 @@ def test_web_running_batch_report_renders_progress_steps(tmp_path):
     assert report_state["progress_view"].steps[1].state == "running"
     assert report_state["progress_view"].steps[1].detail == "Generating validated report"
     assert "LLM report status: running" not in body
-    assert "Generating LLM report" in body
+    assert "Generating Python report" in body
     assert "Generating validated report" in body
     assert f'data-report-job-status-url="/jobs/{job.job_id}/status"' in body
     assert f'data-report-job-url="/jobs/{job.job_id}"' in body
@@ -3526,7 +3675,7 @@ def test_web_batch_optimized_query_job_generates_validated_draft_without_echoing
     )
 
     assert status == 303
-    assert fragment_from_location(location) == "llm-actions"
+    assert fragment_from_location(location) == "case-actions"
     job_id = job_id_from_location(location)
     snapshot = store.get(job_id)
     for _ in range(50):
@@ -3574,7 +3723,7 @@ def test_web_batch_optimized_query_job_generates_validated_draft_without_echoing
     assert str(case_dir) not in captured["body"]
 
 
-def test_web_batch_llm_actions_job_generates_report_and_optimizer(tmp_path):
+def test_web_batch_case_actions_job_generates_python_report_and_optimizer(tmp_path):
     module = load_web_module()
     summary = tmp_path / "batch_summary.json"
     case_dir = tmp_path / "cases" / "case-001" / "abc"
@@ -3610,8 +3759,8 @@ def test_web_batch_llm_actions_job_generates_report_and_optimizer(tmp_path):
 
     def fake_runner(cmd, **kwargs):
         calls.append((cmd, kwargs))
-        if command_uses_role(cmd, "pipeline"):
-            (case_dir / "diagnosis.md").write_text(
+        if command_uses_role(cmd, "report"):
+            (case_dir / module.PYTHON_REPORT_NAME).write_text(
                 "# Validated report\n\nSafe body.\n", encoding="utf-8"
             )
         elif command_uses_role(cmd, "optimize_query"):
@@ -3645,7 +3794,7 @@ def test_web_batch_llm_actions_job_generates_report_and_optimizer(tmp_path):
     )
 
     assert status == 303
-    assert fragment_from_location(location) == "llm-actions"
+    assert fragment_from_location(location) == "case-actions"
     job_id = job_id_from_location(location)
     snapshot = store.get(job_id)
     for _ in range(50):
@@ -3655,10 +3804,12 @@ def test_web_batch_llm_actions_job_generates_report_and_optimizer(tmp_path):
         snapshot = store.get(job_id)
 
     assert snapshot is not None
-    assert snapshot.kind == "batch_llm_actions"
+    assert snapshot.kind == "batch_case_actions"
     assert snapshot.status == "ok"
     assert len(calls) == 2
-    assert command_uses_role(calls[0][0], "pipeline")
+    assert command_uses_role(calls[0][0], "report")
+    assert calls[0][0][calls[0][0].index("--out") + 1] == module.PYTHON_REPORT_NAME
+    assert "--no-llm" in calls[0][0]
     assert command_uses_role(calls[1][0], "optimize_query")
 
     handler = module.make_handler(
@@ -3725,8 +3876,8 @@ def test_web_no_llm_combined_job_uses_python_result_label(tmp_path):
 
     def fake_runner(cmd, **kwargs):
         calls.append(cmd)
-        if command_uses_role(cmd, "pipeline"):
-            (case_dir / "diagnosis.md").write_text(
+        if command_uses_role(cmd, "report"):
+            (case_dir / module.PYTHON_REPORT_NAME).write_text(
                 "# Python report\n\nSafe body.\n", encoding="utf-8"
             )
         elif command_uses_role(cmd, "optimize_query"):
@@ -3770,13 +3921,14 @@ def test_web_no_llm_combined_job_uses_python_result_label(tmp_path):
 
     assert snapshot is not None
     assert snapshot.status == "ok"
+    assert snapshot.kind == "batch_case_actions"
     assert "Python report and optimizer generated" in snapshot.result_html
     assert "LLM report and optimizer generated" not in snapshot.result_html
     assert "--no-llm" in calls[0]
     assert "--no-llm" in calls[1]
 
 
-def test_web_batch_llm_actions_job_keeps_report_when_optimizer_fails(tmp_path):
+def test_web_batch_case_actions_job_keeps_report_when_optimizer_fails(tmp_path):
     module = load_web_module()
     summary = tmp_path / "batch_summary.json"
     case_dir = tmp_path / "cases" / "case-001" / "abc"
@@ -3809,8 +3961,8 @@ def test_web_batch_llm_actions_job_keeps_report_when_optimizer_fails(tmp_path):
 
     def fake_runner(cmd, **kwargs):
         calls.append(cmd)
-        if command_uses_role(cmd, "pipeline"):
-            (case_dir / "diagnosis.md").write_text(
+        if command_uses_role(cmd, "report"):
+            (case_dir / module.PYTHON_REPORT_NAME).write_text(
                 "# Validated report\n\nSafe body.\n", encoding="utf-8"
             )
             return subprocess.CompletedProcess(
@@ -3825,7 +3977,7 @@ def test_web_batch_llm_actions_job_keeps_report_when_optimizer_fails(tmp_path):
     )
 
     assert status == 303
-    assert fragment_from_location(location) == "llm-actions"
+    assert fragment_from_location(location) == "case-actions"
     job_id = job_id_from_location(location)
     snapshot = store.get(job_id)
     for _ in range(50):
@@ -3835,7 +3987,7 @@ def test_web_batch_llm_actions_job_keeps_report_when_optimizer_fails(tmp_path):
         snapshot = store.get(job_id)
 
     assert snapshot is not None
-    assert snapshot.kind == "batch_llm_actions"
+    assert snapshot.kind == "batch_case_actions"
     assert snapshot.status == "failed"
     assert len(calls) == 2
 
@@ -3857,7 +4009,7 @@ def test_web_batch_llm_actions_job_keeps_report_when_optimizer_fails(tmp_path):
     assert captured["status"] == 200
     assert "Open full report" in body
     assert "Safe body." in body
-    assert "LLM report failed" not in body
+    assert "Python report failed" not in body
     assert "Query LLM optimizer failed" in body
     assert "Unsafe output is hidden" in body
     assert "raw stdout hidden" not in body
@@ -3866,7 +4018,7 @@ def test_web_batch_llm_actions_job_keeps_report_when_optimizer_fails(tmp_path):
     assert str(case_dir) not in body
 
 
-def test_web_batch_llm_actions_job_stops_when_report_fails(tmp_path):
+def test_web_batch_case_actions_job_stops_when_report_fails(tmp_path):
     module = load_web_module()
     summary = tmp_path / "batch_summary.json"
     case_dir = tmp_path / "cases" / "case-001" / "abc"
@@ -3899,8 +4051,8 @@ def test_web_batch_llm_actions_job_stops_when_report_fails(tmp_path):
 
     def fake_runner(cmd, **kwargs):
         calls.append(cmd)
-        if command_uses_role(cmd, "pipeline"):
-            (case_dir / "diagnosis.partial.md").write_text(
+        if command_uses_role(cmd, "report"):
+            (case_dir / module.PYTHON_REPORT_PARTIAL_NAME).write_text(
                 "# Partial\n\nSELECT secret_col FROM db.source_table\n",
                 encoding="utf-8",
             )
@@ -3914,7 +4066,7 @@ def test_web_batch_llm_actions_job_stops_when_report_fails(tmp_path):
     )
 
     assert status == 303
-    assert fragment_from_location(location) == "llm-actions"
+    assert fragment_from_location(location) == "case-actions"
     job_id = job_id_from_location(location)
     snapshot = store.get(job_id)
     for _ in range(50):
@@ -3924,10 +4076,10 @@ def test_web_batch_llm_actions_job_stops_when_report_fails(tmp_path):
         snapshot = store.get(job_id)
 
     assert snapshot is not None
-    assert snapshot.kind == "batch_llm_actions"
+    assert snapshot.kind == "batch_case_actions"
     assert snapshot.status == "failed"
     assert len(calls) == 1
-    assert command_uses_role(calls[0], "pipeline")
+    assert command_uses_role(calls[0], "report")
     assert not (case_dir / "optimized_query.sql").exists()
     assert not (case_dir / "optimized_query.validated.json").exists()
 
@@ -3947,7 +4099,7 @@ def test_web_batch_llm_actions_job_stops_when_report_fails(tmp_path):
 
     body = captured["body"]
     assert captured["status"] == 200
-    assert "LLM report failed" in body
+    assert "Python report failed" in body
     assert "Query LLM optimizer failed" not in body
     assert "The partial report is untrusted and hidden." in body
     assert "Open Query LLM optimizer" not in body
@@ -4890,7 +5042,7 @@ def test_web_batch_case_report_failure_keeps_partial_untrusted(tmp_path):
     store = module.WebJobStore()
 
     def fake_runner(cmd, **kwargs):
-        (case_dir / "diagnosis.partial.md").write_text(
+        (case_dir / module.PYTHON_REPORT_PARTIAL_NAME).write_text(
             "# Partial\n\nraw unsafe partial\n", encoding="utf-8"
         )
         return subprocess.CompletedProcess(
@@ -4911,7 +5063,7 @@ def test_web_batch_case_report_failure_keeps_partial_untrusted(tmp_path):
 
     assert snapshot is not None
     assert snapshot.status == "failed"
-    assert not (case_dir / "diagnosis.validated.json").exists()
+    assert not (case_dir / module.PYTHON_REPORT_VALIDATION_MARKER).exists()
 
     handler = module.make_handler(
         settings, analysis_func=lambda *args, **kwargs: None, job_store=store, runner=fake_runner
@@ -4929,16 +5081,16 @@ def test_web_batch_case_report_failure_keeps_partial_untrusted(tmp_path):
     body = captured["body"]
 
     assert captured["status"] == 200
-    assert "LLM Report" in body
-    assert "LLM report failed" in body
+    assert "Python Report" in body
+    assert "Python report failed" in body
     assert "validation rejected the output" in body
     assert "The partial report is untrusted and hidden." in body
     assert "batch-progress-step--failed" in body
-    assert "diagnosis.partial.md" not in body
+    assert module.PYTHON_REPORT_PARTIAL_NAME not in body
     assert "Partial report exists but is untrusted and hidden." not in body
     assert "raw unsafe partial" not in body
     assert "raw stdout hidden" not in body
-    assert "Open LLM report" not in body
+    assert "Open Python report" not in body
     assert str(case_dir) not in body
 
 
@@ -4949,11 +5101,13 @@ def test_web_batch_case_validated_report_view_is_resolved_from_summary(tmp_path)
     case_dir.mkdir(parents=True)
     (case_dir / "profile_digest.md").write_text("PROFILE\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
-    (case_dir / "diagnosis.md").write_text(
+    (case_dir / module.PYTHON_REPORT_NAME).write_text(
         f"# Report\n\nValidated body with {case_dir} hidden.\n",
         encoding="utf-8",
     )
-    module.write_batch_case_report_validation_marker(case_dir)
+    module.write_batch_case_report_validation_marker(
+        case_dir, report_variant=module.REPORT_VARIANT_PYTHON
+    )
     summary.write_text(
         json.dumps(
             {
@@ -4977,7 +5131,7 @@ def test_web_batch_case_validated_report_view_is_resolved_from_summary(tmp_path)
         captured["status"] = status
         captured["body"] = body
 
-    request.path = "/batch/case/case-001/report?case_dir=/tmp/evil"
+    request.path = "/batch/case/case-001/python-report?case_dir=/tmp/evil"
     request.write_html = write_html
     request.do_GET()
     body = captured["body"]
@@ -4995,16 +5149,24 @@ def test_web_validated_report_marker_must_match_report_and_facts(tmp_path):
     module = load_web_module()
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    (case_dir / "diagnosis.md").write_text("# Report\n\nSafe body.\n", encoding="utf-8")
+    (case_dir / module.PYTHON_REPORT_NAME).write_text("# Report\n\nSafe body.\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
 
-    module.write_batch_case_report_validation_marker(case_dir)
+    module.write_batch_case_report_validation_marker(
+        case_dir, report_variant=module.REPORT_VARIANT_PYTHON
+    )
 
-    assert module.batch_case_validated_report_exists(case_dir)
+    assert module.batch_case_validated_report_exists(
+        case_dir, report_variant=module.REPORT_VARIANT_PYTHON
+    )
 
-    (case_dir / "diagnosis.md").write_text("# Report\n\nChanged body.\n", encoding="utf-8")
+    (case_dir / module.PYTHON_REPORT_NAME).write_text(
+        "# Report\n\nChanged body.\n", encoding="utf-8"
+    )
 
-    assert not module.batch_case_validated_report_exists(case_dir)
+    assert not module.batch_case_validated_report_exists(
+        case_dir, report_variant=module.REPORT_VARIANT_PYTHON
+    )
 
 
 def test_web_legacy_validation_marker_without_hashes_is_not_trusted(tmp_path):
@@ -5308,9 +5470,11 @@ def test_web_good_query_report_action_is_compact_and_rejected(tmp_path):
     )
 
     assert status == 400
-    assert "LLM Report is available only for suspicious or bad queries." in body
-    assert "Generate LLM report" not in body
-    assert '<button class="button" type="submit" disabled>Generate LLM report</button>' not in body
+    assert "Python Report is available only for suspicious or bad queries." in body
+    assert "Generate Python report" not in body
+    assert (
+        '<button class="button" type="submit" disabled>Generate Python report</button>' not in body
+    )
     assert store.running_batch_report("case-001") is None
 
 
@@ -5458,9 +5622,11 @@ def test_web_running_query_details_use_running_summary_for_report_action(tmp_pat
 
     assert captured["status"] == 200
     assert "running...000001" in captured["body"]
-    assert 'action="/batch/case/case-001/report"' in captured["body"]
-    assert "Generate LLM report</button>" in captured["body"]
-    assert "disabled>Generate LLM report</button>" not in captured["body"]
+    assert 'action="/batch/case/case-001/python-report"' in captured["body"]
+    assert 'action="/batch/case/case-001/llm-report"' in captured["body"]
+    assert "Generate Python report</button>" in captured["body"]
+    assert "Generate LLM narrative</button>" in captured["body"]
+    assert "disabled>Generate Python report</button>" not in captured["body"]
 
 
 def test_web_batch_running_job_page_keeps_form_visible_with_disabled_run():
@@ -5916,7 +6082,7 @@ def test_web_running_case_route_does_not_collide_with_finished_case_ids(tmp_path
     assert "running-query:def" in running_detail["body"]
     assert "finished-query:def" not in running_detail["body"]
     assert "Running Queries details" in running_detail["body"]
-    assert 'action="/running/case/case-001/report"' in running_detail["body"]
+    assert 'action="/running/case/case-001/python-report"' in running_detail["body"]
     assert "finished-query:def" in finished_detail["body"]
     assert "running-query:def" not in finished_detail["body"]
 

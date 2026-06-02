@@ -12,6 +12,14 @@ from query_doctor.web.models import WebError, WebSettings
 BATCH_REPORT_NAME = "diagnosis.md"
 BATCH_REPORT_PARTIAL_NAME = "diagnosis.partial.md"
 BATCH_REPORT_VALIDATION_MARKER = "diagnosis.validated.json"
+PYTHON_REPORT_NAME = "diagnosis_python.md"
+PYTHON_REPORT_PARTIAL_NAME = "diagnosis_python.partial.md"
+PYTHON_REPORT_VALIDATION_MARKER = "diagnosis_python.validated.json"
+LLM_REPORT_NAME = "diagnosis_llm.md"
+LLM_REPORT_PARTIAL_NAME = "diagnosis_llm.partial.md"
+LLM_REPORT_VALIDATION_MARKER = "diagnosis_llm.validated.json"
+REPORT_VARIANT_PYTHON = "python"
+REPORT_VARIANT_LLM = "llm"
 OPTIMIZED_QUERY_NAME = "optimized_query.sql"
 OPTIMIZED_QUERY_RECOMMENDATIONS_NAME = "optimized_query_recommendations.md"
 OPTIMIZED_QUERY_PARTIAL_NAME = "optimized_query.partial.txt"
@@ -19,6 +27,18 @@ OPTIMIZED_QUERY_VALIDATION_MARKER = "optimized_query.validated.json"
 WEB_REPORT_VALIDATION_MODE = "strict"
 OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION = 2
 OPTIMIZED_QUERY_VALIDATION_MODE = "strict_v2"
+
+
+def report_artifacts_for_variant(report_variant: str) -> tuple[str, str, str]:
+    if report_variant == REPORT_VARIANT_PYTHON:
+        return (
+            PYTHON_REPORT_NAME,
+            PYTHON_REPORT_PARTIAL_NAME,
+            PYTHON_REPORT_VALIDATION_MARKER,
+        )
+    if report_variant == REPORT_VARIANT_LLM:
+        return (LLM_REPORT_NAME, LLM_REPORT_PARTIAL_NAME, LLM_REPORT_VALIDATION_MARKER)
+    raise WebError("Unknown report variant.")
 
 
 def display_float(value: float) -> str:
@@ -147,7 +167,12 @@ def build_query_id_analyzer_command(case_dir: Path, settings: WebSettings) -> li
 
 
 def build_report_command(
-    case_dir: Path, report_mode: str, report_name: str, settings: WebSettings
+    case_dir: Path,
+    report_mode: str,
+    report_name: str,
+    settings: WebSettings,
+    *,
+    no_llm: bool | None = None,
 ) -> list[str]:
     cmd = command_prefix(settings.repo_dir, "report") + [
         str(case_dir),
@@ -170,9 +195,28 @@ def build_report_command(
         cmd.extend(["--llm-base-url", settings.report_llm_base_url])
     if settings.report_llm_chat_path:
         cmd.extend(["--llm-chat-path", settings.report_llm_chat_path])
-    if settings.no_llm:
+    use_no_llm = settings.no_llm if no_llm is None else no_llm
+    if use_no_llm:
         cmd.append("--no-llm")
     return cmd
+
+
+def build_selected_case_report_command(
+    case_dir: Path,
+    settings: WebSettings,
+    *,
+    report_variant: str = REPORT_VARIANT_PYTHON,
+) -> list[str]:
+    report_name, _partial_name, _marker_name = report_artifacts_for_variant(report_variant)
+    if report_variant == REPORT_VARIANT_LLM and settings.no_llm:
+        raise WebError("LLM report generation is disabled for this web session.")
+    return build_report_command(
+        case_dir,
+        "admin",
+        report_name,
+        settings,
+        no_llm=report_variant == REPORT_VARIANT_PYTHON,
+    )
 
 
 def build_batch_case_report_command(case_dir: Path, settings: WebSettings) -> list[str]:

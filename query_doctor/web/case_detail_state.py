@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from query_doctor.web.case_detail_context import (
+    ACTION_TERMINAL_OR_VISIBLE_STATUSES,
     case_allows_llm_report,
     case_allows_query_optimizer,
+    optimizer_state_for_case,
     resolve_case_detail_settings,
     resolve_running_case_detail_settings,
     running_detail_kwargs,
@@ -44,23 +46,10 @@ from query_doctor.web.trusted_artifacts import (
 
 
 SERVER_OWNED_CASE_REQUIRED_REPORT_ERROR = REPORT_CASE_UNAVAILABLE_REASON
-OPTIMIZER_CASE_NOT_ACTIONABLE_REASON = (
-    "Optimizer is available only for suspicious or bad selected cases."
-)
 FAILED_CASE_REPORT_UNAVAILABLE_REASON = (
     "Report generation requires successful deterministic processing for this case. "
     "Re-run analysis first."
 )
-FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON = (
-    "Optimizer requires successful deterministic processing for this case. Re-run analysis first."
-)
-ACTION_TERMINAL_OR_VISIBLE_STATUSES = {
-    "running",
-    "generated",
-    "partial_untrusted",
-    "failed",
-    "cancelled",
-}
 
 
 @dataclass(frozen=True)
@@ -81,6 +70,8 @@ class BatchCaseDetailRenderContext:
     view: RecentScanCaseDetailView
     optimized_query_state: dict[str, Any]
     trusted_report_text: str | None
+    llm_report_state: dict[str, Any]
+    trusted_llm_report_text: str | None
     trusted_optimized_query: str | None
     trusted_optimizer_recommendations: str | None
     optimizer_manual_guidance: str | None
@@ -164,44 +155,6 @@ def report_state_for_case(
     return unavailable
 
 
-def optimizer_state_for_case(
-    case: dict[str, object],
-    optimized_query_state: dict[str, Any],
-) -> dict[str, Any]:
-    if case_allows_query_optimizer(case):
-        return optimized_query_state
-    severity = case_score_severity(case)
-    status = str(optimized_query_state.get("status") or "not_run")
-    if status in ACTION_TERMINAL_OR_VISIBLE_STATUSES:
-        return optimized_query_state
-    if severity == "failed":
-        unavailable = dict(optimized_query_state)
-        unavailable.update(
-            {
-                "status": "unavailable",
-                "running": False,
-                "trusted": False,
-                "partial": False,
-                "source_available": False,
-                "unavailable_reason": FAILED_CASE_OPTIMIZER_UNAVAILABLE_REASON,
-                "error": "",
-            }
-        )
-        return unavailable
-    if status == "unavailable" and severity != "clean":
-        return optimized_query_state
-    hidden = dict(optimized_query_state)
-    hidden.update(
-        {
-            "status": "hidden",
-            "running": False,
-            "source_available": False,
-            "unavailable_reason": OPTIMIZER_CASE_NOT_ACTIONABLE_REASON,
-        }
-    )
-    return hidden
-
-
 def build_batch_case_detail_render_context(
     settings: WebSettings,
     case_id: str,
@@ -231,6 +184,7 @@ def build_batch_case_detail_render_context(
         dict(report_state_override) if report_state_override is not None else artifacts.report_state
     )
     report_state = report_state_for_case(case, report_state)
+    llm_report_state = report_state_for_case(case, artifacts.llm_report_state)
     optimized_query_state = optimizer_state_for_case(case, artifacts.optimized_query_state)
     view = present_recent_scan_case_detail(
         case_id,
@@ -257,6 +211,10 @@ def build_batch_case_detail_render_context(
         view=view,
         optimized_query_state=optimized_query_state,
         trusted_report_text=artifacts.trusted_report_text if report_state.get("trusted") else None,
+        llm_report_state=llm_report_state,
+        trusted_llm_report_text=(
+            artifacts.trusted_llm_report_text if llm_report_state.get("trusted") else None
+        ),
         trusted_optimized_query=artifacts.trusted_optimized_query,
         trusted_optimizer_recommendations=artifacts.trusted_optimizer_recommendations,
         optimizer_manual_guidance=optimizer_guidance,
