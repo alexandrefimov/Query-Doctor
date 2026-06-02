@@ -61,7 +61,8 @@ def test_web_help_page_renders_curated_static_help():
     assert "Query Optimizer" not in body
     assert "Specific Query" not in body
     assert "Known Query ID analysis" in body
-    assert "LLM Report" in body
+    assert "Python Report" in body
+    assert "LLM narrative" in body
     assert "Query LLM optimizer" in body
     assert "Recommended changes" in body
     assert "Diagnostics and evidence" in body
@@ -100,7 +101,7 @@ def test_web_help_page_renders_curated_static_help():
     assert "Validated reports" in body
     assert "Common questions" in body
     assert "Future scope" in body
-    assert "Web scans do not auto-run LLM reports or optimizer drafts." in body
+    assert "Web scans do not auto-run reports, LLM narratives, or optimizer drafts." in body
     assert "draft workflow placeholder" not in body
     assert "Metadata top cases" not in body
     assert "Queries to fetch metadata for" not in body
@@ -136,6 +137,7 @@ def test_web_help_page_uses_python_only_copy_when_no_llm():
 
     assert "Reports and optimizer" in body
     assert "Python Report" in body
+    assert "LLM narrative" not in body
     assert "Query optimizer" in body
     assert "without LLM calls" in body
     assert "Web scans do not auto-run reports or optimizer jobs." in body
@@ -166,7 +168,8 @@ def test_web_help_page_uses_configured_russian_language():
     assert "сфокусированный сегодня на Apache Impala production triage" in body
     assert "validated raw-free reports" in body
     assert "Детали Known Query ID" not in body
-    assert "LLM-отчет" in body
+    assert "Python-отчет" in body
+    assert "LLM narrative" in body
     assert "Реализованный production engine сейчас Apache Impala." in body
     assert "Browser UI намеренно скрывает raw query text" in body
     assert "Synthetic demo docs" in body

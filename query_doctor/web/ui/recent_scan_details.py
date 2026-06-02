@@ -15,6 +15,7 @@ from query_doctor.web.presenters.recent_scan import (
     present_recent_scan_score_reasons,
     present_recent_scan_status_summary,
     present_recent_scan_technical_details,
+    present_report_action,
 )
 from query_doctor.web.presenters.recent_scan_diagnostic_facts import (
     diagnostic_fact_by_id,
@@ -70,6 +71,8 @@ def render_recent_scan_case_detail_view(
     *,
     optimized_query_state: OptimizedQueryActionView | None = None,
     trusted_report_html: SafeHtml | str | None = None,
+    llm_report_state: dict[str, Any] | None = None,
+    trusted_llm_report_html: SafeHtml | str | None = None,
     trusted_optimized_query: str | None = None,
     trusted_optimizer_recommendations: str | None = None,
     optimizer_manual_guidance: str | None = None,
@@ -100,8 +103,10 @@ def render_recent_scan_case_detail_view(
     safe_details_title = html.escape(details_title)
     safe_list_href = html.escape(list_href, quote=True)
     escaped_case_id_for_url = html.escape(view.case_id, quote=True)
-    report_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/report"
+    report_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/python-report"
     report_export_url = f"{report_url}.md"
+    llm_report_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/llm-report"
+    llm_report_export_url = f"{llm_report_url}.md"
     optimized_query_url = (
         f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/optimized-query"
     )
@@ -110,6 +115,7 @@ def render_recent_scan_case_detail_view(
     )
     actions_id = actions_section_id(llm_enabled=llm_enabled)
     actions_url = f"{detail_base_path.rstrip('/')}/{escaped_case_id_for_url}/{actions_id}"
+    llm_report_view = present_report_action(llm_report_state) if llm_report_state else None
     return (
         f'<section class="panel batch-panel case-detail-panel" aria-label="{safe_details_title}">'
         f'<div class="breadcrumb"><a href="{safe_list_href}">{safe_workflow_title}</a><span>/</span>'
@@ -120,7 +126,7 @@ def render_recent_scan_case_detail_view(
         f"{render_case_verdict(view, language=language)}"
         f"{render_case_action_plan(view, detail_base_path=detail_base_path, language=language)}"
         f"{render_case_diagnostics(view, llm_enabled=llm_enabled, language=language)}"
-        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=report_generation_enabled(view), report_disabled_reason=report_generation_disabled_reason(view, language=language), report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
+        f"{render_llm_actions_block(view.case_id, view.report_action, optimized_query_state, report_enabled=report_generation_enabled(view), report_disabled_reason=report_generation_disabled_reason(view, language=language), report_action_url=report_url, report_open_url=report_url, report_export_url=report_export_url, llm_report_view=llm_report_view, llm_report_action_url=llm_report_url, llm_report_open_url=llm_report_url, llm_report_export_url=llm_report_export_url, trusted_llm_report_html=trusted_llm_report_html, optimizer_action_url=optimized_query_url, optimizer_open_url=f'#{OPTIMIZER_RESULT_ANCHOR_ID}', optimizer_validation_url=optimizer_validation_url, combined_action_url=actions_url, trusted_report_html=trusted_report_html, trusted_optimized_query=trusted_optimized_query, trusted_optimizer_recommendations=trusted_optimizer_recommendations, optimizer_manual_guidance=optimizer_manual_guidance, optimizer_validation_result=optimizer_validation_result, llm_enabled=llm_enabled, language=language)}"
         "</section>"
     )
 
@@ -135,8 +141,8 @@ def report_generation_disabled_reason(
     if str(view.score_severity or "").strip().lower() == "failed":
         return ui_text(
             language,
-            "Re-run analysis successfully before generating an LLM report for this case.",
-            "Сначала успешно перезапустите анализ, затем генерируйте LLM report для этого кейса.",
+            "Re-run analysis successfully before generating reports for this case.",
+            "Сначала успешно перезапустите анализ, затем генерируйте отчеты для этого кейса.",
         )
     return ""
 

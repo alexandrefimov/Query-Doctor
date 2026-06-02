@@ -11,7 +11,7 @@ owner of a behavior before reading large modules.
 | --- | --- | --- |
 | Diagnose UI: Recent queries, Running now, Known Query ID | `query_doctor/web/`, `query_doctor/recent/` | Web routes and presenters should keep browser output safe. |
 | Details pages | `query_doctor/web/ui/recent_scan_details.py`, `query_doctor/web/presenters/`, `query_doctor/web/trusted_artifacts.py` | Keep data assembly, trusted artifact loading, presentation, and rendering separate. |
-| LLM Report | `query_doctor/report/`, `query_doctor/cli/report.py` | Python owns facts and validation; LLM owns wording only. |
+| Reports | `query_doctor/report/`, `query_doctor/cli/report.py` | Python Report is the deterministic baseline; optional LLM narrative owns wording only after validation. |
 | Query LLM optimizer | `query_doctor/optimizer/`, `query_doctor/cli/optimize_query.py`, `query_doctor/web/trusted_artifacts.py` | Trusted SQL drafts require deterministic validation and current markers. |
 | Pasted-SQL Query Optimizer | `query_doctor/optimizer/`, `query_doctor/web/` | Read-only parse/analyze only. Do not echo submitted SQL after submit. |
 | Cloudera Manager collection | `query_doctor/cm/`, `query_doctor/cli/collect_cm_profiles.py` | Explicit, bounded, read-only, redacted. |

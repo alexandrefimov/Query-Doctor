@@ -165,11 +165,16 @@ def current_step_is_done(
 
 
 def progress_steps_for_job_kind(kind: str) -> tuple[JobProgressStep, ...]:
-    if kind in {"batch_report", "query_report"}:
+    if kind in {"batch_report", "query_report", "batch_llm_report", "query_llm_report"}:
         return REPORT_PROGRESS_STEPS
     if kind in {"batch_optimized_query", "query_optimized_query"}:
         return OPTIMIZED_QUERY_PROGRESS_STEPS
-    if kind in {"batch_llm_actions", "query_llm_actions"}:
+    if kind in {
+        "batch_case_actions",
+        "query_case_actions",
+        "batch_llm_actions",
+        "query_llm_actions",
+    }:
         return LLM_ACTIONS_PROGRESS_STEPS
     if kind in {"batch", "running"}:
         return BATCH_PROGRESS_STEPS
@@ -180,7 +185,9 @@ def progress_view_for_job(
     kind: str, stage_label: str, progress: int | float | None
 ) -> JobProgressView:
     steps = progress_steps_for_job_kind(kind)
-    default_index = 1 if kind in {"batch_report", "query_report"} else 0
+    default_index = (
+        1 if kind in {"batch_report", "query_report", "batch_llm_report", "query_llm_report"} else 0
+    )
     return build_progress_view(steps, stage_label, progress, default_index=default_index)
 
 

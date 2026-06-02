@@ -1043,9 +1043,7 @@ def test_failed_recent_scan_details_explain_processing_follow_up():
     )
     assert "No supported problem signal is classified yet" not in page_html
     assert "Supported analyzer signals need review" not in page_html
-    assert (
-        "Re-run analysis successfully before generating an LLM report for this case." in page_html
-    )
+    assert "Re-run analysis successfully before generating reports for this case." in page_html
     assert "Generate LLM report" not in page_html
     assert "Processing failure follow-up" in actions_html
     assert "No prioritized rewrite or stats action" not in page_html

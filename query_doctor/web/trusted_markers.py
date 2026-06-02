@@ -23,7 +23,9 @@ from query_doctor.web.command_builders import (
     OPTIMIZED_QUERY_RECOMMENDATIONS_NAME,
     OPTIMIZED_QUERY_VALIDATION_MARKER,
     OPTIMIZED_QUERY_VALIDATION_MODE,
+    REPORT_VARIANT_PYTHON,
     WEB_REPORT_VALIDATION_MODE,
+    report_artifacts_for_variant,
 )
 
 
@@ -57,12 +59,15 @@ def read_optimized_query_marker(case_dir: Path) -> dict[str, object]:
     return read_optimizer_marker(case_dir)
 
 
-def batch_case_validated_report_exists(
-    case_dir: Path, case: dict[str, object] | None = None
+def validated_report_exists(
+    case_dir: Path,
+    *,
+    report_name: str,
+    marker_name: str,
 ) -> bool:
-    report_path = case_relative_file_path(case_dir, BATCH_REPORT_NAME)
+    report_path = case_relative_file_path(case_dir, report_name)
     facts_path = case_relative_file_path(case_dir, "analysis_facts.md")
-    marker_path = case_relative_file_path(case_dir, BATCH_REPORT_VALIDATION_MARKER)
+    marker_path = case_relative_file_path(case_dir, marker_name)
     if report_path is None or facts_path is None or marker_path is None:
         return False
     try:
@@ -73,7 +78,7 @@ def batch_case_validated_report_exists(
         return False
     if marker.get("validation_mode") != WEB_REPORT_VALIDATION_MODE:
         return False
-    if marker.get("report") != BATCH_REPORT_NAME:
+    if marker.get("report") != report_name:
         return False
     if marker.get("report_sha256") != file_sha256(report_path):
         return False
@@ -82,26 +87,61 @@ def batch_case_validated_report_exists(
     return True
 
 
-def case_has_batch_report_output(case_dir: Path) -> bool:
-    return case_relative_file_path(case_dir, BATCH_REPORT_NAME) is not None
+def batch_case_validated_report_exists(
+    case_dir: Path,
+    case: dict[str, object] | None = None,
+    *,
+    report_variant: str | None = None,
+    report_name: str | None = None,
+    marker_name: str | None = None,
+) -> bool:
+    del case
+    if report_variant is not None:
+        report_name, _partial_name, marker_name = report_artifacts_for_variant(report_variant)
+    return validated_report_exists(
+        case_dir,
+        report_name=report_name or BATCH_REPORT_NAME,
+        marker_name=marker_name or BATCH_REPORT_VALIDATION_MARKER,
+    )
 
 
-def write_batch_case_report_validation_marker(case_dir: Path) -> None:
-    report_path = case_relative_file_path(case_dir, BATCH_REPORT_NAME)
+def case_has_batch_report_output(
+    case_dir: Path,
+    *,
+    report_variant: str | None = None,
+    report_name: str | None = None,
+) -> bool:
+    if report_variant is not None:
+        report_name, _partial_name, _marker_name = report_artifacts_for_variant(report_variant)
+    return case_relative_file_path(case_dir, report_name or BATCH_REPORT_NAME) is not None
+
+
+def write_batch_case_report_validation_marker(
+    case_dir: Path,
+    *,
+    report_variant: str = REPORT_VARIANT_PYTHON,
+    report_name: str | None = None,
+    marker_name: str | None = None,
+    source: str = "query_doctor_web_server selected case report action",
+) -> None:
+    if report_name is None or marker_name is None:
+        variant_report, _partial_name, variant_marker = report_artifacts_for_variant(report_variant)
+        report_name = report_name or variant_report
+        marker_name = marker_name or variant_marker
+    report_path = case_relative_file_path(case_dir, report_name)
     facts_path = case_relative_file_path(case_dir, "analysis_facts.md")
     if report_path is None or facts_path is None:
         raise ValueError("Trusted report marker requires case-contained report and analyzer facts.")
     marker = {
-        "report": BATCH_REPORT_NAME,
+        "report": report_name,
+        "report_variant": report_variant,
         "validated": True,
         "validation_mode": WEB_REPORT_VALIDATION_MODE,
         "report_sha256": file_sha256(report_path),
         "facts_sha256": file_sha256(facts_path),
-        "source": "query_doctor_web_server batch case report action",
+        "source": source,
     }
-    (case_dir / BATCH_REPORT_VALIDATION_MARKER).write_text(
-        json.dumps(marker, sort_keys=True), encoding="utf-8"
-    )
+    (case_dir / marker_name).write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
 
 
 def optimized_query_validated_exists(case_dir: Path) -> bool:

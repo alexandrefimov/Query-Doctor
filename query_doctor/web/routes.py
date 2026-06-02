@@ -15,6 +15,7 @@ from query_doctor.web.batch_case_actions import (
     start_batch_case_optimized_query_job,
     start_batch_case_report_job,
 )
+from query_doctor.web.command_builders import REPORT_VARIANT_LLM, REPORT_VARIANT_PYTHON
 from query_doctor.web.batch_case_pages import render_batch_case_detail_for_request
 from query_doctor.web.batch_jobs import start_batch_job, start_running_job
 from query_doctor.web.action_outcomes import (
@@ -76,13 +77,13 @@ STATIC_ASSETS = {
 REPORT_DOWNLOAD_CONTENT_TYPE = "text/markdown; charset=utf-8"
 JOB_CANCEL_POST_RE = re.compile(r"/jobs/(?P<job_id>[0-9a-f]{32})/cancel")
 BATCH_CASE_POST_RE = re.compile(
-    r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions|case-actions)"
+    r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/(?P<action>report|python-report|llm-report|optimized-query|validate-rewrite|llm-actions|case-actions)"
 )
 ACTION_OUTCOME_POST_RE = re.compile(
     r"/(?P<source>batch|running)/case/(?P<case_id>[^/]+)/outcome/(?P<recommendation_id>[A-Za-z0-9_.-]+)"
 )
 SPECIFIC_QUERY_POST_RE = re.compile(
-    r"/query/details/(?P<query_id>[^/]+)/(?P<action>report|optimized-query|validate-rewrite|llm-actions|case-actions)"
+    r"/query/details/(?P<query_id>[^/]+)/(?P<action>report|python-report|llm-report|optimized-query|validate-rewrite|llm-actions|case-actions)"
 )
 
 
@@ -224,7 +225,7 @@ def route_batch_detail_get(
         ("/running", resolve_running_case_detail_settings, running_detail_kwargs),
     ):
         match = re.fullmatch(
-            rf"{prefix}/case/(?P<case_id>[^/]+)(?P<suffix>/report|/report\.md|/optimized-query)?",
+            rf"{prefix}/case/(?P<case_id>[^/]+)(?P<suffix>/report|/report\.md|/python-report|/python-report\.md|/llm-report|/llm-report\.md|/optimized-query)?",
             path,
         )
         if not match:
@@ -237,8 +238,11 @@ def route_batch_detail_get(
             )
         detail_kwargs = kwargs_factory()
         suffix = match.group("suffix") or ""
-        if suffix == "/report":
-            report = load_batch_case_trusted_report_artifact(effective_settings, case_id, case)
+        if suffix in {"/report", "/python-report", "/llm-report"}:
+            report_variant = report_variant_from_suffix(suffix)
+            report = load_batch_case_trusted_report_artifact(
+                effective_settings, case_id, case, report_variant=report_variant
+            )
             if report is None:
                 return WebRouteResponse.html(
                     404,
@@ -250,8 +254,11 @@ def route_batch_detail_get(
                 200,
                 render_batch_case_report_page(effective_settings, case_id, case, report.text),
             )
-        if suffix == "/report.md":
-            report = load_batch_case_trusted_report_artifact(effective_settings, case_id, case)
+        if suffix in {"/report.md", "/python-report.md", "/llm-report.md"}:
+            report_variant = report_variant_from_suffix(suffix)
+            report = load_batch_case_trusted_report_artifact(
+                effective_settings, case_id, case, report_variant=report_variant
+            )
             if report is None:
                 return WebRouteResponse.html(
                     404,
@@ -293,27 +300,43 @@ def route_specific_detail_get(
     store: WebJobStore,
 ) -> WebRouteResponse | None:
     match = re.fullmatch(
-        r"/query/details/(?P<query_id>[^/]+)(?P<suffix>/report|/report\.md|/optimized-query)?", path
+        r"/query/details/(?P<query_id>[^/]+)(?P<suffix>/report|/report\.md|/python-report|/python-report\.md|/llm-report|/llm-report\.md|/optimized-query)?",
+        path,
     )
     if not match:
         return None
     query_id = unquote(match.group("query_id"))
-    if match.group("suffix") == "/report":
-        status, body = render_specific_query_report_for_request(settings, query_id)
-    elif match.group("suffix") == "/report.md":
-        return route_specific_query_report_markdown(settings, query_id)
+    suffix = match.group("suffix") or ""
+    if suffix in {"/report", "/python-report", "/llm-report"}:
+        status, body = render_specific_query_report_for_request(
+            settings, query_id, report_variant=report_variant_from_suffix(suffix)
+        )
+    elif suffix in {"/report.md", "/python-report.md", "/llm-report.md"}:
+        return route_specific_query_report_markdown(
+            settings, query_id, report_variant=report_variant_from_suffix(suffix)
+        )
     else:
         status, body = render_specific_query_detail_for_request(settings, query_id, store)
     return WebRouteResponse.html(status, body)
 
 
-def route_specific_query_report_markdown(settings: WebSettings, query_id: str) -> WebRouteResponse:
+def report_variant_from_suffix(suffix: str) -> str:
+    if suffix.startswith("/llm-report"):
+        return REPORT_VARIANT_LLM
+    return REPORT_VARIANT_PYTHON
+
+
+def route_specific_query_report_markdown(
+    settings: WebSettings, query_id: str, *, report_variant: str = REPORT_VARIANT_PYTHON
+) -> WebRouteResponse:
     try:
         validated_query_id = validate_query_id(query_id)
         case_dir = expected_case_dir_for_query(validated_query_id, settings)
     except WebError as exc:
         return WebRouteResponse.html(400, render_query_page(settings, query_id=query_id, error=exc))
-    report = load_specific_query_trusted_report_artifact(validated_query_id, case_dir)
+    report = load_specific_query_trusted_report_artifact(
+        validated_query_id, case_dir, report_variant=report_variant
+    )
     if report is None:
         message = WebError("Validated report is not available for this query.")
         return WebRouteResponse.html(
@@ -375,9 +398,21 @@ def route_job_get(
                 workload_group_signal=first_form_value(query, "workload_group_signal"),
             ),
         )
-    if job.kind in {"batch_report", "batch_llm_actions", "batch_optimized_query"}:
+    if job.kind in {
+        "batch_report",
+        "batch_llm_report",
+        "batch_case_actions",
+        "batch_llm_actions",
+        "batch_optimized_query",
+    }:
         return route_batch_job_detail_get(job, settings, store)
-    if job.kind in {"query_report", "query_llm_actions", "query_optimized_query"}:
+    if job.kind in {
+        "query_report",
+        "query_llm_report",
+        "query_case_actions",
+        "query_llm_actions",
+        "query_optimized_query",
+    }:
         status, body = render_specific_query_detail_for_request(
             settings, job.query_id, store, job=job
         )
@@ -514,9 +549,23 @@ def route_batch_case_post(
     source = "running" if match.group("source") == "running" else "batch"
     case_id = match.group("case_id")
     action = match.group("action")
-    if action == "report":
+    if action in {"report", "python-report"}:
         status, body = start_batch_case_report_job(
-            case_id, settings, store, runner=runner, source=source
+            case_id,
+            settings,
+            store,
+            runner=runner,
+            source=source,
+            report_variant=REPORT_VARIANT_PYTHON,
+        )
+    elif action == "llm-report":
+        status, body = start_batch_case_report_job(
+            case_id,
+            settings,
+            store,
+            runner=runner,
+            source=source,
+            report_variant=REPORT_VARIANT_LLM,
         )
     elif action == "optimized-query":
         status, body = start_batch_case_optimized_query_job(
@@ -546,8 +595,22 @@ def route_specific_query_post(
         return None
     query_id = unquote(match.group("query_id"))
     action = match.group("action")
-    if action == "report":
-        status, body = start_specific_query_report_job(query_id, settings, store, runner=runner)
+    if action in {"report", "python-report"}:
+        status, body = start_specific_query_report_job(
+            query_id,
+            settings,
+            store,
+            runner=runner,
+            report_variant=REPORT_VARIANT_PYTHON,
+        )
+    elif action == "llm-report":
+        status, body = start_specific_query_report_job(
+            query_id,
+            settings,
+            store,
+            runner=runner,
+            report_variant=REPORT_VARIANT_LLM,
+        )
     elif action == "optimized-query":
         status, body = start_specific_query_optimized_query_job(
             query_id, settings, store, runner=runner

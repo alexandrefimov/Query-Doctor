@@ -7,9 +7,10 @@ from typing import Callable
 
 from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.web.command_builders import (
-    BATCH_REPORT_NAME,
-    build_batch_case_report_command,
+    REPORT_VARIANT_LLM,
+    REPORT_VARIANT_PYTHON,
     build_optimized_query_command,
+    build_selected_case_report_command,
 )
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebError, WebSettings
@@ -41,11 +42,12 @@ def run_batch_case_report_job(
     settings: WebSettings,
     job_store: WebJobStore,
     runner: Runner,
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> None:
     try:
         job_store.update_stage(job_id, 1)
         completed = run_subprocess(
-            build_batch_case_report_command(case_dir, settings),
+            build_selected_case_report_command(case_dir, settings, report_variant=report_variant),
             cwd=settings.repo_dir,
             timeout_sec=settings.timeout_sec,
             runner=runner,
@@ -64,10 +66,11 @@ def run_batch_case_report_job(
             raise WebError(
                 subprocess_failure_message("Query Doctor batch case report generation", completed)
             )
-        if not case_has_batch_report_output(case_dir):
+        if not case_has_batch_report_output(case_dir, report_variant=report_variant):
             raise WebError("Report generation completed but the validated report was not created.")
-        write_batch_case_report_validation_marker(case_dir)
-        job_store.complete_html(job_id, f"Validated report generated for {case_id}.")
+        write_batch_case_report_validation_marker(case_dir, report_variant=report_variant)
+        label = "LLM narrative" if report_variant == REPORT_VARIANT_LLM else "Python report"
+        job_store.complete_html(job_id, f"Validated {label} generated for {case_id}.")
     except WebError as exc:
         job_store.fail(job_id, exc)
 
@@ -79,11 +82,12 @@ def run_specific_query_report_job(
     settings: WebSettings,
     job_store: WebJobStore,
     runner: Runner,
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> None:
     try:
         job_store.update_stage(job_id, 1)
         completed = run_subprocess(
-            build_batch_case_report_command(case_dir, settings),
+            build_selected_case_report_command(case_dir, settings, report_variant=report_variant),
             cwd=settings.repo_dir,
             timeout_sec=settings.timeout_sec,
             runner=runner,
@@ -104,11 +108,13 @@ def run_specific_query_report_job(
                     "Query Doctor specific query report generation", completed
                 )
             )
-        if not case_has_batch_report_output(case_dir):
+        if not case_has_batch_report_output(case_dir, report_variant=report_variant):
             raise WebError("Report generation completed but the validated report was not created.")
-        write_batch_case_report_validation_marker(case_dir)
+        write_batch_case_report_validation_marker(case_dir, report_variant=report_variant)
+        label = "LLM narrative" if report_variant == REPORT_VARIANT_LLM else "Python report"
         job_store.complete_html(
-            job_id, f"Validated report generated for {redact_browser_display_text(query_id)}."
+            job_id,
+            f"Validated {label} generated for {redact_browser_display_text(query_id)}.",
         )
     except WebError as exc:
         job_store.fail(job_id, exc)
@@ -125,10 +131,11 @@ def generate_validated_report_artifact(
     runner: Runner,
     *,
     label: str,
+    report_variant: str = REPORT_VARIANT_PYTHON,
     cancel_check: Callable[[], bool] | None = None,
 ) -> None:
     completed = run_subprocess(
-        build_batch_case_report_command(case_dir, settings),
+        build_selected_case_report_command(case_dir, settings, report_variant=report_variant),
         cwd=settings.repo_dir,
         timeout_sec=settings.timeout_sec,
         runner=runner,
@@ -144,9 +151,9 @@ def generate_validated_report_artifact(
         )
     if completed.returncode != 0:
         raise WebError(subprocess_failure_message(label, completed))
-    if not case_has_batch_report_output(case_dir):
+    if not case_has_batch_report_output(case_dir, report_variant=report_variant):
         raise WebError("Report generation completed but the validated report was not created.")
-    write_batch_case_report_validation_marker(case_dir)
+    write_batch_case_report_validation_marker(case_dir, report_variant=report_variant)
 
 
 def generate_validated_optimizer_artifact(
@@ -196,6 +203,7 @@ def run_llm_actions_job(
             settings,
             runner,
             label="Query Doctor selected case report generation",
+            report_variant=REPORT_VARIANT_PYTHON,
             cancel_check=lambda: job_store.cancel_requested(job_id),
         )
         if job_store.cancel_requested(job_id):
@@ -209,11 +217,7 @@ def run_llm_actions_job(
         )
         if job_store.cancel_requested(job_id):
             return
-        result_label = (
-            "Python report and optimizer"
-            if getattr(settings, "no_llm", False)
-            else "LLM report and optimizer"
-        )
+        result_label = "Python report and optimizer"
         job_store.complete_html(
             job_id,
             f"{result_label} generated for {redact_browser_display_text(label)}.",
@@ -221,7 +225,7 @@ def run_llm_actions_job(
     except WebError as exc:
         job_store.fail(job_id, exc)
     except Exception:  # pragma: no cover - defensive UI sanitization.
-        action_label = "Python action" if getattr(settings, "no_llm", False) else "LLM action"
+        action_label = "case action"
         job_store.fail(
             job_id,
             f"Unexpected {action_label} failure. Details are hidden because they may contain sensitive data.",

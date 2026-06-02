@@ -7,7 +7,7 @@ from pathlib import Path
 
 from query_doctor.case_metadata import QUERY_METADATA_FILENAMES
 from query_doctor.web.case_files import case_has_any_artifact, case_relative_file_path
-from query_doctor.web.command_builders import BATCH_REPORT_NAME
+from query_doctor.web.command_builders import BATCH_REPORT_NAME, LLM_REPORT_NAME, PYTHON_REPORT_NAME
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ REPORT_ARTIFACT_CANDIDATES = (
     ("SQL", ("original_query.sql",)),
     ("EXPLAIN", ("explain.txt",)),
     ("Analyzer facts", ("analysis_facts.md",)),
-    ("Diagnosis", (BATCH_REPORT_NAME,)),
+    ("Diagnosis", (BATCH_REPORT_NAME, PYTHON_REPORT_NAME, LLM_REPORT_NAME)),
     ("Impala metadata", ("impala_context.md",)),
     ("Impala metadata JSON", ("impala_context.json",)),
     ("CM query details", ("cm_query_details.json",)),

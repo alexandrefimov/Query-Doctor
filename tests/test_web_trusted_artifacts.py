@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from query_doctor.web import trusted_artifacts
+from query_doctor.web.command_builders import PYTHON_REPORT_NAME, REPORT_VARIANT_PYTHON
 from query_doctor.web.jobs import WebJobStore
 
 
@@ -248,8 +249,10 @@ def write_optimizer_marker(
 
 
 def write_trusted_report(case_dir: Path, text: str) -> None:
-    (case_dir / "diagnosis.md").write_text(text, encoding="utf-8")
-    trusted_artifacts.write_batch_case_report_validation_marker(case_dir)
+    (case_dir / PYTHON_REPORT_NAME).write_text(text, encoding="utf-8")
+    trusted_artifacts.write_batch_case_report_validation_marker(
+        case_dir, report_variant=REPORT_VARIANT_PYTHON
+    )
 
 
 def write_trusted_optimizer_draft(
@@ -325,7 +328,7 @@ def test_optimizer_artifact_status_uses_strict_trust_check_for_draft_sql_safety(
 def test_trusted_report_artifacts_include_text_and_safe_download_name(tmp_path):
     batch_case_dir = tmp_path / "cases" / "case-001"
     specific_case_dir = tmp_path / "specific"
-    sibling_path = "/tmp/query-doctor-sibling-case/diagnosis.md"
+    sibling_path = "/tmp/query-doctor-sibling-case/diagnosis_python.md"
     user_path = "/Users/example/query-doctor/leak.md"
     batch_case_dir.mkdir(parents=True)
     specific_case_dir.mkdir()
@@ -368,7 +371,7 @@ def test_trusted_report_artifacts_hide_stale_report_text(tmp_path):
     case_dir.mkdir()
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
     write_trusted_report(case_dir, "# Report\n\nsafe body\n")
-    (case_dir / "diagnosis.md").write_text(
+    (case_dir / PYTHON_REPORT_NAME).write_text(
         "# Report\n\nchanged after validation\n", encoding="utf-8"
     )
 
@@ -386,15 +389,21 @@ def test_trusted_report_artifacts_hide_stale_report_text(tmp_path):
 def test_trusted_report_artifacts_reject_report_symlink_outside_case_dir(tmp_path):
     case_dir = tmp_path / "case"
     case_dir.mkdir()
-    outside_report = tmp_path / "diagnosis.md"
+    outside_report = tmp_path / PYTHON_REPORT_NAME
     outside_report.write_text("# Report\n\noutside body\n", encoding="utf-8")
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
-    (case_dir / "diagnosis.md").symlink_to(outside_report)
+    (case_dir / PYTHON_REPORT_NAME).symlink_to(outside_report)
 
-    assert not trusted_artifacts.case_has_batch_report_output(case_dir)
+    assert not trusted_artifacts.case_has_batch_report_output(
+        case_dir, report_variant=REPORT_VARIANT_PYTHON
+    )
     with pytest.raises(ValueError, match="case-contained report"):
-        trusted_artifacts.write_batch_case_report_validation_marker(case_dir)
-    assert not trusted_artifacts.batch_case_validated_report_exists(case_dir)
+        trusted_artifacts.write_batch_case_report_validation_marker(
+            case_dir, report_variant=REPORT_VARIANT_PYTHON
+        )
+    assert not trusted_artifacts.batch_case_validated_report_exists(
+        case_dir, report_variant=REPORT_VARIANT_PYTHON
+    )
     assert trusted_artifacts.load_specific_query_trusted_report_artifact("abc", case_dir) is None
 
 
@@ -482,7 +491,7 @@ def test_specific_query_trusted_detail_artifacts_hide_stale_outputs(tmp_path):
     (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
     write_trusted_report(case_dir, "# Report\n\nsafe body\n")
     write_trusted_optimizer_draft(case_dir, source_sql=source_sql)
-    (case_dir / "diagnosis.md").write_text(
+    (case_dir / PYTHON_REPORT_NAME).write_text(
         "# Report\n\nchanged after validation\n", encoding="utf-8"
     )
     (case_dir / "optimized_query.sql").write_text(

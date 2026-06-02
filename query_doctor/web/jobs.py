@@ -57,11 +57,16 @@ def render_query_analysis_output(result: object) -> list[str]:
 def stages_for_job_kind(kind: str) -> tuple[tuple[int, str, int], ...]:
     if kind in {"batch", "running"}:
         return BATCH_STAGES
-    if kind in {"batch_report", "query_report"}:
+    if kind in {"batch_report", "query_report", "batch_llm_report", "query_llm_report"}:
         return BATCH_REPORT_STAGES
     if kind in {"batch_optimized_query", "query_optimized_query"}:
         return OPTIMIZED_QUERY_STAGES
-    if kind in {"batch_llm_actions", "query_llm_actions"}:
+    if kind in {
+        "batch_case_actions",
+        "query_case_actions",
+        "batch_llm_actions",
+        "query_llm_actions",
+    }:
         return LLM_ACTIONS_STAGES
     return WEB_STAGES
 
@@ -178,16 +183,20 @@ class WebJobStore:
             self._store_job_locked(job)
             return job.snapshot()
 
-    def create_batch_report(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
+    def create_batch_report(
+        self, case_id: str, *, source: str = "batch", report_variant: str = "python"
+    ) -> WebJobSnapshot:
         stage = BATCH_REPORT_STAGES[0]
+        kind = "batch_llm_report" if report_variant == "llm" else "batch_report"
+        report_mode = "llm_report" if report_variant == "llm" else "python_report"
         job = WebJob(
             job_id=uuid.uuid4().hex,
             query_id=case_id,
-            report_mode="admin",
+            report_mode=report_mode,
             status="running",
             stage_label=stage[1],
             progress=stage[2],
-            kind="batch_report",
+            kind=kind,
             batch_case_id=case_id,
             batch_source=source,
         )
@@ -195,16 +204,20 @@ class WebJobStore:
             self._store_job_locked(job)
             return job.snapshot()
 
-    def create_query_report(self, query_id: str) -> WebJobSnapshot:
+    def create_query_report(
+        self, query_id: str, *, report_variant: str = "python"
+    ) -> WebJobSnapshot:
         stage = BATCH_REPORT_STAGES[0]
+        kind = "query_llm_report" if report_variant == "llm" else "query_report"
+        report_mode = "llm_report" if report_variant == "llm" else "python_report"
         job = WebJob(
             job_id=uuid.uuid4().hex,
             query_id=query_id,
-            report_mode="admin",
+            report_mode=report_mode,
             status="running",
             stage_label=stage[1],
             progress=stage[2],
-            kind="query_report",
+            kind=kind,
         )
         with self._lock:
             self._store_job_locked(job)
@@ -245,15 +258,18 @@ class WebJobStore:
             return job.snapshot()
 
     def create_batch_llm_actions(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
+        return self.create_batch_case_actions(case_id, source=source)
+
+    def create_batch_case_actions(self, case_id: str, *, source: str = "batch") -> WebJobSnapshot:
         stage = LLM_ACTIONS_STAGES[0]
         job = WebJob(
             job_id=uuid.uuid4().hex,
             query_id=case_id,
-            report_mode="llm_actions",
+            report_mode="case_actions",
             status="running",
             stage_label=stage[1],
             progress=stage[2],
-            kind="batch_llm_actions",
+            kind="batch_case_actions",
             batch_case_id=case_id,
             batch_source=source,
         )
@@ -262,41 +278,62 @@ class WebJobStore:
             return job.snapshot()
 
     def create_query_llm_actions(self, query_id: str) -> WebJobSnapshot:
+        return self.create_query_case_actions(query_id)
+
+    def create_query_case_actions(self, query_id: str) -> WebJobSnapshot:
         stage = LLM_ACTIONS_STAGES[0]
         job = WebJob(
             job_id=uuid.uuid4().hex,
             query_id=query_id,
-            report_mode="llm_actions",
+            report_mode="case_actions",
             status="running",
             stage_label=stage[1],
             progress=stage[2],
-            kind="query_llm_actions",
+            kind="query_case_actions",
         )
         with self._lock:
             self._store_job_locked(job)
             return job.snapshot()
 
-    def running_batch_report(self, case_id: str) -> WebJobSnapshot | None:
+    def running_batch_report(
+        self, case_id: str, *, report_variant: str | None = None
+    ) -> WebJobSnapshot | None:
+        if report_variant == "python":
+            kinds = {"batch_report", "batch_case_actions", "batch_llm_actions"}
+        elif report_variant == "llm":
+            kinds = {"batch_llm_report"}
+        else:
+            kinds = {
+                "batch_report",
+                "batch_llm_report",
+                "batch_case_actions",
+                "batch_llm_actions",
+            }
         with self._lock:
             self._prune_locked()
             for job in self._jobs.values():
-                if (
-                    job.kind in {"batch_report", "batch_llm_actions"}
-                    and job.batch_case_id == case_id
-                    and job.status == "running"
-                ):
+                if job.kind in kinds and job.batch_case_id == case_id and job.status == "running":
                     return job.snapshot()
         return None
 
-    def running_query_report(self, query_id: str) -> WebJobSnapshot | None:
+    def running_query_report(
+        self, query_id: str, *, report_variant: str | None = None
+    ) -> WebJobSnapshot | None:
+        if report_variant == "python":
+            kinds = {"query_report", "query_case_actions", "query_llm_actions"}
+        elif report_variant == "llm":
+            kinds = {"query_llm_report"}
+        else:
+            kinds = {
+                "query_report",
+                "query_llm_report",
+                "query_case_actions",
+                "query_llm_actions",
+            }
         with self._lock:
             self._prune_locked()
             for job in self._jobs.values():
-                if (
-                    job.kind in {"query_report", "query_llm_actions"}
-                    and job.query_id == query_id
-                    and job.status == "running"
-                ):
+                if job.kind in kinds and job.query_id == query_id and job.status == "running":
                     return job.snapshot()
         return None
 
@@ -305,7 +342,12 @@ class WebJobStore:
             self._prune_locked()
             for job in self._jobs.values():
                 if (
-                    job.kind in {"batch_optimized_query", "batch_llm_actions"}
+                    job.kind
+                    in {
+                        "batch_optimized_query",
+                        "batch_case_actions",
+                        "batch_llm_actions",
+                    }
                     and job.batch_case_id == case_id
                     and job.status == "running"
                 ):
@@ -317,7 +359,12 @@ class WebJobStore:
             self._prune_locked()
             for job in self._jobs.values():
                 if (
-                    job.kind in {"query_optimized_query", "query_llm_actions"}
+                    job.kind
+                    in {
+                        "query_optimized_query",
+                        "query_case_actions",
+                        "query_llm_actions",
+                    }
                     and job.query_id == query_id
                     and job.status == "running"
                 ):

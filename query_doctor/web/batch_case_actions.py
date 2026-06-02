@@ -10,6 +10,7 @@ from query_doctor.web.case_detail_state import (
     build_batch_case_detail_action_context,
     server_owned_case_required_report_state,
 )
+from query_doctor.web.command_builders import REPORT_VARIANT_LLM, REPORT_VARIANT_PYTHON
 from query_doctor.web.job_workers import (
     run_batch_case_report_job,
     run_llm_actions_job,
@@ -25,7 +26,7 @@ from query_doctor.web.ui.pages import (
 
 
 def detail_actions_fragment(settings: WebSettings) -> str:
-    return "case-actions" if getattr(settings, "no_llm", False) else "llm-actions"
+    return "case-actions"
 
 
 def detail_job_redirect_url(job_id: str, settings: WebSettings) -> str:
@@ -39,10 +40,15 @@ def start_batch_case_report_job(
     *,
     runner: Runner = subprocess.run,
     source: str = "auto",
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> tuple[int, str]:
     context = build_batch_case_detail_action_context(settings, case_id, job_store, source=source)
     if context.case is None:
         return 404, render_batch_case_not_found_page(context.settings, case_id)
+    if report_variant == REPORT_VARIANT_LLM and getattr(context.settings, "no_llm", False):
+        return 400, render_batch_case_detail_for_request(
+            context.settings, case_id, context.case, job_store, **context.detail_kwargs
+        )
     if not context.report_allowed:
         return 400, render_batch_case_detail_for_request(
             context.settings, case_id, context.case, job_store, **context.detail_kwargs
@@ -61,10 +67,20 @@ def start_batch_case_report_job(
             **context.detail_kwargs,
         )
 
-    job = job_store.create_batch_report(case_id, source=context.job_source)
+    job = job_store.create_batch_report(
+        case_id, source=context.job_source, report_variant=report_variant
+    )
     thread = threading.Thread(
         target=run_batch_case_report_job,
-        args=(job.job_id, case_id, context.case_dir, settings, job_store, runner),
+        args=(
+            job.job_id,
+            case_id,
+            context.case_dir,
+            context.settings,
+            job_store,
+            runner,
+            report_variant,
+        ),
         daemon=True,
     )
     thread.start()
@@ -149,10 +165,10 @@ def start_batch_case_llm_actions_job(
         return 400, render_batch_case_detail_for_request(
             context.settings, case_id, context.case, job_store, **context.detail_kwargs
         )
-    job = job_store.create_batch_llm_actions(case_id, source=context.job_source)
+    job = job_store.create_batch_case_actions(case_id, source=context.job_source)
     thread = threading.Thread(
         target=run_llm_actions_job,
-        args=(job.job_id, case_id, context.case_dir, settings, job_store, runner),
+        args=(job.job_id, case_id, context.case_dir, context.settings, job_store, runner),
         daemon=True,
     )
     thread.start()

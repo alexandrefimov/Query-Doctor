@@ -9,6 +9,7 @@ from query_doctor.web.case_files import (
     ensure_complete_existing_case,
     expected_case_dir_for_query,
 )
+from query_doctor.web.command_builders import REPORT_VARIANT_LLM, REPORT_VARIANT_PYTHON
 from query_doctor.web.job_workers import (
     run_llm_actions_job,
     run_optimized_query_job,
@@ -28,7 +29,7 @@ from query_doctor.web.ui.pages import render_query_page
 
 
 def detail_actions_fragment(settings: WebSettings) -> str:
-    return "case-actions" if getattr(settings, "no_llm", False) else "llm-actions"
+    return "case-actions"
 
 
 def detail_job_redirect_url(job_id: str, settings: WebSettings) -> str:
@@ -41,6 +42,7 @@ def start_specific_query_report_job(
     job_store: WebJobStore,
     *,
     runner: Runner = subprocess.run,
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> tuple[int, str]:
     try:
         validated_query_id = validate_query_id(query_id)
@@ -53,6 +55,11 @@ def start_specific_query_report_job(
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
     context = build_specific_query_detail_action_context(validated_query_id, case_dir, job_store)
+    if report_variant == REPORT_VARIANT_LLM and getattr(settings, "no_llm", False):
+        body = render_specific_query_detail_page(
+            settings, validated_query_id, context.case, case_dir, job_store
+        )
+        return 400, body
     if not context.analyzer_facts_available:
         message = WebError("Specific Query details are available after analysis completes.")
         return 404, render_query_page(settings, query_id=validated_query_id, error=message)
@@ -67,10 +74,18 @@ def start_specific_query_report_job(
         )
         return 400, body
 
-    job = job_store.create_query_report(validated_query_id)
+    job = job_store.create_query_report(validated_query_id, report_variant=report_variant)
     thread = threading.Thread(
         target=run_specific_query_report_job,
-        args=(job.job_id, validated_query_id, case_dir, settings, job_store, runner),
+        args=(
+            job.job_id,
+            validated_query_id,
+            case_dir,
+            settings,
+            job_store,
+            runner,
+            report_variant,
+        ),
         daemon=True,
     )
     thread.start()
@@ -134,7 +149,7 @@ def start_specific_query_llm_actions_job(
         return render_specific_query_detail_for_request(settings, validated_query_id, job_store)
     if context.report_running or context.optimizer_running:
         return render_specific_query_detail_for_request(settings, validated_query_id, job_store)
-    job = job_store.create_query_llm_actions(validated_query_id)
+    job = job_store.create_query_case_actions(validated_query_id)
     thread = threading.Thread(
         target=run_llm_actions_job,
         args=(job.job_id, validated_query_id, case_dir, settings, job_store, runner),

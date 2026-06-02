@@ -9,7 +9,7 @@ specific to one local environment.
 Use [demo-mode.md](demo-mode.md) to generate the current synthetic pack. Use
 [demo-data-engineer-brief.md](demo-data-engineer-brief.md) for the companion
 explanation of scoring, profile-analysis signals, metadata semantics,
-Cloudera Manager (CM) metrics correlation, LLM Report boundaries, and Query LLM
+Cloudera Manager (CM) metrics correlation, report boundaries, and Query LLM
 optimizer validation.
 
 ## Launch

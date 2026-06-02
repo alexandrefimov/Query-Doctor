@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -29,6 +29,17 @@ handoff, see [release-notes-0.4.2.md](release-notes-0.4.2.md). Historical
 
 ### Product
 
+- Known Query ID Details now reuses the same report and optimizer availability
+  gates as Recent Details. Clean or otherwise non-actionable analyzed queries
+  keep report/optimizer actions unavailable, hide the Query LLM optimizer and
+  combined Python report + optimizer buttons, and reject direct optimizer POSTs
+  without starting a job.
+- Details pages now make report mode explicit: the recommended Python Report
+  baseline and optional LLM narrative are separate selected-case actions with
+  separate validated artifacts. Combined report + optimizer execution now uses
+  the Python report baseline instead of implicitly inheriting the global LLM
+  report mode, while web scans still do not auto-run reports, LLM narratives,
+  or optimizer jobs.
 - The default `recent_scan_timezone` is now `UTC` in the built-in web defaults
   and canonical example config. Existing configs that set a different IANA
   timezone keep their configured scan-hour behavior.

@@ -9,7 +9,7 @@ from query_doctor.web.presenters.recent_scan import ReportActionView
 from query_doctor.web.ui.html_helpers import SafeHtml, escape_value
 from query_doctor.web.ui.i18n import text as ui_text
 
-REPORT_ACTION_JOB_KINDS = {"batch_report", "query_report"}
+REPORT_ACTION_JOB_KINDS = {"batch_report", "query_report", "batch_llm_report", "query_llm_report"}
 
 
 def render_llm_report_status(
@@ -18,6 +18,8 @@ def render_llm_report_status(
     *,
     llm_enabled: bool = True,
     language: str = "en",
+    report_title_override: str | None = None,
+    result_label_override: str | None = None,
 ) -> str:
     if view.status == "running":
         status_html = render_llm_report_progress(view, llm_enabled=llm_enabled, language=language)
@@ -30,11 +32,15 @@ def render_llm_report_status(
         "LLM report" if llm_enabled else "Python report",
         "LLM-отчет" if llm_enabled else "Python-отчет",
     )
+    if result_label_override:
+        result_label = result_label_override
     result_title = ui_text(
         language,
         "LLM Report" if llm_enabled else "Python Report",
         "LLM-отчет" if llm_enabled else "Python-отчет",
     )
+    if report_title_override:
+        result_title = report_title_override
     report_html = ""
     if view.show_open_link and trusted_report_html:
         report_html = (

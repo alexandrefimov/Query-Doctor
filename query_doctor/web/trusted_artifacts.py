@@ -15,16 +15,15 @@ from query_doctor.cli.optimize_query import (
     validate_optimizer_recommendations_text,
 )
 from query_doctor.web.command_builders import (
-    BATCH_REPORT_NAME,
-    BATCH_REPORT_PARTIAL_NAME,
-    BATCH_REPORT_VALIDATION_MARKER,
     OPTIMIZED_QUERY_MARKER_SCHEMA_VERSION,
     OPTIMIZED_QUERY_NAME,
     OPTIMIZED_QUERY_PARTIAL_NAME,
     OPTIMIZED_QUERY_RECOMMENDATIONS_NAME,
     OPTIMIZED_QUERY_VALIDATION_MARKER,
     OPTIMIZED_QUERY_VALIDATION_MODE,
-    WEB_REPORT_VALIDATION_MODE,
+    REPORT_VARIANT_LLM,
+    REPORT_VARIANT_PYTHON,
+    report_artifacts_for_variant,
 )
 from query_doctor.web.models import WebJobSnapshot, WebSettings
 from query_doctor.web.job_progress import progress_view_from_snapshot
@@ -82,12 +81,32 @@ OPTIMIZER_ANALYSIS_UNAVAILABLE_REASON = (
 )
 
 
+def report_job_kinds_for_variant(
+    report_variant: str,
+    *,
+    combined: bool,
+    query: bool = False,
+) -> set[str]:
+    if report_variant == REPORT_VARIANT_LLM:
+        return {"query_llm_report" if query else "batch_llm_report"}
+    prefix = "query" if query else "batch"
+    kinds = {f"{prefix}_report"}
+    if combined:
+        kinds.add(f"{prefix}_case_actions")
+        kinds.add(f"{prefix}_llm_actions")
+    return kinds
+
+
 @dataclass(frozen=True)
 class TrustedDetailArtifacts:
     artifact_dir: Path | None
     report_state: dict[str, object]
+    python_report_state: dict[str, object]
+    llm_report_state: dict[str, object]
     optimized_query_state: dict[str, object]
     trusted_report_text: str | None
+    trusted_python_report_text: str | None
+    trusted_llm_report_text: str | None
     trusted_optimized_query: str | None
     trusted_optimizer_recommendations: str | None
 
@@ -280,11 +299,19 @@ def optimizer_artifact_status_for_dir(case_dir: Path) -> str:
     return "not_run"
 
 
-def load_validated_batch_case_report(settings: WebSettings, case: dict[str, object]) -> str | None:
+def load_validated_batch_case_report(
+    settings: WebSettings,
+    case: dict[str, object],
+    *,
+    report_variant: str = REPORT_VARIANT_PYTHON,
+) -> str | None:
     case_dir = resolve_batch_case_report_dir(settings, case)
-    if case_dir is None or not batch_case_validated_report_exists(case_dir, case):
+    if case_dir is None or not batch_case_validated_report_exists(
+        case_dir, case, report_variant=report_variant
+    ):
         return None
-    report_text = read_case_relative_text(case_dir, BATCH_REPORT_NAME)
+    report_name, _partial_name, _marker_name = report_artifacts_for_variant(report_variant)
+    report_text = read_case_relative_text(case_dir, report_name)
     if report_text is None:
         return None
     hidden_paths = {str(case_dir)}
@@ -297,10 +324,15 @@ def load_validated_batch_case_report(settings: WebSettings, case: dict[str, obje
     return redact_local_paths_for_display(report_text)
 
 
-def load_validated_specific_query_report(case_dir: Path) -> str | None:
-    if not batch_case_validated_report_exists(case_dir):
+def load_validated_specific_query_report(
+    case_dir: Path,
+    *,
+    report_variant: str = REPORT_VARIANT_PYTHON,
+) -> str | None:
+    if not batch_case_validated_report_exists(case_dir, report_variant=report_variant):
         return None
-    report_text = read_case_relative_text(case_dir, BATCH_REPORT_NAME)
+    report_name, _partial_name, _marker_name = report_artifacts_for_variant(report_variant)
+    report_text = read_case_relative_text(case_dir, report_name)
     if report_text is None:
         return None
     case_path = str(case_dir)
@@ -313,8 +345,10 @@ def load_batch_case_trusted_report_artifact(
     settings: WebSettings,
     case_id: str,
     case: dict[str, object],
+    *,
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> TrustedReportArtifact | None:
-    report_text = load_validated_batch_case_report(settings, case)
+    report_text = load_validated_batch_case_report(settings, case, report_variant=report_variant)
     if report_text is None:
         return None
     return TrustedReportArtifact(
@@ -325,9 +359,12 @@ def load_batch_case_trusted_report_artifact(
 
 
 def load_specific_query_trusted_report_artifact(
-    query_id: str, case_dir: Path
+    query_id: str,
+    case_dir: Path,
+    *,
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> TrustedReportArtifact | None:
-    report_text = load_validated_specific_query_report(case_dir)
+    report_text = load_validated_specific_query_report(case_dir, report_variant=report_variant)
     if report_text is None:
         return None
     return TrustedReportArtifact(
@@ -368,18 +405,45 @@ def load_batch_case_trusted_detail_artifacts(
     *,
     job: WebJobSnapshot | None = None,
 ) -> TrustedDetailArtifacts:
-    report_state = load_batch_case_report_state(settings, case_id, case, job_store, job=job)
+    python_report_state = load_batch_case_report_state(
+        settings,
+        case_id,
+        case,
+        job_store,
+        job=job,
+        report_variant=REPORT_VARIANT_PYTHON,
+    )
+    llm_report_state = load_batch_case_report_state(
+        settings,
+        case_id,
+        case,
+        job_store,
+        job=job,
+        report_variant=REPORT_VARIANT_LLM,
+    )
     artifact_dir = resolve_batch_case_report_dir(settings, case)
     optimized_query_state = load_optimized_query_state(
         artifact_dir, job_store, batch_case_id=case_id, job=job
     )
+    trusted_python_report_text = (
+        load_validated_batch_case_report(settings, case, report_variant=REPORT_VARIANT_PYTHON)
+        if python_report_state.get("trusted")
+        else None
+    )
+    trusted_llm_report_text = (
+        load_validated_batch_case_report(settings, case, report_variant=REPORT_VARIANT_LLM)
+        if llm_report_state.get("trusted")
+        else None
+    )
     return TrustedDetailArtifacts(
         artifact_dir=artifact_dir,
-        report_state=report_state,
+        report_state=python_report_state,
+        python_report_state=python_report_state,
+        llm_report_state=llm_report_state,
         optimized_query_state=optimized_query_state,
-        trusted_report_text=load_validated_batch_case_report(settings, case)
-        if report_state.get("trusted")
-        else None,
+        trusted_report_text=trusted_python_report_text,
+        trusted_python_report_text=trusted_python_report_text,
+        trusted_llm_report_text=trusted_llm_report_text,
         trusted_optimized_query=(
             load_validated_optimized_query(artifact_dir)
             if artifact_dir is not None and optimized_query_state.get("trusted")
@@ -401,19 +465,44 @@ def load_specific_query_trusted_detail_artifacts(
     *,
     job: WebJobSnapshot | None = None,
 ) -> TrustedDetailArtifacts:
-    report_state = load_specific_query_report_state(
-        settings, query_id, case_dir, job_store, job=job
+    python_report_state = load_specific_query_report_state(
+        settings,
+        query_id,
+        case_dir,
+        job_store,
+        job=job,
+        report_variant=REPORT_VARIANT_PYTHON,
+    )
+    llm_report_state = load_specific_query_report_state(
+        settings,
+        query_id,
+        case_dir,
+        job_store,
+        job=job,
+        report_variant=REPORT_VARIANT_LLM,
     )
     optimized_query_state = load_optimized_query_state(
         case_dir, job_store, query_id=query_id, job=job
     )
+    trusted_python_report_text = (
+        load_validated_specific_query_report(case_dir, report_variant=REPORT_VARIANT_PYTHON)
+        if python_report_state.get("trusted")
+        else None
+    )
+    trusted_llm_report_text = (
+        load_validated_specific_query_report(case_dir, report_variant=REPORT_VARIANT_LLM)
+        if llm_report_state.get("trusted")
+        else None
+    )
     return TrustedDetailArtifacts(
         artifact_dir=case_dir,
-        report_state=report_state,
+        report_state=python_report_state,
+        python_report_state=python_report_state,
+        llm_report_state=llm_report_state,
         optimized_query_state=optimized_query_state,
-        trusted_report_text=load_validated_specific_query_report(case_dir)
-        if report_state.get("trusted")
-        else None,
+        trusted_report_text=trusted_python_report_text,
+        trusted_python_report_text=trusted_python_report_text,
+        trusted_llm_report_text=trusted_llm_report_text,
         trusted_optimized_query=load_validated_optimized_query(case_dir)
         if optimized_query_state.get("trusted")
         else None,
@@ -458,22 +547,24 @@ def load_batch_case_report_state(
     job_store: Any,
     *,
     job: WebJobSnapshot | None = None,
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> dict[str, object]:
-    if (
-        job is not None
-        and job.status == "running"
-        and job.kind in {"batch_report", "batch_llm_actions"}
-    ):
+    report_name, partial_name, _marker_name = report_artifacts_for_variant(report_variant)
+    running_kinds = report_job_kinds_for_variant(report_variant, combined=True)
+    failed_kinds = report_job_kinds_for_variant(report_variant, combined=False)
+    if job is not None and job.status == "running" and job.kind in running_kinds:
         running_job = job
     else:
-        running_job = job_store.running_batch_report(case_id)
+        running_job = job_store.running_batch_report(case_id, report_variant=report_variant)
     artifact_dir = resolve_batch_case_report_dir(settings, case)
     trusted = False
     partial = False
     unavailable_reason = ""
     if artifact_dir is not None:
-        trusted = batch_case_validated_report_exists(artifact_dir, case)
-        partial = case_relative_file_path(artifact_dir, BATCH_REPORT_PARTIAL_NAME) is not None
+        trusted = batch_case_validated_report_exists(
+            artifact_dir, case, report_variant=report_variant
+        )
+        partial = case_relative_file_path(artifact_dir, partial_name) is not None
     status = "generated" if trusted else "not_run"
     if not trusted and not partial:
         if artifact_dir is None:
@@ -486,20 +577,11 @@ def load_batch_case_report_state(
         status = "partial_untrusted"
     if running_job is not None:
         status = "running"
-    elif (
-        job is not None
-        and job.status == "cancelled"
-        and job.kind in {"batch_report", "batch_llm_actions"}
-    ):
+    elif job is not None and job.status == "cancelled" and job.kind in running_kinds:
         status = "cancelled"
-    elif job is not None and job.status == "failed" and job.kind == "batch_report":
+    elif job is not None and job.status == "failed" and job.kind in failed_kinds:
         status = "failed"
-    elif (
-        job is not None
-        and job.status == "failed"
-        and job.kind == "batch_llm_actions"
-        and not trusted
-    ):
+    elif job is not None and job.status == "failed" and job.kind in running_kinds and not trusted:
         status = "failed"
     report_job = running_job if running_job is not None else job
     progress_view = progress_view_from_snapshot(report_job)
@@ -508,6 +590,8 @@ def load_batch_case_report_state(
         "running": running_job is not None,
         "trusted": trusted,
         "partial": partial,
+        "report": report_name,
+        "report_variant": report_variant,
         "unavailable_reason": unavailable_reason,
         "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
         "job_id": report_job.job_id if report_job is not None else "",
@@ -525,17 +609,17 @@ def load_specific_query_report_state(
     job_store: Any,
     *,
     job: WebJobSnapshot | None = None,
+    report_variant: str = REPORT_VARIANT_PYTHON,
 ) -> dict[str, object]:
-    if (
-        job is not None
-        and job.status == "running"
-        and job.kind in {"query_report", "query_llm_actions"}
-    ):
+    report_name, partial_name, _marker_name = report_artifacts_for_variant(report_variant)
+    running_kinds = report_job_kinds_for_variant(report_variant, combined=True, query=True)
+    failed_kinds = report_job_kinds_for_variant(report_variant, combined=False, query=True)
+    if job is not None and job.status == "running" and job.kind in running_kinds:
         running_job = job
     else:
-        running_job = job_store.running_query_report(query_id)
-    trusted = batch_case_validated_report_exists(case_dir)
-    partial = case_relative_file_path(case_dir, BATCH_REPORT_PARTIAL_NAME) is not None
+        running_job = job_store.running_query_report(query_id, report_variant=report_variant)
+    trusted = batch_case_validated_report_exists(case_dir, report_variant=report_variant)
+    partial = case_relative_file_path(case_dir, partial_name) is not None
     unavailable_reason = ""
     status = "generated" if trusted else "not_run"
     if not trusted and not partial and not case_has_analyzer_facts(case_dir):
@@ -545,20 +629,11 @@ def load_specific_query_report_state(
         status = "partial_untrusted"
     if running_job is not None:
         status = "running"
-    elif (
-        job is not None
-        and job.status == "cancelled"
-        and job.kind in {"query_report", "query_llm_actions"}
-    ):
+    elif job is not None and job.status == "cancelled" and job.kind in running_kinds:
         status = "cancelled"
-    elif job is not None and job.status == "failed" and job.kind == "query_report":
+    elif job is not None and job.status == "failed" and job.kind in failed_kinds:
         status = "failed"
-    elif (
-        job is not None
-        and job.status == "failed"
-        and job.kind == "query_llm_actions"
-        and not trusted
-    ):
+    elif job is not None and job.status == "failed" and job.kind in running_kinds and not trusted:
         status = "failed"
     report_job = running_job if running_job is not None else job
     progress_view = progress_view_from_snapshot(report_job)
@@ -567,6 +642,8 @@ def load_specific_query_report_state(
         "running": running_job is not None,
         "trusted": trusted,
         "partial": partial,
+        "report": report_name,
+        "report_variant": report_variant,
         "unavailable_reason": unavailable_reason,
         "error": job.error if job is not None and job.status in {"failed", "cancelled"} else "",
         "job_id": report_job.job_id if report_job is not None else "",
@@ -593,6 +670,8 @@ def load_optimized_query_state(
         in {
             "batch_optimized_query",
             "query_optimized_query",
+            "batch_case_actions",
+            "query_case_actions",
             "batch_llm_actions",
             "query_llm_actions",
         }
@@ -630,6 +709,8 @@ def load_optimized_query_state(
         in {
             "batch_optimized_query",
             "query_optimized_query",
+            "batch_case_actions",
+            "query_case_actions",
             "batch_llm_actions",
             "query_llm_actions",
         }
@@ -644,10 +725,11 @@ def load_optimized_query_state(
     elif (
         job is not None
         and job.status == "failed"
-        and job.kind in {"batch_llm_actions", "query_llm_actions"}
+        and job.kind
+        in {"batch_case_actions", "query_case_actions", "batch_llm_actions", "query_llm_actions"}
         and not trusted
         and case_dir is not None
-        and batch_case_validated_report_exists(case_dir)
+        and batch_case_validated_report_exists(case_dir, report_variant=REPORT_VARIANT_PYTHON)
     ):
         status = "failed"
     state_job = running_job if running_job is not None else job
