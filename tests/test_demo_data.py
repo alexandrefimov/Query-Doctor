@@ -1,19 +1,20 @@
 import json
 from pathlib import Path
 
-from query_doctor.web.models import WebSettings
 from query_doctor.web.action_outcomes import (
     load_action_outcomes,
     summarize_workload_action_outcomes,
 )
+from query_doctor.web.command_builders import PYTHON_REPORT_NAME, REPORT_VARIANT_PYTHON
 from query_doctor.web.details_facts import load_case_analysis_query_context_facts
+from query_doctor.web.models import WebSettings
+from query_doctor.web.presenters.recent_scan import present_recent_scan_case_detail
 from query_doctor.web.trusted_artifacts import (
     batch_case_validated_report_exists,
     load_validated_optimizer_recommendations,
     optimized_query_validated_exists,
     resolve_batch_case_report_dir,
 )
-from query_doctor.web.presenters.recent_scan import present_recent_scan_case_detail
 from query_doctor.web.ui.action_candidates import render_action_candidate_findings
 from query_doctor.web.ui.recent_scan_details import render_recent_scan_case_detail_view
 from query_doctor.web.ui.recent_scan_results import render_batch_summary
@@ -79,8 +80,10 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
     )
     optimizer_dir = resolve_batch_case_report_dir(settings, optimizer_case)
     assert optimizer_dir == out_dir / "cases" / "case-001"
-    assert batch_case_validated_report_exists(optimizer_dir, optimizer_case)
-    report_text = (optimizer_dir / "diagnosis.md").read_text(encoding="utf-8")
+    assert batch_case_validated_report_exists(
+        optimizer_dir, optimizer_case, report_variant=REPORT_VARIANT_PYTHON
+    )
+    report_text = (optimizer_dir / PYTHON_REPORT_NAME).read_text(encoding="utf-8")
     assert "## Short Summary" in report_text
     assert "## Practical Recommendations" in report_text
     assert "## Detailed Analysis" in report_text

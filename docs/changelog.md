@@ -29,6 +29,20 @@ handoff, see [release-notes-0.4.2.md](release-notes-0.4.2.md). Historical
 
 ### Product
 
+- Owner-gated Recent and Running scan forms now fail closed visibly when the web
+  process has no configured owner user: the Username dropdown shows that no
+  owner is configured and scan submit is disabled instead of presenting an empty
+  required filter. Results and Details also expose a visible open New scan form
+  so repeat scans do not depend on finding a collapsed form section.
+- Synthetic demo generation now writes validated trusted case reports through
+  the current Python Report artifact contract. The demo pack again works as a
+  public web smoke path after the Python Report / Query Doctor Report split,
+  and Details pages no longer rely on the legacy generic report marker for
+  their trusted report state.
+- Details pages now visually flatten the outer case container so the verdict,
+  recommendations, diagnostics, and selected-case actions read as one case page
+  instead of nested panels inside a larger panel. The existing safe anchors and
+  server-rendered Details structure remain unchanged.
 - Known Query ID Details now reuses the same report and optimizer availability
   gates as Recent Details. Clean or otherwise non-actionable analyzed queries
   keep report/optimizer actions unavailable, hide the Query LLM optimizer and

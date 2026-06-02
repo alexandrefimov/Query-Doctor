@@ -159,13 +159,13 @@ def render_batch_page(
             workload_group_name=workload_group_name,
             workload_group_signal=workload_group_signal,
         )
-    collapse_run_panel = bool(batch_card) and job is None and error is None
+    has_existing_results = bool(batch_card) and job is None and error is None
     sections = [
         render_batch_run_panel(
             settings,
             effective_form_values,
             run_disabled=job is not None and job.status == "running",
-            collapsed=collapse_run_panel,
+            heading_title="New scan" if has_existing_results else "Diagnose queries",
         )
     ]
     if job is not None:

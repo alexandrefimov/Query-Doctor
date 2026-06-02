@@ -41,9 +41,10 @@ from query_doctor.web.action_outcomes import (
     case_fingerprint,
 )
 from query_doctor.web.command_builders import (
-    BATCH_REPORT_NAME,
     OPTIMIZED_QUERY_PARTIAL_NAME,
     OPTIMIZED_QUERY_RECOMMENDATIONS_NAME,
+    PYTHON_REPORT_NAME,
+    REPORT_VARIANT_PYTHON,
 )
 from query_doctor.web.trusted_artifacts import write_batch_case_report_validation_marker
 
@@ -366,8 +367,8 @@ def write_validated_report(case_dir: Path, report_text: str, facts_text: str) ->
     errors = validate_report_text(report_text, facts_text=facts_text, language="en")
     if errors:
         raise ValueError(f"Generated demo report did not pass safety validation: {errors[0]}")
-    (case_dir / BATCH_REPORT_NAME).write_text(report_text, encoding="utf-8")
-    write_batch_case_report_validation_marker(case_dir)
+    (case_dir / PYTHON_REPORT_NAME).write_text(report_text, encoding="utf-8")
+    write_batch_case_report_validation_marker(case_dir, report_variant=REPORT_VARIANT_PYTHON)
 
 
 def write_optimizer_recommendations(case_dir: Path, spec: DemoCaseSpec) -> None:

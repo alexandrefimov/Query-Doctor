@@ -1,11 +1,32 @@
 # Query Doctor UI/UX Audit Notes
 
-Last updated: 2026-05-21
+Last updated: 2026-06-02
 
 This note records the accepted product takeaways from the May 2026 UI/UX audit.
 The goal is to make Query Doctor usable by an analyst who needs to understand
 what is wrong with a slow query, where to inspect it, and what to try next,
 without weakening the safety contract or exposing raw artifacts.
+
+## Closed In Web UI Architecture Audit Slice
+
+- Keep the synthetic demo pack as a first-class web UI validation path. Its
+  trusted report fixtures now use the current Python Report artifact and marker
+  contract instead of the legacy generic report marker, so demo Details pages
+  exercise the same selected-case report baseline as production web flows.
+- Make Details read as one continuous case page by removing the visual frame
+  from the outer Details container. The verdict, Recommended changes,
+  Diagnostics, and action controls remain sibling sections with stable anchors
+  and safe server-rendered content.
+- Keep repeat scan entry points visible. Results pages now render an open
+  `New scan` form instead of hiding the scan setup behind a disclosure button,
+  and Details links land on that visible form.
+- Keep owner-gated scan readiness compact. When no owner can be configured, the
+  Username control remains a disabled dropdown with a short unavailable option
+  and disabled submit button. When a local owner is configured, the dropdown is
+  active and preselects the verified owner in Basic scan.
+- Keep Basic scan visually flat inside the main form panel. The primary scan
+  fields should not look like a nested technical fieldset; secondary filters may
+  remain framed as a secondary group.
 
 ## Accepted For Current Quick-Win Slice
 

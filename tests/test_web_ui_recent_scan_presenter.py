@@ -4429,6 +4429,7 @@ def test_recent_scan_action_candidate_card_renders_owner_coordinate_guidance():
         "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)"
     )
     assert "Review first:" not in html
+    assert 'class="reason-card action-candidate-card"' in html
     assert "owner-coordinate:id" not in html
     assert_no_forbidden_fragments(html)
 
