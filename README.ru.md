@@ -179,7 +179,7 @@ Finished Queries results для разбора:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-Текущий release-candidate synthetic demo pack в `0.4.2` содержит одиннадцать
+Текущий release-candidate synthetic demo pack в `0.4.3` содержит одиннадцать
 sanitized cases.
 Используйте его, чтобы показать:
 
@@ -410,6 +410,8 @@ Public demo и release paths:
   public-release guard.
 - [docs/public-release-readiness.md](docs/public-release-readiness.md):
   checklist готовности публичного release.
+- [docs/release-notes-0.4.3.md](docs/release-notes-0.4.3.md): release notes
+  для report-mode и web UI polish в `0.4.3`.
 - [docs/release-notes-0.4.2.md](docs/release-notes-0.4.2.md): release notes
   для public release baseline в `0.4.2`.
 - [docs/release-notes-0.4.1.md](docs/release-notes-0.4.1.md): release notes
@@ -456,8 +458,9 @@ configs, credentials, raw profiles, raw metadata или temporary outputs.
 
 ## Public status
 
-Репозиторий публичный. Public source releases начинаются с `v0.4.2`. Older
-package-index releases остаются видимыми на
+Репозиторий публичный. Public source releases начинаются с `v0.4.2`; `v0.4.3`
+продолжает эту public source release line. Older package-index releases
+остаются видимыми на
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) для
 installed-artifact history. Public license is Apache-2.0.
 

@@ -9,9 +9,11 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For curated 0.4.2 release notes suitable for GitHub Release and package-index
-handoff, see [release-notes-0.4.2.md](release-notes-0.4.2.md). Historical
-0.4.1 release notes remain in [release-notes-0.4.1.md](release-notes-0.4.1.md).
+For curated 0.4.3 release notes suitable for GitHub Release and package-index
+handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
+0.4.2 and 0.4.1 release notes remain in
+[release-notes-0.4.2.md](release-notes-0.4.2.md) and
+[release-notes-0.4.1.md](release-notes-0.4.1.md).
 
 ## Unreleased
 
