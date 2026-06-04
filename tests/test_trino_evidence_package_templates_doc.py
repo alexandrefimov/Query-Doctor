@@ -17,17 +17,41 @@ TRINO_LIVE_COLLECTION_DOC = REPO_ROOT / "docs" / "engines" / "trino-live-collect
 TRINO_DISCOVERY_SPIKE_DOC = REPO_ROOT / "docs" / "trino-discovery-spike.md"
 
 
-def test_trino_evidence_package_templates_stay_non_supporting():
+def test_trino_evidence_package_templates_stay_bounded_to_offline_import():
     text = _normalized_doc_text(TRINO_EVIDENCE_TEMPLATES_DOC)
 
     for required in (
-        "not a live collector",
-        "support announcement",
-        "engine selector",
-        "browser/report surface",
+        "not a live Trino coordinator collector",
+        "live engine selector",
+        "Details/trusted-report surface",
         "optimizer workflow",
         "permission to execute Trino SQL",
-        "future fixture import",
+        "query-doctor-trino-import",
+        "query-doctor-trino-event-store-import",
+        "query-doctor-trino-http-query-detail-archive-import",
+        "query-doctor-trino-query-detail-import",
+        "query-doctor-trino-query-list-import",
+        "query-doctor-trino-statement-stats-import",
+        "query-doctor-trino-query-info-pruned-import",
+        "query-doctor-trino-coordinator-query-info-target-check",
+        "query-doctor-trino-coordinator-query-info-pruned-probe",
+        "query-doctor-trino-coordinator-query-info-pruned-import",
+        "query-doctor-diagnose-trino-compact",
+        "--boundary-out <raw-free-trino-boundary.json>",
+        "--diagnosis-out <raw-free-trino-diagnosis.json>",
+        "--auth-header-file <operator-auth-header-file>",
+        "<sanitized-event-store.json-or-ndjson>",
+        "<sanitized-query-detail-archive-contract.json>",
+        "https://<operator-query-detail-archive>",
+        "<sanitized-query-detail.json>",
+        "<sanitized-query-list-aggregate.json>",
+        "<sanitized-statement-stats.json>",
+        "<sanitized-pruned-query-info.json>",
+        "redaction-review confirmation",
+        "JSON object, a JSON array of event objects, a wrapper with exactly records, or NDJSON",
+        "--format boundary-json",
+        "sample_fact_boundaries",
+        "--sample-index <zero-based-index>",
         "manifest",
         "redaction_note",
         "samples",
@@ -35,17 +59,41 @@ def test_trino_evidence_package_templates_stay_non_supporting():
         "query_list_summary_export is an aggregate contract probe shape only",
         "query_detail_export is accepted only as a compact sanitized query-detail fixture",
         "scripts/validate_trino_evidence_package.py",
-        "prints only package id, source type, safe manifest source summary fields, parser coverage counts, and sample counts",
+        "print only package id, source type, safe manifest source summary fields, parser coverage counts, and sample counts",
         "limited to broad version/source-contract labels, connector family categories",
-        "raw-retention status, and fixture_import_only contact surface",
+        "raw-retention status, and offline_evidence_import contact surface",
         "must not print the input path, raw payload, raw field values",
+        "does not contact Trino, fetch query-info by Query ID, submit SQL",
+        "does not contact the Trino coordinator, fetch query-info by Query ID, submit SQL",
+        "does not contact Trino, crawl /v1/query, fetch query-detail payloads, diagnose one selected query, submit SQL",
+        "does not contact Trino, call /v1/statement, submit SQL, crawl query history",
+        "GET /v1/query/{queryId}?pruned=true",
+        "scripts/audit_trino_compact_readiness.py <raw-free-trino-boundary.json> --require-one-query-boundary",
+        "--diagnosis-json <raw-free-trino-diagnosis.json>",
+        "stored diagnosis artifact is checked against the deterministic boundary-derived diagnosis",
+        "performs no network read, accepts only top-level state and allowlisted queryStats fields",
+        "rejects raw QueryInfo fields such as Query IDs, query text, session fields, endpoint URLs, object names, and stage/task detail",
+        "does not map QueryInfo to facts, submit SQL, crawl query history, collect live Query ID diagnosis",
+        "may contain only one operator-managed Authorization header line",
+        "prints no auth header path or value",
+        "output boundary path",
+        "maps only allowlisted lifecycle, timing, row/byte, memory/spill, blocked, and task-count fields",
+        "claim root causes, submit SQL, crawl query history, collect live Query ID diagnosis, or add browser/report or optimizer output",
+        "reads only one already raw-free engine_fact_boundary_v1 payload",
+        "Planning-heavy timing can become an attention area only from supported planning_time_ms and trino_elapsed_time_ms facts; high peak memory can become an attention area only from supported one-query trino_peak_memory_bytes at or above 100 GiB.",
+        "For single-boundary local query-detail, local query-list aggregate, local statement-stats, local pruned QueryInfo, HTTP query-detail archive, and pruned coordinator query-info imports",
+        "does not ingest raw Trino payloads, copy input summaries or string metric values, claim root causes",
+        (
+            "diagnosis output path must differ from the input or source-contract path, "
+            "and from the auth-header file path when one is used"
+        ),
         "scripts/build_trino_evidence_package.py",
         "reads only local already-sanitized sample files",
         "writes output only after validation accepts the wrapper",
         "redaction-reviewed",
         "sentinel-tests-passed",
-        "fixture_import_only",
-        "A live reader remains a later source-contract task.",
+        "offline_evidence_import",
+        "Broader Trino coordinator readers remain a later source-contract task beyond the one-query pruned import.",
     ):
         assert required in text
 
@@ -70,7 +118,7 @@ def test_trino_evidence_manifest_template_pins_safe_fields_and_labels():
         "max_nested_depth: 0",
         "redaction_status: checked | rejected | needs_regeneration",
         "operator_retained_raw_exports: no",
-        "query_doctor_contact_surface: fixture_import_only",
+        "query_doctor_contact_surface: offline_evidence_import",
         "must not contain a cluster, query, user, host, catalog, schema, table",
     ):
         assert required in text
@@ -101,7 +149,7 @@ def test_trino_evidence_redaction_note_template_pins_boundary_assertions():
         assert required in text
 
 
-def test_trino_evidence_package_acceptance_gate_stays_fixture_only():
+def test_trino_evidence_package_acceptance_gate_stays_offline_only():
     text = _normalized_doc_text(TRINO_EVIDENCE_TEMPLATES_DOC)
 
     for required in (
@@ -110,8 +158,9 @@ def test_trino_evidence_package_acceptance_gate_stays_fixture_only():
         "every supported fact is query-specific or explicitly aggregate and source-contract scoped",
         "represented as unknown or as an explicit omission",
         "synthetic padding or sentinel values only",
-        "requires no live reader, engine adapter, browser route, trusted report behavior",
-        "sanitized committed fixtures and mapper tests",
+        "requires no live reader, Details route, trusted report behavior",
+        "separate isolated compact-diagnosis page accepts only already raw-free direct boundary JSON or one selected sample boundary from a package boundary export",
+        "wire only raw-free normalized facts into future consumers",
     ):
         assert required in text
 
@@ -137,7 +186,8 @@ def test_trino_evidence_package_templates_have_russian_companion():
     for required in (
         "Шаблоны Trino evidence package",
         "Это не live collector",
-        "fixture_import_only",
+        "query-doctor-trino-statement-stats-import",
+        "offline_evidence_import",
         "Manifest Template",
         "Redaction Note Template",
         "Acceptance Checklist",

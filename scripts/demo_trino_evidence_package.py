@@ -108,6 +108,11 @@ SAMPLE_FIXTURES = (
         "trino_query_list_contract_probe.json",
     ),
     (
+        "query_list_contract_probe",
+        "query_list_summary_export",
+        "trino_query_list_heavy_bucket_contract_probe.json",
+    ),
+    (
         "query_detail_stage_task_summary",
         "query_detail_export",
         "trino_query_detail_export.json",

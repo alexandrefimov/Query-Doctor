@@ -1,8 +1,8 @@
-"""Fixture-only Trino evidence package intake validation.
+"""Sanitized Trino evidence package intake validation.
 
 This module validates operator-exported, already-sanitized package payloads for
-future fixture work. It does not collect from Trino, execute SQL, register a
-Trino engine adapter, or expose report/browser output.
+offline Trino evidence import. It does not collect from Trino, execute SQL, or
+expose report/browser output.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from typing import Any
 from query_doctor.analyzer.engine_facts import (
     EngineFactBundle,
     EngineFactContractError,
+    engine_fact_boundary_payload,
     validate_engine_fact_bundle_raw_free,
 )
 from query_doctor.analyzer.trino_fixture_facts import (
@@ -133,6 +134,13 @@ TRINO_EVIDENCE_PACKAGE_TOP_LEVEL_KEYS = frozenset(
         "samples",
     }
 )
+TRINO_EVIDENCE_CONTACT_SURFACES = frozenset(
+    {
+        "fixture_import_only",
+        "offline_evidence_import",
+    }
+)
+TRINO_EVIDENCE_PACKAGE_IMPORT_SCHEMA_VERSION = "trino_evidence_package_import_v1"
 
 _SAFE_PACKAGE_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{2,80}$")
 _SAFE_CLASS_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{1,120}$")
@@ -177,6 +185,95 @@ class TrinoEvidencePackageIntakeResult:
     def parser_coverage_counts(self) -> dict[str, int]:
         counts = Counter(sample.parser_coverage for sample in self.samples)
         return dict(sorted(counts.items()))
+
+
+def trino_evidence_package_summary_payload(
+    result: TrinoEvidencePackageIntakeResult,
+) -> dict[str, Any]:
+    """Return the safe package summary exposed by Trino import commands."""
+
+    summary = result.source_summary
+    return {
+        "package_id": result.package_id,
+        "source_type": result.source_type,
+        "source_summary": {
+            "trino_version_family": summary.trino_version_family,
+            "source_contract_version": summary.source_contract_version,
+            "connector_family_categories": list(summary.connector_family_categories),
+            "export_window_utc": {
+                "start": summary.export_window_start_utc,
+                "end": summary.export_window_end_utc,
+            },
+            "byte_count_compacted": summary.byte_count_compacted,
+            "max_record_bytes": summary.max_record_bytes,
+            "max_nested_depth": summary.max_nested_depth,
+            "known_omissions": list(summary.known_omissions),
+            "unsupported_sources": list(summary.unsupported_sources),
+            "operator_retained_raw_exports": summary.operator_retained_raw_exports,
+            "contact_surface": summary.query_doctor_contact_surface,
+        },
+        "sample_count": result.sample_count,
+        "parser_coverage": result.parser_coverage_counts(),
+        "sample_count_by_case": dict(result.sample_count_by_case),
+    }
+
+
+def trino_evidence_package_boundary_export(
+    result: TrinoEvidencePackageIntakeResult,
+) -> dict[str, Any]:
+    """Return raw-free normalized fact boundaries for accepted package samples."""
+
+    return {
+        "schema_version": TRINO_EVIDENCE_PACKAGE_IMPORT_SCHEMA_VERSION,
+        "summary": trino_evidence_package_summary_payload(result),
+        "sample_fact_boundaries": [
+            {
+                "case": sample.case,
+                "source_type": sample.source_type,
+                "boundary": engine_fact_boundary_payload(bundle),
+            }
+            for sample, bundle in zip(result.samples, result.bundles)
+        ],
+    }
+
+
+def format_trino_evidence_package_summary(
+    result: TrinoEvidencePackageIntakeResult,
+) -> str:
+    """Render a path-free, raw-free package summary for terminal output."""
+
+    summary = result.source_summary
+    lines = [
+        "[trino-package] accepted",
+        f"package_id: {result.package_id}",
+        f"source_type: {result.source_type}",
+        "source_summary:",
+        f"  trino_version_family: {summary.trino_version_family}",
+        f"  source_contract_version: {summary.source_contract_version}",
+        (
+            "  connector_family_categories: "
+            f"{_format_safe_labels(summary.connector_family_categories)}"
+        ),
+        (
+            "  export_window_utc: "
+            f"{summary.export_window_start_utc}..{summary.export_window_end_utc}"
+        ),
+        f"  byte_count_compacted: {summary.byte_count_compacted}",
+        f"  max_record_bytes: {summary.max_record_bytes}",
+        f"  max_nested_depth: {summary.max_nested_depth}",
+        f"  known_omissions: {_format_safe_labels(summary.known_omissions)}",
+        f"  unsupported_sources: {_format_safe_labels(summary.unsupported_sources)}",
+        f"  operator_retained_raw_exports: {summary.operator_retained_raw_exports}",
+        f"  contact_surface: {summary.query_doctor_contact_surface}",
+        f"sample_count: {result.sample_count}",
+        "parser_coverage:",
+    ]
+    for state, count in result.parser_coverage_counts().items():
+        lines.append(f"  {state}: {count}")
+    lines.append("sample_count_by_case:")
+    for case, count in result.sample_count_by_case:
+        lines.append(f"  {case}: {count}")
+    return "\n".join(lines)
 
 
 def validate_trino_evidence_package_payload(
@@ -313,7 +410,7 @@ def _validate_manifest(
     if retained_raw not in {"yes", "no"}:
         raise EngineFactContractError("Trino evidence package raw-retention flag is unsupported")
     contact_surface = _safe_class_label(manifest, "query_doctor_contact_surface")
-    if contact_surface != "fixture_import_only":
+    if contact_surface not in TRINO_EVIDENCE_CONTACT_SURFACES:
         raise EngineFactContractError("Trino evidence package contact surface is unsupported")
     return (
         package_id,
@@ -600,3 +697,7 @@ def _max_json_depth(value: Any, depth: int = 0) -> int:
             return depth
         return max(_max_json_depth(nested, depth + 1) for nested in value)
     return depth
+
+
+def _format_safe_labels(labels: Sequence[str]) -> str:
+    return ", ".join(labels) if labels else "none"

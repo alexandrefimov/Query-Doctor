@@ -1,9 +1,8 @@
-"""Build fixture-only Trino evidence package wrappers from sanitized samples.
+"""Build Trino offline evidence package wrappers from sanitized samples.
 
-This module does not collect from Trino, execute SQL, register a Trino adapter,
-or expose browser/report output. It only assembles already-sanitized compact
-sample payloads into the local evidence-package wrapper validated by
-`trino_evidence_package`.
+This module does not collect from Trino, execute SQL, or expose browser/report
+output. It only assembles already-sanitized compact sample payloads into the
+local evidence-package wrapper validated by `trino_evidence_package`.
 """
 
 from __future__ import annotations
@@ -127,7 +126,7 @@ def build_trino_evidence_package_payload(
             "known_omissions": list(known_omissions),
             "unsupported_sources": list(unsupported_sources),
             "operator_retained_raw_exports": operator_retained_raw_exports,
-            "query_doctor_contact_surface": "fixture_import_only",
+            "query_doctor_contact_surface": "offline_evidence_import",
         },
         "redaction_note": {
             "package_id": package_id,

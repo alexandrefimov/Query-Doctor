@@ -3,9 +3,18 @@
 Last reviewed: 2026-05-29
 
 This document defines a future live-collection path for Trino research. It is
-not a support announcement, does not add a collector, and does not change the
-current support matrix: Query Doctor production engine support remains Apache
-Impala only.
+not a live-support announcement, does not add a collector, and does not change
+the current support matrix: Query Doctor production triage remains Apache
+Impala, and Trino support is limited to sanitized offline evidence package
+import, bounded local event-store import, bounded local query-detail import, and
+bounded local query-list aggregate import, plus bounded local statement-stats
+import, bounded local pruned QueryInfo import, bounded HTTP event archive
+import, bounded HTTP query-detail archive import, event-source contract
+checking, and dry-run coordinator query-info target checking, plus one-query
+pruned coordinator query-info probing, one-query pruned coordinator fact
+import, local compact diagnosis over already raw-free direct boundary JSON or
+selected package sample boundaries, and the isolated local
+`/trino/compact-diagnosis` page over the same already raw-free inputs.
 
 The design goal is to let Query Doctor eventually ingest Trino query evidence
 without executing user SQL, exposing raw query payloads, or turning Trino into
@@ -76,6 +85,65 @@ endpoints, object names, or connector internals. They do not
 contain raw query-detail records, query IDs, stage IDs, task IDs, worker
 identifiers, endpoint details, raw exception text, stack traces, object context,
 or connector internals, and this is still not a live query-info fetch path.
+The bounded local query-detail import command may validate one explicit compact
+sanitized query-detail JSON object and emit a safe summary or raw-free boundary
+payload. It does not fetch query-detail payloads from Trino, does not submit SQL,
+and does not add browser/report/optimizer behavior.
+The bounded HTTP query-detail archive import command accepts only an explicit
+`http_query_detail_archive` contract with an operator-managed auth reference,
+fetches one explicit operator HTTP(S) archive URL, enforces byte/depth/timeout
+bounds, and maps only one compact already-sanitized query-detail record. It does
+not contact the Trino coordinator, fetch query-info by Query ID, discover
+endpoints, accept URL credentials, echo URLs, submit SQL, crawl query history,
+or add browser/report/optimizer behavior.
+The coordinator query-info target check validates only a compact
+`coordinator_query_info` source contract, one explicit coordinator base-URL
+shape, and one explicit Query ID shape. It does not issue the `/v1/query`
+request, fetch query-info JSON, store raw query IDs, echo URLs or Query IDs,
+submit SQL, crawl query history, or add live Query ID diagnosis. The pruned
+coordinator query-info probe may then issue exactly one bounded
+`GET /v1/query/{queryId}?pruned=true` request with an operator-managed auth
+reference, validate that the response is a bounded JSON object, and emit only a
+safe probe summary. It does not follow HTTP redirects, store or print raw
+QueryInfo, map QueryInfo to facts, crawl query history, submit SQL, add
+browser/report output, or become live Query ID diagnosis.
+The pruned coordinator query-info import command may issue the same one bounded
+request after the same contract gate and emit only a safe summary or raw-free
+boundary JSON. It maps only allowlisted lifecycle and `queryStats` fields for
+timing, rows/bytes, memory/spill, blocked status, and task counts. It keeps raw
+QueryInfo, URL, Query ID, query text, session fields, endpoint URLs, object
+names, stage/task identifiers, worker identifiers, raw failure details,
+connector internals, and output-stage trees outside summaries and normalized
+facts, and it does not follow HTTP redirects. It does not crawl query history,
+submit SQL, add browser/report output, or become live Query ID diagnosis.
+The local pruned QueryInfo import command may read one explicit already
+sanitized compact local JSON object after the same `coordinator_query_info`
+source contract and emit only a safe summary or raw-free boundary JSON. It maps
+only top-level `state` and allowlisted `queryStats` fields, rejects raw
+QueryInfo fields such as Query IDs, query text, session fields, endpoint URLs,
+object names, and stage/task detail before mapping, performs no network read,
+and does not crawl query history, submit SQL, add browser/report output, or
+become live Query ID diagnosis.
+The compact diagnosis command and isolated local compact-diagnosis page consume
+only one already raw-free `engine_fact_boundary_v1` payload or selected package
+sample boundary from an accepted Trino import path. It writes deterministic
+raw-free attention areas, change directions, verification prompts, limitations,
+parser coverage, lifecycle, and state counts. It does not read raw Trino
+payloads, copy input summaries or string metric values, claim root causes,
+submit SQL, add Details/trusted report output, add optimizer behavior, run
+Recent workflows, or become live Query ID diagnosis. The web page must not echo
+submitted boundary JSON or render source schema, fact-group, query ID, URL,
+path, raw SQL, or source-contract fields.
+The bounded local query-list import command may validate one explicit compact
+sanitized aggregate query-list summary and emit a safe summary or raw-free
+boundary payload. It is aggregate-only and does not crawl Trino, fetch
+query-detail payloads, diagnose one selected query, submit SQL, or add
+browser/report/optimizer behavior.
+The bounded local statement-stats import command may validate one explicit
+compact sanitized `QueryResults.statementStats` / `rootStage` JSON object and
+emit a safe summary or raw-free boundary payload. It does not contact Trino,
+does not call `/v1/statement`, does not submit SQL, does not fetch query-detail
+payloads, and does not add browser/report/optimizer behavior.
 Connector metric present/absent statement-statistics fixtures now cover only a
 compact checked/present signal and intentionally omit connector names, metric
 names, endpoints, object names, and raw connector payloads. A failed-query
@@ -85,7 +153,7 @@ messages, stack traces, endpoint details, object names, and connector
 internals. Stage-skew fixtures use only checked/candidate/ratio fields. Extra
 fields or nested detail objects in these compact summaries keep the derived
 fact `unknown`, even when the extra values look sanitized. They are not live
-source adapters and do not imply Trino support.
+source adapters and do not imply live Trino support.
 The fixture mapper rejects oversized statement-statistics and event-listener
 payloads plus unsafe raw field names and text values before converting anything
 into normalized facts. It also rejects non-finite numeric values before mapping.
@@ -126,6 +194,11 @@ Required behavior:
   retried-task-count fields, and those counts must be non-negative integers;
 - keep query-list summary shapes aggregate-only: bounded counts, safe buckets,
   and redaction assertions, without raw records or query-detail follow-up;
+- require the Trino compact readiness audit's
+  `--require-one-query-boundary` gate, or an equivalent invariant, before any
+  boundary is counted toward one-query diagnosis readiness. Boundaries carrying
+  `query_list_*` aggregate facts must remain aggregate source-shape evidence,
+  not one-query promotion evidence;
 - convert accepted fields into `EngineFactBundle`;
 - run raw-free validation before any prompt, report, browser, or committed
   fixture use.
@@ -135,30 +208,91 @@ Required behavior:
 Purpose: read bounded historical Trino query events from an operator-controlled
 store without requiring Query Doctor to install a Trino plugin.
 
-Phase B should start only after an operator-exported sample package satisfies
-the [test-cluster evidence checklist](trino-test-cluster-evidence-checklist.md).
-The first real-cluster handoff is sanitized fixture work, not a direct reader.
-Its manifest and redaction note should follow
-[trino-evidence-package-templates.md](trino-evidence-package-templates.md).
+Current status: `query-doctor-trino-event-store-import` reads one explicit
+already-sanitized local JSON object, JSON array, or NDJSON file of compact
+Trino event-listener records. It requires redaction-review confirmation, uses
+the existing event-listener validator and mapper, enforces file, record, byte,
+and depth limits, and prints only a safe summary or raw-free normalized fact
+boundaries. It does not contact Trino, install a plugin, commit offsets, crawl
+history, submit SQL, or add browser/report/optimizer output.
+`query-doctor-trino-event-source-contract-check` validates one explicit compact
+source-contract JSON before an event-store reader contacts a source.
+It checks only source type, safe auth-reference label, accepted event schema,
+bounds, and redaction/storage policy, then prints a safe summary. It rejects
+endpoint, topic, database, credential, raw SQL, raw event-record, and extra
+source config fields before any reader can be added.
+`query-doctor-trino-http-event-archive-import` is the first bounded event-store
+reader: it accepts only an explicit `http_event_listener_archive` contract with
+an operator-managed auth reference, fetches one explicit operator HTTP(S)
+archive URL, enforces the contract record/byte/depth/timeout bounds, and maps
+only compact already-sanitized event-listener records. It does not contact the
+Trino coordinator, discover archive endpoints, accept URL credentials, echo
+URLs, submit SQL, commit offsets, crawl query history, or add browser/report
+output.
+
+The first real-cluster handoff remains sanitized package work before any
+broader Trino coordinator reader. Use the
+[test-cluster evidence checklist](trino-test-cluster-evidence-checklist.md) and
+[trino-evidence-package-templates.md](trino-evidence-package-templates.md) for
+package manifests and redaction notes.
 The local package-intake validator accepts only explicit `manifest`,
 `redaction_note`, and `samples` JSON payloads and only sample source types that
 already have fixture validators, including statement-statistics,
 event-listener, aggregate query-list summary, and compact query-detail exports.
-`scripts/validate_trino_evidence_package.py` is the current local dry-run
-command for those packages; it prints only a safe summary and does not add live
-collection.
+`scripts/validate_trino_evidence_package.py`, `query-doctor-trino-import`,
+`query-doctor-trino-event-store-import`, and
+`query-doctor-trino-query-detail-import`, and
+`query-doctor-trino-query-list-import`, and
+`query-doctor-trino-statement-stats-import`, and
+`query-doctor-trino-query-info-pruned-import` are the current local dry-run
+commands; `query-doctor-trino-event-source-contract-check` is the source
+contract gate, and `query-doctor-trino-http-event-archive-import` is the bounded
+operator HTTP event archive reader, while
+`query-doctor-trino-http-query-detail-archive-import` is the bounded operator
+HTTP query-detail archive reader. `query-doctor-trino-coordinator-query-info-target-check`
+is the dry-run coordinator query-info target gate, and
+`query-doctor-trino-coordinator-query-info-pruned-probe` is the one-query
+pruned coordinator probe, and
+`query-doctor-trino-coordinator-query-info-pruned-import` is the narrow
+one-query pruned coordinator fact import. The local pruned QueryInfo import is
+a compact file import using the same source contract and performs no network
+read. The pruned probe/import may use one
+optional local `--auth-header-file` containing an operator-managed
+`Authorization` header line for that single bounded request; they must not print
+or write the auth header path or value. When a one-query import writes both
+`--boundary-out` and `--diagnosis-out`, the compact readiness audit should run
+with `--diagnosis-json <raw-free-trino-diagnosis.json>` so the stored diagnosis
+artifact is checked against the deterministic boundary-derived diagnosis.
+When the handoff also includes the dev-only Kerberos/SPNEGO smoke summary, pass
+`--smoke-summary <trino_smoke_summary.json> --require-executed-smoke` to the
+same audit so dry-run smoke plans cannot satisfy executed test-cluster evidence.
+`query-doctor-diagnose-trino-compact` is
+the local compact diagnosis command over an already raw-free direct boundary
+JSON or one selected package sample boundary, and `/trino/compact-diagnosis` is
+the isolated local paste page for the same accepted input shapes. They print,
+write, or render only safe summaries, raw-free boundary JSON, deterministic
+raw-free diagnosis JSON, or sanitized compact diagnosis HTML and do not add
+Details/trusted reports or broader Trino browser workflows.
+For the single-boundary local query-detail, local query-list aggregate, local
+statement-stats, local pruned QueryInfo, HTTP query-detail archive, and pruned
+coordinator query-info import commands, `--diagnosis-out` may write the same
+compact diagnosis directly after the accepted boundary is built. The output
+path must differ from the input or source-contract path, and the diagnosis is
+still local JSON only.
 
 Candidate stores:
 
 - Kafka topic snapshots exported by the operator;
 - HTTP event-listener archives exported by the operator;
 - MySQL event-listener tables accessed through a future read-only adapter;
-- local NDJSON/JSONL files produced by approved event-listener pipelines.
+- local JSON, NDJSON, or JSONL files produced by approved event-listener
+  pipelines.
 
 Required behavior:
 
-- explicit configuration for source type, time window, max records, max bytes,
-  and schema version;
+- explicit local path or explicit operator HTTP archive URL, redaction-review
+  confirmation, max records, max bytes, per-record bytes, per-record depth, and
+  timeout;
 - no default network discovery;
 - no mutation, offsets commits, topic creation, table writes, or retention
   changes;
@@ -180,6 +314,34 @@ Allowed input shape:
 Required behavior:
 
 - no broad history crawl;
+- for the implemented local import, one explicit already-sanitized compact JSON
+  object with redaction-review confirmation and file/payload/depth bounds;
+- for the implemented local pruned QueryInfo import, one explicit
+  already-sanitized compact JSON object with only top-level `state` and
+  allowlisted `queryStats` fields, after a source contract and with
+  redaction-review confirmation and file/depth bounds;
+- for the implemented HTTP archive import, one explicit
+  operator-controlled HTTP(S) archive URL after an accepted
+  `http_query_detail_archive` source contract, with redaction-review
+  confirmation, URL credential/query/fragment rejection, and
+  byte/depth/timeout bounds;
+- for any future endpoint reader, one explicit query identifier only after the
+  source contract proves authentication, version scope, bounds, and redaction;
+- for the implemented target check, one compact `coordinator_query_info` source
+  contract plus one coordinator base URL and one Query ID shape may be
+  validated without any network read;
+- for the implemented pruned probe, the same source contract may allow one
+  bounded `GET /v1/query/{queryId}?pruned=true` read with an operator-managed
+  auth reference. The probe response may only be checked as a bounded JSON
+  object and does not map facts;
+- for the implemented pruned import, the same source contract may allow one
+  bounded `GET /v1/query/{queryId}?pruned=true` read with an operator-managed
+  auth reference and map only allowlisted lifecycle and `queryStats` fields to
+  a raw-free boundary payload;
+- for the implemented local pruned QueryInfo import, the same source contract
+  may allow one local compact sanitized QueryInfo file with no network read and
+  map only allowlisted lifecycle and `queryStats` fields to a raw-free boundary
+  payload;
 - no raw query ID in browser/report boundary payloads;
 - no raw query text, headers, session properties, catalog/schema/table names,
   failure stack traces, endpoint URLs, or connector credentials past the parser
@@ -201,6 +363,31 @@ Each source contract must define:
 - connector families covered by tests;
 - retry behavior and fail-closed error states;
 - local retention for compacted facts only.
+
+The implemented event-source contract check accepts only safe reference labels
+for authentication and explicit numeric bounds. It does not accept endpoint
+URLs, topic names, database names, hostnames, credential values, raw event
+records, or arbitrary source-specific configuration.
+The implemented coordinator query-info target check accepts only a safe
+auth-reference label, one-query bound, coordinator base URL shape, Query ID
+shape, explicit bounds, and blocked browser/report output. It performs no
+network read and rejects URL credentials, URL query strings or fragments, unsafe
+URL paths, unsafe Query IDs, raw query-info JSON, and arbitrary source-specific
+configuration.
+The implemented pruned coordinator query-info probe accepts the same target
+shape only with `operator_managed_reference`, issues exactly one
+`GET /v1/query/{queryId}?pruned=true` request, enforces byte/depth/timeout
+bounds, may use one optional local `Authorization` header file, and keeps the
+fetched QueryInfo outside normalized facts and outputs.
+The implemented pruned coordinator query-info import uses the same target,
+optional local auth-header file, and bounds but emits a raw-free boundary
+payload from allowlisted lifecycle and `queryStats` fields only; it keeps query
+text, session fields, URL, Query ID, auth header path/value, stage/task detail,
+raw failures, and connector internals out of outputs.
+The implemented local pruned QueryInfo import uses the same
+`coordinator_query_info` source contract and bounds but reads one compact local
+JSON file instead of contacting the coordinator. It accepts only `state` and
+allowlisted `queryStats` fields and rejects raw QueryInfo fields before mapping.
 
 Credentials, bearer tokens, cookies, Kerberos caches, TLS client keys, event
 listener secrets, Kafka credentials, database passwords, and extra connector
@@ -261,13 +448,18 @@ A first live Trino collection PR is not ready until it includes:
 - one source adapter with a real source behind it, not a placeholder package;
 - explicit config fields for source type, auth reference, bounds, and schema
   version;
+- a passing event-source contract check for the source family before the reader
+  can contact that source;
 - parser tests for accepted, missing, oversized, partial, and unsupported
   payloads;
 - redaction tests covering every forbidden surface in this document;
 - raw-free boundary payload tests;
+- a strict one-query readiness gate that rejects aggregate `query_list_*`
+  boundaries before any Trino query-detail or Query ID support promotion;
 - support-gap matrix updates;
-- no browser route, report output, optimizer behavior, or public README support
-  claim unless those product surfaces are implemented and tested separately.
+- no Details/trusted report output, optimizer behavior, live Recent or Query ID
+  workflow, or public README support claim unless those product surfaces are
+  implemented and tested separately.
 
 ## Official References
 

@@ -1,0 +1,30 @@
+{
+  "fixtureVersion": "synthetic-trino-query-detail-high-memory-v1",
+  "sourceContractVersion": "synthetic_trino_query_detail_v1",
+  "queryDetail": {
+    "summary": {
+      "completedSplits": 640,
+      "cpuTimeMillis": 174000,
+      "elapsedTimeMillis": 240000,
+      "executionTimeMillis": 212000,
+      "fullyBlocked": false,
+      "outputBytes": 12582912,
+      "outputRows": 26000,
+      "peakMemoryBytes": 137438953472,
+      "planningTimeMillis": 8200,
+      "processedBytes": 34359738368,
+      "processedRows": 410000000,
+      "queuedTimeMillis": 2400,
+      "safeTaskSummary": {
+        "checked": true,
+        "failedTaskCount": 0,
+        "retriedTaskCount": 0,
+        "taskCount": 96
+      },
+      "spilledBytes": 0,
+      "stageCount": 5,
+      "state": "FINISHED",
+      "wallTimeMillis": 286000
+    }
+  }
+}

@@ -11,6 +11,7 @@ from typing import Sequence
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
 from query_doctor.analyzer.trino_evidence_package import (
+    format_trino_evidence_package_summary,
     validate_trino_evidence_package_payload,
 )
 
@@ -18,7 +19,7 @@ from query_doctor.analyzer.trino_evidence_package import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Validate one sanitized Trino evidence package for fixture intake. "
+            "Validate one sanitized Trino evidence package for offline import. "
             "The command prints only a safe summary and never echoes the input payload."
         )
     )
@@ -73,37 +74,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def print_safe_summary(result) -> None:
-    summary = result.source_summary
-    print("[trino-package] accepted")
-    print(f"package_id: {result.package_id}")
-    print(f"source_type: {result.source_type}")
-    print("source_summary:")
-    print(f"  trino_version_family: {summary.trino_version_family}")
-    print(f"  source_contract_version: {summary.source_contract_version}")
-    print(
-        f"  connector_family_categories: {_format_safe_labels(summary.connector_family_categories)}"
-    )
-    print(
-        f"  export_window_utc: {summary.export_window_start_utc}..{summary.export_window_end_utc}"
-    )
-    print(f"  byte_count_compacted: {summary.byte_count_compacted}")
-    print(f"  max_record_bytes: {summary.max_record_bytes}")
-    print(f"  max_nested_depth: {summary.max_nested_depth}")
-    print(f"  known_omissions: {_format_safe_labels(summary.known_omissions)}")
-    print(f"  unsupported_sources: {_format_safe_labels(summary.unsupported_sources)}")
-    print(f"  operator_retained_raw_exports: {summary.operator_retained_raw_exports}")
-    print(f"  contact_surface: {summary.query_doctor_contact_surface}")
-    print(f"sample_count: {result.sample_count}")
-    print("parser_coverage:")
-    for state, count in result.parser_coverage_counts().items():
-        print(f"  {state}: {count}")
-    print("sample_count_by_case:")
-    for case, count in result.sample_count_by_case:
-        print(f"  {case}: {count}")
-
-
-def _format_safe_labels(labels: Sequence[str]) -> str:
-    return ", ".join(labels) if labels else "none"
+    print(format_trino_evidence_package_summary(result))
 
 
 def _load_json(path: Path):

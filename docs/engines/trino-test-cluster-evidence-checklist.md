@@ -6,7 +6,10 @@ Language: English | [Russian](i18n/ru/trino-test-cluster-evidence-checklist.md)
 
 This checklist defines the first safe handoff from a test Trino cluster to
 Query Doctor research. It is not a live collector, support announcement, engine
-selector, browser/report surface, or permission to execute Trino SQL.
+selector, Details/trusted-report surface, or permission to execute Trino SQL.
+The separate isolated compact-diagnosis page accepts only already raw-free
+direct boundary JSON or one selected sample boundary from a package boundary
+export.
 
 Use this with [trino-diagnostic-contract.md](trino-diagnostic-contract.md),
 [trino-live-collection-design.md](trino-live-collection-design.md), and
@@ -48,6 +51,10 @@ The first export should contain compact evidence only:
 - compact query-detail exports only after raw identifiers, object names,
   endpoint details, stack traces, raw stage/task records, and connector
   internals are removed;
+- compact pruned QueryInfo exports only after raw Query IDs, query text,
+  session fields, endpoint details, object names, raw stage/task records, and
+  connector internals are removed, leaving only allowlisted `state` and
+  `queryStats` fields;
 - a manifest that describes source type, Trino version, source schema version,
   connector family category, export time window, record count, byte count,
   redaction status, and known omissions.
@@ -137,6 +144,12 @@ If the samples are already compact sanitized JSON files, use
 validation. The builder is local-only, requires explicit redaction-review and
 sentinel-test confirmations, writes output only after validation accepts the
 package, and must not echo input paths or payloads.
+If the handoff includes a compact sanitized local event-listener store instead
+of a package wrapper, run
+`query-doctor-trino-event-store-import --redaction-reviewed <sanitized-event-store.json-or-ndjson>`.
+That command reads one explicit local JSON/NDJSON file, validates compact event
+records, prints only a safe summary or raw-free boundary JSON, and must not
+echo raw payloads, raw values, or the input path.
 
 Keep raw exports outside the repository and outside prompts. If an operator
 needs to retain them for audit, retain them in the operator-controlled Trino
@@ -153,8 +166,12 @@ The package is ready for Query Doctor fixture work only when:
   version-scoped;
 - every unsupported or absent field has an explicit `unknown` or omission
   reason;
-- no browser route, trusted report, optimizer behavior, live adapter, public
-  README claim, or engine registration is needed to consume it.
+- no Details route, trusted report, optimizer behavior, live adapter, public
+  README live-support claim is needed to consume it; the packaged offline
+  import path must still keep Details/trusted report and live-reader surfaces
+  out. The separate isolated compact-diagnosis page accepts only already
+  raw-free direct boundary JSON or one selected sample boundary from a package
+  boundary export.
 
 The next implementation step after an accepted package is still fixture work:
 convert samples into committed sanitized fixtures and mapper tests. A live

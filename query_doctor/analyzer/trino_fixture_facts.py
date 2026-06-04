@@ -264,7 +264,7 @@ SQL_SNIPPET_RE = re.compile(
 def build_trino_fixture_engine_facts(payload: Mapping[str, Any]) -> EngineFactBundle:
     validate_trino_statement_stats_fixture_payload(payload)
     stats = _mapping(payload.get("statementStats"))
-    fixture_version = _text_or_none(payload.get("fixtureVersion"))
+    fixture_version = _source_version_or_none(payload.get("fixtureVersion"))
 
     return EngineFactBundle(
         identity=EngineIdentityFacts(
@@ -275,25 +275,25 @@ def build_trino_fixture_engine_facts(payload: Mapping[str, Any]) -> EngineFactBu
         ),
         lifecycle=_build_lifecycle(stats),
         timing=(
-            _millis_fact("elapsed_time_ms", stats.get("elapsedTimeMillis")),
-            _millis_fact("queued_time_ms", stats.get("queuedTimeMillis")),
+            _millis_fact("trino_elapsed_time_ms", stats.get("elapsedTimeMillis")),
+            _millis_fact("trino_queued_time_ms", stats.get("queuedTimeMillis")),
             _millis_fact("planning_time_ms", stats.get("planningTimeMillis")),
-            _millis_fact("execution_time_ms", stats.get("executionTimeMillis")),
-            _millis_fact("cpu_time_ms", stats.get("cpuTimeMillis")),
-            _millis_fact("wall_time_ms", stats.get("wallTimeMillis")),
+            _millis_fact("trino_execution_time_ms", stats.get("executionTimeMillis")),
+            _millis_fact("trino_cpu_time_ms", stats.get("cpuTimeMillis")),
+            _millis_fact("trino_wall_time_ms", stats.get("wallTimeMillis")),
         ),
         resources=(
-            _count_fact("input_rows", stats.get("processedRows"), unit="rows"),
-            _count_fact("input_bytes", stats.get("processedBytes"), unit="bytes"),
-            _count_fact("output_rows", stats.get("outputRows"), unit="rows"),
-            _count_fact("output_bytes", stats.get("outputBytes"), unit="bytes"),
-            _count_fact("peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
+            _count_fact("trino_input_rows", stats.get("processedRows"), unit="rows"),
+            _count_fact("trino_input_bytes", stats.get("processedBytes"), unit="bytes"),
+            _count_fact("trino_output_rows", stats.get("outputRows"), unit="rows"),
+            _count_fact("trino_output_bytes", stats.get("outputBytes"), unit="bytes"),
+            _count_fact("trino_peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
             _spilled_bytes_fact(stats.get("spilledBytes")),
             _connector_metric_signal_fact(stats),
         ),
         stages=(
             _stage_count_fact(stats),
-            _count_fact("completed_split_count", stats.get("completedSplits"), unit="splits"),
+            _count_fact("trino_completed_split_count", stats.get("completedSplits"), unit="splits"),
             _blocked_signal_fact(stats),
             _stage_skew_candidate_fact(stats),
         ),
@@ -307,7 +307,7 @@ def build_trino_event_listener_fixture_engine_facts(payload: Mapping[str, Any]) 
     metadata = _mapping(event.get("metadata"))
     stats = _mapping(event.get("statistics"))
     resource = _mapping(event.get("resource"))
-    fixture_version = _text_or_none(payload.get("fixtureVersion"))
+    fixture_version = _source_version_or_none(payload.get("fixtureVersion"))
     if _event_source_contract_unsupported(payload):
         return _unknown_event_source_contract_bundle(fixture_version)
 
@@ -320,26 +320,26 @@ def build_trino_event_listener_fixture_engine_facts(payload: Mapping[str, Any]) 
         ),
         lifecycle=_build_lifecycle(_event_lifecycle_stats(metadata, stats)),
         timing=(
-            _millis_fact("elapsed_time_ms", stats.get("elapsedTimeMillis")),
-            _millis_fact("queued_time_ms", stats.get("queuedTimeMillis")),
+            _millis_fact("trino_elapsed_time_ms", stats.get("elapsedTimeMillis")),
+            _millis_fact("trino_queued_time_ms", stats.get("queuedTimeMillis")),
             _millis_fact("planning_time_ms", stats.get("planningTimeMillis")),
-            _millis_fact("execution_time_ms", stats.get("executionTimeMillis")),
-            _millis_fact("cpu_time_ms", stats.get("cpuTimeMillis")),
-            _millis_fact("wall_time_ms", stats.get("wallTimeMillis")),
+            _millis_fact("trino_execution_time_ms", stats.get("executionTimeMillis")),
+            _millis_fact("trino_cpu_time_ms", stats.get("cpuTimeMillis")),
+            _millis_fact("trino_wall_time_ms", stats.get("wallTimeMillis")),
             _resource_group_queue_time_fact(resource),
         ),
         resources=(
-            _count_fact("input_rows", stats.get("processedRows"), unit="rows"),
-            _count_fact("input_bytes", stats.get("processedBytes"), unit="bytes"),
-            _count_fact("output_rows", stats.get("outputRows"), unit="rows"),
-            _count_fact("output_bytes", stats.get("outputBytes"), unit="bytes"),
-            _count_fact("peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
+            _count_fact("trino_input_rows", stats.get("processedRows"), unit="rows"),
+            _count_fact("trino_input_bytes", stats.get("processedBytes"), unit="bytes"),
+            _count_fact("trino_output_rows", stats.get("outputRows"), unit="rows"),
+            _count_fact("trino_output_bytes", stats.get("outputBytes"), unit="bytes"),
+            _count_fact("trino_peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
             _spilled_bytes_fact(stats.get("spilledBytes")),
             _connector_metric_signal_fact(stats),
         ),
         stages=(
             _stage_count_fact(stats),
-            _count_fact("completed_split_count", stats.get("completedSplits"), unit="splits"),
+            _count_fact("trino_completed_split_count", stats.get("completedSplits"), unit="splits"),
             _blocked_signal_fact(stats),
             _stage_skew_candidate_fact(stats),
         ),
@@ -351,7 +351,7 @@ def build_trino_query_list_contract_probe_engine_facts(
     payload: Mapping[str, Any],
 ) -> EngineFactBundle:
     validate_trino_query_list_contract_probe_payload(payload)
-    fixture_version = _text_or_none(payload.get("fixtureVersion"))
+    fixture_version = _source_version_or_none(payload.get("fixtureVersion"))
     bounds = _mapping(payload.get("bounds"))
     record_summary = _mapping(payload.get("record_summary"))
     contract_shape = _mapping(payload.get("contract_shape"))
@@ -370,6 +370,26 @@ def build_trino_query_list_contract_probe_engine_facts(
         _mapping(record_summary.get("failure_type_counts")),
         field_name="failure_type_counts",
         allowed_keys=TRINO_QUERY_LIST_FAILURE_TYPES,
+    )
+    elapsed_duration_buckets = _counter_mapping(
+        _mapping(record_summary.get("elapsed_duration_buckets")),
+        field_name="elapsed_duration_buckets",
+        allowed_keys=TRINO_QUERY_LIST_DURATION_BUCKETS,
+    )
+    queued_duration_buckets = _counter_mapping(
+        _mapping(record_summary.get("queued_duration_buckets")),
+        field_name="queued_duration_buckets",
+        allowed_keys=TRINO_QUERY_LIST_DURATION_BUCKETS,
+    )
+    peak_user_memory_buckets = _counter_mapping(
+        _mapping(record_summary.get("peak_user_memory_buckets")),
+        field_name="peak_user_memory_buckets",
+        allowed_keys=TRINO_QUERY_LIST_SIZE_BUCKETS,
+    )
+    processed_input_buckets = _counter_mapping(
+        _mapping(record_summary.get("processed_input_buckets")),
+        field_name="processed_input_buckets",
+        allowed_keys=TRINO_QUERY_LIST_SIZE_BUCKETS,
     )
     blocked_reason_counts = _counter_mapping(
         _mapping(record_summary.get("blocked_reason_counts")),
@@ -415,8 +435,34 @@ def build_trino_query_list_contract_probe_engine_facts(
                 unit="queries",
             ),
             _count_fact(
+                "query_list_elapsed_under_1s_count",
+                elapsed_duration_buckets.get("under_1s", 0),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_elapsed_1s_to_10s_count",
+                elapsed_duration_buckets.get("1s_to_10s", 0),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_elapsed_over_10m_count",
+                elapsed_duration_buckets.get("over_10m", 0),
+                unit="queries",
+            ),
+            _count_fact(
                 "query_list_queued_duration_present_count",
                 stats_presence.get("queued_duration"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_queued_under_1s_count",
+                queued_duration_buckets.get("under_1s", 0),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_queued_over_1m_count",
+                queued_duration_buckets.get("1m_to_10m", 0)
+                + queued_duration_buckets.get("over_10m", 0),
                 unit="queries",
             ),
             _count_fact(
@@ -442,6 +488,16 @@ def build_trino_query_list_contract_probe_engine_facts(
                 unit="queries",
             ),
             _count_fact(
+                "query_list_peak_user_memory_under_1mb_count",
+                peak_user_memory_buckets.get("under_1mb", 0),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_peak_user_memory_over_100gb_count",
+                peak_user_memory_buckets.get("over_100gb", 0),
+                unit="queries",
+            ),
+            _count_fact(
                 "query_list_peak_total_memory_present_count",
                 stats_presence.get("peak_total_memory"),
                 unit="queries",
@@ -454,6 +510,11 @@ def build_trino_query_list_contract_probe_engine_facts(
             _count_fact(
                 "query_list_processed_input_rows_present_count",
                 stats_presence.get("processed_input_rows"),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_processed_input_unknown_count",
+                processed_input_buckets.get("unknown", 0),
                 unit="queries",
             ),
             _count_fact(
@@ -492,6 +553,17 @@ def build_trino_query_list_contract_probe_engine_facts(
                 sum(blocked_reason_counts.values()),
                 unit="reasons",
             ),
+            _count_fact(
+                "query_list_waiting_for_memory_blocked_count",
+                blocked_reason_counts.get("WAITING_FOR_MEMORY", 0),
+                unit="queries",
+            ),
+            _count_fact(
+                "query_list_split_queue_blocked_count",
+                blocked_reason_counts.get("SPLIT_QUEUES_FULL", 0)
+                + blocked_reason_counts.get("MIXED_SPLIT_QUEUES_FULL_AND_WAITING_FOR_MEMORY", 0),
+                unit="queries",
+            ),
         ),
         limitations=(
             *_trino_fixture_limitations(),
@@ -509,7 +581,7 @@ def build_trino_query_list_contract_probe_engine_facts(
                 summary="Trino query-list contract probe did not fetch query-detail payloads.",
             ),
             LimitationFact(
-                fact_id="statement_execution",
+                fact_id="trino_statement_execution",
                 state="not_observed",
                 summary="Trino query-list contract probe did not submit SQL statements.",
             ),
@@ -519,7 +591,7 @@ def build_trino_query_list_contract_probe_engine_facts(
 
 def build_trino_query_detail_fixture_engine_facts(payload: Mapping[str, Any]) -> EngineFactBundle:
     validate_trino_query_detail_fixture_payload(payload)
-    fixture_version = _text_or_none(payload.get("fixtureVersion"))
+    fixture_version = _source_version_or_none(payload.get("fixtureVersion"))
     if _query_detail_source_contract_unsupported(payload):
         return _unknown_query_detail_source_contract_bundle(fixture_version)
 
@@ -535,25 +607,25 @@ def build_trino_query_detail_fixture_engine_facts(payload: Mapping[str, Any]) ->
         ),
         lifecycle=_build_lifecycle(stats),
         timing=(
-            _millis_fact("elapsed_time_ms", stats.get("elapsedTimeMillis")),
-            _millis_fact("queued_time_ms", stats.get("queuedTimeMillis")),
+            _millis_fact("trino_elapsed_time_ms", stats.get("elapsedTimeMillis")),
+            _millis_fact("trino_queued_time_ms", stats.get("queuedTimeMillis")),
             _millis_fact("planning_time_ms", stats.get("planningTimeMillis")),
-            _millis_fact("execution_time_ms", stats.get("executionTimeMillis")),
-            _millis_fact("cpu_time_ms", stats.get("cpuTimeMillis")),
-            _millis_fact("wall_time_ms", stats.get("wallTimeMillis")),
+            _millis_fact("trino_execution_time_ms", stats.get("executionTimeMillis")),
+            _millis_fact("trino_cpu_time_ms", stats.get("cpuTimeMillis")),
+            _millis_fact("trino_wall_time_ms", stats.get("wallTimeMillis")),
         ),
         resources=(
-            _count_fact("input_rows", stats.get("processedRows"), unit="rows"),
-            _count_fact("input_bytes", stats.get("processedBytes"), unit="bytes"),
-            _count_fact("output_rows", stats.get("outputRows"), unit="rows"),
-            _count_fact("output_bytes", stats.get("outputBytes"), unit="bytes"),
-            _count_fact("peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
+            _count_fact("trino_input_rows", stats.get("processedRows"), unit="rows"),
+            _count_fact("trino_input_bytes", stats.get("processedBytes"), unit="bytes"),
+            _count_fact("trino_output_rows", stats.get("outputRows"), unit="rows"),
+            _count_fact("trino_output_bytes", stats.get("outputBytes"), unit="bytes"),
+            _count_fact("trino_peak_memory_bytes", stats.get("peakMemoryBytes"), unit="bytes"),
             _spilled_bytes_fact(stats.get("spilledBytes")),
             _connector_metric_signal_fact(stats),
         ),
         stages=(
             _stage_count_fact(stats),
-            _count_fact("completed_split_count", stats.get("completedSplits"), unit="splits"),
+            _count_fact("trino_completed_split_count", stats.get("completedSplits"), unit="splits"),
             _blocked_signal_fact(stats),
             _stage_skew_candidate_fact(stats),
             *_task_summary_facts(stats),
@@ -706,28 +778,28 @@ def validate_trino_query_list_contract_probe_payload(
         field_name="blocked_reason_counts",
         allowed_keys=TRINO_QUERY_LIST_BLOCKED_REASONS,
     )
-    _counter_mapping(
+    elapsed_buckets = _counter_mapping(
         _mapping_required(
             record_summary, "elapsed_duration_buckets", payload_label="record_summary"
         ),
         field_name="elapsed_duration_buckets",
         allowed_keys=TRINO_QUERY_LIST_DURATION_BUCKETS,
     )
-    _counter_mapping(
+    queued_buckets = _counter_mapping(
         _mapping_required(
             record_summary, "queued_duration_buckets", payload_label="record_summary"
         ),
         field_name="queued_duration_buckets",
         allowed_keys=TRINO_QUERY_LIST_DURATION_BUCKETS,
     )
-    _counter_mapping(
+    peak_user_memory_buckets = _counter_mapping(
         _mapping_required(
             record_summary, "peak_user_memory_buckets", payload_label="record_summary"
         ),
         field_name="peak_user_memory_buckets",
         allowed_keys=TRINO_QUERY_LIST_SIZE_BUCKETS,
     )
-    _counter_mapping(
+    processed_input_buckets = _counter_mapping(
         _mapping_required(
             record_summary, "processed_input_buckets", payload_label="record_summary"
         ),
@@ -746,7 +818,6 @@ def validate_trino_query_list_contract_probe_payload(
         raise EngineFactContractError("Trino query-list fixture failure counts mismatch")
     if stats_block["present"] + stats_block["missing"] != records_summarized:
         raise EngineFactContractError("Trino query-list fixture stats count mismatch")
-
     contract_shape = _mapping_required(
         payload,
         "contract_shape",
@@ -760,12 +831,25 @@ def validate_trino_query_list_contract_probe_payload(
         exact_keys=TRINO_QUERY_LIST_REQUIRED_TOP_LEVEL_GROUPS,
         max_value=records_summarized,
     )
-    _bounded_presence_mapping(
+    stats_group_presence = _bounded_presence_mapping(
         _mapping_required(contract_shape, "stats_group_presence", payload_label="contract_shape"),
         field_name="stats_group_presence",
         exact_keys=TRINO_QUERY_LIST_REQUIRED_STATS_GROUPS,
         max_value=records_summarized,
     )
+    for field_name, bucket_counts, presence_field_name in (
+        ("elapsed_duration_buckets", elapsed_buckets, "elapsed_duration"),
+        ("queued_duration_buckets", queued_buckets, "queued_duration"),
+        ("peak_user_memory_buckets", peak_user_memory_buckets, "peak_user_memory"),
+        ("processed_input_buckets", processed_input_buckets, "processed_input_rows"),
+    ):
+        _validate_bucket_counts_within_summary_and_presence(
+            field_name,
+            bucket_counts,
+            records_summarized,
+            presence_count=stats_group_presence[presence_field_name],
+            presence_field_name=presence_field_name,
+        )
 
     redaction = _mapping_required(payload, "redaction", payload_label="query-list fixture")
     if set(redaction) != TRINO_QUERY_LIST_REQUIRED_REDACTION_FIELDS:
@@ -883,16 +967,16 @@ def _count_fact(fact_id: str, value: Any, *, unit: str) -> MetricFact:
 def _spilled_bytes_fact(value: Any) -> MetricFact:
     number = _number_or_none(value)
     if number is None:
-        return MetricFact(fact_id="spilled_bytes", state="unknown", unit="bytes")
+        return MetricFact(fact_id="trino_spilled_bytes", state="unknown", unit="bytes")
     state = "supported" if number > 0 else "not_observed"
-    return MetricFact(fact_id="spilled_bytes", state=state, value=number, unit="bytes")
+    return MetricFact(fact_id="trino_spilled_bytes", state=state, value=number, unit="bytes")
 
 
 def _stage_count_fact(stats: Mapping[str, Any]) -> MetricFact:
     explicit_stage_count = _number_or_none(stats.get("stageCount"))
     if explicit_stage_count is not None:
         return MetricFact(
-            fact_id="stage_count",
+            fact_id="trino_stage_count",
             state="supported",
             value=explicit_stage_count,
             unit="stages",
@@ -900,9 +984,9 @@ def _stage_count_fact(stats: Mapping[str, Any]) -> MetricFact:
 
     root_stage = _mapping(stats.get("rootStage"))
     if not root_stage:
-        return MetricFact(fact_id="stage_count", state="unknown", unit="stages")
+        return MetricFact(fact_id="trino_stage_count", state="unknown", unit="stages")
     return MetricFact(
-        fact_id="stage_count",
+        fact_id="trino_stage_count",
         state="supported",
         value=_count_stages(root_stage),
         unit="stages",
@@ -912,26 +996,26 @@ def _stage_count_fact(stats: Mapping[str, Any]) -> MetricFact:
 def _blocked_signal_fact(stats: Mapping[str, Any]) -> MetricFact:
     if "fullyBlocked" not in stats:
         return MetricFact(
-            fact_id="blocked_signal",
+            fact_id="trino_blocked_signal",
             state="unknown",
             summary="The fixture does not contain Trino fullyBlocked status.",
         )
     fully_blocked = stats.get("fullyBlocked")
     if not isinstance(fully_blocked, bool):
         return MetricFact(
-            fact_id="blocked_signal",
+            fact_id="trino_blocked_signal",
             state="unknown",
             summary="The fixture did not provide a boolean Trino fullyBlocked status.",
         )
     if fully_blocked:
         return MetricFact(
-            fact_id="blocked_signal",
+            fact_id="trino_blocked_signal",
             state="supported",
             value=True,
             summary="Trino statement stats marked the query as fully blocked.",
         )
     return MetricFact(
-        fact_id="blocked_signal",
+        fact_id="trino_blocked_signal",
         state="not_observed",
         value=False,
         summary="Trino statement stats did not mark the query as fully blocked.",
@@ -942,7 +1026,7 @@ def _stage_skew_candidate_fact(stats: Mapping[str, Any]) -> MetricFact:
     summary = _mapping(stats.get("safeStageSkewSummary"))
     if not summary:
         return MetricFact(
-            fact_id="stage_skew_candidate",
+            fact_id="trino_stage_skew_candidate",
             state="unknown",
             summary="No safe per-task distribution facts are present in this fixture.",
         )
@@ -958,25 +1042,25 @@ def _stage_skew_candidate_fact(stats: Mapping[str, Any]) -> MetricFact:
         or ("sampledTaskCount" in summary and sampled_task_count is None)
     ):
         return MetricFact(
-            fact_id="stage_skew_candidate",
+            fact_id="trino_stage_skew_candidate",
             state="unknown",
             summary="The fixture did not provide a complete safe stage-skew summary.",
         )
     if not candidate:
         return MetricFact(
-            fact_id="stage_skew_candidate",
+            fact_id="trino_stage_skew_candidate",
             state="not_observed",
             value=False,
             summary="Safe per-task distribution facts did not report a stage-skew candidate.",
         )
     if ratio is None:
         return MetricFact(
-            fact_id="stage_skew_candidate",
+            fact_id="trino_stage_skew_candidate",
             state="unknown",
             summary="The fixture reported a stage-skew candidate without a safe ratio.",
         )
     return MetricFact(
-        fact_id="stage_skew_candidate",
+        fact_id="trino_stage_skew_candidate",
         state="supported",
         value=ratio,
         unit="ratio",
@@ -988,7 +1072,7 @@ def _connector_metric_signal_fact(stats: Mapping[str, Any]) -> MetricFact:
     summary = _mapping(stats.get("safeConnectorMetricSummary"))
     if not summary:
         return MetricFact(
-            fact_id="connector_metric_signal",
+            fact_id="trino_connector_metric_signal",
             state="unknown",
             summary="No safe query-specific connector metric summary is present in this fixture.",
         )
@@ -1001,19 +1085,19 @@ def _connector_metric_signal_fact(stats: Mapping[str, Any]) -> MetricFact:
         or not isinstance(present, bool)
     ):
         return MetricFact(
-            fact_id="connector_metric_signal",
+            fact_id="trino_connector_metric_signal",
             state="unknown",
             summary="The fixture did not provide a complete safe connector metric summary.",
         )
     if not present:
         return MetricFact(
-            fact_id="connector_metric_signal",
+            fact_id="trino_connector_metric_signal",
             state="not_observed",
             value=False,
             summary="Safe query-specific connector metric summary did not report a connector signal.",
         )
     return MetricFact(
-        fact_id="connector_metric_signal",
+        fact_id="trino_connector_metric_signal",
         state="supported",
         value=True,
         summary="Safe query-specific connector metric summary reported a connector signal.",
@@ -1024,7 +1108,7 @@ def _resource_group_queue_time_fact(resource: Mapping[str, Any]) -> MetricFact:
     number = _number_or_none(resource.get("queueTimeMillis"))
     if number is not None:
         return MetricFact(
-            fact_id="resource_group_queue_time_ms",
+            fact_id="trino_resource_group_queue_time_ms",
             state="supported",
             value=number,
             unit="ms",
@@ -1032,14 +1116,14 @@ def _resource_group_queue_time_fact(resource: Mapping[str, Any]) -> MetricFact:
         )
     if resource.get("queued") is False:
         return MetricFact(
-            fact_id="resource_group_queue_time_ms",
+            fact_id="trino_resource_group_queue_time_ms",
             state="not_observed",
             value=0,
             unit="ms",
             summary="Trino event fixture did not report resource-group queueing.",
         )
     return MetricFact(
-        fact_id="resource_group_queue_time_ms",
+        fact_id="trino_resource_group_queue_time_ms",
         state="unknown",
         unit="ms",
         summary="No safe resource-group queue timing is present in this fixture.",
@@ -1050,19 +1134,19 @@ def _task_summary_facts(stats: Mapping[str, Any]) -> tuple[MetricFact, MetricFac
     summary = _mapping(stats.get("safeTaskSummary"))
     unknown = (
         MetricFact(
-            fact_id="task_count",
+            fact_id="trino_task_count",
             state="unknown",
             unit="tasks",
             summary="No safe Trino task summary is present in this fixture.",
         ),
         MetricFact(
-            fact_id="failed_task_count",
+            fact_id="trino_failed_task_count",
             state="unknown",
             unit="tasks",
             summary="No safe Trino task failure summary is present in this fixture.",
         ),
         MetricFact(
-            fact_id="retried_task_count",
+            fact_id="trino_retried_task_count",
             state="unknown",
             unit="tasks",
             summary="No safe Trino task retry summary is present in this fixture.",
@@ -1086,20 +1170,20 @@ def _task_summary_facts(stats: Mapping[str, Any]) -> tuple[MetricFact, MetricFac
 
     return (
         MetricFact(
-            fact_id="task_count",
+            fact_id="trino_task_count",
             state="supported",
             value=task_count,
             unit="tasks",
             summary="Safe Trino query-detail task summary reported task count.",
         ),
         _zero_aware_task_count_fact(
-            "failed_task_count",
+            "trino_failed_task_count",
             failed_task_count,
             observed_summary="Safe Trino query-detail task summary reported failed tasks.",
             absent_summary="Safe Trino query-detail task summary reported no failed tasks.",
         ),
         _zero_aware_task_count_fact(
-            "retried_task_count",
+            "trino_retried_task_count",
             retried_task_count,
             observed_summary="Safe Trino query-detail task summary reported retried tasks.",
             absent_summary="Safe Trino query-detail task summary reported no retried tasks.",
@@ -1153,26 +1237,26 @@ def _unknown_event_source_contract_bundle(fixture_version: str | None) -> Engine
         ),
         lifecycle=_build_lifecycle({}),
         timing=(
-            _millis_fact("elapsed_time_ms", None),
-            _millis_fact("queued_time_ms", None),
+            _millis_fact("trino_elapsed_time_ms", None),
+            _millis_fact("trino_queued_time_ms", None),
             _millis_fact("planning_time_ms", None),
-            _millis_fact("execution_time_ms", None),
-            _millis_fact("cpu_time_ms", None),
-            _millis_fact("wall_time_ms", None),
+            _millis_fact("trino_execution_time_ms", None),
+            _millis_fact("trino_cpu_time_ms", None),
+            _millis_fact("trino_wall_time_ms", None),
             _resource_group_queue_time_fact({}),
         ),
         resources=(
-            _count_fact("input_rows", None, unit="rows"),
-            _count_fact("input_bytes", None, unit="bytes"),
-            _count_fact("output_rows", None, unit="rows"),
-            _count_fact("output_bytes", None, unit="bytes"),
-            _count_fact("peak_memory_bytes", None, unit="bytes"),
+            _count_fact("trino_input_rows", None, unit="rows"),
+            _count_fact("trino_input_bytes", None, unit="bytes"),
+            _count_fact("trino_output_rows", None, unit="rows"),
+            _count_fact("trino_output_bytes", None, unit="bytes"),
+            _count_fact("trino_peak_memory_bytes", None, unit="bytes"),
             _spilled_bytes_fact(None),
             _connector_metric_signal_fact({}),
         ),
         stages=(
             _stage_count_fact({}),
-            _count_fact("completed_split_count", None, unit="splits"),
+            _count_fact("trino_completed_split_count", None, unit="splits"),
             _blocked_signal_fact({}),
             _stage_skew_candidate_fact({}),
         ),
@@ -1197,25 +1281,25 @@ def _unknown_query_detail_source_contract_bundle(fixture_version: str | None) ->
         ),
         lifecycle=_build_lifecycle({}),
         timing=(
-            _millis_fact("elapsed_time_ms", None),
-            _millis_fact("queued_time_ms", None),
+            _millis_fact("trino_elapsed_time_ms", None),
+            _millis_fact("trino_queued_time_ms", None),
             _millis_fact("planning_time_ms", None),
-            _millis_fact("execution_time_ms", None),
-            _millis_fact("cpu_time_ms", None),
-            _millis_fact("wall_time_ms", None),
+            _millis_fact("trino_execution_time_ms", None),
+            _millis_fact("trino_cpu_time_ms", None),
+            _millis_fact("trino_wall_time_ms", None),
         ),
         resources=(
-            _count_fact("input_rows", None, unit="rows"),
-            _count_fact("input_bytes", None, unit="bytes"),
-            _count_fact("output_rows", None, unit="rows"),
-            _count_fact("output_bytes", None, unit="bytes"),
-            _count_fact("peak_memory_bytes", None, unit="bytes"),
+            _count_fact("trino_input_rows", None, unit="rows"),
+            _count_fact("trino_input_bytes", None, unit="bytes"),
+            _count_fact("trino_output_rows", None, unit="rows"),
+            _count_fact("trino_output_bytes", None, unit="bytes"),
+            _count_fact("trino_peak_memory_bytes", None, unit="bytes"),
             _spilled_bytes_fact(None),
             _connector_metric_signal_fact({}),
         ),
         stages=(
             _stage_count_fact({}),
-            _count_fact("completed_split_count", None, unit="splits"),
+            _count_fact("trino_completed_split_count", None, unit="splits"),
             _blocked_signal_fact({}),
             _stage_skew_candidate_fact({}),
             *_task_summary_facts({}),
@@ -1246,24 +1330,27 @@ def _count_stages(stage: Mapping[str, Any]) -> int:
 def _trino_fixture_limitations() -> tuple[LimitationFact, ...]:
     return (
         LimitationFact(
-            fact_id="admission_control",
+            fact_id="no_admission_model",
             state="unknown",
-            summary="Trino fixture stats do not provide Impala admission or pool semantics.",
+            summary=(
+                "Trino offline import stats do not provide a complete "
+                "admission/resource-group model."
+            ),
         ),
         LimitationFact(
-            fact_id="impala_profile_counters",
+            fact_id="no_profile_counters",
             state="unknown",
-            summary="Impala runtime profile counters are not part of the Trino fixture shape.",
+            summary="Runtime profile counters are outside the Trino import shape.",
         ),
         LimitationFact(
             fact_id="cluster_events",
             state="unknown",
-            summary="Cluster event context is outside this fixture-only spike.",
+            summary="Cluster event context is outside the Trino offline import boundary.",
         ),
         LimitationFact(
-            fact_id="fragment_lifecycle",
+            fact_id="no_fragment_lifecycle",
             state="unknown",
-            summary="Impala fragment lifecycle facts do not map directly to Trino stages.",
+            summary="Fragment lifecycle facts are outside the Trino import shape.",
         ),
     )
 
@@ -1408,6 +1495,26 @@ def _bounded_presence_mapping(
     return counters
 
 
+def _validate_bucket_counts_within_summary_and_presence(
+    field_name: str,
+    bucket_counts: Mapping[str, int],
+    records_summarized: int,
+    *,
+    presence_count: int,
+    presence_field_name: str,
+) -> None:
+    bucket_total = sum(bucket_counts.values())
+    if bucket_total > records_summarized:
+        raise EngineFactContractError(
+            f"Trino query-list fixture {field_name} bucket counts exceed summarized records"
+        )
+    if bucket_total > presence_count:
+        raise EngineFactContractError(
+            "Trino query-list fixture "
+            f"{field_name} bucket counts exceed {presence_field_name} field presence"
+        )
+
+
 def _non_negative_int_value(value: Any, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise EngineFactContractError(f"Trino query-list fixture {field_name} must be a count")
@@ -1443,3 +1550,10 @@ def _text_or_none(value: Any) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _source_version_or_none(value: Any) -> str | None:
+    text = _text_or_none(value)
+    if text is None:
+        return None
+    return re.sub(r"[^A-Za-z0-9_]+", "_", text).strip("_") or None

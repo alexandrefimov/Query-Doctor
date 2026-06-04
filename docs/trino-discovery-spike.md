@@ -1,24 +1,33 @@
 # Trino Discovery Spike
 
-Last reviewed: 2026-05-29
+Last reviewed: 2026-06-03
 
-This document defines the first second-engine discovery slice. It is not a
-support announcement and it must not change the current support matrix:
-Query Doctor production engine support is still Apache Impala only.
+This document records the first second-engine discovery slice and the Trino
+offline evidence import boundary that grew out of it. It is not a live-support
+announcement: Query Doctor production triage remains Apache Impala, and Trino
+support is limited to sanitized offline evidence package import, bounded local
+event-store import, bounded HTTP event archive import, bounded HTTP
+query-detail archive import, bounded local query-detail import, and bounded
+local query-list aggregate import, plus bounded local statement-stats import
+and event-source contract checking, dry-run coordinator query-info target
+checking, one-query pruned coordinator query-info probing, and one-query
+pruned coordinator fact import, plus local compact diagnosis over raw-free
+boundary JSON.
 
 ## Purpose
 
-Use Trino as the first fixture-only candidate to test the future engine fact
-contract. The spike should answer whether Query Doctor can express useful
-analytical SQL triage facts without forcing a non-Impala engine into Impala
-profile concepts.
+Use Trino as the first bounded second-engine candidate to test the engine fact
+contract. The spike answers whether Query Doctor can express useful analytical
+SQL triage facts without forcing a non-Impala engine into Impala profile
+concepts.
 
 For source, evidence-tier, and Trino-specific safety rules, use
 [engines/trino-diagnostic-contract.md](engines/trino-diagnostic-contract.md).
 
-The output of this spike should be a narrow contract proposal, fixtures, and
-tests. It should not add a live Trino collector, a runtime engine selector,
-browser routes, report output, or public README support claims.
+The output of this spike is a narrow contract proposal, fixtures, package
+import validation, and tests. It should not add a live Trino collector, a live
+runtime engine selector, browser routes, report output, optimizer behavior, or
+live Trino support claims.
 
 ## Why Trino
 
@@ -45,7 +54,7 @@ browser/report, and raw-output rules from
 Additional spike boundaries:
 
 - Do not add live Trino collection in this slice.
-- Do not add a public `trino` engine selector.
+- Do not add a live public `trino` query-source selector.
 - Do not commit real query text, user identifiers, hostnames, URLs, catalog or
   schema names, table names, literals, stack traces, raw JSON payloads, or local
   paths from a production Trino cluster.
@@ -170,18 +179,24 @@ The first code slice adds the contract-shaping pieces only:
   connector internals. Extra fields or nested detail objects in connector,
   failure, stage-skew, or task compact summaries keep the derived fact
   `unknown`, even when the extra values look sanitized.
-  `tests/fixtures/engine_facts/trino_query_list_contract_probe.json` is a
-  synthetic aggregate `/v1/query` list-shape probe. It records bounded counts,
-  safe state/failure buckets, field-presence counts, and redaction assertions
-  only; it does not contain raw records, query text, identifiers, locations,
-  object context, failure details, or Trino query-detail payloads.
+  `tests/fixtures/engine_facts/trino_query_list_contract_probe.json` and
+  `tests/fixtures/engine_facts/trino_query_list_heavy_bucket_contract_probe.json`
+  are synthetic aggregate `/v1/query` list-shape probes. They record bounded
+  counts, safe state/failure buckets, duration and size bucket counts,
+  blocked-reason bucket counts, field-presence counts, and redaction
+  assertions only; they do not contain raw records, query text, identifiers,
+  locations, object context, failure details, or Trino query-detail payloads.
+  Bucket counts are accepted only when they remain bounded by the summarized
+  records and the corresponding field-presence counts. The heavy-bucket variant
+  keeps non-zero long-duration, queue-delay, high-memory, unknown-input, and
+  blocked-reason coverage aggregate-only.
 - `tests/test_engine_fact_contract.py` checks supported / not observed /
-  unknown semantics, raw-free public facts, and that Trino is still not a
-  registered supported engine.
+  unknown semantics, raw-free public facts, and that Trino is registered only
+  for sanitized offline evidence import, not live workflows.
 - `query_doctor/analyzer/impala_engine_facts.py` projects current Impala
-  analyzer dictionaries into the same contract so the fixture-only Trino shape
-  can be compared against the implemented engine without wiring either into
-  product surfaces.
+  analyzer dictionaries into the same contract so the Trino offline import
+  shape can be compared against the implemented Impala engine without wiring
+  either into browser/report product surfaces.
 - `tests/engine_fact_contract_harness.py` and
   `tests/test_engine_fact_golden_harness.py` hold the shared golden checks for
   public fact shape, state taxonomy, required fact states, and raw-free output
@@ -198,10 +213,10 @@ The first code slice adds the contract-shaping pieces only:
   positive connector-metric checked/present evidence
   from compact query-detail facts, while zero `not_observed` counts and
   `unknown` task summaries produce no task signal. This still does not add a
-  live collector, engine selector, report output, browser output, ranking
-  behavior, or Trino support claim.
-- `tests/test_trino_readiness_contract.py` pins the fixture-only raw-free
-  Trino intake floor: explicit supported / not observed / unknown fact states,
+  live collector, live engine selector, report output, browser output, ranking
+  behavior, or live Trino support claim.
+- `tests/test_trino_readiness_contract.py` pins the raw-free Trino offline
+  intake floor: explicit supported / not observed / unknown fact states,
   minimal boundary identity, raw-free boundary text, and non-support wording in
   the Trino contract document. Negative timing, resource, split, stage-count,
   queue-time, and ratio values stay `unknown` instead of becoming supported
@@ -214,14 +229,94 @@ The first code slice adds the contract-shaping pieces only:
   numeric values. Nested objects and arrays are checked the same way as
   top-level fixture fields, and payloads beyond the accepted maximum depth fail
   before mapping.
-- `query_doctor/analyzer/trino_evidence_package.py` validates the first local
-  sanitized package wrapper for fixture import: `manifest`, `redaction_note`,
-  and `samples`. It rejects extra top-level package sections, checks package
-  counts, redaction assertions, synthetic sentinel-test coverage, declared
-  bounds, and existing statement-statistics / event-listener / aggregate
-  query-list / query-detail fixture validators. Query-detail exports are
-  accepted only as compact sanitized fixture payloads under the query-detail
-  source contract; raw query-detail exports remain outside the intake boundary.
+- `query_doctor/analyzer/trino_evidence_package.py` validates sanitized package
+  wrappers for offline import: `manifest`, `redaction_note`, and `samples`.
+  It rejects extra top-level package sections, checks package counts, redaction
+  assertions, synthetic sentinel-test coverage, declared bounds, and existing
+  statement-statistics / event-listener / aggregate query-list / query-detail
+  validators. Query-detail exports are accepted only as compact sanitized
+  payloads under the query-detail source contract; raw query-detail exports
+  remain outside the intake boundary.
+- `query_doctor/cli/trino_import.py` and the `query-doctor-trino-import`
+  console script expose the packaged offline import path. They print safe
+  summaries or raw-free normalized fact boundary JSON only, without echoing
+  input paths, raw payloads, raw values, SQL text, identifiers, hostnames,
+  object names, connector details, or rejected record contents.
+- `query_doctor/trino/local_event_store.py`,
+  `query_doctor/cli/trino_event_store_import.py`, and the
+  `query-doctor-trino-event-store-import` console script expose a bounded local
+  event-store import path for one explicit already-sanitized JSON, JSON-array,
+  or NDJSON file of compact Trino event-listener records. They require
+  redaction-review confirmation, enforce file/record/byte/depth limits, and
+  emit only safe summaries or raw-free boundary JSON.
+- `query_doctor/trino/local_query_detail.py`,
+  `query_doctor/cli/trino_query_detail_import.py`, and the
+  `query-doctor-trino-query-detail-import` console script expose a bounded
+  local query-detail import path for one explicit already-sanitized compact JSON
+  object with an accepted source contract. They require redaction-review
+  confirmation, enforce file/payload/depth limits, and emit only safe summaries
+  or raw-free boundary JSON.
+- `query_doctor/trino/local_query_list.py`,
+  `query_doctor/cli/trino_query_list_import.py`, and the
+  `query-doctor-trino-query-list-import` console script expose a bounded local
+  query-list aggregate import path for one explicit already-sanitized compact
+  aggregate JSON object with the accepted query-list contract-probe summary
+  kind. They require redaction-review confirmation, enforce file/payload/depth
+  limits, and emit only safe summaries or raw-free boundary JSON. This remains
+  aggregate-only and does not contact Trino, crawl live query lists, fetch
+  query-details, submit SQL, or imply live Trino support.
+- `query_doctor/trino/local_statement_stats.py`,
+  `query_doctor/cli/trino_statement_stats_import.py`, and the
+  `query-doctor-trino-statement-stats-import` console script expose a bounded
+  local statement-stats import path for one explicit already-sanitized compact
+  `QueryResults.statementStats` / `rootStage` JSON object. They require
+  redaction-review confirmation, enforce file/payload/depth limits, and emit
+  only safe summaries or raw-free boundary JSON. This does not contact Trino,
+  call `/v1/statement`, crawl query history, fetch query-details, submit SQL,
+  or imply live Trino support.
+- `query_doctor/trino/event_source_contract.py`,
+  `query_doctor/cli/trino_event_source_contract_check.py`, and the
+  `query-doctor-trino-event-source-contract-check` console script expose a
+  raw-free event-source contract gate for event-store readers. It
+  validates one explicit compact local contract JSON for source type, safe
+  auth-reference label, accepted event schema, bounds, and redaction/storage
+  policy. It rejects endpoints, topics, database names, credentials, raw event
+  records, raw SQL, and extra source config fields.
+- `query_doctor/trino/http_event_archive.py`,
+  `query_doctor/cli/trino_http_event_archive_import.py`, and the
+  `query-doctor-trino-http-event-archive-import` console script read one
+  explicit operator HTTP(S) archive URL after an accepted
+  `http_event_listener_archive` source contract. The reader enforces contract
+  bounds, emits only safe summaries or raw-free boundary JSON, and does not
+  contact the Trino coordinator, submit SQL, echo URLs, accept URL credentials,
+  collect live Recent scans, or imply live Trino support.
+- `query_doctor/trino/http_query_detail_archive.py`,
+  `query_doctor/cli/trino_http_query_detail_archive_import.py`, and the
+  `query-doctor-trino-http-query-detail-archive-import` console script read one
+  explicit operator HTTP(S) query-detail archive URL after an accepted
+  `http_query_detail_archive` source contract. The reader enforces contract
+  byte/depth/timeout bounds, emits only safe summaries or raw-free boundary
+  JSON, and does not contact the Trino coordinator, fetch query-info by Query
+  ID, submit SQL, echo URLs, accept URL credentials, collect live Query ID
+  diagnosis, or imply live Trino support.
+- `query_doctor/trino/coordinator_query_info_target.py`,
+  `query_doctor/cli/trino_coordinator_query_info_target_check.py`, and the
+  `query-doctor-trino-coordinator-query-info-target-check` console script
+  validate one future coordinator query-info target without fetching it. The
+  gate checks a compact source contract, safe auth-reference label, one-query
+  bound, coordinator base-URL shape, Query ID shape, bounds, and redaction
+  policy, emits only a URL-free and Query-ID-free safe summary, and does not
+  contact Trino, issue `/v1/query`, fetch query-info JSON, submit SQL, collect
+  live Query ID diagnosis, or imply live Trino support.
+- `query_doctor/cli/trino_coordinator_query_info_pruned_probe.py` and the
+  `query-doctor-trino-coordinator-query-info-pruned-probe` console script
+  reuse the same source contract to issue exactly one bounded
+  `GET /v1/query/{queryId}?pruned=true` request with an operator-managed auth
+  reference. The probe validates only that the response is a bounded JSON
+  object and emits a safe summary; it does not store or print raw QueryInfo,
+  URL, Query ID, query text, session fields, endpoint URLs, object names, or
+  raw payload content, does not map QueryInfo to facts, does not crawl query
+  history, does not submit SQL, and does not imply live Trino support.
 - `scripts/validate_trino_evidence_package.py` is the local dry-run command for
   a sanitized package file. It prints only safe package, manifest source,
   parser-coverage, and case-count summaries or safe rejection messages, without
@@ -238,11 +333,11 @@ The first code slice adds the contract-shaping pieces only:
   SQL, read credentials, or imply live Trino support.
 - `docs/engines/trino-private-preview-release.md` defines the release-facing
   closed test-cluster preview storyline. It combines the dev-only
-  Kerberos/SPNEGO smoke, sanitized evidence-package intake, and public wording
-  gates without adding product Trino support.
+  Kerberos/SPNEGO smoke, sanitized evidence-package intake, local import
+  commands, and public wording gates without adding live Trino support.
 
-This slice still does not add a live Trino collector, a runtime engine
-selector, browser/report output, optimizer behavior, or public second-engine
+This slice still does not add a live Trino collector, live runtime engine
+selector, browser/report output, optimizer behavior, or broad second-engine
 support claims.
 
 ## Done Criteria
@@ -255,8 +350,8 @@ The spike is done when:
 - the raw-free intake floor is tested before any real source or product surface
   can consume Trino-derived facts;
 - no UI, report, optimizer, or live collection path changes behavior;
-- README and package metadata still describe only Apache Impala as implemented
-  support;
+- README and package metadata describe Trino only as sanitized offline/local
+  import, not live diagnosis;
 - follow-up work is small enough to review as either engine fact contract,
   fixture harness, or collection contract slices.
 
@@ -275,5 +370,5 @@ The spike is done when:
   still as fixture work rather than live collection.
 - Release-facing private-preview wording and gates from
   [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md),
-  still without public Trino support.
+  still without live Trino support.
 - A support gap matrix comparing Impala and Trino facts.
