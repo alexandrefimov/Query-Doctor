@@ -34,6 +34,9 @@ experimental compact contract-shaping paths.
   views, включая verification metrics и local action-outcome feedback.
 - Public release gates усилены history-shape checks, public-safety scans,
   fixture provenance, README screenshot provenance и documentation audits.
+- Browser/log host redaction теперь использует linear scanner для free-text
+  FQDNs, host-like single-label names и bare `host:port` values, сохраняя
+  stable aliases и убирая CodeQL polynomial-regex risk.
 
 ## Границы поддержки
 

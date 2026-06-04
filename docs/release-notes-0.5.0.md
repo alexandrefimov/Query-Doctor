@@ -84,6 +84,9 @@ preview evidence handoff paths.
   unsupported causal wording, stale-statistics claims, stats-maintenance
   overclaims, row/cardinality estimate direction wording, and inline SQL-like
   prose.
+- Browser/log host redaction now uses a linear scanner for free-text FQDNs,
+  host-like single-label names, and bare `host:port` values, preserving stable
+  aliases while removing a CodeQL polynomial-regex risk.
 - README screenshot currency was reviewed for this release. Existing public
   screenshots still come from the synthetic demo pack and match the documented
   first-screen demo path.

@@ -73,6 +73,29 @@ def test_redact_host_identifiers_preserves_safe_filenames():
     assert "host_" not in redacted
 
 
+def test_redact_host_identifiers_redacts_bare_host_with_port():
+    text = "coordinator: coordinator01.example.com:21000"
+
+    redacted = redaction.redact_host_identifiers(text)
+
+    assert "coordinator01.example.com" not in redacted
+    assert "coordinator: host_01:21000" in redacted
+
+
+def test_redact_host_identifiers_handles_codeql_adversarial_bare_tokens():
+    hyphen_run = "-" * 6000
+    short_role_host = "dn0" + "cm0" * 1000
+    version_like_token = "query-doctor-0.5.0"
+    text = f"{hyphen_run} {short_role_host} {version_like_token}"
+
+    redacted = redaction.redact_host_identifiers(text)
+
+    assert hyphen_run in redacted
+    assert short_role_host not in redacted
+    assert "host_01" in redacted
+    assert version_like_token in redacted
+
+
 def test_sanitize_text_for_log_redacts_adversarial_secret_assignment_names():
     auth_token = "abcdefgh" + "ijklmnop"
     text = (

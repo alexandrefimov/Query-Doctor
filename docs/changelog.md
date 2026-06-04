@@ -20,6 +20,11 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
 
 ### Safety
 
+- Browser/log host redaction now uses a linear token scanner for free-text
+  FQDNs, host-like single-label names, and bare `host:port` values instead of
+  backtracking-prone regex substitutions. This preserves stable host aliases,
+  keeps safe filenames and version-like tokens visible, and removes the CodeQL
+  polynomial-regex risk from the redaction path.
 - Spark compact diagnosis now includes safe task-duration bucket counts in
   `runtime_context` when accepted compact facts provide them. These are
   aggregate context values only; they do not create Spark root-cause claims,

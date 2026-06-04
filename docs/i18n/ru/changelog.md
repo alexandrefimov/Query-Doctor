@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-01
+Last updated: 2026-06-04
 
 Язык: [English](../../changelog.md) | Русский
 
@@ -33,6 +33,11 @@ changelog entry, если они не меняют behavior или safety.
 
 ## Текущий Unreleased summary
 
+Английский `Unreleased` теперь фиксирует, что browser/log host redaction
+использует linear token scanner для free-text FQDNs, host-like single-label
+names и bare `host:port` values вместо regex substitutions с backtracking
+risk. Stable host aliases сохраняются, safe filenames и version-like tokens не
+скрываются.
 Английский `Unreleased` теперь фиксирует, что Spark compact diagnosis добавляет
 safe task-duration bucket counts в `runtime_context`, когда accepted compact
 facts их предоставляют. Это только aggregate context values: без Spark
