@@ -389,7 +389,8 @@ def test_e2e_help_page_shortcuts_and_topics_are_interactive(tmp_path, page):
     with run_test_server(e2e_settings(tmp_path)) as base_url:
         page.goto(f"{base_url}/help")
 
-        assert page.locator(".help-card-grid .help-card").count() == 4
+        assert page.locator(".help-card-grid .help-card").count() == 5
+        assert page.get_by_role("link", name="Trino compact").is_visible()
         assert page.locator("#workflows[open]").count() == 1
         assert page.locator("#safety .help-topic-body").is_visible() is False
 
