@@ -7,6 +7,7 @@ from query_doctor.cli import (
     build_spark_evidence_package,
     collect_spark_history,
     diagnose_spark_compact,
+    export_spark_evidence_fixtures,
     validate_spark_evidence_package,
 )
 from query_doctor.cli.commands import (
@@ -77,6 +78,11 @@ def test_command_specs_cover_module_and_console_backends():
             "build_spark_evidence_package",
             "query_doctor.cli.build_spark_evidence_package",
             "query-doctor-build-spark-evidence-package",
+        ),
+        (
+            "export_spark_evidence_fixtures",
+            "query_doctor.cli.export_spark_evidence_fixtures",
+            "query-doctor-export-spark-evidence-fixtures",
         ),
         (
             "validate_spark_evidence_package",
@@ -171,6 +177,7 @@ def test_trino_pruned_import_help_exposes_boundary_and_diagnosis_outputs(capsys)
         build_spark_evidence_package,
         collect_spark_history,
         diagnose_spark_compact,
+        export_spark_evidence_fixtures,
         validate_spark_evidence_package,
     ),
 )

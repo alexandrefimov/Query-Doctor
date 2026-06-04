@@ -10,7 +10,9 @@ from typing import Sequence
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
 from query_doctor.analyzer.spark_evidence_package import (
+    SPARK_EVIDENCE_READINESS_PROMOTION_CANDIDATE,
     format_spark_evidence_package_summary,
+    spark_evidence_package_readiness_payload,
     validate_spark_evidence_package_payload,
 )
 from query_doctor.analyzer.spark_evidence_package_builder import (
@@ -73,6 +75,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow packages that omit minimum case-set samples during early dry runs.",
     )
+    parser.add_argument(
+        "--require-promotion-candidate",
+        action="store_true",
+        help=(
+            "Fail without writing the package unless the package-level readiness verdict "
+            "is promotion_candidate. This does not claim Spark product support."
+        ),
+    )
     return parser
 
 
@@ -102,6 +112,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             payload,
             require_minimum_cases=not args.partial_ok,
         )
+        readiness = spark_evidence_package_readiness_payload(result)
+        if (
+            args.require_promotion_candidate
+            and readiness["readiness_status"] != SPARK_EVIDENCE_READINESS_PROMOTION_CANDIDATE
+        ):
+            blockers = _format_safe_labels(readiness["promotion_blockers"])
+            raise EngineFactContractError(
+                f"Spark evidence package is not promotion_candidate; promotion_blockers: {blockers}"
+            )
         _write_package(args.out, payload)
     except OSError:
         print(
@@ -179,6 +198,12 @@ def _write_package(path: Path, payload: dict) -> None:
         json.dumps(payload, allow_nan=False, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _format_safe_labels(labels: object) -> str:
+    if not isinstance(labels, list) or not labels:
+        return "none"
+    return ", ".join(str(label) for label in labels)
 
 
 if __name__ == "__main__":

@@ -100,6 +100,26 @@ def test_spark_compact_diagnosis_maps_fixture_attention_areas_without_support_cl
         "state": "supported",
         "observed_value": {"value": 128, "unit": "tasks"},
     } in runtime_context
+    assert {
+        "label": "Tasks under 1s",
+        "state": "supported",
+        "observed_value": {"value": 8, "unit": "tasks"},
+    } in runtime_context
+    assert {
+        "label": "Tasks 1s to 10s",
+        "state": "supported",
+        "observed_value": {"value": 52, "unit": "tasks"},
+    } in runtime_context
+    assert {
+        "label": "Tasks 10s to 1m",
+        "state": "supported",
+        "observed_value": {"value": 4, "unit": "tasks"},
+    } in runtime_context
+    assert {
+        "label": "Tasks over 1m",
+        "state": "supported",
+        "observed_value": {"value": 0, "unit": "tasks"},
+    } in runtime_context
     assert "spark_dynamic_allocation_observed" not in attention_ids
     assert "spark_adaptive_execution_enabled" not in attention_ids
     assert any(
@@ -123,6 +143,10 @@ def test_spark_compact_diagnosis_unknown_facts_do_not_create_fake_attention():
     assert "Input rows" not in context_labels
     assert "Output rows" not in context_labels
     assert "Task count" not in context_labels
+    assert "Tasks under 1s" not in context_labels
+    assert "Tasks 1s to 10s" not in context_labels
+    assert "Tasks 10s to 1m" not in context_labels
+    assert "Tasks over 1m" not in context_labels
     assert diagnosis["attention_areas"] == [
         {
             "id": "spark_no_supported_attention_area",

@@ -6,9 +6,14 @@ import re
 from pathlib import Path
 
 from query_doctor.analyzer.engine_facts import engine_fact_namespace_definitions
+from query_doctor.cli.export_spark_evidence_fixtures import (
+    SPARK_FIXTURE_EXPORT_MANIFEST,
+    SPARK_FIXTURE_EXPORT_MANIFEST_VERSION,
+)
 from scripts.audit_spark_compact_readiness import (
     ALLOWED_SPARK_SUPPORT_BOUNDARY_IDS,
     EXPECTED_SUPPORT_STATUS,
+    audit_fixture_export_manifest,
     audit_compact_json_suite,
     audit_compact_payload,
     main,
@@ -282,6 +287,144 @@ def test_spark_compact_readiness_suite_handles_unreadable_input_without_echo(
         assert fragment not in captured.err
 
 
+def test_spark_compact_readiness_manifest_suite_audits_safe_manifest_without_paths(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    export_dir = tmp_path / "exported-secret-dir"
+    export_dir.mkdir()
+    eventlog_name = "001_finished_sql_exact_linkage_spark_eventlog_compact.json"
+    history_name = "002_application_only_same_application_spark_history_server_compact.json"
+    (export_dir / eventlog_name).write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+    (export_dir / history_name).write_text(
+        HISTORY_SERVER_WARNING_FIXTURE.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    manifest = _write_fixture_export_manifest(
+        export_dir,
+        [
+            {
+                "file_name": eventlog_name,
+                "case": "finished_sql_exact_linkage",
+                "source_type": "spark_eventlog_compact",
+                "source_contract": "spark_history_eventlog_compact_v1",
+            },
+            {
+                "file_name": history_name,
+                "case": "application_only_same_application",
+                "source_type": "spark_history_server_compact",
+                "source_contract": "spark_history_server_compact_v1",
+            },
+        ],
+    )
+
+    rc = main(
+        [
+            "--fixture-export-manifest",
+            str(manifest),
+            "--require-min-inputs",
+            "2",
+            "--require-source-contract",
+            "spark_history_eventlog_compact_v1",
+            "--require-source-contract",
+            "spark_history_server_compact_v1",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "Spark compact readiness suite: ok" in captured.out
+    assert "compact_json_count=2" in captured.out
+    assert "spark_history_eventlog_compact_v1: 1" in captured.out
+    assert "spark_history_server_compact_v1: 1" in captured.out
+    assert "Issues: none" in captured.out
+    for fragment in (
+        str(tmp_path),
+        "exported-secret-dir",
+        SPARK_FIXTURE_EXPORT_MANIFEST,
+        eventlog_name,
+        history_name,
+    ):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_spark_compact_readiness_manifest_rejects_contract_mismatch_without_echo(
+    tmp_path: Path,
+) -> None:
+    export_dir = tmp_path / "exported-secret-dir"
+    export_dir.mkdir()
+    eventlog_name = "001_finished_sql_exact_linkage_spark_eventlog_compact.json"
+    (export_dir / eventlog_name).write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+    manifest = _write_fixture_export_manifest(
+        export_dir,
+        [
+            {
+                "file_name": eventlog_name,
+                "case": "finished_sql_exact_linkage",
+                "source_type": "spark_eventlog_compact",
+                "source_contract": "spark_history_server_compact_v1",
+            },
+        ],
+    )
+
+    result = audit_fixture_export_manifest(manifest)
+
+    assert not result.ok
+    assert result.input_count == 1
+    assert result.issue_counts == {"fixture_manifest_payload_contract_mismatch": 1}
+
+
+def test_spark_compact_readiness_manifest_rejects_unsafe_filename_without_echo(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    export_dir = tmp_path / "exported-secret-dir"
+    export_dir.mkdir()
+    manifest = _write_fixture_export_manifest(
+        export_dir,
+        [
+            {
+                "file_name": "../secret-compact.json",
+                "case": "finished_sql_exact_linkage",
+                "source_type": "spark_eventlog_compact",
+                "source_contract": "spark_history_eventlog_compact_v1",
+            },
+        ],
+    )
+
+    rc = main(["--fixture-export-manifest", str(manifest)])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Spark compact readiness suite: failed" in captured.out
+    assert "fixture_manifest_invalid" in captured.out
+    for fragment in (str(tmp_path), "exported-secret-dir", "../secret-compact.json", "secret"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_spark_compact_readiness_manifest_rejects_extra_raw_field_without_echo(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    export_dir = tmp_path / "exported-secret-dir"
+    export_dir.mkdir()
+    manifest = _write_fixture_export_manifest(export_dir, [])
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["raw_note"] = "SELECT secret_col FROM guarded_table"
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    rc = main(["--fixture-export-manifest", str(manifest)])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "fixture_manifest_invalid" in captured.out
+    for fragment in ("raw_note", "SELECT", "secret_col", "guarded_table", str(tmp_path)):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
 def _load_fixture() -> dict[str, object]:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
@@ -297,6 +440,27 @@ def _write_payload(tmp_path: Path, name: str, payload: dict[str, object]) -> Pat
     path = tmp_path / name
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
+
+
+def _write_fixture_export_manifest(
+    export_dir: Path,
+    samples: list[dict[str, object]],
+) -> Path:
+    manifest = export_dir / SPARK_FIXTURE_EXPORT_MANIFEST
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": SPARK_FIXTURE_EXPORT_MANIFEST_VERSION,
+                "package_id": "spark_compact_pkg",
+                "readiness_status": "promotion_candidate",
+                "support_claim": "not_claimed",
+                "sample_count": len(samples),
+                "samples": samples,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return manifest
 
 
 def _clear_supported_attention(payload: dict[str, object]) -> None:

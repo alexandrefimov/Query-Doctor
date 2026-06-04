@@ -5,6 +5,8 @@ import pytest
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
 from query_doctor.analyzer.spark_evidence_package import (
+    SPARK_EVIDENCE_ACCEPTED_SAMPLE_CASES,
+    SPARK_EVIDENCE_SYNTHETIC_REJECTION_CASES,
     validate_spark_evidence_package_payload,
 )
 from query_doctor.analyzer.spark_evidence_package_builder import (
@@ -95,6 +97,53 @@ def test_build_spark_evidence_package_script_writes_valid_package_without_echoin
         "spark_history_eventlog_compact_v1": 1,
         "spark_history_server_compact_v1": 1,
     }
+
+
+def test_build_spark_evidence_package_script_can_require_promotion_candidate(
+    tmp_path,
+    capsys,
+) -> None:
+    output_path = tmp_path / "built-spark-package.json"
+
+    exit_code = build_spark_evidence_package.main(
+        _promotion_candidate_builder_args(output_path, tmp_path)
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert output_path.exists()
+    assert "[spark-package-builder] written" in captured.out
+    assert "readiness_status: promotion_candidate" in captured.out
+    assert "promotion_blockers: none" in captured.out
+    assert str(output_path) not in captured.out
+    assert "warning-free-history-server.json" not in captured.out
+    assert captured.err == ""
+
+
+def test_build_spark_evidence_package_script_rejects_non_candidate_without_writing(
+    tmp_path,
+    capsys,
+) -> None:
+    output_path = tmp_path / "built-spark-package.json"
+
+    exit_code = build_spark_evidence_package.main(
+        [*_builder_args(output_path), "--require-promotion-candidate"]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert not output_path.exists()
+    assert captured.out == ""
+    assert "[spark-package-builder] rejected:" in captured.err
+    assert "not promotion_candidate" in captured.err
+    assert "missing_required_sample_cases" in captured.err
+    assert "source_warnings_present" in captured.err
+    for fragment in (
+        str(output_path),
+        "spark_history_eventlog_compact.json",
+        "spark_history_server_compact_source_warning.json",
+    ):
+        assert fragment not in captured.err
 
 
 def test_build_spark_evidence_package_script_rejects_raw_sample_without_writing_output(
@@ -188,6 +237,46 @@ def _builder_args(output_path: Path) -> list[str]:
     ]
     for case, source_type, fixture_name in SAMPLE_FIXTURES:
         args.extend(["--sample", f"{case}:{source_type}:{FIXTURE_DIR / fixture_name}"])
+    return args
+
+
+def _promotion_candidate_builder_args(output_path: Path, tmp_path: Path) -> list[str]:
+    history_server_path = tmp_path / "warning-free-history-server.json"
+    history_server = _load_fixture("spark_history_server_compact_source_warning.json")
+    history_server["sourceCoverage"] = {
+        "attemptedEndpointCount": 6,
+        "factState": "supported",
+        "successfulEndpointCount": 6,
+        "warningIds": [],
+    }
+    for limitation in history_server["limitations"]:
+        if limitation["id"] == "spark_history_source_coverage":
+            limitation["state"] = "supported"
+    history_server_path.write_text(json.dumps(history_server), encoding="utf-8")
+
+    eventlog_path = FIXTURE_DIR / "spark_history_eventlog_compact.json"
+    args = [
+        "--out",
+        str(output_path),
+        "--package-id",
+        "spark_compact_pkg",
+        "--prepared-date-utc",
+        "2026-06-04",
+        "--known-omission",
+        "no_streaming_coverage",
+        "--unsupported-source",
+        "raw_event_logs",
+        "--redaction-reviewed",
+        "--sentinel-tests-passed",
+        "--require-promotion-candidate",
+    ]
+    for case in SPARK_EVIDENCE_SYNTHETIC_REJECTION_CASES:
+        args.extend(["--synthetic-rejection", f"{case}:1"])
+    for index, case in enumerate(SPARK_EVIDENCE_ACCEPTED_SAMPLE_CASES):
+        if index == 1:
+            args.extend(["--sample", f"{case}:spark_history_server_compact:{history_server_path}"])
+        else:
+            args.extend(["--sample", f"{case}:spark_eventlog_compact:{eventlog_path}"])
     return args
 
 

@@ -24,6 +24,9 @@ from query_doctor.analyzer.engine_facts import (  # noqa: E402
     engine_fact_namespace_definitions,
     validate_engine_fact_bundle_raw_free,
 )
+from query_doctor.cli.export_spark_evidence_fixtures import (  # noqa: E402
+    SPARK_FIXTURE_EXPORT_MANIFEST_VERSION,
+)
 from query_doctor.report.safety_validation import (  # noqa: E402
     contains_raw_sql_like_text,
     validate_report_internal_fingerprints,
@@ -132,6 +135,12 @@ class SparkCompactReadinessBatchResult:
         return not self.issues
 
 
+@dataclass(frozen=True)
+class SparkFixtureExportManifestSample:
+    file_name: str
+    source_contract: str
+
+
 def load_json_object(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -190,6 +199,200 @@ def audit_compact_json_suite(
         required_source_contracts=required_source_contracts,
     )
     return batch
+
+
+def audit_fixture_export_manifest(
+    manifest_path: Path,
+    *,
+    require_supported_attention: bool = False,
+    fail_on_source_warnings: bool = False,
+    require_min_inputs: int = 1,
+    required_source_contracts: Iterable[str] = (),
+) -> SparkCompactReadinessBatchResult:
+    batch = SparkCompactReadinessBatchResult()
+    try:
+        manifest = load_json_object(manifest_path)
+    except SparkCompactReadinessInputError:
+        add_suite_issue(
+            batch,
+            "fixture_manifest_unreadable",
+            "Spark fixture export manifest could not be read or parsed safely.",
+        )
+        audit_suite_breadth(
+            batch,
+            require_min_inputs=require_min_inputs,
+            required_source_contracts=required_source_contracts,
+        )
+        return batch
+
+    samples = validate_fixture_export_manifest(manifest, batch)
+    if batch.issues:
+        audit_suite_breadth(
+            batch,
+            require_min_inputs=require_min_inputs,
+            required_source_contracts=required_source_contracts,
+        )
+        return batch
+
+    for index, sample in enumerate(samples, start=1):
+        batch.input_count += 1
+        try:
+            payload = load_json_object(manifest_path.parent / sample.file_name)
+        except SparkCompactReadinessInputError:
+            issue = SparkCompactReadinessIssue(
+                "compact_input_unreadable",
+                "One manifest-listed compact JSON input could not be read or parsed safely.",
+            )
+            batch.failed_count += 1
+            batch.issue_counts[issue.category] += 1
+            batch.issues.append((index, issue))
+            continue
+        result = audit_compact_payload(
+            payload,
+            require_supported_attention=require_supported_attention,
+            fail_on_source_warnings=fail_on_source_warnings,
+        )
+        if payload.get("sourceContract") != sample.source_contract:
+            add_issue(
+                result,
+                "fixture_manifest_payload_contract_mismatch",
+                "Manifest sample source contract must match the compact payload contract.",
+            )
+        add_suite_result(batch, index, result)
+    audit_suite_breadth(
+        batch,
+        require_min_inputs=require_min_inputs,
+        required_source_contracts=required_source_contracts,
+    )
+    return batch
+
+
+def validate_fixture_export_manifest(
+    manifest: dict[str, Any],
+    batch: SparkCompactReadinessBatchResult,
+) -> tuple[SparkFixtureExportManifestSample, ...]:
+    if set(manifest) != {
+        "schema_version",
+        "package_id",
+        "readiness_status",
+        "support_claim",
+        "sample_count",
+        "samples",
+    }:
+        add_suite_issue(
+            batch,
+            "fixture_manifest_invalid",
+            "Spark fixture export manifest must use the safe v1 schema.",
+        )
+        return ()
+    if manifest.get("schema_version") != SPARK_FIXTURE_EXPORT_MANIFEST_VERSION:
+        add_suite_issue(
+            batch,
+            "fixture_manifest_invalid",
+            "Spark fixture export manifest schema version is not accepted.",
+        )
+        return ()
+    if manifest.get("readiness_status") != "promotion_candidate":
+        add_suite_issue(
+            batch,
+            "fixture_manifest_invalid",
+            "Spark fixture export manifest must come from a promotion-candidate package.",
+        )
+        return ()
+    if manifest.get("support_claim") != "not_claimed":
+        add_suite_issue(
+            batch,
+            "fixture_manifest_invalid",
+            "Spark fixture export manifest must keep the no-support claim boundary.",
+        )
+        return ()
+    if not is_safe_manifest_label(manifest.get("package_id")):
+        add_suite_issue(
+            batch,
+            "fixture_manifest_invalid",
+            "Spark fixture export manifest package label is not safe.",
+        )
+        return ()
+
+    samples = manifest.get("samples")
+    if not isinstance(samples, list):
+        add_suite_issue(
+            batch,
+            "fixture_manifest_invalid",
+            "Spark fixture export manifest samples must be a list.",
+        )
+        return ()
+    sample_count = manifest.get("sample_count")
+    if not isinstance(sample_count, int) or isinstance(sample_count, bool):
+        add_suite_issue(
+            batch,
+            "fixture_manifest_invalid",
+            "Spark fixture export manifest sample count must be an integer.",
+        )
+        return ()
+    if sample_count != len(samples):
+        add_suite_issue(
+            batch,
+            "fixture_manifest_sample_count_mismatch",
+            "Spark fixture export manifest sample count must match its sample list.",
+        )
+        return ()
+
+    parsed_samples: list[SparkFixtureExportManifestSample] = []
+    seen_file_names: set[str] = set()
+    for sample in samples:
+        if not isinstance(sample, dict) or set(sample) != {
+            "file_name",
+            "case",
+            "source_type",
+            "source_contract",
+        }:
+            add_suite_issue(
+                batch,
+                "fixture_manifest_invalid",
+                "Spark fixture export manifest sample entries must use the safe v1 schema.",
+            )
+            return ()
+        file_name = sample["file_name"]
+        source_contract = sample["source_contract"]
+        if not is_safe_manifest_file_name(file_name):
+            add_suite_issue(
+                batch,
+                "fixture_manifest_invalid",
+                "Spark fixture export manifest file names must be safe relative JSON names.",
+            )
+            return ()
+        if file_name in seen_file_names:
+            add_suite_issue(
+                batch,
+                "fixture_manifest_invalid",
+                "Spark fixture export manifest file names must be unique.",
+            )
+            return ()
+        if not is_safe_manifest_label(sample["case"]) or not is_safe_manifest_label(
+            sample["source_type"]
+        ):
+            add_suite_issue(
+                batch,
+                "fixture_manifest_invalid",
+                "Spark fixture export manifest sample labels must be safe.",
+            )
+            return ()
+        if source_contract not in ACCEPTED_SPARK_SOURCE_CONTRACTS:
+            add_suite_issue(
+                batch,
+                "fixture_manifest_invalid",
+                "Spark fixture export manifest source contracts must be accepted.",
+            )
+            return ()
+        seen_file_names.add(file_name)
+        parsed_samples.append(
+            SparkFixtureExportManifestSample(
+                file_name=file_name,
+                source_contract=str(source_contract),
+            )
+        )
+    return tuple(parsed_samples)
 
 
 def audit_compact_payload(
@@ -406,6 +609,27 @@ def safe_source_contract(payload: dict[str, Any]) -> str:
     return "unknown"
 
 
+def is_safe_manifest_label(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and not value[0].isdigit()
+        and value.replace("_", "").isalnum()
+    )
+
+
+def is_safe_manifest_file_name(value: object) -> bool:
+    if not isinstance(value, str) or not value.endswith(".json"):
+        return False
+    if "/" in value or "\\" in value:
+        return False
+    stem = value.removesuffix(".json")
+    if not stem or not stem.replace("_", "").isalnum():
+        return False
+    path = Path(value)
+    return path.name == value and value not in {".json", "..json"}
+
+
 def list_of_mappings(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -587,8 +811,16 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "compact_json",
         type=Path,
-        nargs="+",
+        nargs="*",
         help="Accepted Spark compact JSON input. Pass multiple paths for suite mode.",
+    )
+    parser.add_argument(
+        "--fixture-export-manifest",
+        type=Path,
+        help=(
+            "Audit the compact JSON files listed by a safe "
+            "spark_fixture_export_manifest.json instead of explicit paths."
+        ),
     )
     parser.add_argument("--limit", type=int, default=12, help="Rows to print per section.")
     parser.add_argument(
@@ -617,12 +849,27 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
             "May be repeated."
         ),
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.fixture_export_manifest and args.compact_json:
+        parser.error("pass compact JSON paths or --fixture-export-manifest, not both")
+    if not args.fixture_export_manifest and not args.compact_json:
+        parser.error("at least one compact JSON path or --fixture-export-manifest is required")
+    return args
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
     required_source_contracts = args.require_source_contract or ()
+    if args.fixture_export_manifest:
+        batch = audit_fixture_export_manifest(
+            args.fixture_export_manifest,
+            require_supported_attention=args.require_supported_attention,
+            fail_on_source_warnings=args.fail_on_source_warnings,
+            require_min_inputs=args.require_min_inputs,
+            required_source_contracts=required_source_contracts,
+        )
+        print_suite_result(batch, limit=args.limit)
+        return 0 if batch.ok else 1
     if len(args.compact_json) > 1 or args.require_min_inputs > 1 or required_source_contracts:
         batch = audit_compact_json_suite(
             args.compact_json,

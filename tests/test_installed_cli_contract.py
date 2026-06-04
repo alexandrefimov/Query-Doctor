@@ -19,6 +19,7 @@ SPARK_EXPERIMENTAL_SCRIPTS = frozenset(
         "query-doctor-build-spark-evidence-package",
         "query-doctor-collect-spark-history",
         "query-doctor-diagnose-spark-compact",
+        "query-doctor-export-spark-evidence-fixtures",
         "query-doctor-validate-spark-evidence-package",
     }
 )

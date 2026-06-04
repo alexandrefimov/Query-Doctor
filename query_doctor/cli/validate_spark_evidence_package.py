@@ -10,7 +10,10 @@ from typing import Sequence
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
 from query_doctor.analyzer.spark_evidence_package import (
+    SPARK_EVIDENCE_READINESS_PROMOTION_CANDIDATE,
     format_spark_evidence_package_summary,
+    spark_evidence_package_readiness_payload,
+    spark_evidence_package_summary_payload,
     validate_spark_evidence_package_payload,
 )
 
@@ -47,6 +50,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional accepted sample count limit override for local dry runs.",
     )
+    parser.add_argument(
+        "--summary-json",
+        action="store_true",
+        help=(
+            "Print the safe machine-readable summary JSON, including the "
+            "package-level readiness verdict."
+        ),
+    )
+    parser.add_argument(
+        "--require-promotion-candidate",
+        action="store_true",
+        help=(
+            "Fail unless the package-level readiness verdict is promotion_candidate. "
+            "This does not claim Spark product support."
+        ),
+    )
     return parser
 
 
@@ -69,7 +88,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[spark-package] rejected: {exc}", file=sys.stderr)
         return 1
 
-    print(format_spark_evidence_package_summary(result))
+    readiness = spark_evidence_package_readiness_payload(result)
+    if (
+        args.require_promotion_candidate
+        and readiness["readiness_status"] != SPARK_EVIDENCE_READINESS_PROMOTION_CANDIDATE
+    ):
+        blockers = _format_safe_labels(readiness["promotion_blockers"])
+        print(
+            "[spark-package] rejected: package readiness is not promotion_candidate; "
+            f"promotion_blockers: {blockers}",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.summary_json:
+        print(json.dumps(spark_evidence_package_summary_payload(result), sort_keys=True))
+    else:
+        print(format_spark_evidence_package_summary(result))
     return 0
 
 
@@ -86,6 +121,12 @@ def _limit_overrides(args: argparse.Namespace) -> dict[str, int]:
     if args.max_samples is not None:
         overrides["max_samples"] = args.max_samples
     return overrides
+
+
+def _format_safe_labels(labels: object) -> str:
+    if not isinstance(labels, list) or not labels:
+        return "none"
+    return ", ".join(str(label) for label in labels)
 
 
 if __name__ == "__main__":

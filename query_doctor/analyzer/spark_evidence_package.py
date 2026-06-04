@@ -82,6 +82,18 @@ SPARK_EVIDENCE_PACKAGE_CASES = (
     *SPARK_EVIDENCE_ACCEPTED_SAMPLE_CASES,
     *SPARK_EVIDENCE_SYNTHETIC_REJECTION_CASES,
 )
+SPARK_EVIDENCE_REQUIRED_SOURCE_CONTRACTS = tuple(
+    sorted(set(SPARK_EVIDENCE_SAMPLE_SOURCE_CONTRACTS.values()))
+)
+SPARK_EVIDENCE_READINESS_PARTIAL = "partial_evidence"
+SPARK_EVIDENCE_READINESS_MINIMUM_CASE_SET_READY = "minimum_case_set_ready"
+SPARK_EVIDENCE_READINESS_PROMOTION_CANDIDATE = "promotion_candidate"
+SPARK_EVIDENCE_EXPECTED_DIAGNOSIS_BOUNDARY = {
+    "root_cause": "not_claimed",
+    "details_trusted_report_surface": "not_wired",
+    "optimizer_behavior": "not_wired",
+    "spark_job_execution": "not_performed",
+}
 SPARK_EVIDENCE_REQUIRED_REDACTION_CLASSES = frozenset(
     {
         "raw_sql_description_or_plan",
@@ -215,6 +227,54 @@ def spark_evidence_package_summary_payload(
         "supported_attention_area_count": result.supported_attention_area_count,
         "source_warning_count": result.source_warning_count,
         "sample_count_by_case": dict(result.sample_count_by_case),
+        "readiness": spark_evidence_package_readiness_payload(result),
+    }
+
+
+def spark_evidence_package_readiness_payload(
+    result: SparkEvidencePackageIntakeResult,
+) -> dict[str, Any]:
+    """Return a safe package-level readiness verdict without support claims."""
+
+    counts = dict(result.sample_count_by_case)
+    missing_sample_cases = tuple(
+        case for case in SPARK_EVIDENCE_ACCEPTED_SAMPLE_CASES if counts.get(case, 0) <= 0
+    )
+    missing_synthetic_rejection_cases = tuple(
+        case for case in SPARK_EVIDENCE_SYNTHETIC_REJECTION_CASES if counts.get(case, 0) <= 0
+    )
+    source_contract_counts = result.source_contract_counts()
+    missing_source_contracts = tuple(
+        contract
+        for contract in SPARK_EVIDENCE_REQUIRED_SOURCE_CONTRACTS
+        if source_contract_counts.get(contract, 0) <= 0
+    )
+    promotion_blockers = _spark_evidence_promotion_blockers(
+        missing_sample_cases=missing_sample_cases,
+        missing_synthetic_rejection_cases=missing_synthetic_rejection_cases,
+        missing_source_contracts=missing_source_contracts,
+        supported_attention_area_count=result.supported_attention_area_count,
+        source_warning_count=result.source_warning_count,
+    )
+    return {
+        "readiness_status": _spark_evidence_readiness_status(
+            missing_sample_cases=missing_sample_cases,
+            missing_synthetic_rejection_cases=missing_synthetic_rejection_cases,
+            missing_source_contracts=missing_source_contracts,
+            supported_attention_area_count=result.supported_attention_area_count,
+            source_warning_count=result.source_warning_count,
+        ),
+        "support_status": "experimental_compact_intake",
+        "support_claim": "not_claimed",
+        "product_surface": "not_wired",
+        "spark_job_execution": "not_performed",
+        "missing_sample_cases": list(missing_sample_cases),
+        "missing_synthetic_rejection_cases": list(missing_synthetic_rejection_cases),
+        "missing_source_contracts": list(missing_source_contracts),
+        "supported_attention_area_count": result.supported_attention_area_count,
+        "source_warning_count": result.source_warning_count,
+        "source_warnings_clear": result.source_warning_count == 0,
+        "promotion_blockers": list(promotion_blockers),
     }
 
 
@@ -224,6 +284,7 @@ def format_spark_evidence_package_summary(
     """Render a path-free, raw-free Spark package summary for terminal output."""
 
     summary = result.source_summary
+    readiness = spark_evidence_package_readiness_payload(result)
     lines = [
         "[spark-package] accepted",
         f"package_id: {result.package_id}",
@@ -252,7 +313,66 @@ def format_spark_evidence_package_summary(
     lines.append("sample_count_by_case:")
     for case, count in result.sample_count_by_case:
         lines.append(f"  {case}: {count}")
+    lines.extend(
+        [
+            "readiness:",
+            f"  readiness_status: {readiness['readiness_status']}",
+            f"  support_status: {readiness['support_status']}",
+            f"  support_claim: {readiness['support_claim']}",
+            f"  product_surface: {readiness['product_surface']}",
+            f"  spark_job_execution: {readiness['spark_job_execution']}",
+            f"  missing_sample_cases: {_format_safe_labels(readiness['missing_sample_cases'])}",
+            "  missing_synthetic_rejection_cases: "
+            f"{_format_safe_labels(readiness['missing_synthetic_rejection_cases'])}",
+            "  missing_source_contracts: "
+            f"{_format_safe_labels(readiness['missing_source_contracts'])}",
+            f"  source_warnings_clear: {str(readiness['source_warnings_clear']).lower()}",
+            f"  promotion_blockers: {_format_safe_labels(readiness['promotion_blockers'])}",
+        ]
+    )
     return "\n".join(lines)
+
+
+def _spark_evidence_readiness_status(
+    *,
+    missing_sample_cases: Sequence[str],
+    missing_synthetic_rejection_cases: Sequence[str],
+    missing_source_contracts: Sequence[str],
+    supported_attention_area_count: int,
+    source_warning_count: int,
+) -> str:
+    if (
+        missing_sample_cases
+        or missing_synthetic_rejection_cases
+        or missing_source_contracts
+        or supported_attention_area_count <= 0
+    ):
+        return SPARK_EVIDENCE_READINESS_PARTIAL
+    if source_warning_count > 0:
+        return SPARK_EVIDENCE_READINESS_MINIMUM_CASE_SET_READY
+    return SPARK_EVIDENCE_READINESS_PROMOTION_CANDIDATE
+
+
+def _spark_evidence_promotion_blockers(
+    *,
+    missing_sample_cases: Sequence[str],
+    missing_synthetic_rejection_cases: Sequence[str],
+    missing_source_contracts: Sequence[str],
+    supported_attention_area_count: int,
+    source_warning_count: int,
+) -> tuple[str, ...]:
+    blockers: list[str] = []
+    if missing_sample_cases:
+        blockers.append("missing_required_sample_cases")
+    if missing_synthetic_rejection_cases:
+        blockers.append("missing_synthetic_rejection_cases")
+    if missing_source_contracts:
+        blockers.append("missing_required_source_contracts")
+    if supported_attention_area_count <= 0:
+        blockers.append("missing_supported_attention_area")
+    if source_warning_count > 0:
+        blockers.append("source_warnings_present")
+    return tuple(blockers)
 
 
 def validate_spark_evidence_package_payload(
@@ -311,6 +431,7 @@ def validate_spark_evidence_package_payload(
         if violations:
             raise EngineFactContractError("Spark evidence package sample facts are not raw-free")
         diagnosis = build_spark_compact_diagnosis(payload_mapping)
+        _validate_sample_diagnosis_boundary(diagnosis)
         bundles.append(bundle)
         sample_results.append(
             SparkEvidencePackageSampleResult(
@@ -520,6 +641,19 @@ def _source_warning_count(payload: Mapping[str, Any]) -> int:
     if isinstance(warning_ids, Sequence) and not isinstance(warning_ids, (str, bytes)):
         return len(warning_ids)
     return 0
+
+
+def _validate_sample_diagnosis_boundary(diagnosis: Mapping[str, Any]) -> None:
+    if diagnosis.get("engine") != "spark":
+        raise EngineFactContractError("Spark evidence package diagnosis boundary drifted")
+    if diagnosis.get("support_status") != "experimental_compact_intake":
+        raise EngineFactContractError("Spark evidence package diagnosis boundary drifted")
+    boundary = diagnosis.get("diagnosis_boundary")
+    if not isinstance(boundary, Mapping):
+        raise EngineFactContractError("Spark evidence package diagnosis boundary drifted")
+    for key, expected in SPARK_EVIDENCE_EXPECTED_DIAGNOSIS_BOUNDARY.items():
+        if boundary.get(key) != expected:
+            raise EngineFactContractError("Spark evidence package diagnosis boundary drifted")
 
 
 def _validate_json_size(

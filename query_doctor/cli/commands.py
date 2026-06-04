@@ -54,6 +54,10 @@ COMMAND_SPECS = MappingProxyType(
             module="query_doctor.cli.build_spark_evidence_package",
             console_script="query-doctor-build-spark-evidence-package",
         ),
+        "export_spark_evidence_fixtures": CommandSpec(
+            module="query_doctor.cli.export_spark_evidence_fixtures",
+            console_script="query-doctor-export-spark-evidence-fixtures",
+        ),
         "validate_spark_evidence_package": CommandSpec(
             module="query_doctor.cli.validate_spark_evidence_package",
             console_script="query-doctor-validate-spark-evidence-package",
