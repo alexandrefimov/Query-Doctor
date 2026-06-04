@@ -225,7 +225,9 @@ boundary и остается raw-free.
 Если handoff включает executed dev-only Kerberos/SPNEGO smoke summary, audit
 также должен получать
 `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`, чтобы
-dry-run smoke plan не проходил release-facing evidence gate.
+dry-run smoke plan не проходил release-facing evidence gate. В этом strict mode
+каждый smoke check должен иметь известный status `ok`; planned, failed или
+unknown statuses не считаются executed evidence.
 Accepted query-detail stage-skew evidence может поддерживать только checked
 aggregate candidate flag и ratio; он не должен раскрывать stage IDs, task IDs,
 worker identifiers, split identifiers или raw per-task payloads.

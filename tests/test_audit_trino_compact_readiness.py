@@ -159,6 +159,57 @@ def test_trino_compact_readiness_main_rejects_dry_run_smoke_for_strict_gate(
         assert fragment not in captured.err
 
 
+def test_trino_compact_readiness_main_rejects_executed_smoke_with_planned_check(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke = _write_boundary(
+        tmp_path,
+        "trino_smoke_summary.json",
+        _smoke_summary(mode="execute", statuses=("ok", "planned")),
+    )
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "planned: 1" in captured.out
+    assert "smoke_summary_check_not_ok" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
+def test_trino_compact_readiness_main_rejects_unknown_smoke_status(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    boundary = _write_boundary(
+        tmp_path, "operator-boundary.json", _boundary_for_case("trino_query_detail_export_fixture")
+    )
+    smoke = _write_boundary(
+        tmp_path,
+        "trino_smoke_summary.json",
+        _smoke_summary(mode="execute", statuses=("ok", "skipped")),
+    )
+
+    rc = main([str(boundary), "--smoke-summary", str(smoke), "--require-executed-smoke"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Smoke summary: checked, mode=execute" in captured.out
+    assert "skipped: 1" in captured.out
+    assert "smoke_summary_contract_invalid" in captured.out
+    assert "smoke_summary_check_not_ok" in captured.out
+    for fragment in (str(tmp_path), "operator-boundary.json", "trino_smoke_summary.json"):
+        assert fragment not in captured.out
+        assert fragment not in captured.err
+
+
 def test_trino_compact_readiness_main_rejects_failed_raw_smoke_summary_without_echo(
     tmp_path: Path,
     capsys,

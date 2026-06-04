@@ -547,7 +547,9 @@ selected package sample boundaries and the isolated local
    an executed dev-only Kerberos/SPNEGO smoke summary is part of the handoff, the
    audit also uses
    `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke` so a
-   dry-run smoke plan cannot satisfy the release-facing evidence gate.
+   dry-run smoke plan cannot satisfy the release-facing evidence gate. In that
+   strict mode, every smoke check must carry the known `ok` status; planned,
+   failed, or unknown statuses do not count as executed evidence.
 8. Browser and trusted-report safety tests exist before any Trino facts render
    outside the isolated compact-diagnosis page.
 9. The support gap matrix records unsupported Trino sources, connector gaps,

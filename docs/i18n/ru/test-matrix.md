@@ -80,7 +80,8 @@ Last reviewed: 2026-05-26
   `--diagnosis-out`, передавайте `--diagnosis-json <diagnosis.json>`, чтобы
   проверить сохраненный compact diagnosis artifact; если handoff включает
   executed Kerberos/SPNEGO smoke summary, передавайте
-  `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`. Для
+  `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`;
+  strict executed-smoke mode требует status `ok` у каждого smoke check. Для
   scenario coverage передавайте несколько boundary JSON paths в один suite run.
 
 Полная matrix: [английская версия](../../test-matrix.md).

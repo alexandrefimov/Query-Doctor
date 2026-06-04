@@ -55,6 +55,7 @@ TRINO_SMOKE_BAD_STATUSES = frozenset(
         "trino_error",
     }
 )
+TRINO_SMOKE_ALLOWED_STATUSES = TRINO_SMOKE_BAD_STATUSES | frozenset({"ok", "planned"})
 REQUIRED_TRINO_LIMITATION_IDS = frozenset(
     {
         "no_live_trino_support",
@@ -335,11 +336,23 @@ def audit_smoke_summary(
     for check in checks:
         status = safe_label(check.get("status"))
         result.smoke_status_counts[status] += 1
+        if status not in TRINO_SMOKE_ALLOWED_STATUSES:
+            add_issue(
+                result,
+                "smoke_summary_contract_invalid",
+                "Trino smoke summary checks must use known smoke statuses.",
+            )
         if status in TRINO_SMOKE_BAD_STATUSES:
             add_issue(
                 result,
                 "smoke_summary_failed_check",
                 "Trino smoke summary must not contain failed smoke checks.",
+            )
+        if require_executed_smoke and status != "ok":
+            add_issue(
+                result,
+                "smoke_summary_check_not_ok",
+                "Strict Trino readiness requires every executed smoke check to finish ok.",
             )
 
 
