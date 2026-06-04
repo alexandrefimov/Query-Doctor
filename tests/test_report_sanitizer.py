@@ -4187,6 +4187,44 @@ def test_report_spill_extractor_ignores_limited_memory_pressure_context():
     assert facts_have_spill_scratch_evidence(facts) is False
 
 
+def test_report_spill_recommendation_prefers_structured_unsupported_memory_pressure():
+    module = load_report_module()
+    from query_doctor.report.facts_extractors import facts_have_spill_scratch_evidence
+
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Summary
+
+- Cardinality anomalies: 0
+- Memory anomalies: 0
+
+## Memory Pressure Evidence
+
+- status: context_only
+- evidence_tier: context_only
+- promotion_policy: limited
+- section_mapping: limited
+- finding_supported: no
+- spill_or_scratch_evidence_count: 0
+- limited_spill_or_scratch_counter_count: 1
+- limitations:
+  - Non-zero spill/scratch counters were parsed as limited context, but this profile dialect or section is not mapped for memory-pressure promotion.
+
+## Findings
+
+### Spill or scratch I/O [medium]
+
+- Detected non-zero spill/scratch metric evidence in digest lines.
+"""
+
+    candidates = module.recommendation_candidate_lines(facts, language="en")
+    candidate_ids = [candidate_id for candidate_id, _ in candidates]
+
+    assert facts_have_spill_scratch_evidence(facts) is False
+    assert "reduce_spill_pressure" not in candidate_ids
+
+
 def test_report_validator_allows_saying_spill_is_not_proven_cause():
     module = load_report_module()
 

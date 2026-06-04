@@ -435,13 +435,9 @@ def backend_data_skew_is_supported(summary: dict[str, str | int]) -> bool:
 
 
 def facts_have_spill_scratch_evidence(facts_text: str) -> bool:
-    memory_lines = extract_markdown_section(facts_text, "## Memory Pressure Evidence")
-    if memory_lines:
-        tier = (first_bullet_value(memory_lines, "evidence_tier") or "").lower()
-        supported = (first_bullet_value(memory_lines, "finding_supported") or "").lower()
-        spill_count = first_bullet_value(memory_lines, "spill_or_scratch_evidence_count") or ""
-        if tier in {"strong", "medium"} and supported == "yes" and re.search(r"[1-9]", spill_count):
-            return True
+    memory_supported = structured_memory_pressure_supported(facts_text)
+    if memory_supported is not None:
+        return memory_supported
 
     findings_text = "\n".join(extract_markdown_section(facts_text, "## Findings"))
     if not findings_text:
@@ -454,6 +450,28 @@ def facts_have_spill_scratch_evidence(facts_text: str) -> bool:
             re.IGNORECASE | re.MULTILINE,
         )
     )
+
+
+def structured_memory_pressure_supported(facts_text: str) -> bool | None:
+    lines = extract_markdown_section(facts_text, "## Memory Pressure Evidence")
+    if not lines:
+        return None
+
+    status = normalized_fact_value(first_bullet_value(lines, "status"))
+    evidence_tier = normalized_fact_value(first_bullet_value(lines, "evidence_tier"))
+    finding_supported = normalized_fact_value(first_bullet_value(lines, "finding_supported"))
+    spill_count = first_bullet_value(lines, "spill_or_scratch_evidence_count") or ""
+    has_spill_count = bool(re.search(r"[1-9]", spill_count))
+    if finding_supported == "yes":
+        return status == "supported" and evidence_tier in {"strong", "medium"} and has_spill_count
+    if finding_supported == "no":
+        return False
+    if status in {"context_only", "not_observed"} or evidence_tier in {
+        "context_only",
+        "unsupported",
+    }:
+        return False
+    return None
 
 
 def facts_have_action_cards(facts_text: str) -> bool:

@@ -1070,8 +1070,9 @@ Near-term metadata/stats work:
    analyzer facts where available. Recent stats and query optimization scorers
    already prefer `analysis.json`, and report stats-maintenance routing now
    prefers rendered `Stats Metadata Quality` facts while exchange/data-movement
-   recommendations prefer rendered `Data Movement Evidence` facts before legacy
-   text fallbacks. Remaining query-shape/report extractors keep rendered
+   recommendations prefer rendered `Data Movement Evidence` facts and
+   spill/scratch gates prefer rendered `Memory Pressure Evidence` facts before
+   legacy text fallbacks. Remaining query-shape/report extractors keep rendered
    markdown parsing as a fallback until structured facts cover those paths.
 2. Continue treating stats freshness as unknown unless a future direct
    staleness or metadata-divergence fact exists. Recent scoring no longer uses

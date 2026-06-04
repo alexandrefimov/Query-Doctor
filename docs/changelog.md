@@ -173,6 +173,10 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 - Report exchange/data-movement recommendations now prefer structured `Data
   Movement Evidence` facts, require `finding_supported: yes`, and use legacy
   `Findings` text only as a fallback.
+- Report and Recent spill/scratch gates now prefer structured `Memory Pressure
+  Evidence` facts. Explicit `finding_supported: no`, context-only, or
+  unsupported memory-pressure facts block legacy spill wording from promoting a
+  spill recommendation or scoring reason.
 - Workload action-outcome strict audits now reject supplied local outcome JSONL
   files that contain raw-like SQL, paths, hosts, URLs, emails, IPs, or secrets
   before counting them as representative feedback evidence.

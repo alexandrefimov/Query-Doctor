@@ -6272,7 +6272,7 @@ def test_scoring_does_not_score_zero_gap_labels_when_counts_are_zero():
     assert reasons == ["no analyzer-supported suspicious facts"]
 
 
-def test_scoring_does_not_score_limited_memory_pressure_context():
+def test_scoring_prefers_structured_limited_memory_pressure_over_legacy_findings():
     module = load_batch_module()
     from query_doctor.recent.query_optimization_score import (
         has_supported_spill_scratch_evidence as query_has_supported_spill,
@@ -6301,6 +6301,11 @@ def test_scoring_does_not_score_limited_memory_pressure_context():
                 "  - Non-zero spill/scratch counters were parsed as limited context, but "
                 "this profile dialect or section is not mapped for memory-pressure promotion."
             ),
+            "",
+            "## Findings",
+            "",
+            "### Spill or scratch I/O [medium]",
+            "- Detected non-zero spill/scratch metric evidence in digest lines.",
             "",
         ]
     )
