@@ -53,6 +53,7 @@ def test_engine_fact_boundary_payload_is_raw_free_for_golden_cases():
         assert "trino_statement_stats_fixture" not in text
         assert "trino_event_listener_fixture" not in text
         assert "trino_query_list_contract_probe_fixture" not in text
+        assert "spark_history_eventlog_compact_fixture" not in text
 
 
 def test_engine_fact_boundary_payload_fails_closed_for_unsafe_fact_text():

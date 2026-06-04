@@ -16,7 +16,9 @@ from query_doctor.analyzer.engine_facts import (
     ENGINE_FACT_BOUNDARY_SCHEMA_VERSION,
     EngineFactBundle,
     EngineFactContractError,
+    engine_fact_attention_signal_id,
     engine_fact_boundary_payload,
+    validate_engine_fact_namespace,
 )
 
 
@@ -91,31 +93,17 @@ def _attention_signal_ids(
     for fact in _iter_facts(fact_groups):
         fact_id = str(fact["id"])
         state = str(fact["state"])
-        if state == "supported" and fact_id in {"spill_or_scratch_evidence", "spilled_bytes"}:
-            signals.add("spill_or_scratch_evidence")
-        if state == "supported" and fact_id in {"backend_execution_tail_candidates"}:
-            signals.add("execution_tail_candidate")
-        if state == "supported" and fact_id == "stage_skew_candidate":
-            signals.add("stage_skew_candidate")
-        if state == "supported" and fact_id == "connector_metric_signal":
-            signals.add("connector_metric_signal")
-        if state == "supported" and fact_id == "resource_group_queue_time_ms":
-            value = fact.get("value")
-            if isinstance(value, (float, int)) and not isinstance(value, bool) and value > 0:
-                signals.add("blocked_or_admission_wait")
-        if state == "supported" and fact_id in {"failed_task_count", "retried_task_count"}:
-            value = fact.get("value")
-            if isinstance(value, (float, int)) and not isinstance(value, bool) and value > 0:
-                signals.add(_task_attention_signal_id(fact_id))
+        signal_id = engine_fact_attention_signal_id(
+            engine=str(identity["engine"]),
+            fact_id=fact_id,
+            state=state,
+            value=fact.get("value"),
+        )
+        if signal_id is not None:
+            signals.add(signal_id)
         if state == "unknown" and _is_limitation_fact(fact_id, fact_groups):
             signals.add(f"limitation_unknown:{fact_id}")
     return tuple(sorted(signals))
-
-
-def _task_attention_signal_id(fact_id: str) -> str:
-    if fact_id == "failed_task_count":
-        return "task_failures_observed"
-    return "task_retries_observed"
 
 
 def _validate_boundary_payload(payload: Mapping[str, Any]) -> None:
@@ -145,6 +133,7 @@ def _validate_boundary_payload(payload: Mapping[str, Any]) -> None:
             raise EngineFactContractError(f"boundary fact group missing {group}")
         for fact in facts:
             _validate_fact(fact, group)
+            validate_engine_fact_namespace(str(identity["engine"]), str(fact["id"]))
 
 
 def _validate_fact(value: Any, group: str) -> None:

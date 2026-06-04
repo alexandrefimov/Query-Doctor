@@ -3,6 +3,10 @@
 This module is an internal bridge from the current Impala analyzer dictionary to
 `EngineFactBundle`. It does not change analyzer output, scoring, browser
 rendering, reports, or supported engine registration.
+
+Keep this as a contract-calibration projection until an explicit Impala
+production migration moves a real consumer to normalized facts with parity
+tests. It is not a second source of truth for recommendations.
 """
 
 from __future__ import annotations
