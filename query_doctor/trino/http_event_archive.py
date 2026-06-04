@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 from query_doctor.trino.event_source_contract import (
     TrinoEventSourceContractCheckResult,
     load_trino_event_source_contract,
@@ -26,6 +27,7 @@ from query_doctor.trino.local_event_store import (
 TRINO_HTTP_EVENT_ARCHIVE_IMPORT_SCHEMA_VERSION = "trino_http_event_archive_import_v1"
 TRINO_HTTP_EVENT_ARCHIVE_SOURCE_TYPE = "http_event_listener_archive"
 TRINO_HTTP_EVENT_ARCHIVE_AUTH_KIND = "operator_managed_reference"
+urlopen = configured_diagnostic_urlopen
 
 
 @dataclass(frozen=True)

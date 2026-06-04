@@ -27,6 +27,7 @@ from query_doctor.analyzer.engine_facts import (  # noqa: E402
     EngineFactContractError,
     engine_fact_namespace_definitions,
 )
+from query_doctor.cli.trino_diagnosis_output import same_path  # noqa: E402
 from query_doctor.report.safety_validation import (  # noqa: E402
     contains_raw_sql_like_text,
     validate_report_internal_fingerprints,
@@ -56,6 +57,8 @@ TRINO_SMOKE_BAD_STATUSES = frozenset(
     }
 )
 TRINO_SMOKE_ALLOWED_STATUSES = TRINO_SMOKE_BAD_STATUSES | frozenset({"ok", "planned"})
+TRINO_HANDOFF_SUITE_MANIFEST_KIND = "trino_one_query_handoff_suite_v1"
+TRINO_READINESS_SUMMARY_KIND = "trino_compact_readiness_summary_v1"
 REQUIRED_TRINO_LIMITATION_IDS = frozenset(
     {
         "no_live_trino_support",
@@ -87,6 +90,7 @@ class TrinoCompactReadinessIssue:
 @dataclass
 class TrinoCompactReadinessResult:
     source_schema_version: str = "unknown"
+    source_version_state: str = "missing"
     support_status: str = "unknown"
     parser_coverage: str = "unknown"
     lifecycle: str = "unknown"
@@ -119,7 +123,10 @@ class TrinoCompactReadinessBatchResult:
     fact_count: int = 0
     attention_area_count: int = 0
     supported_attention_area_count: int = 0
+    diagnosis_artifact_checked_count: int = 0
+    smoke_summary_checked_count: int = 0
     source_schema_counts: Counter[str] = field(default_factory=Counter)
+    source_version_state_counts: Counter[str] = field(default_factory=Counter)
     support_status_counts: Counter[str] = field(default_factory=Counter)
     parser_coverage_counts: Counter[str] = field(default_factory=Counter)
     lifecycle_counts: Counter[str] = field(default_factory=Counter)
@@ -129,12 +136,21 @@ class TrinoCompactReadinessBatchResult:
     fact_state_counts: Counter[str] = field(default_factory=Counter)
     attention_state_counts: Counter[str] = field(default_factory=Counter)
     limitation_state_counts: Counter[str] = field(default_factory=Counter)
+    smoke_mode_counts: Counter[str] = field(default_factory=Counter)
+    smoke_status_counts: Counter[str] = field(default_factory=Counter)
     issue_counts: Counter[str] = field(default_factory=Counter)
     issues: list[tuple[int, TrinoCompactReadinessIssue]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return self.failed_count == 0
+        return self.failed_count == 0 and not self.issue_counts
+
+
+@dataclass(frozen=True)
+class TrinoCompactReadinessHandoffEntry:
+    boundary_json: Path
+    diagnosis_json: Path | None = None
+    smoke_summary_json: Path | None = None
 
 
 def load_json_object(path: Path, *, input_label: str = "boundary JSON input") -> dict[str, Any]:
@@ -154,6 +170,7 @@ def audit_boundary_json(
     *,
     diagnosis_json: Path | None = None,
     smoke_summary_json: Path | None = None,
+    required_source_versions: tuple[str, ...] = (),
     require_executed_smoke: bool = False,
     require_supported_attention: bool = False,
     fail_on_unknown_parser_coverage: bool = False,
@@ -173,6 +190,7 @@ def audit_boundary_json(
         load_json_object(boundary_json),
         diagnosis_payload=diagnosis_payload,
         smoke_summary_payload=smoke_summary_payload,
+        required_source_versions=required_source_versions,
         require_executed_smoke=require_executed_smoke,
         require_supported_attention=require_supported_attention,
         fail_on_unknown_parser_coverage=fail_on_unknown_parser_coverage,
@@ -183,6 +201,7 @@ def audit_boundary_json(
 def audit_boundary_json_suite(
     boundary_jsons: Iterable[Path],
     *,
+    required_source_versions: tuple[str, ...] = (),
     require_supported_attention: bool = False,
     fail_on_unknown_parser_coverage: bool = False,
     require_one_query_boundary: bool = False,
@@ -193,6 +212,7 @@ def audit_boundary_json_suite(
         try:
             result = audit_boundary_json(
                 boundary_json,
+                required_source_versions=required_source_versions,
                 require_supported_attention=require_supported_attention,
                 fail_on_unknown_parser_coverage=fail_on_unknown_parser_coverage,
                 require_one_query_boundary=require_one_query_boundary,
@@ -210,11 +230,99 @@ def audit_boundary_json_suite(
     return batch
 
 
+def audit_handoff_manifest_suite(
+    manifest_json: Path,
+    *,
+    required_source_versions: tuple[str, ...] = (),
+    require_diagnosis_json: bool = False,
+    require_executed_smoke: bool = False,
+    require_supported_attention: bool = False,
+    fail_on_unknown_parser_coverage: bool = False,
+    require_one_query_boundary: bool = False,
+) -> TrinoCompactReadinessBatchResult:
+    entries = handoff_manifest_entries(
+        load_json_object(manifest_json, input_label="handoff manifest JSON input"),
+        base_dir=manifest_json.parent,
+    )
+    return audit_handoff_entries_suite(
+        entries,
+        required_source_versions=required_source_versions,
+        require_diagnosis_json=require_diagnosis_json,
+        require_executed_smoke=require_executed_smoke,
+        require_supported_attention=require_supported_attention,
+        fail_on_unknown_parser_coverage=fail_on_unknown_parser_coverage,
+        require_one_query_boundary=require_one_query_boundary,
+    )
+
+
+def audit_handoff_entries_suite(
+    entries: Iterable[TrinoCompactReadinessHandoffEntry],
+    *,
+    required_source_versions: tuple[str, ...] = (),
+    require_diagnosis_json: bool = False,
+    require_executed_smoke: bool = False,
+    require_supported_attention: bool = False,
+    fail_on_unknown_parser_coverage: bool = False,
+    require_one_query_boundary: bool = False,
+) -> TrinoCompactReadinessBatchResult:
+    batch = TrinoCompactReadinessBatchResult()
+    for index, entry in enumerate(entries, start=1):
+        batch.input_count += 1
+        try:
+            result = audit_boundary_json(
+                entry.boundary_json,
+                diagnosis_json=entry.diagnosis_json,
+                smoke_summary_json=entry.smoke_summary_json,
+                required_source_versions=required_source_versions,
+                require_executed_smoke=require_executed_smoke,
+                require_supported_attention=require_supported_attention,
+                fail_on_unknown_parser_coverage=fail_on_unknown_parser_coverage,
+                require_one_query_boundary=require_one_query_boundary,
+            )
+        except TrinoCompactReadinessInputError:
+            issue = TrinoCompactReadinessIssue(
+                "handoff_artifact_unreadable",
+                "One Trino handoff suite artifact could not be read or parsed safely.",
+            )
+            batch.failed_count += 1
+            batch.issue_counts[issue.category] += 1
+            batch.issues.append((index, issue))
+            continue
+        if require_diagnosis_json and entry.diagnosis_json is None:
+            add_issue(
+                result,
+                "handoff_diagnosis_artifact_missing",
+                "Strict Trino handoff suite readiness requires every entry to include a compact diagnosis artifact.",
+            )
+        if require_executed_smoke and entry.smoke_summary_json is None:
+            add_issue(
+                result,
+                "handoff_smoke_summary_missing",
+                "Strict Trino handoff suite readiness requires every entry to include an executed smoke summary.",
+            )
+        add_suite_result(batch, index, result)
+    return batch
+
+
+def audit_batch_min_inputs(
+    batch: TrinoCompactReadinessBatchResult,
+    *,
+    required_min_inputs: int,
+) -> None:
+    if required_min_inputs > 0 and batch.input_count < required_min_inputs:
+        add_batch_issue(
+            batch,
+            "trino_suite_min_inputs_missing",
+            "Strict Trino suite readiness requires the configured minimum input count.",
+        )
+
+
 def audit_boundary_payload(
     payload: Mapping[str, Any],
     *,
     diagnosis_payload: Mapping[str, Any] | None = None,
     smoke_summary_payload: Mapping[str, Any] | None = None,
+    required_source_versions: tuple[str, ...] = (),
     require_executed_smoke: bool = False,
     require_supported_attention: bool = False,
     fail_on_unknown_parser_coverage: bool = False,
@@ -224,6 +332,11 @@ def audit_boundary_payload(
         source_schema_version=safe_label(payload.get("schema_version")),
     )
     audit_boundary_raw_free(result, payload)
+    audit_required_source_version(
+        result,
+        payload,
+        required_source_versions=required_source_versions,
+    )
 
     try:
         probe = engine_fact_consumer_probe_from_boundary(payload)
@@ -275,6 +388,33 @@ def audit_boundary_payload(
             "Strict readiness requires supported Trino parser coverage.",
         )
     return result
+
+
+def audit_required_source_version(
+    result: TrinoCompactReadinessResult,
+    payload: Mapping[str, Any],
+    *,
+    required_source_versions: tuple[str, ...],
+) -> None:
+    identity = mapping(payload.get("identity"))
+    source_version = identity.get("source_version")
+    if isinstance(source_version, str) and source_version:
+        result.source_version_state = "present"
+    if not required_source_versions:
+        return
+    if not isinstance(source_version, str) or not source_version:
+        add_issue(
+            result,
+            "trino_source_version_missing",
+            "Strict readiness requires the Trino boundary to carry an accepted source version.",
+        )
+        return
+    if source_version not in required_source_versions:
+        add_issue(
+            result,
+            "trino_source_version_mismatch",
+            "Strict readiness accepts only the configured Trino boundary source version.",
+        )
 
 
 def audit_diagnosis_artifact(
@@ -539,6 +679,15 @@ def add_issue(
     result.issues.append(TrinoCompactReadinessIssue(category, message))
 
 
+def add_batch_issue(
+    batch: TrinoCompactReadinessBatchResult,
+    category: str,
+    message: str,
+) -> None:
+    batch.issue_counts[category] += 1
+    batch.issues.append((0, TrinoCompactReadinessIssue(category, message)))
+
+
 def add_suite_result(
     batch: TrinoCompactReadinessBatchResult,
     index: int,
@@ -551,7 +700,12 @@ def add_suite_result(
     batch.fact_count += result.fact_count
     batch.attention_area_count += result.attention_area_count
     batch.supported_attention_area_count += result.supported_attention_area_count
+    if result.diagnosis_artifact_checked:
+        batch.diagnosis_artifact_checked_count += 1
+    if result.smoke_summary_checked:
+        batch.smoke_summary_checked_count += 1
     batch.source_schema_counts[result.source_schema_version] += 1
+    batch.source_version_state_counts[result.source_version_state] += 1
     batch.support_status_counts[result.support_status] += 1
     batch.parser_coverage_counts[result.parser_coverage] += 1
     batch.lifecycle_counts[result.lifecycle] += 1
@@ -561,9 +715,188 @@ def add_suite_result(
     batch.fact_state_counts.update(result.fact_state_counts)
     batch.attention_state_counts.update(result.attention_state_counts)
     batch.limitation_state_counts.update(result.limitation_state_counts)
+    batch.smoke_mode_counts[result.smoke_mode] += 1
+    batch.smoke_status_counts.update(result.smoke_status_counts)
     batch.issue_counts.update(result.issue_counts)
     for issue in result.issues:
         batch.issues.append((index, issue))
+
+
+def readiness_summary_payload(
+    result: TrinoCompactReadinessResult,
+    *,
+    mode: str,
+    requirements: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "summary_kind": TRINO_READINESS_SUMMARY_KIND,
+        "mode": mode,
+        "ok": result.ok,
+        "input_count": 1,
+        "ok_count": 1 if result.ok else 0,
+        "failed_count": 0 if result.ok else 1,
+        "boundary": {
+            "support_status": result.support_status,
+            "root_cause": "not_claimed",
+            "trino_sql_execution": "not_performed",
+            "live_recent_scan": "not_wired",
+        },
+        "source": {
+            "schema": result.source_schema_version,
+            "source_version_state": result.source_version_state,
+            "parser_coverage": result.parser_coverage,
+            "lifecycle": result.lifecycle,
+            "granularity": result.source_granularity,
+        },
+        "artifacts": {
+            "diagnosis_checked": result.diagnosis_artifact_checked,
+            "smoke_checked": result.smoke_summary_checked,
+            "smoke_mode": result.smoke_mode,
+        },
+        "totals": {
+            "facts": result.fact_count,
+            "attention_areas": result.attention_area_count,
+            "supported_attention_areas": result.supported_attention_area_count,
+        },
+        "counters": {
+            "fact_groups": counter_payload(result.fact_group_counts),
+            "fact_scopes": counter_payload(result.fact_scope_counts),
+            "fact_states": counter_payload(result.fact_state_counts),
+            "attention_states": counter_payload(result.attention_state_counts),
+            "limitation_states": counter_payload(result.limitation_state_counts),
+            "smoke_statuses": counter_payload(result.smoke_status_counts),
+            "issues": counter_payload(result.issue_counts),
+        },
+        "requirements": dict(requirements),
+    }
+
+
+def readiness_suite_summary_payload(
+    batch: TrinoCompactReadinessBatchResult,
+    *,
+    mode: str,
+    requirements: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "summary_kind": TRINO_READINESS_SUMMARY_KIND,
+        "mode": mode,
+        "ok": batch.ok,
+        "input_count": batch.input_count,
+        "ok_count": batch.ok_count,
+        "failed_count": batch.failed_count,
+        "artifacts": {
+            "diagnosis_checked": batch.diagnosis_artifact_checked_count,
+            "smoke_checked": batch.smoke_summary_checked_count,
+        },
+        "totals": {
+            "facts": batch.fact_count,
+            "attention_areas": batch.attention_area_count,
+            "supported_attention_areas": batch.supported_attention_area_count,
+        },
+        "counters": {
+            "source_schemas": counter_payload(batch.source_schema_counts),
+            "source_version_states": counter_payload(batch.source_version_state_counts),
+            "support_statuses": counter_payload(batch.support_status_counts),
+            "parser_coverage": counter_payload(batch.parser_coverage_counts),
+            "lifecycles": counter_payload(batch.lifecycle_counts),
+            "source_granularity": counter_payload(batch.source_granularity_counts),
+            "fact_groups": counter_payload(batch.fact_group_counts),
+            "fact_scopes": counter_payload(batch.fact_scope_counts),
+            "fact_states": counter_payload(batch.fact_state_counts),
+            "attention_states": counter_payload(batch.attention_state_counts),
+            "limitation_states": counter_payload(batch.limitation_state_counts),
+            "smoke_modes": counter_payload(batch.smoke_mode_counts),
+            "smoke_statuses": counter_payload(batch.smoke_status_counts),
+            "issues": counter_payload(batch.issue_counts),
+        },
+        "requirements": dict(requirements),
+    }
+
+
+def counter_payload(counter: Counter[str]) -> dict[str, int]:
+    return {key: counter[key] for key in sorted(counter)}
+
+
+def write_readiness_summary_json(path: Path, payload: Mapping[str, Any]) -> None:
+    text = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+    if raw_text_issue_categories(text):
+        raise TrinoCompactReadinessInputError("summary JSON output would contain raw-like content")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise TrinoCompactReadinessInputError("summary JSON output could not be written") from exc
+
+
+def requirements_payload(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "require_diagnosis_json": bool(args.require_diagnosis_json),
+        "require_executed_smoke": bool(args.require_executed_smoke),
+        "require_min_inputs": args.require_min_inputs,
+        "require_one_query_boundary": bool(args.require_one_query_boundary),
+        "require_source_version": bool(args.require_source_version),
+        "require_source_version_count": len(args.require_source_version),
+        "require_supported_attention": bool(args.require_supported_attention),
+        "fail_on_unknown_parser_coverage": bool(args.fail_on_unknown_parser_coverage),
+    }
+
+
+def reject_summary_output_overlap(
+    summary_json: Path | None,
+    protected_inputs: Iterable[Path | None],
+) -> str | None:
+    if summary_json is None:
+        return None
+    for protected_input in protected_inputs:
+        if protected_input is not None and same_path(summary_json, protected_input):
+            return "summary JSON output must differ from every input artifact"
+    return None
+
+
+def handoff_manifest_entries(
+    payload: Mapping[str, Any],
+    *,
+    base_dir: Path,
+) -> tuple[TrinoCompactReadinessHandoffEntry, ...]:
+    if payload.get("manifest_kind") != TRINO_HANDOFF_SUITE_MANIFEST_KIND:
+        raise TrinoCompactReadinessInputError(
+            "handoff manifest JSON input must use the expected manifest kind"
+        )
+    entries = payload.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise TrinoCompactReadinessInputError(
+            "handoff manifest JSON input must contain at least one entry"
+        )
+    parsed: list[TrinoCompactReadinessHandoffEntry] = []
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            raise TrinoCompactReadinessInputError(
+                "handoff manifest JSON input entries must be objects"
+            )
+        boundary_json = manifest_path(entry.get("boundary_json"), base_dir=base_dir)
+        if boundary_json is None:
+            raise TrinoCompactReadinessInputError(
+                "handoff manifest JSON input entries require boundary_json"
+            )
+        parsed.append(
+            TrinoCompactReadinessHandoffEntry(
+                boundary_json=boundary_json,
+                diagnosis_json=manifest_path(entry.get("diagnosis_json"), base_dir=base_dir),
+                smoke_summary_json=manifest_path(entry.get("smoke_summary"), base_dir=base_dir),
+            )
+        )
+    return tuple(parsed)
+
+
+def manifest_path(value: Any, *, base_dir: Path) -> Path | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise TrinoCompactReadinessInputError(
+            "handoff manifest JSON input artifact paths must be non-empty strings"
+        )
+    path = Path(value)
+    return path if path.is_absolute() else base_dir / path
 
 
 def print_counter(title: str, counter: Counter[str], *, out: TextIO, limit: int) -> None:
@@ -597,6 +930,7 @@ def print_result(
     print(
         "Source: "
         f"schema={result.source_schema_version}, "
+        f"source_version={result.source_version_state}, "
         f"parser_coverage={result.parser_coverage}, "
         f"lifecycle={result.lifecycle}, "
         f"granularity={result.source_granularity}",
@@ -658,7 +992,14 @@ def print_suite_result(
         f"supported_attention_areas={batch.supported_attention_area_count}",
         file=out,
     )
+    print(
+        "Artifacts: "
+        f"diagnosis_checked={batch.diagnosis_artifact_checked_count}, "
+        f"smoke_checked={batch.smoke_summary_checked_count}",
+        file=out,
+    )
     print_counter("Source schemas", batch.source_schema_counts, out=out, limit=limit)
+    print_counter("Source version states", batch.source_version_state_counts, out=out, limit=limit)
     print_counter("Support statuses", batch.support_status_counts, out=out, limit=limit)
     print_counter("Parser coverage", batch.parser_coverage_counts, out=out, limit=limit)
     print_counter("Lifecycles", batch.lifecycle_counts, out=out, limit=limit)
@@ -668,11 +1009,14 @@ def print_suite_result(
     print_counter("Fact states", batch.fact_state_counts, out=out, limit=limit)
     print_counter("Attention states", batch.attention_state_counts, out=out, limit=limit)
     print_counter("Limitation states", batch.limitation_state_counts, out=out, limit=limit)
+    print_counter("Smoke modes", batch.smoke_mode_counts, out=out, limit=limit)
+    print_counter("Smoke statuses", batch.smoke_status_counts, out=out, limit=limit)
     if batch.issues:
         print_counter("Issues", batch.issue_counts, out=out, limit=limit)
         print("Issue examples:", file=out)
         for index, issue in batch.issues[:limit]:
-            print(f"  input-{index:03d}: {issue.category}: {issue.message}", file=out)
+            label = "suite" if index <= 0 else f"input-{index:03d}"
+            print(f"  {label}: {issue.category}: {issue.message}", file=out)
     else:
         print("Issues: none", file=out)
 
@@ -698,7 +1042,11 @@ def safe_counter(value: Any) -> Counter[str]:
 
 
 def safe_label(value: Any) -> str:
-    return value if isinstance(value, str) and value else "unknown"
+    if not isinstance(value, str) or not value:
+        return "unknown"
+    if raw_text_issue_categories(value):
+        return "redacted"
+    return value
 
 
 def json_compatible(value: Mapping[str, Any]) -> Any:
@@ -710,8 +1058,21 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "boundary_json",
         type=Path,
-        nargs="+",
-        help="Accepted Trino engine_fact_boundary_v1 JSON. Pass multiple paths for suite mode.",
+        nargs="*",
+        help=(
+            "Accepted Trino engine_fact_boundary_v1 JSON. Pass multiple paths for suite "
+            "mode, or omit when --handoff-suite-manifest is used."
+        ),
+    )
+    parser.add_argument(
+        "--handoff-suite-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Optional trino_one_query_handoff_suite_v1 manifest whose entries reference "
+            "boundary_json plus optional diagnosis_json and smoke_summary artifacts. "
+            "The manifest path and referenced artifact paths are never printed."
+        ),
     )
     parser.add_argument("--limit", type=int, default=12, help="Rows to print per section.")
     parser.add_argument(
@@ -730,6 +1091,32 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         help=(
             "Return non-zero for aggregate query-list boundaries; use this for one-query "
             "Trino diagnosis readiness gates."
+        ),
+    )
+    parser.add_argument(
+        "--require-source-version",
+        action="append",
+        default=[],
+        help=(
+            "Require the boundary identity.source_version to match this accepted value. "
+            "May be repeated for suite gates; actual boundary values are never printed."
+        ),
+    )
+    parser.add_argument(
+        "--require-min-inputs",
+        type=int,
+        default=0,
+        help=(
+            "For suite gates, return non-zero unless at least this many boundary or "
+            "handoff-manifest entries were checked."
+        ),
+    )
+    parser.add_argument(
+        "--require-diagnosis-json",
+        action="store_true",
+        help=(
+            "Return non-zero unless the single-boundary or handoff-manifest entry has a "
+            "matching compact diagnosis JSON artifact."
         ),
     )
     parser.add_argument(
@@ -755,14 +1142,116 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Return non-zero unless --smoke-summary records mode=execute.",
     )
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        default=None,
+        help=(
+            "Optional output path for a raw-free machine-readable readiness summary. "
+            "The path is never printed."
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.require_min_inputs < 0:
+        print(
+            "[trino-compact-readiness] rejected: --require-min-inputs must be non-negative",
+            file=sys.stderr,
+        )
+        return 2
+    if args.handoff_suite_manifest is not None and args.boundary_json:
+        print(
+            "[trino-compact-readiness] rejected: handoff suite manifest cannot be combined with boundary inputs",
+            file=sys.stderr,
+        )
+        return 2
+    if args.handoff_suite_manifest is None and not args.boundary_json:
+        print(
+            "[trino-compact-readiness] rejected: provide a boundary input or handoff suite manifest",
+            file=sys.stderr,
+        )
+        return 2
+    if args.handoff_suite_manifest is not None:
+        if args.diagnosis_json is not None:
+            print(
+                "[trino-compact-readiness] rejected: use manifest entry diagnosis_json values for handoff suite checks",
+                file=sys.stderr,
+            )
+            return 2
+        if args.smoke_summary is not None:
+            print(
+                "[trino-compact-readiness] rejected: use manifest entry smoke_summary values for handoff suite checks",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            entries = handoff_manifest_entries(
+                load_json_object(
+                    args.handoff_suite_manifest, input_label="handoff manifest JSON input"
+                ),
+                base_dir=args.handoff_suite_manifest.parent,
+            )
+            overlap_error = reject_summary_output_overlap(
+                args.summary_json,
+                (
+                    args.handoff_suite_manifest,
+                    *(
+                        artifact
+                        for entry in entries
+                        for artifact in (
+                            entry.boundary_json,
+                            entry.diagnosis_json,
+                            entry.smoke_summary_json,
+                        )
+                    ),
+                ),
+            )
+            if overlap_error:
+                print(f"[trino-compact-readiness] rejected: {overlap_error}", file=sys.stderr)
+                return 2
+            batch = audit_handoff_entries_suite(
+                entries,
+                required_source_versions=tuple(args.require_source_version),
+                require_diagnosis_json=args.require_diagnosis_json,
+                require_executed_smoke=args.require_executed_smoke,
+                require_supported_attention=args.require_supported_attention,
+                fail_on_unknown_parser_coverage=args.fail_on_unknown_parser_coverage,
+                require_one_query_boundary=args.require_one_query_boundary,
+            )
+            audit_batch_min_inputs(batch, required_min_inputs=args.require_min_inputs)
+            if args.summary_json is not None:
+                write_readiness_summary_json(
+                    args.summary_json,
+                    readiness_suite_summary_payload(
+                        batch,
+                        mode="handoff_manifest_suite",
+                        requirements=requirements_payload(args),
+                    ),
+                )
+        except TrinoCompactReadinessInputError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        print_suite_result(batch, limit=args.limit)
+        return 0 if batch.ok else 1
+    overlap_error = reject_summary_output_overlap(
+        args.summary_json,
+        (*args.boundary_json, args.diagnosis_json, args.smoke_summary),
+    )
+    if overlap_error:
+        print(f"[trino-compact-readiness] rejected: {overlap_error}", file=sys.stderr)
+        return 2
     if args.diagnosis_json is not None and len(args.boundary_json) > 1:
         print(
             "[trino-compact-readiness] rejected: diagnosis artifact checking accepts one boundary input",
+            file=sys.stderr,
+        )
+        return 2
+    if args.require_diagnosis_json and args.diagnosis_json is None:
+        print(
+            "[trino-compact-readiness] rejected: --require-diagnosis-json requires --diagnosis-json",
             file=sys.stderr,
         )
         return 2
@@ -778,13 +1267,34 @@ def main(argv: Iterable[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.require_min_inputs > 1 and len(args.boundary_json) == 1:
+        print(
+            "[trino-compact-readiness] rejected: --require-min-inputs greater than one requires suite mode",
+            file=sys.stderr,
+        )
+        return 2
     if len(args.boundary_json) > 1:
         batch = audit_boundary_json_suite(
             args.boundary_json,
+            required_source_versions=tuple(args.require_source_version),
             require_supported_attention=args.require_supported_attention,
             fail_on_unknown_parser_coverage=args.fail_on_unknown_parser_coverage,
             require_one_query_boundary=args.require_one_query_boundary,
         )
+        audit_batch_min_inputs(batch, required_min_inputs=args.require_min_inputs)
+        try:
+            if args.summary_json is not None:
+                write_readiness_summary_json(
+                    args.summary_json,
+                    readiness_suite_summary_payload(
+                        batch,
+                        mode="boundary_json_suite",
+                        requirements=requirements_payload(args),
+                    ),
+                )
+        except TrinoCompactReadinessInputError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         print_suite_result(batch, limit=args.limit)
         return 0 if batch.ok else 1
     try:
@@ -792,11 +1302,21 @@ def main(argv: Iterable[str] | None = None) -> int:
             args.boundary_json[0],
             diagnosis_json=args.diagnosis_json,
             smoke_summary_json=args.smoke_summary,
+            required_source_versions=tuple(args.require_source_version),
             require_executed_smoke=args.require_executed_smoke,
             require_supported_attention=args.require_supported_attention,
             fail_on_unknown_parser_coverage=args.fail_on_unknown_parser_coverage,
             require_one_query_boundary=args.require_one_query_boundary,
         )
+        if args.summary_json is not None:
+            write_readiness_summary_json(
+                args.summary_json,
+                readiness_summary_payload(
+                    result,
+                    mode="single_boundary",
+                    requirements=requirements_payload(args),
+                ),
+            )
     except TrinoCompactReadinessInputError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

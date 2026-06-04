@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
 from query_doctor.analyzer.trino_fixture_facts import (
     TRINO_QUERY_DETAIL_ACCEPTED_SOURCE_CONTRACT_VERSIONS,
     TRINO_QUERY_DETAIL_FIXTURE_MAX_DEPTH,
 )
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 from query_doctor.trino.local_query_detail import (
     TRINO_LOCAL_QUERY_DETAIL_MAX_BYTES,
     TrinoLocalQueryDetailImportResult,
@@ -41,6 +42,7 @@ TRINO_HTTP_QUERY_DETAIL_ARCHIVE_IMPORT_SCHEMA_VERSION = "trino_http_query_detail
 TRINO_QUERY_DETAIL_ARCHIVE_SOURCE_CONTRACT_VERSION = "trino_query_detail_archive_source_contract_v1"
 TRINO_HTTP_QUERY_DETAIL_ARCHIVE_SOURCE_TYPE = "http_query_detail_archive"
 TRINO_HTTP_QUERY_DETAIL_ARCHIVE_AUTH_KIND = "operator_managed_reference"
+urlopen = configured_diagnostic_urlopen
 TRINO_QUERY_DETAIL_ARCHIVE_SOURCE_CONTRACT_MAX_BYTES = 16 * 1024
 TRINO_QUERY_DETAIL_ARCHIVE_SOURCE_CONTRACT_MAX_DEPTH = 8
 TRINO_QUERY_DETAIL_ARCHIVE_SOURCE_CONTRACT_MAX_TIMEOUT_SECONDS = 300

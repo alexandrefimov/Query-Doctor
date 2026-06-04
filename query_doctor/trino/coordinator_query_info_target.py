@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import Request
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 from query_doctor.trino.source_contract_utils import (
     allowed_text,
     bounded_int,
@@ -125,22 +126,6 @@ class TrinoCoordinatorQueryInfoPrunedProbeResult:
 
 
 CoordinatorQueryInfoFetcher = Callable[..., str]
-
-
-class _NoRedirectHandler(HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        req: Any,
-        fp: Any,
-        code: int,
-        msg: str,
-        headers: Any,
-        newurl: str,
-    ) -> None:
-        return None
-
-
-_NO_REDIRECT_OPENER = build_opener(_NoRedirectHandler)
 
 
 def load_trino_coordinator_query_info_target(
@@ -529,7 +514,7 @@ def fetch_trino_coordinator_pruned_query_info_text(
 
 
 def _open_without_redirects(request: Request, *, timeout: int):
-    return _NO_REDIRECT_OPENER.open(request, timeout=timeout)
+    return configured_diagnostic_urlopen(request, timeout=timeout)
 
 
 def _fetch_pruned_query_info_text(

@@ -1241,6 +1241,7 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "aggregate query-list facts may be supported only from an accepted sanitized summary",
         "strict one-query promotion gates must run `scripts/audit_trino_compact_readiness.py --require-one-query-boundary`",
         "That gate must reject any boundary containing `query_list_*` aggregate facts before it can be counted as one-query Trino diagnosis readiness",
+        "`--require-source-version trino_coordinator_query_info_target_v1`",
         "`--diagnosis-json <raw-free-trino-diagnosis.json>`",
         "stored compact diagnosis artifact matches the deterministic boundary-derived diagnosis and stays raw-free",
         "`--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`",

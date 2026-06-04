@@ -9,7 +9,7 @@ from query_doctor.trino.coordinator_query_info_target import (
     TRINO_COORDINATOR_QUERY_INFO_PRUNED_PROBE_SCHEMA_VERSION,
     TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_VERSION,
     TRINO_COORDINATOR_QUERY_INFO_TARGET_CHECK_SCHEMA_VERSION,
-    _NoRedirectHandler,
+    _open_without_redirects,
     fetch_trino_coordinator_pruned_query_info_text,
     parse_trino_coordinator_query_info_auth_header_text,
     probe_trino_coordinator_query_info_pruned,
@@ -194,20 +194,32 @@ def test_trino_coordinator_query_info_fetch_can_use_operator_authorization_heade
     ]
 
 
-def test_trino_coordinator_query_info_redirect_handler_blocks_redirects():
-    handler = _NoRedirectHandler()
+def test_trino_coordinator_query_info_open_uses_shared_diagnostic_egress(monkeypatch):
+    calls = []
 
-    assert (
-        handler.redirect_request(
-            None,
-            None,
-            302,
-            "Found",
-            {"Location": "https://redirect.example.test/v1/query/other"},
-            "https://redirect.example.test/v1/query/other",
-        )
-        is None
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    def fake_configured_diagnostic_urlopen(request, *, timeout: int):
+        calls.append((request.full_url, timeout))
+        return Response()
+
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_target.configured_diagnostic_urlopen",
+        fake_configured_diagnostic_urlopen,
     )
+
+    with _open_without_redirects(
+        type("Request", (), {"full_url": f"{COORDINATOR_URL}/v1/query/{QUERY_ID}"})(),
+        timeout=30,
+    ) as response:
+        assert isinstance(response, Response)
+
+    assert calls == [(f"{COORDINATOR_URL}/v1/query/{QUERY_ID}", 30)]
 
 
 def test_trino_coordinator_query_info_fetch_rejects_redirect_without_echo(monkeypatch):
