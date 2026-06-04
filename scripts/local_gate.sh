@@ -40,6 +40,11 @@ run_step "$PYTHON_BIN" scripts/audit_public_docs.py
 run_step git diff --check
 run_step "$PYTHON_BIN" scripts/check_active_docs.py
 run_step "$PYTHON_BIN" scripts/check_markdown_links.py
+if [[ "${PUBLIC_RELEASE:-0}" == "1" ]]; then
+  run_step "$PYTHON_BIN" scripts/check_release_history_shape.py \
+    --base "${RELEASE_HISTORY_BASE:-github/main}" \
+    --head "${RELEASE_HISTORY_HEAD:-HEAD}"
+fi
 run_ruff
 run_python_module pytest -q
 run_python_module query_doctor.cli.demo_preflight

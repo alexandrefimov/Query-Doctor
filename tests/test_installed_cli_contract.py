@@ -14,6 +14,14 @@ FORBIDDEN_SQL_EXECUTION_FLAGS = (
     "--execute-query",
     "--allow-sql-execution",
 )
+SPARK_EXPERIMENTAL_SCRIPTS = frozenset(
+    {
+        "query-doctor-build-spark-evidence-package",
+        "query-doctor-collect-spark-history",
+        "query-doctor-diagnose-spark-compact",
+        "query-doctor-validate-spark-evidence-package",
+    }
+)
 
 
 def project_scripts() -> tuple[str, ...]:
@@ -61,8 +69,11 @@ def test_installed_console_scripts_help_is_safe_and_current():
         output = result.stdout + result.stderr
 
         assert result.returncode == 0, output
+        normalized_output = " ".join(output.split())
         assert "Traceback" not in output
         assert "No module named" not in output
+        if name in SPARK_EXPERIMENTAL_SCRIPTS:
+            assert "does not claim Spark product support" in normalized_output, name
         for flag in FORBIDDEN_SQL_EXECUTION_FLAGS:
             assert flag not in output, name
         for local_marker in (

@@ -7,10 +7,16 @@ from pathlib import Path
 from scripts.audit_impala_coverage_gaps import audit_summaries, main, print_result
 
 
-def write_summary(tmp_path: Path, cases: list[dict[str, object]]) -> Path:
+def write_summary(
+    tmp_path: Path,
+    cases: list[dict[str, object]],
+    **summary_fields: object,
+) -> Path:
     summary_path = tmp_path / "batch_summary.json"
+    payload = {"selected_count": len(cases), "cases": cases}
+    payload.update(summary_fields)
     summary_path.write_text(
-        json.dumps({"selected_count": len(cases), "cases": cases}),
+        json.dumps(payload),
         encoding="utf-8",
     )
     return summary_path
@@ -121,6 +127,56 @@ def base_analysis(**overrides: object) -> dict[str, object]:
     return analysis
 
 
+def direct_impala_analysis(**overrides: object) -> dict[str, object]:
+    analysis = base_analysis(
+        profile_format={
+            "profile_family": "impala_runtime_profile",
+            "profile_source": "impala_daemon",
+            "source_label": "Impala daemon profile endpoint",
+            "profile_dialect": "classic_text_profile",
+            "impala_distribution": "apache_impala",
+            "impala_major_version": 5,
+            "impala_build_type": "snapshot",
+            "profile_response_format": "text",
+            "primary_bottleneck_policy": "supported",
+            "source_capabilities": {
+                "profile_response_format": "text",
+                "profile_fetch_attempt_count": 1,
+                "json_profile_probe": "not_configured",
+                "profile_docs_probe": "enabled",
+                "profile_docs_fetch_attempt_count": 1,
+                "json_profile_payload": "not_selected",
+                "text_profile_payload": "observed",
+                "primary_profile_routing": "supported",
+            },
+        },
+        profile_counter_registry={
+            "status": "not_observed",
+            "source": "bundled",
+            "missing_counter_count": 0,
+        },
+        query_context={
+            "admission_context_probe_enabled": True,
+            "admission_context_fetch_attempt_count": 1,
+        },
+        admission_context={
+            "status": "unavailable",
+            "available": False,
+        },
+        source_provenance={
+            "items": [
+                {"kind": "engine", "status": "available"},
+                {"kind": "profile", "status": "available"},
+                {"kind": "metadata", "status": "none"},
+                {"kind": "metrics", "status": "none"},
+                {"kind": "events", "status": "none"},
+            ],
+        },
+    )
+    analysis.update(overrides)
+    return analysis
+
+
 def test_impala_coverage_gap_audit_ranks_safe_gaps_and_opportunities(
     tmp_path: Path,
 ) -> None:
@@ -157,6 +213,13 @@ def test_impala_coverage_gap_audit_ranks_safe_gaps_and_opportunities(
     assert result.source_compatibility_counts["admission_context_probe/not_configured"] == 1
     assert result.source_compatibility_counts["admission_context/not_collected"] == 1
     assert result.source_compatibility_counts["resource_trace/unknown"] == 1
+    assert result.optional_source_counts["json_profile/not_configured"] == 1
+    assert result.optional_source_counts["profile_docs/not_configured"] == 1
+    assert result.optional_source_counts["admission_context/not_configured"] == 1
+    assert result.optional_source_counts["metadata/not_collected"] == 1
+    assert result.optional_source_counts["runtime_metrics/unavailable"] == 1
+    assert result.optional_source_counts["cluster_events/not_collected"] == 1
+    assert result.optional_source_counts["resource_trace/unknown"] == 1
     assert result.gap_counts["metadata_context_not_collected"] == 1
     assert result.gap_counts["storage_context_unknown"] == 1
     assert result.storage_unknown_reason_counts["table_metadata_view_only"] == 1
@@ -204,9 +267,94 @@ def test_impala_coverage_gap_audit_ranks_safe_gaps_and_opportunities(
     assert "Impala source compatibility:" in text
     assert "Data movement calibration signals:" in text
     assert "Runtime filter calibration signals:" in text
+    assert "Optional source availability:" in text
+    assert "profile_docs/not_configured" in text
+    assert "admission_context/not_configured" in text
     assert "P1 profile_docs_registry_not_available" in text
     assert "case-" not in text
     assert "/private/" not in text
+
+
+def test_impala_coverage_gap_audit_can_fail_strict_diagnostic_coverage_gaps(
+    tmp_path: Path,
+) -> None:
+    cases: list[dict[str, object]] = []
+    for index, label, confidence in (
+        (1, "stats", "high"),
+        (2, "sql_shape", "medium"),
+        (3, "runtime_skew", "medium"),
+        (4, "unknown", "low"),
+        (5, "unknown", "low"),
+        (6, "unknown", "low"),
+        (7, "unknown", "low"),
+        (8, "", "medium"),
+        (9, "stats", "low"),
+    ):
+        reasons: list[str] = ["no_primary_branch_supported"]
+        if index == 5:
+            reasons = ["SELECT * FROM private.customer_orders"]
+        cases.append(
+            {
+                "case_index": index,
+                "case_dir": write_case(tmp_path, index, base_analysis()),
+                "case_primary_bottleneck": {
+                    "label": label,
+                    "confidence": confidence,
+                    "reasons": reasons,
+                },
+            }
+        )
+    cases.append(
+        {
+            "case_index": 10,
+            "case_dir": "cases/case-010",
+            "case_primary_bottleneck": {
+                "label": "runtime_storage",
+                "confidence": "medium",
+            },
+        }
+    )
+    summary_path = write_summary(tmp_path, cases)
+
+    default_result = audit_summaries([summary_path])
+    assert default_result.ok
+
+    result = audit_summaries([summary_path], fail_on_diagnostic_coverage_gaps=True)
+
+    assert not result.ok
+    assert {issue.category for issue in result.issues} == {
+        "missing_analysis",
+        "missing_primary_bottleneck_label",
+        "unknown_primary_rate",
+        "medium_primary_rate",
+    }
+    assert result.primary_counts["unknown"] == 4
+    assert result.primary_counts["missing"] == 1
+    assert result.primary_confidence_counts["unknown/low"] == 4
+    assert result.medium_or_better_primary_count == 4
+    assert result.unknown_primary_reason_counts["unsafe_reason"] == 1
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "Issues:" in text
+    assert "unknown_primary_rate" in text
+    assert "medium_primary_rate" in text
+    assert "SELECT" not in text
+    assert "private.customer_orders" not in text
+    assert str(tmp_path) not in text
+
+    assert main([str(summary_path)]) == 0
+    assert main([str(summary_path), "--fail-on-diagnostic-coverage-gaps"]) == 1
+
+
+def test_impala_coverage_gap_audit_rejects_invalid_strict_thresholds(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(tmp_path, [])
+
+    assert main([str(summary_path), "--max-unknown-primary-rate", "101"]) == 2
+    assert main([str(summary_path), "--min-medium-primary-rate", "-1"]) == 2
 
 
 def test_impala_coverage_gap_audit_tracks_profile_docs_missing_labels(
@@ -298,7 +446,270 @@ def test_impala_coverage_gap_audit_tracks_profile_docs_missing_labels(
     assert result.source_compatibility_counts["admission_context_probe/enabled"] == 1
     assert result.source_compatibility_counts["admission_context/available"] == 1
     assert result.source_compatibility_counts["resource_trace/available"] == 1
+    assert result.optional_source_counts["json_profile/available"] == 1
+    assert result.optional_source_counts["profile_docs/available"] == 1
+    assert result.optional_source_counts["admission_context/available"] == 1
+    assert result.optional_source_counts["metadata/available"] == 1
+    assert result.optional_source_counts["runtime_metrics/available"] == 1
+    assert result.optional_source_counts["cluster_events/available"] == 1
+    assert result.optional_source_counts["resource_trace/available"] == 1
     assert main([str(summary_path), "--limit", "5"]) == 0
+
+
+def test_impala_optional_source_availability_summarizes_unavailable_sources(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        profile_format={
+            "profile_dialect": "classic_text_profile",
+            "impala_distribution": "apache_impala",
+            "impala_major_version": 5,
+            "impala_build_type": "release",
+            "profile_response_format": "json",
+            "primary_bottleneck_policy": "supported",
+            "source_capabilities": {
+                "profile_fetch_attempt_count": 2,
+                "json_profile_probe": "enabled",
+                "profile_docs_probe": "enabled",
+                "profile_docs_fetch_attempt_count": 1,
+                "json_profile_payload": "selected_but_unmapped",
+                "text_profile_payload": "observed",
+                "primary_profile_routing": "supported",
+            },
+        },
+        profile_counter_registry={
+            "status": "not_observed",
+            "source": "bundled",
+            "missing_counter_count": 0,
+        },
+        query_context={
+            "admission_context_probe_enabled": True,
+            "admission_context_fetch_attempt_count": 1,
+        },
+        admission_context={
+            "status": "unavailable",
+            "available": False,
+        },
+        source_provenance={
+            "items": [
+                {"kind": "metadata", "status": "failed"},
+                {"kind": "metrics", "status": "unknown"},
+                {"kind": "events", "status": "not_requested"},
+            ],
+        },
+        resource_trace={
+            "status": "unavailable",
+            "evidence_tier": "unsupported",
+            "observed_metric_count": 0,
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "case_primary_bottleneck": {
+                    "label": "unknown",
+                    "confidence": "low",
+                },
+            }
+        ],
+    )
+
+    result = audit_summaries([summary_path])
+
+    assert result.optional_source_counts["json_profile/unavailable"] == 1
+    assert result.optional_source_counts["profile_docs/unavailable"] == 1
+    assert result.optional_source_counts["admission_context/unavailable"] == 1
+    assert result.optional_source_counts["metadata/unavailable"] == 1
+    assert result.optional_source_counts["runtime_metrics/unknown"] == 1
+    assert result.optional_source_counts["cluster_events/not_collected"] == 1
+    assert result.optional_source_counts["resource_trace/unavailable"] == 1
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert "Optional source availability:" in text
+    assert "json_profile/unavailable" in text
+    assert "profile_docs/unavailable" in text
+    assert "admission_context/unavailable" in text
+    assert str(tmp_path) not in text
+
+
+def test_direct_impala_source_readiness_accepts_explicit_limitations(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, direct_impala_analysis()),
+                "case_primary_bottleneck": {
+                    "label": "runtime_admission",
+                    "confidence": "medium",
+                },
+            }
+        ],
+        query_profile_source="impala",
+    )
+
+    result = audit_summaries([summary_path], fail_on_direct_source_readiness_gaps=True)
+
+    assert result.ok
+    assert result.direct_impala_case_count == 1
+    assert result.direct_source_readiness_counts["profile_source/impala_daemon"] == 1
+    assert result.direct_source_readiness_counts["profile_docs/unavailable"] == 1
+    assert result.direct_source_readiness_counts["admission_context/unavailable"] == 1
+    assert result.direct_source_readiness_counts["runtime_metrics/not_collected"] == 1
+    assert result.direct_source_readiness_counts["cluster_events/not_collected"] == 1
+    assert not result.direct_source_readiness_gap_counts
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "Direct Impala analyzed cases: 1" in text
+    assert "Direct source readiness:" in text
+    assert "Direct source readiness gaps:" in text
+    assert "profile_docs/unavailable" in text
+
+    assert main([str(summary_path), "--fail-on-direct-source-readiness-gaps"]) == 0
+
+
+def test_direct_impala_source_readiness_fails_unknown_required_facts(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        source_provenance={
+            "items": [
+                {"kind": "engine", "status": "/tmp/raw-engine-status"},
+                {"kind": "profile", "status": "http://internal.example/profile"},
+                {"kind": "metadata", "status": "none"},
+                {"kind": "metrics", "status": "none"},
+                {"kind": "events", "status": "none"},
+            ],
+        }
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "case_primary_bottleneck": {
+                    "label": "unknown",
+                    "confidence": "low",
+                },
+            }
+        ],
+        query_profile_source="impala",
+    )
+
+    result = audit_summaries([summary_path], fail_on_direct_source_readiness_gaps=True)
+
+    assert not result.ok
+    assert result.direct_impala_case_count == 1
+    assert result.direct_source_readiness_gap_counts == {
+        "direct_profile_source_unknown": 1,
+        "direct_provenance_engine_unknown": 1,
+        "direct_provenance_profile_unknown": 1,
+        "direct_source_provenance_raw_like": 1,
+    }
+    assert {issue.category for issue in result.issues} == set(
+        result.direct_source_readiness_gap_counts
+    )
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "direct_profile_source_unknown" in text
+    assert "raw-engine-status" not in text
+    assert "internal.example" not in text
+    assert "/tmp" not in text
+
+    assert main([str(summary_path)]) == 0
+    assert main([str(summary_path), "--fail-on-direct-source-readiness-gaps"]) == 1
+
+
+def test_direct_impala_source_readiness_fails_raw_like_source_provenance(
+    tmp_path: Path,
+) -> None:
+    analysis = direct_impala_analysis(
+        source_provenance={
+            "items": [
+                {"kind": "engine", "status": "available"},
+                {"kind": "profile", "status": "available"},
+                {
+                    "kind": "metadata",
+                    "status": "unavailable",
+                    "limitations": [
+                        "failed /Users/example/query-doctor/cases/case-001; "
+                        "SHOW CREATE TABLE private.customer_orders token=secret-value"
+                    ],
+                },
+                {"kind": "metrics", "status": "none"},
+                {"kind": "events", "status": "none"},
+            ],
+        }
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "case_primary_bottleneck": {
+                    "label": "runtime_admission",
+                    "confidence": "medium",
+                },
+            }
+        ],
+        query_profile_source="impala",
+    )
+
+    result = audit_summaries([summary_path], fail_on_direct_source_readiness_gaps=True)
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert not result.ok
+    assert result.direct_source_readiness_gap_counts == {"direct_source_provenance_raw_like": 1}
+    assert [issue.category for issue in result.issues] == ["direct_source_provenance_raw_like"]
+    assert "direct_source_provenance_raw_like" in text
+    assert "/Users/example" not in text
+    assert "SHOW CREATE TABLE" not in text
+    assert "private.customer_orders" not in text
+    assert "secret-value" not in text
+    assert str(tmp_path) not in text
+
+
+def test_direct_impala_source_readiness_requires_configured_prometheus_status(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, direct_impala_analysis()),
+                "case_primary_bottleneck": {
+                    "label": "runtime_admission",
+                    "confidence": "medium",
+                },
+            }
+        ],
+        query_profile_source="impala",
+        collect_prometheus_timeseries=True,
+    )
+
+    result = audit_summaries([summary_path], fail_on_direct_source_readiness_gaps=True)
+
+    assert not result.ok
+    assert result.direct_source_readiness_gap_counts == {
+        "direct_runtime_metrics_configured_but_not_collected": 1
+    }
 
 
 def test_impala_source_compatibility_audit_fails_closed_on_unsafe_tokens(

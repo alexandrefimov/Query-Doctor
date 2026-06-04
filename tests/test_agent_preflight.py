@@ -91,6 +91,13 @@ def test_agent_guardrail_workflows_route_as_agent_tooling():
     assert "Agent tooling" in names
 
 
+def test_impala_loop_audit_routes_as_agent_tooling():
+    rules = agent_preflight.matching_rules(["scripts/audit_impala_diagnostic_loop.py"])
+    names = {rule.name for rule in rules}
+
+    assert "Agent tooling" in names
+
+
 def test_normalize_path_preserves_dot_directories():
     assert agent_preflight.normalize_path("./.github/workflows/docs.yml") == (
         ".github/workflows/docs.yml"

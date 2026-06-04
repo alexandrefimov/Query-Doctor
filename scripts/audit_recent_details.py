@@ -41,7 +41,43 @@ CLEAN_FOLLOW_UP_ACTION_TITLES = {
     "Query-shape recommendation",
     "Stats maintenance recommendation",
 }
+NO_SUPPORTED_CHANGE_ACTION_TITLE = "No supported change direction"
+STATS_ACTION_TITLE = "Stats maintenance recommendation"
+STATS_DETAIL_NEED_TYPES = {
+    "column_stats",
+    "table_and_column_stats",
+    "table_stats",
+}
+COMPARABLE_RERUN_RECOMMENDATION_IDS = {
+    "diagnostic_follow_up.v1",
+    "no_supported_change.v1",
+    "query_optimization_review.v1",
+    "runtime_admission_check.v1",
+    "stats_refresh_review.v1",
+}
 OPTIMIZER_RELEVANT_ACTION_TITLES = {"Query-shape recommendation"}
+ACTION_CARD_TEXT_FIELDS = (
+    "title",
+    "body",
+    "why",
+    "guardrails",
+    "change_direction",
+    "verification",
+)
+ACTION_OVERCLAIM_PATTERNS = (
+    re.compile(r"\b(?:is|was|are|were)\s+the\s+root[- ]cause\b", re.IGNORECASE),
+    re.compile(r"\broot[- ]cause\s+(?:is|was|are|were)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:proven|confirmed)\s+(?:as\s+)?(?:the\s+)?root[- ]cause\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:proves|confirms)\s+(?:the\s+)?root[- ]cause\b", re.IGNORECASE),
+    re.compile(r"\broot[- ]cause\s+(?:proven|confirmed)\b", re.IGNORECASE),
+)
+NEGATED_OVERCLAIM_CONTEXT_RE = re.compile(
+    r"\b(?:not|no|without|never|does\s+not|is\s+not|are\s+not|was\s+not|were\s+not)\b",
+    re.IGNORECASE,
+)
 DETAILS_TITLE_RE = re.compile(r'<h2 class="case-verdict-title">(.*?)</h2>', re.DOTALL)
 TAG_RE = re.compile(r"<[^>]+>")
 LOCAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:/Users/|/private/tmp/|/tmp/)")
@@ -50,6 +86,12 @@ FORBIDDEN_BROWSER_FRAGMENTS = (
     "BEGIN PROFILE",
     "Query Timeline",
     "SHOW CREATE TABLE",
+    "SHOW TABLE STATS",
+    "SHOW COLUMN STATS",
+    "DESCRIBE FORMATTED",
+    "SHOW PARTITIONS",
+    "COMPUTE STATS",
+    "INVALIDATE METADATA",
     "raw stdout",
     "raw stderr",
     "CM_PASSWORD",
@@ -103,6 +145,8 @@ class DetailsAuditResult:
     metadata_counts: Counter[str] = field(default_factory=Counter)
     title_counts: Counter[str] = field(default_factory=Counter)
     action_counts: Counter[str] = field(default_factory=Counter)
+    stats_detail_counts: Counter[str] = field(default_factory=Counter)
+    verification_counts: Counter[str] = field(default_factory=Counter)
     optimizer_counts: Counter[str] = field(default_factory=Counter)
     report_counts: Counter[str] = field(default_factory=Counter)
     issues: list[AuditIssue] = field(default_factory=list)
@@ -217,6 +261,8 @@ def audit_summary(
     baseline_paths: Iterable[Path] = (),
     exclude_baseline_overlap: bool = False,
     fail_on_overlap: bool = False,
+    fail_on_stats_detail_gaps: bool = False,
+    fail_on_comparable_rerun_gaps: bool = False,
 ) -> DetailsAuditResult:
     summary_path = summary_path.resolve(strict=True)
     summary = load_summary(summary_path)
@@ -238,7 +284,16 @@ def audit_summary(
         if case_id is None:
             result.issues.append(AuditIssue("case-unknown", severity, "case_index is missing"))
             continue
-        audit_case(result, settings, job_store, case_id, case, severity)
+        audit_case(
+            result,
+            settings,
+            job_store,
+            case_id,
+            case,
+            severity,
+            fail_on_stats_detail_gaps=fail_on_stats_detail_gaps,
+            fail_on_comparable_rerun_gaps=fail_on_comparable_rerun_gaps,
+        )
 
     if fail_on_overlap and result.overlap_count:
         result.issues.append(
@@ -258,6 +313,9 @@ def audit_case(
     case_id: str,
     case: dict[str, Any],
     summary_severity: str,
+    *,
+    fail_on_stats_detail_gaps: bool = False,
+    fail_on_comparable_rerun_gaps: bool = False,
 ) -> None:
     result.audited_cases += 1
     result.metadata_counts[str(case.get("metadata_status") or "unknown").strip().lower()] += 1
@@ -309,6 +367,22 @@ def audit_case(
         audit_clean_case(result, case_id, severity, title, rendered, action_cards)
     elif severity in {"high", "suspicious"}:
         audit_actionable_case(result, case_id, severity, optimizer_status, action_cards)
+    audit_stats_action_detail(
+        result,
+        case_id,
+        severity,
+        case,
+        action_cards,
+        fail_on_stats_detail_gaps=fail_on_stats_detail_gaps,
+    )
+    audit_action_verification_contract(
+        result,
+        case_id,
+        severity,
+        action_cards,
+        fail_on_comparable_rerun_gaps=fail_on_comparable_rerun_gaps,
+    )
+    audit_action_overclaim_contract(result, case_id, severity, action_cards)
 
 
 def audit_problem_case(
@@ -395,7 +469,8 @@ def audit_clean_case(
 ) -> None:
     follow_up_title = clean_follow_up_title(title)
     follow_up_cards = clean_follow_up_cards(action_cards)
-    if action_cards and not follow_up_cards:
+    no_supported_change = no_supported_change_cards(action_cards)
+    if action_cards and not (follow_up_cards or no_supported_change):
         result.issues.append(AuditIssue(case_id, severity, "clean case has action cards"))
     if title != CLEAN_VERDICT_TITLE and not follow_up_title:
         result.issues.append(
@@ -405,6 +480,8 @@ def audit_clean_case(
         result.issues.append(
             AuditIssue(case_id, severity, "clean follow-up verdict has no matching action card")
         )
+    if no_supported_change:
+        audit_no_supported_change_card(result, case_id, severity, action_cards[0])
     if contains_any(rendered, REPORT_RUN_LABELS):
         result.issues.append(AuditIssue(case_id, severity, "clean case offers report run action"))
     if "Query LLM optimizer" in rendered or "Query optimizer" in rendered:
@@ -422,6 +499,36 @@ def clean_follow_up_cards(action_cards: tuple[Any, ...]) -> bool:
         str(getattr(card, "title", "")).strip() in CLEAN_FOLLOW_UP_ACTION_TITLES
         for card in action_cards
     )
+
+
+def no_supported_change_cards(action_cards: tuple[Any, ...]) -> bool:
+    if len(action_cards) != 1:
+        return False
+    return str(getattr(action_cards[0], "title", "")).strip() == NO_SUPPORTED_CHANGE_ACTION_TITLE
+
+
+def audit_no_supported_change_card(
+    result: DetailsAuditResult,
+    case_id: str,
+    severity: str,
+    card: Any,
+) -> None:
+    for field, label in (
+        ("why", "why text"),
+        ("change_direction", "change direction"),
+        ("verification", "verification"),
+    ):
+        if not str(getattr(card, field, "")).strip():
+            result.issues.append(
+                AuditIssue(case_id, severity, f"no-supported-change card has no {label}")
+            )
+    has_anchor = bool(getattr(card, "source_locators", ())) or bool(
+        getattr(card, "supporting_facts", ())
+    )
+    if not has_anchor:
+        result.issues.append(
+            AuditIssue(case_id, severity, "no-supported-change card has no evidence anchor")
+        )
 
 
 def audit_actionable_case(
@@ -442,6 +549,127 @@ def optimizer_relevant_action_cards(action_cards: tuple[Any, ...]) -> bool:
         str(getattr(card, "title", "")).strip() in OPTIMIZER_RELEVANT_ACTION_TITLES
         for card in action_cards
     )
+
+
+def audit_stats_action_detail(
+    result: DetailsAuditResult,
+    case_id: str,
+    severity: str,
+    case: dict[str, Any],
+    action_cards: tuple[Any, ...],
+    *,
+    fail_on_stats_detail_gaps: bool,
+) -> None:
+    if not stats_action_card_present(action_cards):
+        return
+    candidate = case.get("stats_optimization_candidate")
+    candidate = candidate if isinstance(candidate, dict) else {}
+    if stats_candidate_has_structured_detail(candidate):
+        result.stats_detail_counts[f"{severity}:with_structured_detail"] += 1
+        return
+    if stats_candidate_expects_structured_detail(candidate):
+        result.stats_detail_counts[f"{severity}:missing_structured_detail"] += 1
+        message = "stats action lacks structured metadata detail"
+        if fail_on_stats_detail_gaps:
+            result.issues.append(AuditIssue(case_id, severity, message))
+        else:
+            result.observations.append(AuditObservation(case_id, severity, message))
+    else:
+        result.stats_detail_counts[f"{severity}:detail_not_expected"] += 1
+
+
+def stats_action_card_present(action_cards: tuple[Any, ...]) -> bool:
+    return any(
+        str(getattr(card, "title", "")).strip() == STATS_ACTION_TITLE for card in action_cards
+    )
+
+
+def stats_candidate_has_structured_detail(candidate: dict[str, Any]) -> bool:
+    return any(safe_list_text(candidate.get("evidence_detail")))
+
+
+def stats_candidate_expects_structured_detail(candidate: dict[str, Any]) -> bool:
+    tier = str(candidate.get("tier") or "").strip().lower()
+    need_type = str(candidate.get("need_type") or "").strip().lower()
+    return tier in {"high", "medium"} and need_type in STATS_DETAIL_NEED_TYPES
+
+
+def safe_list_text(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        text = value.strip()
+        return (text,) if text else ()
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    return ()
+
+
+def audit_action_verification_contract(
+    result: DetailsAuditResult,
+    case_id: str,
+    severity: str,
+    action_cards: tuple[Any, ...],
+    *,
+    fail_on_comparable_rerun_gaps: bool,
+) -> None:
+    for card in action_cards:
+        recommendation_id = str(getattr(card, "recommendation_id", "") or "").strip()
+        if recommendation_id not in COMPARABLE_RERUN_RECOMMENDATION_IDS:
+            continue
+        if verification_has_comparable_rerun(getattr(card, "verification", "")):
+            result.verification_counts[f"{severity}:comparable_rerun"] += 1
+            continue
+        result.verification_counts[f"{severity}:missing_comparable_rerun"] += 1
+        message = f"{card.title} verification lacks comparable rerun guidance"
+        if fail_on_comparable_rerun_gaps:
+            result.issues.append(AuditIssue(case_id, severity, message))
+        else:
+            result.observations.append(AuditObservation(case_id, severity, message))
+
+
+def audit_action_overclaim_contract(
+    result: DetailsAuditResult,
+    case_id: str,
+    severity: str,
+    action_cards: tuple[Any, ...],
+) -> None:
+    for card in action_cards:
+        for field_name, text in action_card_text_fields(card):
+            if action_text_has_unsupported_overclaim(text):
+                result.issues.append(
+                    AuditIssue(
+                        case_id,
+                        severity,
+                        f"{card.title} {field_name} contains unsupported root-cause wording",
+                    )
+                )
+                break
+
+
+def action_card_text_fields(card: Any) -> tuple[tuple[str, str], ...]:
+    fields: list[tuple[str, str]] = []
+    for field_name in ACTION_CARD_TEXT_FIELDS:
+        value = str(getattr(card, field_name, "") or "").strip()
+        if value:
+            fields.append((field_name, value))
+    return tuple(fields)
+
+
+def action_text_has_unsupported_overclaim(value: str) -> bool:
+    text = str(value or "")
+    for pattern in ACTION_OVERCLAIM_PATTERNS:
+        for match in pattern.finditer(text):
+            context = text[max(0, match.start() - 50) : match.end()]
+            if NEGATED_OVERCLAIM_CONTEXT_RE.search(context):
+                continue
+            return True
+    return False
+
+
+def verification_has_comparable_rerun(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    return "comparable" in text and ("rerun" in text or "re-run" in text or "scan" in text)
 
 
 def print_counter(title: str, counter: Counter[str], *, limit: int = 12) -> None:
@@ -469,6 +697,8 @@ def print_result(result: DetailsAuditResult, *, observation_limit: int = 20) -> 
     print_counter("Metadata", result.metadata_counts)
     print_counter("Verdict titles", result.title_counts)
     print_counter("Action cards", result.action_counts)
+    print_counter("Stats structured detail", result.stats_detail_counts)
+    print_counter("Verification comparable rerun", result.verification_counts)
     print_counter("Optimizer statuses", result.optimizer_counts)
     print_counter("Report statuses", result.report_counts)
     if result.observations:
@@ -511,6 +741,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Fail if any current case overlaps a baseline summary.",
     )
     parser.add_argument(
+        "--fail-on-stats-detail-gaps",
+        action="store_true",
+        help=(
+            "Fail when a rendered Medium/High stats action card lacks structured "
+            "raw-free metadata detail."
+        ),
+    )
+    parser.add_argument(
+        "--fail-on-comparable-rerun-gaps",
+        action="store_true",
+        help=(
+            "Fail when an actionable Details recommendation lacks comparable "
+            "rerun or comparable scan verification guidance."
+        ),
+    )
+    parser.add_argument(
         "--observation-limit",
         default=20,
         type=int,
@@ -527,6 +773,8 @@ def main(argv: list[str] | None = None) -> int:
             baseline_paths=args.baseline_summary,
             exclude_baseline_overlap=args.exclude_baseline_overlap,
             fail_on_overlap=args.fail_on_overlap,
+            fail_on_stats_detail_gaps=args.fail_on_stats_detail_gaps,
+            fail_on_comparable_rerun_gaps=args.fail_on_comparable_rerun_gaps,
         )
     except AuditInputError as exc:
         print(f"Input error: {exc}", file=sys.stderr)

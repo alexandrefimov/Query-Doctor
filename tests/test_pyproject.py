@@ -109,6 +109,20 @@ def test_legacy_setup_py_version_matches_pyproject():
     assert setup_py_metadata()["version"] == project_version()
 
 
+def test_legacy_setup_py_reads_version_from_pyproject():
+    tree = ast.parse((REPO_DIR / "setup.py").read_text(encoding="utf-8"))
+    setup_version_keywords = [
+        keyword.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+        if keyword.arg == "version"
+    ]
+
+    assert setup_version_keywords
+    assert all(not isinstance(value, ast.Constant) for value in setup_version_keywords)
+
+
 def test_legacy_setup_py_console_scripts_match_pyproject():
     assert setup_py_console_scripts() == project_scripts()
 
