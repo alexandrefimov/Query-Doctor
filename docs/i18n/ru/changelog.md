@@ -105,7 +105,9 @@ deterministic compact diagnosis из boundary, reject-ит raw-like diagnosis te
 Тот же audit теперь принимает dev-only Kerberos/SPNEGO
 `trino_smoke_summary.json` через `--smoke-summary`; strict release-facing dry
 runs могут добавлять `--require-executed-smoke`, чтобы dry-run plan не считался
-executed test-cluster smoke.
+executed test-cluster smoke. Strict executed-smoke mode теперь требует, чтобы
+каждый smoke check завершился известным status `ok`; planned, failed или
+unknown statuses не проходят evidence gate.
 Pruned coordinator QueryInfo import теперь поддерживает
 `--boundary-out <raw-free-trino-boundary.json>`: direct
 `engine_fact_boundary_v1` payload можно записать для local readiness audit без

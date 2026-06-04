@@ -24,6 +24,10 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
   refs, non-ancestor release heads, excessive commit counts, merge commits, and
   WIP/fixup/draft subjects before a public handoff can rely on local gate
   results.
+- Public-release preflight history scanning now uses the same configured
+  release range as the history-shape guard when local gate runs with
+  `PUBLIC_RELEASE=1`. This keeps unrelated local refs from creating release
+  warnings for a clean semantic release branch.
 - README screenshot provenance is now machine-checkable. The new
   `docs/assets/readme-screenshot-provenance.json` manifest ties each public
   README screenshot to the synthetic demo pack, documented capture route,
@@ -70,7 +74,9 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 - The same audit can now check the dev-only Kerberos/SPNEGO
   `trino_smoke_summary.json` through `--smoke-summary`; strict release-facing
   dry runs can add `--require-executed-smoke` so a dry-run plan cannot count as
-  an executed test-cluster smoke.
+  an executed test-cluster smoke. Strict executed-smoke mode now also requires
+  every smoke check to finish with the known `ok` status; planned, failed, or
+  unknown statuses do not satisfy the evidence gate.
 - Trino pruned coordinator QueryInfo probe/import commands can now use one
   local `--auth-header-file` containing an operator-managed `Authorization`
   header for the single bounded `GET /v1/query/{queryId}?pruned=true` request.
@@ -164,6 +170,9 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
   Quality` facts for stats-maintenance routing, using legacy table metadata
   wording only as a fallback and avoiding stats actions for non-physical
   `not_applicable` metadata.
+- Report exchange/data-movement recommendations now prefer structured `Data
+  Movement Evidence` facts, require `finding_supported: yes`, and use legacy
+  `Findings` text only as a fallback.
 - Workload action-outcome strict audits now reject supplied local outcome JSONL
   files that contain raw-like SQL, paths, hosts, URLs, emails, IPs, or secrets
   before counting them as representative feedback evidence.
