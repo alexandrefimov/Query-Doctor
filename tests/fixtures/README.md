@@ -44,6 +44,16 @@ the behavior under test.
 
 ## Engine Fact Contract Fixtures
 
+`engine_facts/spark_history_eventlog_compact.json` is a synthetic compact Spark
+fixture for the research-only Spark architecture spike. It is a safe summary
+schema for application, SQL execution, job, stage, task, executor, redaction,
+and limitation facts. It is not a raw Spark event log, Spark History Server
+export, live collector input, engine adapter, browser/report surface, optimizer
+surface, or public Spark support claim. Spark fixtures must stay free of raw
+SQL, raw plans, application/job/stage/task/executor IDs, hostnames, URLs,
+driver/executor logs, stack traces, paths, environment values, generated
+artifact names, and production payloads.
+
 `engine_facts/trino_statement_stats.json`,
 `engine_facts/trino_failed_statement_stats.json`, and
 `engine_facts/trino_completed_event.json` are synthetic Trino fixtures for the

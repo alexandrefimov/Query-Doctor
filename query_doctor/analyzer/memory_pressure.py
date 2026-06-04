@@ -11,6 +11,7 @@ from query_doctor.analyzer.profile_counter_registry import (
     profile_counter_definition,
     profile_counter_supports_strong_evidence,
 )
+from query_doctor.analyzer.profile_format import profile_section_mapping
 from query_doctor.analyzer.profile_signals import spill_metric_counter_name, spill_metric_value
 from query_doctor.analyzer.query_context import query_context
 from query_doctor.analyzer.thresholds import DEFAULT_LARGE_BYTES_THRESHOLD
@@ -42,6 +43,51 @@ def build_memory_pressure_facts(
     """Build raw-free memory-pressure evidence facts for the selected query."""
 
     return memory_pressure_facts(analysis, counter_registry).to_dict()
+
+
+def apply_memory_pressure_profile_policy(
+    facts: dict[str, Any],
+    profile_format: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply profile dialect and section mapping policy to memory facts."""
+
+    mapping = profile_section_mapping(profile_format, "memory_pressure")
+    mapping_state = mapping["state"]
+    if mapping_state == "supported":
+        return {
+            **facts,
+            "promotion_policy": "supported",
+            "section_mapping": mapping_state,
+            "section_mapping_reason": mapping["reason"],
+        }
+
+    limitations = [str(item) for item in facts.get("limitations") or [] if item]
+    observed_spill_count = int_value(facts.get("spill_or_scratch_evidence_count"))
+    if observed_spill_count:
+        limitations.append(
+            (
+                "Non-zero spill/scratch counters were parsed as limited context, but "
+                "this profile dialect or section is not mapped for memory-pressure promotion."
+            )
+        )
+    limitations.append(mapping["summary"])
+    return {
+        **facts,
+        "promotion_policy": mapping_state or "unknown",
+        "section_mapping": mapping_state,
+        "section_mapping_reason": mapping["reason"],
+        "status": "context_only" if observed_spill_count else facts.get("status"),
+        "evidence_tier": (
+            "context_only"
+            if facts.get("evidence_tier") in {"strong", "medium"}
+            else facts.get("evidence_tier")
+        ),
+        "finding_supported": False,
+        "runtime_metric_correlation_supported": False,
+        "spill_or_scratch_evidence_count": 0,
+        "limited_spill_or_scratch_counter_count": observed_spill_count,
+        "limitations": limitations,
+    }
 
 
 def memory_pressure_facts(

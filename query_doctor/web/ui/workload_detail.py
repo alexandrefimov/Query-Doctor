@@ -95,16 +95,21 @@ def render_workload_action_hints(view: RecentScanWorkloadDetailView) -> str:
         f"{escape_value(hint.priority)}</span></td>"
         f"<td>{escape_value(hint.title)}</td>"
         f"<td>{escape_value(hint.evidence)}</td>"
-        f"<td>{escape_value(hint.next_step)}</td>"
+        f"<td>{escape_value(hint.where_to_look)}</td>"
+        f"<td>{escape_value(hint.change_direction)}</td>"
+        f"<td>{escape_value(hint.verification_metric)}<span>{escape_value(hint.verification)}</span></td>"
+        f"<td>{escape_value(hint.outcome_summary)}</td>"
         "</tr>"
         for hint in view.action_hints
     )
     return (
         '<details class="batch-scan-details" open>'
-        "<summary>Action hints</summary>"
+        "<summary>Details action plan</summary>"
+        '<div class="batch-note">Use a representative case Action card to record the rerun outcome '
+        "after a comparable rerun; this keeps workload-level history tied to a selected safe case.</div>"
         '<div class="batch-table-wrap"><table class="batch-table">'
-        "<thead><tr><th>Priority</th><th>Signal</th><th>Evidence</th>"
-        "<th>Next check</th></tr></thead>"
+        "<thead><tr><th>Priority</th><th>Signal</th><th>Why</th><th>Where</th>"
+        "<th>What to change</th><th>How to verify</th><th>Outcomes</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div></details>"
     )
 
@@ -134,6 +139,7 @@ def render_workload_representatives(
         f"<td>{escape_value(case.duration_sec)}</td>"
         f"<td>{escape_value(case.score)}</td>"
         f"<td>{escape_value(case.primary_bottleneck)}</td>"
+        f'<td><a href="{case_action_card_href(case.case_id, detail_base_path)}">Action card</a></td>'
         "</tr>"
         for case in view.representatives
     )
@@ -142,7 +148,7 @@ def render_workload_representatives(
         "<summary>Representative cases</summary>"
         '<div class="batch-table-wrap"><table class="batch-table">'
         "<thead><tr><th>Role</th><th>Case</th><th>Query ID</th><th>User</th>"
-        "<th>Duration</th><th>Score</th><th>Primary</th></tr></thead>"
+        "<th>Duration</th><th>Score</th><th>Primary</th><th>Record outcome</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div></details>"
     )
 
@@ -166,6 +172,10 @@ def render_workload_members(
 
 def case_detail_href(case_id: str, detail_base_path: str) -> str:
     return f"{html.escape(detail_base_path.rstrip('/'), quote=True)}/{html.escape(case_id, quote=True)}"
+
+
+def case_action_card_href(case_id: str, detail_base_path: str) -> str:
+    return f"{case_detail_href(case_id, detail_base_path)}#action-plan"
 
 
 def render_workload_not_found_section(

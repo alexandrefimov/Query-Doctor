@@ -9,17 +9,20 @@ from query_doctor.web.action_outcomes import (
     workload_outcome_summary_text,
 )
 from query_doctor.web.presenters.recent_scan import (
-    RecentScanCaseRowView,
-    numeric_value,
     present_recent_scan_summary,
     safe_workload_fingerprint,
-    top_owner_summary,
 )
 from query_doctor.web.presenters.recent_scan_models import (
-    RecentScanWorkloadActionHintView,
+    RecentScanCaseRowView,
     RecentScanWorkloadDetailView,
     RecentScanWorkloadGroupView,
     RecentScanWorkloadRepresentativeCaseView,
+)
+from query_doctor.web.presenters.recent_scan_values import numeric_value
+from query_doctor.web.presenters.workload_action_contract import (
+    display_seconds,
+    top_owner_summary,
+    workload_action_hints,
 )
 
 
@@ -81,7 +84,11 @@ def present_workload_detail(
             workload_outcome_metrics.get(safe_fingerprint)
         ),
         member_case_ids=group.member_case_ids,
-        action_hints=workload_action_hints(group, rows),
+        action_hints=workload_action_hints(
+            group,
+            rows,
+            outcome_metric=workload_outcome_metrics.get(safe_fingerprint),
+        ),
         representatives=representative_cases(rows),
     )
 
@@ -192,131 +199,6 @@ def representative_cases(
             )
         )
     return tuple(representatives)
-
-
-def workload_action_hints(
-    group: RecentScanWorkloadGroupView,
-    rows: tuple[RecentScanCaseRowView, ...],
-) -> tuple[RecentScanWorkloadActionHintView, ...]:
-    hints: list[RecentScanWorkloadActionHintView] = []
-    total = len(rows)
-    if group.baseline_sample_count > 0 and group.regression in {"strong", "mild"}:
-        priority = "High" if group.regression == "strong" else "Medium"
-        current_p95 = display_seconds(group.duration_sec_p95)
-        baseline_p95 = display_seconds(group.baseline_duration_sec_p95)
-        hints.append(
-            RecentScanWorkloadActionHintView(
-                title="Baseline slowdown",
-                priority=priority,
-                evidence=(
-                    f"Current group p95 {current_p95}; baseline p95 {baseline_p95}; "
-                    f"history samples {group.baseline_sample_count}."
-                ),
-                next_step="Review the representative cases first, then compare the next scan after one confirmed change.",
-            )
-        )
-    runtime_count = primary_count(rows, "admission/runtime") or group_primary_count(
-        group, "runtime_admission", total
-    )
-    if runtime_count:
-        hints.append(
-            RecentScanWorkloadActionHintView(
-                title="Admission/runtime review",
-                priority="High" if runtime_count == total else "Medium",
-                evidence=count_evidence(
-                    runtime_count, total, "rows have admission/runtime as the primary signal"
-                ),
-                next_step="Check pool, admission, and runtime context on representative cases before treating this as SQL or stats work.",
-            )
-        )
-    stats_count = candidate_count(rows, "stats") or group_primary_count(group, "stats", total)
-    if stats_count:
-        hints.append(
-            RecentScanWorkloadActionHintView(
-                title="Stats review",
-                priority="High" if stats_count == total else "Medium",
-                evidence=count_evidence(
-                    stats_count, total, "rows have stats candidate or primary-signal facts"
-                ),
-                next_step="Open the top ranked stats case and verify table or partition stats before planning query-shape changes.",
-            )
-        )
-    sql_count = candidate_count(rows, "sql")
-    if sql_count:
-        hints.append(
-            RecentScanWorkloadActionHintView(
-                title="Query-shape review",
-                priority="Medium",
-                evidence=count_evidence(
-                    sql_count, total, "rows have query-shape or rewrite-review signals"
-                ),
-                next_step="Use per-case Details for the supported rewrite or manual review boundary; do not generalize from the fingerprint alone.",
-            )
-        )
-    spill_count = sum(1 for row in rows if row.has_spill)
-    if spill_count:
-        hints.append(
-            RecentScanWorkloadActionHintView(
-                title="Spill follow-up",
-                priority="Medium",
-                evidence=count_evidence(
-                    spill_count, total, "rows have explicit spill or scratch evidence"
-                ),
-                next_step="Inspect memory and spill evidence on member cases before treating the group as stats-only or SQL-only.",
-            )
-        )
-    failed_count = sum(1 for row in rows if row.has_failure or row.score_severity == "failed")
-    if failed_count:
-        hints.append(
-            RecentScanWorkloadActionHintView(
-                title="Status follow-up",
-                priority="Medium",
-                evidence=count_evidence(failed_count, total, "rows failed collection or analysis"),
-                next_step="Rerun or inspect row status before using group aggregates for a diagnosis.",
-            )
-        )
-    return tuple(hints)
-
-
-def candidate_count(rows: tuple[RecentScanCaseRowView, ...], kind: str) -> int:
-    if kind == "stats":
-        return sum(
-            1
-            for row in rows
-            if row.stats_tier in {"high", "medium"}
-            or row.primary_bottleneck.label.lower() == "stats"
-        )
-    if kind == "sql":
-        return sum(
-            1
-            for row in rows
-            if row.optimization_tier in {"high", "medium"}
-            or row.primary_bottleneck.label.lower() == "sql shape"
-        )
-    return 0
-
-
-def primary_count(rows: tuple[RecentScanCaseRowView, ...], label: str) -> int:
-    normalized = label.strip().lower()
-    return sum(1 for row in rows if row.primary_bottleneck.label.lower() == normalized)
-
-
-def group_primary_count(group: RecentScanWorkloadGroupView, label: str, total: int) -> int:
-    return total if group.primary_bottleneck_top == label else 0
-
-
-def count_evidence(count: int, total: int, detail: str) -> str:
-    return f"{count} of {total} selected {detail}."
-
-
-def display_seconds(value: Any) -> str:
-    seconds = numeric_value(value)
-    if seconds <= 0:
-        text = str(value or "").strip()
-        return text if text else "unknown"
-    if float(seconds).is_integer():
-        return f"{int(seconds)}s"
-    return f"{seconds:.1f}s"
 
 
 def severity_order(value: str) -> int:

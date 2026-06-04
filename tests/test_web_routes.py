@@ -141,8 +141,14 @@ def test_route_get_batch_workload_detail_renders_safe_group(tmp_path, monkeypatc
     assert response.status == 200
     assert "Workload details" in response.body
     assert "Outcomes" in response.body
-    assert "1 recorded; 1 applied; improved 1; last Stats refresh review: improved" in response.body
-    assert "Action hints" in response.body
+    assert (
+        "1 recorded; 1 applied; improved 1; "
+        "last applied action Stats refresh review: improved; "
+        "family signal Stats refresh review: improved 1/1 applied; "
+        "feedback sample below threshold (1/5 applied); "
+        "next check stats signal count and group p95"
+    ) in response.body
+    assert "Details action plan" in response.body
     assert "Stats review" in response.body
     assert "Representative cases" in response.body
     assert 'href="/batch/case/case-002"' in response.body

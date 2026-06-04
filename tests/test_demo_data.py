@@ -184,7 +184,8 @@ def test_generated_demo_details_renders_safe_query_context(tmp_path):
     assert "read 148.00 GiB; peak memory 36.00 GiB" in html
     assert "When and how much?" in html
     assert "Queue or cluster?" in html
-    assert "Diagnostic questions" in html
+    assert "Coverage checks" in html
+    assert "coverage, limitations, and supporting context" in html
     assert str(out_dir) not in html
     assert "original_query.sql" not in html
     assert "SELECT segment" not in html
@@ -308,7 +309,11 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
     assert "strong; baseline p95 38.0s; n=6" in workloads_html
     assert "Action outcomes" in workloads_html
     assert (
-        "2 recorded; 2 applied; improved 1, no change 1; last Admission/runtime check: no change"
+        "2 recorded; 2 applied; improved 1, no change 1; "
+        "last applied action Admission/runtime check: no change; "
+        "family signal Admission/runtime check: improved 1/2 applied, no change 1; "
+        "feedback sample below threshold (2/5 applied); "
+        "next check admission/runtime signal count and group p95"
     ) in workloads_html
     assert "demo-short-0008" in frequent_short_html
     assert "Low-value repeat" in frequent_short_html

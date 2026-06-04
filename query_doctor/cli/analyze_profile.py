@@ -23,7 +23,10 @@ from query_doctor.analyzer.context_collection import (
 from query_doctor.analyzer.data_movement import build_data_movement_facts
 from query_doctor.analyzer.evidence_quality import build_evidence_quality
 from query_doctor.analyzer.facts_renderer import render_md
-from query_doctor.analyzer.memory_pressure import build_memory_pressure_facts
+from query_doctor.analyzer.memory_pressure import (
+    apply_memory_pressure_profile_policy,
+    build_memory_pressure_facts,
+)
 from query_doctor.analyzer.metadata_renderer import stats_metadata_quality
 from query_doctor.analyzer.profile_counter_registry import (
     load_profile_counter_registry_context,
@@ -146,8 +149,12 @@ def main(argv: list[str] | None = None) -> int:
         analysis,
     )
     analysis["runtime_admission"] = build_runtime_admission_facts(analysis)
-    analysis["memory_pressure"] = build_memory_pressure_facts(
-        analysis, counter_registry=profile_counter_registry
+    profile_format = (
+        analysis.get("profile_format") if isinstance(analysis.get("profile_format"), dict) else {}
+    )
+    analysis["memory_pressure"] = apply_memory_pressure_profile_policy(
+        build_memory_pressure_facts(analysis, counter_registry=profile_counter_registry),
+        profile_format,
     )
     analysis["case_primary_bottleneck"] = classify_case_primary_bottleneck(analysis).to_dict()
     analysis["referenced_tables"] = collect_referenced_tables(digest_path.parent, text)

@@ -16,6 +16,7 @@ from query_doctor.report.llm_client import (
     LLM_PROVIDER_OLLAMA,
     normalize_llm_provider,
 )
+from query_doctor.report.language_contract import normalize_report_language
 from query_doctor.web.cluster_selection import build_web_cluster_configs, settings_for_cluster_key
 from query_doctor.web.models import (
     DEFAULT_HOST,
@@ -401,6 +402,17 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             os.environ.get("QD_LLM_BASE_URL"),
         ),
     )
+    try:
+        language = normalize_report_language(
+            first_string_value(
+                optional_config_string(config_values, "language"),
+                DEFAULT_LANGUAGE,
+            )
+            or DEFAULT_LANGUAGE
+        )
+    except ValueError as exc:
+        raise WebError(str(exc)) from exc
+
     settings = WebSettings(
         config=config_path,
         host=first_string_value(
@@ -589,11 +601,7 @@ def build_web_settings(args: argparse.Namespace, *, cwd: Path) -> WebSettings:
             DEFAULT_RECENT_SCAN_TIMEZONE,
         )
         or DEFAULT_RECENT_SCAN_TIMEZONE,
-        language=first_string_value(
-            optional_config_string(config_values, "language"),
-            DEFAULT_LANGUAGE,
-        )
-        or DEFAULT_LANGUAGE,
+        language=language,
         source_owner_user_options=source_owner_user_options,
     )
     if clusters:

@@ -44,6 +44,11 @@ def test_detects_classic_json_profile_without_claiming_full_parser_support():
     assert facts["analysis_support"] == "limited"
     assert facts["primary_bottleneck_policy"] == "unsupported"
     assert facts["source_capabilities"]["json_profile_payload"] == "observed"
+    assert facts["section_mappings"]["profile_resources"] == {
+        "state": "unsupported",
+        "reason": "classic_json_profile_unmapped",
+        "summary": "Classic JSON profile sections are not mapped by the current analyzer slice.",
+    }
     assert any(item["id"] == "profile_dialect_partially_mapped" for item in facts["limitations"])
 
 

@@ -72,6 +72,7 @@ from query_doctor.web.details_facts import (
     parse_data_movement_facts,
     parse_query_context_facts,
     parse_runtime_metrics_facts,
+    parse_source_provenance_facts,
     parse_stats_quality_facts,
     parse_table_metadata_context_facts,
 )
@@ -1559,16 +1560,38 @@ def test_recent_scan_case_verdict_keeps_clean_low_confidence_primary_cautious():
     )
 
     priority_fact = diagnostic_fact_by_id(view.diagnostic_facts, "priority")
+    action_view = present_recent_scan_action_candidates(view)
     html = render_recent_scan_case_detail_view(view)
 
     assert primary_bottleneck_summary(view) == "No supported problem signal is classified yet"
     assert priority_fact is not None
     assert priority_fact.value == "Clean · 0"
-    assert present_recent_scan_action_candidates(view).cards == ()
+    assert len(action_view.cards) == 1
+    assert action_view.cards[0].title == "No supported change direction"
+    assert action_view.cards[0].recommendation_id == "no_supported_change.v1"
+    assert "did not identify a suspicious problem signal" in action_view.cards[0].why
+    assert "Do not change SQL, collect stats, or tune runtime settings" in (
+        action_view.cards[0].guardrails
+    )
     assert (
         '<h2 class="case-verdict-title">No supported problem signal is classified yet</h2>' in html
     )
+    assert_contains_in_order(
+        html,
+        [
+            "No supported change direction",
+            "Why this deserves attention",
+            "This query is not currently prioritized for analyst action",
+            "Where to look",
+            "Score evidence and source coverage",
+            "What to change",
+            "No supported change is recommended for this selected case",
+            "How to verify",
+            "On the next comparable scan or rerun",
+        ],
+    )
     assert "Query shape is worth a rewrite review" not in html
+    assert "No prioritized rewrite or stats action" not in html
     assert_no_forbidden_fragments(html)
 
 
@@ -1687,6 +1710,207 @@ def test_recent_scan_case_detail_summary_helpers_use_primary_bottleneck():
     assert "primary bottleneck" in detail_html
     assert_no_forbidden_fragments(primary_bottleneck_summary(view))
     assert_no_forbidden_fragments(detail_html)
+
+
+def test_recent_scan_admission_follow_up_points_to_profile_facts_safely():
+    case = {
+        "query_id": "abc",
+        "score": 17,
+        "score_severity": "high",
+        "collection_status": "ok",
+        "analysis_status": "ok",
+        "metadata_status": "collected",
+        "case_primary_bottleneck": {
+            "label": "runtime_admission",
+            "confidence": "high",
+            "reasons": [
+                "admission_wait_source_profile_resource_facts",
+                "admission_wait_source_profile_timing_facts",
+            ],
+        },
+        "source_locators": {
+            "runtime_admission": [
+                {"id": "runtime_admission_window", "detail": "case runtime window"},
+                {
+                    "id": "profile_resource_admission_evidence",
+                    "detail": "query-specific admission result or resource wait",
+                },
+                {
+                    "id": "profile_timing_admission_evidence",
+                    "detail": "query timeline admission phase",
+                },
+                {"id": "unknown_locator", "detail": "SELECT secret_col FROM db.table"},
+            ],
+        },
+    }
+
+    action_view = present_recent_scan_action_candidates(
+        present_recent_scan_case_detail("case-001", case)
+    )
+    html = render_typed_case_detail("case-001", case)
+
+    assert action_view.cards[0].title == "Admission/runtime follow-up"
+    assert [locator.label for locator in action_view.cards[0].source_locators] == [
+        "Runtime: admission and pool timeline",
+        "Profile: resource admission facts",
+        "Profile: timing admission facts",
+    ]
+    assert "Runtime: admission and pool timeline: case runtime window" in html
+    assert (
+        "Profile: resource admission facts: query-specific admission result or resource wait"
+        in html
+    )
+    assert "Profile: timing admission facts: query timeline admission phase" in html
+    assert "unknown_locator" not in html
+    assert "secret_col" not in html
+    assert "db.table" not in html
+    assert_no_forbidden_fragments(action_view)
+    assert_no_forbidden_fragments(html)
+
+
+def test_recent_scan_direct_impala_details_show_source_limitations_safely():
+    case = {
+        "query_id": "abc",
+        "score": 17,
+        "score_severity": "suspicious",
+        "collection_status": "ok",
+        "analysis_status": "ok",
+        "metadata_status": "skipped",
+        "case_primary_bottleneck": {
+            "label": "runtime_admission",
+            "confidence": "medium",
+        },
+    }
+
+    direct_view = present_recent_scan_case_detail(
+        "case-001",
+        case,
+        query_profile_source="impala",
+    )
+    cm_view = present_recent_scan_case_detail(
+        "case-001",
+        case,
+        query_profile_source="cm",
+    )
+    html = render_recent_scan_case_detail_view(direct_view)
+
+    assert direct_view.source_limitations == (
+        "Direct Impala scans do not include Cloudera Manager event context.",
+        (
+            "Optional Prometheus runtime metrics were not collected for this case; runtime "
+            "interpretation relies on profile and query-context facts."
+        ),
+        (
+            "Bounded Impala metadata is unavailable for this case; stats and table-layout "
+            "checks remain limited."
+        ),
+    )
+    assert cm_view.source_limitations == ()
+    assert "Source limitations" in html
+    assert html.index('<section id="source-limitations"') < html.index(
+        '<section id="pipeline-status"'
+    )
+    assert "Direct Impala context" in html
+    assert "Direct Impala scans do not include Cloudera Manager event context." in html
+    assert "Optional Prometheus runtime metrics were not collected for this case" in html
+    assert "Bounded Impala metadata is unavailable for this case" in html
+    assert_no_forbidden_fragments(direct_view)
+    assert_no_forbidden_fragments(html)
+
+
+def test_parse_source_provenance_facts_from_analyzer_markdown():
+    facts = """
+## Source Provenance
+
+- guardrail: Source provenance is a raw-free coverage summary.
+- profile: partial; source=Impala daemon profile endpoint; coverage=dialect=classic_text_profile, layout=classic, compatibility=unsupported
+  - limitation: Profile source coverage is unknown.
+- metrics: none; source=Runtime metrics; coverage=not_collected
+  - limitation: Runtime metrics were not collected for this case.
+""".strip()
+
+    parsed = parse_source_provenance_facts(facts)
+
+    assert parsed == {
+        "guardrail": "Source provenance is a raw-free coverage summary.",
+        "items": [
+            {
+                "kind": "profile",
+                "status": "partial",
+                "source": "Impala daemon profile endpoint",
+                "coverage": "dialect=classic_text_profile, layout=classic, compatibility=unsupported",
+                "limitations": ["Profile source coverage is unknown."],
+            },
+            {
+                "kind": "metrics",
+                "status": "none",
+                "source": "Runtime metrics",
+                "coverage": "not_collected",
+                "limitations": ["Runtime metrics were not collected for this case."],
+            },
+        ],
+    }
+
+
+def test_recent_scan_direct_impala_source_limitations_use_safe_source_provenance():
+    case = {
+        "query_id": "abc",
+        "score": 17,
+        "score_severity": "suspicious",
+        "collection_status": "ok",
+        "analysis_status": "ok",
+        "metadata_status": "collected",
+        "case_primary_bottleneck": {
+            "label": "runtime_admission",
+            "confidence": "medium",
+        },
+    }
+    provenance = {
+        "items": [
+            {
+                "kind": "engine",
+                "status": "unknown",
+                "limitations": [
+                    "raw detail SELECT secret_col FROM private.table token=secret-value"
+                ],
+            },
+            {"kind": "profile", "status": "partial"},
+            {"kind": "events", "status": "none"},
+            {"kind": "metrics", "status": "partial"},
+            {"kind": "metadata", "status": "partial"},
+        ]
+    }
+
+    view = present_recent_scan_case_detail(
+        "case-001",
+        case,
+        source_provenance_facts=provenance,
+        query_profile_source="impala",
+    )
+    html = render_recent_scan_case_detail_view(view)
+
+    assert view.source_limitations == (
+        "Direct Impala scans do not include Cloudera Manager event context.",
+        "Engine identity is unavailable from deterministic profile facts.",
+        "Profile source coverage is partial; unsupported profile sections remain limitations.",
+        (
+            "Optional Prometheus runtime metrics are incomplete or unavailable for this case; "
+            "runtime interpretation relies on profile and query-context facts."
+        ),
+        (
+            "Bounded Impala metadata is partial for this case; stats and table-layout checks "
+            "remain limited."
+        ),
+    )
+    assert "Engine identity is unavailable from deterministic profile facts." in html
+    assert "Profile source coverage is partial" in html
+    assert "Optional Prometheus runtime metrics are incomplete or unavailable" in html
+    assert "Bounded Impala metadata is partial" in html
+    assert "secret_col" not in html
+    assert "private.table" not in html
+    assert "secret-value" not in html
+    assert_no_forbidden_fragments(view)
+    assert_no_forbidden_fragments(html)
 
 
 def test_recent_scan_case_detail_summary_helpers_use_backend_data_skew_reason():
@@ -2317,7 +2541,9 @@ def test_recent_scan_details_groups_diagnostics_by_user_questions():
     ]
     assert len(all_question_fact_ids) == len(set(all_question_fact_ids))
     assert '<section id="diagnostic-questions"' in html
-    assert "Diagnostic questions" in html
+    assert "Coverage checks" in html
+    assert "coverage, limitations, and supporting context" in html
+    assert "Technical facts grouped" not in html
     assert "What looks wrong?" not in html
     assert "Queue or cluster?" in html
     assert '<a href="#runtime-evidence">query window</a>' in html
@@ -2830,25 +3056,24 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     assert 'href="#workload-action-queue">Action queue</a>' in html
     assert 'id="workload-action-queue"' in html
     assert "<th>Signal / evidence</th>" in html
-    assert "<th>Next check / verification</th>" in html
+    assert "<th>Open next</th>" in html
     assert "Baseline slowdown" in html
     assert "Admission/runtime review" in html
     assert "Low-value repeat" in html
     assert '<td class="workload-action-signal"><strong>Baseline slowdown</strong>' in html
-    assert '<td class="workload-action-plan"><span><strong>Check</strong>' in html
-    assert "<span><strong>Review</strong>" in html
-    assert "<span><strong>Compare</strong>" in html
-    assert "<span><strong>Confirm</strong>" in html
-    assert "Workload details: representative cases and local baseline block." in html
-    assert "Workload p95 versus baseline p95 under comparable scan scope." in html
-    assert "Representative Details: pool, admission wait, and runtime context facts." in html
-    assert "Admission/runtime signal count and group p95 under comparable load." in html
-    assert (
-        "Open workload details and compare representative cases before planning one change." in html
-    )
+    assert "<span><strong>Open</strong>" in html
+    assert "<span><strong>Details gives</strong> why, where, what to change" in html
+    assert "<span><strong>Review</strong>" not in html
+    assert "<span><strong>Compare</strong>" not in html
+    assert "<span><strong>Confirm</strong>" not in html
+    assert "Workload details: representative cases and local baseline block." not in html
+    assert "Workload p95 versus baseline p95 under comparable scan scope." not in html
+    assert "Representative Details: pool, admission wait, and runtime context facts." not in html
+    assert "Admission/runtime signal count and group p95 under comparable load." not in html
+    assert "Workload details and representative cases before planning one change." in html
     assert (
         "Rerun a comparable scan after the change and confirm p95 moves toward the baseline."
-        in html
+        not in html
     )
     assert 'href="#workload-admin-digest">Admin digest</a>' in html
     assert 'id="workload-admin-digest"' in html
@@ -2884,10 +3109,17 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     assert 'href="#workload-groups"' in html
     assert "<th>Outcomes</th>" in html
     assert (
-        "2 recorded; 2 applied; improved 1, no change 1; last Stats refresh review: no change"
+        "2 recorded; 2 applied; improved 1, no change 1; "
+        "last applied action Stats refresh review: no change; "
+        "family signal Stats refresh review: improved 1/2 applied, no change 1; "
+        "feedback sample below threshold (2/5 applied); "
+        "next check stats signal count and group p95"
     ) in html
     assert (
-        "1 recorded; 0 applied; no applied outcomes; last Admission/runtime check: skipped" in html
+        "1 recorded; 0 applied; no applied outcomes; last applied action none yet; "
+        "family signal Admission/runtime check: no applied records yet; "
+        "feedback sample below threshold (0/5 applied); "
+        "next check admission/runtime signal count and group p95" in html
     )
     assert "<th>Open</th>" in html
     assert "strong regression; current p95 20s; baseline p95 12.5s; history samples 3." in html
@@ -3087,6 +3319,18 @@ def test_recent_scan_workload_detail_presents_representative_cases_safely():
         workload_outcome_metrics=workload_outcome_metrics,
     )
     assert view is not None
+    summary_view = present_recent_scan_summary(
+        summary,
+        workload_outcome_metrics=workload_outcome_metrics,
+    )
+    queue_entry = summary_view.workload_digest.action_queue[0]
+    assert queue_entry.fingerprint == view.fingerprint
+    first_detail_action = view.action_hints[0]
+    assert first_detail_action.title == queue_entry.signal
+    assert first_detail_action.evidence == queue_entry.evidence
+    assert first_detail_action.where_to_look == queue_entry.review_anchor
+    assert first_detail_action.verification_metric == queue_entry.verification_metric
+    assert first_detail_action.verification == queue_entry.verification
     assert [case.role for case in view.representatives] == [
         "Top ranked",
         "Slowest",
@@ -3105,16 +3349,38 @@ def test_recent_scan_workload_detail_presents_representative_cases_safely():
     assert "Admission/runtime 1/3; SQL shape 1/3; Stats 1/3" in html
     assert "Some rows failed collection or analysis, so inspect row status first." in html
     assert "Representative cases" in html
-    assert "Action hints" in html
+    assert "Details action plan" in html
+    assert "Why" in html
+    assert "Where" in html
+    assert "What to change" in html
+    assert "How to verify" in html
     assert "Outcomes" in html
-    assert "1 recorded; 1 applied; worsened 1; last Query optimization review: worsened" in html
+    assert (
+        "1 recorded; 1 applied; worsened 1; "
+        "last applied action Query optimization review: worsened; "
+        "family signal Query optimization review: improved 0/1 applied, worsened 1; "
+        "feedback sample below threshold (1/5 applied); "
+        "next check query-shape signal count and group p95"
+    ) in html
     assert "Baseline slowdown" in html
     assert "Admission/runtime review" in html
     assert "Stats review" in html
     assert "Query-shape review" in html
     assert "Spill follow-up" in html
     assert "Status follow-up" in html
-    assert "Current group p95 90s; baseline p95 40s; history samples 8." in html
+    assert "mild regression; current p95 90s; baseline p95 40s." in html
+    assert "Workload details: representative cases and local baseline block." in html
+    assert "Workload p95 versus baseline p95 under comparable scan scope." in html
+    assert (
+        "Rerun a comparable scan after the change and confirm p95 moves toward the baseline."
+        in html
+    )
+    assert (
+        "Use a representative case Action card to record the rerun outcome after a comparable rerun"
+        in html
+    )
+    assert "Record outcome" in html
+    assert 'href="/batch/case/case-001#action-plan">Action card</a>' in html
     assert "1 of 3 selected rows have stats candidate or primary-signal facts." in html
     assert "Top ranked" in html
     assert "Slowest" in html
@@ -3225,16 +3491,26 @@ def test_recent_scan_workload_action_queue_uses_optimizer_review_track():
 
     assert entry.signal == "Query-shape review"
     assert "top review track grouped aggregate (2)" in entry.evidence
-    assert "Review grouped aggregate grain first" in entry.next_step
+    assert entry.next_step == "Workload details for grouped aggregate review."
     assert "Representative Details: Review track: grouped aggregate" in entry.review_anchor
     assert "grouping grain, aggregate input rows, stats freshness" in entry.review_anchor
     assert "Grouped-aggregate input rows, grouping-grain estimates" in entry.verification_metric
+    workload_view = present_workload_detail(summary, "wf_ffffffffffffffffffffffff")
+    assert workload_view is not None
+    detail_action = workload_view.action_hints[0]
+    assert detail_action.title == entry.signal
+    assert detail_action.evidence == entry.evidence
+    assert detail_action.where_to_look == entry.review_anchor
+    assert "Review grouped aggregate grain first" in detail_action.change_direction
+    assert detail_action.verification_metric == entry.verification_metric
+    assert detail_action.verification == entry.verification
 
     html = render_batch_summary(summary, query_group="bad")
     assert "Query-shape review" in html
     assert "top review track grouped aggregate (2)" in html
-    assert "Review grouped aggregate grain first" in html
-    assert "Grouped-aggregate input rows, grouping-grain estimates" in html
+    assert "Workload details for grouped aggregate review." in html
+    assert "Review grouped aggregate grain first" not in html
+    assert "Grouped-aggregate input rows, grouping-grain estimates" not in html
     assert_no_forbidden_fragments(view)
     assert_no_forbidden_fragments(html)
 
@@ -4157,6 +4433,7 @@ def test_recent_scan_detail_shows_candidate_context_safely():
                 "counter_signals": ["query shape may still need SQL review"],
                 "suggested_review_areas": ["table/partition row counts"],
                 "required_confirmation": ["compare EXPLAIN before and after stats collection"],
+                "evidence_detail": ["partition row-count coverage partial: 6/10 known, 4 unknown"],
             },
             "source_locators": {
                 "query_optimization": [
@@ -4207,7 +4484,10 @@ def test_recent_scan_detail_shows_candidate_context_safely():
     assert (
         "after the change, check whether fewer rows or better estimates feed that operator" in html
     )
-    assert "Refresh table/partition row-count stats for the referenced physical tables" in html
+    assert (
+        "Structured metadata detail: partition row-count coverage partial: 6/10 known, 4 unknown"
+    ) in html
+    assert "Confirm and refresh the partition row-count gaps for referenced physical tables" in html
     assert "Use the marked memory-pressure operator as a secondary before/after anchor" in html
     assert "compare EXPLAIN before and after stats collection" in html
     assert "SQL: final SELECT filter (line 11)" in html
@@ -4285,6 +4565,94 @@ def test_recent_scan_action_candidate_view_renderer_matches_legacy_adapter():
     ]
     assert_no_forbidden_fragments(action_view)
     assert_no_forbidden_fragments(render_action_candidate_findings_view(action_view))
+
+
+def test_recent_scan_query_action_card_preserves_stats_split_caveat():
+    view = present_recent_scan_case_detail(
+        "case-001",
+        {
+            "case_index": 1,
+            "query_id": "shape-caveat:id",
+            "duration_sec": 120,
+            "_detail_optimization_rank": 1,
+            "query_optimization_candidate": {
+                "score": 64,
+                "tier": "medium",
+                "confidence": "medium",
+                "impact": "medium",
+                "reasons": ["join row expansion or cardinality mismatch with join evidence"],
+                "counter_signals": [
+                    "admission wait is a material runtime component",
+                    "very short query",
+                    "metadata was not collected, so stats-vs-query-shape split is unconfirmed",
+                    "some cardinality mismatch may also require statistics refresh",
+                ],
+                "suggested_review_areas": ["join keys and join cardinality"],
+            },
+            "optimizer_rewrite_support": {
+                "status": "guidance_only",
+                "label": "Guidance only",
+                "reason": "No Python-owned SQL rewrite recipe is available for this shape",
+                "rewriteability_bucket": "human_review_only",
+                "rewriteability_label": "Human review only",
+            },
+        },
+    )
+
+    action_view = present_recent_scan_action_candidates(view)
+    query_card = action_view.cards[0]
+    html = render_action_candidate_findings_view(action_view)
+
+    assert query_card.title == "Query-shape recommendation"
+    assert "stats-vs-query-shape split is unconfirmed" in query_card.why
+    assert "may also require statistics update" in query_card.why
+    assert "stats-vs-query-shape split is unconfirmed" in html
+    assert "may also require statistics update" in html
+    assert_no_forbidden_fragments(action_view)
+    assert_no_forbidden_fragments(html)
+
+
+def test_recent_scan_stats_action_card_preserves_generic_column_stats_caveat():
+    view = present_recent_scan_case_detail(
+        "case-001",
+        {
+            "case_index": 1,
+            "query_id": "stats-caveat:id",
+            "duration_sec": 120,
+            "_detail_stats_rank": 1,
+            "stats_optimization_candidate": {
+                "score": 62,
+                "tier": "medium",
+                "confidence": "medium",
+                "impact": "medium",
+                "need_type": "column_stats",
+                "speed_benefit": "medium",
+                "reasons": ["missing or incomplete column statistics"],
+                "counter_signals": [
+                    "metadata collection was partial",
+                    "query shape may still need SQL review",
+                    "column stats gap is not tied to specific join/filter columns",
+                ],
+                "suggested_review_areas": ["column statistics"],
+                "required_confirmation": [
+                    "compare EXPLAIN before and after stats collection",
+                    "rerun under comparable load to confirm runtime improvement",
+                ],
+                "evidence_detail": ["column stats incomplete/unknown"],
+            },
+        },
+    )
+
+    action_view = present_recent_scan_action_candidates(view)
+    stats_card = action_view.cards[0]
+    html = render_action_candidate_findings_view(action_view)
+
+    assert stats_card.title == "Stats maintenance recommendation"
+    assert "not tied to specific join/filter columns" in stats_card.why
+    assert "not tied to specific join/filter columns" in html
+    assert "metadata collection was partial" in stats_card.why
+    assert_no_forbidden_fragments(action_view)
+    assert_no_forbidden_fragments(html)
 
 
 def test_recent_scan_action_candidate_falls_back_for_high_score_without_candidate_tiers():

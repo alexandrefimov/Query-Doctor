@@ -165,8 +165,32 @@ def test_workload_action_outcome_metrics_group_safe_workload_rollups():
     assert metric.last_recommendation_id == "runtime_admission_check.v1"
     assert metric.last_applied == "skip"
     assert metric.last_outcome == "not_applicable"
+    assert metric.last_applied_recommendation_id == "stats_refresh_review.v1"
+    assert metric.last_applied_outcome == "no_change"
+    assert metric.family_signal.recommendation_id == "stats_refresh_review.v1"
+    assert metric.family_signal.applied_count == 2
+    assert metric.family_signal.min_sample_met is False
+    assert metric.family_signal.min_applied == 5
     assert workload_outcome_summary_text(metric) == (
-        "3 recorded; 2 applied; improved 1, no change 1; last Admission/runtime check: skipped"
+        "3 recorded; 2 applied; improved 1, no change 1; "
+        "last applied action Stats refresh review: no change; "
+        "family signal Stats refresh review: improved 1/2 applied, no change 1; "
+        "feedback sample below threshold (2/5 applied); "
+        "next check stats signal count and group p95"
+    )
+    calibrated_metric = summarize_workload_action_outcomes(
+        [
+            outcome_record(workload_fingerprint="wf_aaaaaaaaaaaaaaaaaaaaaaaa"),
+            outcome_record(
+                workload_fingerprint="wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                outcome="no_change",
+            ),
+        ],
+        min_applied=2,
+    )["wf_aaaaaaaaaaaaaaaaaaaaaaaa"]
+    assert calibrated_metric.family_signal.min_sample_met is True
+    assert "feedback sample threshold met (2/2 applied)" in workload_outcome_summary_text(
+        calibrated_metric
     )
 
 

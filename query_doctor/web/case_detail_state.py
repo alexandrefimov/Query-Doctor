@@ -23,6 +23,7 @@ from query_doctor.web.details_facts import (
     load_batch_case_query_context_facts,
     load_batch_case_runtime_diagnosis_facts,
     load_batch_case_runtime_metrics_facts,
+    load_batch_case_source_provenance_facts,
     load_batch_case_stats_quality_facts,
 )
 from query_doctor.web.jobs import WebJobSnapshot, WebJobStore
@@ -174,6 +175,7 @@ def build_batch_case_detail_render_context(
     stats_quality_facts = load_batch_case_stats_quality_facts(settings, case)
     runtime_metrics_facts = load_batch_case_runtime_metrics_facts(settings, case)
     query_context_facts = load_batch_case_query_context_facts(settings, case)
+    source_provenance_facts = load_batch_case_source_provenance_facts(settings, case)
     runtime_diagnosis_facts = load_batch_case_runtime_diagnosis_facts(settings, case)
     data_movement_facts = load_batch_case_data_movement_facts(settings, case)
     cluster_runtime_context_facts = load_batch_case_cluster_runtime_context_facts(settings, case)
@@ -196,7 +198,11 @@ def build_batch_case_detail_render_context(
         evidence_quality_facts,
         stats_quality_facts,
         query_context_facts,
+        source_provenance_facts,
         data_movement_facts=data_movement_facts,
+        query_profile_source=str(
+            case.get("_detail_query_profile_source") or settings.query_profile_source
+        ),
         report_state=report_state,
     )
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")

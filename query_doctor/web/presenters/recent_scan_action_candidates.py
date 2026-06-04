@@ -82,6 +82,7 @@ def present_recent_scan_action_candidates(
         confirmation = str(
             stats.get("required_confirmation") or "compare EXPLAIN and rerun under comparable load"
         ).strip()
+        evidence_detail = str(stats.get("evidence_detail") or "").strip()
         counter_sentence = candidate_counter_signal_note(stats)
         source_locators = view.source_locators.get(
             "stats_refresh",
@@ -110,11 +111,18 @@ def present_recent_scan_action_candidates(
                         "cluster_context",
                     ),
                 ),
-                why=stats_why(stats.get("need_type"), summary, counter_sentence, source_locators),
+                why=stats_why(
+                    stats.get("need_type"),
+                    summary,
+                    counter_sentence,
+                    source_locators,
+                    evidence_detail,
+                ),
                 change_direction=stats_change_direction(
                     stats.get("need_type"),
                     review_areas,
                     source_locators,
+                    evidence_detail,
                 ),
                 verification=confirmation,
             )
@@ -158,6 +166,8 @@ def present_recent_scan_action_candidates(
         cards.append(processing_failure_follow_up_card(view))
     if not cards and diagnostic_follow_up_is_visible(view):
         cards.append(diagnostic_follow_up_card(view))
+    if not cards:
+        cards.append(no_supported_change_card(view))
     return RecentScanActionCandidatesView(cards=tuple(cards))
 
 
@@ -299,6 +309,62 @@ def diagnostic_follow_up_card(
         change_direction=diagnostic_follow_up_change_direction(primary),
         verification=diagnostic_follow_up_verification(primary),
     )
+
+
+def no_supported_change_card(
+    view: RecentScanCaseDetailView,
+) -> RecentScanActionCandidateCardView:
+    return RecentScanActionCandidateCardView(
+        "No supported change direction",
+        (
+            "Deterministic analysis did not select a Medium/High query-shape, stats, "
+            "runtime admission, or processing follow-up for this case. "
+            f"Score: {view.score}. Severity: {candidate_title(view.score_severity)}."
+        ),
+        recommendation_id="no_supported_change.v1",
+        source_locators=no_supported_change_locators(view),
+        supporting_facts=supporting_facts_for_action(
+            view,
+            (
+                "priority",
+                "duration",
+                "confidence",
+                "workload_baseline",
+                "workload_group",
+                "table_stats",
+            ),
+        ),
+        why=(
+            "This query is not currently prioritized for analyst action because supported "
+            "deterministic facts did not identify a suspicious problem signal."
+        ),
+        guardrails=(
+            "Do not change SQL, collect stats, or tune runtime settings from this case alone. "
+            "Treat missing source coverage as a limitation, not as evidence of a problem."
+        ),
+        change_direction=(
+            "No supported change is recommended for this selected case. If the workload still "
+            "matters operationally, compare it with similar queries or wait for a stronger "
+            "deterministic signal before choosing a change."
+        ),
+        verification=(
+            "On the next comparable scan or rerun, confirm the case remains low priority and "
+            "that duration, workload baseline, admission wait, spill, and stats signals do not "
+            "cross the suspicious thresholds."
+        ),
+    )
+
+
+def no_supported_change_locators(
+    view: RecentScanCaseDetailView,
+) -> tuple[RecentScanSourceLocatorView, ...]:
+    locators: list[RecentScanSourceLocatorView] = []
+    if not view.query_context.unavailable or view.runtime_fields:
+        locators.extend(generic_source_locator("runtime", "Runtime and workload context"))
+    if not view.metadata.unavailable or view.table_stats_status not in {"", "unknown", "none"}:
+        locators.extend(generic_source_locator("metadata", "Metadata coverage and stats context"))
+    locators.extend(generic_source_locator("diagnostics", "Score evidence and source coverage"))
+    return tuple(locators[:3])
 
 
 def diagnostic_follow_up_locators(
@@ -515,6 +581,7 @@ def stats_why(
     summary: str,
     counter_text: str,
     locators: tuple[RecentScanSourceLocatorView, ...],
+    evidence_detail: str = "",
 ) -> str:
     evidence = meaningful_text(summary, "stats and estimate-mismatch evidence")
     need = detail_stats_need_label(need_type)
@@ -523,8 +590,9 @@ def stats_why(
         f"That makes {need} worth checking before deeper SQL rewrites, because missing or "
         "incomplete stats can leave the planner choosing from weak row estimates."
     )
+    detail_text = f"Structured metadata detail: {evidence_detail}." if evidence_detail else ""
     location_hint = stats_location_hint(locators)
-    return join_action_text(explanation, location_hint, counter_text)
+    return join_action_text(explanation, detail_text, location_hint, counter_text)
 
 
 def stats_location_hint(locators: tuple[RecentScanSourceLocatorView, ...]) -> str:
@@ -610,23 +678,46 @@ def stats_change_direction(
     need_type: Any,
     review_areas: str,
     locators: tuple[RecentScanSourceLocatorView, ...],
+    evidence_detail: str = "",
 ) -> str:
     need = str(need_type or "").strip().lower()
+    detail = str(evidence_detail or "").strip().lower()
     if need == "table_and_column_stats":
-        primary = (
-            "Refresh table/partition row-count stats for the referenced physical tables first; add "
-            "column stats only if the plan still shows weak estimates after that."
-        )
+        if "partition row-count" in detail:
+            primary = (
+                "Confirm and refresh the referenced table/partition row-count gaps through the "
+                "approved stats-maintenance process first; add column stats only if the plan still "
+                "shows weak estimates after that."
+            )
+        else:
+            primary = (
+                "Confirm and refresh table/partition row-count stats for the referenced physical "
+                "tables first; add column stats only if the plan still shows weak estimates after "
+                "that."
+            )
     elif need == "table_stats":
-        primary = (
-            "Refresh table/partition row-count stats for the referenced physical tables, then "
-            "recheck the plan before collecting broader column stats."
-        )
+        if "partition row-count" in detail:
+            primary = (
+                "Confirm and refresh the partition row-count gaps for referenced physical tables, "
+                "then recheck the plan before collecting broader column stats."
+            )
+        else:
+            primary = (
+                "Confirm and refresh table/partition row-count stats for the referenced physical "
+                "tables, then recheck the plan before collecting broader column stats."
+            )
     elif need == "column_stats":
-        primary = (
-            "Collect column stats for join and filter columns only after table/partition row-count "
-            "stats are available."
-        )
+        if "join/filter column" in detail:
+            primary = (
+                "Confirm and refresh the join/filter column stats gaps through the approved "
+                "stats-maintenance process only after table/partition row-count stats are "
+                "available."
+            )
+        else:
+            primary = (
+                "Confirm and refresh column stats for join and filter columns only after "
+                "table/partition row-count stats are available."
+            )
     else:
         primary = (
             f"Update {detail_stats_need_label(need_type)}, then inspect {review_areas} for "

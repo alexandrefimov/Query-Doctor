@@ -42,6 +42,26 @@ COMMAND_SPECS = MappingProxyType(
             module="query_doctor.cli.collect_impala_profile",
             console_script="query-doctor-collect-impala-profile",
         ),
+        "collect_spark_history": CommandSpec(
+            module="query_doctor.cli.collect_spark_history",
+            console_script="query-doctor-collect-spark-history",
+        ),
+        "diagnose_spark_compact": CommandSpec(
+            module="query_doctor.cli.diagnose_spark_compact",
+            console_script="query-doctor-diagnose-spark-compact",
+        ),
+        "build_spark_evidence_package": CommandSpec(
+            module="query_doctor.cli.build_spark_evidence_package",
+            console_script="query-doctor-build-spark-evidence-package",
+        ),
+        "validate_spark_evidence_package": CommandSpec(
+            module="query_doctor.cli.validate_spark_evidence_package",
+            console_script="query-doctor-validate-spark-evidence-package",
+        ),
+        "diagnose_trino_compact": CommandSpec(
+            module="query_doctor.cli.diagnose_trino_compact",
+            console_script="query-doctor-diagnose-trino-compact",
+        ),
         "optimize_query": CommandSpec(
             module="query_doctor.cli.optimize_query",
             console_script="query-doctor-optimize-query",
@@ -53,6 +73,54 @@ COMMAND_SPECS = MappingProxyType(
         "report": CommandSpec(
             module="query_doctor.cli.report",
             console_script="query-doctor-report",
+        ),
+        "trino_coordinator_query_info_target_check": CommandSpec(
+            module="query_doctor.cli.trino_coordinator_query_info_target_check",
+            console_script="query-doctor-trino-coordinator-query-info-target-check",
+        ),
+        "trino_coordinator_query_info_pruned_probe": CommandSpec(
+            module="query_doctor.cli.trino_coordinator_query_info_pruned_probe",
+            console_script="query-doctor-trino-coordinator-query-info-pruned-probe",
+        ),
+        "trino_coordinator_query_info_pruned_import": CommandSpec(
+            module="query_doctor.cli.trino_coordinator_query_info_pruned_import",
+            console_script="query-doctor-trino-coordinator-query-info-pruned-import",
+        ),
+        "trino_event_store_import": CommandSpec(
+            module="query_doctor.cli.trino_event_store_import",
+            console_script="query-doctor-trino-event-store-import",
+        ),
+        "trino_event_source_contract_check": CommandSpec(
+            module="query_doctor.cli.trino_event_source_contract_check",
+            console_script="query-doctor-trino-event-source-contract-check",
+        ),
+        "trino_http_event_archive_import": CommandSpec(
+            module="query_doctor.cli.trino_http_event_archive_import",
+            console_script="query-doctor-trino-http-event-archive-import",
+        ),
+        "trino_http_query_detail_archive_import": CommandSpec(
+            module="query_doctor.cli.trino_http_query_detail_archive_import",
+            console_script="query-doctor-trino-http-query-detail-archive-import",
+        ),
+        "trino_import": CommandSpec(
+            module="query_doctor.cli.trino_import",
+            console_script="query-doctor-trino-import",
+        ),
+        "trino_query_detail_import": CommandSpec(
+            module="query_doctor.cli.trino_query_detail_import",
+            console_script="query-doctor-trino-query-detail-import",
+        ),
+        "trino_query_info_pruned_import": CommandSpec(
+            module="query_doctor.cli.trino_query_info_pruned_import",
+            console_script="query-doctor-trino-query-info-pruned-import",
+        ),
+        "trino_query_list_import": CommandSpec(
+            module="query_doctor.cli.trino_query_list_import",
+            console_script="query-doctor-trino-query-list-import",
+        ),
+        "trino_statement_stats_import": CommandSpec(
+            module="query_doctor.cli.trino_statement_stats_import",
+            console_script="query-doctor-trino-statement-stats-import",
         ),
     }
 )

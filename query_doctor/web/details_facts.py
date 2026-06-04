@@ -131,6 +131,14 @@ def load_specific_query_query_context_facts(case_dir: Path) -> dict[str, Any] | 
     return None
 
 
+def load_specific_query_source_provenance_facts(case_dir: Path) -> dict[str, Any] | None:
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_source_provenance_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_specific_query_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
     for artifact_dir in batch_case_artifact_dirs(case_dir):
         facts = load_case_analysis_runtime_diagnosis_facts(artifact_dir)
@@ -232,6 +240,19 @@ def load_batch_case_query_context_facts(
     return None
 
 
+def load_batch_case_source_provenance_facts(
+    settings: WebSettings, case: dict[str, object]
+) -> dict[str, Any] | None:
+    case_dir = resolve_batch_case_dir(settings, case)
+    if case_dir is None:
+        return None
+    for artifact_dir in batch_case_artifact_dirs(case_dir):
+        facts = load_case_analysis_source_provenance_facts(artifact_dir)
+        if facts:
+            return facts
+    return None
+
+
 def load_batch_case_runtime_diagnosis_facts(
     settings: WebSettings, case: dict[str, object]
 ) -> dict[str, Any] | None:
@@ -308,6 +329,13 @@ def load_case_analysis_query_context_facts(case_dir: Path) -> dict[str, Any] | N
     if text is None:
         return None
     return parse_query_context_facts(text)
+
+
+def load_case_analysis_source_provenance_facts(case_dir: Path) -> dict[str, Any] | None:
+    text = load_case_analyzer_facts_text(case_dir, max_bytes=MAX_METADATA_FACTS_BYTES)
+    if text is None:
+        return None
+    return parse_source_provenance_facts(text)
 
 
 def load_case_analysis_runtime_diagnosis_facts(case_dir: Path) -> dict[str, Any] | None:
@@ -693,6 +721,67 @@ def parse_query_context_facts(text: str) -> dict[str, Any] | None:
     if not summary:
         return None
     return {"summary": summary}
+
+
+def parse_source_provenance_facts(text: str) -> dict[str, Any] | None:
+    in_section = False
+    guardrail = ""
+    items: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            in_section = line == "## Source Provenance"
+            current = None
+            continue
+        if not in_section or not line.startswith("- "):
+            continue
+        bullet = line[2:].strip()
+        if bullet.startswith("limitation:"):
+            if current is not None:
+                limitation = clean_metadata_fact_value(bullet.removeprefix("limitation:"))
+                if limitation:
+                    current.setdefault("limitations", []).append(limitation)
+            continue
+        if ": " not in bullet:
+            continue
+        key, value = bullet.split(": ", 1)
+        key = clean_metadata_fact_value(key).lower()
+        value = clean_metadata_fact_value(value)
+        if key == "guardrail":
+            guardrail = value
+            current = None
+            continue
+        item = parse_source_provenance_item(key, value)
+        if item:
+            items.append(item)
+            current = item
+    if not guardrail and not items:
+        return None
+    return {"guardrail": guardrail, "items": items}
+
+
+def parse_source_provenance_item(kind: str, value: str) -> dict[str, Any] | None:
+    parts = [part.strip() for part in value.split(";") if part.strip()]
+    if not parts:
+        return None
+    item: dict[str, Any] = {
+        "kind": clean_metadata_fact_value(kind),
+        "status": clean_metadata_fact_value(parts[0]),
+        "source": "",
+        "coverage": "",
+        "limitations": [],
+    }
+    for part in parts[1:]:
+        if "=" not in part:
+            continue
+        key, raw_value = part.split("=", 1)
+        key = key.strip().lower()
+        if key == "source":
+            item["source"] = clean_metadata_fact_value(raw_value)
+        elif key == "coverage":
+            item["coverage"] = clean_metadata_fact_value(raw_value)
+    return item
 
 
 def parse_runtime_diagnosis_facts(text: str) -> dict[str, Any] | None:

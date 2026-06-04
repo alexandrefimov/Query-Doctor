@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from query_doctor.analyzer.profile_format import profile_section_mapping
 from query_doctor.analyzer.runtime_counters import line_indent
 from query_doctor.analyzer.scalars import table_duration_to_ms
 
@@ -235,15 +236,51 @@ def parse_fragment_lifecycle_timings(text: str) -> dict[str, Any]:
     }
 
 
-def build_profile_timing_facts(text: str) -> dict[str, Any]:
+def build_profile_timing_facts(
+    text: str,
+    profile_format: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    mapping = profile_section_mapping(profile_format, "profile_timings")
+    if mapping["state"] == "unsupported":
+        return unavailable_profile_timing_facts(mapping)
+
     query_timeline = parse_query_timeline(text)
     lifecycle = parse_fragment_lifecycle_timings(text)
     return {
         "available": bool(query_timeline.get("available") or lifecycle.get("available")),
         "query_timeline": query_timeline,
         "fragment_lifecycle": lifecycle,
+        "section_mapping": mapping["state"],
+        "section_mapping_reason": mapping["reason"],
         "guardrail": (
             "Profile timing facts are deterministic profile context. They identify where time appears "
             "in the profile, but do not prove external root cause by themselves."
         ),
+        "limitations": [] if mapping["state"] == "supported" else [mapping["summary"]],
+    }
+
+
+def unavailable_profile_timing_facts(mapping: dict[str, str]) -> dict[str, Any]:
+    return {
+        "available": False,
+        "query_timeline": {
+            "available": False,
+            "duration_ms": None,
+            "event_count": 0,
+            "events": [],
+            "phase_durations": {},
+        },
+        "fragment_lifecycle": {
+            "available": False,
+            "instance_count": 0,
+            "timeline": numeric_summary([]),
+            "events": {},
+        },
+        "section_mapping": mapping["state"],
+        "section_mapping_reason": mapping["reason"],
+        "guardrail": (
+            "Profile timing facts are deterministic profile context. Unsupported profile "
+            "timing sections stay unknown until a dialect-specific mapping exists."
+        ),
+        "limitations": [mapping["summary"]],
     }

@@ -79,6 +79,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <a class="help-card" href="/"><span>Diagnose</span><strong>Triage Recent queries or inspect one Known Query ID.</strong></a>
 <a class="help-card" href="/#recent-results"><span>Results</span><strong>Read priority groups, findings, metadata, and stats signals.</strong></a>
 <a class="help-card" href="#details-actions"><span>Details</span><strong>Start with Recommended changes, then expand evidence.</strong></a>
+<a class="help-card" href="/trino/compact-diagnosis"><span>Trino compact</span><strong>Render direct or packaged raw-free boundary JSON, not product support.</strong></a>
 <a class="help-card" href="#safety"><span>Safety</span><strong>See what browser output intentionally hides.</strong></a>
 </nav>
 
@@ -320,6 +321,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <a class="help-card" href="/"><span>Диагностика</span><strong>Разобрать Recent queries или один Known Query ID.</strong></a>
 <a class="help-card" href="/#recent-results"><span>Результаты</span><strong>Смотреть priority groups, findings, metadata и stats signals.</strong></a>
 <a class="help-card" href="#details-actions"><span>Детали</span><strong>Начать с Recommended changes, затем раскрывать evidence.</strong></a>
+<a class="help-card" href="/trino/compact-diagnosis"><span>Trino compact</span><strong>Рендерит direct или packaged raw-free boundary JSON, не product support.</strong></a>
 <a class="help-card" href="#safety"><span>Безопасность</span><strong>Что browser output намеренно скрывает.</strong></a>
 </nav>
 

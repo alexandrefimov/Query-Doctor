@@ -165,6 +165,10 @@ def render_memory_pressure_facts(analysis: dict[str, Any]) -> list[str]:
     lines = ["## Memory Pressure Evidence", ""]
     lines.append(f"- status: {facts.get('status') or 'unknown'}")
     lines.append(f"- evidence_tier: {facts.get('evidence_tier') or 'unsupported'}")
+    if facts.get("promotion_policy"):
+        lines.append(f"- promotion_policy: {facts.get('promotion_policy')}")
+    if facts.get("section_mapping"):
+        lines.append(f"- section_mapping: {facts.get('section_mapping')}")
     lines.append(f"- finding_supported: {'yes' if facts.get('finding_supported') else 'no'}")
     lines.append(
         "- runtime_metric_correlation_supported: "
@@ -173,6 +177,11 @@ def render_memory_pressure_facts(analysis: dict[str, Any]) -> list[str]:
     lines.append(
         f"- spill_or_scratch_evidence_count: {facts.get('spill_or_scratch_evidence_count') or 0}"
     )
+    if facts.get("limited_spill_or_scratch_counter_count"):
+        lines.append(
+            "- limited_spill_or_scratch_counter_count: "
+            f"{facts.get('limited_spill_or_scratch_counter_count')}"
+        )
     lines.append(
         f"- memory_estimate_anomaly_count: {facts.get('memory_estimate_anomaly_count') or 0}"
     )

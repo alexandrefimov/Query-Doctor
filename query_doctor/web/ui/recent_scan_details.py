@@ -339,6 +339,7 @@ def render_case_diagnostics(
         '<details class="panel docs-panel diagnostics-details">'
         f"<summary>{html.escape(ui_text(language, 'Diagnostics and evidence', 'Диагностика и доказательства'))}</summary>"
         '<div class="report-body diagnostics-body diagnostics-body--flat">'
+        f"{render_source_limitations_section(view, language=language)}"
         f"{render_diagnostic_questions_section(view, language=language)}"
         f"{render_pipeline_diagnostics_section(view, status, language=language)}"
         f"{render_runtime_diagnostics_section(view, language=language)}"
@@ -359,6 +360,24 @@ def render_diagnostic_questions_section(
     )
 
 
+def render_source_limitations_section(
+    view: RecentScanCaseDetailView, *, language: str = "en"
+) -> str:
+    if not view.source_limitations:
+        return ""
+    items = "".join(f"<li>{escape_value(item)}</li>" for item in view.source_limitations)
+    return (
+        '<section id="source-limitations" class="diagnostics-subsection" '
+        'aria-label="Source limitations">'
+        f'<h2 class="section-title">{html.escape(ui_text(language, "Source limitations", "Ограничения источника"))}</h2>'
+        '<ul class="reason-list">'
+        f'<li class="reason-card"><strong>{html.escape(ui_text(language, "Direct Impala context", "Контекст Direct Impala"))}</strong>'
+        f"<ul>{items}</ul></li>"
+        "</ul>"
+        "</section>"
+    )
+
+
 def render_diagnostic_questions_view(
     view: RecentScanDiagnosticQuestionsView, *, language: str = "en"
 ) -> str:
@@ -367,10 +386,10 @@ def render_diagnostic_questions_view(
     groups = "".join(render_diagnostic_question_group(group) for group in view.groups)
     return (
         '<section id="diagnostic-questions" class="diagnostics-subsection diagnostic-questions" '
-        'aria-label="Diagnostic questions">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Diagnostic questions", "Диагностические вопросы"))}</h2>'
+        'aria-label="Coverage checks">'
+        f'<h2 class="section-title">{html.escape(ui_text(language, "Coverage checks", "Проверки покрытия"))}</h2>'
         '<p class="diagnostic-questions-intro">'
-        f"{html.escape(ui_text(language, 'Technical facts grouped by the questions they answer, followed by source evidence for deeper review.', 'Технические факты сгруппированы по вопросам, на которые они отвечают; ниже остаются источники для углубленной проверки.'))}"
+        f"{html.escape(ui_text(language, 'Use these grouped facts to check coverage, limitations, and supporting context behind the verdict and recommendation.', 'Используйте эти сгруппированные факты для проверки покрытия, ограничений и поддерживающего контекста за вердиктом и рекомендацией.'))}"
         "</p>"
         f'<div class="diagnostic-question-grid">{groups}</div>'
         "</section>"
@@ -497,9 +516,26 @@ def render_case_action_plan(
     if not action_cards:
         action_cards = (
             '<ul class="reason-list action-candidate-list">'
-            '<li class="reason-card">'
-            f"<strong>{html.escape(ui_text(language, 'No prioritized rewrite or stats action', 'Нет приоритетного действия по rewrite или stats'))}</strong>"
-            f"<p>{html.escape(ui_text(language, 'Deterministic analysis did not find a Medium/High query optimization, stats refresh, or runtime admission action candidate for this case.', 'Детерминированный анализ не нашел для этого кейса кандидата Medium/High на оптимизацию запроса, обновление статистики или runtime/admission действие.'))}</p>"
+            '<li class="reason-card action-candidate-card">'
+            f"<strong>{html.escape(ui_text(language, 'No supported change direction', 'Нет поддержанного направления изменения'))}</strong>"
+            '<div class="action-candidate-sections">'
+            '<section class="action-candidate-section action-candidate-section--why">'
+            f"<span>{html.escape(ui_text(language, 'Why this deserves attention', 'Почему это требует внимания'))}</span>"
+            f"<p>{html.escape(ui_text(language, 'No selected action candidate is available from deterministic facts for this case.', 'Для этого кейса нет выбранного кандидата действия из детерминированных фактов.'))}</p>"
+            "</section>"
+            '<section class="action-candidate-section action-candidate-section--locations">'
+            f"<span>{html.escape(ui_text(language, 'Where to look', 'Где смотреть'))}</span>"
+            f"<p>{html.escape(ui_text(language, 'Use Diagnostics only to review source coverage and limitations.', 'Используйте Диагностику только для проверки покрытия источников и ограничений.'))}</p>"
+            "</section>"
+            '<section class="action-candidate-section">'
+            f"<span>{html.escape(ui_text(language, 'What to change', 'Что изменить'))}</span>"
+            f"<p>{html.escape(ui_text(language, 'Do not change SQL, stats, or runtime settings based on this case alone.', 'Не меняйте SQL, статистику или runtime-настройки только на основании этого кейса.'))}</p>"
+            "</section>"
+            '<section class="action-candidate-section">'
+            f"<span>{html.escape(ui_text(language, 'How to verify', 'Как проверить'))}</span>"
+            f"<p>{html.escape(ui_text(language, 'Confirm the next comparable rerun remains below suspicious thresholds.', 'Подтвердите, что следующий сопоставимый повторный запуск остается ниже подозрительных порогов.'))}</p>"
+            "</section>"
+            "</div>"
             "</li>"
             "</ul>"
         )

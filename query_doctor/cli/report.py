@@ -155,6 +155,7 @@ from query_doctor.report.facts_extractors import (
 from query_doctor.report.language_contract import (
     SUPPORTED_REPORT_LANGUAGES,
     get_report_language_contract,
+    normalize_report_language,
 )
 from query_doctor.report.contract_digest import (
     action_card_differentiators,
@@ -240,6 +241,13 @@ SHAPE_ONLY_VALIDATION_PREFIXES = (
 
 def localized_text(language: str, ru_text: str, en_text: str) -> str:
     return ru_text if language == "ru" else en_text
+
+
+def report_language_arg(value: str) -> str:
+    try:
+        return normalize_report_language(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def deterministic_report_body(
@@ -437,6 +445,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--language",
+        type=report_language_arg,
         choices=SUPPORTED_REPORT_LANGUAGES,
         default="en",
         help="Report language. Default: %(default)s",

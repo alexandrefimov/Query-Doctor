@@ -135,7 +135,9 @@ def test_profile_policy_blocks_fetch_tail_promotion_for_unmapped_dialect():
         },
     )
 
-    assert gated["evidence_tier"] == "strong"
+    assert gated["evidence_tier"] == "context_only"
+    assert gated["status"] == "context_only"
     assert gated["finding_supported"] is False
     assert gated["primary_supported"] is False
-    assert "not mapped for fetch-tail promotion" in gated["limitations"][-1]
+    assert gated["section_mapping"] == "unsupported"
+    assert "not mapped for fetch-tail promotion" in gated["limitations"][-2]

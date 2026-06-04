@@ -674,7 +674,7 @@ def render_workload_action_queue(
         '<div id="workload-action-queue" class="batch-table-wrap workload-action-queue">'
         '<table class="batch-table workload-action-queue-table">'
         "<thead><tr><th>Priority</th><th>Group</th><th>Signal / evidence</th><th>Impact</th>"
-        "<th>Pool / owner</th><th>Next check / verification</th><th>Outcomes</th><th>Open</th></tr></thead>"
+        "<th>Pool / owner</th><th>Open next</th><th>Outcomes</th><th>Open</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
     )
@@ -711,14 +711,9 @@ def workload_action_signal_cell(entry: RecentScanWorkloadActionQueueEntryView) -
 def workload_action_plan_cell(entry: RecentScanWorkloadActionQueueEntryView) -> str:
     return (
         '<td class="workload-action-plan">'
-        "<span><strong>Check</strong> "
+        "<span><strong>Open</strong> "
         f"{escape_value(entry.next_step)}</span>"
-        "<span><strong>Review</strong> "
-        f"{escape_value(entry.review_anchor)}</span>"
-        "<span><strong>Compare</strong> "
-        f"{escape_value(entry.verification_metric)}</span>"
-        "<span><strong>Confirm</strong> "
-        f"{escape_value(entry.verification)}</span>"
+        "<span><strong>Details gives</strong> why, where, what to change, and how to verify the comparable rerun.</span>"
         "</td>"
     )
 
