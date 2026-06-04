@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 
 from query_doctor.report.contract import REPORT_SYSTEM_PROMPT
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 
 
 DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3-coder:30b-a3b-q8_0")
@@ -28,6 +29,8 @@ OPENAI_COMPATIBLE_CHAT_PATHS = ("/v1/chat/completions", "/api/v1/chat/completion
 NUM_CTX = int(os.getenv("QD_NUM_CTX", "16384"))
 NUM_PREDICT = int(os.getenv("QD_NUM_PREDICT", "1800"))
 PROGRESS_PREFIX = "[Query Doctor report]"
+DEFAULT_MAX_LLM_RESPONSE_BYTES = 8 * 1024 * 1024
+DEFAULT_MAX_LLM_RESPONSE_LINE_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -266,6 +269,8 @@ def stream_ollama_report_with_meta(
     system_prompt: str = REPORT_SYSTEM_PROMPT,
     num_ctx: int | None = None,
     num_predict: int | None = None,
+    max_response_bytes: int = DEFAULT_MAX_LLM_RESPONSE_BYTES,
+    opener: Any = None,
 ) -> StreamedLLMResponse:
     requested_num_ctx = NUM_CTX if num_ctx is None else num_ctx
     requested_num_predict = NUM_PREDICT if num_predict is None else num_predict
@@ -296,8 +301,12 @@ def stream_ollama_report_with_meta(
     received = 0
     chunks: list[str] = []
     final_event: dict[str, Any] = {}
-    with urllib.request.urlopen(req, timeout=1800) as resp:
-        for raw_line in resp:
+    transport = opener or configured_diagnostic_urlopen
+    with transport(req, timeout=1800) as resp:
+        for raw_line in iter_bounded_response_lines(
+            resp,
+            max_response_bytes=max_response_bytes,
+        ):
             line = raw_line.decode("utf-8", errors="replace").strip()
             if not line:
                 continue
@@ -347,6 +356,8 @@ def stream_openai_compatible_report_with_meta(
     system_prompt: str = REPORT_SYSTEM_PROMPT,
     num_predict: int | None = None,
     chat_path: str | None = None,
+    max_response_bytes: int = DEFAULT_MAX_LLM_RESPONSE_BYTES,
+    opener: Any = None,
 ) -> StreamedLLMResponse:
     if not base_url:
         raise RuntimeError("LLM API base URL is not configured.")
@@ -379,8 +390,14 @@ def stream_openai_compatible_report_with_meta(
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=1800) as resp:
-                response = json.loads(resp.read().decode("utf-8", errors="replace"))
+            transport = opener or configured_diagnostic_urlopen
+            with transport(req, timeout=1800) as resp:
+                response = json.loads(
+                    read_bounded_response(resp, max_response_bytes=max_response_bytes).decode(
+                        "utf-8",
+                        errors="replace",
+                    )
+                )
         except urllib.error.HTTPError as exc:
             last_error = f"LLM API HTTP {exc.code}"
             if exc.code in {404, 405, 410}:
@@ -417,6 +434,37 @@ def stream_openai_compatible_report_with_meta(
             prompt_eval_count=prompt_eval_count,
         )
     raise RuntimeError(last_error)
+
+
+def read_bounded_response(resp: Any, *, max_response_bytes: int) -> bytes:
+    if max_response_bytes <= 0:
+        raise RuntimeError("LLM response byte limit must be positive.")
+    payload = resp.read(max_response_bytes + 1)
+    if len(payload) > max_response_bytes:
+        raise RuntimeError("LLM response exceeded maximum allowed bytes.")
+    return payload
+
+
+def iter_bounded_response_lines(
+    resp: Any,
+    *,
+    max_response_bytes: int,
+    max_line_bytes: int = DEFAULT_MAX_LLM_RESPONSE_LINE_BYTES,
+):
+    if max_response_bytes <= 0 or max_line_bytes <= 0:
+        raise RuntimeError("LLM response byte limits must be positive.")
+    total = 0
+    while True:
+        remaining = max_response_bytes - total
+        if remaining <= 0:
+            raise RuntimeError("LLM response exceeded maximum allowed bytes.")
+        raw_line = resp.readline(min(max_line_bytes, remaining) + 1)
+        if not raw_line:
+            return
+        total += len(raw_line)
+        if len(raw_line) > max_line_bytes or total > max_response_bytes:
+            raise RuntimeError("LLM response exceeded maximum allowed bytes.")
+        yield raw_line
 
 
 def _openai_compatible_choice_text(response: dict[str, Any]) -> tuple[str | None, str | None]:

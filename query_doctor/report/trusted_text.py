@@ -30,6 +30,7 @@ from query_doctor.report.facts_extractors import (
     facts_have_spill_scratch_evidence,
     facts_memory_anomaly_count,
     parse_backend_tail_summary,
+    source_provenance_report_evidence_bullet,
 )
 from query_doctor.report.language_contract import (
     ReportLanguageContract,
@@ -347,6 +348,16 @@ def enforce_admin_report_requirements(
             text,
             contract.evidence_heading,
             [evidence_quality_bullet],
+        )
+    source_provenance_bullet = source_provenance_report_evidence_bullet(
+        facts_text,
+        language=language,
+    )
+    if source_provenance_bullet:
+        text = insert_bullets_into_section(
+            text,
+            contract.evidence_heading,
+            [source_provenance_bullet],
         )
     admin_bullet_rules: list[tuple[str, tuple[str, ...]]] = []
     if facts_has_backend_tail_evidence(facts_text):

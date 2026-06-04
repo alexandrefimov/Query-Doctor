@@ -15,6 +15,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from query_doctor.cm.client import DEFAULT_MAX_TIMESERIES_BYTES
 from query_doctor.cm.models import CMAdapterError, CMClientError
 from query_doctor.cm.profile_parsing import padded_cm_timeseries_window, parse_cm_timestamp
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 from query_doctor.safety.redaction import sanitize_adapter_error_message
 
 
@@ -219,7 +220,7 @@ class PrometheusClient:
         opener=None,
     ) -> None:
         self.config = config
-        self.opener = opener or urllib.request.urlopen
+        self.opener = opener or configured_diagnostic_urlopen
 
     def build_url(self, path: str, params: dict[str, object] | None = None) -> str:
         parsed_path = urlsplit(path)

@@ -27,7 +27,11 @@ AUTH_HEADER_RE = re.compile(
 COOKIE_HEADER_RE = re.compile(r"(?im)^([ \t]*(?:Cookie|Set-Cookie)[ \t]*:[ \t]*).+$")
 BEARER_BASIC_RE = re.compile(r"\b(Bearer|Basic)[ \t]+[A-Za-z0-9._~+/=-]{8,}\b")
 SECRET_VALUE_RE = re.compile(
-    r"\b(password|passwd|pwd|token|secret|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token)\b"
+    r"\b("
+    r"password|passwd|pwd|token|secret|cookie|"
+    r"api[_-]?key|access[_-]?token|refresh[_-]?token|"
+    r"auth[_-]?(?:token|key|secret|credential)?|credentials?|passphrase|private[ _-]?key"
+    r")\b"
     r"([ \t]*[:=][ \t]*)([\"']?)([^\"'\s,;]+)([\"']?)",
     re.IGNORECASE,
 )
@@ -47,11 +51,64 @@ HOSTLIKE_FQDN_RE = re.compile(
     r"[A-Za-z0-9.-]*)(?:[A-Za-z0-9-]+\.){2,}[A-Za-z][A-Za-z0-9-]*\b",
     re.IGNORECASE,
 )
+BARE_FQDN_RE = re.compile(
+    r"(?<![A-Za-z0-9_.:-])(?:[A-Za-z0-9-]+\.){1,}[A-Za-z][A-Za-z0-9-]*"
+    r"(?![A-Za-z0-9_.:-])",
+    re.IGNORECASE,
+)
+HOSTLIKE_BARE_NAME_RE = re.compile(
+    r"(?<![A-Za-z0-9_.:-])"
+    r"(?=[A-Za-z0-9-]*(?:host|node|worker|server|impala|impalad|coordinator|backend|"
+    r"executor|daemon)[A-Za-z0-9-]*)(?=[A-Za-z0-9-]*\d)"
+    r"[A-Za-z][A-Za-z0-9-]{2,}(?![A-Za-z0-9_.:-])",
+    re.IGNORECASE,
+)
+SHORT_ROLE_BARE_NAME_RE = re.compile(
+    r"(?<![A-Za-z0-9_.:-])(?:dn|nn|cm|db)-?\d[A-Za-z0-9-]*(?![A-Za-z0-9_.:-])",
+    re.IGNORECASE,
+)
 HOST_ASSIGNMENT_RE = re.compile(
     r"\b(?P<key>host|hostname|executor|backend)(?P<sep>[ \t]*=[ \t]*)(?P<value>[^ \t\r\n,)]+)",
     re.IGNORECASE,
 )
 HOST_ALIAS_RE = re.compile(r"^host_\d{2,}$", re.IGNORECASE)
+PUBLIC_NAMESPACE_HOSTS = frozenset({"www.w3.org"})
+PUBLIC_OR_INFRA_DOMAIN_SUFFIXES = frozenset(
+    {
+        "biz",
+        "cloud",
+        "cluster",
+        "com",
+        "corp",
+        "dev",
+        "example",
+        "invalid",
+        "io",
+        "local",
+        "localhost",
+        "net",
+        "org",
+        "prod",
+        "test",
+    }
+)
+SAFE_FILE_EXTENSION_SUFFIXES = frozenset(
+    {
+        "crt",
+        "csv",
+        "json",
+        "key",
+        "log",
+        "md",
+        "out",
+        "pem",
+        "py",
+        "sql",
+        "txt",
+        "yaml",
+        "yml",
+    }
+)
 SQL_DB_TABLE_RE = re.compile(
     r"\b(FROM|JOIN|TABLE|DESCRIBE)\s+`?[A-Za-z_][A-Za-z0-9_$]*`?"
     r"\s*\.\s*`?[A-Za-z_][A-Za-z0-9_$]*`?",
@@ -88,6 +145,12 @@ SECRET_METADATA_KEY_PARTS = (
     "token",
     "secret",
     "auth",
+    "credential",
+    "credentials",
+    "passphrase",
+    "private_key",
+    "privatekey",
+    "private-key",
     "api_key",
     "apikey",
     "authorization",
@@ -222,6 +285,17 @@ def redact_ipv6_candidates(text: str, host_redactor: HostAliasRedactor) -> str:
 def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None) -> str:
     host_redactor = redactor or HostAliasRedactor()
 
+    def host_alias_or_original(value: str) -> str:
+        if value.lower() in PUBLIC_NAMESPACE_HOSTS:
+            return value
+        return host_redactor.alias_for(value)
+
+    def replace_bare_fqdn(match: re.Match[str]) -> str:
+        value = match.group(0)
+        if not should_redact_bare_fqdn(value):
+            return value
+        return host_alias_or_original(value)
+
     def replace_bracketed_ipv6(match: re.Match[str]) -> str:
         value = match.group("ip")
         try:
@@ -238,17 +312,41 @@ def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None
         return f"{match.group('key')}{match.group('sep')}{alias}"
 
     def replace_url_host(match: re.Match[str]) -> str:
-        alias = host_redactor.alias_for(match.group(3))
+        alias = host_alias_or_original(match.group(3))
         return f"{match.group(1)}{match.group(2) or ''}{alias}{match.group(4) or ''}"
 
     redacted = HOST_FIELD_RE.sub(replace_host_field, text)
     redacted = HOST_ASSIGNMENT_RE.sub(replace_host_assignment, redacted)
     redacted = URL_HOST_RE.sub(replace_url_host, redacted)
-    redacted = HOSTLIKE_FQDN_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
+    redacted = HOSTLIKE_FQDN_RE.sub(lambda match: host_alias_or_original(match.group(0)), redacted)
+    redacted = BARE_FQDN_RE.sub(replace_bare_fqdn, redacted)
+    redacted = HOSTLIKE_BARE_NAME_RE.sub(
+        lambda match: host_redactor.alias_for(match.group(0)), redacted
+    )
+    redacted = SHORT_ROLE_BARE_NAME_RE.sub(
+        lambda match: host_redactor.alias_for(match.group(0)), redacted
+    )
     redacted = IPV4_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
     redacted = BRACKETED_IPV6_RE.sub(replace_bracketed_ipv6, redacted)
     redacted = redact_ipv6_candidates(redacted, host_redactor)
     return redacted
+
+
+def should_redact_bare_fqdn(value: str) -> bool:
+    normalized = value.rstrip(".").lower()
+    if normalized in PUBLIC_NAMESPACE_HOSTS:
+        return False
+    labels = normalized.split(".")
+    if len(labels) >= 3:
+        return True
+    if len(labels) != 2:
+        return False
+    left, right = labels
+    if right in SAFE_FILE_EXTENSION_SUFFIXES:
+        return False
+    if right in PUBLIC_OR_INFRA_DOMAIN_SUFFIXES:
+        return True
+    return any(any(ch.isdigit() for ch in label) or "-" in label for label in (left, right))
 
 
 def redact_profile_text(

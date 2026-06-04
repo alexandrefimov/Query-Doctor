@@ -24,6 +24,7 @@ from query_doctor.web.command_builders import (
     OPTIMIZED_QUERY_VALIDATION_MARKER,
     OPTIMIZED_QUERY_VALIDATION_MODE,
     REPORT_VARIANT_PYTHON,
+    WEB_REPORT_MARKER_SCHEMA_VERSION,
     WEB_REPORT_VALIDATION_MODE,
     report_artifacts_for_variant,
 )
@@ -75,6 +76,8 @@ def validated_report_exists(
     except (OSError, json.JSONDecodeError):
         return False
     if marker.get("validated") is not True:
+        return False
+    if marker.get("schema_version") != WEB_REPORT_MARKER_SCHEMA_VERSION:
         return False
     if marker.get("validation_mode") != WEB_REPORT_VALIDATION_MODE:
         return False
@@ -136,6 +139,7 @@ def write_batch_case_report_validation_marker(
         "report": report_name,
         "report_variant": report_variant,
         "validated": True,
+        "schema_version": WEB_REPORT_MARKER_SCHEMA_VERSION,
         "validation_mode": WEB_REPORT_VALIDATION_MODE,
         "report_sha256": file_sha256(report_path),
         "facts_sha256": file_sha256(facts_path),

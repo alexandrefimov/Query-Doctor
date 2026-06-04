@@ -66,10 +66,93 @@ def test_browser_display_redaction_can_hide_infrastructure_identifiers():
     assert "owner=<email>" in redacted
 
 
+def test_browser_display_redaction_preserves_first_party_static_chrome():
+    favicon = (
+        '<link rel="icon" type="image/svg+xml" '
+        'href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMSAxIj48L3N2Zz4=">'
+    )
+    text = (
+        f"{favicon}\n"
+        '<script src="/static/theme-bootstrap.js"></script>\n'
+        '<link rel="stylesheet" href="/static/app.css">\n'
+        '<script src="/static/app.js"></script>\n'
+        "Coordinator: impalad-01.example.org"
+    )
+
+    redacted = redact_browser_display_text(text, redact_infrastructure=True)
+
+    assert favicon in redacted
+    assert "/static/theme-bootstrap.js" in redacted
+    assert "/static/app.css" in redacted
+    assert "/static/app.js" in redacted
+    assert "impalad-01.example.org" not in redacted
+    assert "Coordinator: host_01" in redacted
+
+
+def test_browser_display_redaction_preserves_public_svg_namespace_host():
+    svg_namespace = "http%3A%2F%2F" + ".".join(("www", "w3", "org")) + "%2F2000%2Fsvg"
+    redacted = redact_browser_display_text(
+        f"data:image/svg+xml,%3Csvg%20xmlns%3D%22{svg_namespace}%22%3E "
+        '<script src="/static/theme-bootstrap.js"></script> '
+        '<link href="/static/app.css" rel="stylesheet"> '
+        "https://cm-demo.example.invalid:7183/api",
+        redact_infrastructure=True,
+    )
+
+    assert ".".join(("www", "w3", "org")) in redacted
+    assert "/static/theme-bootstrap.js" in redacted
+    assert "/static/app.css" in redacted
+    assert "cm-demo.example.invalid" not in redacted
+    assert "https://host_01:7183/api" in redacted
+
+
+def test_browser_error_sanitizer_hides_adversarial_infrastructure_and_secret_corpus():
+    bare_host = "prod-" + "worker-01"
+    cm_host = ".".join(("cm-control", "prod", "example", "invalid"))
+    label_host = "edge-" + "daemon-02"
+    coordinator_host = ".".join(("impala-coord-01", "internal", "example", "invalid"))
+    url_host = ".".join(("cm-edge", "prod", "example", "invalid"))
+    auth_token = "abcdefgh" + "ijklmnop"
+    url_password = "api-" + "pass"
+    credential_url = "https://" + "api-user" + ":" + url_password + "@" + url_host + ":7183/api"
+    message = (
+        f"Collector failed on {bare_host} and {cm_host}. "
+        f"Host: {label_host} Coordinator: {coordinator_host} "
+        f"backend=010.020.030.040 url={credential_url} "
+        "credential=credential-value credentials='credentials-value' "
+        "passphrase: passphrase-value private_key=private-key-value "
+        "private key: private-key-text auth=auth-value "
+        f"Authorization: Basic {auth_token}"
+    )
+
+    redacted = sanitize_browser_error_text(message)
+
+    for fragment in (
+        bare_host,
+        cm_host,
+        label_host,
+        coordinator_host,
+        "010.020.030.040",
+        url_password,
+        url_host,
+        "credential-value",
+        "credentials-value",
+        "passphrase-value",
+        "private-key-value",
+        "private-key-text",
+        "auth-value",
+        auth_token,
+    ):
+        assert fragment not in redacted
+    assert "host_" in redacted
+    assert "<redacted>" in redacted
+
+
 def test_browser_display_redaction_can_hide_recent_scan_forbidden_markers():
     redacted = redact_browser_display_text(
         "case_dir KRB5CCNAME metadata_coordinator metadata_auth metadata_path "
-        "BEGIN PROFILE Query Timeline SHOW CREATE TABLE raw stdout raw stderr "
+        "BEGIN PROFILE Query Timeline SHOW CREATE TABLE SHOW TABLE STATS "
+        "SHOW COLUMN STATS DESCRIBE FORMATTED SHOW PARTITIONS raw stdout raw stderr "
         "profile_digest.md query_metadata.json cm_metadata.json collection_warnings.txt "
         "runtime_metrics_context.json cm_timeseries_context.json "
         "cluster_event_context.json cluster_context.json "
@@ -95,6 +178,10 @@ def test_browser_display_redaction_can_hide_recent_scan_forbidden_markers():
         "BEGIN PROFILE",
         "Query Timeline",
         "SHOW CREATE TABLE",
+        "SHOW TABLE STATS",
+        "SHOW COLUMN STATS",
+        "DESCRIBE FORMATTED",
+        "SHOW PARTITIONS",
         "raw stdout",
         "raw stderr",
         "profile_digest.md",
@@ -141,7 +228,8 @@ def test_browser_display_redaction_hides_current_bakeoff_model_names():
     text = (
         "models: qwen3-coder:30b-a3b-q8_0 qwen2.5-coder:32b "
         "qwen3.6:27b-coding-mxfp8 codestral:22b deepseek-coder-v2:16b "
-        "sqlcoder:15b gpt-oss:20b internal_model:demo mistral-small3.2:24b "
+        "sqlcoder:15b gpt-oss:20b gpt-4o gpt-4 gpt_4_1 gpt-lst:demo "
+        "internal_model:demo mistral-small3.2:24b "
         "magistral:24b devstral-small-2 codellama:13b llama3.1:8b ollama"
     )
 
@@ -153,6 +241,9 @@ def test_browser_display_redaction_hides_current_bakeoff_model_names():
         "deepseek",
         "sqlcoder",
         "gpt-oss",
+        "gpt-4",
+        "gpt_4",
+        "gpt-lst",
         "internal_model",
         "mistral",
         "magistral",
@@ -162,7 +253,7 @@ def test_browser_display_redaction_hides_current_bakeoff_model_names():
         "ollama",
     ):
         assert fragment not in redacted.lower()
-    assert redacted.count("[model setting hidden]") == 14
+    assert redacted.count("[model setting hidden]") == 18
 
 
 def test_browser_display_redaction_preserves_env_var_guidance_by_default():
@@ -191,6 +282,22 @@ def test_browser_display_redaction_can_hide_sql_snippets_when_requested():
     assert "SELECT *" not in redacted
     assert "example_guarded.table" not in redacted
     assert "[SQL hidden]" in redacted
+
+
+def test_browser_display_redaction_hides_full_metadata_statement_before_marker_tokens():
+    redacted = redact_browser_display_text(
+        "Metadata probe: SHOW CREATE TABLE guarded_db.secret_table; "
+        "SHOW TABLE STATS `guarded_db`.`secret_table`",
+        redact_artifact_markers=True,
+        redact_sql_snippets=True,
+    )
+
+    assert "SHOW CREATE TABLE" not in redacted
+    assert "SHOW TABLE STATS" not in redacted
+    assert "guarded_db.secret_table" not in redacted
+    assert "`guarded_db`.`secret_table`" not in redacted
+    assert "secret_table" not in redacted
+    assert "[metadata statement hidden]" in redacted
 
 
 def test_browser_display_redaction_does_not_hide_plain_english_with():
@@ -256,6 +363,29 @@ def test_browser_error_sanitizer_hides_dynamic_infrastructure_identifiers():
     assert "Coordinator: host_01" in redacted
     assert "backend=host_02" in redacted
     assert "<email>" in redacted
+
+
+def test_browser_error_sanitizer_handles_bounded_pathological_mixed_input():
+    host = "impalad-01.example.invalid"
+    path = "/tmp/query-doctor-pathological-case"
+    model = "qwen3-coder:30b"
+    raw_sql = "SELECT secret_col FROM example_guarded.table WHERE token = 'abc'"
+    noise = " ".join("SELECT" + "x" * 80 for _ in range(180))
+    message = (
+        f"Failed at Coordinator: {host} {noise} {raw_sql}; "
+        f"model {model} wrote optimized_query.sql under {path} with raw stderr"
+    )
+
+    redacted = sanitize_browser_error_text(message, max_chars=None)
+
+    for fragment in (host, path, model, "optimized_query.sql", "raw stderr", raw_sql):
+        assert fragment not in redacted
+    assert "Coordinator: host_01" in redacted
+    assert "[SQL hidden]" in redacted
+    assert "[model setting hidden]" in redacted
+    assert "[artifact name hidden]" in redacted
+    assert "<local path hidden>" in redacted
+    assert "[subprocess output hidden]" in redacted
 
 
 def test_browser_error_sanitizer_preserves_safe_optimizer_scope_guidance():

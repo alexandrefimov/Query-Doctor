@@ -210,7 +210,19 @@ REPORT_LANGUAGE_CONTRACTS = {
 SUPPORTED_REPORT_LANGUAGES = tuple(REPORT_LANGUAGE_CONTRACTS)
 
 
+def normalize_report_language(language: str) -> str:
+    if not isinstance(language, str):
+        supported = ", ".join(SUPPORTED_REPORT_LANGUAGES)
+        raise ValueError(f"unsupported report language: {language!r}; supported: {supported}")
+    normalized = language.strip().lower()
+    if normalized in REPORT_LANGUAGE_CONTRACTS:
+        return normalized
+    supported = ", ".join(SUPPORTED_REPORT_LANGUAGES)
+    raise ValueError(f"unsupported report language: {language}; supported: {supported}")
+
+
 def get_report_language_contract(language: str) -> ReportLanguageContract:
+    language = normalize_report_language(language)
     try:
         return REPORT_LANGUAGE_CONTRACTS[language]
     except KeyError as exc:

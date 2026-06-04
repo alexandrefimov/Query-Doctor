@@ -24,6 +24,7 @@ from query_doctor.impala.profile_source import (
     normalize_impala_profile_hosts,
     normalize_impala_profile_scheme,
 )
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 
 
 DEFAULT_MAX_PROFILE_DOCS_BYTES = 2 * 1024 * 1024
@@ -61,7 +62,7 @@ def fetch_impala_profile_docs_context(
     timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     max_profile_docs_bytes: int = DEFAULT_MAX_PROFILE_DOCS_BYTES,
     impala_version: str | None = None,
-    opener: UrlOpener = urllib.request.urlopen,
+    opener: UrlOpener = configured_diagnostic_urlopen,
 ) -> ImpalaProfileDocsFetchResult:
     urls = impala_profile_docs_urls(hosts, port=port, scheme=scheme)
     if not urls:

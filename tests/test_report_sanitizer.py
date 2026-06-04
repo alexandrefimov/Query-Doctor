@@ -28,17 +28,29 @@ def test_report_cli_reexports_package_contract():
 
 def test_report_language_contracts_keep_legacy_ru_and_define_en():
     from query_doctor.report import contract
-    from query_doctor.report.language_contract import get_report_language_contract
+    from query_doctor.report.language_contract import (
+        get_report_language_contract,
+        normalize_report_language,
+    )
 
     ru = get_report_language_contract("ru")
     en = get_report_language_contract("en")
 
+    assert normalize_report_language(" RU ") == "ru"
+    assert get_report_language_contract(" EN ").language == "en"
     assert contract.REPORT_SYSTEM_PROMPT == ru.system_prompt
     assert contract.REQUIRED_REPORT_SECTIONS == ru.required_sections
     assert ru.short_summary_heading == "## Краткий вывод"
     assert en.short_summary_heading == "## Short Summary"
     assert en.recommendations_heading == "## Practical Recommendations"
     assert "Write in English" in en.system_prompt
+
+
+def test_report_language_contract_rejects_unknown_language():
+    from query_doctor.report.language_contract import normalize_report_language
+
+    with pytest.raises(ValueError, match="unsupported report language"):
+        normalize_report_language("de")
 
 
 def test_analyzer_facts_appendix_uses_language_contract():
@@ -119,6 +131,41 @@ def test_english_report_contract_validates_strict_shape():
     assert "Prioritize Backend / Host Tail Evidence" in normalized
     assert "Приоритизировать" not in normalized
     assert "Проверить" not in normalized
+    assert module.validate_report_text(normalized, facts_text=facts, language="en") == []
+
+
+def test_report_source_provenance_adds_safe_coverage_wording_without_raw_limitations():
+    module = load_report_module()
+    facts = (
+        backend_fact_text()
+        + """
+
+## Source Provenance
+
+- guardrail: Source provenance is a raw-free coverage summary.
+- engine: unknown; source=unknown; coverage=engine identity was not available from deterministic profile facts
+  - limitation: raw detail SELECT secret_col FROM private.table token=secret-value
+- profile: partial; source=Impala daemon profile endpoint; coverage=dialect=classic_text_profile, layout=classic, compatibility=unsupported
+- metrics: partial; source=Prometheus runtime metrics; coverage=1/3 metric queries ok
+- events: none; source=Cluster event context; coverage=not_collected
+- metadata: unavailable; source=Impala metadata context; coverage=context_error
+  - limitation: failed to read /Users/example/query-doctor/case_dir; SHOW CREATE TABLE private.customer_orders
+"""
+    )
+    report = "# Query Doctor Report\n\n" + safe_english_model_body()
+
+    normalized = module.normalize_report_text(report, facts_text=facts, language="en")
+
+    assert "Source Provenance: engine=unknown, profile=partial" in normalized
+    assert "runtime metrics are incomplete or unavailable" in normalized
+    assert "event context is absent or incomplete" in normalized
+    assert "bounded metadata is unavailable or unknown" in normalized
+    assert "not root-cause proof" in normalized
+    assert "secret_col" not in normalized
+    assert "private.table" not in normalized
+    assert "secret-value" not in normalized
+    assert "/Users/example" not in normalized
+    assert "SHOW CREATE TABLE" not in normalized
     assert module.validate_report_text(normalized, facts_text=facts, language="en") == []
 
 
@@ -649,6 +696,21 @@ def test_report_mode_user_is_accepted():
     assert args.mode == "user"
 
 
+def test_report_language_arg_is_normalized_before_validation():
+    module = load_report_module()
+
+    args = module.parse_args(["case-dir", "--language", " RU ", "--dry-prompt"])
+
+    assert args.language == "ru"
+
+
+def test_report_language_arg_rejects_unknown_language():
+    module = load_report_module()
+
+    with pytest.raises(SystemExit):
+        module.parse_args(["case-dir", "--language", "de", "--dry-prompt"])
+
+
 def test_report_mode_invalid_is_rejected():
     module = load_report_module()
 
@@ -946,6 +1008,38 @@ def test_report_validator_rejects_inline_select_from():
     assert "report contains SQL-like text that is not allowed in trusted output" in errors
 
 
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "Unsafe prose says SELECT col_a FROM example_db.example_table WHERE col_a > 0.",
+        "Unsafe prose says select col_a from example_db.example_table where col_a > 0.",
+        "Unsafe prose includes SELECT col_a FROM unsafe_table WHERE col_a > 0.",
+        "Unsafe prose includes WITH c AS (SELECT col_a FROM example_db.source_table) SELECT col_a FROM c.",
+        "Unsafe prose includes INSERT INTO example_db.target_table SELECT col_a FROM example_db.source_table.",
+        "Unsafe prose includes SHOW TABLE STATS example_db.example_table.",
+    ],
+)
+def test_report_validator_rejects_inline_sql_like_prose(snippet):
+    module = load_report_module()
+
+    errors = _raw_sql_validation_errors(module, f"- {snippet}")
+
+    assert "report contains SQL-like text that is not allowed in trusted output" in errors
+
+
+def test_report_validator_handles_bounded_pathological_unclosed_sql_fence():
+    module = load_report_module()
+    extra = "\n".join(
+        ["- Unsafe detail:", "```"]
+        + [f"safe diagnostic context {index}: " + ("x" * 80) for index in range(450)]
+        + ["SELECT col_a FROM example_db.example_table WHERE col_a > 0"]
+    )
+
+    errors = _raw_sql_validation_errors(module, extra)
+
+    assert "report contains SQL-like text that is not allowed in trusted output" in errors
+
+
 def test_report_validator_rejects_with_select_from():
     module = load_report_module()
 
@@ -1236,6 +1330,91 @@ def test_stats_only_recommendations_do_not_add_generic_followup_candidate():
     candidate_ids = [candidate_id for candidate_id, _ in candidates]
 
     assert candidate_ids == ["stats_maintenance"]
+
+
+def test_recommendation_candidates_use_structured_stats_quality_gap_without_legacy_metadata():
+    module = load_report_module()
+
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Summary
+
+- Cardinality anomalies: 0
+- Memory anomalies: 0
+
+## Stats Metadata Quality
+
+- status: limited
+- table_stats: available
+- column_stats: incomplete/unknown
+- tables_with_missing_table_stats: 0
+- tables_with_incomplete_column_stats: 1
+- row_estimate_evidence: not_observed
+- row_estimate_issue_count: 0
+- partition_coverage: available
+- join_filter_column_relevance: partial
+- join_filter_columns_observed: 3
+- join_filter_columns_without_stats: 1
+- join_filter_columns_with_complete_stats: 2
+- join_filter_columns_with_ndv_missing_stats: 1
+- join_filter_columns_with_size_missing_stats: 0
+- join_filter_columns_with_all_missing_stats: 0
+- join_filter_columns_with_unknown_stats: 0
+- stats_primary_bottleneck: not_supported
+- stats_context: stats_gap_without_row_estimate_evidence
+- interpretation: Metadata shows missing or incomplete stats coverage.
+- guardrail: Stats quality is follow-up evidence, not a standalone root cause.
+"""
+
+    candidates = module.recommendation_candidate_lines(facts, language="en")
+    candidate_ids = [candidate_id for candidate_id, _ in candidates]
+
+    assert candidate_ids == ["stats_maintenance"]
+
+
+def test_recommendation_candidates_prefer_structured_not_applicable_stats_quality():
+    module = load_report_module()
+
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Summary
+
+- Cardinality anomalies: 0
+- Memory anomalies: 0
+
+## Stats Metadata Quality
+
+- status: not_applicable
+- table_stats: not_applicable
+- column_stats: not_applicable
+- row_estimate_evidence: not_observed
+- row_estimate_issue_count: 0
+- partition_coverage: unknown
+- join_filter_column_relevance: unknown
+- tables_with_missing_table_stats: 0
+- tables_with_incomplete_column_stats: 0
+- join_filter_columns_without_stats: 0
+- join_filter_columns_with_ndv_missing_stats: 0
+- join_filter_columns_with_size_missing_stats: 0
+- join_filter_columns_with_all_missing_stats: 0
+- join_filter_columns_with_unknown_stats: 0
+- stats_primary_bottleneck: not_applicable
+- stats_context: not_physical_table_stats
+- interpretation: Referenced metadata is not physical-table stats evidence.
+
+## Table Metadata Context
+
+- table metadata facts: supported
+- tables requested: 1
+- column stats completeness: incomplete/unknown
+"""
+
+    candidates = module.recommendation_candidate_lines(facts, language="en")
+    candidate_ids = [candidate_id for candidate_id, _ in candidates]
+
+    assert "stats_maintenance" not in candidate_ids
 
 
 def test_recommendation_candidates_include_safe_action_card_anchor():
@@ -1874,21 +2053,31 @@ def test_operator_name_before_russian_operator_time_is_rejected_and_normalized()
 
 def test_streamed_report_body_is_buffered_without_stdout(monkeypatch, capsys):
     module = load_report_module()
+    from query_doctor.report import llm_client
 
     unsafe_chunk = "запрос выполнялся 9.70h"
 
     class FakeResponse:
+        def __init__(self):
+            self.lines = [
+                module.json.dumps({"message": {"content": unsafe_chunk}}).encode("utf-8"),
+                module.json.dumps({"done": True}).encode("utf-8"),
+            ]
+
         def __enter__(self):
             return self
 
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def __iter__(self):
-            yield module.json.dumps({"message": {"content": unsafe_chunk}}).encode("utf-8")
-            yield module.json.dumps({"done": True}).encode("utf-8")
+        def readline(self, size=-1):
+            if not self.lines:
+                return b""
+            return self.lines.pop(0)[:size]
 
-    monkeypatch.setattr(module.urllib.request, "urlopen", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(
+        llm_client, "configured_diagnostic_urlopen", lambda *args, **kwargs: FakeResponse()
+    )
 
     body = module.stream_ollama_report(
         prompt="prompt",
@@ -1906,21 +2095,31 @@ def test_streamed_report_body_is_buffered_without_stdout(monkeypatch, capsys):
 
 def test_bad_ollama_json_line_does_not_print_raw_content(monkeypatch, capsys):
     module = load_report_module()
+    from query_doctor.report import llm_client
 
     unsafe_chunk = "запрос выполнялся 9.70h"
 
     class FakeResponse:
+        def __init__(self):
+            self.lines = [
+                unsafe_chunk.encode("utf-8"),
+                module.json.dumps({"done": True}).encode("utf-8"),
+            ]
+
         def __enter__(self):
             return self
 
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def __iter__(self):
-            yield unsafe_chunk.encode("utf-8")
-            yield module.json.dumps({"done": True}).encode("utf-8")
+        def readline(self, size=-1):
+            if not self.lines:
+                return b""
+            return self.lines.pop(0)[:size]
 
-    monkeypatch.setattr(module.urllib.request, "urlopen", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(
+        llm_client, "configured_diagnostic_urlopen", lambda *args, **kwargs: FakeResponse()
+    )
 
     body = module.stream_ollama_report(
         prompt="prompt",
@@ -3897,6 +4096,28 @@ def test_sanitizer_rewrites_negated_supported_spill_scratch_evidence():
     assert module.validate_report_against_facts(sanitized, facts) == []
 
 
+def test_report_spill_extractor_ignores_limited_memory_pressure_context():
+    from query_doctor.report.facts_extractors import facts_have_spill_scratch_evidence
+
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Memory Pressure Evidence
+
+- status: context_only
+- evidence_tier: context_only
+- promotion_policy: limited
+- section_mapping: limited
+- finding_supported: no
+- spill_or_scratch_evidence_count: 0
+- limited_spill_or_scratch_counter_count: 1
+- limitations:
+  - Non-zero spill/scratch counters were parsed as limited context, but this profile dialect or section is not mapped for memory-pressure promotion.
+"""
+
+    assert facts_have_spill_scratch_evidence(facts) is False
+
+
 def test_report_validator_allows_saying_spill_is_not_proven_cause():
     module = load_report_module()
 
@@ -4870,6 +5091,12 @@ def test_report_prompt_without_metadata_facts_omits_metadata_digest():
         "Нет данных о том, что статистика устарела, но причина — устаревшая статистика.",
         "Нет сведений о том, что статистика устарела, однако проблема вызвана устаревшей статистикой.",
         "Нет признаков устаревшей статистики, но root cause is stale statistics.",
+        "Statistics maintenance should fix the slowdown.",
+        "Refreshing stats is the right fix for this query.",
+        "Treat missing stats as the reason this query slowed down.",
+        "Stats gaps explain the bad plan.",
+        "Stats maintenance is recommended because missing stats caused the issue.",
+        "The metadata gap explains why Impala chose the slow plan.",
     ],
 )
 def test_report_validator_rejects_unsupported_metadata_root_cause_and_compute_claims(report):
@@ -4902,6 +5129,10 @@ def test_report_validator_rejects_unsupported_metadata_root_cause_and_compute_cl
         "Нет подтверждения, что проблема вызвана статистикой.",
         "Статистика по части колонок неполная/неизвестная; это стоит проверить отдельно.",
         "Неполная статистика может влиять на оценки оптимизатора, но это не подтверждённая причина.",
+        "The available metadata context can support approved stats maintenance, but it does not prove a root cause by itself.",
+        "Stats maintenance may be worth checking, but it is not a proven fix.",
+        "The metadata gap does not explain the slowdown by itself.",
+        "Refreshing stats can be a comparable-rerun experiment, not a proven fix.",
     ],
 )
 def test_report_validator_allows_safe_conditional_metadata_wording(report):

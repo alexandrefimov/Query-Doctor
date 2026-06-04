@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from query_doctor.cli.optimize_query import (
     QueryOptimizationError,
@@ -28,7 +28,10 @@ from query_doctor.web.command_builders import (
 from query_doctor.web.models import WebJobSnapshot, WebSettings
 from query_doctor.web.job_progress import progress_view_from_snapshot
 from query_doctor.optimizer.sql import OptimizerSqlError, extract_referenced_tables
-from query_doctor.safety.browser_display import redact_local_paths_for_display
+from query_doctor.safety.browser_display import (
+    redact_browser_display_text,
+    redact_local_paths_for_display,
+)
 from query_doctor.web.case_files import (
     case_has_any_artifact,
     case_relative_file_path,
@@ -318,10 +321,7 @@ def load_validated_batch_case_report(
     wrapper_dir = resolve_batch_case_dir(settings, case)
     if wrapper_dir is not None:
         hidden_paths.add(str(wrapper_dir))
-    for path in hidden_paths:
-        if path:
-            report_text = report_text.replace(path, "[local case path hidden]")
-    return redact_local_paths_for_display(report_text)
+    return sanitize_trusted_report_text_for_display(report_text, hidden_paths=hidden_paths)
 
 
 def load_validated_specific_query_report(
@@ -336,9 +336,25 @@ def load_validated_specific_query_report(
     if report_text is None:
         return None
     case_path = str(case_dir)
-    if case_path:
-        report_text = report_text.replace(case_path, "[local case path hidden]")
-    return redact_local_paths_for_display(report_text)
+    return sanitize_trusted_report_text_for_display(report_text, hidden_paths=(case_path,))
+
+
+def sanitize_trusted_report_text_for_display(
+    report_text: str,
+    *,
+    hidden_paths: Iterable[str] = (),
+) -> str:
+    for path in hidden_paths:
+        if path:
+            report_text = report_text.replace(path, "[local case path hidden]")
+    return redact_browser_display_text(
+        redact_local_paths_for_display(report_text),
+        redact_field_names=True,
+        redact_artifact_markers=True,
+        redact_model_names=True,
+        redact_sql_snippets=True,
+        redact_infrastructure=True,
+    )
 
 
 def load_batch_case_trusted_report_artifact(

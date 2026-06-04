@@ -11,20 +11,42 @@ UNSUPPORTED_METADATA_ROOT_CAUSE_RE = re.compile(
     r"(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)[^\n.]{0,80}(?:причин\w+|вызва\w+|сломал\w+)|"
     r"(?:из-за|из\s+за)[^\n.]{0,80}(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)|"
     r"статистик\w+\s+таблиц\w*\s+устарел\w*|"
+    r"(?:устаревш\w+\s+статистик\w+|статистик\w+\s+устарел\w*)"
+    r"(?![^\n.]{0,50}\bне\b)[^\n.]{0,80}(?:виноват\w+|объясня\w+)|"
     r"metadata\s+proves\s+(?:the\s+)?root\s+cause|"
     r"metadata[^\n.]{0,80}proves[^\n.]{0,80}(?:cause|root\s+cause)|"
     r"root\s+cause[^\n.]{0,80}stale\s+stat(?:s|istics)|"
     r"stale\s+stats?[^\n.]{0,80}(?:cause|root\s+cause)|"
-    r"stale\s+statistics[^\n.]{0,80}(?:cause|root\s+cause)"
+    r"stale\s+statistics[^\n.]{0,80}(?:cause|root\s+cause)|"
+    r"(?:due\s+to|because\s+of|owing\s+to|attributable\s+to|caused\s+by|"
+    r"result(?:s|ed)?\s+(?:from|of)|blamed?\s+on)[^\n.]{0,40}stale\s+stat(?:s|istics)|"
+    r"stale\s+stat(?:s|istics)(?![^\n.]{0,50}\b(?:not|never|hardly)\b)[^\n.]{0,40}"
+    r"(?:responsible\s+for|to\s+blame(?:\s+for)?|explain(?:s|ed)?|account(?:s|ed)?\s+for)"
+    r")",
+    re.IGNORECASE,
+)
+UNSUPPORTED_METADATA_FIX_RE = re.compile(
+    r"("
+    r"(?:stats?|statistics|statistics\s+maintenance|stats?\s+maintenance|"
+    r"refresh(?:ing)?\s+stats?|missing\s+stats?|stats?\s+gaps?|metadata\s+gap)"
+    r"[^\n.]{0,80}"
+    r"(?:should\s+fix|will\s+fix|fix(?:es|ed)?|right\s+fix|resolve|solv\w+|"
+    r"explain(?:s|ed)?|reason|caus(?:e|ed|es|ing))|"
+    r"(?:fix(?:es|ed)?|right\s+fix|resolve|solv\w+|explain(?:s|ed)?|reason|"
+    r"caus(?:e|ed|es|ing))"
+    r"[^\n.]{0,80}"
+    r"(?:stats?|statistics|stats?\s+maintenance|missing\s+stats?|metadata\s+gap)"
     r")",
     re.IGNORECASE,
 )
 REQUIRED_COMPUTE_STATS_RE = re.compile(
     r"("
     r"(?:нужно|необходимо|требуется|надо|обязательно|следует)\s+[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
-    r"\b(?:run|execute|recompute)\b[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
+    r"\b(?:run(?:ning)?|execut(?:e|es|ing)|recomput(?:e|es|ing)|refresh(?:ing)?)\b[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
     r"\b(?:should|need(?:ed)?|must)\s+[^.\n]{0,80}\b(?:run|execute)\s+COMPUTE\s+STATS\b|"
     r"\b(?:выполнить|запустить|пересчитать)\b[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
+    r"\b(?:recommend\w*|suggest\w*|advis\w*|propos\w*)\b[^.\n]{0,40}\bCOMPUTE\s+STATS\b|"
+    r"(?:рекоменду\w+|совету\w+|предлага\w+|стоит\s+подумать)[^.\n]{0,80}\bCOMPUTE\s+STATS\b|"
     r"\bCOMPUTE\s+STATS\b[^.\n]{0,80}(?:required|must|need(?:ed)?|mandatory)"
     r")",
     re.IGNORECASE,
@@ -32,7 +54,11 @@ REQUIRED_COMPUTE_STATS_RE = re.compile(
 METADATA_CLAIM_NEGATION_RE = re.compile(
     r"("
     r"\bdo\s+not\b|"
+    r"\bdoes\s+not\b|"
+    r"\bcannot\b|"
+    r"\bnot\s+(?:due\s+to|because\s+of|responsible|to\s+blame|attributable\s+to|caused\s+by)\b|"
     r"\bnot\s+(?:proven|supported|required|the\s+root\s+cause)\b|"
+    r"\bnot\s+(?:a\s+)?(?:proven\s+)?(?:fix|cause|reason|explanation)\b|"
     r"\bno\s+evidence\b|"
     r"\bнет\s+данн\w*|"
     r"\bнет\s+сведен\w*|"
@@ -68,12 +94,17 @@ ZERO_CARDINALITY_UNSUPPORTED_CLAIMS = (
     ),
     (
         "underestimated cardinality",
-        re.compile(r"\bunderestimated\s+cardinality\b", re.IGNORECASE),
+        re.compile(
+            r"\bunderestimated\b[^.\n]{0,40}\b(?:cardinality|rows?|row\s+count|number\s+of\s+rows|record\s+count)\b",
+            re.IGNORECASE,
+        ),
     ),
     (
         "actual rows exceed estimates",
         re.compile(
-            r"\bactual\s+rows\s+(?:exceed|exceeded|are\s+higher\s+than|were\s+higher\s+than)\s+(?:the\s+)?estimat",
+            r"\bactual\s+rows\s+(?:exceed|exceeded|are\s+higher\s+than|were\s+higher\s+than)\s+(?:the\s+)?estimat|"
+            r"\bactual\s+rows\b[^.\n]{0,40}\b(?:far|way|much|significantly|substantially|considerably|wildly|grossly)\s+"
+            r"(?:above|over|higher\s+than|greater\s+than)\s+(?:the\s+)?estimat",
             re.IGNORECASE,
         ),
     ),
@@ -84,7 +115,8 @@ ZERO_CARDINALITY_UNSUPPORTED_CLAIMS = (
     (
         "estimates too low",
         re.compile(
-            r"\b(?:estimates|row\s+estimates|optimizer\s+estimates)\s+(?:(?:are|were)\s+)?too\s+low\b",
+            r"\b(?:estimates|row\s+estimates|optimizer\s+estimates)\s+(?:(?:are|were)\s+)?"
+            r"(?:(?:far|way|much|significantly|substantially|considerably|wildly|grossly)\s+)?too\s+low\b",
             re.IGNORECASE,
         ),
     ),
@@ -126,7 +158,10 @@ ZERO_CARDINALITY_UNSUPPORTED_CLAIMS = (
     ),
     (
         "Russian cardinality underestimation",
-        re.compile(r"недооцен\w+\s+(?:количеств\w+\s+строк|строк|cardinality)", re.IGNORECASE),
+        re.compile(
+            r"недооцен\w+\s+(?:количеств\w+\s+строк|числ\w+\s+строк|строк|cardinality)",
+            re.IGNORECASE,
+        ),
     ),
     (
         "Russian actual rows exceed estimates",
@@ -238,7 +273,9 @@ def find_unsupported_metadata_claim_errors(report_text: str) -> list[str]:
             continue
         if has_unnegated_metadata_claim(REQUIRED_COMPUTE_STATS_RE, stripped):
             errors.append("report requires COMPUTE STATS without deterministic support")
-        elif has_unnegated_metadata_claim(UNSUPPORTED_METADATA_ROOT_CAUSE_RE, stripped):
+        elif has_unnegated_metadata_claim(
+            UNSUPPORTED_METADATA_ROOT_CAUSE_RE, stripped
+        ) or has_unnegated_metadata_claim(UNSUPPORTED_METADATA_FIX_RE, stripped):
             errors.append("report makes unsupported metadata/stale-stats root-cause claim")
     return errors
 
@@ -251,6 +288,17 @@ def has_unnegated_metadata_claim(pattern: re.Pattern[str], line: str) -> bool:
 
 
 def is_negated_metadata_claim(line: str, match_start: int, match_end: int | None = None) -> bool:
+    if match_end is not None:
+        inline_scope = line[match_start:match_end]
+        inline_negations = list(METADATA_CLAIM_NEGATION_RE.finditer(inline_scope))
+        if inline_negations:
+            after_negation = inline_scope[inline_negations[-1].end() :]
+            if (
+                METADATA_CLAIM_SENTENCE_BOUNDARY_RE.search(after_negation) is None
+                and METADATA_CLAIM_CONTRAST_RE.search(after_negation) is None
+            ):
+                return True
+
     prefix = line[:match_start]
     negation_matches = list(METADATA_CLAIM_NEGATION_RE.finditer(prefix))
     if not negation_matches:
