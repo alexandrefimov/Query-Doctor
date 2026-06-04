@@ -1,0 +1,159 @@
+{
+  "application": {
+    "attemptCount": 1,
+    "attemptState": "finished",
+    "factState": "supported",
+    "lifecycle": "finished"
+  },
+  "executors": {
+    "dynamicAllocationState": "supported",
+    "dynamicAllocationObserved": true,
+    "executorChurnState": "supported",
+    "executorChurnObserved": false,
+    "executorLossCount": 0,
+    "executorLossState": "not_observed",
+    "executorMemoryCapacityBytes": 1342177280,
+    "executorMemoryCapacityState": "supported",
+    "executorMemoryUsedBytes": 268435456,
+    "executorMemoryUsedState": "supported",
+    "factState": "supported"
+  },
+  "fixtureVersion": "synthetic_spark_history_eventlog_compact_v1",
+  "jobs": {
+    "factState": "supported",
+    "linkedJobCount": 2,
+    "stateCounts": {
+      "failed": 0,
+      "finished": 2,
+      "running": 0,
+      "skipped": 0,
+      "unknown": 0
+    }
+  },
+  "limitations": [
+    {
+      "id": "no_live_history_server_collection",
+      "state": "unsupported"
+    },
+    {
+      "id": "no_raw_event_log",
+      "state": "unsupported"
+    },
+    {
+      "id": "no_spark_job_execution",
+      "state": "unsupported"
+    },
+    {
+      "id": "no_browser_report_surface",
+      "state": "unsupported"
+    },
+    {
+      "id": "no_product_support",
+      "state": "unsupported"
+    },
+    {
+      "id": "structured_streaming_not_modeled",
+      "state": "unsupported"
+    },
+    {
+      "id": "cluster_manager_context",
+      "state": "unknown"
+    },
+    {
+      "id": "executor_loss",
+      "state": "not_observed"
+    }
+  ],
+  "provenance": {
+    "bounds": {
+      "maxApplications": 1,
+      "maxApplicationAttempts": 1,
+      "maxJobs": 4,
+      "maxJsonBytes": 65536,
+      "maxSqlExecutions": 1,
+      "maxStages": 8,
+      "maxTasksSampled": 64
+    },
+    "exportSurface": "compact_eventlog_summary",
+    "fixtureProvenance": "synthetic",
+    "freshness": "not_applicable",
+    "queryLinkage": "exact_query",
+    "redactionStatus": "raw_free",
+    "sparkVersionFamily": "spark_4_1",
+    "timeWindow": "not_applicable"
+  },
+  "redaction": {
+    "driverLogs": "not_written",
+    "environmentValues": "not_written",
+    "eventLogRecords": "not_written",
+    "executorLogs": "not_written",
+    "generatedArtifacts": "not_written",
+    "paths": "not_written",
+    "planText": "not_written",
+    "runtimeIds": "not_written",
+    "sqlText": "not_written"
+  },
+  "sourceContract": "spark_history_eventlog_compact_v1",
+  "sourceCoverage": {
+    "attemptedEndpointCount": 0,
+    "factState": "not_observed",
+    "successfulEndpointCount": 0,
+    "warningIds": []
+  },
+  "sqlExecution": {
+    "adaptiveExecution": {
+      "checked": true,
+      "enabled": true,
+      "planChanged": true
+    },
+    "elapsedTimeMillis": 181000,
+    "factState": "supported",
+    "failureCategory": "none",
+    "failureCategoryState": "not_observed",
+    "lifecycle": "finished",
+    "linkedJobCount": 2,
+    "planShapeCoverage": "fingerprinted_without_identifiers"
+  },
+  "stages": {
+    "factState": "supported",
+    "failedStageCount": 0,
+    "schedulerDelayMillis": 42000,
+    "schedulerDelayState": "supported",
+    "inputBytes": 34359738368,
+    "inputBytesState": "supported",
+    "inputRows": 640000,
+    "inputRowsState": "supported",
+    "outputBytes": 268435456,
+    "outputBytesState": "supported",
+    "outputRows": 2000,
+    "outputRowsState": "supported",
+    "shuffleReadBytes": 68719476736,
+    "shuffleWriteBytes": 2147483648,
+    "skewSummary": {
+      "candidate": true,
+      "checked": true,
+      "maxToMedianTaskDurationRatio": 4.2,
+      "sampledTaskCount": 64,
+      "state": "supported"
+    },
+    "spillBytes": 536870912,
+    "stageCount": 4
+  },
+  "tasks": {
+    "durationBucketState": "supported",
+    "durationBuckets": {
+      "10s_to_1m": 4,
+      "1s_to_10s": 52,
+      "over_1m": 0,
+      "under_1s": 8
+    },
+    "factState": "supported",
+    "failedTaskState": "supported",
+    "failedTaskCount": 0,
+    "retriedTaskState": "supported",
+    "retriedTaskCount": 2,
+    "taskCountState": "supported",
+    "sampledTaskCount": 64,
+    "taskCount": 128
+  }
+}
