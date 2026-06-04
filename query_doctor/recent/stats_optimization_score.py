@@ -659,8 +659,10 @@ def stats_candidate_tier(
     normalized_metadata_status = str(metadata_status).lower()
     if normalized_metadata_status not in USABLE_METADATA_STATUSES and score >= 20:
         return "unknown"
-    if normalized_metadata_status in PARTIAL_METADATA_STATUSES and score >= 40:
+    if normalized_metadata_status in PARTIAL_METADATA_STATUSES and chain_complete and score >= 40:
         return "medium"
+    if not chain_complete and score >= 40:
+        return "low"
     if chain_complete and score >= 70:
         return "high"
     if score >= 40:

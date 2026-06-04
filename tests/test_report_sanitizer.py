@@ -2686,6 +2686,202 @@ def test_admin_report_postprocess_adds_required_next_checks():
     assert "Проверить profile counters" in enforced
 
 
+def test_admin_report_postprocess_prefers_context_only_scan_skew_over_backend_legacy_text():
+    module = load_report_module()
+
+    report = """
+# Query Doctor Report
+
+## Что проверить следующим запуском
+
+- Сравнить профиль со следующим запуском.
+"""
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Scan Skew Evidence
+
+- status: context_only
+- evidence_tier: context_only
+- finding_supported: no
+- primary_supported: no
+- skew_ratio: n/a
+
+## Backend / Host Tail Evidence
+
+- backend rows parsed: 28
+- host tail candidates: 0
+- data skew: yes (rows produced max/min ratio is 52.4x)
+- execution skew: no
+- write-path anomaly: no
+"""
+
+    enforced = module.enforce_admin_report_requirements(report, facts)
+
+    assert "Проверить per-host RowsProduced" not in enforced
+    assert "Проверить per-host PeakMemUsage" not in enforced
+    assert "Проверить CM metrics/logs" not in enforced
+    assert "Приоритизировать Backend / Host Tail Evidence" not in enforced
+
+
+def test_user_report_postprocess_prefers_context_only_scan_skew_over_backend_package():
+    module = load_report_module()
+
+    report = """
+# Query Doctor Report
+
+## Если проблема останется, отправьте админам/платформенной команде
+
+- analysis_facts.md.
+"""
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Scan Skew Evidence
+
+- status: context_only
+- evidence_tier: context_only
+- finding_supported: no
+- primary_supported: no
+- skew_ratio: n/a
+
+## Backend / Host Tail Evidence
+
+- backend rows parsed: 28
+- host tail candidates: 0
+- data skew: yes (rows produced max/min ratio is 52.4x)
+- execution skew: no
+- write-path anomaly: no
+"""
+
+    enforced = module.enforce_user_report_requirements(report, facts)
+
+    assert "Передать платформенной команде backend/host evidence" not in enforced
+    assert "Приоритизировать Backend / Host Tail Evidence" not in enforced
+
+
+def test_admin_report_postprocess_does_not_add_admission_check_from_context_only_pool_context():
+    module = load_report_module()
+
+    report = """
+# Query Doctor Report
+
+## Что проверить следующим запуском
+
+- Сравнить профиль со следующим запуском.
+"""
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Runtime Admission Evidence
+
+- status: negative
+- evidence_tier: strong
+- primary_supported: no
+- admission_result: admitted_immediately (source=profile_resource_facts)
+- guardrail: Runtime admission can become primary only from selected-query admission result, selected-query admission wait, or query timeline/profile admission facts.
+
+## Admission Context
+
+- status: available
+- source: Impala admission debug endpoint
+- scope: selected_pool
+- queue_present: yes
+- pool_pressure: medium
+- guardrail: Admission debug context is aggregate pool context. It must not promote runtime_admission without selected-query admission wait or result evidence.
+"""
+
+    enforced = module.enforce_admin_report_requirements(report, facts)
+
+    assert "admission pool" not in enforced
+    assert "лимиты памяти admission pool" not in enforced
+
+
+def test_admin_report_postprocess_adds_admission_check_for_supported_runtime_admission():
+    module = load_report_module()
+
+    report = """
+# Query Doctor Report
+
+## Что проверить следующим запуском
+
+- Сравнить профиль со следующим запуском.
+"""
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Runtime Admission Evidence
+
+- status: supported
+- evidence_tier: strong
+- primary_supported: yes
+- admission_result: queued (source=profile_resource_facts)
+- selected_wait: 45s (source=profile_resource_facts, share=37%)
+- guardrail: Runtime admission can become primary only from selected-query admission result, selected-query admission wait, or query timeline/profile admission facts.
+"""
+
+    enforced = module.enforce_admin_report_requirements(report, facts)
+
+    assert "Проверить лимиты памяти admission pool" in enforced
+
+
+def test_admin_report_postprocess_adds_admission_check_for_correlated_pool_metrics():
+    module = load_report_module()
+
+    report = """
+# Query Doctor Report
+
+## Что проверить следующим запуском
+
+- Сравнить профиль со следующим запуском.
+"""
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Runtime Metrics Correlation
+
+- status: available
+- correlated_signals: 1
+- context_only_signals: 0
+- admission_pool_pressure: correlated (metric=observed, strength=moderate)
+  - basis: admission queued max=2.50/s avg=0.40/s; admission rejected max=0.00/s; admission timed_out max=0.00/s
+  - interpretation: Admission/pool pressure is correlated with query admission wait evidence; treat it as pool runtime context and validate against pool limits and comparable reruns.
+"""
+
+    enforced = module.enforce_admin_report_requirements(report, facts)
+
+    assert "Проверить лимиты памяти admission pool" in enforced
+
+
+def test_admin_report_postprocess_does_not_add_admission_check_for_context_only_pool_metrics():
+    module = load_report_module()
+
+    report = """
+# Query Doctor Report
+
+## Что проверить следующим запуском
+
+- Сравнить профиль со следующим запуском.
+"""
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Runtime Metrics Correlation
+
+- status: available
+- correlated_signals: 0
+- context_only_signals: 1
+- admission_pool_pressure: context_only (metric=observed, strength=weak)
+  - basis: admission queued max=2.50/s avg=0.40/s; admission rejected max=0.00/s; admission timed_out max=0.00/s
+  - interpretation: Admission/pool pressure was observed, but the query did not expose matching admission wait evidence.
+"""
+
+    enforced = module.enforce_admin_report_requirements(report, facts)
+
+    assert "admission pool" not in enforced
+    assert "лимиты памяти admission pool" not in enforced
+
+
 def test_admin_report_postprocess_keeps_inserted_checks_inside_details():
     module = load_report_module()
 

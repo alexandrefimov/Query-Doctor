@@ -155,6 +155,20 @@ def test_cardinality_mismatch_without_metadata_support_does_not_create_high():
     assert "no missing or incomplete stats evidence" in result.counter_signals
 
 
+def test_partial_metadata_without_stats_gap_does_not_become_actionable():
+    result = score_stats_optimization_candidate(
+        stats_facts(table_stats="available", column_stats="available"),
+        duration_sec=120,
+        metadata_status="partial",
+    )
+
+    assert result.tier in {"low", "not_likely"}
+    assert result.need_type == "not_likely_stats_issue"
+    assert result.confidence == "low"
+    assert "no supported missing or incomplete stats evidence" in result.counter_signals
+    assert "metadata is insufficient for stats classification" in result.counter_signals
+
+
 def test_legacy_stale_stats_text_does_not_promote_stats_candidate():
     facts = (
         stats_facts(table_stats="available", column_stats="complete")

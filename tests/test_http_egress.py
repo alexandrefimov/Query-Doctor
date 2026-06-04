@@ -26,6 +26,11 @@ from query_doctor.spark.history_server import (
     collect_spark_history_server_compact_summary,
     spark_history_urlopen_no_redirect,
 )
+from query_doctor.trino import (
+    coordinator_query_info_target,
+    http_event_archive,
+    http_query_detail_archive,
+)
 
 
 def public_resolver(_host: str, _port: int):
@@ -157,6 +162,14 @@ def test_http_clients_use_safe_default_openers():
     )
     assert fetch_impala_query_summaries.__kwdefaults__["opener"] is configured_diagnostic_urlopen
     assert llm_client.configured_diagnostic_urlopen is configured_diagnostic_urlopen
+    assert http_event_archive.urlopen is configured_diagnostic_urlopen
+    assert http_query_detail_archive.urlopen is configured_diagnostic_urlopen
+    assert (
+        coordinator_query_info_target._open_without_redirects.__globals__[
+            "configured_diagnostic_urlopen"
+        ]
+        is configured_diagnostic_urlopen
+    )
     assert spark_history_urlopen_no_redirect is not public_urlopen_no_redirect
 
 

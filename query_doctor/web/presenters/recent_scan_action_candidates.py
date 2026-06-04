@@ -26,9 +26,14 @@ def present_recent_scan_action_candidates(
         summary = str(optimization.get("summary") or "query-shape evidence").strip()
         review_areas = str(optimization.get("review_areas") or "query shape").strip()
         rewrite_review_direction = str(optimization.get("rewrite_review_direction") or "").strip()
-        rewrite_review_verification = str(
-            optimization.get("rewrite_review_verification") or ""
-        ).strip()
+        rewrite_review_verification = comparable_rerun_verification(
+            optimization.get("rewrite_review_verification"),
+            (
+                "Compare EXPLAIN before and after the change, then rerun under comparable "
+                "load and confirm estimates, exchange, memory, spill, or runtime behavior "
+                "before accepting the change."
+            ),
+        )
         counter_text = candidate_counter_signal_note(optimization)
         source_locators = view.source_locators.get(
             "query_optimization",
@@ -64,14 +69,7 @@ def present_recent_scan_action_candidates(
                     source_locators,
                     rewrite_review_direction,
                 ),
-                verification=(
-                    rewrite_review_verification
-                    or (
-                        "Compare EXPLAIN before and after the change, then rerun under comparable "
-                        "load and confirm estimates, exchange, memory, spill, or runtime behavior "
-                        "improved."
-                    )
-                ),
+                verification=rewrite_review_verification,
             )
         )
     stats = view.stats_candidate
@@ -79,9 +77,14 @@ def present_recent_scan_action_candidates(
         rank_text = candidate_rank_text(view.stats_rank)
         summary = str(stats.get("summary") or "stats-planning evidence").strip()
         review_areas = str(stats.get("review_areas") or "stats evidence").strip()
-        confirmation = str(
-            stats.get("required_confirmation") or "compare EXPLAIN and rerun under comparable load"
-        ).strip()
+        confirmation = comparable_rerun_verification(
+            stats.get("required_confirmation"),
+            (
+                "Compare EXPLAIN before and after stats collection, then rerun under comparable "
+                "load and confirm estimates, stats signals, and runtime behavior before "
+                "accepting the change."
+            ),
+        )
         evidence_detail = str(stats.get("evidence_detail") or "").strip()
         counter_sentence = candidate_counter_signal_note(stats)
         source_locators = view.source_locators.get(
@@ -520,6 +523,23 @@ def join_action_text(*parts: str) -> str:
             text += "."
         sentences.append(text)
     return " ".join(sentences)
+
+
+def comparable_rerun_verification(value: object, fallback: str) -> str:
+    text = str(value or "").strip()
+    if verification_has_comparable_rerun(text):
+        return text
+    fallback_text = str(fallback or "").strip()
+    if not text:
+        return fallback_text
+    return join_action_text(text, fallback_text)
+
+
+def verification_has_comparable_rerun(value: object) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    return "comparable" in text and ("rerun" in text or "re-run" in text or "scan" in text)
 
 
 def query_optimization_why(

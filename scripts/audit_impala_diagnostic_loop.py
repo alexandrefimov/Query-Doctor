@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from collections import Counter
@@ -22,6 +23,25 @@ from scripts.audit_profile_evidence_gates import audit_summary as audit_profile_
 from scripts.audit_recent_details import audit_summary as audit_details_summary  # noqa: E402
 from scripts.audit_stats_diagnostics import audit_summary as audit_stats_summary  # noqa: E402
 from scripts.audit_workload_diagnostics import audit_summary as audit_workload_summary  # noqa: E402
+from query_doctor.report.language_contract import SUPPORTED_REPORT_LANGUAGES  # noqa: E402
+from query_doctor.report.trusted_text import validate_report_for_mode  # noqa: E402
+from query_doctor.web.case_files import read_case_relative_text  # noqa: E402
+from query_doctor.web.command_builders import (  # noqa: E402
+    REPORT_VARIANT_LLM,
+    REPORT_VARIANT_PYTHON,
+    report_artifacts_for_variant,
+)
+from query_doctor.web.jobs import WebJobStore  # noqa: E402
+from query_doctor.web.models import WebSettings  # noqa: E402
+from query_doctor.web.trusted_artifacts import (  # noqa: E402
+    load_case_analyzer_facts_text,
+    load_batch_case_report_state,
+    load_batch_case_trusted_report_artifact,
+    load_optimized_query_state,
+    load_validated_optimized_query,
+    load_validated_optimizer_recommendations,
+    resolve_batch_case_report_dir,
+)
 
 
 DETAIL_ISSUE_CATEGORIES = (
@@ -36,6 +56,14 @@ DETAIL_ISSUE_CATEGORIES = (
     ("verification lacks comparable rerun guidance", "action_without_comparable_rerun"),
     ("stats action lacks structured metadata detail", "stats_action_missing_detail"),
 )
+REPORT_VARIANTS = (REPORT_VARIANT_PYTHON, REPORT_VARIANT_LLM)
+TRUSTED_REPORT_FORBIDDEN_DISPLAY_FRAGMENTS = (
+    "analysis_facts.md",
+    "case_dir",
+    "profile_digest.md",
+    "query_metadata.json",
+)
+LOCAL_PATH_RE = re.compile(r"(?i)(?:^|[\s:(])(?:/users/|/private/|/tmp/|[a-z]:\\)")
 
 
 @dataclass(frozen=True)
@@ -58,6 +86,51 @@ class DiagnosticLoopAuditResult:
 
 class LoopAuditInputError(RuntimeError):
     """Raised when the aggregate loop audit cannot load its primary input."""
+
+
+@dataclass(frozen=True)
+class TrustedReportIssue:
+    category: str
+    message: str
+
+
+@dataclass
+class TrustedReportAuditResult:
+    summary_name: str
+    total_cases: int
+    audited_cases: int = 0
+    trusted_report_count: int = 0
+    revalidated_report_count: int = 0
+    revalidation_failure_count: int = 0
+    partial_untrusted_count: int = 0
+    issues: list[TrustedReportIssue] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.issues
+
+
+@dataclass(frozen=True)
+class OptimizerArtifactIssue:
+    category: str
+    message: str
+
+
+@dataclass
+class OptimizerArtifactAuditResult:
+    summary_name: str
+    total_cases: int
+    audited_cases: int = 0
+    trusted_artifact_count: int = 0
+    trusted_draft_count: int = 0
+    trusted_recommendation_count: int = 0
+    trusted_no_rewrite_count: int = 0
+    partial_untrusted_count: int = 0
+    issues: list[OptimizerArtifactIssue] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.issues
 
 
 def audit_summary(
@@ -84,6 +157,16 @@ def audit_summary(
                 fail_on_comparable_rerun_gaps=True,
             ),
             metrics=details_metrics,
+        ),
+        run_component(
+            "trusted_reports",
+            lambda: audit_trusted_report_summary(resolved_summary),
+            metrics=trusted_report_metrics,
+        ),
+        run_component(
+            "optimizer_artifacts",
+            lambda: audit_optimizer_artifact_summary(resolved_summary),
+            metrics=optimizer_artifact_metrics,
         ),
         run_component(
             "profile_evidence",
@@ -135,6 +218,182 @@ def audit_summary(
     )
 
 
+def audit_trusted_report_summary(summary_path: Path) -> TrustedReportAuditResult:
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LoopAuditInputError("batch summary is not readable") from exc
+    cases = payload.get("cases")
+    if not isinstance(cases, list):
+        cases = []
+    result = TrustedReportAuditResult(summary_name=summary_path.name, total_cases=len(cases))
+    settings = WebSettings(config=Path("query_doctor_audit_config"), batch_summary=summary_path)
+    job_store = WebJobStore()
+
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        result.audited_cases += 1
+        case_id = safe_case_id(case)
+        for variant in REPORT_VARIANTS:
+            state = load_batch_case_report_state(
+                settings,
+                case_id,
+                case,
+                job_store,
+                report_variant=variant,
+            )
+            status = safe_token(state.get("status"))
+            if status == "partial_untrusted":
+                result.partial_untrusted_count += 1
+                result.issues.append(
+                    TrustedReportIssue(
+                        category="partial_untrusted_report",
+                        message="case has partial or untrusted report output",
+                    )
+                )
+            if state.get("trusted"):
+                artifact = load_batch_case_trusted_report_artifact(
+                    settings,
+                    case_id,
+                    case,
+                    report_variant=variant,
+                )
+                if artifact is None:
+                    result.issues.append(
+                        TrustedReportIssue(
+                            category="trusted_report_unreadable",
+                            message="trusted report marker exists but report artifact is unreadable",
+                        )
+                    )
+                    continue
+                result.trusted_report_count += 1
+                result.revalidated_report_count += 1
+                if not trusted_report_passes_current_validation(settings, case, variant):
+                    result.revalidation_failure_count += 1
+                    result.issues.append(
+                        TrustedReportIssue(
+                            category="trusted_report_revalidation_failed",
+                            message="trusted report no longer passes current strict validation",
+                        )
+                    )
+                if trusted_report_has_display_leak(artifact.text):
+                    result.issues.append(
+                        TrustedReportIssue(
+                            category="trusted_report_display_leak",
+                            message="trusted report display text contains forbidden browser-visible data",
+                        )
+                    )
+    return result
+
+
+def audit_optimizer_artifact_summary(summary_path: Path) -> OptimizerArtifactAuditResult:
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LoopAuditInputError("batch summary is not readable") from exc
+    cases = payload.get("cases")
+    if not isinstance(cases, list):
+        cases = []
+    result = OptimizerArtifactAuditResult(summary_name=summary_path.name, total_cases=len(cases))
+    settings = WebSettings(config=Path("query_doctor_audit_config"), batch_summary=summary_path)
+    job_store = WebJobStore()
+
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        result.audited_cases += 1
+        case_id = safe_case_id(case)
+        artifact_dir = resolve_batch_case_report_dir(settings, case)
+        state = load_optimized_query_state(artifact_dir, job_store, batch_case_id=case_id)
+        status = safe_token(state.get("status"))
+        if status == "partial_untrusted":
+            result.partial_untrusted_count += 1
+            result.issues.append(
+                OptimizerArtifactIssue(
+                    category="partial_untrusted_optimizer_artifact",
+                    message="case has partial or untrusted optimizer output",
+                )
+            )
+        if state.get("trusted"):
+            result.trusted_artifact_count += 1
+            output_kind = safe_token(state.get("output_kind")) or "sql_draft"
+            if output_kind == "no_rewrite":
+                result.trusted_no_rewrite_count += 1
+            elif output_kind == "recommendations_only":
+                result.trusted_recommendation_count += 1
+            else:
+                result.trusted_draft_count += 1
+            if not trusted_optimizer_artifact_is_readable(artifact_dir, state):
+                result.issues.append(
+                    OptimizerArtifactIssue(
+                        category="trusted_optimizer_artifact_unreadable",
+                        message="trusted optimizer marker exists but output is unreadable",
+                    )
+                )
+    return result
+
+
+def trusted_optimizer_artifact_is_readable(
+    artifact_dir: Path | None,
+    state: dict[str, object],
+) -> bool:
+    if artifact_dir is None:
+        return False
+    output_kind = safe_token(state.get("output_kind")) or "sql_draft"
+    if output_kind == "no_rewrite":
+        return load_validated_optimizer_recommendations(artifact_dir) is not None
+    if output_kind == "recommendations_only":
+        return load_validated_optimizer_recommendations(artifact_dir) is not None
+    return load_validated_optimized_query(artifact_dir) is not None
+
+
+def trusted_report_passes_current_validation(
+    settings: WebSettings,
+    case: dict[str, object],
+    report_variant: str,
+) -> bool:
+    artifact_dir = resolve_batch_case_report_dir(settings, case)
+    if artifact_dir is None:
+        return False
+    report_name, _partial_name, _marker_name = report_artifacts_for_variant(report_variant)
+    report_text = read_case_relative_text(artifact_dir, report_name)
+    facts_text = load_case_analyzer_facts_text(artifact_dir)
+    if report_text is None or facts_text is None:
+        return False
+    return trusted_report_errors_for_supported_languages(report_text, facts_text) == []
+
+
+def trusted_report_errors_for_supported_languages(report_text: str, facts_text: str) -> list[str]:
+    all_errors: list[str] = []
+    for language in SUPPORTED_REPORT_LANGUAGES:
+        errors = validate_report_for_mode(
+            report_text,
+            facts_text=facts_text,
+            validation_mode="strict",
+            language=language,
+        )
+        if not errors:
+            return []
+        all_errors.extend(errors)
+    return all_errors
+
+
+def safe_case_id(case: dict[str, object]) -> str:
+    for key in ("case_id", "case_index", "query_id"):
+        token = safe_token(case.get(key))
+        if token:
+            return token
+    return "case"
+
+
+def trusted_report_has_display_leak(text: str) -> bool:
+    normalized = text.lower()
+    if LOCAL_PATH_RE.search(text):
+        return True
+    return any(fragment in normalized for fragment in TRUSTED_REPORT_FORBIDDEN_DISPLAY_FRAGMENTS)
+
+
 def run_component(
     name: str,
     audit: Callable[[], Any],
@@ -184,6 +443,31 @@ def details_metrics(result: Any) -> tuple[tuple[str, str], ...]:
     return metric_pairs(
         total_cases=getattr(result, "total_cases", 0),
         audited_cases=getattr(result, "audited_cases", 0),
+        issues=len(getattr(result, "issues", ()) or ()),
+    )
+
+
+def trusted_report_metrics(result: Any) -> tuple[tuple[str, str], ...]:
+    return metric_pairs(
+        total_cases=getattr(result, "total_cases", 0),
+        audited_cases=getattr(result, "audited_cases", 0),
+        trusted_reports=getattr(result, "trusted_report_count", 0),
+        revalidated_reports=getattr(result, "revalidated_report_count", 0),
+        revalidation_failures=getattr(result, "revalidation_failure_count", 0),
+        partial_untrusted=getattr(result, "partial_untrusted_count", 0),
+        issues=len(getattr(result, "issues", ()) or ()),
+    )
+
+
+def optimizer_artifact_metrics(result: Any) -> tuple[tuple[str, str], ...]:
+    return metric_pairs(
+        total_cases=getattr(result, "total_cases", 0),
+        audited_cases=getattr(result, "audited_cases", 0),
+        trusted_artifacts=getattr(result, "trusted_artifact_count", 0),
+        trusted_drafts=getattr(result, "trusted_draft_count", 0),
+        trusted_recommendations=getattr(result, "trusted_recommendation_count", 0),
+        trusted_no_rewrite=getattr(result, "trusted_no_rewrite_count", 0),
+        partial_untrusted=getattr(result, "partial_untrusted_count", 0),
         issues=len(getattr(result, "issues", ()) or ()),
     )
 

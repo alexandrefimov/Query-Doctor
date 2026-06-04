@@ -250,7 +250,7 @@ def test_recent_details_audit_can_fail_stats_action_missing_structured_detail(
     ]
 
 
-def test_recent_details_audit_observes_action_missing_comparable_rerun(
+def test_recent_details_audit_observes_normalized_comparable_rerun(
     tmp_path: Path,
 ) -> None:
     summary_path = write_summary(
@@ -267,13 +267,11 @@ def test_recent_details_audit_observes_action_missing_comparable_rerun(
     result = audit_summary(summary_path)
 
     assert result.ok
-    assert result.verification_counts == {"suspicious:missing_comparable_rerun": 1}
-    assert [observation.message for observation in result.observations] == [
-        "Stats maintenance recommendation verification lacks comparable rerun guidance"
-    ]
+    assert result.verification_counts == {"suspicious:comparable_rerun": 1}
+    assert not result.observations
 
 
-def test_recent_details_audit_can_fail_action_missing_comparable_rerun(
+def test_recent_details_audit_fail_flag_allows_normalized_comparable_rerun(
     tmp_path: Path,
 ) -> None:
     summary_path = write_summary(
@@ -289,11 +287,9 @@ def test_recent_details_audit_can_fail_action_missing_comparable_rerun(
 
     result = audit_summary(summary_path, fail_on_comparable_rerun_gaps=True)
 
-    assert not result.ok
-    assert result.verification_counts == {"suspicious:missing_comparable_rerun": 1}
-    assert [issue.message for issue in result.issues] == [
-        "Stats maintenance recommendation verification lacks comparable rerun guidance"
-    ]
+    assert result.ok
+    assert result.verification_counts == {"suspicious:comparable_rerun": 1}
+    assert not result.issues
 
 
 def test_recent_details_audit_allows_runtime_follow_up_without_optimizer_source(

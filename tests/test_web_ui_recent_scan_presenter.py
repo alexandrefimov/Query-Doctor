@@ -4606,6 +4606,7 @@ def test_recent_scan_query_action_card_preserves_stats_split_caveat():
     assert query_card.title == "Query-shape recommendation"
     assert "stats-vs-query-shape split is unconfirmed" in query_card.why
     assert "may also require statistics update" in query_card.why
+    assert "rerun under comparable load" in query_card.verification
     assert "stats-vs-query-shape split is unconfirmed" in html
     assert "may also require statistics update" in html
     assert_no_forbidden_fragments(action_view)
@@ -4636,7 +4637,6 @@ def test_recent_scan_stats_action_card_preserves_generic_column_stats_caveat():
                 "suggested_review_areas": ["column statistics"],
                 "required_confirmation": [
                     "compare EXPLAIN before and after stats collection",
-                    "rerun under comparable load to confirm runtime improvement",
                 ],
                 "evidence_detail": ["column stats incomplete/unknown"],
             },
@@ -4651,6 +4651,7 @@ def test_recent_scan_stats_action_card_preserves_generic_column_stats_caveat():
     assert "not tied to specific join/filter columns" in stats_card.why
     assert "not tied to specific join/filter columns" in html
     assert "metadata collection was partial" in stats_card.why
+    assert "rerun under comparable load" in stats_card.verification
     assert_no_forbidden_fragments(action_view)
     assert_no_forbidden_fragments(html)
 

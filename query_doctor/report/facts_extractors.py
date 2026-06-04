@@ -357,6 +357,28 @@ def facts_has_backend_tail_evidence(facts_text: str) -> bool:
     )
 
 
+def facts_have_backend_followup_evidence(facts_text: str) -> bool:
+    summary = parse_backend_tail_summary(facts_text)
+    if backend_data_skew_is_supported(summary):
+        return True
+    if backend_has_proven_tail(summary):
+        return True
+    if backend_write_path_is_supported(summary):
+        return True
+    if str(summary.get("execution skew", "unknown")).lower() == "yes":
+        return True
+
+    findings_text = "\n".join(extract_markdown_section(facts_text, "## Findings"))
+    return bool(
+        re.search(
+            r"^###\s+Host-specific execution tail suspected\b|"
+            r"Execution skew is suspected from parsed backend(?: execution-time)? counters",
+            findings_text,
+            re.IGNORECASE | re.MULTILINE,
+        )
+    )
+
+
 def parse_backend_tail_summary(facts_text: str) -> dict[str, str | int]:
     summary: dict[str, str | int] = {}
     in_backend_section = False
@@ -622,6 +644,8 @@ def cm_metrics_facts_summary(facts_text: str) -> dict[str, str]:
     for label in (
         "status",
         "coverage",
+        "admission_pool_pressure",
+        "admission_pool_pressure_basis",
         "host_cpu_pressure",
         "host_cpu_pressure_basis",
         "daemon_memory_growth",
@@ -670,6 +694,7 @@ def cm_metrics_correlation_summary(facts_text: str) -> dict[str, str]:
         "correlated_signals",
         "context_only_signals",
         "guardrail",
+        "admission_pool_pressure",
         "host_cpu_pressure",
         "daemon_memory_growth",
         "daemon_memory_pressure",
@@ -685,6 +710,7 @@ def cm_metrics_correlation_points(facts_text: str) -> list[str]:
     summary = cm_metrics_correlation_summary(facts_text)
     points: list[str] = []
     labels = (
+        ("admission_pool_pressure", "Admission/pool pressure"),
         ("host_cpu_pressure", "Host CPU pressure"),
         ("daemon_memory_growth", "Daemon memory growth"),
         ("daemon_memory_pressure", "Daemon memory pressure"),
@@ -837,6 +863,7 @@ def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
     observed = [
         label
         for key, label in (
+            ("admission_pool_pressure", "admission/pool pressure"),
             ("host_cpu_pressure", "host CPU pressure"),
             ("daemon_memory_growth", "daemon memory growth"),
             ("daemon_memory_pressure", "daemon memory pressure"),
