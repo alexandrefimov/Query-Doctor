@@ -219,7 +219,9 @@ reject-иться до того, как его можно считать one-que
 readiness.
 Для one-query coordinator import dry runs, которые пишут и `--boundary-out`, и
 `--diagnosis-out`, тот же audit должен получать
+`--require-source-version trino_coordinator_query_info_target_v1` и
 `--diagnosis-json <raw-free-trino-diagnosis.json>`, чтобы проверить, что
+boundary пришла из accepted coordinator QueryInfo source contract, а
 сохраненный compact diagnosis artifact совпадает с deterministic diagnosis из
 boundary и остается raw-free.
 Если handoff включает executed dev-only Kerberos/SPNEGO smoke summary, audit

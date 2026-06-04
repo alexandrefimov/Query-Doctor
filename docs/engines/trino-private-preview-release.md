@@ -17,10 +17,11 @@ bounded HTTP event archive import, bounded HTTP query-detail archive import,
 bounded local query-detail import, and bounded local query-list aggregate
 import, bounded local statement-stats import, bounded local pruned QueryInfo
 import, event-source contract checking, dry-run coordinator query-info target
-checking, one-query pruned coordinator query-info probing/import, and local
-compact diagnosis over raw-free direct boundary JSON or selected package sample
-boundaries, and the isolated local `/trino/compact-diagnosis` page over the
-same already raw-free inputs. Trino
+checking, one-query pruned coordinator query-info probing/import, dev-only
+one-query handoff and handoff-suite readiness over raw-free handoff artifacts,
+and local compact diagnosis over raw-free direct boundary JSON or selected
+package sample boundaries, and the isolated local `/trino/compact-diagnosis`
+page over the same already raw-free inputs. Trino
 private preview means the release can show a bounded Kerberos/SPNEGO
 smoke against an approved test cluster plus sanitized package, local
 event-store, HTTP event archive, HTTP query-detail archive, local query-detail,
@@ -57,8 +58,9 @@ Allowed wording:
   bounded local event-store, HTTP event archive, HTTP query-detail archive,
   query-detail, query-list aggregate, statement-stats, and local pruned
   QueryInfo import, plus dry-run coordinator query-info target checking and
-  one-query pruned coordinator query-info probing/import, and does not add live Trino coordinator
-  collection or web diagnosis."
+  one-query pruned coordinator query-info probing/import, dev-only one-query
+  handoff and handoff-suite readiness over raw-free handoff artifacts, and does
+  not add live Trino coordinator collection or web diagnosis."
 - "The event-source contract check validates source type, auth reference,
   schema, bounds, and redaction policy before the HTTP archive reader can
   contact an operator archive."
@@ -425,11 +427,78 @@ For a release demo, show the path in this order:
    is the direct `engine_fact_boundary_v1` payload for
    `scripts/audit_trino_compact_readiness.py <raw-free-trino-boundary.json> --require-one-query-boundary`.
    When the same run writes `--diagnosis-out <raw-free-trino-diagnosis.json>`,
-   pass `--diagnosis-json <raw-free-trino-diagnosis.json>` to the audit so the
-   stored compact diagnosis artifact is checked against the deterministic
-   boundary-derived diagnosis without printing artifact paths.
+   also pass `--require-source-version trino_coordinator_query_info_target_v1`
+   and `--diagnosis-json <raw-free-trino-diagnosis.json>` to the audit so the
+   source contract and stored compact diagnosis artifact are checked against the
+   deterministic boundary-derived diagnosis without printing actual
+   source-version values or artifact paths.
    It does not crawl query history, submit SQL, collect live Query ID diagnosis,
    or add browser/report output.
+
+15. Optionally use the dev-only one-query live handoff wrapper for the same
+    real-cluster readiness path:
+
+   ```bash
+   python3 scripts/trino_one_query_live_handoff.py \
+     --redaction-reviewed \
+     --auth-header-file <operator-auth-header-file> \
+     --source-contract <sanitized-query-info-target-contract.json> \
+     --coordinator-url https://<trino-coordinator> \
+     --query-id <trino-query-id> \
+     --boundary-out <raw-free-trino-boundary.json> \
+     --diagnosis-out <raw-free-trino-diagnosis.json>
+   ```
+
+   This wrapper is not an installed product CLI. It runs the same one-query
+   pruned coordinator import, writes only raw-free boundary and compact
+   diagnosis artifacts, and immediately runs the strict
+   `--require-one-query-boundary`,
+   `--require-source-version trino_coordinator_query_info_target_v1`, and
+   `--diagnosis-json <raw-free-trino-diagnosis.json>` readiness checks without
+   printing coordinator URLs, Query IDs, auth headers, raw QueryInfo, output
+   paths, or filenames. If an executed Kerberos/SPNEGO smoke summary is part of
+   the handoff, pass
+   `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke` to the
+   wrapper as well. It does not crawl query history, submit SQL, collect live
+   Query ID diagnosis, or add browser/report output.
+
+16. For more than one retained one-query handoff result, build a local
+    `trino_one_query_handoff_suite_v1` manifest whose entries reference each
+    raw-free boundary JSON and its optional compact diagnosis and smoke-summary
+    artifacts, then run the strict suite gate:
+
+   ```bash
+   python3 scripts/build_trino_handoff_suite_manifest.py \
+     --redaction-reviewed \
+     --boundary-json <raw-free-trino-boundary-1.json> \
+     --diagnosis-json <raw-free-trino-diagnosis-1.json> \
+     --smoke-summary <trino_smoke_summary.json> \
+     --out <trino-one-query-handoff-suite.json>
+
+   python3 scripts/audit_trino_compact_readiness.py \
+     --handoff-suite-manifest <trino-one-query-handoff-suite.json> \
+     --require-diagnosis-json \
+     --require-executed-smoke \
+     --require-one-query-boundary \
+     --require-source-version trino_coordinator_query_info_target_v1 \
+     --fail-on-unknown-parser-coverage \
+     --require-min-inputs <minimum-retained-query-count> \
+     --summary-json <raw-free-trino-suite-summary.json>
+   ```
+
+   The builder is not an installed product CLI. It requires explicit
+   redaction-review confirmation, writes only local handoff metadata with
+   relative artifact references, supports one shared smoke summary or one per
+   boundary, rejects output/input overlap, and prints only aggregate counts and
+   the relative-reference mode without paths or filenames. The manifest is
+   local handoff metadata, not a committed artifact. The audit prints only
+   aggregate counts and safe issue categories and can write the same raw-free
+   aggregate evidence as `trino_compact_readiness_summary_v1` JSON. That
+   summary records source-version requirements only as counts and boolean
+   flags, not as operator-provided values. Neither output includes coordinator
+   URLs, Query IDs, auth headers, raw QueryInfo, local paths, or filenames. It
+   does not fetch additional queries, crawl query history, submit SQL, collect
+   live Query ID diagnosis, or add browser/report output.
 
 ## Release Gates
 
@@ -464,16 +533,22 @@ Before a release may describe Trino as private preview:
   `coordinator_query_info` source contract passes
   `query-doctor-trino-query-info-pruned-import --redaction-reviewed`, or one
   operator-approved pruned QueryInfo source contract plus one explicit query
-  passes the pruned import command with boundary JSON output, or the
-  release note says the Trino evidence remains synthetic-only.
+  passes the pruned import command with boundary JSON output and, before
+  broadening any Trino support surface, a retained set of one-query handoff
+  results passes the `trino_one_query_handoff_suite_v1` manifest gate with
+  diagnosis, executed-smoke, one-query, source-version, parser-coverage, and
+  supported-attention requirements, a configured minimum retained input count,
+  and a raw-free machine summary artifact; otherwise the release note says the
+  Trino evidence remains synthetic-only.
 - README and release docs state that Trino support is limited to sanitized
   offline evidence package import, bounded local event-store import, and bounded
   HTTP event archive, HTTP query-detail archive, local query-detail, query-list
   aggregate, statement-stats, and local pruned QueryInfo import, plus
   event-source contract checking, dry-run coordinator query-info target
-  checking, one-query pruned coordinator query-info probing/import, and local
-  compact diagnosis over raw-free direct boundary JSON or selected package
-  sample boundaries, and the isolated local compact-diagnosis page over the same
+  checking, one-query pruned coordinator query-info probing/import, dev-only
+  one-query handoff and handoff-suite readiness over raw-free handoff
+  artifacts, and local compact diagnosis over raw-free direct boundary JSON or
+  selected package sample boundaries, and the isolated local compact-diagnosis page over the same
   already raw-free inputs.
 - No live Trino engine selector, Details/trusted report path, optimizer
   behavior, metadata collector, query-history reader, live support claim, or

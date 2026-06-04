@@ -21,9 +21,11 @@ HTTP event archive import, bounded HTTP query-detail archive import, bounded
 local query-detail/query-list aggregate import и bounded local statement-stats
 import, bounded local pruned QueryInfo import, plus event-source contract
 checking и dry-run coordinator query-info target checking, plus one-query
-pruned coordinator query-info probing/import, local compact diagnosis over
-raw-free direct boundary JSON или selected package sample boundaries и isolated
-local `/trino/compact-diagnosis` page over the same already raw-free inputs.
+pruned coordinator query-info probing/import, dev-only one-query handoff and
+handoff-suite readiness over raw-free handoff artifacts, local compact
+diagnosis over raw-free direct boundary JSON или selected package sample
+boundaries и isolated local `/trino/compact-diagnosis` page over the same
+already raw-free inputs.
 Отдельный event-source contract check остается source gate для event archive
 readers, coordinator query-info target check остается dry-run gate, а pruned
 coordinator query-info probe остается probe-only; pruned query-info import
@@ -381,9 +383,11 @@ unsupported для Details, trusted reports, optimizer, metadata и live collect
    `--boundary-out` - direct `engine_fact_boundary_v1` payload для
    `scripts/audit_trino_compact_readiness.py <raw-free-trino-boundary.json> --require-one-query-boundary`.
    Если тот же run пишет `--diagnosis-out <raw-free-trino-diagnosis.json>`,
-   передавайте `--diagnosis-json <raw-free-trino-diagnosis.json>` в audit:
-   сохраненный compact diagnosis artifact сверяется с deterministic diagnosis
-   из boundary без печати artifact paths.
+   передавайте `--require-source-version trino_coordinator_query_info_target_v1`
+   и `--diagnosis-json <raw-free-trino-diagnosis.json>` в audit: source
+   contract и сохраненный compact diagnosis artifact сверяются с deterministic
+   diagnosis из boundary без печати actual source-version values или artifact
+   paths.
    Если handoff также включает dev-only Kerberos/SPNEGO smoke summary,
    передавайте
    `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`, чтобы
@@ -391,6 +395,71 @@ unsupported для Details, trusted reports, optimizer, metadata и live collect
    executed test-cluster smoke.
    Она не crawl-ит query history, не submit-ит SQL, не делает live Query ID
    diagnosis и не добавляет browser/report output.
+
+15. Optional dev-only one-query live handoff wrapper для той же readiness path:
+
+   ```bash
+   python3 scripts/trino_one_query_live_handoff.py \
+     --redaction-reviewed \
+     --auth-header-file <operator-auth-header-file> \
+     --source-contract <sanitized-query-info-target-contract.json> \
+     --coordinator-url https://<trino-coordinator> \
+     --query-id <trino-query-id> \
+     --boundary-out <raw-free-trino-boundary.json> \
+     --diagnosis-out <raw-free-trino-diagnosis.json>
+   ```
+
+   Wrapper не является installed product CLI. Он запускает тот же one-query
+   pruned coordinator import, пишет только raw-free boundary и compact
+   diagnosis artifacts и сразу выполняет strict
+   `--require-one-query-boundary`,
+   `--require-source-version trino_coordinator_query_info_target_v1` и
+   `--diagnosis-json <raw-free-trino-diagnosis.json>` readiness checks без
+   печати coordinator URLs, Query IDs, auth headers, raw QueryInfo, output
+   paths или filenames. Если handoff включает executed Kerberos/SPNEGO smoke
+   summary, передавайте
+   `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`.
+   Он не crawl-ит query history, не submit-ит SQL, не делает live Query ID
+   diagnosis и не добавляет browser/report output.
+
+16. Для нескольких retained one-query handoff results соберите local
+    `trino_one_query_handoff_suite_v1` manifest, где entries ссылаются на
+    raw-free boundary JSON и optional compact diagnosis / smoke-summary
+    artifacts, затем запустите strict suite gate:
+
+   ```bash
+   python3 scripts/build_trino_handoff_suite_manifest.py \
+     --redaction-reviewed \
+     --boundary-json <raw-free-trino-boundary-1.json> \
+     --diagnosis-json <raw-free-trino-diagnosis-1.json> \
+     --smoke-summary <trino_smoke_summary.json> \
+     --out <trino-one-query-handoff-suite.json>
+
+   python3 scripts/audit_trino_compact_readiness.py \
+     --handoff-suite-manifest <trino-one-query-handoff-suite.json> \
+     --require-diagnosis-json \
+     --require-executed-smoke \
+     --require-one-query-boundary \
+     --require-source-version trino_coordinator_query_info_target_v1 \
+     --fail-on-unknown-parser-coverage \
+     --require-min-inputs <minimum-retained-query-count> \
+     --summary-json <raw-free-trino-suite-summary.json>
+   ```
+
+   Builder не является installed product CLI. Он требует explicit
+   redaction-review confirmation, пишет только local handoff metadata с
+   relative artifact references, поддерживает one shared smoke summary или one
+   per boundary, reject-ит output/input overlap и печатает только aggregate
+   counts и relative-reference mode без paths или filenames. Manifest остается
+   local handoff metadata, а не committed artifact. Audit печатает только
+   aggregate counts и safe issue categories и может записать тот же raw-free
+   aggregate evidence как `trino_compact_readiness_summary_v1` JSON. Summary
+   записывает source-version requirements только counts/flags, без
+   operator-provided values. Ни text output, ни summary не содержат
+   coordinator URLs, Query IDs, auth headers, raw QueryInfo, local paths или
+   filenames. Он не fetch-ит дополнительные queries, не crawl-ит query
+   history, не submit-ит SQL, не делает live Query ID diagnosis и не добавляет
+   browser/report output.
 
 ## Release gates
 
@@ -417,17 +486,23 @@ unsupported для Details, trusted reports, optimizer, metadata и live collect
   operator-exported compact sanitized local statement-stats file проходит
   `query-doctor-trino-statement-stats-import --redaction-reviewed`, или один
   operator-approved pruned QueryInfo source contract plus one explicit query
-  проходит pruned import command с boundary JSON output, или release
-  note прямо говорит, что Trino evidence пока synthetic-only.
+  проходит pruned import command с boundary JSON output и, перед расширением
+  любого Trino support surface, retained set of one-query handoff results
+  проходит `trino_one_query_handoff_suite_v1` manifest gate с diagnosis,
+  executed-smoke, one-query, source-version, parser-coverage и
+  supported-attention requirements; иначе release note прямо говорит, что
+  Trino evidence пока synthetic-only.
 - README и release docs говорят, что Trino support ограничен sanitized offline
   evidence package import, bounded local event-store import, bounded local
   HTTP event archive import, bounded HTTP query-detail archive import, bounded
   local query-detail/query-list aggregate import и bounded local statement-stats
   import, bounded local pruned QueryInfo import, plus event-source contract
   checking, dry-run coordinator query-info target checking и one-query pruned
-  coordinator query-info probing/import, local compact diagnosis over raw-free
-  direct boundary JSON или selected package sample boundaries и isolated local
-  compact-diagnosis page over the same already raw-free inputs.
+  coordinator query-info probing/import, dev-only one-query handoff and
+  handoff-suite readiness over raw-free handoff artifacts, local compact
+  diagnosis over raw-free direct boundary JSON или selected package sample
+  boundaries и isolated local compact-diagnosis page over the same already
+  raw-free inputs.
 - Не добавлены live Trino engine selector, Details/trusted report path,
   optimizer behavior, metadata collector, query-history reader, live support
   claim или browser workflow beyond the isolated compact-diagnosis page.

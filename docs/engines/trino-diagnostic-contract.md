@@ -542,10 +542,12 @@ selected package sample boundaries and the isolated local
    boundary JSON, including suite coverage for supported attention and
    fail-closed parser-coverage cases. For one-query coordinator import dry runs
    that write both `--boundary-out` and `--diagnosis-out`, the audit also uses
-   `--diagnosis-json` to check that the stored compact diagnosis artifact
-   matches the deterministic boundary-derived diagnosis and stays raw-free. When
-   an executed dev-only Kerberos/SPNEGO smoke summary is part of the handoff, the
-   audit also uses
+   `--require-source-version trino_coordinator_query_info_target_v1` and
+   `--diagnosis-json` to check that the boundary came from the accepted
+   coordinator QueryInfo source contract and that the stored compact diagnosis
+   artifact matches the deterministic boundary-derived diagnosis and stays
+   raw-free. When an executed dev-only Kerberos/SPNEGO smoke summary is part of
+   the handoff, the audit also uses
    `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke` so a
    dry-run smoke plan cannot satisfy the release-facing evidence gate. In that
    strict mode, every smoke check must carry the known `ok` status; planned,

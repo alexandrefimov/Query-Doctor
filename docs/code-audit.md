@@ -168,12 +168,17 @@ clients use the configured-diagnostic policy because real deployments commonly
 use private or loopback endpoints. Spark History Server compact intake keeps
 the stricter public-target policy by default and switches to the configured
 policy only when local/private targets are explicitly opted in.
+Trino HTTP event archive, HTTP query-detail archive, and one-query pruned
+coordinator QueryInfo readers also use the configured-diagnostic policy and
+therefore share the same target validation and no-redirect behavior while
+remaining private-preview paths.
 
 Response reads are parent-side bounded on these paths: Spark, Prometheus, direct
-Impala daemon endpoints, CM text/JSON, and LLM JSON/streaming responses. Guard
-tests cover unsafe literal destinations, DNS-resolved unsafe destinations,
-integer-IP loopback aliases, no-redirect handlers, safe default opener wiring,
-and default CM response caps.
+Impala daemon endpoints, CM text/JSON, Trino HTTP archive/query-detail and
+coordinator QueryInfo reads, and LLM JSON/streaming responses. Guard tests cover
+unsafe literal destinations, DNS-resolved unsafe destinations, integer-IP
+loopback aliases, no-redirect handlers, safe default opener wiring, and default
+CM response caps.
 
 Spark-specific coverage also keeps shared egress target violations fail-closed
 at the Spark collector boundary instead of downgrading them to optional endpoint

@@ -13,11 +13,11 @@ def test_spark_support_matrix_records_package_handoff_without_support_claim() ->
     text = _normalized(ENGINE_SUPPORT_MATRIX)
 
     for required in (
-        "separate local Spark compact evidence-package build/validation accepts only already compact samples for readiness work",
+        "separate local Spark compact evidence-package build/validation/fixture export accepts only already compact samples for readiness work",
         "spark_evidence_package.py",
         "compact evidence-package readiness validation",
         "compact evidence-package build/validation without path or payload echo",
-        "local compact evidence-package build/validation is package-only over already accepted samples",
+        "local compact evidence-package build/validation/fixture export is package-only over already accepted samples",
         "evidence-package schemas reject raw SQL",
         "no Recent workflow",
         "Spark support claim",
@@ -36,6 +36,8 @@ def test_spark_public_docs_index_package_code_under_experimental_boundary() -> N
     assert "spark_evidence_package.py" in code_map
     assert "build_spark_evidence_package.py" in code_map
     assert "validate_spark_evidence_package.py" in code_map
+    assert "audit_spark_evidence_handoff.py" in code_map
+    assert "strict package-to-fixture handoff audit" in code_map
     assert "no Spark engine registration" in code_map
     assert "raw event-log download" in code_map
 

@@ -98,8 +98,15 @@ continuation plans belong in local exclude-only notes.
   pruned coordinator fact import through
   `query-doctor-trino-coordinator-query-info-pruned-import` with optional
   direct `--boundary-out` raw-free boundary JSON for strict local readiness
-  audits, plus local compact diagnosis over raw-free direct boundary JSON or
-  selected package sample boundaries through
+  audits, plus the dev-only `scripts/trino_one_query_live_handoff.py` wrapper
+  for the same one-query import plus strict readiness audit, plus the
+  dev-only `scripts/build_trino_handoff_suite_manifest.py` local manifest
+  builder, plus the
+  `scripts/audit_trino_compact_readiness.py --handoff-suite-manifest` gate over
+  retained raw-free one-query handoff boundary/diagnosis/smoke artifacts with
+  optional raw-free machine summary JSON, plus
+  local compact diagnosis over raw-free direct boundary JSON or selected package sample
+  boundaries through
   `query-doctor-diagnose-trino-compact`, plus isolated local compact-diagnosis
   rendering through `/trino/compact-diagnosis` for the same already raw-free
   inputs.

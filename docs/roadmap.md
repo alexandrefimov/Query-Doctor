@@ -1071,9 +1071,12 @@ Near-term metadata/stats work:
    already prefer `analysis.json`, and report stats-maintenance routing now
    prefers rendered `Stats Metadata Quality` facts while exchange/data-movement
    recommendations prefer rendered `Data Movement Evidence` facts and
-   spill/scratch gates prefer rendered `Memory Pressure Evidence` facts before
-   legacy text fallbacks. Remaining query-shape/report extractors keep rendered
-   markdown parsing as a fallback until structured facts cover those paths.
+   spill/scratch gates prefer rendered `Memory Pressure Evidence` facts.
+   Admission/pool next checks prefer rendered `Runtime Admission Evidence` and
+   correlated `Runtime Metrics Correlation` facts, while backend/per-host next
+   checks require supported backend follow-up evidence before legacy text
+   fallbacks. Remaining query-shape/report extractors keep rendered markdown
+   parsing as a fallback until structured facts cover those paths.
 2. Continue treating stats freshness as unknown unless a future direct
    staleness or metadata-divergence fact exists. Recent scoring no longer uses
    `stats_possibly_stale` rendered text as positive evidence.

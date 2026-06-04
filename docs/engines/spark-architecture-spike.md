@@ -431,7 +431,8 @@ wording, verification path, and browser/report safety tests.
    adaptive plan-change, scheduler delay, job/stage/task failure, and executor
    loss/churn attention areas when the accepted compact source supports them.
    It can also expose supported aggregate runtime context values with safe
-   labels, without promoting them to root causes or shared facts.
+   labels, including task-duration bucket counts, without promoting them to
+   root causes or shared facts.
 7. Add the isolated local Spark compact diagnosis web page while keeping it
    outside primary navigation, Details, trusted reports, Recent workflows, and
    support claims. The page can collect bounded summary-only History Server
@@ -452,12 +453,25 @@ wording, verification path, and browser/report safety tests.
    source-contract coverage, or fail on compact source warnings. The same
    readiness test file also guards against importing Spark compact modules into
    Details, trusted report, Recent, or optimizer surfaces before a separate
-   support-surface promotion.
+   support-surface promotion. The audit can also consume the safe
+   `spark_fixture_export_manifest.json` emitted by fixture export, validating
+   manifest schema, no-support readiness boundary, sample count, deterministic
+   relative filenames, and source-contract alignment before auditing exactly
+   the listed compact JSON files.
 9. Add committed Spark compact suite fixtures for more than one accepted source
    contract. Current slice: `spark_history_eventlog_compact.json` plus
    `spark_history_server_compact_source_warning.json` let the readiness audit
    exercise both fixture and History Server compact contracts, including safe
    source-warning aggregation, without relying on generated local payloads.
+10. Add a local end-to-end Spark evidence handoff audit. Current slice:
+   `scripts/audit_spark_evidence_handoff.py` and
+   `tests/test_audit_spark_evidence_handoff.py` validate a sanitized
+   `promotion_candidate` package, export fixture-ready compact JSON into a
+   temporary directory, audit the generated safe manifest, require supported
+   attention and both accepted compact source contracts, fail on source
+   warnings, and keep all package paths, temporary paths, manifest filenames,
+   compact filenames, raw values, and Spark support claims out of terminal
+   output.
 
 ## References
 

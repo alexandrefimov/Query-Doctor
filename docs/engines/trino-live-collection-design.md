@@ -12,8 +12,10 @@ import, bounded local pruned QueryInfo import, bounded HTTP event archive
 import, bounded HTTP query-detail archive import, event-source contract
 checking, and dry-run coordinator query-info target checking, plus one-query
 pruned coordinator query-info probing, one-query pruned coordinator fact
-import, local compact diagnosis over already raw-free direct boundary JSON or
-selected package sample boundaries, and the isolated local
+import, a dev-only one-query handoff wrapper, a dev-only handoff-suite manifest
+builder, and handoff-suite readiness manifest gate over raw-free handoff
+artifacts, local compact diagnosis over already raw-free direct boundary JSON
+or selected package sample boundaries, and the isolated local
 `/trino/compact-diagnosis` page over the same already raw-free inputs.
 
 The design goal is to let Query Doctor eventually ingest Trino query evidence
@@ -116,6 +118,28 @@ names, stage/task identifiers, worker identifiers, raw failure details,
 connector internals, and output-stage trees outside summaries and normalized
 facts, and it does not follow HTTP redirects. It does not crawl query history,
 submit SQL, add browser/report output, or become live Query ID diagnosis.
+The dev-only one-query handoff wrapper composes that import with raw-free
+boundary/diagnosis artifact writes and the strict compact readiness audit. For
+more than one real-cluster handoff result, the dev-only
+`scripts/build_trino_handoff_suite_manifest.py` helper can build local
+`trino_one_query_handoff_suite_v1` manifest metadata from retained artifacts
+after explicit redaction-review confirmation. The builder writes relative
+artifact references, is not installed as a product CLI, and prints no paths or
+filenames. The compact readiness audit can then consume that manifest whose
+entries reference the already raw-free boundary JSON plus optional compact
+diagnosis and executed smoke summary artifacts. Strict suite gates may require
+every entry to carry a
+matching compact diagnosis artifact, an executed all-`ok` Kerberos/SPNEGO smoke
+summary, one-query granularity, accepted source version, supported parser
+coverage, and at least one supported attention area. The suite gate prints only
+aggregate counts and safe issue categories, never coordinator URLs, Query IDs,
+auth headers, raw QueryInfo, local paths, or filenames. For representative
+handoff work, the same gate can require a minimum retained input count and write
+a raw-free machine summary that records aggregate counts, issue categories, and
+requirement flags without source-version values, paths, filenames, URLs, Query
+IDs, auth headers, or raw QueryInfo. It does not crawl query history, fetch
+additional queries, submit SQL, add browser/report output, or become live Query
+ID diagnosis.
 The local pruned QueryInfo import command may read one explicit already
 sanitized compact local JSON object after the same `coordinator_query_info`
 source contract and emit only a safe summary or raw-free boundary JSON. It maps
@@ -261,8 +285,16 @@ optional local `--auth-header-file` containing an operator-managed
 `Authorization` header line for that single bounded request; they must not print
 or write the auth header path or value. When a one-query import writes both
 `--boundary-out` and `--diagnosis-out`, the compact readiness audit should run
-with `--diagnosis-json <raw-free-trino-diagnosis.json>` so the stored diagnosis
-artifact is checked against the deterministic boundary-derived diagnosis.
+with `--require-source-version trino_coordinator_query_info_target_v1` and
+`--diagnosis-json <raw-free-trino-diagnosis.json>` so the boundary source
+contract and stored diagnosis artifact are checked without printing actual
+source-version values or artifact paths.
+`scripts/trino_one_query_live_handoff.py` is a dev-only wrapper for the same
+real-cluster handoff. It performs the existing one-query pruned import, writes
+both raw-free artifacts, and runs the strict one-query/source-version/diagnosis
+readiness audit in one step. It is not installed as a product CLI and does not
+create a live Query ID workflow, Details/trusted-report surface, optimizer
+workflow, or support claim.
 When the handoff also includes the dev-only Kerberos/SPNEGO smoke summary, pass
 `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke` to the
 same audit so dry-run smoke plans cannot satisfy executed test-cluster evidence.

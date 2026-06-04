@@ -135,19 +135,62 @@ query-doctor-build-spark-evidence-package \
   --prepared-date-utc YYYY-MM-DD \
   --redaction-reviewed \
   --sentinel-tests-passed \
+  --require-promotion-candidate \
   --sample finished_sql_exact_linkage:spark_eventlog_compact:<compact-a.json>
 ```
+
+Опускайте `--require-promotion-candidate` только для early dry runs, которые
+также используют `--partial-ok`. Со strict flag builder валидирует тот же
+package-level readiness verdict до записи и выходит non-zero без создания
+output file, если blockers еще остаются.
 
 Затем провалидируйте package wrapper перед fixture conversion:
 
 ```bash
-query-doctor-validate-spark-evidence-package <sanitized-spark-package.json>
+query-doctor-validate-spark-evidence-package \
+  --summary-json \
+  <sanitized-spark-package.json>
 ```
 
 Для early dry runs можно использовать `--partial-ok`, пока minimum case set еще
-неполный. Validator печатает только safe summary и не должен echo-ить package
-path, sample paths, raw payload values, History Server URLs, request selectors,
-SQL, log content или local output paths.
+неполный. Добавляйте `--summary-json`, когда agent или reviewer нужен
+machine-readable package readiness verdict. Verdict должен оставаться ниже
+Spark support и сообщает только `partial_evidence`,
+`minimum_case_set_ready` или `promotion_candidate` с explicit blockers:
+missing sample cases, missing synthetic rejection coverage, missing source
+contracts, missing supported attention areas или source warnings. Validator
+печатает только safe summary и не должен echo-ить package path, sample paths,
+raw payload values, History Server URLs, request selectors, SQL, log content
+или local output paths.
+
+Для строгого package-level gate перед fixture или promotion-gate work добавьте
+`--require-promotion-candidate`; command выходит non-zero, если package
+readiness verdict не `promotion_candidate`, и при failure печатает только safe
+blocker IDs.
+
+Package validation также заново строит deterministic compact diagnosis для
+каждого sample и reject-ит diagnosis-boundary drift. Каждый accepted sample
+должен сохранять `support_status=experimental_compact_intake`,
+`root_cause=not_claimed`, отсутствие Details/trusted-report surface, отсутствие
+optimizer behavior и отсутствие Spark job execution.
+
+После успешной strict package validation экспортируйте fixture-ready compact
+samples с deterministic safe filenames:
+
+```bash
+query-doctor-export-spark-evidence-fixtures \
+  <sanitized-spark-package.json> \
+  --out-dir <fixture-ready-dir>
+```
+
+Exporter требует `promotion_candidate` package, пишет только уже
+validated compact sample payloads плюс safe
+`spark_fixture_export_manifest.json`, fail-ится до overwrite и не должен echo-ить
+input paths, output paths, raw filenames, package sample paths, raw payload
+values, History Server URLs, request selectors, SQL, log content или local
+workspace paths. Manifest содержит только safe labels: schema version,
+package ID, readiness status, support-claim boundary, sample count,
+deterministic file names, case names, source types и source contracts.
 
 Запускайте Spark compact readiness audit на каждом accepted compact JSON:
 
@@ -155,16 +198,55 @@ SQL, log content или local output paths.
 python3 scripts/audit_spark_compact_readiness.py \
   <spark-compact-a.json> <spark-compact-b.json> \
   --require-supported-attention \
+  --fail-on-source-warnings \
   --require-min-inputs 2 \
   --require-source-contract spark_history_server_compact_v1 \
   --require-source-contract spark_history_eventlog_compact_v1
 ```
 
-Для более строгого promotion-candidate набора добавляйте
-`--fail-on-source-warnings` только после осознанного закрытия missing endpoint
-coverage. Audit должен печатать только safe aggregate counts и не должен
-echo-ить compact input paths, raw filenames, raw payload values, History Server
-URLs, request selectors, SQL, log content или local output paths.
+После fixture export тот же audit может принимать safe export manifest, чтобы
+аудируемые compact files были ровно теми файлами, которые перечислены в
+`spark_fixture_export_manifest.json`:
+
+```bash
+python3 scripts/audit_spark_compact_readiness.py \
+  --fixture-export-manifest <fixture-ready-dir>/spark_fixture_export_manifest.json \
+  --require-supported-attention \
+  --fail-on-source-warnings \
+  --require-min-inputs 2 \
+  --require-source-contract spark_history_server_compact_v1 \
+  --require-source-contract spark_history_eventlog_compact_v1
+```
+
+Manifest-driven audit валидирует только safe manifest schema, readiness status,
+support-claim boundary, sample count, deterministic relative filenames и
+source-contract alignment с каждым compact payload перед запуском тех же
+readiness checks.
+
+Чтобы запустить strict local handoff одним gate поверх уже sanitized package:
+
+```bash
+python3 scripts/audit_spark_evidence_handoff.py \
+  <sanitized-spark-package.json> \
+  --summary-json <raw-free-spark-handoff-summary.json>
+```
+
+Handoff audit требует `promotion_candidate` package, экспортирует fixture-ready
+compact JSON во temporary directory, аудирует сгенерированный
+`spark_fixture_export_manifest.json`, требует supported Spark attention и оба
+accepted compact source contracts, fail-ится на source warnings, удаляет
+temporary export на выходе и не должен echo-ить package paths, temporary paths,
+manifest filenames, compact filenames, raw payload values, History Server URLs,
+request selectors, SQL, log content или local output paths.
+
+Optional `--summary-json` output пишет raw-free machine-readable handoff
+readiness summary: только schema/mode/status labels, pipeline stage states,
+no-support boundary labels, selected requirements, aggregate counts, safe
+counters и safe issue categories/messages. Summary path должен отличаться от
+package input. Audit должен печатать или писать только safe aggregate counts и
+не должен echo-ить compact input paths, raw filenames, raw payload values,
+History Server URLs, request selectors, SQL, log content или local output paths.
+Manifest-driven audit также не должен echo-ить manifest filenames.
 
 Raw exports держите вне repository и вне prompts. Если оператору нужно
 сохранить raw event logs или History Server exports для аудита, они должны
@@ -184,11 +266,20 @@ Evidence set готов для Query Doctor fixture или promotion-gate work �
 - каждый unsupported, absent, partial или intentionally redacted field имеет
   explicit `unknown`, warning ID или omission reason;
 - `query-doctor-build-spark-evidence-package` собирает sanitized package
-  wrapper из compact samples без печати paths или raw values;
+  wrapper из compact samples с `--require-promotion-candidate` без печати paths
+  или raw values;
 - `query-doctor-validate-spark-evidence-package` принимает тот же wrapper без
-  печати paths или raw values;
+  печати paths или raw values с `--require-promotion-candidate`;
+- diagnosis каждого sample сохраняет explicit no-support/no-root-cause
+  boundary;
+- `query-doctor-export-spark-evidence-fixtures` экспортирует fixture-ready
+  compact samples и safe manifest без печати paths или raw values;
 - `scripts/audit_spark_compact_readiness.py` проходит по compact sample suite
-  без печати paths или raw values;
+  из explicit compact JSON inputs или `--fixture-export-manifest` без печати
+  paths или raw values;
+- `scripts/audit_spark_evidence_handoff.py` проходит по sanitized package без
+  печати package paths, temporary export paths, manifest filenames, compact
+  filenames или raw values;
 - не нужен Spark engine registration, Recent workflow, Details route, trusted
   report, optimizer behavior, public README support claim или package metadata
   support claim.

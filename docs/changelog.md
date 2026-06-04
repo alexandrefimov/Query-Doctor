@@ -19,6 +19,27 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 
 ### Safety
 
+- Spark compact diagnosis now includes safe task-duration bucket counts in
+  `runtime_context` when accepted compact facts provide them. These are
+  aggregate context values only; they do not create Spark root-cause claims,
+  shared facts, Details/trusted-report output, optimizer behavior, or Spark
+  product support.
+- Spark compact evidence-package validation now emits a package-level readiness
+  verdict. The safe summary, optional `--summary-json` output, and
+  `--require-promotion-candidate` gate distinguish `partial_evidence`,
+  `minimum_case_set_ready`, and `promotion_candidate` without echoing package
+  paths, sample paths, or payload values. The package builder can now apply the
+  same promotion-candidate gate before writing output, fixture-ready compact
+  sample export requires the same gate before writing deterministic safe files
+  plus a safe export manifest, and the Spark compact readiness audit can now
+  consume that manifest while checking safe filenames, sample count, and source
+  contract alignment before auditing the listed compact JSON files. A local
+  Spark evidence handoff audit now composes package validation, temporary
+  fixture export, manifest-driven readiness audit, and temporary-output cleanup
+  into one path-free strict gate, with optional raw-free `--summary-json` output
+  for machine-readable handoff readiness evidence. Package validation also
+  rejects per-sample compact diagnosis boundary drift, keeping Spark's
+  experimental/no-support and no-root-cause boundary intact.
 - Public release gate now checks branch history shape when `PUBLIC_RELEASE=1`
   is set. `scripts/check_release_history_shape.py` rejects missing public base
   refs, non-ancestor release heads, excessive commit counts, merge commits, and
@@ -52,6 +73,12 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
   keeps private/loopback use behind explicit configured-target policy. CM JSON
   and LLM response paths now also use parent-side byte caps instead of
   unbounded reads.
+- Trino network-backed private-preview readers now use the same configured
+  diagnostic HTTP egress helper instead of raw `urllib` openers. The HTTP event
+  archive reader, HTTP query-detail archive reader, and one-query pruned
+  coordinator QueryInfo reader inherit the shared target validation and
+  no-redirect behavior while keeping output URL-free, Query-ID-free, and
+  auth-header-free.
 - Trino normalized fact IDs no longer reserve bare metric names during preview:
   Trino-only timing, resource, stage, task, spill, blocked, connector, and
   statement-execution facts now use `trino_*` IDs while `planning_time_ms`
@@ -66,7 +93,9 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
   mode across multiple boundary JSON inputs without printing paths or raw
   filenames. Its strict `--require-one-query-boundary` mode rejects aggregate
   `query_list_*` boundaries so query-list source-shape evidence cannot count
-  as one-query Trino diagnosis readiness.
+  as one-query Trino diagnosis readiness. Strict handoffs can also pass
+  `--require-source-version <version>` to require an accepted boundary
+  `identity.source_version` without printing the actual value.
 - The Trino compact readiness audit can now also check a `--diagnosis-json`
   artifact written from the same boundary. The gate compares it with the
   deterministic compact diagnosis built from the boundary, rejects raw-like
@@ -93,6 +122,33 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
   redirect following for the single bounded
   `GET /v1/query/{queryId}?pruned=true` request, keeping the explicit
   coordinator target from expanding into a redirected egress path.
+- Added `scripts/trino_one_query_live_handoff.py`, a dev-only one-query Trino
+  handoff wrapper for real-cluster readiness work. It runs the existing pruned
+  coordinator QueryInfo fact import, writes raw-free boundary and compact
+  diagnosis JSON, and immediately applies the strict one-query/source-version/
+  diagnosis readiness audit, with optional executed-smoke checking, without
+  printing coordinator URLs, Query IDs, auth headers, raw QueryInfo, output
+  paths, or filenames. It is not an installed product CLI, live Query ID
+  workflow, Details/trusted-report surface, optimizer workflow, or support
+  claim.
+- The Trino compact readiness audit now accepts a
+  `--handoff-suite-manifest <manifest.json>` for a set of dev-only one-query
+  handoff results. The manifest references raw-free boundary JSON plus optional
+  compact diagnosis and smoke-summary artifacts per entry; strict gates can
+  require every entry to include a matching diagnosis artifact, an executed
+  all-`ok` smoke summary, one-query granularity, known source version, supported
+  attention, and supported parser coverage. Suite output stays path-free and
+  filename-free and reports only aggregate counts plus safe issue categories.
+  The same audit now supports `--require-min-inputs <n>` for representative
+  handoff width and `--summary-json <summary.json>` for a raw-free machine
+  summary whose source-version requirements are recorded only as counts/flags,
+  not as operator-provided values.
+- Added `scripts/build_trino_handoff_suite_manifest.py`, a dev-only local
+  manifest builder for retained one-query Trino handoff artifacts. It writes
+  `trino_one_query_handoff_suite_v1` manifests with relative artifact
+  references after explicit redaction-review confirmation, supports one shared
+  smoke summary or one per boundary, rejects output/input overlap, and prints
+  only path-free aggregate counts.
 - Report validators now include an adversarial EN/RU corpus for indirect
   unsupported stale-statistics root-cause wording, soft `COMPUTE STATS`
   recommendation wording, English stats-maintenance fix/explanation overclaims,
@@ -177,6 +233,15 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
   Evidence` facts. Explicit `finding_supported: no`, context-only, or
   unsupported memory-pressure facts block legacy spill wording from promoting a
   spill recommendation or scoring reason.
+- Trusted report admission/pool follow-up checks now prefer structured
+  `Runtime Admission Evidence` and correlated `Runtime Metrics Correlation`
+  facts. Negative, context-only, or unsupported admission facts block aggregate
+  pool context wording from inserting an admission-pool next check.
+- Trusted report backend/per-host follow-up checks now use a narrower
+  backend-follow-up gate. Context-only `Scan Skew Evidence` blocks legacy
+  `Backend / Host Tail Evidence` wording from inserting platform handoff,
+  per-host, or Backend priority checks unless supported data skew, execution
+  skew/tail, write-path evidence, or a legacy supported finding exists.
 - Workload action-outcome strict audits now reject supplied local outcome JSONL
   files that contain raw-like SQL, paths, hosts, URLs, emails, IPs, or secrets
   before counting them as representative feedback evidence.
@@ -295,6 +360,9 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 - The Recent Details audit now counts actionable recommendation cards whose
   verification text includes comparable rerun or comparable scan guidance and
   supports `--fail-on-comparable-rerun-gaps` for strict calibration batches.
+- Recent Details query-shape and stats action cards now normalize older or
+  incomplete verification text to include comparable rerun guidance, so Medium
+  or High recommendations cannot render as EXPLAIN-only follow-ups.
 - The Recent Details audit now fails browser-visible action cards that use
   positive root-cause/proven/confirmed wording, while allowing explicit
   negated guardrails such as "not a proven root-cause claim."
@@ -303,6 +371,10 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
   `--fail-on-stats-readiness-gaps` for strict calibration of score/tier
   strength, structured metadata detail, usable metadata status, safe review
   areas, and comparable rerun confirmation on Medium/High stats candidates.
+- Stats optimization scoring now requires a complete evidence chain before a
+  candidate can become Medium or High. Partial metadata plus estimate mismatch
+  is no longer actionable unless there is supported missing or incomplete stats
+  evidence.
 - The Impala coverage-gap audit now supports
   `--fail-on-diagnostic-coverage-gaps`, which keeps representative calibration
   from passing when selected cases lack analyzer output, primary labels, or the
@@ -328,6 +400,18 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
   gate for representative Recent summaries that runs Details, profile evidence,
   diagnostic coverage, workload, stats, and optimizer readiness checks and
   prints only component status plus issue categories.
+- The Impala diagnostic-loop audit now includes passive optimizer artifact
+  checks. Existing trusted SQL-draft, recommendations-only, and no-rewrite
+  outputs are counted through the web trusted-artifact loader, while partial or
+  untrusted optimizer output fails the representative gate without generating
+  optimizer work or printing draft SQL, artifact filenames, case IDs, or local
+  paths.
+- The Impala diagnostic-loop audit now includes passive trusted-report artifact
+  checks. Existing Python/LLM report artifacts are counted through the web
+  trusted-artifact loader, current strict report validation is replayed against
+  any trusted artifact, and partial, untrusted, or stale-invalid report output
+  fails the representative gate without generating reports, running LLM work,
+  or printing case paths, report filenames, raw SQL, or local artifact details.
 - The direct/profile evidence-gate audit now treats selected cases without
   readable deterministic analyzer output as gate issues, so
   `--fail-on-issues` no longer passes a representative batch whose profile

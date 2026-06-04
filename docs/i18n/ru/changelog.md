@@ -30,6 +30,27 @@ changelog entry, если они не меняют behavior или safety.
 
 ## Текущий Unreleased summary
 
+Английский `Unreleased` теперь фиксирует, что Spark compact diagnosis добавляет
+safe task-duration bucket counts в `runtime_context`, когда accepted compact
+facts их предоставляют. Это только aggregate context values: без Spark
+root-cause claims, shared facts, Details/trusted-report output, optimizer
+behavior или Spark product support.
+Английский `Unreleased` теперь фиксирует Spark compact evidence-package
+readiness verdict: safe summary, optional `--summary-json` и
+`--require-promotion-candidate` gate различают `partial_evidence`,
+`minimum_case_set_ready` и `promotion_candidate` без echo package paths, sample
+paths или payload values. Package builder теперь может применить тот же
+promotion-candidate gate до записи output, fixture-ready compact sample export
+требует тот же gate перед записью deterministic safe files плюс safe export
+manifest, а Spark compact readiness audit теперь может читать этот manifest и
+проверять safe filenames, sample count и source-contract alignment до аудита
+перечисленных compact JSON files. Local Spark evidence handoff audit теперь
+собирает package validation, temporary fixture export, manifest-driven readiness
+audit и cleanup temporary output в один path-free strict gate. Package
+validation также reject-ит per-sample compact diagnosis boundary drift,
+сохраняя experimental / no-support и no-root-cause boundary для Spark. Handoff
+audit теперь может писать optional raw-free `--summary-json` с
+machine-readable readiness evidence без path echo.
 Английский `Unreleased` теперь фиксирует deterministic-first /
 no-LLM-capable roadmap posture: core diagnosis, Details, Python reports,
 trusted optimizer outcomes, demos и validation должны оставаться полезными при
@@ -79,6 +100,11 @@ URL, не принимает URL credentials и не submit-ит SQL.
 boundary JSON для одного compact sanitized query-detail record, не
 контактирует с Trino coordinator, не fetch-ит query-info by Query ID, не
 echo-ит URL, не принимает URL credentials и не submit-ит SQL.
+Английский `Unreleased` теперь также фиксирует, что Trino network-backed
+private-preview readers используют общий configured diagnostic HTTP egress
+helper: HTTP event archive, HTTP query-detail archive и one-query pruned
+coordinator QueryInfo readers получают shared target validation и no-redirect
+behavior без расширения Trino product-support claim.
 Добавлен также `query-doctor-trino-coordinator-query-info-target-check`: он
 валидирует один compact future `coordinator_query_info` source contract,
 coordinator base URL shape и Query ID shape, выводит только safe summary без
@@ -95,9 +121,40 @@ raw QueryInfo, query text, session fields, endpoint URLs или object names, н
 Pruned coordinator QueryInfo probe/import reads теперь не следуют HTTP
 redirects для single bounded `GET /v1/query/{queryId}?pruned=true`, чтобы
 explicit coordinator target не расширялся в redirected egress path.
+Английский `Unreleased` теперь также фиксирует
+`scripts/trino_one_query_live_handoff.py`: dev-only wrapper для real-cluster
+one-query handoff. Он запускает существующий pruned coordinator QueryInfo
+import, пишет raw-free boundary и compact diagnosis JSON, сразу применяет
+strict one-query/source-version/diagnosis readiness audit и optional
+executed-smoke check, но не печатает coordinator URL, Query ID, auth header,
+raw QueryInfo, output paths или filenames. Это не installed product CLI, не
+live Query ID workflow, не Details/trusted-report surface, не optimizer
+workflow и не support claim.
+Trino compact readiness audit теперь принимает
+`--handoff-suite-manifest <manifest.json>` для набора dev-only one-query
+handoff results. Manifest с kind `trino_one_query_handoff_suite_v1` ссылается
+на raw-free boundary JSON и optional compact diagnosis / smoke-summary
+artifacts для каждой entry; strict gates могут требовать diagnosis artifact,
+executed all-`ok` smoke summary, one-query granularity, known source version,
+supported attention и supported parser coverage для каждой entry. Suite output
+остается path-free/filename-free и печатает только aggregate counts плюс safe
+issue categories. Тот же audit теперь поддерживает
+`--require-min-inputs <n>` для representative handoff width и
+`--summary-json <summary.json>` для raw-free machine summary, где
+source-version requirements записываются только counts/flags, без
+operator-provided values.
+Английский `Unreleased` теперь также фиксирует
+`scripts/build_trino_handoff_suite_manifest.py`: dev-only local manifest
+builder для retained one-query Trino handoff artifacts. Он требует explicit
+redaction-review confirmation, пишет `trino_one_query_handoff_suite_v1` с
+relative artifact references, поддерживает one shared smoke summary или one per
+boundary, reject-ит output/input overlap и печатает только path-free aggregate
+counts.
 Trino compact readiness audit теперь имеет strict
 `--require-one-query-boundary` gate: aggregate `query_list_*` boundaries не
-могут засчитываться как one-query Trino diagnosis readiness.
+могут засчитываться как one-query Trino diagnosis readiness. Strict handoff
+также может передавать `--require-source-version <version>`, чтобы требовать
+accepted boundary `identity.source_version` без печати фактического значения.
 Он также принимает `--diagnosis-json <raw-free-trino-diagnosis.json>` для
 artifact, записанного из той же boundary: audit сравнивает файл с
 deterministic compact diagnosis из boundary, reject-ит raw-like diagnosis text и

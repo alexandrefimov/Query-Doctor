@@ -100,8 +100,8 @@ mapping.
 
 Spark сейчас имеет compact synthetic fixture schema, fixture-only fact mapper,
 experimental compact Spark History Server intake для explicit applications и
-local compact evidence-package build/validation для already accepted compact
-samples. History Server path читает только bounded summary `/api/v1` JSON, включая
+local compact evidence-package build/validation/fixture export для already
+accepted compact samples. History Server path читает только bounded summary `/api/v1` JSON, включая
 application lifecycle, attempt state и attempt counts при доступном explicit
 application endpoint и aggregate job-state counts при доступных job summaries.
 Executor summaries дают только aggregate executor loss/churn state; dynamic
@@ -111,7 +111,7 @@ application endpoints остаются warning/unknown, attempt counts огра�
 labels. Raw event logs, raw SQL/plans/environment, application IDs, attempt
 IDs, job IDs, executor IDs, users и raw version strings не записываются. Этот
 path не добавляет Spark engine registration, Recent workflow, browser/report
-output, optimizer behavior или support claim. Evidence-package builder/validator
+output, optimizer behavior или support claim. Evidence-package builder/validator/exporter
 печатает только path-free safe summaries и не принимает raw event logs или raw
 History Server exports. Compact facts также могут
 записываться в deterministic local compact-diagnosis JSON с raw-free attention

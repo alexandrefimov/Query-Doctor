@@ -211,8 +211,9 @@ fact namespace registry и cross-engine attention aliases. Если Spark spike
    audit проверять suite breadth и safe source-warning aggregation без
    generated local payloads.
 7. Показывать supported aggregate runtime context только через safe labels и
-   formatted values, не продвигая эти Spark-specific facts в root-cause claims,
-   shared facts, Details/trusted reports или product support.
+   formatted values, включая task-duration bucket counts, не продвигая эти
+   Spark-specific facts в root-cause claims, shared facts, Details/trusted
+   reports или product support.
 8. Держать Spark History Server egress guard включенным через shared
    no-redirect policy: strict public target default, local/private targets only
    with explicit opt-in, target-policy violations fail closed, DNS failures

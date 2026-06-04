@@ -1,6 +1,6 @@
 # Query Doctor Codex Instructions
 
-Last updated: 2026-06-03
+Last updated: 2026-06-04
 
 ## Project
 
@@ -153,6 +153,18 @@ visible facts when they do not add a new decision signal.
 - Keep `AGENTS.md` and `docs/codex-handoff.md` public-safe and durable; do not
   use them for current-branch handoffs, chat-local reminders, private smoke
   targets, local output paths, or workstation-specific setup.
+- Treat committed agent instructions and handoffs as curated durable
+  abstractions, not a continuously updated memory store.
+- Do not promote one-off chat observations, failed local smokes, branch-local
+  workarounds, or single-run validation results into durable instructions
+  unless current code, tests, public docs, or an explicit user decision support
+  the change.
+- Preserve applicability boundaries when updating instructions: engine,
+  provider, endpoint, version, workflow, and validation scope must not be
+  generalized away.
+- Before relying on older handoff or instruction summaries for
+  safety-sensitive, collector, optimizer, report, or UI work, verify the claim
+  against current code, docs, or tests.
 - Put local agent notes in local exclude-only notes and keep them out of git.
 - Use [docs/public-documentation-boundary.md](docs/public-documentation-boundary.md)
   for the public/local split and audit path.
