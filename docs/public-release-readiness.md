@@ -38,11 +38,17 @@ about unsupported scope.
   coordinator query-info probing/import and local compact diagnosis over
   raw-free direct boundary JSON or selected package sample boundaries plus
   isolated local compact-diagnosis rendering for the same already raw-free
-  inputs; and
+  inputs; Spark support is limited to experimental compact History Server
+  summary intake for one explicit application, compact evidence-package
+  build/validation/fixture export over already compact samples, local compact
+  diagnosis over raw-free Spark inputs, and strict handoff/readiness audits; and
   future Big Data live engines, broader providers, prepared event/log sources,
   and Cluster Doctor are roadmap seams only. Trino is not live collection,
   coordinator collection, Details/trusted report output, optimizer behavior,
-  metadata collection, Query Doctor-generated SQL, or live diagnosis.
+  metadata collection, Query Doctor-generated SQL, or live diagnosis. Spark is
+  not public engine support, Recent scans, Details/trusted report output,
+  optimizer behavior, engine registration, raw event-log handling, raw
+  SQL/plan display, environment/log dumps, or Spark job execution.
 - Public docs use English as canonical language, with Russian pages only as
   localized companions under `docs/i18n/ru/`.
 - README screenshots are current for any material web UI layout changes included

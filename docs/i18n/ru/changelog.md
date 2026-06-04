@@ -54,6 +54,11 @@ validation также reject-ит per-sample compact diagnosis boundary drift,
 сохраняя experimental / no-support и no-root-cause boundary для Spark. Handoff
 audit теперь может писать optional raw-free `--summary-json` с
 machine-readable readiness evidence без path echo.
+Agent-facing release instructions теперь pin-ят Spark compact boundary как
+experimental research only: без public Spark support, Recent scans,
+Details/trusted-report output, optimizer behavior, engine registration, raw
+event-log handling, raw SQL/plan display, environment/log dumps или Spark job
+execution.
 Английский `Unreleased` теперь фиксирует deterministic-first /
 no-LLM-capable roadmap posture: core diagnosis, Details, Python reports,
 trusted optimizer outcomes, demos и validation должны оставаться полезными при

@@ -41,6 +41,11 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
   for machine-readable handoff readiness evidence. Package validation also
   rejects per-sample compact diagnosis boundary drift, keeping Spark's
   experimental/no-support and no-root-cause boundary intact.
+- Agent-facing release instructions now pin the Spark compact boundary as
+  experimental research only: no public Spark support, Recent scans,
+  Details/trusted-report output, optimizer behavior, engine registration, raw
+  event-log handling, raw SQL/plan display, environment/log dumps, or Spark job
+  execution.
 - Public release gate now checks branch history shape when `PUBLIC_RELEASE=1`
   is set. `scripts/check_release_history_shape.py` rejects missing public base
   refs, non-ancestor release heads, excessive commit counts, merge commits, and
