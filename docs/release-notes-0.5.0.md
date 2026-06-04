@@ -48,10 +48,11 @@ preview evidence handoff paths.
   Trino SQL.
 - Spark compact History Server and evidence-package paths remain experimental
   contract-shaping surfaces. 0.5.0 adds package readiness verdicts, compact
-  diagnosis boundary drift checks, fixture export manifests, and strict handoff
-  audits. These paths do not create public Spark engine support, Recent scans,
-  Details or trusted-report output, optimizer behavior, raw event-log handling,
-  raw SQL/plan display, environment/log dumps, or Spark job execution.
+  diagnosis boundary drift checks, fixture export manifests, strict handoff
+  audits, and optional raw-free machine summary JSON for handoff readiness.
+  These paths do not create public Spark engine support, Recent scans, Details
+  or trusted-report output, optimizer behavior, raw event-log handling, raw
+  SQL/plan display, environment/log dumps, or Spark job execution.
 - Normalized engine facts remain a raw-free contract seam. They are not the
   product engine registry and do not replace the production Impala analyzer,
   presenter, report, or optimizer facts.

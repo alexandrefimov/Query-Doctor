@@ -49,7 +49,8 @@ experimental compact contract-shaping paths.
   только при explicit configuration.
 - Trino private preview и Spark compact intake не создают public engine support,
   Recent scans, Details/trusted-report output, optimizer behavior или Query
-  Doctor-generated SQL.
+  Doctor-generated SQL. Spark handoff audit может писать optional raw-free
+  machine summary JSON для readiness evidence без path/raw-value echo.
 
 ## Валидация релиза
 

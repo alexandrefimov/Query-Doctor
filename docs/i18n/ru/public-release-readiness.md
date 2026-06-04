@@ -53,7 +53,9 @@ config-driven `language`, Recent Scan Hour UTC offset label, Known Query ID
 progress, elapsed scan-progress wording, workload diagnostics для repeated,
 frequent-short и regressed fingerprints, local synthetic action outcomes,
 optional direct Impala `/profile_docs`, optional `/admission?json` context и
-Trino private-preview groundwork без public Trino support claim.
+Trino private-preview groundwork без public Trino support claim, а также Spark
+compact handoff gates с raw-free machine summaries без public Spark support
+claim.
 Packaging metadata использует `[project].version` в `pyproject.toml` как
 canonical source; legacy `setup.py` shim читает это значение и остаётся покрыт
 metadata/console-script tests.

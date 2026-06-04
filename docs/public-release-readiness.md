@@ -123,7 +123,8 @@ place:
   [release-notes-0.5.0.md](release-notes-0.5.0.md) for deterministic
   diagnostic-loop hardening, raw-free evidence handoff gates, representative
   Impala Details/stats readiness, Trino private-preview gates, Spark compact
-  handoff gates, and stricter release automation.
+  handoff gates with raw-free machine summaries, and stricter release
+  automation.
 - README screenshots have been refreshed from the synthetic demo pack for the
   current material UI baseline, including the Query Doctor product-brand header,
   Big Data query diagnostics subtitle, Workloads, and Action Queue demo path.
