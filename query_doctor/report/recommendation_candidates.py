@@ -80,6 +80,11 @@ def _runtime_memory_metric_supported(facts_text: str) -> bool:
 
 def _total_bytes_sent_anchor(facts_text: str) -> str | None:
     value = first_bullet_value(extract_markdown_section(facts_text, "## Totals"), "TotalBytesSent")
+    if not value:
+        value = first_bullet_value(
+            extract_markdown_section(facts_text, "## Data Movement Evidence"),
+            "total_bytes_sent",
+        )
     return f"TotalBytesSent {value}" if value else None
 
 

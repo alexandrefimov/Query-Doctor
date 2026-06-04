@@ -483,13 +483,13 @@ def structured_stats_quality_gap(facts_text: str) -> bool | None:
         return None
 
     recognized = False
-    table_stats = normalized_stats_value(first_bullet_value(lines, "table_stats"))
-    column_stats = normalized_stats_value(first_bullet_value(lines, "column_stats"))
-    partition_coverage = normalized_stats_value(first_bullet_value(lines, "partition_coverage"))
-    join_filter_relevance = normalized_stats_value(
+    table_stats = normalized_fact_value(first_bullet_value(lines, "table_stats"))
+    column_stats = normalized_fact_value(first_bullet_value(lines, "column_stats"))
+    partition_coverage = normalized_fact_value(first_bullet_value(lines, "partition_coverage"))
+    join_filter_relevance = normalized_fact_value(
         first_bullet_value(lines, "join_filter_column_relevance")
     )
-    stats_context = normalized_stats_value(first_bullet_value(lines, "stats_context"))
+    stats_context = normalized_fact_value(first_bullet_value(lines, "stats_context"))
 
     for value in (table_stats, column_stats):
         if value in STATS_GAP_STATUSES:
@@ -540,7 +540,7 @@ def structured_stats_quality_gap(facts_text: str) -> bool | None:
     return False if recognized else None
 
 
-def normalized_stats_value(value: str | None) -> str:
+def normalized_fact_value(value: str | None) -> str:
     return str(value or "").strip().lower().replace(" ", "_")
 
 
@@ -553,6 +553,9 @@ def first_bullet_int(lines: list[str], label: str) -> int | None:
 
 
 def facts_have_large_intermediate_or_exchange(facts_text: str) -> bool:
+    data_movement_supported = structured_data_movement_supported(facts_text)
+    if data_movement_supported is not None:
+        return data_movement_supported
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     if not findings_lines:
         return False
@@ -566,6 +569,26 @@ def facts_have_large_intermediate_or_exchange(facts_text: str) -> bool:
             re.IGNORECASE | re.MULTILINE,
         )
     )
+
+
+def structured_data_movement_supported(facts_text: str) -> bool | None:
+    lines = extract_markdown_section(facts_text, "## Data Movement Evidence")
+    if not lines:
+        return None
+
+    status = normalized_fact_value(first_bullet_value(lines, "status"))
+    evidence_tier = normalized_fact_value(first_bullet_value(lines, "evidence_tier"))
+    finding_supported = normalized_fact_value(first_bullet_value(lines, "finding_supported"))
+    if finding_supported == "yes":
+        return status == "supported" and evidence_tier in {"strong", "medium"}
+    if finding_supported == "no":
+        return False
+    if status in {"context_only", "not_observed"} or evidence_tier in {
+        "context_only",
+        "unsupported",
+    }:
+        return False
+    return None
 
 
 def cm_metrics_facts_summary(facts_text: str) -> dict[str, str]:

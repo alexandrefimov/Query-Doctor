@@ -1308,6 +1308,75 @@ def test_exchange_recommendation_ignores_negative_large_data_movement_lines():
     assert "reduce_exchange_payload" not in candidate_ids
 
 
+def test_exchange_recommendations_use_structured_data_movement_evidence():
+    module = load_report_module()
+
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Summary
+
+- Cardinality anomalies: 0
+- Memory anomalies: 0
+
+## Data Movement Evidence
+
+- status: supported
+- evidence_tier: medium
+- finding_supported: yes
+- primary_supported: no
+- total_bytes_sent: 66.0 GiB
+- exchange_operator_count: 2
+- exchange_elapsed: 2.00s
+- exchange_elapsed_share: 5%
+- guardrail: Data-movement evidence is deterministic context.
+"""
+
+    candidates = module.recommendation_candidate_lines(facts, language="en")
+    candidate_ids = [candidate_id for candidate_id, _ in candidates]
+    candidate_text = "\n".join(text for _, text in candidates)
+
+    assert candidate_ids[:2] == ["reduce_exchange_rows", "reduce_exchange_payload"]
+    assert "TotalBytesSent 66.0 GiB" in candidate_text
+
+
+def test_exchange_recommendations_prefer_structured_context_only_data_movement():
+    module = load_report_module()
+
+    facts = """
+# Query Doctor deterministic analysis facts
+
+## Summary
+
+- Cardinality anomalies: 0
+- Memory anomalies: 0
+
+## Data Movement Evidence
+
+- status: context_only
+- evidence_tier: context_only
+- finding_supported: no
+- primary_supported: no
+- total_bytes_sent: 66.0 GiB
+- exchange_operator_count: 0
+- exchange_elapsed: n/a
+- exchange_elapsed_share: n/a
+- guardrail: Large bytes alone are not proof of a network fault.
+
+## Findings
+
+### Large intermediate or exchange traffic [high]
+
+- TotalBytesSent is large relative to the configured threshold.
+"""
+
+    candidates = module.recommendation_candidate_lines(facts, language="en")
+    candidate_ids = [candidate_id for candidate_id, _ in candidates]
+
+    assert "reduce_exchange_rows" not in candidate_ids
+    assert "reduce_exchange_payload" not in candidate_ids
+
+
 def test_stats_only_recommendations_do_not_add_generic_followup_candidate():
     module = load_report_module()
 
