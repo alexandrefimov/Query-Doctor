@@ -24,7 +24,7 @@ def load_manifest() -> dict[str, Any]:
     payload = json.loads(PROVENANCE_PATH.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
     assert payload["source"] == "query-doctor-demo synthetic demo pack"
-    assert payload["demo_pack_version"] == "0.4.3"
+    assert payload["demo_pack_version"] == "0.5.0"
     assert 'query-doctor-demo --out "$DEMO_PACK" --overwrite' in payload["demo_pack_command"]
     assert '--batch-summary "$DEMO_PACK/batch_summary.json"' in payload["web_command"]
     return payload

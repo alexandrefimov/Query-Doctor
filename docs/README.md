@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-03
+Last reviewed: 2026-06-04
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -58,6 +58,8 @@ release work. Do not read every reference doc before small tasks.
   public-sharing guard.
 - [public-release-readiness.md](public-release-readiness.md): public-release
   readiness snapshot and P0 gates.
+- [release-notes-0.5.0.md](release-notes-0.5.0.md): curated 0.5.0 release
+  notes for diagnostic-loop hardening and raw-free evidence handoff gates.
 - [release-notes-0.4.3.md](release-notes-0.4.3.md): curated 0.4.3 release
   notes for report-mode and web UI polish.
 - [release-notes-0.4.2.md](release-notes-0.4.2.md): curated 0.4.2 release
@@ -127,6 +129,7 @@ Status legend:
 | [code-map.md](code-map.md) | active | Code ownership lookup. |
 | [development-practices.md](development-practices.md) | active | Engineering quality practices. |
 | [changelog.md](changelog.md) | active | Significant completed behavior, safety, workflow, and baseline changes. |
+| [release-notes-0.5.0.md](release-notes-0.5.0.md) | reference | Curated 0.5.0 release notes. |
 | [release-notes-0.4.3.md](release-notes-0.4.3.md) | reference | Curated 0.4.3 release notes. |
 | [release-notes-0.4.2.md](release-notes-0.4.2.md) | reference | Curated 0.4.2 release notes. |
 | [release-notes-0.4.1.md](release-notes-0.4.1.md) | reference | Curated 0.4.1 release notes. |

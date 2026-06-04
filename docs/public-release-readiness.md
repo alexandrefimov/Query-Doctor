@@ -119,10 +119,15 @@ place:
   [release-notes-0.4.3.md](release-notes-0.4.3.md) for explicit Python/LLM
   report mode selection, Known Query ID action gating, Details page visual
   polish, and clearer repeat-scan owner readiness.
+- The 0.5.0 release notes are finalized in
+  [release-notes-0.5.0.md](release-notes-0.5.0.md) for deterministic
+  diagnostic-loop hardening, raw-free evidence handoff gates, representative
+  Impala Details/stats readiness, Trino private-preview gates, Spark compact
+  handoff gates, and stricter release automation.
 - README screenshots have been refreshed from the synthetic demo pack for the
   current material UI baseline, including the Query Doctor product-brand header,
   Big Data query diagnostics subtitle, Workloads, and Action Queue demo path.
-- README screenshot currency was reviewed for 0.4.3. The existing synthetic
+- README screenshot currency was reviewed for 0.5.0. The existing synthetic
   search/results screenshots still match the documented public demo path; the
   changed Details/New scan surfaces are not the README screenshot surfaces.
 - Post-merge readiness smoke on 2026-05-26 covered one-hour, six-hour, and

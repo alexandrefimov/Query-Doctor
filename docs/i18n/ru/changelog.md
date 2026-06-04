@@ -27,6 +27,9 @@ changelog entry, если они не меняют behavior или safety.
   Documentation.
 - Для точного текста и истории релизов смотрите
   [английский changelog](../../changelog.md).
+- Curated release notes для `0.5.0` находятся в
+  [английской версии](../../release-notes-0.5.0.md) и русском companion-файле
+  [release-notes-0.5.0.md](release-notes-0.5.0.md).
 
 ## Текущий Unreleased summary
 

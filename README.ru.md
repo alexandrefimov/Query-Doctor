@@ -232,7 +232,7 @@ Finished Queries results:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-Synthetic demo pack `0.4.3` содержит eleven sanitized cases: Workloads / Action
+Synthetic demo pack `0.5.0` содержит eleven sanitized cases: Workloads / Action
 Queue, trusted optimizer recommendations, stats maintenance, storage/HDFS
 follow-up, frequent-short workloads, mixed signals, unknown-but-useful limited
 evidence и direct-Impala compatibility. Полный список scenarios:
@@ -347,7 +347,7 @@ credentials, raw profiles, raw metadata или temporary outputs.
 
 ## Public status
 
-Репозиторий публичный. Public source releases начинаются с `v0.4.2`; `v0.4.3`
+Репозиторий публичный. Public source releases начинаются с `v0.4.2`; `v0.5.0`
 продолжает эту public source release line. Older package-index releases
 остаются видимыми на
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) для
