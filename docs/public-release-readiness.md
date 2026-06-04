@@ -1,6 +1,6 @@
 # Public Release Readiness
 
-Last reviewed: 2026-06-02
+Last reviewed: 2026-06-04
 
 This checklist tracks what Query Doctor needs before tags, announcements, and
 any future repository visibility changes. It is intentionally practical: public
@@ -10,9 +10,13 @@ about unsupported scope.
 ## P0 Release Gate
 
 - Clean working tree.
+- Public-sharing history is reviewable: local integration merges, WIP/fixup
+  commits, repeated docs-audit commits, and mechanical cleanup commits have
+  been squashed into semantic review commits before any push or branch handoff.
 - Local release gate passes from a clean checkout: staged public-safety checks,
-  active-doc checks, Markdown link checks, ruff, full pytest,
-  `git diff --check`, public-release preflight, and synthetic demo pack smoke.
+  active-doc checks, Markdown link checks, release-history shape check, ruff,
+  full pytest, `git diff --check`, public-release preflight, and synthetic demo
+  pack smoke.
 - `pre-commit run --all-files` passes before public release handoff, including
   ruff format checks.
 - Git history has been reviewed for secrets, raw production query text, profiles,
@@ -21,26 +25,39 @@ about unsupported scope.
 - GitHub CI is green on the public default branch.
 - Public docs state current support honestly: Query Doctor is a Big Data query
   diagnostic tool focused today on Apache Impala workloads; Apache Impala is the
-  only implemented engine; Cloudera Manager is the full Recent
+  only implemented production triage engine; Cloudera Manager is the full Recent
   discovery/profile/metrics/events source validated against the maintained test
   environment; direct Impala supports bounded Recent, Running, and Known Query
   ID workflows without Cloudera Manager events; optional Prometheus runtime
-  metrics are bounded direct Impala context; and future Big Data engines,
-  broader providers, prepared event/log sources, and Cluster Doctor are roadmap
-  seams only. Trino private preview, when mentioned, is closed test-cluster
-  smoke plus sanitized evidence-package intake only; it is not public engine
-  support, live collection, browser/report output, optimizer behavior, metadata
-  collection, or Query Doctor-generated SQL.
+  metrics are bounded direct Impala context; Trino support is limited to
+  sanitized offline evidence package import, bounded local event-store import,
+  bounded HTTP event archive import, bounded HTTP query-detail archive import,
+  bounded local query-detail import, bounded local query-list aggregate import,
+  bounded local statement-stats import, event-source contract checking, and
+  dry-run coordinator query-info target checking, plus bounded pruned
+  coordinator query-info probing/import and local compact diagnosis over
+  raw-free direct boundary JSON or selected package sample boundaries plus
+  isolated local compact-diagnosis rendering for the same already raw-free
+  inputs; and
+  future Big Data live engines, broader providers, prepared event/log sources,
+  and Cluster Doctor are roadmap seams only. Trino is not live collection,
+  coordinator collection, Details/trusted report output, optimizer behavior,
+  metadata collection, Query Doctor-generated SQL, or live diagnosis.
 - Public docs use English as canonical language, with Russian pages only as
   localized companions under `docs/i18n/ru/`.
 - README screenshots are current for any material web UI layout changes included
   in the release and are generated only from the synthetic demo pack.
+- README screenshot provenance is recorded in
+  `docs/assets/readme-screenshot-provenance.json`; release notes or readiness
+  snapshots only need extra notes when provenance is a human-only check.
+- Committed fixtures are covered by public-data provenance checks or explicit
+  synthetic/sanitized fixture corpus policy.
 - No generated cases, reports, profiles, metadata outputs, local configs,
   credentials, caches, or temporary artifacts are tracked.
 
 ## Current Snapshot
 
-As of 2026-05-28, the public repository has the main best-practice baseline in
+As of 2026-06-04, the public repository has the main best-practice baseline in
 place:
 
 - Canonical public docs and default browser-visible copy are English.
@@ -50,6 +67,17 @@ place:
   language-specific prompt, normalizer, and validator boundary.
 - Public packaging metadata, release checklist, contributor docs, security
   reporting, code of conduct, Dependabot, and CI matrix coverage are present.
+- Packaging metadata keeps `[project].version` in `pyproject.toml` as the
+  canonical version source; the legacy `setup.py` shim reads that value while
+  it remains in the tree.
+- Round-2 trust-boundary hardening is reflected in
+  [code-audit.md](code-audit.md): shared outbound HTTP egress policy, adversarial
+  report-validator coverage, browser internal-fingerprint redaction,
+  parent-side subprocess output caps, generated-staging artifact guards,
+  artifact-route traversal and symlink tests, committed fixture provenance,
+  README screenshot provenance, and single-source packaging metadata are
+  guarded. The remaining public-sharing blocker is reviewable semantic history
+  cleanup before any release branch handoff or push.
 - Private Vulnerability Reporting, secret scanning, secret scanning push
   protection, Dependabot security updates, and CodeQL scanning are enabled for
   the public repository.

@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last reviewed: 2026-06-01
+Last reviewed: 2026-06-03
 
 Язык: [English](../../agent-playbook.md) | Русский
 
@@ -12,7 +12,7 @@ Last reviewed: 2026-06-01
 `agent-playbook.md` помогает выбрать безопасный маршрут для типовых изменений:
 docs-only, web UI, report/validator, Query Optimizer, Cloudera Manager
 collection, Direct Impala collection, Impala metadata, analyzer/scoring и
-release cleanup.
+engine fact / second-engine research, release cleanup.
 
 ## Базовый порядок
 
@@ -32,6 +32,12 @@ release cleanup.
   ignored local config и local connectivity; local selectors, endpoints, output
   paths и private evidence не коммитятся. Перед support wording нужен
   `audit_profile_evidence_gates.py --fail-on-issues`.
+- Для normalized engine facts, Spark compact intake или Trino
+  fixture/private-preview work сначала читать
+  `docs/engine-support-gap-matrix.md`, `docs/safety-contract.md` и
+  `docs/code-audit.md`. Apache Impala остается единственным production support;
+  Spark/Trino facts нельзя продвигать в Details, trusted reports, optimizer,
+  Recent workflows или shared support wording без отдельного support gate.
 
 ## Главное правило
 

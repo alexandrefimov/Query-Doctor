@@ -29,6 +29,10 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
 ```
 
 Основной public-demo вход: `/?query_group=workloads#workload-action-queue`.
+Он показывает, какую repeated group открыть следующей; полный action plan
+остается на workload Details: why, where, supported change direction, rerun
+verification и local outcome history. Representative cases ведут к case Action
+card, где безопасно записывать rerun feedback для выбранного case.
 
 ## Safety
 

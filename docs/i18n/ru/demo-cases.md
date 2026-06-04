@@ -29,7 +29,8 @@ metadata, hostnames, users, query IDs, account names или credentials.
 Рекомендуемый public-demo вход теперь начинается с Workloads /
 Action Queue: `/?query_group=workloads#workload-action-queue`, чтобы сразу
 показать prioritization, next checks, verification и local synthetic action
-outcomes.
+outcomes. Затем откройте Workload Details и покажите representative case
+Action card как безопасное место для rerun feedback.
 
 ## Safety
 

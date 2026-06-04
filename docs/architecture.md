@@ -122,12 +122,22 @@ Current support is intentionally narrow:
 - Future upstream Impala profile JSON/parser/redactor compatibility must map
   into the same Python-owned fact and raw-free browser/report boundary before it
   becomes product behavior.
-- Future multi-engine support must enter through an engine fact contract with
-  real fixtures and safety tests, not through placeholder adapters.
-- The initial engine fact contract exists only as internal contract-shaping
-  code, an Impala analyzer projection, and a synthetic Trino fixture mapper; it
-  is not a supported Trino workflow and is not connected to browser, report,
-  collector, or optimizer paths.
+- Future live multi-engine support must enter through an engine fact contract
+  with real fixtures and safety tests, not through placeholder adapters.
+- The engine fact contract currently supports an Impala analyzer projection,
+  sanitized Trino offline evidence package import, bounded local Trino
+  event-store import, bounded HTTP Trino event archive import, bounded HTTP
+  Trino query-detail archive import, bounded local Trino query-detail
+  import, and bounded local Trino query-list aggregate import, plus bounded
+  local Trino statement-stats import, event-source contract checks, and dry-run
+  coordinator query-info target checks, plus bounded pruned coordinator
+  query-info probes, one-query pruned coordinator fact import, and local
+  compact diagnosis over raw-free direct boundary JSON or selected package
+  sample boundaries plus isolated local `/trino/compact-diagnosis` rendering
+  for the same already raw-free inputs.
+  Trino import and diagnosis paths are not connected to Details, trusted
+  reports, broader live Trino coordinator collection, metadata, optimizer, or
+  live query-source diagnosis paths.
 
 ## Source-Provider Architecture
 

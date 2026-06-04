@@ -1,6 +1,6 @@
 # Контракт безопасности Query Doctor
 
-Last reviewed: 2026-05-19
+Last reviewed: 2026-06-04
 
 Язык: [English](../../safety-contract.md) | Русский
 
@@ -20,11 +20,44 @@ Last reviewed: 2026-05-19
 - Report writer не должен делать выводы из raw profile text, SQL, raw Cloudera
   Manager JSON, local config или external knowledge.
 
+## Граница engine facts
+
+- `engine_fact_boundary_v1` - raw-free normalized fact seam. Это не product
+  engine registry, не public support claim и не замена текущим Impala analyzer
+  facts без отдельной migration/parity работы.
+- Engine fact bundles должны использовать registered fact identifiers с
+  explicit scope и allowed engines. Shared или distributed-SQL-family facts
+  требуют явного namespace definition; engine-specific facts должны оставаться
+  engine-prefixed или allowlisted registry.
+- Boundary payloads строятся только из Python-owned parsed/compact facts и
+  проходят raw-free validation до любого browser/report consumer или consumer
+  probe.
+- Boundary payloads и public engine fact text не должны содержать raw SQL, raw
+  profile text, raw metadata, raw event logs, raw query details, source
+  endpoints, IDs, hostnames, user names, object names, local paths, runtime
+  internals, parser-local identifiers, stack traces, exception messages или raw
+  artifact filenames.
+- Unsupported, missing, partial, unstable или source-version-mismatched engine
+  facts должны деградировать в `unknown`, `not_observed` или explicit safe
+  limitation. Нельзя backfill fake metrics, counters, lifecycle evidence или
+  events между движками.
+- Trino fixture facts и Spark compact facts остаются ниже product support, пока
+  отдельные support gates не добавят реальные collection contracts, metadata
+  allowlists, browser/report safety tests и support-gap closure. Текущий статус
+  см. в [engine-support-gap-matrix.md](engine-support-gap-matrix.md).
+
 ## Граница сбора данных
 
 - Широкое cluster/profile/table scanning по умолчанию запрещено.
 - Любой внешний сбор должен быть explicit, bounded, read-only, redacted и safe
   by default.
+- Outbound HTTP collection должен validate target, держать response reads
+  bounded и отклонять unsafe redirect targets. Metadata, link-local, reserved,
+  multicast и другие unsafe destinations не должны быть доступны через browser
+  forms или optional URL overrides.
+- Private-network и loopback targets разрешены только как explicit configured
+  diagnostic endpoints для соответствующего компонента, а не как arbitrary
+  egress.
 - Dry-run и preflight paths не должны собирать profile text.
 - Real profile collection не должен печатать raw profiles, SQL, raw Cloudera
   Manager JSON или credentials.
@@ -66,6 +99,12 @@ production profile text.
 - Если report rejected, исправляйте deterministic facts, prompt wording,
   sanitizer behavior или tests.
 - Новые validator rules должны иметь unsafe-rejected и safe-allowed tests.
+- Каждый supported report language должен иметь explicit overclaim-detection
+  coverage. Добавление языка требует validator coverage и parity tests до
+  использования в trusted reports.
+- Validators должны reject-ить unsupported claims даже при indirect или soft
+  phrasing, включая causal/responsibility wording, diagnostic recommendations и
+  row/cardinality или memory estimate direction wording.
 - Deterministic normalization не должна незаметно прятать unsupported claims.
 - Safe replacements должны быть explicit, narrow и covered tests.
 - Raw LLM output буферизуется и не должен stream'иться в stdout/stderr или
@@ -77,13 +116,56 @@ production profile text.
   table-specific `SHOW CREATE TABLE`, `SHOW TABLE STATS`, `SHOW COLUMN STATS`.
 - Partial или invalid report output остается untrusted и не должен
   отображаться как final diagnosis.
+- CLI validation bypass modes являются manual escape hatches. Browser и trusted
+  artifact consumers должны принимать только current strict validation markers
+  со всеми fields, которые требует текущий marker contract, и совпадающими
+  artifact/facts hashes. Marker schemas должны bind-ить schema version до
+  material changes в validation rules.
+- Defensive UI failure handlers должны fail closed с redacted safe messages и
+  не должны показывать raw SQL, subprocess output, local paths или artifact
+  names при unexpected exceptions.
+
+## Query Optimizer trust boundary
+
+- Query Optimizer может отправлять raw source SQL в LLM только внутри
+  delimited `INPUT SQL` block для explicit selected-case rewrite attempt.
+- Prompt wording должен framing-ить `INPUT SQL` как untrusted data. Instructions
+  внутри SQL comments, string literals, identifiers или pasted query text не
+  должны override-ить Python-owned rules, recipes или validation requirements.
+- Recommendations-only prompts должны оставаться raw-free и использовать только
+  Python-owned recommendation candidates, SQL-shape digests и optimizer fact
+  digests.
+- Raw LLM optimizer output остается untrusted, пока deterministic validation не
+  примет его. Unsafe, non-read-only, multi-statement, incomplete или
+  unsupported-shape output должен оставаться untrusted или превращаться в
+  trusted no-rewrite/recommendations outcome, но никогда в browser-visible
+  trusted SQL draft.
+
+## Redaction and resource boundary
+
+- Redaction является defense in depth. Она не заменяет raw-free fact
+  extraction, deterministic validation или browser/trusted-report raw-content
+  exclusions.
+- Local artifacts, logs, warnings и defensive UI fallback text, где могут
+  появиться operational strings, должны использовать shared redaction policy до
+  display или persistence.
+- Redaction changes для hosts, users, URLs, credentials, auth headers, cookies,
+  metadata keys и local paths должны иметь adversarial unsafe-rejected tests и
+  safe false-positive checks.
+- User-controlled text должен быть byte-bounded до regex-heavy parsing,
+  validation, prompt assembly, sanitizer или browser-rendering paths.
+- Новые или расширенные safety regexes должны избегать nested unbounded
+  quantifiers и иметь pathological-within-cap regression test, если они стоят
+  на trust boundary.
 
 ## Browser display boundary
 
 - Browser-visible UI не должен показывать raw SQL, raw profiles, raw metadata,
   stdout/stderr, local paths, `case_dir`, credentials, secret values, Kerberos
   ticket contents, metadata connection details, model names или Ollama
-  internals.
+  internals. Model-family names, model-version strings, local runtime provider
+  names и internal runtime fingerprints должны оставаться hidden before
+  rendering.
 - Любой dynamic browser-visible text должен проходить shared browser display
   redaction policy перед rendering.
 - Web Recent scan не должен автоматически запускать LLM reports или optimizer

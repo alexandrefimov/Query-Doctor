@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Last updated: 2026-06-01
+Last updated: 2026-06-03
 
 This is the public-safe agent baseline for Query Doctor. It records durable
 product, safety, and engineering context only. Transient continuation notes,
@@ -13,9 +13,15 @@ local exclude-only note files, not in committed documentation.
 - Query Doctor is a local-first Big Data query diagnostic tool focused today on
   Apache Impala production triage.
 - Treat it as an engineering diagnostic product, not a chat wrapper.
-- The implemented engine is Impala only. Keep the minimal future engine/provider
-  seams that already exist, but do not add fake support for other engines or
-  managers.
+- The production-supported engine is Impala. Keep the minimal future
+  engine/provider seams that already exist, but do not add fake support for
+  other engines or managers.
+- Current engine support, fixture-only, and research statuses are tracked in
+  [engine-support-gap-matrix.md](engine-support-gap-matrix.md). Use that matrix
+  before changing support wording or second-engine wiring.
+- Trino is implemented only for the bounded raw-free surfaces listed in the
+  matrix. Do not expand it into live Trino coordinator diagnosis or product
+  surfaces without explicit implementation and validation.
 - Recent scan is the primary workflow.
 - Query ID diagnosis is secondary for one known query.
 - Query Optimizer is separate for pasted SQL analysis and deterministic
@@ -69,13 +75,49 @@ continuation plans belong in local exclude-only notes.
 
 ## Engine Expansion Boundary
 
-- Trino materials in this repository remain fixture-only contract and private
-  preview groundwork unless a future slice adds real support with collection
-  contracts, metadata allowlists, browser/report safety tests, and a documented
-  support gap matrix.
-- Do not add public support claims, live collection, engine registration,
-  browser/report output, optimizer behavior, or Query Doctor-generated SQL for a
-  second engine without explicit implementation and validation.
+- Apache Impala remains the only production-supported engine.
+- The normalized engine-fact projection is a raw-free contract seam, not the
+  product engine registry and not a support claim.
+- Trino materials in this repository support sanitized offline evidence package
+  import through `query-doctor-trino-import`, bounded local event-store import
+  through `query-doctor-trino-event-store-import`, bounded HTTP event archive
+  import through `query-doctor-trino-http-event-archive-import`, bounded HTTP
+  query-detail archive import through
+  `query-doctor-trino-http-query-detail-archive-import`, and bounded
+  local query-detail import through `query-doctor-trino-query-detail-import`,
+  plus bounded local query-list aggregate import through
+  `query-doctor-trino-query-list-import`, and bounded local statement-stats
+  import through `query-doctor-trino-statement-stats-import`, plus event-source
+  contract checking through `query-doctor-trino-event-source-contract-check`,
+  bounded local pruned QueryInfo import through
+  `query-doctor-trino-query-info-pruned-import`,
+  target checking through
+  `query-doctor-trino-coordinator-query-info-target-check`, and pruned
+  coordinator probing through
+  `query-doctor-trino-coordinator-query-info-pruned-probe`, plus one-query
+  pruned coordinator fact import through
+  `query-doctor-trino-coordinator-query-info-pruned-import` with optional
+  direct `--boundary-out` raw-free boundary JSON for strict local readiness
+  audits, plus local compact diagnosis over raw-free direct boundary JSON or
+  selected package sample boundaries through
+  `query-doctor-diagnose-trino-compact`, plus isolated local compact-diagnosis
+  rendering through `/trino/compact-diagnosis` for the same already raw-free
+  inputs.
+  These paths validate already-sanitized compact inputs or compact
+  source-contract JSON and emit only safe summaries or raw-free normalized fact
+  boundaries, deterministic raw-free diagnosis JSON, or sanitized compact
+  diagnosis HTML.
+- Spark compact History Server intake and compact evidence-package
+  build/validation remain experimental research. History Server intake is for
+  one explicit application through CLI or the isolated direct compact page; the
+  package commands accept only already compact samples for readiness handoff. It
+  is not a Recent workflow, Details/trusted report surface, optimizer behavior,
+  engine registration, or Spark support claim.
+- Do not add public support claims, broad live collection, engine registration
+  beyond adapters explicitly listed in the support matrix, browser workflows
+  beyond isolated compact pages, Details/trusted report output, optimizer
+  behavior, or Query Doctor-generated SQL for a second engine without explicit
+  implementation and validation.
 
 ## Agent Read Path
 
@@ -92,24 +134,26 @@ continuation plans belong in local exclude-only notes.
 
 ## Working Rules
 
-- Run `python3 scripts/worktree_status.py` before creating, merging, or cleaning
-  task worktrees.
+Follow [agent-quickstart.md](agent-quickstart.md) as the canonical operational
+contract for worktrees, staging, validation, commits, local `main` merges, and
+completed-worktree cleanup.
+
+Durable invariants:
+
+- Preserve unrelated user changes.
 - Use worktree-first development for each code or documentation slice unless the
   user explicitly asks to edit the current worktree.
-- Preserve unrelated user changes.
 - Stage only intended files explicitly; do not use `git add .` or `git add -A`.
 - Run focused validation for touched areas and always run `git diff --check`
   before committing.
-- For documentation changes, also run `python3 scripts/check_active_docs.py`,
-  `python3 scripts/check_markdown_links.py`, and
-  `python3 scripts/audit_public_docs.py` when the public/local boundary is
-  relevant.
 - Keep the public README in the documentation drift check for user-facing
   workflow, CLI, config, demo, release, packaging, or product-positioning
   changes.
-- Commit verified repo changes on the task branch. Do not merge into `main`,
-  push, rebase, amend, force-push, or clean worktrees unless the user explicitly
-  asks for that integration operation.
+- When the branch is complete, committed, validated, and clean, merge it back
+  to local `main` in the same turn unless the user explicitly asks to stop
+  before merge.
+- Do not push, rebase, amend, or force-push unless the user explicitly asks for
+  that operation. Never push directly to remote `main`.
 
 ## Documentation Boundary
 

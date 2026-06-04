@@ -4,7 +4,10 @@ Last reviewed: 2026-05-22
 
 This document records the durable upstream and adjacent-market watch loop for
 Query Doctor. It does not change current product support: Apache Impala is the
-only implemented SQL engine.
+only implemented production triage SQL engine, while Trino is limited to
+sanitized offline/local import, event-source contract checking, dry-run
+coordinator query-info target checking, and one-query pruned coordinator
+query-info probing.
 
 Use this as research routing, not as permission to add collectors, adapters, or
 support claims. Upstream items become Query Doctor work only when they affect a

@@ -60,7 +60,9 @@ evidence.
 The README screenshots at `docs/assets/demo_search.png` and
 `docs/assets/demo_finished_queries.png` should be refreshed after material web
 UI or workflow layout changes. Use only the synthetic demo pack, and keep
-generated demo output outside the repository:
+generated demo output outside the repository. Keep
+`docs/assets/readme-screenshot-provenance.json` in sync with any screenshot
+path, route, viewport, or demo-pack version change:
 
 ```bash
 DEMO_PACK="${TMPDIR:-/tmp}/query-doctor-demo-pack"
@@ -75,8 +77,11 @@ Open the printed localhost URL and capture:
 - the Finished Queries results view for `docs/assets/demo_finished_queries.png`.
 
 For the results view, the Workloads action queue is the useful default because
-it shows prioritization, next checks, verification, and local synthetic
-outcomes in one screen:
+it dispatches the analyst to the repeated group that should be opened next.
+Workload Details then shows the full action plan: why the group deserves
+attention, where to inspect representative cases, what supported change
+direction to try, how to verify a comparable rerun, and local synthetic outcome
+history.
 
 ```text
 http://127.0.0.1:8766/?query_group=workloads#workload-action-queue

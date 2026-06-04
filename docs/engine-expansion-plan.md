@@ -1,20 +1,29 @@
 # Engine Expansion Plan
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-06-03
 
 This document records the transition plan for future source-provider and engine
-work. It does not change current support: Query Doctor is still Apache Impala
-only. Cloudera Manager is the full query/profile/metrics/events source, while
-direct Impala daemon collection and optional Prometheus runtime metrics are
-implemented only for the bounded workflows described below.
+work. Current production triage is still Apache Impala. Trino support is
+limited to sanitized offline evidence package import, bounded local event-store
+import, bounded HTTP event archive import, bounded HTTP query-detail archive
+import, bounded local query-detail import, and bounded local query-list
+aggregate import, plus bounded local statement-stats import, event-source
+contract checking, dry-run coordinator query-info target checking, and bounded
+pruned coordinator query-info probing plus one-query pruned coordinator fact
+import, plus local compact diagnosis over raw-free direct boundary JSON or
+selected package sample boundaries. Cloudera Manager is the full
+query/profile/metrics/events source for Impala, while direct Impala daemon
+collection and optional
+Prometheus runtime metrics are implemented only for the bounded workflows
+described below.
 
 The goal is to avoid doing provider decoupling, engine abstraction, new metrics
 sources, and a second engine in one step. Apache Impala upstream work around
 native AI profile analysis makes cross-engine production triage more important
 as a long-term differentiator, but it does not relax the readiness gates below.
 Each phase has its own stop conditions. Early second-engine exploration may
-start before product-support gates are complete, but only as a fixture-driven
-contract-shaping spike with no public support claim and no default workflow
+start before live-support gates are complete, but only as a bounded
+contract-shaping path with explicit limitations and no default live workflow
 impact.
 
 ## Current Position
@@ -46,7 +55,8 @@ Separate two decisions:
   named engine, real or synthetic-safe artifacts, a specific contract question
   to answer, and no path to browser/report output without safety tests.
 - **Support claim gate:** README, package metadata, UI copy, and support
-  matrices must not claim a second supported engine until real collection or
+  matrices must distinguish offline evidence import from live engine support.
+  They must not claim live support for a second engine until real collection or
   fixture coverage, parser/fact mapping, metadata allowlists, browser/report
   safety tests, and a support gap matrix exist.
 
@@ -61,10 +71,10 @@ true:
 - design partners confirm that the current product is useful enough to justify
   expanding its deployment surface.
 
-Do not claim supported second-engine behavior until every support gate in
-[roadmap.md](roadmap.md) is true. A fixture-only spike can happen earlier if it
-is explicitly non-product behavior and is used to design or validate the engine
-fact contract.
+Do not claim live supported second-engine behavior until every support gate in
+[roadmap.md](roadmap.md) is true. A bounded offline or local import path can
+happen earlier if it has deterministic parsers, raw-free outputs, explicit
+limitations, and no live/query-execution behavior.
 
 ## Phase 1: Direct Impala Profile Source And Metrics Source
 
@@ -112,9 +122,13 @@ Refactor Impala parsing and analysis behind an engine-owned parser output. The
 contract should normalize parser outputs, not profile inputs.
 
 The first contract-shaping slice now exists as
-`query_doctor/analyzer/engine_facts.py`, an Impala projection module, and a
-fixture-only Trino mapper. These are intentionally isolated from product
-workflows and do not register Trino as a supported engine. Track current gaps in
+`query_doctor/analyzer/engine_facts.py`, an Impala projection module, a Trino
+mapper, a packaged Trino offline evidence import path, a bounded local Trino
+event-store import path, a bounded HTTP Trino event archive import path, a
+bounded local Trino query-detail import path, and a bounded local Trino
+query-list aggregate import path, plus a raw-free Trino event-source contract
+check. Trino remains isolated from live product workflows: no Trino coordinator
+collection, metadata, browser report, or optimizer path consumes it. Track current gaps in
 [engine-support-gap-matrix.md](engine-support-gap-matrix.md).
 
 Target shape:
@@ -130,8 +144,8 @@ Target shape:
 This phase should keep Impala behavior stable. Existing Impala tests should pass
 through the new contract before any second engine is supported.
 
-Do not add supported second-engine behavior during this refactor. A
-fixture-only spike for one named candidate engine is allowed when it answers a
+Do not add live second-engine behavior during this refactor. A bounded offline
+or local import path for one named candidate engine is allowed when it answers a
 contract question, stays isolated from normal workflows, and cannot render
 browser/report output without safety tests. The goal is to prevent the first
 non-Impala engine from becoming an Impala-shaped copy.
@@ -140,40 +154,50 @@ Done means the analyzer service no longer depends on Impala-specific profile
 parsing internals, Impala fixtures still pass, and the fact contract documents
 field semantics and unsupported-field behavior.
 
-## Phase 3A: Experimental Second-Engine Spike
+## Phase 3A: Experimental Second-Engine Offline And Local Import
 
 Choose the second engine from design partner demand, not from a static wishlist.
-The first step is discovery, not support.
+The first step is discovery and offline import, not live support.
 
 Trino is the default candidate to validate because it is a common migration
 destination from legacy Hadoop and Cloudera environments, and it supports a
 local-first diagnostic model better than closed platforms. This is a candidate,
-not a public commitment. The first spike is documented in
+not a public live-support commitment. The first spike is documented in
 [trino-discovery-spike.md](trino-discovery-spike.md), and the future evidence
 contract is documented in
 [engines/trino-diagnostic-contract.md](engines/trino-diagnostic-contract.md).
 
-Spark SQL is explicitly not the next engine candidate under the current product
-state. Its useful diagnostic surface depends on SQL plans, per-stage and
-per-task metrics, executor behavior, event history, and logs rather than the
-Impala-style runtime profile model. Treat Spark as deferred until the
-second-engine gates are met and a design partner brings a real Spark workload
-with an agreed collector and fact model.
+Spark SQL remains outside product support under the current product state. Its
+useful diagnostic surface depends on applications, SQL executions, jobs, stages,
+tasks, executor behavior, event history, and logs rather than the Impala-style
+runtime profile model. A research-only Spark architecture spike may start to
+define the source contract, compact fixture schema, and fact envelope described
+in [engines/spark-architecture-spike.md](engines/spark-architecture-spike.md).
+The current Spark slice includes an experimental bounded History Server
+compact-intake CLI plus an isolated direct compact-diagnosis page for one
+explicit History Server application or already accepted raw-free JSON. The
+collector reads only summary `/api/v1` JSON and maps it to raw-free normalized
+facts. The page renders only endpoint counts, warning IDs, deterministic
+attention areas, limitations, and verification direction, without echoing
+request selectors or submitted JSON. This remains below product support and
+must not add Spark engine registration, Recent workflows, Details/trusted
+report surfaces, optimizer behavior, raw event-log downloads, raw SQL/plan/log
+or environment collection, Spark job execution, or a support claim.
 
-An experimental spike must:
+An experimental offline import path must:
 
-- use sanitized or synthetic-safe artifacts committed as fixtures, not live
-  cluster reads by default;
+- use sanitized or synthetic-safe artifacts or operator-reviewed local packages,
+  not live cluster reads by default;
 - map only a small set of parser outputs into the engine fact contract;
 - preserve explicit `supported`, `not_observed`, and `unknown` semantics;
-- avoid adding runtime engine selectors, placeholder packages, or default
+- avoid adding live runtime engine selectors, placeholder packages, or default
   product routes;
 - include redaction and raw-free contract tests before any output reaches
   report or browser code;
 - document what the spike proves and what remains unsupported.
 
-Done means the spike teaches the engine fact contract something concrete and
-does not change current Impala behavior or public support claims.
+Done means the path teaches the engine fact contract something concrete and
+does not change current Impala behavior or live support claims.
 
 ## Phase 3B: Supported Second Engine
 

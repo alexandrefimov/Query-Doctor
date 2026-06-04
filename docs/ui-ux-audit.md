@@ -1,11 +1,32 @@
 # Query Doctor UI/UX Audit Notes
 
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 This note records the accepted product takeaways from the May 2026 UI/UX audit.
 The goal is to make Query Doctor usable by an analyst who needs to understand
 what is wrong with a slow query, where to inspect it, and what to try next,
 without weakening the safety contract or exposing raw artifacts.
+
+## Accepted For Public README Entry Point Slice
+
+- Keep the root README as a demo-first public entry point, not a complete
+  command reference or implementation guide.
+- Preserve the first user path: install, generate the synthetic demo pack,
+  launch the local web UI, inspect Workloads/Action Queue, then follow Details
+  for why/where/change/verify guidance.
+- Keep support boundaries short and unambiguous in root README. Apache Impala is
+  the only production engine support; Trino private preview and Spark compact
+  intake stay below public support and link to the engine support matrix for the
+  detailed contract.
+- Remove the full console-script catalog from root README. Keep only the
+  commands needed for the demo and a few high-signal `--help` entry points; the
+  full command surface belongs in package metadata, local smoke docs, and
+  focused runbooks.
+- Keep contributor validation in root README lightweight. Normal changes should
+  point to focused validation and `git diff --check`; broad gates such as
+  `pre-commit run --all-files`, `scripts/local_gate.sh`, and
+  `query-doctor-demo-preflight --public-release` belong to release or
+  public-sharing work.
 
 ## Closed In Web UI Architecture Audit Slice
 

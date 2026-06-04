@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-01
+Last reviewed: 2026-06-03
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -25,7 +25,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 
 ## Start Here
 
-- [../README.md](../README.md): public project overview and workflows.
+- [../README.md](../README.md): demo-first public overview, install path,
+  support boundaries, and safety summary.
 - [../README.ru.md](../README.ru.md): Russian companion for the public project
   README.
 - [agent-quickstart.md](agent-quickstart.md): shortest safe path for agents.
@@ -34,6 +35,9 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
   committed public docs from ignored local agent notes.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
+- [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
+  truth for current engine support status, fixture/research boundaries, and
+  second-engine promotion gates.
 
 Use the status index below for task-specific reference docs such as engine
 expansion, upstream research loops, Trino contracts, demo paths, hardening, and
@@ -64,9 +68,13 @@ release work. Do not read every reference doc before small tasks.
   notes for GitHub Release and package-index handoff.
 - [release-checklist.md](release-checklist.md): final release-candidate,
   tag, package-index, and visibility-change procedure.
+- [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md):
+  sanitized Trino offline evidence package, local event-store, and local
+  query-detail/query-list/statement-stats plus pruned QueryInfo import
+  contract.
 - [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md):
   release-facing private-preview path for closed test-cluster Trino evidence,
-  without public engine support.
+  without live Trino product workflows.
 
 ## Document Status Index
 
@@ -77,7 +85,7 @@ Status legend:
 
 | Document | Status | Use |
 | --- | --- | --- |
-| [../README.md](../README.md) | active | Public overview and workflows. |
+| [../README.md](../README.md) | active | Demo-first public overview, install path, support boundaries, and safety summary. |
 | [../README.ru.md](../README.ru.md) | reference | Russian companion for the public overview. |
 | [../AGENTS.md](../AGENTS.md) | active | Hard rules for coding agents. |
 | [README.md](README.md) | active | Documentation status index. |
@@ -90,19 +98,23 @@ Status legend:
 | [upstream-impala-ai-analyzer.md](upstream-impala-ai-analyzer.md) | active | Upstream Impala AI analyzer alignment and Query Doctor differentiation. |
 | [impala-profile-counter-caveats.md](impala-profile-counter-caveats.md) | active | Impala profile dialect and counter evidence-tier caveats. |
 | [engine-expansion-plan.md](engine-expansion-plan.md) | active | Future source-provider, engine, metrics, and storage expansion order. |
-| [engine-support-gap-matrix.md](engine-support-gap-matrix.md) | reference | Current engine fact coverage and second-engine support gaps. |
+| [engine-support-gap-matrix.md](engine-support-gap-matrix.md) | active | Current engine support status, normalized fact coverage, fixture/research boundaries, and second-engine support gaps. |
 | [research/upstream-watch.md](research/upstream-watch.md) | reference | Upstream and adjacent-market watch loop for diagnostic signals across the query stack. |
 | [research/diagnostic-gap-log.md](research/diagnostic-gap-log.md) | reference | Safe template for recording production diagnostic gaps and backlog implications. |
 | [engines/trino-diagnostic-contract.md](engines/trino-diagnostic-contract.md) | reference | Trino evidence-source, safety, metadata, and readiness contract for future work. |
 | [engines/trino-live-collection-design.md](engines/trino-live-collection-design.md) | reference | Future Trino live-collection source, auth, bounds, redaction, and fixture gates. |
 | [engines/trino-test-cluster-evidence-checklist.md](engines/trino-test-cluster-evidence-checklist.md) | reference | Safe operator-export checklist for the first sanitized Trino test-cluster evidence handoff. |
-| [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md) | reference | Safe manifest and redaction-note templates for the first sanitized Trino evidence package. |
+| [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md) | reference | Safe manifest, redaction-note, local event-store, operator HTTP archive, local query-detail, local query-list, statement-stats, pruned query-info probe/import, and compact diagnosis templates for sanitized Trino intake. |
 | [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md) | reference | Closed test-cluster private-preview release path for Trino without public engine support. |
+| [engines/spark-architecture-spike.md](engines/spark-architecture-spike.md) | reference | Research-only Spark History Server/event-log fact-model, compact-intake, and isolated collect-or-paste compact-diagnosis page contract without public engine support. |
+| [engines/spark-test-cluster-evidence-checklist.md](engines/spark-test-cluster-evidence-checklist.md) | reference | Safe operator-reviewed compact Spark History Server/event-log evidence checklist for promotion-gate work without live Spark support claims. |
 | [engines/i18n/ru/trino-diagnostic-contract.md](engines/i18n/ru/trino-diagnostic-contract.md) | reference | Russian companion for the Trino diagnostic contract. |
 | [engines/i18n/ru/trino-live-collection-design.md](engines/i18n/ru/trino-live-collection-design.md) | reference | Russian companion for the future Trino live-collection design. |
 | [engines/i18n/ru/trino-test-cluster-evidence-checklist.md](engines/i18n/ru/trino-test-cluster-evidence-checklist.md) | reference | Russian companion for the Trino test-cluster evidence checklist. |
 | [engines/i18n/ru/trino-evidence-package-templates.md](engines/i18n/ru/trino-evidence-package-templates.md) | reference | Russian companion for the Trino evidence package templates. |
 | [engines/i18n/ru/trino-private-preview-release.md](engines/i18n/ru/trino-private-preview-release.md) | reference | Russian companion for the Trino private-preview release path. |
+| [engines/i18n/ru/spark-architecture-spike.md](engines/i18n/ru/spark-architecture-spike.md) | reference | Russian companion for the Spark architecture spike. |
+| [engines/i18n/ru/spark-test-cluster-evidence-checklist.md](engines/i18n/ru/spark-test-cluster-evidence-checklist.md) | reference | Russian companion for the Spark test-cluster evidence checklist. |
 | [research/i18n/ru/upstream-watch.md](research/i18n/ru/upstream-watch.md) | reference | Russian companion for the upstream and adjacent-market watch loop. |
 | [research/i18n/ru/diagnostic-gap-log.md](research/i18n/ru/diagnostic-gap-log.md) | reference | Russian companion for the safe diagnostic gap log. |
 | [query-optimizer-contract.md](query-optimizer-contract.md) | active | Optimizer trust, recipe, and validation contract. |

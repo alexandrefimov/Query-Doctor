@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-02
+Last updated: 2026-06-04
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -19,6 +19,319 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 
 ### Safety
 
+- Public release gate now checks branch history shape when `PUBLIC_RELEASE=1`
+  is set. `scripts/check_release_history_shape.py` rejects missing public base
+  refs, non-ancestor release heads, excessive commit counts, merge commits, and
+  WIP/fixup/draft subjects before a public handoff can rely on local gate
+  results.
+- README screenshot provenance is now machine-checkable. The new
+  `docs/assets/readme-screenshot-provenance.json` manifest ties each public
+  README screenshot to the synthetic demo pack, documented capture route,
+  viewport dimensions, README usage, and actual PNG dimensions.
+- Committed text fixtures under `tests/fixtures/` now have a dedicated
+  public-release provenance guard. The pytest scan applies the same
+  public-release marker detector to every fixture text file so future fixture
+  families must stay synthetic, example-only, or explicitly redacted.
+- Batch and Specific Query report export routes now have route-level traversal
+  and symlink regression guards. Encoded path-shaped IDs do not select cases,
+  symlinked report files outside the case directory remain hidden even with
+  marker-like metadata, and fixed markdown download filenames stay pinned.
+- Generated case staging directories now have explicit defense-in-depth
+  coverage. `.replace-*`, `.query-refresh-*`, and
+  `.cm-timeseries-refresh-*` directories are ignored at any tree depth,
+  including non-default local corpus roots, and staged public-safety checks
+  reject those paths even if they are force-added.
+- Outbound HTTP clients now share a fail-closed no-redirect egress policy for
+  configured diagnostic targets and strict public targets. The shared policy
+  validates DNS-resolved destination address classes, blocks metadata,
+  link-local, reserved, documentation, multicast, and unspecified targets, and
+  keeps private/loopback use behind explicit configured-target policy. CM JSON
+  and LLM response paths now also use parent-side byte caps instead of
+  unbounded reads.
+- Trino normalized fact IDs no longer reserve bare metric names during preview:
+  Trino-only timing, resource, stage, task, spill, blocked, connector, and
+  statement-execution facts now use `trino_*` IDs while `planning_time_ms`
+  remains the explicit distributed-SQL-family fact. Contract tests reject new
+  bare Trino engine-specific IDs; `query_list_*` bucket IDs remain behind
+  snapshot review.
+- Added `scripts/audit_trino_compact_readiness.py`, a local raw-free gate for
+  accepted Trino `engine_fact_boundary_v1` JSON. It verifies compact diagnosis
+  keeps `root_cause=not_claimed`, `trino_sql_execution=not_performed`,
+  `live_recent_scan=not_wired`, and no browser/report or optimizer wiring;
+  checks boundary and diagnosis output for raw-like content; and supports suite
+  mode across multiple boundary JSON inputs without printing paths or raw
+  filenames. Its strict `--require-one-query-boundary` mode rejects aggregate
+  `query_list_*` boundaries so query-list source-shape evidence cannot count
+  as one-query Trino diagnosis readiness.
+- The Trino compact readiness audit can now also check a `--diagnosis-json`
+  artifact written from the same boundary. The gate compares it with the
+  deterministic compact diagnosis built from the boundary, rejects raw-like
+  diagnosis text, and keeps local artifact paths and filenames out of output.
+- The same audit can now check the dev-only Kerberos/SPNEGO
+  `trino_smoke_summary.json` through `--smoke-summary`; strict release-facing
+  dry runs can add `--require-executed-smoke` so a dry-run plan cannot count as
+  an executed test-cluster smoke.
+- Trino pruned coordinator QueryInfo probe/import commands can now use one
+  local `--auth-header-file` containing an operator-managed `Authorization`
+  header for the single bounded `GET /v1/query/{queryId}?pruned=true` request.
+  Header paths and values remain outside summaries, boundary JSON, compact
+  diagnosis, and error output; unsupported header names fail closed before the
+  request. The pruned import command also rejects a `--diagnosis-out` path that
+  would overwrite the auth-header file.
+- The Trino pruned coordinator QueryInfo import command now supports
+  `--boundary-out <raw-free-trino-boundary.json>`, writing the direct
+  `engine_fact_boundary_v1` payload for local readiness audits without printing
+  the output path. The command rejects boundary output paths that overlap the
+  source contract, auth-header file, or compact diagnosis output.
+- Trino pruned coordinator QueryInfo probe/import reads now disable HTTP
+  redirect following for the single bounded
+  `GET /v1/query/{queryId}?pruned=true` request, keeping the explicit
+  coordinator target from expanding into a redirected egress path.
+- Report validators now include an adversarial EN/RU corpus for indirect
+  unsupported stale-statistics root-cause wording, soft `COMPUTE STATS`
+  recommendation wording, English stats-maintenance fix/explanation overclaims,
+  row/cardinality estimate-direction wording, and integrated parity coverage
+  for memory estimate direction, backend data skew, primary bottleneck, CM
+  context-only metrics, and CM event context. The trust gate rejects those
+  unsupported claims before a report can receive a trusted marker, while nearby
+  neutral investigation and conditional maintenance wording remains allowed.
+- Report language handling now uses the shared report-language registry for
+  config, web settings, and report/pipeline CLI boundaries. Case-insensitive
+  public keys such as `RU` normalize to `ru`, while unknown languages fail
+  closed before report generation instead of drifting into fallback wording.
+- Trusted report SQL-like text validation now rejects inline prose that embeds
+  `SELECT`, `WITH`, DML/DDL, or metadata `SHOW` statements, closing the gap
+  where raw SQL-like text could be caught in fenced snippets or list items but
+  not in a surrounding sentence.
+- Trusted report markers now bind the current report-marker schema version in
+  addition to strict validation mode and report/facts hashes, so older weaker
+  marker contracts stay untrusted in browser report surfaces after upgrades.
+- Browser and log fallback redaction now includes an adversarial corpus for
+  bare FQDNs, host-like single-label names, URL/field hosts, IPs, and uncommon
+  secret assignment names such as credentials, passphrases, private keys, and
+  auth values.
+- Browser/log redaction now keeps curated SQL-style table identifiers, pool
+  names, synthetic source-version labels, and safe local filenames from being
+  misclassified as hosts, while still redacting explicit host fields, URL
+  hosts, infrastructure-looking free-text domains, IPs, and host-like daemon
+  names. Browser model-name redaction now also covers `gpt-4`, `gpt-4o`,
+  `gpt_4_1`, and `gpt-lst` variants.
+- Resource-trace facts now fall back to allowlisted aggregate host-counter
+  parsing when no profile-format mapping is available, but explicit
+  unsupported mappings remain unavailable. The facts stay context-only and do
+  not promote a primary bottleneck without selected-query corroboration.
+- Recent scan batch-job defensive fallback coverage now verifies unexpected
+  exceptions produce a generic failed job message and keep raw subprocess text,
+  paths, SQL, model names, and artifact names out of browser job status JSON.
+- Web subprocess helpers now bound captured child stdout/stderr per stream on
+  the parent side for real subprocess calls and defensive custom-runner
+  returns, while browser failure messages continue to hide captured output.
+- Trusted report and optimizer artifact tests now directly reject non-strict
+  report validation modes and non-`strict_v2` optimizer validation modes, so
+  local/manual validation bypass artifacts stay partial-untrusted in the web UI.
+- Query Optimizer rewrite prompts now frame `INPUT SQL` as untrusted data and
+  ignore instructions inside comments, literals, identifiers, aliases, or
+  object names; regression coverage verifies unsafe prompt-injection drafts are
+  downgraded to trusted no-rewrite recommendations, and recommendations-only
+  prompts omit instruction-like unsafe digest values.
+- Recent action cards now prioritize the generic column-stats relevance caveat
+  when a Medium stats recommendation is not tied to specific join/filter
+  columns, so the visible guidance keeps the limitation before comparable-rerun
+  verification.
+- Recent stats scoring now treats structured join/filter column stats status
+  counts as important-column evidence, matching the existing gap detector and
+  preventing count-backed join/filter gaps from being downgraded to generic
+  column-stats caveats. Evidence details normalize contradictory count-backed
+  `covered` inputs to `partial` wording.
+- Query-shape action cards now prioritize stats-vs-query-shape uncertainty and
+  possible stats-refresh caveats before generic runtime counters, so Medium
+  guidance keeps the evidence limitation visible to analysts.
+- Optimizer funnel strict audits now require repeated no-recipe review guidance
+  to keep an explicit no-trusted-SQL-draft and manual-review contract before it
+  is counted as guidance-ready.
+- Direct Impala source-provenance facts now keep metadata read errors generic,
+  and strict direct-source readiness fails representative summaries whose source
+  provenance contains raw-like SQL, paths, hosts, URLs, emails, IPs, or secrets.
+- Direct Impala Details source limitations now consume analyzer Source
+  Provenance facts from `analysis_facts.md`, using allowlisted wording for
+  explicit `none`, `unavailable`, and partial coverage states while ignoring
+  arbitrary limitation text that could contain raw-like details.
+- Trusted Python reports now consume analyzer Source Provenance facts through a
+  Python-owned evidence bullet, summarizing only allowlisted source `kind` and
+  `status` values while ignoring arbitrary limitation text from
+  `analysis_facts.md`.
+- Report recommendation candidates now prefer structured `Stats Metadata
+  Quality` facts for stats-maintenance routing, using legacy table metadata
+  wording only as a fallback and avoiding stats actions for non-physical
+  `not_applicable` metadata.
+- Workload action-outcome strict audits now reject supplied local outcome JSONL
+  files that contain raw-like SQL, paths, hosts, URLs, emails, IPs, or secrets
+  before counting them as representative feedback evidence.
+- Browser SQL-snippet redaction now treats allowlisted metadata statements as
+  metadata statements, hiding the full statement and object identifier without
+  downgrading them to generic SQL redaction or leaving dotted-name tails.
+- Added `scripts/audit_spark_compact_readiness.py`, a local raw-free gate for
+  accepted Spark compact JSON. It verifies the Spark compact diagnosis keeps
+  `root_cause=not_claimed`, `support_status=experimental_compact_intake`, and
+  no Spark job execution; checks the engine fact boundary for raw-like content;
+  and guards Spark fact naming so Spark-specific facts stay `spark_*` and out
+  of shared scopes before any future support-surface expansion.
+- Added a Spark test-cluster evidence checklist for the next promotion-readiness
+  step. It defines representative operator-reviewed compact History
+  Server/event-log evidence, sanitization, and readiness-audit requirements
+  without requiring live query execution or creating a Spark support claim.
+- Added `query-doctor-validate-spark-evidence-package` and the compatible local
+  `scripts/validate_spark_evidence_package.py` wrapper for operator-reviewed
+  Spark compact evidence package validation. The command accepts only safe
+  manifest/redaction-note metadata and already compact Spark samples, reuses the
+  raw-free Spark compact schema/fact/diagnosis checks, and prints only a
+  path-free safe summary for readiness work.
+- Added `query-doctor-build-spark-evidence-package` and a compatible local
+  script wrapper to assemble sanitized Spark compact evidence packages from
+  already compact sample JSON files. The builder requires explicit redaction
+  review and sentinel-test confirmations, validates the package before writing,
+  rejects output/sample path overlap, and prints only a path-free safe summary.
+- The Spark compact readiness audit now supports suite mode for multiple
+  accepted compact JSON inputs. It aggregates only safe counts and issue
+  categories, keeps input paths and raw filenames out of output, and lets future
+  Spark support gates validate several fail-closed scenarios in one run.
+- Spark compact readiness suite mode now supports strict breadth requirements:
+  minimum compact input count and required source-contract coverage. The same
+  test coverage also guards against wiring Spark compact modules into Details,
+  trusted report, Recent, or optimizer surfaces before a separate support
+  promotion.
+- Spark compact readiness now has a committed
+  `spark_history_server_compact_source_warning.json` fixture, so suite breadth
+  validation covers both the synthetic compact event-log contract and the
+  History Server compact contract with safe source-warning aggregation.
+- Spark History Server compact intake now treats shared egress target-policy
+  violations as fail-closed collection errors instead of optional endpoint
+  warnings. DNS failures use a generic safe error without echoing hostnames or
+  resolved addresses.
+- Spark compact diagnosis now maps supported aggregate executor memory
+  used/capacity facts into a raw-free executor-memory-pressure attention area
+  when utilization is high, without making root-cause or Spark support claims.
+- Spark compact diagnosis now maps supported SQL elapsed time of at least two
+  minutes into a raw-free long-elapsed-time attention area, treating duration as
+  triage context rather than a root-cause or Spark support claim.
+- Spark compact lifecycle facts now accept only allowlisted safe failure
+  categories such as `resource_limit` and map them into raw-free compact
+  diagnosis attention areas without reading raw exception text or making
+  root-cause/support claims.
+- Spark compact stage facts now include Spark-specific aggregate input/output
+  row counts when every selected stage summary provides explicit safe row
+  values. Partial or missing row aggregates stay `unknown`, and the values are
+  not promoted into shared input/output facts.
+- Spark compact diagnosis and the isolated Spark compact web page now show
+  supported runtime context such as Spark version family, query linkage,
+  application lifecycle/attempt state, adaptive execution enabled, dynamic
+  allocation observed, input/output rows, bytes, stages, tasks, shuffle, spill,
+  and elapsed time with formatted browser-safe labels. These values remain
+  context only, not attention signals, root causes, shared facts,
+  Details/trusted report output, or Spark support claims.
+- Spark History Server compact collection now disables HTTP redirects by
+  default, blocks metadata, link-local, reserved, documentation, multicast, and
+  unspecified literal targets, and requires explicit CLI/web opt-in before
+  loopback, RFC1918, carrier-grade NAT, or unique-local targets can be used.
+  This is a Spark-local hardening step; the broader shared outbound policy
+  across all HTTP clients remains tracked separately.
+- Spark History Server compact provenance now records the per-endpoint
+  `maxResponseBytes` cap for live History Server intake, validates it against a
+  compact contract ceiling, and rejects over-wide response bounds before
+  collection. The field is raw-free provenance only and does not add Spark
+  product support, broad live collection, Details/trusted report output, or
+  optimizer behavior.
+- Spark History Server compact stage parsing now accepts additional safe
+  aggregate task summary quantile shapes such as runtime or task-time lists
+  from summary distributions. These feed only bounded skew context; raw stage,
+  job, task, SQL, or plan details still remain outside compact output.
+- Spark History Server compact collection can now inspect a bounded number of
+  official per-stage `taskSummary` endpoints when selected stage summaries
+  provide safe stage-attempt selectors. The collector still never calls
+  `taskList`, stores no stage/application identifiers in compact output, and
+  uses the summaries only as supplemental skew context without Spark support,
+  Details/trusted report output, or optimizer behavior.
+- Spark stage skew summaries now stay `unknown` rather than `not_observed`
+  when only part of the selected stage set has runtime quantiles and no skew
+  candidate was found. Positive skew evidence is still surfaced when present,
+  but partial runtime coverage no longer claims absence of skew.
+- The isolated Spark compact web page now exposes the same bounded
+  `max_task_summaries` control as the CLI, so browser-triggered History Server
+  compact collection can explicitly cap supplemental `taskSummary` probes while
+  keeping request selectors and compact JSON out of browser output.
+- The same isolated Spark compact web page now exposes `max_response_bytes`
+  for History Server endpoints, preserving the default 2 MiB cap while letting
+  local users explicitly lower or bound per-endpoint JSON reads under the
+  compact contract ceiling.
+- Spark compact CLI help now consistently states that the History Server
+  collector and offline compact diagnosis do not claim Spark product support,
+  and focused command plus installed-wheel contract tests guard the no-support
+  wording plus the absence of SQL-execution flags on these experimental entry
+  points.
+- Validated report download and inline rendering now apply the shared browser
+  redaction boundary to trusted report text, hiding model settings, raw
+  artifact names, subprocess markers, SQL snippets, metadata statements, and
+  internal field names in addition to local paths.
+- Browser display redaction and the Recent Details audit now treat raw
+  table/column stats and unsupported metadata statement labels as forbidden
+  browser fragments, strengthening metadata/stats safety checks for
+  representative batch validation.
+- The Recent Details audit now counts stats action cards with or without
+  structured raw-free metadata detail and supports
+  `--fail-on-stats-detail-gaps` for strict representative-batch validation.
+- The Recent Details audit now counts actionable recommendation cards whose
+  verification text includes comparable rerun or comparable scan guidance and
+  supports `--fail-on-comparable-rerun-gaps` for strict calibration batches.
+- The Recent Details audit now fails browser-visible action cards that use
+  positive root-cause/proven/confirmed wording, while allowing explicit
+  negated guardrails such as "not a proven root-cause claim."
+- Stats diagnostics now have a raw-free representative audit,
+  `scripts/audit_stats_diagnostics.py`, with
+  `--fail-on-stats-readiness-gaps` for strict calibration of score/tier
+  strength, structured metadata detail, usable metadata status, safe review
+  areas, and comparable rerun confirmation on Medium/High stats candidates.
+- The Impala coverage-gap audit now supports
+  `--fail-on-diagnostic-coverage-gaps`, which keeps representative calibration
+  from passing when selected cases lack analyzer output, primary labels, or the
+  aggregate unknown/medium-confidence primary-bottleneck coverage targets.
+- The Impala coverage-gap audit now supports
+  `--fail-on-direct-source-readiness-gaps` for direct Impala representative
+  summaries. The gate blocks unknown source provenance, profile capability, and
+  optional-source limitation states while accepting explicit unavailable,
+  not-configured, and not-collected limitations as raw-free coverage.
+- The workload diagnostics audit now accepts `--action-outcomes` plus
+  `--fail-on-action-outcome-readiness-gaps`, allowing representative workload
+  calibration to verify action queue/detail feedback summaries from local
+  outcome records without printing local paths, fingerprints, or raw notes.
+- The workload diagnostics readiness audit now requires verification guidance
+  to include both a comparison anchor and rerun, comparable-load, or next-scan
+  context before action hints and queue entries count as comparable-rerun ready.
+- The optimizer funnel audit now uses
+  `--fail-on-repeated-no-recipe-readiness-gaps` to require repeated no-recipe
+  workloads to have a safe review track plus allowlisted review area, change
+  direction, workload metric, and compare/rerun verification before they count
+  as representative guidance-ready.
+- Added `scripts/audit_impala_diagnostic_loop.py`, an aggregate raw-free strict
+  gate for representative Recent summaries that runs Details, profile evidence,
+  diagnostic coverage, workload, stats, and optimizer readiness checks and
+  prints only component status plus issue categories.
+- The direct/profile evidence-gate audit now treats selected cases without
+  readable deterministic analyzer output as gate issues, so
+  `--fail-on-issues` no longer passes a representative batch whose profile
+  evidence was not actually checked.
+- The direct/profile evidence-gate audit now compares profile-derived primary
+  labels and confidence against the deterministic case-primary classifier,
+  blocking representative batches where a profile primary overstates the
+  analyzer-owned label or confidence.
+- The direct/profile evidence-gate audit now prints only the batch-summary
+  basename in normal output, keeping local representative-batch paths out of
+  raw-free audit logs while preserving issue categories and aggregate counts.
+- Direct Impala profile analysis now publishes raw-free section-mapping states
+  and fails closed for unknown, unsupported, or partially mapped profile
+  dialect sections. Experimental profile-v2 and unmapped classic JSON/Thrift
+  sections stay unknown, allowlisted classic JSON counters remain limited
+  context, and client-fetch or memory-pressure evidence no longer promotes
+  report/Details spill or fetch findings unless the mapped section supports it.
 - Public-tree safety checks now include a repository-wide guard against
   non-synthetic examples, real-looking local query IDs, and unsafe placeholder
   patterns. Public fixtures and tests use synthetic schemas, columns, Query
@@ -31,6 +344,386 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 
 ### Product
 
+- Help shortcuts now link to the isolated local Trino compact-diagnosis page so
+  maintainers can reach the raw-free boundary JSON renderer without treating
+  Trino as Recent, Details, trusted-report, optimizer, or live Query ID support.
+- Added an isolated local `/trino/compact-diagnosis` web page for already
+  raw-free Trino `engine_fact_boundary_v1` payloads. It renders deterministic
+  compact-diagnosis attention areas, limitations, and boundary status without
+  echoing submitted JSON, source schema, fact groups, Query IDs, URLs, paths,
+  raw SQL, or source-contract fields; Details, trusted reports, Recent
+  workflows, optimizer behavior, live Query ID diagnosis, metadata collection,
+  and SQL execution remain unsupported.
+- The internal command-spec registry now covers every published Trino console
+  script, so module and installed-console backends stay consistent for Trino
+  offline/import, coordinator-check, and compact-diagnosis commands.
+- The Trino engine adapter now reports the full bounded raw-free support matrix:
+  offline evidence package import, local and HTTP archive imports, local/pruned
+  QueryInfo imports, source-contract checks, coordinator target/probe/import
+  gates, and compact diagnosis, while keeping live Recent, product Query ID
+  diagnosis, metadata, trusted reports, optimizer behavior, and SQL execution
+  unsupported.
+- Trino engine-specific fact naming now has an explicit guardrail: Trino-only
+  fact IDs must use `trino_*`, `query_detail_*`, `query_list_*`, or neutral
+  `no_*` naming. Existing Trino metric IDs have been moved behind the
+  `trino_*` prefix unless they already live in an explicit non-engine-specific
+  scope.
+- Trino query-list aggregate bucket facts are now snapshot-tested, so adding
+  another `query_list_*` fact requires an explicit contract/test update instead
+  of incidental namespace growth.
+- Trino limitation fact IDs now use neutral `no_*` naming for current unsupported
+  boundary coverage. `no_admission_model`, `no_profile_counters`, and
+  `no_fragment_lifecycle` replace Impala-named limitation IDs in Trino fact
+  bundles and compact diagnosis summaries, with regression coverage that old
+  Trino boundary IDs stay absent.
+- Trino now has a bounded local pruned QueryInfo import for operator-prepared
+  compact JSON. `query-doctor-trino-query-info-pruned-import` validates one
+  already-sanitized local pruned QueryInfo object after an accepted
+  `coordinator_query_info` source contract, accepts only allowlisted `state`
+  and `queryStats` fields, and emits a safe summary or raw-free normalized fact
+  boundary. It performs no network read, rejects raw QueryInfo fields, does not
+  echo paths or Query IDs, and does not add live Query ID diagnosis,
+  browser/report output, optimizer behavior, or SQL execution.
+- Trino compact diagnosis now surfaces high peak memory as a raw-free
+  attention area when accepted one-query resource facts cross the conservative
+  100 GiB threshold. The guidance remains deterministic and bounded: it does
+  not claim a root cause, ingest raw Trino payloads, submit SQL, add live
+  collection, or expose Trino facts in browser/report surfaces.
+- Trino compact diagnosis now surfaces planning-heavy timing as a raw-free
+  attention area when accepted timing facts show planning time is both long and
+  a large share of elapsed time. The finding remains deterministic guidance
+  only: it does not claim a root cause, ingest raw Trino payloads, submit SQL,
+  add metadata collection, or expose Trino facts in browser/report surfaces.
+- Single-boundary Trino import commands can now write compact diagnosis directly.
+  `query-doctor-trino-query-detail-import`,
+  `query-doctor-trino-query-list-import`,
+  `query-doctor-trino-statement-stats-import`,
+  `query-doctor-trino-http-query-detail-archive-import`, and
+  `query-doctor-trino-coordinator-query-info-pruned-import` accept
+  `--diagnosis-out <path>` and build the diagnosis only from the accepted
+  raw-free normalized fact boundary. They reject output paths that would
+  overwrite the input/source-contract file, keep stdout path-free, and do not
+  ingest raw payloads, submit SQL, add browser/report output, or become live
+  Trino diagnosis.
+- Trino now has deterministic local compact diagnosis over normalized raw-free
+  boundary JSON. The `query-doctor-diagnose-trino-compact` command accepts one
+  already raw-free `engine_fact_boundary_v1` payload, rejects non-Trino
+  boundaries, and writes raw-free attention areas, supported change directions,
+  verification prompts, limitations, parser coverage, lifecycle, and fact-state
+  counts. It does not ingest raw Trino payloads, copy input summaries or string
+  values, claim root causes, submit SQL, add browser/report output, add
+  optimizer behavior, run live Recent scans, or become live Query ID diagnosis.
+- `query-doctor-diagnose-trino-compact` can now diagnose one selected sample
+  boundary from a Trino package boundary export produced by
+  `query-doctor-trino-import --format boundary-json`. Multi-sample package
+  exports require `--sample-index <zero-based-index>`, direct boundary JSON
+  continues to work without an index, and the isolated
+  `/trino/compact-diagnosis` page accepts the same direct boundary or selected
+  package sample without echoing submitted JSON. Both paths still reject raw
+  payloads, non-Trino boundaries, SQL execution, browser/report output, and
+  live Query ID diagnosis.
+- Trino now has a bounded pruned coordinator query-info fact import. The
+  `query-doctor-trino-coordinator-query-info-pruned-import` command validates
+  one compact `coordinator_query_info` source contract with an operator-managed
+  auth reference, issues exactly one bounded
+  `GET /v1/query/{queryId}?pruned=true` request, maps only allowlisted
+  lifecycle and `queryStats` fields into a raw-free normalized fact boundary,
+  and emits only safe summaries or boundary JSON. It does not print or store
+  the URL, Query ID, raw QueryInfo, query text, session fields, endpoint URLs,
+  object names, stage/task identifiers, worker identifiers, raw failures, or
+  connector internals, does not crawl query history or submit SQL, and does not
+  expose browser/report/optimizer output or live Query ID diagnosis.
+- Trino now has a bounded pruned coordinator query-info probe. The
+  `query-doctor-trino-coordinator-query-info-pruned-probe` command validates
+  one compact `coordinator_query_info` source contract with an operator-managed
+  auth reference, issues exactly one bounded
+  `GET /v1/query/{queryId}?pruned=true` request, validates the response as a
+  bounded JSON object, and emits only a safe summary. It does not print or
+  store the URL, Query ID, raw QueryInfo, query text, session fields, endpoint
+  URLs, or object names, does not map QueryInfo to facts, does not crawl query
+  history or submit SQL, and does not expose browser/report/optimizer output or
+  live Query ID diagnosis.
+- Trino now has a dry-run coordinator query-info target gate. The
+  `query-doctor-trino-coordinator-query-info-target-check` command validates
+  one compact future `coordinator_query_info` source contract plus one explicit
+  coordinator base URL and Query ID shape, requires redaction-review
+  confirmation, and emits only a URL-free and Query-ID-free safe summary. It
+  does not contact Trino, issue `/v1/query`, fetch query-info JSON, crawl query
+  history, submit SQL, collect live Query ID diagnosis, or expose
+  browser/report/optimizer output.
+- Trino now has a bounded HTTP query-detail archive import path. The
+  `query-doctor-trino-http-query-detail-archive-import` command validates one
+  explicit `http_query_detail_archive` source contract, fetches one explicit
+  operator-controlled HTTP(S) archive URL, enforces contract byte/depth/timeout
+  bounds, and emits only a safe summary or raw-free normalized fact boundary
+  JSON for one compact sanitized query-detail record. It does not contact the
+  Trino coordinator, fetch query-info by Query ID, submit SQL, perform default
+  discovery, echo URLs, accept credentials in URLs, collect live Query ID
+  diagnosis, or expose browser/report/optimizer output.
+- Optimizer funnel strict repeated no-recipe readiness now requires the
+  workload metric to name a comparable repeated-group, group p95, next-scan, or
+  rerun signal, so manual guidance cannot pass representative calibration with
+  only a generic metric label.
+- Workload diagnostics strict action-outcome calibration now fails groups whose
+  local feedback exists but has not met the configured applied-sample threshold,
+  keeping thin rerun feedback separate from representative outcome evidence.
+- Optimizer funnel audits now classify repeated no-recipe workload groups by
+  review-track readiness, separating specific allowlisted tracks from
+  unknown, missing, mixed, or source-unavailable tracks so recipe/guidance
+  follow-up can stay tied to deterministic safe facts.
+- Trino now has a bounded HTTP event archive import path. The
+  `query-doctor-trino-http-event-archive-import` command validates one explicit
+  `http_event_listener_archive` source contract, fetches one explicit
+  operator-controlled HTTP(S) archive URL, enforces contract record/byte/depth
+  bounds, and emits only safe summaries or raw-free normalized fact boundary
+  JSON. It does not contact the Trino coordinator, submit SQL, perform default
+  discovery, echo URLs, accept credentials in URLs, collect live Recent scans,
+  or expose browser/report/optimizer output.
+- Trino now has a raw-free event-source contract check for future event-store
+  reader work. The `query-doctor-trino-event-source-contract-check` command
+  validates one explicit compact local source-contract JSON for source type,
+  safe auth-reference label, accepted event schema, bounds, and redaction
+  storage policy. It emits only a safe summary and does not contact Trino, read
+  event records, collect query history, submit SQL, or expose browser/report
+  output.
+- Optimizer funnel audits can now fail strict representative calibration when
+  repeated no-recipe workload groups do not have one specific safe review track,
+  keeping recipe follow-up behind raw-free review-readiness evidence.
+- Workload diagnostics now have a raw-free representative audit,
+  `scripts/audit_workload_diagnostics.py`, with
+  `--fail-on-workload-readiness-gaps` for strict calibration of repeated group
+  detail pages, representatives, regression baselines, workload-history status,
+  and comparable verification guidance.
+- Workload action-outcome summaries now label each recommendation-family signal
+  with the applied-feedback sample threshold, so Action Queue and Workload
+  Details distinguish thin local rerun feedback from enough comparable applied
+  records without exposing raw case data.
+- Stats refresh candidate scoring now consumes the structured analyzer stats
+  quality vocabulary consistently, including aggregate `incomplete_or_unknown`
+  statuses. Partition row-count gaps and join/filter column stats gaps now
+  produce specific raw-free reasons instead of being downgraded to generic or
+  unsupported stats evidence.
+- Recent Details stats-maintenance action cards now carry the same structured
+  raw-free metadata detail into the analyst path, distinguishing partition
+  row-count coverage gaps and join/filter column stats coverage gaps before
+  proposing an approved stats-maintenance check and comparable rerun.
+- Trino now has a bounded local statement-stats import path. The
+  `query-doctor-trino-statement-stats-import` command reads one explicit
+  compact sanitized local `QueryResults.statementStats` / `rootStage` JSON
+  object, requires redaction-review confirmation, enforces file/payload/depth
+  bounds, and emits only safe summaries or raw-free normalized fact boundary
+  JSON. It does not contact Trino, call `/v1/statement`, submit SQL, crawl
+  query history, fetch query-details, or expose browser/report/optimizer
+  output.
+- Trino now has a bounded local query-list aggregate import path. The
+  `query-doctor-trino-query-list-import` command reads one explicit compact
+  sanitized local query-list aggregate JSON object, requires redaction-review
+  confirmation, enforces file/payload/depth bounds, and emits only safe
+  summaries or raw-free normalized fact boundary JSON. The aggregate remains a
+  source-shape contract probe, not one-query diagnosis, live Recent scan, live
+  query-list crawl, query-detail fetch, SQL execution, or browser/report output.
+- Trino now has a bounded local query-detail import path. The
+  `query-doctor-trino-query-detail-import` command reads one explicit compact
+  sanitized local query-detail JSON object, requires redaction-review
+  confirmation, enforces file/payload/depth bounds, and emits only safe
+  summaries or raw-free normalized fact boundary JSON. It does not contact
+  Trino, fetch query-info by Query ID, submit SQL, collect live query history,
+  or expose browser/report/optimizer output.
+- Trino now has a bounded local event-store import path. The
+  `query-doctor-trino-event-store-import` command reads one explicit
+  already-sanitized JSON, JSON-array, or NDJSON file of compact Trino
+  event-listener records, requires redaction-review confirmation, enforces
+  byte/record/depth bounds, and emits only safe summaries or raw-free normalized
+  fact boundary JSON. It does not contact Trino, submit SQL, collect live query
+  history, or expose browser/report/optimizer output.
+- Trino now has a packaged sanitized offline evidence import path. The
+  `query-doctor-trino-import` command validates already-sanitized compact
+  evidence packages and can emit raw-free normalized fact boundary JSON, while
+  the Trino adapter remains disabled for live Recent scans, Query ID fetch,
+  metadata collection, browser/report output, optimizer behavior, and
+  Query Doctor-generated Trino SQL.
+- Workload Action Queue and Workload Details now share one workload action
+  contract: the queue dispatches the analyst to the repeated group to open,
+  while Details renders the matching why/where/change/verify action plan and
+  the local rerun outcome summary for that workload. Workload Details also
+  links representative cases directly to their case Action cards for recording
+  rerun feedback, and outcome summaries distinguish the last applied
+  action/result from skipped latest records while naming the recommendation
+  family signal to compare on the next comparable scan.
+- Details Recommended changes now always renders an analyst decision path,
+  including clean/no-candidate cases. When deterministic facts do not support a
+  query-shape, stats, runtime, or processing follow-up, Details says no
+  supported change is recommended, points Diagnostics at coverage/limitations,
+  and tells the analyst what to confirm on the next comparable scan or rerun.
+- Spark research now has an experimental bounded Spark History Server compact
+  intake. The new CLI reads only explicit-application summary `/api/v1` JSON,
+  requests SQL summaries with details and plan descriptions disabled, skips raw
+  event-log and environment endpoints, validates a
+  `spark_history_server_compact_v1` payload, and can write raw-free normalized
+  engine fact boundary JSON. It still adds no Spark engine registration, Recent
+  workflow, Details/trusted report output, optimizer behavior, Spark job
+  execution, raw SQL/plan/log collection, or public Spark support claim.
+- Spark compact intake can now write a deterministic local compact-diagnosis
+  JSON. The summary turns accepted Spark compact facts into raw-free attention
+  areas, change directions, verification prompts, and explicit support
+  limitations without making root-cause claims or wiring Spark into Details,
+  trusted reports, optimizer behavior, Recent scans, or engine registration.
+- Spark compact CLI entry points now have explicit internal command-spec roles
+  for both module and installed console-script invocation. This keeps packaged
+  CLI coverage aligned without wiring Spark into Recent workflows, Details,
+  trusted reports, optimizer behavior, or engine registration.
+- Spark History Server compact collector CLI now rejects overlapping output
+  paths and reports filesystem write failures with a fixed safe message. It no
+  longer echoes local output paths, request selectors, or endpoint values on
+  these error paths.
+- `query-doctor-diagnose-spark-compact` can now diagnose an existing accepted
+  Spark compact JSON file offline and write deterministic raw-free compact
+  diagnosis plus optional engine fact boundary JSON. It rejects invalid JSON
+  safely without printing local paths or raw payload fragments.
+- The direct local `/spark/compact-diagnosis` web page can now validate one
+  accepted compact Spark JSON summary and render raw-free deterministic
+  attention areas, limitations, and verification direction. It does not display
+  submitted JSON back after validation and remains outside primary navigation,
+  Details, trusted reports, Recent workflows, optimizer behavior, engine
+  registration, and Spark support claims.
+- The same isolated Spark compact web page can now collect bounded summary-only
+  Spark History Server JSON for one explicit application, immediately validate
+  and diagnose the compact facts, and render only endpoint counts, warning IDs,
+  attention areas, limitations, and verification direction. It does not display
+  request selectors or compact JSON back and still skips raw event logs,
+  environment/log dumps, SQL text, plan descriptions, Spark job execution,
+  Recent workflows, Details, trusted reports, optimizer behavior, engine
+  registration, and Spark support claims.
+- Spark History Server web collection errors now show only allowlisted safe
+  messages or a fixed safe collection-failure state. Unexpected lower-layer
+  error text cannot echo History Server URLs, request selectors, or SQL-like
+  fragments into the isolated Spark compact page.
+- Spark History Server compact intake now also reads the optional explicit
+  application summary endpoint for bounded application lifecycle and attempt
+  count facts. Missing application endpoints stay warning/unknown, attempt
+  counts are bounded by `maxApplicationAttempts`, and raw application IDs,
+  attempt IDs, users, names, host fields, SQL text, plans, and logs remain
+  unwritten.
+- Spark compact facts now expose a raw-free `spark_version_family` boundary
+  fact when the compact source safely provides a family such as `spark_4_1`.
+  Raw Spark version strings stay outside normalized facts, and unsupported or
+  missing version-family labels fail closed to `unknown`.
+- Spark compact facts now map accepted application lifecycle and application
+  attempt state into Spark-specific normalized facts. Missing application
+  summaries, bounded-out attempts, and `unknown` lifecycle labels stay
+  `unknown` instead of backfilling supported lifecycle evidence.
+- Spark compact facts now map bounded aggregate running, skipped, and unknown
+  job-state counts. Zero counts are `not_observed`, positive counts are
+  `supported`, and missing job summaries stay `unknown` instead of emitting
+  fake job-state evidence.
+- Spark History Server compact intake can now use SQL-linked job IDs to keep
+  stage, spill, skew, and task aggregates supported when the jobs endpoint is
+  unavailable. Job-state facts still stay `unknown` until the jobs endpoint
+  provides supported evidence.
+- Spark History Server compact intake can now filter stage summaries by
+  job-linked stage IDs when stage summaries omit job IDs. The IDs remain
+  parser-local and are not written to compact payloads or diagnosis output.
+- Spark compact facts now include Spark-specific aggregate input/output byte
+  facts from accepted stage summaries when every selected stage has an explicit
+  safe value. Partial or missing stage byte summaries stay `unknown`; the
+  values are not promoted to shared input/output facts and no raw stage IDs are
+  written.
+- Spark History Server compact intake now separates task evidence states, so
+  supported aggregate task and failed-task counts from stage summaries can feed
+  raw-free facts while unavailable retry counts and duration buckets stay
+  `unknown` instead of becoming fake zeros.
+- Spark History Server compact intake can now map explicit aggregate retried
+  task counts from accepted stage summaries. Missing, partial, or inconsistent
+  retry aggregates still stay `unknown`, and no task IDs or task details are
+  written.
+- Spark compact facts now include a Spark-specific aggregate
+  `spark_scheduler_delay_ms` signal when every selected stage summary provides
+  an explicit safe scheduler-delay value. Partial or missing scheduler-delay
+  summaries stay `unknown`, and compact diagnosis treats supported scheduler
+  delay as runtime context rather than an admission/root-cause claim.
+- Spark History Server compact intake can now map explicit aggregate task
+  duration buckets from accepted stage summaries. Missing, partial,
+  over-bound, or inconsistent bucket aggregates still stay `unknown`, and no
+  task IDs, task details, raw bucket source field names, or task payloads are
+  written.
+- Spark History Server compact intake now records executor churn as its own
+  checked aggregate state from the bounded executor summary endpoint. Inactive
+  executors set both executor-loss and executor-churn evidence, no inactive
+  executors become `not_observed`, and dynamic allocation remains `unknown`
+  unless a compact source explicitly supports it.
+- Spark executor compact facts now separate dynamic-allocation evidence from
+  the broader executor summary state. History Server intake can map explicit
+  dynamic-allocation markers from executor summaries, while absent markers stay
+  `unknown` instead of becoming fake disabled evidence.
+- Spark executor compact facts now include aggregate executor memory
+  used/capacity when bounded executor summaries provide complete safe values.
+  Missing, partial, or internally inconsistent values stay `unknown`, raw
+  executor IDs/hosts/logs/source field names are not written, and the facts are
+  not modeled as peak memory or Spark support claims.
+- Spark History Server compact payloads now carry a raw-free source coverage
+  summary with allowlisted warning IDs. Offline Spark compact diagnosis can
+  retain missing-endpoint context without endpoint URLs, request selectors, raw
+  errors, or raw response payloads.
+- Spark compact diagnosis now surfaces incomplete Spark History Server source
+  coverage as its own raw-free local attention area. The area references only
+  the safe coverage fact and allowlisted warning IDs, and still makes no
+  root-cause or Spark support claim.
+- Spark History Server compact collection now records a safe
+  `spark_history_sql_execution_not_found` warning when an explicit SQL
+  execution selector has no accepted summary. The selector itself is still not
+  written to compact payloads, browser output, or diagnosis artifacts.
+- Spark History Server compact provenance now records `exact_query` only when
+  an explicit SQL execution selector finds an accepted summary. Application-only
+  compact collection stays at `same_application` even when the collector uses a
+  bounded SQL summary to filter safe aggregate facts.
+- Spark History Server compact intake can now map explicit checked adaptive
+  execution booleans from SQL summaries. Raw plan text is still not collected
+  or written, and unchecked or partial adaptive markers remain `unknown`.
+- Spark compact diagnosis now surfaces supported executor-churn observations as
+  a separate raw-free attention area with verification direction. It remains
+  local compact output only and still makes no root-cause claim or Spark support
+  claim.
+- Spark compact diagnosis now also surfaces supported failed-job and
+  failed-stage counts as separate raw-free attention areas with verification
+  direction. These areas are context only and still do not create root-cause or
+  Spark support claims.
+- Spark adaptive execution facts now honor the compact source's checked marker.
+  Unchecked History Server adaptive fields stay `unknown`, while checked
+  adaptive plan changes can surface as a raw-free local compact-diagnosis
+  attention area without a root-cause claim.
+- Normalized engine facts now have an explicit fact namespace registry that
+  records shared, distributed-SQL-family, source-boundary, support-boundary, and
+  engine-specific fact IDs with allowed engines. Engine fact bundles and
+  boundary consumers now reject unregistered or wrong-engine fact IDs, while
+  cross-engine attention signals are registry aliases over engine-specific
+  facts rather than reused counters. Spark fixture facts remain `spark_*` or
+  Spark support-boundary facts and still add no Spark product support.
+- Spark research now has a fixture-only compact fact-envelope mapper for the
+  synthetic `spark_history_eventlog_compact_v1` fixture. It maps only raw-free
+  application, SQL execution, job, stage, task, executor, data-movement, and
+  limitation summaries into the normalized boundary/consumer probe tests, and
+  still adds no Spark engine registration, live collector, Details/trusted
+  report output, optimizer behavior, or public support claim.
+- Trino fixture-only query-list package coverage now includes a second
+  sanitized aggregate summary with non-zero long-duration, queue-delay,
+  high-memory, unknown-input, and blocked-reason buckets. The evidence-package
+  demo now validates two query-list summary samples while keeping the facts
+  aggregate-only and unwired from live collection, browser/report output,
+  optimizer behavior, or public Trino support.
+- Trino fixture-only query-list summary mapping now exposes aggregate bucket
+  facts for sanitized elapsed-duration, queued-duration, peak-memory,
+  processed-input, and blocked-reason summaries. The validator rejects bucket
+  counts that exceed summarized records or their corresponding field-presence
+  counts, and the facts remain aggregate-only: no live Trino collection,
+  engine registration, browser/report output, optimizer behavior, or public
+  Trino support claim is added.
+- Direct Impala admission/runtime Details now point action candidates to
+  profile resource facts and profile timing facts when selected-query admission
+  evidence came from those analyzer-owned profile facts, while keeping the
+  visible anchors raw-free.
+- Direct Impala Details now include raw-free source limitations when
+  Cloudera Manager-only event context, optional Prometheus runtime metrics, or
+  bounded Impala metadata are unavailable for a case.
 - Owner-gated Recent and Running scan forms now fail closed visibly when the web
   process has no configured owner user: the Username dropdown shows that no
   owner is configured and scan submit is disabled instead of presenting an empty
@@ -206,6 +899,68 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 
 ### Documentation
 
+- Code audit and safety contract now record two open trust-boundary follow-ups:
+  shared outbound HTTP egress policy for CM, Prometheus, Spark History, direct
+  Impala, and LLM clients; and report-language validator parity/registry guards
+  for future language expansion. These entries document the risk and required
+  guard tests; they do not mark the hardening work as implemented.
+- Code audit and safety contract now also record two prompt/report safety
+  follow-ups: explicit prompt-injection framing and guard tests for Query
+  Optimizer rewrite prompts, plus direct regression coverage for fail-closed
+  trusted-output paths, validation-mode marker rejection, and defensive web
+  fallback handlers. These entries document open hardening work, not completed
+  implementation.
+- Code audit and safety contract now record two additional defense-in-depth
+  follow-ups: an adversarial redaction corpus for free-text host and secret
+  variants in local/log/browser fallback surfaces, and explicit
+  pathological-within-cap regression coverage for regex resource-bound paths.
+  These entries document open guard work; they do not mark redaction or ReDoS
+  hardening as implemented.
+- Code audit and release-readiness docs now record final release-hygiene
+  follow-ups from the pre-push, packaging, and demo-data audits: merge-heavy
+  local history must be cleaned into semantic review commits before any public
+  branch handoff, package version metadata should move toward one canonical
+  source, and committed fixtures plus README screenshots need stronger
+  provenance guards.
+- Code audit and safety contract now record the round-2 public-safe audit
+  follow-ups: report validators need adversarial coverage for indirect
+  unsupported claims and soft recommendation wording, trusted report markers
+  should bind the current marker schema version, browser display must keep
+  model/runtime fingerprints hidden, generated case staging directories need
+  explicit ignore coverage, and traversal/symlink artifact guards should be
+  pinned by tests. The subprocess output capture follow-up from that audit is
+  now implemented above; the remaining entries document open hardening work.
+- Public README is now a demo-first entry point instead of a broad CLI/reference
+  document. The root English and Russian READMEs keep install, synthetic demo,
+  screenshots, support boundaries, safety rules, and high-value next links,
+  while full command/reference detail stays in focused docs and command `--help`
+  output.
+- Agent baseline docs now make `agent-quickstart.md` the canonical operational
+  contract for worktree/commit/local-merge cleanup, align
+  `codex-handoff.md` with the local `main` merge rule, and wire
+  `engine-support-gap-matrix.md` into the agent read path as the source of
+  truth for Impala support, Trino fixture/private-preview, Spark compact
+  research, and second-engine promotion gates. The safety contract now records
+  `engine_fact_boundary_v1` as a raw-free contract seam rather than a support
+  claim or product engine registry.
+- Roadmap now records the global Impala diagnostic-quality goals: deepen direct
+  Impala reliability, expand profile evidence only through explicit
+  dialect/section mappings, improve primary-bottleneck coverage through
+  deterministic facts rather than stronger wording, keep Details analyst-first,
+  grow sanitized fixtures and real-batch audits, and prepare future engine
+  contracts without adding new support claims.
+- Agent Git instructions now make verified local branch integration the default:
+  complete, committed, validated, and clean task branches are merged into local
+  `main` and cleaned up in the same turn unless the user explicitly asks to stop
+  before merge. Push, rebase, amend, and force-push still require an explicit
+  request.
+- Roadmap now records a deterministic-first / no-LLM-capable product posture:
+  Recent diagnosis, Details, Python reports, trusted optimizer outcomes, demos,
+  and validation must remain useful when `no_llm=true`, while LLM-backed
+  wording stays an optional selected-case extension. The next UI/help wording
+  cleanup should move toward neutral `Report` and `Query optimizer` labels
+  without hiding backend status such as `Python-owned`, `LLM-backed`, or
+  `no_llm=true`.
 - Minimized public documentation surface for validation, model-route,
   engineering-audit, analyzer-audit, repository-hardening, architecture, and
   smoke-run docs. Local run journals, model bake-off tables, real-looking case
@@ -256,6 +1011,13 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 
 ### Engineering
 
+- The legacy `setup.py` editable-install shim now reads the package version
+  from `pyproject.toml`, making `[project].version` the single canonical
+  version source while keeping console-script parity tests for older tooling.
+- Added research-only Spark compact fixture schema validation and focused tests
+  for raw-field rejection, unsafe text, non-finite and negative values,
+  boolean marker typing, limitation coverage, and the absence of Spark engine
+  registration.
 - Added presenter regression coverage for complete allowlisted no-recipe
   verification text coverage, workload-level comparison metrics, and
   unknown-token suppression.
@@ -575,6 +1337,16 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 
 ### Engineering
 
+- The Impala coverage-gap audit now prints a compact optional-source
+  availability summary for JSON profile, `/profile_docs`, `/admission?json`,
+  metadata, runtime metrics, cluster events, and resource trace inputs. The
+  summary uses only allowlisted states such as `available`, `unavailable`,
+  `not_configured`, `not_collected`, and `unknown`.
+- The raw-free optimizer funnel audit now reports no-recipe workload
+  concentration: known versus unknown workload fingerprints, repeated versus
+  singleton no-recipe groups, top-group share, and repeated-group review tracks
+  and shape families. This makes repeated no-draft workload families visible
+  before adding recipes or changing guidance.
 - Added a raw-free offline optimizer funnel audit for existing
   `batch_summary.json` files. It can recompute rewrite-support classification
   with current code and group no-recipe cases by rewriteability bucket,
@@ -1296,6 +2068,10 @@ handoff, see [release-notes-0.4.3.md](release-notes-0.4.3.md). Historical
 
 ### Documentation
 
+- Added a research-only Spark architecture spike contract for Spark History
+  Server/event-log fact modeling. The docs now distinguish Spark fact-model
+  research from product support: no Spark collector, engine registration, UI
+  path, report surface, optimizer behavior, or support claim exists.
 - Added a brand voice and humor policy that allows only small dry engineering
   personality on safe outer surfaces while keeping trusted reports, diagnostic
   findings, validation, safety warnings, and root-cause wording strictly

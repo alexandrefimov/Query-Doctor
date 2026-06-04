@@ -374,9 +374,15 @@ Expected collector behavior:
 ### Trino Kerberos Smoke
 
 This is an operator-only development smoke for checking Kerberos/SPNEGO access
-to a Trino coordinator while Trino support remains fixture-only in Query
-Doctor. It is not a live Trino collector, engine adapter, UI route, report
-surface, optimizer path, or support claim.
+to a Trino coordinator while Query Doctor's Trino path remains limited to
+sanitized offline evidence package import, bounded local event-store import,
+bounded HTTP event archive import, bounded HTTP query-detail archive import,
+bounded local query-detail import, bounded local query-list aggregate import,
+bounded local statement-stats import, event-source contract checking, and
+dry-run coordinator query-info target checking, plus bounded pruned coordinator
+query-info probing.
+It is not a live Trino collector, live engine selector, UI route, report
+surface, optimizer path, metadata path, or live support claim.
 
 The script executes only built-in read-only smoke statements:
 

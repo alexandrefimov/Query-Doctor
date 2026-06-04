@@ -1,24 +1,15 @@
 # Query Doctor
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-03
 
 Язык: [English](README.md) | Русский
 
 Query Doctor - локальный диагностический инструмент для Big Data-запросов,
-сфокусированный сегодня на разборе рабочих запросов Apache Impala. Он
-помогает операторам ранжировать подозрительные запросы из Recent, собирать
-ограниченный контекст профиля, извлекать детерминированные диагностические
-сигналы, опционально обогащать их безопасными метаданными и генерировать
-проверенные отчеты без показа сырого SQL или сырых профилей в доверенном UI и
-отчетах.
-
-Инструмент работает рядом с учетными данными оператора, собирает ограниченный
-контекст только для чтения из Cloudera Manager или прямых endpoints демонов
-Impala, извлекает детерминированные факты в Python и может генерировать
-проверенные отчеты, не считая LLM источником истины. Общий параметр `language`
-управляет Help, статическим текстом Details и новыми доверенными отчетами;
-русский вывод использует тот же language-specific prompt, normalizer и границу
-валидатора.
+сфокусированный сегодня на production triage для Apache Impala. Он помогает
+операторам ранжировать подозрительные Recent queries, собирать ограниченный
+контекст профиля, извлекать детерминированные evidence и генерировать
+проверенные отчеты без показа raw SQL или raw profiles в trusted
+browser/report surfaces.
 
 Главное правило:
 
@@ -26,35 +17,33 @@ Impala, извлекает детерминированные факты в Pyth
 Python owns facts. LLM owns wording only.
 ```
 
-Recent scan - основной рабочий процесс. Диагностика по Query ID вторична и
-предназначена для одного известного запроса Impala. Query Optimizer отдельный,
-только для чтения, не выполняет SQL и не показывает отправленный SQL обратно
-после submit. Генерация отчета использует LLM только для формулировок на
-основе фактов, которыми владеет Python.
+Recent scan - основной workflow. Диагностика по Query ID вторична и рассчитана
+на один известный Impala query. Query Optimizer отдельный, read-only, не
+выполняет SQL и не показывает отправленный SQL обратно.
 
-## Что Query Doctor делает / не делает
+## Что это / что это не
 
 Query Doctor это:
 
-- локальный рабочий инструмент для разбора рабочих запросов Impala;
-- извлекатель детерминированных диагностических сигналов;
-- рабочий процесс ранжирования Recent queries для операторов и
-  администраторов;
+- локальный рабочий инструмент для Impala production triage;
+- извлекатель детерминированных diagnostic facts;
+- workflow ранжирования Recent queries для операторов и администраторов;
 - безопасный генератор отчетов на проверенных фактах;
 - практический инструмент для решения, что смотреть, что менять и как
   проверять;
-- первый узкий слой диагностики Big Data SQL/lakehouse, где реализованный
-  движок сегодня - Apache Impala.
+- первый узкий слой диагностики Big Data SQL/lakehouse, где production triage
+  engine сегодня - Apache Impala, а для Trino есть ограниченный offline
+  evidence import.
 
 Query Doctor это не:
 
-- универсальный AI-чатбот поверх сырых профилей;
+- универсальный AI-чатбот поверх raw profiles;
 - замена Impala Web UI;
 - инструмент выполнения пользовательского SQL или чернового SQL из optimizer;
 - инструмент, который по умолчанию отправляет сырой SQL или данные профилей во
   внешние сервисы;
 - оракул первопричин;
-- multi-engine продукт сегодня.
+- live multi-engine query collector сегодня.
 
 ## Что он делает
 
@@ -86,6 +75,68 @@ Query Doctor это не:
 - Дает отдельный read-only Query Optimizer workflow для разбора вставленного
   SQL и отдельное Details-page optimizer action для уже разобранных сервером
   случаев.
+- Импортирует уже sanitized Trino evidence packages через
+  `query-doctor-trino-import`, compact sanitized local event-store records
+  через `query-doctor-trino-event-store-import`, compact sanitized operator
+  HTTP event archives через
+  `query-doctor-trino-http-event-archive-import`, один explicit compact
+  sanitized operator HTTP query-detail archive через
+  `query-doctor-trino-http-query-detail-archive-import` и один explicit compact
+  sanitized local query-detail JSON через
+  `query-doctor-trino-query-detail-import`, а также один explicit compact
+  sanitized local query-list aggregate JSON через
+  `query-doctor-trino-query-list-import` и один explicit compact sanitized
+  local statement-stats JSON через
+  `query-doctor-trino-statement-stats-import`, плюс один explicit compact
+  sanitized local pruned QueryInfo JSON через
+  `query-doctor-trino-query-info-pruned-import`, затем выводит только safe
+  summaries или normalized raw-free fact boundaries.
+- Валидирует future Trino event-source contracts через
+  `query-doctor-trino-event-source-contract-check`: только source type,
+  auth-reference label, schema version, bounds и redaction rules, без контакта
+  с Trino и без чтения event records.
+- Валидирует future one-query Trino coordinator query-info target через
+  `query-doctor-trino-coordinator-query-info-target-check`: compact source
+  contract, safe auth-reference label, one Query ID bound, coordinator base-URL
+  shape, limits и redaction rules, без контакта с Trino, без query-info fetch и
+  без echo URL или Query ID.
+- Проверяет один Trino coordinator pruned query-info endpoint через
+  `query-doctor-trino-coordinator-query-info-pruned-probe`: только bounded
+  `GET /v1/query/{queryId}?pruned=true` после source-contract gate. Optional
+  local `--auth-header-file` может передать одну operator-managed
+  `Authorization` header line для bounded read; file path и header value никогда
+  не печатаются. Команда не следует HTTP redirects и выводит safe summary без
+  URL, Query ID, raw QueryInfo, normalized facts, browser/report output или live
+  Query ID diagnosis.
+- Импортирует один Trino coordinator pruned QueryInfo response через
+  `query-doctor-trino-coordinator-query-info-pruned-import` после той же
+  source-contract gate: мапит только allowlisted lifecycle, timing, row/byte,
+  memory/spill, blocked и task-count fields в raw-free normalized fact
+  boundary. Команда поддерживает тот же optional local `--auth-header-file` для
+  одной operator-managed `Authorization` header line и не хранит/не печатает raw
+  QueryInfo, не следует HTTP redirects, не раскрывает URL, Query ID, query
+  text, session fields, endpoint URLs, object names, stage/task detail, auth
+  header paths или values, browser/report output или live Query ID diagnosis.
+  Maintainers могут добавить
+  `--boundary-out <raw-free-trino-boundary.json>`, чтобы записать direct
+  `engine_fact_boundary_v1` payload для strict local readiness audit без echo
+  output path.
+- Импортирует один compact sanitized local pruned QueryInfo JSON через
+  `query-doctor-trino-query-info-pruned-import` после accepted
+  `coordinator_query_info` source contract: мапит только allowlisted lifecycle и
+  `queryStats` fields в raw-free normalized fact boundary, не делает network read
+  и reject-ит raw QueryInfo fields вроде Query IDs, query text, session fields,
+  endpoint URLs, object names и stage/task detail.
+- Строит deterministic Trino compact diagnosis JSON через
+  `query-doctor-diagnose-trino-compact` из уже raw-free
+  `engine_fact_boundary_v1` payload, из одного sample boundary, выбранного из
+  Trino package boundary export через `--sample-index`, или напрямую из
+  accepted single-boundary Trino imports через `--diagnosis-out`.
+  `/trino/compact-diagnosis` рендерит тот же diagnosis для direct boundaries
+  или selected package samples. Output содержит attention areas, change
+  directions, verification prompts и limitations без root-cause claims, raw
+  input echo, browser/report output, optimizer behavior, live Recent scans или
+  Trino SQL execution.
 - Не показывает сырой SQL, сырые профили, сырые метаданные, локальные пути,
   секреты, subprocess output, model/runtime internals и raw artifact filenames
   в browser и trusted report surfaces.
@@ -94,19 +145,34 @@ Query Doctor это не:
 
 | Область | Поддержано сейчас | Не является текущей поддержкой |
 | --- | --- | --- |
-| Query engine | Apache Impala | Другие engines остаются только roadmap seams. |
-| Trino private preview | Closed test-cluster smoke и sanitized evidence-package artifacts для maintainers | Public Trino engine support, live collection, browser/report output, optimizer behavior или Query Doctor-generated SQL. |
+| Query engine | Apache Impala production triage; Trino sanitized offline evidence package, bounded local event-store, bounded HTTP event archive, bounded HTTP query-detail archive, bounded local query-detail, bounded local query-list aggregate, bounded local statement-stats import, bounded local pruned QueryInfo import, source-contract/target checks, one-query pruned coordinator probe, one-query pruned coordinator fact import, local compact diagnosis из raw-free boundary JSON и isolated `/trino/compact-diagnosis` page | Trino live collection, live Trino Recent scans, live Trino Query ID diagnosis, Trino metadata collection, Trino Details/trusted report output, Trino optimizer behavior или Query Doctor-generated Trino SQL. |
+| Trino offline/local import | `query-doctor-trino-import` validates already-sanitized compact packages; `query-doctor-trino-event-store-import` validates compact sanitized local event records; `query-doctor-trino-query-detail-import` validates one explicit compact sanitized local query-detail JSON; `query-doctor-trino-query-list-import` validates one explicit compact sanitized local query-list aggregate JSON; `query-doctor-trino-statement-stats-import` validates one explicit compact sanitized local statement-stats JSON; `query-doctor-trino-query-info-pruned-import` validates one explicit compact sanitized local pruned QueryInfo JSON after a source contract; all can emit raw-free normalized fact boundaries | Direct Trino coordinator collection, raw event/query-info ingestion, live query-list crawling, `/v1/statement` collection, arbitrary package contents, raw query IDs, raw SQL, stack traces, object names, stage/task detail или connector internals. |
+| Trino compact diagnosis | `query-doctor-diagnose-trino-compact` читает один уже raw-free `engine_fact_boundary_v1` payload или один selected sample boundary из package boundary export через `--sample-index` и пишет deterministic attention areas, change directions, verification prompts и limitations; `/trino/compact-diagnosis` локально рендерит тот же diagnosis для direct boundaries или selected package samples без echo submitted JSON | Raw Trino payload ingestion, root-cause claims, Details/trusted report output, optimizer behavior, live Recent scans, live Query ID diagnosis, Query Doctor-generated SQL или arbitrary compact JSON. |
+| Trino HTTP event archive import | `query-doctor-trino-http-event-archive-import` validates one explicit `http_event_listener_archive` source contract, fetches one explicit operator HTTP(S) archive URL, enforces contract bounds и emits safe summaries или raw-free normalized fact boundaries | Default network discovery, Trino coordinator query-history reading, URL echoing, credentials in URLs, endpoint/topic/database config ingestion, raw event records, SQL submission, browser/report output или live Recent scans. |
+| Trino HTTP query-detail archive import | `query-doctor-trino-http-query-detail-archive-import` validates one explicit `http_query_detail_archive` source contract, fetches one explicit operator HTTP(S) archive URL, enforces contract bounds и emits safe summary или raw-free normalized fact boundary для одного compact sanitized query-detail record | Default network discovery, Trino coordinator query-info fetching, URL echoing, credentials in URLs, endpoint config ingestion, raw query-detail records, raw query IDs, SQL submission, browser/report output или live Query ID diagnosis. |
+| Trino source-contract gate | `query-doctor-trino-event-source-contract-check` validates one explicit compact event-source contract JSON: source type, safe auth-reference label, accepted event schema, bounds и redaction/storage policy | Endpoint/topic/database config ingestion, credentials, raw event records, query-history collection, browser/report output или live support claims. |
+| Trino coordinator query-info target gate | `query-doctor-trino-coordinator-query-info-target-check` validates one compact future query-info source contract plus one explicit coordinator base URL and Query ID shape, then emits only URL-free and Query-ID-free safe summary | Network reads, query-info fetching, broad query-history collection, URL or Query ID echoing, credentials in URLs, raw QueryInfo JSON, SQL submission, browser/report output, live Query ID diagnosis или support claims. |
+| Trino coordinator pruned query-info probe | `query-doctor-trino-coordinator-query-info-pruned-probe` выполняет один bounded `GET /v1/query/{queryId}?pruned=true` только после accepted `coordinator_query_info` contract с operator-managed auth reference, может использовать один local `--auth-header-file` с `Authorization` header, проверяет response как bounded JSON object и выводит только safe probe summary | Mapping raw QueryInfo to facts, storing or printing raw QueryInfo, URL или Query ID echoing, auth header paths или values, credentials in URLs, broad query-history collection, SQL submission, browser/report output, live Query ID diagnosis или support claims. |
+| Trino coordinator pruned query-info import | `query-doctor-trino-coordinator-query-info-pruned-import` выполняет тот же one bounded pruned query-info read, может использовать тот же local `--auth-header-file`, затем мапит только allowlisted `queryStats` и lifecycle fields в raw-free normalized facts и boundary JSON; `--boundary-out` может записать direct raw-free `engine_fact_boundary_v1` payload для local readiness audit | Raw QueryInfo storage/output, URL или Query ID echoing, auth header paths или values, credentials in URLs, query text/session/object/stage/task detail, connector internals, broad query-history collection, SQL submission, browser/report output, live Query ID diagnosis или support claims. |
+| Trino local pruned query-info import | `query-doctor-trino-query-info-pruned-import` validates one explicit compact sanitized local pruned QueryInfo JSON against a `coordinator_query_info` source contract and maps only allowlisted `state` and `queryStats` fields into raw-free normalized facts | Network reads, raw QueryInfo fields, Query ID echoing, query text/session/object/stage/task detail, connector internals, broad query-history collection, SQL submission, browser/report output, live Query ID diagnosis или support claims. |
+| Spark experimental intake | Ограниченный compact Spark History Server summary collection, Spark compact evidence-package build/validation плюс local compact-diagnosis CLI/direct web page для raw-free contract shaping | Public Spark engine support, Recent scans, Details/trusted report output, optimizer behavior, raw event logs, raw SQL/plans, environment/log dumps или Spark job execution. |
 | Cloudera Manager | Полный Recent discovery/profile/metrics/events context для Impala workflows | Generic cluster diagnosis вне Query Doctor flow. |
 | Direct Impala | Ограниченные Recent scans, Running scans и один Known Query ID через impalad daemon endpoints | Cloudera Manager events, broad log scraping или SQL execution. |
 | Runtime metrics | Опциональные ограниченные Prometheus summaries для configured direct Impala workflows | Raw time-series output или arbitrary PromQL from users. |
 | Metadata | Read-only allowlisted metadata statements через `impala-shell` | User SQL execution или unbounded metadata crawling. |
 | Reports and optimizer | Python-owned facts, validation и explicit selected-case actions | LLM output как trusted evidence или automatic batch LLM jobs. |
 
-Будущие Big Data SQL/lakehouse engines, более широкие providers,
+Будущие Big Data SQL/lakehouse live collectors, более широкие providers,
 подготовленные event/log sources и Cluster Doctor workflows остаются roadmap
-seams, а не текущей поддержкой.
-Trino private-preview artifacts - только closed test-cluster groundwork; см.
-[docs/engines/trino-private-preview-release.md](docs/engines/trino-private-preview-release.md).
+seams, а не текущей поддержкой. Trino support ограничен sanitized offline
+package import, bounded local event-store import, bounded HTTP event archive
+import, bounded HTTP query-detail archive import, bounded local query-detail
+import, bounded local query-list aggregate import и bounded local
+statement-stats import, bounded local pruned QueryInfo import, а также
+event-source contract checking, dry-run coordinator query-info target checking,
+one-query pruned coordinator probe, one-query pruned coordinator fact import и
+local compact diagnosis из raw-free boundary JSON; см.
+[docs/engines/trino-evidence-package-templates.md](docs/engines/trino-evidence-package-templates.md).
 
 В Apache Impala также появилась upstream работа над native AI query profile
 analysis. Query Doctor выравнивается с этим направлением и остается локальным
@@ -125,38 +191,26 @@ python -m pip install --upgrade pip
 python -m pip install query-doctor
 ```
 
-Для локальной разработки из checkout используйте editable install:
+Для локальной разработки из checkout:
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e .
-```
-
-Для инструментов разработки установите development extra:
-
-```bash
 python -m pip install -e ".[dev]"
 pre-commit install
 ```
 
-В окружении с ограниченной сетью устанавливайте из готового wheel или
-убедитесь, что зависимости сборки уже доступны локально:
-
-```bash
-python -m pip install .
-```
-
 Локальная JSON-конфигурация описана в
 [docs/configuration.md](docs/configuration.md). Предпочтительный путь на
-рабочей станции: `~/.qdcreds/query-doctor-config.json`. Секреты остаются в
+рабочей станции: `~/.qdcreds/query-doctor-config.json`; secrets остаются в
 environment variables или local env files.
 
-## Quickstart smoke
+## Запуск demo
 
-Сначала запустите детерминированные локальные проверки. Они не вызывают
-Cloudera Manager, Impala, Ollama или сеть:
+Synthetic demo - самый быстрый способ увидеть продукт. Он deterministic,
+local-only и не содержит real SQL, profiles, metadata, hostnames, users или
+credentials.
 
 ```bash
 query-doctor-demo-preflight
@@ -166,197 +220,65 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
   query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
-Откройте localhost URL, который напечатает `query-doctor-web`. Synthetic demo
-pack локальный и не содержит настоящих SQL-запросов, профилей, метаданных,
-hostnames, users или credentials. Начинайте public-demo с
-`/?query_group=workloads#workload-action-queue`, чтобы сразу показать
-приоритеты, next checks, verification и local synthetic action outcomes.
+Откройте localhost URL, который напечатает `query-doctor-web`. Начните с
+`/?query_group=workloads#workload-action-queue`, чтобы показать Workloads /
+Action Queue и local synthetic action outcomes перед открытием workload
+Details.
 
 Локальный web UI начинается с ограниченной формы поиска и показывает synthetic
-Finished Queries results для разбора:
+Finished Queries results:
 
 ![Synthetic Query Doctor demo search form](docs/assets/demo_search.png)
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-Текущий release-candidate synthetic demo pack в `0.4.3` содержит одиннадцать
-sanitized cases.
-Используйте его, чтобы показать:
+Synthetic demo pack `0.4.3` содержит eleven sanitized cases: Workloads / Action
+Queue, trusted optimizer recommendations, stats maintenance, storage/HDFS
+follow-up, frequent-short workloads, mixed signals, unknown-but-useful limited
+evidence и direct-Impala compatibility. Полный список scenarios:
+[docs/demo-cases.md](docs/demo-cases.md).
 
-- Workloads и Action Queue для repeated, regressed и
-  admission/runtime-sensitive query groups;
-- optimizer recommendations, которые остаются trusted только после
-  deterministic validation;
-- statistics-maintenance candidate с collected metadata;
-- storage/HDFS, frequent-short, mixed-signal, unknown и direct-Impala
-  compatibility stories.
+## Product scope
 
-Полный список scenarios и talk track: [docs/demo-cases.md](docs/demo-cases.md).
+| Surface | Current status |
+| --- | --- |
+| Query engine | Apache Impala is the only production engine support. |
+| Cloudera Manager | Full Recent discovery/profile/metrics/events context для Impala workflows. |
+| Direct Impala | Bounded Recent scans, Running scans и один Known Query ID через impalad daemon endpoints; no Cloudera Manager events и no SQL execution. |
+| Runtime metrics | Optional bounded Prometheus summaries для configured direct Impala workflows; no arbitrary PromQL from users. |
+| Metadata | Read-only allowlisted Impala metadata statements через `impala-shell`; no user SQL execution или unbounded metadata crawl. |
+| Reports and optimizer | Python-owned facts, validation и explicit selected-case actions; no automatic batch LLM jobs. |
+| Trino private preview | Closed test-cluster smoke и sanitized evidence-package artifacts только для maintainers; no public Trino engine support, live collection, browser/report output, optimizer behavior или Query Doctor-generated SQL. |
+| Spark compact intake | Experimental compact Spark History Server summary intake и compact evidence-package build/validation только для raw-free contract shaping; no public Spark engine support, Recent scans, Details/trusted report output, optimizer behavior, raw event logs, raw SQL/plans, environment/log dumps или Spark job execution. |
 
-Synthetic demo использует ту же safety shape, что и real local workflows:
-
-```mermaid
-flowchart LR
-    DemoPack[Synthetic demo pack] --> Web[Local web UI]
-    Web --> Ranked[Ranked cases]
-    Ranked --> Details[Details page]
-    Details --> Facts[Analyzer-owned facts]
-    Details --> ReportAction[Explicit report action]
-    Facts --> ReportAction
-    ReportAction --> ReportValidation[Sanitizer and report validator]
-    ReportValidation --> TrustedReport[Trusted report]
-    Details --> OptimizerAction[Explicit optimizer action]
-    Facts --> OptimizerAction
-    OptimizerAction --> OptimizerValidation[Deterministic optimizer validation]
-    OptimizerValidation --> TrustedOptimizer[Trusted optimizer outcome]
-    TrustedReport --> Web
-    TrustedOptimizer --> Web
-```
-
-## Console scripts
-
-После установки используйте packaged entry points:
-
-```bash
-query-doctor-analyze --help
-query-doctor-batch-recent --help
-query-doctor-cleanup-generated --help
-query-doctor-cm-events --help
-query-doctor-cm-sample-smoke --help
-query-doctor-collect-cm-profiles --help
-query-doctor-collect-impala-context --help
-query-doctor-collect-impala-profile --help
-query-doctor-corpus-smoke --help
-query-doctor-demo --help
-query-doctor-demo-preflight --help
-query-doctor-optimize-query --help
-query-doctor-pipeline --help
-query-doctor-report --help
-query-doctor-web --help
-```
-
-Root-level compatibility launchers удалены. Используйте `query-doctor-*`
-commands или `python -m query_doctor.cli.<command_module>` при запуске прямо из
-checkout без установки console scripts.
+Будущие Big Data SQL/lakehouse engines, более широкие providers,
+подготовленные event/log sources и Cluster Doctor workflows остаются roadmap
+seams, а не текущей поддержкой. Текущий support/research boundary:
+[docs/engine-support-gap-matrix.md](docs/engine-support-gap-matrix.md).
 
 ## Основные workflows
 
-### Web UI
+- `query-doctor-web --help`: local browser UI для Recent scan, Running now,
+  одного Known Query ID, Details pages, explicit report actions и explicit
+  details-page optimizer actions.
+- `query-doctor-batch-recent --help`: headless Recent scan для bounded local
+  collection и ranking.
+- `query-doctor-analyze --help`: deterministic analyzer по collected local case
+  files.
+- `query-doctor-report --help`: validated report generation из Python-owned
+  facts.
+- `query-doctor-optimize-query --help`: read-only pasted-SQL optimizer review.
 
-```bash
-query-doctor-web --help
-```
+Все packaged console scripts принимают `--help`. Root-level compatibility
+launchers удалены; используйте `query-doctor-*` commands или
+`python -m query_doctor.cli.<command_module>` из checkout без установки.
 
-Local web UI содержит:
-
-- `Diagnose`: основной экран Recent Scan triage по многим queries.
-  `Finished queries` - target по умолчанию; `Running now` доступен как
-  lower-confidence live context.
-- `Known Query ID`: вторичный режим внутри `Diagnose` для одного explicit
-  Impala query ID. По умолчанию использует Cloudera Manager или direct Impala
-  daemon profile endpoints, когда настроен `cluster_type=impala`.
-- Details pages с deterministic findings, evidence context и explicit LLM
-  Report / Query LLM optimizer actions.
-- `Help`: curated workflow, safety и documentation guidance внутри продукта.
-
-Pasted-SQL `Query Optimizer` остается read-only compatibility route и test
-surface. Он не выполняет SQL и не показывает submitted SQL обратно после
-submit, но не продвигается как primary navigation item, пока основной продукт
-сфокусирован на profile-backed diagnosis.
-
-Validated reports и details-page optimizer drafts генерируются только явным
-действием пользователя для выбранных cases.
-
-### CLI and headless use
-
-Packaged CLI entry points покрывают analyzer runs, batch Recent scans, profile
-collection, metadata collection, reports, optimizer review, demo generation и
-cleanup. Они предназначены для локальной диагностики, automation в controlled
-environment и CI-style smoke checks.
-
-Для team workflows лучше использовать pinned project version и общие соглашения:
-reports repository, scheduled headless scans под controlled service account,
-team jumpbox или shared local LLM endpoint. Query Doctor остается local-first и
-single-user, пока отдельный shared-deploy design не добавит authentication,
-authorization, tenant/job isolation, audit logging, TLS trust и resource limits.
-
-### Analyzer
-
-```bash
-query-doctor-analyze CASE_DIR
-```
-
-Analyzer читает collected local case files и пишет deterministic facts. Он не
-вызывает Cloudera Manager, Impala, Ollama или report writer.
-
-### Pipeline
-
-```bash
-query-doctor-pipeline CASE_DIR --stop-after-analysis
-```
-
-Pipeline mode запускается analyzer-first, может опционально собрать bounded
-metadata при наличии configuration и генерирует reports только по запросу.
-
-### Query Optimizer
-
-```bash
-query-doctor-optimize-query --help
-```
-
-Query Optimizer принимает один safe read-only `SELECT` или `WITH` statement для
-analysis. Он никогда не выполняет SQL, не echo pasted SQL после submit и
-доверяет SQL drafts только когда Python-owned recipes и validation доказывают
-поддерживаемую transform.
-
-### Cloudera Manager Events and Cluster Context
-
-```bash
-query-doctor-cm-events --help
-```
-
-CM Events CLI - read-only Cluster Doctor seam для Cloudera Manager event
-summaries. Он может записывать normalized event summaries и schema-versioned
-raw-free `cluster_event_context.json` / `cluster_context.json` artifacts.
-Recent scan также может собрать один ограниченный Cluster Event Context из
-Cloudera Manager Events на scan window и показать в web UI только raw-free
-cluster context status. Эти artifacts еще не являются Cluster Doctor web
-workflow или report path.
-
-### Demo Preflight
-
-```bash
-query-doctor-demo-preflight
-```
-
-Demo preflight полностью deterministic и local. Он проверяет git hygiene,
-safety-sensitive changed areas, browser/trusted-output denylist patterns и
-focused test suggestions без LLM, network, Cloudera Manager или Impala access.
-
-## Supported deployment
-
-Query Doctor поддержан как single-user, local-first tool, запускаемый оператором
-со своими локальными Cloudera Manager, Kerberos, Impala, Prometheus и LLM
+Query Doctor поддержан как single-user, local-first tool, запускаемый
+оператором со своими local Cloudera Manager, Kerberos, Impala, Prometheus и LLM
 credentials. Для web UI используйте localhost или tightly controlled local
-bind.
-
-Не разворачивайте текущий web UI как shared service для команды или компании.
-Shared deployments требуют отдельного дизайна authentication, authorization,
-tenant/job isolation, audit logging, TLS/reverse-proxy trust и resource limits.
-
-## Почему не chat wrapper
-
-В operational diagnostics неподдержанная уверенность хуже честного "unknown".
-Chat wrapper над raw profiles слишком легко превращает wording модели в
-случайное evidence.
-
-Вместо этого:
-
-- collectors собирают bounded, read-only, redacted inputs;
-- analyzers извлекают deterministic facts;
-- reports используют LLM только для формулировки этих facts;
-- validators отклоняют unsupported claims и unsafe output;
-- browser surfaces показывают trusted summaries, а не raw operational artifacts.
+bind. Не разворачивайте текущий web UI как shared service без отдельного
+дизайна authentication, authorization, tenant/job isolation, audit logging,
+TLS/reverse-proxy trust и resource limits.
 
 ## Safety model
 
@@ -371,90 +293,57 @@ Chat wrapper над raw profiles слишком легко превращает 
 - Local config `privacy_mode` по умолчанию `true`; отключение может ослабить
   local artifact identifier/host masking, но browser-visible UI и trusted
   reports все равно не показывают raw SQL, profiles или metadata.
-- Local config `no_llm=true` переводит report и optimizer actions на
-  deterministic Python-owned output без вызова local generation backend.
-- Impala metadata collection allowlisted и read-only.
+- Local config `no_llm=true` оставляет report и optimizer actions на
+  deterministic Python-owned output.
 - Query Optimizer принимает только один safe read-only statement и никогда не
   выполняет pasted SQL.
 
-Полный контракт: [docs/safety-contract.md](docs/safety-contract.md). Публичный
-reviewer-oriented обзор: [docs/security-model.md](docs/security-model.md).
-
-## Licensing
-
-Query Doctor лицензирован под Apache License, Version 2.0 (`Apache-2.0`).
-См. [LICENSE](LICENSE).
-
-Apache, Apache Impala и Impala являются товарными знаками The Apache Software
-Foundation. Query Doctor - независимый проект; он не одобрен The Apache
-Software Foundation или проектом Apache Impala.
+Полный trust/redaction contract: [docs/safety-contract.md](docs/safety-contract.md).
+Reviewer-oriented обзор: [docs/security-model.md](docs/security-model.md).
 
 ## Документация
 
 Начинайте с [docs/README.md](docs/README.md). Он разделяет current user docs,
-операторские guides, architecture contracts, текущие audit docs и supporting
-references.
+operations guides, architecture contracts, audit docs и supporting references.
 
-Английский язык является каноническим для документации. Русские companion pages
-живут в [docs/i18n/ru/](docs/i18n/ru/) там, где полезны длинные
-operator-facing explanations. Если английская и русская версии расходятся,
-английская страница остается источником истины до обновления перевода.
+Полезные следующие документы:
 
-Public demo и release paths:
-
-- [docs/demo-mode.md](docs/demo-mode.md): generation synthetic demo pack и
-  refresh path для README screenshots.
+- [docs/demo-mode.md](docs/demo-mode.md): synthetic demo pack и README
+  screenshot refresh path.
 - [docs/DEMO.md](docs/DEMO.md): localhost UI demo runbook и talk track.
-- [docs/demo-cases.md](docs/demo-cases.md): sanitized public demo scenarios.
-- [docs/demo-preflight.md](docs/demo-preflight.md): deterministic demo и
-  public-release guard.
-- [docs/public-release-readiness.md](docs/public-release-readiness.md):
-  checklist готовности публичного release.
-- [docs/release-notes-0.4.3.md](docs/release-notes-0.4.3.md): release notes
-  для report-mode и web UI polish в `0.4.3`.
-- [docs/release-notes-0.4.2.md](docs/release-notes-0.4.2.md): release notes
-  для public release baseline в `0.4.2`.
-- [docs/release-notes-0.4.1.md](docs/release-notes-0.4.1.md): release notes
-  для synthetic demo update в `0.4.1`.
+- [docs/local-smoke.md](docs/local-smoke.md): local validation и smoke checks.
+- [docs/credentials.md](docs/credentials.md): локальная раскладка credentials.
+- [docs/roadmap.md](docs/roadmap.md): implemented scope и planned seams.
+- [docs/query-optimizer-contract.md](docs/query-optimizer-contract.md):
+  optimizer trust boundary.
 - [docs/release-checklist.md](docs/release-checklist.md): final tag,
   package-index и visibility-change checklist.
 
-Полезные ссылки:
-
-- [docs/local-smoke.md](docs/local-smoke.md): локальные validation и smoke
-  checks.
-- [docs/credentials.md](docs/credentials.md): локальная раскладка credentials.
-- [docs/repository-hardening.md](docs/repository-hardening.md): repository
-  security, CI hardening, release automation и backlog сильных проверок.
-- [docs/architecture.md](docs/architecture.md): текущие и будущие component
-  boundary diagrams.
-- [docs/upstream-impala-ai-analyzer.md](docs/upstream-impala-ai-analyzer.md):
-  alignment с Apache Impala native AI profile-analysis direction.
-- [docs/contributor-architecture.md](docs/contributor-architecture.md):
-  contributor-oriented architecture map.
-- [docs/roadmap.md](docs/roadmap.md): реализованный scope и planned seams.
-- [docs/query-optimizer-contract.md](docs/query-optimizer-contract.md):
-  trust boundary оптимизатора.
-- [docs/cluster-doctor-contract.md](docs/cluster-doctor-contract.md): future
-  Cluster Doctor contract.
+Английская документация является канонической. Русские companion pages живут в
+[docs/i18n/ru/](docs/i18n/ru/) там, где полезны длинные operator-facing
+объяснения.
 
 ## Development checks
 
-Перед commit:
+Для обычных изменений запускайте focused tests для touched area и всегда:
+
+```bash
+git diff --check
+```
+
+Для выбора focused validation используйте
+[docs/agent-quickstart.md](docs/agent-quickstart.md) и
+[docs/test-matrix.md](docs/test-matrix.md). Перед release cleanup или
+public-sharing work расширяйте gate до:
 
 ```bash
 pre-commit run --all-files
 scripts/local_gate.sh
-python -m ruff check query_doctor tests
-python -m ruff format --check query_doctor tests scripts
-python3 -m pytest -q
-git diff --check
-query-doctor-demo-preflight
-git status --short
+query-doctor-demo-preflight --public-release
 ```
 
-Stage only explicit files. Не commit сгенерированные cases, reports, local
-configs, credentials, raw profiles, raw metadata или temporary outputs.
+Stage only explicit files. Не commit generated cases, reports, local configs,
+credentials, raw profiles, raw metadata или temporary outputs.
 
 ## Public status
 
@@ -468,11 +357,11 @@ PyPI publishing использует GitHub OIDC Trusted Publishing. Repository-
 `testpypi` и `pypi` environments требуют maintainer approval и не используют
 stored package-index API tokens.
 
-Перед новым tag, package-index publish или public release announcement запускайте
-public-release guard из clean working tree:
+## Licensing
 
-```bash
-query-doctor-demo-preflight --public-release
-```
+Query Doctor лицензирован под Apache License, Version 2.0 (`Apache-2.0`).
+См. [LICENSE](LICENSE).
 
-Полный checklist: [docs/release-checklist.md](docs/release-checklist.md).
+Apache, Apache Impala и Impala являются товарными знаками The Apache Software
+Foundation. Query Doctor - независимый проект; он не одобрен The Apache
+Software Foundation или проектом Apache Impala.

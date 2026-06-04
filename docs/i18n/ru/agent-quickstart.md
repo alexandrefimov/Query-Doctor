@@ -1,6 +1,6 @@
 # Agent Quickstart
 
-Last reviewed: 2026-06-01
+Last reviewed: 2026-06-03
 
 Язык: [English](../../agent-quickstart.md) | Русский
 
@@ -14,6 +14,9 @@ companion для безопасного старта агента в репоз�
 - `docs/safety-contract.md` - trust/redaction contract.
 - `docs/test-matrix.md` - focused validation matrix.
 - `docs/code-map.md` - где живет нужное поведение.
+- `docs/engine-support-gap-matrix.md` - source of truth для engine support,
+  fixture-only и research statuses перед изменениями вокруг Spark, Trino или
+  normalized engine facts.
 
 ## Перед изменениями
 
@@ -37,5 +40,9 @@ companion для безопасного старта агента в репоз�
   Markdown link checks.
 - For agent docs, runbooks, validation logs или release docs дополнительно run
   `python3 scripts/audit_public_docs.py`.
+- После завершенного, committed, validated и clean task branch английский
+  quickstart теперь требует merge в local `main` и cleanup завершенного
+  worktree/merged local branch в том же turn, если user явно не просит остановиться
+  до merge. Push, rebase, amend и force-push остаются только по явному запросу.
 
 Полный короткий маршрут находится в [английском документе](../../agent-quickstart.md).
