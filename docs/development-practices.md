@@ -69,7 +69,15 @@ modules. If a change crosses collectors, analyzer facts, validation, and web
 rendering, split it into reviewable commits or at least reviewable file groups.
 
 Do not add speculative engine support, placeholder packages, service layers, or
-generic framework seams. The only implemented engine is Impala.
+generic framework seams. The implemented production triage engine is Impala;
+Trino is limited to sanitized offline evidence package import, bounded local
+event-store import, bounded HTTP event archive import, bounded HTTP
+query-detail archive import, bounded local query-detail import, and bounded
+local query-list aggregate import, plus bounded local statement-stats import
+and event-source contract checking and dry-run coordinator query-info target
+checking, plus bounded pruned coordinator query-info probing and one-query
+pruned coordinator fact import, plus local compact diagnosis over raw-free
+boundary JSON.
 
 ## Parallel Worktrees
 

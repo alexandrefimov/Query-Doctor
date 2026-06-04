@@ -747,13 +747,36 @@ def max_ratio_value(facts: str, labels: tuple[str, ...]) -> float | None:
 
 
 def has_supported_spill_scratch_evidence(facts: str) -> bool:
-    supported_values = ("supported", "yes", "present", "non-zero")
+    memory_supported = structured_memory_pressure_spill_supported(facts)
+    if memory_supported is not None:
+        return memory_supported
+
     if any(
-        value.lower().startswith(supported_values)
+        value.lower().startswith(("supported", "yes", "present", "non-zero"))
         for value in fact_values(facts, "spill/scratch evidence")
     ):
         return True
-    return "detected non-zero spill/scratch metric evidence" in facts.lower()
+    findings = section_text(facts, "## Findings")
+    return "detected non-zero spill/scratch metric evidence" in (findings or facts).lower()
+
+
+def structured_memory_pressure_spill_supported(facts: str) -> bool | None:
+    memory_facts = section_text(facts, "## Memory Pressure Evidence")
+    if not memory_facts:
+        return None
+
+    status = first_fact_value(memory_facts, "status").lower()
+    tier = first_fact_value(memory_facts, "evidence_tier").lower()
+    supported = first_fact_value(memory_facts, "finding_supported").lower()
+    spill_count = first_fact_value(memory_facts, "spill_or_scratch_evidence_count")
+    has_spill_count = bool(re.search(r"[1-9]", spill_count))
+    if supported == "yes":
+        return status == "supported" and tier in {"strong", "medium"} and has_spill_count
+    if supported == "no":
+        return False
+    if status in {"context_only", "not_observed"} or tier in {"context_only", "unsupported"}:
+        return False
+    return None
 
 
 def scoring_section_text(text: str, heading: str) -> str:

@@ -38,9 +38,9 @@ def test_validate_trino_evidence_package_script_prints_safe_summary(tmp_path, ca
     assert "known_omissions: raw_identifiers" in captured.out
     assert "unsupported_sources: none" in captured.out
     assert "operator_retained_raw_exports: no" in captured.out
-    assert "contact_surface: fixture_import_only" in captured.out
-    assert "sample_count: 22" in captured.out
-    assert "supported: 20" in captured.out
+    assert "contact_surface: offline_evidence_import" in captured.out
+    assert "sample_count: 23" in captured.out
+    assert "supported: 21" in captured.out
     assert "unknown: 2" in captured.out
     assert "successful_completed_query: 1" in captured.out
     assert "failed_query_allowlisted_category: 2" in captured.out
@@ -52,6 +52,7 @@ def test_validate_trino_evidence_package_script_prints_safe_summary(tmp_path, ca
     assert "connector_metric_absent: 2" in captured.out
     assert "missing_field_case: 2" in captured.out
     assert "unknown_or_unsupported_source_contract: 2" in captured.out
+    assert "query_list_contract_probe: 2" in captured.out
     assert "query_detail_stage_task_summary: 2" in captured.out
     assert "operator-real-cluster-package.json" not in captured.out
     assert "statementStats" not in captured.out
@@ -209,6 +210,11 @@ def _package_payload() -> dict:
             "trino_query_list_contract_probe.json",
         ),
         _sample(
+            "query_list_contract_probe",
+            "query_list_summary_export",
+            "trino_query_list_heavy_bucket_contract_probe.json",
+        ),
+        _sample(
             "query_detail_stage_task_summary",
             "query_detail_export",
             "trino_query_detail_export.json",
@@ -246,7 +252,7 @@ def _package_payload() -> dict:
             "known_omissions": ["raw_identifiers"],
             "unsupported_sources": [],
             "operator_retained_raw_exports": "no",
-            "query_doctor_contact_surface": "fixture_import_only",
+            "query_doctor_contact_surface": "offline_evidence_import",
         },
         "redaction_note": {
             "package_id": "trino_evidence_pkg",
@@ -268,7 +274,7 @@ def _package_payload() -> dict:
         },
         "samples": samples,
     }
-    assert len(samples) == len(TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES) + 10
+    assert len(samples) == len(TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES) + 11
     return deepcopy(package)
 
 

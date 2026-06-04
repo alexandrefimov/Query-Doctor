@@ -1,6 +1,6 @@
 # Trino discovery spike
 
-Last reviewed: 2026-05-29
+Last reviewed: 2026-06-03
 
 Язык: [English](../../trino-discovery-spike.md) | Русский
 
@@ -20,8 +20,11 @@ Trino discovery spike - это fixture-only работа для изучения
   resource-group names или live-сбора;
 - проверить sanitized query-list contract probe aggregate для `/v1/query`
   list-shape evidence: bounded counts, field-presence counts, safe
-  state/failure buckets и redaction assertions, без raw records и без
-  query-detail fetch;
+  state/failure buckets, duration/size bucket counts, blocked-reason bucket
+  counts и redaction assertions, без raw records и без query-detail fetch;
+- проверить второй query-list heavy-bucket fixture с non-zero long-duration,
+  queue-delay, high-memory, unknown-input и blocked-reason buckets, всё ещё
+  как aggregate-only evidence без product wiring;
 - проверить unknown source-contract event и query-detail fixtures, где mapper
   должен fail-closed оставить parser coverage и facts в `unknown`;
 - проверить missing-field event и query-detail fixtures, где absent fields
@@ -48,6 +51,35 @@ Trino discovery spike - это fixture-only работа для изучения
   `samples` через fixture-only intake validator; statement-statistics,
   event-listener, aggregate query-list summary и compact query-detail exports
   уже имеют validators; raw query-detail exports остаются за boundary;
+- проверять bounded local statement-stats import для одного explicit
+  already-sanitized compact `QueryResults.statementStats` / `rootStage` JSON:
+  command требует redaction-review confirmation, не вызывает `/v1/statement`,
+  не submit-ит SQL, не делает query-detail fetch и не заявляет live Trino
+  support;
+- проверять event-source contract check для event-store readers: source type,
+  safe auth-reference label, accepted event schema, bounds и redaction/storage
+  policy; endpoints, topics, database names, credentials, raw event records,
+  raw SQL и extra source config fields reject-ятся до reader;
+- проверять bounded HTTP event archive import для одного explicit operator
+  HTTP(S) archive URL после accepted `http_event_listener_archive` source
+  contract; command не контактирует с Trino coordinator, не echo-ит URL, не
+  принимает URL credentials и не submit-ит SQL;
+- проверять bounded HTTP query-detail archive import для одного explicit
+  operator HTTP(S) archive URL после accepted `http_query_detail_archive`
+  source contract; command не контактирует с Trino coordinator, не fetch-ит
+  query-info by Query ID, не echo-ит URL, не принимает URL credentials и не
+  submit-ит SQL;
+- проверять dry-run coordinator query-info target check для одного compact
+  future source contract, coordinator base URL shape и Query ID shape; command
+  не контактирует с Trino, не вызывает `/v1/query`, не fetch-ит query-info
+  JSON, не echo-ит URL/Query ID и не делает live Query ID diagnosis;
+- проверять one-query pruned coordinator query-info probe для того же accepted
+  contract: command делает ровно один bounded
+  `GET /v1/query/{queryId}?pruned=true`, проверяет только bounded JSON object,
+  не хранит/не печатает raw QueryInfo, URL, Query ID, query text, session
+  fields, endpoint URLs, object names или raw payload content, не мапит
+  QueryInfo в facts, не crawl-ит query history, не submit-ит SQL и не делает
+  live Query ID diagnosis;
 - запускать `scripts/validate_trino_evidence_package.py` как local dry-run для
   sanitized package file; команда печатает только safe summary или safe
   rejection message, без input paths, raw payloads, raw values или rejected
@@ -78,6 +110,7 @@ Trino discovery spike - это fixture-only работа для изучения
 
 ## Правило безопасности
 
-Для Trino нельзя выполнять пользовательский SQL, запускать `EXPLAIN ANALYZE`
-или отправлять запросы в live endpoint. Любая будущая поддержка требует
-отдельного контракта источников, редактирования, валидаторов и тестов.
+Для Trino нельзя выполнять пользовательский SQL, запускать `EXPLAIN ANALYZE`,
+использовать `/v1/statement` как collector shortcut или делать broad live
+endpoint crawl. Любая будущая поддержка требует отдельного контракта
+источников, редактирования, валидаторов и тестов.

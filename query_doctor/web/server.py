@@ -153,6 +153,7 @@ from query_doctor.web.command_builders import (
     PYTHON_REPORT_VALIDATION_MARKER,
     REPORT_VARIANT_LLM,
     REPORT_VARIANT_PYTHON,
+    WEB_REPORT_MARKER_SCHEMA_VERSION,
     WEB_REPORT_VALIDATION_MODE,
     append_web_metadata_args,
     build_analyzer_command,
@@ -176,6 +177,7 @@ from query_doctor.web.form_helpers import (
 )
 from query_doctor.web.subprocesses import (
     Runner,
+    WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES,
     effective_subprocess_env,
     has_cm_credentials,
     preflight_web_metadata_batch,
@@ -481,6 +483,7 @@ _FACADE_EXPORT_GROUPS = (
             "PYTHON_REPORT_VALIDATION_MARKER",
             "REPORT_VARIANT_LLM",
             "REPORT_VARIANT_PYTHON",
+            "WEB_REPORT_MARKER_SCHEMA_VERSION",
             "WEB_REPORT_VALIDATION_MODE",
             "append_web_metadata_args",
             "build_analyzer_command",
@@ -510,6 +513,7 @@ _FACADE_EXPORT_GROUPS = (
         "subprocesses",
         (
             "Runner",
+            "WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES",
             "effective_subprocess_env",
             "has_cm_credentials",
             "preflight_web_metadata_batch",

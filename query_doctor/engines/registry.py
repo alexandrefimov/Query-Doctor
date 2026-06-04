@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from query_doctor.engines.base import EngineAdapter
 from query_doctor.engines.impala import IMPALA_ADAPTER
+from query_doctor.engines.trino import TRINO_ADAPTER
 
 
 DEFAULT_ENGINE_NAME = "impala"
@@ -15,6 +16,7 @@ class UnknownEngineError(ValueError):
 
 _ADAPTERS: dict[str, EngineAdapter] = {
     IMPALA_ADAPTER.engine_name: IMPALA_ADAPTER,
+    TRINO_ADAPTER.engine_name: TRINO_ADAPTER,
 }
 
 

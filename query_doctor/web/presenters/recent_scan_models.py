@@ -189,7 +189,11 @@ class RecentScanWorkloadActionHintView:
     title: str
     priority: str
     evidence: str
-    next_step: str
+    where_to_look: str
+    change_direction: str
+    verification_metric: str
+    verification: str
+    outcome_summary: str
 
 
 @dataclass(frozen=True)
@@ -489,3 +493,4 @@ class RecentScanCaseDetailView:
     report_action: ReportActionView
     score_severity: str
     diagnostic_facts: tuple[RecentScanDiagnosticFactView, ...] = ()
+    source_limitations: tuple[str, ...] = ()

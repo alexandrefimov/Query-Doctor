@@ -78,6 +78,17 @@ def test_missing_table_stats_with_mismatch_and_join_exchange_is_high_candidate()
     assert "estimate mismatch before expensive hash join" in result.reasons
 
 
+def test_unknown_table_stats_reason_preserves_unknown_wording():
+    result = score_stats_optimization_candidate(
+        stats_facts(table_stats="unknown", column_stats="available"),
+        duration_sec=120,
+        metadata_status="collected",
+    )
+
+    assert result.tier == "high"
+    assert "missing or unknown table/partition row-count stats" in result.reasons
+
+
 def test_missing_column_stats_with_selectivity_mismatch_is_column_candidate():
     result = score_stats_optimization_candidate(
         stats_facts(table_stats="available", column_stats="incomplete/unknown"),
@@ -142,6 +153,20 @@ def test_cardinality_mismatch_without_metadata_support_does_not_create_high():
     assert result.tier != "high"
     assert result.need_type == "not_likely_stats_issue"
     assert "no missing or incomplete stats evidence" in result.counter_signals
+
+
+def test_partial_metadata_without_stats_gap_does_not_become_actionable():
+    result = score_stats_optimization_candidate(
+        stats_facts(table_stats="available", column_stats="available"),
+        duration_sec=120,
+        metadata_status="partial",
+    )
+
+    assert result.tier in {"low", "not_likely"}
+    assert result.need_type == "not_likely_stats_issue"
+    assert result.confidence == "low"
+    assert "no supported missing or incomplete stats evidence" in result.counter_signals
+    assert "metadata is insufficient for stats classification" in result.counter_signals
 
 
 def test_legacy_stale_stats_text_does_not_promote_stats_candidate():
@@ -298,3 +323,137 @@ def test_structured_stats_candidate_wins_when_rendered_text_omits_metadata_gap()
     assert result.need_type == "table_stats"
     assert "missing or unknown table/partition row-count stats" in result.reasons
     assert "no missing or incomplete stats evidence" not in result.counter_signals
+
+
+def test_structured_partition_stats_gap_scores_incomplete_or_unknown_table_status():
+    analysis = {
+        "cardinality_anomalies": [
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 500},
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 80},
+        ],
+        "memory_anomalies": [],
+        "zero_row_estimate_gaps": [{"operator_name": "HASH JOIN"}],
+        "zero_memory_estimate_gaps": [],
+        "findings": [{"id": "large_intermediate_or_exchange_traffic"}],
+        "stats_metadata_quality": {
+            "status": "limited",
+            "table_stats": "incomplete_or_unknown",
+            "column_stats": "complete",
+            "tables_with_missing_table_stats": 1,
+            "tables_with_incomplete_column_stats": 0,
+            "partition_coverage": "partial",
+            "partitioned_tables": 1,
+            "partitioned_tables_with_missing_table_stats": 1,
+            "partition_count": 10,
+            "partitions_with_known_row_count": 6,
+            "partitions_with_unknown_row_count": 4,
+            "join_filter_column_relevance": "covered",
+            "join_filter_columns_without_stats": 0,
+        },
+    }
+
+    result = score_stats_optimization_candidate(
+        stats_facts(table_stats="available", column_stats="complete"),
+        duration_sec=120,
+        metadata_status="collected",
+        analysis=analysis,
+    )
+
+    assert result.need_type == "table_stats"
+    assert result.tier in {"high", "medium"}
+    assert result.table_stats_need in {"critical", "high"}
+    assert "missing or partial partition row-count stats" in result.reasons
+    assert "partition row-count coverage partial: 6/10 known, 4 unknown" in result.evidence_detail
+    assert "no missing or incomplete stats evidence" not in result.counter_signals
+
+
+def test_structured_join_filter_column_gap_avoids_generic_column_counter_signal():
+    analysis = {
+        "cardinality_anomalies": [
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 500},
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 40},
+        ],
+        "memory_anomalies": [{"operator_name": "HASH JOIN"}],
+        "zero_row_estimate_gaps": [],
+        "zero_memory_estimate_gaps": [],
+        "findings": [{"id": "large_intermediate_or_exchange_traffic"}],
+        "stats_metadata_quality": {
+            "status": "limited",
+            "table_stats": "available",
+            "column_stats": "incomplete_or_unknown",
+            "tables_with_missing_table_stats": 0,
+            "tables_with_incomplete_column_stats": 1,
+            "partition_coverage": "available",
+            "join_filter_column_relevance": "partial",
+            "join_filter_columns_observed": 4,
+            "join_filter_columns_without_stats": 2,
+            "join_filter_columns_with_complete_stats": 2,
+            "join_filter_columns_with_ndv_missing_stats": 1,
+            "join_filter_columns_with_size_missing_stats": 1,
+            "join_filter_columns_with_all_missing_stats": 0,
+            "join_filter_columns_with_unknown_stats": 0,
+        },
+    }
+
+    result = score_stats_optimization_candidate(
+        stats_facts(table_stats="available", column_stats="complete"),
+        duration_sec=120,
+        metadata_status="collected",
+        analysis=analysis,
+    )
+
+    assert result.need_type == "column_stats"
+    assert result.column_stats_need == "critical"
+    assert "missing or incomplete join/filter column statistics" in result.reasons
+    assert (
+        "join/filter column stats coverage partial: 2/4 complete, 2 missing or incomplete"
+        in result.evidence_detail
+    )
+    assert (
+        "column stats gap is not tied to specific join/filter columns" not in result.counter_signals
+    )
+
+
+def test_structured_join_filter_status_counts_are_important_column_evidence():
+    analysis = {
+        "cardinality_anomalies": [
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 500},
+            {"operator_name": "HASH JOIN", "rows_actual_to_estimated_ratio": 40},
+        ],
+        "memory_anomalies": [{"operator_name": "HASH JOIN"}],
+        "zero_row_estimate_gaps": [],
+        "zero_memory_estimate_gaps": [],
+        "findings": [{"id": "large_intermediate_or_exchange_traffic"}],
+        "stats_metadata_quality": {
+            "status": "limited",
+            "table_stats": "available",
+            "column_stats": "incomplete_or_unknown",
+            "partition_coverage": "available",
+            "join_filter_column_relevance": "covered",
+            "join_filter_columns_observed": 2,
+            "join_filter_columns_without_stats": 0,
+            "join_filter_columns_with_complete_stats": 1,
+            "join_filter_columns_with_ndv_missing_stats": 1,
+            "join_filter_columns_with_size_missing_stats": 0,
+            "join_filter_columns_with_all_missing_stats": 0,
+            "join_filter_columns_with_unknown_stats": 0,
+        },
+    }
+
+    result = score_stats_optimization_candidate(
+        stats_facts(table_stats="available", column_stats="complete"),
+        duration_sec=120,
+        metadata_status="collected",
+        analysis=analysis,
+    )
+
+    assert result.need_type == "column_stats"
+    assert result.column_stats_need == "critical"
+    assert "missing or incomplete join/filter column statistics" in result.reasons
+    assert (
+        "join/filter column stats coverage partial: 1/2 complete, 1 missing or incomplete"
+        in result.evidence_detail
+    )
+    assert (
+        "column stats gap is not tied to specific join/filter columns" not in result.counter_signals
+    )

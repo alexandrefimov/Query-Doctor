@@ -1,5 +1,7 @@
 # Release Checklist
 
+Last reviewed: 2026-06-04
+
 Use this checklist before cutting a tag, announcing a public release, or making
 future repository visibility changes.
 
@@ -13,6 +15,14 @@ future repository visibility changes.
   virtualenv, credential, or temporary output is tracked.
 - Stage only explicit intended files; do not use `git add .` or `git add -A`.
 - Review `git diff --cached` before committing or tagging.
+- Before any requested push or public-sharing branch handoff, clean the local
+  integration history into reviewable semantic commits. Do not push a
+  merge-heavy local `main` history as-is.
+- Check the pending branch shape with `git rev-list --count` and
+  `git rev-list --count --merges` against the public base branch. A high merge
+  ratio is a reviewability blocker even when content scans are clean. The
+  public release gate also runs `scripts/check_release_history_shape.py` against
+  the configured public base ref.
 
 ## Pull Request Baseline
 
@@ -25,6 +35,11 @@ Before merging release-facing or public-repository hygiene changes:
 - Avoid mixing formatting-only churn with behavior or safety changes.
 - Confirm the PR contains no real operational identifiers in fixtures,
   screenshots, logs, docs, or test names.
+- Confirm public README screenshots match
+  `docs/assets/readme-screenshot-provenance.json` and come only from the
+  synthetic demo pack and documented viewport path. When screenshot provenance
+  cannot be automated, record the human check in release notes or release
+  readiness docs.
 - Require all branch-protection checks to pass before merge.
 - After merge, confirm `main` is still green before tagging or publishing.
 
@@ -44,6 +59,7 @@ python scripts/agent_preflight.py
 python scripts/check_staged_public_safety.py
 python scripts/check_staged_public_safety.py --changed
 python scripts/audit_public_docs.py
+python scripts/check_release_history_shape.py --base "${RELEASE_HISTORY_BASE:-github/main}" --head "${RELEASE_HISTORY_HEAD:-HEAD}"
 pre-commit run --all-files
 git diff --check
 python scripts/check_active_docs.py
@@ -51,13 +67,18 @@ python scripts/check_markdown_links.py
 python -m ruff check query_doctor tests
 python -m ruff format --check query_doctor tests scripts
 python -m pytest -q
-python -m query_doctor.cli.demo_preflight --public-release
+python -m query_doctor.cli.demo_preflight --public-release --history-base "${RELEASE_HISTORY_BASE:-github/main}" --history-head "${RELEASE_HISTORY_HEAD:-HEAD}"
 python -m query_doctor.cli.demo_data --out "$DEMO_OUT" --overwrite
 ```
 
 The public-release preflight scans the tracked tree and git history for common
 private-data markers. It does not prove that history is clean. Any blocker
 requires manual review and a clean release branch before publication.
+It also does not prove that every commit is semantically grouped; history
+cleanup and content review remain manual release responsibilities. The
+release-history shape guard covers the mechanical branch shape by rejecting
+missing public base refs, non-ancestor release heads, excessive commit counts,
+merge commits, and WIP/fixup/draft commit subjects before public handoff.
 
 The demo pack smoke verifies that the public synthetic demo can be generated
 without LLM, network, Cloudera Manager, Impala, or private artifacts. The demo
@@ -97,7 +118,7 @@ when fast PR CI is green.
 
 Confirm public docs state only implemented behavior:
 
-- Apache Impala is the only implemented query engine.
+- Apache Impala is the only implemented production triage query engine.
 - Current Cloudera Manager collection is validated against the maintained test
   environment.
 - Direct Impala daemon collection supports bounded Recent and Running scans
@@ -107,12 +128,20 @@ Confirm public docs state only implemented behavior:
   Impala or Cloudera distributions.
 - Prometheus runtime metrics are optional bounded context for explicitly
   configured direct Impala workflows.
-- Broader engine support and Cluster Doctor product workflows are roadmap seams
-  only.
-- If Trino private preview is mentioned, it is described only as closed
-  test-cluster smoke plus sanitized evidence-package intake; it is not public
-  engine support, live collection, browser/report output, optimizer behavior,
-  metadata collection, or Query Doctor-generated SQL.
+- Broader live engine support and Cluster Doctor product workflows are roadmap
+  seams only.
+- Trino support is described only as sanitized offline evidence package import,
+  bounded local event-store import, bounded HTTP event archive import, bounded
+  HTTP query-detail archive import, bounded local query-detail import, and
+  bounded local query-list aggregate import, plus bounded local statement-stats
+  import, event-source contract checking, and dry-run coordinator query-info
+  target checking, bounded pruned coordinator query-info probing/import, and
+  local compact diagnosis over raw-free direct boundary JSON or selected package
+  sample boundaries plus isolated local compact-diagnosis rendering for the same
+  already raw-free inputs;
+  it is not live collection, broader Trino coordinator collection,
+  Details/trusted report output, optimizer behavior, metadata collection, Query
+  Doctor-generated SQL, or live Trino diagnosis.
 - Query Optimizer is read-only and does not execute pasted query text.
 - Validated reports and details-page optimizer drafts are explicit selected-case
   actions.
@@ -123,6 +152,9 @@ Confirm public docs state only implemented behavior:
   outcomes file.
 - README screenshots are refreshed from the synthetic demo pack before tagging
   any release that includes material web UI layout changes.
+- `tests/fixtures/` remains a synthetic/sanitized corpus. New fixture families
+  need either a committed provenance assertion or an explicit public-safety
+  scanner allowance with tests.
 - Public issue and PR templates route sensitive data away from public issues and
   remind contributors of the safety contract.
 
@@ -166,9 +198,12 @@ names, or environment names.
 
 Pre-release audits may update checklist wording, package metadata validation,
 or release automation before the final release candidate. Do not bump
-`pyproject.toml` / `setup.py`, cut a tag, publish to TestPyPI, or publish to
-PyPI until all planned product and documentation changes for the release are
-merged and the final release candidate is selected.
+`pyproject.toml`, cut a tag, publish to TestPyPI, or publish to PyPI until all
+planned product and documentation changes for the release are merged and the
+final release candidate is selected. `[project].version` in `pyproject.toml`
+is the canonical package version source; while the legacy editable-install shim
+remains, the release gate must keep asserting that `setup.py` reads the same
+metadata from `pyproject.toml`.
 
 One-time package-index setup:
 
@@ -188,9 +223,9 @@ One-time package-index setup:
 
 Before every PyPI release:
 
-- Bump the package version in `pyproject.toml` and `setup.py` together.
+- Bump the package version in `pyproject.toml`.
 - Confirm `python -m pytest -q tests/test_pyproject.py` passes so legacy
-  editable-install metadata still matches `pyproject.toml`.
+  editable-install metadata still reads the canonical `pyproject.toml` version.
 - Run the release gate from a clean synced branch:
 
 ```bash

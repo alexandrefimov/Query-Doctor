@@ -111,12 +111,22 @@ def case_with_detail_ranks(
     case_id: str,
     case: dict[str, object],
 ) -> dict[str, object]:
-    rank_fields = batch_case_detail_rank_fields(summary, case_id)
-    if not rank_fields:
+    detail_fields = batch_case_detail_source_fields(summary)
+    detail_fields.update(batch_case_detail_rank_fields(summary, case_id))
+    if not detail_fields:
         return case
     decorated = dict(case)
-    decorated.update(rank_fields)
+    decorated.update(detail_fields)
     return decorated
+
+
+def batch_case_detail_source_fields(summary: dict[str, object] | None) -> dict[str, str]:
+    if not isinstance(summary, dict):
+        return {}
+    source = str(summary.get("query_profile_source") or "").strip().lower()
+    if source not in {"cm", "impala"}:
+        return {}
+    return {"_detail_query_profile_source": source}
 
 
 def batch_case_detail_rank_fields(

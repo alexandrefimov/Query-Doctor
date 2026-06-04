@@ -54,6 +54,38 @@ RAW_SHOW_SQL_RE = re.compile(
     rf"(?:SHOW\s+CREATE\s+TABLE|SHOW\s+TABLE\s+STATS|SHOW\s+COLUMN\s+STATS)\s+"
     rf"{SQL_IDENTIFIER_STRICT_RE}{SQL_STATEMENT_BOUNDARY_RE}"
 )
+INLINE_SQL_CONTEXT_RE = re.compile(
+    r"(?:raw\s+sql|sql|query|statement|snippet|text|draft|contains?|includes?|"
+    r"says?|uses?|unsafe\s+detail)\W*$",
+    re.IGNORECASE,
+)
+INLINE_SQL_CLAUSE_TAIL_RE = re.compile(
+    r"^\s*(?:WHERE|JOIN|LEFT|RIGHT|INNER|FULL|GROUP|ORDER|LIMIT|HAVING|UNION)\b",
+    re.IGNORECASE,
+)
+STRICT_IDENTIFIER_MARKER_RE = re.compile(r"[.`\"]")
+RAW_INLINE_SELECT_SQL_RE = re.compile(
+    rf"(?is)\bSELECT\b(?=[\s\S]{{0,260}}\bFROM\b)"
+    rf"[\s\S]{{1,260}}\bFROM\s+(?P<table>{SQL_IDENTIFIER_RE})"
+    rf"(?P<tail>\s*(?:$|[;.,)]|\n|\bWHERE\b|\bJOIN\b|\bLEFT\b|\bRIGHT\b|\bINNER\b|"
+    rf"\bFULL\b|\bGROUP\b|\bORDER\b|\bLIMIT\b|\bHAVING\b|\bUNION\b))"
+)
+RAW_INLINE_WITH_SQL_RE = re.compile(
+    rf"(?is)\bWITH\s+{SQL_IDENTIFIER_RE}\s+AS\s*\(.{{0,800}}?\)\s*SELECT\s+"
+    rf".{{0,400}}?\bFROM\b\s+(?P<table>{SQL_IDENTIFIER_RE})"
+    rf"(?P<tail>\s*(?:$|[;.,)]|\n|\bWHERE\b|\bJOIN\b|\bLEFT\b|\bRIGHT\b|\bINNER\b|"
+    rf"\bFULL\b|\bGROUP\b|\bORDER\b|\bLIMIT\b|\bHAVING\b|\bUNION\b))"
+)
+RAW_INLINE_MUTATING_SQL_RE = re.compile(
+    rf"(?is)\b(?:"
+    rf"INSERT\s+INTO|CREATE\s+TABLE|DROP\s+TABLE|ALTER\s+TABLE|TRUNCATE\s+TABLE|"
+    rf"DELETE\s+FROM|UPDATE|MERGE\s+INTO"
+    rf")\s+(?P<table>{SQL_IDENTIFIER_RE})"
+)
+RAW_INLINE_SHOW_SQL_RE = re.compile(
+    rf"(?is)\b(?:SHOW\s+CREATE\s+TABLE|SHOW\s+TABLE\s+STATS|SHOW\s+COLUMN\s+STATS)\s+"
+    rf"(?P<table>{SQL_IDENTIFIER_STRICT_RE}){SQL_STATEMENT_BOUNDARY_RE}"
+)
 
 
 def validate_report_html_safety(text: str) -> list[str]:
@@ -120,7 +152,7 @@ def contains_raw_sql_like_text(text: str) -> bool:
 
 
 def _contains_raw_sql_statement(text: str) -> bool:
-    return any(
+    if any(
         pattern.search(text)
         for pattern in (
             RAW_SELECT_SQL_RE,
@@ -128,4 +160,30 @@ def _contains_raw_sql_statement(text: str) -> bool:
             RAW_MUTATING_SQL_RE,
             RAW_SHOW_SQL_RE,
         )
+    ):
+        return True
+    return _contains_inline_raw_sql_statement(text)
+
+
+def _contains_inline_raw_sql_statement(text: str) -> bool:
+    return any(
+        _inline_sql_match_is_raw(text, match)
+        for pattern in (
+            RAW_INLINE_SELECT_SQL_RE,
+            RAW_INLINE_WITH_SQL_RE,
+            RAW_INLINE_MUTATING_SQL_RE,
+            RAW_INLINE_SHOW_SQL_RE,
+        )
+        for match in pattern.finditer(text)
+    )
+
+
+def _inline_sql_match_is_raw(text: str, match: re.Match[str]) -> bool:
+    prefix = text[max(0, match.start() - 80) : match.start()]
+    table = str(match.groupdict().get("table") or "")
+    tail = str(match.groupdict().get("tail") or "")
+    return (
+        bool(INLINE_SQL_CONTEXT_RE.search(prefix))
+        or bool(STRICT_IDENTIFIER_MARKER_RE.search(table))
+        or bool(INLINE_SQL_CLAUSE_TAIL_RE.match(tail))
     )

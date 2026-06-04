@@ -25,6 +25,17 @@ from query_doctor.safety.browser_display import redact_browser_display_text
 FACT_APPENDIX_MAX_ITEMS = 8
 FACTS_TABLE_OPERATOR_RE = re.compile(r"^\s*\|\s*(?P<operator>\d{2,}:[^|]+?)\s*\|")
 BACKEND_SUMMARY_RE = re.compile(r"^\s*[-*]\s*(?P<key>[^:]+):\s*(?P<value>.+?)\s*$")
+SOURCE_PROVENANCE_KINDS = {"engine", "profile", "metrics", "events", "metadata"}
+SOURCE_PROVENANCE_STATUSES = {"available", "partial", "unavailable", "none", "unknown"}
+STATS_GAP_STATUSES = {"missing", "unknown", "missing/unknown", "incomplete", "incomplete/unknown"}
+STATS_DETAIL_GAP_STATUSES = {"missing", "partial", "limited"}
+STATS_NON_GAP_STATUSES = {
+    "available",
+    "complete",
+    "not_applicable",
+    "not_checked",
+    "not_observed",
+}
 
 
 def extract_first_markdown_section(facts_text: str, *headings: str) -> list[str]:
@@ -248,6 +259,94 @@ def evidence_quality_report_evidence_bullet(
     return f"- {header}{suffix}. {guardrail}"
 
 
+def source_provenance_summary(facts_text: str) -> dict[str, str]:
+    lines = extract_markdown_section(facts_text, "## Source Provenance")
+    summary: dict[str, str] = {}
+    for line in lines:
+        match = re.match(
+            r"^\s*-\s*(?P<kind>[a-z_]+)\s*:\s*(?P<status>[a-z_]+)\b",
+            line,
+            re.IGNORECASE,
+        )
+        if not match:
+            continue
+        kind = match.group("kind").lower()
+        status = match.group("status").lower()
+        if kind in SOURCE_PROVENANCE_KINDS and status in SOURCE_PROVENANCE_STATUSES:
+            summary[kind] = status
+    return summary
+
+
+def source_provenance_report_evidence_bullet(
+    facts_text: str,
+    *,
+    language: str = "ru",
+) -> str | None:
+    summary = source_provenance_summary(facts_text)
+    if not summary:
+        return None
+
+    ordered_kinds = ("engine", "profile", "metrics", "events", "metadata")
+    coverage = ", ".join(f"{kind}={summary[kind]}" for kind in ordered_kinds if kind in summary)
+    if language == "en":
+        details = source_provenance_limitation_details_en(summary)
+        suffix = f" Coverage limitations: {'; '.join(details)}." if details else ""
+        return (
+            f"- Source Provenance: {coverage}."
+            f"{suffix} Use source coverage as a limitation frame, not root-cause proof."
+        )
+
+    details = source_provenance_limitation_details_ru(summary)
+    suffix = f" Ограничения покрытия: {'; '.join(details)}." if details else ""
+    return (
+        f"- Source Provenance: {coverage}."
+        f"{suffix} Используйте покрытие источников как рамку ограничений, "
+        "не как доказательство причины."
+    )
+
+
+def source_provenance_limitation_details_en(summary: dict[str, str]) -> list[str]:
+    details: list[str] = []
+    if summary.get("engine") == "unknown":
+        details.append("engine identity is unavailable from deterministic profile facts")
+    if summary.get("profile") in {"unknown", "unavailable"}:
+        details.append("profile coverage is unknown or unavailable")
+    elif summary.get("profile") == "partial":
+        details.append("profile coverage is partial")
+    if summary.get("metrics") in {"partial", "unavailable"}:
+        details.append("runtime metrics are incomplete or unavailable")
+    elif summary.get("metrics") in {"none", "unknown"}:
+        details.append("runtime metrics were not collected or coverage is unknown")
+    if summary.get("events") in {"none", "unavailable", "partial", "unknown"}:
+        details.append("event context is absent or incomplete")
+    if summary.get("metadata") == "partial":
+        details.append("bounded metadata is partial")
+    elif summary.get("metadata") in {"none", "unavailable", "unknown"}:
+        details.append("bounded metadata is unavailable or unknown")
+    return details
+
+
+def source_provenance_limitation_details_ru(summary: dict[str, str]) -> list[str]:
+    details: list[str] = []
+    if summary.get("engine") == "unknown":
+        details.append("идентификация движка недоступна из deterministic profile facts")
+    if summary.get("profile") in {"unknown", "unavailable"}:
+        details.append("покрытие profile неизвестно или недоступно")
+    elif summary.get("profile") == "partial":
+        details.append("покрытие profile частичное")
+    if summary.get("metrics") in {"partial", "unavailable"}:
+        details.append("runtime metrics неполные или недоступны")
+    elif summary.get("metrics") in {"none", "unknown"}:
+        details.append("runtime metrics не собраны или покрытие неизвестно")
+    if summary.get("events") in {"none", "unavailable", "partial", "unknown"}:
+        details.append("event context отсутствует или неполный")
+    if summary.get("metadata") == "partial":
+        details.append("bounded metadata частичная")
+    elif summary.get("metadata") in {"none", "unavailable", "unknown"}:
+        details.append("bounded metadata недоступна или неизвестна")
+    return details
+
+
 def facts_has_backend_tail_evidence(facts_text: str) -> bool:
     lower = facts_text.lower()
     return (
@@ -255,6 +354,28 @@ def facts_has_backend_tail_evidence(facts_text: str) -> bool:
         or "host-specific execution tail suspected" in lower
         or "execution skew is suspected from parsed backend counters" in lower
         or "execution skew is suspected from parsed backend execution-time counters" in lower
+    )
+
+
+def facts_have_backend_followup_evidence(facts_text: str) -> bool:
+    summary = parse_backend_tail_summary(facts_text)
+    if backend_data_skew_is_supported(summary):
+        return True
+    if backend_has_proven_tail(summary):
+        return True
+    if backend_write_path_is_supported(summary):
+        return True
+    if str(summary.get("execution skew", "unknown")).lower() == "yes":
+        return True
+
+    findings_text = "\n".join(extract_markdown_section(facts_text, "## Findings"))
+    return bool(
+        re.search(
+            r"^###\s+Host-specific execution tail suspected\b|"
+            r"Execution skew is suspected from parsed backend(?: execution-time)? counters",
+            findings_text,
+            re.IGNORECASE | re.MULTILINE,
+        )
     )
 
 
@@ -336,15 +457,43 @@ def backend_data_skew_is_supported(summary: dict[str, str | int]) -> bool:
 
 
 def facts_have_spill_scratch_evidence(facts_text: str) -> bool:
+    memory_supported = structured_memory_pressure_supported(facts_text)
+    if memory_supported is not None:
+        return memory_supported
+
+    findings_text = "\n".join(extract_markdown_section(facts_text, "## Findings"))
+    if not findings_text:
+        findings_text = facts_text
     return bool(
         re.search(
-            r"Spill or scratch I/O|non-zero spill/scratch metric evidence|"
-            r"non-zero spill/scratch counters were parsed|"
-            r"spill_or_scratch_evidence_count:\s*[1-9]",
-            facts_text,
-            re.IGNORECASE,
+            r"^###\s+Spill or scratch I/O\b|"
+            r"Detected non-zero spill/scratch metric evidence",
+            findings_text,
+            re.IGNORECASE | re.MULTILINE,
         )
     )
+
+
+def structured_memory_pressure_supported(facts_text: str) -> bool | None:
+    lines = extract_markdown_section(facts_text, "## Memory Pressure Evidence")
+    if not lines:
+        return None
+
+    status = normalized_fact_value(first_bullet_value(lines, "status"))
+    evidence_tier = normalized_fact_value(first_bullet_value(lines, "evidence_tier"))
+    finding_supported = normalized_fact_value(first_bullet_value(lines, "finding_supported"))
+    spill_count = first_bullet_value(lines, "spill_or_scratch_evidence_count") or ""
+    has_spill_count = bool(re.search(r"[1-9]", spill_count))
+    if finding_supported == "yes":
+        return status == "supported" and evidence_tier in {"strong", "medium"} and has_spill_count
+    if finding_supported == "no":
+        return False
+    if status in {"context_only", "not_observed"} or evidence_tier in {
+        "context_only",
+        "unsupported",
+    }:
+        return False
+    return None
 
 
 def facts_have_action_cards(facts_text: str) -> bool:
@@ -352,6 +501,9 @@ def facts_have_action_cards(facts_text: str) -> bool:
 
 
 def facts_have_metadata_stats_gap(facts_text: str) -> bool:
+    stats_quality = structured_stats_quality_gap(facts_text)
+    if stats_quality is not None:
+        return stats_quality
     metadata_lines = "\n".join(extract_markdown_section(facts_text, TABLE_METADATA_CONTEXT_HEADING))
     if not metadata_lines:
         return False
@@ -365,7 +517,85 @@ def facts_have_metadata_stats_gap(facts_text: str) -> bool:
     )
 
 
+def structured_stats_quality_gap(facts_text: str) -> bool | None:
+    lines = extract_markdown_section(facts_text, "## Stats Metadata Quality")
+    if not lines:
+        return None
+
+    recognized = False
+    table_stats = normalized_fact_value(first_bullet_value(lines, "table_stats"))
+    column_stats = normalized_fact_value(first_bullet_value(lines, "column_stats"))
+    partition_coverage = normalized_fact_value(first_bullet_value(lines, "partition_coverage"))
+    join_filter_relevance = normalized_fact_value(
+        first_bullet_value(lines, "join_filter_column_relevance")
+    )
+    stats_context = normalized_fact_value(first_bullet_value(lines, "stats_context"))
+
+    for value in (table_stats, column_stats):
+        if value in STATS_GAP_STATUSES:
+            return True
+        if value in STATS_NON_GAP_STATUSES:
+            recognized = True
+    if partition_coverage in STATS_DETAIL_GAP_STATUSES:
+        return True
+    if join_filter_relevance in STATS_DETAIL_GAP_STATUSES:
+        return True
+    if partition_coverage in STATS_NON_GAP_STATUSES | {"unknown"}:
+        recognized = True
+    if join_filter_relevance in STATS_NON_GAP_STATUSES | {"unknown", "covered"}:
+        recognized = True
+
+    for label in (
+        "tables_with_missing_table_stats",
+        "tables_with_incomplete_column_stats",
+        "partitioned_tables_with_missing_table_stats",
+        "partitions_with_unknown_row_count",
+        "join_filter_columns_without_stats",
+        "join_filter_columns_with_ndv_missing_stats",
+        "join_filter_columns_with_size_missing_stats",
+        "join_filter_columns_with_all_missing_stats",
+        "join_filter_columns_with_unknown_stats",
+    ):
+        count = first_bullet_int(lines, label)
+        if count is None:
+            continue
+        recognized = True
+        if count > 0:
+            return True
+
+    if stats_context in {
+        "not_physical_table_stats",
+        "stats_available_no_row_estimate_evidence",
+        "stats_present_with_row_estimate_evidence",
+        "metadata_unavailable",
+        "stats_quality_unknown",
+    }:
+        return False
+    if stats_context in {
+        "stats_gap_with_row_estimate_evidence",
+        "stats_gap_without_row_estimate_evidence",
+    }:
+        return True
+
+    return False if recognized else None
+
+
+def normalized_fact_value(value: str | None) -> str:
+    return str(value or "").strip().lower().replace(" ", "_")
+
+
+def first_bullet_int(lines: list[str], label: str) -> int | None:
+    value = first_bullet_value(lines, label)
+    if value is None:
+        return None
+    match = re.match(r"\s*(?P<count>\d+)\b", value)
+    return int(match.group("count")) if match else None
+
+
 def facts_have_large_intermediate_or_exchange(facts_text: str) -> bool:
+    data_movement_supported = structured_data_movement_supported(facts_text)
+    if data_movement_supported is not None:
+        return data_movement_supported
     findings_lines = extract_markdown_section(facts_text, "## Findings")
     if not findings_lines:
         return False
@@ -381,6 +611,26 @@ def facts_have_large_intermediate_or_exchange(facts_text: str) -> bool:
     )
 
 
+def structured_data_movement_supported(facts_text: str) -> bool | None:
+    lines = extract_markdown_section(facts_text, "## Data Movement Evidence")
+    if not lines:
+        return None
+
+    status = normalized_fact_value(first_bullet_value(lines, "status"))
+    evidence_tier = normalized_fact_value(first_bullet_value(lines, "evidence_tier"))
+    finding_supported = normalized_fact_value(first_bullet_value(lines, "finding_supported"))
+    if finding_supported == "yes":
+        return status == "supported" and evidence_tier in {"strong", "medium"}
+    if finding_supported == "no":
+        return False
+    if status in {"context_only", "not_observed"} or evidence_tier in {
+        "context_only",
+        "unsupported",
+    }:
+        return False
+    return None
+
+
 def cm_metrics_facts_summary(facts_text: str) -> dict[str, str]:
     lines = extract_first_markdown_section(
         facts_text,
@@ -394,6 +644,8 @@ def cm_metrics_facts_summary(facts_text: str) -> dict[str, str]:
     for label in (
         "status",
         "coverage",
+        "admission_pool_pressure",
+        "admission_pool_pressure_basis",
         "host_cpu_pressure",
         "host_cpu_pressure_basis",
         "daemon_memory_growth",
@@ -442,6 +694,7 @@ def cm_metrics_correlation_summary(facts_text: str) -> dict[str, str]:
         "correlated_signals",
         "context_only_signals",
         "guardrail",
+        "admission_pool_pressure",
         "host_cpu_pressure",
         "daemon_memory_growth",
         "daemon_memory_pressure",
@@ -457,6 +710,7 @@ def cm_metrics_correlation_points(facts_text: str) -> list[str]:
     summary = cm_metrics_correlation_summary(facts_text)
     points: list[str] = []
     labels = (
+        ("admission_pool_pressure", "Admission/pool pressure"),
         ("host_cpu_pressure", "Host CPU pressure"),
         ("daemon_memory_growth", "Daemon memory growth"),
         ("daemon_memory_pressure", "Daemon memory pressure"),
@@ -609,6 +863,7 @@ def cm_metrics_report_evidence_bullet(facts_text: str) -> str | None:
     observed = [
         label
         for key, label in (
+            ("admission_pool_pressure", "admission/pool pressure"),
             ("host_cpu_pressure", "host CPU pressure"),
             ("daemon_memory_growth", "daemon memory growth"),
             ("daemon_memory_pressure", "daemon memory pressure"),

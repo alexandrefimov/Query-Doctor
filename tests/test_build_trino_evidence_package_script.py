@@ -97,6 +97,11 @@ SAMPLE_FIXTURES = (
         "trino_query_list_contract_probe.json",
     ),
     (
+        "query_list_contract_probe",
+        "query_list_summary_export",
+        "trino_query_list_heavy_bucket_contract_probe.json",
+    ),
+    (
         "query_detail_stage_task_summary",
         "query_detail_export",
         "trino_query_detail_export.json",
@@ -166,7 +171,7 @@ def test_build_trino_evidence_package_script_writes_valid_package_without_echoin
     assert "[trino-package-builder] written" in captured.out
     assert "package_id: trino_evidence_pkg" in captured.out
     assert "source_summary:" in captured.out
-    assert "sample_count: 22" in captured.out
+    assert "sample_count: 23" in captured.out
     assert "failed_query_allowlisted_category: 2" in captured.out
     assert "queued_or_resource_group_delayed_query: 2" in captured.out
     assert "blocked_query: 2" in captured.out
@@ -176,6 +181,7 @@ def test_build_trino_evidence_package_script_writes_valid_package_without_echoin
     assert "connector_metric_absent: 2" in captured.out
     assert "missing_field_case: 2" in captured.out
     assert "unknown_or_unsupported_source_contract: 2" in captured.out
+    assert "query_list_contract_probe: 2" in captured.out
     assert "query_detail_stage_task_summary: 2" in captured.out
     assert str(output_path) not in captured.out
     assert "trino_statement_stats.json" not in captured.out
@@ -184,7 +190,7 @@ def test_build_trino_evidence_package_script_writes_valid_package_without_echoin
     result = validate_trino_evidence_package_payload(
         json.loads(output_path.read_text(encoding="utf-8"))
     )
-    assert result.parser_coverage_counts() == {"supported": 20, "unknown": 2}
+    assert result.parser_coverage_counts() == {"supported": 21, "unknown": 2}
 
 
 def test_build_trino_evidence_package_script_rejects_raw_sample_without_writing_output(

@@ -6,9 +6,10 @@ import os
 import shutil
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
-from typing import Callable
+from typing import BinaryIO, Callable
 
 from query_doctor.config.contract import merge_kerberos_cache_env
 
@@ -19,6 +20,9 @@ from query_doctor.web.models import WebError, WebSettings
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 CancelCheck = Callable[[], bool]
 WEB_CANCELLED_RETURN_CODE = -15
+WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES = 1_048_576
+WEB_SUBPROCESS_READ_CHUNK_BYTES = 8192
+WEB_SUBPROCESS_STOP_GRACE_SEC = 2.0
 
 
 def run_subprocess(
@@ -30,8 +34,8 @@ def run_subprocess(
     env: dict[str, str] | None = None,
     cancel_check: CancelCheck | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    if cancel_check is not None and runner is subprocess.run:
-        return run_cancellable_subprocess(
+    if runner is subprocess.run:
+        return run_bounded_subprocess(
             cmd,
             cwd=cwd,
             timeout_sec=timeout_sec,
@@ -49,7 +53,57 @@ def run_subprocess(
     )
     if cancel_check is not None and cancel_check():
         return subprocess.CompletedProcess(cmd, WEB_CANCELLED_RETURN_CODE, stdout="", stderr="")
-    return completed
+    return bound_completed_process_output(completed)
+
+
+def run_bounded_subprocess(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    timeout_sec: int,
+    env: dict[str, str] | None,
+    cancel_check: CancelCheck | None = None,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        cmd,
+        cwd=str(cwd),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+        start_new_session=os.name == "posix",
+    )
+    stdout_buffer = bytearray()
+    stderr_buffer = bytearray()
+    output_threads = start_bounded_output_readers(process, stdout_buffer, stderr_buffer)
+    deadline = time.monotonic() + timeout_sec
+    cancelled = False
+    while True:
+        if cancel_check is not None and cancel_check():
+            cancelled = True
+            terminate_process_tree(process)
+            break
+        if process.poll() is not None:
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            terminate_process_tree(process, force=True)
+            wait_after_stop(process)
+            join_output_threads(output_threads)
+            raise subprocess.TimeoutExpired(cmd, timeout_sec)
+        time.sleep(min(0.05, remaining))
+
+    if cancelled:
+        wait_after_stop(process)
+    else:
+        process.wait()
+    join_output_threads(output_threads)
+    return subprocess.CompletedProcess(
+        cmd,
+        WEB_CANCELLED_RETURN_CODE if cancelled else process.returncode,
+        stdout=decode_bounded_output(stdout_buffer),
+        stderr=decode_bounded_output(stderr_buffer),
+    )
 
 
 def run_cancellable_subprocess(
@@ -60,37 +114,84 @@ def run_cancellable_subprocess(
     env: dict[str, str] | None,
     cancel_check: CancelCheck,
 ) -> subprocess.CompletedProcess[str]:
-    process = subprocess.Popen(
+    return run_bounded_subprocess(
         cmd,
-        cwd=str(cwd),
+        cwd=cwd,
+        timeout_sec=timeout_sec,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=os.name == "posix",
+        cancel_check=cancel_check,
     )
-    deadline = time.monotonic() + timeout_sec
-    while True:
-        if cancel_check():
-            terminate_process_tree(process)
-            stdout, stderr = communicate_after_stop(process)
-            return subprocess.CompletedProcess(
-                cmd, WEB_CANCELLED_RETURN_CODE, stdout=stdout, stderr=stderr
-            )
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            terminate_process_tree(process, force=True)
-            raise subprocess.TimeoutExpired(cmd, timeout_sec)
-        try:
-            stdout, stderr = process.communicate(timeout=min(0.2, remaining))
-            return subprocess.CompletedProcess(
-                cmd, process.returncode, stdout=stdout, stderr=stderr
-            )
-        except subprocess.TimeoutExpired:
-            continue
 
 
-def terminate_process_tree(process: subprocess.Popen[str], *, force: bool = False) -> None:
+def start_bounded_output_readers(
+    process: subprocess.Popen[bytes],
+    stdout_buffer: bytearray,
+    stderr_buffer: bytearray,
+) -> tuple[threading.Thread, threading.Thread]:
+    if process.stdout is None or process.stderr is None:
+        raise RuntimeError("subprocess output pipes were not configured")
+    stdout_thread = threading.Thread(
+        target=read_stream_bounded,
+        args=(process.stdout, stdout_buffer),
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=read_stream_bounded,
+        args=(process.stderr, stderr_buffer),
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    return stdout_thread, stderr_thread
+
+
+def read_stream_bounded(stream: BinaryIO, buffer: bytearray) -> None:
+    try:
+        while True:
+            chunk = stream.read(WEB_SUBPROCESS_READ_CHUNK_BYTES)
+            if not chunk:
+                return
+            remaining = WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES - len(buffer)
+            if remaining > 0:
+                buffer.extend(chunk[:remaining])
+    finally:
+        stream.close()
+
+
+def join_output_threads(threads: tuple[threading.Thread, threading.Thread]) -> None:
+    for thread in threads:
+        thread.join(timeout=WEB_SUBPROCESS_STOP_GRACE_SEC)
+
+
+def decode_bounded_output(buffer: bytearray) -> str:
+    return bytes(buffer).decode("utf-8", errors="replace")
+
+
+def bound_completed_process_output(
+    completed: subprocess.CompletedProcess[str],
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        completed.args,
+        completed.returncode,
+        stdout=bound_output_value(completed.stdout),
+        stderr=bound_output_value(completed.stderr),
+    )
+
+
+def bound_output_value(value: object) -> str:
+    if isinstance(value, bytes):
+        return value[:WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES].decode("utf-8", errors="replace")
+    if isinstance(value, str):
+        encoded = value.encode("utf-8", errors="replace")
+        if len(encoded) <= WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES:
+            return value
+        return encoded[:WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES].decode("utf-8", errors="replace")
+    if value is None:
+        return ""
+    return str(value)
+
+
+def terminate_process_tree(process: subprocess.Popen[object], *, force: bool = False) -> None:
     if process.poll() is not None:
         return
     try:
@@ -102,6 +203,14 @@ def terminate_process_tree(process: subprocess.Popen[str], *, force: bool = Fals
             process.terminate()
     except ProcessLookupError:
         return
+
+
+def wait_after_stop(process: subprocess.Popen[object]) -> None:
+    try:
+        process.wait(timeout=WEB_SUBPROCESS_STOP_GRACE_SEC)
+    except subprocess.TimeoutExpired:
+        terminate_process_tree(process, force=True)
+        process.wait()
 
 
 def communicate_after_stop(process: subprocess.Popen[str]) -> tuple[str, str]:

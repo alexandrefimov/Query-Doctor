@@ -26,6 +26,8 @@ STATS_CONFIDENCE_ORDER = {"high": 2, "medium": 1, "low": 0}
 FULL_METADATA_STATUSES = {"collected", "ok", "available", "done"}
 PARTIAL_METADATA_STATUSES = {"partial"}
 USABLE_METADATA_STATUSES = FULL_METADATA_STATUSES | PARTIAL_METADATA_STATUSES
+MISSING_STATS_STATUSES = {"missing", "unknown", "missing/unknown", "not_available"}
+INCOMPLETE_STATS_STATUSES = {"incomplete", "incomplete/unknown"}
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,7 @@ class StatsOptimizationCandidateScore:
     counter_signals: tuple[str, ...]
     suggested_review_areas: tuple[str, ...]
     required_confirmation: tuple[str, ...]
+    evidence_detail: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -143,6 +146,7 @@ def score_stats_optimization_candidate(
     )
     speed_benefit = stats_speed_benefit(tier, confidence, has_planning_symptom=has_planning_symptom)
     reasons = tuple((metadata_reasons + mismatch_reasons + planning_reasons + impact_reasons)[:9])
+    evidence_detail = stats_evidence_detail(facts, analysis=analysis)
     return StatsOptimizationCandidateScore(
         score=score,
         tier=tier,
@@ -160,6 +164,7 @@ def score_stats_optimization_candidate(
             "check whether join order, join distribution, estimates, exchange, spill, or memory behavior changed",
             "rerun under comparable load to confirm runtime improvement",
         ),
+        evidence_detail=evidence_detail,
     )
 
 
@@ -235,42 +240,189 @@ def stats_metadata_evidence(
     kinds: set[str] = set()
     quality = analysis_dict(analysis, "stats_metadata_quality")
     if quality is not None:
-        table_values = [str(quality.get("table_stats") or "").lower()]
-        column_values = [str(quality.get("column_stats") or "").lower()]
+        table_values = [stats_status_value(quality.get("table_stats"))]
+        column_values = [stats_status_value(quality.get("column_stats"))]
+        partition_gap = structured_partition_stats_gap(quality)
+        join_filter_column_gap = structured_join_filter_column_stats_gap(quality)
     else:
         table_values = [
-            value.lower() for value in fact_values(facts, "table stats row-count completeness")
+            stats_status_value(value)
+            for value in fact_values(facts, "table stats row-count completeness")
         ]
-        column_values = [value.lower() for value in fact_values(facts, "column stats completeness")]
-    if any(
-        value in {"missing", "unknown", "missing/unknown", "not_available"}
-        for value in table_values
-    ):
+        column_values = [
+            stats_status_value(value) for value in fact_values(facts, "column stats completeness")
+        ]
+        partition_gap = False
+        join_filter_column_gap = False
+    if any(value in MISSING_STATS_STATUSES for value in table_values) or partition_gap:
         score += 25
-        reasons.append("missing or unknown table/partition row-count stats")
+        if partition_gap:
+            reasons.append("missing or partial partition row-count stats")
+        else:
+            reasons.append("missing or unknown table/partition row-count stats")
         kinds.add("table")
-    elif any(value in {"incomplete", "incomplete/unknown"} for value in table_values):
+    elif any(value in INCOMPLETE_STATS_STATUSES for value in table_values):
         score += 15
         reasons.append("incomplete table/partition stats")
         kinds.add("table")
-    if any(
-        value
-        in {
-            "missing",
-            "unknown",
-            "missing/unknown",
-            "not_available",
-            "incomplete",
-            "incomplete/unknown",
-        }
-        for value in column_values
-    ):
-        score += 20
-        reasons.append("missing or incomplete column statistics")
+    if any(value in MISSING_STATS_STATUSES | INCOMPLETE_STATS_STATUSES for value in column_values):
+        score += 25 if join_filter_column_gap else 20
+        if join_filter_column_gap:
+            reasons.append("missing or incomplete join/filter column statistics")
+        else:
+            reasons.append("missing or incomplete column statistics")
         kinds.add("column")
     if str(metadata_status).lower() not in USABLE_METADATA_STATUSES and not kinds:
         kinds.add("insufficient")
     return min(100, score), reasons, kinds
+
+
+def stats_status_value(value: object) -> str:
+    text = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    aliases = {
+        "missing_unknown": "missing/unknown",
+        "incomplete_unknown": "incomplete/unknown",
+        "incomplete_or_unknown": "incomplete/unknown",
+        "not/available": "not_available",
+        "not_available": "not_available",
+        "not/applicable": "not_applicable",
+        "not_applicable": "not_applicable",
+    }
+    return aliases.get(text, text)
+
+
+def structured_partition_stats_gap(quality: dict[str, object]) -> bool:
+    coverage = stats_status_value(quality.get("partition_coverage"))
+    return (
+        coverage in {"missing", "partial"}
+        or numeric_value(quality.get("partitioned_tables_with_missing_table_stats")) > 0
+        or numeric_value(quality.get("partitions_with_unknown_row_count")) > 0
+    )
+
+
+def structured_join_filter_column_stats_gap(quality: dict[str, object]) -> bool:
+    relevance = stats_status_value(quality.get("join_filter_column_relevance"))
+    return relevance in {"missing", "partial"} or has_join_filter_column_stats_gap_counts(quality)
+
+
+def has_join_filter_column_stats_gap_counts(quality: dict[str, object]) -> bool:
+    return (
+        numeric_value(quality.get("join_filter_columns_without_stats")) > 0
+        or numeric_value(quality.get("join_filter_columns_with_ndv_missing_stats")) > 0
+        or numeric_value(quality.get("join_filter_columns_with_size_missing_stats")) > 0
+        or numeric_value(quality.get("join_filter_columns_with_all_missing_stats")) > 0
+        or numeric_value(quality.get("join_filter_columns_with_unknown_stats")) > 0
+    )
+
+
+def join_filter_column_stats_detail_status(quality: dict[str, object]) -> str:
+    relevance = stats_status_value(quality.get("join_filter_column_relevance"))
+    if relevance not in {"missing", "partial"} and has_join_filter_column_stats_gap_counts(quality):
+        return "partial"
+    return relevance
+
+
+def stats_evidence_detail(
+    facts: str,
+    *,
+    analysis: dict[str, object] | None = None,
+) -> tuple[str, ...]:
+    quality = analysis_dict(analysis, "stats_metadata_quality")
+    if quality is None:
+        quality = stats_quality_from_facts(facts)
+    if quality is None:
+        return ()
+
+    details: list[str] = []
+    table_status = stats_status_value(quality.get("table_stats"))
+    column_status = stats_status_value(quality.get("column_stats"))
+    partition_coverage = stats_status_value(quality.get("partition_coverage"))
+    if structured_partition_stats_gap(quality):
+        partition_count = whole_number(quality.get("partition_count"))
+        known_partitions = whole_number(quality.get("partitions_with_known_row_count"))
+        unknown_partitions = whole_number(quality.get("partitions_with_unknown_row_count"))
+        missing_partitioned_tables = whole_number(
+            quality.get("partitioned_tables_with_missing_table_stats")
+        )
+        if partition_count > 0:
+            details.append(
+                f"partition row-count coverage {stats_detail_status(partition_coverage)}: "
+                f"{known_partitions}/{partition_count} known, {unknown_partitions} unknown"
+            )
+        elif missing_partitioned_tables > 0:
+            details.append(
+                pluralize(
+                    missing_partitioned_tables,
+                    "partitioned table has missing row-count stats",
+                    "partitioned tables have missing row-count stats",
+                )
+            )
+        else:
+            details.append(
+                f"partition row-count coverage {stats_detail_status(partition_coverage)}"
+            )
+    elif table_status in MISSING_STATS_STATUSES | INCOMPLETE_STATS_STATUSES:
+        details.append(f"table/partition row-count stats {stats_detail_status(table_status)}")
+
+    if structured_join_filter_column_stats_gap(quality):
+        relevance = join_filter_column_stats_detail_status(quality)
+        observed = whole_number(quality.get("join_filter_columns_observed"))
+        complete = whole_number(quality.get("join_filter_columns_with_complete_stats"))
+        without_stats = whole_number(quality.get("join_filter_columns_without_stats"))
+        missing_detail = without_stats or sum(
+            whole_number(quality.get(key))
+            for key in (
+                "join_filter_columns_with_ndv_missing_stats",
+                "join_filter_columns_with_size_missing_stats",
+                "join_filter_columns_with_all_missing_stats",
+                "join_filter_columns_with_unknown_stats",
+            )
+        )
+        if observed > 0:
+            details.append(
+                f"join/filter column stats coverage {stats_detail_status(relevance)}: "
+                f"{complete}/{observed} complete, {missing_detail} missing or incomplete"
+            )
+        else:
+            details.append(f"join/filter column stats coverage {stats_detail_status(relevance)}")
+    elif column_status in MISSING_STATS_STATUSES | INCOMPLETE_STATS_STATUSES:
+        details.append(f"column stats {stats_detail_status(column_status)}")
+    return tuple(dedupe_preserve_order(details)[:4])
+
+
+def stats_quality_from_facts(facts: str) -> dict[str, object] | None:
+    keys = (
+        "table_stats",
+        "column_stats",
+        "partition_coverage",
+        "partitioned_tables_with_missing_table_stats",
+        "partition_count",
+        "partitions_with_known_row_count",
+        "partitions_with_unknown_row_count",
+        "join_filter_column_relevance",
+        "join_filter_columns_observed",
+        "join_filter_columns_without_stats",
+        "join_filter_columns_with_complete_stats",
+        "join_filter_columns_with_ndv_missing_stats",
+        "join_filter_columns_with_size_missing_stats",
+        "join_filter_columns_with_all_missing_stats",
+        "join_filter_columns_with_unknown_stats",
+    )
+    quality = {key: values[0] for key in keys if (values := fact_values(facts, key))}
+    return quality or None
+
+
+def stats_detail_status(value: str) -> str:
+    return str(value or "unknown").replace("_", " ")
+
+
+def whole_number(value: object) -> int:
+    return int(numeric_value(value))
+
+
+def pluralize(count: int, singular: str, plural: str) -> str:
+    label = singular if count == 1 else plural
+    return f"{count} {label}"
 
 
 def estimate_mismatch_evidence(
@@ -507,8 +659,10 @@ def stats_candidate_tier(
     normalized_metadata_status = str(metadata_status).lower()
     if normalized_metadata_status not in USABLE_METADATA_STATUSES and score >= 20:
         return "unknown"
-    if normalized_metadata_status in PARTIAL_METADATA_STATUSES and score >= 40:
+    if normalized_metadata_status in PARTIAL_METADATA_STATUSES and chain_complete and score >= 40:
         return "medium"
+    if not chain_complete and score >= 40:
+        return "low"
     if chain_complete and score >= 70:
         return "high"
     if score >= 40:
@@ -564,14 +718,10 @@ def important_column_stats_evidence(
 ) -> bool:
     quality = analysis_dict(analysis, "stats_metadata_quality")
     if quality is not None:
-        return numeric_value(quality.get("join_filter_columns_without_stats")) > 0 or str(
-            quality.get("join_filter_column_relevance") or ""
-        ).lower() in {"missing", "partial"}
+        return structured_join_filter_column_stats_gap(quality)
     sql_context = analysis_dict(analysis, "sql_column_context")
     if sql_context is not None:
-        return numeric_value(sql_context.get("join_filter_columns_without_stats")) > 0 or str(
-            sql_context.get("join_filter_column_relevance") or ""
-        ).lower() in {"missing", "partial"}
+        return structured_join_filter_column_stats_gap(sql_context)
     lower = facts.lower()
     return any(
         marker in lower

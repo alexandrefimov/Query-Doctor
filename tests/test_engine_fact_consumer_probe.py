@@ -62,6 +62,7 @@ def test_engine_fact_consumer_probe_is_raw_free_for_golden_cases():
         assert "impala_analyzer_projection" not in text
         assert "trino_statement_stats_fixture" not in text
         assert "trino_event_listener_fixture" not in text
+        assert "spark_history_eventlog_compact_fixture" not in text
 
 
 @pytest.mark.parametrize(
@@ -71,7 +72,7 @@ def test_engine_fact_consumer_probe_is_raw_free_for_golden_cases():
         ("impala_spill_observed", "spill_or_scratch_evidence"),
         ("impala_failed_query", "query_failed"),
         ("impala_missing_sections", "parser_coverage_unknown"),
-        ("trino_statement_stats_fixture", "limitation_unknown:admission_control"),
+        ("trino_statement_stats_fixture", "limitation_unknown:no_admission_model"),
         ("trino_failed_statement_stats_fixture", "query_failed"),
         (
             "trino_failure_category_statement_stats_fixture",
@@ -83,7 +84,7 @@ def test_engine_fact_consumer_probe_is_raw_free_for_golden_cases():
         ("trino_connector_metric_present_statement_stats_fixture", "connector_metric_signal"),
         (
             "trino_connector_metric_absent_statement_stats_fixture",
-            "limitation_unknown:admission_control",
+            "limitation_unknown:no_admission_model",
         ),
         ("trino_completed_event_fixture", "spill_or_scratch_evidence"),
         ("trino_resource_group_queued_event_fixture", "blocked_or_admission_wait"),
@@ -91,17 +92,23 @@ def test_engine_fact_consumer_probe_is_raw_free_for_golden_cases():
         ("trino_query_detail_failure_category_fixture", "failure_category:resource_limit"),
         ("trino_query_detail_spill_fixture", "spill_or_scratch_evidence"),
         ("trino_query_detail_stage_skew_fixture", "stage_skew_candidate"),
-        ("trino_query_detail_queued_fixture", "limitation_unknown:admission_control"),
+        ("trino_query_detail_queued_fixture", "limitation_unknown:no_admission_model"),
         ("trino_query_detail_connector_metric_fixture", "connector_metric_signal"),
         (
             "trino_query_detail_connector_metric_absent_fixture",
-            "limitation_unknown:admission_control",
+            "limitation_unknown:no_admission_model",
         ),
         ("trino_query_detail_task_failure_fixture", "task_failures_observed"),
-        ("trino_query_detail_missing_fields_fixture", "limitation_unknown:admission_control"),
+        ("trino_query_detail_missing_fields_fixture", "limitation_unknown:no_admission_model"),
         ("trino_unknown_source_contract_event_fixture", "parser_coverage_unknown"),
         ("trino_query_detail_unknown_source_contract_fixture", "parser_coverage_unknown"),
-        ("trino_completed_event_missing_fields_fixture", "limitation_unknown:admission_control"),
+        ("trino_completed_event_missing_fields_fixture", "limitation_unknown:no_admission_model"),
+        ("spark_history_eventlog_compact_fixture", "spill_or_scratch_evidence"),
+        ("spark_history_eventlog_compact_fixture", "stage_skew_candidate"),
+        ("spark_history_eventlog_compact_fixture", "task_retries_observed"),
+        ("spark_history_eventlog_compact_fixture", "spark_scheduler_delay_observed"),
+        ("spark_history_eventlog_compact_fixture", "limitation_unknown:no_product_support"),
+        ("spark_failure_category_fixture", "failure_category:resource_limit"),
     ),
 )
 def test_engine_fact_consumer_probe_attention_signals_are_state_backed(
@@ -157,6 +164,29 @@ def test_engine_fact_consumer_probe_rejects_invalid_boundary_state():
     payload["fact_groups"]["timing"][0]["state"] = "observed"
 
     with pytest.raises(EngineFactContractError, match="unsupported boundary diagnostic state"):
+        engine_fact_consumer_probe_from_boundary(payload)
+
+
+def test_engine_fact_consumer_probe_rejects_wrong_engine_for_boundary_fact_id():
+    case = next(
+        case
+        for case in engine_fact_contract_cases()
+        if case.case_id == "spark_history_eventlog_compact_fixture"
+    )
+    payload = engine_fact_boundary_payload(case.bundle)
+    payload["fact_groups"]["stages"].append(
+        {
+            "id": "trino_stage_count",
+            "state": "supported",
+            "value": 1,
+            "unit": "stages",
+        }
+    )
+
+    with pytest.raises(
+        EngineFactContractError,
+        match="normalized engine fact id trino_stage_count is not allowed for engine spark",
+    ):
         engine_fact_consumer_probe_from_boundary(payload)
 
 

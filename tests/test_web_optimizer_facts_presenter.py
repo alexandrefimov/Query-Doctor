@@ -204,6 +204,16 @@ def test_no_recipe_action_mappings_cover_all_visible_review_tracks():
     assert set(OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS) == track_keys
     assert set(OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS) == track_keys
     assert set(OPTIMIZER_NO_RECIPE_WORKLOAD_METRIC_LABELS) == track_keys
+    for track in sorted(track_keys - {"source_unavailable"}):
+        verification = optimizer_no_recipe_verification(track)
+        if track in {"not_applicable", "unknown"}:
+            assert verification == ""
+            continue
+        assert "compare" in verification.lower(), track
+        assert any(
+            term in verification.lower()
+            for term in ("rerun", "re-run", "next scan", "repeated group", "repeated-group")
+        ), track
 
 
 def test_no_recipe_review_area_and_direction_ignore_unknown_tokens():

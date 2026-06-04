@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from query_doctor.analyzer.profile_format import profile_section_mapping
 from query_doctor.analyzer.scalars import extract_first_duration_ms, parse_size_bytes
 
 
@@ -165,7 +166,14 @@ def parse_backend_startup_latencies(value: str) -> dict[str, Any]:
     return result
 
 
-def build_profile_resource_facts(text: str) -> dict[str, Any]:
+def build_profile_resource_facts(
+    text: str,
+    profile_format: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    mapping = profile_section_mapping(profile_format, "profile_resources")
+    if mapping["state"] == "unsupported":
+        return unavailable_profile_resource_facts(mapping)
+
     admission_match = ADMISSION_RESULT_RE.search(text)
     admission_queue_match = ADMISSION_QUEUE_RE.search(text)
     backend_match = BACKEND_STARTUP_RE.search(text)
@@ -237,5 +245,27 @@ def build_profile_resource_facts(text: str) -> dict[str, Any]:
             "available": bool(system_time_values),
             **numeric_summary(system_time_values),
         },
+        "section_mapping": mapping["state"],
+        "section_mapping_reason": mapping["reason"],
+        "limitations": [] if mapping["state"] == "supported" else [mapping["summary"]],
     }
     return facts
+
+
+def unavailable_profile_resource_facts(mapping: dict[str, str]) -> dict[str, Any]:
+    empty_summary = {"available": False, **numeric_summary([])}
+    return {
+        "available": False,
+        "admission_result": "unknown",
+        "admission_wait_ms": None,
+        "admission_queue_reason_category": "unknown",
+        "backend_startup_latencies": {"available": False},
+        "fragment_instances_per_host": empty_summary,
+        "per_node_peak_memory": empty_summary,
+        "per_node_bytes_read": empty_summary,
+        "per_node_user_time": empty_summary,
+        "per_node_system_time": empty_summary,
+        "section_mapping": mapping["state"],
+        "section_mapping_reason": mapping["reason"],
+        "limitations": [mapping["summary"]],
+    }

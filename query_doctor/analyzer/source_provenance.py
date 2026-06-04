@@ -193,7 +193,7 @@ def metadata_provenance(analysis: dict[str, Any]) -> dict[str, Any]:
             "unavailable",
             "Impala metadata context",
             "context_error",
-            [str(context.get("error") or "Metadata context could not be read.")],
+            ["Metadata context could not be read; source availability is unavailable."],
         )
     tables_requested = context.get("tables_requested")
     tables = context.get("tables") if isinstance(context.get("tables"), list) else []

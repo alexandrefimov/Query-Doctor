@@ -248,7 +248,9 @@ Talk track:
 ## Fast Demo Path
 
 1. Open Workloads at `#workload-action-queue`.
-2. Show the Admission/runtime workload pair and local synthetic action outcomes.
+2. Show the Admission/runtime workload pair and local synthetic action outcomes,
+   then open Workload Details and use a representative case Action card as the
+   safe place to record rerun feedback.
 3. Open the synthetic optimization recommendations case from the table.
 4. Show Findings, then open full report, then open the optimizer outcome.
 5. Open the top statistics-maintenance candidate and show the stats evidence

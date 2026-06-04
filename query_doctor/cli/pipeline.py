@@ -27,7 +27,10 @@ from query_doctor.impala.metadata_workflow import (
     resolve_metadata_mode,
     validate_metadata_args,
 )
-from query_doctor.report.language_contract import SUPPORTED_REPORT_LANGUAGES
+from query_doctor.report.language_contract import (
+    SUPPORTED_REPORT_LANGUAGES,
+    normalize_report_language,
+)
 from query_doctor.report.llm_client import DEFAULT_LLM_PROVIDER, LLM_PROVIDER_CHOICES
 
 
@@ -36,6 +39,13 @@ ANALYZER_TIMEOUT_SEC = 900
 METADATA_STAGE_TIMEOUT_SEC = 1800
 REPORT_TIMEOUT_SEC = 2400
 SUBPROCESS_TIMEOUT_EXIT_CODE = 124
+
+
+def report_language_arg(value: str) -> str:
+    try:
+        return normalize_report_language(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def read_metadata_source_tables_from_env(env: dict[str, str]) -> list[str]:
@@ -148,6 +158,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--language",
+        type=report_language_arg,
         choices=SUPPORTED_REPORT_LANGUAGES,
         default="en",
         help="Report language passed to query-doctor-report. Default: %(default)s",

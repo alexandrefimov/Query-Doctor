@@ -15,8 +15,10 @@ release-facing private preview wording используйте
 ## Статус
 
 Это не live collector, не support announcement, не engine selector и не
-browser/report surface. Query Doctor не получает прямой доступ к Trino-кластеру
-на этом этапе.
+Details/trusted-report surface. Separate isolated compact-diagnosis page
+принимает только already raw-free direct boundary JSON или selected sample
+boundary из package boundary export. Query Doctor не получает
+прямой доступ к Trino-кластеру на этом этапе.
 
 ## Цель
 
@@ -110,6 +112,11 @@ accepted sample payloads остаются fixture work, а не live collection.
 `python3 scripts/validate_trino_evidence_package.py <sanitized-package.json>`.
 Команда печатает только safe summary и не должна echo raw payloads, raw values
 или input path.
+Если handoff содержит compact sanitized local event-listener store без package
+wrapper, запускайте
+`query-doctor-trino-event-store-import --redaction-reviewed <sanitized-event-store.json-or-ndjson>`.
+Команда читает один explicit local JSON/NDJSON file, validates compact event
+records и печатает только safe summary или raw-free boundary JSON.
 
 Raw exports остаются только в operator-controlled Trino environment, не в Query
 Doctor workspace и не в prompts.
@@ -122,10 +129,12 @@ Doctor workspace и не в prompts.
 - каждый sample проходит maximum size и nested-depth bounds fixture contract;
 - каждый supported fact query-specific или явно aggregate и version-scoped;
 - каждое отсутствующее или unsupported поле имеет `unknown` или omission reason;
-- не нужен browser route, trusted report, optimizer behavior, live adapter,
-  public README claim или engine registration.
+- не нужен Details route, trusted report, optimizer behavior, live adapter или
+  public README live-support claim; packaged offline import остается raw-free.
+  Separate isolated compact-diagnosis page принимает только already raw-free
+  direct boundary JSON или selected sample boundary из package boundary export.
 
-Следующий шаг после accepted package - всё ещё fixture work: добавить
+Следующий шаг после accepted package - raw-free import/fixture work: добавить
 sanitized fixtures и mapper tests. Live reader появляется позже, когда
 source-contract и redaction tests докажут такую же границу на exported
 evidence.

@@ -90,6 +90,21 @@ def test_pipeline_default_metadata_mode_is_auto():
     assert args.metadata_mode == "auto"
 
 
+def test_pipeline_language_arg_is_normalized_before_validation():
+    module = load_pipeline_module()
+
+    args = module.parse_args(["case-dir", "--language", " RU "])
+
+    assert args.language == "ru"
+
+
+def test_pipeline_language_arg_rejects_unknown_language():
+    module = load_pipeline_module()
+
+    with pytest.raises(SystemExit):
+        module.parse_args(["case-dir", "--language", "de"])
+
+
 def test_pipeline_stop_after_analysis_help_mentions_no_llm(capsys):
     module = load_pipeline_module()
 
@@ -235,7 +250,7 @@ def test_pipeline_passes_selected_mode_and_language_to_reporter(tmp_path, monkey
 
     monkeypatch.setattr(module, "run_cmd", fake_run_cmd)
 
-    result = module.main([str(case_dir), "--mode", "user", "--language", "ru"])
+    result = module.main([str(case_dir), "--mode", "user", "--language", "RU"])
 
     assert result == 0
     report_cmds = [cmd for cmd in commands if command_uses_role(cmd, "report")]

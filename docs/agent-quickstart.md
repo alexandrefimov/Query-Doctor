@@ -1,6 +1,6 @@
 # Agent Quickstart
 
-Last updated: 2026-06-01
+Last updated: 2026-06-03
 
 Use this file as the short entry point before reading larger agent docs. It
 does not replace `AGENTS.md` or the safety contract.
@@ -12,6 +12,10 @@ does not replace `AGENTS.md` or the safety contract.
   changes.
 - Use `python3 scripts/agent_preflight.py` when test or reading scope is not
   obvious.
+- For engine support wording, second-engine research, normalized engine facts,
+  Spark compact intake, or Trino private-preview work, read
+  [engine-support-gap-matrix.md](engine-support-gap-matrix.md) before changing
+  product claims or wiring.
 - For every code change, review impacted docs for drift. Update docs in the
   same slice when behavior, contracts, commands, routes, or safety wording
   changes; otherwise mention that relevant docs remain accurate.
@@ -58,14 +62,15 @@ does not replace `AGENTS.md` or the safety contract.
   branch and validate there before the main merge. `git merge --ff-only` is
   acceptable only when the branch is a direct descendant of `main`; do not use
   it as the default when `main` has moved.
-- When the branch is complete and committed, recommend merging it back to
-  `main`. Do not merge, push, rebase, amend, or force-push unless the user
-  explicitly asks for that integration operation. Never push directly to remote
-  `main`; a requested push should target a task branch for review.
-- After a successful merge to `main`, remove completed clean task worktrees and
-  delete merged local branches when they are no longer needed. Remove the
-  worktree before deleting a branch that is checked out there, and do not force
-  cleanup when unmerged or user changes are present.
+- When the branch is complete, committed, validated, and clean, merge it back to
+  local `main` in the same turn unless the user explicitly asks to stop before
+  merge. Do not push, rebase, amend, or force-push unless the user explicitly
+  asks for that operation. Never push directly to remote `main`; a requested push
+  should target a task branch for review.
+- After a successful local merge to `main`, remove completed clean task worktrees
+  and delete merged local branches in the same turn when they are no longer
+  needed. Remove the worktree before deleting a branch that is checked out there,
+  and do not force cleanup when unmerged or user changes are present.
 
 ## Read Path
 
@@ -73,6 +78,8 @@ does not replace `AGENTS.md` or the safety contract.
 - Larger, safety-sensitive, web, report, optimizer, collector, config, or
   architecture work: `docs/codex-handoff.md`.
 - Public/local documentation split: `docs/public-documentation-boundary.md`.
+- Engine support status and second-engine gates:
+  `docs/engine-support-gap-matrix.md`.
 - Optimizer, report validation, browser safety, web Details, or architecture
   work: also read `docs/code-audit.md`.
 - Behavior ownership lookup: `docs/code-map.md`.

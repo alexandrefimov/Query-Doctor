@@ -35,7 +35,10 @@ from query_doctor.analyzer.profile_signals import (
     find_matching_lines,
     find_nonzero_spill_metric_lines,
 )
-from query_doctor.analyzer.profile_format import build_profile_format_facts
+from query_doctor.analyzer.profile_format import (
+    build_profile_format_facts,
+    profile_section_mapping_state,
+)
 from query_doctor.analyzer.profile_counter_registry import (
     DEFAULT_PROFILE_COUNTER_REGISTRY,
     ProfileCounterRegistry,
@@ -102,6 +105,18 @@ def op_to_json_with_row_guardrail(
     return payload
 
 
+def profile_text_analysis_supported(profile_format: dict[str, Any]) -> bool:
+    dialect = str(profile_format.get("profile_dialect") or "").strip().lower()
+    return dialect == "classic_text_profile"
+
+
+def profile_counter_analysis_available(profile_format: dict[str, Any]) -> bool:
+    return profile_section_mapping_state(profile_format, "profile_counters") in {
+        "supported",
+        "limited",
+    }
+
+
 def analyze(
     text: str,
     args: argparse.Namespace,
@@ -110,29 +125,43 @@ def analyze(
 ) -> dict[str, Any]:
     raw_text = text
     text = normalize_profile_text(text)
-    operators = parse_operators(text)
     profile_format = build_profile_format_facts(text, cm_query_context, raw_text=raw_text)
-    exec_node_completeness = build_exec_node_completeness_facts(text, operators, cm_query_context)
+    profile_text = text if profile_text_analysis_supported(profile_format) else ""
+    profile_counter_text = text if profile_counter_analysis_available(profile_format) else ""
+    profile_timing_text = (
+        text
+        if profile_section_mapping_state(profile_format, "profile_timings") == "supported"
+        else ""
+    )
+
+    operators = parse_operators(profile_text)
+    exec_node_completeness = build_exec_node_completeness_facts(
+        profile_text, operators, cm_query_context
+    )
     row_conclusion_operators = [
         op for op in operators if operator_row_conclusions_supported(op, exec_node_completeness)
     ]
-    profile_resources = build_profile_resource_facts(text)
-    profile_timings = build_profile_timing_facts(text)
-    resource_trace = build_resource_trace_facts(text)
-    backend_tail = build_backend_tail_analysis(parse_backend_host_facts(text))
-    runtime_counter_context = build_runtime_counter_context(text)
+    profile_resources = build_profile_resource_facts(text, profile_format)
+    profile_timings = build_profile_timing_facts(text, profile_format)
+    resource_trace = build_resource_trace_facts(text, profile_format)
+    backend_tail = build_backend_tail_analysis(parse_backend_host_facts(profile_text))
+    runtime_counter_context = build_runtime_counter_context(profile_counter_text)
     totals = {
-        name: extract_total_counter(text, name)
+        name: extract_total_counter(profile_counter_text, name)
         for name in ["TotalBytesRead", "TotalBytesSent", "TotalTime"]
     }
     query_wall_clock = build_query_wall_clock(
-        totals, cm_query_context, extract_query_timeline_duration_ms(text)
+        totals, cm_query_context, extract_query_timeline_duration_ms(profile_timing_text)
     )
     client_fetch = apply_client_fetch_profile_policy(
-        build_client_fetch_facts(text, profile_timings, query_wall_clock, counter_registry),
+        build_client_fetch_facts(
+            profile_counter_text, profile_timings, query_wall_clock, counter_registry
+        ),
         profile_format,
     )
-    runtime_filters = build_runtime_filter_facts(text, profile_format, exec_node_completeness)
+    runtime_filters = build_runtime_filter_facts(
+        profile_text, profile_format, exec_node_completeness
+    )
 
     top_by_time = sorted(
         [op for op in operators if op.time_ms is not None],
@@ -230,17 +259,17 @@ def analyze(
         )
     ]
 
-    spill_lines = find_matching_lines(text, SPILL_RE)
-    spill_nonzero_lines = find_nonzero_spill_metric_lines(text, counter_registry)
+    spill_lines = find_matching_lines(profile_counter_text, SPILL_RE)
+    spill_nonzero_lines = find_nonzero_spill_metric_lines(profile_counter_text, counter_registry)
     stats_lines = find_matching_lines(
-        text, re.compile("|".join(p.pattern for p in STATS_PATTERNS), re.IGNORECASE)
+        profile_text, re.compile("|".join(p.pattern for p in STATS_PATTERNS), re.IGNORECASE)
     )
-    storage_lines = find_matching_lines(text, SCAN_STORAGE_RE)
-    codegen_lines = find_matching_lines(text, CODEGEN_RE)
+    storage_lines = find_matching_lines(profile_text, SCAN_STORAGE_RE)
+    codegen_lines = find_matching_lines(profile_text, CODEGEN_RE)
 
     scan_top_ops = [op for op in top_by_time[:3] if op.is_scan]
     query_wall_clock_ms = query_wall_clock.get("duration_ms")
-    codegen_bottleneck_lines = find_codegen_bottleneck_lines(text, query_wall_clock_ms)
+    codegen_bottleneck_lines = find_codegen_bottleneck_lines(profile_text, query_wall_clock_ms)
     total_read = totals.get("TotalBytesRead")
     total_read_bytes = (
         total_read.get("bytes")
@@ -454,7 +483,7 @@ def analyze(
                 ],
             )
         )
-    elif re.search(r"\bANALYTIC\b", text, re.IGNORECASE):
+    elif re.search(r"\bANALYTIC\b", profile_text, re.IGNORECASE):
         findings.append(
             make_finding(
                 "analytic_present",
@@ -464,7 +493,10 @@ def analyze(
             )
         )
 
-    if spill_nonzero_lines:
+    if (
+        spill_nonzero_lines
+        and profile_section_mapping_state(profile_format, "memory_pressure") == "supported"
+    ):
         findings.append(
             make_finding(
                 "spill_or_scratch_io",

@@ -176,8 +176,8 @@ def test_web_render_page_sets_brand_favicon():
 
     body = module.render_page(settings)
 
-    assert '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,' in body
-    assert "%3Cpath%20d%3D%22M5%2012h3l2-5%204%2010%202-5h3%22%2F%3E" in body
+    assert '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,' in body
+    assert "www.w3.org" not in body
     assert body.index("<title>Query Doctor</title>") < body.index('rel="icon"')
     assert body.index('rel="icon"') < body.index('src="/static/theme-bootstrap.js"')
     assert body.index('src="/static/theme-bootstrap.js"') < body.index('href="/static/app.css"')

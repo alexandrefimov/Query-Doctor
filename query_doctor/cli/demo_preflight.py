@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -195,6 +196,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--skip-history",
         action="store_true",
         help="With --public-release, skip git history scanning and inspect only the current tracked tree.",
+    )
+    parser.add_argument(
+        "--history-base",
+        default=os.environ.get("RELEASE_HISTORY_BASE"),
+        help=(
+            "With --public-release, scan only commits in HISTORY_BASE..HISTORY_HEAD "
+            "instead of every local ref. Defaults to RELEASE_HISTORY_BASE when set."
+        ),
+    )
+    parser.add_argument(
+        "--history-head",
+        default=os.environ.get("RELEASE_HISTORY_HEAD", "HEAD"),
+        help=(
+            "With --public-release and --history-base, choose the release head ref. "
+            "Defaults to RELEASE_HISTORY_HEAD or HEAD."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -410,10 +427,22 @@ def parse_git_grep_line(line: str) -> tuple[str, str, str] | None:
 def scan_git_history_for_public_release(
     repo_dir: Path,
     *,
+    base_ref: str | None = None,
+    head_ref: str = "HEAD",
     runner: Runner = run_command,
 ) -> tuple[Finding, ...]:
-    revisions_result = git_output(["rev-list", "--all"], repo_dir=repo_dir, runner=runner)
+    rev_list_args = (
+        ["rev-list", "--all"] if not base_ref else ["rev-list", f"{base_ref}..{head_ref}"]
+    )
+    revisions_result = git_output(rev_list_args, repo_dir=repo_dir, runner=runner)
     if revisions_result.returncode != 0:
+        if base_ref:
+            return (
+                Finding(
+                    "warning",
+                    f"could not read git history range {base_ref}..{head_ref} for public release scan",
+                ),
+            )
         return (Finding("warning", "could not read git history for public release scan"),)
     revisions = tuple(line.strip() for line in revisions_result.stdout.splitlines() if line.strip())
     if not revisions:
@@ -543,6 +572,8 @@ def build_report(
     runner: Runner = run_command,
     public_release: bool = False,
     skip_history: bool = False,
+    history_base: str | None = None,
+    history_head: str = "HEAD",
 ) -> PreflightReport:
     status = git_output(["status", "--porcelain"], repo_dir=repo_dir, runner=runner)
     dirty_paths = status_lines_to_paths(status.stdout) if status.returncode == 0 else ()
@@ -574,7 +605,14 @@ def build_report(
     if public_release:
         findings.extend(scan_tracked_tree_for_public_release(repo_dir, runner=runner))
         if not skip_history:
-            findings.extend(scan_git_history_for_public_release(repo_dir, runner=runner))
+            findings.extend(
+                scan_git_history_for_public_release(
+                    repo_dir,
+                    base_ref=history_base,
+                    head_ref=history_head,
+                    runner=runner,
+                )
+            )
     return PreflightReport(
         dirty_paths=dirty_paths,
         changed_files=changed_files,
@@ -615,7 +653,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     repo_dir = Path(args.repo or ".").resolve()
     report = build_report(
-        repo_dir, public_release=args.public_release, skip_history=args.skip_history
+        repo_dir,
+        public_release=args.public_release,
+        skip_history=args.skip_history,
+        history_base=args.history_base,
+        history_head=args.history_head,
     )
     print(render_report(report))
     return 1 if report.status == NOT_READY else 0

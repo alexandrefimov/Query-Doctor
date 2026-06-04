@@ -78,6 +78,22 @@ class WorkloadOutcomeMetric:
     last_recommendation_id: str
     last_applied: str
     last_outcome: str
+    last_applied_recommendation_id: str
+    last_applied_outcome: str
+    family_signal: "WorkloadOutcomeFamilySignal"
+
+
+@dataclass(frozen=True)
+class WorkloadOutcomeFamilySignal:
+    recommendation_id: str
+    total_records: int
+    applied_count: int
+    improved_count: int
+    no_change_count: int
+    worsened_count: int
+    unsure_count: int
+    min_sample_met: bool
+    min_applied: int
 
 
 def action_outcomes_path() -> Path:
@@ -236,8 +252,12 @@ def workload_outcome_metrics_by_fingerprint(
     *,
     path: Path | None = None,
     limit: int = DEFAULT_METRIC_LOAD_LIMIT,
+    min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
 ) -> dict[str, WorkloadOutcomeMetric]:
-    return summarize_workload_action_outcomes(load_action_outcomes(path=path, limit=limit))
+    return summarize_workload_action_outcomes(
+        load_action_outcomes(path=path, limit=limit),
+        min_applied=min_applied,
+    )
 
 
 def summarize_action_outcomes(
@@ -271,6 +291,8 @@ def summarize_action_outcomes(
 
 def summarize_workload_action_outcomes(
     records: list[ActionOutcomeRecord],
+    *,
+    min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
 ) -> dict[str, WorkloadOutcomeMetric]:
     grouped: dict[str, list[ActionOutcomeRecord]] = {}
     for record in records:
@@ -286,6 +308,7 @@ def summarize_workload_action_outcomes(
         workload_fingerprint: workload_outcome_metric(
             workload_fingerprint=workload_fingerprint,
             records=group_records,
+            min_applied=min_applied,
         )
         for workload_fingerprint, group_records in grouped.items()
     }
@@ -322,10 +345,23 @@ def workload_outcome_metric(
     *,
     workload_fingerprint: str,
     records: list[ActionOutcomeRecord],
+    min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
 ) -> WorkloadOutcomeMetric:
     applied_counts = Counter(record.applied for record in records)
     outcome_counts = Counter(record.outcome for record in records if record.applied == "yes")
     last_record = records[-1]
+    last_applied_record = next(
+        (record for record in reversed(records) if record.applied == "yes"),
+        None,
+    )
+    family_recommendation_id = (
+        last_applied_record.recommendation_id
+        if last_applied_record is not None
+        else last_record.recommendation_id
+    )
+    family_records = [
+        record for record in records if record.recommendation_id == family_recommendation_id
+    ]
     return WorkloadOutcomeMetric(
         workload_fingerprint=workload_fingerprint,
         total_records=len(records),
@@ -339,6 +375,37 @@ def workload_outcome_metric(
         last_recommendation_id=last_record.recommendation_id,
         last_applied=last_record.applied,
         last_outcome=last_record.outcome,
+        last_applied_recommendation_id=(
+            last_applied_record.recommendation_id if last_applied_record is not None else ""
+        ),
+        last_applied_outcome=last_applied_record.outcome if last_applied_record is not None else "",
+        family_signal=workload_outcome_family_signal(
+            recommendation_id=family_recommendation_id,
+            records=family_records,
+            min_applied=min_applied,
+        ),
+    )
+
+
+def workload_outcome_family_signal(
+    *,
+    recommendation_id: str,
+    records: list[ActionOutcomeRecord],
+    min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
+) -> WorkloadOutcomeFamilySignal:
+    outcome_counts = Counter(record.outcome for record in records if record.applied == "yes")
+    applied_count = sum(1 for record in records if record.applied == "yes")
+    min_applied = max(1, int(min_applied))
+    return WorkloadOutcomeFamilySignal(
+        recommendation_id=recommendation_id,
+        total_records=len(records),
+        applied_count=applied_count,
+        improved_count=outcome_counts.get("improved", 0),
+        no_change_count=outcome_counts.get("no_change", 0),
+        worsened_count=outcome_counts.get("worsened", 0),
+        unsure_count=outcome_counts.get("unsure", 0),
+        min_sample_met=applied_count >= min_applied,
+        min_applied=min_applied,
     )
 
 
@@ -355,18 +422,29 @@ def workload_outcome_summary_text(metric: WorkloadOutcomeMetric | None) -> str:
         if count > 0:
             outcome_parts.append(f"{label} {count}")
     outcome_summary = ", ".join(outcome_parts) if outcome_parts else "no applied outcomes"
-    last_label = safe_recommendation_label(metric.last_recommendation_id)
-    last_outcome = workload_last_outcome_label(metric)
     return (
         f"{metric.total_records} recorded; {metric.applied_count} applied; "
-        f"{outcome_summary}; last {last_label}: {last_outcome}"
+        f"{outcome_summary}; last applied action {workload_last_applied_action_label(metric)}; "
+        f"family signal {workload_outcome_family_signal_text(metric.family_signal)}"
     )
 
 
+def workload_last_applied_action_label(metric: WorkloadOutcomeMetric) -> str:
+    if not metric.last_applied_recommendation_id:
+        return "none yet"
+    label = safe_recommendation_label(metric.last_applied_recommendation_id)
+    outcome = workload_outcome_label("yes", metric.last_applied_outcome)
+    return f"{label}: {outcome}"
+
+
 def workload_last_outcome_label(metric: WorkloadOutcomeMetric) -> str:
-    if metric.last_applied == "no":
+    return workload_outcome_label(metric.last_applied, metric.last_outcome)
+
+
+def workload_outcome_label(applied: str, outcome: str) -> str:
+    if applied == "no":
         return "not applied"
-    if metric.last_applied == "skip":
+    if applied == "skip":
         return "skipped"
     return {
         "improved": "improved",
@@ -374,7 +452,40 @@ def workload_last_outcome_label(metric: WorkloadOutcomeMetric) -> str:
         "worsened": "worsened",
         "unsure": "unsure",
         "not_applicable": "not applicable",
-    }.get(metric.last_outcome, "unknown")
+    }.get(outcome, "unknown")
+
+
+def workload_outcome_family_signal_text(signal: WorkloadOutcomeFamilySignal) -> str:
+    label = safe_recommendation_label(signal.recommendation_id)
+    next_check = workload_outcome_family_next_check(signal.recommendation_id)
+    sample_text = workload_outcome_family_sample_text(signal)
+    if signal.applied_count <= 0:
+        return f"{label}: no applied records yet; {sample_text}; next check {next_check}"
+    parts = [f"improved {signal.improved_count}/{signal.applied_count} applied"]
+    for label_text, count in (
+        ("no change", signal.no_change_count),
+        ("worsened", signal.worsened_count),
+        ("unsure", signal.unsure_count),
+    ):
+        if count > 0:
+            parts.append(f"{label_text} {count}")
+    return f"{label}: {', '.join(parts)}; {sample_text}; next check {next_check}"
+
+
+def workload_outcome_family_sample_text(signal: WorkloadOutcomeFamilySignal) -> str:
+    if signal.min_sample_met:
+        return (
+            f"feedback sample threshold met ({signal.applied_count}/{signal.min_applied} applied)"
+        )
+    return f"feedback sample below threshold ({signal.applied_count}/{signal.min_applied} applied)"
+
+
+def workload_outcome_family_next_check(recommendation_id: str) -> str:
+    return {
+        "query_optimization_review.v1": "query-shape signal count and group p95",
+        "stats_refresh_review.v1": "stats signal count and group p95",
+        "runtime_admission_check.v1": "admission/runtime signal count and group p95",
+    }.get(recommendation_id, "signal count and group p95")
 
 
 def parse_action_outcome_line(line: str) -> ActionOutcomeRecord | None:

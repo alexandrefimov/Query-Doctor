@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from query_doctor.analyzer.profile_format import profile_section_mapping
 from query_doctor.analyzer.scalars import NUMBER_PATTERN, parse_rate_bytes_per_sec
 
 
@@ -112,8 +113,24 @@ def parse_rate_samples(value: str) -> list[float]:
     return samples
 
 
-def build_resource_trace_facts(text: str) -> dict[str, Any]:
+def build_resource_trace_facts(
+    text: str,
+    profile_format: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Parse optional resource-trace samples as raw-free host context."""
+
+    mapping = profile_section_mapping(profile_format, "resource_trace")
+    if mapping["state"] == "unsupported":
+        if profile_format is not None:
+            return unavailable_resource_trace_facts(mapping)
+        mapping = {
+            "state": "limited",
+            "reason": "profile_section_mapping_missing_best_effort",
+            "summary": (
+                "Profile section mapping was unavailable; resource trace parsing is "
+                "limited to allowlisted aggregate host counters."
+            ),
+        }
 
     values_by_metric: dict[str, list[float]] = {name: [] for name in METRIC_ORDER}
     units_by_metric: dict[str, str] = {
@@ -168,9 +185,38 @@ def build_resource_trace_facts(text: str) -> dict[str, Any]:
         "observed_metric_count": len(observed_metrics),
         "observed_metrics": observed_metrics,
         "metrics": metrics,
+        "section_mapping": mapping["state"],
+        "section_mapping_reason": mapping["reason"],
         "guardrail": (
             "Resource trace samples are safe aggregate host context only; they do not "
             "promote a root cause or primary bottleneck by themselves."
         ),
         "limitations": limitations,
+    }
+
+
+def unavailable_resource_trace_facts(mapping: dict[str, str]) -> dict[str, Any]:
+    metrics = {
+        name: metric_summary(
+            [],
+            "percent" if name.startswith("cpu_") else "bytes_per_second",
+        )
+        for name in METRIC_ORDER
+    }
+    return {
+        "available": False,
+        "status": "unknown",
+        "evidence_tier": "unsupported",
+        "primary_supported": False,
+        "selected_query_mapping": "unknown",
+        "observed_metric_count": 0,
+        "observed_metrics": [],
+        "metrics": metrics,
+        "section_mapping": mapping["state"],
+        "section_mapping_reason": mapping["reason"],
+        "guardrail": (
+            "Resource trace samples are profile-derived context. Unsupported profile "
+            "resource-trace sections stay unknown until a dialect-specific mapping exists."
+        ),
+        "limitations": [mapping["summary"]],
     }

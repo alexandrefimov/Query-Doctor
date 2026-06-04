@@ -20,6 +20,7 @@ from query_doctor.impala.profile_source import (
     normalize_impala_profile_hosts,
     normalize_impala_profile_scheme,
 )
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 
 
 UrlOpener = Callable[..., object]
@@ -68,7 +69,7 @@ def fetch_impala_daemon_identity(
     port: int = DEFAULT_IMPALA_PROFILE_PORT,
     scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME,
     timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
-    opener: UrlOpener = urllib.request.urlopen,
+    opener: UrlOpener = configured_diagnostic_urlopen,
 ) -> ImpalaDaemonIdentity | None:
     urls = endpoint_urls(hosts, port=port, scheme=scheme, path="/metrics?json")
     for metrics_url in urls:

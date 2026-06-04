@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from query_doctor.web import trusted_artifacts
-from query_doctor.web.command_builders import PYTHON_REPORT_NAME, REPORT_VARIANT_PYTHON
+from query_doctor.web.command_builders import (
+    PYTHON_REPORT_NAME,
+    PYTHON_REPORT_VALIDATION_MARKER,
+    REPORT_VARIANT_PYTHON,
+    WEB_REPORT_MARKER_SCHEMA_VERSION,
+)
 from query_doctor.web.jobs import WebJobStore
 
 
@@ -230,7 +235,12 @@ def test_load_case_impala_context_artifact_is_bounded_and_path_safe(tmp_path):
 
 
 def write_optimizer_marker(
-    case_dir, *, source_sql, draft_name="optimized_query.sql", source_scope="read_only_statement"
+    case_dir,
+    *,
+    source_sql,
+    draft_name="optimized_query.sql",
+    source_scope="read_only_statement",
+    validation_mode=trusted_artifacts.OPTIMIZED_QUERY_VALIDATION_MODE,
 ):
     marker = {
         "draft": draft_name,
@@ -243,7 +253,7 @@ def write_optimizer_marker(
         "source_scope": source_scope,
         "source_sql_sha256": hashlib.sha256(source_sql.encode("utf-8")).hexdigest(),
         "validated": True,
-        "validation_mode": trusted_artifacts.OPTIMIZED_QUERY_VALIDATION_MODE,
+        "validation_mode": validation_mode,
     }
     (case_dir / "optimized_query.validated.json").write_text(json.dumps(marker), encoding="utf-8")
 
@@ -325,6 +335,22 @@ def test_optimizer_artifact_status_uses_strict_trust_check_for_draft_sql_safety(
     assert trusted_artifacts.optimizer_artifact_status_for_dir(case_dir) == "partial_untrusted"
 
 
+def test_optimizer_artifact_status_rejects_non_strict_v2_validation_mode(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    source_sql = "SELECT a FROM db.source_table WHERE ds = 20260504"
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"statement": source_sql}), encoding="utf-8"
+    )
+    (case_dir / "optimized_query.sql").write_text(f"{source_sql};\n", encoding="utf-8")
+    write_optimizer_marker(case_dir, source_sql=source_sql, validation_mode="strict")
+
+    assert not trusted_artifacts.optimized_query_validated_exists(case_dir)
+    assert trusted_artifacts.optimizer_artifact_status_for_dir(case_dir) == "partial_untrusted"
+    assert trusted_artifacts.load_validated_optimized_query(case_dir) is None
+
+
 def test_trusted_report_artifacts_include_text_and_safe_download_name(tmp_path):
     batch_case_dir = tmp_path / "cases" / "case-001"
     specific_case_dir = tmp_path / "specific"
@@ -382,6 +408,59 @@ def test_trusted_report_artifacts_hide_stale_report_text(tmp_path):
             {"case_index": 1, "query_id": "abc", "case_dir": str(case_dir)},
         )
         is None
+    )
+    assert trusted_artifacts.load_specific_query_trusted_report_artifact("abc", case_dir) is None
+
+
+def test_trusted_report_artifacts_reject_non_strict_validation_mode(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    write_trusted_report(case_dir, "# Report\n\nsafe body\n")
+    marker_path = case_dir / PYTHON_REPORT_VALIDATION_MARKER
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    marker["validation_mode"] = "off"
+    marker_path.write_text(json.dumps(marker), encoding="utf-8")
+
+    assert not trusted_artifacts.batch_case_validated_report_exists(
+        case_dir, report_variant=REPORT_VARIANT_PYTHON
+    )
+    assert trusted_artifacts.load_specific_query_trusted_report_artifact("abc", case_dir) is None
+
+
+def test_trusted_report_marker_writer_binds_schema_version(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    write_trusted_report(case_dir, "# Report\n\nsafe body\n")
+
+    marker = json.loads((case_dir / PYTHON_REPORT_VALIDATION_MARKER).read_text(encoding="utf-8"))
+
+    assert marker["schema_version"] == WEB_REPORT_MARKER_SCHEMA_VERSION
+    assert trusted_artifacts.batch_case_validated_report_exists(
+        case_dir, report_variant=REPORT_VARIANT_PYTHON
+    )
+
+
+def test_trusted_report_artifacts_reject_missing_or_stale_schema_version(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "analysis_facts.md").write_text("FACTS\n", encoding="utf-8")
+    write_trusted_report(case_dir, "# Report\n\nsafe body\n")
+    marker_path = case_dir / PYTHON_REPORT_VALIDATION_MARKER
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+
+    marker.pop("schema_version")
+    marker_path.write_text(json.dumps(marker), encoding="utf-8")
+    assert not trusted_artifacts.batch_case_validated_report_exists(
+        case_dir, report_variant=REPORT_VARIANT_PYTHON
+    )
+    assert trusted_artifacts.load_specific_query_trusted_report_artifact("abc", case_dir) is None
+
+    marker["schema_version"] = WEB_REPORT_MARKER_SCHEMA_VERSION - 1
+    marker_path.write_text(json.dumps(marker), encoding="utf-8")
+    assert not trusted_artifacts.batch_case_validated_report_exists(
+        case_dir, report_variant=REPORT_VARIANT_PYTHON
     )
     assert trusted_artifacts.load_specific_query_trusted_report_artifact("abc", case_dir) is None
 

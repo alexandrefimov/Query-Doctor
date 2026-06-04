@@ -28,6 +28,9 @@ BLOCKED_PATH_PARTS = (
     ".venv/",
     "__pycache__/",
     "cases/",
+    ".replace-",
+    ".query-refresh-",
+    ".cm-timeseries-refresh-",
     "htmlcov/",
 )
 BLOCKED_FILENAMES = {

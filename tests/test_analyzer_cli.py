@@ -108,6 +108,27 @@ def test_analyzer_maps_classic_json_profile_counters_without_primary_promotion(t
             }
         ),
     )
+    (case_dir / "query_metadata.json").write_text(
+        json.dumps(
+            {
+                "query_id": "abc:def",
+                "profile_source": "impala_daemon",
+                "profile_source_label": "raw-host.example.com should not render",
+                "profile_response_format": "json",
+                "profile_fetch_attempt_count": 1,
+                "profile_json_probe_enabled": True,
+                "profile_docs_probe_enabled": True,
+                "profile_docs_fetch_attempt_count": 2,
+                "impala_daemon_product": "apache_impala",
+                "impala_daemon_version": "5.0.0-SNAPSHOT",
+                "impala_daemon_version_label": "impalad version 5.0.0-SNAPSHOT RELEASE",
+                "impala_daemon_build_type": "RELEASE",
+                "impala_daemon_server_mode": "coordinator",
+                "impala_daemon_local_catalog_mode": True,
+            }
+        ),
+        encoding="utf-8",
+    )
     json_path = case_dir / "analysis.json"
 
     result = subprocess.run(
@@ -132,17 +153,49 @@ def test_analyzer_maps_classic_json_profile_counters_without_primary_promotion(t
     assert analysis["profile_format"]["profile_dialect"] == "classic_json_profile"
     assert analysis["profile_format"]["layout"] == "json_mapped_counters"
     assert analysis["profile_format"]["primary_bottleneck_policy"] == "unsupported"
+    assert analysis["profile_format"]["source_label"] == "Impala daemon profile endpoint"
+    assert analysis["profile_format"]["source_capabilities"] == {
+        "profile_response_format": "json",
+        "profile_fetch_attempt_count": 1,
+        "json_profile_probe": "enabled",
+        "profile_docs_probe": "enabled",
+        "profile_docs_fetch_attempt_count": 2,
+        "json_profile_payload": "mapped_limited",
+        "text_profile_payload": "not_selected",
+        "primary_profile_routing": "unsupported",
+    }
+    assert (
+        analysis["profile_format"]["section_mappings"]["profile_resources"]["state"]
+        == "unsupported"
+    )
+    assert analysis["profile_format"]["section_mappings"]["profile_counters"]["state"] == "limited"
+    assert analysis["profile_format"]["section_mappings"]["memory_pressure"]["state"] == "limited"
     assert analysis["client_fetch"]["counter_stability"] == "STABLE_HIGH"
-    assert analysis["client_fetch"]["evidence_tier"] == "strong"
+    assert analysis["client_fetch"]["evidence_tier"] == "context_only"
+    assert analysis["client_fetch"]["section_mapping"] == "limited"
     assert analysis["client_fetch"]["finding_supported"] is False
-    assert analysis["memory_pressure"]["status"] == "supported"
-    assert analysis["memory_pressure"]["evidence_tier"] == "strong"
+    assert analysis["memory_pressure"]["status"] == "context_only"
+    assert analysis["memory_pressure"]["evidence_tier"] == "context_only"
+    assert analysis["memory_pressure"]["finding_supported"] is False
+    assert analysis["memory_pressure"]["spill_or_scratch_evidence_count"] == 0
+    assert analysis["memory_pressure"]["limited_spill_or_scratch_counter_count"] == 1
     assert analysis["case_primary_bottleneck"] == {
         "label": "unknown",
         "confidence": "low",
         "reasons": ["profile_dialect_not_supported_for_primary"],
     }
+    assert "- source: Impala daemon profile endpoint" in facts_text
+    assert (
+        "- source_capabilities: endpoint_format=json, json_probe=enabled, "
+        "json_payload=mapped_limited, text_payload=not_selected, "
+        "profile_docs_probe=enabled"
+    ) in facts_text
     assert "json_profile_mapping: mapped_counter_count=3" in facts_text
+    assert "profile_counters=limited" in facts_text
+    assert "memory_pressure=limited" in facts_text
+    assert "limited_spill_or_scratch_counter_count: 1" in facts_text
+    assert "### Spill or scratch I/O" not in facts_text
+    assert "raw-host.example.com" not in facts_text
 
 
 def test_analyzer_uses_profile_docs_registry_context_for_counter_stability(tmp_path):
@@ -336,6 +389,94 @@ def test_analyzer_facts_include_safe_admission_aggregate_context(tmp_path):
     assert "root.secret_pool" not in text
     assert "raw-query-id" not in text
     assert "/tmp/provider/path" not in text
+
+
+def test_analyzer_keeps_unavailable_direct_admission_context_unknown(tmp_path):
+    case_dir = write_case(
+        tmp_path,
+        """
+# Synthetic direct Impala digest
+
+## ExecSummary
+
+```text
+01:SCAN HDFS  1  1s000ms  1s000ms  10  10  1.00 MB  1.00 MB
+```
+
+## Metric lines
+
+```text
+- TotalTime: 20s
+```
+""",
+    )
+    (case_dir / "query_metadata.json").write_text(
+        json.dumps(
+            {
+                "query_id": "abc:def",
+                "duration_ms": 20_000,
+                "profile_source": "impala_daemon",
+                "profile_source_label": "raw-host.example.com should not render",
+                "profile_response_format": "text",
+                "profile_fetch_attempt_count": 1,
+                "profile_json_probe_enabled": True,
+                "profile_docs_probe_enabled": True,
+                "profile_docs_fetch_attempt_count": 2,
+                "admission_context_probe_enabled": True,
+                "admission_context_fetch_attempt_count": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (case_dir / "admission_context.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "available": False,
+                "status": "unavailable",
+                "source": "http://internal.example/admission",
+                "source_label": "raw-host.example.com should not render",
+                "scope": "raw_pool_scope",
+                "queue_present": "raw-query-id",
+                "pool_pressure": "http://internal.example/pool",
+                "reason": "https://internal.example/admission?token=secret",
+                "raw_pool_name": "root.secret_pool",
+                "queued_queries": [{"query_id": "raw-query-id"}],
+                "limitations": [
+                    "Impala admission debug context was unavailable or unmapped; keep pool/admission context unknown.",
+                    "Raw /tmp/provider/path should not render.",
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_analyzer(case_dir)
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    text = (case_dir / "analysis_facts.md").read_text(encoding="utf-8")
+    assert "## Profile Format" in text
+    assert "- source: Impala daemon profile endpoint" in text
+    assert "profile_docs_probe=enabled" in text
+    assert "## Admission Context" in text
+    assert "- status: unavailable" in text
+    assert "- available: no" in text
+    assert "- source: Impala admission debug endpoint" in text
+    assert "- scope: unknown" in text
+    assert "- reason: request_failed" in text
+    assert "- queue_present: unknown" in text
+    assert "- pool_pressure: unknown" in text
+    assert "keep pool/admission context unknown" in text
+    assert "## Runtime Admission Evidence" in text
+    assert "- evidence_tier: context_only" in text
+    assert "- primary_supported: no" in text
+    assert "- label: runtime_admission" not in text
+    assert "raw-host.example.com" not in text
+    assert "root.secret_pool" not in text
+    assert "raw-query-id" not in text
+    assert "/tmp/provider/path" not in text
+    assert "internal.example" not in text
+    assert_no_banned_or_unsupported_claims(text)
 
 
 def write_cm_timeseries_context(
@@ -1138,6 +1279,69 @@ def test_analyzer_profile_v2_reports_limited_analysis_scope(tmp_path):
     assert "- primary_bottleneck_policy: non_profile_only" in text
     assert "Experimental profile-v2 was detected" in text
     assert "scan-skew and backend-tail claims must not be promoted" in text
+    assert_no_banned_or_unsupported_claims(text)
+
+
+def test_analyzer_profile_v2_sections_fail_closed_without_raw_details(tmp_path):
+    case_dir = write_case(
+        tmp_path,
+        json.dumps(
+            {
+                "profile_version": 2,
+                "aggregated_profile": {
+                    "sections": [
+                        {
+                            "name": "Query Timeline",
+                            "value": "Completed admission after 45s on worker-a.example.net",
+                        },
+                        {
+                            "name": "Admission result",
+                            "value": "Queued for pool memory on worker-a.example.net",
+                        },
+                    ],
+                    "counters": [
+                        {"name": "ClientFetchWaitTimer", "value": "45s"},
+                        {"name": "ScratchBytesWritten", "value": "4.0 KiB"},
+                    ],
+                },
+            }
+        ),
+    )
+    json_path = case_dir / "analysis.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "query_doctor.cli.analyze_profile",
+            str(case_dir),
+            "--json",
+            str(json_path),
+        ],
+        cwd=str(REPO_DIR),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    analysis = json.loads(json_path.read_text(encoding="utf-8"))
+    text = (case_dir / "analysis_facts.md").read_text(encoding="utf-8")
+
+    assert analysis["profile_format"]["profile_dialect"] == "experimental_profile_v2"
+    assert (
+        analysis["profile_format"]["section_mappings"]["profile_counters"]["state"] == "unsupported"
+    )
+    assert analysis["profile_resources"]["available"] is False
+    assert analysis["profile_timings"]["available"] is False
+    assert analysis["client_fetch"]["evidence_tier"] == "unsupported"
+    assert analysis["memory_pressure"]["evidence_tier"] == "unsupported"
+    assert "profile_counters=unsupported" in text
+    assert "## Client Fetch Tail Facts" not in text
+    assert "## Memory Pressure Evidence" not in text
+    assert "Completed admission after 45s" not in text
+    assert "pool memory on" not in text
+    assert "worker-a.example.net" not in text
     assert_no_banned_or_unsupported_claims(text)
 
 

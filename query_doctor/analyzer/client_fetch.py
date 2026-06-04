@@ -14,6 +14,7 @@ from query_doctor.analyzer.profile_counter_registry import (
     profile_counter_definition,
     profile_counter_stability_payload,
 )
+from query_doctor.analyzer.profile_format import profile_section_mapping
 from query_doctor.analyzer.scalars import DURATION_TOKEN_RE, duration_group_to_ms, fmt_duration
 
 
@@ -173,18 +174,38 @@ def apply_client_fetch_profile_policy(
     """Apply profile dialect promotion policy to client-fetch facts."""
 
     policy = str(profile_format.get("primary_bottleneck_policy") or "").strip().lower()
-    if policy == "supported":
-        return {**facts, "promotion_policy": "supported"}
+    mapping = profile_section_mapping(profile_format, "client_fetch_tail")
+    mapping_state = mapping["state"]
+    if mapping_state == "supported":
+        return {
+            **facts,
+            "promotion_policy": policy or "supported",
+            "section_mapping": mapping_state,
+            "section_mapping_reason": mapping["reason"],
+        }
     if facts.get("evidence_tier") not in {"strong", "medium"}:
-        return {**facts, "promotion_policy": policy or "unknown"}
+        return {
+            **facts,
+            "promotion_policy": policy or mapping_state or "unknown",
+            "section_mapping": mapping_state,
+            "section_mapping_reason": mapping["reason"],
+        }
 
     limitations = [str(item) for item in facts.get("limitations") or [] if item]
     limitations.append(
-        "Client fetch wait counter was parsed, but this profile dialect is not mapped for fetch-tail promotion."
+        (
+            "Client fetch wait counter was parsed as safe context, but this profile "
+            "dialect or section is not mapped for fetch-tail promotion."
+        )
     )
+    limitations.append(mapping["summary"])
     return {
         **facts,
-        "promotion_policy": policy or "unknown",
+        "promotion_policy": policy or mapping_state or "unknown",
+        "section_mapping": mapping_state,
+        "section_mapping_reason": mapping["reason"],
+        "status": "context_only",
+        "evidence_tier": "context_only",
         "finding_supported": False,
         "primary_supported": False,
         "limitations": limitations,

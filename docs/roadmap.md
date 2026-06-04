@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-05-29
+Last updated: 2026-06-03
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -14,7 +14,15 @@ is not a historical audit log. For engineering risks, use
 
 ## Current Scope
 
-- Apache Impala is the only implemented SQL engine.
+- Apache Impala is the only implemented production triage SQL engine. Trino is
+  implemented only for sanitized offline evidence package import, bounded local
+  event-store import, bounded HTTP event archive import, bounded HTTP
+  query-detail archive import, bounded local query-detail import, and bounded
+  local query-list aggregate import, plus bounded local statement-stats import
+  and event-source contract checking and dry-run coordinator query-info target
+  checking, plus bounded pruned coordinator query-info probing, one-query
+  pruned coordinator fact import, and local compact diagnosis over raw-free
+  boundary JSON.
 - Query Doctor is positioned as a local-first Big Data query diagnostic tool
   focused today on Impala production triage, not as a generic AI query profile
   analyzer.
@@ -47,6 +55,9 @@ is not a historical audit log. For engineering risks, use
   outcome rollups.
 - Details pages show deterministic findings, an explicit Python Report
   baseline, optional LLM narrative, and Query LLM optimizer actions.
+  `no_llm=true` is a supported safety and privacy mode for selected-case
+  report and optimizer actions; in that mode the outputs stay Python-owned and
+  do not require a model route.
 - Help, Details static UI copy, and newly generated trusted reports are
   controlled by the global `language` config. English is the default; Russian
   remains a localized companion mode, not a separately generated second report.
@@ -101,6 +112,11 @@ automatic SQL rewriting.
 - The LLM's durable role is report wording, recommendation wording, and
   engineering review support. It should not be treated as the trusted SQL writer
   for supported optimizer recipes or as the source of diagnostic facts.
+- The core product should remain deterministic-first and no-LLM-capable:
+  Recent diagnosis, Details, Python reports, trusted optimizer outcomes, demos,
+  and validation must stay useful when `no_llm=true`. LLM-backed wording can
+  remain an optional selected-case extension when it improves communication
+  without weakening trust, privacy, latency, or local-first operation.
 - Marketing, demos, and benchmarks should lead with evidence-backed diagnosis:
   stats vs SQL shape vs runtime/admission/skew/data movement vs unknown, then
   show SQL rewrites only for recipe-backed cases.
@@ -127,9 +143,28 @@ Primary diagnosis metrics:
   representative real-case batches.
 - `case_primary_bottleneck = unknown` is below 30% for normal Impala diagnosis
   work, and below roughly 20% before adding another SQL engine.
+- Representative calibration should run
+  `scripts/audit_impala_diagnostic_loop.py <batch_summary.json>` as the
+  aggregate strict gate over Details, profile evidence, diagnostic coverage,
+  workload, stats, and optimizer readiness. Add `--action-outcomes
+  <action_outcomes.jsonl> --require-action-outcomes` for outcome feedback and
+  `--require-direct-source-readiness` for direct Impala batches.
+- Component drilldown should run
+  `scripts/audit_impala_coverage_gaps.py <batch_summary.json> --fail-on-diagnostic-coverage-gaps`
+  so missing analyzer output, missing primary labels, high unknown-primary rate,
+  and low medium/high primary coverage become raw-free audit blockers.
+- Representative stats calibration should run
+  `scripts/audit_stats_diagnostics.py <batch_summary.json> --fail-on-stats-readiness-gaps`
+  so Medium/High stats candidates need structured metadata detail, usable
+  metadata status, safe review areas, and comparable rerun confirmation before
+  they support readiness claims.
 - Evidence quality improves over time through deterministic facts, metadata
   coverage, workload baselines, and action outcome history rather than through
   stronger wording.
+- No-LLM selected-case actions produce strict-validated trusted reports and
+  trusted optimizer outcomes on supported synthetic and sanitized real fixtures.
+- LLM-backed selected-case actions are evaluated as optional wording quality,
+  not as diagnosis coverage or proof of optimizer capability.
 
 Optimizer-specific metrics:
 
@@ -149,7 +184,11 @@ Optimizer-specific metrics:
   `no_recipe_review_track_counts`, including narrow guidance-only subtracks
   such as filtered scalar aggregate review, grouped/distinct/scalar aggregate
   review, and UNION ALL branch-boundary review, before turning any repeated
-  family into a recipe candidate.
+  family into a recipe candidate. Strict representative calibration should add
+  `--fail-on-repeated-no-recipe-readiness-gaps` so repeated no-recipe workload
+  groups without one specific safe review track, allowlisted review area,
+  bounded change direction, workload metric, and compare/rerun verification
+  wording are treated as audit blockers before recipe work.
 
 ## Safety Baseline
 
@@ -229,6 +268,10 @@ multiple later changes:
 - Report and optimizer trust contracts: validator allowlists, trusted artifact
   predicates, marker validation, no-echo behavior, and strict
   recommendations-only or `no_rewrite` fallbacks.
+- Deterministic-first / no-LLM-capable posture: keep report, optimizer, web
+  action labels, config, demo, and docs aligned so the core selected-case flow
+  remains useful without a model route, while LLM-backed wording stays an
+  optional explicit extension.
 - Provider-neutral analyzer contracts for the current Cloudera Manager path:
   canonical context keys/headings, legacy `cm_*` fallbacks, metrics reads by
   abstract `signal_id`, source provenance coverage wording, and legacy-safe
@@ -306,6 +349,77 @@ before adding broader grouping dimensions.
    cards.
 5. Metadata and stats depth for join/filter column coverage, freshness,
    selectivity mismatch, and bottleneck calibration.
+
+## Impala Strategic Goals
+
+These goals define the next Impala diagnostic-quality direction. They deepen the
+current Impala product wedge and do not add a new engine, provider, support
+claim, or raw-profile analysis surface.
+
+1. Bring direct Impala to a reliable diagnostic-quality level for the existing
+   bounded Recent, Running, and Known Query ID workflows. Direct Impala should
+   degrade safely when optional JSON profiles, `/profile_docs`, `/admission?json`,
+   Prometheus metrics, metadata, or Cloudera Manager-only events are unavailable,
+   and Details/reports should explain that coverage in raw-free limitation
+   wording. Representative direct-source calibration should add
+   `--fail-on-direct-source-readiness-gaps` to
+   `scripts/audit_impala_coverage_gaps.py` so unknown source provenance or
+   optional-source states block readiness claims while explicit unavailable or
+   not-configured limitations remain acceptable.
+2. Expand profile evidence only through explicit dialect and section mappings.
+   Classic JSON, classic Thrift, and experimental/profile-v2 profiles are separate
+   dialects, not classic text profiles with different field names. Unknown,
+   unsupported, or partially mapped sections must stay below primary-bottleneck
+   promotion until fixtures, parser support, evidence tiers, and safety tests
+   prove the mapped interpretation.
+3. Improve primary-bottleneck coverage by adding deterministic evidence, not by
+   strengthening prose. Admission, memory pressure, scan skew, client-fetch tail,
+   resource/timing facts, metadata/stats, and workload-repeatability work should
+   reduce `unknown` only when analyzer-owned facts support the narrower claim.
+4. Keep Details as an analyst decision page. The visible path should explain why
+   the query deserves attention, where to inspect, what supported change
+   direction to try, and how to verify a comparable rerun. Collector internals,
+   profile-section status, metric-source status, and raw fact categories belong in
+   limitations or collapsed diagnostics unless they directly support that
+   decision loop.
+5. Strengthen Impala metadata and stats diagnosis. Join/filter column stats,
+   partition coverage, stale or missing stats, metadata divergence, and
+   query-shape versus runtime separation should help route a case toward stats
+   maintenance, SQL-shape review, runtime follow-up, or `unknown` without exposing
+   raw metadata. Representative calibration should run
+   `scripts/audit_stats_diagnostics.py <batch_summary.json> --fail-on-stats-readiness-gaps`
+   before broadening stats-readiness claims on real batches.
+6. Make runtime, admission, and pool context first-class supporting evidence
+   without turning context into root-cause proof. `/admission?json`, Cloudera
+   Manager metrics/events, Prometheus metrics, and concurrent workload signals can
+   corroborate query-specific findings, but they must not replace selected-query
+   admission waits, profile facts, metadata facts, or mapped runtime evidence.
+7. Grow the sanitized fixture corpus and representative real-batch audit loop.
+   Fresh daemon profile layouts, JSON/profile-v2 edge cases, incomplete or
+   cancelled nodes, counter aliases, admission gaps, Prometheus partial coverage,
+   and mixed-signal batches need fixtures or path-free aggregate audits before
+   support wording or scoring behavior is broadened.
+8. Keep every new Impala fact on the raw-free trust path: bounded/redacted
+   collection, analyzer-owned structured fact, report-safe renderer wording, and
+   validation tests. Browser-visible UI and trusted reports must not expose raw
+   SQL, raw profile text, raw metadata, local paths, hostnames, artifact names, or
+   model/runtime internals.
+9. Stabilize the workload-level Impala loop. Recent should rank individual
+   expensive queries and also surface repeated workload fingerprints,
+   frequent-short groups, regressions, owner/pool/admin digests, action queues,
+   and action outcome history from raw-free deterministic facts. Representative
+   calibration should run
+   `scripts/audit_workload_diagnostics.py <batch_summary.json> --fail-on-workload-readiness-gaps`
+   so repeated groups without usable details, representatives, regression
+   baselines, workload-history status, or comparable verification guidance block
+   workload-readiness claims. Runs that validate outcome feedback should add
+   `--action-outcomes <action_outcomes.jsonl> --fail-on-action-outcome-readiness-gaps`
+   so action queues and detail hints prove they carry safe aggregate feedback
+   summaries without embedding local outcome files in batch summaries.
+10. Prepare future engine contracts by making Impala facts explicit, not by
+   generalizing prematurely. Future engines should inherit the ability to publish
+   `supported`, `not_observed`, and `unknown` facts from proven Impala contracts,
+   without fake adapters, runtime engine selectors, or public support claims.
 
 ### P2 - Expansion Readiness
 
@@ -386,16 +500,22 @@ item first only when the touched area has a direct P0 safety or contract risk.
    technical status/context such as stats, metadata, table key, score reasons,
    and group explanations behind Details or explicit disclosures, and then run
    a short repeat UI audit against the local web page.
-6. Finish the remaining provider-neutral runtime contract tail: report-validator
+6. When selected-case report or optimizer UI/help is touched, move visible
+   action wording toward neutral `Report` and `Query optimizer` labels while
+   keeping backend status explicit (`Python-owned`, `LLM-backed`, or
+   `no_llm=true`). Do not hide trust-relevant backend state and do not promote
+   LLM output as evidence.
+7. Finish the remaining provider-neutral runtime contract tail: report-validator
    heading tests when aliases or headings change, plus compatibility-safe
    UI/presenter naming cleanup.
-7. Use source provenance for safe Details/report coverage and limitation
-   wording, including explicit direct Impala coverage for profile, optional
-   Prometheus metrics, unavailable events, and metadata status.
-8. Stabilize the new workload-diagnostics surfaces on sanitized real batches:
+8. Keep source-provenance wording compatibility-safe across Details, trusted
+   reports, and future UI/presenter naming cleanup, including explicit direct
+   Impala coverage for profile, optional Prometheus metrics, unavailable events,
+   and metadata status.
+9. Stabilize the new workload-diagnostics surfaces on sanitized real batches:
    repeated/frequent-short/regressed groups, admin digest, action queue,
    workload detail pages, and action outcome rollups.
-9. Use `scripts/audit_optimizer_funnel.py`,
+10. Use `scripts/audit_optimizer_funnel.py`,
    `scripts/audit_optimizer_plain_shapes.py`, and
    `scripts/audit_optimizer_representative_shapes.py` on the latest broad
    Recent smoke to choose the next optimizer slice from repeated workload
@@ -403,9 +523,9 @@ item first only when the touched area has a direct P0 safety or contract risk.
    where analyzer facts and validation can prove a safe Python-owned transform;
    otherwise improve family-specific review guidance rather than producing a
    trusted SQL draft.
-10. Continue replacing report-side stats/query-shape extraction with structured
+11. Continue replacing report-side stats/query-shape extraction with structured
    analyzer facts and validate the result on real sanitized batches.
-11. Add safe query-type grouping only after deterministic classifier facts can
+12. Add safe query-type grouping only after deterministic classifier facts can
    explain unknown or unsupported shapes without reading raw SQL.
 
 ## Dependency And Readiness Rules
@@ -602,9 +722,10 @@ Provider-neutral runtime context cleanup:
   context-only signals. Web Details facts loaders expose provider-neutral
   runtime-metrics aliases and state builders consume them, while preserving
   existing `cm_*` keys, wrapper names, and artifacts as legacy load fallbacks.
-  The remaining migration is broader source-provenance use in safe
-  Details/report coverage wording and compatibility-safe UI/presenter naming
-  cleanup.
+  Web Details source limitations and trusted Python report evidence bullets now
+  consume analyzer Source Provenance facts for explicit `none`, `unavailable`,
+  and partial coverage wording on direct Impala cases. The remaining migration
+  is compatibility-safe UI/presenter naming cleanup.
 - Keep report-validator heading allowlists and snapshot tests in sync with any
   heading or alias change, so the trusted report contract cannot drift silently.
 - Keep any later metric-catalog expansion source-backed: new metrics must write
@@ -855,7 +976,10 @@ Current calibration note as of 2026-05-29:
    and representative audit blockers should stay aligned with the raw-free
    no-recipe review tracks used in product guidance, and broad batch summaries
    should retain `no_recipe_review_track_counts` as the quick backlog mix
-   signal.
+   signal. Use `--fail-on-repeated-no-recipe-readiness-gaps` when repeated
+   guidance-only groups must be blocked until they have one specific safe
+   review track and complete allowlisted guidance with compare/rerun
+   verification.
 2. Re-run the real optimizer benchmark after the prompt-route split, model
    default split, rewriteability taxonomy, recipe-aware ranking, and
    per-conjunct predicate-pushdown baseline. Compare trusted SQL drafts,
@@ -944,8 +1068,15 @@ Near-term metadata/stats work:
 
 1. Finish replacing report-side stats/query-shape extractors with structured
    analyzer facts where available. Recent stats and query optimization scorers
-   already prefer `analysis.json` and keep rendered markdown parsing only as a
-   fallback.
+   already prefer `analysis.json`, and report stats-maintenance routing now
+   prefers rendered `Stats Metadata Quality` facts while exchange/data-movement
+   recommendations prefer rendered `Data Movement Evidence` facts and
+   spill/scratch gates prefer rendered `Memory Pressure Evidence` facts.
+   Admission/pool next checks prefer rendered `Runtime Admission Evidence` and
+   correlated `Runtime Metrics Correlation` facts, while backend/per-host next
+   checks require supported backend follow-up evidence before legacy text
+   fallbacks. Remaining query-shape/report extractors keep rendered markdown
+   parsing as a fallback until structured facts cover those paths.
 2. Continue treating stats freshness as unknown unless a future direct
    staleness or metadata-divergence fact exists. Recent scoring no longer uses
    `stats_possibly_stale` rendered text as positive evidence.
@@ -959,9 +1090,11 @@ Near-term metadata/stats work:
    `batch_summary.json`/Markdown to track unknown, mixed, not-classified, and
    medium-or-better confidence rates across real-case batches.
 6. Improve partition and column stats detail from already-collected metadata:
-   partition row-count coverage counts are now parsed from `SHOW TABLE STATS`;
-   remaining work is join/filter column stats coverage, without exposing raw
-   partition values or raw metadata output.
+   partition row-count coverage counts are parsed from `SHOW TABLE STATS`, and
+   join/filter column stats coverage is derived from already-collected SQL
+   context plus per-column stats status without exposing raw partition values
+   or raw metadata output. Continue calibrating these facts against
+   representative sanitized batches before treating stats as primary.
 
 Stop condition for stats diagnosis without EXPLAIN or reruns:
 
@@ -1094,23 +1227,24 @@ These are not current support. Revisit them only when the listed signal is met.
 
 ### Engines And Storage
 
-Future Big Data SQL/lakehouse engine candidates include Trino, Spark SQL,
-StarRocks, Apache Doris, ClickHouse, and Dremio. They require engine-specific
-collectors, parsers, metadata allowlists, validators, browser safety tests, and
-report coverage before being documented as supported.
+Future Big Data SQL/lakehouse live engine candidates include expanded Trino,
+Spark SQL, StarRocks, Apache Doris, ClickHouse, and Dremio. They require
+engine-specific collectors, parsers, metadata allowlists, validators, browser
+safety tests, and report coverage before being documented as live supported.
 
-Do not claim a second supported engine until Impala diagnosis is useful on real
-workloads or a design-partner workload proves cross-engine urgency. A practical
-support-claim readiness bar remains `case_primary_bottleneck = unknown` below
-roughly 20% on a representative real-case batch, plus the support gates above.
-Exploratory fixture-only work can start earlier when it is used to shape the
-engine fact contract and stays out of public support surfaces.
+Do not claim a second live supported engine until Impala diagnosis is useful on
+real workloads or a design-partner workload proves cross-engine urgency. A
+practical live-support readiness bar remains `case_primary_bottleneck =
+unknown` below roughly 20% on a representative real-case batch, plus the
+support gates above. Bounded offline import work can start earlier when it is
+used to shape the engine fact contract and stays out of live product surfaces.
 
-Spark SQL is explicitly deferred for now. Its useful diagnostic surface is a
-different model from Impala: SQL plans plus per-stage/per-task metrics,
-executor behavior, event history, and logs. Treating it as the first second
-engine would multiply collector, parser, analyzer, optimizer, validation, and
-maintenance cost before the Impala product clears the readiness gate.
+Spark SQL remains deferred for product support. Its useful diagnostic surface
+is a different model from Impala: applications, SQL executions, jobs, stages,
+tasks, executor behavior, event history, and logs. A research-only Spark
+architecture spike may define the fact model and compact fixture contract, but
+it must not add collection, UI, reports, optimizer behavior, or a public support
+claim before the same gates apply.
 
 Recommended expansion order is documented in
 [engine-expansion-plan.md](engine-expansion-plan.md):
@@ -1124,7 +1258,10 @@ Recommended expansion order is documented in
    an engine fact-contract question. Trino is the default candidate to validate
    because of migration-path fit, but it is not a public commitment. See
    [engines/trino-diagnostic-contract.md](engines/trino-diagnostic-contract.md)
-   for Trino source and evidence rules.
+   for Trino source and evidence rules. Spark architecture research is tracked
+   separately in
+   [engines/spark-architecture-spike.md](engines/spark-architecture-spike.md)
+   and remains below product support.
 4. Supported second engine only after real design partner demand, collection
    contracts, parser/fact fixtures, metadata allowlists, browser/report safety
    tests, and a support gap matrix.

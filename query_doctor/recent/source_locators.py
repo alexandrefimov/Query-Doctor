@@ -28,6 +28,8 @@ SOURCE_LOCATOR_IDS = {
     "plan_data_movement_operator",
     "plan_memory_anomaly",
     "plan_top_time_operator",
+    "profile_resource_admission_evidence",
+    "profile_timing_admission_evidence",
     "runtime_admission_window",
     "sql_cte_block",
     "sql_derived_table",
@@ -157,7 +159,30 @@ def runtime_admission_locators(case: CaseResult) -> list[dict[str, str]]:
     )
     if str(bottleneck.get("label") or "").strip().lower() != "runtime_admission":
         return []
-    return [locator("runtime_admission_window", "case runtime window")]
+    locators = [locator("runtime_admission_window", "case runtime window")]
+    reasons = normalized_bottleneck_reasons(bottleneck)
+    if "admission_wait_source_profile_resource_facts" in reasons:
+        locators.append(
+            locator(
+                "profile_resource_admission_evidence",
+                "query-specific admission result or resource wait",
+            )
+        )
+    if "admission_wait_source_profile_timing_facts" in reasons:
+        locators.append(
+            locator(
+                "profile_timing_admission_evidence",
+                "query timeline admission phase",
+            )
+        )
+    return dedupe_locators(locators, limit=5)
+
+
+def normalized_bottleneck_reasons(bottleneck: dict[str, object]) -> set[str]:
+    reasons = bottleneck.get("reasons")
+    if not isinstance(reasons, (list, tuple)):
+        return set()
+    return {str(reason or "").strip().lower() for reason in reasons if reason is not None}
 
 
 def add_sql_shape_locators(

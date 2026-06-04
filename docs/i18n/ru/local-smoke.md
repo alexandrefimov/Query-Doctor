@@ -125,9 +125,15 @@ query-doctor-pipeline "$SMOKE_OUT" \
 ## Trino Kerberos smoke
 
 Запускайте только как operator-only development smoke для проверки
-Kerberos/SPNEGO-доступа к Trino coordinator. Поддержка Trino в Query Doctor
-остается fixture-only: это не live Trino collector, не engine adapter, не UI
-route, не report surface, не optimizer path и не support claim.
+Kerberos/SPNEGO-доступа к Trino coordinator. Trino path в Query Doctor
+ограничен sanitized offline evidence package import, bounded local event-store
+import, bounded HTTP event archive import, bounded HTTP query-detail archive
+import, bounded local query-detail import, bounded local query-list aggregate
+import, bounded local statement-stats import, event-source contract checking и
+dry-run coordinator query-info target checking, plus bounded pruned
+coordinator query-info probing/import:
+это не live Trino collector, не live engine selector, не UI route, не report
+surface, не optimizer path, не metadata path и не live support claim.
 
 Скрипт выполняет только built-in read-only smoke statements:
 

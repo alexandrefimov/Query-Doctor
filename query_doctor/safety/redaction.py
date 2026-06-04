@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Protocol
 
 
@@ -27,7 +27,11 @@ AUTH_HEADER_RE = re.compile(
 COOKIE_HEADER_RE = re.compile(r"(?im)^([ \t]*(?:Cookie|Set-Cookie)[ \t]*:[ \t]*).+$")
 BEARER_BASIC_RE = re.compile(r"\b(Bearer|Basic)[ \t]+[A-Za-z0-9._~+/=-]{8,}\b")
 SECRET_VALUE_RE = re.compile(
-    r"\b(password|passwd|pwd|token|secret|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token)\b"
+    r"\b("
+    r"password|passwd|pwd|token|secret|cookie|"
+    r"api[_-]?key|access[_-]?token|refresh[_-]?token|"
+    r"auth[_-]?(?:token|key|secret|credential)?|credentials?|passphrase|private[ _-]?key"
+    r")\b"
     r"([ \t]*[:=][ \t]*)([\"']?)([^\"'\s,;]+)([\"']?)",
     re.IGNORECASE,
 )
@@ -42,16 +46,48 @@ HOST_FIELD_RE = re.compile(
     r"(?im)^([ \t]*(?:Host|Hostname|Coordinator|Coordinator Host|Daemon|Impala Daemon|"
     r"Impalad|Server)[ \t]*[:=][ \t]*)([^ \t\r\n]+)"
 )
-HOSTLIKE_FQDN_RE = re.compile(
-    r"\b(?=[A-Za-z0-9.-]*(?:host|node|worker|server|impala|coordinator|cm|db|dn|nn)"
-    r"[A-Za-z0-9.-]*)(?:[A-Za-z0-9-]+\.){2,}[A-Za-z][A-Za-z0-9-]*\b",
-    re.IGNORECASE,
-)
 HOST_ASSIGNMENT_RE = re.compile(
     r"\b(?P<key>host|hostname|executor|backend)(?P<sep>[ \t]*=[ \t]*)(?P<value>[^ \t\r\n,)]+)",
     re.IGNORECASE,
 )
 HOST_ALIAS_RE = re.compile(r"^host_\d{2,}$", re.IGNORECASE)
+PUBLIC_NAMESPACE_HOSTS = frozenset({"www.w3.org"})
+PUBLIC_OR_INFRA_DOMAIN_SUFFIXES = frozenset(
+    {
+        "biz",
+        "cloud",
+        "cluster",
+        "com",
+        "corp",
+        "dev",
+        "example",
+        "invalid",
+        "io",
+        "local",
+        "localhost",
+        "net",
+        "org",
+        "prod",
+        "test",
+    }
+)
+SAFE_FILE_EXTENSION_SUFFIXES = frozenset(
+    {
+        "crt",
+        "csv",
+        "json",
+        "key",
+        "log",
+        "md",
+        "out",
+        "pem",
+        "py",
+        "sql",
+        "txt",
+        "yaml",
+        "yml",
+    }
+)
 SQL_DB_TABLE_RE = re.compile(
     r"\b(FROM|JOIN|TABLE|DESCRIBE)\s+`?[A-Za-z_][A-Za-z0-9_$]*`?"
     r"\s*\.\s*`?[A-Za-z_][A-Za-z0-9_$]*`?",
@@ -63,6 +99,23 @@ SQL_TABLE_RE = re.compile(
 )
 IPV6_CANDIDATE_CHARS = frozenset("0123456789abcdefABCDEF:.")
 IPV6_BOUNDARY_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-")
+HOST_TOKEN_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-")
+HOST_TOKEN_BOUNDARY_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.:-"
+)
+HOSTLIKE_BARE_KEYWORDS = (
+    "host",
+    "node",
+    "worker",
+    "server",
+    "impala",
+    "impalad",
+    "coordinator",
+    "backend",
+    "executor",
+    "daemon",
+)
+SHORT_ROLE_PREFIXES = ("dn", "nn", "cm", "db")
 
 PRESERVED_METADATA_KEYS = {
     "query_id",
@@ -88,12 +141,31 @@ SECRET_METADATA_KEY_PARTS = (
     "token",
     "secret",
     "auth",
+    "credential",
+    "credentials",
+    "passphrase",
+    "private_key",
+    "privatekey",
+    "private-key",
     "api_key",
     "apikey",
     "authorization",
 )
 HOST_METADATA_KEY_PARTS = ("host", "hostname", "coordinator", "impalad", "daemon", "server")
 URL_METADATA_KEY_PARTS = ("url", "uri", "endpoint", "link")
+
+
+class HostlikeFqdnMatcher:
+    """Small search-compatible host matcher that avoids regex backtracking."""
+
+    def search(self, text: str) -> str | None:
+        for token in iter_host_tokens(text):
+            if is_fqdn_like_token(token) and should_redact_bare_fqdn(token):
+                return token
+        return None
+
+
+HOSTLIKE_FQDN_RE = HostlikeFqdnMatcher()
 
 
 def sanitize_text_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
@@ -219,8 +291,89 @@ def redact_ipv6_candidates(text: str, host_redactor: HostAliasRedactor) -> str:
     return "".join(redacted_parts)
 
 
+def redact_hostlike_tokens(
+    text: str,
+    host_redactor: HostAliasRedactor,
+    host_alias_or_original: HostAliasOrOriginal,
+) -> str:
+    redacted_parts: list[str] = []
+    index = 0
+    text_length = len(text)
+
+    while index < text_length:
+        char = text[index]
+        if char not in HOST_TOKEN_CHARS:
+            redacted_parts.append(char)
+            index += 1
+            continue
+
+        start = index
+        while index < text_length and text[index] in HOST_TOKEN_CHARS:
+            index += 1
+
+        token = text[start:index]
+        token_end = index
+        port = ""
+        port_end = token_end
+        if token_end < text_length and text[token_end] == ":":
+            port_index = token_end + 1
+            while port_index < text_length and text[port_index].isdigit():
+                port_index += 1
+            if port_index > token_end + 1:
+                port = text[token_end:port_index]
+                port_end = port_index
+
+        if start > 0 and text[start - 1] in HOST_TOKEN_BOUNDARY_CHARS:
+            redacted_parts.append(token)
+            continue
+        if not port and token_end < text_length and text[token_end] in HOST_TOKEN_BOUNDARY_CHARS:
+            redacted_parts.append(token)
+            continue
+
+        if is_fqdn_like_token(token) and should_redact_bare_fqdn(token):
+            redacted_parts.append(f"{host_alias_or_original(token)}{port}")
+            index = port_end
+        elif should_redact_hostlike_bare_name(token) or should_redact_short_role_bare_name(token):
+            redacted_parts.append(f"{host_redactor.alias_for(token)}{port}")
+            index = port_end
+        else:
+            redacted_parts.append(token)
+
+    return "".join(redacted_parts)
+
+
+HostAliasOrOriginal = Callable[[str], str]
+
+
+def iter_host_tokens(text: str) -> Iterable[str]:
+    index = 0
+    text_length = len(text)
+
+    while index < text_length:
+        char = text[index]
+        if char not in HOST_TOKEN_CHARS:
+            index += 1
+            continue
+
+        start = index
+        while index < text_length and text[index] in HOST_TOKEN_CHARS:
+            index += 1
+
+        token = text[start:index]
+        if start > 0 and text[start - 1] in HOST_TOKEN_BOUNDARY_CHARS:
+            continue
+        if index < text_length and text[index] in HOST_TOKEN_BOUNDARY_CHARS:
+            continue
+        yield token
+
+
 def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None) -> str:
     host_redactor = redactor or HostAliasRedactor()
+
+    def host_alias_or_original(value: str) -> str:
+        if value.lower() in PUBLIC_NAMESPACE_HOSTS:
+            return value
+        return host_redactor.alias_for(value)
 
     def replace_bracketed_ipv6(match: re.Match[str]) -> str:
         value = match.group("ip")
@@ -238,17 +391,66 @@ def redact_host_identifiers(text: str, redactor: HostAliasRedactor | None = None
         return f"{match.group('key')}{match.group('sep')}{alias}"
 
     def replace_url_host(match: re.Match[str]) -> str:
-        alias = host_redactor.alias_for(match.group(3))
+        alias = host_alias_or_original(match.group(3))
         return f"{match.group(1)}{match.group(2) or ''}{alias}{match.group(4) or ''}"
 
     redacted = HOST_FIELD_RE.sub(replace_host_field, text)
     redacted = HOST_ASSIGNMENT_RE.sub(replace_host_assignment, redacted)
     redacted = URL_HOST_RE.sub(replace_url_host, redacted)
-    redacted = HOSTLIKE_FQDN_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
+    redacted = redact_hostlike_tokens(redacted, host_redactor, host_alias_or_original)
     redacted = IPV4_RE.sub(lambda match: host_redactor.alias_for(match.group(0)), redacted)
     redacted = BRACKETED_IPV6_RE.sub(replace_bracketed_ipv6, redacted)
     redacted = redact_ipv6_candidates(redacted, host_redactor)
     return redacted
+
+
+def is_fqdn_like_token(value: str) -> bool:
+    labels = value.rstrip(".").split(".")
+    if len(labels) < 2:
+        return False
+    if any(not label for label in labels):
+        return False
+    if not labels[-1][0].isalpha():
+        return False
+    return all(all(ch.isalnum() or ch == "-" for ch in label) for label in labels)
+
+
+def should_redact_hostlike_bare_name(value: str) -> bool:
+    normalized = value.lower()
+    if len(normalized) < 3 or not normalized[0].isalpha():
+        return False
+    if not any(ch.isdigit() for ch in normalized):
+        return False
+    return any(keyword in normalized for keyword in HOSTLIKE_BARE_KEYWORDS)
+
+
+def should_redact_short_role_bare_name(value: str) -> bool:
+    normalized = value.lower()
+    for prefix in SHORT_ROLE_PREFIXES:
+        if not normalized.startswith(prefix):
+            continue
+        suffix = normalized[len(prefix) :]
+        if suffix.startswith("-"):
+            suffix = suffix[1:]
+        return bool(suffix) and suffix[0].isdigit()
+    return False
+
+
+def should_redact_bare_fqdn(value: str) -> bool:
+    normalized = value.rstrip(".").lower()
+    if normalized in PUBLIC_NAMESPACE_HOSTS:
+        return False
+    labels = normalized.split(".")
+    if len(labels) >= 3:
+        return True
+    if len(labels) != 2:
+        return False
+    left, right = labels
+    if right in SAFE_FILE_EXTENSION_SUFFIXES:
+        return False
+    if right in PUBLIC_OR_INFRA_DOMAIN_SUFFIXES:
+        return True
+    return any(any(ch.isdigit() for ch in label) or "-" in label for label in (left, right))
 
 
 def redact_profile_text(

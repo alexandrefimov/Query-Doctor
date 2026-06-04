@@ -21,6 +21,7 @@ from query_doctor.impala.profile_source import (
     normalize_impala_profile_hosts,
     normalize_impala_profile_scheme,
 )
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 
 
 DEFAULT_MAX_QUERY_LIST_BYTES = 5 * 1024 * 1024
@@ -58,7 +59,7 @@ def fetch_impala_query_summaries(
     scheme: str = DEFAULT_IMPALA_PROFILE_SCHEME,
     timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     max_query_list_bytes: int = DEFAULT_MAX_QUERY_LIST_BYTES,
-    opener: UrlOpener = urllib.request.urlopen,
+    opener: UrlOpener = configured_diagnostic_urlopen,
 ) -> ImpalaQueryDiscoveryResult:
     urls = impala_query_list_urls(hosts, port=port, scheme=scheme)
     if not urls:

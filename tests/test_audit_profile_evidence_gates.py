@@ -30,8 +30,19 @@ def write_case(
     return str(case_dir.relative_to(tmp_path))
 
 
+def write_invalid_case(tmp_path: Path, index: int) -> str:
+    case_dir = tmp_path / "cases" / f"case-{index:03d}"
+    case_dir.mkdir(parents=True)
+    (case_dir / "analysis.json").write_text("{not-json", encoding="utf-8")
+    return str(case_dir.relative_to(tmp_path))
+
+
 def base_analysis(**overrides: object) -> dict[str, object]:
     analysis: dict[str, object] = {
+        "query_wall_clock": {
+            "duration_ms": 120_000,
+            "confidence": "high",
+        },
         "profile_format": {
             "profile_dialect": "classic_text_profile",
             "primary_bottleneck_policy": "supported",
@@ -98,7 +109,15 @@ def test_profile_evidence_gate_audit_accepts_supported_client_fetch_primary(
             "counter_stability": "STABLE_HIGH",
             "finding_supported": True,
             "primary_supported": True,
-        }
+            "client_fetch_wait_ms": 80_000,
+            "client_fetch_wait_share": 0.67,
+        },
+        findings=[
+            {
+                "id": "client_fetch_tail",
+                "operators": [{"time_ms": 80_000}],
+            }
+        ],
     )
     summary_path = write_summary(
         tmp_path,
@@ -123,6 +142,122 @@ def test_profile_evidence_gate_audit_accepts_supported_client_fetch_primary(
     assert result.primary_counts == {"client_fetch_tail": 1}
     assert result.client_fetch_counts == {
         "supported/strong/STABLE_HIGH/finding=True/primary=True": 1
+    }
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert "Summary: batch_summary.json" in text
+    assert str(tmp_path) not in text
+    assert "/cases/" not in text
+
+
+def direct_json_profile_analysis(**overrides: object) -> dict[str, object]:
+    analysis = base_analysis(
+        profile_format={
+            "profile_family": "impala_runtime_profile",
+            "profile_source": "impala_daemon",
+            "source_label": "Impala daemon profile endpoint",
+            "profile_dialect": "classic_json_profile",
+            "layout": "json_mapped_counters",
+            "profile_response_format": "json",
+            "primary_bottleneck_policy": "unsupported",
+            "source_capabilities": {
+                "profile_response_format": "json",
+                "profile_fetch_attempt_count": 1,
+                "json_profile_probe": "enabled",
+                "profile_docs_probe": "enabled",
+                "profile_docs_fetch_attempt_count": 2,
+                "json_profile_payload": "mapped_limited",
+                "text_profile_payload": "not_selected",
+                "primary_profile_routing": "unsupported",
+            },
+        },
+        client_fetch={
+            "status": "supported",
+            "evidence_tier": "context_only",
+            "counter_stability": "STABLE_HIGH",
+            "finding_supported": False,
+            "primary_supported": False,
+            "section_mapping": "limited",
+        },
+        memory_pressure={
+            "status": "context_only",
+            "evidence_tier": "context_only",
+            "finding_supported": False,
+            "spill_or_scratch_evidence_count": 0,
+            "limited_spill_or_scratch_counter_count": 1,
+        },
+    )
+    analysis.update(overrides)
+    return analysis
+
+
+def test_profile_evidence_gate_audit_accepts_direct_json_profile_fail_closed(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, direct_json_profile_analysis()),
+                "score_severity": "suspicious",
+                "case_primary_bottleneck": {
+                    "label": "unknown",
+                    "confidence": "low",
+                    "reasons": ["profile_dialect_not_supported_for_primary"],
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert result.ok
+    assert result.analyzed_cases == 1
+    assert result.primary_counts == {"unknown": 1}
+    assert result.profile_dialect_counts == {"classic_json_profile": 1}
+    assert result.profile_policy_counts == {"unsupported": 1}
+    assert result.client_fetch_counts == {
+        "supported/context_only/STABLE_HIGH/finding=False/primary=False": 1
+    }
+    assert not result.issue_counts
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "classic_json_profile" in text
+    assert "unsupported: 1" in text
+    assert str(tmp_path) not in text
+    assert "impala_daemon" not in text
+
+
+def test_profile_evidence_gate_audit_flags_direct_json_profile_primary_leak(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, direct_json_profile_analysis()),
+                "score_severity": "high",
+                "case_primary_bottleneck": {
+                    "label": "client_fetch_tail",
+                    "confidence": "high",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert not result.ok
+    assert result.issue_counts == {
+        "profile_derived_primary_on_unsupported_profile": 1,
+        "client_fetch_primary_without_gate": 1,
+        "profile_primary_classifier_mismatch": 1,
     }
 
 
@@ -164,6 +299,7 @@ def test_profile_evidence_gate_audit_flags_inconsistent_promotions(
     assert result.issue_counts == {
         "runtime_filter_promoted": 1,
         "runtime_admission_primary_without_gate": 1,
+        "profile_primary_classifier_mismatch": 1,
     }
     output = io.StringIO()
     print_result(result, out=output)
@@ -314,7 +450,116 @@ def test_profile_evidence_gate_audit_flags_data_movement_primary_without_exchang
     assert result.issue_counts == {
         "data_movement_weak_primary_promotion": 1,
         "data_movement_primary_without_exchange_context": 1,
+        "profile_primary_classifier_mismatch": 1,
     }
+
+
+def test_profile_evidence_gate_audit_flags_primary_confidence_overclaim(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        data_movement={
+            "status": "supported",
+            "evidence_tier": "strong",
+            "finding_supported": True,
+            "primary_supported": True,
+            "exchange_operator_count": 2,
+        },
+        findings=[
+            {
+                "id": "large_intermediate_or_exchange_traffic",
+                "operators": [{"time_ms": 90_000}],
+            }
+        ],
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "high",
+                "case_primary_bottleneck": {
+                    "label": "runtime_data_movement",
+                    "confidence": "high",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert not result.ok
+    assert result.issue_counts == {"profile_primary_confidence_overclaim": 1}
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "profile_primary_confidence_overclaim" in text
+    assert "large_intermediate_or_exchange_traffic" not in text
+    assert str(tmp_path) not in text
+
+
+def test_profile_evidence_gate_audit_fails_missing_analysis_output(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": "cases/case-001",
+                "score_severity": "high",
+                "case_primary_bottleneck": {
+                    "label": "runtime_skew",
+                    "confidence": "high",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert not result.ok
+    assert result.missing_analysis_count == 1
+    assert result.issue_counts == {"missing_analysis": 1}
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "case-001: missing_analysis" in text
+    assert str(tmp_path) not in text
+    assert "/cases/" not in text
+    assert main([str(summary_path), "--fail-on-issues"]) == 1
+
+
+def test_profile_evidence_gate_audit_fails_unreadable_analysis_output(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_invalid_case(tmp_path, 1),
+                "score_severity": "high",
+                "case_primary_bottleneck": {
+                    "label": "runtime_skew",
+                    "confidence": "high",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert not result.ok
+    assert result.analysis_error_count == 1
+    assert result.issue_counts == {"analysis_unreadable": 1}
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "case-001: analysis_unreadable" in text
+    assert str(tmp_path) not in text
+    assert "/cases/" not in text
 
 
 def test_profile_evidence_gate_audit_fail_on_issues_exit_code(tmp_path: Path) -> None:

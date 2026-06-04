@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 
+from query_doctor.safety.browser_display import redact_browser_display_text
 from scripts import trino_kerberos_smoke
 
 
@@ -125,6 +126,42 @@ def test_dry_run_writes_safe_plan_without_execution(tmp_path, capsys):
     assert "hive_demo.default.sample_rows" not in rendered
     assert "user@EXAMPLE.COM" not in rendered
     assert "trino.example.test" not in rendered
+
+
+def test_dry_run_summary_stays_browser_display_safe_with_sensitive_runtime_args(tmp_path, capsys):
+    rc = trino_kerberos_smoke.main(
+        _base_args(tmp_path)
+        + [
+            "--krb5-config",
+            "/private/tmp/query-doctor-trino-krb5.conf",
+            "--krb5-ccname",
+            "FILE:/tmp/query-doctor-trino-smoke-krb5cc",
+            "--ca-cert",
+            "/tmp/query-doctor-trino-ca.pem",
+            "--dry-run",
+        ],
+        runner=lambda *args, **kwargs: pytest.fail("dry-run must not execute curl"),
+    )
+
+    captured = capsys.readouterr()
+    summary_text = (tmp_path / "smoke" / "trino_smoke_summary.json").read_text()
+    rendered = summary_text + captured.out + captured.err
+    redacted = redact_browser_display_text(
+        rendered,
+        redact_field_names=True,
+        redact_artifact_markers=True,
+        redact_model_names=True,
+        redact_sql_snippets=True,
+        redact_infrastructure=True,
+    )
+
+    assert rc == 0
+    assert redacted == rendered
+    assert "trino.example.test" not in rendered
+    assert "user@EXAMPLE.COM" not in rendered
+    assert "/private/tmp" not in rendered
+    assert "trino-ca.pem" not in rendered
+    assert "query-doctor-trino-smoke-krb5cc" not in rendered
 
 
 def test_smoke_follows_trino_protocol_and_writes_raw_free_summary(tmp_path, capsys):

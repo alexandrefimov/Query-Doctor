@@ -1,6 +1,6 @@
 # Query Doctor: русская навигация
 
-Last reviewed: 2026-06-01
+Last reviewed: 2026-06-04
 
 Язык: [English](../../README.md) | Русский
 
@@ -52,10 +52,12 @@ roadmap, development practices, codex handoff и code audit. Русские ст
 - [Public documentation boundary](public-documentation-boundary.md): что
   можно коммитить в public docs, а что должно оставаться в local exclude-only notes.
 - [Матрица поддержки движков](engine-support-gap-matrix.md): что реализовано
-  для Impala и почему Trino остается исследовательским направлением.
+  для Impala и почему Trino и Spark остаются ниже product support.
 - [Ограничения счетчиков профиля Impala](impala-profile-counter-caveats.md):
   будущий контракт стабильности счетчиков, диалекты профилей и правила
   доказательств.
+- [Заметки к релизу 0.5.0](release-notes-0.5.0.md): краткое описание
+  diagnostic-loop hardening и raw-free evidence handoff gates.
 - [Заметки к релизу 0.4.3](release-notes-0.4.3.md): краткое описание
   report-mode и web UI polish.
 - [Заметки к релизу 0.4.2](release-notes-0.4.2.md): краткое описание public
@@ -82,6 +84,8 @@ roadmap, development practices, codex handoff и code audit. Русские ст
   и public-sharing cleanup.
 - [Public Release Readiness](public-release-readiness.md): snapshot готовности
   к релизу и P0 gates.
+- [Заметки к релизу 0.5.0](release-notes-0.5.0.md): diagnostic-loop
+  hardening и raw-free evidence handoff gates.
 - [Заметки к релизу 0.4.3](release-notes-0.4.3.md): report-mode и web UI
   polish release notes.
 - [Заметки к релизу 0.4.2](release-notes-0.4.2.md): public release baseline
@@ -105,10 +109,18 @@ roadmap, development practices, codex handoff и code audit. Русские ст
 - [Чеклист evidence export из тестового Trino-кластера](../../engines/i18n/ru/trino-test-cluster-evidence-checklist.md):
   безопасный handoff для первых operator-exported sanitized fixtures.
 - [Шаблоны Trino evidence package](../../engines/i18n/ru/trino-evidence-package-templates.md):
-  manifest и redaction note для первого sanitized handoff package.
+  manifest, redaction note, local event-store, operator HTTP archive, local
+  query-detail, local query-list/statement-stats, pruned query-info и compact
+  diagnosis формат для sanitized handoff.
 - [Trino private preview release path](../../engines/i18n/ru/trino-private-preview-release.md):
   как показывать Trino как closed test-cluster private preview без public
   support claim.
+- [Архитектурный spike Spark](../../engines/i18n/ru/spark-architecture-spike.md):
+  research-only контракт для Spark History Server/event-log fact model без
+  public support claim.
+- [Чеклист evidence из тестового Spark-кластера](../../engines/i18n/ru/spark-test-cluster-evidence-checklist.md):
+  безопасный handoff для operator-reviewed compact Spark History Server/event-log
+  evidence без live Spark support claim.
 - [Журнал диагностических пробелов](../../research/i18n/ru/diagnostic-gap-log.md):
   безопасный шаблон для production gaps без сырых данных.
 - [Мониторинг upstream-сигналов](../../research/i18n/ru/upstream-watch.md):

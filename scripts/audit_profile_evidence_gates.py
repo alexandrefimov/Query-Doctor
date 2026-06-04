@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 from query_doctor.analyzer.case_bottleneck import (  # noqa: E402
     client_fetch_primary_supported,
+    classify_case_primary_bottleneck,
     per_instance_evidence_supports_profile_claims,
     primary_bottleneck_profile_policy,
     runtime_diagnosis_supports_storage,
@@ -41,6 +42,7 @@ PROFILE_PRIMARY_LABELS = {
     "runtime_skew",
     "runtime_storage",
 }
+CONFIDENCE_ORDER = {"low": 1, "medium": 2, "high": 3}
 STABLE_COUNTER_LABELS = {"STABLE_HIGH", "STABLE_LOW"}
 
 
@@ -80,6 +82,10 @@ class EvidenceGateAuditResult:
     @property
     def ok(self) -> bool:
         return not self.issues and not self.analysis_error_count
+
+    @property
+    def summary_name(self) -> str:
+        return self.summary_path.name or "batch_summary.json"
 
 
 class EvidenceGateAuditInputError(RuntimeError):
@@ -186,13 +192,25 @@ def audit_summary(summary_path: Path) -> EvidenceGateAuditResult:
         analysis_path = analysis_path_for(case_dir) if case_dir is not None else None
         if analysis_path is None:
             result.missing_analysis_count += 1
+            add_issue(
+                result,
+                case,
+                "missing_analysis",
+                "selected case has no deterministic analyzer output",
+            )
             continue
         try:
             analysis = load_json_object(analysis_path)
         except EvidenceGateAuditInputError:
             result.analysis_error_count += 1
+            add_issue(
+                result,
+                case,
+                "analysis_unreadable",
+                "selected case analysis JSON could not be read or parsed",
+            )
             continue
-        audit_analysis(result, case, analysis, primary_label)
+        audit_analysis(result, case, analysis, primary_label, primary_confidence)
     return result
 
 
@@ -201,6 +219,7 @@ def audit_analysis(
     case: dict[str, Any],
     analysis: dict[str, Any],
     primary_label: str,
+    primary_confidence: str,
 ) -> None:
     result.analyzed_cases += 1
     profile = analysis.get("profile_format")
@@ -230,6 +249,7 @@ def audit_analysis(
     audit_storage_context(result, analysis)
     audit_resource_trace(result, case, analysis)
     audit_primary_consistency(result, case, analysis, primary_label, profile_policy)
+    audit_primary_classifier_parity(result, case, analysis, primary_label, primary_confidence)
 
 
 def audit_client_fetch(
@@ -539,6 +559,37 @@ def audit_primary_consistency(
             )
 
 
+def audit_primary_classifier_parity(
+    result: EvidenceGateAuditResult,
+    case: dict[str, Any],
+    analysis: dict[str, Any],
+    primary_label: str,
+    primary_confidence: str,
+) -> None:
+    if primary_label not in PROFILE_PRIMARY_LABELS:
+        return
+    classified = classify_case_primary_bottleneck(analysis)
+    if classified.label != primary_label:
+        add_issue(
+            result,
+            case,
+            "profile_primary_classifier_mismatch",
+            "profile-derived primary label differs from deterministic primary classifier",
+        )
+        return
+    if confidence_rank(primary_confidence) > confidence_rank(classified.confidence):
+        add_issue(
+            result,
+            case,
+            "profile_primary_confidence_overclaim",
+            "profile-derived primary confidence is stronger than deterministic classifier confidence",
+        )
+
+
+def confidence_rank(value: object) -> int:
+    return CONFIDENCE_ORDER.get(text_value(value).lower(), 0)
+
+
 def print_counter(title: str, counter: Counter[str], *, out: TextIO, limit: int) -> None:
     print(f"{title}:", file=out)
     if not counter:
@@ -551,7 +602,7 @@ def print_counter(title: str, counter: Counter[str], *, out: TextIO, limit: int)
 def print_result(
     result: EvidenceGateAuditResult, *, out: TextIO = sys.stdout, limit: int = 12
 ) -> None:
-    print(f"Summary: {result.summary_path}", file=out)
+    print(f"Summary: {result.summary_name}", file=out)
     print(
         "Cases: "
         f"total={result.total_cases}, analyzed={result.analyzed_cases}, "

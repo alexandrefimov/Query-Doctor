@@ -129,6 +129,7 @@ def build_specific_query_detail_render_context(
         stats_quality_facts,
         query_context_facts,
         data_movement_facts=data_movement_facts,
+        query_profile_source=settings.query_profile_source,
         report_state=report_state,
     )
     manual_guidance_reason = str(optimized_query_state.get("status") or "not_run")

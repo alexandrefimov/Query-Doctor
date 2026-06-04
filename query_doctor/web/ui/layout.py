@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import html
+from base64 import b64encode
 from importlib.resources import files
 from typing import Any
-from urllib.parse import quote
 
 from query_doctor.web.ui.i18n import language_label, normalize_ui_language, text
 
@@ -23,10 +23,8 @@ def read_static_asset_text(filename: str) -> str:
 
 
 def render_favicon_link() -> str:
-    return (
-        '<link rel="icon" type="image/svg+xml" '
-        f'href="data:image/svg+xml,{quote(BRAND_MARK_SVG, safe="")}">'
-    )
+    encoded_svg = b64encode(BRAND_MARK_SVG.encode("utf-8")).decode("ascii")
+    return f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,{encoded_svg}">'
 
 
 def render_shared_styles() -> str:

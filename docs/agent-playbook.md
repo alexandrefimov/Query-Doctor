@@ -1,6 +1,6 @@
 # Agent Playbook
 
-Last updated: 2026-06-01
+Last updated: 2026-06-03
 
 Use this file when you know the kind of change you are making and need the
 shortest safe path through the repository. For exact test selection, also use
@@ -35,6 +35,7 @@ routing:
 | Browser route or Details UI | `docs/safety-contract.md`, `docs/code-audit.md`, touched web presenters/routes | focused web route/presenter tests | code audit if trust boundary changes; changelog for workflow changes | redaction/no-raw-output regressions and job-state tests |
 | Report writer or validator | `docs/safety-contract.md`, `docs/code-audit.md`, touched report modules | report sanitizer/validator tests | safety/optimizer/report contract docs when trust rules change | unsupported-root-cause rejection, hidden partial output, trusted marker behavior |
 | Collector or metadata | `docs/safety-contract.md`, `docs/codex-handoff.md`, touched provider modules | collector/config/allowlist tests | safety or roadmap docs when collection contract changes | bounded read-only behavior, redaction, failure-state rendering |
+| Engine fact contract, Spark compact intake, or Trino fixture/private-preview work | `docs/engine-support-gap-matrix.md`, `docs/safety-contract.md`, `docs/code-audit.md`, relevant engine docs | focused engine fact, Spark, or Trino tests from `docs/test-matrix.md` | support gap matrix, safety contract, engine docs, changelog for support-boundary changes | raw-free boundary payloads, namespace/allowed-engine guards, no support claim or product-surface wiring |
 | Docs-only baseline | `docs/README.md`, public README when user-facing behavior is affected, target doc, plus `docs/codex-handoff.md` and `docs/public-documentation-boundary.md` for baseline or safety-sensitive docs | `python3 scripts/check_active_docs.py`; `python3 scripts/audit_public_docs.py`; `git diff --check` | public README and screenshots when current capabilities or material UI paths changed; changelog only for significant baseline/workflow/safety changes | no full suite unless browser-rendered docs/help changed |
 
 ## Docs-Only
@@ -80,6 +81,37 @@ Validate:
 - `scripts/local_gate.sh` before broad release handoff when time permits;
 - no full test suite unless browser-rendered help/UI text changed.
 
+## Engine Facts And Second-Engine Research
+
+Use for normalized engine facts, fact namespace registration, boundary payloads,
+Trino fixture/private-preview groundwork, Spark compact intake, or any support
+wording around non-Impala engines.
+
+Read:
+
+- `docs/engine-support-gap-matrix.md` first for current status;
+- `docs/safety-contract.md` for the engine fact boundary and raw-free rules;
+- `docs/code-audit.md` for open projection and product-surface risks;
+- relevant engine docs under `docs/engines/`.
+
+Rules:
+
+- Apache Impala remains the only production-supported engine;
+- normalized engine facts are a contract seam, not an engine selector or support
+  claim;
+- keep fact IDs registered with explicit scope and allowed engines;
+- do not promote Spark or Trino facts into shared scopes, product ranking,
+  Details, trusted reports, optimizer behavior, or Recent workflows without a
+  separate support-gate slice.
+
+Validate:
+
+- engine fact contract and boundary payload tests for namespace or payload
+  changes;
+- Spark compact tests and readiness audit for Spark intake or diagnosis changes;
+- Trino fixture/private-preview doc and validator tests for Trino changes;
+- `git diff --check`.
+
 ## Web Details And UI
 
 Use for routes, page rendering, Details, Help, navigation, job status, or
@@ -117,7 +149,11 @@ Validate:
 - for real Recent scan smoke output, run
   `python3 scripts/audit_recent_details.py <batch_summary.json>` to render each
   Details page through production presenters and check problem explanations,
-  action gating, and browser-visible safety;
+  action gating, and browser-visible safety; add
+  `--fail-on-stats-detail-gaps` when strict stats-card calibration should fail
+  Medium/High stats actions without structured raw-free metadata detail, and
+  `--fail-on-comparable-rerun-gaps` when every actionable recommendation must
+  include comparable rerun or comparable scan verification guidance;
 - `git diff --check`.
 
 ## Report And Validator
@@ -168,7 +204,11 @@ Rules:
 - treat medium/high optimization candidates as a calibration funnel, not as a
   promise that a trusted SQL draft exists;
 - before threshold, ranking, or recipe work, run the raw-free optimizer funnel
-  audit and inspect repeated no-recipe shape families;
+  audit and inspect repeated no-recipe shape families; add
+  `--fail-on-repeated-no-recipe-readiness-gaps` when representative calibration
+  should fail repeated no-recipe workload groups that do not have one specific
+  safe review track plus allowlisted review area, change direction, workload
+  metric, and compare/rerun verification wording;
 - improve no-draft guidance or analyzer facts before loosening prompt freedom
   or validation;
 - add Python-owned recipes only with specific fixtures and validation tests.
@@ -239,7 +279,10 @@ Validate:
 - direct profile/config/query-discovery tests for code changes;
 - a bounded no-LLM smoke for real-source compatibility when available;
 - `python3 scripts/audit_profile_evidence_gates.py <batch_summary.json> --fail-on-issues`
-  for real Recent smoke summaries before strengthening support wording.
+  for real Recent smoke summaries before strengthening support wording;
+- `python3 scripts/audit_impala_coverage_gaps.py <batch_summary.json> --fail-on-diagnostic-coverage-gaps`
+  for representative diagnostic-coverage calibration before claiming a direct
+  or mixed-source batch has enough deterministic primary-bottleneck coverage.
 
 ## Impala Metadata
 
@@ -316,5 +359,41 @@ Validate:
 - mocked subprocess timeout/failure tests;
 - web progress tests if stage rendering changes;
 - after large smoke scans, run
+  `python3 scripts/audit_impala_diagnostic_loop.py <batch_summary.json>` for
+  an aggregate strict loop gate over Details, profile evidence, diagnostic
+  coverage, workload, stats, and optimizer readiness. Add
+  `--action-outcomes <action_outcomes.jsonl> --require-action-outcomes` for
+  workload outcome calibration and `--require-direct-source-readiness` for
+  direct Impala representative summaries. The aggregate audit prints only
+  component status and issue categories;
+- for component drilldown, run
   `python3 scripts/audit_recent_details.py <batch_summary.json>` and pass prior
-  smoke summaries with `--baseline-summary` when checking sample overlap.
+  smoke summaries with `--baseline-summary` when checking sample overlap; add
+  `--fail-on-stats-detail-gaps --fail-on-comparable-rerun-gaps` for strict
+  action-card evidence-detail and rerun-verification gating;
+- for workload diagnostics calibration, run
+  `python3 scripts/audit_workload_diagnostics.py <batch_summary.json> --fail-on-workload-readiness-gaps`
+  so repeated groups without usable details, representatives, regression
+  baselines, workload-history status, or comparable verification guidance block
+  representative-readiness claims;
+- for action outcome calibration, add
+  `--action-outcomes <action_outcomes.jsonl> --fail-on-action-outcome-readiness-gaps`
+  to the workload audit so representative workload queue/detail rows must carry
+  safe aggregate feedback summaries from local outcome records. The audit prints
+  only aggregate counters and does not require outcome files inside batch
+  summaries;
+- for stats diagnostics calibration, run
+  `python3 scripts/audit_stats_diagnostics.py <batch_summary.json> --fail-on-stats-readiness-gaps`
+  so Medium/High stats candidates without structured metadata detail, usable
+  metadata status, safe review areas, or comparable rerun confirmation block
+  representative-readiness claims;
+- for representative diagnostic coverage, run
+  `python3 scripts/audit_impala_coverage_gaps.py <batch_summary.json> --fail-on-diagnostic-coverage-gaps`
+  so missing analysis, missing primary labels, high unknown-primary rate, and
+  low medium/high primary coverage block calibration claims.
+- for direct Impala representative summaries, add
+  `--fail-on-direct-source-readiness-gaps` to the coverage audit so unknown
+  source provenance, profile capability, optional endpoint, metadata, event, or
+  Prometheus limitation states block direct-source readiness claims. The gate
+  accepts explicit `not_configured`, `not_collected`, and `unavailable` states as
+  safe limitations.

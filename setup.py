@@ -25,12 +25,27 @@ def project_scripts(pyproject_path: Path = Path("pyproject.toml")) -> list[str]:
     return scripts
 
 
+def project_version(pyproject_path: Path = Path("pyproject.toml")) -> str:
+    in_project = False
+    for line in pyproject_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped == "[project]":
+            in_project = True
+            continue
+        if in_project and stripped.startswith("["):
+            break
+        if in_project and stripped.startswith("version = "):
+            return stripped.split("=", 1)[1].strip().strip('"')
+    raise RuntimeError("pyproject.toml project version is missing")
+
+
 CONSOLE_SCRIPTS = project_scripts()
+VERSION = project_version()
 
 
 setup(
     name="query-doctor",
-    version="0.4.3",
+    version=VERSION,
     description="Local-first Big Data query diagnostics focused today on Apache Impala.",
     author="Aleksandr Efimov",
     maintainer="Aleksandr Efimov",

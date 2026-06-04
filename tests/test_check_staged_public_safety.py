@@ -50,6 +50,30 @@ def test_blocked_path_reason_rejects_local_config_and_generated_artifacts():
         check_staged_public_safety.blocked_path_reason("reports/diagnosis.partial")
         == "staged generated partial/cache file"
     )
+    assert (
+        check_staged_public_safety.blocked_path_reason(
+            "local-corpus/case-001/.replace-case-001-abc/staging-note.txt"
+        )
+        == "staged generated, cache, virtualenv, or local case path"
+    )
+    assert (
+        check_staged_public_safety.blocked_path_reason(
+            "local-corpus/.query-refresh-abc/case-001/staging-note.txt"
+        )
+        == "staged generated, cache, virtualenv, or local case path"
+    )
+    assert (
+        check_staged_public_safety.blocked_path_reason(
+            "local-corpus/case-001/.cm-timeseries-refresh-abc/staging-note.txt"
+        )
+        == "staged generated, cache, virtualenv, or local case path"
+    )
+    assert (
+        check_staged_public_safety.blocked_path_reason(
+            ".query-refresh-abc/case-001/staging-note.txt"
+        )
+        == "staged generated, cache, virtualenv, or local case path"
+    )
 
 
 def test_blocked_path_reason_allows_normal_sources_docs_and_tests():
@@ -68,6 +92,23 @@ def test_blocked_path_reason_allows_normal_sources_docs_and_tests():
         )
         is None
     )
+
+
+def test_generated_staging_dirs_are_gitignored_outside_default_corpus():
+    repo_dir = SCRIPT_PATH.parents[1]
+    ignore_text = (repo_dir / ".gitignore").read_text(encoding="utf-8")
+
+    assert "**/.replace-*/" in ignore_text
+    assert "**/.query-refresh-*/" in ignore_text
+    assert "**/.cm-timeseries-refresh-*/" in ignore_text
+    for path in (
+        "local-corpus/case-001/.replace-case-001-abc/profile_digest.md",
+        "local-corpus/.query-refresh-abc/case-001/analysis_facts.md",
+        "local-corpus/case-001/.cm-timeseries-refresh-abc/runtime_metrics_context.json",
+        ".query-refresh-abc/case-001/analysis_facts.md",
+    ):
+        result = check_staged_public_safety.run_git(["check-ignore", "-v", path], repo_dir=repo_dir)
+        assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_scan_staged_text_blocks_private_paths_and_domains():

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 import re
 from typing import Any
 
@@ -37,7 +37,6 @@ from query_doctor.web.presenters.recent_scan_models import (
     RecentScanSummaryView,
     RecentScanTechnicalDetailsView,
     RecentScanWorkloadAdminDigestEntryView,
-    RecentScanWorkloadActionQueueEntryView,
     RecentScanWorkloadDigestEntryView,
     RecentScanWorkloadDigestView,
     RecentScanWorkloadGroupView,
@@ -115,6 +114,24 @@ from query_doctor.web.presenters.recent_scan_status import (
 from query_doctor.web.presenters.recent_scan_technical import (
     present_recent_scan_technical_details,
 )
+from query_doctor.web.presenters.workload_action_contract import (
+    admission_runtime_row_count,
+    display_seconds,
+    is_low_value_workload_group,
+    is_status_issue_workload_group,
+    stats_row_count,
+    status_issue_row_count,
+    top_owner_summary,
+    workload_action_queue_entries,
+    workload_group_impact,
+)
+
+
+QUERY_COUNTER_SIGNAL_PRIORITY_FRAGMENTS = (
+    "stats-vs-query-shape split is unconfirmed",
+    "may also require statistics update",
+)
+STATS_COUNTER_SIGNAL_PRIORITY_FRAGMENTS = ("not tied to specific join/filter columns",)
 
 
 def present_recent_scan_summary(
@@ -211,6 +228,8 @@ SOURCE_LOCATOR_LABELS = {
     "plan_data_movement_operator": ("plan", "Plan: data movement operator"),
     "plan_memory_anomaly": ("plan", "Plan: memory-pressure operator"),
     "plan_top_time_operator": ("plan", "Plan: top-time operator"),
+    "profile_resource_admission_evidence": ("runtime", "Profile: resource admission facts"),
+    "profile_timing_admission_evidence": ("runtime", "Profile: timing admission facts"),
     "runtime_admission_window": ("runtime", "Runtime: admission and pool timeline"),
     "sql_cte_block": ("sql", "SQL: CTE block"),
     "sql_derived_table": ("sql", "SQL: derived table"),
@@ -220,7 +239,6 @@ SOURCE_LOCATOR_LABELS = {
     "sql_mixed_downstream_filters": ("sql", "SQL: mixed downstream filters"),
     "sql_union_branch": ("sql", "SQL: UNION branch"),
 }
-STATUS_ISSUE_STATUSES = {"failed", "cancelled", "canceled"}
 
 
 def present_workload_groups(summary: dict[str, Any]) -> RecentScanWorkloadGroupsView:
@@ -372,8 +390,9 @@ def present_workload_digest(
             grouped_rows,
             label="Status issues",
             row_count=status_issue_row_count,
-            group_matches=lambda group: (
-                _normalized_status(group.score_top) in STATUS_ISSUE_STATUSES
+            group_matches=lambda group: is_status_issue_workload_group(
+                group,
+                grouped_rows.get(group.fingerprint, ()),
             ),
             limit=limit,
             workload_outcome_metrics=workload_outcome_metrics,
@@ -559,261 +578,6 @@ def workload_admin_signal_summary(signal_counts: tuple[tuple[str, int], ...]) ->
     return "; ".join(visible) if visible else "no high-signal repeated groups"
 
 
-def workload_action_queue_entries(
-    groups: RecentScanWorkloadGroupsView,
-    grouped_rows: dict[str, tuple[RecentScanCaseRowView, ...]],
-    *,
-    limit: int,
-    workload_outcome_metrics: dict[str, WorkloadOutcomeMetric],
-) -> tuple[RecentScanWorkloadActionQueueEntryView, ...]:
-    candidates: list[tuple[int, float, str, RecentScanWorkloadActionQueueEntryView]] = []
-    for group in groups.groups:
-        group_rows = grouped_rows.get(group.fingerprint, ())
-        action = workload_action_queue_entry(
-            group,
-            group_rows=group_rows,
-            outcome_metric=workload_outcome_metrics.get(group.fingerprint),
-        )
-        if action is None:
-            continue
-        candidates.append(
-            (
-                -workload_action_priority_order(action.priority),
-                -workload_group_impact(group),
-                group.fingerprint,
-                action,
-            )
-        )
-    return tuple(action for _priority, _impact, _fingerprint, action in sorted(candidates)[:limit])
-
-
-def workload_action_queue_entry(
-    group: RecentScanWorkloadGroupView,
-    *,
-    group_rows: tuple[RecentScanCaseRowView, ...],
-    outcome_metric: WorkloadOutcomeMetric | None,
-) -> RecentScanWorkloadActionQueueEntryView | None:
-    signal = workload_action_signal(group, group_rows)
-    if signal is None:
-        return None
-    return RecentScanWorkloadActionQueueEntryView(
-        fingerprint=group.fingerprint,
-        fingerprint_short=group.fingerprint_short,
-        priority=signal.priority,
-        signal=signal.title,
-        group_impact=display_seconds(workload_group_impact(group)),
-        pool_top=group.pool_top,
-        owner_top=top_owner_summary(group_rows),
-        evidence=signal.evidence,
-        next_step=signal.next_step,
-        review_anchor=signal.review_anchor,
-        verification_metric=signal.verification_metric,
-        verification=signal.verification,
-        outcome_summary=workload_outcome_summary_text(outcome_metric),
-    )
-
-
-@dataclass(frozen=True)
-class WorkloadActionSignal:
-    priority: str
-    title: str
-    evidence: str
-    next_step: str
-    review_anchor: str
-    verification_metric: str
-    verification: str
-
-
-@dataclass(frozen=True)
-class WorkloadQueryShapeReviewContext:
-    label: str
-    name: str
-    count: int
-    review_area: str
-    direction: str
-    verification_metric: str
-
-
-def workload_action_signal(
-    group: RecentScanWorkloadGroupView,
-    rows: tuple[RecentScanCaseRowView, ...],
-) -> WorkloadActionSignal | None:
-    total = max(len(rows), group.member_count)
-    if group.baseline_sample_count > 0 and group.regression in {"strong", "mild"}:
-        priority = "High" if group.regression == "strong" else "Medium"
-        return WorkloadActionSignal(
-            priority=priority,
-            title="Baseline slowdown",
-            evidence=(
-                f"{group.regression} regression; current p95 {display_seconds(group.duration_sec_p95)}; "
-                f"baseline p95 {display_seconds(group.baseline_duration_sec_p95)}."
-            ),
-            next_step="Open workload details and compare representative cases before planning one change.",
-            review_anchor="Workload details: representative cases and local baseline block.",
-            verification_metric="Workload p95 versus baseline p95 under comparable scan scope.",
-            verification="Rerun a comparable scan after the change and confirm p95 moves toward the baseline.",
-        )
-    runtime_count = admission_runtime_row_count(rows) or group_primary_match_count(
-        group, "runtime_admission", total
-    )
-    if runtime_count:
-        return WorkloadActionSignal(
-            priority="High" if runtime_count >= total and total > 0 else "Medium",
-            title="Admission/runtime review",
-            evidence=workload_action_count_evidence(
-                runtime_count, total, "rows have admission/runtime as the primary signal"
-            ),
-            next_step="Check pool, admission, and runtime context on representative cases before SQL or stats work.",
-            review_anchor="Representative Details: pool, admission wait, and runtime context facts.",
-            verification_metric="Admission/runtime signal count and group p95 under comparable load.",
-            verification="Rerun under comparable load and confirm admission/runtime no longer dominates the group.",
-        )
-    stats_count = stats_row_count(rows) or group_primary_match_count(group, "stats", total)
-    if stats_count:
-        return WorkloadActionSignal(
-            priority="High" if stats_count >= total and total > 0 else "Medium",
-            title="Stats review",
-            evidence=workload_action_count_evidence(
-                stats_count, total, "rows have stats candidate or primary-signal facts"
-            ),
-            next_step="Open the top stats case and verify table or partition stats before query-shape work.",
-            review_anchor="Top stats case Details: table or partition stats status and stats facts.",
-            verification_metric="Stats signal count plus group p95 after stats are fixed or confirmed.",
-            verification="After stats are fixed or confirmed, rerun and compare stats signal count plus p95.",
-        )
-    status_count = status_issue_row_count(rows)
-    if status_count <= 0 and _normalized_status(group.score_top) in STATUS_ISSUE_STATUSES:
-        status_count = total
-    if status_count:
-        return WorkloadActionSignal(
-            priority="Medium",
-            title="Status follow-up",
-            evidence=workload_action_count_evidence(
-                status_count, total, "rows failed collection, analysis, or were cancelled"
-            ),
-            next_step="Rerun or inspect row status before using group aggregates for a diagnosis.",
-            review_anchor="Action queue row status and representative case collection/analysis status.",
-            verification_metric="Clean collection/analysis status before interpreting remaining group signals.",
-            verification="Confirm collection/analysis status is clean before treating remaining signals as diagnostic.",
-        )
-    spill_count = sum(1 for row in rows if row.has_spill)
-    if spill_count:
-        return WorkloadActionSignal(
-            priority="Medium",
-            title="Spill follow-up",
-            evidence=workload_action_count_evidence(
-                spill_count, total, "rows have explicit spill or scratch evidence"
-            ),
-            next_step="Inspect memory and spill evidence on representative cases before choosing stats or SQL work.",
-            review_anchor="Representative Details: memory, spill, and scratch evidence.",
-            verification_metric="Spill evidence count and group p95 in the next scan.",
-            verification="After one change, compare spill evidence and group p95 in the next scan.",
-        )
-    rewrite_count = rewrite_review_row_count(rows)
-    if rewrite_count:
-        review_context = workload_query_shape_review_context(rows)
-        if review_context is not None:
-            return WorkloadActionSignal(
-                priority="Medium",
-                title="Query-shape review",
-                evidence=(
-                    f"{rewrite_count} of {total} selected rows have query-shape or "
-                    f"rewrite-review signals; top review track {review_context.name} "
-                    f"({review_context.count})."
-                ),
-                next_step=review_context.direction,
-                review_anchor=(
-                    f"Representative Details: {review_context.label}; {review_context.review_area}."
-                ),
-                verification_metric=(
-                    review_context.verification_metric
-                    or (
-                        f"{review_context.name} review count, selected-case validation, "
-                        "then repeated-group p95."
-                    )
-                ),
-                verification=(
-                    "Test one bounded change from that review track, then rerun the repeated "
-                    "group and compare p95 plus query-shape signal count."
-                ),
-            )
-        return WorkloadActionSignal(
-            priority="Medium",
-            title="Query-shape review",
-            evidence=workload_action_count_evidence(
-                rewrite_count, total, "rows have query-shape or rewrite-review signals"
-            ),
-            next_step="Use per-case Details for the supported rewrite or manual review boundary.",
-            review_anchor="Per-case Details: supported rewrite boundary and review locations.",
-            verification_metric="Validated selected-case change, then repeated-group p95 and signal count.",
-            verification="Validate any accepted change on a selected case, then rerun the repeated group.",
-        )
-    if is_low_value_workload_group(group, rows):
-        return WorkloadActionSignal(
-            priority="Low",
-            title="Low-value repeat",
-            evidence="No regression, failed/high/suspicious rows, spill, stats, runtime, or rewrite-review hints.",
-            next_step="Deprioritize unless the pool or owner needs batch-shaping review.",
-            review_anchor="Workload digest impact, pool/owner aggregate, and next scan priority.",
-            verification_metric="Low priority plus bounded total impact in the next comparable scan.",
-            verification="Confirm the next scan still shows low priority and bounded total impact.",
-        )
-    return None
-
-
-def workload_query_shape_review_context(
-    rows: tuple[RecentScanCaseRowView, ...],
-) -> WorkloadQueryShapeReviewContext | None:
-    contexts: dict[str, tuple[int, str, str, str]] = {}
-    for row in rows:
-        label = str(row.optimizer_review_track_label or "").strip()
-        if not label:
-            continue
-        review_area = str(row.optimizer_review_area or "").strip()
-        direction = str(row.optimizer_review_direction or "").strip()
-        verification_metric = str(row.optimizer_review_workload_metric or "").strip()
-        if not review_area or not direction:
-            continue
-        count, _, _, current_metric = contexts.get(label, (0, review_area, direction, ""))
-        contexts[label] = (
-            count + 1,
-            review_area,
-            direction,
-            current_metric or verification_metric,
-        )
-    if not contexts:
-        return None
-    label, (count, review_area, direction, verification_metric) = sorted(
-        contexts.items(),
-        key=lambda item: (-item[1][0], item[0]),
-    )[0]
-    name = label.removeprefix("Review track: ").strip() or "query-shape"
-    return WorkloadQueryShapeReviewContext(
-        label=label,
-        name=name,
-        count=count,
-        review_area=review_area,
-        direction=direction,
-        verification_metric=verification_metric,
-    )
-
-
-def group_primary_match_count(
-    group: RecentScanWorkloadGroupView,
-    label: str,
-    total: int,
-) -> int:
-    return total if str(group.primary_bottleneck_top).strip().lower() == label else 0
-
-
-def workload_action_count_evidence(count: int, total: int, detail: str) -> str:
-    return f"{count} of {total} selected {detail}."
-
-
-def workload_action_priority_order(priority: str) -> int:
-    return {"high": 3, "medium": 2, "low": 1}.get(str(priority or "").strip().lower(), 0)
-
-
 def top_workload_signal_entries(
     groups: RecentScanWorkloadGroupsView,
     grouped_rows: dict[str, tuple[RecentScanCaseRowView, ...]],
@@ -876,104 +640,8 @@ def workload_digest_entry(
     )
 
 
-def top_owner_summary(rows: tuple[RecentScanCaseRowView, ...]) -> str:
-    counts: dict[str, int] = {}
-    for row in rows:
-        owner = str(row.user or "").strip()
-        if not owner:
-            continue
-        counts[owner] = counts.get(owner, 0) + 1
-    if not counts:
-        return "unknown"
-    owner, count = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0]
-    return f"{owner} ({count}/{len(rows)})"
-
-
-def is_low_value_workload_group(
-    group: RecentScanWorkloadGroupView,
-    rows: tuple[RecentScanCaseRowView, ...],
-) -> bool:
-    if group.regression in {"strong", "mild"}:
-        return False
-    if is_status_issue_workload_group(group, rows):
-        return False
-    if str(group.score_top).lower() in {"high", "suspicious"}:
-        return False
-    if group.primary_bottleneck_top in {"stats", "runtime_admission"}:
-        return False
-    if any(row.score_severity in {"failed", "high", "suspicious"} for row in rows):
-        return False
-    if any(row.has_spill for row in rows):
-        return False
-    if admission_runtime_row_count(rows) or stats_row_count(rows) or rewrite_review_row_count(rows):
-        return False
-    return True
-
-
-def is_status_issue_workload_group(
-    group: RecentScanWorkloadGroupView,
-    rows: tuple[RecentScanCaseRowView, ...],
-) -> bool:
-    return (
-        _normalized_status(group.score_top) in STATUS_ISSUE_STATUSES
-        or status_issue_row_count(rows) > 0
-    )
-
-
-def status_issue_row_count(rows: tuple[RecentScanCaseRowView, ...]) -> int:
-    return sum(1 for row in rows if row_has_status_issue(row))
-
-
-def row_has_status_issue(row: RecentScanCaseRowView) -> bool:
-    if row.has_failure or row.score_severity == "failed":
-        return True
-    return any(
-        _normalized_status(status) in STATUS_ISSUE_STATUSES
-        for status in (row.collection_status, row.analysis_status)
-    )
-
-
-def _normalized_status(value: object) -> str:
-    return str(value or "").strip().lower()
-
-
-def admission_runtime_row_count(rows: tuple[RecentScanCaseRowView, ...]) -> int:
-    return sum(1 for row in rows if row.primary_bottleneck.label.lower() == "admission/runtime")
-
-
-def stats_row_count(rows: tuple[RecentScanCaseRowView, ...]) -> int:
-    return sum(
-        1
-        for row in rows
-        if row.stats_tier in {"high", "medium"} or row.primary_bottleneck.label.lower() == "stats"
-    )
-
-
-def rewrite_review_row_count(rows: tuple[RecentScanCaseRowView, ...]) -> int:
-    return sum(
-        1
-        for row in rows
-        if row.optimization_tier in {"high", "medium"}
-        or row.primary_bottleneck.label.lower() == "sql shape"
-    )
-
-
 def workload_regression_order(value: str) -> int:
     return {"strong": 2, "mild": 1}.get(value, 0)
-
-
-def workload_group_impact(group: RecentScanWorkloadGroupView) -> float:
-    return numeric_value(group.duration_sec_total) or (
-        group.member_count * numeric_value(group.duration_sec_p95)
-    )
-
-
-def display_seconds(value: Any) -> str:
-    seconds = numeric_value(value)
-    if seconds > 0:
-        return f"{int(seconds)}s" if float(seconds).is_integer() else f"{seconds:.1f}s"
-    text = str(value or "").strip()
-    return text if text else "unknown"
 
 
 def safe_workload_fingerprint(value: Any) -> str:
@@ -1128,8 +796,10 @@ def present_recent_scan_case_detail(
     evidence_quality_facts: dict[str, Any] | None = None,
     stats_quality_facts: dict[str, Any] | None = None,
     query_context_facts: dict[str, Any] | None = None,
+    source_provenance_facts: dict[str, Any] | None = None,
     *,
     data_movement_facts: dict[str, Any] | None = None,
+    query_profile_source: str = "",
     report_state: dict[str, Any] | None = None,
 ) -> RecentScanCaseDetailView:
     report_status = batch_case_display_report_status(case, report_state)
@@ -1151,6 +821,8 @@ def present_recent_scan_case_detail(
     cluster_runtime_context = present_recent_scan_cluster_runtime_context(
         cluster_runtime_context_facts
     )
+    metadata = present_recent_scan_metadata(case, metadata_facts)
+    source = query_profile_source or str(case.get("_detail_query_profile_source") or "")
     view = RecentScanCaseDetailView(
         case_id=safe_display_text(case_id),
         query_id=safe_display_value(case.get("query_id")),
@@ -1209,7 +881,7 @@ def present_recent_scan_case_detail(
         optimization_candidate=optimization,
         stats_candidate=stats_candidate,
         source_locators=present_source_locators(case.get("source_locators")),
-        metadata=present_recent_scan_metadata(case, metadata_facts),
+        metadata=metadata,
         cm_metrics=cm_metrics,
         query_context=query_context,
         runtime_diagnosis=runtime_diagnosis,
@@ -1240,8 +912,118 @@ def present_recent_scan_case_detail(
         workload_regression=safe_workload_regression_label(case.get("workload_regression")),
         report_action=present_report_action(report_state),
         score_severity=case_score_severity(case),
+        source_limitations=present_recent_scan_source_limitations(
+            source,
+            case=case,
+            metadata=metadata,
+            cm_metrics=cm_metrics,
+            source_provenance=source_provenance_facts,
+        ),
     )
     return replace(view, diagnostic_facts=present_recent_scan_diagnostic_facts(view))
+
+
+def present_recent_scan_source_limitations(
+    query_profile_source: str,
+    *,
+    case: dict[str, Any],
+    metadata: RecentScanMetadataView,
+    cm_metrics: RecentScanCmMetricsView,
+    source_provenance: dict[str, Any] | None = None,
+) -> tuple[str, ...]:
+    if str(query_profile_source or "").strip().lower() != "impala":
+        return ()
+    limitations: list[str] = []
+    provenance_items = source_provenance_items_by_kind(source_provenance)
+    events_status = source_provenance_status(provenance_items, "events")
+    if events_status in {"none", "unavailable", "partial", "unknown"}:
+        limitations.append("Direct Impala scans do not include Cloudera Manager event context.")
+    elif not source_provenance:
+        limitations.append("Direct Impala scans do not include Cloudera Manager event context.")
+
+    engine_status = source_provenance_status(provenance_items, "engine")
+    if engine_status == "unknown":
+        limitations.append("Engine identity is unavailable from deterministic profile facts.")
+
+    profile_status = source_provenance_status(provenance_items, "profile")
+    if profile_status in {"unknown", "unavailable"}:
+        limitations.append("Profile source coverage is unknown for this case.")
+    elif profile_status == "partial":
+        limitations.append(
+            "Profile source coverage is partial; unsupported profile sections remain limitations."
+        )
+
+    metrics_status = source_provenance_status(provenance_items, "metrics")
+    if metrics_status in {"partial", "unavailable"}:
+        limitations.append(
+            "Optional Prometheus runtime metrics are incomplete or unavailable for this case; "
+            "runtime interpretation relies on profile and query-context facts."
+        )
+    elif metrics_status in {"none", "unknown"} or (
+        not source_provenance and cm_metrics.unavailable
+    ):
+        limitations.append(
+            "Optional Prometheus runtime metrics were not collected for this case; runtime "
+            "interpretation relies on profile and query-context facts."
+        )
+
+    metadata_status = source_provenance_status(provenance_items, "metadata")
+    if metadata_status == "partial":
+        limitations.append(
+            "Bounded Impala metadata is partial for this case; stats and table-layout checks "
+            "remain limited."
+        )
+    elif metadata_status in {"none", "unavailable", "unknown"} or (
+        not source_provenance and direct_impala_metadata_unavailable(case, metadata)
+    ):
+        limitations.append(
+            "Bounded Impala metadata is unavailable for this case; stats and table-layout "
+            "checks remain limited."
+        )
+    return tuple(dict.fromkeys(limitations))
+
+
+def source_provenance_items_by_kind(
+    source_provenance: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    if not isinstance(source_provenance, dict):
+        return {}
+    items = source_provenance.get("items")
+    if not isinstance(items, list):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        kind = safe_display_text(item.get("kind") or "").strip().lower()
+        if kind in {"engine", "profile", "metrics", "events", "metadata"}:
+            result[kind] = item
+    return result
+
+
+def source_provenance_status(items: dict[str, dict[str, Any]], kind: str) -> str:
+    item = items.get(kind)
+    if not item:
+        return ""
+    status = safe_display_text(item.get("status") or "").strip().lower()
+    return status if status in {"available", "partial", "unavailable", "none", "unknown"} else ""
+
+
+def direct_impala_metadata_unavailable(
+    case: dict[str, Any],
+    metadata: RecentScanMetadataView,
+) -> bool:
+    metadata_status = str(case.get("metadata_status") or "").strip().lower()
+    if metadata_status in {"collected", "partial"}:
+        return False
+    return metadata.unavailable or metadata_status in {
+        "failed",
+        "not_attempted",
+        "not_collected",
+        "not_requested",
+        "skipped",
+        "unknown",
+    }
 
 
 PRIMARY_BOTTLENECK_LABELS = {
@@ -1474,11 +1256,7 @@ def query_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
     if no_recipe_review_area and no_recipe_review_area not in safe_review:
         safe_review.append(no_recipe_review_area)
     counter_signals = candidate.get("counter_signals")
-    safe_counter_signals = (
-        [safe_optimization_display_text(item) for item in counter_signals[:2]]
-        if isinstance(counter_signals, list)
-        else []
-    )
+    safe_counter_signals = prioritized_query_counter_signals(counter_signals)
     rewrite_support = optimizer_rewrite_support_view(case)
     return {
         "tier": tier,
@@ -1665,6 +1443,13 @@ def safe_source_locator_coordinate(value: Any) -> str:
     return ""
 
 
+def prioritized_query_counter_signals(value: Any) -> list[str]:
+    return prioritized_optimization_counter_signals(
+        value,
+        QUERY_COUNTER_SIGNAL_PRIORITY_FRAGMENTS,
+    )
+
+
 def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
     candidate = case.get("stats_optimization_candidate")
     candidate = candidate if isinstance(candidate, dict) else {}
@@ -1677,27 +1462,29 @@ def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
     reasons = candidate.get("reasons")
     safe_reasons = (
         [safe_optimization_display_text(reason) for reason in reasons[:3]]
-        if isinstance(reasons, list)
+        if isinstance(reasons, (list, tuple))
         else []
     )
     review = candidate.get("suggested_review_areas")
     safe_review = (
         [safe_optimization_display_text(item) for item in review[:3]]
-        if isinstance(review, list)
+        if isinstance(review, (list, tuple))
         else []
     )
     confirmation = candidate.get("required_confirmation")
     safe_confirmation = (
         [safe_optimization_display_text(item) for item in confirmation[:2]]
-        if isinstance(confirmation, list)
+        if isinstance(confirmation, (list, tuple))
+        else []
+    )
+    evidence_detail = candidate.get("evidence_detail")
+    safe_evidence_detail = (
+        [safe_optimization_display_text(item) for item in evidence_detail[:3]]
+        if isinstance(evidence_detail, (list, tuple))
         else []
     )
     counter_signals = candidate.get("counter_signals")
-    safe_counter_signals = (
-        [safe_optimization_display_text(item) for item in counter_signals[:2]]
-        if isinstance(counter_signals, list)
-        else []
-    )
+    safe_counter_signals = prioritized_stats_counter_signals(counter_signals)
     return {
         "tier": tier,
         "score": score,
@@ -1708,8 +1495,36 @@ def stats_optimization_candidate_view(case: dict[str, Any]) -> dict[str, Any]:
         "summary": "; ".join(safe_reasons),
         "review_areas": "; ".join(safe_review),
         "required_confirmation": "; ".join(safe_confirmation),
+        "evidence_detail": "; ".join(safe_evidence_detail),
         "counter_signals": "; ".join(safe_counter_signals),
     }
+
+
+def prioritized_stats_counter_signals(value: Any) -> list[str]:
+    return prioritized_optimization_counter_signals(
+        value,
+        STATS_COUNTER_SIGNAL_PRIORITY_FRAGMENTS,
+    )
+
+
+def prioritized_optimization_counter_signals(
+    value: Any,
+    priority_fragments: tuple[str, ...],
+) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    signals = [safe_optimization_display_text(item) for item in value if str(item or "").strip()]
+    prioritized: list[str] = []
+    for fragment in priority_fragments:
+        prioritized.extend(signal for signal in signals if fragment in signal.lower())
+    prioritized.extend(signals)
+    result: list[str] = []
+    for signal in prioritized:
+        if signal not in result:
+            result.append(signal)
+        if len(result) >= 2:
+            break
+    return result
 
 
 def case_score_severity(case: dict[str, Any]) -> str:

@@ -18,6 +18,10 @@ from query_doctor.source_visibility import (
     normalize_source_owner_user,
 )
 from query_doctor.report.llm_client import LLM_PROVIDER_CHOICES
+from query_doctor.report.language_contract import (
+    SUPPORTED_REPORT_LANGUAGES,
+    normalize_report_language,
+)
 
 
 DEFAULT_CONFIG_PATH = "query-doctor-config.json"
@@ -39,7 +43,7 @@ RECENT_ORDER_CHOICES = (
     "recent-duration-desc",
     "status-priority",
 )
-LANGUAGE_CHOICES = ("en", "ru")
+LANGUAGE_CHOICES = SUPPORTED_REPORT_LANGUAGES
 METADATA_AUTH_CHOICES = ("kerberos",)
 METADATA_PROTOCOL_CHOICES = ("beeswax", "hs2", "hs2-http")
 QUERY_PROFILE_SOURCE_CHOICES = ("cm", "impala")
@@ -517,11 +521,12 @@ def normalize_config_value(key: str, value: object) -> object:
         if key == "recent_scan_timezone":
             validate_recent_scan_timezone(normalized)
         if key == "language":
-            normalized = normalized.lower()
-            if normalized not in LANGUAGE_CHOICES:
+            try:
+                normalized = normalize_report_language(normalized)
+            except ValueError as exc:
                 raise ConfigError(
                     f"Config field language must be one of: {', '.join(LANGUAGE_CHOICES)}."
-                )
+                ) from exc
         if key == "metadata_auth" and normalized not in METADATA_AUTH_CHOICES:
             raise ConfigError(
                 f"Config field metadata_auth must be one of: {', '.join(METADATA_AUTH_CHOICES)}."

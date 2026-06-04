@@ -186,7 +186,8 @@ Recommended synthetic path:
 
 1. Open Workloads at `#workload-action-queue`.
 2. Show the Admission/runtime workload pair, verification metric, and local
-   synthetic action outcomes.
+   synthetic action outcomes, then open Workload Details and follow a
+   representative case Action card to show where rerun feedback is recorded.
 3. Open the synthetic optimization recommendations case.
 4. Show deterministic ranking, Details findings, and safe review locations.
 5. Open the trusted report and optimizer outcome.

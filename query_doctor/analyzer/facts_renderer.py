@@ -172,6 +172,35 @@ def render_profile_format(analysis: dict[str, Any]) -> list[str]:
         f"per_node_system_time={'yes' if features.get('per_node_system_time') else 'no'}, "
         f"per_host_fragment_instances={'yes' if features.get('per_host_fragment_instances') else 'no'}"
     )
+    section_mappings = (
+        profile.get("section_mappings") if isinstance(profile.get("section_mappings"), dict) else {}
+    )
+    if section_mappings:
+        ordered_sections = [
+            "profile_resources",
+            "profile_timings",
+            "resource_trace",
+            "profile_counters",
+            "client_fetch_tail",
+            "memory_pressure",
+        ]
+        summary_parts = []
+        section_limitations = []
+        for section_id in ordered_sections:
+            mapping = section_mappings.get(section_id)
+            if not isinstance(mapping, dict):
+                continue
+            state = str(mapping.get("state") or "unknown")
+            summary_parts.append(f"{section_id}={state}")
+            if state in {"limited", "unsupported"}:
+                section_limitations.append((section_id, str(mapping.get("summary") or "")))
+        if summary_parts:
+            lines.append("- section_mappings: " + ", ".join(summary_parts))
+        if section_limitations:
+            lines.append("- section_mapping_limitations:")
+            for section_id, summary in section_limitations:
+                safe_summary = summary or "Profile section is not mapped by this analyzer slice."
+                lines.append(f"  - {section_id}: {md_escape(safe_summary)}")
     limitations = [item for item in profile.get("limitations") or [] if isinstance(item, dict)]
     if limitations:
         lines.append("- limitations:")
@@ -469,6 +498,8 @@ def render_client_fetch_facts(analysis: dict[str, Any]) -> list[str]:
     lines.append(f"- counter_status: {facts.get('counter_status') or 'not_observed'}")
     lines.append(f"- counter_stability: {facts.get('counter_stability') or 'UNKNOWN'}")
     lines.append(f"- promotion_policy: {facts.get('promotion_policy') or 'unknown'}")
+    if facts.get("section_mapping"):
+        lines.append(f"- section_mapping: {facts.get('section_mapping')}")
     lines.append(f"- finding_supported: {'yes' if facts.get('finding_supported') else 'no'}")
     counter = facts.get("dominant_wait_counter")
     if isinstance(counter, dict):

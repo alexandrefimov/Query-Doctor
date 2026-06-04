@@ -41,6 +41,9 @@ cases/*/reports*/
 cases/*/llm_outputs*/
 cases/*/*.tmp
 cases/*/*.log
+**/.replace-*/
+**/.query-refresh-*/
+**/.cm-timeseries-refresh-*/
 .metadata-source-tables.json
 query-doctor-demo-pack/
 

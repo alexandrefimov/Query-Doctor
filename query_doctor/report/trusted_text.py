@@ -25,11 +25,12 @@ from query_doctor.report.facts_extractors import (
     cm_metrics_report_evidence_bullet,
     evidence_quality_report_evidence_bullet,
     facts_cardinality_anomaly_count,
-    facts_has_backend_tail_evidence,
+    facts_have_backend_followup_evidence,
     facts_have_action_cards,
     facts_have_spill_scratch_evidence,
     facts_memory_anomaly_count,
     parse_backend_tail_summary,
+    source_provenance_report_evidence_bullet,
 )
 from query_doctor.report.language_contract import (
     ReportLanguageContract,
@@ -288,7 +289,7 @@ def enforce_user_report_requirements(text: str, facts_text: str, *, language: st
             contract.user_verify_heading: contract.next_checks_heading,
         },
     )
-    if facts_has_backend_tail_evidence(facts_text):
+    if facts_have_backend_followup_evidence(facts_text):
         backend_bullet = (
             "- Передать платформенной команде backend/host evidence из analyzer facts; host/network/HDFS/RPC path — это проверки, не доказанная причина."
             if language == "ru"
@@ -348,8 +349,18 @@ def enforce_admin_report_requirements(
             contract.evidence_heading,
             [evidence_quality_bullet],
         )
+    source_provenance_bullet = source_provenance_report_evidence_bullet(
+        facts_text,
+        language=language,
+    )
+    if source_provenance_bullet:
+        text = insert_bullets_into_section(
+            text,
+            contract.evidence_heading,
+            [source_provenance_bullet],
+        )
     admin_bullet_rules: list[tuple[str, tuple[str, ...]]] = []
-    if facts_has_backend_tail_evidence(facts_text):
+    if facts_have_backend_followup_evidence(facts_text):
         admin_bullet_rules.extend(
             [
                 (
@@ -419,7 +430,7 @@ def enforce_admin_report_requirements(
                 (r"correlated\s+signals.*runtime\s+context|context-only\s+metrics.*root\s+cause",),
             )
         )
-    if facts_has_backend_tail_evidence(facts_text):
+    if facts_have_backend_followup_evidence(facts_text):
         backend_summary = parse_backend_tail_summary(facts_text)
         if backend_has_proven_tail(backend_summary):
             backend_tail_bullet = localized(

@@ -67,6 +67,9 @@ def test_web_help_page_renders_curated_static_help():
     assert "Recommended changes" in body
     assert "Diagnostics and evidence" in body
     assert 'href="/"' in body
+    assert 'href="/trino/compact-diagnosis"' in body
+    assert "Trino compact" in body
+    assert "Render direct or packaged raw-free boundary JSON, not product support." in body
     assert 'href="#quick-start"' in body
     assert 'href="#results-table"' in body
     assert 'id="details-actions"' in body
@@ -170,6 +173,8 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Детали Known Query ID" not in body
     assert "Python-отчет" in body
     assert "LLM narrative" in body
+    assert 'href="/trino/compact-diagnosis"' in body
+    assert "Рендерит direct или packaged raw-free boundary JSON, не product support." in body
     assert "Реализованный production engine сейчас Apache Impala." in body
     assert "Browser UI намеренно скрывает raw query text" in body
     assert "Synthetic demo docs" in body

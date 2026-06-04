@@ -34,6 +34,16 @@ from query_doctor.recent.query_optimization_score import (  # noqa: E402
     optimizer_no_draft_actionability,
     optimizer_rewriteability_rank,
 )
+from query_doctor.web.presenters.optimizer_facts import (  # noqa: E402
+    optimizer_no_recipe_change_direction,
+    optimizer_no_recipe_review_area,
+    optimizer_no_recipe_review_track_label,
+    optimizer_no_recipe_verification,
+    optimizer_no_recipe_workload_metric,
+)
+from query_doctor.web.presenters.recent_scan_action_candidates import (  # noqa: E402
+    optimizer_rewrite_support_text,
+)
 
 
 REVIEW_STATUSES = {"guidance_only", "draft_disabled", "source_unavailable"}
@@ -48,6 +58,21 @@ SAFE_PRIMARY_LABELS = {
     "unknown",
 }
 WORKLOAD_FINGERPRINT_RE = re.compile(r"^wf_[0-9a-f]{24}$")
+REPEATED_NO_RECIPE_READINESS_GAPS = {
+    "missing_track",
+    "mixed_tracks",
+    "source_unavailable",
+    "unknown_track",
+}
+REPEATED_NO_RECIPE_GUIDANCE_GAPS = {
+    "missing_change_direction",
+    "missing_review_area",
+    "missing_verification",
+    "missing_workload_metric",
+    "weak_workload_metric",
+    "weak_verification",
+    "weak_no_draft_contract",
+}
 
 
 @dataclass(frozen=True)
@@ -90,11 +115,18 @@ class WorkloadRollup:
     primary_labels: Counter[str] = field(default_factory=Counter)
     candidate_reasons: Counter[str] = field(default_factory=Counter)
     feature_clusters: Counter[str] = field(default_factory=Counter)
+    review_tracks: Counter[str] = field(default_factory=Counter)
     cte_graph_shapes: Counter[str] = field(default_factory=Counter)
     cte_predicate_pushdown_statuses: Counter[str] = field(default_factory=Counter)
     cte_simplification_statuses: Counter[str] = field(default_factory=Counter)
     derived_predicate_pushdown_statuses: Counter[str] = field(default_factory=Counter)
     risk_modes: Counter[str] = field(default_factory=Counter)
+
+
+@dataclass(frozen=True)
+class OptimizerFunnelIssue:
+    category: str
+    message: str
 
 
 @dataclass
@@ -134,8 +166,17 @@ class OptimizerFunnelAuditResult:
     no_recipe_derived_boundary_reason_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_risk_mode_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_risk_reason_counts: Counter[str] = field(default_factory=Counter)
+    repeated_no_recipe_review_track_counts: Counter[str] = field(default_factory=Counter)
+    repeated_no_recipe_review_readiness_counts: Counter[str] = field(default_factory=Counter)
+    repeated_no_recipe_guidance_readiness_counts: Counter[str] = field(default_factory=Counter)
+    repeated_no_recipe_family_counts: Counter[str] = field(default_factory=Counter)
     plain_feature_cluster_counts: Counter[str] = field(default_factory=Counter)
     no_recipe_workloads: dict[str, WorkloadRollup] = field(default_factory=dict)
+    issues: list[OptimizerFunnelIssue] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.issues
 
 
 class AuditInputError(RuntimeError):
@@ -164,6 +205,7 @@ def audit_summary(
     summary_path: Path,
     *,
     recompute_support: bool = True,
+    fail_on_repeated_no_recipe_readiness_gaps: bool = False,
 ) -> OptimizerFunnelAuditResult:
     summary_path = summary_path.resolve(strict=True)
     cases = summary_cases(load_summary(summary_path))
@@ -213,6 +255,9 @@ def audit_summary(
                 f"{support.status}:{support.rewriteability_bucket}"
             ] += 1
 
+    populate_repeated_no_recipe_rollups(result)
+    if fail_on_repeated_no_recipe_readiness_gaps:
+        add_repeated_no_recipe_readiness_issues(result)
     return result
 
 
@@ -467,6 +512,7 @@ def collect_no_recipe_case(
     rollup.primary_labels[primary] += 1
     rollup.candidate_reasons[candidate_reason] += 1
     rollup.risk_modes[support.risk_mode or "unknown"] += 1
+    rollup.review_tracks[support.no_recipe_review_track or "not_applicable"] += 1
     if support.cte_count:
         rollup.cte_graph_shapes[support.cte_graph_shape] += 1
         rollup.cte_predicate_pushdown_statuses[support.cte_predicate_pushdown_status] += 1
@@ -640,6 +686,7 @@ def print_workload_rollups(
     for rollup in sorted_rollups[:limit]:
         primary = ", ".join(f"{key}={count}" for key, count in rollup.primary_labels.most_common(3))
         family = ", ".join(f"{key}={count}" for key, count in rollup.shape_families.most_common(3))
+        track = ", ".join(f"{key}={count}" for key, count in rollup.review_tracks.most_common(3))
         reason = ", ".join(
             f"{key}={count}" for key, count in rollup.candidate_reasons.most_common(2)
         )
@@ -662,13 +709,204 @@ def print_workload_rollups(
         risk = ", ".join(f"{key}={count}" for key, count in rollup.risk_modes.most_common(1))
         print(
             f"  {rollup.key}: cases={rollup.count}; family={family}; "
-            f"primary={primary}; reason={reason}; risk={risk or '<none>'}; "
+            f"track={track}; primary={primary}; reason={reason}; risk={risk or '<none>'}; "
             f"cte_graph={cte_graph or '<none>'}; cte_pushdown={cte_pushdown or '<none>'}; "
             f"cte_simplification={cte_simplification or '<none>'}; "
             f"derived_pushdown={derived_pushdown or '<none>'}; "
             f"features={features or '<none>'}",
             file=out,
         )
+
+
+def no_recipe_workload_concentration(result: OptimizerFunnelAuditResult) -> dict[str, object]:
+    known_rollups = [
+        rollup for rollup in result.no_recipe_workloads.values() if rollup.key != "<none>"
+    ]
+    unknown_cases = sum(
+        rollup.count for rollup in result.no_recipe_workloads.values() if rollup.key == "<none>"
+    )
+    repeated_rollups = [rollup for rollup in known_rollups if rollup.count >= 2]
+    repeated_cases = sum(rollup.count for rollup in repeated_rollups)
+    known_cases = sum(rollup.count for rollup in known_rollups)
+    total_cases = known_cases + unknown_cases
+    top_count = max((rollup.count for rollup in known_rollups), default=0)
+    return {
+        "total_cases": total_cases,
+        "known_cases": known_cases,
+        "unknown_cases": unknown_cases,
+        "known_groups": len(known_rollups),
+        "repeated_groups": len(repeated_rollups),
+        "repeated_cases": repeated_cases,
+        "singleton_groups": len([rollup for rollup in known_rollups if rollup.count == 1]),
+        "top_group_cases": top_count,
+    }
+
+
+def populate_repeated_no_recipe_rollups(result: OptimizerFunnelAuditResult) -> None:
+    track_counts: Counter[str] = Counter()
+    readiness_counts: Counter[str] = Counter()
+    guidance_readiness_counts: Counter[str] = Counter()
+    family_counts: Counter[str] = Counter()
+    for rollup in result.no_recipe_workloads.values():
+        if rollup.key == "<none>" or rollup.count < 2:
+            continue
+        track_counts.update(rollup.review_tracks)
+        readiness_counts[repeated_no_recipe_review_readiness(rollup)] += 1
+        guidance_readiness_counts[repeated_no_recipe_guidance_readiness(rollup)] += 1
+        family_counts.update(rollup.shape_families)
+    result.repeated_no_recipe_review_track_counts = track_counts
+    result.repeated_no_recipe_review_readiness_counts = readiness_counts
+    result.repeated_no_recipe_guidance_readiness_counts = guidance_readiness_counts
+    result.repeated_no_recipe_family_counts = family_counts
+
+
+def add_repeated_no_recipe_readiness_issues(result: OptimizerFunnelAuditResult) -> None:
+    for readiness in sorted(REPEATED_NO_RECIPE_READINESS_GAPS):
+        count = result.repeated_no_recipe_review_readiness_counts.get(readiness, 0)
+        if not count:
+            continue
+        result.issues.append(
+            OptimizerFunnelIssue(
+                readiness,
+                f"repeated no-recipe workloads have {readiness} ({count} groups)",
+            )
+        )
+    for readiness in sorted(REPEATED_NO_RECIPE_GUIDANCE_GAPS):
+        count = result.repeated_no_recipe_guidance_readiness_counts.get(readiness, 0)
+        if not count:
+            continue
+        result.issues.append(
+            OptimizerFunnelIssue(
+                readiness,
+                f"repeated no-recipe workloads have {readiness} ({count} groups)",
+            )
+        )
+
+
+def repeated_no_recipe_review_readiness(rollup: WorkloadRollup) -> str:
+    tracks = set(rollup.review_tracks)
+    if not tracks:
+        return "missing_track"
+    if "unknown" in tracks:
+        return "unknown_track"
+    if "not_applicable" in tracks:
+        return "missing_track"
+    if tracks == {"source_unavailable"}:
+        return "source_unavailable"
+    if len(tracks) > 1:
+        return "mixed_tracks"
+    return "specific_track"
+
+
+def repeated_no_recipe_guidance_readiness(rollup: WorkloadRollup) -> str:
+    track_readiness = repeated_no_recipe_review_readiness(rollup)
+    if track_readiness != "specific_track":
+        return track_readiness
+    track = sorted(rollup.review_tracks)[0]
+    if not optimizer_no_recipe_review_area(track):
+        return "missing_review_area"
+    if not optimizer_no_recipe_change_direction(track):
+        return "missing_change_direction"
+    workload_metric = optimizer_no_recipe_workload_metric(track)
+    if not workload_metric:
+        return "missing_workload_metric"
+    if not optimizer_workload_metric_has_comparable_group_signal(workload_metric):
+        return "weak_workload_metric"
+    verification = optimizer_no_recipe_verification(track)
+    if not verification:
+        return "missing_verification"
+    if not optimizer_verification_has_comparison_and_rerun(verification):
+        return "weak_verification"
+    if not optimizer_review_only_text_has_no_draft_manual_contract(
+        optimizer_no_recipe_review_only_contract(track)
+    ):
+        return "weak_no_draft_contract"
+    return "guidance_ready"
+
+
+def optimizer_no_recipe_review_only_contract(track: str) -> str:
+    return optimizer_rewrite_support_text(
+        {
+            "rewrite_support_label": "Guidance only",
+            "rewrite_support_reason": "No Python-owned SQL rewrite recipe is available for this shape",
+            "rewriteability_bucket": "not_rewriteable",
+            "rewriteability_label": "Not rewriteable",
+            "rewrite_support_facts": optimizer_no_recipe_review_track_label(track),
+        }
+    )
+
+
+def optimizer_review_only_text_has_no_draft_manual_contract(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    has_no_draft_boundary = "trusted sql draft" in text and any(
+        term in text
+        for term in (
+            "no trusted sql draft",
+            "will not be generated",
+            "not generated",
+            "not shown",
+            "not produce",
+            "not produced",
+            "disabled",
+        )
+    )
+    has_manual_review = "manual" in text and any(
+        term in text for term in ("review", "analysis", "guidance")
+    )
+    return has_no_draft_boundary and has_manual_review
+
+
+def optimizer_verification_has_comparison_and_rerun(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    if "compare" not in text:
+        return False
+    return any(
+        term in text
+        for term in (
+            "rerun",
+            "re-run",
+            "next scan",
+            "repeated group",
+            "repeated-group",
+        )
+    )
+
+
+def optimizer_workload_metric_has_comparable_group_signal(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    return any(
+        term in text
+        for term in (
+            "repeated-group",
+            "repeated group",
+            "group p95",
+            "comparable rerun",
+            "comparable re-run",
+            "next scan",
+        )
+    )
+
+
+def no_recipe_workload_concentration_headline(result: OptimizerFunnelAuditResult) -> str:
+    concentration = no_recipe_workload_concentration(result)
+    total_cases = int(concentration["total_cases"])
+    known_cases = int(concentration["known_cases"])
+    repeated_cases = int(concentration["repeated_cases"])
+    top_group_cases = int(concentration["top_group_cases"])
+    return (
+        "No-recipe workload concentration: "
+        f"cases={total_cases}; known_workload_cases={known_cases}; "
+        f"unknown_workload_cases={concentration['unknown_cases']}; "
+        f"known_groups={concentration['known_groups']}; "
+        f"repeated_groups={concentration['repeated_groups']}; "
+        f"repeated_cases={repeated_cases} ({percentage(repeated_cases, known_cases)} of known); "
+        f"singleton_groups={concentration['singleton_groups']}; "
+        f"top_group_cases={top_group_cases} ({percentage(top_group_cases, known_cases)} of known)"
+    )
 
 
 def candidate_calibration_headline(result: OptimizerFunnelAuditResult) -> str:
@@ -722,6 +960,7 @@ def print_result(
     print(f"Summary: {result.summary_name}", file=out)
     print(f"Cases: total={result.total_cases}, audited={result.audited_cases}", file=out)
     print(candidate_calibration_headline(result), file=out)
+    print(no_recipe_workload_concentration_headline(result), file=out)
     print_counter("Support source", result.support_source_counts, limit=limit, out=out)
     print_counter("Severity", result.severity_counts, limit=limit, out=out)
     print_counter("Candidate tiers", result.candidate_tier_counts, limit=limit, out=out)
@@ -804,6 +1043,30 @@ def print_result(
         out=out,
     )
     print_counter(
+        "Repeated no-recipe review tracks",
+        result.repeated_no_recipe_review_track_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "Repeated no-recipe review readiness",
+        result.repeated_no_recipe_review_readiness_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "Repeated no-recipe guidance readiness",
+        result.repeated_no_recipe_guidance_readiness_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
+        "Repeated no-recipe shape families",
+        result.repeated_no_recipe_family_counts,
+        limit=limit,
+        out=out,
+    )
+    print_counter(
         "No-recipe CTE graph shapes",
         result.no_recipe_cte_graph_counts,
         limit=limit,
@@ -846,6 +1109,12 @@ def print_result(
         out=out,
     )
     print_workload_rollups(result.no_recipe_workloads.values(), limit=limit, out=out)
+    if result.issues:
+        print("Issues:", file=out)
+        for issue in result.issues:
+            print(f"  {issue.category}: {issue.message}", file=out)
+    else:
+        print("Issues: none", file=out)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -861,6 +1130,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Use optimizer_rewrite_support already present in the summary instead of recomputing.",
     )
+    parser.add_argument(
+        "--fail-on-repeated-no-recipe-readiness-gaps",
+        action="store_true",
+        help=(
+            "Fail when repeated no-recipe workload groups lack one specific safe review "
+            "track, mapped review guidance, workload metric, or compare/rerun verification."
+        ),
+    )
     parser.add_argument("--limit", type=int, default=12, help="Rows to print per counter.")
     return parser.parse_args(argv)
 
@@ -868,12 +1145,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     try:
-        result = audit_summary(args.summary, recompute_support=not args.use_stored_support)
+        result = audit_summary(
+            args.summary,
+            recompute_support=not args.use_stored_support,
+            fail_on_repeated_no_recipe_readiness_gaps=(
+                args.fail_on_repeated_no_recipe_readiness_gaps
+            ),
+        )
     except AuditInputError as exc:
         print(f"optimizer funnel audit failed: {exc}", file=sys.stderr)
         return 2
     print_result(result, limit=max(1, args.limit))
-    return 0
+    return 0 if result.ok else 1
 
 
 if __name__ == "__main__":

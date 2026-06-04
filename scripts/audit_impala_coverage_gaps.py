@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -22,10 +24,13 @@ from query_doctor.analyzer.profile_evidence import (  # noqa: E402
     DATA_MOVEMENT_PRIMARY_MIN_EXCHANGE_SHARE,
     medium_data_movement_threshold,
 )
+from query_doctor.analyzer.runtime_metrics import runtime_metrics_context  # noqa: E402
 from query_doctor.analyzer.runtime_admission import (  # noqa: E402
     runtime_admission_facts_from_analysis,
 )
 from query_doctor.analyzer.scan_skew import scan_skew_facts_from_analysis  # noqa: E402
+from query_doctor.report.safety_validation import contains_raw_sql_like_text  # noqa: E402
+from query_doctor.safety import redaction  # noqa: E402
 from scripts.audit_profile_evidence_gates import (  # noqa: E402
     EvidenceGateAuditInputError,
     analysis_path_for,
@@ -36,6 +41,59 @@ from scripts.audit_profile_evidence_gates import (  # noqa: E402
     summary_cases,
     text_value,
 )
+
+
+PRIMARY_BOTTLENECK_LABELS = {
+    "stats",
+    "sql_shape",
+    "runtime_admission",
+    "runtime_skew",
+    "runtime_data_movement",
+    "runtime_storage",
+    "client_fetch_tail",
+    "mixed",
+    "unknown",
+}
+PRIMARY_BOTTLENECK_CONFIDENCES = {"high", "medium", "low"}
+MEDIUM_OR_BETTER_PRIMARY_CONFIDENCES = {"high", "medium"}
+NO_ACTIONABLE_PRIMARY_LABELS = {"missing", "none", "unknown"}
+SAFE_UNKNOWN_PRIMARY_REASONS = {
+    "codegen_finding_not_primary_supported",
+    "data_movement_context_only",
+    "no_primary_branch_supported",
+    "operator_time_not_dominant",
+    "profile_dialect_not_supported_for_primary",
+    "scan_skew_medium_supporting_only",
+    "storage_context_view_only",
+    "very_short_query_or_unknown_wall_clock",
+}
+DIRECT_REQUIRED_PROVENANCE_KINDS = ("engine", "profile", "metrics", "events", "metadata")
+DIRECT_REQUIRED_OPTIONAL_SOURCES = (
+    "json_profile",
+    "profile_docs",
+    "admission_context",
+    "metadata",
+    "runtime_metrics",
+    "cluster_events",
+)
+DIRECT_READY_OPTIONAL_STATES = {
+    "available",
+    "partial",
+    "unavailable",
+    "not_configured",
+    "not_collected",
+}
+DIRECT_READY_PROVENANCE_STATUSES = {"available", "partial", "unavailable", "none"}
+SOURCE_PROVENANCE_KINDS = set(DIRECT_REQUIRED_PROVENANCE_KINDS)
+SOURCE_PROVENANCE_STATUSES = DIRECT_READY_PROVENANCE_STATUSES | {
+    "failed",
+    "not_collected",
+    "not_requested",
+    "ok",
+    "unknown",
+}
+URL_RE = re.compile(r"\bhttps?://", re.IGNORECASE)
+LOCAL_PATH_RE = re.compile(r"(?<![\w/])(?:/private)?/tmp/|(?<![\w/])/Users/")
 
 
 @dataclass(frozen=True)
@@ -159,6 +217,12 @@ FOLLOW_UPS: dict[str, FollowUpDefinition] = {
 }
 
 
+@dataclass(frozen=True)
+class CoverageAuditIssue:
+    category: str
+    message: str
+
+
 @dataclass
 class CoverageAuditResult:
     summary_paths: list[Path]
@@ -167,11 +231,17 @@ class CoverageAuditResult:
     missing_analysis_count: int = 0
     analysis_error_count: int = 0
     primary_counts: Counter[str] = field(default_factory=Counter)
+    primary_confidence_counts: Counter[str] = field(default_factory=Counter)
+    medium_or_better_primary_count: int = 0
     profile_dialect_counts: Counter[str] = field(default_factory=Counter)
     profile_policy_counts: Counter[str] = field(default_factory=Counter)
     profile_counter_registry_counts: Counter[str] = field(default_factory=Counter)
+    optional_source_counts: Counter[str] = field(default_factory=Counter)
     source_compatibility_counts: Counter[str] = field(default_factory=Counter)
     source_status_counts: Counter[str] = field(default_factory=Counter)
+    direct_impala_case_count: int = 0
+    direct_source_readiness_counts: Counter[str] = field(default_factory=Counter)
+    direct_source_readiness_gap_counts: Counter[str] = field(default_factory=Counter)
     evidence_quality_counts: Counter[str] = field(default_factory=Counter)
     unknown_primary_reason_counts: Counter[str] = field(default_factory=Counter)
     storage_unknown_reason_counts: Counter[str] = field(default_factory=Counter)
@@ -181,10 +251,11 @@ class CoverageAuditResult:
     runtime_filter_calibration_signal_counts: Counter[str] = field(default_factory=Counter)
     gap_counts: Counter[str] = field(default_factory=Counter)
     opportunity_counts: Counter[str] = field(default_factory=Counter)
+    issues: list[CoverageAuditIssue] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return not self.analysis_error_count
+        return not self.issues and not self.analysis_error_count
 
 
 def counter_key(*parts: object) -> str:
@@ -192,23 +263,56 @@ def counter_key(*parts: object) -> str:
 
 
 def primary_label_value(value: object) -> str:
-    text = str(value or "").strip().lower()
-    return text if text else "missing"
+    if value is None or not str(value).strip():
+        return "missing"
+    token = normalized_token(value)
+    return token if token in PRIMARY_BOTTLENECK_LABELS else "unknown"
+
+
+def primary_confidence_value(value: object) -> str:
+    return allowed_token(value, PRIMARY_BOTTLENECK_CONFIDENCES)
+
+
+def primary_is_medium_or_better(label: str, confidence: str) -> bool:
+    return (
+        label not in NO_ACTIONABLE_PRIMARY_LABELS
+        and confidence in MEDIUM_OR_BETTER_PRIMARY_CONFIDENCES
+    )
 
 
 def reason_key(value: object) -> str:
     if isinstance(value, str):
-        return value.strip() or "missing_reason"
+        return safe_reason_token(value)
     if isinstance(value, (list, tuple)):
-        parts = [str(item).strip() for item in value if str(item).strip()]
-        return "+".join(parts) if parts else "missing_reason"
+        parts = [safe_reason_token(item) for item in value if str(item).strip()]
+        safe_parts = [part for part in parts if part != "unsafe_reason"]
+        if safe_parts:
+            return "+".join(safe_parts)
+        if "unsafe_reason" in parts:
+            return "unsafe_reason"
+        return "missing_reason"
     return "missing_reason"
+
+
+def safe_reason_token(value: object) -> str:
+    token = normalized_token(value)
+    if token in SAFE_UNKNOWN_PRIMARY_REASONS:
+        return token
+    if token.startswith("tail_candidates_"):
+        return "tail_candidates"
+    return "unsafe_reason"
 
 
 def percent(count: int, total: int) -> str:
     if total <= 0:
         return "0.0%"
     return f"{(count / total) * 100:.1f}%"
+
+
+def percent_value(count: int, total: int) -> float:
+    if total <= 0:
+        return 0.0
+    return (count / total) * 100
 
 
 def add_gap(result: CoverageAuditResult, key: str) -> None:
@@ -219,24 +323,49 @@ def add_opportunity(result: CoverageAuditResult, key: str) -> None:
     result.opportunity_counts[key] += 1
 
 
-def audit_summaries(summary_paths: Iterable[Path]) -> CoverageAuditResult:
+def add_issue(result: CoverageAuditResult, category: str, message: str) -> None:
+    result.issues.append(CoverageAuditIssue(category, message))
+
+
+def audit_summaries(
+    summary_paths: Iterable[Path],
+    *,
+    fail_on_diagnostic_coverage_gaps: bool = False,
+    fail_on_direct_source_readiness_gaps: bool = False,
+    max_unknown_primary_rate: float = 30.0,
+    min_medium_primary_rate: float = 70.0,
+) -> CoverageAuditResult:
     paths = [path.resolve(strict=True) for path in summary_paths]
     result = CoverageAuditResult(summary_paths=paths)
     for summary_path in paths:
         audit_summary_into(result, summary_path)
+    if fail_on_diagnostic_coverage_gaps:
+        add_diagnostic_coverage_issues(
+            result,
+            max_unknown_primary_rate=max_unknown_primary_rate,
+            min_medium_primary_rate=min_medium_primary_rate,
+        )
+    if fail_on_direct_source_readiness_gaps:
+        add_direct_source_readiness_issues(result)
     return result
 
 
 def audit_summary_into(result: CoverageAuditResult, summary_path: Path) -> None:
     summary = load_json_object(summary_path)
     cases = summary_cases(summary)
+    summary_is_direct = normalized_token(summary.get("query_profile_source")) == "impala"
+    summary_prometheus_requested = bool(summary.get("collect_prometheus_timeseries"))
     result.total_cases += len(cases)
 
     for case in cases:
         primary = case.get("case_primary_bottleneck")
         primary = primary if isinstance(primary, dict) else {}
         primary_label = primary_label_value(primary.get("label"))
+        primary_confidence = primary_confidence_value(primary.get("confidence"))
         result.primary_counts[primary_label] += 1
+        result.primary_confidence_counts[counter_key(primary_label, primary_confidence)] += 1
+        if primary_is_medium_or_better(primary_label, primary_confidence):
+            result.medium_or_better_primary_count += 1
 
         case_dir = resolve_case_dir(summary_path, case)
         analysis_path = analysis_path_for(case_dir) if case_dir is not None else None
@@ -258,10 +387,97 @@ def audit_summary_into(result: CoverageAuditResult, summary_path: Path) -> None:
             ] += 1
         elif primary_label == "missing":
             add_gap(result, "missing_primary_bottleneck_label")
-        audit_analysis(result, analysis)
+        audit_analysis(
+            result,
+            analysis,
+            summary_is_direct=summary_is_direct,
+            summary_prometheus_requested=summary_prometheus_requested,
+        )
 
 
-def audit_analysis(result: CoverageAuditResult, analysis: dict[str, Any]) -> None:
+def add_diagnostic_coverage_issues(
+    result: CoverageAuditResult,
+    *,
+    max_unknown_primary_rate: float,
+    min_medium_primary_rate: float,
+) -> None:
+    if result.total_cases <= 0:
+        add_issue(
+            result,
+            "empty_batch",
+            "strict diagnostic coverage requires at least one selected case",
+        )
+        return
+
+    if result.missing_analysis_count:
+        add_issue(
+            result,
+            "missing_analysis",
+            f"strict diagnostic coverage requires analyzer output for all selected cases "
+            f"({result.missing_analysis_count} missing)",
+        )
+    if result.analysis_error_count:
+        add_issue(
+            result,
+            "analysis_unreadable",
+            f"strict diagnostic coverage requires readable analyzer output "
+            f"({result.analysis_error_count} unreadable)",
+        )
+
+    missing_label_count = result.primary_counts.get("missing", 0)
+    if missing_label_count:
+        add_issue(
+            result,
+            "missing_primary_bottleneck_label",
+            f"strict diagnostic coverage requires explicit primary labels "
+            f"({missing_label_count} missing)",
+        )
+
+    unknown_count = result.primary_counts.get("unknown", 0)
+    unknown_rate = percent_value(unknown_count, result.total_cases)
+    if unknown_rate > max_unknown_primary_rate:
+        add_issue(
+            result,
+            "unknown_primary_rate",
+            f"primary bottleneck unknown rate {unknown_rate:.1f}% exceeds "
+            f"{max_unknown_primary_rate:.1f}% ({unknown_count}/{result.total_cases} cases)",
+        )
+
+    medium_rate = percent_value(result.medium_or_better_primary_count, result.total_cases)
+    if medium_rate < min_medium_primary_rate:
+        add_issue(
+            result,
+            "medium_primary_rate",
+            f"medium-or-better deterministic primary coverage {medium_rate:.1f}% is below "
+            f"{min_medium_primary_rate:.1f}% "
+            f"({result.medium_or_better_primary_count}/{result.total_cases} cases)",
+        )
+
+
+def add_direct_source_readiness_issues(result: CoverageAuditResult) -> None:
+    if result.direct_impala_case_count <= 0:
+        add_issue(
+            result,
+            "direct_source_no_cases",
+            "strict direct source readiness requires at least one direct Impala analyzed case",
+        )
+        return
+
+    for category, count in result.direct_source_readiness_gap_counts.most_common():
+        add_issue(
+            result,
+            category,
+            f"strict direct source readiness observed {category} in {count} direct case(s)",
+        )
+
+
+def audit_analysis(
+    result: CoverageAuditResult,
+    analysis: dict[str, Any],
+    *,
+    summary_is_direct: bool,
+    summary_prometheus_requested: bool,
+) -> None:
     result.analyzed_cases += 1
 
     profile = analysis.get("profile_format")
@@ -288,6 +504,16 @@ def audit_analysis(result: CoverageAuditResult, analysis: dict[str, Any]) -> Non
         add_gap(result, "profile_docs_missing_allowlisted_labels")
 
     audit_source_compatibility(result, analysis, profile=profile, registry=registry)
+    audit_optional_source_availability(result, analysis, profile=profile, registry=registry)
+    if summary_is_direct or profile_is_direct_impala(profile):
+        audit_direct_source_readiness(
+            result,
+            analysis,
+            profile=profile,
+            registry=registry,
+            prometheus_requested=summary_prometheus_requested
+            or analysis_prometheus_requested(analysis),
+        )
 
     evidence_quality = analysis.get("evidence_quality")
     evidence_quality = evidence_quality if isinstance(evidence_quality, dict) else {}
@@ -300,6 +526,13 @@ def audit_analysis(result: CoverageAuditResult, analysis: dict[str, Any]) -> Non
     audit_scan_skew_opportunities(result, analysis)
     audit_data_movement_opportunities(result, analysis)
     audit_memory_pressure_opportunities(result, analysis)
+
+
+def profile_is_direct_impala(profile: dict[str, Any]) -> bool:
+    return (
+        text_value(profile.get("profile_source")) == "impala_daemon"
+        or text_value(profile.get("source_label")) == "Impala daemon profile endpoint"
+    )
 
 
 def audit_source_compatibility(
@@ -459,6 +692,348 @@ def admission_context_status(context: dict[str, Any]) -> str:
     return "unknown"
 
 
+def audit_optional_source_availability(
+    result: CoverageAuditResult,
+    analysis: dict[str, Any],
+    *,
+    profile: dict[str, Any],
+    registry: dict[str, Any],
+) -> None:
+    capabilities = profile.get("source_capabilities")
+    capabilities = capabilities if isinstance(capabilities, dict) else {}
+    query_context = analysis.get("query_context")
+    query_context = query_context if isinstance(query_context, dict) else {}
+    admission_context = analysis.get("admission_context")
+    admission_context = admission_context if isinstance(admission_context, dict) else {}
+    resource_trace = analysis.get("resource_trace")
+    resource_trace = resource_trace if isinstance(resource_trace, dict) else {}
+
+    result.optional_source_counts[
+        counter_key("json_profile", optional_json_profile_state(capabilities))
+    ] += 1
+    result.optional_source_counts[
+        counter_key("profile_docs", optional_profile_docs_state(capabilities, registry))
+    ] += 1
+    result.optional_source_counts[
+        counter_key(
+            "admission_context",
+            optional_admission_context_state(query_context, admission_context),
+        )
+    ] += 1
+    result.optional_source_counts[
+        counter_key(
+            "metadata",
+            optional_source_state_from_source_status(
+                source_provenance_status(analysis, "metadata")
+            ),
+        )
+    ] += 1
+    result.optional_source_counts[
+        counter_key(
+            "runtime_metrics",
+            optional_source_state_from_source_status(source_provenance_status(analysis, "metrics")),
+        )
+    ] += 1
+    result.optional_source_counts[
+        counter_key(
+            "cluster_events",
+            optional_source_state_from_source_status(source_provenance_status(analysis, "events")),
+        )
+    ] += 1
+    result.optional_source_counts[
+        counter_key("resource_trace", optional_resource_trace_state(resource_trace))
+    ] += 1
+
+
+def optional_json_profile_state(capabilities: dict[str, Any]) -> str:
+    probe = allowed_token(capabilities.get("json_profile_probe"), {"enabled", "not_configured"})
+    payload = allowed_token(
+        capabilities.get("json_profile_payload"),
+        {
+            "observed",
+            "mapped_limited",
+            "wrapped_text_observed",
+            "not_selected",
+            "selected_but_unmapped",
+        },
+    )
+    if probe == "not_configured":
+        return "not_configured"
+    if probe == "enabled" and payload in {"observed", "mapped_limited", "wrapped_text_observed"}:
+        return "available"
+    if probe == "enabled" and payload == "selected_but_unmapped":
+        return "unavailable"
+    return "unknown"
+
+
+def optional_profile_docs_state(
+    capabilities: dict[str, Any],
+    registry: dict[str, Any],
+) -> str:
+    probe = allowed_token(capabilities.get("profile_docs_probe"), {"enabled", "not_configured"})
+    registry_status = allowed_token(registry.get("status"), {"available", "not_observed"})
+    registry_source = allowed_token(registry.get("source"), {"bundled", "profile_docs"})
+    attempts = int_value(capabilities.get("profile_docs_fetch_attempt_count"))
+    if registry_status == "available" and registry_source == "profile_docs":
+        return "available"
+    if probe == "not_configured":
+        return "not_configured"
+    if probe == "enabled" and attempts > 0:
+        return "unavailable"
+    return "unknown"
+
+
+def optional_admission_context_state(
+    query_context: dict[str, Any],
+    admission_context: dict[str, Any],
+) -> str:
+    probe = enabled_or_unknown(query_context.get("admission_context_probe_enabled"))
+    status = admission_context_status(admission_context)
+    if status in {"available", "unavailable"}:
+        return status
+    if probe == "not_configured":
+        return "not_configured"
+    return "unknown"
+
+
+def optional_resource_trace_state(resource_trace: dict[str, Any]) -> str:
+    status = allowed_token(
+        resource_trace.get("status"),
+        {"available", "unknown", "not_observed", "unavailable"},
+    )
+    if status == "available":
+        return "available"
+    if status == "unavailable":
+        return "unavailable"
+    if status == "not_observed":
+        return "not_collected"
+    return "unknown"
+
+
+def source_provenance_status(analysis: dict[str, Any], kind: str) -> str:
+    provenance = analysis.get("source_provenance")
+    items = provenance.get("items") if isinstance(provenance, dict) else None
+    if not isinstance(items, list):
+        return "unknown"
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if safe_source_provenance_kind(item.get("kind")) == kind:
+            return safe_source_provenance_status(item.get("status"))
+    return "unknown"
+
+
+def safe_source_provenance_kind(value: object) -> str:
+    return allowed_token(value, SOURCE_PROVENANCE_KINDS)
+
+
+def safe_source_provenance_status(value: object) -> str:
+    return allowed_token(value, SOURCE_PROVENANCE_STATUSES)
+
+
+def optional_source_state_from_source_status(status: str) -> str:
+    normalized = allowed_token(
+        status,
+        {
+            "available",
+            "ok",
+            "none",
+            "not_collected",
+            "not_requested",
+            "unavailable",
+            "failed",
+            "unknown",
+        },
+    )
+    if normalized in {"available", "ok"}:
+        return "available"
+    if normalized in {"none", "not_collected", "not_requested"}:
+        return "not_collected"
+    if normalized in {"unavailable", "failed"}:
+        return "unavailable"
+    return "unknown"
+
+
+def audit_direct_source_readiness(
+    result: CoverageAuditResult,
+    analysis: dict[str, Any],
+    *,
+    profile: dict[str, Any],
+    registry: dict[str, Any],
+    prometheus_requested: bool,
+) -> None:
+    result.direct_impala_case_count += 1
+    capabilities = profile.get("source_capabilities")
+    capabilities = capabilities if isinstance(capabilities, dict) else {}
+    query_context = analysis.get("query_context")
+    query_context = query_context if isinstance(query_context, dict) else {}
+    admission_context = analysis.get("admission_context")
+    admission_context = admission_context if isinstance(admission_context, dict) else {}
+    audit_direct_source_provenance_raw_free(result, analysis)
+
+    profile_source = "impala_daemon" if profile_is_direct_impala(profile) else "unknown"
+    record_direct_readiness(
+        result, "profile_source", profile_source, ready=profile_source != "unknown"
+    )
+
+    profile_format = allowed_token(
+        profile.get("profile_response_format"), {"json", "text", "default"}
+    )
+    record_direct_readiness(
+        result,
+        "profile_response_format",
+        profile_format,
+        ready=profile_format != "unknown",
+    )
+
+    profile_attempts = safe_count_bucket(capabilities.get("profile_fetch_attempt_count"))
+    record_direct_readiness(
+        result,
+        "profile_fetch_attempts",
+        profile_attempts,
+        ready=profile_attempts != "none",
+    )
+
+    for key in ("json_profile_probe", "profile_docs_probe"):
+        probe_state = allowed_token(capabilities.get(key), {"enabled", "not_configured"})
+        record_direct_readiness(result, key, probe_state, ready=probe_state != "unknown")
+
+    admission_probe = enabled_or_unknown(query_context.get("admission_context_probe_enabled"))
+    record_direct_readiness(
+        result,
+        "admission_context_probe",
+        admission_probe,
+        ready=admission_probe != "unknown",
+    )
+
+    optional_states = {
+        "json_profile": optional_json_profile_state(capabilities),
+        "profile_docs": optional_profile_docs_state(capabilities, registry),
+        "admission_context": optional_admission_context_state(query_context, admission_context),
+        "metadata": direct_optional_source_state_from_source_status(
+            source_provenance_status(analysis, "metadata")
+        ),
+        "runtime_metrics": direct_optional_source_state_from_source_status(
+            source_provenance_status(analysis, "metrics")
+        ),
+        "cluster_events": direct_optional_source_state_from_source_status(
+            source_provenance_status(analysis, "events")
+        ),
+    }
+    for source in DIRECT_REQUIRED_OPTIONAL_SOURCES:
+        state = optional_states[source]
+        record_direct_readiness(
+            result,
+            source,
+            state,
+            ready=state in DIRECT_READY_OPTIONAL_STATES,
+        )
+
+    if prometheus_requested and optional_states["runtime_metrics"] == "not_collected":
+        add_direct_readiness_gap(result, "direct_runtime_metrics_configured_but_not_collected")
+
+    for kind in DIRECT_REQUIRED_PROVENANCE_KINDS:
+        status = direct_provenance_status_state(source_provenance_status(analysis, kind))
+        record_direct_readiness(
+            result,
+            f"provenance_{kind}",
+            status,
+            ready=status in DIRECT_READY_PROVENANCE_STATUSES,
+        )
+
+
+def audit_direct_source_provenance_raw_free(
+    result: CoverageAuditResult,
+    analysis: dict[str, Any],
+) -> None:
+    provenance = analysis.get("source_provenance")
+    if not isinstance(provenance, dict):
+        return
+    text = json.dumps(provenance, ensure_ascii=True, sort_keys=True)
+    if direct_source_provenance_raw_free_violations(text):
+        add_direct_readiness_gap(result, "direct_source_provenance_raw_like")
+
+
+def direct_source_provenance_raw_free_violations(text: str) -> tuple[str, ...]:
+    violations: list[str] = []
+    if contains_raw_sql_like_text(text):
+        violations.append("sql")
+    if URL_RE.search(text):
+        violations.append("url")
+    if LOCAL_PATH_RE.search(text):
+        violations.append("local_path")
+    if redaction.EMAIL_RE.search(text):
+        violations.append("email")
+    if redaction.IPV4_RE.search(text):
+        violations.append("ipv4")
+    if redaction.HOSTLIKE_FQDN_RE.search(text):
+        violations.append("hostname")
+    if redaction.SECRET_VALUE_RE.search(text):
+        violations.append("secret")
+    return tuple(sorted(set(violations)))
+
+
+def direct_optional_source_state_from_source_status(status: str) -> str:
+    normalized = allowed_token(
+        status,
+        {
+            "available",
+            "ok",
+            "partial",
+            "none",
+            "not_collected",
+            "not_requested",
+            "unavailable",
+            "failed",
+            "unknown",
+        },
+    )
+    if normalized in {"available", "ok"}:
+        return "available"
+    if normalized == "partial":
+        return "partial"
+    if normalized in {"none", "not_collected", "not_requested"}:
+        return "not_collected"
+    if normalized in {"unavailable", "failed"}:
+        return "unavailable"
+    return "unknown"
+
+
+def direct_provenance_status_state(status: str) -> str:
+    normalized = allowed_token(status, SOURCE_PROVENANCE_STATUSES)
+    if normalized == "ok":
+        return "available"
+    if normalized in {"failed"}:
+        return "unavailable"
+    if normalized in {"not_collected", "not_requested"}:
+        return "none"
+    return normalized
+
+
+def analysis_prometheus_requested(analysis: dict[str, Any]) -> bool:
+    context = runtime_metrics_context(analysis) or {}
+    source = text_value(context.get("source"), "")
+    source_label = text_value(context.get("source_label"), "")
+    return source == "prometheus" or source_label == "Prometheus runtime metrics"
+
+
+def record_direct_readiness(
+    result: CoverageAuditResult,
+    dimension: str,
+    state: str,
+    *,
+    ready: bool,
+) -> None:
+    safe_state = normalized_token(state)
+    result.direct_source_readiness_counts[counter_key(dimension, safe_state)] += 1
+    if not ready:
+        add_direct_readiness_gap(result, f"direct_{dimension}_unknown")
+
+
+def add_direct_readiness_gap(result: CoverageAuditResult, category: str) -> None:
+    result.direct_source_readiness_gap_counts[category] += 1
+
+
 def audit_source_provenance(result: CoverageAuditResult, analysis: dict[str, Any]) -> None:
     provenance = analysis.get("source_provenance")
     items = provenance.get("items") if isinstance(provenance, dict) else None
@@ -469,15 +1044,19 @@ def audit_source_provenance(result: CoverageAuditResult, analysis: dict[str, Any
     for item in items:
         if not isinstance(item, dict):
             continue
-        kind = text_value(item.get("kind"))
-        status = text_value(item.get("status"))
+        kind = safe_source_provenance_kind(item.get("kind"))
+        status = safe_source_provenance_status(item.get("status"))
         result.source_status_counts[counter_key(kind, status)] += 1
-        if kind == "metadata" and status in {"none", "unavailable", "unknown"}:
+        if kind == "metadata" and source_status_is_unavailable(status):
             add_gap(result, "metadata_context_not_collected")
-        elif kind == "metrics" and status in {"none", "unavailable", "unknown"}:
+        elif kind == "metrics" and source_status_is_unavailable(status):
             add_gap(result, "runtime_metrics_not_available")
-        elif kind == "events" and status in {"none", "unavailable", "unknown"}:
+        elif kind == "events" and source_status_is_unavailable(status):
             add_gap(result, "cluster_events_not_available")
+
+
+def source_status_is_unavailable(status: str) -> bool:
+    return status in {"failed", "none", "not_collected", "not_requested", "unavailable", "unknown"}
 
 
 def audit_storage_context(result: CoverageAuditResult, analysis: dict[str, Any]) -> None:
@@ -835,6 +1414,15 @@ def print_follow_ups(
         print(f"    next: {definition.next_step}", file=out)
 
 
+def print_issues(result: CoverageAuditResult, *, out: TextIO, limit: int) -> None:
+    print("Issues:", file=out)
+    if not result.issues:
+        print("  none", file=out)
+        return
+    for issue in result.issues[:limit]:
+        print(f"  {issue.category}: {issue.message}", file=out)
+
+
 def print_result(result: CoverageAuditResult, *, out: TextIO = sys.stdout, limit: int = 12) -> None:
     print(f"Summaries: {len(result.summary_paths)}", file=out)
     print(
@@ -845,6 +1433,13 @@ def print_result(result: CoverageAuditResult, *, out: TextIO = sys.stdout, limit
         file=out,
     )
     print_counter("Primary bottlenecks", result.primary_counts, out=out, limit=limit)
+    print_counter("Primary confidence", result.primary_confidence_counts, out=out, limit=limit)
+    print(
+        "Medium-or-better primary coverage: "
+        f"{result.medium_or_better_primary_count}/{result.total_cases} "
+        f"({percent(result.medium_or_better_primary_count, result.total_cases)})",
+        file=out,
+    )
     print_counter("Profile dialects", result.profile_dialect_counts, out=out, limit=limit)
     print_counter("Profile policies", result.profile_policy_counts, out=out, limit=limit)
     print_counter(
@@ -856,6 +1451,25 @@ def print_result(result: CoverageAuditResult, *, out: TextIO = sys.stdout, limit
     print_counter(
         "Impala source compatibility",
         result.source_compatibility_counts,
+        out=out,
+        limit=limit,
+    )
+    print_counter(
+        "Optional source availability",
+        result.optional_source_counts,
+        out=out,
+        limit=limit,
+    )
+    print(f"Direct Impala analyzed cases: {result.direct_impala_case_count}", file=out)
+    print_counter(
+        "Direct source readiness",
+        result.direct_source_readiness_counts,
+        out=out,
+        limit=limit,
+    )
+    print_counter(
+        "Direct source readiness gaps",
+        result.direct_source_readiness_gap_counts,
         out=out,
         limit=limit,
     )
@@ -911,19 +1525,72 @@ def print_result(result: CoverageAuditResult, *, out: TextIO = sys.stdout, limit
         total=max(result.analyzed_cases, 1),
         limit=limit,
     )
+    print_issues(result, out=out, limit=limit)
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("summaries", nargs="+", type=Path, help="Path(s) to batch_summary.json")
     parser.add_argument("--limit", type=int, default=12, help="Rows to print per section")
+    parser.add_argument(
+        "--fail-on-diagnostic-coverage-gaps",
+        action="store_true",
+        help=(
+            "Return non-zero when aggregate representative diagnostic coverage misses "
+            "strict analyzer-output, primary-label, unknown-rate, or confidence-rate gates."
+        ),
+    )
+    parser.add_argument(
+        "--fail-on-direct-source-readiness-gaps",
+        action="store_true",
+        help=(
+            "Return non-zero when direct Impala summaries lack explicit raw-free source "
+            "provenance, profile capability states, or optional-source limitation states."
+        ),
+    )
+    parser.add_argument(
+        "--max-unknown-primary-rate",
+        type=float,
+        default=30.0,
+        metavar="PERCENT",
+        help=(
+            "Maximum allowed case_primary_bottleneck=unknown rate for strict coverage "
+            "mode. Default: 30.0."
+        ),
+    )
+    parser.add_argument(
+        "--min-medium-primary-rate",
+        type=float,
+        default=70.0,
+        metavar="PERCENT",
+        help=(
+            "Minimum required non-unknown medium/high primary-bottleneck coverage "
+            "for strict coverage mode. Default: 70.0."
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def valid_percent_threshold(value: float) -> bool:
+    return 0.0 <= value <= 100.0
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
+    if not valid_percent_threshold(args.max_unknown_primary_rate):
+        print("ERROR: --max-unknown-primary-rate must be between 0 and 100", file=sys.stderr)
+        return 2
+    if not valid_percent_threshold(args.min_medium_primary_rate):
+        print("ERROR: --min-medium-primary-rate must be between 0 and 100", file=sys.stderr)
+        return 2
     try:
-        result = audit_summaries(args.summaries)
+        result = audit_summaries(
+            args.summaries,
+            fail_on_diagnostic_coverage_gaps=args.fail_on_diagnostic_coverage_gaps,
+            fail_on_direct_source_readiness_gaps=args.fail_on_direct_source_readiness_gaps,
+            max_unknown_primary_rate=args.max_unknown_primary_rate,
+            min_medium_primary_rate=args.min_medium_primary_rate,
+        )
     except EvidenceGateAuditInputError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

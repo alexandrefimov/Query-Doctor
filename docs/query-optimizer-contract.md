@@ -209,6 +209,13 @@ free-form model text. Workload Action Queue may aggregate repeated rows by
 those allowlisted labels only. Unknown tokens must not be shown as sanitized
 free text or affect visible review guidance.
 
+Representative no-recipe calibration should run
+`scripts/audit_optimizer_funnel.py <batch_summary.json> --fail-on-repeated-no-recipe-readiness-gaps`.
+In strict mode, repeated no-recipe workload groups must resolve to one safe
+review track, an allowlisted review area, a bounded change direction, a workload
+metric, and compare/rerun verification wording before they count as ready for
+guidance or recipe-backlog decisions.
+
 ## Shape Facts
 
 Shape facts are deterministic, raw-free categories. Browser-visible summaries

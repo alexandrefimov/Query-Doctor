@@ -20,6 +20,7 @@ from query_doctor.impala.profile_source import (
     normalize_impala_profile_hosts,
     normalize_impala_profile_scheme,
 )
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 
 
 ADMISSION_CONTEXT_PATH = "/admission?json"
@@ -68,7 +69,7 @@ def fetch_impala_admission_context(
     timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     max_admission_context_bytes: int = DEFAULT_MAX_ADMISSION_CONTEXT_BYTES,
     target_pool: str | None = None,
-    opener: UrlOpener = urllib.request.urlopen,
+    opener: UrlOpener = configured_diagnostic_urlopen,
 ) -> ImpalaAdmissionContextFetchResult:
     urls = impala_admission_context_urls(hosts, port=port, scheme=scheme)
     if not urls:

@@ -1,6 +1,26 @@
+from pathlib import Path
+
 from query_doctor.analyzer.impala_engine_facts import build_impala_engine_fact_projection
 from query_doctor.analyzer.engine_facts import validate_engine_fact_bundle_raw_free
 from engine_fact_contract_harness import build_impala_projection_analysis
+
+
+def test_impala_projection_is_not_a_product_consumer_dependency():
+    repo_root = Path(__file__).resolve().parents[1]
+    projection_path = repo_root / "query_doctor" / "analyzer" / "impala_engine_facts.py"
+    product_references: list[str] = []
+
+    for path in (repo_root / "query_doctor").rglob("*.py"):
+        if path == projection_path:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if (
+            "query_doctor.analyzer.impala_engine_facts" in text
+            or "build_impala_engine_fact_projection" in text
+        ):
+            product_references.append(str(path.relative_to(repo_root)))
+
+    assert product_references == []
 
 
 def test_impala_projection_maps_existing_analyzer_fields_raw_free():

@@ -1,6 +1,6 @@
 # Архитектура Query Doctor
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-03
 
 Язык: [English](../../architecture.md) | Русский
 
@@ -154,7 +154,18 @@ Future source seam:
 
 ## Текущая поддержка
 
-- Current production query engine support: Apache Impala only.
+- Current production query engine support: Apache Impala. Trino ограничен
+  sanitized offline evidence package import, bounded local event-store import,
+  bounded HTTP event archive import, bounded HTTP query-detail archive import,
+  bounded local query-detail import, bounded local query-list aggregate import
+  и bounded local statement-stats import, плюс event-source contract checking и
+  dry-run coordinator query-info target checking, plus bounded pruned
+  coordinator query-info probing/import и local compact diagnosis over raw-free
+  direct boundary JSON или selected package sample boundaries плюс isolated
+  local `/trino/compact-diagnosis` rendering для тех же already raw-free inputs.
+  Trino import and diagnosis paths не подключены к broader live Trino
+  coordinator collection, metadata, Details/trusted reports или optimizer
+  paths.
 - Full Recent discovery/profile/metrics/events provider: Cloudera Manager.
 - Direct Impala provider: bounded Recent, Running и one Known Query ID through
   impalad daemon endpoints.

@@ -20,10 +20,12 @@ from query_doctor.cm.models import (
     CMTimeSeriesQuery,
     CMUrlOpener,
 )
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 from query_doctor.safety.redaction import sanitize_http_error_message
 
 
 DEFAULT_MAX_PROFILE_BYTES = 52_428_800
+DEFAULT_MAX_CM_RESPONSE_BYTES = DEFAULT_MAX_PROFILE_BYTES
 CM_API_VERSION = "v32"
 CM_QUERY_SUMMARIES_PATH = (
     f"/api/{CM_API_VERSION}/clusters/{{clusterName}}/services/{{serviceName}}/impalaQueries"
@@ -56,7 +58,7 @@ class CMHttpClient:
         opener: CMUrlOpener | None = None,
     ) -> None:
         self.config = config
-        self.opener = opener or urllib.request.urlopen
+        self.opener = opener or configured_diagnostic_urlopen
 
     def build_url(self, path: str, params: dict[str, object] | None = None) -> str:
         parsed_path = urlsplit(path)
@@ -118,7 +120,10 @@ class CMHttpClient:
         max_response_bytes: int | None = None,
     ) -> str:
         request = self.build_request(path, params)
-        if max_response_bytes is not None and max_response_bytes <= 0:
+        response_limit = (
+            DEFAULT_MAX_CM_RESPONSE_BYTES if max_response_bytes is None else max_response_bytes
+        )
+        if response_limit <= 0:
             raise self.sanitized_error("Maximum response bytes must be a positive integer.")
         try:
             context = self.tls_context()
@@ -127,16 +132,13 @@ class CMHttpClient:
                 timeout=self.config.timeout_sec,
                 context=context,
             ) as response:
-                if max_response_bytes is None:
-                    payload = response.read()
-                else:
-                    payload = response.read(max_response_bytes + 1)
-                    if len(payload) > max_response_bytes:
-                        actual_read = len(payload)
-                        raise self.sanitized_error(
-                            "CM response exceeded maximum allowed bytes: "
-                            f"actual at least {actual_read}, limit {max_response_bytes}"
-                        )
+                payload = response.read(response_limit + 1)
+                if len(payload) > response_limit:
+                    actual_read = len(payload)
+                    raise self.sanitized_error(
+                        "CM response exceeded maximum allowed bytes: "
+                        f"actual at least {actual_read}, limit {response_limit}"
+                    )
         except urllib.error.HTTPError as exc:
             raise self.sanitized_error(f"HTTP {exc.code} from CM: {exc}") from exc
         except urllib.error.URLError as exc:

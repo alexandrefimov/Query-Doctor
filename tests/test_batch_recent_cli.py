@@ -4970,6 +4970,35 @@ def test_case_summary_includes_stats_optimization_candidate(tmp_path):
     assert "plan_cardinality_anomaly" in stats_locator_ids
 
 
+def test_case_summary_includes_profile_admission_source_locators():
+    module = load_batch_module()
+    case = case_result(
+        module, index=1, query_id="aaaaaaaaaaaaaaaa:0000000000000001", score=0, duration_sec=120
+    )
+    case.case_primary_bottleneck = {
+        "label": "runtime_admission",
+        "confidence": "high",
+        "reasons": [
+            "admission_wait_source_profile_resource_facts",
+            "admission_wait_source_profile_timing_facts",
+        ],
+    }
+
+    summary = module.case_to_summary(case)
+
+    assert summary["source_locators"]["runtime_admission"] == [
+        {"id": "runtime_admission_window", "detail": "case runtime window"},
+        {
+            "id": "profile_resource_admission_evidence",
+            "detail": "query-specific admission result or resource wait",
+        },
+        {
+            "id": "profile_timing_admission_evidence",
+            "detail": "query timeline admission phase",
+        },
+    ]
+
+
 def test_batch_summary_includes_source_coordinates_only_for_owner_raw(tmp_path):
     module = load_batch_module()
     from query_doctor.recent.optimizer_rewrite_support import OptimizerRewriteSupport
@@ -6241,6 +6270,51 @@ def test_scoring_does_not_score_zero_gap_labels_when_counts_are_zero():
 
     assert score == 0
     assert reasons == ["no analyzer-supported suspicious facts"]
+
+
+def test_scoring_prefers_structured_limited_memory_pressure_over_legacy_findings():
+    module = load_batch_module()
+    from query_doctor.recent.query_optimization_score import (
+        has_supported_spill_scratch_evidence as query_has_supported_spill,
+    )
+
+    facts = "\n".join(
+        [
+            "# Query Doctor Analysis Facts",
+            "",
+            "## Summary",
+            "- Parsed operators: 0",
+            "- Cardinality anomalies: 0",
+            "- Memory anomalies: 0",
+            "",
+            "## Memory Pressure Evidence",
+            "",
+            "- status: context_only",
+            "- evidence_tier: context_only",
+            "- promotion_policy: limited",
+            "- section_mapping: limited",
+            "- finding_supported: no",
+            "- spill_or_scratch_evidence_count: 0",
+            "- limited_spill_or_scratch_counter_count: 1",
+            "- limitations:",
+            (
+                "  - Non-zero spill/scratch counters were parsed as limited context, but "
+                "this profile dialect or section is not mapped for memory-pressure promotion."
+            ),
+            "",
+            "## Findings",
+            "",
+            "### Spill or scratch I/O [medium]",
+            "- Detected non-zero spill/scratch metric evidence in digest lines.",
+            "",
+        ]
+    )
+
+    score, reasons = module.score_analysis_facts(facts)
+
+    assert score == 0
+    assert reasons == ["no analyzer-supported suspicious facts"]
+    assert query_has_supported_spill(facts) is False
 
 
 def test_scoring_scores_supported_spill_and_backend_facts():

@@ -29,7 +29,22 @@ class PrimaryBottleneckPolicy(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
+class ProfileSectionMapping(str, Enum):
+    SUPPORTED = "supported"
+    LIMITED = "limited"
+    NOT_OBSERVED = "not_observed"
+    UNSUPPORTED = "unsupported"
+
+
 SAFE_PROFILE_ENDPOINT_FORMATS = {"json", "text", "default", "unknown"}
+PROFILE_SECTION_ORDER = (
+    "profile_resources",
+    "profile_timings",
+    "resource_trace",
+    "profile_counters",
+    "client_fetch_tail",
+    "memory_pressure",
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +73,7 @@ AVERAGED_FRAGMENT_RE = re.compile(r"^\s*Averaged\s+Fragment\s+F\d+\b", re.IGNORE
 INSTANCE_HOST_RE = re.compile(r"^\s*Instance\s+\S+\s+\(host=", re.IGNORECASE | re.MULTILINE)
 CLASSIC_TEXT_MARKER_RE = re.compile(
     r"^\s*(?:Summary|ExecSummary|Query\s+Timeline|Plan)\s*:"
+    r"|^\s*(?:Query\s+)?Runtime\s+Profile\b"
     r"|^\s*#{1,6}\s*(?:ExecSummary|Backend counters|Metric lines)\b",
     re.IGNORECASE | re.MULTILINE,
 )
@@ -192,7 +208,12 @@ def detect_profile_dialect(
             "medium",
             ("classic_thrift_profile_marker",),
         )
-    if CLASSIC_TEXT_MARKER_RE.search(effective) or RAW_RUNTIME_NODE_RE.search(effective):
+    if (
+        CLASSIC_TEXT_MARKER_RE.search(effective)
+        or RAW_RUNTIME_NODE_RE.search(effective)
+        or FRAGMENT_SECTION_RE.search(effective)
+        or AVERAGED_FRAGMENT_RE.search(effective)
+    ):
         return ProfileDialectDetection(
             ProfileDialect.CLASSIC_TEXT,
             "medium",
@@ -312,6 +333,14 @@ def build_profile_format_facts(
         "per_node_system_time": "Per Node System Time" in text,
         "per_host_fragment_instances": "Per Host Number of Fragment Instances" in text,
         "fragment_instance_lifecycle": "Fragment Instance Lifecycle" in text,
+        "resource_trace": bool(
+            re.search(
+                r"\b(?:Per\s+Node\s+Profiles|HostCpu|HostDisk|HostNetwork|"
+                r"CpuIoWaitPercentage|DiskReadThroughput|NetworkRx)\b",
+                text,
+                re.IGNORECASE,
+            )
+        ),
         "json_mapped_counter_count": len(
             re.findall(r"^\s*-\s+[A-Za-z][A-Za-z0-9_]*\s*:", text, re.MULTILINE)
         )
@@ -335,6 +364,7 @@ def build_profile_format_facts(
         context,
         primary_policy,
     )
+    section_mappings = profile_section_mappings(detection.dialect, features)
     return {
         "profile_family": "impala_runtime_profile"
         if detection.dialect != ProfileDialect.UNKNOWN
@@ -365,6 +395,7 @@ def build_profile_format_facts(
         "primary_bottleneck_policy": primary_policy.value,
         "per_instance_evidence": per_instance_evidence,
         "source_capabilities": source_capabilities,
+        "section_mappings": section_mappings,
         "limitations": profile_format_limitations(
             detection.dialect,
             analysis_support,
@@ -515,6 +546,167 @@ def profile_format_limitations(
             }
         )
     return limitations
+
+
+def profile_section_mappings(
+    dialect: ProfileDialect,
+    features: dict[str, bool | int],
+) -> dict[str, dict[str, str]]:
+    """Describe which profile-derived sections may be interpreted.
+
+    Section summaries are raw-free by construction so they can be rendered in
+    analyzer facts, Details diagnostics, and trusted report prompts.
+    """
+
+    if dialect == ProfileDialect.CLASSIC_TEXT:
+        return {
+            "profile_resources": classic_text_section_mapping(
+                bool(
+                    features.get("admission")
+                    or features.get("backend_startup_latencies")
+                    or features.get("per_node_peak_memory")
+                    or features.get("per_node_bytes_read")
+                    or features.get("per_node_user_time")
+                    or features.get("per_node_system_time")
+                    or features.get("per_host_fragment_instances")
+                ),
+                section_label="Profile resource sections",
+            ),
+            "profile_timings": classic_text_section_mapping(
+                bool(features.get("query_timeline") or features.get("fragment_instance_lifecycle")),
+                section_label="Profile timing sections",
+            ),
+            "resource_trace": classic_text_section_mapping(
+                bool(features.get("resource_trace")),
+                section_label="Resource trace sections",
+            ),
+            "profile_counters": section_mapping(
+                ProfileSectionMapping.SUPPORTED,
+                "classic_text_profile_mapped",
+                "Classic text profile counters are mapped for the current analyzer slices.",
+            ),
+            "client_fetch_tail": section_mapping(
+                ProfileSectionMapping.SUPPORTED,
+                "classic_text_profile_mapped",
+                "Client-fetch counters are mapped for classic text profiles when stable counters are present.",
+            ),
+            "memory_pressure": section_mapping(
+                ProfileSectionMapping.SUPPORTED,
+                "classic_text_profile_mapped",
+                "Spill and scratch counters are mapped for classic text profiles when stable counters are present.",
+            ),
+        }
+
+    if dialect == ProfileDialect.CLASSIC_JSON and features.get("json_mapped_counter_count"):
+        limited = section_mapping(
+            ProfileSectionMapping.LIMITED,
+            "classic_json_allowlisted_counter_mapping",
+            (
+                "Classic JSON profile counters are allowlisted and mapped only as limited "
+                "context; profile-derived primary or root-cause claims stay disabled."
+            ),
+        )
+        unsupported = unsupported_section_mapping(
+            "classic_json_profile_partially_mapped",
+            "This classic JSON profile section is not mapped by the current analyzer slice.",
+        )
+        return {
+            "profile_resources": unsupported,
+            "profile_timings": unsupported,
+            "resource_trace": unsupported,
+            "profile_counters": limited,
+            "client_fetch_tail": limited,
+            "memory_pressure": limited,
+        }
+
+    if dialect == ProfileDialect.CLASSIC_JSON:
+        return unsupported_profile_section_mappings(
+            "classic_json_profile_unmapped",
+            "Classic JSON profile sections are not mapped by the current analyzer slice.",
+        )
+
+    if dialect == ProfileDialect.EXPERIMENTAL_V2:
+        return unsupported_profile_section_mappings(
+            "experimental_profile_v2_unmapped",
+            (
+                "Experimental profile-v2 sections are not interpreted by this analyzer "
+                "slice unless a section is explicitly mapped."
+            ),
+        )
+
+    if dialect == ProfileDialect.CLASSIC_THRIFT:
+        return unsupported_profile_section_mappings(
+            "classic_thrift_profile_unmapped",
+            "Classic Thrift profile sections are not mapped by the current analyzer slice.",
+        )
+
+    return unsupported_profile_section_mappings(
+        "profile_dialect_unknown",
+        "Profile-derived sections are not interpreted because the profile dialect is unknown.",
+    )
+
+
+def classic_text_section_mapping(observed: bool, *, section_label: str) -> dict[str, str]:
+    if observed:
+        return section_mapping(
+            ProfileSectionMapping.SUPPORTED,
+            "classic_text_section_observed",
+            f"{section_label} are mapped for classic text profiles.",
+        )
+    return section_mapping(
+        ProfileSectionMapping.NOT_OBSERVED,
+        "classic_text_section_not_observed",
+        f"{section_label} were not observed in this profile.",
+    )
+
+
+def unsupported_profile_section_mappings(reason: str, summary: str) -> dict[str, dict[str, str]]:
+    return {
+        section_id: unsupported_section_mapping(reason, summary)
+        for section_id in PROFILE_SECTION_ORDER
+    }
+
+
+def unsupported_section_mapping(reason: str, summary: str) -> dict[str, str]:
+    return section_mapping(ProfileSectionMapping.UNSUPPORTED, reason, summary)
+
+
+def section_mapping(
+    state: ProfileSectionMapping,
+    reason: str,
+    summary: str,
+) -> dict[str, str]:
+    return {"state": state.value, "reason": reason, "summary": summary}
+
+
+def profile_section_mapping(
+    profile_format: dict[str, Any] | None,
+    section_id: str,
+) -> dict[str, str]:
+    profile = profile_format if isinstance(profile_format, dict) else {}
+    mappings = profile.get("section_mappings")
+    mappings = mappings if isinstance(mappings, dict) else {}
+    mapping = mappings.get(section_id)
+    if isinstance(mapping, dict):
+        return {
+            "state": str(mapping.get("state") or "unsupported"),
+            "reason": str(mapping.get("reason") or "profile_section_unmapped"),
+            "summary": str(
+                mapping.get("summary")
+                or "Profile section is not mapped by the current analyzer slice."
+            ),
+        }
+    return unsupported_section_mapping(
+        "profile_section_mapping_missing",
+        "Profile section mapping was unavailable; profile-derived interpretation is disabled.",
+    )
+
+
+def profile_section_mapping_state(
+    profile_format: dict[str, Any] | None,
+    section_id: str,
+) -> str:
+    return profile_section_mapping(profile_format, section_id)["state"]
 
 
 def profile_source_capabilities(

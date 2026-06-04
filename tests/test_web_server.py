@@ -163,6 +163,7 @@ SERVER_REEXPORTS = [
     (
         "query_doctor.web.subprocesses",
         (
+            "WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES",
             "run_subprocess",
             "effective_subprocess_env",
             "resolve_metadata_impala_shell",
@@ -553,6 +554,53 @@ def test_batch_case_detail_render_context_returns_typed_safe_view(tmp_path):
     assert "case_dir" not in rendered_view
     assert "CM_PASSWORD" not in rendered_view
     assert "qwen" not in rendered_view
+
+
+def test_batch_case_detail_uses_summary_profile_source_for_limitations(tmp_path):
+    module = load_web_module()
+    summary = tmp_path / "batch_summary.json"
+    case_dir = tmp_path / "cases" / "case-001" / "abc"
+    case_dir.mkdir(parents=True)
+    summary.write_text(
+        json.dumps(
+            {
+                "query_profile_source": "impala",
+                "cases": [
+                    {
+                        "case_index": 1,
+                        "query_id": "abc",
+                        "score": 17,
+                        "score_severity": "suspicious",
+                        "collection_status": "ok",
+                        "analysis_status": "ok",
+                        "metadata_status": "skipped",
+                        "case_dir": str(case_dir),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        batch_summary=summary,
+        query_profile_source="cm",
+    )
+    store = module.WebJobStore()
+    action_context = module.build_batch_case_detail_action_context(settings, "case-001", store)
+
+    body = module.render_batch_case_detail_for_request(
+        action_context.settings,
+        "case-001",
+        action_context.case,
+        store,
+    )
+
+    assert action_context.case["_detail_query_profile_source"] == "impala"
+    assert "Source limitations" in body
+    assert "Direct Impala scans do not include Cloudera Manager event context." in body
+    assert "Bounded Impala metadata is unavailable for this case" in body
+    assert str(case_dir) not in body
 
 
 def test_specific_query_detail_action_context_centralizes_action_state(tmp_path):
@@ -1419,6 +1467,58 @@ def test_web_job_cancel_marks_safe_terminal_status_and_blocks_late_completion():
     assert "late unsafe result" not in payload["result_html"]
 
 
+def test_web_batch_job_unexpected_exception_uses_raw_free_fallback(monkeypatch):
+    module = load_web_module()
+    from query_doctor.web import batch_jobs
+
+    raw_fragments = [
+        "/Users/example/case_dir",
+        "SELECT secret_col FROM raw_table",
+        "raw stdout from subprocess",
+        "optimized_query.sql",
+        "qwen3-coder",
+    ]
+
+    def raise_unexpected_exception(*_args, **_kwargs):
+        raise RuntimeError(" | ".join(raw_fragments))
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("runner should not be called after command build failure")
+
+    monkeypatch.setattr(batch_jobs, "build_batch_command", raise_unexpected_exception)
+
+    settings = module.WebSettings(config=Path(".query-doctor-cm.local.json"))
+    store = module.WebJobStore()
+    job = store.create_batch({"scan_target": "finished"})
+
+    module.run_batch_job(
+        job.job_id,
+        module.BatchRunConfig(metadata_top_limit=0),
+        settings,
+        store,
+        fail_if_called,
+    )
+
+    snapshot = store.get(job.job_id)
+    assert snapshot is not None
+    assert snapshot.status == "failed"
+    assert snapshot.stage_label == "Failed"
+    assert snapshot.progress == 100
+    assert snapshot.result_html == ""
+    assert snapshot.error == (
+        "Unexpected recent scan failure. Details are hidden because they may contain sensitive data."
+    )
+
+    payload = json.loads(module.render_job_status_json(snapshot))
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert payload["status"] == "failed"
+    assert payload["error"] == snapshot.error
+    assert payload["result_html"] == ""
+    for fragment in raw_fragments:
+        assert fragment not in snapshot.error
+        assert fragment not in serialized
+
+
 def test_web_cancel_route_redirects_to_job_page():
     module = load_web_module()
     from query_doctor.web.routes import route_post_request
@@ -1826,6 +1926,58 @@ def test_web_run_subprocess_terminates_when_cancelled(tmp_path):
     assert completed.returncode == -15
 
 
+def test_web_run_subprocess_bounds_real_stdout_and_stderr_capture(tmp_path):
+    module = load_web_module()
+    limit = module.WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES
+    script = (
+        "import sys\n"
+        f"sys.stdout.write('o' * ({limit} + 4096))\n"
+        "sys.stdout.flush()\n"
+        f"sys.stderr.write('e' * ({limit} + 8192))\n"
+        "sys.stderr.flush()\n"
+    )
+
+    completed = module.run_subprocess(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        timeout_sec=10,
+        runner=subprocess.run,
+    )
+
+    assert completed.returncode == 0
+    assert len(completed.stdout.encode("utf-8")) == limit
+    assert len(completed.stderr.encode("utf-8")) == limit
+    assert completed.stdout == "o" * limit
+    assert completed.stderr == "e" * limit
+
+
+def test_web_run_subprocess_bounds_custom_runner_output(tmp_path):
+    module = load_web_module()
+    limit = module.WEB_SUBPROCESS_CAPTURE_LIMIT_BYTES
+
+    def fake_runner(cmd, **kwargs):
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout="x" * (limit + 512),
+            stderr=("é" * limit),
+        )
+
+    completed = module.run_subprocess(
+        ["query-doctor-test"],
+        cwd=tmp_path,
+        timeout_sec=10,
+        runner=fake_runner,
+    )
+
+    assert completed.returncode == 0
+    assert len(completed.stdout.encode("utf-8")) == limit
+    assert len(completed.stderr.encode("utf-8")) <= limit
+    assert completed.stdout == "x" * limit
+
+
 def test_web_query_results_accumulate_after_multiple_completed_jobs():
     module = load_web_module()
     store = module.WebJobStore()
@@ -2175,7 +2327,9 @@ def test_web_specific_query_details_route_renders_safe_deterministic_details(tmp
     assert "Runtime signals" in captured["body"]
     assert "Runtime metrics" in captured["body"]
     assert "<span>CM metrics</span><strong>available</strong>" not in captured["body"]
-    assert "cm6" in captured["body"]
+    assert "metrics_profile" in captured["body"]
+    assert "metrics_profile</span><strong>host_01</strong>" in captured["body"]
+    assert "cm6" not in captured["body"]
     assert "4/4 metrics ok, 40 points" in captured["body"]
     assert "4 ok, 0 no_data, 0 unavailable" in captured["body"]
     assert "unavailable_metrics" in captured["body"]
@@ -2211,7 +2365,7 @@ def test_web_specific_query_details_route_renders_safe_deterministic_details(tmp
     assert "Query context" in captured["body"]
     assert "query window" in captured["body"]
     assert "2026-05-04T10:00:00Z to 2026-05-04T10:05:15Z" in captured["body"]
-    assert "root.analytics" in captured["body"]
+    assert "pool</span><strong>root.analytics" in captured["body"]
     assert "admission wait" in captured["body"]
     assert "2.50s" in captured["body"]
     assert "42.00 GiB" in captured["body"]
@@ -7603,7 +7757,7 @@ def test_web_settings_loads_metadata_from_local_config(tmp_path):
                 "optimizer_llm_model": "optimizer-config-model",
                 "optimizer_llm_base_url": "http://localhost:11434",
                 "krb5ccname": "FILE:/tmp/krb5cc_config_web",
-                "language": "ru",
+                "language": "RU",
             }
         ),
         encoding="utf-8",

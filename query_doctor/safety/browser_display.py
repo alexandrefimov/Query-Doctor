@@ -20,6 +20,11 @@ RAW_OUTPUT_REPLACEMENT = "[subprocess output hidden]"
 RAW_ARTIFACT_REPLACEMENT = "[artifact name hidden]"
 MODEL_REPLACEMENT = "[model setting hidden]"
 SQL_SNIPPET_REPLACEMENT = "[SQL hidden]"
+SVG_NAMESPACE_TOKENS = (
+    "http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg",
+    "https%3A%2F%2Fwww.w3.org%2F2000%2Fsvg",
+)
+STATIC_ASSET_PATH_RE = re.compile(r"/static/[A-Za-z0-9_.-]+\.(?:css|js)")
 
 FIELD_NAME_TOKENS = (
     "case_dir",
@@ -32,13 +37,20 @@ FIELD_NAME_TOKENS = (
 )
 
 RAW_ARTIFACT_FILENAME_TOKENS = RAW_ARTIFACT_FILENAMES
+RAW_METADATA_STATEMENT_TOKENS = (
+    "SHOW CREATE TABLE",
+    "SHOW TABLE STATS",
+    "SHOW COLUMN STATS",
+    "DESCRIBE FORMATTED",
+    "SHOW PARTITIONS",
+)
 
 MODEL_NAME_RE = re.compile(
     r"\b(?:"
     r"qwen[\w:.-]*|"
     r"gpt-oss[\w:.-]*|"
-    r"gpt[_-]"
-    r"lst[\w:.-]*|"
+    r"gpt[_-]lst[\w:.-]*|"
+    r"gpt[\w:.-]*|"
     r"codestral[\w:.-]*|"
     r"deepseek[\w:.-]*|"
     r"internal[_-]model[\w:.-]*|"
@@ -62,6 +74,10 @@ BROWSER_HOST_LABEL_RE = re.compile(
     r"([ \t]*[:=][ \t]*)([^ \t\r\n,;]+)",
     re.IGNORECASE,
 )
+SAFE_FAVICON_LINK_RE = re.compile(
+    r'<link rel="icon" type="image/svg\+xml" '
+    r'href="data:image/svg\+xml;base64,[A-Za-z0-9+/=]{1,2048}">'
+)
 
 
 def redact_browser_display_text(
@@ -83,12 +99,12 @@ def redact_browser_display_text(
         text = redact_infrastructure_identifiers_for_display(text)
     if redact_field_names:
         text = redact_field_names_for_display(text)
+    if redact_sql_snippets:
+        text = redact_sql_snippets_for_display(text)
     if redact_artifact_markers:
         text = redact_raw_artifact_markers_for_display(text)
     if redact_model_names:
         text = redact_model_names_for_display(text)
-    if redact_sql_snippets:
-        text = redact_sql_snippets_for_display(text)
     return text[:max_chars] if max_chars is not None else text
 
 
@@ -114,6 +130,7 @@ def redact_local_paths_for_display(text: str) -> str:
 
 def redact_infrastructure_identifiers_for_display(text: str) -> str:
     host_redactor = shared_redaction.HostAliasRedactor()
+    text, protected_fragments = protect_first_party_browser_chrome(text)
 
     def replace_host_label(match: re.Match[str]) -> str:
         alias = host_redactor.redact_host_value(match.group(3))
@@ -124,7 +141,29 @@ def redact_infrastructure_identifiers_for_display(text: str) -> str:
     text = BROWSER_USER_LABEL_RE.sub(r"\1\2<user>", text)
     text = BROWSER_HOST_LABEL_RE.sub(replace_host_label, text)
     text = shared_redaction.USER_KV_RE.sub(r"\1\2<user>", text)
-    return shared_redaction.redact_host_identifiers(text, host_redactor)
+    text = shared_redaction.redact_host_identifiers(text, host_redactor)
+    return restore_first_party_browser_chrome(text, protected_fragments)
+
+
+def protect_first_party_browser_chrome(text: str) -> tuple[str, dict[str, str]]:
+    protected: dict[str, str] = {}
+
+    def protect(fragment: str) -> str:
+        token = f"QXSAFEZ{len(protected):04d}Z"
+        protected[token] = fragment
+        return token
+
+    text = SAFE_FAVICON_LINK_RE.sub(lambda match: protect(match.group(0)), text)
+    for token in SVG_NAMESPACE_TOKENS:
+        text = text.replace(token, protect(token))
+    text = STATIC_ASSET_PATH_RE.sub(lambda match: protect(match.group(0)), text)
+    return text, protected
+
+
+def restore_first_party_browser_chrome(text: str, protected_fragments: Mapping[str, str]) -> str:
+    for token, fragment in protected_fragments.items():
+        text = text.replace(token, fragment)
+    return text
 
 
 def redact_field_names_for_display(text: str) -> str:
@@ -138,7 +177,8 @@ def redact_raw_artifact_markers_for_display(text: str) -> str:
         text = text.replace(token, RAW_PROFILE_REPLACEMENT)
     for token in RAW_ARTIFACT_FILENAME_TOKENS:
         text = text.replace(token, RAW_ARTIFACT_REPLACEMENT)
-    text = text.replace("SHOW CREATE TABLE", RAW_METADATA_REPLACEMENT)
+    for token in RAW_METADATA_STATEMENT_TOKENS:
+        text = text.replace(token, RAW_METADATA_REPLACEMENT)
     text = text.replace("raw stdout", RAW_OUTPUT_REPLACEMENT)
     text = text.replace("raw stderr", RAW_OUTPUT_REPLACEMENT)
     return text
@@ -150,6 +190,15 @@ def redact_model_names_for_display(text: str) -> str:
 
 def redact_sql_snippets_for_display(text: str) -> str:
     # Intentionally coarse and fail-closed; hiding extra text is safer than echoing a query fragment.
+    identifier_part = r"(?:`[^`]+`|\"[^\"]+\"|[A-Za-z_][\w$-]*)"
+    identifier = rf"{identifier_part}(?:[ \t]*\.[ \t]*{identifier_part})*"
+    metadata_statement_pattern = (
+        r"\b(?:"
+        r"SHOW\s+(?:CREATE\s+TABLE|TABLE\s+STATS|COLUMN\s+STATS|PARTITIONS)\b|"
+        r"DESCRIBE\s+FORMATTED\b"
+        r")"
+        rf"(?:[ \t]+{identifier}){{0,3}}"
+    )
     statement_pattern = (
         r"\b(?:"
         r"SELECT\b(?=[^.;\n<]{0,120}\bFROM\b)|"
@@ -161,14 +210,19 @@ def redact_sql_snippets_for_display(text: str) -> str:
         r"ALTER\s+(?:TABLE|VIEW)\b|"
         r"COMPUTE\s+STATS\b|"
         r"INVALIDATE\s+METADATA\b|"
-        r"REFRESH\b(?=\s+[A-Za-z_`\"]|[^.;\n<]{0,40}\.)|"
-        r"SHOW\s+(?:CREATE\s+TABLE|TABLE\s+STATS|COLUMN\s+STATS)\b"
+        r"REFRESH\b(?=\s+[A-Za-z_`\"]|[^.;\n<]{0,40}\.)"
         r")"
-        r"[^.;\n<]{0,220}"
+        r"[^;\n<]{0,220}"
     )
     cte_pattern = (
         r"\bWITH\s+(?:[A-Za-z_][\w$]*|\"[^\"]+\"|`[^`]+`)\s+AS\b"
         r"[^.;\n<]{0,220}"
+    )
+    text = re.sub(
+        metadata_statement_pattern,
+        RAW_METADATA_REPLACEMENT,
+        text,
+        flags=re.IGNORECASE,
     )
     text = re.sub(statement_pattern, SQL_SNIPPET_REPLACEMENT, text, flags=re.IGNORECASE)
     return re.sub(cte_pattern, SQL_SNIPPET_REPLACEMENT, text, flags=re.IGNORECASE)

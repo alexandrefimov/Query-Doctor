@@ -398,7 +398,7 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "scalar_multi_aggregate_review": (
         "Compare filter selectivity, aggregate input rows, stats freshness, and projected columns "
-        "in EXPLAIN before and after one bounded change; then check repeated-group p95."
+        "in EXPLAIN before and after one bounded change; then rerun the repeated group."
     ),
     "scalar_aggregate_review": (
         "Compare aggregate input rows, filter selectivity, partition pruning, and estimate quality "
@@ -414,7 +414,7 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "branch_projection_unknown_boundary": (
         "Confirm UNION ALL branch output-column lineage first; after any branch-local change, "
-        "compare branch output columns, rows feeding the set operation, and repeated-group p95."
+        "compare branch output columns and rows feeding the set operation; then rerun the repeated group."
     ),
     "branch_projection_mismatch_boundary": (
         "Compare UNION ALL branch projection counts and output shape before changing branch filters "
@@ -422,7 +422,7 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "nested_branch_boundary": (
         "Compare rows entering and leaving the nested UNION ALL branch boundary before and after "
-        "one branch-local change; keep branch output shape stable."
+        "one branch-local change; keep branch output shape stable, then rerun the repeated group."
     ),
     "aggregate_branch_boundary": (
         "Compare UNION ALL branch aggregate grain, aggregate input rows, and duplicate semantics "
@@ -430,7 +430,7 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "outer_or_mixed_join_branch_review": (
         "Confirm UNION ALL branch join row-preservation semantics first; after one branch-local "
-        "change, compare join input rows, branch output rows, and repeated-group p95."
+        "change, compare join input rows and branch output rows; then rerun the repeated group."
     ),
     "filtered_union_all_branch_review": (
         "Compare UNION ALL branch filter selectivity, projection width, and branch output rows "
@@ -446,11 +446,11 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "mixed_or_distinct_set_boundary": (
         "Confirm set-operation duplicate semantics first, then compare branch grain and output "
-        "shape before and after one manual change."
+        "shape before and after one manual change; rerun only after set semantics remain stable."
     ),
     "nested_query_boundary": (
         "Compare rows entering and leaving the nested-query boundary in EXPLAIN before and after "
-        "one bounded change; keep output shape stable and confirm repeated-group p95 improves."
+        "one bounded change; keep output shape stable, then rerun the repeated group."
     ),
     "unfiltered_join_review": (
         "Compare join key cardinality, build/probe input rows, and estimated join output before "
@@ -474,7 +474,7 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "cte_predicate_pushdown_review": (
         "Compare downstream filter placement, CTE output-column mapping, and rows around the CTE "
-        "boundary before and after one bounded filter-placement change."
+        "boundary before and after one bounded filter-placement change; then rerun the repeated group."
     ),
     "cte_simplification_review": (
         "Compare the CTE dependency path, output columns, and rows around the candidate layer before "
@@ -482,7 +482,7 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "cte_no_downstream_filter_review": (
         "Compare CTE body filters, projection width, and join or aggregate grain in EXPLAIN before "
-        "and after one body-local change; then confirm repeated-group p95 improves."
+        "and after one body-local change; then rerun the repeated group."
     ),
     "cte_complex_graph_review": (
         "Map the CTE dependency path first, then compare rows and output columns at one changed "
@@ -490,15 +490,15 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "cte_boundary_review": (
         "Compare CTE output columns, dependency path, filter scope, and rows around one boundary "
-        "before and after a bounded manual change."
+        "before and after a bounded manual change; then rerun the repeated group."
     ),
     "derived_predicate_pushdown_review": (
         "Compare outer-filter mapping through derived output columns and rows around the derived "
-        "boundary; keep the outer filter in place when testing one manual change."
+        "boundary; keep the outer filter in place, then rerun the repeated group."
     ),
     "derived_no_downstream_filter_review": (
         "Compare derived-table body filters, grouping grain, and projection width in EXPLAIN before "
-        "and after one body-local change; then confirm repeated-group p95 improves."
+        "and after one body-local change; then rerun the repeated group."
     ),
     "derived_unsupported_boundary_review": (
         "Keep the derived-table aggregate, window, join, order, or limit boundary stable; compare "

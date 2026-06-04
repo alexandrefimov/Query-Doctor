@@ -9,12 +9,15 @@ from query_doctor.report.facts_extractors import (
     backend_data_skew_is_supported,
     backend_has_proven_tail,
     backend_write_path_is_supported,
+    cm_metrics_correlation_status,
     cm_metric_context_only,
     facts_has_backend_tail_evidence,
     facts_have_cluster_event_context,
     facts_have_spill_scratch_evidence,
+    first_bullet_value,
     parse_backend_tail_summary,
 )
+from query_doctor.report.markdown import extract_markdown_section
 
 
 SPILL_SCRATCH_REWRITE_RE = re.compile(
@@ -416,13 +419,58 @@ def normalize_cm_context_only_overclaim(line: str, facts_text: str, *, language:
 
 
 def facts_have_admission_or_pool_evidence(facts_text: str) -> bool:
+    runtime_admission_supported = structured_runtime_admission_supported(facts_text)
+    if runtime_admission_supported is True:
+        return True
+
+    admission_pool_status = cm_metrics_correlation_status(facts_text, "admission_pool_pressure")
+    if admission_pool_status == "correlated":
+        return True
+    if runtime_admission_supported is False or admission_pool_status is not None:
+        return False
+
+    legacy_text = "\n".join(
+        [
+            *extract_markdown_section(facts_text, "## Findings"),
+            *extract_markdown_section(facts_text, "## Action Cards"),
+            *extract_markdown_section(facts_text, "## Runtime Diagnosis"),
+        ]
+    )
     return bool(
         re.search(
-            r"\b(?:admission|pool|queue|queued|mem(?:ory)?\s+limit)\b",
-            facts_text,
+            r"\b(?:runtime_admission|admission\s+wait|admission\s+result|admission/pool\s+pressure)\b|"
+            r"\badmission\b[^.\n]{0,80}\b(?:queued|rejected|timed[_ -]?out)\b|"
+            r"\b(?:queued|rejected|timed[_ -]?out)\b[^.\n]{0,80}\badmission\b",
+            legacy_text,
             re.IGNORECASE,
         )
     )
+
+
+def structured_runtime_admission_supported(facts_text: str) -> bool | None:
+    lines = extract_markdown_section(facts_text, "## Runtime Admission Evidence")
+    if not lines:
+        return None
+
+    status = normalized_token(first_bullet_value(lines, "status"))
+    evidence_tier = normalized_token(first_bullet_value(lines, "evidence_tier"))
+    primary_supported = normalized_token(first_bullet_value(lines, "primary_supported"))
+    if primary_supported == "yes":
+        return status == "supported" and evidence_tier in {"strong", "medium"}
+    if primary_supported == "no":
+        return False
+    if status in {"negative", "context_only", "not_observed", "conflicting"} or evidence_tier in {
+        "context_only",
+        "unsupported",
+    }:
+        return False
+    if status == "supported" and evidence_tier in {"strong", "medium"}:
+        return True
+    return None
+
+
+def normalized_token(value: str | None) -> str:
+    return str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
 
 
 def find_spill_scratch_claim_errors(report_text: str, facts_text: str) -> list[str]:

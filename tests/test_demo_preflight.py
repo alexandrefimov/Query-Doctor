@@ -12,6 +12,7 @@ from query_doctor.cli.demo_preflight import (
     changed_text_for_path,
     classify_status,
     parse_args,
+    scan_git_history_for_public_release,
     scan_public_release_text,
     scan_text_for_unsafe_output,
     status_lines_to_paths,
@@ -312,6 +313,69 @@ def test_build_report_public_release_keeps_test_history_fixture_as_warning():
         and "git history contains private-looking hostname/domain" in finding.message
         for finding in report.findings
     )
+
+
+def test_public_release_history_scan_can_target_release_range_only():
+    private_user_path = "/Users/" + "privateuser/project"
+
+    def runner(args, *, cwd):
+        if args == ["git", "rev-list", "public/main..release/head"]:
+            return CommandResult(0, "release123\n")
+        if args == ["git", "rev-list", "--all"]:
+            raise AssertionError("range scan must not inspect all local refs")
+        if args[:5] == ["git", "grep", "-n", "-I", "-E"]:
+            pattern = args[6]
+            revisions = args[7:-2]
+            assert revisions == ["release123"]
+            if pattern == r"/Users/[A-Za-z0-9._-]+":
+                return CommandResult(
+                    0,
+                    f"release123:docs/example.md:1:Local path {private_user_path}\n",
+                )
+            return CommandResult(1, "")
+        raise AssertionError(args)
+
+    findings = scan_git_history_for_public_release(
+        REPO_DIR,
+        base_ref="public/main",
+        head_ref="release/head",
+        runner=runner,
+    )
+
+    assert findings == (
+        Finding(
+            "blocker",
+            "git history contains private local user path in release123",
+            "docs/example.md",
+        ),
+    )
+
+
+def test_build_report_public_release_passes_history_range_to_scanner():
+    def runner(args, *, cwd):
+        if args == ["git", "status", "--porcelain"]:
+            return CommandResult(0, "")
+        if args in (["git", "diff", "--name-only"], ["git", "diff", "--cached", "--name-only"]):
+            return CommandResult(0, "")
+        if args == ["git", "diff", "--check"]:
+            return CommandResult(0, "")
+        if args == ["git", "ls-files"]:
+            return CommandResult(0, "")
+        if args == ["git", "rev-list", "public/main..release/head"]:
+            return CommandResult(0, "")
+        if args == ["git", "rev-list", "--all"]:
+            raise AssertionError("release report should use the configured history range")
+        raise AssertionError(args)
+
+    report = build_report(
+        REPO_DIR,
+        runner=runner,
+        public_release=True,
+        history_base="public/main",
+        history_head="release/head",
+    )
+
+    assert report.status == READY
 
 
 def test_build_report_warns_for_sensitive_changes_and_suggests_tests():

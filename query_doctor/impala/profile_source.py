@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from query_doctor.cm.client import validate_cm_query_id_path_segment
 from query_doctor.cm.models import CMAdapterError, CMClientError
+from query_doctor.safety.http_egress import configured_diagnostic_urlopen
 
 
 DEFAULT_IMPALA_PROFILE_PORT = 25000
@@ -159,7 +160,7 @@ def fetch_impala_profile_text(
     timeout_sec: int = DEFAULT_IMPALA_PROFILE_TIMEOUT_SEC,
     max_profile_bytes: int,
     prefer_json: bool = False,
-    opener: UrlOpener = urllib.request.urlopen,
+    opener: UrlOpener = configured_diagnostic_urlopen,
 ) -> ImpalaProfileFetchResult:
     candidates = impala_profile_url_candidates(
         hosts,

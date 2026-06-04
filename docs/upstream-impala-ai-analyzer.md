@@ -37,11 +37,16 @@ operator workflows:
   allowlisted, and redacted;
 - future compatibility with upstream profile JSON, parser, and redactor formats
   when those interfaces become stable enough to consume safely;
-- future multi-engine diagnosis through a real engine fact contract, not
+- future live multi-engine diagnosis through a real engine fact contract, not
   placeholder adapters or public claims before support exists.
 
-The current engine remains Impala only. Future engine seams stay roadmap
-planning until implemented behavior, fixtures, and safety tests exist.
+The current production triage engine remains Impala. Trino is limited to
+sanitized offline/local evidence import, bounded operator HTTP archive import,
+event-source contract checking, dry-run coordinator query-info target checking,
+bounded pruned coordinator query-info probing/import, and local compact
+diagnosis over raw-free direct boundary JSON or selected package sample
+boundaries; future live engine seams stay roadmap planning until implemented
+behavior, fixtures, and safety tests exist.
 
 ## How To Align
 
@@ -113,7 +118,7 @@ P1:
   can influence primary bottleneck classification.
 - define the engine fact contract needed for a future second Big Data SQL
   engine, while keeping Impala behavior stable.
-- start one fixture-only second-engine discovery spike when it has a named
+- continue bounded second-engine offline import work only when it has a named
   engine, safe artifacts, and a contract question to answer.
 
 P2:

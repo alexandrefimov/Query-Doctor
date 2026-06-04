@@ -4,7 +4,18 @@ import io
 import json
 from pathlib import Path
 
-from scripts.audit_optimizer_funnel import audit_summary, print_result
+import scripts.audit_optimizer_funnel as optimizer_funnel
+from scripts.audit_optimizer_funnel import (
+    WorkloadRollup,
+    audit_summary,
+    no_recipe_workload_concentration,
+    optimizer_workload_metric_has_comparable_group_signal,
+    optimizer_verification_has_comparison_and_rerun,
+    print_result,
+    repeated_no_recipe_guidance_readiness,
+    repeated_no_recipe_review_readiness,
+)
+from query_doctor.recent.optimizer_rewrite_support import NO_RECIPE_REVIEW_TRACKS
 
 
 def write_summary(tmp_path: Path, cases: list[dict[str, object]]) -> Path:
@@ -282,8 +293,526 @@ def test_optimizer_funnel_audit_rolls_up_no_recipe_shape_details(tmp_path: Path)
 
     assert "No-recipe CTE graph shapes:" in text
     assert "No-recipe derived predicate pushdown:" in text
+    assert "track=not_applicable=1" in text
     assert "cte_graph=fan_out=1" in text
     assert "derived_pushdown=blocked_no_downstream_filter=1" in text
+
+
+def test_optimizer_funnel_audit_treats_repeated_unsupported_derived_shape_as_guidance_ready(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "case_primary_bottleneck": {"label": "sql_shape", "confidence": "medium"},
+                "query_optimization_candidate": query_candidate(
+                    reasons=[
+                        "SELECT secret_col FROM example_guarded.table",
+                        "local path /Users/example/query-doctor/cases/case-001",
+                    ]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "derived_unsupported_boundary_review",
+                    "risk_mode": "conservative_rewrite",
+                    "risk_reasons": ["nested_query_body_validation_not_proven"],
+                    "derived_table_count": 1,
+                    "derived_predicate_pushdown_status": "blocked_unsupported_shape",
+                    "derived_boundary_reasons": [
+                        "aggregate_boundary",
+                        "ordering_or_limit_boundary",
+                    ],
+                },
+            },
+            {
+                "case_index": 2,
+                "score_severity": "high",
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "case_primary_bottleneck": {"label": "sql_shape", "confidence": "medium"},
+                "query_optimization_candidate": query_candidate(
+                    reasons=[
+                        "SELECT another_secret FROM example_guarded.table",
+                        "local path /tmp/query-doctor/cases/case-002",
+                    ]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "derived_unsupported_boundary_review",
+                    "risk_mode": "conservative_rewrite",
+                    "risk_reasons": ["nested_query_body_validation_not_proven"],
+                    "derived_table_count": 1,
+                    "derived_predicate_pushdown_status": "blocked_unsupported_shape",
+                    "derived_boundary_reasons": [
+                        "aggregate_boundary",
+                        "ordering_or_limit_boundary",
+                    ],
+                },
+            },
+        ],
+    )
+
+    result = audit_summary(
+        summary_path,
+        recompute_support=False,
+        fail_on_repeated_no_recipe_readiness_gaps=True,
+    )
+
+    assert result.ok
+    assert result.no_recipe_family_counts == {"derived": 2}
+    assert result.no_recipe_hint_counts == {"derived_unsupported_shape": 2}
+    assert result.no_recipe_review_track_counts == {"derived_unsupported_boundary_review": 2}
+    assert result.no_recipe_derived_predicate_pushdown_counts == {"blocked_unsupported_shape": 2}
+    assert result.no_recipe_derived_boundary_reason_counts == {
+        "aggregate_boundary": 2,
+        "ordering_or_limit_boundary": 2,
+    }
+    assert result.repeated_no_recipe_review_readiness_counts == {"specific_track": 1}
+    assert result.repeated_no_recipe_guidance_readiness_counts == {"guidance_ready": 1}
+    assert result.repeated_no_recipe_family_counts == {"derived": 2}
+    assert result.no_recipe_workloads["wf_...aaaaaaaa"].derived_predicate_pushdown_statuses == {
+        "blocked_unsupported_shape": 2
+    }
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert "No-recipe hints:" in text
+    assert "derived_unsupported_shape: 2" in text
+    assert "derived_unsupported_boundary_review: 2" in text
+    assert "guidance_ready: 1" in text
+    assert "derived_pushdown=blocked_unsupported_shape=2" in text
+    assert "secret_col" not in text
+    assert "another_secret" not in text
+    assert "example_guarded.table" not in text
+    assert "/Users/example" not in text
+    assert "/tmp/query-doctor" not in text
+    assert str(tmp_path) not in text
+
+
+def test_optimizer_funnel_audit_reports_repeated_no_recipe_concentration(tmp_path: Path):
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "case_primary_bottleneck": {"label": "sql_shape", "confidence": "medium"},
+                "query_optimization_candidate": query_candidate(),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "cte_complex_graph_review",
+                    "risk_mode": "conservative_rewrite",
+                    "cte_count": 2,
+                    "cte_graph_shape": "fan_out",
+                    "cte_predicate_pushdown_status": "blocked_unsupported_graph",
+                    "cte_simplification_status": "not_candidate",
+                },
+            },
+            {
+                "case_index": 2,
+                "score_severity": "high",
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "case_primary_bottleneck": {"label": "sql_shape", "confidence": "medium"},
+                "query_optimization_candidate": query_candidate(
+                    reasons=["large exchange volume before downstream processing"]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "cte_complex_graph_review",
+                    "risk_mode": "conservative_rewrite",
+                    "cte_count": 2,
+                    "cte_graph_shape": "fan_out",
+                    "cte_predicate_pushdown_status": "blocked_unsupported_graph",
+                    "cte_simplification_status": "not_candidate",
+                },
+            },
+            {
+                "case_index": 3,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "case_primary_bottleneck": {"label": "sql_shape", "confidence": "low"},
+                "query_optimization_candidate": query_candidate(),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "single_relation_filter_review",
+                    "risk_mode": "low_risk_review",
+                },
+            },
+            {
+                "case_index": 4,
+                "score_severity": "suspicious",
+                "group_fingerprint": "not-a-safe-fingerprint",
+                "query_optimization_candidate": query_candidate(),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "derived_no_downstream_filter_review",
+                    "risk_mode": "conservative_rewrite",
+                    "derived_table_count": 1,
+                    "derived_predicate_pushdown_status": "blocked_no_downstream_filter",
+                },
+            },
+            {
+                "case_index": 5,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "case_primary_bottleneck": {"label": "sql_shape", "confidence": "low"},
+                "query_optimization_candidate": query_candidate(),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "SELECT secret_col FROM example_guarded.table",
+                    "risk_mode": "conservative_rewrite",
+                },
+            },
+        ],
+    )
+
+    result = audit_summary(summary_path, recompute_support=False)
+
+    assert no_recipe_workload_concentration(result) == {
+        "total_cases": 5,
+        "known_cases": 4,
+        "unknown_cases": 1,
+        "known_groups": 2,
+        "repeated_groups": 2,
+        "repeated_cases": 4,
+        "singleton_groups": 0,
+        "top_group_cases": 2,
+    }
+    assert result.repeated_no_recipe_review_track_counts == {
+        "cte_complex_graph_review": 2,
+        "single_relation_filter_review": 1,
+        "unknown": 1,
+    }
+    assert result.repeated_no_recipe_review_readiness_counts == {
+        "specific_track": 1,
+        "unknown_track": 1,
+    }
+    assert result.repeated_no_recipe_guidance_readiness_counts == {
+        "guidance_ready": 1,
+        "unknown_track": 1,
+    }
+    assert result.ok
+    assert not result.issues
+    assert result.repeated_no_recipe_family_counts == {"cte": 2, "plain": 2}
+    assert result.no_recipe_workloads["wf_...aaaaaaaa"].review_tracks == {
+        "cte_complex_graph_review": 2
+    }
+    assert result.no_recipe_workloads["wf_...bbbbbbbb"].review_tracks == {
+        "single_relation_filter_review": 1,
+        "unknown": 1,
+    }
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert (
+        "No-recipe workload concentration: cases=5; known_workload_cases=4; "
+        "unknown_workload_cases=1; known_groups=2; repeated_groups=2; "
+        "repeated_cases=4 (100.0% of known); singleton_groups=0; "
+        "top_group_cases=2 (50.0% of known)"
+    ) in text
+    assert "Repeated no-recipe review tracks:" in text
+    assert "cte_complex_graph_review: 2" in text
+    assert "Repeated no-recipe review readiness:" in text
+    assert "specific_track: 1" in text
+    assert "unknown_track: 1" in text
+    assert "Repeated no-recipe guidance readiness:" in text
+    assert "guidance_ready: 1" in text
+    assert "Repeated no-recipe shape families:" in text
+    assert "cte: 2" in text
+    assert "wf_...aaaaaaaa: cases=2; family=cte=2; track=cte_complex_graph_review=2" in text
+    assert (
+        "wf_...bbbbbbbb: cases=2; family=plain=2; track=single_relation_filter_review=1, unknown=1"
+        in text
+    )
+    assert "not-a-safe-fingerprint" not in text
+    assert "secret_col" not in text
+    assert "example_guarded.table" not in text
+
+
+def test_repeated_no_recipe_review_readiness_separates_safe_track_quality() -> None:
+    assert (
+        repeated_no_recipe_review_readiness(
+            WorkloadRollup(
+                key="wf_...aaaaaaaa",
+                count=2,
+                review_tracks={"grouped_aggregate_review": 2},
+            )
+        )
+        == "specific_track"
+    )
+    assert (
+        repeated_no_recipe_review_readiness(
+            WorkloadRollup(key="wf_...aaaaaaaa", count=2, review_tracks={"unknown": 2})
+        )
+        == "unknown_track"
+    )
+    assert (
+        repeated_no_recipe_review_readiness(
+            WorkloadRollup(key="wf_...aaaaaaaa", count=2, review_tracks={"not_applicable": 2})
+        )
+        == "missing_track"
+    )
+    assert (
+        repeated_no_recipe_review_readiness(
+            WorkloadRollup(key="wf_...aaaaaaaa", count=2, review_tracks={"source_unavailable": 2})
+        )
+        == "source_unavailable"
+    )
+    assert (
+        repeated_no_recipe_review_readiness(
+            WorkloadRollup(
+                key="wf_...aaaaaaaa",
+                count=2,
+                review_tracks={
+                    "grouped_aggregate_review": 1,
+                    "single_relation_filter_review": 1,
+                },
+            )
+        )
+        == "mixed_tracks"
+    )
+
+
+def test_repeated_no_recipe_guidance_readiness_requires_safe_guidance_contract() -> None:
+    assert (
+        repeated_no_recipe_guidance_readiness(
+            WorkloadRollup(
+                key="wf_...aaaaaaaa",
+                count=2,
+                review_tracks={"single_relation_filter_review": 2},
+            )
+        )
+        == "guidance_ready"
+    )
+    assert (
+        repeated_no_recipe_guidance_readiness(
+            WorkloadRollup(
+                key="wf_...aaaaaaaa",
+                count=2,
+                review_tracks={"unknown": 2},
+            )
+        )
+        == "unknown_track"
+    )
+    assert (
+        repeated_no_recipe_guidance_readiness(
+            WorkloadRollup(
+                key="wf_...aaaaaaaa",
+                count=2,
+                review_tracks={"custom_review_track": 2},
+            )
+        )
+        == "missing_review_area"
+    )
+
+    assert optimizer_verification_has_comparison_and_rerun(
+        "Compare EXPLAIN before and after the change, then rerun the repeated group."
+    )
+    assert not optimizer_verification_has_comparison_and_rerun(
+        "Compare EXPLAIN before and after the change."
+    )
+    assert optimizer_workload_metric_has_comparable_group_signal(
+        "Scan rows, projected-column width, and repeated-group p95."
+    )
+    assert not optimizer_workload_metric_has_comparable_group_signal(
+        "Scan rows and projected-column width."
+    )
+    assert optimizer_funnel.optimizer_review_only_text_has_no_draft_manual_contract(
+        optimizer_funnel.optimizer_no_recipe_review_only_contract("single_relation_filter_review")
+    )
+    assert not optimizer_funnel.optimizer_review_only_text_has_no_draft_manual_contract(
+        "Review filters, compare EXPLAIN, then rerun the repeated group."
+    )
+
+
+def test_optimizer_funnel_audit_fails_weak_no_recipe_workload_metric(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "query_optimization_candidate": query_candidate(
+                    reasons=[
+                        "SELECT secret_col FROM example_guarded.table",
+                        "local path /Users/example/query-doctor/cases/case-001",
+                    ]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "single_relation_filter_review",
+                },
+            },
+            {
+                "case_index": 2,
+                "score_severity": "high",
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "query_optimization_candidate": query_candidate(
+                    reasons=[
+                        "SELECT another_secret FROM example_guarded.table",
+                        "local path /tmp/query-doctor/cases/case-002",
+                    ]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "single_relation_filter_review",
+                },
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        optimizer_funnel,
+        "optimizer_no_recipe_workload_metric",
+        lambda track: "Scan rows and projected columns.",
+    )
+
+    result = audit_summary(
+        summary_path,
+        recompute_support=False,
+        fail_on_repeated_no_recipe_readiness_gaps=True,
+    )
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert not result.ok
+    assert result.repeated_no_recipe_review_readiness_counts == {"specific_track": 1}
+    assert result.repeated_no_recipe_guidance_readiness_counts == {"weak_workload_metric": 1}
+    assert [issue.category for issue in result.issues] == ["weak_workload_metric"]
+    assert "weak_workload_metric" in text
+    assert "secret_col" not in text
+    assert "another_secret" not in text
+    assert "example_guarded.table" not in text
+    assert "/Users/example" not in text
+    assert "/tmp/query-doctor" not in text
+    assert str(tmp_path) not in text
+
+
+def test_optimizer_funnel_audit_fails_weak_no_recipe_no_draft_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "query_optimization_candidate": query_candidate(
+                    reasons=[
+                        "SELECT secret_col FROM example_guarded.table",
+                        "local path /Users/example/query-doctor/cases/case-001",
+                    ]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "single_relation_filter_review",
+                },
+            },
+            {
+                "case_index": 2,
+                "score_severity": "high",
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "query_optimization_candidate": query_candidate(
+                    reasons=[
+                        "SELECT another_secret FROM example_guarded.table",
+                        "local path /tmp/query-doctor/cases/case-002",
+                    ]
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "single_relation_filter_review",
+                },
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        optimizer_funnel,
+        "optimizer_no_recipe_review_only_contract",
+        lambda track: "Review filters, compare EXPLAIN, then rerun the repeated group.",
+    )
+
+    result = audit_summary(
+        summary_path,
+        recompute_support=False,
+        fail_on_repeated_no_recipe_readiness_gaps=True,
+    )
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert not result.ok
+    assert result.repeated_no_recipe_review_readiness_counts == {"specific_track": 1}
+    assert result.repeated_no_recipe_guidance_readiness_counts == {"weak_no_draft_contract": 1}
+    assert [issue.category for issue in result.issues] == ["weak_no_draft_contract"]
+    assert "weak_no_draft_contract" in text
+    assert "secret_col" not in text
+    assert "another_secret" not in text
+    assert "example_guarded.table" not in text
+    assert "/Users/example" not in text
+    assert "/tmp/query-doctor" not in text
+    assert str(tmp_path) not in text
+
+
+def test_no_recipe_review_tracks_have_safe_guidance_readiness_contract() -> None:
+    excluded_tracks = {"not_applicable", "source_unavailable", "unknown"}
+    for track in sorted(NO_RECIPE_REVIEW_TRACKS - excluded_tracks):
+        assert (
+            repeated_no_recipe_guidance_readiness(
+                WorkloadRollup(
+                    key="wf_...aaaaaaaa",
+                    count=2,
+                    review_tracks={track: 2},
+                )
+            )
+            == "guidance_ready"
+        ), track
 
 
 def test_optimizer_funnel_audit_reports_effective_actionability(tmp_path: Path):
@@ -379,6 +908,63 @@ def test_optimizer_funnel_audit_output_is_aggregate_and_raw_free(tmp_path: Path)
     assert "/Users/example" not in text
     assert str(tmp_path) not in text
     assert "wf_...aaaaaaaa" in text
+
+
+def test_optimizer_funnel_audit_can_fail_repeated_no_recipe_readiness_gap(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "query_optimization_candidate": query_candidate(),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "single_relation_filter_review",
+                },
+            },
+            {
+                "case_index": 2,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "query_optimization_candidate": query_candidate(),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "SELECT secret_col FROM example_guarded.table",
+                },
+            },
+        ],
+    )
+
+    result = audit_summary(
+        summary_path,
+        recompute_support=False,
+        fail_on_repeated_no_recipe_readiness_gaps=True,
+    )
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+
+    assert not result.ok
+    assert result.repeated_no_recipe_review_readiness_counts == {"unknown_track": 1}
+    assert result.repeated_no_recipe_guidance_readiness_counts == {"unknown_track": 1}
+    assert [issue.category for issue in result.issues] == ["unknown_track"]
+    assert [issue.message for issue in result.issues] == [
+        "repeated no-recipe workloads have unknown_track (1 groups)"
+    ]
+    assert "Issues:" in text
+    assert "unknown_track: repeated no-recipe workloads have unknown_track (1 groups)" in text
+    assert "secret_col" not in text
+    assert "example_guarded.table" not in text
 
 
 def test_optimizer_funnel_sanitizes_stored_no_recipe_review_track(tmp_path: Path):
