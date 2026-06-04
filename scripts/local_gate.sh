@@ -51,5 +51,7 @@ run_python_module query_doctor.cli.demo_preflight
 run_python_module query_doctor.cli.demo_data --out "$DEMO_OUT" --overwrite
 
 if [[ "${PUBLIC_RELEASE:-0}" == "1" ]]; then
-  run_python_module query_doctor.cli.demo_preflight --public-release
+  run_python_module query_doctor.cli.demo_preflight --public-release \
+    --history-base "${RELEASE_HISTORY_BASE:-github/main}" \
+    --history-head "${RELEASE_HISTORY_HEAD:-HEAD}"
 fi

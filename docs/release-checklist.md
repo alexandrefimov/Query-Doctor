@@ -67,7 +67,7 @@ python scripts/check_markdown_links.py
 python -m ruff check query_doctor tests
 python -m ruff format --check query_doctor tests scripts
 python -m pytest -q
-python -m query_doctor.cli.demo_preflight --public-release
+python -m query_doctor.cli.demo_preflight --public-release --history-base "${RELEASE_HISTORY_BASE:-github/main}" --history-head "${RELEASE_HISTORY_HEAD:-HEAD}"
 python -m query_doctor.cli.demo_data --out "$DEMO_OUT" --overwrite
 ```
 
