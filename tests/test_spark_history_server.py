@@ -228,6 +228,7 @@ def test_spark_history_server_compacts_bounded_summary_without_raw_fields():
     assert payload["stages"]["shuffleReadBytes"] == 96 * 1024 * 1024
     assert payload["stages"]["spillBytes"] == 1536 * 1024
     assert payload["stages"]["skewSummary"]["candidate"] is True
+    assert payload["executors"]["factState"] == "supported"
     assert payload["executors"]["executorLossState"] == "not_observed"
     assert payload["executors"]["executorMemoryUsedState"] == "supported"
     assert payload["executors"]["executorMemoryUsedBytes"] == 192 * 1024 * 1024
@@ -417,7 +418,127 @@ def test_spark_history_server_uses_bounded_task_summary_without_task_list():
     assert all("taskList" not in url for url in seen_urls)
 
 
-def test_spark_history_server_task_summary_unavailable_records_safe_warning():
+def test_spark_history_server_skips_task_summary_when_stage_quantiles_are_present():
+    seen_urls: list[str] = []
+
+    def fake_opener(request, timeout):
+        seen_urls.append(request.full_url)
+        parsed = urlsplit(request.full_url)
+        if "taskSummary" in parsed.path:
+            raise AssertionError(request.full_url)
+        if parsed.path.endswith("/api/v1/version"):
+            return FakeResponse({"sparkVersion": "4.1.2"})
+        if parsed.path.endswith("/api/v1/applications/app_1"):
+            return FakeResponse({"completed": True, "attempts": [{"completed": True}]})
+        if parsed.path.endswith("/api/v1/applications/app_1/sql/99"):
+            return FakeResponse({"id": 99, "status": "COMPLETED", "duration": 7000, "jobIds": [11]})
+        if parsed.path.endswith("/api/v1/applications/app_1/jobs"):
+            return FakeResponse([{"jobId": 11, "status": "SUCCEEDED", "stageIds": [301]}])
+        if parsed.path.endswith("/api/v1/applications/app_1/stages"):
+            return FakeResponse(
+                [
+                    _stage(
+                        job_id=11,
+                        stage_id=301,
+                        attempt_id=0,
+                        num_tasks=4,
+                        shuffle_read=1,
+                        shuffle_write=1,
+                        quantiles=[1000, 1000, 7000],
+                    )
+                ]
+            )
+        if parsed.path.endswith("/api/v1/applications/app_1/allexecutors"):
+            return FakeResponse([{"id": "1", "isActive": True, "memoryUsed": 1, "maxMemory": 2}])
+        raise AssertionError(request.full_url)
+
+    result = collect_spark_history_server_compact_summary(
+        history_server_url="http://spark-history.example.invalid:18080",
+        application_id="app_1",
+        sql_execution_id="99",
+        max_task_summaries=1,
+        opener=fake_opener,
+    )
+
+    payload = result.payload
+    validate_spark_history_server_compact_payload(payload)
+    assert result.successful_endpoints == 6
+    assert result.warnings == ()
+    assert payload["sourceCoverage"] == {
+        "factState": "supported",
+        "attemptedEndpointCount": 6,
+        "successfulEndpointCount": 6,
+        "warningIds": [],
+    }
+    assert payload["stages"]["skewSummary"] == {
+        "state": "supported",
+        "checked": True,
+        "candidate": True,
+        "maxToMedianTaskDurationRatio": 7.0,
+        "sampledTaskCount": 4,
+    }
+    assert all("taskSummary" not in url for url in seen_urls)
+    compact_text = json.dumps(payload, sort_keys=True)
+    for forbidden in ("stageId", "attemptId", "executorRunTime", "/stages/301"):
+        assert forbidden not in compact_text
+
+
+def test_spark_history_server_skips_task_summary_for_zero_task_stages():
+    seen_urls: list[str] = []
+
+    def fake_opener(request, timeout):
+        seen_urls.append(request.full_url)
+        parsed = urlsplit(request.full_url)
+        if "taskSummary" in parsed.path:
+            raise AssertionError(request.full_url)
+        if parsed.path.endswith("/api/v1/version"):
+            return FakeResponse({"sparkVersion": "4.1.2"})
+        if parsed.path.endswith("/api/v1/applications/app_1"):
+            return FakeResponse({"completed": True, "attempts": [{"completed": True}]})
+        if parsed.path.endswith("/api/v1/applications/app_1/sql/99"):
+            return FakeResponse({"id": 99, "status": "COMPLETED", "duration": 7000, "jobIds": [11]})
+        if parsed.path.endswith("/api/v1/applications/app_1/jobs"):
+            return FakeResponse([{"jobId": 11, "status": "SUCCEEDED", "stageIds": [301]}])
+        if parsed.path.endswith("/api/v1/applications/app_1/stages"):
+            return FakeResponse(
+                [
+                    _stage(
+                        job_id=11,
+                        stage_id=301,
+                        attempt_id=0,
+                        num_tasks=0,
+                        shuffle_read=0,
+                        shuffle_write=0,
+                    )
+                ]
+            )
+        if parsed.path.endswith("/api/v1/applications/app_1/allexecutors"):
+            return FakeResponse([{"id": "1", "isActive": True, "memoryUsed": 1, "maxMemory": 2}])
+        raise AssertionError(request.full_url)
+
+    result = collect_spark_history_server_compact_summary(
+        history_server_url="http://spark-history.example.invalid:18080",
+        application_id="app_1",
+        sql_execution_id="99",
+        max_task_summaries=1,
+        opener=fake_opener,
+    )
+
+    payload = result.payload
+    validate_spark_history_server_compact_payload(payload)
+    assert result.successful_endpoints == 6
+    assert result.warnings == ()
+    assert payload["sourceCoverage"] == {
+        "factState": "supported",
+        "attemptedEndpointCount": 6,
+        "successfulEndpointCount": 6,
+        "warningIds": [],
+    }
+    assert payload["tasks"]["factState"] == "unknown"
+    assert all("taskSummary" not in url for url in seen_urls)
+
+
+def test_spark_history_server_task_summary_unavailable_records_compatibility_limitation():
     def fake_opener(request, timeout):
         parsed = urlsplit(request.full_url)
         if parsed.path.endswith("/api/v1/version"):
@@ -470,13 +591,29 @@ def test_spark_history_server_task_summary_unavailable_records_safe_warning():
 
     payload = result.payload
     validate_spark_history_server_compact_payload(payload)
-    assert result.warnings == ("spark_history_task_summary_unavailable",)
+    bundle = build_spark_history_server_compact_engine_facts(payload)
+    facts = bundle.facts_by_id()
+    diagnosis = build_spark_compact_diagnosis(payload)
+
+    assert result.warnings == ()
     assert payload["sourceCoverage"] == {
-        "factState": "unknown",
+        "factState": "supported",
         "attemptedEndpointCount": 7,
         "successfulEndpointCount": 6,
-        "warningIds": ["spark_history_task_summary_unavailable"],
+        "warningIds": [],
     }
+    assert {"id": "task_summary_endpoint", "state": "unknown"} in payload["limitations"]
+    assert {"id": "spark_history_source_coverage", "state": "supported"} in payload["limitations"]
+    assert facts["task_summary_endpoint"].state == "unknown"
+    assert facts["spark_history_source_coverage"].state == "supported"
+    assert diagnosis["source_warnings"] == ()
+    assert {
+        "id": "task_summary_endpoint",
+        "state": "unknown",
+        "summary": (
+            "Spark task-summary endpoint availability is summarized as compatibility context."
+        ),
+    } in diagnosis["limitations"]
     compact_text = json.dumps(payload, sort_keys=True)
     for forbidden in (
         "spark-history.example.invalid",
@@ -522,6 +659,60 @@ def test_spark_history_server_explicit_sql_execution_records_exact_query_linkage
     assert facts["spark_query_linkage"].value == "exact_query"
     compact_text = json.dumps(payload, sort_keys=True)
     assert "99" not in compact_text
+
+
+def test_spark_history_server_explicit_application_attempt_selects_attempt_path():
+    requested_paths: list[str] = []
+
+    def fake_opener(request, timeout):
+        parsed = urlsplit(request.full_url)
+        requested_paths.append(parsed.path)
+        if parsed.path.endswith("/api/v1/version"):
+            return FakeResponse({"spark": "4.1.2"})
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2"):
+            return FakeResponse({"completed": True, "attempts": [{"completed": True}]})
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2/sql/99"):
+            return FakeResponse({"id": 99, "status": "COMPLETED", "duration": 7000, "jobIds": [11]})
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2/jobs"):
+            return FakeResponse([{"jobId": 11, "status": "SUCCEEDED"}])
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2/stages"):
+            return FakeResponse([_stage(job_id=11, num_tasks=4, shuffle_read=10, shuffle_write=5)])
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2/allexecutors"):
+            return FakeResponse([])
+        raise AssertionError(request.full_url)
+
+    result = collect_spark_history_server_compact_summary(
+        history_server_url="http://spark-history.example.invalid:18080",
+        application_id="app_1",
+        application_attempt_id="attempt_2",
+        sql_execution_id="99",
+        opener=fake_opener,
+    )
+
+    assert result.payload["provenance"]["queryLinkage"] == "exact_query"
+    assert result.payload["sourceCoverage"] == {
+        "factState": "supported",
+        "attemptedEndpointCount": 6,
+        "successfulEndpointCount": 6,
+        "warningIds": [],
+    }
+    assert all(
+        "/applications/app_1/attempt_2" in path or path.endswith("/version")
+        for path in requested_paths
+    )
+    compact_text = json.dumps(result.payload, sort_keys=True)
+    assert "attempt_2" not in compact_text
+    assert "99" not in compact_text
+
+
+def test_spark_history_server_rejects_attempt_path_when_attempt_selector_is_separate():
+    with pytest.raises(CMAdapterError, match="must not include an attempt path"):
+        collect_spark_history_server_compact_summary(
+            history_server_url="http://spark-history.example.invalid:18080",
+            application_id="app_1/attempt_1",
+            application_attempt_id="attempt_2",
+            opener=lambda request, timeout: FakeResponse({}),
+        )
 
 
 def test_spark_history_server_explicit_dynamic_allocation_marker_feeds_fact():
@@ -584,21 +775,25 @@ def test_spark_history_server_executor_memory_requires_complete_safe_aggregates(
         ]
     )
 
+    assert complete["factState"] == "supported"
     assert complete["executorMemoryUsedState"] == "supported"
     assert complete["executorMemoryUsedBytes"] == 3
     assert complete["executorMemoryCapacityState"] == "supported"
     assert complete["executorMemoryCapacityBytes"] == 30
 
+    assert zero["factState"] == "supported"
     assert zero["executorMemoryUsedState"] == "not_observed"
     assert zero["executorMemoryUsedBytes"] == 0
     assert zero["executorMemoryCapacityState"] == "not_observed"
     assert zero["executorMemoryCapacityBytes"] == 0
 
+    assert partial["factState"] == "supported"
     assert partial["executorMemoryUsedState"] == "unknown"
     assert partial["executorMemoryUsedBytes"] == 0
     assert partial["executorMemoryCapacityState"] == "supported"
     assert partial["executorMemoryCapacityBytes"] == 4
 
+    assert inconsistent["factState"] == "supported"
     assert inconsistent["executorMemoryUsedState"] == "unknown"
     assert inconsistent["executorMemoryUsedBytes"] == 0
     assert inconsistent["executorMemoryCapacityState"] == "unknown"
@@ -648,6 +843,7 @@ def test_spark_history_server_explicit_adaptive_markers_feed_facts_without_raw_p
     facts = bundle.facts_by_id()
     diagnosis = build_spark_compact_diagnosis(payload)
 
+    assert payload["executors"]["factState"] == "unknown"
     assert payload["sqlExecution"]["adaptiveExecution"] == {
         "checked": True,
         "enabled": True,
@@ -1148,6 +1344,155 @@ def test_spark_history_server_missing_explicit_sql_execution_records_safe_warnin
     assert diagnosis["source_warnings"] == ("spark_history_sql_execution_not_found",)
     compact_text = json.dumps(result.payload, sort_keys=True)
     assert "99" not in compact_text
+
+
+def test_spark_history_server_application_only_sql_unavailable_is_compatibility_limitation():
+    def fake_opener(request, timeout):
+        parsed = urlsplit(request.full_url)
+        if parsed.path.endswith("/api/v1/version"):
+            return FakeResponse({"spark": "2.4.8"})
+        if parsed.path.endswith("/api/v1/applications/app_1"):
+            return FakeResponse({"completed": True, "attempts": [{"completed": True}]})
+        if parsed.path.endswith("/api/v1/applications/app_1/sql"):
+            raise urllib.error.URLError("http://spark-history.example.invalid/raw-selector")
+        if parsed.path.endswith("/api/v1/applications/app_1/jobs"):
+            return FakeResponse([{"jobId": 11, "status": "SUCCEEDED", "stageIds": [301]}])
+        if parsed.path.endswith("/api/v1/applications/app_1/stages"):
+            return FakeResponse(
+                [
+                    _stage(
+                        job_id=11,
+                        stage_id=301,
+                        num_tasks=4,
+                        shuffle_read=10,
+                        shuffle_write=5,
+                        memory_spill=7,
+                        scheduler_delay=100,
+                        duration_buckets={
+                            "under_1s": 1,
+                            "1s_to_10s": 2,
+                            "10s_to_1m": 1,
+                            "over_1m": 0,
+                        },
+                    )
+                ]
+            )
+        if parsed.path.endswith("/api/v1/applications/app_1/allexecutors"):
+            return FakeResponse([{"id": "1", "isActive": False}])
+        raise AssertionError(request.full_url)
+
+    result = collect_spark_history_server_compact_summary(
+        history_server_url="http://spark-history.example.invalid:18080",
+        application_id="app_1",
+        opener=fake_opener,
+    )
+    bundle = build_spark_history_server_compact_engine_facts(result.payload)
+    facts = bundle.facts_by_id()
+    diagnosis = build_spark_compact_diagnosis(result.payload)
+
+    assert result.warnings == ()
+    assert result.payload["provenance"]["queryLinkage"] == "same_application"
+    assert result.payload["sourceCoverage"] == {
+        "factState": "supported",
+        "attemptedEndpointCount": 6,
+        "successfulEndpointCount": 5,
+        "warningIds": [],
+    }
+    assert {"id": "sql_execution_endpoint", "state": "unknown"} in result.payload["limitations"]
+    assert {"id": "spark_history_source_coverage", "state": "supported"} in result.payload[
+        "limitations"
+    ]
+    assert result.payload["sqlExecution"]["factState"] == "unknown"
+    assert result.payload["sqlExecution"]["linkedJobCount"] == 1
+    assert result.payload["jobs"] == {
+        "factState": "supported",
+        "linkedJobCount": 1,
+        "stateCounts": {"failed": 0, "finished": 1, "running": 0, "skipped": 0, "unknown": 0},
+    }
+    assert result.payload["stages"]["factState"] == "supported"
+    assert result.payload["stages"]["stageCount"] == 1
+    assert result.payload["stages"]["schedulerDelayState"] == "supported"
+    assert result.payload["stages"]["schedulerDelayMillis"] == 100
+    assert result.payload["stages"]["spillBytes"] == 7
+    assert result.payload["tasks"]["factState"] == "supported"
+    assert result.payload["tasks"]["taskCountState"] == "supported"
+    assert result.payload["tasks"]["taskCount"] == 4
+    assert result.payload["tasks"]["durationBucketState"] == "supported"
+    assert result.payload["tasks"]["durationBuckets"] == {
+        "under_1s": 1,
+        "1s_to_10s": 2,
+        "10s_to_1m": 1,
+        "over_1m": 0,
+    }
+    assert facts["sql_execution_endpoint"].state == "unknown"
+    assert facts["spark_history_source_coverage"].state == "supported"
+    assert facts["spark_query_linkage"].value == "same_application"
+    assert facts["spark_sql_elapsed_time_ms"].state == "unknown"
+    assert facts["spark_finished_job_count"].state == "supported"
+    assert facts["spark_stage_count"].state == "supported"
+    assert facts["spark_stage_count"].value == 1
+    assert facts["spark_task_count"].state == "supported"
+    assert facts["spark_task_count"].value == 4
+    assert facts["spark_scheduler_delay_ms"].state == "supported"
+    assert facts["spark_spilled_bytes"].state == "supported"
+    assert diagnosis["source_warnings"] == ()
+    attention_ids = {area["id"] for area in diagnosis["attention_areas"]}
+    assert "spark_scheduler_delay" in attention_ids
+    assert "spark_shuffle_spill" in attention_ids
+    compact_text = json.dumps(result.payload, sort_keys=True)
+    for forbidden in ("raw-selector", "stageId", "jobId", "taskDurationBuckets"):
+        assert forbidden not in compact_text
+
+
+def test_spark_history_server_explicit_sql_unavailable_stays_source_warning():
+    def fake_opener(request, timeout):
+        parsed = urlsplit(request.full_url)
+        if parsed.path.endswith("/api/v1/version"):
+            return FakeResponse({"spark": "4.1.2"})
+        if parsed.path.endswith("/api/v1/applications/app_1"):
+            return FakeResponse({"completed": True, "attempts": [{"completed": True}]})
+        if parsed.path.endswith("/api/v1/applications/app_1/sql/99"):
+            raise urllib.error.URLError("http://spark-history.example.invalid/raw-selector")
+        if parsed.path.endswith("/api/v1/applications/app_1/jobs"):
+            return FakeResponse([{"jobId": 11, "status": "SUCCEEDED"}])
+        if parsed.path.endswith("/api/v1/applications/app_1/stages"):
+            return FakeResponse([_stage(job_id=11, num_tasks=4, shuffle_read=10, shuffle_write=5)])
+        if parsed.path.endswith("/api/v1/applications/app_1/allexecutors"):
+            return FakeResponse([])
+        raise AssertionError(request.full_url)
+
+    result = collect_spark_history_server_compact_summary(
+        history_server_url="http://spark-history.example.invalid:18080",
+        application_id="app_1",
+        sql_execution_id="99",
+        opener=fake_opener,
+    )
+    bundle = build_spark_history_server_compact_engine_facts(result.payload)
+    facts = bundle.facts_by_id()
+    diagnosis = build_spark_compact_diagnosis(result.payload)
+
+    assert result.warnings == (
+        "spark_history_sql_unavailable",
+        "spark_history_sql_execution_not_found",
+    )
+    assert result.payload["sourceCoverage"] == {
+        "factState": "unknown",
+        "attemptedEndpointCount": 6,
+        "successfulEndpointCount": 5,
+        "warningIds": [
+            "spark_history_sql_execution_not_found",
+            "spark_history_sql_unavailable",
+        ],
+    }
+    assert {"id": "sql_execution_endpoint", "state": "unknown"} in result.payload["limitations"]
+    assert facts["sql_execution_endpoint"].state == "unknown"
+    assert facts["spark_history_source_coverage"].state == "unknown"
+    assert diagnosis["source_warnings"] == (
+        "spark_history_sql_execution_not_found",
+        "spark_history_sql_unavailable",
+    )
+    compact_text = json.dumps(result.payload, sort_keys=True)
+    assert "raw-selector" not in compact_text
 
 
 def test_spark_history_server_stage_unavailable_keeps_stage_facts_unknown():
@@ -1693,15 +2038,15 @@ def test_spark_history_collector_cli_writes_compact_and_boundary_outputs(tmp_pat
         parsed = urlsplit(request.full_url)
         if parsed.path.endswith("/api/v1/version"):
             return FakeResponse({"sparkVersion": "4.1.2"})
-        if parsed.path.endswith("/api/v1/applications/app_1"):
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2"):
             return FakeResponse({"completed": True, "attempts": [{"completed": True}]})
-        if parsed.path.endswith("/api/v1/applications/app_1/sql/99"):
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2/sql/99"):
             return FakeResponse({"id": 99, "status": "COMPLETED", "duration": 7000, "jobIds": [11]})
-        if parsed.path.endswith("/api/v1/applications/app_1/jobs"):
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2/jobs"):
             return FakeResponse([{"jobId": 11, "status": "SUCCEEDED"}])
-        if parsed.path.endswith("/api/v1/applications/app_1/stages"):
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2/stages"):
             return FakeResponse([_stage(job_id=11, num_tasks=4, shuffle_read=10, shuffle_write=5)])
-        if parsed.path.endswith("/api/v1/applications/app_1/allexecutors"):
+        if parsed.path.endswith("/api/v1/applications/app_1/attempt_2/allexecutors"):
             return FakeResponse([{"id": "1", "isActive": False}])
         raise AssertionError(request.full_url)
 
@@ -1715,6 +2060,8 @@ def test_spark_history_collector_cli_writes_compact_and_boundary_outputs(tmp_pat
             "http://spark-history.example.invalid:18080",
             "--application-id",
             "app_1",
+            "--application-attempt-id",
+            "attempt_2",
             "--sql-execution-id",
             "99",
             "--max-response-bytes",
@@ -1741,6 +2088,7 @@ def test_spark_history_collector_cli_writes_compact_and_boundary_outputs(tmp_pat
         "successfulEndpointCount": 6,
         "warningIds": [],
     }
+    assert compact["executors"]["factState"] == "supported"
     assert compact["executors"]["executorLossState"] == "supported"
     assert compact["executors"]["executorChurnState"] == "supported"
     assert compact["executors"]["executorChurnObserved"] is True
@@ -1758,6 +2106,11 @@ def test_spark_history_collector_cli_writes_compact_and_boundary_outputs(tmp_pat
         "spark_executor_churn",
         "spark_executor_loss",
     ]
+    rendered = json.dumps(
+        {"boundary": boundary, "compact": compact, "diagnosis": diagnosis},
+        sort_keys=True,
+    )
+    assert "attempt_2" not in rendered
 
 
 def test_spark_history_collector_rejects_overwide_response_byte_bound():

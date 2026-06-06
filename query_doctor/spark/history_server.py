@@ -254,19 +254,41 @@ def safe_path_segment(value: str) -> str:
     return quote(value, safe="")
 
 
-def application_path_segments(application_id: str) -> tuple[str, ...]:
+def application_path_segments(
+    application_id: str,
+    *,
+    application_attempt_id: str | None = None,
+) -> tuple[str, ...]:
     segments = tuple(part for part in application_id.strip().split("/") if part)
     if not segments:
         raise CMAdapterError("Spark application id is required.")
     if any(part in {".", ".."} for part in segments):
         raise CMAdapterError("Spark application id must not traverse paths.")
+    if application_attempt_id is not None:
+        if len(segments) != 1:
+            raise CMAdapterError(
+                "Spark application id must not include an attempt path when attempt id is provided."
+            )
+        segments = (*segments, application_attempt_path_segment(application_attempt_id))
     return segments
+
+
+def application_attempt_path_segment(application_attempt_id: str) -> str:
+    text = str(application_attempt_id).strip()
+    if not text:
+        raise CMAdapterError("Spark application attempt id is required.")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        raise CMAdapterError("Spark application attempt id must not contain controls.")
+    if "/" in text or text in {".", ".."}:
+        raise CMAdapterError("Spark application attempt id must not traverse paths.")
+    return text
 
 
 def collect_spark_history_server_compact_summary(
     *,
     history_server_url: str,
     application_id: str,
+    application_attempt_id: str | None = None,
     sql_execution_id: str | None = None,
     timeout_sec: int = DEFAULT_SPARK_HISTORY_TIMEOUT_SEC,
     max_response_bytes: int = DEFAULT_MAX_SPARK_HISTORY_RESPONSE_BYTES,
@@ -298,7 +320,10 @@ def collect_spark_history_server_compact_summary(
         allow_local_targets=allow_local_targets,
         opener=opener,
     )
-    app_segments = application_path_segments(application_id)
+    app_segments = application_path_segments(
+        application_id,
+        application_attempt_id=application_attempt_id,
+    )
 
     warnings: list[str] = []
     attempted = 0
@@ -329,7 +354,15 @@ def collect_spark_history_server_compact_summary(
             "offset": 0,
             "length": max_sql_executions,
         }
-    sql_payload, ok = _optional_json(client, sql_segments, warnings, "sql", params=sql_params)
+    sql_payload, ok = _optional_json(
+        client,
+        sql_segments,
+        warnings,
+        "sql",
+        params=sql_params,
+        record_warning=sql_execution_id is not None,
+    )
+    sql_endpoint_state = "supported" if ok else "unknown"
     attempted += 1
     successful += int(ok)
 
@@ -370,7 +403,13 @@ def collect_spark_history_server_compact_summary(
     if sql_execution_id and not selected_sql:
         warnings.append("spark_history_sql_execution_not_found")
     requested_job_ids = linked_job_ids(selected_sql)
-    jobs = summarize_jobs(jobs_payload, requested_job_ids=requested_job_ids, max_jobs=max_jobs)
+    use_application_scope_jobs = sql_execution_id is None and not requested_job_ids
+    jobs = summarize_jobs(
+        jobs_payload,
+        requested_job_ids=requested_job_ids,
+        max_jobs=max_jobs,
+        allow_application_scope=use_application_scope_jobs,
+    )
     summarized_job_ids = jobs.pop("_summarized_job_ids")
     summarized_stage_ids = jobs.pop("_summarized_stage_ids")
     stage_filter_job_ids = summarized_job_ids or requested_job_ids
@@ -382,18 +421,19 @@ def collect_spark_history_server_compact_summary(
         max_stages=max_stages,
         max_tasks_sampled=max_tasks_sampled,
     )
-    task_summary_payloads, task_summary_warning, task_summary_attempted, task_summary_successful = (
-        collect_stage_task_summaries(
-            client,
-            app_segments,
-            stages["stage_records"],
-            max_task_summaries=max_task_summaries,
-        )
+    (
+        task_summary_payloads,
+        task_summary_endpoint_state,
+        task_summary_attempted,
+        task_summary_successful,
+    ) = collect_stage_task_summaries(
+        client,
+        app_segments,
+        stages["stage_records"],
+        max_task_summaries=max_task_summaries,
     )
     attempted += task_summary_attempted
     successful += task_summary_successful
-    if task_summary_warning:
-        warnings.append(task_summary_warning)
     if task_summary_payloads:
         stages = attach_stage_task_summaries(
             stages,
@@ -451,7 +491,12 @@ def collect_spark_history_server_compact_summary(
             "environmentValues": "not_written",
             "generatedArtifacts": "not_written",
         },
-        "limitations": spark_history_server_limitations(executors, warnings),
+        "limitations": spark_history_server_limitations(
+            executors,
+            warnings,
+            sql_endpoint_state=sql_endpoint_state,
+            task_summary_endpoint_state=task_summary_endpoint_state,
+        ),
     }
     validate_spark_history_server_compact_payload(payload)
     return SparkHistoryServerCompactResult(
@@ -469,13 +514,15 @@ def _optional_json(
     label: str,
     *,
     params: Mapping[str, object] | None = None,
+    record_warning: bool = True,
 ) -> tuple[Any, bool]:
     try:
         return client.get_json(segments, params=params), True
     except CMAdapterError:
         raise
     except CMClientError:
-        warnings.append(f"spark_history_{label}_unavailable")
+        if record_warning:
+            warnings.append(f"spark_history_{label}_unavailable")
         return None, False
 
 
@@ -485,7 +532,7 @@ def collect_stage_task_summaries(
     stage_records: Iterable[Any],
     *,
     max_task_summaries: int,
-) -> tuple[dict[tuple[str, str], Mapping[str, Any]], str | None, int, int]:
+) -> tuple[dict[tuple[str, str], Mapping[str, Any]], str, int, int]:
     summaries: dict[tuple[str, str], Mapping[str, Any]] = {}
     attempted = 0
     successful = 0
@@ -494,6 +541,8 @@ def collect_stage_task_summaries(
         if attempted >= max_task_summaries:
             break
         if not isinstance(stage, Mapping):
+            continue
+        if not should_collect_stage_task_summary(stage):
             continue
         selector = stage_attempt_selector(stage)
         if selector is None:
@@ -522,8 +571,15 @@ def collect_stage_task_summaries(
             summaries[selector] = payload
         else:
             failed = True
-    warning = "spark_history_task_summary_unavailable" if failed else None
-    return summaries, warning, attempted, successful
+    endpoint_state = "unknown" if failed else "supported"
+    return summaries, endpoint_state, attempted, successful
+
+
+def should_collect_stage_task_summary(stage: Mapping[str, Any]) -> bool:
+    if task_runtime_quantiles(stage) is not None:
+        return False
+    task_count = _int_or_zero(_first_present(stage, ("numTasks", "taskCount")))
+    return task_count > 0
 
 
 def attach_stage_task_summaries(
@@ -584,7 +640,7 @@ def summarize_sql_execution(
             "failureCategoryState": "unknown",
             "failureCategory": "unknown",
             "elapsedTimeMillis": 0,
-            "linkedJobCount": 0,
+            "linkedJobCount": linked_job_count,
             "planShapeCoverage": "not_collected",
             "adaptiveExecution": {"checked": False, "enabled": False, "planChanged": False},
         }
@@ -760,6 +816,7 @@ def summarize_jobs(
     *,
     requested_job_ids: frozenset[str],
     max_jobs: int,
+    allow_application_scope: bool = False,
 ) -> dict[str, Any]:
     jobs = [item for item in _as_list(payload) if isinstance(item, Mapping)]
     if requested_job_ids:
@@ -768,7 +825,7 @@ def summarize_jobs(
             for job in jobs
             if str(_first_present(job, ("jobId", "job_id", "id"))) in requested_job_ids
         ]
-    else:
+    elif not allow_application_scope:
         jobs = []
     truncated = len(jobs) > max_jobs
     jobs = jobs[:max_jobs]
@@ -1128,7 +1185,7 @@ def summarize_executors(payload: Any) -> dict[str, Any]:
         memory_capacity = ("unknown", 0)
     dynamic_allocation = dynamic_allocation_observed(payload, executors)
     return {
-        "factState": "unknown",
+        "factState": "supported",
         "executorLossState": "supported" if loss_count > 0 else "not_observed",
         "executorLossCount": loss_count,
         "executorMemoryUsedState": memory_used[0],
@@ -1184,6 +1241,9 @@ def spark_history_source_coverage(
 def spark_history_server_limitations(
     executors: Mapping[str, Any],
     warnings: list[str],
+    *,
+    sql_endpoint_state: str,
+    task_summary_endpoint_state: str,
 ) -> list[dict[str, str]]:
     return [
         {"id": "live_history_server_collection", "state": "supported"},
@@ -1194,6 +1254,8 @@ def spark_history_server_limitations(
         {"id": "structured_streaming_not_modeled", "state": "unsupported"},
         {"id": "cluster_manager_context", "state": "unknown"},
         {"id": "executor_loss", "state": str(executors.get("executorLossState") or "unknown")},
+        {"id": "sql_execution_endpoint", "state": sql_endpoint_state},
+        {"id": "task_summary_endpoint", "state": task_summary_endpoint_state},
         {"id": "spark_history_source_coverage", "state": "unknown" if warnings else "supported"},
     ]
 

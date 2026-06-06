@@ -10,6 +10,8 @@ from query_doctor.report.safety_validation import (
 )
 from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.spark.diagnosis import (
+    SPARK_COMPACT_DIAGNOSTIC_LANE_NAME,
+    SPARK_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION,
     SPARK_COMPACT_DIAGNOSIS_SCHEMA_VERSION,
     build_spark_compact_diagnosis,
 )
@@ -32,6 +34,21 @@ def test_spark_compact_diagnosis_maps_fixture_attention_areas_without_support_cl
         "details_trusted_report_surface": "not_wired",
         "optimizer_behavior": "not_wired",
         "spark_job_execution": "not_performed",
+    }
+    assert diagnosis["diagnostic_lane"] == {
+        "schema_version": SPARK_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION,
+        "lane": SPARK_COMPACT_DIAGNOSTIC_LANE_NAME,
+        "promotion_status": "preview_only",
+        "source_granularity": "fixture_compact",
+        "evidence_readiness": "compact_attention_ready",
+        "verification_scope": "fixture_contract_review",
+        "supported_attention_area_count": 6,
+        "source_warning_count": 0,
+        "fact_state_counts": {"not_observed": 9, "supported": 33, "unknown": 7},
+        "required_gates": {
+            "readiness_audit": "required_for_handoff",
+            "surface_audit": "required_before_wiring",
+        },
     }
     assert diagnosis["source_warnings"] == ()
     assert {
@@ -155,8 +172,8 @@ def test_spark_compact_diagnosis_unknown_facts_do_not_create_fake_attention():
                 "The accepted compact Spark facts do not contain a supported spill, skew, "
                 "failed-lifecycle, failure-category, adaptive plan change, job failure, "
                 "stage failure, retry, task failure, scheduler-delay, "
-                "executor-memory-pressure, executor-loss, executor-churn, or "
-                "long-elapsed-time attention signal."
+                "task-duration-tail, executor-memory-pressure, executor-loss, "
+                "executor-churn, or long-elapsed-time attention signal."
             ),
             "evidence_fact_ids": (),
             "change_direction": (
@@ -282,6 +299,58 @@ def test_spark_compact_diagnosis_maps_scheduler_delay_signal():
             "verification": (
                 "Compare scheduler delay, executor churn, task retries, and SQL elapsed time "
                 "on a comparable rerun."
+            ),
+        }
+    ]
+
+
+def test_spark_compact_diagnosis_maps_task_duration_tail_without_root_cause():
+    payload = _load_fixture()
+    payload["sqlExecution"]["elapsedTimeMillis"] = 60_000
+    _clear_stage_attention(payload)
+    _clear_adaptive_support(payload)
+    payload["tasks"]["factState"] = "supported"
+    payload["tasks"]["taskCountState"] = "supported"
+    payload["tasks"]["taskCount"] = 12
+    payload["tasks"]["durationBucketState"] = "supported"
+    payload["tasks"]["sampledTaskCount"] = 12
+    payload["tasks"]["failedTaskState"] = "supported"
+    payload["tasks"]["failedTaskCount"] = 0
+    payload["tasks"]["retriedTaskState"] = "supported"
+    payload["tasks"]["retriedTaskCount"] = 0
+    payload["tasks"]["durationBuckets"] = {
+        "under_1s": 5,
+        "1s_to_10s": 4,
+        "10s_to_1m": 1,
+        "over_1m": 2,
+    }
+    payload["executors"]["executorLossState"] = "not_observed"
+    payload["executors"]["executorLossCount"] = 0
+    payload["executors"]["executorChurnState"] = "not_observed"
+    payload["executors"]["executorChurnObserved"] = False
+    payload["executors"]["executorMemoryUsedState"] = "supported"
+    payload["executors"]["executorMemoryUsedBytes"] = 268435456
+    payload["executors"]["executorMemoryCapacityState"] = "supported"
+    payload["executors"]["executorMemoryCapacityBytes"] = 1342177280
+
+    diagnosis = build_spark_compact_diagnosis(payload)
+
+    assert diagnosis["diagnosis_boundary"]["root_cause"] == "not_claimed"
+    assert diagnosis["attention_areas"] == [
+        {
+            "id": "spark_task_duration_tail",
+            "state": "supported",
+            "summary": "Compact Spark facts report tasks running over one minute.",
+            "evidence_fact_ids": ("spark_task_duration_over_1m_count",),
+            "observed_value": {"value": 2, "unit": "tasks"},
+            "change_direction": (
+                "Treat long task duration as runtime-tail context and compare it with "
+                "stage skew, scheduler delay, retries, spill, and executor signals before "
+                "selecting one bounded change."
+            ),
+            "verification": (
+                "Compare over-one-minute task count, SQL elapsed time, and stage skew on "
+                "a comparable rerun."
             ),
         }
     ]
@@ -433,6 +502,37 @@ def test_spark_compact_diagnosis_maps_executor_churn_signal_without_root_cause()
             ),
         }
     ]
+
+
+def test_spark_compact_diagnosis_uses_application_lifecycle_without_failure_claim():
+    payload = _load_fixture()
+    payload["sqlExecution"]["factState"] = "unknown"
+    payload["sqlExecution"]["lifecycle"] = "unknown"
+    payload["sqlExecution"]["failureCategoryState"] = "unknown"
+    payload["sqlExecution"]["failureCategory"] = "unknown"
+    payload["sqlExecution"]["elapsedTimeMillis"] = 0
+    payload["application"]["factState"] = "supported"
+    payload["application"]["lifecycle"] = "finished"
+    _clear_stage_attention(payload)
+    _clear_adaptive_support(payload)
+    _clear_task_support(payload)
+    payload["executors"]["executorLossState"] = "not_observed"
+    payload["executors"]["executorLossCount"] = 0
+    payload["executors"]["executorChurnState"] = "not_observed"
+    payload["executors"]["executorChurnObserved"] = False
+
+    diagnosis = build_spark_compact_diagnosis(payload)
+
+    attention_ids = {area["id"] for area in diagnosis["attention_areas"]}
+    assert diagnosis["diagnosis_boundary"]["root_cause"] == "not_claimed"
+    assert diagnosis["lifecycle"] == "finished"
+    assert "spark_query_failed" not in attention_ids
+    assert not any(area_id.startswith("spark_failure_category_") for area_id in attention_ids)
+    assert {
+        "label": "Application lifecycle",
+        "state": "supported",
+        "observed_value": {"value": "finished"},
+    } in diagnosis["runtime_context"]
 
 
 def test_spark_compact_diagnosis_preserves_history_source_warning_ids():

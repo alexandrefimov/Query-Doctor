@@ -23,6 +23,15 @@ from query_doctor.analyzer.spark_fixture_schema import (
 
 
 SPARK_COMPACT_DIAGNOSIS_SCHEMA_VERSION = "spark_compact_diagnosis_v1"
+SPARK_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION = "spark_compact_diagnostic_lane_v1"
+SPARK_COMPACT_DIAGNOSTIC_LANE_NAME = "spark_compact_preview"
+SPARK_LANE_GRANULARITY_APPLICATION = "application_compact"
+SPARK_LANE_GRANULARITY_EXACT_SQL = "exact_sql_execution_compact"
+SPARK_LANE_GRANULARITY_FIXTURE = "fixture_compact"
+SPARK_LANE_READINESS_ATTENTION_READY = "compact_attention_ready"
+SPARK_LANE_READINESS_LIMITED = "compact_limited_no_supported_attention"
+SPARK_LANE_READINESS_SOURCE_WARNING = "compact_source_warnings_present"
+SPARK_LANE_READINESS_COVERAGE_UNKNOWN = "source_coverage_unknown"
 SPARK_EXECUTOR_MEMORY_PRESSURE_RATIO = 0.85
 SPARK_LONG_ELAPSED_TIME_MS = 120_000
 SPARK_RUNTIME_CONTEXT_FACTS = (
@@ -63,6 +72,12 @@ def build_spark_compact_diagnosis(payload: Mapping[str, Any]) -> dict[str, Any]:
         source_warnings=source_warnings,
     )
     limitations = spark_diagnosis_limitations(facts)
+    diagnostic_lane = spark_diagnostic_lane_summary(
+        payload,
+        probe,
+        attention_areas=attention_areas,
+        source_warnings=source_warnings,
+    )
 
     return {
         "schema_version": SPARK_COMPACT_DIAGNOSIS_SCHEMA_VERSION,
@@ -77,6 +92,7 @@ def build_spark_compact_diagnosis(payload: Mapping[str, Any]) -> dict[str, Any]:
             "optimizer_behavior": "not_wired",
             "spark_job_execution": "not_performed",
         },
+        "diagnostic_lane": diagnostic_lane,
         "runtime_context": spark_runtime_context(facts),
         "attention_areas": attention_areas,
         "limitations": limitations,
@@ -92,6 +108,96 @@ def spark_bundle_for_compact_payload(payload: Mapping[str, Any]) -> EngineFactBu
     if source_contract == SPARK_HISTORY_COMPACT_SOURCE_CONTRACT:
         return build_spark_history_compact_fixture_engine_facts(payload)
     return build_spark_history_server_compact_engine_facts(payload)
+
+
+def spark_diagnostic_lane_summary(
+    payload: Mapping[str, Any],
+    probe: Mapping[str, Any],
+    *,
+    attention_areas: list[dict[str, Any]],
+    source_warnings: tuple[str, ...],
+) -> dict[str, Any]:
+    """Return a raw-free Spark preview lane contract for readiness audits."""
+
+    supported_attention_area_count = sum(
+        1 for area in attention_areas if area.get("state") == "supported"
+    )
+    source_granularity = spark_source_granularity(payload)
+    evidence_readiness = spark_lane_evidence_readiness(
+        parser_coverage=probe.get("parser_coverage"),
+        source_warning_count=len(source_warnings),
+        supported_attention_area_count=supported_attention_area_count,
+    )
+    return {
+        "schema_version": SPARK_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION,
+        "lane": SPARK_COMPACT_DIAGNOSTIC_LANE_NAME,
+        "promotion_status": "preview_only",
+        "source_granularity": source_granularity,
+        "evidence_readiness": evidence_readiness,
+        "verification_scope": spark_lane_verification_scope(
+            source_granularity=source_granularity,
+            evidence_readiness=evidence_readiness,
+        ),
+        "supported_attention_area_count": supported_attention_area_count,
+        "source_warning_count": len(source_warnings),
+        "fact_state_counts": safe_fact_state_counts(probe.get("state_counts")),
+        "required_gates": {
+            "readiness_audit": "required_for_handoff",
+            "surface_audit": "required_before_wiring",
+        },
+    }
+
+
+def spark_source_granularity(payload: Mapping[str, Any]) -> str:
+    source_contract = payload.get("sourceContract")
+    if source_contract == SPARK_HISTORY_COMPACT_SOURCE_CONTRACT:
+        return SPARK_LANE_GRANULARITY_FIXTURE
+    provenance = payload.get("provenance")
+    if isinstance(provenance, Mapping) and provenance.get("queryLinkage") == "exact_query":
+        return SPARK_LANE_GRANULARITY_EXACT_SQL
+    return SPARK_LANE_GRANULARITY_APPLICATION
+
+
+def spark_lane_evidence_readiness(
+    *,
+    parser_coverage: object,
+    source_warning_count: int,
+    supported_attention_area_count: int,
+) -> str:
+    if parser_coverage == "unknown":
+        return SPARK_LANE_READINESS_COVERAGE_UNKNOWN
+    if source_warning_count > 0:
+        return SPARK_LANE_READINESS_SOURCE_WARNING
+    if supported_attention_area_count > 0:
+        return SPARK_LANE_READINESS_ATTENTION_READY
+    return SPARK_LANE_READINESS_LIMITED
+
+
+def spark_lane_verification_scope(
+    *,
+    source_granularity: str,
+    evidence_readiness: str,
+) -> str:
+    if evidence_readiness == SPARK_LANE_READINESS_COVERAGE_UNKNOWN:
+        return "source_contract_review"
+    if evidence_readiness == SPARK_LANE_READINESS_SOURCE_WARNING:
+        return "source_coverage_review"
+    if source_granularity == SPARK_LANE_GRANULARITY_EXACT_SQL:
+        return "comparable_sql_execution_rerun"
+    if source_granularity == SPARK_LANE_GRANULARITY_APPLICATION:
+        return "comparable_application_rerun"
+    return "fixture_contract_review"
+
+
+def safe_fact_state_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    counts: dict[str, int] = {}
+    for key in ("supported", "not_observed", "unknown"):
+        count = value.get(key)
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            counts[key] = count
+    return counts
 
 
 def spark_attention_areas(
@@ -337,6 +443,26 @@ def spark_attention_areas(
                 ),
             }
         )
+    if "execution_tail_candidate" in signals:
+        fact = facts.get("spark_task_duration_over_1m_count")
+        areas.append(
+            {
+                "id": "spark_task_duration_tail",
+                "state": "supported",
+                "summary": "Compact Spark facts report tasks running over one minute.",
+                "evidence_fact_ids": ("spark_task_duration_over_1m_count",),
+                "observed_value": metric_public_value(fact),
+                "change_direction": (
+                    "Treat long task duration as runtime-tail context and compare it with "
+                    "stage skew, scheduler delay, retries, spill, and executor signals before "
+                    "selecting one bounded change."
+                ),
+                "verification": (
+                    "Compare over-one-minute task count, SQL elapsed time, and stage skew on "
+                    "a comparable rerun."
+                ),
+            }
+        )
     if "spark_scheduler_delay_observed" in signals:
         fact = facts.get("spark_scheduler_delay_ms")
         areas.append(
@@ -404,8 +530,8 @@ def spark_attention_areas(
                     "The accepted compact Spark facts do not contain a supported spill, skew, "
                     "failed-lifecycle, failure-category, adaptive plan change, job failure, "
                     "stage failure, retry, task failure, scheduler-delay, "
-                    "executor-memory-pressure, executor-loss, executor-churn, or "
-                    "long-elapsed-time attention signal."
+                    "task-duration-tail, executor-memory-pressure, executor-loss, "
+                    "executor-churn, or long-elapsed-time attention signal."
                 ),
                 "evidence_fact_ids": (),
                 "change_direction": (
@@ -462,6 +588,7 @@ def spark_diagnosis_limitations(facts: Mapping[str, MetricFact]) -> list[dict[st
     live_history = facts.get("live_history_server_collection")
     if live_history is not None and live_history.state == "supported":
         limitation_ids.append("spark_history_source_coverage")
+        limitation_ids.append("task_summary_endpoint")
     limitations: list[dict[str, str]] = []
     for fact_id in limitation_ids:
         fact = facts.get(fact_id)
@@ -488,6 +615,9 @@ def limitation_summary(fact_id: str) -> str:
         "cluster_manager_context": "Cluster-manager context is unavailable or unknown.",
         "spark_history_source_coverage": (
             "Spark History Server source coverage is summarized as safe warning IDs."
+        ),
+        "task_summary_endpoint": (
+            "Spark task-summary endpoint availability is summarized as compatibility context."
         ),
     }
     return summaries[fact_id]
