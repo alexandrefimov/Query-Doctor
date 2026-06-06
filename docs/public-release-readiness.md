@@ -1,6 +1,6 @@
 # Public Release Readiness
 
-Last reviewed: 2026-06-04
+Last reviewed: 2026-06-06
 
 This checklist tracks what Query Doctor needs before tags, announcements, and
 any future repository visibility changes. It is intentionally practical: public
@@ -63,7 +63,7 @@ about unsupported scope.
 
 ## Current Snapshot
 
-As of 2026-06-04, the public repository has the main best-practice baseline in
+As of 2026-06-06, the public repository has the main best-practice baseline in
 place:
 
 - Canonical public docs and default browser-visible copy are English.
@@ -82,8 +82,8 @@ place:
   parent-side subprocess output caps, generated-staging artifact guards,
   artifact-route traversal and symlink tests, committed fixture provenance,
   README screenshot provenance, and single-source packaging metadata are
-  guarded. The remaining public-sharing blocker is reviewable semantic history
-  cleanup before any release branch handoff or push.
+  guarded. Public-sharing handoff still requires reviewable semantic history
+  before any push.
 - Private Vulnerability Reporting, secret scanning, secret scanning push
   protection, Dependabot security updates, and CodeQL scanning are enabled for
   the public repository.
@@ -131,12 +131,19 @@ place:
   Impala Details/stats readiness, Trino private-preview gates, Spark compact
   handoff gates with raw-free machine summaries, and stricter release
   automation.
+- The 0.6.0 release notes are finalized in
+  [release-notes-0.6.0.md](release-notes-0.6.0.md) for bounded Spark compact
+  intake, Trino retained handoff/readiness/product-surface gates, Impala
+  diagnostic-loop north-star calibration, shared engine support-boundary
+  contracts, and the grouped public handoff history.
 - README screenshots have been refreshed from the synthetic demo pack for the
   current material UI baseline, including the Query Doctor product-brand header,
   Big Data query diagnostics subtitle, Workloads, and Action Queue demo path.
-- README screenshot currency was reviewed for 0.5.0. The existing synthetic
+- README screenshot currency was reviewed for 0.6.0. The existing synthetic
   search/results screenshots still match the documented public demo path; the
-  changed Details/New scan surfaces are not the README screenshot surfaces.
+  changed Spark/Trino compact preview and Impala gate surfaces are not the
+  README screenshot surfaces. The screenshot provenance still records the
+  synthetic demo pack used for the current README images.
 - Post-merge readiness smoke on 2026-05-26 covered one-hour, six-hour, and
   metadata-enabled Cloudera Manager Recent scans, with Details audit reporting
   no issues on all three runs.

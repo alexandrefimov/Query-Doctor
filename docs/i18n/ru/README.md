@@ -1,6 +1,6 @@
 # Query Doctor: русская навигация
 
-Last reviewed: 2026-06-04
+Last reviewed: 2026-06-06
 
 Язык: [English](../../README.md) | Русский
 
@@ -56,6 +56,9 @@ roadmap, development practices, codex handoff и code audit. Русские ст
 - [Ограничения счетчиков профиля Impala](impala-profile-counter-caveats.md):
   будущий контракт стабильности счетчиков, диалекты профилей и правила
   доказательств.
+- [Заметки к релизу 0.6.0](release-notes-0.6.0.md): краткое описание Spark
+  compact intake, Trino raw-free handoff gates и Impala diagnostic-loop
+  calibration.
 - [Заметки к релизу 0.5.0](release-notes-0.5.0.md): краткое описание
   diagnostic-loop hardening и raw-free evidence handoff gates.
 - [Заметки к релизу 0.4.3](release-notes-0.4.3.md): краткое описание
@@ -84,6 +87,8 @@ roadmap, development practices, codex handoff и code audit. Русские ст
   и public-sharing cleanup.
 - [Public Release Readiness](public-release-readiness.md): snapshot готовности
   к релизу и P0 gates.
+- [Заметки к релизу 0.6.0](release-notes-0.6.0.md): Spark compact intake,
+  Trino handoff gates и Impala diagnostic-loop calibration.
 - [Заметки к релизу 0.5.0](release-notes-0.5.0.md): diagnostic-loop
   hardening и raw-free evidence handoff gates.
 - [Заметки к релизу 0.4.3](release-notes-0.4.3.md): report-mode и web UI

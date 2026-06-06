@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -9,14 +9,17 @@ For current behavior, prefer [../README.md](../README.md),
 [docs/README.md](README.md), [roadmap.md](roadmap.md),
 [codex-handoff.md](codex-handoff.md), and [code-audit.md](code-audit.md).
 
-For curated 0.5.0 release notes suitable for GitHub Release and package-index
-handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
-0.4.3, 0.4.2, and 0.4.1 release notes remain in
+For curated 0.6.0 release notes suitable for GitHub Release and package-index
+handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
+0.5.0, 0.4.3, 0.4.2, and 0.4.1 release notes remain in
+[release-notes-0.5.0.md](release-notes-0.5.0.md),
 [release-notes-0.4.3.md](release-notes-0.4.3.md),
 [release-notes-0.4.2.md](release-notes-0.4.2.md), and
 [release-notes-0.4.1.md](release-notes-0.4.1.md).
 
 ## Unreleased
+
+## 0.6.0 - 2026-06-06
 
 ### Safety
 

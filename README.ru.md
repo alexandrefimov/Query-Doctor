@@ -365,7 +365,7 @@ credentials, raw profiles, raw metadata или temporary outputs.
 
 ## Public status
 
-Репозиторий публичный. Public source releases начинаются с `v0.4.2`; `v0.5.0`
+Репозиторий публичный. Public source releases начинаются с `v0.4.2`; `v0.6.0`
 продолжает эту public source release line. Older package-index releases
 остаются видимыми на
 [query-doctor on PyPI](https://pypi.org/project/query-doctor/) для
