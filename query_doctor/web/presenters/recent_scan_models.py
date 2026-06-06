@@ -15,6 +15,7 @@ class RecentScanPrimaryBottleneckView:
     confidence: str
     summary: str
     reason_summary: str
+    reason_tokens: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -148,6 +149,7 @@ class RecentScanWorkloadActionQueueEntryView:
     fingerprint_short: str
     priority: str
     signal: str
+    recommendation_id: str
     group_impact: Any
     pool_top: str
     owner_top: str
@@ -187,6 +189,7 @@ class RecentScanWorkloadRepresentativeCaseView:
 @dataclass(frozen=True)
 class RecentScanWorkloadActionHintView:
     title: str
+    recommendation_id: str
     priority: str
     evidence: str
     where_to_look: str

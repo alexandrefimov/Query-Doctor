@@ -89,16 +89,17 @@ def test_unknown_table_stats_reason_preserves_unknown_wording():
     assert "missing or unknown table/partition row-count stats" in result.reasons
 
 
-def test_missing_column_stats_with_selectivity_mismatch_is_column_candidate():
+def test_missing_column_stats_with_selectivity_mismatch_stays_low_without_join_filter_detail():
     result = score_stats_optimization_candidate(
         stats_facts(table_stats="available", column_stats="incomplete/unknown"),
         duration_sec=120,
         metadata_status="collected",
     )
 
-    assert result.tier == "medium"
+    assert result.tier == "low"
     assert result.need_type == "column_stats"
     assert result.column_stats_need == "high"
+    assert result.score < 40
     assert "missing or incomplete column statistics" in result.reasons
     assert "column stats gap is not tied to specific join/filter columns" in result.counter_signals
 

@@ -34,6 +34,8 @@ from query_doctor.recent.query_optimization_score import (  # noqa: E402
     optimizer_no_draft_actionability,
     optimizer_rewriteability_rank,
 )
+from query_doctor.report.safety_validation import contains_raw_sql_like_text  # noqa: E402
+from query_doctor.safety import redaction  # noqa: E402
 from query_doctor.web.presenters.optimizer_facts import (  # noqa: E402
     optimizer_no_recipe_change_direction,
     optimizer_no_recipe_review_area,
@@ -73,6 +75,11 @@ REPEATED_NO_RECIPE_GUIDANCE_GAPS = {
     "weak_verification",
     "weak_no_draft_contract",
 }
+MIXED_NO_RECIPE_REVIEW_TRACK = "mixed_query_shape_review"
+NO_RECIPE_REVIEW_TRACK_UNREADY = {"not_applicable", "source_unavailable", "unknown"}
+SUMMARY_SCHEMA_VERSION = "optimizer_funnel_audit_v1"
+URL_RE = re.compile(r"\bhttps?://", re.IGNORECASE)
+LOCAL_PATH_RE = re.compile(r"(?<![\w/])(?:/private)?/tmp/|(?<![\w/])/Users/")
 
 
 @dataclass(frozen=True)
@@ -181,6 +188,10 @@ class OptimizerFunnelAuditResult:
 
 class AuditInputError(RuntimeError):
     """Raised when the summary file is not usable for optimizer funnel audit."""
+
+
+class AuditOutputError(RuntimeError):
+    """Raised when the summary output cannot be written safely."""
 
 
 def load_summary(path: Path) -> dict[str, Any]:
@@ -636,8 +647,8 @@ def safe_reason(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    text = re.sub(r"(?<![A-Za-z0-9_])(?:/Users/|/private/tmp/|/tmp/)[^\s,;)]*", "<path>", text)
-    text = re.sub(r"\b(?:SELECT|WITH|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\b.*", "<sql>", text)
+    if raw_like_summary_text(text):
+        return "unsafe_reason"
     return text[:240]
 
 
@@ -652,6 +663,201 @@ def int_value(value: Any) -> int:
         return int(float(value))
     except (TypeError, ValueError):
         return 0
+
+
+def summary_json_payload(
+    result: OptimizerFunnelAuditResult,
+    *,
+    workload_limit: int = 12,
+) -> dict[str, object]:
+    concentration = no_recipe_workload_concentration(result)
+    medium = result.candidate_tier_counts.get("medium", 0)
+    high = result.candidate_tier_counts.get("high", 0)
+    metrics = safe_count_dict(
+        {
+            "total_cases": result.total_cases,
+            "audited_cases": result.audited_cases,
+            "medium_high_candidates": medium + high,
+            "high_candidates": high,
+            "medium_candidates": medium,
+            "draft_supported_medium_high": draft_supported_count(
+                result.medium_high_candidate_status_bucket_counts
+            ),
+            "issues": len(result.issues),
+            **{f"no_recipe_{key}": value for key, value in concentration.items()},
+        }.items(),
+        include_zero=True,
+    )
+    payload: dict[str, object] = {
+        "schema_version": SUMMARY_SCHEMA_VERSION,
+        "status": "ok" if result.ok else "issues",
+        "metrics": metrics,
+        "issue_counts": safe_count_dict(Counter(issue.category for issue in result.issues).items()),
+        "counters": summary_counter_payload(result),
+        "top_no_recipe_workloads": [
+            workload_rollup_summary_json(rollup)
+            for rollup in sorted(
+                result.no_recipe_workloads.values(),
+                key=lambda item: item.count,
+                reverse=True,
+            )[: max(1, workload_limit)]
+        ],
+    }
+    return payload
+
+
+def summary_counter_payload(result: OptimizerFunnelAuditResult) -> dict[str, object]:
+    counters = {
+        "support_source_counts": result.support_source_counts,
+        "severity_counts": result.severity_counts,
+        "candidate_tier_counts": result.candidate_tier_counts,
+        "candidate_confidence_counts": result.candidate_confidence_counts,
+        "candidate_score_band_counts": result.candidate_score_band_counts,
+        "medium_high_candidate_primary_counts": result.medium_high_candidate_primary_counts,
+        "medium_high_candidate_reason_counts": result.medium_high_candidate_reason_counts,
+        "medium_high_candidate_counter_signal_counts": (
+            result.medium_high_candidate_counter_signal_counts
+        ),
+        "medium_high_candidate_status_bucket_counts": (
+            result.medium_high_candidate_status_bucket_counts
+        ),
+        "status_counts": result.status_counts,
+        "rewriteability_bucket_counts": result.bucket_counts,
+        "effective_rewriteability_rank_counts": result.effective_rewriteability_rank_counts,
+        "status_bucket_counts": result.status_bucket_counts,
+        "severity_status_bucket_counts": result.severity_status_bucket_counts,
+        "recipe_adjacent_actionability_counts": result.adjacent_actionability_counts,
+        "recipe_detected_no_draft_actionability_counts": result.no_draft_actionability_counts,
+        "review_primary_counts": result.review_primary_counts,
+        "review_reason_counts": result.review_reason_counts,
+        "review_risk_mode_counts": result.review_risk_mode_counts,
+        "review_risk_reason_counts": result.review_risk_reason_counts,
+        "no_recipe_family_counts": result.no_recipe_family_counts,
+        "no_recipe_hint_counts": result.no_recipe_hint_counts,
+        "no_recipe_review_track_counts": result.no_recipe_review_track_counts,
+        "no_recipe_family_reason_counts": result.no_recipe_family_reason_counts,
+        "no_recipe_risk_mode_counts": result.no_recipe_risk_mode_counts,
+        "no_recipe_risk_reason_counts": result.no_recipe_risk_reason_counts,
+        "repeated_no_recipe_review_track_counts": (result.repeated_no_recipe_review_track_counts),
+        "repeated_no_recipe_review_readiness_counts": (
+            result.repeated_no_recipe_review_readiness_counts
+        ),
+        "repeated_no_recipe_guidance_readiness_counts": (
+            result.repeated_no_recipe_guidance_readiness_counts
+        ),
+        "repeated_no_recipe_family_counts": result.repeated_no_recipe_family_counts,
+        "no_recipe_cte_graph_counts": result.no_recipe_cte_graph_counts,
+        "no_recipe_cte_predicate_pushdown_counts": result.no_recipe_cte_predicate_pushdown_counts,
+        "no_recipe_cte_simplification_counts": result.no_recipe_cte_simplification_counts,
+        "no_recipe_cte_boundary_reason_counts": result.no_recipe_cte_boundary_reason_counts,
+        "no_recipe_derived_predicate_pushdown_counts": (
+            result.no_recipe_derived_predicate_pushdown_counts
+        ),
+        "no_recipe_derived_boundary_reason_counts": (
+            result.no_recipe_derived_boundary_reason_counts
+        ),
+        "plain_feature_cluster_counts": result.plain_feature_cluster_counts,
+    }
+    payload: dict[str, object] = {}
+    for name, counter in counters.items():
+        safe_name = safe_summary_key(name)
+        values = safe_count_dict(counter.items())
+        if safe_name and values:
+            payload[safe_name] = values
+    return payload
+
+
+def workload_rollup_summary_json(rollup: WorkloadRollup) -> dict[str, object]:
+    return {
+        "workload": safe_workload_label(rollup.key),
+        "cases": int_value(rollup.count),
+        "shape_families": safe_count_dict(rollup.shape_families.items()),
+        "primary_labels": safe_count_dict(rollup.primary_labels.items()),
+        "candidate_reasons": safe_count_dict(rollup.candidate_reasons.items()),
+        "feature_clusters": safe_count_dict(rollup.feature_clusters.items()),
+        "review_tracks": safe_count_dict(rollup.review_tracks.items()),
+        "cte_graph_shapes": safe_count_dict(rollup.cte_graph_shapes.items()),
+        "cte_predicate_pushdown": safe_count_dict(rollup.cte_predicate_pushdown_statuses.items()),
+        "cte_simplification": safe_count_dict(rollup.cte_simplification_statuses.items()),
+        "derived_predicate_pushdown": safe_count_dict(
+            rollup.derived_predicate_pushdown_statuses.items()
+        ),
+        "risk_modes": safe_count_dict(rollup.risk_modes.items()),
+    }
+
+
+def safe_count_dict(
+    items: Iterable[tuple[object, object]],
+    *,
+    include_zero: bool = False,
+) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for key, value in items:
+        safe_key = safe_summary_key(key)
+        if not safe_key:
+            continue
+        counts[safe_key] += max(0, int_value(value))
+    return {key: value for key, value in sorted(counts.items()) if include_zero or value > 0}
+
+
+def safe_summary_key(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if raw_like_summary_text(text):
+        return "unsafe_token"
+    return safe_token(text, default="")
+
+
+def safe_workload_label(value: object) -> str:
+    text = str(value or "").strip()
+    if text == "<none>":
+        return "none"
+    if re.fullmatch(r"wf_\.\.\.[0-9a-f]{8}", text):
+        return text
+    return safe_summary_key(text) or "unknown"
+
+
+def raw_like_summary_text(text: str) -> bool:
+    return (
+        contains_raw_sql_like_text(text)
+        or URL_RE.search(text) is not None
+        or LOCAL_PATH_RE.search(text) is not None
+        or redaction.EMAIL_RE.search(text) is not None
+        or redaction.IPV4_RE.search(text) is not None
+        or redaction.HOSTLIKE_FQDN_RE.search(text) is not None
+        or redaction.SECRET_VALUE_RE.search(text) is not None
+    )
+
+
+def write_summary_json(
+    result: OptimizerFunnelAuditResult,
+    path: Path,
+    *,
+    input_summary: Path,
+    workload_limit: int,
+) -> None:
+    if same_path(path, input_summary):
+        raise AuditOutputError("summary JSON output must not overwrite input summary")
+    try:
+        path.write_text(
+            json.dumps(
+                summary_json_payload(result, workload_limit=workload_limit),
+                sort_keys=True,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise AuditOutputError("cannot write summary JSON") from exc
+
+
+def same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve(strict=False) == right.resolve(strict=False)
+    except OSError:
+        return left.absolute() == right.absolute()
 
 
 def print_counter(
@@ -794,15 +1000,23 @@ def repeated_no_recipe_review_readiness(rollup: WorkloadRollup) -> str:
     if tracks == {"source_unavailable"}:
         return "source_unavailable"
     if len(tracks) > 1:
+        if all(
+            track in NO_RECIPE_REVIEW_TRACKS and track not in NO_RECIPE_REVIEW_TRACK_UNREADY
+            for track in tracks
+        ):
+            return "mixed_specific_tracks"
         return "mixed_tracks"
     return "specific_track"
 
 
 def repeated_no_recipe_guidance_readiness(rollup: WorkloadRollup) -> str:
     track_readiness = repeated_no_recipe_review_readiness(rollup)
-    if track_readiness != "specific_track":
+    if track_readiness == "mixed_specific_tracks":
+        track = MIXED_NO_RECIPE_REVIEW_TRACK
+    elif track_readiness == "specific_track":
+        track = sorted(rollup.review_tracks)[0]
+    else:
         return track_readiness
-    track = sorted(rollup.review_tracks)[0]
     if not optimizer_no_recipe_review_area(track):
         return "missing_review_area"
     if not optimizer_no_recipe_change_direction(track):
@@ -1127,6 +1341,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("summary", type=Path, help="Path to batch_summary.json")
     parser.add_argument(
         "--use-stored-support",
+        "--use-stored-optimizer-support",
+        dest="use_stored_support",
         action="store_true",
         help="Use optimizer_rewrite_support already present in the summary instead of recomputing.",
     )
@@ -1137,6 +1353,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Fail when repeated no-recipe workload groups lack one specific safe review "
             "track, mapped review guidance, workload metric, or compare/rerun verification."
         ),
+    )
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        help="Write a raw-free machine-readable optimizer funnel summary JSON.",
     )
     parser.add_argument("--limit", type=int, default=12, help="Rows to print per counter.")
     return parser.parse_args(argv)
@@ -1156,6 +1377,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"optimizer funnel audit failed: {exc}", file=sys.stderr)
         return 2
     print_result(result, limit=max(1, args.limit))
+    if args.summary_json is not None:
+        try:
+            write_summary_json(
+                result,
+                args.summary_json,
+                input_summary=args.summary,
+                workload_limit=max(1, args.limit),
+            )
+        except AuditOutputError as exc:
+            print(f"optimizer funnel audit failed: {exc}", file=sys.stderr)
+            return 2
     return 0 if result.ok else 1
 
 

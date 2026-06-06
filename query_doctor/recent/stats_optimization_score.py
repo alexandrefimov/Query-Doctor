@@ -119,7 +119,7 @@ def score_stats_optimization_candidate(
     elif is_generic_column_only_stats_evidence(
         metadata_kind, important_column_evidence=important_column_evidence
     ):
-        raw_score = min(raw_score, 65)
+        raw_score = min(raw_score, 39)
         counter_signals.append("column stats gap is not tied to specific join/filter columns")
 
     score = max(0, min(100, raw_score))

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -15,6 +16,9 @@ from typing import Any, Iterable, TextIO
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from query_doctor.report.safety_validation import contains_raw_sql_like_text  # noqa: E402
+from query_doctor.safety import redaction  # noqa: E402
 
 
 ACTIONABLE_STATS_TIERS = {"high", "medium"}
@@ -31,6 +35,9 @@ DETAIL_KINDS = (
     "unknown_detail",
 )
 GENERIC_COLUMN_STATS_COUNTER_SIGNAL = "column stats gap is not tied to specific join/filter columns"
+SUMMARY_SCHEMA_VERSION = "stats_diagnostics_audit_v1"
+URL_RE = re.compile(r"\bhttps?://", re.IGNORECASE)
+LOCAL_PATH_RE = re.compile(r"(?<![\w/])(?:/private)?/tmp/|(?<![\w/])/Users/")
 
 
 @dataclass(frozen=True)
@@ -61,6 +68,10 @@ class StatsDiagnosticsAuditResult:
 
 class StatsAuditInputError(RuntimeError):
     """Raised when a batch summary cannot be audited."""
+
+
+class StatsAuditOutputError(RuntimeError):
+    """Raised when a raw-free summary cannot be written."""
 
 
 def load_summary(path: Path) -> dict[str, Any]:
@@ -227,6 +238,8 @@ def safe_text_list(value: object) -> tuple[str, ...]:
 
 def safe_token(value: object, *, default: str = "unknown") -> str:
     text = str(value or "").strip().lower()
+    if raw_like_summary_text(text):
+        return default
     text = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in text)
     text = "_".join(part for part in text.split("_") if part)
     return text[:60] if text else default
@@ -254,6 +267,105 @@ def has_counter_signal(candidate: dict[str, Any], signal: str) -> bool:
         item.strip().lower() == expected
         for item in safe_text_list(candidate.get("counter_signals"))
     )
+
+
+def summary_json_payload(result: StatsDiagnosticsAuditResult) -> dict[str, object]:
+    return {
+        "schema_version": SUMMARY_SCHEMA_VERSION,
+        "status": "ok" if result.ok else "issues",
+        "metrics": safe_count_dict(
+            {
+                "total_cases": result.total_cases,
+                "stats_candidates": result.stats_candidate_count,
+                "actionable_stats_candidates": result.actionable_candidate_count,
+                "issues": len(result.issues),
+            }.items(),
+            include_zero=True,
+        ),
+        "issue_counts": safe_count_dict(Counter(issue.category for issue in result.issues).items()),
+        "counters": summary_counter_payload(result),
+    }
+
+
+def summary_counter_payload(result: StatsDiagnosticsAuditResult) -> dict[str, object]:
+    counters = {
+        "stats_tier_counts": result.tier_counts,
+        "stats_need_type_counts": result.need_type_counts,
+        "metadata_status_counts": result.metadata_status_counts,
+        "evidence_detail_counts": result.evidence_detail_counts,
+        "review_area_counts": result.review_area_counts,
+        "confirmation_counts": result.confirmation_counts,
+        "readiness_gap_counts": result.issue_counts,
+    }
+    payload: dict[str, object] = {}
+    for name, counter in counters.items():
+        safe_name = safe_summary_key(name)
+        values = safe_count_dict(counter.items())
+        if safe_name and values:
+            payload[safe_name] = values
+    return payload
+
+
+def safe_count_dict(
+    items: Iterable[tuple[object, object]],
+    *,
+    include_zero: bool = False,
+) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for key, value in items:
+        safe_key = safe_summary_key(key)
+        if not safe_key:
+            continue
+        number = numeric_value(value)
+        if number is None:
+            continue
+        counts[safe_key] += max(0, int(number))
+    return {key: value for key, value in sorted(counts.items()) if include_zero or value > 0}
+
+
+def safe_summary_key(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if raw_like_summary_text(text):
+        return "unsafe_token"
+    return safe_token(text, default="")
+
+
+def raw_like_summary_text(text: str) -> bool:
+    return (
+        contains_raw_sql_like_text(text)
+        or URL_RE.search(text) is not None
+        or LOCAL_PATH_RE.search(text) is not None
+        or redaction.EMAIL_RE.search(text) is not None
+        or redaction.IPV4_RE.search(text) is not None
+        or redaction.HOSTLIKE_FQDN_RE.search(text) is not None
+        or redaction.SECRET_VALUE_RE.search(text) is not None
+    )
+
+
+def write_summary_json(
+    result: StatsDiagnosticsAuditResult,
+    path: Path,
+    *,
+    input_summary: Path,
+) -> None:
+    if same_path(path, input_summary):
+        raise StatsAuditOutputError("summary JSON output must not overwrite input artifacts")
+    try:
+        path.write_text(
+            json.dumps(summary_json_payload(result), sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise StatsAuditOutputError("cannot write summary JSON") from exc
+
+
+def same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve(strict=False) == right.resolve(strict=False)
+    except OSError:
+        return left.absolute() == right.absolute()
 
 
 def print_counter(title: str, counter: Counter[str], *, out: TextIO, limit: int) -> None:
@@ -306,6 +418,11 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
             "rerun confirmation."
         ),
     )
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        help="Write a raw-free machine-readable stats diagnostics audit summary JSON.",
+    )
     return parser.parse_args(argv)
 
 
@@ -320,6 +437,12 @@ def main(argv: Iterable[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print_result(result, limit=args.limit)
+    if args.summary_json is not None:
+        try:
+            write_summary_json(result, args.summary_json, input_summary=args.summary)
+        except StatsAuditOutputError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
     return 1 if not result.ok else 0
 
 

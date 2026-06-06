@@ -171,7 +171,7 @@ def present_recent_scan_summary(
         ("CM inspected", safe_display_value(summary.get("summaries_inspected"))),
         ("metadata", metadata_count),
     )
-    workload_groups = present_workload_groups(summary)
+    workload_groups = present_workload_groups(summary, rows=rows)
     return RecentScanSummaryView(
         header_items=header_items,
         rows=rows,
@@ -219,6 +219,16 @@ def row_has_optimizer_rewrite_support(row: RecentScanCaseRowView) -> bool:
 
 WORKLOAD_FINGERPRINT_RE = re.compile(r"^wf_[0-9a-f]{24}$")
 WORKLOAD_TABLE_RE = re.compile(r"^[a-z_][a-z0-9_$]*(?:\.[a-z_][a-z0-9_$]*){0,2}$")
+WORKLOAD_SHAPE_COUNT_FIELDS = {
+    "cte_count",
+    "exchange_count",
+    "join_count",
+    "scan_count",
+    "set_operation_count",
+}
+WORKLOAD_SHAPE_BOOL_FIELDS = {"aggregate_present", "window_present"}
+WORKLOAD_SHAPE_TOKEN_FIELDS = {"query_type", "sql_verb"}
+WORKLOAD_SHAPE_UNKNOWN_TOKENS = {"", "none", "null", "unknown", "n/a"}
 
 SOURCE_LOCATOR_GROUPS = {"query_optimization", "stats_refresh", "runtime_admission"}
 SOURCE_LOCATOR_LABELS = {
@@ -241,13 +251,17 @@ SOURCE_LOCATOR_LABELS = {
 }
 
 
-def present_workload_groups(summary: dict[str, Any]) -> RecentScanWorkloadGroupsView:
+def present_workload_groups(
+    summary: dict[str, Any],
+    *,
+    rows: tuple[RecentScanCaseRowView, ...] = (),
+) -> RecentScanWorkloadGroupsView:
     payload = summary.get("workload_groups")
     if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        return RecentScanWorkloadGroupsView(groups=())
+        return derived_workload_groups_from_rows(rows)
     raw_groups = payload.get("groups")
     if not isinstance(raw_groups, list):
-        return RecentScanWorkloadGroupsView(groups=())
+        return derived_workload_groups_from_rows(rows)
     groups = []
     for raw_group in raw_groups:
         if not isinstance(raw_group, dict):
@@ -292,7 +306,116 @@ def present_workload_groups(summary: dict[str, Any]) -> RecentScanWorkloadGroups
                 member_case_ids=member_case_ids,
             )
         )
-    return RecentScanWorkloadGroupsView(groups=tuple(groups))
+    if groups:
+        return RecentScanWorkloadGroupsView(groups=tuple(groups))
+    return derived_workload_groups_from_rows(rows)
+
+
+def derived_workload_groups_from_rows(
+    rows: tuple[RecentScanCaseRowView, ...],
+) -> RecentScanWorkloadGroupsView:
+    grouped: dict[str, list[RecentScanCaseRowView]] = {}
+    for row in rows:
+        if not row.workload_fingerprint or not row.workload_fingerprint_short:
+            continue
+        grouped.setdefault(row.workload_fingerprint, []).append(row)
+
+    groups = [
+        derived_workload_group(fingerprint, tuple(group_rows))
+        for fingerprint, group_rows in grouped.items()
+        if len(group_rows) >= 2
+    ]
+    return RecentScanWorkloadGroupsView(
+        groups=tuple(
+            sorted(
+                groups,
+                key=lambda group: (-workload_group_impact(group), group.fingerprint),
+            )
+        )
+    )
+
+
+def derived_workload_group(
+    fingerprint: str,
+    rows: tuple[RecentScanCaseRowView, ...],
+) -> RecentScanWorkloadGroupView:
+    durations = sorted(
+        duration for row in rows if (duration := numeric_value(row.duration_sec)) > 0
+    )
+    duration_sec_total = sum(durations)
+    return RecentScanWorkloadGroupView(
+        fingerprint=fingerprint,
+        fingerprint_short=short_workload_fingerprint(fingerprint),
+        member_count=len(rows),
+        duration_sec_p50=safe_display_value(percentile_value(durations, 50)),
+        duration_sec_p95=safe_display_value(percentile_value(durations, 95)),
+        duration_sec_total=safe_display_value(duration_sec_total),
+        pool_top="unknown",
+        primary_bottleneck_top=dominant_primary_bottleneck_label(rows),
+        score_top=dominant_score_severity(rows),
+        baseline_duration_sec_p95="",
+        baseline_sample_count=0,
+        regression="unknown",
+        shape_summary="row-level fingerprint only; SQL shape not materialized",
+        table_summary="not materialized",
+        member_case_ids=tuple(row.case_id for row in rows if row.case_id),
+    )
+
+
+def percentile_value(values: list[float], percentile: int) -> float:
+    if not values:
+        return 0.0
+    index = ((percentile * len(values)) + 99) // 100 - 1
+    return values[max(0, min(len(values) - 1, index))]
+
+
+def dominant_primary_bottleneck_label(rows: tuple[RecentScanCaseRowView, ...]) -> str:
+    labels = [
+        primary_bottleneck_label_token(row.primary_bottleneck.label)
+        for row in rows
+        if not row.primary_bottleneck.unavailable
+        and str(row.primary_bottleneck.label or "").strip()
+    ]
+    return dominant_token(labels, default="unknown")
+
+
+def primary_bottleneck_label_token(value: Any) -> str:
+    label = str(value or "").strip()
+    for token, display_label in PRIMARY_BOTTLENECK_LABELS.items():
+        if label == display_label:
+            return token
+    return safe_display_text(label)
+
+
+def dominant_score_severity(rows: tuple[RecentScanCaseRowView, ...]) -> str:
+    labels = [str(row.score_severity or "").strip() for row in rows if row.score_severity]
+    return dominant_token(
+        labels,
+        default="unknown",
+        priority={"failed": 4, "high": 3, "suspicious": 2, "clean": 1},
+    )
+
+
+def dominant_token(
+    values: list[str],
+    *,
+    default: str,
+    priority: dict[str, int] | None = None,
+) -> str:
+    counts: dict[str, int] = {}
+    for value in values:
+        token = safe_display_text(value)
+        if not token:
+            continue
+        counts[token] = counts.get(token, 0) + 1
+    if not counts:
+        return default
+    priority = priority or {}
+    token, _count = sorted(
+        counts.items(),
+        key=lambda item: (-item[1], -priority.get(item[0], 0), item[0]),
+    )[0]
+    return token
 
 
 def present_workload_history(summary: dict[str, Any]) -> RecentScanWorkloadHistoryView | None:
@@ -654,6 +777,74 @@ def short_workload_fingerprint(value: Any) -> str:
     return f"{fingerprint[:11]}" if fingerprint else ""
 
 
+def workload_fingerprint_incomplete(case: dict[str, Any]) -> bool:
+    if not safe_truthy(case.get("workload_fingerprint_incomplete")):
+        return False
+
+    raw_fields = case.get("workload_fingerprint_incomplete_fields")
+    if not isinstance(raw_fields, (list, tuple, set)):
+        return True
+    fields = {field for item in raw_fields if (field := str(item or "").strip().lower())}
+    if not fields:
+        return True
+
+    shape = case.get("workload_shape")
+    shape = shape if isinstance(shape, dict) else {}
+    return any(not workload_shape_resolves_field(shape, field) for field in fields)
+
+
+def workload_shape_resolves_field(shape: dict[str, Any], field: str) -> bool:
+    if field in WORKLOAD_SHAPE_COUNT_FIELDS:
+        return workload_shape_has_nonnegative_count(shape.get(field))
+    if field in WORKLOAD_SHAPE_BOOL_FIELDS:
+        return workload_shape_has_bool(shape.get(field))
+    if field in WORKLOAD_SHAPE_TOKEN_FIELDS:
+        return workload_shape_has_safe_token(shape.get(field))
+    if field == "referenced_tables":
+        return workload_shape_has_safe_tables(shape.get(field))
+    return False
+
+
+def workload_shape_has_nonnegative_count(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return value >= 0
+    if isinstance(value, float):
+        return value >= 0 and value.is_integer()
+    if isinstance(value, str):
+        return value.strip().isdigit()
+    return False
+
+
+def workload_shape_has_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, int) and value in {0, 1}:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"0", "1", "false", "no", "true", "yes"}
+    return False
+
+
+def workload_shape_has_safe_token(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    if text in WORKLOAD_SHAPE_UNKNOWN_TOKENS:
+        return False
+    return bool(re.fullmatch(r"[a-z][a-z0-9_]{0,31}", text))
+
+
+def workload_shape_has_safe_tables(value: Any) -> bool:
+    if not isinstance(value, list):
+        return False
+    tables = [
+        table
+        for item in value
+        if (table := str(item or "").strip().lower()) and WORKLOAD_TABLE_RE.fullmatch(table)
+    ]
+    return bool(tables)
+
+
 def safe_case_id(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text if re.fullmatch(r"case-[0-9]{3}", text) else ""
@@ -768,7 +959,7 @@ def present_recent_scan_case_row(rank: int, case: dict[str, Any]) -> RecentScanC
         workload_fingerprint_short=short_workload_fingerprint(
             case.get("group_fingerprint") or case.get("workload_fingerprint")
         )
-        if not safe_truthy(case.get("workload_fingerprint_incomplete"))
+        if not workload_fingerprint_incomplete(case)
         else "",
         workload_group_member_count=numeric_count(case.get("workload_group_member_count")),
         workload_group_duration_sec_p95=safe_display_value(
@@ -899,7 +1090,7 @@ def present_recent_scan_case_detail(
         workload_fingerprint_short=short_workload_fingerprint(
             case.get("group_fingerprint") or case.get("workload_fingerprint")
         )
-        if not safe_truthy(case.get("workload_fingerprint_incomplete"))
+        if not workload_fingerprint_incomplete(case)
         else "",
         workload_group_member_count=numeric_count(case.get("workload_group_member_count")),
         workload_group_duration_sec_p95=safe_display_value(
@@ -1032,6 +1223,7 @@ PRIMARY_BOTTLENECK_LABELS = {
     "runtime_admission": "Admission/runtime",
     "runtime_skew": "Runtime skew",
     "runtime_data_movement": "Data movement",
+    "runtime_memory": "Memory pressure",
     "runtime_storage": "Storage/HDFS",
     "client_fetch_tail": "Client fetch tail",
     "mixed": "Competing signals",
@@ -1042,12 +1234,14 @@ PRIMARY_BOTTLENECK_REASON_LABELS = {
     "stats_candidate_supported": "stats gaps match estimate-mismatch evidence",
     "stats_not_primary": "stats are unlikely to be the main explanation",
     "large_intermediate_or_exchange_top_finding": "exchange or intermediate data movement is the top finding",
+    "memory_pressure_spill_scratch_supported": "selected-query spill/scratch evidence supports memory pressure",
     "storage_or_hdfs_top_finding": "storage/HDFS evidence is the top finding",
     "storage_or_hdfs_runtime_diagnosis": "storage/HDFS evidence is the strongest runtime follow-up",
     "client_fetch_wait_top_finding": "client fetch wait is the top finding",
     "join_top_finding": "join shape is the top finding",
     "sort_top_finding": "sort shape is the top finding",
     "analytic_top_finding": "analytic operator shape is the top finding",
+    "aggregate_memory_estimate_top_finding": ("aggregate memory-estimate shape is the top finding"),
     "execution_tail_top_finding": "execution tail is the top finding",
     "backend_data_skew_detected": "backend data skew detected",
     "scan_skew_scan_bytes_assigned": "scan assigned bytes skew detected",
@@ -1058,6 +1252,7 @@ PRIMARY_BOTTLENECK_REASON_LABELS = {
     "codegen_finding_not_primary_supported": "codegen finding is not primary-supported",
     "scan_skew_medium_supporting_only": "scan skew is supporting only",
     "data_movement_context_only": "data movement is context only",
+    "memory_estimate_context_only": "memory estimate evidence is context only",
     "storage_context_view_only": "storage context comes from view-only metadata",
     "wall_clock_not_explained_by_mapped_operators": "mapped operators do not explain wall clock",
     "competing_stats_and_non_stats": "competing stats and non-stats signals",
@@ -1065,6 +1260,7 @@ PRIMARY_BOTTLENECK_REASON_LABELS = {
     "competing_sql_shape": "query shape also needs review",
     "competing_runtime_skew": "runtime skew also needs review",
     "competing_runtime_data_movement": "exchange/data movement also needs review",
+    "competing_runtime_memory": "memory pressure also needs review",
     "competing_runtime_storage": "storage/HDFS also needs review",
     "competing_client_fetch_tail": "client fetch tail also needs review",
     "admission_timed_out": "admission timed out before execution",
@@ -1085,6 +1281,7 @@ def present_case_primary_bottleneck(case: dict[str, Any]) -> RecentScanPrimaryBo
             confidence="unknown",
             summary="Not classified",
             reason_summary="",
+            reason_tokens=(),
         )
     raw_label = str(bottleneck.get("label") or "unknown").strip().lower()
     label_is_known = raw_label in PRIMARY_BOTTLENECK_LABELS
@@ -1096,10 +1293,10 @@ def present_case_primary_bottleneck(case: dict[str, Any]) -> RecentScanPrimaryBo
         else "unknown"
     )
     reasons = bottleneck.get("reasons")
-    safe_reasons = (
-        [primary_bottleneck_reason_label(item) for item in list(reasons)[:3]]
-        if isinstance(reasons, (list, tuple))
-        else []
+    reason_items = list(reasons)[:3] if isinstance(reasons, (list, tuple)) else []
+    safe_reasons = [primary_bottleneck_reason_label(item) for item in reason_items]
+    reason_tokens = tuple(
+        token for item in reason_items if (token := primary_bottleneck_reason_token(item))
     )
     reason_summary = "; ".join(reason for reason in safe_reasons if reason)
     confidence_label = confidence.title() if confidence != "unknown" else "Unknown"
@@ -1109,7 +1306,27 @@ def present_case_primary_bottleneck(case: dict[str, Any]) -> RecentScanPrimaryBo
         confidence=confidence,
         summary=f"{label} ({confidence_label} confidence)",
         reason_summary=reason_summary,
+        reason_tokens=reason_tokens,
     )
+
+
+def primary_bottleneck_reason_token(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    if text in PRIMARY_BOTTLENECK_REASON_LABELS:
+        return text
+    if re.fullmatch(r"cardinality_anomalies_\d{1,4}", text):
+        return text
+    if re.fullmatch(r"tail_candidates_\d{1,4}", text):
+        return text
+    if re.fullmatch(r"admission_wait_share_\d{1,3}pct", text):
+        return text
+    if re.fullmatch(r"client_fetch_wait_share_\d{1,3}pct", text):
+        return text
+    if re.fullmatch(r"spill_scratch_counters_\d{1,4}", text):
+        return text
+    return ""
 
 
 def primary_bottleneck_reason_label(value: Any) -> str:
@@ -1130,6 +1347,9 @@ def primary_bottleneck_reason_label(value: Any) -> str:
     client_fetch_match = re.fullmatch(r"client_fetch_wait_share_(\d{1,3})pct", text)
     if client_fetch_match:
         return f"client fetch wait share {client_fetch_match.group(1)}%"
+    spill_match = re.fullmatch(r"spill_scratch_counters_(\d{1,4})", text)
+    if spill_match:
+        return f"{spill_match.group(1)} spill/scratch counters"
     return "unrecognized reason category"
 
 

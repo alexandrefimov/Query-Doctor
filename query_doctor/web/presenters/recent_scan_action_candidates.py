@@ -274,7 +274,6 @@ def diagnostic_follow_up_is_visible(view: RecentScanCaseDetailView) -> bool:
 def diagnostic_follow_up_card(
     view: RecentScanCaseDetailView,
 ) -> RecentScanActionCandidateCardView:
-    primary = str(view.primary_bottleneck.label or "Diagnostic evidence").strip()
     confidence = str(view.primary_bottleneck.confidence or "unknown").strip()
     signal = meaningful_text(view.signal_summary, "supported analyzer signals")
     reason = (
@@ -283,7 +282,7 @@ def diagnostic_follow_up_card(
         else ""
     )
     return RecentScanActionCandidateCardView(
-        diagnostic_follow_up_title(primary),
+        diagnostic_follow_up_title(view),
         (
             "No Medium/High rewrite or stats candidate was selected, but deterministic "
             f"scoring still marked this case as {candidate_title(view.score_severity)}. "
@@ -293,13 +292,7 @@ def diagnostic_follow_up_card(
         source_locators=diagnostic_follow_up_locators(view),
         supporting_facts=supporting_facts_for_action(
             view,
-            (
-                "main_signal",
-                "signals",
-                "resource_footprint",
-                "cluster_context",
-                "table_stats",
-            ),
+            diagnostic_follow_up_fact_ids(view),
         ),
         why=(
             f"Deterministic analysis found {signal}. "
@@ -309,8 +302,8 @@ def diagnostic_follow_up_card(
             "No trusted SQL draft is implied by this recommendation. Keep changes limited to "
             "directions supported by analyzer facts or by a later trusted optimizer outcome."
         ),
-        change_direction=diagnostic_follow_up_change_direction(primary),
-        verification=diagnostic_follow_up_verification(primary),
+        change_direction=diagnostic_follow_up_change_direction(view),
+        verification=diagnostic_follow_up_verification(view),
     )
 
 
@@ -383,6 +376,12 @@ def diagnostic_follow_up_locators(
 def diagnostic_generic_source_locator(
     view: RecentScanCaseDetailView,
 ) -> tuple[RecentScanSourceLocatorView, ...]:
+    if memory_estimate_context_only_follow_up(view):
+        return (
+            *generic_source_locator("metadata", "Stats and estimate evidence"),
+            *generic_source_locator("runtime", "Memory, spill, and scratch evidence"),
+            *generic_source_locator("diagnostics", "Source coverage and limitations"),
+        )
     primary = str(view.primary_bottleneck.label or "").strip()
     if primary == "SQL shape":
         return generic_source_locator("query", "SQL-shape diagnostic evidence")
@@ -407,7 +406,10 @@ def generic_source_locator(kind: str, label: str) -> tuple[RecentScanSourceLocat
     return (RecentScanSourceLocatorView(kind=kind, label=label, coordinate="", detail=""),)
 
 
-def diagnostic_follow_up_title(primary: str) -> str:
+def diagnostic_follow_up_title(view: RecentScanCaseDetailView) -> str:
+    if memory_estimate_context_only_follow_up(view):
+        return "Memory estimate evidence follow-up"
+    primary = str(view.primary_bottleneck.label or "").strip()
     if primary == "SQL shape":
         return "SQL shape follow-up"
     if primary == "Runtime skew":
@@ -423,7 +425,15 @@ def diagnostic_follow_up_title(primary: str) -> str:
     return "Diagnostic follow-up"
 
 
-def diagnostic_follow_up_change_direction(primary: str) -> str:
+def diagnostic_follow_up_change_direction(view: RecentScanCaseDetailView) -> str:
+    if memory_estimate_context_only_follow_up(view):
+        return (
+            "Inspect memory-estimate evidence with table/column stats coverage and "
+            "selected-query spill/scratch counters first. Do not change SQL or runtime "
+            "settings from memory estimates alone; choose one bounded stats, query-shape, "
+            "or memory-pool change only after supported evidence identifies it."
+        )
+    primary = str(view.primary_bottleneck.label or "").strip()
     if primary == "SQL shape":
         return (
             "Inspect the join, aggregation, filter, and exchange shape behind the score signals. "
@@ -461,7 +471,14 @@ def diagnostic_follow_up_change_direction(primary: str) -> str:
     )
 
 
-def diagnostic_follow_up_verification(primary: str) -> str:
+def diagnostic_follow_up_verification(view: RecentScanCaseDetailView) -> str:
+    if memory_estimate_context_only_follow_up(view):
+        return (
+            "After one evidence-supported change, compare EXPLAIN estimates, the same "
+            "operator's PeakMemUsage, spill/scratch counters, and wall-clock time on a "
+            "comparable rerun before accepting the change."
+        )
+    primary = str(view.primary_bottleneck.label or "").strip()
     if primary == "Runtime skew":
         return (
             "Rerun under comparable load and confirm backend row/time spread, runtime metrics, "
@@ -475,6 +492,33 @@ def diagnostic_follow_up_verification(primary: str) -> str:
     return (
         "Compare EXPLAIN before and after the change, then rerun under comparable load and confirm "
         "the flagged score signals, exchange volume, memory pressure, skew, or runtime metrics improve."
+    )
+
+
+def diagnostic_follow_up_fact_ids(
+    view: RecentScanCaseDetailView,
+) -> tuple[str, ...]:
+    if memory_estimate_context_only_follow_up(view):
+        return (
+            "resource_footprint",
+            "table_stats",
+            "spill",
+            "signals",
+            "cluster_context",
+        )
+    return (
+        "main_signal",
+        "signals",
+        "resource_footprint",
+        "cluster_context",
+        "table_stats",
+    )
+
+
+def memory_estimate_context_only_follow_up(view: RecentScanCaseDetailView) -> bool:
+    return (
+        str(view.primary_bottleneck.label or "").strip() == "Unknown"
+        and "memory_estimate_context_only" in view.primary_bottleneck.reason_tokens
     )
 
 

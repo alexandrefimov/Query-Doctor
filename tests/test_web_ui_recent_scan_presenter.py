@@ -1662,6 +1662,53 @@ def test_recent_scan_case_verdict_names_signals_when_primary_is_unknown():
     assert_no_forbidden_fragments(html)
 
 
+def test_recent_scan_action_candidate_uses_memory_estimate_context_follow_up():
+    view = present_recent_scan_case_detail(
+        "case-001",
+        {
+            "query_id": "abc",
+            "score": 18,
+            "score_severity": "suspicious",
+            "collection_status": "ok",
+            "analysis_status": "ok",
+            "metadata_status": "not_requested",
+            "memory_anomaly_count": 2,
+            "case_primary_bottleneck": {
+                "label": "unknown",
+                "confidence": "low",
+                "reasons": ["memory_estimate_context_only", "data_movement_context_only"],
+            },
+        },
+    )
+
+    action_view = present_recent_scan_action_candidates(view)
+    card = action_view.cards[0]
+    html = render_action_candidate_findings(view)
+
+    assert view.primary_bottleneck.label == "Unknown"
+    assert view.primary_bottleneck.reason_tokens == (
+        "memory_estimate_context_only",
+        "data_movement_context_only",
+    )
+    assert card.title == "Memory estimate evidence follow-up"
+    assert card.recommendation_id == "diagnostic_follow_up.v1"
+    assert "not a root-cause claim" in card.why
+    assert "Do not change SQL or runtime settings from memory estimates alone" in (
+        card.change_direction
+    )
+    assert "spill/scratch counters" in card.change_direction
+    assert "comparable rerun" in card.verification
+    assert [locator.label for locator in card.source_locators] == [
+        "Stats and estimate evidence",
+        "Memory, spill, and scratch evidence",
+        "Source coverage and limitations",
+    ]
+    assert "Memory estimate evidence follow-up" in html
+    assert "memory estimate evidence is context only" in html
+    assert_no_forbidden_fragments(action_view)
+    assert_no_forbidden_fragments(html)
+
+
 def test_recent_scan_primary_bottleneck_labels_unknown_supporting_reasons():
     assert (
         primary_bottleneck_reason_label("codegen_finding_not_primary_supported")
@@ -1676,8 +1723,19 @@ def test_recent_scan_primary_bottleneck_labels_unknown_supporting_reasons():
         == "data movement is context only"
     )
     assert (
+        primary_bottleneck_reason_label("memory_estimate_context_only")
+        == "memory estimate evidence is context only"
+    )
+    assert (
         primary_bottleneck_reason_label("wall_clock_not_explained_by_mapped_operators")
         == "mapped operators do not explain wall clock"
+    )
+
+
+def test_recent_scan_primary_bottleneck_labels_aggregate_memory_shape_reason():
+    assert (
+        primary_bottleneck_reason_label("aggregate_memory_estimate_top_finding")
+        == "aggregate memory-estimate shape is the top finding"
     )
 
 
@@ -1960,6 +2018,35 @@ def test_recent_scan_case_detail_summary_helpers_use_storage_primary_bottleneck(
         "runtime follow-up"
     )
     assert "Storage or HDFS signals need follow-up" in detail_html
+    assert_no_forbidden_fragments(primary_bottleneck_summary(view))
+    assert_no_forbidden_fragments(detail_html)
+
+
+def test_recent_scan_case_detail_summary_helpers_use_memory_primary_bottleneck():
+    case = {
+        "query_id": "abc",
+        "score": 17,
+        "collection_status": "ok",
+        "analysis_status": "ok",
+        "metadata_status": "collected",
+        "case_primary_bottleneck": {
+            "label": "runtime_memory",
+            "confidence": "medium",
+            "reasons": [
+                "memory_pressure_spill_scratch_supported",
+                "spill_scratch_counters_2",
+            ],
+        },
+    }
+    view = present_recent_scan_case_detail("case-001", case)
+
+    detail_html = render_typed_case_detail("case-001", case)
+
+    assert primary_bottleneck_summary(view) == (
+        "Memory pressure needs spill/scratch follow-up: selected-query spill/scratch "
+        "evidence supports memory pressure; 2 spill/scratch counters"
+    )
+    assert "Memory pressure needs spill/scratch follow-up" in detail_html
     assert_no_forbidden_fragments(primary_bottleneck_summary(view))
     assert_no_forbidden_fragments(detail_html)
 
@@ -3014,6 +3101,7 @@ def test_recent_scan_summary_renders_workload_groups_safely():
                 recommendation_id="stats_refresh_review.v1",
                 applied="yes",
                 outcome="improved",
+                verification_status="comparable_rerun",
             ),
             ActionOutcomeRecord(
                 schema_version=SCHEMA_VERSION,
@@ -3024,6 +3112,7 @@ def test_recent_scan_summary_renders_workload_groups_safely():
                 recommendation_id="stats_refresh_review.v1",
                 applied="yes",
                 outcome="no_change",
+                verification_status="comparable_rerun",
             ),
             ActionOutcomeRecord(
                 schema_version=SCHEMA_VERSION,
@@ -3034,6 +3123,7 @@ def test_recent_scan_summary_renders_workload_groups_safely():
                 recommendation_id="runtime_admission_check.v1",
                 applied="skip",
                 outcome="not_applicable",
+                verification_status="not_applicable",
             ),
         ]
     )
@@ -3109,16 +3199,17 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     assert 'href="#workload-groups"' in html
     assert "<th>Outcomes</th>" in html
     assert (
-        "2 recorded; 2 applied; improved 1, no change 1; "
+        "2 recorded; 2 applied; 2 comparable reruns; improved 1, no change 1; "
         "last applied action Stats refresh review: no change; "
-        "family signal Stats refresh review: improved 1/2 applied, no change 1; "
-        "feedback sample below threshold (2/5 applied); "
+        "family signal Stats refresh review: improved 1/2 comparable reruns, no change 1; "
+        "feedback sample below threshold (2/5 comparable reruns); "
         "next check stats signal count and group p95"
     ) in html
     assert (
-        "1 recorded; 0 applied; no applied outcomes; last applied action none yet; "
-        "family signal Admission/runtime check: no applied records yet; "
-        "feedback sample below threshold (0/5 applied); "
+        "1 recorded; 0 applied; 0 comparable reruns; no verified rerun outcomes; "
+        "last applied action none yet; "
+        "family signal Admission/runtime check: no verified rerun records yet; "
+        "feedback sample below threshold (0/5 comparable reruns); "
         "next check admission/runtime signal count and group p95" in html
     )
     assert "<th>Open</th>" in html
@@ -3217,6 +3308,204 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     assert_no_forbidden_fragments(invalid_filter_html)
 
 
+def test_recent_scan_summary_derives_workload_groups_from_repeated_safe_rows():
+    summary = {
+        "cases": [
+            {
+                "case_index": 1,
+                "query_id": "case-one:id",
+                "user": "alice",
+                "score": 31,
+                "score_severity": "high",
+                "duration_sec": 10,
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "workload_group_member_count": 2,
+                "case_primary_bottleneck": {"label": "stats", "confidence": "medium"},
+                "stats_optimization_candidate": {
+                    "tier": "medium",
+                    "score": 65,
+                    "impact": "medium",
+                    "confidence": "medium",
+                },
+            },
+            {
+                "case_index": 2,
+                "query_id": "case-two:id",
+                "user": "alice /tmp/raw",
+                "score": 12,
+                "score_severity": "suspicious",
+                "duration_sec": 25,
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "workload_group_member_count": 2,
+                "case_primary_bottleneck": {"label": "stats", "confidence": "medium"},
+                "stats_optimization_candidate": {
+                    "tier": "medium",
+                    "score": 45,
+                    "impact": "medium",
+                    "confidence": "medium",
+                },
+            },
+            {
+                "case_index": 3,
+                "query_id": "incomplete-one:id",
+                "score": 20,
+                "score_severity": "suspicious",
+                "duration_sec": 5,
+                "workload_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "group_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "workload_fingerprint_incomplete": True,
+            },
+            {
+                "case_index": 4,
+                "query_id": "incomplete-two:id",
+                "score": 20,
+                "score_severity": "suspicious",
+                "duration_sec": 6,
+                "workload_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "group_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "workload_fingerprint_incomplete": True,
+            },
+        ],
+        "workload_groups": {"schema_version": 1, "groups": []},
+    }
+
+    view = present_recent_scan_summary(summary)
+
+    assert len(view.workload_groups.groups) == 1
+    group = view.workload_groups.groups[0]
+    assert group.fingerprint == "wf_aaaaaaaaaaaaaaaaaaaaaaaa"
+    assert group.member_count == 2
+    assert group.duration_sec_total == 35.0
+    assert group.duration_sec_p95 == 25.0
+    assert group.primary_bottleneck_top == "stats"
+    assert group.score_top == "high"
+    assert group.baseline_sample_count == 0
+    assert group.regression == "unknown"
+    assert group.shape_summary == "row-level fingerprint only; SQL shape not materialized"
+    assert group.table_summary == "not materialized"
+    assert group.member_case_ids == ("case-001", "case-002")
+    assert len(view.workload_digest.action_queue) == 1
+    assert view.workload_digest.action_queue[0].signal == "Stats review"
+
+    detail = present_workload_detail(summary, "wf_aaaaaaaaaaaaaaaaaaaaaaaa")
+    assert detail is not None
+    assert detail.frequent_short_summary == (
+        "Fits Frequent short: 2 runs and group p95 25s within the 60s threshold."
+    )
+    assert "No local baseline is available for this fingerprint." in detail.limitations
+    assert [case.case_id for case in detail.representatives] == ["case-001", "case-002"]
+
+    html = render_batch_summary(summary, query_group="bad")
+
+    assert "Workload groups (1)" in html
+    assert "Stats review" in html
+    assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa"' in html
+    assert "wf_bbbbbbbb" not in html
+    assert "/tmp/raw" not in html
+    assert_no_forbidden_fragments(html)
+
+
+def test_recent_scan_summary_derives_groups_from_resolved_stale_incomplete_fields():
+    workload_shape = {
+        "sql_verb": "select",
+        "query_type": "query",
+        "join_count": 0,
+        "cte_count": 0,
+        "set_operation_count": 0,
+        "aggregate_present": True,
+        "window_present": False,
+        "scan_count": 4,
+        "exchange_count": 2,
+        "referenced_tables": ["example_warehouse.safe_table"],
+    }
+    summary = {
+        "cases": [
+            {
+                "case_index": 1,
+                "query_id": "case-one:id",
+                "user": "svc",
+                "score": 31,
+                "score_severity": "high",
+                "duration_sec": 10,
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "workload_shape": workload_shape,
+                "workload_fingerprint_incomplete": True,
+                "workload_fingerprint_incomplete_fields": [
+                    "join_count",
+                    "set_operation_count",
+                ],
+                "case_primary_bottleneck": {"label": "stats", "confidence": "medium"},
+            },
+            {
+                "case_index": 2,
+                "query_id": "case-two:id",
+                "user": "svc",
+                "score": 25,
+                "score_severity": "suspicious",
+                "duration_sec": 20,
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "workload_shape": workload_shape,
+                "workload_fingerprint_incomplete": True,
+                "workload_fingerprint_incomplete_fields": [
+                    "join_count",
+                    "set_operation_count",
+                ],
+                "case_primary_bottleneck": {"label": "stats", "confidence": "medium"},
+            },
+            {
+                "case_index": 3,
+                "query_id": "incomplete-one:id",
+                "score": 20,
+                "score_severity": "suspicious",
+                "duration_sec": 5,
+                "workload_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "group_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "workload_shape": {**workload_shape, "referenced_tables": []},
+                "workload_fingerprint_incomplete": True,
+                "workload_fingerprint_incomplete_fields": ["referenced_tables"],
+            },
+            {
+                "case_index": 4,
+                "query_id": "incomplete-two:id",
+                "score": 20,
+                "score_severity": "suspicious",
+                "duration_sec": 6,
+                "workload_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "group_fingerprint": "wf_bbbbbbbbbbbbbbbbbbbbbbbb",
+                "workload_shape": {**workload_shape, "referenced_tables": []},
+                "workload_fingerprint_incomplete": True,
+                "workload_fingerprint_incomplete_fields": ["referenced_tables"],
+            },
+        ],
+        "workload_groups": {"schema_version": 1, "groups": []},
+    }
+
+    view = present_recent_scan_summary(summary)
+
+    assert len(view.workload_groups.groups) == 1
+    group = view.workload_groups.groups[0]
+    assert group.fingerprint == "wf_aaaaaaaaaaaaaaaaaaaaaaaa"
+    assert group.member_count == 2
+    assert group.member_case_ids == ("case-001", "case-002")
+    assert [row.workload_fingerprint_short for row in view.rows] == [
+        "wf_aaaaaaaa",
+        "wf_aaaaaaaa",
+        "",
+        "",
+    ]
+
+    detail = present_workload_detail(summary, "wf_aaaaaaaaaaaaaaaaaaaaaaaa")
+
+    assert detail is not None
+    assert detail.member_count == 2
+    assert [case.case_id for case in detail.representatives] == ["case-001", "case-002"]
+    assert "No local baseline is available for this fingerprint." in detail.limitations
+
+
 def test_recent_scan_workload_detail_presents_representative_cases_safely():
     summary = {
         "cases": [
@@ -3310,6 +3599,7 @@ def test_recent_scan_workload_detail_presents_representative_cases_safely():
                 recommendation_id="query_optimization_review.v1",
                 applied="yes",
                 outcome="worsened",
+                verification_status="comparable_rerun",
             )
         ]
     )
@@ -3356,10 +3646,10 @@ def test_recent_scan_workload_detail_presents_representative_cases_safely():
     assert "How to verify" in html
     assert "Outcomes" in html
     assert (
-        "1 recorded; 1 applied; worsened 1; "
+        "1 recorded; 1 applied; 1 comparable reruns; worsened 1; "
         "last applied action Query optimization review: worsened; "
-        "family signal Query optimization review: improved 0/1 applied, worsened 1; "
-        "feedback sample below threshold (1/5 applied); "
+        "family signal Query optimization review: improved 0/1 comparable reruns, worsened 1; "
+        "feedback sample below threshold (1/5 comparable reruns); "
         "next check query-shape signal count and group p95"
     ) in html
     assert "Baseline slowdown" in html
@@ -3511,6 +3801,127 @@ def test_recent_scan_workload_action_queue_uses_optimizer_review_track():
     assert "Workload details for grouped aggregate review." in html
     assert "Review grouped aggregate grain first" not in html
     assert "Grouped-aggregate input rows, grouping-grain estimates" not in html
+    assert_no_forbidden_fragments(view)
+    assert_no_forbidden_fragments(html)
+
+
+def test_recent_scan_workload_action_queue_uses_mixed_optimizer_review_track():
+    summary = {
+        "cases": [
+            {
+                "case_index": 1,
+                "query_id": "mixed-track-one:id",
+                "user": "analyst",
+                "score": 34,
+                "score_severity": "high",
+                "duration_sec": 70,
+                "workload_fingerprint": "wf_eeeeeeeeeeeeeeeeeeeeeeee",
+                "group_fingerprint": "wf_eeeeeeeeeeeeeeeeeeeeeeee",
+                "workload_group_member_count": 2,
+                "workload_group_duration_sec_p95": 90,
+                "query_optimization_candidate": {
+                    "score": 82,
+                    "tier": "high",
+                    "confidence": "medium",
+                    "impact": "high",
+                    "reasons": ["operator memory pressure with no supported rewrite shape"],
+                    "suggested_review_areas": [],
+                },
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "label": "Guidance only",
+                    "reason": "No Python-owned SQL rewrite recipe is available for this shape",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "rewriteability_label": "Not rewriteable",
+                    "no_recipe_review_track": "derived_no_downstream_filter_review",
+                },
+            },
+            {
+                "case_index": 2,
+                "query_id": "mixed-track-two:id",
+                "user": "analyst",
+                "score": 31,
+                "score_severity": "suspicious",
+                "duration_sec": 90,
+                "workload_fingerprint": "wf_eeeeeeeeeeeeeeeeeeeeeeee",
+                "group_fingerprint": "wf_eeeeeeeeeeeeeeeeeeeeeeee",
+                "workload_group_member_count": 2,
+                "workload_group_duration_sec_p95": 90,
+                "query_optimization_candidate": {
+                    "score": 79,
+                    "tier": "medium",
+                    "confidence": "medium",
+                    "impact": "high",
+                    "reasons": ["operator memory pressure with no supported rewrite shape"],
+                    "suggested_review_areas": [],
+                },
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "label": "Guidance only",
+                    "reason": "No Python-owned SQL rewrite recipe is available for this shape",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "rewriteability_label": "Not rewriteable",
+                    "no_recipe_review_track": "nested_query_boundary",
+                },
+            },
+        ],
+        "workload_groups": {
+            "schema_version": 1,
+            "groups": [
+                {
+                    "fingerprint": "wf_eeeeeeeeeeeeeeeeeeeeeeee",
+                    "member_count": 2,
+                    "member_case_ids": ["case-001", "case-002"],
+                    "shape": {
+                        "sql_verb": "select",
+                        "query_type": "query",
+                        "join_count": 1,
+                        "cte_count": 0,
+                        "set_operation_count": 0,
+                        "scan_count": 2,
+                        "exchange_count": 1,
+                        "aggregate_present": True,
+                        "referenced_tables": ["example_warehouse.safe_rollup"],
+                    },
+                    "aggregates": {
+                        "count": 2,
+                        "duration_sec_total": 160,
+                        "duration_sec_p50": 70,
+                        "duration_sec_p95": 90,
+                        "pool_top": "root.analytics",
+                        "primary_bottleneck_top": "unknown",
+                        "score_top": "high",
+                    },
+                }
+            ],
+        },
+    }
+
+    view = present_recent_scan_summary(summary)
+    assert len(view.workload_digest.action_queue) == 1
+    entry = view.workload_digest.action_queue[0]
+
+    assert entry.signal == "Query-shape review"
+    assert "top review track mixed query-shape (2)" in entry.evidence
+    assert entry.next_step == "Workload details for mixed query-shape review."
+    assert "Representative Details: Review track: mixed query-shape review" in entry.review_anchor
+    assert "per-case query-shape review tracks" in entry.review_anchor
+    assert "Per-case query-shape review count" in entry.verification_metric
+    workload_view = present_workload_detail(summary, "wf_eeeeeeeeeeeeeeeeeeeeeeee")
+    assert workload_view is not None
+    detail_action = workload_view.action_hints[0]
+    assert detail_action.title == entry.signal
+    assert detail_action.evidence == entry.evidence
+    assert detail_action.where_to_look == entry.review_anchor
+    assert "Review selected cases by their listed query-shape tracks first" in (
+        detail_action.change_direction
+    )
+    assert detail_action.verification_metric == entry.verification_metric
+    assert detail_action.verification == entry.verification
+    html = render_batch_summary(summary, query_group="bad")
+    assert "top review track mixed query-shape (2)" in html
+    assert "Workload details for mixed query-shape review." in html
+    assert "Review selected cases by their listed query-shape tracks first" not in html
     assert_no_forbidden_fragments(view)
     assert_no_forbidden_fragments(html)
 
@@ -4819,6 +5230,7 @@ def test_recent_scan_action_candidate_renderer_includes_outcome_controls(tmp_pat
                 recommendation_id="query_optimization_review.v1",
                 applied="yes",
                 outcome=outcome,
+                verification_status="comparable_rerun",
             ),
             path=outcome_path,
         )
@@ -4845,8 +5257,8 @@ def test_recent_scan_action_candidate_renderer_includes_outcome_controls(tmp_pat
 
     assert "/batch/case/case-001/outcome/query_optimization_review.v1" in html
     assert "<summary>Mark result</summary>" in html
-    assert "Outcome after rerun" in html
-    assert "Local history: improved in 3 of 5 applied records (60%)" in html
+    assert "Outcome after comparable rerun" in html
+    assert "Local history: improved in 3 of 5 comparable reruns (60%)" in html
     assert "detail:id" not in html
     assert str(outcome_path) not in html
     assert_no_forbidden_fragments(html)
