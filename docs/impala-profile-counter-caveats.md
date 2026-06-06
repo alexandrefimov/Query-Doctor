@@ -195,10 +195,13 @@ Memory pressure:
   count, memory-estimate context counts, peak-memory context, guardrail, and
   limitations.
 - Current implementation note: selected-query non-zero spill/scratch counters
-  are the implemented strong evidence path. Memory estimates, reservations,
-  peak-memory footprints, profile resource memory, daemon metrics, and runtime
-  context remain context-only by themselves. Separate mapped memory
-  failure/status facts still require explicit parser support and fixtures.
+  are the implemented strong evidence path and can support a conservative
+  `runtime_memory` primary-bottleneck label when the profile policy is
+  supported and no stronger competing primary signal owns the case. Memory
+  estimates, reservations, peak-memory footprints, profile resource memory,
+  daemon metrics, and runtime context remain context-only by themselves.
+  Separate mapped memory failure/status facts still require explicit parser
+  support and fixtures.
 
 Scan skew:
 

@@ -44,8 +44,8 @@ The current production triage engine remains Impala. Trino is limited to
 sanitized offline/local evidence import, bounded operator HTTP archive import,
 event-source contract checking, dry-run coordinator query-info target checking,
 bounded pruned coordinator query-info probing/import, and local compact
-diagnosis over raw-free direct boundary JSON or selected package sample
-boundaries; future live engine seams stay roadmap planning until implemented
+diagnosis over raw-free direct boundary JSON excluding metadata summary
+boundaries or selected package sample boundaries; future live engine seams stay roadmap planning until implemented
 behavior, fixtures, and safety tests exist.
 
 ## How To Align

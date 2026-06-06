@@ -323,7 +323,10 @@ browser choices.
 | `prometheus_timeseries_padding_sec` | non-negative integer | global or cluster | Seconds to pad around query windows. |
 
 Prometheus collection uses allowlisted PromQL and writes summarized facts only.
-It does not write raw time-series responses or labels.
+It does not write raw time-series responses or labels. Treat Prometheus
+host-level metrics as shared runtime context when multiple Impala deployments
+can run on the same hosts; Query Doctor only strengthens runtime hypotheses
+when selected-query profile evidence correlates the signal.
 
 ## Metadata Collection
 

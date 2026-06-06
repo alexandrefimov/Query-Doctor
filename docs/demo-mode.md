@@ -49,6 +49,11 @@ for:
   as non-fatal
 - local synthetic action outcomes for recommendation follow-up history
 
+The generated local synthetic action outcomes include enough comparable rerun
+records with measured results to satisfy the default synthetic outcome gate for
+the admission/runtime workload aggregate. The gate commits only the safe
+aggregate summary, not the generated local outcome records.
+
 The pack is intentionally local generated data, not committed fixtures. It is
 safe for demos because it does not contain real profiles, real metadata, real
 query text, local corpus paths from another environment, model names, or raw

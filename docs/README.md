@@ -35,6 +35,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
   committed public docs from ignored local agent notes.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
+- [engine-redaction-note-v1.md](engine-redaction-note-v1.md): shared raw-free
+  evidence-package redaction note schema for package-style engine intake.
 - [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
   truth for current engine support status, fixture/research boundaries, and
   second-engine promotion gates.
@@ -95,6 +97,7 @@ Status legend:
 | [codex-handoff.md](codex-handoff.md) | active | Public-safe agent baseline and safety-sensitive context. |
 | [public-documentation-boundary.md](public-documentation-boundary.md) | active | Public vs ignored local documentation boundary and audit path. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
+| [engine-redaction-note-v1.md](engine-redaction-note-v1.md) | active | Shared raw-free evidence-package redaction note schema for package-style engine intake. |
 | [brand-voice.md](brand-voice.md) | active | Voice and humor policy for safe outer surfaces. |
 | [architecture.md](architecture.md) | active | Current component boundaries and data flow. |
 | [upstream-impala-ai-analyzer.md](upstream-impala-ai-analyzer.md) | active | Upstream Impala AI analyzer alignment and Query Doctor differentiation. |
@@ -108,7 +111,7 @@ Status legend:
 | [engines/trino-test-cluster-evidence-checklist.md](engines/trino-test-cluster-evidence-checklist.md) | reference | Safe operator-export checklist for the first sanitized Trino test-cluster evidence handoff. |
 | [engines/trino-evidence-package-templates.md](engines/trino-evidence-package-templates.md) | reference | Safe manifest, redaction-note, local event-store, operator HTTP archive, local query-detail, local query-list, statement-stats, pruned query-info probe/import, and compact diagnosis templates for sanitized Trino intake. |
 | [engines/trino-private-preview-release.md](engines/trino-private-preview-release.md) | reference | Closed test-cluster private-preview release path for Trino without public engine support. |
-| [engines/spark-architecture-spike.md](engines/spark-architecture-spike.md) | reference | Research-only Spark History Server/event-log fact-model, compact-intake, and isolated collect-or-paste compact-diagnosis page contract without public engine support. |
+| [engines/spark-architecture-spike.md](engines/spark-architecture-spike.md) | reference | Bounded compact Spark History Server/event-log fact-model, compact-only adapter, compact-intake, and isolated collect-or-paste compact-diagnosis page contract without public engine support. |
 | [engines/spark-test-cluster-evidence-checklist.md](engines/spark-test-cluster-evidence-checklist.md) | reference | Safe operator-reviewed compact Spark History Server/event-log evidence checklist for promotion-gate work without live Spark support claims. |
 | [engines/i18n/ru/trino-diagnostic-contract.md](engines/i18n/ru/trino-diagnostic-contract.md) | reference | Russian companion for the Trino diagnostic contract. |
 | [engines/i18n/ru/trino-live-collection-design.md](engines/i18n/ru/trino-live-collection-design.md) | reference | Russian companion for the future Trino live-collection design. |

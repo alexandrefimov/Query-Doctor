@@ -26,6 +26,10 @@ limits, and confidence. The LLM can only phrase validated facts.
   points are excluded from prompt input.
 - Direct Impala profile facts publish provenance, profile format, resource
   facts, and timing facts without raw profile text.
+- Primary-bottleneck routing keeps aggregate-only memory-estimate top findings
+  in the SQL-shape lane. It does not treat memory estimates as runtime memory
+  pressure without selected-query spill/scratch evidence, and it does not treat
+  low-byte exchange context as runtime data movement.
 - Report validation rejects unsupported skew, host-tail, runtime metric, and
   root-cause claims.
 - Browser presenters render analyzer facts through allowlisted, raw-free

@@ -1,6 +1,6 @@
 # Engine Expansion Plan
 
-Last reviewed: 2026-06-03
+Last reviewed: 2026-06-05
 
 This document records the transition plan for future source-provider and engine
 work. Current production triage is still Apache Impala. Trino support is
@@ -10,8 +10,8 @@ import, bounded local query-detail import, and bounded local query-list
 aggregate import, plus bounded local statement-stats import, event-source
 contract checking, dry-run coordinator query-info target checking, and bounded
 pruned coordinator query-info probing plus one-query pruned coordinator fact
-import, plus local compact diagnosis over raw-free direct boundary JSON or
-selected package sample boundaries. Cloudera Manager is the full
+import, plus local compact diagnosis over raw-free direct boundary JSON
+excluding metadata summary boundaries or selected package sample boundaries. Cloudera Manager is the full
 query/profile/metrics/events source for Impala, while direct Impala daemon
 collection and optional
 Prometheus runtime metrics are implemented only for the bounded workflows
@@ -75,6 +75,28 @@ Do not claim live supported second-engine behavior until every support gate in
 [roadmap.md](roadmap.md) is true. A bounded offline or local import path can
 happen earlier if it has deterministic parsers, raw-free outputs, explicit
 limitations, and no live/query-execution behavior.
+
+## Pre-Parallel Trino/Spark Backlog
+
+The current pre-start guardrails are the shared `redaction_note_v1` validator,
+the engine capability manifest, and the isolated preview web-surface registry.
+They let Impala work continue while Trino/Spark feature branches stay bounded
+to registered preview surfaces.
+
+Before broad active parallel Trino/Spark feature work resumes, keep these as
+separate synchronization slices rather than engine-specific feature work:
+
+- the source-contract registry for source kinds, raw policy, bounds, and
+  promotion gates is implemented in
+  `query_doctor/trino/source_contract_registry.py`;
+- the shared/distributed-SQL-family/source-boundary/support-boundary fact
+  promotion policy is implemented in
+  `query_doctor/analyzer/engine_fact_promotion_policy.py` with explicit
+  `allowed_engines` and consumer tests;
+- safe handoff artifact path/output helpers are implemented in
+  `query_doctor/safety/handoff_artifacts.py`;
+- continue extracting shared readiness/handoff script orchestration into
+  focused dev-tool helpers when those scripts are next modified.
 
 ## Phase 1: Direct Impala Profile Source And Metrics Source
 
@@ -170,24 +192,36 @@ contract is documented in
 Spark SQL remains outside product support under the current product state. Its
 useful diagnostic surface depends on applications, SQL executions, jobs, stages,
 tasks, executor behavior, event history, and logs rather than the Impala-style
-runtime profile model. A research-only Spark architecture spike may start to
-define the source contract, compact fixture schema, and fact envelope described
-in [engines/spark-architecture-spike.md](engines/spark-architecture-spike.md).
+runtime profile model. Bounded compact Spark architecture work now defines the
+source contract, compact fixture schema, fact envelope, and compact-only adapter
+described in
+[engines/spark-architecture-spike.md](engines/spark-architecture-spike.md).
 The current Spark slice includes an experimental bounded History Server
-compact-intake CLI plus an isolated direct compact-diagnosis page for one
-explicit History Server application or already accepted raw-free JSON. The
+compact-intake CLI, a compact-only adapter, plus an isolated direct
+compact-diagnosis page for one explicit History Server application or already
+accepted raw-free JSON. A dev-only one-application handoff wrapper composes the
+same bounded compact collection, raw-free diagnosis, optional boundary export,
+readiness audit, and optional product-surface summary audit without becoming a
+product CLI. Retained one-application
+compact/diagnosis/boundary artifacts can be grouped and re-audited through a
+dev-only local manifest without reopening Spark, and optional retained
+product-surface summaries can be cross-checked over that same manifest. The
 collector reads only summary `/api/v1` JSON and maps it to raw-free normalized
 facts. The page renders only endpoint counts, warning IDs, deterministic
 attention areas, limitations, and verification direction, without echoing
-request selectors or submitted JSON. This remains below product support and
-must not add Spark engine registration, Recent workflows, Details/trusted
-report surfaces, optimizer behavior, raw event-log downloads, raw SQL/plan/log
-or environment collection, Spark job execution, or a support claim.
+request selectors or submitted JSON. This remains below product support. Spark
+registration must stay limited to the compact-only adapter and must not expand
+into Recent workflows, Details/trusted report surfaces, optimizer behavior, raw
+event-log downloads, raw SQL/plan/log or environment collection, Spark job
+execution, or a support claim.
 
 An experimental offline import path must:
 
 - use sanitized or synthetic-safe artifacts or operator-reviewed local packages,
   not live cluster reads by default;
+- for package-style intake, conform to
+  [engine-redaction-note-v1.md](engine-redaction-note-v1.md) instead of adding
+  engine-specific redaction-note schemas;
 - map only a small set of parser outputs into the engine fact contract;
 - preserve explicit `supported`, `not_observed`, and `unknown` semantics;
 - avoid adding live runtime engine selectors, placeholder packages, or default

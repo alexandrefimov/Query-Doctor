@@ -116,8 +116,9 @@ roadmap, development practices, codex handoff и code audit. Русские ст
   как показывать Trino как closed test-cluster private preview без public
   support claim.
 - [Архитектурный spike Spark](../../engines/i18n/ru/spark-architecture-spike.md):
-  research-only контракт для Spark History Server/event-log fact model без
-  public support claim.
+  bounded compact research контракт для Spark History Server/event-log fact
+  model, compact-only adapter и isolated compact-diagnosis page без public
+  support claim.
 - [Чеклист evidence из тестового Spark-кластера](../../engines/i18n/ru/spark-test-cluster-evidence-checklist.md):
   безопасный handoff для operator-reviewed compact Spark History Server/event-log
   evidence без live Spark support claim.

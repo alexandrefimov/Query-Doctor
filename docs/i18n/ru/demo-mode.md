@@ -17,7 +17,10 @@ batch summary для localhost web UI.
 rejected/untrusted optimizer draft, admission/runtime workload regression,
 Storage/HDFS runtime follow-up, frequent-short workload handling, mixed
 diagnostic signals, unknown-but-useful limitations, direct Impala compatibility
-и local synthetic action outcomes.
+и local synthetic action outcomes. Эти local synthetic action outcomes содержат
+достаточно comparable rerun records с measured results, чтобы default synthetic
+outcome gate проходил для admission/runtime workload aggregate. В git попадает
+только safe aggregate summary, а не generated local outcome records.
 
 Канонический public-demo запуск использует dedicated temp output path:
 

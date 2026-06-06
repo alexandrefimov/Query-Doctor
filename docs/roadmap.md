@@ -148,7 +148,20 @@ Primary diagnosis metrics:
   aggregate strict gate over Details, profile evidence, diagnostic coverage,
   workload, stats, and optimizer readiness. Add `--action-outcomes
   <action_outcomes.jsonl> --require-action-outcomes` for outcome feedback and
-  `--require-direct-source-readiness` for direct Impala batches.
+  `--require-direct-source-readiness` for direct Impala batches. Retained
+  raw-free loop summaries written with `--summary-json` should then run through
+  `scripts/audit_impala_north_star_gate.py <raw-free-impala-loop-summary.json>`
+  so representative batches have one aggregate gate for unknown rate,
+  medium-or-better confidence, and measured action-outcome feedback. Retained
+  multi-batch calibration should use
+  `scripts/build_impala_north_star_suite_manifest.py` plus
+  `scripts/audit_impala_north_star_gate.py --suite-manifest ... --require-min-inputs ...`
+  so local real-batch sets can enforce suite breadth and safe trend output
+  without committing raw cases, local paths, artifact filenames, or private
+  cluster numbers. The retained north-star aggregate should use its safe
+  top-unknown-category and unknown-resolution rollups to choose deterministic
+  evidence work by contribution while keeping clean or out-of-scope boundaries
+  out of the evidence backlog, not by stronger wording.
 - Component drilldown should run
   `scripts/audit_impala_coverage_gaps.py <batch_summary.json> --fail-on-diagnostic-coverage-gaps`
   so missing analyzer output, missing primary labels, high unknown-primary rate,
@@ -415,7 +428,8 @@ claim, or raw-profile analysis surface.
    workload-readiness claims. Runs that validate outcome feedback should add
    `--action-outcomes <action_outcomes.jsonl> --fail-on-action-outcome-readiness-gaps`
    so action queues and detail hints prove they carry safe aggregate feedback
-   summaries without embedding local outcome files in batch summaries.
+   summaries and measured result evidence, not only all-`unsure` comparable
+   reruns, without embedding local outcome files in batch summaries.
 10. Prepare future engine contracts by making Impala facts explicit, not by
    generalizing prematurely. Future engines should inherit the ability to publish
    `supported`, `not_observed`, and `unknown` facts from proven Impala contracts,
@@ -555,9 +569,10 @@ when a tempting implementation would skip a contract boundary.
   `case_primary_bottleneck = unknown` is below roughly 20% on a representative
   100+ case real Impala batch or there is a design-partner workload that proves
   cross-engine urgency, workload fingerprinting and baselines work on real data,
-  action outcome tracking has applied/not-applied records, direct Impala
-  diagnosis is stable on non-Cloudera-Manager deployments, a real design
-  partner or real artifact set identifies a specific second engine, and an
+  action outcome tracking has comparable-rerun verified applied/not-applied
+  records, direct Impala diagnosis is stable on non-Cloudera-Manager
+  deployments, a real design partner or real artifact set identifies a
+  specific second engine, and an
   engine profile-fact contract already exists from implemented behavior.
 - Shared deployment work must wait for an explicit shared-deploy product
   decision, a real design partner, and a design for authentication, ownership,

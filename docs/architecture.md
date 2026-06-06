@@ -132,8 +132,8 @@ Current support is intentionally narrow:
   local Trino statement-stats import, event-source contract checks, and dry-run
   coordinator query-info target checks, plus bounded pruned coordinator
   query-info probes, one-query pruned coordinator fact import, and local
-  compact diagnosis over raw-free direct boundary JSON or selected package
-  sample boundaries plus isolated local `/trino/compact-diagnosis` rendering
+  compact diagnosis over raw-free direct boundary JSON excluding metadata
+  summary boundaries or selected package sample boundaries plus isolated local `/trino/compact-diagnosis` rendering
   for the same already raw-free inputs.
   Trino import and diagnosis paths are not connected to Details, trusted
   reports, broader live Trino coordinator collection, metadata, optimizer, or
