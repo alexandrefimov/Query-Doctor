@@ -1,6 +1,6 @@
 # Query Optimizer Contract
 
-Last reviewed: 2026-05-29
+Last reviewed: 2026-06-05
 
 This document is the active contract for both optimizer surfaces:
 
@@ -214,7 +214,10 @@ Representative no-recipe calibration should run
 In strict mode, repeated no-recipe workload groups must resolve to one safe
 review track, an allowlisted review area, a bounded change direction, a workload
 metric, and compare/rerun verification wording before they count as ready for
-guidance or recipe-backlog decisions.
+guidance or recipe-backlog decisions. Add
+`--summary-json <raw-free-optimizer-funnel-summary.json>` when retained machine
+evidence is needed; the JSON summary must contain only aggregate counters,
+safe issue categories, and masked workload labels.
 
 ## Shape Facts
 

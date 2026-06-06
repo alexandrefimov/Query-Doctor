@@ -89,7 +89,9 @@ Query Doctor это не:
   local statement-stats JSON через
   `query-doctor-trino-statement-stats-import`, плюс один explicit compact
   sanitized local pruned QueryInfo JSON через
-  `query-doctor-trino-query-info-pruned-import`, затем выводит только safe
+  `query-doctor-trino-query-info-pruned-import`, плюс один explicit compact
+  sanitized local metadata summary JSON через
+  `query-doctor-trino-metadata-summary-import`, затем выводит только safe
   summaries или normalized raw-free fact boundaries.
 - Валидирует future Trino event-source contracts через
   `query-doctor-trino-event-source-contract-check`: только source type,
@@ -100,6 +102,17 @@ Query Doctor это не:
   contract, safe auth-reference label, one Query ID bound, coordinator base-URL
   shape, limits и redaction rules, без контакта с Trino, без query-info fetch и
   без echo URL или Query ID.
+- Валидирует future Trino metadata allowlist source contracts через
+  `query-doctor-trino-metadata-source-contract-check`: только safe source
+  references, explicit relation/column allowlist shape, bounds и redaction
+  rules, без контакта с Trino, без чтения metadata, без SQL submit и без echo
+  object identifiers.
+- Импортирует один compact sanitized local Trino metadata summary через
+  `query-doctor-trino-metadata-summary-import` после accepted
+  `metadata_allowlist` source contract: мапит только aggregate relation/column
+  coverage и stats-completeness counts в raw-free normalized fact boundary. Не
+  делает network read, не выполняет metadata SQL и reject-ит raw identifiers
+  или metadata values до mapping.
 - Проверяет один Trino coordinator pruned query-info endpoint через
   `query-doctor-trino-coordinator-query-info-pruned-probe`: только bounded
   `GET /v1/query/{queryId}?pruned=true` после source-contract gate. Optional
@@ -133,7 +146,9 @@ Query Doctor это не:
   Trino package boundary export через `--sample-index`, или напрямую из
   accepted single-boundary Trino imports через `--diagnosis-out`.
   `/trino/compact-diagnosis` рендерит тот же diagnosis для direct boundaries
-  или selected package samples. Output содержит attention areas, change
+  или selected package samples. Metadata summary boundaries reject-ятся, потому
+  что это aggregate coverage evidence, а не compact diagnosis input. Output
+  содержит raw-free `diagnostic_lane` summary, attention areas, change
   directions, verification prompts и limitations без root-cause claims, raw
   input echo, browser/report output, optimizer behavior, live Recent scans или
   Trino SQL execution.
@@ -145,17 +160,19 @@ Query Doctor это не:
 
 | Область | Поддержано сейчас | Не является текущей поддержкой |
 | --- | --- | --- |
-| Query engine | Apache Impala production triage; Trino sanitized offline evidence package, bounded local event-store, bounded HTTP event archive, bounded HTTP query-detail archive, bounded local query-detail, bounded local query-list aggregate, bounded local statement-stats import, bounded local pruned QueryInfo import, source-contract/target checks, one-query pruned coordinator probe, one-query pruned coordinator fact import, local compact diagnosis из raw-free boundary JSON и isolated `/trino/compact-diagnosis` page | Trino live collection, live Trino Recent scans, live Trino Query ID diagnosis, Trino metadata collection, Trino Details/trusted report output, Trino optimizer behavior или Query Doctor-generated Trino SQL. |
-| Trino offline/local import | `query-doctor-trino-import` validates already-sanitized compact packages; `query-doctor-trino-event-store-import` validates compact sanitized local event records; `query-doctor-trino-query-detail-import` validates one explicit compact sanitized local query-detail JSON; `query-doctor-trino-query-list-import` validates one explicit compact sanitized local query-list aggregate JSON; `query-doctor-trino-statement-stats-import` validates one explicit compact sanitized local statement-stats JSON; `query-doctor-trino-query-info-pruned-import` validates one explicit compact sanitized local pruned QueryInfo JSON after a source contract; all can emit raw-free normalized fact boundaries | Direct Trino coordinator collection, raw event/query-info ingestion, live query-list crawling, `/v1/statement` collection, arbitrary package contents, raw query IDs, raw SQL, stack traces, object names, stage/task detail или connector internals. |
-| Trino compact diagnosis | `query-doctor-diagnose-trino-compact` читает один уже raw-free `engine_fact_boundary_v1` payload или один selected sample boundary из package boundary export через `--sample-index` и пишет deterministic attention areas, change directions, verification prompts и limitations; `/trino/compact-diagnosis` локально рендерит тот же diagnosis для direct boundaries или selected package samples без echo submitted JSON | Raw Trino payload ingestion, root-cause claims, Details/trusted report output, optimizer behavior, live Recent scans, live Query ID diagnosis, Query Doctor-generated SQL или arbitrary compact JSON. |
+| Query engine | Apache Impala production triage; Trino sanitized offline evidence package, bounded local event-store, bounded HTTP event archive, bounded HTTP query-detail archive, bounded local query-detail, bounded local query-list aggregate, bounded local statement-stats import, bounded local pruned QueryInfo import, bounded local metadata summary import, source-contract/target checks, metadata source-contract check, one-query pruned coordinator probe, one-query pruned coordinator fact import, local compact diagnosis из raw-free boundary JSON excluding metadata summary boundaries и isolated `/trino/compact-diagnosis` page | Trino live collection, live Trino Recent scans, live Trino Query ID diagnosis, Trino metadata collection, Trino Details/trusted report output, Trino optimizer behavior или Query Doctor-generated Trino SQL. |
+| Trino offline/local import | `query-doctor-trino-import` validates already-sanitized compact packages; `query-doctor-trino-event-store-import` validates compact sanitized local event records; `query-doctor-trino-query-detail-import` validates one explicit compact sanitized local query-detail JSON; `query-doctor-trino-query-list-import` validates one explicit compact sanitized local query-list aggregate JSON; `query-doctor-trino-statement-stats-import` validates one explicit compact sanitized local statement-stats JSON; `query-doctor-trino-query-info-pruned-import` validates one explicit compact sanitized local pruned QueryInfo JSON after a source contract; `query-doctor-trino-metadata-summary-import` validates one explicit compact sanitized local metadata summary JSON after a metadata source contract; all can emit raw-free normalized fact boundaries | Direct Trino coordinator collection, raw event/query-info ingestion, live query-list crawling, `/v1/statement` collection, arbitrary package contents, raw query IDs, raw SQL, stack traces, object names, stage/task detail, raw metadata, raw identifiers или connector internals. |
+| Trino compact diagnosis | `query-doctor-diagnose-trino-compact` читает один уже raw-free `engine_fact_boundary_v1` payload excluding local metadata summary boundaries или один selected sample boundary из package boundary export через `--sample-index` и пишет raw-free `diagnostic_lane` summary, deterministic attention areas, change directions, verification prompts и limitations; `/trino/compact-diagnosis` локально рендерит тот же diagnosis для accepted direct boundaries или selected package samples без echo submitted JSON | Raw Trino payload ingestion, metadata summary diagnosis, root-cause claims, Details/trusted report output, optimizer behavior, live Recent scans, live Query ID diagnosis, Query Doctor-generated SQL или arbitrary compact JSON. |
 | Trino HTTP event archive import | `query-doctor-trino-http-event-archive-import` validates one explicit `http_event_listener_archive` source contract, fetches one explicit operator HTTP(S) archive URL, enforces contract bounds и emits safe summaries или raw-free normalized fact boundaries | Default network discovery, Trino coordinator query-history reading, URL echoing, credentials in URLs, endpoint/topic/database config ingestion, raw event records, SQL submission, browser/report output или live Recent scans. |
 | Trino HTTP query-detail archive import | `query-doctor-trino-http-query-detail-archive-import` validates one explicit `http_query_detail_archive` source contract, fetches one explicit operator HTTP(S) archive URL, enforces contract bounds и emits safe summary или raw-free normalized fact boundary для одного compact sanitized query-detail record | Default network discovery, Trino coordinator query-info fetching, URL echoing, credentials in URLs, endpoint config ingestion, raw query-detail records, raw query IDs, SQL submission, browser/report output или live Query ID diagnosis. |
 | Trino source-contract gate | `query-doctor-trino-event-source-contract-check` validates one explicit compact event-source contract JSON: source type, safe auth-reference label, accepted event schema, bounds и redaction/storage policy | Endpoint/topic/database config ingestion, credentials, raw event records, query-history collection, browser/report output или live support claims. |
 | Trino coordinator query-info target gate | `query-doctor-trino-coordinator-query-info-target-check` validates one compact future query-info source contract plus one explicit coordinator base URL and Query ID shape, then emits only URL-free and Query-ID-free safe summary | Network reads, query-info fetching, broad query-history collection, URL or Query ID echoing, credentials in URLs, raw QueryInfo JSON, SQL submission, browser/report output, live Query ID diagnosis или support claims. |
+| Trino metadata source-contract gate | `query-doctor-trino-metadata-source-contract-check` validates one compact future metadata allowlist contract с safe source references, explicit relation/column allowlist shape, bounds и redaction rules, then emits only path-free and identifier-free safe summary | Metadata reads, metadata SQL execution, broad object crawling, raw identifier output, raw metadata storage, browser/report output, Details/trusted reports, optimizer behavior или support claims. |
+| Trino local metadata summary import | `query-doctor-trino-metadata-summary-import` validates one explicit compact sanitized aggregate metadata summary against a `metadata_allowlist` source contract and maps only relation/column coverage and stats-completeness counts into raw-free normalized facts | Network reads, metadata SQL execution, raw metadata, raw catalog/schema/table/column identifiers, metadata values, object crawling, browser/report output, Details/trusted reports, optimizer behavior, live metadata collection или support claims. |
 | Trino coordinator pruned query-info probe | `query-doctor-trino-coordinator-query-info-pruned-probe` выполняет один bounded `GET /v1/query/{queryId}?pruned=true` только после accepted `coordinator_query_info` contract с operator-managed auth reference, может использовать один local `--auth-header-file` с `Authorization` header, проверяет response как bounded JSON object и выводит только safe probe summary | Mapping raw QueryInfo to facts, storing or printing raw QueryInfo, URL или Query ID echoing, auth header paths или values, credentials in URLs, broad query-history collection, SQL submission, browser/report output, live Query ID diagnosis или support claims. |
 | Trino coordinator pruned query-info import | `query-doctor-trino-coordinator-query-info-pruned-import` выполняет тот же one bounded pruned query-info read, может использовать тот же local `--auth-header-file`, затем мапит только allowlisted `queryStats` и lifecycle fields в raw-free normalized facts и boundary JSON; `--boundary-out` может записать direct raw-free `engine_fact_boundary_v1` payload для local readiness audit | Raw QueryInfo storage/output, URL или Query ID echoing, auth header paths или values, credentials in URLs, query text/session/object/stage/task detail, connector internals, broad query-history collection, SQL submission, browser/report output, live Query ID diagnosis или support claims. |
 | Trino local pruned query-info import | `query-doctor-trino-query-info-pruned-import` validates one explicit compact sanitized local pruned QueryInfo JSON against a `coordinator_query_info` source contract and maps only allowlisted `state` and `queryStats` fields into raw-free normalized facts | Network reads, raw QueryInfo fields, Query ID echoing, query text/session/object/stage/task detail, connector internals, broad query-history collection, SQL submission, browser/report output, live Query ID diagnosis или support claims. |
-| Spark experimental intake | Ограниченный compact Spark History Server summary collection, Spark compact evidence-package build/validation/fixture export плюс local compact-diagnosis CLI/direct web page для raw-free contract shaping | Public Spark engine support, Recent scans, Details/trusted report output, optimizer behavior, raw event logs, raw SQL/plans, environment/log dumps или Spark job execution. |
+| Spark compact support surfaces | Зарегистрированный bounded compact Spark History Server summary collection для одного explicit application, Spark compact evidence-package build/validation/fixture export плюс local compact-diagnosis CLI/direct web page для raw-free contract shaping | Production Spark triage support, live Recent scans, Details/trusted report output, optimizer behavior, raw event logs, raw SQL/plans, environment/log dumps, Spark job execution или public claim шире bounded compact surfaces; no public Spark engine support. |
 | Cloudera Manager | Полный Recent discovery/profile/metrics/events context для Impala workflows | Generic cluster diagnosis вне Query Doctor flow. |
 | Direct Impala | Ограниченные Recent scans, Running scans и один Known Query ID через impalad daemon endpoints | Cloudera Manager events, broad log scraping или SQL execution. |
 | Runtime metrics | Опциональные ограниченные Prometheus summaries для configured direct Impala workflows | Raw time-series output или arbitrary PromQL from users. |
@@ -169,7 +186,8 @@ package import, bounded local event-store import, bounded HTTP event archive
 import, bounded HTTP query-detail archive import, bounded local query-detail
 import, bounded local query-list aggregate import и bounded local
 statement-stats import, bounded local pruned QueryInfo import, а также
-event-source contract checking, dry-run coordinator query-info target checking,
+bounded local metadata summary import, event-source contract checking, dry-run
+coordinator query-info target checking, metadata source-contract checking,
 one-query pruned coordinator probe, one-query pruned coordinator fact import и
 local compact diagnosis из raw-free boundary JSON; см.
 [docs/engines/trino-evidence-package-templates.md](docs/engines/trino-evidence-package-templates.md).
@@ -249,7 +267,7 @@ evidence и direct-Impala compatibility. Полный список scenarios:
 | Metadata | Read-only allowlisted Impala metadata statements через `impala-shell`; no user SQL execution или unbounded metadata crawl. |
 | Reports and optimizer | Python-owned facts, validation и explicit selected-case actions; no automatic batch LLM jobs. |
 | Trino private preview | Closed test-cluster smoke и sanitized evidence-package artifacts только для maintainers; no public Trino engine support, live collection, browser/report output, optimizer behavior или Query Doctor-generated SQL. |
-| Spark compact intake | Experimental compact Spark History Server summary intake и compact evidence-package build/validation/fixture export только для raw-free contract shaping; no public Spark engine support, Recent scans, Details/trusted report output, optimizer behavior, raw event logs, raw SQL/plans, environment/log dumps или Spark job execution. |
+| Spark compact support surfaces | Registered bounded compact Spark History Server summary intake и compact evidence-package build/validation/fixture export только для raw-free contract shaping; no public Spark engine support, Recent scans, Details/trusted report output, optimizer behavior, raw event logs, raw SQL/plans, environment/log dumps или Spark job execution. |
 
 Будущие Big Data SQL/lakehouse engines, более широкие providers,
 подготовленные event/log sources и Cluster Doctor workflows остаются roadmap

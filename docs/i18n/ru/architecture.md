@@ -161,7 +161,8 @@ Future source seam:
   и bounded local statement-stats import, плюс event-source contract checking и
   dry-run coordinator query-info target checking, plus bounded pruned
   coordinator query-info probing/import и local compact diagnosis over raw-free
-  direct boundary JSON или selected package sample boundaries плюс isolated
+  direct boundary JSON excluding metadata summary boundaries или selected
+  package sample boundaries плюс isolated
   local `/trino/compact-diagnosis` rendering для тех же already raw-free inputs.
   Trino import and diagnosis paths не подключены к broader live Trino
   coordinator collection, metadata, Details/trusted reports или optimizer

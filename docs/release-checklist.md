@@ -136,8 +136,8 @@ Confirm public docs state only implemented behavior:
   bounded local query-list aggregate import, plus bounded local statement-stats
   import, event-source contract checking, and dry-run coordinator query-info
   target checking, bounded pruned coordinator query-info probing/import, and
-  local compact diagnosis over raw-free direct boundary JSON or selected package
-  sample boundaries plus isolated local compact-diagnosis rendering for the same
+  local compact diagnosis over raw-free direct boundary JSON excluding metadata
+  summary boundaries or selected package sample boundaries plus isolated local compact-diagnosis rendering for the same
   already raw-free inputs;
   it is not live collection, broader Trino coordinator collection,
   Details/trusted report output, optimizer behavior, metadata collection, Query

@@ -36,7 +36,7 @@ about unsupported scope.
   bounded local statement-stats import, event-source contract checking, and
   dry-run coordinator query-info target checking, plus bounded pruned
   coordinator query-info probing/import and local compact diagnosis over
-  raw-free direct boundary JSON or selected package sample boundaries plus
+  raw-free direct boundary JSON excluding metadata summary boundaries or selected package sample boundaries plus
   isolated local compact-diagnosis rendering for the same already raw-free
   inputs; Spark support is limited to experimental compact History Server
   summary intake for one explicit application, compact evidence-package
