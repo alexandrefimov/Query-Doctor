@@ -7,18 +7,22 @@ evidence-package wrapper validated by `spark_evidence_package`.
 
 from __future__ import annotations
 
-import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
+from query_doctor.analyzer.engine_intake_primitives import (
+    json_size as _shared_json_size,
+    max_json_depth as _shared_max_json_depth,
+)
 from query_doctor.analyzer.spark_evidence_package import (
     SPARK_EVIDENCE_ACCEPTED_SAMPLE_CASES,
     SPARK_EVIDENCE_PACKAGE_CASES,
     SPARK_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS,
     SPARK_EVIDENCE_REQUIRED_REDACTION_CLASSES,
+    SPARK_EVIDENCE_REQUIRED_REJECTION_REASONS,
     SPARK_EVIDENCE_REQUIRED_SENTINEL_TESTS,
     SPARK_EVIDENCE_SAMPLE_SOURCE_CONTRACTS,
     SPARK_EVIDENCE_SAMPLE_SOURCE_TYPES,
@@ -40,6 +44,7 @@ def build_spark_evidence_package_payload(
     samples: Sequence[SparkEvidencePackageSampleSpec],
     source_type: str = "mixed_compact_export",
     prepared_by_role: str = "operator",
+    manual_reviewer_role: str = "operator",
     spark_version_families: Sequence[str] = (),
     collection_window_category: str = "representative_sample",
     known_omissions: Sequence[str] = (),
@@ -128,10 +133,21 @@ def build_spark_evidence_package_payload(
         },
         "redaction_note": {
             "package_id": package_id,
-            "manual_review_status": "checked",
+            "redaction_note_version": "1",
+            "prepared_by_role": prepared_by_role,
+            "prepared_date_utc": prepared_date_utc,
+            "manual_reviewer_role": manual_reviewer_role,
+            "redaction_status": "checked",
             "removed_field_classes": sorted(SPARK_EVIDENCE_REQUIRED_REDACTION_CLASSES),
-            "boundary_assertions": sorted(SPARK_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS),
-            "sentinel_tests_passed": sorted(SPARK_EVIDENCE_REQUIRED_SENTINEL_TESTS),
+            "rejected_record_counts_by_reason": {
+                reason: 0 for reason in SPARK_EVIDENCE_REQUIRED_REJECTION_REASONS
+            },
+            "synthetic_sentinel_tests": {
+                test_name: "yes" for test_name in SPARK_EVIDENCE_REQUIRED_SENTINEL_TESTS
+            },
+            "boundary_assertions": {
+                assertion: True for assertion in SPARK_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS
+            },
             "raw_companion_archive": "none",
         },
         "samples": sample_entries,
@@ -156,28 +172,19 @@ def _spark_version_family(payload: Mapping[str, Any]) -> str:
 
 
 def _json_size(payload: Mapping[str, Any]) -> int:
-    try:
-        return len(
-            json.dumps(
-                payload,
-                allow_nan=False,
-                ensure_ascii=True,
-                sort_keys=True,
-            ).encode("utf-8")
-        )
-    except (TypeError, ValueError) as exc:
-        raise EngineFactContractError(
-            "Spark evidence package sample must be JSON serializable"
-        ) from exc
+    return _shared_json_size(
+        payload,
+        payload_label="Spark evidence package sample",
+        error_message="Spark evidence package sample must be JSON serializable",
+        compact=False,
+        ensure_ascii=True,
+        sort_keys=True,
+    )
 
 
 def _max_json_depth(value: Any) -> int:
-    if isinstance(value, Mapping):
-        if not value:
-            return 1
-        return 1 + max(_max_json_depth(nested) for nested in value.values())
-    if isinstance(value, list):
-        if not value:
-            return 1
-        return 1 + max(_max_json_depth(nested) for nested in value)
-    return 1
+    return _shared_max_json_depth(
+        value,
+        count_scalar=True,
+        sequence_types=(list,),
+    )

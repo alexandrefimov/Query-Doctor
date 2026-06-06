@@ -54,6 +54,12 @@ _SPARK_LIMITATION_SUMMARIES = {
     "spark_history_source_coverage": (
         "Spark History Server source coverage was summarized without raw endpoint details."
     ),
+    "sql_execution_endpoint": (
+        "Spark SQL execution endpoint availability was summarized without raw endpoint details."
+    ),
+    "task_summary_endpoint": (
+        "Spark task-summary endpoint availability was summarized without raw endpoint details."
+    ),
 }
 
 
@@ -104,7 +110,7 @@ def _build_spark_history_compact_engine_facts(
             source_version=_text_or_none(payload.get("fixtureVersion")),
             parser_coverage="supported",
         ),
-        lifecycle=_build_lifecycle(sql_execution),
+        lifecycle=_build_lifecycle(sql_execution, application),
         timing=(
             _number_fact(
                 "spark_sql_elapsed_time_ms",
@@ -375,10 +381,25 @@ def _source_import_limitations(source: str) -> tuple[LimitationFact, ...]:
     )
 
 
-def _build_lifecycle(sql_execution: Mapping[str, Any]) -> QueryLifecycleFacts:
+def _build_lifecycle(
+    sql_execution: Mapping[str, Any],
+    application: Mapping[str, Any],
+) -> QueryLifecycleFacts:
     source_state = _boundary_state(sql_execution.get("factState"))
     lifecycle = _text_or_none(sql_execution.get("lifecycle")) or "unknown"
     if source_state != "supported" or lifecycle == "unknown":
+        application_lifecycle = _text_or_none(application.get("lifecycle")) or "unknown"
+        if (
+            _boundary_state(application.get("factState")) == "supported"
+            and application_lifecycle != "unknown"
+        ):
+            return QueryLifecycleFacts(
+                state="supported",
+                lifecycle=application_lifecycle,
+                blocked="unknown",
+                failure="unknown",
+                failure_category_state="unknown",
+            )
         return QueryLifecycleFacts(
             state="unknown",
             lifecycle="unknown",

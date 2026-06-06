@@ -13,7 +13,7 @@ from query_doctor.analyzer.engine_facts import (
 from query_doctor.analyzer.spark_fixture_facts import (
     build_spark_history_compact_fixture_engine_facts,
 )
-from query_doctor.engines import UnknownEngineError, get_engine_adapter, list_engine_adapters
+from query_doctor.engines import get_engine_adapter, list_engine_adapters
 
 
 FIXTURE = (
@@ -90,9 +90,17 @@ def test_spark_compact_fixture_maps_to_normalized_engine_facts_without_support_c
         limitation == {"id": "no_product_support", "state": "unsupported"}
         for limitation in payload["limitations"]
     )
-    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala", "trino"]
-    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'spark'"):
-        get_engine_adapter("spark")
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == [
+        "impala",
+        "spark",
+        "trino",
+    ]
+    spark_adapter = get_engine_adapter("spark")
+    assert spark_adapter.supports_offline_evidence_import is True
+    assert spark_adapter.supports_history_server_compact_intake is True
+    assert spark_adapter.supports_compact_diagnosis is True
+    assert spark_adapter.supports_recent_scan is False
+    assert spark_adapter.supports_metadata_collection is False
 
 
 def test_spark_failed_lifecycle_maps_safe_failure_category_without_raw_context():
@@ -244,6 +252,42 @@ def test_spark_unknown_application_labels_stay_unknown():
     assert facts["spark_application_attempt_count"].state == "supported"
     assert facts["spark_application_lifecycle"].state == "unknown"
     assert facts["spark_application_attempt_state"].state == "unknown"
+
+
+def test_spark_application_lifecycle_fills_boundary_lifecycle_without_failure_claim():
+    payload = _load_fixture()
+    payload["sqlExecution"]["factState"] = "unknown"
+    payload["sqlExecution"]["lifecycle"] = "unknown"
+    payload["sqlExecution"]["failureCategoryState"] = "unknown"
+    payload["sqlExecution"]["failureCategory"] = "unknown"
+    payload["application"]["factState"] = "supported"
+    payload["application"]["lifecycle"] = "finished"
+
+    bundle = build_spark_history_compact_fixture_engine_facts(payload)
+
+    assert bundle.lifecycle.state == "supported"
+    assert bundle.lifecycle.lifecycle == "finished"
+    assert bundle.lifecycle.failure == "unknown"
+    assert bundle.lifecycle.failure_category_state == "unknown"
+    assert bundle.lifecycle.failure_category is None
+
+
+def test_spark_application_failure_lifecycle_does_not_backfill_sql_failure_signal():
+    payload = _load_fixture()
+    payload["sqlExecution"]["factState"] = "unknown"
+    payload["sqlExecution"]["lifecycle"] = "unknown"
+    payload["sqlExecution"]["failureCategoryState"] = "unknown"
+    payload["sqlExecution"]["failureCategory"] = "unknown"
+    payload["application"]["factState"] = "supported"
+    payload["application"]["lifecycle"] = "failed"
+
+    bundle = build_spark_history_compact_fixture_engine_facts(payload)
+
+    assert bundle.lifecycle.state == "supported"
+    assert bundle.lifecycle.lifecycle == "failed"
+    assert bundle.lifecycle.failure == "unknown"
+    assert bundle.lifecycle.failure_category_state == "unknown"
+    assert bundle.lifecycle.failure_category is None
 
 
 def test_spark_unknown_version_family_does_not_backfill_source_capability():

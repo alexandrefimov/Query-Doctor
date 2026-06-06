@@ -40,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--source-type", default="mixed_compact_export")
     parser.add_argument("--prepared-by-role", default="operator")
+    parser.add_argument("--manual-reviewer-role", default="operator")
     parser.add_argument(
         "--spark-version-family",
         action="append",
@@ -99,6 +100,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             samples=samples,
             source_type=args.source_type,
             prepared_by_role=args.prepared_by_role,
+            manual_reviewer_role=args.manual_reviewer_role,
             spark_version_families=tuple(args.spark_version_family),
             collection_window_category=args.collection_window_category,
             known_omissions=tuple(args.known_omission),
