@@ -1,0 +1,129 @@
+{
+  "coverage": {
+    "current": {
+      "analyzed_cases": 11,
+      "gate_passed": true,
+      "medium_or_better_primary_cases": 9,
+      "medium_or_better_primary_rate_percent": 81.8182,
+      "total_cases": 11,
+      "unknown_primary_cases": 2,
+      "unknown_primary_rate_percent": 18.1818
+    },
+    "unknown_primary_reason_counts": {
+      "no_primary_branch_supported": 2
+    },
+    "unknown_primary_resolution_counts": {
+      "clean_short_no_action_boundary": 2
+    },
+    "unknown_primary_resolution_class_counts": {
+      "no_action_boundary": 2
+    },
+    "top_unknown_primary_resolution_classes": [
+      {
+        "resolution_class": "no_action_boundary",
+        "unknown_primary_cases": 2,
+        "unknown_share_percent": 100.0,
+        "closure_track": "keep_boundary_out_of_evidence_backlog"
+      }
+    ]
+  },
+  "current": {
+    "coverage_gate_passed": true,
+    "gate_passed": true,
+    "measured_result_family_groups": 1,
+    "medium_or_better_primary_cases": 9,
+    "medium_or_better_primary_rate_percent": 81.8182,
+    "open_outcome_family_groups": 0,
+    "outcome_gate_passed": true,
+    "recorded_action_outcomes": 8,
+    "unknown_primary_boundary_cases": 2,
+    "unknown_primary_cases": 2,
+    "unknown_primary_collector_gap_cases": 0,
+    "unknown_primary_evidence_gap_cases": 0,
+    "unknown_primary_rate_percent": 18.1818,
+    "unknown_primary_unclassified_resolution_cases": 0
+  },
+  "outcome": {
+    "action_outcome_gate_counts": {
+      "action_outcomes_supplied": 1,
+      "gate_evaluable": 1,
+      "gate_passed": 1,
+      "measured_result_family_groups": 1,
+      "raw_free_passed": 1,
+      "required_family_groups": 1,
+      "sample_met_family_groups": 1
+    },
+    "action_outcome_requirements": [
+      {
+        "accepted_verification_status": "comparable_rerun",
+        "measured_result_groups": 1,
+        "measured_result_outcomes": [
+          "improved",
+          "no_change",
+          "worsened"
+        ],
+        "min_comparable_reruns_per_group": 5,
+        "missing_groups": 0,
+        "open_groups": 0,
+        "recommendation_id": "runtime_admission_check.v1",
+        "recommendation_label": "Admission/runtime check",
+        "record_schema_version": 2,
+        "required_groups": 1,
+        "sample_below_threshold_groups": 0,
+        "sample_met_groups": 1,
+        "unmeasured_result_groups": 0
+      }
+    ],
+    "action_outcome_result_counts": {
+      "required_family_comparable_reruns_4_5": 1,
+      "required_family_improved": 3,
+      "required_family_measured_results": 5,
+      "required_family_no_change": 2,
+      "required_family_sample_measured": 1
+    },
+    "current": {
+      "action_queue": 2,
+      "gate_evaluable": true,
+      "gate_passed": true,
+      "measured_result_family_groups": 1,
+      "open_family_groups": 0,
+      "recorded_action_outcomes": 8,
+      "required_family_groups": 1,
+      "sample_met_family_groups": 1,
+      "total_cases": 11,
+      "unmeasured_result_family_groups": 0,
+      "workload_groups": 2
+    }
+  },
+  "schema_version": "impala_synthetic_north_star_gate_aggregate_v1",
+  "source_fixture": "synthetic_impala_primary_coverage_and_outcome_gates",
+  "thresholds": {
+    "coverage": {
+      "max_unknown_primary_rate_percent": 20.0,
+      "min_medium_primary_rate_percent": 70.0
+    },
+    "outcome": {
+      "accepted_verification_status": "comparable_rerun",
+      "measured_result_outcomes": [
+        "improved",
+        "no_change",
+        "worsened"
+      ],
+      "min_comparable_reruns_per_group": 5,
+      "record_schema_version": 2
+    }
+  },
+  "trend": [
+    {
+      "gate_passed": true,
+      "label": "synthetic_primary_and_measured_outcome_gate",
+      "measured_result_family_groups": 1,
+      "medium_or_better_primary_rate_percent": 81.8182,
+      "open_outcome_family_groups": 0,
+      "recorded_action_outcomes": 8,
+      "unknown_primary_evidence_gap_cases": 0,
+      "unknown_primary_boundary_cases": 2,
+      "unknown_primary_rate_percent": 18.1818
+    }
+  ]
+}
