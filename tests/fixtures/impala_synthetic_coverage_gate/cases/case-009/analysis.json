@@ -1,0 +1,152 @@
+{
+  "backend_tail": {
+    "execution_skew": "yes",
+    "execution_tail_candidate_count": 1
+  },
+  "cardinality_anomalies": [
+    {
+      "operator_id": "op_00"
+    },
+    {
+      "operator_id": "op_01"
+    }
+  ],
+  "case_primary_bottleneck": {
+    "confidence": "medium",
+    "label": "mixed",
+    "reasons": [
+      "competing_stats",
+      "competing_sql_shape",
+      "competing_runtime_data_movement"
+    ]
+  },
+  "data_movement": {
+    "evidence_tier": "medium",
+    "exchange_elapsed_ms": 44000,
+    "exchange_elapsed_share": 0.25,
+    "exchange_operator_count": 3,
+    "finding_supported": true,
+    "primary_supported": false,
+    "status": "supported",
+    "total_bytes_sent": 2576980377
+  },
+  "evidence_quality": {
+    "level": "medium"
+  },
+  "findings": [
+    {
+      "id": "large_intermediate_or_exchange_traffic"
+    }
+  ],
+  "memory_pressure": {
+    "evidence_tier": "unsupported",
+    "finding_supported": false,
+    "spill_or_scratch_evidence_count": 0,
+    "status": "not_observed"
+  },
+  "profile_counter_registry": {
+    "missing_counter_count": 0,
+    "source": "bundled",
+    "status": "not_observed"
+  },
+  "profile_format": {
+    "impala_build_type": "synthetic",
+    "impala_distribution": "cloudera_impala",
+    "impala_major_version": 4,
+    "primary_bottleneck_policy": "supported",
+    "profile_dialect": "classic_text_profile",
+    "profile_family": "impala_runtime_profile",
+    "profile_response_format": "text",
+    "profile_source": "synthetic_demo_pack",
+    "section_mappings": {
+      "client_fetch_tail": {
+        "reason": "classic_text_profile_mapped",
+        "state": "supported",
+        "summary": "Client-fetch counters are mapped for classic text profiles when stable counters are present."
+      },
+      "memory_pressure": {
+        "reason": "classic_text_profile_mapped",
+        "state": "supported",
+        "summary": "Spill and scratch counters are mapped for classic text profiles when stable counters are present."
+      },
+      "profile_counters": {
+        "reason": "classic_text_profile_mapped",
+        "state": "supported",
+        "summary": "Classic text profile counters are mapped for the current analyzer slices."
+      },
+      "profile_resources": {
+        "reason": "classic_text_section_not_observed",
+        "state": "not_observed",
+        "summary": "Profile resource sections were not observed in this profile."
+      },
+      "profile_timings": {
+        "reason": "classic_text_section_not_observed",
+        "state": "not_observed",
+        "summary": "Profile timing sections were not observed in this profile."
+      },
+      "resource_trace": {
+        "reason": "classic_text_section_not_observed",
+        "state": "not_observed",
+        "summary": "Resource trace sections were not observed in this profile."
+      }
+    },
+    "source_capabilities": {
+      "json_profile_payload": "not_selected",
+      "json_profile_probe": "not_configured",
+      "primary_profile_routing": "supported",
+      "profile_docs_probe": "not_configured",
+      "profile_fetch_attempt_count": 1,
+      "profile_response_format": "text",
+      "text_profile_payload": "observed"
+    },
+    "source_label": "Synthetic demo profile facts"
+  },
+  "query_wall_clock": {
+    "confidence": "high",
+    "duration_ms": 176000
+  },
+  "resource_trace": {
+    "evidence_tier": "unsupported",
+    "observed_metric_count": 0,
+    "status": "unknown"
+  },
+  "source_provenance": {
+    "items": [
+      {
+        "kind": "engine",
+        "status": "available"
+      },
+      {
+        "kind": "profile",
+        "status": "available"
+      },
+      {
+        "kind": "metadata",
+        "status": "available"
+      },
+      {
+        "kind": "metrics",
+        "status": "none"
+      },
+      {
+        "kind": "events",
+        "status": "none"
+      }
+    ]
+  },
+  "stats_metadata_quality": {
+    "non_stats_bottleneck_categories": [
+      "query_shape",
+      "exchange_or_data_movement"
+    ],
+    "stats_primary_bottleneck": "mixed_candidate",
+    "status": "available"
+  },
+  "storage_context": {
+    "source": "not_collected",
+    "status": "unknown",
+    "storage_family": "unknown",
+    "storage_semantics": "unknown"
+  },
+  "top_elapsed_finding_id": "join_bottleneck"
+}

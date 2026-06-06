@@ -215,6 +215,7 @@ def build_profile_counter_registry_context(
         if _registry_key(str(name))
     }
     entries: list[dict[str, object]] = []
+    missing_counter_names: list[str] = []
     missing_counter_count = 0
     for definition in BUNDLED_PROFILE_COUNTER_DEFINITIONS:
         matched_labels = tuple(
@@ -225,11 +226,13 @@ def build_profile_counter_registry_context(
         stability_label = most_restrictive_stability_label(matched_labels)
         if not matched_labels:
             missing_counter_count += 1
+            missing_counter_names.append(definition.canonical_name)
         entries.append(
             {
                 "canonical_name": definition.canonical_name,
                 "aliases": list(definition.aliases),
                 "stability_label": stability_label,
+                "matched": bool(matched_labels),
                 "source": "profile_docs",
                 "evidence_role": definition.evidence_role,
                 "impala_version": impala_version,
@@ -246,6 +249,7 @@ def build_profile_counter_registry_context(
         ),
         "registry_entry_count": len(entries),
         "missing_counter_count": missing_counter_count,
+        "missing_counter_names": missing_counter_names,
         "impala_version": impala_version,
         "profile_docs_source_version": profile_docs_source_version,
         "entries": entries,
@@ -264,6 +268,7 @@ def unavailable_profile_counter_registry_context(reason: str) -> dict[str, objec
         "source_counter_count": 0,
         "registry_entry_count": 0,
         "missing_counter_count": 0,
+        "missing_counter_names": [],
         "reason": safe_registry_context_reason(reason),
         "entries": [],
         "limitations": [
@@ -353,6 +358,7 @@ def profile_counter_registry_context_summary(
             "source": "bundled",
             "registry_entry_count": len(BUNDLED_PROFILE_COUNTER_DEFINITIONS),
             "missing_counter_count": 0,
+            "missing_counter_names": [],
         }
     limitations = context.get("limitations")
     status = str(context.get("status") or "unknown")
@@ -363,12 +369,16 @@ def profile_counter_registry_context_summary(
         source = "bundled"
         registry_entry_count = len(BUNDLED_PROFILE_COUNTER_DEFINITIONS)
         missing_counter_count = 0
+        missing_counter_names: list[str] = []
+    else:
+        missing_counter_names = safe_missing_counter_names(context.get("missing_counter_names"))
     return {
         "status": status,
         "source": source,
         "source_counter_count": int_or_zero(context.get("source_counter_count")),
         "registry_entry_count": registry_entry_count,
         "missing_counter_count": missing_counter_count,
+        "missing_counter_names": missing_counter_names,
         "impala_version": string_or_none(context.get("impala_version")),
         "profile_docs_source_version": string_or_none(context.get("profile_docs_source_version")),
         "limitations": (
@@ -389,3 +399,15 @@ def int_or_zero(value: object) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return 0
+
+
+def safe_missing_counter_names(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    allowed = {definition.canonical_name for definition in BUNDLED_PROFILE_COUNTER_DEFINITIONS}
+    names = []
+    for item in value:
+        name = str(item or "").strip()
+        if name in allowed and name not in names:
+            names.append(name)
+    return names

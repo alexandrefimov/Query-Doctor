@@ -134,6 +134,10 @@ def test_analyzer_runtime_metric_readers_accept_canonical_only_keys():
     assert "## Runtime Metrics Facts" in facts_text
     assert "- source: prometheus" in facts_text
     assert "- host_cpu_pressure: observed" in facts_text
+    assert (
+        "Prometheus host-level metrics can cover multiple Impala deployments on the same hosts"
+        in facts_text
+    )
     assert "## Runtime Metrics Correlation" in correlation_text
     assert "- host_cpu_pressure: correlated" in correlation_text
     assert runtime_context["source"] == "prometheus"

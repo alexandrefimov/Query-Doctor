@@ -4,7 +4,13 @@ import io
 import json
 from pathlib import Path
 
-from scripts.audit_impala_coverage_gaps import audit_summaries, main, print_result
+from scripts.audit_impala_coverage_gaps import (
+    audit_summaries,
+    main,
+    print_result,
+    primary_gate_payload,
+    safe_unknown_reason_count_dict,
+)
 
 
 def write_summary(
@@ -275,6 +281,57 @@ def test_impala_coverage_gap_audit_ranks_safe_gaps_and_opportunities(
     assert "/private/" not in text
 
 
+def test_impala_coverage_audit_treats_no_table_metadata_as_not_applicable(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(
+                    tmp_path,
+                    1,
+                    direct_impala_analysis(referenced_tables=[]),
+                ),
+                "case_primary_bottleneck": {"label": "unknown"},
+            }
+        ],
+        query_profile_source="impala",
+    )
+
+    result = audit_summaries([summary_path], fail_on_direct_source_readiness_gaps=True)
+
+    assert result.optional_source_counts["metadata/not_applicable"] == 1
+    assert result.direct_source_readiness_counts["metadata/not_applicable"] == 1
+    assert "metadata_context_not_collected" not in result.gap_counts
+    assert not result.direct_source_readiness_gap_counts
+
+
+def test_impala_coverage_audit_keeps_metadata_gap_for_referenced_tables(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(
+                    tmp_path,
+                    1,
+                    base_analysis(referenced_tables=[{"status": "observed"}]),
+                ),
+                "case_primary_bottleneck": {"label": "unknown"},
+            }
+        ],
+    )
+
+    result = audit_summaries([summary_path])
+
+    assert result.optional_source_counts["metadata/not_collected"] == 1
+    assert result.gap_counts["metadata_context_not_collected"] == 1
+
+
 def test_impala_coverage_gap_audit_can_fail_strict_diagnostic_coverage_gaps(
     tmp_path: Path,
 ) -> None:
@@ -332,12 +389,19 @@ def test_impala_coverage_gap_audit_can_fail_strict_diagnostic_coverage_gaps(
     assert result.primary_counts["missing"] == 1
     assert result.primary_confidence_counts["unknown/low"] == 4
     assert result.medium_or_better_primary_count == 4
+    assert result.strict_primary_coverage_case_count == 9
+    assert result.strict_unknown_primary_count == 4
+    assert result.strict_medium_or_better_primary_count == 3
     assert result.unknown_primary_reason_counts["unsafe_reason"] == 1
+    assert result.strict_unknown_primary_reason_counts["no_primary_branch_supported"] == 3
+    assert result.strict_unknown_primary_reason_counts["unsafe_reason"] == 1
 
     output = io.StringIO()
     print_result(result, out=output)
     text = output.getvalue()
     assert "Issues:" in text
+    assert "Strict unknown primary reasons:" in text
+    assert "Unknown primary resolutions:" in text
     assert "unknown_primary_rate" in text
     assert "medium_primary_rate" in text
     assert "SELECT" not in text
@@ -348,6 +412,351 @@ def test_impala_coverage_gap_audit_can_fail_strict_diagnostic_coverage_gaps(
     assert main([str(summary_path), "--fail-on-diagnostic-coverage-gaps"]) == 1
 
 
+def test_impala_coverage_gap_audit_strict_rates_ignore_clean_and_short_unknown(
+    tmp_path: Path,
+) -> None:
+    cases: list[dict[str, object]] = [
+        {
+            "case_index": 1,
+            "case_dir": write_case(tmp_path, 1, base_analysis()),
+            "duration_sec": 9,
+            "score_severity": "clean",
+            "case_primary_bottleneck": {
+                "label": "unknown",
+                "confidence": "low",
+                "reasons": ["very_short_query_or_unknown_wall_clock"],
+            },
+        },
+        {
+            "case_index": 2,
+            "case_dir": write_case(tmp_path, 2, base_analysis()),
+            "score_severity": "suspicious",
+            "case_primary_bottleneck": {
+                "label": "unknown",
+                "confidence": "low",
+                "reasons": ["very_short_query_or_unknown_wall_clock"],
+            },
+        },
+        {
+            "case_index": 3,
+            "case_dir": write_case(tmp_path, 3, base_analysis()),
+            "score_severity": "suspicious",
+            "case_primary_bottleneck": {
+                "label": "unknown",
+                "confidence": "low",
+                "reasons": ["no_primary_branch_supported"],
+            },
+        },
+    ]
+    for index, label in (
+        (4, "runtime_data_movement"),
+        (5, "sql_shape"),
+        (6, "runtime_skew"),
+        (7, "client_fetch_tail"),
+        (8, "runtime_memory"),
+    ):
+        cases.append(
+            {
+                "case_index": index,
+                "case_dir": write_case(tmp_path, index, base_analysis()),
+                "score_severity": "suspicious",
+                "case_primary_bottleneck": {
+                    "label": label,
+                    "confidence": "medium",
+                },
+            }
+        )
+
+    summary_path = write_summary(tmp_path, cases)
+
+    result = audit_summaries([summary_path], fail_on_diagnostic_coverage_gaps=True)
+
+    assert result.ok
+    assert result.primary_counts["unknown"] == 3
+    assert result.gap_counts["unknown_primary_bottleneck"] == 1
+    assert result.strict_primary_coverage_case_count == 6
+    assert result.strict_unknown_primary_count == 1
+    assert result.strict_medium_or_better_primary_count == 5
+    assert result.strict_primary_out_of_scope_counts == {
+        "clean_case": 1,
+        "very_short_query_or_unknown_wall_clock": 1,
+    }
+    assert result.unknown_primary_reason_counts == {
+        "no_primary_branch_supported": 1,
+        "very_short_query_or_unknown_wall_clock": 2,
+    }
+    assert result.unknown_primary_resolution_counts == {
+        "clean_short_no_action_boundary": 1,
+        "diagnostic_evidence_gap": 1,
+        "missing_wall_clock_collector_gap": 1,
+    }
+    assert result.strict_unknown_primary_reason_counts == {
+        "no_primary_branch_supported": 1,
+    }
+    assert primary_gate_payload(result) == {
+        "thresholds": {
+            "max_unknown_primary_rate_percent": 30.0,
+            "min_medium_primary_rate_percent": 70.0,
+        },
+        "full_batch": {
+            "total_cases": 8,
+            "unknown_primary_cases": 3,
+            "unknown_primary_rate_percent": 37.5,
+            "medium_or_better_primary_cases": 5,
+            "medium_or_better_primary_rate_percent": 62.5,
+        },
+        "strict": {
+            "eligible_cases": 6,
+            "out_of_scope_cases": 2,
+            "unknown_primary_cases": 1,
+            "unknown_primary_rate_percent": 16.6667,
+            "medium_or_better_primary_cases": 5,
+            "medium_or_better_primary_rate_percent": 83.3333,
+            "gate_evaluable": True,
+            "unknown_rate_passed": True,
+            "medium_rate_passed": True,
+            "gate_passed": True,
+        },
+    }
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "Strict primary coverage: 5/6 medium-or-better (83.3%); unknown=1/6 (16.7%)" in text
+
+
+def test_impala_coverage_gap_audit_can_use_current_classifier_for_retained_summary(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        query_wall_clock={
+            "duration_ms": 20_000,
+            "confidence": "high",
+        },
+        findings=[
+            {
+                "id": "join_bottleneck",
+                "operators": [{"time_ms": 12_000}],
+            }
+        ],
+        stats_metadata_quality={
+            "status": "unavailable",
+            "stats_primary_bottleneck": "unknown",
+            "non_stats_bottleneck_categories": "query_shape",
+        },
+        scan_skew={
+            "status": "context_only",
+            "evidence_tier": "context_only",
+            "finding_supported": False,
+            "primary_supported": False,
+            "skew_group_host_count": 0,
+            "corroborating_metric_count": 0,
+        },
+        memory_pressure={
+            "status": "context_only",
+            "evidence_tier": "context_only",
+            "finding_supported": False,
+            "spill_or_scratch_evidence_count": 0,
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "suspicious",
+                "case_primary_bottleneck": {
+                    "label": "sql_shape",
+                    "confidence": "low",
+                    "reasons": ["join_top_finding"],
+                },
+            }
+        ],
+    )
+
+    persisted = audit_summaries([summary_path], fail_on_diagnostic_coverage_gaps=True)
+    assert not persisted.ok
+    assert persisted.primary_confidence_counts == {"sql_shape/low": 1}
+    assert persisted.strict_medium_or_better_primary_count == 0
+    assert {issue.category for issue in persisted.issues} == {"medium_primary_rate"}
+
+    current = audit_summaries(
+        [summary_path],
+        fail_on_diagnostic_coverage_gaps=True,
+        use_current_classifier_primary=True,
+    )
+
+    assert current.ok
+    assert current.primary_counts == {"sql_shape": 1}
+    assert current.primary_confidence_counts == {"sql_shape/medium": 1}
+    assert current.primary_classification_source_counts == {"current_classifier": 1}
+    assert current.primary_classifier_drift_counts == {"sql_shape/low/sql_shape/medium": 1}
+    assert current.strict_primary_coverage_case_count == 1
+    assert current.strict_medium_or_better_primary_count == 1
+
+    output = io.StringIO()
+    print_result(current, out=output)
+    text = output.getvalue()
+    assert "Primary classification source:" in text
+    assert "current_classifier: 1" in text
+    assert "Primary classifier drift:" in text
+    assert "sql_shape/low/sql_shape/medium: 1" in text
+    assert str(tmp_path) not in text
+
+    summary_json = tmp_path / "coverage-current-summary.json"
+    assert (
+        main(
+            [
+                str(summary_path),
+                "--fail-on-diagnostic-coverage-gaps",
+                "--use-current-classifier-primary",
+                "--summary-json",
+                str(summary_json),
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert payload["primary_gate"] == {
+        "thresholds": {
+            "max_unknown_primary_rate_percent": 30.0,
+            "min_medium_primary_rate_percent": 70.0,
+        },
+        "full_batch": {
+            "total_cases": 1,
+            "unknown_primary_cases": 0,
+            "unknown_primary_rate_percent": 0.0,
+            "medium_or_better_primary_cases": 1,
+            "medium_or_better_primary_rate_percent": 100.0,
+        },
+        "strict": {
+            "eligible_cases": 1,
+            "out_of_scope_cases": 0,
+            "unknown_primary_cases": 0,
+            "unknown_primary_rate_percent": 0.0,
+            "medium_or_better_primary_cases": 1,
+            "medium_or_better_primary_rate_percent": 100.0,
+            "gate_evaluable": True,
+            "unknown_rate_passed": True,
+            "medium_rate_passed": True,
+            "gate_passed": True,
+        },
+    }
+    assert payload["counters"]["primary_classification_source_counts"] == {"current_classifier": 1}
+    assert payload["counters"]["primary_classifier_drift_counts"] == {
+        "sql_shape_low_sql_shape_medium": 1
+    }
+    assert "coverage-current-summary" not in json.dumps(payload, sort_keys=True)
+
+
+def test_impala_coverage_audit_reports_memory_estimate_context_only_unknown(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        query_wall_clock={
+            "duration_ms": 20_000,
+            "confidence": "high",
+        },
+        findings=[{"id": "memory_estimate_errors"}],
+        scan_skew={
+            "status": "context_only",
+            "evidence_tier": "context_only",
+            "finding_supported": False,
+            "primary_supported": False,
+        },
+        data_movement={
+            "status": "not_observed",
+            "evidence_tier": "unsupported",
+            "finding_supported": False,
+            "primary_supported": False,
+            "exchange_operator_count": 0,
+        },
+        memory_pressure={
+            "status": "context_only",
+            "evidence_tier": "context_only",
+            "finding_supported": False,
+            "spill_or_scratch_evidence_count": 0,
+            "memory_estimate_anomaly_count": 2,
+            "zero_memory_estimate_gap_count": 1,
+        },
+        storage_context={
+            "status": "unknown",
+            "storage_family": "unknown",
+            "storage_semantics": "unknown",
+            "source": "unknown",
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "suspicious",
+                "case_primary_bottleneck": {
+                    "label": "unknown",
+                    "confidence": "low",
+                    "reasons": ["no_primary_branch_supported"],
+                },
+            }
+        ],
+    )
+
+    result = audit_summaries(
+        [summary_path],
+        use_current_classifier_primary=True,
+    )
+
+    assert result.strict_primary_coverage_case_count == 1
+    assert result.strict_unknown_primary_count == 1
+    assert result.unknown_primary_reason_counts["memory_estimate_context_only"] == 1
+    assert result.strict_unknown_primary_reason_counts["memory_estimate_context_only"] == 1
+    assert result.opportunity_counts["memory_estimate_context_only"] == 1
+
+    summary_json = tmp_path / "coverage-memory-summary.json"
+    assert (
+        main(
+            [
+                str(summary_path),
+                "--use-current-classifier-primary",
+                "--summary-json",
+                str(summary_json),
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert payload["counters"]["strict_unknown_primary_reason_counts"] == {
+        "memory_estimate_context_only": 1
+    }
+
+
+def test_impala_coverage_reason_summary_preserves_safe_composites() -> None:
+    counts = safe_unknown_reason_count_dict(
+        {
+            (
+                "codegen_finding_not_primary_supported"
+                "+scan_skew_medium_supporting_only"
+                "+memory_estimate_context_only"
+                "+data_movement_context_only"
+            ): 2,
+            "/tmp/raw-reason": 1,
+            "unsafe_reason": 1,
+        }
+    )
+
+    assert counts == {
+        (
+            "codegen_finding_not_primary_supported"
+            "_scan_skew_medium_supporting_only"
+            "_memory_estimate_context_only"
+            "_data_movement_context_only"
+        ): 2,
+        "unsafe_reason": 1,
+    }
+
+
 def test_impala_coverage_gap_audit_rejects_invalid_strict_thresholds(
     tmp_path: Path,
 ) -> None:
@@ -355,6 +764,82 @@ def test_impala_coverage_gap_audit_rejects_invalid_strict_thresholds(
 
     assert main([str(summary_path), "--max-unknown-primary-rate", "101"]) == 2
     assert main([str(summary_path), "--min-medium-primary-rate", "-1"]) == 2
+
+
+def test_impala_coverage_summary_json_records_custom_gate_thresholds(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, base_analysis()),
+                "score_severity": "suspicious",
+                "case_primary_bottleneck": {
+                    "label": "sql_shape",
+                    "confidence": "medium",
+                },
+            },
+            {
+                "case_index": 2,
+                "case_dir": write_case(tmp_path, 2, base_analysis()),
+                "score_severity": "suspicious",
+                "case_primary_bottleneck": {
+                    "label": "unknown",
+                    "confidence": "low",
+                    "reasons": ["no_primary_branch_supported"],
+                },
+            },
+        ],
+    )
+    summary_json = tmp_path / "coverage-gate-summary.json"
+
+    assert (
+        main(
+            [
+                str(summary_path),
+                "--fail-on-diagnostic-coverage-gaps",
+                "--max-unknown-primary-rate",
+                "40",
+                "--min-medium-primary-rate",
+                "50",
+                "--summary-json",
+                str(summary_json),
+            ]
+        )
+        == 1
+    )
+
+    payload = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert payload["primary_gate"] == {
+        "thresholds": {
+            "max_unknown_primary_rate_percent": 40.0,
+            "min_medium_primary_rate_percent": 50.0,
+        },
+        "full_batch": {
+            "total_cases": 2,
+            "unknown_primary_cases": 1,
+            "unknown_primary_rate_percent": 50.0,
+            "medium_or_better_primary_cases": 1,
+            "medium_or_better_primary_rate_percent": 50.0,
+        },
+        "strict": {
+            "eligible_cases": 2,
+            "out_of_scope_cases": 0,
+            "unknown_primary_cases": 1,
+            "unknown_primary_rate_percent": 50.0,
+            "medium_or_better_primary_cases": 1,
+            "medium_or_better_primary_rate_percent": 50.0,
+            "gate_evaluable": True,
+            "unknown_rate_passed": False,
+            "medium_rate_passed": True,
+            "gate_passed": False,
+        },
+    }
+    text = json.dumps(payload, sort_keys=True)
+    assert "coverage-gate-summary" not in text
+    assert str(tmp_path) not in text
 
 
 def test_impala_coverage_gap_audit_tracks_profile_docs_missing_labels(
@@ -383,6 +868,11 @@ def test_impala_coverage_gap_audit_tracks_profile_docs_missing_labels(
             "status": "available",
             "source": "profile_docs",
             "missing_counter_count": 2,
+            "missing_counter_names": [
+                "ClientFetchWaitTimer",
+                "ScratchBytesWritten",
+                "http://internal.example/raw-counter",
+            ],
         },
         query_context={
             "admission_context_probe_enabled": True,
@@ -409,6 +899,15 @@ def test_impala_coverage_gap_audit_tracks_profile_docs_missing_labels(
             "evidence_tier": "context_only",
             "observed_metric_count": 3,
         },
+        client_fetch={
+            "wait_counters": [
+                {
+                    "counter": "ClientFetchWaitTimer",
+                    "counter_stability": "UNKNOWN",
+                    "counter_registry_source": "profile_docs",
+                }
+            ]
+        },
     )
     summary_path = write_summary(
         tmp_path,
@@ -431,6 +930,13 @@ def test_impala_coverage_gap_audit_tracks_profile_docs_missing_labels(
         "profile_docs_missing_allowlisted_labels": 1,
     }
     assert result.profile_counter_registry_counts == {"available/profile_docs": 1}
+    assert result.profile_counter_missing_name_counts == {
+        "ClientFetchWaitTimer": 1,
+        "ScratchBytesWritten": 1,
+    }
+    assert result.profile_counter_observed_missing_name_counts == {
+        "ClientFetchWaitTimer": 1,
+    }
     assert result.source_compatibility_counts["impala_distribution/apache_impala"] == 1
     assert result.source_compatibility_counts["impala_major_version/major_5"] == 1
     assert result.source_compatibility_counts["impala_build_type/snapshot"] == 1
@@ -453,7 +959,44 @@ def test_impala_coverage_gap_audit_tracks_profile_docs_missing_labels(
     assert result.optional_source_counts["runtime_metrics/available"] == 1
     assert result.optional_source_counts["cluster_events/available"] == 1
     assert result.optional_source_counts["resource_trace/available"] == 1
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "Profile counter missing allowlist labels:" in text
+    assert "Profile counter observed missing allowlist labels:" in text
+    assert "ClientFetchWaitTimer" in text
+    assert "ScratchBytesWritten" in text
+    assert "internal.example" not in text
     assert main([str(summary_path), "--limit", "5"]) == 0
+
+
+def test_impala_coverage_gap_audit_does_not_gap_unobserved_profile_doc_labels(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        profile_counter_registry={
+            "status": "available",
+            "source": "profile_docs",
+            "missing_counter_count": 1,
+            "missing_counter_names": ["ScratchBytesWritten"],
+        }
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "case_primary_bottleneck": {"label": "runtime_storage", "confidence": "medium"},
+            }
+        ],
+    )
+
+    result = audit_summaries([summary_path])
+
+    assert "profile_docs_missing_allowlisted_labels" not in result.gap_counts
+    assert result.profile_counter_missing_name_counts == {"ScratchBytesWritten": 1}
+    assert not result.profile_counter_observed_missing_name_counts
 
 
 def test_impala_optional_source_availability_summarizes_unavailable_sources(
@@ -578,6 +1121,52 @@ def test_direct_impala_source_readiness_accepts_explicit_limitations(
     assert main([str(summary_path), "--fail-on-direct-source-readiness-gaps"]) == 0
 
 
+def test_direct_impala_discovery_failure_records_safe_summary_status(
+    tmp_path: Path,
+) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [],
+        query_profile_source="impala",
+        discovery_failed=True,
+        summaries_inspected=0,
+        selected_count=0,
+        warnings=[
+            "Impala query discovery did not find a readable query list on the "
+            "configured impalad endpoints. Attempted endpoints: 2. "
+            "http://internal.example/profile /tmp/cases/case-001 "
+            "SELECT * FROM private.customer_orders"
+        ],
+    )
+
+    result = audit_summaries([summary_path])
+
+    assert result.ok
+    assert result.total_cases == 0
+    assert result.direct_impala_case_count == 0
+    assert result.direct_discovery_counts == {
+        "summary": 1,
+        "discovery_failed": 1,
+        "summaries_inspected/none": 1,
+        "selected/none": 1,
+        "warning/query_list_unreadable": 1,
+    }
+
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "Direct discovery:" in text
+    assert "discovery_failed" in text
+    assert "warning/query_list_unreadable" in text
+    assert "internal.example" not in text
+    assert "/tmp" not in text
+    assert "case-001" not in text
+    assert "SELECT" not in text
+    assert "private.customer_orders" not in text
+
+    assert main([str(summary_path)]) == 0
+
+
 def test_direct_impala_source_readiness_fails_unknown_required_facts(
     tmp_path: Path,
 ) -> None:
@@ -631,6 +1220,109 @@ def test_direct_impala_source_readiness_fails_unknown_required_facts(
 
     assert main([str(summary_path)]) == 0
     assert main([str(summary_path), "--fail-on-direct-source-readiness-gaps"]) == 1
+
+
+def test_impala_coverage_gap_audit_writes_raw_free_summary_json(tmp_path: Path) -> None:
+    analysis = direct_impala_analysis(
+        source_provenance={
+            "items": [
+                {"kind": "engine", "status": "/tmp/raw-engine-status"},
+                {"kind": "profile", "status": "http://internal.example/profile"},
+                {"kind": "metadata", "status": "none"},
+                {"kind": "metrics", "status": "none"},
+                {"kind": "events", "status": "none"},
+            ],
+        }
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "query_id": "safe-query-1",
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "case_primary_bottleneck": {
+                    "label": "runtime_admission",
+                    "confidence": "medium",
+                },
+            }
+        ],
+        query_profile_source="impala",
+        discovery_failed=True,
+        warnings=[
+            "Impala query discovery did not find a readable query list. "
+            "http://internal.example/profile /tmp/cases/case-001 "
+            "SELECT * FROM private.customer_orders token=secret-value"
+        ],
+    )
+    summary_json = tmp_path / "coverage_summary.json"
+
+    assert (
+        main(
+            [
+                str(summary_path),
+                "--fail-on-direct-source-readiness-gaps",
+                "--summary-json",
+                str(summary_json),
+            ]
+        )
+        == 1
+    )
+
+    payload = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == "impala_coverage_audit_v1"
+    assert payload["status"] == "issues"
+    assert payload["metrics"] == {
+        "analysis_errors": 0,
+        "analyzed_cases": 1,
+        "direct_impala_cases": 1,
+        "issues": 3,
+        "medium_or_better_primary_cases": 1,
+        "missing_analysis": 0,
+        "strict_medium_or_better_primary_cases": 1,
+        "strict_primary_coverage_cases": 1,
+        "strict_unknown_primary_cases": 0,
+        "summaries": 1,
+        "total_cases": 1,
+    }
+    assert payload["issue_counts"] == {
+        "direct_provenance_engine_unknown": 1,
+        "direct_provenance_profile_unknown": 1,
+        "direct_source_provenance_raw_like": 1,
+    }
+    assert payload["counters"]["direct_discovery_counts"] == {
+        "discovery_failed": 1,
+        "selected_1": 1,
+        "summaries_inspected_none": 1,
+        "summary": 1,
+        "warning_query_list_unreadable": 1,
+    }
+    assert payload["counters"]["direct_source_readiness_gap_counts"] == {
+        "direct_provenance_engine_unknown": 1,
+        "direct_provenance_profile_unknown": 1,
+        "direct_source_provenance_raw_like": 1,
+    }
+    assert payload["counters"]["primary_counts"] == {"runtime_admission": 1}
+    text = json.dumps(payload, sort_keys=True)
+    assert "SELECT" not in text
+    assert "secret-value" not in text
+    assert "private.customer_orders" not in text
+    assert "internal.example" not in text
+    assert "raw-engine-status" not in text
+    assert "/tmp" not in text
+    assert "case-001" not in text
+    assert "safe-query" not in text
+    assert "batch_summary" not in text
+    assert str(tmp_path) not in text
+
+
+def test_impala_coverage_summary_json_rejects_input_overlap(tmp_path: Path) -> None:
+    summary_path = write_summary(tmp_path, [])
+    original_text = summary_path.read_text(encoding="utf-8")
+
+    assert main([str(summary_path), "--summary-json", str(summary_path)]) == 2
+
+    assert summary_path.read_text(encoding="utf-8") == original_text
 
 
 def test_direct_impala_source_readiness_fails_raw_like_source_provenance(
