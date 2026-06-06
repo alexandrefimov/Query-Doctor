@@ -16,6 +16,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from query_doctor.cli.trino_diagnosis_output import same_path  # noqa: E402
+from query_doctor.safety.manifest_references import (  # noqa: E402
+    is_safe_relative_json_reference,
+)
 from scripts.audit_trino_compact_readiness import (  # noqa: E402
     TRINO_HANDOFF_SUITE_MANIFEST_KIND,
 )
@@ -33,6 +36,9 @@ class HandoffSuiteEntrySpec:
     boundary_json: Path
     diagnosis_json: Path | None = None
     smoke_summary: Path | None = None
+    readiness_summary_json: Path | None = None
+    handoff_summary_json: Path | None = None
+    product_surface_summary_json: Path | None = None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,6 +82,36 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--readiness-summary-json",
+        action="append",
+        default=[],
+        type=Path,
+        help=(
+            "Optional raw-free trino_compact_readiness_summary_v1 artifact. "
+            "If provided, pass one per boundary in the same order."
+        ),
+    )
+    parser.add_argument(
+        "--handoff-summary-json",
+        action="append",
+        default=[],
+        type=Path,
+        help=(
+            "Optional raw-free trino_one_query_handoff_summary_v1 artifact. "
+            "If provided, pass one per boundary in the same order."
+        ),
+    )
+    parser.add_argument(
+        "--product-surface-summary-json",
+        action="append",
+        default=[],
+        type=Path,
+        help=(
+            "Optional raw-free trino_product_surface_boundary_audit_v1 artifact. "
+            "If provided, pass one per boundary in the same order."
+        ),
+    )
+    parser.add_argument(
         "--out",
         required=True,
         type=Path,
@@ -102,6 +138,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.boundary_json,
             diagnosis_jsons=args.diagnosis_json,
             smoke_summaries=args.smoke_summary,
+            readiness_summary_jsons=args.readiness_summary_json,
+            handoff_summary_jsons=args.handoff_summary_json,
+            product_surface_summary_jsons=args.product_surface_summary_json,
         )
         validate_output_path(args.out, entries, replace=args.replace)
         payload = manifest_payload(entries, manifest_path=args.out)
@@ -122,6 +161,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         f"smoke_summary_entries: {sum(1 for entry in entries if entry.smoke_summary is not None)}"
     )
+    print(
+        "readiness_summary_entries: "
+        f"{sum(1 for entry in entries if entry.readiness_summary_json is not None)}"
+    )
+    print(
+        "handoff_summary_entries: "
+        f"{sum(1 for entry in entries if entry.handoff_summary_json is not None)}"
+    )
+    print(
+        "product_surface_summary_entries: "
+        f"{sum(1 for entry in entries if entry.product_surface_summary_json is not None)}"
+    )
     print("path_reference: relative_to_manifest")
     return 0
 
@@ -131,6 +182,9 @@ def entry_specs(
     *,
     diagnosis_jsons: Sequence[Path],
     smoke_summaries: Sequence[Path],
+    readiness_summary_jsons: Sequence[Path],
+    handoff_summary_jsons: Sequence[Path],
+    product_surface_summary_jsons: Sequence[Path],
 ) -> tuple[HandoffSuiteEntrySpec, ...]:
     if not boundary_jsons:
         raise TrinoHandoffSuiteManifestBuilderError("at least one boundary artifact is required")
@@ -141,6 +195,18 @@ def entry_specs(
     if smoke_summaries and len(smoke_summaries) not in {1, len(boundary_jsons)}:
         raise TrinoHandoffSuiteManifestBuilderError(
             "smoke summary count must be one shared artifact or match boundary artifact count"
+        )
+    if readiness_summary_jsons and len(readiness_summary_jsons) != len(boundary_jsons):
+        raise TrinoHandoffSuiteManifestBuilderError(
+            "readiness summary artifact count must match boundary artifact count"
+        )
+    if handoff_summary_jsons and len(handoff_summary_jsons) != len(boundary_jsons):
+        raise TrinoHandoffSuiteManifestBuilderError(
+            "handoff summary artifact count must match boundary artifact count"
+        )
+    if product_surface_summary_jsons and len(product_surface_summary_jsons) != len(boundary_jsons):
+        raise TrinoHandoffSuiteManifestBuilderError(
+            "product-surface summary artifact count must match boundary artifact count"
         )
 
     entries: list[HandoffSuiteEntrySpec] = []
@@ -154,11 +220,21 @@ def entry_specs(
                     if not smoke_summaries
                     else smoke_summaries[0 if len(smoke_summaries) == 1 else index]
                 ),
+                readiness_summary_json=(
+                    readiness_summary_jsons[index] if readiness_summary_jsons else None
+                ),
+                handoff_summary_json=(
+                    handoff_summary_jsons[index] if handoff_summary_jsons else None
+                ),
+                product_surface_summary_json=(
+                    product_surface_summary_jsons[index] if product_surface_summary_jsons else None
+                ),
             )
         )
     for artifact in entry_artifacts(entries):
         if not artifact.is_file():
             raise TrinoHandoffSuiteManifestBuilderError("referenced artifact is unavailable")
+    ensure_unique_entry_artifacts(entries)
     return tuple(entries)
 
 
@@ -187,6 +263,8 @@ def manifest_payload(
     manifest_path: Path,
 ) -> dict[str, object]:
     base_dir = manifest_path.parent
+    manifest_entries = tuple(manifest_entry_payload(entry, base_dir=base_dir) for entry in entries)
+    ensure_unique_manifest_references(manifest_entries)
     return {
         "manifest_kind": TRINO_HANDOFF_SUITE_MANIFEST_KIND,
         "metadata": {
@@ -198,15 +276,39 @@ def manifest_payload(
             "smoke_summary_entry_count": sum(
                 1 for entry in entries if entry.smoke_summary is not None
             ),
+            "readiness_summary_entry_count": sum(
+                1 for entry in entries if entry.readiness_summary_json is not None
+            ),
+            "handoff_summary_entry_count": sum(
+                1 for entry in entries if entry.handoff_summary_json is not None
+            ),
+            "product_surface_summary_entry_count": sum(
+                1 for entry in entries if entry.product_surface_summary_json is not None
+            ),
             "path_reference": "relative_to_manifest",
             "redaction_reviewed": True,
             "limitations": [
                 "local_handoff_metadata_only",
+                *(
+                    ["readiness_summary_checked"]
+                    if any(entry.readiness_summary_json is not None for entry in entries)
+                    else []
+                ),
+                *(
+                    ["handoff_summary_checked"]
+                    if any(entry.handoff_summary_json is not None for entry in entries)
+                    else []
+                ),
+                *(
+                    ["product_surface_summary_checked"]
+                    if any(entry.product_surface_summary_json is not None for entry in entries)
+                    else []
+                ),
                 "not_committed_public_documentation",
                 "not_trino_product_support",
             ],
         },
-        "entries": [manifest_entry_payload(entry, base_dir=base_dir) for entry in entries],
+        "entries": list(manifest_entries),
     }
 
 
@@ -220,11 +322,75 @@ def manifest_entry_payload(
         payload["diagnosis_json"] = relative_reference(entry.diagnosis_json, base_dir=base_dir)
     if entry.smoke_summary is not None:
         payload["smoke_summary"] = relative_reference(entry.smoke_summary, base_dir=base_dir)
+    if entry.readiness_summary_json is not None:
+        payload["readiness_summary_json"] = relative_reference(
+            entry.readiness_summary_json,
+            base_dir=base_dir,
+        )
+    if entry.handoff_summary_json is not None:
+        payload["handoff_summary_json"] = relative_reference(
+            entry.handoff_summary_json,
+            base_dir=base_dir,
+        )
+    if entry.product_surface_summary_json is not None:
+        payload["product_surface_summary_json"] = relative_reference(
+            entry.product_surface_summary_json,
+            base_dir=base_dir,
+        )
+    if any(not is_safe_relative_json_reference(reference) for reference in payload.values()):
+        raise TrinoHandoffSuiteManifestBuilderError(
+            "referenced artifact cannot be represented safely"
+        )
     return payload
 
 
 def relative_reference(path: Path, *, base_dir: Path) -> str:
     return Path(os.path.relpath(path, base_dir)).as_posix()
+
+
+def ensure_unique_manifest_references(entries: Sequence[dict[str, str]]) -> None:
+    seen_refs: set[str] = set()
+    for entry in entries:
+        for field in (
+            "boundary_json",
+            "diagnosis_json",
+            "readiness_summary_json",
+            "handoff_summary_json",
+            "product_surface_summary_json",
+        ):
+            reference = entry.get(field)
+            if reference is None:
+                continue
+            if reference in seen_refs:
+                raise TrinoHandoffSuiteManifestBuilderError(
+                    "boundary, diagnosis, readiness summary, handoff summary, and product-surface summary artifacts must be unique"
+                )
+            seen_refs.add(reference)
+
+
+def ensure_unique_entry_artifacts(entries: Sequence[HandoffSuiteEntrySpec]) -> None:
+    seen_paths: list[Path] = []
+    for artifact in suite_width_entry_artifacts(entries):
+        if any(same_path(artifact, seen) for seen in seen_paths):
+            raise TrinoHandoffSuiteManifestBuilderError(
+                "boundary, diagnosis, readiness summary, handoff summary, and product-surface summary artifacts must be unique"
+            )
+        seen_paths.append(artifact)
+
+
+def suite_width_entry_artifacts(entries: Sequence[HandoffSuiteEntrySpec]) -> tuple[Path, ...]:
+    artifacts: list[Path] = []
+    for entry in entries:
+        artifacts.append(entry.boundary_json)
+        if entry.diagnosis_json is not None:
+            artifacts.append(entry.diagnosis_json)
+        if entry.readiness_summary_json is not None:
+            artifacts.append(entry.readiness_summary_json)
+        if entry.handoff_summary_json is not None:
+            artifacts.append(entry.handoff_summary_json)
+        if entry.product_surface_summary_json is not None:
+            artifacts.append(entry.product_surface_summary_json)
+    return tuple(artifacts)
 
 
 def entry_artifacts(entries: Sequence[HandoffSuiteEntrySpec]) -> tuple[Path, ...]:
@@ -235,6 +401,12 @@ def entry_artifacts(entries: Sequence[HandoffSuiteEntrySpec]) -> tuple[Path, ...
             artifacts.append(entry.diagnosis_json)
         if entry.smoke_summary is not None:
             artifacts.append(entry.smoke_summary)
+        if entry.readiness_summary_json is not None:
+            artifacts.append(entry.readiness_summary_json)
+        if entry.handoff_summary_json is not None:
+            artifacts.append(entry.handoff_summary_json)
+        if entry.product_surface_summary_json is not None:
+            artifacts.append(entry.product_surface_summary_json)
     return tuple(artifacts)
 
 

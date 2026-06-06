@@ -560,7 +560,11 @@ FORBIDDEN_TRINO_BOUNDARY_TOKENS = (
 
 @pytest.mark.parametrize("case", trino_golden_cases(), ids=lambda case: case.case_id)
 def test_trino_readiness_fixtures_keep_minimum_fact_states_explicit(case):
-    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala", "trino"]
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == [
+        "impala",
+        "spark",
+        "trino",
+    ]
     adapter = get_engine_adapter("trino")
     assert adapter.supports_offline_evidence_import is True
     assert adapter.supports_local_event_store_import is True
@@ -1202,11 +1206,12 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
 
     for phrase in (
         "Trino support is limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, plus bounded local statement-stats import and bounded local pruned QueryInfo import",
-        "Query Doctor also has raw-free event-source contract checking and dry-run coordinator query-info target checking, plus one-query pruned coordinator query-info probing, one-query pruned coordinator fact import, local compact diagnosis over raw-free direct boundary JSON or selected package sample boundaries, and the isolated local `/trino/compact-diagnosis` page over the same already raw-free inputs.",
+        "Query Doctor also has raw-free event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing, one-query pruned coordinator fact import, local compact diagnosis over raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries, and the isolated local `/trino/compact-diagnosis` page over the same already raw-free inputs.",
         "Minimum Raw-Free Intake Contract",
         "Consumers must not read raw Trino JSON directly.",
         "only current browser exception is the isolated local `/trino/compact-diagnosis` page",
         "single-boundary Trino import commands may write the same diagnosis through `--diagnosis-out` after their accepted boundary is built",
+        "excluding local metadata summary boundaries because aggregate `trino_metadata_*` facts are metadata-coverage evidence, not compact diagnosis inputs",
         "Planning-heavy compact diagnosis may be emitted only from supported `planning_time_ms` and `trino_elapsed_time_ms` facts",
         "connector metric signal",
         "redacted failure category",
@@ -1228,7 +1233,17 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "local statement-stats import may read only one explicit already-sanitized local JSON object with `statementStats` and optional compact `rootStage` content",
         "event-source contract checking may read only one explicit compact local JSON contract",
         "coordinator query-info target checking may read only one explicit compact local source contract and validate one coordinator base URL shape plus one Query ID shape",
+        "safe `trino_version_family`",
+        "unsafe version-family values",
         "It must not contact Trino, issue `/v1/query`, fetch query-info",
+        "metadata source-contract checking may read only one explicit compact local source contract and validate a future metadata allowlist shape",
+        "accept only `metadata_allowlist`, a safe auth-reference label, explicit relation/column allowlist entries",
+        "`raw_metadata_storage: forbidden`, `normalized_fact_storage: allowed`, `browser_report_output: blocked`, and `identifier_output: blocked`",
+        "must not contact Trino, read metadata, execute metadata SQL, crawl objects, collect metadata facts, become metadata collection support, or expose browser/report output",
+        "local metadata summary import may read one explicit compact sanitized local aggregate JSON object after an accepted `metadata_allowlist` source contract",
+        "It may map only relation and column coverage counts plus stats-completeness counts to a raw-free `EngineFactBundle`",
+        "It must require redaction-review confirmation, require object identifiers and raw metadata values to be omitted, and enforce source-contract relation/column counts before mapping",
+        "It must not contact Trino, execute metadata SQL, crawl objects, expose raw catalog/schema/table/column identifiers, expose metadata values, become live metadata collection support, or expose browser/report output.",
         "pruned coordinator query-info probing may issue only one bounded `GET /v1/query/{queryId}?pruned=true` request after the same accepted `coordinator_query_info` contract passes with `operator_managed_reference`",
         "must keep raw QueryInfo outside storage, summaries, prompts, reports, and normalized facts",
         "must not expose URL, Query ID, query text, session fields, endpoint URLs, object names, or raw payload content",
@@ -1240,9 +1255,11 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "`raw_payload_storage: forbidden`, `normalized_fact_storage: allowed`, and `browser_report_output: blocked`",
         "aggregate query-list facts may be supported only from an accepted sanitized summary",
         "strict one-query promotion gates must run `scripts/audit_trino_compact_readiness.py --require-one-query-boundary`",
-        "That gate must reject any boundary containing `query_list_*` aggregate facts before it can be counted as one-query Trino diagnosis readiness",
+        "That gate must reject any boundary containing `query_list_*` aggregate facts or `trino_metadata_*` aggregate summary facts before it can be counted as one-query Trino diagnosis readiness",
         "`--require-source-version trino_coordinator_query_info_target_v1`",
+        "`--require-min-trino-version-families 1`",
         "`--diagnosis-json <raw-free-trino-diagnosis.json>`",
+        "non-unknown safe Trino version-family evidence",
         "stored compact diagnosis artifact matches the deterministic boundary-derived diagnosis and stays raw-free",
         "`--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`",
         "dry-run smoke plan cannot satisfy the release-facing evidence gate",
@@ -1252,8 +1269,8 @@ def test_trino_readiness_contract_doc_names_non_support_and_raw_free_gates():
         "non-finite numeric values are rejected before mapping",
         "negative timing, resource, split, stage-count, queue-time, or ratio values",
         "Unknown remains a valid result.",
-        "Trino remains limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, bounded local statement-stats import, bounded local pruned QueryInfo import, and event-source contract checking and dry-run coordinator query-info target checking, plus one-query pruned coordinator query-info probing and one-query pruned coordinator fact import, plus local compact diagnosis over already raw-free direct boundary JSON or selected package sample boundaries and the isolated local `/trino/compact-diagnosis` page, until the following are true:",
-        "One-query readiness checks distinguish query-specific boundaries from aggregate query-list boundaries",
+        "Trino remains limited to sanitized offline evidence package import, bounded local event-store import, bounded HTTP event archive import, bounded HTTP query-detail archive import, bounded local query-detail import, and bounded local query-list aggregate import, bounded local statement-stats import, bounded local pruned QueryInfo import, and event-source contract checking and dry-run coordinator query-info target checking, metadata source-contract checking, bounded local metadata summary import, plus one-query pruned coordinator query-info probing and one-query pruned coordinator fact import, plus local compact diagnosis over already raw-free direct boundary JSON excluding local metadata summary boundaries or selected package sample boundaries and the isolated local `/trino/compact-diagnosis` page, until the following are true:",
+        "One-query readiness checks distinguish query-specific boundaries from aggregate query-list and metadata-summary boundaries",
         "Browser and trusted-report safety tests exist before any Trino facts render outside the isolated compact-diagnosis page.",
     ):
         assert phrase in normalized_text
