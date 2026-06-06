@@ -34,7 +34,7 @@ def render_action_outcomes_page() -> str:
         )
     rows = "".join(render_action_outcome_row(record) for record in records)
     if not rows:
-        rows = '<tr><td colspan="5" class="empty-cell">No action outcomes recorded yet.</td></tr>'
+        rows = '<tr><td colspan="6" class="empty-cell">No action outcomes recorded yet.</td></tr>'
     return (
         '<section class="panel batch-panel" aria-label="Action outcomes">'
         '<div class="batch-head"><div><h1>Action outcomes</h1>'
@@ -46,7 +46,8 @@ def render_action_outcomes_page() -> str:
         f"{render_action_outcome_metrics(metrics)}"
         '<div class="batch-table-wrap"><table class="batch-table">'
         "<thead><tr>"
-        "<th>Recorded</th><th>Recommendation</th><th>Applied</th><th>Outcome</th><th>Workload</th>"
+        "<th>Recorded</th><th>Recommendation</th><th>Applied</th><th>Outcome</th>"
+        "<th>Verification</th><th>Workload</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
@@ -61,7 +62,8 @@ def render_action_outcome_metrics(metrics: tuple[RecommendationOutcomeMetric, ..
     return (
         '<div class="batch-table-wrap"><table class="batch-table">'
         "<thead><tr>"
-        "<th>Recommendation</th><th>Applied</th><th>Improved</th><th>No change</th>"
+        "<th>Recommendation</th><th>Applied</th><th>Comparable reruns</th>"
+        "<th>Improved</th><th>No change</th>"
         "<th>Worsened</th><th>Unsure</th><th>Local signal</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
@@ -74,6 +76,7 @@ def render_action_outcome_metric_row(metric: RecommendationOutcomeMetric) -> str
         "<tr>"
         f"<td>{escape_value(safe_recommendation_label(metric.recommendation_id))}</td>"
         f"<td>{escape_value(metric.applied_count)}</td>"
+        f"<td>{escape_value(metric.comparable_rerun_count)}</td>"
         f"<td>{escape_value(metric.improved_count)}</td>"
         f"<td>{escape_value(metric.no_change_count)}</td>"
         f"<td>{escape_value(metric.worsened_count)}</td>"
@@ -85,9 +88,12 @@ def render_action_outcome_metric_row(metric: RecommendationOutcomeMetric) -> str
 
 def action_outcome_metric_signal(metric: RecommendationOutcomeMetric) -> str:
     if not metric.min_sample_met or metric.improvement_rate is None:
-        return f"rate available after {metric.min_applied} applied records"
+        return f"rate available after {metric.min_applied} comparable rerun records"
     percent = round(metric.improvement_rate * 100)
-    return f"improved in {metric.improved_count} of {metric.applied_count} applied records ({percent}%)"
+    return (
+        f"improved in {metric.improved_count} of "
+        f"{metric.comparable_rerun_count} comparable reruns ({percent}%)"
+    )
 
 
 def render_action_outcome_row(record: ActionOutcomeRecord) -> str:
@@ -98,6 +104,7 @@ def render_action_outcome_row(record: ActionOutcomeRecord) -> str:
         f"<td>{escape_value(safe_recommendation_label(record.recommendation_id))}</td>"
         f"<td>{escape_value(record.applied.replace('_', ' '))}</td>"
         f"<td>{escape_value(record.outcome.replace('_', ' '))}</td>"
+        f"<td>{escape_value(record.verification_status.replace('_', ' '))}</td>"
         f"<td>{escape_value(workload_short)}</td>"
         "</tr>"
     )

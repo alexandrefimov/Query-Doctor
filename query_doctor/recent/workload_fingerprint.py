@@ -12,6 +12,18 @@ SCHEMA_VERSION = 1
 FINGERPRINT_HEX_LENGTH = 24
 SAFE_TOKEN_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 SAFE_TABLE_RE = re.compile(r"^[a-z_][a-z0-9_$]*(?:\.[a-z_][a-z0-9_$]*){0,2}$")
+SAFE_INCOMPLETE_FIELDS = {
+    "aggregate_present",
+    "cte_count",
+    "exchange_count",
+    "join_count",
+    "query_type",
+    "referenced_tables",
+    "scan_count",
+    "set_operation_count",
+    "sql_verb",
+    "window_present",
+}
 
 
 @dataclass(frozen=True)
@@ -44,6 +56,7 @@ def compute_workload_fingerprint(
     query_type = _safe_token(case.get("query_type"))
     if query_type == "unknown":
         missing_fields.add("query_type")
+    operators = _analysis_operators(analysis)
 
     join_count = _first_nonnegative_int(
         case,
@@ -60,6 +73,8 @@ def compute_workload_fingerprint(
             ("optimizer_rewrite_support", "top_level_join_count"),
         ),
     )
+    if join_count is None and operators is not None:
+        join_count = sum(1 for name in operators if _is_join_operator_name(name))
     if join_count is None:
         missing_fields.add("join_count")
         join_count = 0
@@ -93,11 +108,11 @@ def compute_workload_fingerprint(
             ("workload_shape", "set_operations_count"),
         ),
     )
+    if set_operation_count is None and operators is not None:
+        set_operation_count = sum(1 for name in operators if _is_set_operator_name(name))
     if set_operation_count is None:
         missing_fields.add("set_operation_count")
         set_operation_count = 0
-
-    operators = _analysis_operators(analysis)
 
     aggregate_present = _first_bool(
         case,
@@ -186,6 +201,7 @@ def compute_workload_fingerprint(
     referenced_tables, referenced_tables_complete = _referenced_tables(case, analysis)
     if not referenced_tables_complete:
         missing_fields.add("referenced_tables")
+    missing_fields.update(_stored_incomplete_fields(case))
 
     shape: dict[str, object] = {
         "sql_verb": sql_verb,
@@ -299,6 +315,14 @@ def _analysis_operators(analysis: Mapping[str, Any]) -> list[str] | None:
     return names
 
 
+def _is_join_operator_name(name: str) -> bool:
+    return bool(re.search(r"\b(?:HASH JOIN|NESTED LOOP JOIN|JOIN)\b", name))
+
+
+def _is_set_operator_name(name: str) -> bool:
+    return bool(re.search(r"\b(?:UNION|EXCEPT|INTERSECT)\b", name))
+
+
 def _referenced_tables(
     case: Mapping[str, Any],
     analysis: Mapping[str, Any],
@@ -306,6 +330,8 @@ def _referenced_tables(
     raw_tables = analysis.get("referenced_tables")
     if raw_tables is None:
         raw_tables = case.get("referenced_tables")
+    if raw_tables is None:
+        raw_tables = _value_at_path(case, ("workload_shape", "referenced_tables"))
     if raw_tables is None:
         return [], False
     if not isinstance(raw_tables, (list, tuple, set)):
@@ -322,3 +348,17 @@ def _referenced_tables(
             continue
         tables.add(table)
     return sorted(tables), complete
+
+
+def _stored_incomplete_fields(case: Mapping[str, Any]) -> set[str]:
+    if not _bool_value(case.get("workload_fingerprint_incomplete")):
+        return set()
+    raw_fields = case.get("workload_fingerprint_incomplete_fields")
+    if not isinstance(raw_fields, (list, tuple, set)):
+        return set()
+    fields: set[str] = set()
+    for item in raw_fields:
+        field = str(item or "").strip().lower()
+        if field in SAFE_INCOMPLETE_FIELDS:
+            fields.add(field)
+    return fields

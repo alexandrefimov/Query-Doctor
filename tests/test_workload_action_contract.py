@@ -49,7 +49,9 @@ def test_workload_action_contract_feeds_queue_and_detail_hints():
     entry = queue[0]
     hint = hints[0]
     assert entry.signal == "Stats review"
+    assert entry.recommendation_id == "stats_refresh_review.v1"
     assert hint.title == entry.signal
+    assert hint.recommendation_id == entry.recommendation_id
     assert hint.priority == entry.priority
     assert hint.evidence == entry.evidence
     assert hint.where_to_look == entry.review_anchor
@@ -58,8 +60,43 @@ def test_workload_action_contract_feeds_queue_and_detail_hints():
     assert hint.outcome_summary == entry.outcome_summary
     assert "last applied action Stats refresh review: no change" in entry.outcome_summary
     assert (
-        "family signal Stats refresh review: improved 1/2 applied, no change 1; "
-        "feedback sample below threshold (2/5 applied); "
+        "family signal Stats refresh review: improved 1/2 comparable reruns, no change 1; "
+        "feedback sample below threshold (2/5 comparable reruns); "
+        "next check stats signal count and group p95"
+    ) in entry.outcome_summary
+
+
+def test_workload_action_contract_uses_matching_outcome_family():
+    group = workload_group(primary_bottleneck_top="stats")
+    rows = (
+        case_row(rank=1, primary_bottleneck_label="Stats", stats_tier="high"),
+        case_row(rank=2, primary_bottleneck_label="Stats", stats_tier="medium"),
+    )
+    metrics = summarize_workload_action_outcomes(
+        [
+            outcome_record(recommendation_id="query_optimization_review.v1"),
+            outcome_record(
+                recommendation_id="query_optimization_review.v1",
+                outcome="no_change",
+            ),
+        ],
+        min_applied=2,
+    )
+
+    queue = workload_action_queue_entries(
+        RecentScanWorkloadGroupsView(groups=(group,)),
+        {WORKLOAD_FINGERPRINT: rows},
+        limit=5,
+        workload_outcome_metrics=metrics,
+    )
+
+    assert len(queue) == 1
+    entry = queue[0]
+    assert entry.recommendation_id == "stats_refresh_review.v1"
+    assert "last applied action Query optimization review: no change" in entry.outcome_summary
+    assert (
+        "family signal Stats refresh review: no verified rerun records yet; "
+        "feedback sample below threshold (0/2 comparable reruns); "
         "next check stats signal count and group p95"
     ) in entry.outcome_summary
 
@@ -196,6 +233,7 @@ def case_row(
 
 def outcome_record(
     *,
+    recommendation_id: str = "stats_refresh_review.v1",
     applied: str = "yes",
     outcome: str = "improved",
 ) -> ActionOutcomeRecord:
@@ -205,7 +243,8 @@ def outcome_record(
         workload_fingerprint=WORKLOAD_FINGERPRINT,
         case_fingerprint="cf_aaaaaaaaaaaaaaaaaaaaaaaa",
         case_id_local="case-001",
-        recommendation_id="stats_refresh_review.v1",
+        recommendation_id=recommendation_id,
         applied=applied,
         outcome=outcome,
+        verification_status="comparable_rerun" if applied == "yes" else "not_applicable",
     )

@@ -1,0 +1,143 @@
+{
+  "action_outcome_gate": {
+    "gate_evaluable": true,
+    "gate_passed": true,
+    "requirements": {
+      "families_required": 1,
+      "measured_result_family_groups": 1,
+      "missing_family_groups": 0,
+      "open_family_groups": 0,
+      "required_family_groups": 1,
+      "sample_below_threshold_family_groups": 0,
+      "sample_met_family_groups": 1,
+      "unmeasured_result_family_groups": 0
+    },
+    "source": {
+      "action_outcomes_supplied": true,
+      "raw_free_passed": true
+    },
+    "thresholds": {
+      "accepted_verification_status": "comparable_rerun",
+      "measured_result_outcomes": [
+        "improved",
+        "no_change",
+        "worsened"
+      ],
+      "min_comparable_reruns_per_group": 5,
+      "record_schema_version": 2
+    }
+  },
+  "action_outcome_requirements": [
+    {
+      "accepted_verification_status": "comparable_rerun",
+      "measured_result_groups": 1,
+      "measured_result_outcomes": [
+        "improved",
+        "no_change",
+        "worsened"
+      ],
+      "min_comparable_reruns_per_group": 5,
+      "missing_groups": 0,
+      "open_groups": 0,
+      "recommendation_id": "runtime_admission_check.v1",
+      "recommendation_label": "Admission/runtime check",
+      "record_schema_version": 2,
+      "required_groups": 1,
+      "sample_below_threshold_groups": 0,
+      "sample_met_groups": 1,
+      "unmeasured_result_groups": 0
+    }
+  ],
+  "counters": {
+    "action_outcome_family_counts": {
+      "family_sample_met": 1,
+      "runtime_admission_check_v1": 1
+    },
+    "action_outcome_family_requirement_counts": {
+      "runtime_admission_check_v1_required": 1,
+      "runtime_admission_check_v1_result_measured": 1,
+      "runtime_admission_check_v1_sample_met": 1
+    },
+    "action_outcome_gate_counts": {
+      "action_outcomes_supplied": 1,
+      "gate_evaluable": 1,
+      "gate_passed": 1,
+      "measured_result_family_groups": 1,
+      "raw_free_passed": 1,
+      "required_family_groups": 1,
+      "sample_met_family_groups": 1
+    },
+    "action_outcome_group_coverage_counts": {
+      "sample_met": 1
+    },
+    "action_outcome_result_counts": {
+      "required_family_comparable_reruns_4_5": 1,
+      "required_family_improved": 3,
+      "required_family_measured_results": 5,
+      "required_family_no_change": 2,
+      "required_family_sample_measured": 1
+    },
+    "action_outcome_source_counts": {
+      "supplied": 1,
+      "workloads_4_5": 1
+    },
+    "action_outcome_verification_counts": {
+      "family_comparable_reruns_4_5": 1,
+      "workload_comparable_reruns_4_5": 1
+    },
+    "action_queue_outcome_counts": {
+      "missing": 1,
+      "sample_met": 1
+    },
+    "detail_action_hint_outcome_counts": {
+      "missing": 1,
+      "sample_met": 2
+    }
+  },
+  "current": {
+    "action_queue": 2,
+    "gate_evaluable": true,
+    "gate_passed": true,
+    "measured_result_family_groups": 1,
+    "open_family_groups": 0,
+    "recorded_action_outcomes": 8,
+    "required_family_groups": 1,
+    "sample_met_family_groups": 1,
+    "total_cases": 11,
+    "unmeasured_result_family_groups": 0,
+    "workload_groups": 2
+  },
+  "issue_counts": {},
+  "schema_version": "impala_synthetic_outcome_gate_aggregate_v1",
+  "source_fixture": "synthetic_demo_pack_0_5_0_workload_outcome_gate",
+  "thresholds": {
+    "accepted_verification_status": "comparable_rerun",
+    "measured_result_outcomes": [
+      "improved",
+      "no_change",
+      "worsened"
+    ],
+    "min_comparable_reruns_per_group": 5,
+    "record_schema_version": 2
+  },
+  "trend": [
+    {
+      "gate_passed": false,
+      "label": "initial_synthetic_demo_outcomes",
+      "measured_result_family_groups": 0,
+      "open_family_groups": 1,
+      "recorded_action_outcomes": 5,
+      "required_family_groups": 1,
+      "sample_met_family_groups": 0
+    },
+    {
+      "gate_passed": true,
+      "label": "default_threshold_measured_runtime_outcome_gate",
+      "measured_result_family_groups": 1,
+      "open_family_groups": 0,
+      "recorded_action_outcomes": 8,
+      "required_family_groups": 1,
+      "sample_met_family_groups": 1
+    }
+  ]
+}

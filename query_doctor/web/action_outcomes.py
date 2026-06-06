@@ -17,7 +17,9 @@ from query_doctor.web.form_helpers import first_form_value
 from query_doctor.web.models import WebError
 
 
-SCHEMA_VERSION = 1
+LEGACY_SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_LOAD_LIMIT = 200
 DEFAULT_METRIC_LOAD_LIMIT = 1_000_000
@@ -31,6 +33,11 @@ RECOMMENDATION_LABELS = {
 }
 ALLOWED_APPLIED = {"yes", "no", "skip"}
 ALLOWED_OUTCOMES = {"improved", "no_change", "worsened", "unsure", "not_applicable"}
+ALLOWED_VERIFICATION_STATUSES = {
+    "comparable_rerun",
+    "legacy_unverified",
+    "not_applicable",
+}
 WORKLOAD_FINGERPRINT_RE = re.compile(r"^wf_[0-9a-f]{24}$")
 CASE_ID_RE = re.compile(r"^case-[0-9]{3}$")
 
@@ -45,6 +52,7 @@ class ActionOutcomeRecord:
     recommendation_id: str
     applied: str
     outcome: str
+    verification_status: str = "legacy_unverified"
     note_redacted: str = ""
 
 
@@ -53,6 +61,8 @@ class RecommendationOutcomeMetric:
     recommendation_id: str
     total_records: int
     applied_count: int
+    comparable_rerun_count: int
+    unverified_applied_count: int
     not_applied_count: int
     skipped_count: int
     improved_count: int
@@ -69,6 +79,8 @@ class WorkloadOutcomeMetric:
     workload_fingerprint: str
     total_records: int
     applied_count: int
+    comparable_rerun_count: int
+    unverified_applied_count: int
     not_applied_count: int
     skipped_count: int
     improved_count: int
@@ -81,6 +93,7 @@ class WorkloadOutcomeMetric:
     last_applied_recommendation_id: str
     last_applied_outcome: str
     family_signal: "WorkloadOutcomeFamilySignal"
+    family_signals: tuple["WorkloadOutcomeFamilySignal", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -88,6 +101,8 @@ class WorkloadOutcomeFamilySignal:
     recommendation_id: str
     total_records: int
     applied_count: int
+    comparable_rerun_count: int
+    unverified_applied_count: int
     improved_count: int
     no_change_count: int
     worsened_count: int
@@ -147,6 +162,10 @@ def action_outcome_record_from_case(
 
     applied = normalize_applied(first_form_value(form, "applied"))
     outcome = normalize_outcome(first_form_value(form, "outcome"), applied=applied)
+    verification_status = normalize_verification_status(
+        first_form_value(form, "verification_status"),
+        applied=applied,
+    )
     note = sanitize_browser_error_text(first_form_value(form, "note") or "", max_chars=256)
     return ActionOutcomeRecord(
         schema_version=SCHEMA_VERSION,
@@ -157,6 +176,7 @@ def action_outcome_record_from_case(
         recommendation_id=recommendation_id,
         applied=applied,
         outcome=outcome,
+        verification_status=verification_status,
         note_redacted=note,
     )
 
@@ -175,6 +195,15 @@ def normalize_outcome(value: Any, *, applied: str) -> str:
     if text not in ALLOWED_OUTCOMES or text == "not_applicable":
         raise WebError("Invalid action result value.")
     return text
+
+
+def normalize_verification_status(value: Any, *, applied: str) -> str:
+    if applied != "yes":
+        return "not_applicable"
+    text = str(value or "").strip().lower()
+    if text == "comparable_rerun":
+        return text
+    raise WebError("Action outcome requires comparable rerun verification.")
 
 
 def append_action_outcome(
@@ -321,22 +350,30 @@ def recommendation_outcome_metric(
     min_applied: int,
 ) -> RecommendationOutcomeMetric:
     applied_counts = Counter(record.applied for record in records)
-    outcome_counts = Counter(record.outcome for record in records if record.applied == "yes")
-    applied_count = applied_counts.get("yes", 0)
+    applied_records = [record for record in records if record.applied == "yes"]
+    comparable_records = comparable_rerun_records(applied_records)
+    outcome_counts = Counter(record.outcome for record in comparable_records)
+    applied_count = len(applied_records)
+    comparable_rerun_count = len(comparable_records)
+    unverified_applied_count = applied_count - comparable_rerun_count
     improved_count = outcome_counts.get("improved", 0)
     min_applied = max(1, int(min_applied))
     return RecommendationOutcomeMetric(
         recommendation_id=recommendation_id,
         total_records=len(records),
         applied_count=applied_count,
+        comparable_rerun_count=comparable_rerun_count,
+        unverified_applied_count=unverified_applied_count,
         not_applied_count=applied_counts.get("no", 0),
         skipped_count=applied_counts.get("skip", 0),
         improved_count=improved_count,
         no_change_count=outcome_counts.get("no_change", 0),
         worsened_count=outcome_counts.get("worsened", 0),
         unsure_count=outcome_counts.get("unsure", 0),
-        improvement_rate=round(improved_count / applied_count, 4) if applied_count else None,
-        min_sample_met=applied_count >= min_applied,
+        improvement_rate=(
+            round(improved_count / comparable_rerun_count, 4) if comparable_rerun_count else None
+        ),
+        min_sample_met=comparable_rerun_count >= min_applied,
         min_applied=min_applied,
     )
 
@@ -348,7 +385,11 @@ def workload_outcome_metric(
     min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
 ) -> WorkloadOutcomeMetric:
     applied_counts = Counter(record.applied for record in records)
-    outcome_counts = Counter(record.outcome for record in records if record.applied == "yes")
+    applied_records = [record for record in records if record.applied == "yes"]
+    comparable_records = comparable_rerun_records(applied_records)
+    outcome_counts = Counter(record.outcome for record in comparable_records)
+    applied_count = len(applied_records)
+    comparable_rerun_count = len(comparable_records)
     last_record = records[-1]
     last_applied_record = next(
         (record for record in reversed(records) if record.applied == "yes"),
@@ -362,10 +403,22 @@ def workload_outcome_metric(
     family_records = [
         record for record in records if record.recommendation_id == family_recommendation_id
     ]
+    family_signals = tuple(
+        workload_outcome_family_signal(
+            recommendation_id=recommendation_id,
+            records=recommendation_records,
+            min_applied=min_applied,
+        )
+        for recommendation_id, recommendation_records in sorted(
+            group_records_by_recommendation(records).items()
+        )
+    )
     return WorkloadOutcomeMetric(
         workload_fingerprint=workload_fingerprint,
         total_records=len(records),
-        applied_count=applied_counts.get("yes", 0),
+        applied_count=applied_count,
+        comparable_rerun_count=comparable_rerun_count,
+        unverified_applied_count=applied_count - comparable_rerun_count,
         not_applied_count=applied_counts.get("no", 0),
         skipped_count=applied_counts.get("skip", 0),
         improved_count=outcome_counts.get("improved", 0),
@@ -384,7 +437,18 @@ def workload_outcome_metric(
             records=family_records,
             min_applied=min_applied,
         ),
+        family_signals=family_signals,
     )
+
+
+def group_records_by_recommendation(
+    records: list[ActionOutcomeRecord],
+) -> dict[str, list[ActionOutcomeRecord]]:
+    grouped: dict[str, list[ActionOutcomeRecord]] = {}
+    for record in records:
+        if recommendation_id_allowed(record.recommendation_id):
+            grouped.setdefault(record.recommendation_id, []).append(record)
+    return grouped
 
 
 def workload_outcome_family_signal(
@@ -393,25 +457,39 @@ def workload_outcome_family_signal(
     records: list[ActionOutcomeRecord],
     min_applied: int = DEFAULT_METRIC_MIN_APPLIED,
 ) -> WorkloadOutcomeFamilySignal:
-    outcome_counts = Counter(record.outcome for record in records if record.applied == "yes")
-    applied_count = sum(1 for record in records if record.applied == "yes")
+    applied_records = [record for record in records if record.applied == "yes"]
+    comparable_records = comparable_rerun_records(applied_records)
+    outcome_counts = Counter(record.outcome for record in comparable_records)
+    applied_count = len(applied_records)
+    comparable_rerun_count = len(comparable_records)
     min_applied = max(1, int(min_applied))
     return WorkloadOutcomeFamilySignal(
         recommendation_id=recommendation_id,
         total_records=len(records),
         applied_count=applied_count,
+        comparable_rerun_count=comparable_rerun_count,
+        unverified_applied_count=applied_count - comparable_rerun_count,
         improved_count=outcome_counts.get("improved", 0),
         no_change_count=outcome_counts.get("no_change", 0),
         worsened_count=outcome_counts.get("worsened", 0),
         unsure_count=outcome_counts.get("unsure", 0),
-        min_sample_met=applied_count >= min_applied,
+        min_sample_met=comparable_rerun_count >= min_applied,
         min_applied=min_applied,
     )
 
 
-def workload_outcome_summary_text(metric: WorkloadOutcomeMetric | None) -> str:
+def comparable_rerun_records(records: list[ActionOutcomeRecord]) -> list[ActionOutcomeRecord]:
+    return [record for record in records if record.verification_status == "comparable_rerun"]
+
+
+def workload_outcome_summary_text(
+    metric: WorkloadOutcomeMetric | None,
+    *,
+    recommendation_id: str = "",
+) -> str:
     if metric is None or metric.total_records <= 0:
         return "none"
+    signal = workload_outcome_signal_for_recommendation(metric, recommendation_id)
     outcome_parts = []
     for label, count in (
         ("improved", metric.improved_count),
@@ -421,12 +499,29 @@ def workload_outcome_summary_text(metric: WorkloadOutcomeMetric | None) -> str:
     ):
         if count > 0:
             outcome_parts.append(f"{label} {count}")
-    outcome_summary = ", ".join(outcome_parts) if outcome_parts else "no applied outcomes"
+    outcome_summary = ", ".join(outcome_parts) if outcome_parts else "no verified rerun outcomes"
     return (
         f"{metric.total_records} recorded; {metric.applied_count} applied; "
+        f"{metric.comparable_rerun_count} comparable reruns; "
         f"{outcome_summary}; last applied action {workload_last_applied_action_label(metric)}; "
-        f"family signal {workload_outcome_family_signal_text(metric.family_signal)}"
+        f"family signal {workload_outcome_family_signal_text(signal)}"
     )
+
+
+def workload_outcome_signal_for_recommendation(
+    metric: WorkloadOutcomeMetric,
+    recommendation_id: str,
+) -> WorkloadOutcomeFamilySignal:
+    if recommendation_id_allowed(recommendation_id):
+        for signal in metric.family_signals:
+            if signal.recommendation_id == recommendation_id:
+                return signal
+        return workload_outcome_family_signal(
+            recommendation_id=recommendation_id,
+            records=[],
+            min_applied=metric.family_signal.min_applied,
+        )
+    return metric.family_signal
 
 
 def workload_last_applied_action_label(metric: WorkloadOutcomeMetric) -> str:
@@ -459,9 +554,9 @@ def workload_outcome_family_signal_text(signal: WorkloadOutcomeFamilySignal) -> 
     label = safe_recommendation_label(signal.recommendation_id)
     next_check = workload_outcome_family_next_check(signal.recommendation_id)
     sample_text = workload_outcome_family_sample_text(signal)
-    if signal.applied_count <= 0:
-        return f"{label}: no applied records yet; {sample_text}; next check {next_check}"
-    parts = [f"improved {signal.improved_count}/{signal.applied_count} applied"]
+    if signal.comparable_rerun_count <= 0:
+        return f"{label}: no verified rerun records yet; {sample_text}; next check {next_check}"
+    parts = [f"improved {signal.improved_count}/{signal.comparable_rerun_count} comparable reruns"]
     for label_text, count in (
         ("no change", signal.no_change_count),
         ("worsened", signal.worsened_count),
@@ -475,9 +570,13 @@ def workload_outcome_family_signal_text(signal: WorkloadOutcomeFamilySignal) -> 
 def workload_outcome_family_sample_text(signal: WorkloadOutcomeFamilySignal) -> str:
     if signal.min_sample_met:
         return (
-            f"feedback sample threshold met ({signal.applied_count}/{signal.min_applied} applied)"
+            "feedback sample threshold met "
+            f"({signal.comparable_rerun_count}/{signal.min_applied} comparable reruns)"
         )
-    return f"feedback sample below threshold ({signal.applied_count}/{signal.min_applied} applied)"
+    return (
+        "feedback sample below threshold "
+        f"({signal.comparable_rerun_count}/{signal.min_applied} comparable reruns)"
+    )
 
 
 def workload_outcome_family_next_check(recommendation_id: str) -> str:
@@ -495,7 +594,10 @@ def parse_action_outcome_line(line: str) -> ActionOutcomeRecord | None:
         return None
     if not isinstance(payload, dict):
         return None
-    if payload.get("schema_version") != SCHEMA_VERSION:
+    schema_version = payload.get("schema_version")
+    if isinstance(schema_version, bool):
+        return None
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         return None
     recommendation_id = str(payload.get("recommendation_id") or "")
     applied = str(payload.get("applied") or "")
@@ -503,17 +605,23 @@ def parse_action_outcome_line(line: str) -> ActionOutcomeRecord | None:
     workload_fingerprint = safe_workload_fingerprint(payload.get("workload_fingerprint"))
     case_id_local = safe_case_id(payload.get("case_id_local"))
     case_fingerprint_value = safe_case_fingerprint(payload.get("case_fingerprint"))
+    verification_status = parse_verification_status(
+        payload.get("verification_status"),
+        applied=applied,
+        schema_version=schema_version,
+    )
     if not (
         recommendation_id_allowed(recommendation_id)
         and applied in ALLOWED_APPLIED
         and outcome in ALLOWED_OUTCOMES
+        and verification_status
         and workload_fingerprint
         and case_id_local
         and case_fingerprint_value
     ):
         return None
     return ActionOutcomeRecord(
-        schema_version=SCHEMA_VERSION,
+        schema_version=int(schema_version),
         recorded_at_iso=sanitize_browser_error_text(payload.get("recorded_at_iso") or ""),
         workload_fingerprint=workload_fingerprint,
         case_fingerprint=case_fingerprint_value,
@@ -521,6 +629,7 @@ def parse_action_outcome_line(line: str) -> ActionOutcomeRecord | None:
         recommendation_id=recommendation_id,
         applied=applied,
         outcome=outcome,
+        verification_status=verification_status,
         note_redacted=sanitize_browser_error_text(
             payload.get("note_redacted") or "", max_chars=256
         ),
@@ -530,6 +639,20 @@ def parse_action_outcome_line(line: str) -> ActionOutcomeRecord | None:
 def safe_case_fingerprint(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text if re.fullmatch(r"cf_[0-9a-f]{24}", text) else ""
+
+
+def parse_verification_status(
+    value: Any,
+    *,
+    applied: str,
+    schema_version: object,
+) -> str:
+    if applied != "yes":
+        return "not_applicable"
+    if schema_version == LEGACY_SCHEMA_VERSION:
+        return "legacy_unverified"
+    text = str(value or "").strip().lower()
+    return text if text in {"comparable_rerun", "legacy_unverified"} else ""
 
 
 def action_outcome_count(*, path: Path | None = None) -> int:
