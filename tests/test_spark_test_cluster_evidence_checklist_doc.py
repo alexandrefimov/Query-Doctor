@@ -27,7 +27,7 @@ def test_spark_test_cluster_evidence_checklist_stays_non_supporting() -> None:
         "Do not run Spark jobs",
         "Do not run Query Doctor-generated EXPLAIN",
         "Do not use broad History Server crawls",
-        "Do not use the evidence set to add Spark engine registration",
+        "Do not use the evidence set to broaden Spark registration beyond the compact-only adapter",
         "This does not require live query execution.",
         "Product support comes later",
     ):
@@ -45,6 +45,8 @@ def test_spark_test_cluster_evidence_checklist_requires_compact_raw_free_evidenc
         "spark_history_eventlog_compact_v1",
         "raw-free engine fact boundary JSON",
         "deterministic Spark compact diagnosis JSON",
+        "spark_compact_diagnostic_lane_v1",
+        "diagnostic-lane contract",
         "redaction note describing removed field classes, not removed values",
         "explicit-application, summary-only, bounded per endpoint",
         "Private or loopback History Server targets require explicit local opt-in",
@@ -74,11 +76,37 @@ def test_spark_test_cluster_evidence_checklist_pins_cases_and_redaction() -> Non
         assert required in text
 
 
+def test_spark_test_cluster_evidence_checklist_records_current_live_checkpoint() -> None:
+    text = _normalized_doc_text()
+
+    for required in (
+        "Current Live Checkpoint",
+        "2026-06-05 Spark 4.1 live checkpoint",
+        "all six top-level endpoints readable",
+        "zero source warnings",
+        "spark_history_server_compact_v1",
+        "spark_4_1",
+        "supported_attention_areas=0",
+        "stock cluster History Server can be reachable yet return no applications",
+        "infrastructure/source-coverage gap",
+        "not a reason for Query Doctor to read raw event logs",
+        "application-only Spark 4.1 linkage",
+        "same_application handoff without a selected SQL execution",
+        "summarizing readable application-level jobs, stages, scheduler delay, spill, and task-duration context",
+        "without raw selectors in compact output",
+        "SQL-execution-specific timing, failure category, and exact query linkage still require accepted SQL execution evidence",
+    ):
+        assert required in text
+
+
 def test_spark_test_cluster_evidence_checklist_pins_readiness_audit() -> None:
     text = _normalized_doc_text()
 
     for required in (
         "scripts/audit_spark_compact_readiness.py",
+        "scripts/spark_evidence_package_requirements.py",
+        "accepted sample cases, synthetic rejection cases, required compact source contracts, diagnostic signal groups, redaction classes, sentinel tests, and boundary assertions",
+        "is not an installed product CLI",
         "--require-supported-attention",
         "--require-min-inputs 2",
         "--require-source-contract spark_history_server_compact_v1",
@@ -91,22 +119,96 @@ def test_spark_test_cluster_evidence_checklist_pins_readiness_audit() -> None:
         "--summary-json",
         "--require-promotion-candidate",
         "machine-readable package readiness verdict",
+        "compact_attention_ready diagnostic lane",
+        "missing required diagnostic-lane readiness",
+        "diagnostic-lane schema, readiness, source-granularity",
         "before writing",
         "without creating the output file",
         "deterministic safe filenames",
         "spark_fixture_export_manifest.json",
         "--fixture-export-manifest",
+        "recomputes compact diagnosis diagnostic_lane evidence readiness",
+        "missing or drifted lane fields fail before retained handoff use",
+        "scripts/spark_one_application_handoff.py",
+        "--compact-out",
+        "--diagnosis-out",
+        "--boundary-facts-out",
+        "--application-attempt-id",
+        "selector is used only for bounded request paths",
+        "is not written into compact output, diagnosis output, boundary facts, or terminal text",
+        "raw-free-spark-one-application-handoff-summary.json",
+        "spark_one_application_handoff_summary_v1",
+        "The summary path must differ from the compact, diagnosis, and boundary output paths.",
+        "--product-surface-summary-out",
+        "raw-free-spark-surface-boundary-summary-json",
+        "spark_product_surface_boundary_audit_v1",
+        "live_known_query_diagnosis=not_wired",
+        "only Spark web POST surface",
+        "The product-surface summary path must differ from the compact, diagnosis, boundary, and handoff summary output paths.",
+        "scripts/build_spark_one_application_handoff_suite_manifest.py",
+        "--compact-json",
+        "--diagnosis-json",
+        "--boundary-facts-json",
+        "--handoff-summary-json",
+        "--product-surface-summary-json",
+        "handoff_summary_json",
+        "product_surface_summary_json",
+        "raw-free-spark-one-application-handoff-summary-a.json",
+        "raw-free-spark-surface-boundary-summary-a-json",
+        "status-ok, generated with the same strict readiness requirements",
+        "spark_product_surface_boundary_audit_v1 artifact is raw-free and path-free",
+        "recomputes the per-entry summary",
+        "protected from summary overwrite",
+        "spark_one_application_handoff_suite_v1",
+        "--one-application-handoff-suite-manifest",
+        "raw-free-spark-one-application-suite-summary.json",
+        "spark_compact_readiness_summary_v1",
+        "The summary path must differ from the manifest and every listed compact, diagnosis, boundary, handoff-summary, or product-surface summary artifact.",
+        "scripts/build_spark_evidence_package_from_one_application_suite.py",
+        "--sample-case",
+        "one explicit package sample case per manifest entry",
+        "re-runs the one-application suite audit",
+        "requires History Server compact source contracts",
+        "rejects diagnosis/boundary drift",
+        "rejects SQL-specific sample-case labels unless the compact payload has accepted exact_query SQL execution evidence",
+        "SQL-specific sample-case labels require accepted exact_query SQL execution evidence and cannot be claimed from same_application application-level handoffs",
+        "compact/diagnosis/boundary triples",
         "scripts/audit_spark_evidence_handoff.py",
+        "scripts/build_spark_handoff_suite_manifest.py",
+        "--handoff-suite-manifest",
+        "spark_evidence_handoff_suite_v1",
+        "retained raw-free handoff summaries",
+        "--require-source-granularity",
+        "--require-verification-scope",
+        "raw-free-spark-support-boundary-summary-json",
+        "spark_support_boundary_audit_v1",
+        "boundary labels, check statuses, safe counts",
         "temporary directory",
         "temporary export",
         "machine-readable handoff readiness summary",
+        "diagnostic-lane checked/readiness/source-granularity",
+        "required compact_attention_ready readiness counter",
+        "accepted diagnostic-lane source-granularity counters",
+        "selected source-granularity and verification-scope requirements",
+        "missing requested labels as path-free readiness gaps",
+        "keep fact-state counters available",
         "The summary path must differ from the package input.",
         "source-contract alignment",
+        "required diagnostic signal groups",
+        "data movement, failure, runtime context, and adaptive plan context",
+        "missing diagnostic signal groups",
         "manifest filenames",
         "compact filenames",
         "support-claim boundary",
         "fails before overwrite",
-        "diagnosis-boundary drift",
+        "diagnosis-boundary or diagnostic-lane drift",
+        "matching attention/source-warning and fact-state counters",
+        "fixture_compact",
+        "exact_sql_execution_compact",
+        "--require-source-granularity and --require-verification-scope labels",
+        "recorded in summary requirements",
+        "missing requested labels fail as path-free readiness gaps",
+        "deterministic compact payload",
         "root_cause=not_claimed",
         "no Spark job execution",
         "partial_evidence",
@@ -116,6 +218,7 @@ def test_spark_test_cluster_evidence_checklist_pins_readiness_audit() -> None:
         "safe blocker IDs",
         "must not echo compact input paths, raw filenames, raw payload values",
         "History Server URLs, request selectors, SQL, log content, or local output paths",
+        "package output path",
         "Keep raw exports outside the repository and outside prompts.",
     ):
         assert required in text
@@ -132,6 +235,26 @@ def test_spark_test_cluster_evidence_checklist_is_indexed_and_cross_linked() -> 
     assert "spark-test-cluster-evidence-checklist.md" in architecture
 
 
+def test_spark_architecture_spike_pins_isolated_page_diagnostic_lane() -> None:
+    text = _normalized_path_text(SPARK_ARCHITECTURE_DOC)
+
+    for required in (
+        "isolated Spark compact page",
+        "safe diagnostic-lane readiness",
+        "source granularity",
+        "verification scope",
+        "supported-attention count",
+        "source-warning count",
+        "Details/trusted report output",
+        "Spark support claim",
+    ):
+        assert required in text
+
+
 def _normalized_doc_text() -> str:
-    text = SPARK_EVIDENCE_CHECKLIST_DOC.read_text(encoding="utf-8").replace("`", "")
+    return _normalized_path_text(SPARK_EVIDENCE_CHECKLIST_DOC)
+
+
+def _normalized_path_text(path: Path) -> str:
+    text = path.read_text(encoding="utf-8").replace("`", "")
     return " ".join(text.split())

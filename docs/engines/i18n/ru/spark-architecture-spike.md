@@ -16,7 +16,7 @@ Spark не является текущим поддерживаемым движ
 описывает исследовательский architecture/fact-model spike, чтобы не переносить
 Impala-предположения на Spark.
 
-Текущий уровень: `research`.
+Текущий уровень: `bounded_compact_research`.
 
 Разрешено: source/evidence contract docs, compact synthetic fixture schema,
 raw-field denylist, proposed fact envelope, bounded compact Spark History
@@ -27,9 +27,10 @@ accepted raw-free compact JSON и тестовый план для `supported`,
 
 Не разрешено: запуск Spark jobs, `spark-submit`, notebooks, user SQL,
 Query Doctor-generated `EXPLAIN`, live Spark History Server collection по
-умолчанию или broad application crawl, engine registration, product browser
-workflows, Details pages, trusted report output, optimizer behavior или UI
-selector, который выглядит как поддержка Spark.
+умолчанию или broad application crawl, engine registration beyond the
+compact-only adapter, product browser workflows beyond isolated compact pages,
+Details pages, trusted report output, optimizer behavior или UI selector,
+который выглядит как поддержка Spark.
 
 ## Крупный план
 
@@ -37,10 +38,30 @@ selector, который выглядит как поддержка Spark.
 текущее состояние веток или локальные handoff notes.
 
 1. Research contract and public boundaries: зафиксировать, что Spark остается
-   research-only без product collector, engine registration, primary UI path,
-   Details/trusted report surface, optimizer behavior или support claim.
-   Experimental compact History Server intake и isolated compact-diagnosis page
-   остаются ниже product support.
+   bounded compact research без product collector beyond the compact-only
+   adapter, primary UI path, Details/trusted report surface, optimizer
+   behavior или support claim. Experimental compact History Server intake и
+   isolated compact-diagnosis page остаются ниже product support; dev-only
+   `scripts/spark_one_application_handoff.py` только связывает тот же bounded
+   one-application compact path с raw-free diagnosis/boundary/readiness audit
+   и optional product-surface summary audit.
+   Retained one-application compact/diagnosis/boundary triples можно
+   сгруппировать через
+   `scripts/build_spark_one_application_handoff_suite_manifest.py` и проверить
+   через
+   `scripts/audit_spark_compact_readiness.py
+   --one-application-handoff-suite-manifest` без повторного открытия Spark и
+   печати artifact paths; optional retained compact-readiness summaries
+   сохраняют diagnostic-lane readiness/source-granularity/verification-scope
+   и fact-state counters. Optional retained product-surface summaries
+   сверяются через `scripts/audit_spark_product_surface_boundary.py
+   --one-application-handoff-suite-manifest` и сохраняют diagnostic-lane
+   readiness/source-granularity/verification-scope и fact-state counters.
+   Retained package handoff summaries сохраняют diagnostic-lane
+   checked/readiness/source-granularity/verification-scope и fact-state
+   counters; retained suite gate reject-ит summaries, которые теряют required
+   lane readiness, accepted source-granularity evidence или accepted
+   verification-scope evidence.
 2. Compact fixture schema and validation: добавить compact synthetic schema для
    application, SQL execution, job, stage, task, executor, data movement и
    limitations, плюс tests для rejection unsafe raw fields.
@@ -48,8 +69,8 @@ selector, который выглядит как поддержка Spark.
    facts только после того, как schema явно поддерживает `supported`,
    `not_observed`, `unknown` и `unsupported`. Текущий mapper остается
    fixture-only, переводит source-only `unsupported` markers в boundary-safe
-   limitation facts и не добавляет collector, UI, reports, optimizer behavior
-   или support claim.
+   limitation facts и не добавляет collector beyond compact intake, UI beyond
+   isolated compact pages, reports, optimizer behavior или support claim.
 4. Shared fact coordination: текущий coordination slice оставляет общий слой
    узким: envelope, diagnostic states, lifecycle fields, raw-free boundary и
    explicit fact namespace registry. Spark stage/task/shuffle/executor facts
@@ -122,9 +143,11 @@ root cause, рендериться в Details или trusted reports, добав
 behavior или выглядеть как Spark engine support.
 Compact diagnosis и isolated Spark compact page могут показывать supported
 aggregate input/output rows, bytes, stages, tasks, shuffle, spill и elapsed time
-как formatted runtime context. Этот context не является attention signal,
-root-cause claim, shared metric, Details/trusted report output или Spark support
-claim.
+как formatted runtime context. Isolated page также показывает safe
+diagnostic-lane readiness, source granularity, verification scope,
+supported-attention count и source-warning count из compact diagnosis contract.
+Этот context не является attention signal, root-cause claim, shared metric,
+Details/trusted report output или Spark support claim.
 
 ## Непереговорные правила
 
