@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 Язык: [English](../../changelog.md) | Русский
 
@@ -33,6 +33,262 @@ changelog entry, если они не меняют behavior или safety.
 
 ## Текущий Unreleased summary
 
+Английский `Unreleased` теперь фиксирует, что Trino retained package-level
+handoff suites могут требовать selected source contracts через
+`--require-source-contract`, diagnostic-lane source granularities через
+`--require-source-granularity` и verification scopes через
+`--require-verification-scope`. Suite audit принимает только safe labels,
+reject-ит missing retained evidence без печати paths или rejected
+user-supplied values и сохраняет retained package evidence ниже Trino product
+support.
+Английский `Unreleased` теперь фиксирует local retained-suite manifest для
+Impala north-star calibration. `build_impala_north_star_suite_manifest.py`
+собирает redaction-reviewed manifest из raw-free loop summaries, а
+`audit_impala_north_star_gate.py --suite-manifest` требует minimum retained
+batch breadth и пишет safe trend без paths, artifact filenames, raw cases,
+SQL, profiles, workload fingerprints или action-outcome records.
+Английский `Unreleased` теперь фиксирует safe unknown-category rollup в
+retained Impala north-star summaries: `unknown_primary_category_counts` и
+`top_unknown_primary_categories` помогают выбирать next deterministic evidence
+work по вкладу unknown, не раскрывая raw cases и не усиливая diagnosis wording.
+Английский `Unreleased` теперь фиксирует sanitized
+`unknown_primary_resolution_counts` в retained diagnostic-loop summaries и
+resolution-class rollup в north-star aggregate, чтобы отделять deterministic
+evidence gaps от clean/out-of-scope boundaries.
+Английский `Unreleased` также фиксирует, что committed synthetic Impala
+north-star aggregate хранит такой же unknown-primary resolution-class split:
+CI защищает не только passing unknown-rate, но и то, что оставшиеся unknown
+являются clean boundaries, а не deterministic evidence backlog.
+Английский `Unreleased` теперь фиксирует, что Trino one-query handoff
+wrappers могут писать optional `trino_one_query_handoff_summary_v1` raw-free
+machine evidence. Retained handoff-suite manifests могут ссылаться на эти
+summaries, а compact readiness gate reject-ит drifted pipeline,
+artifact-boundary или embedded readiness evidence, сохраняя path-free
+no-product-support boundary.
+Английский `Unreleased` теперь фиксирует optional `--summary-json` для
+Spark support-boundary audit. Retained `spark_support_boundary_audit_v1`
+summary хранит только no-support boundary labels, check statuses, safe counts
+и safe issue categories/messages без печати paths или расширения Spark за
+compact support surfaces.
+Английский `Unreleased` теперь фиксирует, что Spark retained package
+handoff-suite audits могут требовать явные diagnostic-lane
+source-granularity labels через `--require-source-granularity`. Suite summary
+JSON сохраняет выбранные source-granularity requirements, а отсутствующие
+запрошенные labels отклоняются как path-free readiness gaps без reopening
+packages или Spark support claim.
+Английский `Unreleased` теперь фиксирует, что Spark compact-readiness suite
+audits могут требовать явные diagnostic-lane source-granularity labels через
+`--require-source-granularity` для direct compact inputs, fixture-export
+manifests и retained one-application handoff-suite manifests. Summary JSON
+сохраняет выбранные source-granularity requirements, а отсутствующие
+запрошенные labels отклоняются как path-free readiness gaps.
+Английский `Unreleased` теперь фиксирует, что Spark product-surface audit
+summaries сохраняют diagnostic-lane readiness, source-granularity,
+verification-scope и fact-state counters. Retained one-application suite
+audits заново считают эти counters, чтобы ловить no-product-surface summary
+drift без reopening Spark или расширения Spark за compact preview lanes.
+Английский `Unreleased` теперь фиксирует, что Spark compact-readiness
+summaries сохраняют diagnostic-lane source-granularity и verification-scope
+counters рядом с readiness и fact-state counters, чтобы retained
+one-application suite evidence доказывал и lane readiness, и comparable
+verification scope без reopening Spark.
+Английский `Unreleased` теперь фиксирует, что Spark compact-readiness suite
+audits могут требовать явные diagnostic-lane verification-scope labels через
+`--require-verification-scope` для direct compact inputs, fixture-export
+manifests и retained one-application handoff-suite manifests. Summary JSON
+сохраняет выбранные scope requirements, а отсутствующие запрошенные scopes
+отклоняются как path-free readiness gaps.
+Английский `Unreleased` теперь фиксирует, что Spark package handoff summaries
+сохраняют diagnostic-lane checked, readiness, source-granularity,
+verification-scope и fact-state counters. Retained handoff suite audits
+reject-ят summaries, которые теряют required `compact_attention_ready`
+evidence, accepted source-granularity counters или accepted verification-scope
+counters, оставаясь path-free и ниже Spark product support.
+Английский `Unreleased` теперь фиксирует, что retained Spark package handoff
+suite audits могут требовать явные diagnostic-lane verification-scope labels
+через `--require-verification-scope`. Suite summary JSON сохраняет выбранные
+scope requirements, а missing requested scopes fail-ятся как path-free readiness
+gaps без reopening Spark и без расширения Spark за compact preview lanes.
+Английский `Unreleased` теперь фиксирует optional
+`--product-surface-summary-json` для Spark one-application handoff-suite
+manifest. Readiness gate считает эти refs retained artifacts и защищает
+summary outputs от overwrite, а Spark product-surface audit заново считает
+per-entry summary, чтобы ловить no-product-surface evidence drift без печати
+paths или raw payloads.
+Английский `Unreleased` теперь фиксирует optional
+`--product-surface-summary-out` для Spark one-application handoff. Dev-only
+wrapper запускает Spark product-surface boundary audit по только что
+записанным compact/diagnosis artifacts, пишет raw-free/path-free
+`spark_product_surface_boundary_audit_v1` summary и не ослабляет failed exit
+status, если strict compact readiness падает.
+Английский `Unreleased` теперь фиксирует, что Trino preview source types имеют
+checked source-contract registry для accepted bounded source kinds,
+raw-storage policy, required bounds, network access classes и promotion gates.
+Support-gap audit reject-ит missing registry coverage и любые registry entries,
+которые включают product surfaces, Details/trusted reports, Recent scans,
+optimizer behavior, SQL execution, raw storage, browser/report output или
+metadata identifier output.
+Английский `Unreleased` теперь фиксирует, что public code-audit и Codex
+handoff baselines больше не называют Trino source-contract registry будущей
+задачей: они записывают его как owner accepted preview source kinds, raw
+policy, bounds, network-access classes и promotion gates. Remaining broad
+Trino/Spark architecture backlog оставляет только shared readiness/handoff
+helpers.
+Английский `Unreleased` теперь фиксирует, что cross-engine normalized facts
+имеют checked promotion-policy registry для shared, distributed-SQL-family,
+source-boundary и support-boundary fact IDs, visible to Trino preview lanes.
+Support-gap audit reject-ит missing policy coverage, mismatched
+allowed-engine/scope contract, enabled product surfaces, weakened raw-free
+policy или missing explicit promotion gate.
+Английский `Unreleased` теперь фиксирует, что Trino и Spark dev-only handoff
+scripts имеют shared handoff artifact helpers для path-overlap checks и
+ASCII/sorted JSON writes. Engine-specific redaction guards, readiness gates и
+below-support wording остаются в owning scripts.
+Английский `Unreleased` теперь фиксирует, что Trino retained one-query
+handoff suites могут хранить optional per-entry
+`trino_compact_readiness_summary_v1` refs. Manifest builder держит refs safe и
+relative, suite gate может требовать их через
+`--require-readiness-summary-json`, а audit сверяет каждую retained summary с
+deterministic one-query boundary/diagnosis/smoke readiness result без печати
+artifact paths, filenames, coordinator URLs, Query IDs, auth material, raw
+QueryInfo, SQL или support claims.
+Английский `Unreleased` теперь фиксирует, что Trino one-query compact
+readiness переносит safe `trino_version_family` fact из accepted coordinator
+QueryInfo source contract в raw-free boundary payload. Dev-only one-query
+handoff требует минимум одну non-unknown version family, а retained
+handoff-suite audit может требовать minimum version-family breadth или
+конкретные safe version-family labels без печати coordinator URLs, Query IDs,
+auth material, raw QueryInfo, artifact paths или raw version strings.
+Английский `Unreleased` теперь фиксирует, что Spark History Server
+application-only collection трактует unavailable SQL execution-list endpoint
+как safe `sql_execution_endpoint` compatibility limitation, а не
+source-coverage warning, и при этом может суммировать readable
+application-level jobs, stages, scheduler delay, spill и task duration buckets
+как raw-free `same_application` context. SQL execution timing, failure category
+и exact query linkage остаются `unknown`, пока accepted SQL execution summary
+не поддержит их напрямую. Exact SQL execution selectors остаются strict: если
+explicit endpoint недоступен или execution не найден, collector всё ещё пишет
+safe source warning IDs и оставляет query linkage `same_application`.
+Английский `Unreleased` теперь фиксирует, что Spark compact evidence-package
+validation требует от `application_only_same_application` promotion sample
+warning-free History Server compact evidence с `same_application` provenance,
+supported application-level job/stage/task и task-duration context, без claimed
+SQL execution timing или failure facts. Gate остается preview/readiness-only и
+не создает Spark support claim.
+Английский `Unreleased` теперь фиксирует, что Spark
+one-application-suite-to-package bridge reject-ит SQL-specific sample-case
+labels, если retained compact History Server payload не содержит accepted
+`exact_query` SQL execution evidence. Это не дает `same_application`
+application-level handoffs перелabelивать в exact SQL, long-elapsed,
+failure-category или adaptive-execution samples и сохраняет Spark ниже support.
+Английский `Unreleased` теперь фиксирует, что Spark compact diagnosis пишет
+raw-free `spark_compact_diagnostic_lane_v1` contract с source granularity,
+evidence readiness, verification scope, fact-state counts и required
+readiness/surface gates. Compact-readiness audit заново считает и валидирует
+этот lane contract, поэтому retained handoffs fail-closed при missing/drifted
+lane evidence без wiring Spark в Details, reports, optimizer, Recent или
+support claims.
+Английский `Unreleased` теперь фиксирует, что Spark compact evidence-package
+validation валидирует тот же `spark_compact_diagnostic_lane_v1` contract для
+каждого accepted sample и включает safe diagnostic-lane
+readiness/source-granularity counters в package summaries и readiness JSON.
+Package promotion gate теперь требует минимум один `compact_attention_ready`
+lane, оставаясь preview-only и ниже Spark support.
+Английский `Unreleased` теперь фиксирует, что isolated Spark
+compact-diagnosis page рендерит raw-free diagnostic lane как first-class
+preview block: evidence readiness, source granularity, verification scope,
+supported-attention count и source-warning count видны без echo submitted
+compact JSON, History Server selectors, lane schema internals,
+Details/trusted report wiring, optimizer behavior, Recent workflow behavior
+или Spark support claim.
+Английский `Unreleased` теперь фиксирует, что Spark History Server compact
+collection трактует unavailable per-stage `taskSummary` enrichment reads как
+safe `task_summary_endpoint` compatibility context, а не source-coverage
+warning. Stage skew и task-duration signals остаются `unknown`, пока accepted
+stage summaries или task-summary quantiles не дадут достаточно raw-free
+evidence.
+Английский `Unreleased` теперь фиксирует, что Spark compact diagnosis мапит
+supported over-one-minute task duration bucket evidence в
+`spark_task_duration_tail` attention area. Сигнал value-gated, остается
+raw-free и не claim-ит Spark root cause, Details/trusted-report wiring,
+optimizer behavior, Spark job execution или product support.
+Английский `Unreleased` теперь фиксирует, что Trino coordinator QueryInfo
+source contracts требуют safe `trino_version_family` вместе с
+source-contract и QueryInfo schema versions. Target check, pruned probe,
+pruned import и dev-only one-query handoff summaries показывают только этот
+broad safe label, reject-ят URL/path-like version values и по-прежнему не
+печатают coordinator URLs, Query IDs, auth material, raw QueryInfo или Trino
+support claim.
+Английский `Unreleased` теперь фиксирует, что Spark compact diagnosis
+использует supported application lifecycle как safe fallback, когда SQL
+execution lifecycle недоступен в application-only History Server evidence.
+Это улучшает Spark 2.4-style compact diagnosis context, но SQL failure,
+failure-category, root-cause, Details/trusted-report, optimizer, Spark job
+execution и support claims остаются unclaimed без прямых SQL/failure facts.
+Английский `Unreleased` теперь фиксирует, что Spark History Server compact
+collection пропускает per-stage `taskSummary` reads, когда stage summary уже
+содержит task runtime quantiles, и не делает task-summary reads для zero-task
+stages. Это держит optional task enrichment bounded и уменьшает ложные
+source-coverage warnings без task lists, raw stage identifiers, task details,
+URLs, logs, SQL или изменения Spark no-support boundary.
+Английский `Unreleased` теперь фиксирует explicit `--partial-ok` dry-run mode
+для Spark evidence handoff audit. Он нужен только для sanitized packages с
+ожидаемо неполным sample/case coverage: audit использует partial-evidence
+contract standalone validator-а, может записать rejected raw-free blocker
+summary и по-прежнему не запускает fixture export, не печатает package paths,
+raw values, request selectors и не создает Spark support claim.
+Английский `Unreleased` теперь фиксирует, что dev-only Trino one-query live
+handoff может использовать explicit Kerberos/SPNEGO curl fetch mode для одного
+bounded `GET /v1/query/{queryId}?pruned=true`, если оператор уже подготовил
+local ticket cache. Режим mutually exclusive с `--auth-header-file`, сохраняет
+source-contract/readiness gates, reject-ит output overlap с Kerberos local
+inputs и не печатает coordinator URLs, Query IDs, principals, ticket-cache
+paths, auth material, raw QueryInfo, local paths, filenames или Trino support
+claim.
+Английский `Unreleased` теперь фиксирует, что Trino one-query live handoff
+может писать optional raw-free `trino_compact_readiness_summary_v1` через
+`--readiness-summary-out` в том же dev-only запуске, который пишет boundary и
+compact diagnosis JSON. Wrapper использует strict one-query/source-version
+readiness gate, reject-ит overlap summary output с input/output artifacts и не
+печатает coordinator URLs, Query IDs, auth headers, raw QueryInfo, local paths,
+filenames или Trino support claim.
+Английский `Unreleased` теперь фиксирует dev-only
+`scripts/trino_evidence_package_requirements.py`: helper печатает требования
+Trino evidence package прямо из Python-контракта: safe package/source-type
+labels, fixture contract/version labels, redaction/rejection classes, sentinel
+tests, boundary assertions и size limits. Он не читает Trino endpoint, не
+является installed product CLI и не создает Trino support claim.
+Английский `Unreleased` теперь фиксирует dev-only
+`scripts/build_trino_evidence_handoff_suite_manifest.py` и
+`scripts/audit_trino_evidence_handoff.py --handoff-suite-manifest`: retained
+Trino evidence-package handoff summaries можно группировать и проверять без
+повторного открытия packages. Suite принимает только raw-free
+`trino_evidence_handoff_summary_v1` с accepted package/boundary/readiness
+pipeline, может писать raw-free machine summary, reject-ит output/input overlap
+и не печатает paths, filenames, package payloads, SQL, URLs, Query IDs или
+support claim.
+Английский `Unreleased` теперь фиксирует dev-only
+`scripts/spark_evidence_package_requirements.py`: helper печатает требования
+Spark evidence package прямо из Python-контракта: safe case labels,
+source-contract labels, diagnostic signal groups, redaction classes, sentinel
+tests и boundary assertions. Он не читает Spark endpoint, не является
+installed product CLI и не создает Spark support claim.
+Английский `Unreleased` теперь фиксирует `--application-attempt-id` для Spark
+History Server compact intake: selector поддержан в installed collector,
+isolated compact web page и dev-only one-application handoff wrapper. Он
+используется только в bounded request paths и не записывается в compact output,
+diagnosis output, boundary facts, terminal output или browser results.
+Английский `Unreleased` теперь фиксирует optional `--summary-json` для Spark
+one-application handoff: wrapper пишет raw-free
+`spark_one_application_handoff_summary_v1` с collection counters, safe warning
+IDs, no-support boundary labels, artifact-write states и nested compact
+readiness summary, reject-ит output overlap и не пишет paths/selectors/raw
+values/support claim.
+Английский `Unreleased` теперь фиксирует, что Spark one-application retained
+suite manifest может ссылаться на matching
+`spark_one_application_handoff_summary_v1`; readiness gate проверяет такой
+summary на raw-free/path-free status-ok evidence, те же strict requirements,
+source-coverage counters, warning IDs и no-support boundary labels.
 Английский `Unreleased` теперь фиксирует, что browser/log host redaction
 использует linear token scanner для free-text FQDNs, host-like single-label
 names и bare `host:port` values вместо regex substitutions с backtracking
@@ -59,6 +315,76 @@ validation также reject-ит per-sample compact diagnosis boundary drift,
 сохраняя experimental / no-support и no-root-cause boundary для Spark. Handoff
 audit теперь может писать optional raw-free `--summary-json` с
 machine-readable readiness evidence без path echo.
+Английский `Unreleased` теперь фиксирует, что Spark evidence-package
+`promotion_candidate` readiness требует diagnostic signal-group breadth по data
+movement, failure, runtime context и adaptive plan context. Одних complete case
+labels больше недостаточно для promotion-ready package; raw-free summaries
+показывают missing signal groups только как safe blocker IDs и не меняют
+Spark no-support boundary.
+Английский `Unreleased` теперь фиксирует, что Spark evidence-package summaries,
+readiness JSON, compact readiness suite output и strict handoff summary JSON
+добавляют safe `source_warning_counts` по allowlisted Spark warning ID рядом с
+общим warning count. Это делает warning-driven promotion blockers понятнее без
+History Server endpoints, file paths, raw logs, SQL text или изменения Spark
+no-support boundary.
+Английский `Unreleased` теперь фиксирует registered bounded compact Spark
+engine adapter для Spark History Server compact-intake CLI, compact
+evidence-package validation/export и raw-free compact diagnosis. Default
+production triage engine остается Impala; Spark adapter не включает Recent
+scans, Query ID product diagnosis, metadata collection, Details/trusted
+reports, optimizer behavior, raw event-log handling, raw SQL/plan display,
+environment/log dumps или Spark job execution.
+Английский `Unreleased` теперь фиксирует
+`scripts/audit_spark_support_boundary.py`: static Spark support-boundary audit
+держит Spark adapter compact-only, Spark CLI roles, README/support-matrix
+wording и Details/report/optimizer/recent imports ниже production support до
+любого расширения Spark product exposure.
+Английский `Unreleased` теперь фиксирует dev-only retained-suite gate для
+Spark evidence handoff: `scripts/build_spark_handoff_suite_manifest.py`
+собирает local `spark_evidence_handoff_suite_v1` manifest поверх уже raw-free
+handoff summary JSON, а `scripts/audit_spark_evidence_handoff.py
+--handoff-suite-manifest` проверяет retained summaries и optional raw-free
+suite summary JSON без чтения Spark, повторного открытия packages, печати
+artifact paths, product surfaces или расширения Spark support за пределы
+compact-only adapter.
+Английский `Unreleased` теперь фиксирует, что Spark compact readiness audits
+могут писать optional raw-free `spark_compact_readiness_summary_v1` JSON через
+`--summary-json`, включая one-application handoff-suite mode. Summary содержит
+только schema/mode/status labels, strictness requirements, no-support boundary
+labels, aggregate counters, source-contract counts и safe issue
+categories/messages, а output path не может совпадать с input artifacts.
+Английский `Unreleased` теперь фиксирует, что Spark compact readiness suites
+могут требовать raw-free Spark version-family breadth через
+`--require-min-spark-version-families` и повторяемый
+`--require-spark-version-family`. Audit считает только safe `spark_*` labels из
+accepted compact provenance, пишет aggregate counters в
+`spark_compact_readiness_summary_v1` и не раскрывает raw Spark version strings,
+request selectors, paths или Spark support claim.
+Английский `Unreleased` теперь фиксирует, что Spark retained one-application
+History Server handoff suites можно передавать в dev-only sanitized
+evidence-package builder через
+`scripts/build_spark_evidence_package_from_one_application_suite.py`. Bridge
+заново запускает compact/diagnosis/boundary suite validation перед сборкой
+package wrapper, требует explicit sample-case labels, reject-ит drift и
+output/input overlap и не печатает artifact paths, filenames, raw payload
+values или Spark support claims.
+Английский `Unreleased` теперь фиксирует dev-only one-application wrapper для
+Spark live evidence handoff: `scripts/spark_one_application_handoff.py`
+связывает bounded History Server summary collection, raw-free compact
+diagnosis, optional raw-free boundary export и Spark compact readiness audit
+для одного explicit application без установки product CLI, broad crawl, raw
+event-log/environment reads, печати selectors/artifact paths или Spark support
+claim.
+Английский `Unreleased` теперь фиксирует dev-only retained-artifact suite для
+Spark one-application handoff: manifest builder группирует raw-free compact,
+deterministic diagnosis и engine fact boundary JSON triples, а compact
+readiness gate сверяет diagnosis/boundary consistency без повторного открытия
+Spark, печати paths/filenames/raw payload values или Spark support claim.
+Английский `Unreleased` теперь фиксирует, что Spark History Server compact
+executor summaries помечают executor section как `supported`, когда принят
+непустой executor summary list. При этом executor-loss, memory, churn и
+dynamic-allocation substates остаются независимыми, поэтому partial executor
+evidence не backfill-ит fake memory или loss signals.
 Agent-facing release instructions теперь pin-ят Spark compact boundary как
 experimental research only: без public Spark support, Recent scans,
 Details/trusted-report output, optimizer behavior, engine registration, raw
@@ -143,6 +469,26 @@ executed-smoke check, но не печатает coordinator URL, Query ID, auth
 raw QueryInfo, output paths или filenames. Это не installed product CLI, не
 live Query ID workflow, не Details/trusted-report surface, не optimizer
 workflow и не support claim.
+Dev-only Trino one-query handoff wrapper теперь может писать
+`trino_product_surface_boundary_audit_v1` summary из retained
+boundary/diagnosis artifacts. Это привязывает real-cluster handoff evidence к
+no-product-surface gate без live Query ID diagnosis, Details/trusted reports,
+optimizer behavior или support claim.
+Trino product-surface boundary audit теперь может читать
+`trino_one_query_handoff_suite_v1` manifest напрямую. Retained one-query suites
+используют один manifest для strict readiness и no-product-surface evidence,
+при этом compact diagnosis artifact обязателен для каждой entry, а manifest
+paths, artifact paths, URLs, Query IDs и support claims не попадают в output.
+Trino handoff-suite manifests теперь принимают только safe relative `*.json`
+artifact references без absolute paths, parent traversal, current-directory
+segments или backslashes. Builder и readiness audit reject-ят duplicate
+boundary/diagnosis references, чтобы suite-width gates не считали один artifact
+несколько раз; shared smoke summary остается разрешенным.
+Trino product-surface boundary audit теперь также статически проверяет Python
+imports в product-surface web/report/optimizer modules. Guard разрешает только
+isolated compact-diagnosis route/page imports и path-free падает, если
+Details, trusted reports, optimizer, Recent или другой product module импортит
+Trino preview diagnosis code.
 Trino compact readiness audit теперь принимает
 `--handoff-suite-manifest <manifest.json>` для набора dev-only one-query
 handoff results. Manifest с kind `trino_one_query_handoff_suite_v1` ссылается
@@ -163,6 +509,29 @@ redaction-review confirmation, пишет `trino_one_query_handoff_suite_v1` с
 relative artifact references, поддерживает one shared smoke summary или one per
 boundary, reject-ит output/input overlap и печатает только path-free aggregate
 counts.
+Английский `Unreleased` теперь также фиксирует
+`scripts/audit_trino_evidence_handoff.py`: dev-only package-to-boundary
+readiness audit для sanitized Trino evidence packages. Он валидирует package,
+конвертирует accepted samples в raw-free boundary payloads in memory, запускает
+compact readiness suite, может писать `trino_evidence_handoff_summary_v1`, не
+печатает paths, raw payloads, SQL или Trino identifiers и не делает support
+claim.
+Английский `Unreleased` теперь также фиксирует
+`scripts/audit_trino_product_surface_boundary.py`: dev-only gate для retained
+Trino compact boundary/diagnosis artifacts перед любым product-surface
+promotion decision. Он проверяет deterministic diagnosis artifacts, pin-ит
+`live_known_query_diagnosis=not_wired`, валидирует, что allowed Trino web/CLI
+registry ограничен compact preview surfaces, может писать
+`trino_product_surface_boundary_audit_v1` и держит output path-free и
+support-claim-free.
+Английский `Unreleased` теперь также фиксирует
+`scripts/audit_trino_support_gap_matrix.py`: dev-only static gate, который
+сверяет Trino fact-family coverage с registered engine-fact namespace и engine
+adapter flags. Он может писать raw-free
+`trino_support_gap_matrix_audit_v1`, держит product surfaces заблокированными и
+ловит accidental promotion Trino в Recent, live Query ID diagnosis,
+Details/trusted reports, metadata collection или support claim до broader
+support work.
 Trino compact readiness audit теперь имеет strict
 `--require-one-query-boundary` gate: aggregate `query_list_*` boundaries не
 могут засчитываться как one-query Trino diagnosis readiness. Strict handoff

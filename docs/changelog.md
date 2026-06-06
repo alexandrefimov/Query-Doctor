@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -20,6 +20,618 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
 
 ### Safety
 
+- Trino retained package-level handoff suites can now require selected
+  source contracts through `--require-source-contract`, diagnostic-lane source
+  granularities through `--require-source-granularity`, and verification scopes
+  through `--require-verification-scope`. The suite audit accepts only safe
+  labels, rejects missing retained evidence without printing paths or
+  user-supplied rejected values, and keeps retained package evidence below
+  Trino product support.
+- Spark support-boundary audit can now write an optional raw-free
+  `spark_support_boundary_audit_v1` summary through `--summary-json`. The
+  retained summary records only no-support boundary labels, check statuses,
+  safe counts, and safe issue categories/messages without printing paths or
+  broadening Spark beyond compact support surfaces.
+- Spark retained package handoff-suite audits can now require explicit
+  diagnostic-lane source-granularity labels with
+  `--require-source-granularity`. The suite summary JSON records selected
+  source-granularity requirements, and missing requested labels fail as
+  path-free readiness gaps without reopening packages or claiming Spark
+  support.
+- Spark compact-readiness suite audits can now require explicit diagnostic-lane
+  source-granularity labels with `--require-source-granularity` across direct
+  compact inputs, fixture-export manifests, and retained one-application
+  handoff-suite manifests. Summary JSON records the selected source-granularity
+  requirements, and missing requested labels fail as path-free readiness gaps.
+- Spark product-surface audit summaries now retain diagnostic-lane readiness,
+  source-granularity, verification-scope, and fact-state counters. Retained
+  one-application suite audits recompute those counters to catch
+  no-product-surface summary drift without reopening Spark or broadening Spark
+  beyond compact preview lanes.
+- Spark compact-readiness summaries now retain diagnostic-lane
+  source-granularity and verification-scope counters alongside readiness and
+  fact-state counters, so retained one-application suite evidence can prove
+  both the lane readiness and the comparable verification scope without
+  reopening Spark.
+- Spark compact-readiness suite audits can now require explicit diagnostic-lane
+  verification-scope labels with `--require-verification-scope` across direct
+  compact inputs, fixture-export manifests, and retained one-application
+  handoff-suite manifests. Summary JSON records the selected scope
+  requirements, and missing requested scopes fail as path-free readiness gaps.
+- Spark package handoff summaries now retain diagnostic-lane checked,
+  readiness, source-granularity, verification-scope, and fact-state counters.
+  Retained handoff suite audits reject summaries that lose required
+  `compact_attention_ready` evidence, accepted source-granularity counters, or
+  accepted verification-scope counters, keeping package handoff evidence
+  path-free and below Spark product support.
+- Spark retained package handoff suite audits can now require explicit
+  diagnostic-lane verification-scope labels with `--require-verification-scope`.
+  Suite summary JSON records the selected scope requirements, and missing
+  requested scopes fail as path-free readiness gaps without reopening Spark or
+  broadening Spark beyond compact preview lanes.
+- Spark one-application handoff-suite manifests can now retain optional
+  `spark_product_surface_boundary_audit_v1` summary references through
+  `--product-surface-summary-json`. The readiness gate treats them as safe
+  retained artifacts and protects summary outputs from overwriting them, while
+  the Spark product-surface audit recomputes each per-entry summary to catch
+  no-product-surface evidence drift without printing paths or raw payloads.
+- Impala primary-bottleneck coverage now has a committed synthetic
+  representative gate fixture derived from the local synthetic demo pack. The
+  fixture stores portable raw-free `analysis.json` inputs plus a sanitized
+  aggregate showing full-batch unknown rate, medium-or-better rate, unknown
+  reason categories, unknown resolution categories, and a short trend. The
+  synthetic gate now protects the next coverage step by failing if the
+  aggregate drifts or if unknown primary coverage is not below 20% while
+  medium-or-better coverage stays below 70%; the current trend point closes the
+  mapped-operator unknown gap through deterministic client-fetch-tail evidence,
+  while the remaining short clean unknown cases are counted as a no-action
+  boundary rather than promoted to a fake bottleneck.
+- Spark one-application handoff can now write an optional raw-free
+  `spark_product_surface_boundary_audit_v1` summary through
+  `--product-surface-summary-out`. The dev-only wrapper runs the
+  product-surface boundary audit over the compact and diagnosis artifacts it
+  just wrote, keeps the output path-free, and still returns failed when strict
+  compact readiness fails.
+- Spark compact diagnosis now has a dev-only product-surface boundary audit
+  over retained compact/diagnosis artifacts or retained one-application handoff
+  manifests. The audit reuses compact readiness validation, checks stored
+  diagnosis artifacts for no-support/lane drift, reruns static Spark support
+  boundary and isolated preview route checks, and can write a path-free raw-free
+  summary while keeping Spark below Recent, Details, trusted reports, optimizer
+  behavior, live Query ID diagnosis, Spark job execution, and support claims.
+- Trino compact diagnosis now emits a raw-free `diagnostic_lane` contract that
+  records source granularity, evidence readiness, verification scope,
+  supported-attention counts, fact-state counts, and required readiness/surface
+  audit gates. The compact-readiness and product-surface audits recompute and
+  validate that lane contract while keeping Trino below Recent, Details,
+  trusted reports, optimizer behavior, live Query ID diagnosis, SQL execution,
+  and support claims.
+- Trino product-surface manifest audits now treat per-entry readiness-summary
+  references as protected input artifacts, so a product-surface summary cannot
+  overwrite retained readiness evidence while checking no-product-surface
+  boundaries.
+- Trino one-query handoff suite manifests can now retain per-entry
+  `trino_product_surface_boundary_audit_v1` summaries. The product-surface
+  manifest audit treats those summaries as protected input artifacts and
+  rejects stored summary drift against deterministic boundary/diagnosis output
+  before accepting no-product-surface retained evidence.
+- Trino one-query handoff wrappers can now write optional
+  `trino_one_query_handoff_summary_v1` raw-free machine evidence. Retained
+  handoff-suite manifests can reference those summaries, and the compact
+  readiness gate rejects drifted pipeline, artifact-boundary, or embedded
+  readiness evidence while keeping the path-free no-product-support boundary.
+- Trino compact diagnosis documentation and regression tests now explicitly pin
+  task retry/failure and connector-metric attention lanes to supported
+  one-query facts only, with absent connector metrics staying
+  no-supported-attention and no root-cause claims.
+- Trino product-surface audit summaries now include raw-free diagnostic-lane
+  fact-state counters, and the one-query handoff wrapper tests require retained
+  product-surface summaries to prove source granularity, readiness,
+  verification scope, supported-attention, and fact-state coverage.
+- Trino compact-readiness summaries now include a raw-free `diagnostic_lane`
+  block with source granularity, evidence readiness, verification scope, and
+  fact-state counters so retained one-query handoff evidence can prove lane
+  readiness, comparable-rerun verification, and fact support in one structured
+  machine contract.
+- Trino one-query handoff suite audits now explicitly validate retained
+  `trino_compact_readiness_summary_v1` `diagnostic_lane` blocks and reject
+  missing or drifted source-granularity, readiness, verification-scope, or
+  fact-state counters with dedicated safe issue categories before accepting
+  retained readiness evidence.
+- Trino evidence handoff summaries now include raw-free diagnostic-lane source,
+  readiness, verification-scope, and fact-state counters, and retained handoff
+  suite audits require those counters and reject source-granularity or
+  fact-state drift between `diagnostic_lane` and the retained top-level summary
+  counters before treating package-to-boundary evidence as ready. The retained
+  handoff-summary manifest builder and suite audit also reject duplicate
+  artifact references, including path aliases, so one summary cannot satisfy
+  suite-width counts more than once.
+- Action-outcome feedback now records explicit comparable-rerun verification
+  for applied outcomes. New local records use `schema_version=2` with safe
+  `verification_status` values, legacy records remain readable as
+  `legacy_unverified`, and strict workload/action-outcome audits count only
+  comparable-rerun verified records toward the sample threshold while still
+  reporting aggregate unverified-feedback counters without paths, case IDs,
+  workload fingerprints, SQL, or raw notes.
+- Workload/action-outcome audits now retain explicit raw-free feedback
+  requirements for tracked recommendation families. The component summary
+  lists required, missing, below-threshold, and satisfied group counts plus the
+  comparable-rerun threshold and schema version, while the aggregate Impala loop
+  carries the same safe family-requirement counters without fingerprints, case
+  IDs, SQL, local paths, or raw outcome records.
+- Workload/action-outcome summary JSON now also carries an explicit raw-free
+  `action_outcome_gate` block and aggregate gate counters. The gate records the
+  comparable-rerun sample threshold, accepted verification status, whether local
+  outcome feedback was supplied and raw-free, required family-group coverage,
+  open missing or below-threshold groups, and pass/fail booleans without
+  exposing workload fingerprints, case IDs, SQL, local paths, or raw notes.
+- Workload/action-outcome gates now distinguish comparable-rerun sample volume
+  from measured result evidence. Strict outcome calibration requires at least
+  one measured result (`improved`, `no_change`, or `worsened`) for each required
+  tracked recommendation family; all-`unsure` comparable reruns remain visible
+  as raw-free aggregate counters but no longer pass the outcome gate.
+- The synthetic demo pack now includes enough measured comparable-rerun action
+  outcomes for the admission/runtime workload family to pass the default
+  synthetic outcome gate. `scripts/audit_impala_synthetic_outcome_gate.py`
+  regenerates the pack locally, audits the generated outcome records, and
+  compares only the committed raw-free aggregate and short trend without storing
+  workload fingerprints, case IDs, SQL, local paths, or raw outcome records.
+- `scripts/audit_impala_synthetic_north_star_gate.py` now joins the synthetic
+  primary coverage gate and synthetic measured-outcome gate into one raw-free
+  aggregate artifact. The combined gate protects the current synthetic
+  north-star baseline by failing when either primary coverage or measured
+  outcome feedback regresses.
+- `scripts/audit_impala_north_star_gate.py` now gates retained raw-free
+  `impala_diagnostic_loop_audit_v1` summaries against the representative
+  Impala north-star thresholds: unknown primary below 30%, medium-or-better
+  primary coverage at or above 70%, and measured action-outcome feedback
+  passing. Its optional summary JSON keeps only aggregate counters and safe
+  trend fields for local or CI calibration.
+- `scripts/build_impala_north_star_suite_manifest.py` now builds local
+  redaction-reviewed retained-suite manifests for raw-free Impala loop
+  summaries, and `scripts/audit_impala_north_star_gate.py --suite-manifest`
+  can enforce minimum retained-batch breadth while keeping safe per-entry trend
+  output without storing paths, artifact filenames, raw cases, SQL, profiles,
+  workload fingerprints, or action-outcome records.
+- Retained Impala north-star summaries now include safe
+  `unknown_primary_category_counts` and `top_unknown_primary_categories`
+  closure-track labels, so follow-up deterministic evidence work can target the
+  largest unknown contributors without reopening raw cases or strengthening
+  diagnosis wording.
+- Impala diagnostic-loop retained summaries now carry sanitized
+  `unknown_primary_resolution_counts`, and retained north-star summaries roll
+  them up into resolution classes such as deterministic evidence gaps,
+  collector gaps, and no-action/out-of-scope boundaries. This keeps unknown
+  backlog prioritization focused on evidence gaps instead of treating clean or
+  short-query boundaries as analyzer coverage work.
+- The committed synthetic Impala north-star aggregate now includes the same
+  unknown-primary resolution-class split, including evidence-gap, boundary,
+  collector-gap, and unclassified counters. This lets CI protect the current
+  synthetic baseline as "remaining unknowns are clean boundaries," not just as
+  a passing unknown-rate percentage.
+- Impala diagnostic coverage and aggregate loop audits can now use
+  `--use-current-classifier-primary` for retained-summary calibration. The
+  default remains persisted-summary coverage, while the explicit mode
+  recomputes primary bottlenecks from current deterministic `analysis.json`
+  facts and reports safe persisted-label drift counters without rewriting old
+  batch artifacts or printing paths, case IDs, raw SQL, or raw profile text.
+- Impala unknown-primary coverage audits now distinguish context-only memory
+  estimate evidence from data-movement context. Memory estimate gaps remain
+  below primary routing unless selected-query spill/scratch, metadata, or other
+  validated evidence supports promotion; the audit only reports safe aggregate
+  reason and follow-up counters.
+- Impala diagnostic coverage audits now report strict-only unknown-primary
+  reason breakdowns separately from aggregate unknown reasons. The printed and
+  machine-readable counters stay raw-free, preserve safe composite reason keys,
+  and keep out-of-scope short-query or unsupported-profile unknowns from
+  diluting representative gate calibration.
+- Impala diagnostic coverage summary JSON now carries an explicit raw-free
+  `primary_gate` block with configured thresholds, full-batch primary rates,
+  strict eligible-case rates, out-of-scope case counts, and pass/fail booleans.
+  This lets retained calibration evidence prove the 70/30 primary-bottleneck
+  gate without promoting clean, very short, unsupported-profile, or
+  context-only cases into stronger primary labels.
+- Impala primary-bottleneck classification now treats a selected-query
+  aggregate-only `memory_estimate_errors` top finding as a medium-confidence
+  SQL-shape follow-up. The route remains distinct from runtime memory pressure
+  and data movement: memory estimates still do not promote to
+  `runtime_memory` without selected-query spill/scratch evidence, and low-byte
+  exchange context still does not promote to `runtime_data_movement`.
+- Recent Details now gives `memory_estimate_context_only` cases a dedicated
+  memory-estimate evidence follow-up card. The card keeps the primary
+  bottleneck unknown, blocks SQL/runtime changes from estimate gaps alone, and
+  asks analysts to verify table/column stats, spill/scratch counters, EXPLAIN
+  estimates, and comparable rerun behavior before accepting one bounded change.
+- Trino and Spark package-style evidence intake now share one
+  `redaction_note_v1` safety gate. The shared validator requires versioned
+  provenance, checked redaction status, required redaction classes, rejection
+  reason counters, mapping-style sentinel tests, mapping-style boundary
+  assertions, and `raw_companion_archive: none`; Spark package fixtures now use
+  the same note shape as Trino while preserving Spark-specific required labels
+  and the compact-only no-support boundary.
+- The Trino/Spark parallel development restart gate is now documented in the
+  agent quickstart, public-safe handoff baseline, and `redaction_note_v1`
+  schema reference. Future package-style Trino/Spark branches must merge the
+  aligned baseline, grep for stale note fields, and keep shared helper/schema
+  changes in explicit synchronization slices instead of engine-specific feature
+  branches.
+- Trino/Spark architecture hardening now has a machine-checkable engine
+  capability manifest for adapter flags, second-engine CLI roles, isolated
+  compact web routes, and dev-only script taxonomy. Static Trino/Spark boundary
+  audits and agent preflight rules use that capability graph, and Spark
+  engine-specific normalized facts now have the same prefix guard discipline as
+  Trino facts.
+- Trino/Spark isolated compact browser routes now use a checked preview
+  web-surface registry aligned with the engine capability manifest. Future
+  preview web route additions must update that registry and focused tests
+  instead of adding direct Trino/Spark route branches to the shared router.
+- Trino preview source types now have a checked source-contract registry for
+  accepted bounded source kinds, raw-storage policy, required bounds, network
+  access classes, and promotion gates. The support-gap audit fails if a source
+  type is missing from the registry or if any registry entry enables product
+  surfaces, Details/trusted reports, Recent scans, optimizer behavior, SQL
+  execution, raw storage, browser/report output, or metadata identifier output.
+- Cross-engine normalized facts now have a checked promotion-policy registry
+  for shared, distributed-SQL-family, source-boundary, and support-boundary fact
+  IDs visible to Trino preview lanes. The support-gap audit fails if a
+  Trino-visible promoted fact lacks policy coverage, mismatches its
+  allowed-engine or scope contract, enables product surfaces, weakens the
+  raw-free policy, or omits the explicit promotion gate.
+- Trino and Spark dev-only handoff scripts now share handoff artifact helpers
+  for path-overlap checks and ASCII/sorted JSON writes. Engine-specific
+  redaction guards, readiness gates, and below-support wording stay in the
+  owning scripts, while repeated output safety logic is covered by focused
+  tests.
+- Direct Impala Prometheus runtime metric limitations now explicitly frame
+  Prometheus host-level metrics as shared runtime context when multiple Impala
+  deployments can run on the same hosts. Correlation and scoring stay tied to
+  selected-query profile evidence instead of treating Prometheus metrics as
+  deployment-specific root-cause proof.
+- Trino retained one-query handoff suites can now carry optional per-entry
+  `trino_compact_readiness_summary_v1` references. The manifest builder keeps
+  those references safe and relative, the compact-readiness suite gate can
+  require them with `--require-readiness-summary-json`, and the audit
+  cross-checks each retained summary against the deterministic one-query
+  boundary/diagnosis/smoke readiness result without printing artifact paths,
+  filenames, coordinator URLs, Query IDs, auth material, raw QueryInfo, SQL, or
+  support claims.
+- Trino one-query compact readiness now carries a safe `trino_version_family`
+  fact from accepted coordinator QueryInfo source contracts into raw-free
+  boundary payloads. The dev-only one-query handoff requires at least one
+  non-unknown version family, and the retained handoff-suite audit can require
+  minimum version-family breadth or specific safe version-family labels without
+  printing coordinator URLs, Query IDs, auth material, raw QueryInfo, artifact
+  paths, or raw version strings.
+- Spark History Server application-only collection now treats an unavailable
+  SQL execution-list endpoint as a safe `sql_execution_endpoint` compatibility
+  limitation instead of a source-coverage warning, and can still summarize
+  readable application-level jobs, stages, scheduler delay, spill, and task
+  duration buckets as raw-free `same_application` context. SQL execution
+  timing, failure category, and exact query linkage remain `unknown` unless an
+  accepted SQL execution summary directly supports them. Exact SQL execution
+  selectors remain strict: if that explicit endpoint is unavailable or not
+  found, the collector still records safe source warning IDs and keeps query
+  linkage at `same_application`.
+- Spark compact evidence-package validation now requires the
+  `application_only_same_application` promotion sample to be warning-free
+  History Server compact evidence with `same_application` provenance,
+  supported application-level job/stage/task and task-duration context, and no
+  claimed SQL execution timing or failure facts. This keeps the package
+  promotion gate aligned with the application-only preview lane without
+  creating a Spark support claim.
+- Spark one-application-suite-to-package bridging now rejects SQL-specific
+  sample-case labels unless the retained compact History Server payload has
+  accepted `exact_query` SQL execution evidence. This prevents
+  `same_application` application-level handoffs from being relabeled as exact
+  SQL, long-elapsed, failure-category, or adaptive-execution samples while
+  preserving application-level compact evidence below Spark support.
+- Spark compact diagnosis now emits a raw-free
+  `spark_compact_diagnostic_lane_v1` contract with source granularity,
+  evidence readiness, verification scope, fact-state counts, and required
+  readiness/surface gates. The compact-readiness audit recomputes and validates
+  that lane contract so retained handoffs fail closed on missing or drifted lane
+  evidence without wiring Spark into Details, reports, optimizer, Recent, or
+  support claims.
+- Spark compact evidence-package validation now validates the same
+  `spark_compact_diagnostic_lane_v1` contract for every accepted sample and
+  includes safe diagnostic-lane readiness/source-granularity counters in package
+  summaries and readiness JSON. The package promotion gate now requires at
+  least one `compact_attention_ready` lane while staying preview-only and below
+  Spark support.
+- The isolated Spark compact-diagnosis page now renders the raw-free diagnostic
+  lane as a first-class preview block: evidence readiness, source granularity,
+  verification scope, supported-attention count, and source-warning count are
+  visible without echoing submitted compact JSON, History Server selectors, lane
+  schema internals, Details/trusted report wiring, optimizer behavior, Recent
+  workflow behavior, or a Spark support claim.
+- Spark History Server compact collection now treats unavailable per-stage
+  `taskSummary` enrichment reads as safe `task_summary_endpoint` compatibility
+  context instead of a source-coverage warning. Stage skew and task-duration
+  signals remain `unknown` unless accepted stage summaries or task-summary
+  quantiles provide enough raw-free evidence.
+- Spark compact diagnosis now maps supported over-one-minute task duration
+  bucket evidence to a `spark_task_duration_tail` attention area. The signal is
+  value-gated, remains raw-free, and still does not claim a Spark root cause,
+  Details/trusted-report wiring, optimizer behavior, Spark job execution, or
+  product support.
+- Trino coordinator QueryInfo source contracts now require a safe
+  `trino_version_family` label alongside the source-contract and QueryInfo
+  schema versions. The target check, pruned probe, pruned import, and dev-only
+  one-query handoff summaries expose only that broad safe label, reject
+  URL/path-like version values, and still emit no coordinator URLs, Query IDs,
+  auth material, raw QueryInfo, or support claim.
+- Spark compact diagnosis now uses supported application lifecycle as a safe
+  fallback when SQL execution lifecycle is unavailable in application-only
+  History Server evidence. The fallback improves Spark 2.4-style compact
+  diagnosis context while keeping SQL failure, failure-category, root-cause,
+  Details/trusted-report, optimizer, Spark job execution, and support claims
+  unclaimed unless SQL/failure facts directly support them.
+- Spark History Server compact collection now skips per-stage `taskSummary`
+  reads when the stage summary already includes task runtime quantiles, and
+  skips task-summary reads for zero-task stages. This keeps optional task
+  enrichment bounded and reduces false source-coverage warnings without
+  collecting task lists, raw stage identifiers, task details, URLs, logs, SQL,
+  or changing the Spark no-support boundary.
+- Trino one-query live handoff can now read the explicit Query ID from a local
+  `--query-id-file` instead of requiring `--query-id` in shell history or
+  process arguments. The dev-only wrapper requires exactly one of the two
+  sources, validates that the file contains one supported Query ID, rejects
+  output overlap with the file, and still never prints the Query ID or file
+  path. Real-cluster handoff notes now also call out that finished QueryInfo can
+  be evicted quickly, so operators should select a current or very recent Query
+  ID for the one bounded read; both the standard coordinator fetch path and the
+  Kerberos fetch path now map HTTP 404/410 responses to the same redacted
+  stale-QueryInfo operator hint instead of falling through to a raw JSON parse
+  failure or a generic network-read failure. The same one-query paths also map
+  HTTP 401/403 to a redacted auth-rejected operator hint so ticket or
+  operator-managed auth-reference refreshes are actionable without exposing auth
+  material.
+- Impala stats guidance now keeps generic column-stats gaps below the
+  actionable `medium` tier unless the metadata/analyzer evidence ties the gap
+  to join or filter columns. Generic column-only evidence still appears as a
+  caveated low-confidence signal with comparable-rerun verification, but it no
+  longer produces a stronger stats recommendation without deterministic
+  join/filter relevance.
+- Impala coverage audits now treat metadata context as not applicable when
+  analyzer facts explicitly show no referenced tables. Referenced-table cases
+  still keep the strict `metadata_context_not_collected` follow-up when bounded
+  metadata is unavailable, failed, or not collected.
+- Impala profile-doc counter registry context now records raw-free match state
+  for Query Doctor's allowlisted counter families and exposes only safe
+  allowlisted `missing_counter_names` in analyzer summaries and coverage
+  audits. The retained context still omits unrelated profile-doc counters,
+  descriptions, paths, hosts, SQL, and raw profile text.
+- Impala coverage audits now separate missing profile-doc labels for all
+  allowlisted counter families from missing labels that are actually observed
+  in selected analyzer facts. Legacy profile-doc summaries without safe missing
+  names still fail closed, while current raw-free summaries avoid P1 gaps for
+  unobserved counter families.
+- Impala coverage audits now keep clean and very-short unknown-primary cases
+  in the raw-free reason counters and strict out-of-scope totals without
+  counting them as `unknown_primary_bottleneck` follow-up gaps. Non-clean
+  strict-applicable unknown primaries still remain P1 diagnostic coverage gaps.
+- Direct Impala Recent discovery now keeps running query summaries when
+  `--include-running` is set instead of dropping them during client-side window
+  filtering. Completed daemon summaries remain bounded by the selected scan
+  window, while running summaries continue through the existing explicit
+  candidate-selection and profile-collection gates.
+- Direct Impala `--only-running` discovery now applies the same running-query
+  predicate before candidate selection, so completed daemon-query-list entries
+  no longer inflate `summaries_inspected` or running-only exclusion counters.
+  This keeps running probes aligned with the existing safe candidate gates and
+  still executes no SQL.
+- Workload action-outcome readiness now checks local rerun feedback against the
+  recommendation family shown by each workload Action Queue entry and Details
+  action hint. A workload with enough feedback for one family no longer passes
+  strict calibration for a different stats, query-shape, or runtime action
+  surface; retained audit counters remain raw-free and path-free.
+- Strict workload action-outcome readiness now requires supplied comparable
+  rerun feedback only for action surfaces with tracked recommendation IDs.
+  Low-value or no-change repeated-group guidance without a tracked stats,
+  query-shape, or runtime action still reports missing feedback buckets, but it
+  no longer fails strict outcome calibration just because no change was
+  proposed.
+- Workload action-outcome audits now report raw-free recommendation-family
+  requirement counters for tracked action surfaces. Strict retained summaries
+  can show which safe family needs comparable rerun feedback, such as required
+  and missing query-shape review outcomes, without printing workload
+  fingerprints, case IDs, SQL, local paths, or raw outcome notes.
+- Spark evidence handoff auditing now has an explicit `--partial-ok` dry-run
+  mode for sanitized packages that intentionally have incomplete sample/case
+  coverage. The mode validates the package with the same partial-evidence
+  contract as the standalone package validator, writes a rejected raw-free
+  blocker summary when requested, and still does not run fixture export, print
+  package paths, raw values, request selectors, or create a Spark support
+  claim.
+- Spark compact readiness suites can now require raw-free Spark version-family
+  breadth with `--require-min-spark-version-families` and repeated
+  `--require-spark-version-family` flags. The audit counts only safe
+  `spark_*` labels from accepted compact provenance, writes those aggregate
+  counters into `spark_compact_readiness_summary_v1`, and keeps retained
+  one-application summaries backward compatible without exposing raw Spark
+  version strings, request selectors, paths, or a Spark support claim.
+- Spark support-boundary auditing now requires the engine support matrix to
+  describe retained `spark_one_application_handoff_summary_v1` artifacts as
+  optional raw-free one-application evidence below production support. The
+  guard keeps retained summary suites path-free, offline, and explicitly below
+  Recent, Details/trusted reports, optimizer behavior, raw event-log access,
+  Spark job execution, or a Spark support claim.
+- Spark one-application handoff now preserves the collector's default safe
+  History Server opener for ordinary CLI runs while still allowing explicit
+  test opener injection. This fixes the dev-only wrapper path found during
+  live Spark History Server validation without printing URLs, application
+  selectors, artifact paths, raw SQL, plans, logs, or a Spark support claim.
+- Trino one-query live handoff can now use an explicit dev-only
+  Kerberos/SPNEGO curl fetch mode for the single bounded
+  `GET /v1/query/{queryId}?pruned=true` read when an operator has already
+  prepared a local ticket cache. The mode is mutually exclusive with
+  `--auth-header-file`, keeps the same source-contract/readiness gates, rejects
+  output overlap with Kerberos local inputs, and still prints no coordinator
+  URLs, Query IDs, principals, ticket-cache paths, auth material, raw QueryInfo,
+  local paths, filenames, or Trino support claim.
+- Trino one-query live handoff can now write an optional raw-free
+  `trino_compact_readiness_summary_v1` artifact through
+  `--readiness-summary-out` in the same dev-only run that writes boundary and
+  compact diagnosis JSON. The wrapper reuses the strict one-query/source-version
+  readiness gate, rejects summary output overlap with every input and output
+  artifact, and still prints no coordinator URLs, Query IDs, auth headers, raw
+  QueryInfo, local paths, filenames, or Trino support claim.
+- Trino evidence-package requirements can now be printed from the Python
+  contract through the dev-only
+  `scripts/trino_evidence_package_requirements.py` helper. It emits only safe
+  package/source-type, fixture contract/version, redaction, rejection,
+  sentinel-test, boundary-assertion, and size-limit labels, reads no Trino
+  endpoint, is not an installed product CLI, and does not create a Trino
+  support claim.
+- Trino retained evidence-package handoff summaries can now be grouped with
+  `scripts/build_trino_evidence_handoff_suite_manifest.py` and audited through
+  `scripts/audit_trino_evidence_handoff.py --handoff-suite-manifest`. The
+  suite path accepts only raw-free `trino_evidence_handoff_summary_v1`
+  artifacts with an accepted package/boundary/readiness pipeline, writes an
+  optional raw-free machine summary, rejects output/input overlap, and prints
+  no paths, filenames, package payloads, SQL, URLs, Query IDs, or support
+  claim.
+- Spark evidence-package requirements can now be printed from the Python
+  contract through the dev-only
+  `scripts/spark_evidence_package_requirements.py` helper. It emits only safe
+  case, source-contract, diagnostic signal-group, redaction, sentinel-test, and
+  boundary-assertion labels, reads no Spark endpoint, is not an installed
+  product CLI, and does not create a Spark support claim.
+- Spark History Server compact intake now accepts an explicit
+  `--application-attempt-id` selector in the installed collector, the isolated
+  compact web page, and the dev-only one-application handoff wrapper. The
+  selector is used only in bounded History Server request paths and is not
+  written to compact output, diagnosis output, boundary facts, terminal output,
+  or browser results.
+- Spark one-application handoff can now write optional raw-free
+  `spark_one_application_handoff_summary_v1` JSON through `--summary-json`.
+  The summary records only collection counters, safe warning IDs, no-support
+  boundary labels, artifact-write states, and the nested compact readiness
+  summary, and it rejects output overlap with compact, diagnosis, or boundary
+  artifacts.
+- Spark one-application handoff now has a dev-only retained-artifact suite
+  manifest builder and compact readiness gate. The new path groups raw-free
+  compact, deterministic diagnosis, and engine fact boundary JSON triples from
+  operator-reviewed History Server handoffs, verifies diagnosis/boundary
+  consistency without reopening Spark, and prints only safe aggregate counters
+  without paths, filenames, raw payload values, or a Spark support claim.
+  Retained suite manifests can now also carry matching
+  `spark_one_application_handoff_summary_v1` references; the readiness gate
+  checks those summaries for raw-free/path-free status-ok evidence, matching
+  strict requirements, source-coverage counters, warning IDs, and no-support
+  boundary labels.
+- Spark compact readiness audits can now write optional raw-free
+  `spark_compact_readiness_summary_v1` JSON through `--summary-json`,
+  including one-application handoff-suite mode. The summary records only
+  schema/mode/status labels, selected strictness requirements, no-support
+  boundary labels, aggregate counters, source-contract counts, and safe issue
+  categories/messages, and rejects output paths that overlap input artifacts.
+- Spark retained one-application History Server handoff suites can now feed a
+  dev-only sanitized evidence-package builder through
+  `scripts/build_spark_evidence_package_from_one_application_suite.py`. The
+  bridge re-runs compact/diagnosis/boundary suite validation before building
+  the package wrapper, requires explicit sample-case labels, rejects drift and
+  output/input overlap, and does not print artifact paths, filenames, raw
+  payload values, or Spark support claims.
+- Recent workload presenters now derive bounded repeated workload groups from
+  already sanitized row-level workload fingerprints when the batch summary has
+  no materialized group payload. Derived groups intentionally have no local
+  baseline or regression claim, but they unlock workload Details, action queue
+  hints, and aggregate readiness auditing for repeated workloads that were
+  previously hidden behind `workload_groups=0`. Workload readiness audits count
+  only eligible safe row fingerprints, report incomplete fingerprints as an
+  aggregate readiness blocker when no derived or materialized groups exist, and
+  now retain safe `workload_fingerprint_incomplete_fields` buckets for new
+  summaries while recomputing summary-only missing-field buckets for older
+  summaries without field details. Cases are bucketed as `unspecified` only
+  when even structured summary fields are unavailable. Raw fingerprints, case
+  paths, and query text stay out of retained evidence.
+- Recent batch summaries now retain each case's raw-free `workload_shape`
+  beside the workload fingerprint. Retained summaries can therefore recompute
+  and audit workload grouping inputs without reopening case directories,
+  profiles, SQL, metadata, or other raw artifacts. Summary-only recomputation
+  also preserves stored incomplete-field buckets so defaulted shape values
+  cannot be mistaken for complete workload evidence.
+- Recent workload fingerprints now derive missing join and set-operation
+  counts from already structured profile operator names when explicit
+  SQL-shape facts are unavailable. This keeps Impala Recent workload grouping
+  raw-free while preventing complete profile-backed rows from being excluded
+  only because `query_shape`/`sql_shape` fields were absent.
+- Workload representative audits now have an explicit
+  `--require-workload-groups` gate, and strict action-outcome calibration now
+  fails when no repeated workload groups are present. This prevents a
+  representative workload/action-outcome run from passing only because the
+  grouping layer is absent while preserving the default non-strict behavior for
+  ordinary summaries with no repeated workloads.
+- Impala diagnostic-loop `--summary-json` now retains raw-free diagnostic
+  coverage breakdowns for primary labels, source compatibility, optional source
+  availability, source provenance status, evidence quality, and safe gap or
+  calibration-limitation buckets. This makes representative batch evidence show
+  why profile/runtime/metadata/direct-source coverage is or is not ready without
+  exposing case paths, SQL, hostnames, raw metadata, or profile text.
+- Direct Impala failed-discovery summaries now retain raw-free discovery
+  counters in both the coverage-gap audit and diagnostic-loop summary JSON.
+  Empty direct batches can distinguish failed discovery, inspected/selected
+  count buckets, and allowlisted warning categories such as unreadable query
+  lists without exposing endpoint names, SQL, case paths, or raw warning text.
+- Trino preview now has a dry-run metadata source-contract gate through
+  `query-doctor-trino-metadata-source-contract-check`. It validates one
+  redaction-reviewed explicit relation/column allowlist contract, safe source
+  reference labels, bounds, and redaction rules, then emits only path-free and
+  identifier-free summaries. It does not contact Trino, read metadata, execute
+  metadata SQL, collect metadata facts, add browser/report output, or create a
+  Trino support claim.
+- Trino preview now has a bounded local metadata summary import through
+  `query-doctor-trino-metadata-summary-import`. It validates one compact
+  sanitized aggregate summary after an accepted `metadata_allowlist` source
+  contract, maps only relation/column coverage and stats-completeness counts
+  into raw-free normalized facts, and does not contact Trino, execute metadata
+  SQL, print object identifiers or metadata values, add compact diagnosis,
+  browser/report output, or create a Trino support claim.
+- Trino compact readiness now treats local metadata summary boundaries as
+  aggregate metadata-coverage evidence. The strict
+  `--require-one-query-boundary` gate rejects `trino_metadata_*` aggregate facts
+  the same way it rejects `query_list_*` aggregates, so metadata summaries
+  cannot count as one-query Trino diagnosis readiness.
+- Trino compact diagnosis now also rejects local metadata summary boundaries in
+  the shared CLI/web builder. Local `trino_metadata_*` coverage facts can still
+  be exported as raw-free boundaries for contract auditing, but they cannot be
+  rendered as compact diagnosis or leak object identifiers through rejection
+  messages.
+- Trino product-surface boundary auditing now gives local metadata summary
+  boundaries a dedicated safe issue category. Aggregate `trino_metadata_*`
+  coverage boundaries remain useful for contract/readiness auditing, but cannot
+  be discussed as retained compact diagnosis artifacts for product-surface
+  readiness.
+- The dev-only Trino one-query handoff wrapper can now write a
+  `trino_product_surface_boundary_audit_v1` summary from the retained
+  boundary/diagnosis artifacts. This keeps real-cluster handoff evidence tied
+  to the no-product-surface gate without adding live Query ID diagnosis,
+  Details/trusted reports, optimizer behavior, or a support claim.
+- Trino product-surface boundary auditing can now read a
+  `trino_one_query_handoff_suite_v1` manifest directly. Retained one-query
+  suites now use the same manifest for strict readiness and no-product-surface
+  evidence while requiring compact diagnosis artifacts for every entry and
+  keeping manifest paths, artifact paths, URLs, Query IDs, and support claims
+  out of output.
+- Trino handoff-suite manifests now accept only safe relative `*.json` artifact
+  references with no absolute paths, parent traversal, current-directory
+  segments, or backslashes. The builder and readiness audit also reject
+  duplicate boundary, diagnosis, or readiness-summary artifact references,
+  including path aliases, so a strict retained suite cannot satisfy minimum
+  input counts by reusing one artifact; a shared smoke summary remains allowed.
+- Added `scripts/audit_trino_support_gap_matrix.py`, a dev-only static gate that
+  checks Trino fact-family coverage against the registered engine-fact namespace
+  and engine adapter flags. The audit writes optional
+  `trino_support_gap_matrix_audit_v1` raw-free machine evidence, keeps product
+  surfaces blocked, and catches accidental promotion of Trino to Recent, live
+  Query ID diagnosis, Details/trusted reports, metadata collection, or a support
+  claim before broader support work.
+- Trino product-surface boundary auditing now also statically scans
+  product-surface web, report, and optimizer Python imports. The guard permits
+  only the isolated compact-diagnosis route/page imports and fails path-free if
+  Details, trusted reports, optimizer, Recent, or other product modules import
+  Trino preview diagnosis code.
 - Browser/log host redaction now uses a linear token scanner for free-text
   FQDNs, host-like single-label names, and bare `host:port` values instead of
   backtracking-prone regex substitutions. This preserves stable host aliases,
@@ -46,6 +658,49 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
   for machine-readable handoff readiness evidence. Package validation also
   rejects per-sample compact diagnosis boundary drift, keeping Spark's
   experimental/no-support and no-root-cause boundary intact.
+- Spark evidence handoff now has a dev-only retained-suite gate. The new
+  `scripts/build_spark_handoff_suite_manifest.py` helper builds local
+  `spark_evidence_handoff_suite_v1` manifests over already raw-free handoff
+  summary JSON artifacts, and `scripts/audit_spark_evidence_handoff.py
+  --handoff-suite-manifest` audits the retained summaries with optional
+  raw-free suite summary JSON. The suite path does not read Spark, re-open
+  packages, print artifact paths, create product surfaces, or broaden Spark
+  support beyond the compact-only adapter.
+- Spark live evidence handoff now has a dev-only one-application wrapper.
+  `scripts/spark_one_application_handoff.py` composes bounded History Server
+  summary collection, raw-free compact diagnosis, optional raw-free boundary
+  export, and Spark compact readiness auditing for one explicit application
+  without installing a product CLI, crawling applications, reading raw event
+  logs or environment dumps, printing selectors or artifact paths, or creating
+  a Spark support claim.
+- Spark evidence-package `promotion_candidate` readiness now also requires
+  diagnostic signal-group breadth across data movement, failure, runtime
+  context, and adaptive plan context. Complete case labels alone no longer
+  make a package promotion-ready, and raw-free summaries expose missing signal
+  groups only as safe blocker IDs without changing Spark's no-support boundary.
+- Spark evidence-package summaries, readiness JSON, compact readiness suite
+  output, and strict handoff summary JSON now include safe
+  `source_warning_counts` by allowlisted Spark warning ID in addition to the
+  aggregate warning count. This keeps warning-driven promotion blockers
+  actionable without exposing History Server endpoints, file paths, raw logs,
+  SQL text, or changing Spark's no-support boundary.
+- Spark now has a registered bounded compact engine adapter for the Spark
+  History Server compact-intake CLI, compact evidence-package
+  validation/export, and raw-free compact diagnosis. The adapter keeps Impala
+  as the default production triage engine and does not enable Spark Recent
+  scans, Query ID product diagnosis, metadata collection, Details/trusted
+  reports, optimizer behavior, raw event-log handling, raw SQL/plan display,
+  environment/log dumps, or Spark job execution.
+- Added `scripts/audit_spark_support_boundary.py`, a static Spark
+  support-boundary audit that keeps the Spark adapter compact-only, Spark CLI
+  roles aligned with compact/evidence-package surfaces, README/support-matrix
+  wording below production support, and Details/report/optimizer/recent imports
+  out of Spark before any Spark product exposure can broaden.
+- Spark History Server compact executor summaries now mark the executor section
+  as `supported` when a non-empty executor summary list is accepted. Individual
+  executor-loss, memory, churn, and dynamic-allocation substates remain
+  independently `supported`, `not_observed`, or `unknown`, so partial executor
+  evidence still cannot backfill fake memory or loss signals.
 - Agent-facing release instructions now pin the Spark compact boundary as
   experimental research only: no public Spark support, Recent scans,
   Details/trusted-report output, optimizer behavior, engine registration, raw
@@ -99,10 +754,11 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
 - Added `scripts/audit_trino_compact_readiness.py`, a local raw-free gate for
   accepted Trino `engine_fact_boundary_v1` JSON. It verifies compact diagnosis
   keeps `root_cause=not_claimed`, `trino_sql_execution=not_performed`,
-  `live_recent_scan=not_wired`, and no browser/report or optimizer wiring;
-  checks boundary and diagnosis output for raw-like content; and supports suite
-  mode across multiple boundary JSON inputs without printing paths or raw
-  filenames. Its strict `--require-one-query-boundary` mode rejects aggregate
+  `live_recent_scan=not_wired`, `live_known_query_diagnosis=not_wired`, and no
+  browser/report or optimizer wiring; checks boundary and diagnosis output for
+  raw-like content; and supports suite mode across multiple boundary JSON
+  inputs without printing paths or raw filenames. Its strict
+  `--require-one-query-boundary` mode rejects aggregate
   `query_list_*` boundaries so query-list source-shape evidence cannot count
   as one-query Trino diagnosis readiness. Strict handoffs can also pass
   `--require-source-version <version>` to require an accepted boundary
@@ -160,6 +816,19 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
   references after explicit redaction-review confirmation, supports one shared
   smoke summary or one per boundary, rejects output/input overlap, and prints
   only path-free aggregate counts.
+- Added `scripts/audit_trino_evidence_handoff.py`, a dev-only package-to-boundary
+  readiness audit for sanitized Trino evidence packages. It validates the
+  package, converts accepted samples to raw-free boundary payloads in memory,
+  runs the compact readiness suite, can write
+  `trino_evidence_handoff_summary_v1`, prints no paths, raw payloads, SQL, or
+  Trino identifiers, and makes no support claim.
+- Added `scripts/audit_trino_product_surface_boundary.py`, a dev-only gate for
+  retained Trino compact boundary/diagnosis artifacts before any product-surface
+  promotion decision. It checks deterministic diagnosis artifacts, pins
+  `live_known_query_diagnosis=not_wired`, verifies the allowed Trino web/CLI
+  registry stays limited to compact preview surfaces, can write
+  `trino_product_surface_boundary_audit_v1`, and keeps output path-free and
+  support-claim-free.
 - Report validators now include an adversarial EN/RU corpus for indirect
   unsupported stale-statistics root-cause wording, soft `COMPUTE STATS`
   recommendation wording, English stats-maintenance fix/explanation overclaims,
@@ -207,6 +876,16 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
   object names; regression coverage verifies unsafe prompt-injection drafts are
   downgraded to trusted no-rewrite recommendations, and recommendations-only
   prompts omit instruction-like unsafe digest values.
+- Standalone stats diagnostics audits can now write optional raw-free
+  `stats_diagnostics_audit_v1` summary JSON, recording stats tier, need-type,
+  metadata status, evidence-detail, review-area, confirmation, and readiness-gap
+  counters without paths, case IDs, query IDs, raw metadata, SQL, or free-form
+  evidence text.
+- Impala coverage-gap audits can now write optional raw-free
+  `impala_coverage_audit_v1` summary JSON, recording diagnostic coverage,
+  direct-source readiness, source compatibility, optional-source availability,
+  and calibration counters without paths, case IDs, query IDs, raw source text,
+  SQL, or follow-up prose.
 - Recent action cards now prioritize the generic column-stats relevance caveat
   when a Medium stats recommendation is not tied to specific join/filter
   columns, so the visible guidance keeps the limitation before comparable-rerun
@@ -222,6 +901,13 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
 - Optimizer funnel strict audits now require repeated no-recipe review guidance
   to keep an explicit no-trusted-SQL-draft and manual-review contract before it
   is counted as guidance-ready.
+- Optimizer funnel audits can now write optional
+  `optimizer_funnel_audit_v1` summaries through `--summary-json`, and the
+  standalone CLI accepts the diagnostic-loop-compatible
+  `--use-stored-optimizer-support` alias. The machine summary records only
+  aggregate counters, safe issue categories, and masked workload labels, and
+  reason-like fields now collapse raw-like SQL, paths, URLs, hostnames, IPs,
+  emails, and secrets to `unsafe_reason` before stdout or JSON output.
 - Direct Impala source-provenance facts now keep metadata read errors generic,
   and strict direct-source readiness fails representative summaries whose source
   provenance contains raw-like SQL, paths, hosts, URLs, emails, IPs, or secrets.
@@ -449,9 +1135,84 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
 - CI and release-gate public-safety coverage now run public documentation
   audits and the full public-release preflight with git-history scanning
   instead of a current-tree shortcut.
+- The aggregate Impala diagnostic-loop audit can now write a raw-free
+  `--summary-json` machine summary with only component status, aggregate
+  metrics, and safe issue counts. The retained JSON omits batch paths,
+  action-outcome filenames, case identifiers, workload fingerprints, SQL, and
+  profile content so representative readiness evidence can be saved and
+  compared without expanding the public/raw boundary.
+- The standalone workload diagnostics audit can now write a raw-free
+  `workload_diagnostics_audit_v1` summary through `--summary-json`. The summary
+  records workload grouping, repeated-row, baseline, action-queue,
+  action-outcome, incomplete-fingerprint, and readiness counters without batch
+  paths, action-outcome filenames, case identifiers, workload fingerprints,
+  SQL, or raw outcome records, and refuses to overwrite input artifacts.
+- Strict workload readiness now treats missing workload history as a blocker
+  only when baseline or regression claims are present. Current-scan-only
+  repeated workload groups with unknown regression and no baseline remain
+  auditable for inspect, action hints, and comparable-rerun verification while
+  still reporting the missing history counter without inventing baseline
+  evidence.
+- For direct Impala representative summaries, that aggregate
+  `--summary-json` output now also carries safe direct-source readiness
+  breakdowns from the coverage audit. The breakdown keys are normalized
+  counters only, with unsafe-looking URL, path, host, SQL-like, and secret
+  fragments collapsed before they can enter retained machine evidence.
+- The same aggregate Impala loop summary JSON now retains safe workload
+  breakdown counters for workload history, regression and baseline coverage,
+  Details representatives, action-queue verification, and action-outcome
+  feedback. This lets representative repeated-workload calibration compare
+  aggregate states without storing workload fingerprints, case IDs, raw SQL, or
+  local action-outcome paths.
+- Aggregate Impala loop summary JSON now also retains safe stats and optimizer
+  funnel breakdown counters. Stats readiness evidence includes tier, need type,
+  metadata status, evidence-detail, confirmation, and review-area counters;
+  optimizer evidence includes support/status, no-recipe, and repeated
+  no-recipe readiness counters without SQL drafts or raw query text.
+- The same retained summary JSON now carries safe profile-evidence breakdown
+  counters, including profile dialect/policy, counter-registry state, evidence
+  quality, profile-derived gate states, resource-trace state, and primary
+  classifier drift. This keeps direct/profile evidence calibration comparable
+  without case-level profile text, paths, or raw counter payloads.
+- Aggregate Impala loop summary JSON now retains safe Details and trusted
+  artifact breakdown counters. Details evidence covers severity, metadata,
+  verdict/action, stats-detail, verification, optimizer, and report status
+  counters; trusted-report and optimizer-artifact evidence covers state,
+  trusted variant, revalidation, output-kind, and readability counters without
+  raw artifact filenames or report/SQL text.
 
 ### Product
 
+- Recent workload presenters now resolve stale row-fingerprint incomplete flags
+  when the stored raw-free `workload_shape` already proves the named missing
+  fields. This restores repeated-workload grouping and action-queue calibration
+  for retained summaries with explicit zero join or set-operation counts while
+  keeping unresolved fields, including missing referenced tables, excluded from
+  grouping.
+- Workload Details now opens for repeated groups derived from safe row-level
+  fingerprints even when the summary has no materialized group payload or
+  per-row workload member counts. Representatives, limitations, and action
+  hints are built only from sanitized rendered rows and safe group membership,
+  preserving the raw-free Details boundary while restoring the inspect step for
+  retained repeated-workload calibration.
+- Impala `sql_shape` primary-bottleneck confidence now reaches `medium` for
+  top join, sort, or analytic query-shape findings even when metadata was not
+  collected, as long as the classifier is not making a stats-maintenance claim.
+  Estimate-only shape cases without a top query-shape finding still remain
+  low-confidence until metadata or stronger deterministic evidence is present.
+- Impala primary-bottleneck routing now emits a conservative `runtime_memory`
+  label when analyzer-owned Memory Pressure Evidence has strong selected-query
+  non-zero spill/scratch support. Memory estimates, reservations, profile
+  resource memory, daemon metrics, runtime context, unsupported dialects, and
+  context-only spill evidence still stay below primary routing; mixed
+  stats-plus-memory cases remain `mixed` and keep comparable-rerun
+  verification.
+- Repeated workload query-shape guidance now uses an explicit mixed
+  query-shape review track when the same workload fingerprint has multiple
+  safe no-recipe optimizer review tracks. The workload action queue no longer
+  picks one arbitrary specific track for the whole group; it directs users to
+  review selected cases by their listed tracks and verify bounded changes with
+  comparable repeated-group reruns.
 - Help shortcuts now link to the isolated local Trino compact-diagnosis page so
   maintainers can reach the raw-free boundary JSON renderer without treating
   Trino as Recent, Details, trusted-report, optimizer, or live Query ID support.
@@ -668,9 +1429,10 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
   requests SQL summaries with details and plan descriptions disabled, skips raw
   event-log and environment endpoints, validates a
   `spark_history_server_compact_v1` payload, and can write raw-free normalized
-  engine fact boundary JSON. It still adds no Spark engine registration, Recent
-  workflow, Details/trusted report output, optimizer behavior, Spark job
-  execution, raw SQL/plan/log collection, or public Spark support claim.
+  engine fact boundary JSON. At that stage it still added no Spark engine
+  registration, Recent workflow, Details/trusted report output, optimizer
+  behavior, Spark job execution, raw SQL/plan/log collection, or public Spark
+  support claim.
 - Spark compact intake can now write a deterministic local compact-diagnosis
   JSON. The summary turns accepted Spark compact facts into raw-free attention
   areas, change directions, verification prompts, and explicit support
@@ -809,9 +1571,9 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
 - Spark research now has a fixture-only compact fact-envelope mapper for the
   synthetic `spark_history_eventlog_compact_v1` fixture. It maps only raw-free
   application, SQL execution, job, stage, task, executor, data-movement, and
-  limitation summaries into the normalized boundary/consumer probe tests, and
-  still adds no Spark engine registration, live collector, Details/trusted
-  report output, optimizer behavior, or public support claim.
+  limitation summaries into the normalized boundary/consumer probe tests. At
+  that stage it still added no Spark engine registration, live collector,
+  Details/trusted report output, optimizer behavior, or public support claim.
 - Trino fixture-only query-list package coverage now includes a second
   sanitized aggregate summary with non-zero long-duration, queue-delay,
   high-memory, unknown-input, and blocked-reason buckets. The evidence-package
@@ -1007,6 +1769,13 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
 
 ### Documentation
 
+- Public code-audit and Codex handoff baselines now record the implemented
+  Trino source-contract registry as the owner of accepted preview source kinds,
+  raw policy, bounds, network-access classes, and promotion gates, and record
+  the engine fact promotion-policy registry as the owner of promoted shared,
+  distributed, source-boundary, and support-boundary facts. The remaining broad
+  Trino/Spark architecture backlog now excludes both implemented registries and
+  keeps only shared readiness/handoff helpers.
 - Code audit and safety contract now record two open trust-boundary follow-ups:
   shared outbound HTTP egress policy for CM, Prometheus, Spark History, direct
   Impala, and LLM clients; and report-language validator parity/registry guards
@@ -1119,6 +1888,18 @@ handoff, see [release-notes-0.5.0.md](release-notes-0.5.0.md). Historical
 
 ### Engineering
 
+- Impala profile-evidence audit now distinguishes stale persisted
+  primary-classifier artifacts from live gate mismatches. If a retained
+  `analysis.json` and summary agree with an older primary label but the current
+  deterministic classifier now returns a safer mixed label, the audit reports
+  artifact drift separately while still failing real summary/current-fact
+  mismatches and confidence overclaims.
+- Impala diagnostic coverage audit now reports strict primary-coverage rates
+  over analyzed non-clean cases only, excluding explicit out-of-scope unknown
+  reasons such as very short or unknown wall-clock evidence and unsupported
+  profile dialects. The full unknown/gap breakdown is still reported, but
+  strict readiness no longer fails just because clean or structurally
+  out-of-scope cases correctly stay unknown.
 - The legacy `setup.py` editable-install shim now reads the package version
   from `pyproject.toml`, making `[project].version` the single canonical
   version source while keeping console-script parity tests for older tooling.
