@@ -26,4 +26,5 @@ class EngineAdapter:
     supports_coordinator_query_info_pruned_probe: bool = False
     supports_coordinator_query_info_pruned_import: bool = False
     supports_compact_diagnosis: bool = False
+    supports_history_server_compact_intake: bool = False
     notes: tuple[str, ...] = ()
