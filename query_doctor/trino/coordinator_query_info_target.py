@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 from urllib.error import URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request
@@ -27,6 +28,7 @@ from query_doctor.trino.source_contract_utils import (
     validate_contract_tree,
     validate_exact_keys,
 )
+from query_doctor.trino.source_contract_registry import trino_source_type_for_contract_family
 
 
 TRINO_COORDINATOR_QUERY_INFO_TARGET_CHECK_SCHEMA_VERSION = (
@@ -39,7 +41,10 @@ TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_VERSION = (
     "trino_coordinator_query_info_source_contract_v1"
 )
 TRINO_COORDINATOR_QUERY_INFO_CONTRACT_VERSION = "trino_coordinator_query_info_target_v1"
-TRINO_COORDINATOR_QUERY_INFO_SOURCE_TYPE = "coordinator_query_info"
+TRINO_COORDINATOR_QUERY_INFO_SOURCE_TYPE = trino_source_type_for_contract_family(
+    "coordinator_query_info_source_contract",
+    surface_class="coordinator_query_info_contract",
+)
 TRINO_COORDINATOR_QUERY_INFO_ENDPOINT_TEMPLATE = "/v1/query/{queryId}"
 TRINO_COORDINATOR_QUERY_INFO_PRUNED_ENDPOINT_TEMPLATE = "/v1/query/{queryId}?pruned=true"
 TRINO_COORDINATOR_QUERY_INFO_PRUNED_AUTH_KIND = "operator_managed_reference"
@@ -50,11 +55,23 @@ TRINO_COORDINATOR_QUERY_INFO_MAX_DEPTH = 32
 TRINO_COORDINATOR_QUERY_INFO_MAX_TIMEOUT_SECONDS = 60
 TRINO_COORDINATOR_QUERY_INFO_AUTH_HEADER_MAX_BYTES = 8 * 1024
 TRINO_COORDINATOR_QUERY_INFO_AUTH_HEADER_MAX_CHARS = 4096
+TRINO_COORDINATOR_QUERY_INFO_VERSION_FAMILY_RE = re.compile(
+    r"(unknown|[0-9]{3,4}(?:\.[0-9]{1,3})?)"
+)
+TRINO_COORDINATOR_QUERY_INFO_AUTH_REJECTED_ERROR = (
+    "Trino coordinator query-info authentication was rejected; "
+    "refresh the operator-managed auth reference or ticket"
+)
+TRINO_COORDINATOR_QUERY_INFO_UNAVAILABLE_ERROR = (
+    "Trino coordinator query-info is unavailable for the selected Query ID; "
+    "choose a current or very recent Query ID"
+)
 TRINO_COORDINATOR_QUERY_INFO_TOP_LEVEL_KEYS = frozenset(
     {
         "source_contract_version",
         "source_type",
         "query_info_contract_version",
+        "trino_version_family",
         "auth_reference",
         "query_bound",
         "bounds",
@@ -94,6 +111,7 @@ class TrinoCoordinatorQueryInfoSourceContract:
     source_contract_version: str
     source_type: str
     query_info_contract_version: str
+    trino_version_family: str
     auth_reference_kind: str
     auth_reference_label: str
     query_bound_kind: str
@@ -343,6 +361,13 @@ def validate_trino_coordinator_query_info_source_contract_payload(
         expected=TRINO_COORDINATOR_QUERY_INFO_CONTRACT_VERSION,
         message="Trino coordinator query-info target contract version is unsupported",
     )
+    trino_version_family = required_text(
+        payload,
+        "trino_version_family",
+        payload_label="Trino coordinator query-info contract",
+    )
+    if not TRINO_COORDINATOR_QUERY_INFO_VERSION_FAMILY_RE.fullmatch(trino_version_family):
+        raise EngineFactContractError("Trino coordinator query-info version family is unsupported")
 
     auth_reference = mapping_required(
         payload, "auth_reference", "Trino coordinator query-info contract"
@@ -447,6 +472,7 @@ def validate_trino_coordinator_query_info_source_contract_payload(
         source_contract_version=source_contract_version,
         source_type=source_type,
         query_info_contract_version=query_info_contract_version,
+        trino_version_family=trino_version_family,
         auth_reference_kind=auth_reference_kind,
         auth_reference_label=auth_reference_label,
         query_bound_kind=query_bound_kind,
@@ -503,6 +529,12 @@ def fetch_trino_coordinator_pruned_query_info_text(
     try:
         with _open_without_redirects(request, timeout=timeout_seconds) as response:
             body = response.read(max_bytes + 1)
+    except HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise EngineFactContractError(TRINO_COORDINATOR_QUERY_INFO_AUTH_REJECTED_ERROR) from exc
+        if exc.code in {404, 410}:
+            raise EngineFactContractError(TRINO_COORDINATOR_QUERY_INFO_UNAVAILABLE_ERROR) from exc
+        raise EngineFactContractError("Trino coordinator query-info could not be read") from exc
     except (OSError, TimeoutError, URLError) as exc:
         raise EngineFactContractError("Trino coordinator query-info could not be read") from exc
     if len(body) > max_bytes:
@@ -582,6 +614,7 @@ def trino_coordinator_query_info_target_summary_payload(
         "source_type": contract.source_type,
         "source_contract_version": contract.source_contract_version,
         "query_info_contract_version": contract.query_info_contract_version,
+        "trino_version_family": contract.trino_version_family,
         "auth_reference": {
             "kind": contract.auth_reference_kind,
             "label": contract.auth_reference_label,
@@ -621,6 +654,7 @@ def trino_coordinator_query_info_pruned_probe_summary_payload(
             "source_type": target_payload["source_type"],
             "source_contract_version": target_payload["source_contract_version"],
             "query_info_contract_version": target_payload["query_info_contract_version"],
+            "trino_version_family": target_payload["trino_version_family"],
             "auth_reference": target_payload["auth_reference"],
             "query_bound": target_payload["query_bound"],
             "endpoint_template": result.endpoint_template,
@@ -651,6 +685,7 @@ def format_trino_coordinator_query_info_target_summary(
             f"source_type: {contract.source_type}",
             f"source_contract_version: {contract.source_contract_version}",
             f"query_info_contract_version: {contract.query_info_contract_version}",
+            f"trino_version_family: {contract.trino_version_family}",
             f"auth_reference_kind: {contract.auth_reference_kind}",
             f"auth_reference_label: {contract.auth_reference_label}",
             f"query_bound: {contract.query_bound_kind}",
@@ -680,6 +715,7 @@ def format_trino_coordinator_query_info_pruned_probe_summary(
             f"source_type: {contract.source_type}",
             f"source_contract_version: {contract.source_contract_version}",
             f"query_info_contract_version: {contract.query_info_contract_version}",
+            f"trino_version_family: {contract.trino_version_family}",
             f"auth_reference_kind: {contract.auth_reference_kind}",
             f"auth_reference_label: {contract.auth_reference_label}",
             f"query_bound: {contract.query_bound_kind}",

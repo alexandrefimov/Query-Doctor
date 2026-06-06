@@ -222,6 +222,7 @@ def _coordinator_query_info_contract_payload() -> dict[str, object]:
         "source_contract_version": TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_VERSION,
         "source_type": "coordinator_query_info",
         "query_info_contract_version": TRINO_COORDINATOR_QUERY_INFO_CONTRACT_VERSION,
+        "trino_version_family": "477",
         "auth_reference": {
             "kind": "operator_managed_reference",
             "label": "external_ref_01",

@@ -119,6 +119,7 @@ def _partial_package_payload() -> dict:
             "boundary_assertions": {
                 assertion: True for assertion in TRINO_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS
             },
+            "raw_companion_archive": "none",
         },
         "samples": [
             {

@@ -21,9 +21,28 @@ from query_doctor.analyzer.engine_facts import EngineFactContractError
 
 TRINO_COMPACT_DIAGNOSIS_SCHEMA_VERSION = "trino_compact_diagnosis_v1"
 TRINO_COMPACT_DIAGNOSIS_SUPPORT_STATUS = "bounded_compact_fact_boundary"
+TRINO_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION = "trino_compact_diagnostic_lane_v1"
+TRINO_COMPACT_DIAGNOSTIC_LANE_NAME = "trino_compact_preview"
+TRINO_SOURCE_GRANULARITY_AGGREGATE_QUERY_LIST = "aggregate_query_list"
+TRINO_SOURCE_GRANULARITY_AGGREGATE_METADATA_SUMMARY = "aggregate_metadata_summary"
+TRINO_SOURCE_GRANULARITY_ONE_QUERY_BOUNDARY = "one_query_boundary"
+TRINO_LANE_READINESS_AGGREGATE_SELECTION_ONLY = "aggregate_selection_only"
+TRINO_LANE_READINESS_COVERAGE_UNKNOWN = "source_coverage_unknown"
+TRINO_LANE_READINESS_ONE_QUERY_ATTENTION_READY = "one_query_attention_ready"
+TRINO_LANE_READINESS_ONE_QUERY_LIMITED = "one_query_limited_no_supported_attention"
 TRINO_PLANNING_ATTENTION_MIN_MS = 60_000
 TRINO_PLANNING_ATTENTION_MIN_RATIO = 0.30
 TRINO_HIGH_PEAK_MEMORY_ATTENTION_MIN_BYTES = 100 * 1024 * 1024 * 1024
+TRINO_METADATA_SUMMARY_FACT_IDS = frozenset(
+    {
+        "trino_metadata_column_stats_missing_count",
+        "trino_metadata_column_stats_present_count",
+        "trino_metadata_columns_checked",
+        "trino_metadata_relations_checked",
+        "trino_metadata_stats_completeness",
+        "trino_metadata_summary_import",
+    }
+)
 _SAFE_UNIT_RE = re.compile(r"[a-z][a-z0-9_]*")
 
 
@@ -64,9 +83,18 @@ def build_trino_compact_diagnosis_from_boundary(payload: Mapping[str, Any]) -> d
         )
 
     facts = _facts_by_id(payload)
+    if _has_metadata_summary_facts(facts):
+        raise EngineFactContractError(
+            "Trino compact diagnosis does not accept aggregate metadata summary boundaries"
+        )
     lifecycle = _mapping(payload.get("lifecycle"))
     signals = set(probe["attention_signal_ids"])
     attention_areas = trino_attention_areas(facts, lifecycle, signals)
+    diagnostic_lane = trino_diagnostic_lane_summary(
+        facts,
+        probe,
+        attention_areas=attention_areas,
+    )
 
     return {
         "schema_version": TRINO_COMPACT_DIAGNOSIS_SCHEMA_VERSION,
@@ -81,11 +109,98 @@ def build_trino_compact_diagnosis_from_boundary(payload: Mapping[str, Any]) -> d
             "optimizer_behavior": "not_wired",
             "trino_sql_execution": "not_performed",
             "live_recent_scan": "not_wired",
+            "live_known_query_diagnosis": "not_wired",
         },
+        "diagnostic_lane": diagnostic_lane,
         "attention_areas": attention_areas,
         "limitations": trino_diagnosis_limitations(facts),
         "state_counts": probe["state_counts"],
     }
+
+
+def trino_diagnostic_lane_summary(
+    facts: Mapping[str, Mapping[str, Any]],
+    probe: Mapping[str, Any],
+    *,
+    attention_areas: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return a raw-free lane contract for diagnosis and readiness audits."""
+
+    source_granularity = trino_source_granularity(facts)
+    parser_coverage = probe.get("parser_coverage")
+    supported_attention_area_count = sum(
+        1 for area in attention_areas if area.get("state") == "supported"
+    )
+    evidence_readiness = _lane_evidence_readiness(
+        source_granularity=source_granularity,
+        parser_coverage=parser_coverage,
+        supported_attention_area_count=supported_attention_area_count,
+    )
+    return {
+        "schema_version": TRINO_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION,
+        "lane": TRINO_COMPACT_DIAGNOSTIC_LANE_NAME,
+        "promotion_status": "preview_only",
+        "source_granularity": source_granularity,
+        "evidence_readiness": evidence_readiness,
+        "verification_scope": _lane_verification_scope(
+            source_granularity=source_granularity,
+            evidence_readiness=evidence_readiness,
+        ),
+        "supported_attention_area_count": supported_attention_area_count,
+        "fact_state_counts": _safe_fact_state_counts(probe.get("state_counts")),
+        "required_gates": {
+            "readiness_audit": "required_for_handoff",
+            "surface_audit": "required_before_wiring",
+        },
+    }
+
+
+def trino_source_granularity(facts: Mapping[str, Mapping[str, Any]]) -> str:
+    """Classify whether accepted facts are one-query or aggregate context."""
+
+    if any(fact_id.startswith("query_list_") for fact_id in facts):
+        return TRINO_SOURCE_GRANULARITY_AGGREGATE_QUERY_LIST
+    if _has_metadata_summary_facts(facts):
+        return TRINO_SOURCE_GRANULARITY_AGGREGATE_METADATA_SUMMARY
+    return TRINO_SOURCE_GRANULARITY_ONE_QUERY_BOUNDARY
+
+
+def _lane_evidence_readiness(
+    *,
+    source_granularity: str,
+    parser_coverage: object,
+    supported_attention_area_count: int,
+) -> str:
+    if parser_coverage == "unknown":
+        return TRINO_LANE_READINESS_COVERAGE_UNKNOWN
+    if source_granularity == TRINO_SOURCE_GRANULARITY_AGGREGATE_QUERY_LIST:
+        return TRINO_LANE_READINESS_AGGREGATE_SELECTION_ONLY
+    if supported_attention_area_count > 0:
+        return TRINO_LANE_READINESS_ONE_QUERY_ATTENTION_READY
+    return TRINO_LANE_READINESS_ONE_QUERY_LIMITED
+
+
+def _lane_verification_scope(
+    *,
+    source_granularity: str,
+    evidence_readiness: str,
+) -> str:
+    if evidence_readiness == TRINO_LANE_READINESS_COVERAGE_UNKNOWN:
+        return "source_contract_review"
+    if source_granularity == TRINO_SOURCE_GRANULARITY_AGGREGATE_QUERY_LIST:
+        return "representative_query_selection"
+    return "comparable_one_query_rerun"
+
+
+def _safe_fact_state_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    counts: dict[str, int] = {}
+    for key in ("supported", "not_observed", "unknown"):
+        count = value.get(key)
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            counts[key] = count
+    return counts
 
 
 def trino_attention_areas(
@@ -524,6 +639,10 @@ def _boundary_limitation_ids(facts: Mapping[str, Mapping[str, Any]]) -> tuple[st
         if _safe_group(fact) == "limitations" and isinstance(fact_id, str)
     ]
     return tuple(sorted(ids))
+
+
+def _has_metadata_summary_facts(facts: Mapping[str, Mapping[str, Any]]) -> bool:
+    return any(fact_id in TRINO_METADATA_SUMMARY_FACT_IDS for fact_id in facts)
 
 
 def _limitation_summary(fact_id: str) -> str:

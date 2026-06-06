@@ -1,14 +1,17 @@
 import json
 from copy import deepcopy
+from urllib.error import HTTPError
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
 from query_doctor.cli import trino_coordinator_query_info_target_check
 from query_doctor.cli import trino_coordinator_query_info_pruned_probe
 from query_doctor.trino.coordinator_query_info_target import (
+    TRINO_COORDINATOR_QUERY_INFO_AUTH_REJECTED_ERROR,
     TRINO_COORDINATOR_QUERY_INFO_CONTRACT_VERSION,
     TRINO_COORDINATOR_QUERY_INFO_PRUNED_PROBE_SCHEMA_VERSION,
     TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_VERSION,
     TRINO_COORDINATOR_QUERY_INFO_TARGET_CHECK_SCHEMA_VERSION,
+    TRINO_COORDINATOR_QUERY_INFO_UNAVAILABLE_ERROR,
     _open_without_redirects,
     fetch_trino_coordinator_pruned_query_info_text,
     parse_trino_coordinator_query_info_auth_header_text,
@@ -29,6 +32,7 @@ def test_trino_coordinator_query_info_contract_maps_safe_contract():
     assert result.source_contract_version == TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_VERSION
     assert result.source_type == "coordinator_query_info"
     assert result.query_info_contract_version == TRINO_COORDINATOR_QUERY_INFO_CONTRACT_VERSION
+    assert result.trino_version_family == "477"
     assert result.auth_reference_kind == "external_secret_reference"
     assert result.auth_reference_label == "external_ref_01"
     assert result.query_bound_kind == "explicit_query_id"
@@ -247,6 +251,96 @@ def test_trino_coordinator_query_info_fetch_rejects_redirect_without_echo(monkey
     assert COORDINATOR_URL not in message
     assert QUERY_ID not in message
     assert "redirect.example.test" not in message
+
+
+def test_trino_coordinator_query_info_fetch_reports_stale_query_info_without_echo(
+    monkeypatch,
+):
+    raw_body = f"raw stale response {COORDINATOR_URL} {QUERY_ID}".encode("utf-8")
+
+    class Body:
+        def read(self) -> bytes:
+            return raw_body
+
+        def close(self) -> None:
+            return None
+
+    def fake_open_without_redirects(request, *, timeout: int):
+        raise HTTPError(
+            request.full_url,
+            410,
+            "raw gone reason",
+            hdrs=None,
+            fp=Body(),
+        )
+
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_target._open_without_redirects",
+        fake_open_without_redirects,
+    )
+
+    try:
+        fetch_trino_coordinator_pruned_query_info_text(
+            COORDINATOR_URL,
+            query_id=QUERY_ID,
+            max_bytes=65536,
+            timeout_seconds=30,
+        )
+    except EngineFactContractError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("stale query-info responses must be classified")
+
+    assert message == TRINO_COORDINATOR_QUERY_INFO_UNAVAILABLE_ERROR
+    assert COORDINATOR_URL not in message
+    assert QUERY_ID not in message
+    assert "raw stale response" not in message
+    assert "raw gone reason" not in message
+
+
+def test_trino_coordinator_query_info_fetch_reports_auth_rejection_without_echo(
+    monkeypatch,
+):
+    raw_body = f"raw auth response {COORDINATOR_URL} {QUERY_ID}".encode("utf-8")
+
+    class Body:
+        def read(self) -> bytes:
+            return raw_body
+
+        def close(self) -> None:
+            return None
+
+    def fake_open_without_redirects(request, *, timeout: int):
+        raise HTTPError(
+            request.full_url,
+            403,
+            "raw forbidden reason",
+            hdrs=None,
+            fp=Body(),
+        )
+
+    monkeypatch.setattr(
+        "query_doctor.trino.coordinator_query_info_target._open_without_redirects",
+        fake_open_without_redirects,
+    )
+
+    try:
+        fetch_trino_coordinator_pruned_query_info_text(
+            COORDINATOR_URL,
+            query_id=QUERY_ID,
+            max_bytes=65536,
+            timeout_seconds=30,
+        )
+    except EngineFactContractError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("auth rejected query-info responses must be classified")
+
+    assert message == TRINO_COORDINATOR_QUERY_INFO_AUTH_REJECTED_ERROR
+    assert COORDINATOR_URL not in message
+    assert QUERY_ID not in message
+    assert "raw auth response" not in message
+    assert "raw forbidden reason" not in message
 
 
 def test_trino_coordinator_query_info_auth_header_rejects_unsupported_without_echo():
@@ -498,6 +592,7 @@ def test_trino_coordinator_query_info_cli_summary_json_is_raw_free(tmp_path, cap
     rendered = json.dumps(payload, sort_keys=True)
     assert payload["schema_version"] == TRINO_COORDINATOR_QUERY_INFO_TARGET_CHECK_SCHEMA_VERSION
     assert payload["source_type"] == "coordinator_query_info"
+    assert payload["trino_version_family"] == "477"
     assert payload["target"]["endpoint_template"] == "/v1/query/{queryId}"
     assert payload["target"]["network_read_performed"] is False
     assert "operator-query-info-contract.json" not in rendered
@@ -728,11 +823,45 @@ def test_trino_coordinator_query_info_rejects_credential_label_without_echo(tmp_
     assert QUERY_ID not in captured.err
 
 
+def test_trino_coordinator_query_info_rejects_unsafe_version_family_without_echo(
+    tmp_path,
+    capsys,
+):
+    payload = _safe_contract()
+    raw_value = "https://coordinator.example.test/trino-477"
+    payload["trino_version_family"] = raw_value
+    contract_path = tmp_path / "operator-query-info-contract.json"
+    contract_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    exit_code = trino_coordinator_query_info_target_check.main(
+        [
+            "--redaction-reviewed",
+            "--source-contract",
+            str(contract_path),
+            "--coordinator-url",
+            COORDINATOR_URL,
+            "--query-id",
+            QUERY_ID,
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "version family is unsupported" in captured.err
+    assert raw_value not in captured.err
+    assert "coordinator.example.test" not in captured.err
+    assert "operator-query-info-contract.json" not in captured.err
+    assert COORDINATOR_URL not in captured.err
+    assert QUERY_ID not in captured.err
+
+
 def _safe_contract() -> dict:
     return {
         "source_contract_version": TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_VERSION,
         "source_type": "coordinator_query_info",
         "query_info_contract_version": TRINO_COORDINATOR_QUERY_INFO_CONTRACT_VERSION,
+        "trino_version_family": "477",
         "auth_reference": {
             "kind": "external_secret_reference",
             "label": "external_ref_01",

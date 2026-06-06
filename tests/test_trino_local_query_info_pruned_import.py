@@ -31,6 +31,8 @@ def test_trino_local_query_info_pruned_import_maps_allowlisted_payload():
     assert facts["planning_time_ms"].value == 200
     assert facts["trino_input_rows"].value == 123
     assert facts["trino_input_bytes"].value == 1048576
+    assert facts["trino_version_family"].state == "supported"
+    assert facts["trino_version_family"].value == "477"
     assert facts["trino_peak_memory_bytes"].value == 3145728
     assert facts["trino_failed_task_count"].state == "not_observed"
 
@@ -275,6 +277,7 @@ def _safe_contract_payload() -> dict:
         "source_contract_version": TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_VERSION,
         "source_type": "coordinator_query_info",
         "query_info_contract_version": TRINO_COORDINATOR_QUERY_INFO_CONTRACT_VERSION,
+        "trino_version_family": "477",
         "auth_reference": {
             "kind": "operator_managed_reference",
             "label": "external_ref_01",

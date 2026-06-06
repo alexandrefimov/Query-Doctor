@@ -24,6 +24,7 @@ from query_doctor.trino.source_contract_utils import (
     validate_contract_tree,
     validate_exact_keys,
 )
+from query_doctor.trino.source_contract_registry import trino_source_types_for_contract_family
 
 
 TRINO_EVENT_SOURCE_CONTRACT_CHECK_SCHEMA_VERSION = "trino_event_source_contract_check_v1"
@@ -63,13 +64,7 @@ TRINO_EVENT_SOURCE_CONTRACT_REDACTION_KEYS = frozenset(
         "browser_report_output",
     }
 )
-TRINO_EVENT_SOURCE_TYPES = frozenset(
-    {
-        "http_event_listener_archive",
-        "kafka_event_listener",
-        "mysql_event_listener",
-    }
-)
+TRINO_EVENT_SOURCE_TYPES = trino_source_types_for_contract_family("event_source_contract")
 TRINO_EVENT_SOURCE_AUTH_KINDS = frozenset(
     {
         "database_readonly_secret_reference",
