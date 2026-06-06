@@ -126,6 +126,124 @@ def test_batch_recent_direct_impala_discovery_filters_window_and_selects_candida
     ] == ["aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb"]
 
 
+def test_batch_recent_direct_impala_include_running_survives_window_filter(monkeypatch, tmp_path):
+    module = load_batch_module()
+    summaries = [
+        module.cm_profiles.CMQuerySummary(
+            query_id="aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+            end_time="2026-05-12T12:15:00Z",
+            duration_ms=120000,
+            status="finished",
+            query_type="QUERY",
+            statement="SELECT 1",
+        ),
+        module.cm_profiles.CMQuerySummary(
+            query_id="cccccccccccccccc:dddddddddddddddd",
+            start_time="2026-05-12T12:20:00Z",
+            duration_ms=0,
+            status="running",
+            query_state="running",
+            query_type="QUERY",
+            statement="SELECT 2",
+        ),
+    ]
+
+    def fake_fetch_impala_query_summaries(**kwargs):
+        return type("Result", (), {"summaries": summaries, "warnings": []})()
+
+    monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
+    args = module.parse_args(
+        [
+            "--query-profile-source",
+            "impala",
+            "--impala-profile-host",
+            "impalad-1.example.com",
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--from-time",
+            "2026-05-12T10:00:00Z",
+            "--to-time",
+            "2026-05-12T11:00:00Z",
+            "--cm-inspect-limit",
+            "5",
+            "--select-limit",
+            "2",
+            "--metadata-mode",
+            "off",
+            "--no-min-duration-filter",
+            "--include-running",
+        ]
+    )
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+
+    discovery = module.discover_candidates(config, env={})
+
+    assert discovery.summaries_inspected == 1
+    assert [
+        candidate.summary.query_id for candidate in discovery.candidates if candidate.selected
+    ] == ["cccccccccccccccc:dddddddddddddddd"]
+
+
+def test_batch_recent_direct_impala_only_running_filters_to_running_summaries(
+    monkeypatch, tmp_path
+):
+    module = load_batch_module()
+    summaries = [
+        module.cm_profiles.CMQuerySummary(
+            query_id="aaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbb",
+            end_time="2026-05-12T12:15:00Z",
+            duration_ms=120000,
+            status="finished",
+            query_type="QUERY",
+            statement="SELECT 1",
+        ),
+        module.cm_profiles.CMQuerySummary(
+            query_id="cccccccccccccccc:dddddddddddddddd",
+            start_time="2026-05-12T12:20:00Z",
+            duration_ms=0,
+            status="running",
+            query_state="running",
+            query_type="QUERY",
+            statement="SELECT 2",
+        ),
+    ]
+
+    def fake_fetch_impala_query_summaries(**kwargs):
+        return type("Result", (), {"summaries": summaries, "warnings": []})()
+
+    monkeypatch.setattr(module, "fetch_impala_query_summaries", fake_fetch_impala_query_summaries)
+    args = module.parse_args(
+        [
+            "--query-profile-source",
+            "impala",
+            "--impala-profile-host",
+            "impalad-1.example.com",
+            "--out",
+            str(batch_dir(tmp_path)),
+            "--from-time",
+            "2026-05-12T10:00:00Z",
+            "--to-time",
+            "2026-05-12T11:00:00Z",
+            "--cm-inspect-limit",
+            "5",
+            "--select-limit",
+            "2",
+            "--metadata-mode",
+            "off",
+            "--no-min-duration-filter",
+            "--only-running",
+        ]
+    )
+    config = module.build_batch_config(args, env={}, cwd=tmp_path, repo_root=REPO_DIR)
+
+    discovery = module.discover_candidates(config, env={})
+
+    assert discovery.summaries_inspected == 1
+    assert [
+        candidate.summary.query_id for candidate in discovery.candidates if candidate.selected
+    ] == ["cccccccccccccccc:dddddddddddddddd"]
+
+
 def test_batch_recent_owner_raw_direct_impala_filters_to_owner_user(monkeypatch, tmp_path):
     module = load_batch_module()
     summaries = [
@@ -3762,33 +3880,42 @@ def test_case_primary_bottleneck_distribution_counts_labels_and_confidence():
         "confidence": "low",
         "reasons": ["no_primary_branch_supported"],
     }
-    missing = case_result(module, index=4, query_id="query-4", score=1)
+    memory = case_result(module, index=4, query_id="query-4", score=1)
+    memory.case_primary_bottleneck = {
+        "label": "runtime_memory",
+        "confidence": "medium",
+        "reasons": ["memory_pressure_spill_scratch_supported"],
+    }
+    missing = case_result(module, index=5, query_id="query-5", score=1)
 
-    distribution = module.case_primary_bottleneck_distribution([stats, mixed, unknown, missing])
+    distribution = module.case_primary_bottleneck_distribution(
+        [stats, mixed, unknown, memory, missing]
+    )
 
-    assert distribution["total_cases"] == 4
-    assert distribution["classified_cases"] == 3
+    assert distribution["total_cases"] == 5
+    assert distribution["classified_cases"] == 4
     assert distribution["not_classified_cases"] == 1
     assert distribution["label_counts"] == {
         "mixed": 1,
         "not_classified": 1,
+        "runtime_memory": 1,
         "stats": 1,
         "unknown": 1,
     }
     assert distribution["confidence_counts"] == {
         "high": 1,
         "low": 1,
-        "medium": 1,
+        "medium": 2,
         "unknown": 1,
     }
     assert distribution["unknown_cases"] == 1
     assert distribution["mixed_cases"] == 1
     assert distribution["unknown_or_not_classified_cases"] == 2
-    assert distribution["medium_or_better_confidence_cases"] == 2
-    assert distribution["unknown_rate"] == 0.25
-    assert distribution["mixed_rate"] == 0.25
-    assert distribution["unknown_or_not_classified_rate"] == 0.5
-    assert distribution["medium_or_better_confidence_rate"] == 0.5
+    assert distribution["medium_or_better_confidence_cases"] == 3
+    assert distribution["unknown_rate"] == 0.2
+    assert distribution["mixed_rate"] == 0.2
+    assert distribution["unknown_or_not_classified_rate"] == 0.4
+    assert distribution["medium_or_better_confidence_rate"] == 0.6
 
 
 def test_case_summary_attaches_workload_fingerprint_from_analysis_json(tmp_path):
@@ -3833,6 +3960,23 @@ def test_case_summary_attaches_workload_fingerprint_from_analysis_json(tmp_path)
             summary,
             analysis,
         ).fingerprint
+    )
+    assert summary["workload_fingerprint_incomplete"] is False
+    assert summary["workload_fingerprint_incomplete_fields"] == []
+    assert summary["workload_shape"] == {
+        "aggregate_present": True,
+        "cte_count": 1,
+        "exchange_count": 1,
+        "join_count": 2,
+        "query_type": "query",
+        "referenced_tables": ["example_warehouse.dim_date", "example_warehouse.fact_sales"],
+        "scan_count": 2,
+        "set_operation_count": 0,
+        "sql_verb": "select",
+        "window_present": False,
+    }
+    assert (
+        compute_workload_fingerprint(summary, None).fingerprint == summary["workload_fingerprint"]
     )
 
 
@@ -3963,6 +4107,8 @@ def test_batch_summary_builds_in_scan_workload_groups(tmp_path):
 
 
 def test_batch_summary_excludes_incomplete_workload_fingerprint_from_groups(tmp_path):
+    from query_doctor.recent.workload_fingerprint import compute_workload_fingerprint
+
     module = load_batch_module()
     args = module.parse_args(
         [
@@ -3995,9 +4141,30 @@ def test_batch_summary_excludes_incomplete_workload_fingerprint_from_groups(tmp_
     )
 
     assert summary["workload_groups"] == {"schema_version": 1, "groups": []}
-    assert summary["cases"][0]["workload_fingerprint"].startswith("wf_")
-    assert summary["cases"][0]["workload_fingerprint_incomplete"] is True
-    assert "workload_group_member_count" not in summary["cases"][0]
+    case_summary = summary["cases"][0]
+    assert case_summary["workload_fingerprint"].startswith("wf_")
+    assert case_summary["workload_shape"] == {
+        "aggregate_present": False,
+        "cte_count": 0,
+        "exchange_count": 0,
+        "join_count": 0,
+        "query_type": "query",
+        "referenced_tables": [],
+        "scan_count": 0,
+        "set_operation_count": 0,
+        "sql_verb": "select",
+        "window_present": False,
+    }
+    assert case_summary["workload_fingerprint_incomplete"] is True
+    assert set(case_summary["workload_fingerprint_incomplete_fields"]) >= {
+        "join_count",
+        "referenced_tables",
+        "scan_count",
+    }
+    recomputed = compute_workload_fingerprint(case_summary, None)
+    assert recomputed.fingerprint == case_summary["workload_fingerprint"]
+    assert recomputed.shape["incomplete"] is True
+    assert "workload_group_member_count" not in case_summary
 
 
 def test_case_primary_unknown_breakdown_uses_safe_aggregate_categories(tmp_path):
@@ -5379,6 +5546,24 @@ def test_primary_runtime_bottleneck_caps_both_action_candidates():
     )
 
 
+def test_primary_runtime_memory_caps_both_action_candidates_if_high_confidence():
+    module = load_batch_module()
+    from query_doctor.recent.batch_scoring import apply_primary_bottleneck_caps
+
+    case = candidate_case_for_cap_tests(module, label="runtime_memory")
+
+    apply_primary_bottleneck_caps(case)
+
+    assert case.query_optimization_candidate.tier == "low"
+    assert case.stats_optimization_candidate.tier == "low"
+    assert (
+        "primary_bottleneck_is_runtime_memory" in case.query_optimization_candidate.counter_signals
+    )
+    assert (
+        "primary_bottleneck_is_runtime_memory" in case.stats_optimization_candidate.counter_signals
+    )
+
+
 def test_primary_client_fetch_tail_caps_both_action_candidates():
     module = load_batch_module()
     from query_doctor.recent.batch_scoring import apply_primary_bottleneck_caps
@@ -5444,6 +5629,26 @@ def test_mixed_runtime_primary_soft_caps_stats_candidate_only():
     assert mixed.stats_optimization_candidate.tier == "medium"
     assert (
         "mixed_primary_includes_runtime_data_movement; stats refresh is not first action"
+        in mixed.stats_optimization_candidate.counter_signals
+    )
+
+
+def test_mixed_memory_primary_soft_caps_stats_candidate_only():
+    module = load_batch_module()
+    from query_doctor.recent.batch_scoring import apply_primary_bottleneck_caps
+
+    mixed = candidate_case_for_cap_tests(module, label="mixed")
+    mixed.case_primary_bottleneck["reasons"] = [
+        "competing_stats",
+        "competing_runtime_memory",
+    ]
+
+    apply_primary_bottleneck_caps(mixed)
+
+    assert mixed.query_optimization_candidate.tier == "high"
+    assert mixed.stats_optimization_candidate.tier == "medium"
+    assert (
+        "mixed_primary_includes_runtime_memory; stats refresh is not first action"
         in mixed.stats_optimization_candidate.counter_signals
     )
 

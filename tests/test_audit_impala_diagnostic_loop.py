@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import hashlib
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -66,7 +67,12 @@ def test_impala_loop_audit_composes_real_strict_components(tmp_path: Path) -> No
         "partial_untrusted=0; issues=0"
     ) in text
     assert "direct_impala_cases=2" in text
-    assert "workload: ok; total_cases=2; workload_groups=1; action_queue=1; issues=0" in text
+    assert (
+        "workload: ok; total_cases=2; workload_groups=1; "
+        "row_incomplete_workload_fingerprints=0; "
+        "row_repeated_workload_groups=1; row_repeated_workload_cases=2; "
+        "action_queue=1; issues=0"
+    ) in text
     assert "optimizer: ok; total_cases=2; audited_cases=2; issues=0" in text
     assert str(tmp_path) not in text
     assert "case-001" not in text
@@ -79,12 +85,539 @@ def test_impala_loop_audit_composes_real_strict_components(tmp_path: Path) -> No
                 "--action-outcomes",
                 str(action_outcomes_path),
                 "--require-action-outcomes",
+                "--require-workload-groups",
                 "--require-direct-source-readiness",
                 "--use-stored-optimizer-support",
             ]
         )
         == 0
     )
+
+
+def test_impala_loop_audit_can_require_workload_groups(tmp_path: Path) -> None:
+    summary_path = tmp_path / "batch_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "selected_count": 0,
+                "summaries_inspected": 0,
+                "cases": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    audit_result = loop.audit_summary(
+        summary_path,
+        require_workload_groups=True,
+        recompute_optimizer_support=False,
+    )
+    workload = next(
+        component for component in audit_result.components if component.name == "workload"
+    )
+
+    assert not audit_result.ok
+    assert workload.issue_counts == {"workload_groups_missing": 1}
+    assert loop.main([str(summary_path), "--require-workload-groups"]) == 1
+    assert (
+        loop.main(
+            [
+                str(summary_path),
+                "--require-action-outcomes",
+                "--use-stored-optimizer-support",
+            ]
+        )
+        == 1
+    )
+
+
+def test_impala_loop_workload_breakdowns_include_incomplete_fields() -> None:
+    breakdowns = loop.workload_breakdowns(
+        SimpleNamespace(
+            row_incomplete_workload_field_counts=Counter(
+                {
+                    "referenced_tables": 2,
+                    "join_count": 1,
+                    "/tmp/raw-field": 1,
+                }
+            ),
+            row_incomplete_workload_field_source_counts=Counter(
+                {
+                    "stored": 2,
+                    "summary_recomputed": 1,
+                }
+            ),
+        )
+    )
+
+    assert breakdowns == (
+        (
+            "row_incomplete_workload_field_counts",
+            (
+                ("join_count", "1"),
+                ("referenced_tables", "2"),
+                ("unsafe_token", "1"),
+            ),
+        ),
+        (
+            "row_incomplete_workload_field_source_counts",
+            (
+                ("stored", "2"),
+                ("summary_recomputed", "1"),
+            ),
+        ),
+    )
+
+
+def test_impala_loop_coverage_breakdowns_include_unknown_reasons_and_resolutions() -> None:
+    breakdowns = loop.coverage_breakdowns(
+        SimpleNamespace(
+            strict_unknown_primary_reason_counts=Counter(
+                {
+                    "memory_estimate_context_only+data_movement_context_only": 3,
+                    "/tmp/raw-reason": 1,
+                }
+            ),
+            unknown_primary_resolution_counts=Counter(
+                {
+                    "diagnostic_evidence_gap": 2,
+                    "/tmp/raw-resolution": 1,
+                }
+            ),
+        )
+    )
+
+    assert breakdowns == (
+        (
+            "strict_unknown_primary_reason_counts",
+            (("memory_estimate_context_only_data_movement_context_only", "3"),),
+        ),
+        (
+            "unknown_primary_resolution_counts",
+            (("diagnostic_evidence_gap", "2"),),
+        ),
+    )
+
+
+def test_impala_loop_audit_writes_raw_free_summary_json(tmp_path: Path) -> None:
+    summary_path = write_strict_loop_fixture(tmp_path)
+    action_outcomes_path = write_loop_action_outcomes(tmp_path)
+    summary_json_path = tmp_path / "loop-summary.json"
+
+    assert (
+        loop.main(
+            [
+                str(summary_path),
+                "--action-outcomes",
+                str(action_outcomes_path),
+                "--require-action-outcomes",
+                "--require-direct-source-readiness",
+                "--use-stored-optimizer-support",
+                "--summary-json",
+                str(summary_json_path),
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(summary_json_path.read_text(encoding="utf-8"))
+
+    assert payload["schema_version"] == "impala_diagnostic_loop_audit_v1"
+    assert payload["status"] == "ok"
+    component_names = [component["name"] for component in payload["components"]]
+    assert component_names == [
+        "details",
+        "trusted_reports",
+        "optimizer_artifacts",
+        "profile_evidence",
+        "diagnostic_coverage",
+        "workload",
+        "stats",
+        "optimizer",
+    ]
+    details = next(
+        component for component in payload["components"] if component["name"] == "details"
+    )
+    assert details == {
+        "name": "details",
+        "status": "ok",
+        "metrics": {
+            "total_cases": 2,
+            "audited_cases": 2,
+            "issues": 0,
+        },
+        "issue_counts": {},
+        "breakdowns": {
+            "action_counts": {
+                "high_query-shape_recommendation": 2,
+                "high_stats_maintenance_recommendation": 2,
+            },
+            "metadata_counts": {"collected": 2},
+            "optimizer_counts": {"high_unavailable": 2},
+            "report_counts": {"high_not_run": 2},
+            "severity_counts": {"high": 2},
+            "stats_detail_counts": {"high_with_structured_detail": 2},
+            "title_counts": {"stats_gaps_may_be_misleading_the_planner": 2},
+            "verification_counts": {"high_comparable_rerun": 4},
+        },
+    }
+    trusted_reports = next(
+        component for component in payload["components"] if component["name"] == "trusted_reports"
+    )
+    assert trusted_reports == {
+        "name": "trusted_reports",
+        "status": "ok",
+        "metrics": {
+            "total_cases": 2,
+            "audited_cases": 2,
+            "trusted_reports": 0,
+            "revalidated_reports": 0,
+            "revalidation_failures": 0,
+            "partial_untrusted": 0,
+            "issues": 0,
+        },
+        "issue_counts": {},
+        "breakdowns": {
+            "state_status_counts": {
+                "llm_not_run": 2,
+                "python_not_run": 2,
+            },
+        },
+    }
+    optimizer_artifacts = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "optimizer_artifacts"
+    )
+    assert optimizer_artifacts == {
+        "name": "optimizer_artifacts",
+        "status": "ok",
+        "metrics": {
+            "total_cases": 2,
+            "audited_cases": 2,
+            "trusted_artifacts": 0,
+            "trusted_drafts": 0,
+            "trusted_recommendations": 0,
+            "trusted_no_rewrite": 0,
+            "partial_untrusted": 0,
+            "issues": 0,
+        },
+        "issue_counts": {},
+        "breakdowns": {
+            "state_status_counts": {"unavailable": 2},
+        },
+    }
+    coverage = next(
+        component
+        for component in payload["components"]
+        if component["name"] == "diagnostic_coverage"
+    )
+    profile = next(
+        component for component in payload["components"] if component["name"] == "profile_evidence"
+    )
+    assert profile == {
+        "name": "profile_evidence",
+        "status": "ok",
+        "metrics": {
+            "total_cases": 2,
+            "analyzed_cases": 2,
+            "missing_analysis": 0,
+            "analysis_errors": 0,
+            "issues": 0,
+        },
+        "issue_counts": {},
+        "breakdowns": {
+            "admission_counts": {"not_observed_unsupported_primary_false_unknown": 2},
+            "backend_tail_counts": {
+                "execution_skew_unknown_execution_tail_candidates_0_data_skew_unknown": 2
+            },
+            "client_fetch_counts": {"unknown_unknown_unknown_finding_false_primary_false": 2},
+            "data_movement_counts": {
+                "not_observed_unsupported_finding_false_primary_false_exchange_ops_0": 2
+            },
+            "evidence_quality_counts": {"medium": 2},
+            "memory_pressure_counts": {"unknown_unknown_finding_false_spill_false": 2},
+            "primary_confidence_counts": {"stats_high": 2},
+            "primary_counts": {"stats": 2},
+            "profile_counter_registry_counts": {"not_observed_bundled": 2},
+            "profile_dialect_counts": {"classic_text_profile": 2},
+            "profile_policy_counts": {"supported": 2},
+            "resource_trace_counts": {"status_unknown_tier_unsupported_primary_no_metrics_0": 2},
+            "runtime_filter_counts": {"unknown_unknown_finding_false_primary_false": 2},
+            "scan_skew_counts": {
+                "not_observed_unsupported_finding_false_primary_false_hosts_0_corroborating_0": 2
+            },
+            "severity_counts": {"high": 2},
+            "storage_context_counts": {"unknown_unknown_unknown_hdfs_locality_unknown": 2},
+        },
+    }
+    assert coverage == {
+        "name": "diagnostic_coverage",
+        "status": "ok",
+        "metrics": {
+            "total_cases": 2,
+            "analyzed_cases": 2,
+            "missing_analysis": 0,
+            "direct_impala_cases": 2,
+            "issues": 0,
+        },
+        "issue_counts": {},
+        "breakdowns": {
+            "data_movement_calibration_signal_counts": {
+                "bytes_missing_or_zero": 2,
+                "evidence_unsupported": 2,
+                "exchange_ops_0": 2,
+                "exchange_share_unknown": 2,
+                "exchange_timing_unavailable": 2,
+                "finding_not_supported": 2,
+                "primary_not_supported": 2,
+                "status_not_observed": 2,
+            },
+            "direct_discovery_counts": {
+                "discovery_ok": 1,
+                "selected_2_4": 1,
+                "summaries_inspected_2_4": 1,
+                "summary": 1,
+                "warning_none": 1,
+            },
+            "direct_source_readiness_counts": {
+                "admission_context_probe_enabled": 2,
+                "admission_context_unavailable": 2,
+                "cluster_events_not_collected": 2,
+                "json_profile_not_configured": 2,
+                "json_profile_probe_not_configured": 2,
+                "metadata_not_collected": 2,
+                "profile_docs_probe_enabled": 2,
+                "profile_docs_unavailable": 2,
+                "profile_fetch_attempts_1": 2,
+                "profile_response_format_text": 2,
+                "profile_source_impala_daemon": 2,
+                "provenance_engine_available": 2,
+                "provenance_events_none": 2,
+                "provenance_metadata_none": 2,
+                "provenance_metrics_none": 2,
+                "provenance_profile_available": 2,
+                "runtime_metrics_not_collected": 2,
+            },
+            "evidence_quality_counts": {"medium": 2},
+            "gap_counts": {
+                "cluster_events_not_available": 2,
+                "metadata_context_not_collected": 2,
+                "profile_docs_registry_not_available": 2,
+                "resource_trace_absent": 2,
+                "runtime_metrics_not_available": 2,
+                "storage_context_unknown": 2,
+            },
+            "optional_source_counts": {
+                "admission_context_unavailable": 2,
+                "cluster_events_not_collected": 2,
+                "json_profile_not_configured": 2,
+                "metadata_not_collected": 2,
+                "profile_docs_unavailable": 2,
+                "resource_trace_unknown": 2,
+                "runtime_metrics_not_collected": 2,
+            },
+            "primary_confidence_counts": {"stats_high": 2},
+            "primary_counts": {"stats": 2},
+            "runtime_filter_calibration_signal_counts": {
+                "context_not_observed": 2,
+                "exec_node_effectiveness_unknown": 2,
+            },
+            "source_compatibility_counts": {
+                "admission_context_fetch_attempts_1": 2,
+                "admission_context_probe_enabled": 2,
+                "admission_context_unavailable": 2,
+                "impala_build_type_snapshot": 2,
+                "impala_distribution_apache_impala": 2,
+                "impala_major_version_major_5": 2,
+                "json_profile_payload_not_selected": 2,
+                "json_profile_probe_not_configured": 2,
+                "primary_profile_routing_supported": 2,
+                "profile_counter_registry_not_observed_bundled": 2,
+                "profile_docs_fetch_attempts_1": 2,
+                "profile_docs_probe_enabled": 2,
+                "profile_fetch_attempts_1": 2,
+                "profile_response_format_text": 2,
+                "resource_trace_unknown": 2,
+                "text_profile_payload_observed": 2,
+            },
+            "source_status_counts": {
+                "engine_available": 2,
+                "events_none": 2,
+                "metadata_none": 2,
+                "metrics_none": 2,
+                "profile_available": 2,
+            },
+            "storage_unknown_reason_counts": {"unknown": 2},
+        },
+    }
+    workload = next(
+        component for component in payload["components"] if component["name"] == "workload"
+    )
+    assert workload == {
+        "name": "workload",
+        "status": "ok",
+        "metrics": {
+            "total_cases": 2,
+            "workload_groups": 1,
+            "row_incomplete_workload_fingerprints": 0,
+            "row_repeated_workload_groups": 1,
+            "row_repeated_workload_cases": 2,
+            "action_queue": 1,
+            "issues": 0,
+        },
+        "issue_counts": {},
+        "breakdowns": {
+            "action_outcome_family_counts": {
+                "family_sample_met": 1,
+                "stats_refresh_review_v1": 1,
+            },
+            "action_outcome_family_requirement_counts": {
+                "query_optimization_review_v1_required": 1,
+                "query_optimization_review_v1_result_measured": 1,
+                "query_optimization_review_v1_sample_met": 1,
+                "stats_refresh_review_v1_required": 1,
+                "stats_refresh_review_v1_result_measured": 1,
+                "stats_refresh_review_v1_sample_met": 1,
+            },
+            "action_outcome_gate_counts": {
+                "action_outcomes_supplied": 1,
+                "gate_evaluable": 1,
+                "gate_passed": 1,
+                "measured_result_family_groups": 2,
+                "raw_free_passed": 1,
+                "required_family_groups": 2,
+                "sample_met_family_groups": 2,
+            },
+            "action_outcome_group_coverage_counts": {"sample_met": 1},
+            "action_outcome_result_counts": {
+                "required_family_comparable_reruns_4_5": 2,
+                "required_family_improved": 4,
+                "required_family_measured_results": 8,
+                "required_family_no_change": 4,
+                "required_family_sample_measured": 2,
+                "required_family_unsure": 2,
+            },
+            "action_outcome_verification_counts": {
+                "family_comparable_reruns_4_5": 1,
+                "workload_comparable_reruns_6_plus": 1,
+            },
+            "action_outcome_source_counts": {"supplied": 1, "workloads_1": 1},
+            "action_queue_outcome_counts": {"sample_met": 1},
+            "action_queue_signal_counts": {"baseline_slowdown": 1},
+            "action_queue_verification_counts": {"comparable_or_rerun": 1},
+            "detail_action_hint_counts": {"2_3": 1},
+            "detail_action_hint_outcome_counts": {"sample_met": 3},
+            "detail_limitation_counts": {"selected_cases_only": 1},
+            "detail_representative_counts": {"2_3": 1},
+            "group_baseline_counts": {"available": 1},
+            "group_member_count_buckets": {"2_3": 1},
+            "group_regression_counts": {"strong": 1},
+            "workload_history_counts": {
+                "append_ok": 1,
+                "enabled": 1,
+                "loaded_2_3": 1,
+            },
+        },
+    }
+    stats = next(component for component in payload["components"] if component["name"] == "stats")
+    assert stats == {
+        "name": "stats",
+        "status": "ok",
+        "metrics": {
+            "total_cases": 2,
+            "actionable_candidates": 2,
+            "issues": 0,
+        },
+        "issue_counts": {},
+        "breakdowns": {
+            "confirmation_counts": {"comparable_rerun": 2},
+            "evidence_detail_counts": {
+                "join_filter_column_stats": 2,
+                "partition_stats": 2,
+            },
+            "metadata_status_counts": {"collected": 2},
+            "need_type_counts": {"table_and_column_stats": 2},
+            "review_area_counts": {"present": 2},
+            "tier_counts": {"high": 2},
+        },
+    }
+    optimizer = next(
+        component for component in payload["components"] if component["name"] == "optimizer"
+    )
+    assert optimizer == {
+        "name": "optimizer",
+        "status": "ok",
+        "metrics": {
+            "total_cases": 2,
+            "audited_cases": 2,
+            "issues": 0,
+        },
+        "issue_counts": {},
+        "breakdowns": {
+            "bucket_counts": {"not_rewriteable": 2},
+            "no_recipe_family_counts": {"plain": 2},
+            "no_recipe_hint_counts": {"no_specific_recipe_hint": 2},
+            "no_recipe_review_track_counts": {"single_relation_filter_review": 2},
+            "no_recipe_risk_mode_counts": {"low_risk_review": 2},
+            "repeated_no_recipe_family_counts": {"plain": 2},
+            "repeated_no_recipe_guidance_readiness_counts": {"guidance_ready": 1},
+            "repeated_no_recipe_review_readiness_counts": {"specific_track": 1},
+            "repeated_no_recipe_review_track_counts": {"single_relation_filter_review": 2},
+            "review_primary_counts": {"stats": 2},
+            "review_reason_counts": {"no_python-owned_sql_rewrite_recipe_is_available": 2},
+            "status_counts": {"guidance_only": 2},
+            "support_source_counts": {"stored": 2},
+        },
+    }
+    text = json.dumps(payload, sort_keys=True)
+    assert "batch_summary.json" not in text
+    assert "action_outcomes.jsonl" not in text
+    assert str(tmp_path) not in text
+    assert "case-001" not in text
+    assert LOOP_WORKLOAD_FP not in text
+
+
+def test_impala_loop_audit_summary_json_sanitizes_breakdown_keys() -> None:
+    audit_result = loop.DiagnosticLoopAuditResult(
+        summary_name="batch_summary.json",
+        components=(
+            loop.ComponentAudit(
+                name="diagnostic_coverage",
+                ok=False,
+                metrics=(("direct_impala_cases", "1"),),
+                issue_counts=Counter({"https://internal.example/issue": 1}),
+                breakdowns=(
+                    (
+                        "direct_source_readiness_counts",
+                        (
+                            ("profile_source/impala_daemon", "1"),
+                            ("profile_source/http://internal.example/profile", "1"),
+                            ("metadata//tmp/cases/case-001", "1"),
+                            ("query/SELECT secret_col FROM private.customer_orders", "1"),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    payload = loop.summary_json_payload(audit_result)
+    component = payload["components"][0]
+
+    assert component["issue_counts"] == {"unsafe_token": 1}
+    assert component["breakdowns"] == {
+        "direct_source_readiness_counts": {
+            "profile_source_impala_daemon": 1,
+            "unsafe_token": 3,
+        }
+    }
+    text = json.dumps(payload, sort_keys=True)
+    assert "internal.example" not in text
+    assert "/tmp" not in text
+    assert "case-001" not in text
+    assert "secret_col" not in text
+    assert "private.customer_orders" not in text
 
 
 def test_impala_loop_audit_runs_strict_components_and_stays_raw_free(
@@ -140,6 +673,7 @@ def test_impala_loop_audit_runs_strict_components_and_stays_raw_free(
         assert paths == (summary_path.resolve(),)
         assert kwargs["fail_on_diagnostic_coverage_gaps"] is True
         assert kwargs["fail_on_direct_source_readiness_gaps"] is True
+        assert kwargs["use_current_classifier_primary"] is True
         assert kwargs["max_unknown_primary_rate"] == 25.0
         assert kwargs["min_medium_primary_rate"] == 80.0
         return result(total_cases=2, analyzed_cases=2, direct_impala_case_count=2)
@@ -148,6 +682,7 @@ def test_impala_loop_audit_runs_strict_components_and_stays_raw_free(
         calls.append(("workload", kwargs))
         assert path == summary_path.resolve()
         assert kwargs["fail_on_workload_readiness_gaps"] is True
+        assert kwargs["require_workload_groups"] is True
         assert kwargs["action_outcomes_path"] == action_outcomes_path
         assert kwargs["fail_on_action_outcome_readiness_gaps"] is True
         return result(total_cases=2, workload_group_count=1, action_queue_count=1)
@@ -178,8 +713,10 @@ def test_impala_loop_audit_runs_strict_components_and_stays_raw_free(
         summary_path,
         action_outcomes_path=action_outcomes_path,
         require_action_outcomes=True,
+        require_workload_groups=True,
         require_direct_source_readiness=True,
         recompute_optimizer_support=False,
+        use_current_classifier_primary=True,
         max_unknown_primary_rate=25.0,
         min_medium_primary_rate=80.0,
     )
@@ -214,8 +751,10 @@ def test_impala_loop_audit_runs_strict_components_and_stays_raw_free(
                 "--action-outcomes",
                 str(action_outcomes_path),
                 "--require-action-outcomes",
+                "--require-workload-groups",
                 "--require-direct-source-readiness",
                 "--use-stored-optimizer-support",
+                "--use-current-classifier-primary",
                 "--max-unknown-primary-rate",
                 "25",
                 "--min-medium-primary-rate",
@@ -302,6 +841,59 @@ def test_impala_loop_audit_reports_safe_issue_categories(monkeypatch, tmp_path: 
     assert "action_outcomes.jsonl" not in text
 
 
+def test_impala_loop_audit_summary_json_reports_safe_issue_counts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "batch_summary.json"
+    summary_path.write_text('{"cases": []}\n', encoding="utf-8")
+    raw_detail_issue = SimpleNamespace(
+        message=(
+            "forbidden browser text leaked: RAW_LOCAL_PATH_MARKER "
+            "SELECT secret_col FROM private.customer_orders"
+        )
+    )
+
+    monkeypatch.setattr(
+        loop,
+        "audit_details_summary",
+        lambda *_args, **_kwargs: result(
+            ok=False, total_cases=1, audited_cases=1, issues=[raw_detail_issue]
+        ),
+    )
+    monkeypatch.setattr(loop, "audit_trusted_report_summary", lambda *_args: result(total_cases=1))
+    monkeypatch.setattr(
+        loop, "audit_optimizer_artifact_summary", lambda *_args: result(total_cases=1)
+    )
+    monkeypatch.setattr(loop, "audit_profile_summary", lambda *_args: result(total_cases=1))
+    monkeypatch.setattr(
+        loop, "audit_coverage_summaries", lambda *_args, **_kwargs: result(total_cases=1)
+    )
+    monkeypatch.setattr(
+        loop, "audit_workload_summary", lambda *_args, **_kwargs: result(total_cases=1)
+    )
+    monkeypatch.setattr(
+        loop, "audit_stats_summary", lambda *_args, **_kwargs: result(total_cases=1)
+    )
+    monkeypatch.setattr(
+        loop, "audit_optimizer_summary", lambda *_args, **_kwargs: result(total_cases=1)
+    )
+
+    audit_result = loop.audit_summary(summary_path)
+    payload = loop.summary_json_payload(audit_result)
+
+    details = next(
+        component for component in payload["components"] if component["name"] == "details"
+    )
+    assert details["status"] == "issues"
+    assert details["issue_counts"] == {"forbidden_browser_text": 1}
+    text = json.dumps(payload, sort_keys=True)
+    assert "secret_col" not in text
+    assert "private.customer_orders" not in text
+    assert str(tmp_path) not in text
+    assert "batch_summary.json" not in text
+
+
 def test_impala_loop_audit_counts_trusted_report_artifact(tmp_path: Path) -> None:
     summary_path = write_strict_loop_fixture(tmp_path)
     case_dir = tmp_path / "cases" / "case-001"
@@ -316,6 +908,13 @@ def test_impala_loop_audit_counts_trusted_report_artifact(tmp_path: Path) -> Non
     assert audit_result.revalidated_report_count == 1
     assert audit_result.revalidation_failure_count == 0
     assert audit_result.partial_untrusted_count == 0
+    assert audit_result.state_status_counts == {
+        "llm/not_run": 2,
+        "python/not_run": 1,
+        "python/generated": 1,
+    }
+    assert audit_result.trusted_variant_counts == {"python": 1}
+    assert audit_result.revalidation_status_counts == {"python/passed": 1}
 
 
 def test_impala_loop_audit_counts_trusted_optimizer_draft(tmp_path: Path) -> None:
@@ -333,6 +932,9 @@ def test_impala_loop_audit_counts_trusted_optimizer_draft(tmp_path: Path) -> Non
     assert audit_result.trusted_recommendation_count == 0
     assert audit_result.trusted_no_rewrite_count == 0
     assert audit_result.partial_untrusted_count == 0
+    assert audit_result.state_status_counts == {"generated": 1, "unavailable": 1}
+    assert audit_result.output_kind_counts == {"sql_draft": 1}
+    assert audit_result.artifact_readability_counts == {"readable": 1}
 
 
 def test_impala_loop_audit_revalidates_trusted_report_against_current_rules(
@@ -764,6 +1366,31 @@ def strict_loop_workload_group() -> dict[str, object]:
 def write_loop_action_outcomes(tmp_path: Path) -> Path:
     outcome_path = tmp_path / "action_outcomes.jsonl"
     records = [
+        loop_outcome_record(
+            recommendation_id="query_optimization_review.v1",
+            outcome="improved",
+            case_id="case-001",
+        ),
+        loop_outcome_record(
+            recommendation_id="query_optimization_review.v1",
+            outcome="no_change",
+            case_id="case-002",
+        ),
+        loop_outcome_record(
+            recommendation_id="query_optimization_review.v1",
+            outcome="improved",
+            case_id="case-001",
+        ),
+        loop_outcome_record(
+            recommendation_id="query_optimization_review.v1",
+            outcome="no_change",
+            case_id="case-002",
+        ),
+        loop_outcome_record(
+            recommendation_id="query_optimization_review.v1",
+            outcome="unsure",
+            case_id="case-001",
+        ),
         loop_outcome_record(outcome="improved", case_id="case-001"),
         loop_outcome_record(outcome="no_change", case_id="case-002"),
         loop_outcome_record(outcome="improved", case_id="case-001"),
@@ -777,7 +1404,12 @@ def write_loop_action_outcomes(tmp_path: Path) -> Path:
     return outcome_path
 
 
-def loop_outcome_record(*, outcome: str, case_id: str) -> dict[str, object]:
+def loop_outcome_record(
+    *,
+    outcome: str,
+    case_id: str,
+    recommendation_id: str = "stats_refresh_review.v1",
+) -> dict[str, object]:
     return asdict(
         ActionOutcomeRecord(
             schema_version=SCHEMA_VERSION,
@@ -785,8 +1417,9 @@ def loop_outcome_record(*, outcome: str, case_id: str) -> dict[str, object]:
             workload_fingerprint=LOOP_WORKLOAD_FP,
             case_fingerprint="cf_aaaaaaaaaaaaaaaaaaaaaaaa",
             case_id_local=case_id,
-            recommendation_id="stats_refresh_review.v1",
+            recommendation_id=recommendation_id,
             applied="yes",
             outcome=outcome,
+            verification_status="comparable_rerun",
         )
     )
