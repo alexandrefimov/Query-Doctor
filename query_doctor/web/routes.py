@@ -45,9 +45,12 @@ from query_doctor.web.specific_query_pages import (
     render_specific_query_detail_for_request,
     render_specific_query_report_for_request,
 )
-from query_doctor.web.spark_compact import handle_spark_compact_request
 from query_doctor.web.subprocesses import Runner
-from query_doctor.web.trino_compact import handle_trino_compact_request
+from query_doctor.web.preview_surfaces import (
+    PREVIEW_WEB_POST_PATHS,
+    preview_surface_for_get_path,
+    preview_surface_for_post_path,
+)
 from query_doctor.web.trusted_artifacts import (
     load_batch_case_trusted_report_artifact,
     load_specific_query_trusted_report_artifact,
@@ -66,8 +69,6 @@ from query_doctor.web.ui.pages import (
     render_readme_page,
 )
 from query_doctor.web.ui.running import render_running_queries_page
-from query_doctor.web.ui.spark import render_spark_compact_page
-from query_doctor.web.ui.trino import render_trino_compact_page
 
 
 AnalysisFunc = Callable[[str, str, bool, WebSettings], object]
@@ -78,8 +79,6 @@ STATIC_POST_PATHS = {
     "/running/run",
     "/optimizer",
     "/query-optimizer",
-    "/spark/compact-diagnosis",
-    "/trino/compact-diagnosis",
 }
 STATIC_ASSETS = {
     "/static/app.css": ("app.css", "text/css; charset=utf-8"),
@@ -170,10 +169,9 @@ def route_get_request(
         return WebRouteResponse.html(200, render_query_page(settings))
     if parsed.path in {"/optimizer", "/query-optimizer"}:
         return WebRouteResponse.html(200, render_optimizer_page(settings))
-    if parsed.path in {"/spark", "/spark/compact-diagnosis"}:
-        return WebRouteResponse.html(200, render_spark_compact_page(settings))
-    if parsed.path in {"/trino", "/trino/compact-diagnosis"}:
-        return WebRouteResponse.html(200, render_trino_compact_page(settings))
+    preview_surface = preview_surface_for_get_path(parsed.path)
+    if preview_surface is not None:
+        return WebRouteResponse.html(200, preview_surface.render_get(settings))
     if parsed.path in {"/running", "/running-queries"}:
         query = parse_qs(parsed.query, keep_blank_values=True)
         return WebRouteResponse.html(
@@ -224,6 +222,7 @@ def post_route_is_allowed(path: str) -> bool:
     parsed_path = urlparse(path).path
     return (
         parsed_path in STATIC_POST_PATHS
+        or parsed_path in PREVIEW_WEB_POST_PATHS
         or JOB_CANCEL_POST_RE.fullmatch(parsed_path) is not None
         or BATCH_CASE_POST_RE.fullmatch(parsed_path) is not None
         or ACTION_OUTCOME_POST_RE.fullmatch(parsed_path) is not None
@@ -503,10 +502,8 @@ def route_post_request(
         status, body = start_running_job(form, settings, store, runner=runner)
     elif parsed.path in {"/optimizer", "/query-optimizer"}:
         status, body = handle_optimizer_request(form, settings, runner=runner)
-    elif parsed.path == "/spark/compact-diagnosis":
-        status, body = handle_spark_compact_request(form, settings)
-    elif parsed.path == "/trino/compact-diagnosis":
-        status, body = handle_trino_compact_request(form, settings)
+    elif (preview_surface := preview_surface_for_post_path(parsed.path)) is not None:
+        status, body = preview_surface.handle_post(form, settings)
     elif parsed.path == "/analyze":
         status, body = start_analyze_job(form, settings, store, analysis_func=analysis_func)
     else:

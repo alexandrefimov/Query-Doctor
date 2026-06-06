@@ -127,6 +127,7 @@ def test_route_get_batch_workload_detail_renders_safe_group(tmp_path, monkeypatc
             recommendation_id="stats_refresh_review.v1",
             applied="yes",
             outcome="improved",
+            verification_status="comparable_rerun",
         ),
         path=outcome_path,
     )
@@ -142,10 +143,10 @@ def test_route_get_batch_workload_detail_renders_safe_group(tmp_path, monkeypatc
     assert "Workload details" in response.body
     assert "Outcomes" in response.body
     assert (
-        "1 recorded; 1 applied; improved 1; "
+        "1 recorded; 1 applied; 1 comparable reruns; improved 1; "
         "last applied action Stats refresh review: improved; "
-        "family signal Stats refresh review: improved 1/1 applied; "
-        "feedback sample below threshold (1/5 applied); "
+        "family signal Stats refresh review: improved 1/1 comparable reruns; "
+        "feedback sample below threshold (1/5 comparable reruns); "
         "next check stats signal count and group p95"
     ) in response.body
     assert "Details action plan" in response.body
@@ -215,7 +216,11 @@ def test_route_post_batch_case_action_outcome_records_local_jsonl(tmp_path, monk
 
     response = route_post_request(
         "/batch/case/case-001/outcome/stats_refresh_review.v1",
-        {"applied": ["yes"], "outcome": ["improved"]},
+        {
+            "applied": ["yes"],
+            "outcome": ["improved"],
+            "verification_status": ["comparable_rerun"],
+        },
         WebSettings(config=Path(".query-doctor-cm.local.json"), batch_summary=summary_path),
         WebJobStore(),
     )
@@ -227,6 +232,7 @@ def test_route_post_batch_case_action_outcome_records_local_jsonl(tmp_path, monk
     assert payload["recommendation_id"] == "stats_refresh_review.v1"
     assert payload["applied"] == "yes"
     assert payload["outcome"] == "improved"
+    assert payload["verification_status"] == "comparable_rerun"
     assert payload["workload_fingerprint"] == "wf_1234567890abcdef12345678"
     assert "abc:def" not in outcome_path.read_text(encoding="utf-8")
 

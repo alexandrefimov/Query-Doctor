@@ -1,0 +1,76 @@
+from pathlib import Path
+
+from query_doctor.engines.capabilities import engine_capabilities
+from query_doctor.web.jobs import WebJobStore
+from query_doctor.web.models import WebSettings
+from query_doctor.web.preview_surfaces import (
+    PREVIEW_WEB_GET_SURFACES,
+    PREVIEW_WEB_POST_PATHS,
+    PREVIEW_WEB_POST_SURFACES,
+    PREVIEW_WEB_SURFACES,
+    preview_surface_for_get_path,
+    preview_surface_for_post_path,
+)
+from query_doctor.web.routes import post_route_is_allowed, route_get_request
+
+
+def web_settings() -> WebSettings:
+    return WebSettings(config=Path(".query-doctor-cm.local.json"))
+
+
+def test_preview_web_surfaces_match_engine_capability_manifest_routes():
+    manifest_routes = {
+        capability.route_path: capability
+        for capability in (*engine_capabilities("spark"), *engine_capabilities("trino"))
+        if capability.route_path
+    }
+    registry_routes = {surface.route_path: surface for surface in PREVIEW_WEB_SURFACES}
+
+    assert set(registry_routes) == {"/spark/compact-diagnosis", "/trino/compact-diagnosis"}
+    assert set(registry_routes) == set(manifest_routes)
+    for route_path, surface in registry_routes.items():
+        capability = manifest_routes[route_path]
+        assert surface.engine == capability.engine
+        assert surface.surface_id == capability.surface_id
+        assert surface.surface_class == capability.surface_class
+        assert surface.product_surface_allowed is capability.product_surface_allowed
+        assert capability.product_surface_allowed is False
+        assert capability.promotion_gate == "isolated_compact_page_only"
+
+
+def test_preview_web_route_maps_have_unique_get_and_post_paths():
+    expected_get_paths = {path for surface in PREVIEW_WEB_SURFACES for path in surface.get_paths}
+
+    assert set(PREVIEW_WEB_GET_SURFACES) == expected_get_paths
+    assert set(PREVIEW_WEB_POST_SURFACES) == {
+        surface.route_path for surface in PREVIEW_WEB_SURFACES
+    }
+    assert PREVIEW_WEB_POST_PATHS == frozenset(PREVIEW_WEB_POST_SURFACES)
+    for surface in PREVIEW_WEB_SURFACES:
+        assert surface.route_path in surface.get_paths
+        assert preview_surface_for_post_path(surface.route_path) is surface
+        for path in surface.get_paths:
+            assert preview_surface_for_get_path(path) is surface
+
+
+def test_preview_web_surfaces_stay_out_of_product_workflows():
+    for surface in PREVIEW_WEB_SURFACES:
+        assert surface.product_surface_allowed is False
+        assert surface.surface_class == "isolated_preview_web"
+        assert surface.forbidden_product_surfaces == (
+            "recent",
+            "details",
+            "trusted_report",
+            "optimizer",
+        )
+
+
+def test_preview_web_routes_are_allowed_and_render_registered_pages():
+    for surface in PREVIEW_WEB_SURFACES:
+        assert post_route_is_allowed(surface.route_path)
+        assert post_route_is_allowed(f"{surface.route_path}?ignored=1")
+        for path in surface.get_paths:
+            response = route_get_request(path, web_settings(), WebJobStore())
+            assert response is not None
+            assert response.status == 200
+            assert f'action="{surface.route_path}"' in response.body
