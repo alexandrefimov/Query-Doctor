@@ -22,7 +22,11 @@ def outcome_record(
     applied: str = "yes",
     outcome: str = "improved",
     workload_fingerprint: str = "wf_1234567890abcdef12345678",
+    verification_status=None,
 ) -> ActionOutcomeRecord:
+    verification_status = verification_status or (
+        "comparable_rerun" if applied == "yes" else "not_applicable"
+    )
     return ActionOutcomeRecord(
         schema_version=SCHEMA_VERSION,
         recorded_at_iso="2026-05-18T00:00:00+00:00",
@@ -32,6 +36,7 @@ def outcome_record(
         recommendation_id=recommendation_id,
         applied=applied,
         outcome=outcome,
+        verification_status=verification_status,
         note_redacted="",
     )
 
@@ -44,7 +49,12 @@ def test_action_outcome_record_is_raw_free_and_loadable(tmp_path):
             "workload_fingerprint": "wf_1234567890abcdef12345678",
         },
         recommendation_id="stats_refresh_review.v1",
-        form={"applied": ["yes"], "outcome": ["improved"], "note": ["/Users/example/case"]},
+        form={
+            "applied": ["yes"],
+            "outcome": ["improved"],
+            "verification_status": ["comparable_rerun"],
+            "note": ["/Users/example/case"],
+        },
     )
     path = append_action_outcome(record, path=tmp_path / "action_outcomes.jsonl")
 
@@ -58,6 +68,7 @@ def test_action_outcome_record_is_raw_free_and_loadable(tmp_path):
     assert loaded[0].recommendation_id == "stats_refresh_review.v1"
     assert loaded[0].applied == "yes"
     assert loaded[0].outcome == "improved"
+    assert loaded[0].verification_status == "comparable_rerun"
     assert loaded[0].note_redacted == "<local path hidden>"
 
 
@@ -84,6 +95,34 @@ def test_action_outcomes_skip_malformed_and_unknown_records(tmp_path):
 
     assert len(loaded) == 1
     assert loaded[0].recommendation_id == "query_optimization_review.v1"
+    assert loaded[0].verification_status == "not_applicable"
+
+
+def test_legacy_action_outcome_records_load_as_unverified_feedback(tmp_path):
+    path = tmp_path / "action_outcomes.jsonl"
+    legacy = {
+        "schema_version": 1,
+        "recorded_at_iso": "2026-05-18T00:00:00+00:00",
+        "workload_fingerprint": "wf_1234567890abcdef12345678",
+        "case_fingerprint": "cf_1234567890abcdef12345678",
+        "case_id_local": "case-001",
+        "recommendation_id": "query_optimization_review.v1",
+        "applied": "yes",
+        "outcome": "improved",
+        "note_redacted": "",
+    }
+    path.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+    loaded = load_action_outcomes(path=path)
+    metrics = summarize_action_outcomes(loaded, min_applied=1)
+
+    assert len(loaded) == 1
+    assert loaded[0].schema_version == 1
+    assert loaded[0].verification_status == "legacy_unverified"
+    assert metrics[0].applied_count == 1
+    assert metrics[0].comparable_rerun_count == 0
+    assert metrics[0].unverified_applied_count == 1
+    assert metrics[0].min_sample_met is False
 
 
 def test_action_outcome_rejects_unknown_recommendation_id():
@@ -95,6 +134,23 @@ def test_action_outcome_rejects_unknown_recommendation_id():
                 "workload_fingerprint": "wf_1234567890abcdef12345678",
             },
             recommendation_id="freeform.v1",
+            form={
+                "applied": ["yes"],
+                "outcome": ["improved"],
+                "verification_status": ["comparable_rerun"],
+            },
+        )
+
+
+def test_action_outcome_requires_comparable_rerun_verification_for_applied_result():
+    with pytest.raises(WebError):
+        action_outcome_record_from_case(
+            case_id="case-001",
+            case={
+                "query_id": "abc:def",
+                "workload_fingerprint": "wf_1234567890abcdef12345678",
+            },
+            recommendation_id="stats_refresh_review.v1",
             form={"applied": ["yes"], "outcome": ["improved"]},
         )
 
@@ -123,6 +179,8 @@ def test_action_outcome_metrics_apply_min_sample_threshold():
     stats_metric = metrics[0]
     assert stats_metric.total_records == 6
     assert stats_metric.applied_count == 4
+    assert stats_metric.comparable_rerun_count == 4
+    assert stats_metric.unverified_applied_count == 0
     assert stats_metric.not_applied_count == 1
     assert stats_metric.skipped_count == 1
     assert stats_metric.improved_count == 2
@@ -159,6 +217,8 @@ def test_workload_action_outcome_metrics_group_safe_workload_rollups():
     metric = metrics["wf_aaaaaaaaaaaaaaaaaaaaaaaa"]
     assert metric.total_records == 3
     assert metric.applied_count == 2
+    assert metric.comparable_rerun_count == 2
+    assert metric.unverified_applied_count == 0
     assert metric.skipped_count == 1
     assert metric.improved_count == 1
     assert metric.no_change_count == 1
@@ -169,13 +229,18 @@ def test_workload_action_outcome_metrics_group_safe_workload_rollups():
     assert metric.last_applied_outcome == "no_change"
     assert metric.family_signal.recommendation_id == "stats_refresh_review.v1"
     assert metric.family_signal.applied_count == 2
+    assert metric.family_signal.comparable_rerun_count == 2
     assert metric.family_signal.min_sample_met is False
     assert metric.family_signal.min_applied == 5
+    assert [signal.recommendation_id for signal in metric.family_signals] == [
+        "runtime_admission_check.v1",
+        "stats_refresh_review.v1",
+    ]
     assert workload_outcome_summary_text(metric) == (
-        "3 recorded; 2 applied; improved 1, no change 1; "
+        "3 recorded; 2 applied; 2 comparable reruns; improved 1, no change 1; "
         "last applied action Stats refresh review: no change; "
-        "family signal Stats refresh review: improved 1/2 applied, no change 1; "
-        "feedback sample below threshold (2/5 applied); "
+        "family signal Stats refresh review: improved 1/2 comparable reruns, no change 1; "
+        "feedback sample below threshold (2/5 comparable reruns); "
         "next check stats signal count and group p95"
     )
     calibrated_metric = summarize_workload_action_outcomes(
@@ -189,8 +254,16 @@ def test_workload_action_outcome_metrics_group_safe_workload_rollups():
         min_applied=2,
     )["wf_aaaaaaaaaaaaaaaaaaaaaaaa"]
     assert calibrated_metric.family_signal.min_sample_met is True
-    assert "feedback sample threshold met (2/2 applied)" in workload_outcome_summary_text(
+    assert "feedback sample threshold met (2/2 comparable reruns)" in workload_outcome_summary_text(
         calibrated_metric
+    )
+    assert (
+        "family signal Admission/runtime check: no verified rerun records yet; "
+        "feedback sample below threshold (0/2 comparable reruns); "
+        "next check admission/runtime signal count and group p95"
+    ) in workload_outcome_summary_text(
+        calibrated_metric,
+        recommendation_id="runtime_admission_check.v1",
     )
 
 
@@ -209,7 +282,8 @@ def test_action_outcome_metrics_page_renders_safe_aggregate_only(tmp_path, monke
     html = render_action_outcomes_page()
 
     assert "5 recorded" in html
-    assert "improved in 3 of 5 applied records (60%)" in html
+    assert "improved in 3 of 5 comparable reruns (60%)" in html
+    assert "Comparable reruns" in html
     assert "Stats refresh review" in html
     assert "case-001" not in html
     assert "cf_1234567890abcdef12345678" not in html

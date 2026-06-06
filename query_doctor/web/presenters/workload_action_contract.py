@@ -32,6 +32,7 @@ class WorkloadActionSignal:
     change_direction: str
     verification_metric: str
     verification: str
+    recommendation_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,7 @@ def workload_action_queue_entry(
         fingerprint_short=group.fingerprint_short,
         priority=signal.priority,
         signal=signal.title,
+        recommendation_id=signal.recommendation_id,
         group_impact=display_seconds(workload_group_impact(group)),
         pool_top=group.pool_top,
         owner_top=top_owner_summary(group_rows),
@@ -94,7 +96,10 @@ def workload_action_queue_entry(
         review_anchor=signal.review_anchor,
         verification_metric=signal.verification_metric,
         verification=signal.verification,
-        outcome_summary=workload_outcome_summary_text(outcome_metric),
+        outcome_summary=workload_outcome_summary_text(
+            outcome_metric,
+            recommendation_id=signal.recommendation_id,
+        ),
     )
 
 
@@ -104,17 +109,20 @@ def workload_action_hints(
     *,
     outcome_metric: WorkloadOutcomeMetric | None = None,
 ) -> tuple[RecentScanWorkloadActionHintView, ...]:
-    outcome_summary = workload_outcome_summary_text(outcome_metric)
     return tuple(
         RecentScanWorkloadActionHintView(
             title=signal.title,
+            recommendation_id=signal.recommendation_id,
             priority=signal.priority,
             evidence=signal.evidence,
             where_to_look=signal.review_anchor,
             change_direction=signal.change_direction,
             verification_metric=signal.verification_metric,
             verification=signal.verification,
-            outcome_summary=outcome_summary,
+            outcome_summary=workload_outcome_summary_text(
+                outcome_metric,
+                recommendation_id=signal.recommendation_id,
+            ),
         )
         for signal in workload_action_signals(group, rows)
     )
@@ -173,6 +181,7 @@ def workload_action_signals(
                 ),
                 verification_metric="Admission/runtime signal count and group p95 under comparable load.",
                 verification="Rerun under comparable load and confirm admission/runtime no longer dominates the group.",
+                recommendation_id="runtime_admission_check.v1",
             ),
         )
     stats_count = stats_row_count(rows) or group_primary_match_count(group, "stats", total)
@@ -192,6 +201,7 @@ def workload_action_signals(
                 ),
                 verification_metric="Stats signal count plus group p95 after stats are fixed or confirmed.",
                 verification="After stats are fixed or confirmed, rerun and compare stats signal count plus p95.",
+                recommendation_id="stats_refresh_review.v1",
             ),
         )
     status_count = status_issue_row_count(rows)
@@ -263,6 +273,7 @@ def workload_action_signals(
                         "Test one bounded change from that review track, then rerun the repeated "
                         "group under comparable load and compare p95 plus query-shape signal count."
                     ),
+                    recommendation_id="query_optimization_review.v1",
                 ),
             )
         else:
@@ -284,6 +295,7 @@ def workload_action_signals(
                         "Validate any accepted change on a selected case, then rerun the repeated "
                         "group under comparable load."
                     ),
+                    recommendation_id="query_optimization_review.v1",
                 )
             )
     if is_low_value_workload_group(group, rows):
@@ -327,6 +339,26 @@ def workload_query_shape_review_context(
         )
     if not contexts:
         return None
+    if len(contexts) > 1:
+        total_count = sum(count for count, *_rest in contexts.values())
+        return WorkloadQueryShapeReviewContext(
+            label="Review track: mixed query-shape review",
+            name="mixed query-shape",
+            count=total_count,
+            review_area=(
+                "per-case query-shape review tracks, row-reduction boundaries, "
+                "and repeated-group impact"
+            ),
+            direction=(
+                "Review selected cases by their listed query-shape tracks first; do not apply "
+                "one SQL rewrite pattern across the whole group until each boundary has a bounded "
+                "manual hypothesis."
+            ),
+            verification_metric=(
+                "Per-case query-shape review count, boundary-specific validation, "
+                "and repeated-group p95."
+            ),
+        )
     label, (count, review_area, direction, verification_metric) = sorted(
         contexts.items(),
         key=lambda item: (-item[1][0], item[0]),
