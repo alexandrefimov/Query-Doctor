@@ -277,9 +277,10 @@ def render_action_outcome_controls(
         f'<button type="submit" class="button" name="applied" value="skip">{html.escape(ui_text(language, "Skip", "Пропустить"))}</button>'
         "</form>"
         '<div class="action-outcome-result" data-action-outcome-result-panel hidden>'
-        f'<span class="action-outcome-label">{html.escape(ui_text(language, "Outcome after rerun", "Результат после повторного запуска"))}</span>'
+        f'<span class="action-outcome-label">{html.escape(ui_text(language, "Outcome after comparable rerun", "Результат после сопоставимого повторного запуска"))}</span>'
         f'<form method="post" action="{action_url}" class="action-outcome-form">'
         '<input type="hidden" name="applied" value="yes">'
+        '<input type="hidden" name="verification_status" value="comparable_rerun">'
         f'<button type="submit" class="button primary" name="outcome" value="improved">{html.escape(ui_text(language, "Improved", "Стало лучше"))}</button>'
         f'<button type="submit" class="button" name="outcome" value="no_change">{html.escape(ui_text(language, "No change", "Без изменений"))}</button>'
         f'<button type="submit" class="button" name="outcome" value="worsened">{html.escape(ui_text(language, "Worsened", "Стало хуже"))}</button>'
@@ -297,6 +298,6 @@ def render_action_outcome_metric_note(metric: RecommendationOutcomeMetric | None
     percent = round(metric.improvement_rate * 100)
     text = (
         f"Local history: improved in {metric.improved_count} of "
-        f"{metric.applied_count} applied records ({percent}%)"
+        f"{metric.comparable_rerun_count} comparable reruns ({percent}%)"
     )
     return f'<span class="action-outcome-label">{html.escape(text)}</span>'

@@ -171,6 +171,7 @@ OPTIMIZER_NO_RECIPE_REVIEW_TRACK_LABELS = {
     "unfiltered_union_all_branch_review": "Review track: unfiltered UNION ALL branches",
     "mixed_filter_union_all_branch_review": "Review track: mixed-filter UNION ALL branches",
     "mixed_or_distinct_set_boundary": "Review track: mixed/distinct set operation",
+    "mixed_query_shape_review": "Review track: mixed query-shape review",
     "nested_query_boundary": "Review track: nested query boundary",
     "unfiltered_join_review": "Review track: unfiltered join",
     "filtered_join_review": "Review track: filtered join",
@@ -231,6 +232,9 @@ OPTIMIZER_NO_RECIPE_REVIEW_AREA_LABELS = {
     ),
     "mixed_or_distinct_set_boundary": (
         "set-operation duplicate semantics, branch grain, and branch output shape"
+    ),
+    "mixed_query_shape_review": (
+        "per-case query-shape review tracks, row-reduction boundaries, and repeated-group impact"
     ),
     "nested_query_boundary": "nested-query boundary and upstream row reduction",
     "unfiltered_join_review": "join cardinality, join keys, and many-to-many amplification",
@@ -316,6 +320,10 @@ OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS = {
     "mixed_or_distinct_set_boundary": (
         "Preserve set-operation semantics first: do not change duplicate behavior while reviewing "
         "branch grain and branch output shape."
+    ),
+    "mixed_query_shape_review": (
+        "Review selected cases by their listed query-shape tracks first; do not apply one SQL "
+        "rewrite pattern across the whole group until each boundary has a bounded manual hypothesis."
     ),
     "nested_query_boundary": (
         "Review the nested-query boundary first: reduce rows before the nested result is joined, "
@@ -448,6 +456,10 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
         "Confirm set-operation duplicate semantics first, then compare branch grain and output "
         "shape before and after one manual change; rerun only after set semantics remain stable."
     ),
+    "mixed_query_shape_review": (
+        "Compare each selected case's listed query-shape boundary before and after one bounded "
+        "manual change; then rerun the repeated group under comparable load."
+    ),
     "nested_query_boundary": (
         "Compare rows entering and leaving the nested-query boundary in EXPLAIN before and after "
         "one bounded change; keep output shape stable, then rerun the repeated group."
@@ -562,6 +574,9 @@ OPTIMIZER_NO_RECIPE_WORKLOAD_METRIC_LABELS = {
     ),
     "mixed_or_distinct_set_boundary": (
         "Set-operation duplicate-semantics check, branch grain, output shape, and repeated-group p95."
+    ),
+    "mixed_query_shape_review": (
+        "Per-case query-shape review count, boundary-specific validation, and repeated-group p95."
     ),
     "nested_query_boundary": (
         "Nested-boundary input and output rows, shape-stability check, and repeated-group p95."

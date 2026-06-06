@@ -598,6 +598,19 @@ def test_repeated_no_recipe_review_readiness_separates_safe_track_quality() -> N
                 },
             )
         )
+        == "mixed_specific_tracks"
+    )
+    assert (
+        repeated_no_recipe_review_readiness(
+            WorkloadRollup(
+                key="wf_...aaaaaaaa",
+                count=2,
+                review_tracks={
+                    "grouped_aggregate_review": 1,
+                    "custom_review_track": 1,
+                },
+            )
+        )
         == "mixed_tracks"
     )
 
@@ -622,6 +635,19 @@ def test_repeated_no_recipe_guidance_readiness_requires_safe_guidance_contract()
             )
         )
         == "unknown_track"
+    )
+    assert (
+        repeated_no_recipe_guidance_readiness(
+            WorkloadRollup(
+                key="wf_...aaaaaaaa",
+                count=2,
+                review_tracks={
+                    "derived_no_downstream_filter_review": 1,
+                    "nested_query_boundary": 1,
+                },
+            )
+        )
+        == "guidance_ready"
     )
     assert (
         repeated_no_recipe_guidance_readiness(
@@ -908,6 +934,134 @@ def test_optimizer_funnel_audit_output_is_aggregate_and_raw_free(tmp_path: Path)
     assert "/Users/example" not in text
     assert str(tmp_path) not in text
     assert "wf_...aaaaaaaa" in text
+
+
+def test_optimizer_funnel_audit_writes_raw_free_summary_json(tmp_path: Path):
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "score_severity": "suspicious",
+                "group_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "case_primary_bottleneck": {"label": "sql_shape", "confidence": "medium"},
+                "query_optimization_candidate": query_candidate(
+                    score=50,
+                    tier="medium",
+                    reasons=[
+                        "SELECT secret_col FROM example_guarded.table",
+                        "local path /Users/example/query-doctor/cases/case-001",
+                    ],
+                ),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": (
+                        "No Python-owned SQL rewrite recipe is available; "
+                        "SELECT secret_col FROM example_guarded.table"
+                    ),
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "derived_unsupported_boundary_review",
+                    "risk_mode": "conservative_rewrite",
+                    "risk_reasons": [
+                        "token=secret-value",
+                        "http://internal.example/profile",
+                    ],
+                    "derived_table_count": 1,
+                    "derived_predicate_pushdown_status": "blocked_unsupported_shape",
+                    "derived_boundary_reasons": [
+                        "aggregate_boundary",
+                        "ordering_or_limit_boundary",
+                    ],
+                },
+            },
+            {
+                "case_index": 2,
+                "score_severity": "high",
+                "workload_fingerprint": "wf_aaaaaaaaaaaaaaaaaaaaaaaa",
+                "case_primary_bottleneck": {
+                    "label": "runtime_data_movement",
+                    "confidence": "medium",
+                },
+                "query_optimization_candidate": query_candidate(score=48, tier="medium"),
+                "optimizer_rewrite_support": {
+                    "status": "guidance_only",
+                    "reason": "No Python-owned SQL rewrite recipe is available",
+                    "rewriteability_bucket": "not_rewriteable",
+                    "draft_eligibility": "no_recipe",
+                    "no_recipe_review_track": "derived_unsupported_boundary_review",
+                    "risk_mode": "conservative_rewrite",
+                    "risk_reasons": ["nested_query_body_validation_not_proven"],
+                    "derived_table_count": 1,
+                    "derived_predicate_pushdown_status": "blocked_unsupported_shape",
+                    "derived_boundary_reasons": ["aggregate_boundary"],
+                },
+            },
+        ],
+    )
+    summary_json = tmp_path / "optimizer-funnel-summary.json"
+
+    assert (
+        optimizer_funnel.main(
+            [
+                str(summary_path),
+                "--use-stored-optimizer-support",
+                "--fail-on-repeated-no-recipe-readiness-gaps",
+                "--summary-json",
+                str(summary_json),
+                "--limit",
+                "3",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == "optimizer_funnel_audit_v1"
+    assert payload["status"] == "ok"
+    assert payload["metrics"]["total_cases"] == 2
+    assert payload["metrics"]["medium_high_candidates"] == 2
+    assert payload["metrics"]["no_recipe_repeated_groups"] == 1
+    assert payload["issue_counts"] == {}
+    assert payload["counters"]["no_recipe_review_track_counts"] == {
+        "derived_unsupported_boundary_review": 2
+    }
+    assert payload["counters"]["repeated_no_recipe_guidance_readiness_counts"] == {
+        "guidance_ready": 1
+    }
+    assert payload["counters"]["no_recipe_risk_reason_counts"]["unsafe_reason"] == 2
+    assert payload["top_no_recipe_workloads"][0]["workload"] == "wf_...aaaaaaaa"
+    assert payload["top_no_recipe_workloads"][0]["cases"] == 2
+    assert payload["top_no_recipe_workloads"][0]["derived_predicate_pushdown"] == {
+        "blocked_unsupported_shape": 2
+    }
+
+    text = json.dumps(payload, sort_keys=True)
+    assert "SELECT" not in text
+    assert "secret_col" not in text
+    assert "example_guarded.table" not in text
+    assert "secret-value" not in text
+    assert "internal.example" not in text
+    assert "/Users/example" not in text
+    assert str(tmp_path) not in text
+
+
+def test_optimizer_funnel_summary_json_rejects_input_overlap(tmp_path: Path):
+    summary_path = write_summary(tmp_path, [])
+
+    assert (
+        optimizer_funnel.main(
+            [
+                str(summary_path),
+                "--summary-json",
+                str(summary_path),
+            ]
+        )
+        == 2
+    )
+
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload == {"selected_count": 0, "cases": []}
 
 
 def test_optimizer_funnel_audit_can_fail_repeated_no_recipe_readiness_gap(

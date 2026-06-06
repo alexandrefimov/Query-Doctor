@@ -266,6 +266,105 @@ def test_stats_diagnostics_audit_accepts_no_stats_candidates(tmp_path: Path) -> 
     assert result.actionable_candidate_count == 0
 
 
+def test_stats_diagnostics_audit_writes_raw_free_summary_json(tmp_path: Path) -> None:
+    summary_path = write_summary(
+        tmp_path,
+        [
+            stats_case(
+                1,
+                metadata_status="http://internal.example/metadata",
+                candidate=stats_candidate(
+                    need_type="insufficient_metadata",
+                    evidence_detail=["raw table private.customer_orders /tmp/profile secret-value"],
+                    review_areas=[],
+                    confirmations=["check later"],
+                )
+                | {
+                    "reasons": [
+                        "SELECT secret_col FROM private.customer_orders",
+                        "local profile /private/tmp/case-001",
+                    ],
+                    "counter_signals": [
+                        "column stats gap is not tied to specific join/filter columns"
+                    ],
+                },
+            ),
+            stats_case(
+                2,
+                candidate=stats_candidate(
+                    tier="medium",
+                    need_type="column_stats",
+                    evidence_detail=[
+                        "join/filter column stats coverage partial: "
+                        "1/3 complete, 2 missing or incomplete"
+                    ],
+                ),
+            ),
+        ],
+    )
+    summary_json = tmp_path / "stats_diagnostics_summary.json"
+
+    assert (
+        main(
+            [
+                str(summary_path),
+                "--fail-on-stats-readiness-gaps",
+                "--summary-json",
+                str(summary_json),
+            ]
+        )
+        == 1
+    )
+
+    payload = json.loads(summary_json.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == "stats_diagnostics_audit_v1"
+    assert payload["status"] == "issues"
+    assert payload["metrics"] == {
+        "actionable_stats_candidates": 2,
+        "issues": 6,
+        "stats_candidates": 2,
+        "total_cases": 2,
+    }
+    assert payload["issue_counts"] == {
+        "stats_actionable_generic_column_stats_evidence": 1,
+        "stats_actionable_missing_comparable_confirmation": 1,
+        "stats_actionable_missing_review_area": 1,
+        "stats_actionable_unsupported_need_type": 1,
+        "stats_actionable_without_usable_metadata": 1,
+        "stats_actionable_without_specific_detail": 1,
+    }
+    assert payload["counters"]["metadata_status_counts"] == {
+        "collected": 1,
+        "unknown": 1,
+    }
+    assert payload["counters"]["evidence_detail_counts"] == {
+        "join_filter_column_stats": 1,
+        "unknown_detail": 1,
+    }
+    text = json.dumps(payload, sort_keys=True)
+    assert "SELECT" not in text
+    assert "secret_col" not in text
+    assert "private.customer_orders" not in text
+    assert "private_customer_orders" not in text
+    assert "internal.example" not in text
+    assert "internal_example" not in text
+    assert "secret-value" not in text
+    assert "/tmp" not in text
+    assert "case-001" not in text
+    assert "safe-query" not in text
+    assert "batch_summary" not in text
+    assert str(tmp_path) not in text
+
+
+def test_stats_diagnostics_summary_json_rejects_input_overlap(tmp_path: Path) -> None:
+    summary_path = write_summary(tmp_path, [stats_case(1)])
+    original_text = summary_path.read_text(encoding="utf-8")
+
+    assert main([str(summary_path), "--summary-json", str(summary_path)]) == 2
+
+    assert summary_path.read_text(encoding="utf-8") == original_text
+
+
 def test_stats_diagnostics_audit_rejects_invalid_summary(tmp_path: Path) -> None:
     summary_path = tmp_path / "batch_summary.json"
     summary_path.write_text("[]", encoding="utf-8")

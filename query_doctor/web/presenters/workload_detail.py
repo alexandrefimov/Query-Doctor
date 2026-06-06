@@ -53,11 +53,7 @@ def present_workload_detail(
     )
     if group is None:
         return None
-    rows = tuple(
-        row
-        for row in scan.rows
-        if row.workload_fingerprint == safe_fingerprint and row.workload_group_member_count > 1
-    )
+    rows = workload_detail_rows(scan.rows, safe_fingerprint, group)
     if not rows:
         return None
     return RecentScanWorkloadDetailView(
@@ -90,6 +86,27 @@ def present_workload_detail(
             outcome_metric=workload_outcome_metrics.get(safe_fingerprint),
         ),
         representatives=representative_cases(rows),
+    )
+
+
+def workload_detail_rows(
+    rows: tuple[RecentScanCaseRowView, ...],
+    safe_fingerprint: str,
+    group: RecentScanWorkloadGroupView,
+) -> tuple[RecentScanCaseRowView, ...]:
+    if group.member_count <= 1:
+        return ()
+    member_case_ids = set(group.member_case_ids)
+    return tuple(
+        row
+        for row in rows
+        if row.workload_fingerprint == safe_fingerprint
+        and row.workload_fingerprint_short
+        and (
+            row.workload_group_member_count > 1
+            or row.case_id in member_case_ids
+            or not member_case_ids
+        )
     )
 
 

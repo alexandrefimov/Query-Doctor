@@ -20,6 +20,7 @@ PRIMARY_BOTTLENECK_VERDICT_TITLES = {
     "Admission/runtime": "Admission or queueing signals need runtime follow-up",
     "Runtime skew": "Runtime skew may be stretching execution",
     "Data movement": "Data movement may be inflating runtime",
+    "Memory pressure": "Memory pressure needs spill/scratch follow-up",
     "Storage/HDFS": "Storage or HDFS signals need follow-up",
     "Client fetch tail": "Client fetch wait may be stretching the tail",
     "Competing signals": "Multiple supported signals need review",

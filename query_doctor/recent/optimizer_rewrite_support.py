@@ -179,6 +179,7 @@ NO_REWRITE_SUPPORT_COUNTER_SIGNALS = {
     "no query-shape opportunity evidence",
     "primary_bottleneck_is_stats; rewrite is secondary",
     "primary_bottleneck_is_runtime_admission",
+    "primary_bottleneck_is_runtime_memory",
     "primary_bottleneck_is_runtime_storage",
 }
 
