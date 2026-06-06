@@ -1,16 +1,17 @@
 # Spark Architecture Spike
 
-Last reviewed: 2026-06-03
+Last reviewed: 2026-06-05
 
 This document defines the first Spark research contract for Query Doctor. It is
 not a support announcement and does not change the current support matrix:
 Query Doctor production engine support remains Apache Impala only. The current
-Spark slice adds an experimental bounded compact-intake path from Spark History
+Spark slice adds a registered bounded compact-intake adapter from Spark History
 Server summary JSON into raw-free normalized facts plus an isolated direct
 compact-diagnosis page for one explicit History Server application or already
 accepted compact JSON, but it is not a Recent scan workflow, Details/trusted
-report surface, optimizer path, engine registration, or public Spark support
-claim. Trino remains limited to sanitized offline/local evidence import,
+report surface, optimizer path, broad live collector, raw event-log path, Spark
+job-execution path, or public Spark support claim. Trino remains limited to
+sanitized offline/local evidence import,
 source-contract/target checks, and one-query pruned coordinator query-info
 probing/import; it is not live Trino product support.
 
@@ -37,7 +38,7 @@ logs into product surfaces, or creating a public multi-engine support claim.
 
 ## Status
 
-Current status: `research`.
+Current status: `bounded_compact_research`.
 
 Allowed in this status:
 
@@ -47,6 +48,8 @@ Allowed in this status:
 - proposed normalized fact envelope;
 - bounded compact Spark History Server summary intake for explicit
   applications;
+- dev-only one-application handoff glue over that same compact path, including
+  raw-free readiness and product-surface summary audits;
 - isolated direct compact-diagnosis page for one explicit History Server
   application or already accepted raw-free compact JSON;
 - tests or test plans that prove unsupported and unknown states stay explicit.
@@ -57,9 +60,9 @@ Not allowed in this status:
 - Query Doctor-generated `EXPLAIN`, `EXPLAIN ANALYZE`, or Spark SQL plans;
 - live Spark History Server collection as a default workflow or broad
   application crawl;
-- engine registration, product browser workflows, Details pages, trusted report
-  output, optimizer behavior, or a runtime engine selector that implies Spark
-  support.
+- engine registration beyond the compact-only adapter, product browser
+  workflows, Details pages, trusted report output, optimizer behavior, or a
+  runtime engine selector that implies production Spark support.
 
 ## Work Plan
 
@@ -68,12 +71,13 @@ branch state or local handoff notes.
 
 ### Goal 1: Research Contract And Public Boundaries
 
-Define Spark as research-only work and document the source, evidence, redaction,
-unknown-state, fixture, and promotion boundaries. Done means public docs agree
-that Spark has no product collector, engine registration, UI path, report
-surface, optimizer behavior, or support claim. The experimental compact History
-Server intake and isolated compact-diagnosis page are below product support and
-do not change those gates.
+Define Spark as bounded compact work and document the source, evidence,
+redaction, unknown-state, fixture, and promotion boundaries. Done means public
+docs agree that Spark has only a compact-only adapter and no product collector,
+Recent workflow, Details/trusted-report surface, optimizer behavior, or
+production support claim. The compact History Server intake and isolated
+compact-diagnosis page are below production product support and do not change
+those gates.
 
 ### Goal 2: Compact Fixture Schema And Validation
 
@@ -87,11 +91,12 @@ numbers, fake negative metrics, and typed-marker mismatches before any mapping.
 Map the compact fixture into a Spark-specific raw-free fact envelope only after
 the schema can represent `supported`, `not_observed`, `unknown`, and
 `unsupported` states without raw payloads. This mapper must stay isolated from
-product workflows and must not register Spark as an engine. The current mapper
-keeps Spark facts fixture-only, converts source-only `unsupported` markers into
-boundary-safe limitation facts, and tests the raw-free boundary/consumer probe
-without adding Spark collection, UI, reports, optimizer behavior, or a support
-claim.
+product workflows and any Spark adapter registration must stay compact-only.
+The current mapper keeps Spark facts fixture-only, converts source-only
+`unsupported` markers into boundary-safe limitation facts, and tests the
+raw-free boundary/consumer probe without adding Spark collection beyond the
+compact intake, UI beyond isolated compact pages, reports, optimizer behavior,
+or a support claim.
 
 ### Goal 4: Shared Fact Coordination
 
@@ -141,8 +146,11 @@ The compact diagnosis and isolated Spark compact page can render supported
 Spark version family, query linkage, application lifecycle/attempt state,
 adaptive execution enabled, dynamic allocation observed, aggregate input/output
 rows, bytes, stages, tasks, shuffle, spill, and elapsed time as formatted
-runtime context. That context is not an attention signal, root-cause claim,
-shared metric, Details/trusted report output, or Spark support claim.
+runtime context. The isolated page also renders the safe diagnostic-lane
+readiness, source granularity, verification scope, supported-attention count,
+and source-warning count from the compact diagnosis contract. That context is
+not an attention signal, root-cause claim, shared metric, Details/trusted
+report output, or Spark support claim.
 Failure category remains compact-only and allowlisted: raw exception classes,
 messages, stack traces, endpoint details, object names, and arbitrary error text
 are rejected or kept unknown rather than surfaced.
@@ -386,13 +394,14 @@ Spark research may propose claim families such as:
 - `spark_history_incomplete`;
 - `spark_streaming_backlog`.
 
-These labels must stay research-only until a claim registry entry defines
+These labels must stay compact-only until a claim registry entry defines
 required facts, evidence tier, query-linkage level, allowed wording, forbidden
 wording, verification path, and browser/report safety tests.
 
 ## First Work Items
 
-1. Add this contract and keep public docs clear that Spark is research-only.
+1. Add this contract and keep public docs clear that Spark stays compact-only
+   below production support.
 2. Add one compact synthetic fixture schema and validator test that rejects raw
    Spark fields before mapping. Current slice:
    `query_doctor/analyzer/spark_fixture_schema.py`,
@@ -471,7 +480,33 @@ wording, verification path, and browser/report safety tests.
    attention and both accepted compact source contracts, fail on source
    warnings, and keep all package paths, temporary paths, manifest filenames,
    compact filenames, raw values, and Spark support claims out of terminal
-   output.
+   output. For retained handoff sets, the dev-only
+   `scripts/build_spark_handoff_suite_manifest.py` helper writes a local
+   `spark_evidence_handoff_suite_v1` manifest over already raw-free handoff
+   summaries, and `scripts/audit_spark_evidence_handoff.py
+   --handoff-suite-manifest` gates the retained summaries without reading Spark,
+   re-opening packages, printing artifact paths, or broadening support beyond
+   the compact-only adapter. Retained package handoff summaries carry
+   diagnostic-lane checked/readiness/source-granularity/verification-scope and
+   fact-state counters, and the suite gate rejects summaries that lose required
+   lane readiness, accepted source-granularity evidence, or accepted
+   verification-scope evidence. For one operator-reviewed live History
+   Server application, `scripts/spark_one_application_handoff.py` composes the same
+   bounded compact collection, raw-free diagnosis, optional boundary export,
+   readiness audit, and optional product-surface summary audit into a dev-only
+   local handoff wrapper; it does not install a product CLI, crawl
+   applications, fetch raw event logs or environment data, print selectors or
+   artifact paths, or create a Spark support claim.
+   Retained one-application compact/diagnosis/boundary triples can be grouped
+   by `scripts/build_spark_one_application_handoff_suite_manifest.py` and gated
+   through `scripts/audit_spark_compact_readiness.py
+   --one-application-handoff-suite-manifest` without reopening Spark or printing
+   artifact paths; optional retained compact-readiness summaries carry
+   diagnostic-lane readiness/source-granularity/verification-scope and
+   fact-state counters. Optional retained product-surface summaries are
+   cross-checked by `scripts/audit_spark_product_surface_boundary.py
+   --one-application-handoff-suite-manifest` and retain diagnostic-lane
+   readiness/source-granularity/verification-scope plus fact-state counters.
 
 ## References
 
