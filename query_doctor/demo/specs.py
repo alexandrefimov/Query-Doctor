@@ -58,7 +58,7 @@ def demo_case_specs() -> tuple[DemoCaseSpec, ...]:
         frequent_short_case(),
         frequent_short_companion_case(),
         mixed_signals_case(),
-        unknown_but_useful_case(),
+        client_fetch_tail_case(),
         direct_impala_compatibility_case(),
     )
 
@@ -631,10 +631,10 @@ def mixed_signals_case() -> DemoCaseSpec:
     )
 
 
-def unknown_but_useful_case() -> DemoCaseSpec:
+def client_fetch_tail_case() -> DemoCaseSpec:
     return DemoCaseSpec(
         case_index=10,
-        query_id="demo-unknown-0010",
+        query_id="demo-client-fetch-0010",
         user="demo_analytics",
         duration_sec=71,
         score=16,
@@ -652,18 +652,18 @@ def unknown_but_useful_case() -> DemoCaseSpec:
         query_optimization_candidate=None,
         stats_optimization_candidate=None,
         score_reasons=(
-            "duration deserves bounded follow-up but no primary branch is supported",
-            "profile evidence is incomplete for a root-cause classification",
+            "client fetch wait is the strongest selected-query tail signal",
+            "mapped operators explain only a small share of wall clock",
             "compare a rerun before changing SQL or stats",
         ),
-        facts_text=unknown_but_useful_facts_text(),
-        source_sql=unknown_but_useful_source_sql(),
+        facts_text=client_fetch_tail_facts_text(),
+        source_sql=client_fetch_tail_source_sql(),
         case_primary_bottleneck={
-            "label": "unknown",
-            "confidence": "low",
+            "label": "client_fetch_tail",
+            "confidence": "high",
             "reasons": [
-                "no_primary_branch_supported",
-                "wall_clock_not_explained_by_mapped_operators",
+                "client_fetch_wait_top_finding",
+                "client_fetch_wait_share_63pct",
             ],
         },
     )
@@ -1186,7 +1186,7 @@ def mixed_signals_facts_text() -> str:
     )
 
 
-def unknown_but_useful_facts_text() -> str:
+def client_fetch_tail_facts_text() -> str:
     return "\n".join(
         [
             "# Query Doctor deterministic analysis facts",
@@ -1209,36 +1209,44 @@ def unknown_but_useful_facts_text() -> str:
             "- end_time: 2026-05-21T14:11:11Z",
             "- admission_result: admitted",
             "- admission_wait: unknown",
-            "- rows_produced: unknown",
+            "- rows_produced: 75.00K",
             "- bytes_read: unknown",
             "- bytes_sent: unknown",
             "- memory_aggregate_peak: unknown",
             "- memory_per_node_peak: unknown",
             "",
+            "## Client Fetch Tail Facts",
+            "- status: supported",
+            "- evidence_tier: strong",
+            "- finding_supported: yes",
+            "- client_fetch_wait: 45s (counter=ClientFetchWaitTimer, share=63%, query_duration=1.18m)",
+            "- guardrail: fetch-tail evidence does not identify the external client, Hue, BI tool, or network path as root cause by itself.",
+            "",
             "## Evidence Quality",
             "- score: 42",
-            "- level: limited",
+            "- level: medium",
             "### Strengths",
             "- bounded Recent context is available",
+            "- query-specific client fetch wait counter is mapped",
             "- selected case finished and can be rerun for comparison",
             "### Limitations",
             "- profile resource counters are incomplete",
-            "- no stats, query-shape, admission, storage, or client-tail branch is primary-supported",
+            "- client-fetch evidence does not prove an external client or network root cause by itself",
             "",
             "## Primary Bottleneck",
-            "- label: unknown",
-            "- confidence: low",
-            "- reasons: no_primary_branch_supported, wall_clock_not_explained_by_mapped_operators",
-            "- guardrail: useful triage can still say what not to change first.",
+            "- label: client_fetch_tail",
+            "- confidence: high",
+            "- reasons: client_fetch_wait_top_finding, client_fetch_wait_share_63pct",
+            "- guardrail: treat this as selected-query tail evidence; verify with a comparable rerun before claiming a client-side fix.",
             "",
             "## Runtime Diagnosis",
-            "- status: unknown",
-            "- summary: bounded facts justify a comparable rerun, not a SQL or stats change.",
-            "- guardrail: no root cause is classified for this synthetic case.",
-            "### Incomplete resource evidence",
-            "- status: unknown",
-            "- interpretation: wall clock is visible, but mapped operators and resource counters do not explain it.",
-            "- evidence: duration context exists while primary branch evidence is incomplete.",
+            "- status: supported",
+            "- summary: selected-query tail evidence points first to client fetch wait, not SQL rewrite or stats refresh.",
+            "- guardrail: the finding is about query tail timing, not a named external system root cause.",
+            "### Client fetch tail",
+            "- status: supported",
+            "- interpretation: client fetch wait accounts for a material share of wall clock.",
+            "- evidence: ClientFetchWaitTimer is mapped and query-specific.",
             "",
         ]
     )
@@ -1467,7 +1475,7 @@ def mixed_signals_source_sql() -> str:
     )
 
 
-def unknown_but_useful_source_sql() -> str:
+def client_fetch_tail_source_sql() -> str:
     return (
         "SELECT device_type, COUNT(*) AS event_count "
         "FROM demo.device_events "

@@ -412,6 +412,9 @@ def demo_action_outcome_records(summary: dict[str, Any]) -> tuple[ActionOutcomeR
         (2, "stats_refresh_review.v1", "yes", "improved", "2026-05-22T09:10:00+00:00"),
         (4, "runtime_admission_check.v1", "yes", "improved", "2026-05-22T09:20:00+00:00"),
         (5, "runtime_admission_check.v1", "yes", "no_change", "2026-05-22T09:30:00+00:00"),
+        (4, "runtime_admission_check.v1", "yes", "improved", "2026-05-22T09:35:00+00:00"),
+        (5, "runtime_admission_check.v1", "yes", "improved", "2026-05-22T09:36:00+00:00"),
+        (4, "runtime_admission_check.v1", "yes", "no_change", "2026-05-22T09:37:00+00:00"),
         (9, "stats_refresh_review.v1", "skip", "not_applicable", "2026-05-22T09:40:00+00:00"),
     )
     records = []
@@ -435,6 +438,7 @@ def demo_action_outcome_records(summary: dict[str, Any]) -> tuple[ActionOutcomeR
                 recommendation_id=recommendation_id,
                 applied=applied,
                 outcome=outcome,
+                verification_status=("comparable_rerun" if applied == "yes" else "not_applicable"),
                 note_redacted="synthetic demo outcome",
             )
         )
