@@ -1,3 +1,4 @@
+import copy
 import json
 from pathlib import Path
 
@@ -156,19 +157,18 @@ def test_export_spark_evidence_fixtures_rejects_existing_output_without_echo(
 def _promotion_package(*, source_warning: bool = False) -> dict:
     eventlog = _load_fixture("spark_history_eventlog_compact.json")
     history_server = _load_fixture("spark_history_server_compact_source_warning.json")
-    if not source_warning:
-        history_server["sourceCoverage"] = {
-            "attemptedEndpointCount": 6,
-            "factState": "supported",
-            "successfulEndpointCount": 6,
-            "warningIds": [],
-        }
-        for limitation in history_server["limitations"]:
-            if limitation["id"] == "spark_history_source_coverage":
-                limitation["state"] = "supported"
+    application_only = _application_only_payload(history_server)
     samples = []
-    for index, case in enumerate(SPARK_EVIDENCE_ACCEPTED_SAMPLE_CASES):
-        if index == 1:
+    for case in SPARK_EVIDENCE_ACCEPTED_SAMPLE_CASES:
+        if case == "application_only_same_application":
+            samples.append(
+                SparkEvidencePackageSampleSpec(
+                    case=case,
+                    source_type="spark_history_server_compact",
+                    payload=application_only,
+                )
+            )
+        elif source_warning and case == "missing_or_partial_history_server_endpoint":
             samples.append(
                 SparkEvidencePackageSampleSpec(
                     case=case,
@@ -181,7 +181,7 @@ def _promotion_package(*, source_warning: bool = False) -> dict:
                 SparkEvidencePackageSampleSpec(
                     case=case,
                     source_type="spark_eventlog_compact",
-                    payload=eventlog,
+                    payload=_eventlog_payload_for_case(case, eventlog),
                 )
             )
     package = build_spark_evidence_package_payload(
@@ -198,7 +198,45 @@ def _promotion_package(*, source_warning: bool = False) -> dict:
     return package
 
 
+def _application_only_payload(history_server: dict) -> dict:
+    payload = copy.deepcopy(history_server)
+    payload["provenance"]["queryLinkage"] = "same_application"
+    payload["sourceCoverage"] = {
+        "attemptedEndpointCount": 6,
+        "factState": "supported",
+        "successfulEndpointCount": 6,
+        "warningIds": [],
+    }
+    payload["sqlExecution"] = {
+        "adaptiveExecution": {
+            "checked": False,
+            "enabled": False,
+            "planChanged": False,
+        },
+        "elapsedTimeMillis": 0,
+        "factState": "unknown",
+        "failureCategory": "unknown",
+        "failureCategoryState": "unknown",
+        "lifecycle": "unknown",
+        "linkedJobCount": payload["jobs"]["linkedJobCount"],
+        "planShapeCoverage": "not_collected",
+    }
+    for limitation in payload["limitations"]:
+        if limitation["id"] == "spark_history_source_coverage":
+            limitation["state"] = "supported"
+    return payload
+
+
 def _load_fixture(fixture_name: str) -> dict:
     payload = json.loads((FIXTURE_DIR / fixture_name).read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
+    return payload
+
+
+def _eventlog_payload_for_case(case: str, eventlog: dict) -> dict:
+    payload = copy.deepcopy(eventlog)
+    if case == "failed_or_killed_allowlisted_category":
+        payload["sqlExecution"]["lifecycle"] = "failed"
+        payload["sqlExecution"]["failureCategoryState"] = "supported"
+        payload["sqlExecution"]["failureCategory"] = "resource_limit"
     return payload

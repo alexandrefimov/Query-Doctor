@@ -13,7 +13,7 @@ from query_doctor.analyzer.spark_fixture_schema import (
     validate_spark_history_compact_fixture_payload,
     validate_spark_history_server_compact_payload,
 )
-from query_doctor.engines import UnknownEngineError, get_engine_adapter, list_engine_adapters
+from query_doctor.engines import get_engine_adapter, list_engine_adapters
 
 
 FIXTURE = (
@@ -55,9 +55,17 @@ def test_spark_compact_fixture_schema_accepts_synthetic_fixture_without_support_
         for limitation in payload["limitations"]
     )
 
-    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala", "trino"]
-    with pytest.raises(UnknownEngineError, match="Unsupported Query Doctor engine 'spark'"):
-        get_engine_adapter("spark")
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == [
+        "impala",
+        "spark",
+        "trino",
+    ]
+    spark_adapter = get_engine_adapter("spark")
+    assert spark_adapter.supports_history_server_compact_intake is True
+    assert spark_adapter.supports_compact_diagnosis is True
+    assert spark_adapter.supports_recent_scan is False
+    assert spark_adapter.supports_query_id_mode is False
+    assert spark_adapter.supports_validated_reports is False
 
 
 def test_spark_compact_fixture_schema_accepts_safe_failure_category():

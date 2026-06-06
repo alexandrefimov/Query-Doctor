@@ -8,7 +8,6 @@ behavior.
 
 from __future__ import annotations
 
-import json
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -20,6 +19,22 @@ from query_doctor.analyzer.engine_facts import (
     EngineFactContractError,
     validate_engine_fact_bundle_raw_free,
 )
+from query_doctor.analyzer.engine_intake_primitives import (
+    SAFE_CLASS_LABEL_RE,
+    format_safe_labels,
+    json_size as _shared_json_size,
+    max_json_depth as _shared_max_json_depth,
+    non_negative_int,
+    required_mapping,
+    required_sequence,
+    required_text,
+    safe_class_label,
+    safe_label_list,
+    safe_package_label,
+    utc_date,
+    version_text,
+)
+from query_doctor.analyzer.engine_redaction_note import validate_redaction_note_v1
 from query_doctor.analyzer.spark_fixture_schema import (
     SPARK_HISTORY_COMPACT_SOURCE_CONTRACT,
     SPARK_HISTORY_SERVER_COMPACT_SOURCE_CONTRACT,
@@ -27,8 +42,21 @@ from query_doctor.analyzer.spark_fixture_schema import (
     validate_spark_history_server_compact_payload,
 )
 from query_doctor.spark.diagnosis import (
+    SPARK_COMPACT_DIAGNOSTIC_LANE_NAME,
+    SPARK_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION,
+    SPARK_LANE_GRANULARITY_APPLICATION,
+    SPARK_LANE_GRANULARITY_EXACT_SQL,
+    SPARK_LANE_GRANULARITY_FIXTURE,
+    SPARK_LANE_READINESS_ATTENTION_READY,
+    SPARK_LANE_READINESS_COVERAGE_UNKNOWN,
+    SPARK_LANE_READINESS_LIMITED,
+    SPARK_LANE_READINESS_SOURCE_WARNING,
     build_spark_compact_diagnosis,
+    safe_fact_state_counts,
     spark_bundle_for_compact_payload,
+    spark_lane_evidence_readiness,
+    spark_lane_verification_scope,
+    spark_source_granularity,
 )
 
 
@@ -85,6 +113,47 @@ SPARK_EVIDENCE_PACKAGE_CASES = (
 SPARK_EVIDENCE_REQUIRED_SOURCE_CONTRACTS = tuple(
     sorted(set(SPARK_EVIDENCE_SAMPLE_SOURCE_CONTRACTS.values()))
 )
+SPARK_EVIDENCE_REQUIRED_DIAGNOSTIC_SIGNAL_GROUPS = (
+    "data_movement",
+    "failure",
+    "runtime_context",
+    "adaptive_plan_context",
+)
+SPARK_EVIDENCE_DIAGNOSTIC_SIGNAL_GROUPS = {
+    "data_movement": frozenset(
+        {
+            "spark_shuffle_spill",
+            "spark_stage_skew_candidate",
+        }
+    ),
+    "failure": frozenset(
+        {
+            "spark_query_failed",
+            "spark_job_failures",
+            "spark_stage_failures",
+            "spark_task_failures",
+        }
+    ),
+    "runtime_context": frozenset(
+        {
+            "spark_long_elapsed_time",
+            "spark_executor_memory_pressure",
+            "spark_task_retries",
+            "spark_task_duration_tail",
+            "spark_scheduler_delay",
+            "spark_executor_churn",
+            "spark_executor_loss",
+        }
+    ),
+    "adaptive_plan_context": frozenset(
+        {
+            "spark_adaptive_plan_change",
+        }
+    ),
+}
+SPARK_EVIDENCE_DIAGNOSTIC_SIGNAL_PREFIX_GROUPS = {
+    "spark_failure_category_": "failure",
+}
 SPARK_EVIDENCE_READINESS_PARTIAL = "partial_evidence"
 SPARK_EVIDENCE_READINESS_MINIMUM_CASE_SET_READY = "minimum_case_set_ready"
 SPARK_EVIDENCE_READINESS_PROMOTION_CANDIDATE = "promotion_candidate"
@@ -94,6 +163,29 @@ SPARK_EVIDENCE_EXPECTED_DIAGNOSIS_BOUNDARY = {
     "optimizer_behavior": "not_wired",
     "spark_job_execution": "not_performed",
 }
+SPARK_EVIDENCE_EXPECTED_DIAGNOSTIC_LANE_GATES = {
+    "readiness_audit": "required_for_handoff",
+    "surface_audit": "required_before_wiring",
+}
+SPARK_EVIDENCE_DIAGNOSTIC_LANE_READINESS_VALUES = (
+    SPARK_LANE_READINESS_ATTENTION_READY,
+    SPARK_LANE_READINESS_LIMITED,
+    SPARK_LANE_READINESS_SOURCE_WARNING,
+    SPARK_LANE_READINESS_COVERAGE_UNKNOWN,
+)
+SPARK_EVIDENCE_REQUIRED_DIAGNOSTIC_LANE_READINESS = (SPARK_LANE_READINESS_ATTENTION_READY,)
+SPARK_EVIDENCE_DIAGNOSTIC_LANE_SOURCE_GRANULARITIES = (
+    SPARK_LANE_GRANULARITY_APPLICATION,
+    SPARK_LANE_GRANULARITY_EXACT_SQL,
+    SPARK_LANE_GRANULARITY_FIXTURE,
+)
+SPARK_EVIDENCE_DIAGNOSTIC_LANE_VERIFICATION_SCOPES = (
+    "comparable_application_rerun",
+    "comparable_sql_execution_rerun",
+    "fixture_contract_review",
+    "source_contract_review",
+    "source_coverage_review",
+)
 SPARK_EVIDENCE_REQUIRED_REDACTION_CLASSES = frozenset(
     {
         "raw_sql_description_or_plan",
@@ -113,6 +205,18 @@ SPARK_EVIDENCE_REQUIRED_SENTINEL_TESTS = (
     "oversized_payload_rejection",
     "over_deep_payload_rejection",
     "non_finite_numeric_rejection",
+)
+SPARK_EVIDENCE_REQUIRED_REJECTION_REASONS = (
+    "unsafe_raw_identifier_present",
+    "unsafe_raw_text_present",
+    "unsafe_field_name_present",
+    "unsafe_object_name_present",
+    "unsafe_endpoint_or_path_present",
+    "unsafe_secret_or_credential_present",
+    "oversized_record",
+    "over_deep_record",
+    "non_finite_numeric_record",
+    "unsupported_source_contract",
 )
 SPARK_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS = (
     "no_raw_sql_descriptions_or_plans",
@@ -142,10 +246,7 @@ SPARK_EVIDENCE_WINDOW_CATEGORIES = frozenset(
     }
 )
 
-_SAFE_PACKAGE_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{2,80}$")
-_SAFE_CLASS_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{1,120}$")
 _SPARK_VERSION_FAMILY_RE = re.compile(r"^(?:unknown|spark_[0-9]+_[0-9]+)$")
-_UTC_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
 @dataclass(frozen=True)
@@ -154,9 +255,15 @@ class SparkEvidencePackageSampleResult:
     source_type: str
     source_contract: str
     parser_coverage: str
+    diagnostic_lane_schema_version: str
+    diagnostic_lane_readiness: str
+    diagnostic_lane_source_granularity: str
+    diagnostic_lane_verification_scope: str
+    supported_attention_area_ids: tuple[str, ...]
     attention_area_count: int
     supported_attention_area_count: int
     source_warning_count: int
+    source_warning_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -195,9 +302,36 @@ class SparkEvidencePackageIntakeResult:
     def supported_attention_area_count(self) -> int:
         return sum(sample.supported_attention_area_count for sample in self.samples)
 
+    def diagnostic_signal_group_counts(self) -> dict[str, int]:
+        counts: Counter[str] = Counter()
+        for sample in self.samples:
+            for group in diagnostic_signal_groups_for_attention_ids(
+                sample.supported_attention_area_ids
+            ):
+                counts[group] += 1
+        return dict(sorted(counts.items()))
+
     @property
     def source_warning_count(self) -> int:
         return sum(sample.source_warning_count for sample in self.samples)
+
+    def source_warning_counts(self) -> dict[str, int]:
+        counts: Counter[str] = Counter()
+        for sample in self.samples:
+            counts.update(sample.source_warning_ids)
+        return dict(sorted(counts.items()))
+
+    def diagnostic_lane_readiness_counts(self) -> dict[str, int]:
+        counts = Counter(sample.diagnostic_lane_readiness for sample in self.samples)
+        return dict(sorted(counts.items()))
+
+    def diagnostic_lane_source_granularity_counts(self) -> dict[str, int]:
+        counts = Counter(sample.diagnostic_lane_source_granularity for sample in self.samples)
+        return dict(sorted(counts.items()))
+
+    def diagnostic_lane_verification_scope_counts(self) -> dict[str, int]:
+        counts = Counter(sample.diagnostic_lane_verification_scope for sample in self.samples)
+        return dict(sorted(counts.items()))
 
 
 def spark_evidence_package_summary_payload(
@@ -224,8 +358,17 @@ def spark_evidence_package_summary_payload(
         "sample_count": result.sample_count,
         "parser_coverage": result.parser_coverage_counts(),
         "source_contracts": result.source_contract_counts(),
+        "diagnostic_signal_groups": result.diagnostic_signal_group_counts(),
+        "diagnostic_lane": {
+            "schema_version": SPARK_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION,
+            "readiness": result.diagnostic_lane_readiness_counts(),
+            "source_granularity": result.diagnostic_lane_source_granularity_counts(),
+            "verification_scope": result.diagnostic_lane_verification_scope_counts(),
+            "required_gates": dict(SPARK_EVIDENCE_EXPECTED_DIAGNOSTIC_LANE_GATES),
+        },
         "supported_attention_area_count": result.supported_attention_area_count,
         "source_warning_count": result.source_warning_count,
+        "source_warning_counts": result.source_warning_counts(),
         "sample_count_by_case": dict(result.sample_count_by_case),
         "readiness": spark_evidence_package_readiness_payload(result),
     }
@@ -249,10 +392,24 @@ def spark_evidence_package_readiness_payload(
         for contract in SPARK_EVIDENCE_REQUIRED_SOURCE_CONTRACTS
         if source_contract_counts.get(contract, 0) <= 0
     )
+    diagnostic_signal_group_counts = result.diagnostic_signal_group_counts()
+    missing_diagnostic_signal_groups = tuple(
+        group
+        for group in SPARK_EVIDENCE_REQUIRED_DIAGNOSTIC_SIGNAL_GROUPS
+        if diagnostic_signal_group_counts.get(group, 0) <= 0
+    )
+    diagnostic_lane_readiness_counts = result.diagnostic_lane_readiness_counts()
+    missing_diagnostic_lane_readiness = tuple(
+        readiness
+        for readiness in SPARK_EVIDENCE_REQUIRED_DIAGNOSTIC_LANE_READINESS
+        if diagnostic_lane_readiness_counts.get(readiness, 0) <= 0
+    )
     promotion_blockers = _spark_evidence_promotion_blockers(
         missing_sample_cases=missing_sample_cases,
         missing_synthetic_rejection_cases=missing_synthetic_rejection_cases,
         missing_source_contracts=missing_source_contracts,
+        missing_diagnostic_signal_groups=missing_diagnostic_signal_groups,
+        missing_diagnostic_lane_readiness=missing_diagnostic_lane_readiness,
         supported_attention_area_count=result.supported_attention_area_count,
         source_warning_count=result.source_warning_count,
     )
@@ -261,6 +418,8 @@ def spark_evidence_package_readiness_payload(
             missing_sample_cases=missing_sample_cases,
             missing_synthetic_rejection_cases=missing_synthetic_rejection_cases,
             missing_source_contracts=missing_source_contracts,
+            missing_diagnostic_signal_groups=missing_diagnostic_signal_groups,
+            missing_diagnostic_lane_readiness=missing_diagnostic_lane_readiness,
             supported_attention_area_count=result.supported_attention_area_count,
             source_warning_count=result.source_warning_count,
         ),
@@ -271,8 +430,19 @@ def spark_evidence_package_readiness_payload(
         "missing_sample_cases": list(missing_sample_cases),
         "missing_synthetic_rejection_cases": list(missing_synthetic_rejection_cases),
         "missing_source_contracts": list(missing_source_contracts),
+        "diagnostic_signal_groups": diagnostic_signal_group_counts,
+        "missing_diagnostic_signal_groups": list(missing_diagnostic_signal_groups),
+        "diagnostic_lane_schema_version": SPARK_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION,
+        "diagnostic_lane_readiness": diagnostic_lane_readiness_counts,
+        "diagnostic_lane_source_granularity": result.diagnostic_lane_source_granularity_counts(),
+        "diagnostic_lane_verification_scope": result.diagnostic_lane_verification_scope_counts(),
+        "required_diagnostic_lane_readiness": list(
+            SPARK_EVIDENCE_REQUIRED_DIAGNOSTIC_LANE_READINESS
+        ),
+        "missing_diagnostic_lane_readiness": list(missing_diagnostic_lane_readiness),
         "supported_attention_area_count": result.supported_attention_area_count,
         "source_warning_count": result.source_warning_count,
+        "source_warning_counts": result.source_warning_counts(),
         "source_warnings_clear": result.source_warning_count == 0,
         "promotion_blockers": list(promotion_blockers),
     }
@@ -308,8 +478,23 @@ def format_spark_evidence_package_summary(
     lines.append("source_contracts:")
     for source_contract, count in result.source_contract_counts().items():
         lines.append(f"  {source_contract}: {count}")
+    lines.append("diagnostic_signal_groups:")
+    for group, count in result.diagnostic_signal_group_counts().items():
+        lines.append(f"  {group}: {count}")
+    lines.append("diagnostic_lane_readiness:")
+    for lane_readiness, count in result.diagnostic_lane_readiness_counts().items():
+        lines.append(f"  {lane_readiness}: {count}")
+    lines.append("diagnostic_lane_source_granularity:")
+    for source_granularity, count in result.diagnostic_lane_source_granularity_counts().items():
+        lines.append(f"  {source_granularity}: {count}")
+    lines.append("diagnostic_lane_verification_scope:")
+    for verification_scope, count in result.diagnostic_lane_verification_scope_counts().items():
+        lines.append(f"  {verification_scope}: {count}")
     lines.append(f"supported_attention_area_count: {result.supported_attention_area_count}")
     lines.append(f"source_warning_count: {result.source_warning_count}")
+    lines.append("source_warning_counts:")
+    for warning_id, count in result.source_warning_counts().items():
+        lines.append(f"  {warning_id}: {count}")
     lines.append("sample_count_by_case:")
     for case, count in result.sample_count_by_case:
         lines.append(f"  {case}: {count}")
@@ -326,6 +511,10 @@ def format_spark_evidence_package_summary(
             f"{_format_safe_labels(readiness['missing_synthetic_rejection_cases'])}",
             "  missing_source_contracts: "
             f"{_format_safe_labels(readiness['missing_source_contracts'])}",
+            "  missing_diagnostic_signal_groups: "
+            f"{_format_safe_labels(readiness['missing_diagnostic_signal_groups'])}",
+            "  missing_diagnostic_lane_readiness: "
+            f"{_format_safe_labels(readiness['missing_diagnostic_lane_readiness'])}",
             f"  source_warnings_clear: {str(readiness['source_warnings_clear']).lower()}",
             f"  promotion_blockers: {_format_safe_labels(readiness['promotion_blockers'])}",
         ]
@@ -338,6 +527,8 @@ def _spark_evidence_readiness_status(
     missing_sample_cases: Sequence[str],
     missing_synthetic_rejection_cases: Sequence[str],
     missing_source_contracts: Sequence[str],
+    missing_diagnostic_signal_groups: Sequence[str],
+    missing_diagnostic_lane_readiness: Sequence[str],
     supported_attention_area_count: int,
     source_warning_count: int,
 ) -> str:
@@ -345,6 +536,8 @@ def _spark_evidence_readiness_status(
         missing_sample_cases
         or missing_synthetic_rejection_cases
         or missing_source_contracts
+        or missing_diagnostic_signal_groups
+        or missing_diagnostic_lane_readiness
         or supported_attention_area_count <= 0
     ):
         return SPARK_EVIDENCE_READINESS_PARTIAL
@@ -358,6 +551,8 @@ def _spark_evidence_promotion_blockers(
     missing_sample_cases: Sequence[str],
     missing_synthetic_rejection_cases: Sequence[str],
     missing_source_contracts: Sequence[str],
+    missing_diagnostic_signal_groups: Sequence[str],
+    missing_diagnostic_lane_readiness: Sequence[str],
     supported_attention_area_count: int,
     source_warning_count: int,
 ) -> tuple[str, ...]:
@@ -368,6 +563,10 @@ def _spark_evidence_promotion_blockers(
         blockers.append("missing_synthetic_rejection_cases")
     if missing_source_contracts:
         blockers.append("missing_required_source_contracts")
+    if missing_diagnostic_signal_groups:
+        blockers.append("missing_required_diagnostic_signal_groups")
+    if missing_diagnostic_lane_readiness:
+        blockers.append("missing_required_diagnostic_lane_readiness")
     if supported_attention_area_count <= 0:
         blockers.append("missing_supported_attention_area")
     if source_warning_count > 0:
@@ -432,6 +631,16 @@ def validate_spark_evidence_package_payload(
             raise EngineFactContractError("Spark evidence package sample facts are not raw-free")
         diagnosis = build_spark_compact_diagnosis(payload_mapping)
         _validate_sample_diagnosis_boundary(diagnosis)
+        diagnostic_lane = _validate_sample_diagnostic_lane(diagnosis, payload=payload_mapping)
+        supported_attention_area_ids = _supported_attention_area_ids(diagnosis)
+        source_warning_ids = _source_warning_ids(payload_mapping)
+        _validate_sample_case_contract(
+            case=sample["case"],
+            source_type=sample["source_type"],
+            payload=payload_mapping,
+            bundle=bundle,
+            source_warning_ids=source_warning_ids,
+        )
         bundles.append(bundle)
         sample_results.append(
             SparkEvidencePackageSampleResult(
@@ -439,9 +648,15 @@ def validate_spark_evidence_package_payload(
                 source_type=sample["source_type"],
                 source_contract=str(payload_mapping.get("sourceContract")),
                 parser_coverage=bundle.identity.parser_coverage,
+                diagnostic_lane_schema_version=str(diagnostic_lane["schema_version"]),
+                diagnostic_lane_readiness=str(diagnostic_lane["evidence_readiness"]),
+                diagnostic_lane_source_granularity=str(diagnostic_lane["source_granularity"]),
+                diagnostic_lane_verification_scope=str(diagnostic_lane["verification_scope"]),
+                supported_attention_area_ids=supported_attention_area_ids,
                 attention_area_count=len(diagnosis.get("attention_areas", ())),
-                supported_attention_area_count=_supported_attention_area_count(diagnosis),
-                source_warning_count=_source_warning_count(payload_mapping),
+                supported_attention_area_count=len(supported_attention_area_ids),
+                source_warning_count=len(source_warning_ids),
+                source_warning_ids=source_warning_ids,
             )
         )
 
@@ -491,7 +706,7 @@ def _validate_manifest(
     source_contracts = _safe_label_list(
         manifest,
         "source_contracts",
-        label_re=_SAFE_CLASS_LABEL_RE,
+        label_re=SAFE_CLASS_LABEL_RE,
         allow_empty=False,
     )
     if not set(source_contracts).issubset(set(SPARK_EVIDENCE_SAMPLE_SOURCE_CONTRACTS.values())):
@@ -533,27 +748,15 @@ def _validate_manifest(
 
 
 def _validate_redaction_note(redaction_note: Mapping[str, Any], *, package_id: str) -> None:
-    if _safe_package_label(redaction_note, "package_id") != package_id:
-        raise EngineFactContractError("Spark evidence package redaction note id mismatch")
-    if _safe_class_label(redaction_note, "manual_review_status") != "checked":
-        raise EngineFactContractError("Spark evidence package redaction note is not checked")
-    redaction_classes = set(
-        _safe_label_list(redaction_note, "removed_field_classes", allow_empty=False)
+    validate_redaction_note_v1(
+        redaction_note,
+        package_id=package_id,
+        required_classes=SPARK_EVIDENCE_REQUIRED_REDACTION_CLASSES,
+        required_sentinel_tests=SPARK_EVIDENCE_REQUIRED_SENTINEL_TESTS,
+        required_assertions=SPARK_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS,
+        required_rejection_reasons=SPARK_EVIDENCE_REQUIRED_REJECTION_REASONS,
+        engine_label="Spark",
     )
-    if not SPARK_EVIDENCE_REQUIRED_REDACTION_CLASSES.issubset(redaction_classes):
-        raise EngineFactContractError("Spark evidence package redaction classes are incomplete")
-    boundary_assertions = set(
-        _safe_label_list(redaction_note, "boundary_assertions", allow_empty=False)
-    )
-    if not set(SPARK_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS).issubset(boundary_assertions):
-        raise EngineFactContractError("Spark evidence package boundary assertions are incomplete")
-    sentinel_tests = set(
-        _safe_label_list(redaction_note, "sentinel_tests_passed", allow_empty=False)
-    )
-    if not set(SPARK_EVIDENCE_REQUIRED_SENTINEL_TESTS).issubset(sentinel_tests):
-        raise EngineFactContractError("Spark evidence package sentinel tests are incomplete")
-    if _safe_class_label(redaction_note, "raw_companion_archive") != "none":
-        raise EngineFactContractError("Spark evidence package raw companion archive is not allowed")
 
 
 def _validate_sample_entry(entry: Any, *, index: int) -> dict[str, Any]:
@@ -581,6 +784,57 @@ def _validate_sample_payload(source_type: str, payload: Mapping[str, Any]) -> No
         validate_spark_history_server_compact_payload(payload)
     else:
         validate_spark_history_compact_fixture_payload(payload)
+
+
+def _validate_sample_case_contract(
+    *,
+    case: str,
+    source_type: str,
+    payload: Mapping[str, Any],
+    bundle: EngineFactBundle,
+    source_warning_ids: Sequence[str],
+) -> None:
+    if case != "application_only_same_application":
+        return
+    if source_type != "spark_history_server_compact":
+        raise EngineFactContractError(
+            "Spark evidence package application-only sample needs History Server compact evidence"
+        )
+    provenance = payload.get("provenance")
+    sql_execution = payload.get("sqlExecution")
+    if not isinstance(provenance, Mapping) or not isinstance(sql_execution, Mapping):
+        raise EngineFactContractError(
+            "Spark evidence package application-only sample needs compact evidence"
+        )
+    if provenance.get("queryLinkage") != "same_application" or source_warning_ids:
+        raise EngineFactContractError(
+            "Spark evidence package application-only sample needs warning-free same_application evidence"
+        )
+    if (
+        sql_execution.get("factState") != "unknown"
+        or sql_execution.get("lifecycle") != "unknown"
+        or sql_execution.get("failureCategoryState") != "unknown"
+        or sql_execution.get("failureCategory") != "unknown"
+        or sql_execution.get("elapsedTimeMillis") != 0
+    ):
+        raise EngineFactContractError(
+            "Spark evidence package application-only sample must not claim SQL execution facts"
+        )
+    facts = bundle.facts_by_id()
+    if not (
+        _metric_value_supported(facts, "spark_query_linkage", "same_application")
+        and _metric_state(facts, "spark_sql_elapsed_time_ms") == "unknown"
+        and _metric_positive(facts, "spark_linked_job_count")
+        and _metric_positive(facts, "spark_stage_count")
+        and _metric_positive(facts, "spark_task_count")
+        and _metric_positive(facts, "spark_sampled_task_count")
+        and _metric_state(facts, "spark_scheduler_delay_ms") in {"supported", "not_observed"}
+        and _metric_state(facts, "spark_spilled_bytes") in {"supported", "not_observed"}
+        and _metric_state(facts, "spark_history_source_coverage") == "supported"
+    ):
+        raise EngineFactContractError(
+            "Spark evidence package application-only sample needs application-level stage and task evidence"
+        )
 
 
 def _validate_sample_count_by_case(counts_payload: Mapping[str, Any]) -> dict[str, int]:
@@ -622,25 +876,62 @@ def _validate_declared_bounds(
         raise EngineFactContractError("Spark evidence package max nested depth is below samples")
 
 
-def _supported_attention_area_count(diagnosis: Mapping[str, Any]) -> int:
+def diagnostic_signal_groups_for_attention_ids(attention_ids: Sequence[str]) -> tuple[str, ...]:
+    groups: set[str] = set()
+    for attention_id in attention_ids:
+        for group, group_attention_ids in SPARK_EVIDENCE_DIAGNOSTIC_SIGNAL_GROUPS.items():
+            if attention_id in group_attention_ids:
+                groups.add(group)
+        for prefix, group in SPARK_EVIDENCE_DIAGNOSTIC_SIGNAL_PREFIX_GROUPS.items():
+            if attention_id.startswith(prefix):
+                groups.add(group)
+    return tuple(sorted(groups))
+
+
+def _supported_attention_area_ids(diagnosis: Mapping[str, Any]) -> tuple[str, ...]:
     attention_areas = diagnosis.get("attention_areas", ())
     if not isinstance(attention_areas, Sequence) or isinstance(attention_areas, (str, bytes)):
-        return 0
-    count = 0
+        return ()
+    attention_ids: set[str] = set()
     for area in attention_areas:
-        if isinstance(area, Mapping) and area.get("state") == "supported":
-            count += 1
-    return count
+        if not isinstance(area, Mapping) or area.get("state") != "supported":
+            continue
+        attention_id = area.get("id")
+        if isinstance(attention_id, str) and attention_id:
+            attention_ids.add(attention_id)
+    return tuple(sorted(attention_ids))
 
 
-def _source_warning_count(payload: Mapping[str, Any]) -> int:
+def _source_warning_ids(payload: Mapping[str, Any]) -> tuple[str, ...]:
     source_coverage = payload.get("sourceCoverage")
     if not isinstance(source_coverage, Mapping):
-        return 0
+        return ()
     warning_ids = source_coverage.get("warningIds")
     if isinstance(warning_ids, Sequence) and not isinstance(warning_ids, (str, bytes)):
-        return len(warning_ids)
-    return 0
+        return tuple(str(warning_id) for warning_id in warning_ids if isinstance(warning_id, str))
+    return ()
+
+
+def _metric_state(facts: Mapping[str, Any], fact_id: str) -> str:
+    fact = facts.get(fact_id)
+    state = getattr(fact, "state", None)
+    return state if isinstance(state, str) else "unknown"
+
+
+def _metric_value_supported(facts: Mapping[str, Any], fact_id: str, expected: object) -> bool:
+    fact = facts.get(fact_id)
+    return _metric_state(facts, fact_id) == "supported" and getattr(fact, "value", None) == expected
+
+
+def _metric_positive(facts: Mapping[str, Any], fact_id: str) -> bool:
+    fact = facts.get(fact_id)
+    value = getattr(fact, "value", None)
+    return (
+        _metric_state(facts, fact_id) == "supported"
+        and not isinstance(value, bool)
+        and isinstance(value, (float, int))
+        and value > 0
+    )
 
 
 def _validate_sample_diagnosis_boundary(diagnosis: Mapping[str, Any]) -> None:
@@ -656,110 +947,183 @@ def _validate_sample_diagnosis_boundary(diagnosis: Mapping[str, Any]) -> None:
             raise EngineFactContractError("Spark evidence package diagnosis boundary drifted")
 
 
+def _validate_sample_diagnostic_lane(
+    diagnosis: Mapping[str, Any],
+    *,
+    payload: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    lane = diagnosis.get("diagnostic_lane")
+    if not isinstance(lane, Mapping):
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    expected_pairs = {
+        "schema_version": SPARK_COMPACT_DIAGNOSTIC_LANE_SCHEMA_VERSION,
+        "lane": SPARK_COMPACT_DIAGNOSTIC_LANE_NAME,
+        "promotion_status": "preview_only",
+    }
+    for key, expected in expected_pairs.items():
+        if lane.get(key) != expected:
+            raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("required_gates") != SPARK_EVIDENCE_EXPECTED_DIAGNOSTIC_LANE_GATES:
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("evidence_readiness") not in SPARK_EVIDENCE_DIAGNOSTIC_LANE_READINESS_VALUES:
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("source_granularity") not in SPARK_EVIDENCE_DIAGNOSTIC_LANE_SOURCE_GRANULARITIES:
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("verification_scope") not in SPARK_EVIDENCE_DIAGNOSTIC_LANE_VERIFICATION_SCOPES:
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+
+    supported_attention_area_count = len(_supported_attention_area_ids(diagnosis))
+    source_warning_count = len(_diagnosis_source_warnings(diagnosis))
+    expected_source_granularity = spark_source_granularity(payload)
+    expected_readiness = spark_lane_evidence_readiness(
+        parser_coverage=diagnosis.get("parser_coverage"),
+        source_warning_count=source_warning_count,
+        supported_attention_area_count=supported_attention_area_count,
+    )
+    if lane.get("source_granularity") != expected_source_granularity:
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("evidence_readiness") != expected_readiness:
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("verification_scope") != spark_lane_verification_scope(
+        source_granularity=expected_source_granularity,
+        evidence_readiness=expected_readiness,
+    ):
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("supported_attention_area_count") != supported_attention_area_count:
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("source_warning_count") != source_warning_count:
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    if lane.get("fact_state_counts") != safe_fact_state_counts(diagnosis.get("state_counts")):
+        raise EngineFactContractError("Spark evidence package diagnostic lane drifted")
+    return lane
+
+
+def _diagnosis_source_warnings(diagnosis: Mapping[str, Any]) -> tuple[str, ...]:
+    source_warnings = diagnosis.get("source_warnings", ())
+    if isinstance(source_warnings, Sequence) and not isinstance(source_warnings, (str, bytes)):
+        return tuple(warning_id for warning_id in source_warnings if isinstance(warning_id, str))
+    return ()
+
+
 def _validate_json_size(
     payload: Mapping[str, Any], *, max_json_bytes: int, payload_label: str
 ) -> None:
-    _json_size(payload, payload_label=payload_label)
-    if len(json.dumps(payload, allow_nan=False, sort_keys=True).encode("utf-8")) > max_json_bytes:
+    if _json_size(payload, payload_label=payload_label) > max_json_bytes:
         raise EngineFactContractError(f"{payload_label} exceeds byte limit")
 
 
 def _json_size(payload: Mapping[str, Any], *, payload_label: str) -> int:
-    try:
-        return len(json.dumps(payload, allow_nan=False, sort_keys=True).encode("utf-8"))
-    except (TypeError, ValueError) as exc:
-        raise EngineFactContractError(f"{payload_label} must be finite JSON") from exc
+    return _shared_json_size(
+        payload,
+        payload_label=payload_label,
+        error_message=f"{payload_label} must be finite JSON",
+        compact=False,
+        ensure_ascii=True,
+        sort_keys=True,
+    )
 
 
 def _max_json_depth(value: Any) -> int:
-    if isinstance(value, Mapping):
-        if not value:
-            return 1
-        return 1 + max(_max_json_depth(item) for item in value.values())
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        if not value:
-            return 1
-        return 1 + max(_max_json_depth(item) for item in value)
-    return 1
+    return _shared_max_json_depth(
+        value,
+        count_scalar=True,
+        sequence_types=(Sequence,),
+    )
 
 
 def _required_mapping(payload: Mapping[str, Any], key: str) -> Mapping[str, Any]:
-    value = payload.get(key)
-    if not isinstance(value, Mapping):
-        raise EngineFactContractError("Spark evidence package section must be an object")
-    return value
+    return required_mapping(
+        payload,
+        key,
+        missing_message="Spark evidence package section must be an object",
+    )
 
 
 def _required_sequence(payload: Mapping[str, Any], key: str) -> Sequence[Any]:
-    value = payload.get(key)
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        raise EngineFactContractError("Spark evidence package section must be a list")
-    return value
+    return required_sequence(
+        payload,
+        key,
+        missing_message="Spark evidence package section must be a list",
+    )
 
 
 def _required_text(payload: Mapping[str, Any], key: str) -> str:
-    value = payload.get(key)
-    if not isinstance(value, str) or not value:
-        raise EngineFactContractError("Spark evidence package text field is invalid")
-    return value
+    return required_text(
+        payload,
+        key,
+        missing_message="Spark evidence package text field is invalid",
+        strip=False,
+    )
 
 
 def _version_text(payload: Mapping[str, Any], key: str) -> str:
-    value = _required_text(payload, key)
-    if not re.fullmatch(r"[0-9]+", value):
-        raise EngineFactContractError("Spark evidence package version is invalid")
-    return value
+    return version_text(
+        payload,
+        key,
+        missing_message="Spark evidence package text field is invalid",
+        unsupported_message="Spark evidence package version is invalid",
+        max_digits=1000,
+        strip=False,
+    )
 
 
 def _safe_package_label(payload: Mapping[str, Any], key: str) -> str:
-    value = _required_text(payload, key)
-    if not _SAFE_PACKAGE_LABEL_RE.fullmatch(value):
-        raise EngineFactContractError("Spark evidence package label is not safe")
-    return value
+    return safe_package_label(
+        payload,
+        key,
+        missing_message="Spark evidence package text field is invalid",
+        unsafe_message="Spark evidence package label is not safe",
+        strip=False,
+    )
 
 
 def _safe_class_label(payload: Mapping[str, Any], key: str) -> str:
-    value = _required_text(payload, key)
-    if not _SAFE_CLASS_LABEL_RE.fullmatch(value):
-        raise EngineFactContractError("Spark evidence package class label is not safe")
-    return value
+    return safe_class_label(
+        payload,
+        key,
+        missing_message="Spark evidence package text field is invalid",
+        unsafe_message="Spark evidence package class label is not safe",
+        strip=False,
+    )
 
 
 def _safe_label_list(
     payload: Mapping[str, Any],
     key: str,
     *,
-    label_re: re.Pattern[str] = _SAFE_CLASS_LABEL_RE,
+    label_re: re.Pattern[str] = SAFE_CLASS_LABEL_RE,
     allow_empty: bool,
 ) -> list[str]:
-    value = payload.get(key)
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        raise EngineFactContractError("Spark evidence package label list is invalid")
-    if not value and not allow_empty:
-        raise EngineFactContractError("Spark evidence package label list must not be empty")
-    labels: list[str] = []
-    for item in value:
-        if not isinstance(item, str) or not label_re.fullmatch(item):
-            raise EngineFactContractError("Spark evidence package label list contains unsafe text")
-        labels.append(item)
-    return labels
+    return list(
+        safe_label_list(
+            payload,
+            key,
+            missing_message="Spark evidence package label list is invalid",
+            unsafe_message="Spark evidence package label list contains unsafe text",
+            empty_message="Spark evidence package label list must not be empty",
+            label_re=label_re,
+            allow_empty=allow_empty,
+        )
+    )
 
 
 def _utc_date(payload: Mapping[str, Any], key: str) -> str:
-    value = _required_text(payload, key)
-    if not _UTC_DATE_RE.fullmatch(value):
-        raise EngineFactContractError("Spark evidence package date is invalid")
-    return value
+    return utc_date(
+        payload,
+        key,
+        missing_message="Spark evidence package text field is invalid",
+        invalid_message="Spark evidence package date is invalid",
+        strip=False,
+    )
 
 
 def _non_negative_int(payload: Mapping[str, Any], key: str) -> int:
-    value = payload.get(key)
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise EngineFactContractError("Spark evidence package numeric field is invalid")
-    return value
+    return non_negative_int(
+        payload,
+        key,
+        invalid_message="Spark evidence package numeric field is invalid",
+    )
 
 
 def _format_safe_labels(labels: Sequence[str]) -> str:
-    if not labels:
-        return "none"
-    return ", ".join(labels)
+    return format_safe_labels(labels)
