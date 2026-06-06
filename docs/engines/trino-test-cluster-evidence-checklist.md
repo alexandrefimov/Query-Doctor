@@ -8,8 +8,8 @@ This checklist defines the first safe handoff from a test Trino cluster to
 Query Doctor research. It is not a live collector, support announcement, engine
 selector, Details/trusted-report surface, or permission to execute Trino SQL.
 The separate isolated compact-diagnosis page accepts only already raw-free
-direct boundary JSON or one selected sample boundary from a package boundary
-export.
+direct boundary JSON excluding local metadata summary boundaries or one selected
+sample boundary from a package boundary export.
 
 Use this with [trino-diagnostic-contract.md](trino-diagnostic-contract.md),
 [trino-live-collection-design.md](trino-live-collection-design.md), and
@@ -55,6 +55,14 @@ The first export should contain compact evidence only:
   session fields, endpoint details, object names, raw stage/task records, and
   connector internals are removed, leaving only allowlisted `state` and
   `queryStats` fields;
+- metadata allowlist source-contract summaries only after
+  `query-doctor-trino-metadata-source-contract-check --redaction-reviewed`
+  accepts the local contract; keep the raw relation/column allowlist local and
+  retain only the path-free, identifier-free summary for handoff;
+- compact metadata summary exports only as aggregate relation/column coverage
+  and stats-completeness counts after raw identifiers and metadata values are
+  omitted; validate them with
+  `query-doctor-trino-metadata-summary-import --redaction-reviewed`;
 - a manifest that describes source type, Trino version, source schema version,
   connector family category, export time window, record count, byte count,
   redaction status, and known omissions.
@@ -127,6 +135,10 @@ The first test-cluster handoff should include:
 - one sanitized compact sample per minimum case;
 - one manifest for the sample set;
 - one redaction note describing removed field classes, not removed values;
+- optional metadata source-contract summary output, never the raw allowlist
+  contract with relation or column names;
+- optional compact metadata summary import output, never raw metadata values or
+  object identifiers;
 - one known-gap note for missing connector families or source schema versions;
 - no raw companion archive.
 
@@ -136,9 +148,23 @@ safe: no cluster, query, user, host, catalog, schema, table, topic, path, file,
 or artifact names. The local package-intake wrapper is `manifest`,
 `redaction_note`, and `samples`; accepted sample payloads are still fixture
 work, not live collection.
+Before planning operator sample labels, run
+`python3 scripts/trino_evidence_package_requirements.py --json` to print the
+Python-owned accepted sample cases, package and sample source types, known
+fixture contract/version labels, redaction classes, rejection reasons,
+sentinel tests, boundary assertions, and size limits. The helper reads no Trino
+endpoint and makes no support claim.
 Run `python3 scripts/validate_trino_evidence_package.py <sanitized-package.json>`
 before fixture conversion. The command prints only a safe summary and must not
 echo raw payloads, raw values, or the input path.
+For retained package-level handoff evidence, first run
+`python3 scripts/audit_trino_evidence_handoff.py <sanitized-package.json> --summary-json <raw-free-trino-package-handoff-summary.json>`.
+Then group already raw-free summaries with
+`python3 scripts/build_trino_evidence_handoff_suite_manifest.py --redaction-reviewed --handoff-summary-json <summary-a.json> --handoff-summary-json <summary-b.json> --out <trino-evidence-handoff-suite.json>`
+and audit them with
+`python3 scripts/audit_trino_evidence_handoff.py --handoff-suite-manifest <trino-evidence-handoff-suite.json> --require-min-inputs <minimum-retained-package-count> --summary-json <raw-free-trino-evidence-handoff-suite-summary.json>`.
+The suite path reopens only retained raw-free summaries, not packages or raw
+exports.
 If the samples are already compact sanitized JSON files, use
 `python3 scripts/build_trino_evidence_package.py` to assemble the wrapper before
 validation. The builder is local-only, requires explicit redaction-review and
@@ -150,6 +176,40 @@ of a package wrapper, run
 That command reads one explicit local JSON/NDJSON file, validates compact event
 records, prints only a safe summary or raw-free boundary JSON, and must not
 echo raw payloads, raw values, or the input path.
+For one explicit real-cluster query-info handoff, the dev-only
+`scripts/trino_one_query_live_handoff.py` wrapper may use either one local
+operator-managed `--auth-header-file` or an explicit Kerberos/SPNEGO fetch from
+an already prepared local ticket cache through `--kerberos-principal` and
+`--krb5-ccname`. The Kerberos form must remain one bounded
+`GET /v1/query/{queryId}?pruned=true` read, must not submit SQL, must not read
+Kubernetes secrets, and must not print the principal, ticket-cache path,
+coordinator URL, Query ID, curl stderr, auth material, raw QueryInfo, or output
+paths.
+Prefer `--query-id-file <operator-query-id-file>` for live handoff runs so the
+selected Query ID stays out of shell history and process arguments. The file
+must contain exactly one supported Trino Query ID, must remain local to the
+operator environment, and must not be reused as an output artifact. Finished
+QueryInfo can disappear from the coordinator before QueryMonitor logs age out,
+so choose a current or very recent Query ID. HTTP 404 or 410 from either
+one-query coordinator fetch path should be treated as stale QueryInfo and
+reported only through a redacted operator hint; do not retain or echo the
+response body, coordinator URL, Query ID, auth material, curl stderr, or local
+artifact paths. HTTP 401 or 403 should be treated as auth rejected and reported
+only through a redacted operator hint to refresh the auth reference or ticket; do
+not retain or echo the rejected auth material, principal, response body,
+coordinator URL, Query ID, curl stderr, or local artifact paths.
+Retained one-query handoff suites should run
+`scripts/audit_trino_compact_readiness.py --handoff-suite-manifest` with
+`--require-readiness-summary-json`,
+`--require-handoff-summary-json`,
+`--require-min-trino-version-families <minimum-trino-version-family-count>` and
+repeated `--require-trino-version-family <safe-trino-version-family>` when a
+specific broad Trino version family must be represented. Manifest entries may
+reference only safe relative per-entry readiness summary and one-query handoff
+summary JSON artifacts from the one-query wrapper. The summary may record only
+safe broad-label counters, accepted pipeline states, path-free artifact states,
+and deterministic readiness evidence, not raw version strings, coordinator
+URLs, Query IDs, auth material, raw QueryInfo, or artifact paths.
 
 Keep raw exports outside the repository and outside prompts. If an operator
 needs to retain them for audit, retain them in the operator-controlled Trino
@@ -170,8 +230,8 @@ The package is ready for Query Doctor fixture work only when:
   README live-support claim is needed to consume it; the packaged offline
   import path must still keep Details/trusted report and live-reader surfaces
   out. The separate isolated compact-diagnosis page accepts only already
-  raw-free direct boundary JSON or one selected sample boundary from a package
-  boundary export.
+  raw-free direct boundary JSON excluding local metadata summary boundaries or
+  one selected sample boundary from a package boundary export.
 
 The next implementation step after an accepted package is still fixture work:
 convert samples into committed sanitized fixtures and mapper tests. A live

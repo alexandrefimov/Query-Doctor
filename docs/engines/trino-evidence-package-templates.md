@@ -102,12 +102,20 @@ query-doctor-diagnose-trino-compact \
 
 The diagnosis command reads only one already raw-free `engine_fact_boundary_v1`
 payload or one selected sample boundary from a package boundary export, rejects
-non-Trino boundaries, and writes deterministic attention areas, change
+non-Trino boundaries and local metadata summary boundaries, and writes
+deterministic attention areas, change
 directions, verification prompts, limitations, parser coverage, lifecycle, and
 state counts. Planning-heavy timing can become an attention area only from
 supported `planning_time_ms` and `trino_elapsed_time_ms` facts; high peak memory
 can become an attention area only from supported one-query
-`trino_peak_memory_bytes` at or above 100 GiB. It does not ingest raw Trino
+`trino_peak_memory_bytes` at or above 100 GiB; queue or resource-group delay
+can become an attention area only from supported one-query
+`trino_queued_time_ms`, `trino_resource_group_queue_time_ms`, or
+`trino_blocked_signal` facts; task retry/failure attention can become an
+attention area only from supported one-query `trino_retried_task_count` or
+`trino_failed_task_count` facts; and connector-metric attention can become an
+attention area only from supported one-query `trino_connector_metric_signal`
+facts. It does not ingest raw Trino
 payloads, copy input summaries or string metric values, claim root causes,
 submit SQL, crawl query history, collect live Query ID diagnosis, or add
 browser/report or optimizer output.
@@ -212,10 +220,11 @@ query-doctor-trino-coordinator-query-info-target-check \
 ```
 
 The target check validates only the compact source contract, auth-reference
-label, one-query bound, coordinator base-URL shape, Query ID shape, bounds, and
-redaction/storage policy. It prints no URL or Query ID and does not contact
-Trino, issue `/v1/query`, fetch query-info JSON, ingest raw query-info, submit
-SQL, crawl query history, or add browser/report/optimizer output.
+label, one-query bound, safe `trino_version_family`, coordinator base-URL shape,
+Query ID shape, bounds, and redaction/storage policy. It prints no URL or Query
+ID and does not contact Trino, issue `/v1/query`, fetch query-info JSON, ingest
+raw query-info, submit SQL, crawl query history, or add browser/report/optimizer
+output.
 
 If an operator wants to verify that the same future query-info endpoint returns
 a bounded pruned JSON object, use the pruned probe command:
@@ -230,15 +239,15 @@ query-doctor-trino-coordinator-query-info-pruned-probe \
 ```
 
 The pruned probe requires the same compact `coordinator_query_info` source
-contract with an operator-managed auth reference, issues exactly one bounded
-`GET /v1/query/{queryId}?pruned=true` request, validates only that the response
-is a bounded JSON object, and prints only a safe summary. `--auth-header-file`
-is optional and may contain only one operator-managed `Authorization` header
-line. The command does not follow HTTP redirects and prints no auth header path
-or value, URL, Query ID, raw QueryInfo, query text, session fields, endpoint
-URLs, object names, or raw payload content. It does not map QueryInfo to facts,
-submit SQL, crawl query history, collect live Query ID diagnosis, or add
-browser/report/optimizer output.
+contract with an operator-managed auth reference and safe `trino_version_family`,
+issues exactly one bounded `GET /v1/query/{queryId}?pruned=true` request,
+validates only that the response is a bounded JSON object, and prints only a
+safe summary. `--auth-header-file` is optional and may contain only one
+operator-managed `Authorization` header line. The command does not follow HTTP
+redirects and prints no auth header path or value, URL, Query ID, raw QueryInfo,
+query text, session fields, endpoint URLs, object names, or raw payload content.
+It does not map QueryInfo to facts, submit SQL, crawl query history, collect live
+Query ID diagnosis, or add browser/report/optimizer output.
 
 If an operator wants to import only the allowlisted lifecycle and `queryStats`
 fields from an already compact sanitized local pruned QueryInfo file into
@@ -286,10 +295,10 @@ query-doctor-trino-coordinator-query-info-pruned-import \
 ```
 
 The pruned import requires the same compact `coordinator_query_info` source
-contract with an operator-managed auth reference, issues exactly one bounded
-`GET /v1/query/{queryId}?pruned=true` request, and emits only a safe summary or
-raw-free boundary JSON. `--boundary-out` writes the direct
-`engine_fact_boundary_v1` payload so maintainers can run
+contract with an operator-managed auth reference and safe `trino_version_family`,
+issues exactly one bounded `GET /v1/query/{queryId}?pruned=true` request, and
+emits only a safe summary or raw-free boundary JSON. `--boundary-out` writes the
+direct `engine_fact_boundary_v1` payload so maintainers can run
 `scripts/audit_trino_compact_readiness.py <raw-free-trino-boundary.json> --require-one-query-boundary`
 without extracting the boundary wrapper. If the same run writes
 `--diagnosis-out <raw-free-trino-diagnosis.json>`, pass
@@ -529,6 +538,7 @@ boundary_assertions:
   no_stack_traces_exception_messages_warnings_or_connector_internals: true
   no_credentials_tokens_cookies_keys_or_tls_material: true
   no_raw_companion_archive: true
+raw_companion_archive: "none"
 ```
 
 If any boundary assertion is false, the package is rejected and must be
@@ -548,10 +558,19 @@ Before a package can become committed fixtures:
   only;
 - the package includes no raw companion archive and no pointer to a raw
   companion archive;
+- before fixture promotion or broader handoff, the package passes
+  `python3 scripts/audit_trino_evidence_handoff.py <sanitized-package.json>
+  --summary-json <raw-free-trino-package-handoff-summary.json>`. This validates
+  the package, converts accepted samples to raw-free boundary payloads in
+  memory, runs the compact readiness suite, and writes only raw-free machine
+  evidence. Full packages keep supported-attention and known-parser-coverage
+  requirements off by default because unknown and unsupported samples remain
+  part of the package contract;
 - consuming the package requires no live reader, Details route, trusted report
   behavior, optimizer behavior, or live engine selector. The separate isolated
-  compact-diagnosis page accepts only already raw-free direct boundary JSON or
-  one selected sample boundary from a package boundary export.
+  compact-diagnosis page accepts only already raw-free direct boundary JSON
+  excluding local metadata summary boundaries or one selected sample boundary
+  from a package boundary export.
 
 The next implementation step after accepted package import is still separate:
 wire only raw-free normalized facts into future consumers with Details/trusted
