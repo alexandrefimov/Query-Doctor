@@ -31,6 +31,8 @@ VALID_DIAGNOSTIC_STATES = frozenset({"supported", "not_observed", "unknown"})
 ENGINE_FACT_BOUNDARY_SCHEMA_VERSION = "engine_fact_boundary_v1"
 REGISTERED_ENGINE_FACT_ENGINES = frozenset({"impala", "spark", "trino"})
 TRINO_ENGINE_SPECIFIC_ALLOWED_PREFIXES = ("no_", "query_detail_", "query_list_", "trino_")
+SPARK_ENGINE_SPECIFIC_ALLOWED_PREFIXES = ("spark_",)
+ENGINE_PREFIXES = ("impala_", "spark_", "trino_")
 
 
 class EngineFactContractError(ValueError):
@@ -442,6 +444,8 @@ def _build_engine_fact_definitions() -> dict[str, EngineFactDefinition]:
         (
             "no_admission_model",
             "no_fragment_lifecycle",
+            "no_live_metadata_collection",
+            "no_metadata_identifier_output",
             "no_profile_counters",
             "query_detail_fetch",
             "query_detail_import",
@@ -483,6 +487,12 @@ def _build_engine_fact_definitions() -> dict[str, EngineFactDefinition]:
             "trino_execution_time_ms",
             "trino_input_bytes",
             "trino_input_rows",
+            "trino_metadata_column_stats_missing_count",
+            "trino_metadata_column_stats_present_count",
+            "trino_metadata_columns_checked",
+            "trino_metadata_relations_checked",
+            "trino_metadata_stats_completeness",
+            "trino_metadata_summary_import",
             "trino_output_bytes",
             "trino_output_rows",
             "trino_peak_memory_bytes",
@@ -490,6 +500,7 @@ def _build_engine_fact_definitions() -> dict[str, EngineFactDefinition]:
             "trino_stage_count",
             "trino_statement_execution",
             "trino_task_count",
+            "trino_version_family",
             "trino_wall_time_ms",
         ),
         scope="engine_specific",
@@ -547,6 +558,8 @@ def _build_engine_fact_definitions() -> dict[str, EngineFactDefinition]:
             "no_spark_job_execution",
             "spark_fixture_import",
             "spark_history_source_coverage",
+            "sql_execution_endpoint",
+            "task_summary_endpoint",
             "structured_streaming_not_modeled",
         ),
         scope="support_boundary",
@@ -580,7 +593,6 @@ def _build_engine_fact_definitions() -> dict[str, EngineFactDefinition]:
             "spark_task_count",
             "spark_task_duration_10s_to_1m_count",
             "spark_task_duration_1s_to_10s_count",
-            "spark_task_duration_over_1m_count",
             "spark_task_duration_under_1s_count",
             "spark_unknown_job_count",
             "spark_version_family",
@@ -629,6 +641,13 @@ def _build_engine_fact_definitions() -> dict[str, EngineFactDefinition]:
         attention_value_gate="positive_number",
     )
     add(
+        ("spark_task_duration_over_1m_count",),
+        scope="engine_specific",
+        allowed_engines=("spark",),
+        attention_signal_id="execution_tail_candidate",
+        attention_value_gate="positive_number",
+    )
+    add(
         ("spark_scheduler_delay_ms",),
         scope="engine_specific",
         allowed_engines=("spark",),
@@ -657,13 +676,33 @@ def _validate_engine_fact_definition_naming(
     scope: NormalizedFactScope,
     allowed_engines: frozenset[str],
 ) -> None:
-    if scope != "engine_specific" or allowed_engines != frozenset({"trino"}):
+    if scope in {"shared", "distributed_sql_family"}:
+        if len(allowed_engines) < 2:
+            raise EngineFactContractError(
+                "shared engine fact definitions must allow more than one engine"
+            )
+        if fact_id.startswith(ENGINE_PREFIXES):
+            raise EngineFactContractError(
+                "shared engine fact ids must not use engine-specific prefixes"
+            )
         return
-    if fact_id.startswith(TRINO_ENGINE_SPECIFIC_ALLOWED_PREFIXES):
+    if scope != "engine_specific":
+        return
+    if allowed_engines == frozenset({"trino"}):
+        if fact_id.startswith(TRINO_ENGINE_SPECIFIC_ALLOWED_PREFIXES):
+            return
+        raise EngineFactContractError(
+            "new Trino engine-specific fact ids must use a trino_, query_detail_, "
+            "query_list_, or no_ prefix"
+        )
+    if allowed_engines == frozenset({"spark"}):
+        if fact_id.startswith(SPARK_ENGINE_SPECIFIC_ALLOWED_PREFIXES):
+            return
+        raise EngineFactContractError("new Spark engine-specific fact ids must use a spark_ prefix")
+    if allowed_engines == frozenset({"impala"}):
         return
     raise EngineFactContractError(
-        "new Trino engine-specific fact ids must use a trino_, query_detail_, "
-        "query_list_, or no_ prefix"
+        "engine-specific fact definitions must belong to exactly one engine"
     )
 
 

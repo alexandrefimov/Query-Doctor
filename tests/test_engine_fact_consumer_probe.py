@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from engine_fact_contract_harness import engine_fact_contract_cases
+from engine_fact_contract_harness import SPARK_HISTORY_COMPACT_FIXTURE, engine_fact_contract_cases
 from query_doctor.analyzer.engine_fact_consumer import (
     ENGINE_FACT_CONSUMER_PROBE_SCHEMA_VERSION,
     engine_fact_consumer_probe,
@@ -13,6 +13,9 @@ from query_doctor.analyzer.engine_facts import (
     ENGINE_FACT_BOUNDARY_SCHEMA_VERSION,
     EngineFactContractError,
     engine_fact_boundary_payload,
+)
+from query_doctor.analyzer.spark_fixture_facts import (
+    build_spark_history_compact_fixture_engine_facts,
 )
 from query_doctor.report.safety_validation import (
     contains_raw_sql_like_text,
@@ -143,6 +146,23 @@ def test_engine_fact_consumer_probe_task_attention_signals_are_value_backed():
     assert "task_failures_observed" not in retry_probe["attention_signal_ids"]
     assert "task_failures_observed" in failure_probe["attention_signal_ids"]
     assert "task_retries_observed" not in failure_probe["attention_signal_ids"]
+
+
+def test_engine_fact_consumer_probe_spark_task_tail_signal_is_value_backed():
+    case = next(
+        case
+        for case in engine_fact_contract_cases()
+        if case.case_id == "spark_history_eventlog_compact_fixture"
+    )
+    zero_tail_probe = engine_fact_consumer_probe(case.bundle)
+    payload = json.loads(SPARK_HISTORY_COMPACT_FIXTURE.read_text(encoding="utf-8"))
+    payload["tasks"]["durationBuckets"]["under_1s"] = 5
+    payload["tasks"]["durationBuckets"]["over_1m"] = 3
+    tail_bundle = build_spark_history_compact_fixture_engine_facts(payload)
+    tail_probe = engine_fact_consumer_probe(tail_bundle)
+
+    assert "execution_tail_candidate" not in zero_tail_probe["attention_signal_ids"]
+    assert "execution_tail_candidate" in tail_probe["attention_signal_ids"]
 
 
 def test_engine_fact_consumer_probe_consumes_boundary_payload_without_bundle_access():

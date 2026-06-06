@@ -10,6 +10,7 @@ from query_doctor.analyzer.engine_facts import (
     EngineIdentityFacts,
     MetricFact,
     QueryLifecycleFacts,
+    SPARK_ENGINE_SPECIFIC_ALLOWED_PREFIXES,
     TRINO_ENGINE_SPECIFIC_ALLOWED_PREFIXES,
     engine_fact_namespace_definitions,
     public_engine_facts_text,
@@ -134,7 +135,11 @@ QUERY_DETAIL_FIXTURES = (
 
 
 def assert_trino_adapter_has_bounded_raw_free_support_surfaces():
-    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala", "trino"]
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == [
+        "impala",
+        "spark",
+        "trino",
+    ]
     adapter = get_engine_adapter("trino")
     assert adapter.supports_recent_scan is False
     assert adapter.supports_query_id_mode is False
@@ -153,6 +158,40 @@ def assert_trino_adapter_has_bounded_raw_free_support_surfaces():
     assert adapter.supports_coordinator_query_info_pruned_probe is True
     assert adapter.supports_coordinator_query_info_pruned_import is True
     assert adapter.supports_compact_diagnosis is True
+
+
+def test_engine_fact_registry_pins_engine_specific_naming_policies():
+    definitions = engine_fact_namespace_definitions()
+
+    trino_fact_ids = [
+        definition.fact_id
+        for definition in definitions
+        if definition.scope == "engine_specific"
+        and definition.allowed_engines == frozenset({"trino"})
+    ]
+    spark_fact_ids = [
+        definition.fact_id
+        for definition in definitions
+        if definition.scope == "engine_specific"
+        and definition.allowed_engines == frozenset({"spark"})
+    ]
+    shared_fact_ids = [
+        definition.fact_id
+        for definition in definitions
+        if definition.scope in {"shared", "distributed_sql_family"}
+    ]
+
+    assert trino_fact_ids
+    assert spark_fact_ids
+    assert all(
+        fact_id.startswith(TRINO_ENGINE_SPECIFIC_ALLOWED_PREFIXES) for fact_id in trino_fact_ids
+    )
+    assert all(
+        fact_id.startswith(SPARK_ENGINE_SPECIFIC_ALLOWED_PREFIXES) for fact_id in spark_fact_ids
+    )
+    assert all(
+        not fact_id.startswith(("impala_", "spark_", "trino_")) for fact_id in shared_fact_ids
+    )
 
 
 TRINO_FIXTURES = (
@@ -1542,6 +1581,12 @@ def test_engine_fact_contract_defines_shared_and_engine_specific_namespaces():
         "spark_scheduler_delay_observed"
     )
     assert definitions["spark_scheduler_delay_ms"].attention_value_gate == "positive_number"
+    assert definitions["spark_task_duration_over_1m_count"].attention_signal_id == (
+        "execution_tail_candidate"
+    )
+    assert definitions["spark_task_duration_over_1m_count"].attention_value_gate == (
+        "positive_number"
+    )
     assert definitions["spark_retried_task_count"].attention_value_gate == "positive_number"
 
 
