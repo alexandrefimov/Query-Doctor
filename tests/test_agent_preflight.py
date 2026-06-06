@@ -121,6 +121,51 @@ def test_analyzer_recent_rule_uses_existing_focused_tests():
     assert "tests/test_recent_*" not in report
 
 
+def test_trino_paths_get_bounded_preview_restart_gate():
+    rules = agent_preflight.matching_rules(
+        [
+            "query_doctor/trino/local_query_detail.py",
+            "query_doctor/analyzer/trino_evidence_package.py",
+        ]
+    )
+    report = agent_preflight.render_report(
+        [
+            "query_doctor/trino/local_query_detail.py",
+            "query_doctor/analyzer/trino_evidence_package.py",
+        ],
+        rules,
+    )
+
+    assert "Trino bounded preview" in {rule.name for rule in rules}
+    assert "docs/engine-redaction-note-v1.md" in report
+    assert "python3 scripts/audit_trino_support_gap_matrix.py" in report
+    assert "tests/test_engine_capabilities.py" in report
+    assert "do not add Recent, Details, trusted report, optimizer" in report
+
+
+def test_spark_paths_get_bounded_compact_restart_gate():
+    rules = agent_preflight.matching_rules(
+        [
+            "query_doctor/spark/history_server.py",
+            "query_doctor/analyzer/spark_evidence_package.py",
+        ]
+    )
+    report = agent_preflight.render_report(
+        [
+            "query_doctor/spark/history_server.py",
+            "query_doctor/analyzer/spark_evidence_package.py",
+        ],
+        rules,
+    )
+
+    assert "Spark bounded compact" in {rule.name for rule in rules}
+    assert "docs/engine-redaction-note-v1.md" in report
+    assert "python3 scripts/audit_spark_support_boundary.py" in report
+    assert "python3 scripts/audit_spark_product_surface_boundary.py --registry-only" in report
+    assert "tests/test_engine_capabilities.py" in report
+    assert "do not add Recent, Details, trusted report, optimizer" in report
+
+
 def test_unique_ordered_keeps_first_occurrence():
     assert agent_preflight.unique_ordered(["a", "b", "a", "c"]) == ["a", "b", "c"]
 

@@ -16,10 +16,12 @@ not expand it into live Trino coordinator diagnosis, metadata, Details/trusted
 report output, optimizer behavior, or generated SQL without explicit
 implementation and validation.
 Spark compact History Server intake and compact evidence-package handoff are
-experimental research surfaces only. Do not promote them into public Spark
-engine support, Recent scans, Details/trusted report output, optimizer
-behavior, engine registration, raw event-log handling, raw SQL/plan display, or
-Spark job execution without explicit implementation and validation.
+bounded compact support surfaces only. The Spark adapter may be registered only
+for compact intake, evidence-package validation/export, and compact diagnosis.
+Do not promote Spark into production triage support, Recent scans,
+Details/trusted report output, optimizer behavior, broader live collection, raw
+event-log handling, raw SQL/plan display, environment/log dumps, or Spark job
+execution without explicit implementation and validation.
 
 Cloudera Manager remains the full Recent discovery/profile/metrics/events
 provider for Impala workflows. Direct Impala daemon collection is current
@@ -86,13 +88,14 @@ subset for coding agents.
   product diagnosis, live query-list crawling, Trino coordinator query-history
   collection, metadata collection, Details/trusted report output, optimizer
   behavior, or Query Doctor-generated Trino SQL.
-- Spark diagnosis is limited to experimental compact History Server intake for
-  one explicit application, compact evidence-package build/validation/fixture
-  export over already compact samples, compact diagnosis over raw-free Spark
-  inputs, and strict local handoff/readiness audits. It does not support public
-  Spark engine support, Recent scans, Details/trusted report output, optimizer
-  behavior, engine registration, raw event logs, raw SQL/plans, environment or
-  log dumps, or Spark job execution.
+- Spark diagnosis is limited to registered bounded compact History Server
+  intake for one explicit application, compact evidence-package
+  build/validation/fixture export over already compact samples, compact
+  diagnosis over raw-free Spark inputs, and strict local handoff/readiness
+  audits. It does not support production Spark triage, Recent scans,
+  Details/trusted report output, optimizer behavior, broader live collection,
+  raw event logs, raw SQL/plans, environment or log dumps, or Spark job
+  execution.
 
 Current Impala master compatibility work is direct Impala work, not a new
 engine or provider. Continue it through ignored local config and bounded daemon

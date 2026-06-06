@@ -99,6 +99,72 @@ RULES: tuple[Rule, ...] = (
         notes=("Never execute optimizer SQL and never echo pasted SQL after submit.",),
     ),
     Rule(
+        name="Trino bounded preview",
+        patterns=(
+            "query_doctor/trino/**",
+            "query_doctor/analyzer/trino_*.py",
+            "query_doctor/cli/trino_*.py",
+            "query_doctor/cli/diagnose_trino_compact.py",
+            "query_doctor/web/trino_compact.py",
+            "query_doctor/web/ui/trino.py",
+            "query_doctor/engines/capabilities.py",
+            "scripts/*trino*.py",
+            "tests/*trino*.py",
+            "docs/engines/trino*.md",
+            "docs/engine-redaction-note-v1.md",
+        ),
+        read=(
+            "AGENTS.md",
+            "docs/engine-redaction-note-v1.md",
+            "docs/engine-support-gap-matrix.md",
+            "docs/code-map.md",
+            "docs/codex-handoff.md",
+        ),
+        tests=(
+            "python3 scripts/audit_trino_support_gap_matrix.py",
+            "python3 -m pytest -q tests/*trino*.py tests/test_engine_capabilities.py tests/test_engine_redaction_note.py tests/test_engine_intake_primitives.py tests/test_manifest_references.py",
+            "git diff --check",
+        ),
+        changelog="yes, for Trino support boundary, capability, intake, or trust-boundary changes",
+        notes=(
+            "Trino remains bounded raw-free preview only; do not add Recent, Details, "
+            "trusted report, optimizer, SQL execution, or support-claim behavior.",
+        ),
+    ),
+    Rule(
+        name="Spark bounded compact",
+        patterns=(
+            "query_doctor/spark/**",
+            "query_doctor/analyzer/spark_*.py",
+            "query_doctor/cli/*spark*.py",
+            "query_doctor/web/spark_compact.py",
+            "query_doctor/web/ui/spark.py",
+            "query_doctor/engines/capabilities.py",
+            "scripts/*spark*.py",
+            "tests/*spark*.py",
+            "docs/engines/spark*.md",
+            "docs/engine-redaction-note-v1.md",
+        ),
+        read=(
+            "AGENTS.md",
+            "docs/engine-redaction-note-v1.md",
+            "docs/engine-support-gap-matrix.md",
+            "docs/code-map.md",
+            "docs/codex-handoff.md",
+        ),
+        tests=(
+            "python3 scripts/audit_spark_support_boundary.py",
+            "python3 scripts/audit_spark_product_surface_boundary.py --registry-only",
+            "python3 -m pytest -q tests/*spark*.py tests/test_engine_capabilities.py tests/test_engine_redaction_note.py tests/test_engine_intake_primitives.py tests/test_manifest_references.py",
+            "git diff --check",
+        ),
+        changelog="yes, for Spark support boundary, capability, compact intake, or trust-boundary changes",
+        notes=(
+            "Spark remains bounded compact-only; do not add Recent, Details, trusted "
+            "report, optimizer, raw event-log, Spark job execution, or support-claim behavior.",
+        ),
+    ),
+    Rule(
         name="Cloudera Manager collection",
         patterns=("query_doctor/cm/**", "tests/test_cm*.py"),
         read=("docs/codex-handoff.md", "docs/safety-contract.md", "docs/code-audit.md"),

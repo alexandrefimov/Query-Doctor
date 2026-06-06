@@ -1,6 +1,6 @@
 # Query Doctor Code Audit
 
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 This public audit tracks current engineering and safety risk areas at a level
 that is useful to contributors without publishing local calibration history.
@@ -92,6 +92,49 @@ When touching these areas:
   only when a real boundary becomes clearer;
 - avoid formatting-only churn mixed with behavior changes;
 - add focused tests around the boundary being changed.
+
+Implemented guard for second-engine architecture drift: Trino/Spark adapter
+flags, CLI roles, isolated compact web routes, and dev-only script taxonomy are
+now pinned by the machine-checkable engine capability manifest in
+`query_doctor/engines/capabilities.py`. Isolated compact browser routes are
+owned by `query_doctor/web/preview_surfaces.py` and tested against that
+manifest. Keep future Trino/Spark support-surface changes aligned through those
+registries instead of expanding independent docs, adapter, command-spec,
+web-router, and audit-script lists.
+
+Implemented guard for Trino preview source-contract drift: accepted Trino
+preview `source_type` values, raw policy, required bounds, network-access
+class, and promotion gate now live in
+`query_doctor/trino/source_contract_registry.py`. The support-gap audit checks
+that implemented preview source types are registered and that registry entries
+do not enable product surfaces, Details/trusted reports, Recent scans,
+optimizer behavior, SQL execution, raw storage, browser/report output, or
+metadata identifier output. Future Trino intake surfaces must update this
+registry and focused tests before support wording or routing changes.
+
+Implemented guard for cross-engine fact-promotion drift:
+shared/distributed-SQL-family/source-boundary/support-boundary normalized fact
+promotion policy now lives in
+`query_doctor/analyzer/engine_fact_promotion_policy.py`. The support-gap audit
+checks policy coverage for Trino-visible non-engine-specific scopes,
+allowed-engine and scope alignment, raw-free-only policy, disabled product
+surfaces, and explicit promotion gates. Future shared, distributed, source, or
+support-boundary fact promotion must update this policy and focused consumer
+tests before support wording, routing, or product-surface changes.
+
+Implemented first shared helper slice for dev-only readiness/handoff scripts:
+safe handoff artifact path comparison, output-overlap detection, and
+ASCII/sorted JSON artifact writing now live in
+`query_doctor/safety/handoff_artifacts.py`. Trino and Spark handoff scripts
+still own their engine-specific parsing, redaction guards, readiness gates, and
+safe error wording; future script changes should keep moving repeated
+orchestration helpers behind focused shared utilities instead of copying local
+path/output logic.
+
+Remaining architecture backlog before broad parallel Trino/Spark feature work:
+
+- continue moving thick readiness/handoff script orchestration into focused
+  dev-tool helpers when those scripts are next touched.
 
 ### 3. Optimizer prompt-injection guard coverage must stay explicit
 
@@ -484,10 +527,34 @@ Before broader Trino support or any Details/trusted-report promotion:
 - keep `query_list_*` bucket growth behind an explicit contract/test update, or
   replace the bucket fan-out with a structured aggregate fact in a dedicated
   contract migration;
+- keep strict one-query readiness gates rejecting both `query_list_*`
+  aggregate facts and local `trino_metadata_*` metadata-summary facts before
+  any boundary can count as one-query Trino diagnosis evidence;
+- keep retained handoff-suite manifests confined to safe relative `*.json`
+  artifact references and keep duplicate boundary/diagnosis references rejected
+  so suite-width gates cannot count one artifact more than once;
+- keep local compact diagnosis rejecting local metadata-summary boundaries so
+  aggregate metadata-coverage facts cannot be rendered as diagnosis;
+- run `scripts/audit_trino_product_surface_boundary.py` on retained compact
+  boundary/diagnosis artifacts or a retained handoff-suite manifest before any
+  product-surface promotion decision so `live_known_query_diagnosis=not_wired`,
+  no support claim, and compact-preview web/CLI registry limits stay pinned;
+  manifest mode must require diagnosis artifacts for every entry, and this
+  audit must reject metadata-summary boundaries as aggregate coverage evidence,
+  not product-surface diagnosis artifacts; keep its static source-import guard
+  enabled so Details, trusted report, optimizer, Recent, and other product
+  modules cannot import Trino preview diagnosis code outside the isolated
+  compact-diagnosis route/page;
+- run `scripts/audit_trino_support_gap_matrix.py` before broader support-surface
+  decisions so registered Trino fact-family coverage, source-type registry
+  coverage, neutral `no_*` gaps, blocked product adapter flags, and
+  `trino_support_gap_matrix_audit_v1` evidence stay aligned with the
+  support-gap matrix;
 - keep the engine adapter and console-script registry language precise: Trino is
-  registered only for bounded raw-free preview surfaces, not production Recent,
-  Details, trusted reports, optimizer, metadata, SQL execution, or live Query ID
-  diagnosis.
+  registered only for bounded raw-free preview surfaces, including metadata
+  source-contract checking and bounded local metadata summary import, not
+  production Recent, Details, trusted reports, optimizer, live metadata
+  collection, SQL execution, or live Query ID diagnosis.
 
 ### 17. Public documentation must not become a local run journal
 

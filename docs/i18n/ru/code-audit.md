@@ -71,6 +71,24 @@ history, private batch measurements, generated paths или branch-specific note
 - Pre-push history hygiene является release/public-sharing gate: локальная
   merge-heavy history должна быть переписана в reviewable semantic commits до
   любого push/review branch handoff; нельзя публиковать local `main` as-is.
+- Trino preview source-contract registry теперь является владельцем accepted
+  preview `source_type` values, raw policy, required bounds, network-access
+  classes и promotion gate. Support-gap audit проверяет registry coverage и
+  reject-ит включение product surfaces, Details/trusted reports, Recent scans,
+  optimizer behavior, SQL execution, raw storage, browser/report output или
+  metadata identifier output. Remaining architecture backlog больше не считает
+  этот registry будущей задачей.
+- Cross-engine fact-promotion policy теперь находится в
+  `query_doctor/analyzer/engine_fact_promotion_policy.py`. Support-gap audit
+  проверяет coverage для Trino-visible shared/distributed/source/support
+  boundary facts, `allowed_engines`, scope alignment, raw-free policy,
+  disabled product surfaces и explicit promotion gates. Remaining architecture
+  backlog больше не считает shared/distributed fact-promotion будущей задачей.
+- Shared dev-only handoff artifact helpers теперь находятся в
+  `query_doctor/safety/handoff_artifacts.py`. Trino/Spark handoff scripts
+  используют их для path overlap checks и ASCII/sorted JSON writes, но
+  engine-specific redaction guards, readiness gates и below-support wording
+  остаются в owning scripts.
 - Packaging metadata теперь использует `[project].version` в `pyproject.toml`
   как canonical source; legacy `setup.py` shim читает это значение и остается
   покрыт package metadata/console-script tests.
