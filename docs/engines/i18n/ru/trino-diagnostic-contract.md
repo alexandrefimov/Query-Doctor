@@ -17,8 +17,9 @@ query-list aggregate import, bounded local statement-stats import,
 bounded local pruned QueryInfo import, event-source contract checking, dry-run
 coordinator query-info target checking и one-query pruned coordinator
 query-info probing/import, plus raw-free normalized fact boundaries и local
-compact diagnosis over raw-free direct boundary JSON или selected package
-sample boundaries. Этот документ описывает будущий контракт, чтобы не
+compact diagnosis over raw-free direct boundary JSON excluding local metadata
+summary boundaries или selected package sample boundaries. Этот документ
+описывает будущий контракт, чтобы не
 переносить Impala-предположения на Trino.
 
 ## Непереговорные правила
@@ -102,11 +103,11 @@ fields reject-ятся до reader contact.
 
 `query-doctor-trino-coordinator-query-info-target-check` сейчас валидирует один
 explicit compact future `coordinator_query_info` source contract, один
-coordinator base URL shape и один Query ID shape. Команда требует
-redaction-review confirmation, выводит только safe summary без URL и Query ID,
-не контактирует с Trino, не вызывает `/v1/query`, не fetch-ит raw query-info
-JSON, не собирает query history, не submit-ит SQL и не делает live Query ID
-diagnosis.
+coordinator base URL shape, один Query ID shape и safe `trino_version_family`.
+Команда требует redaction-review confirmation, выводит только safe summary без
+URL и Query ID, не контактирует с Trino, не вызывает `/v1/query`, не fetch-ит raw
+query-info JSON, не собирает query history, не submit-ит SQL и не делает live
+Query ID diagnosis.
 
 `query-doctor-trino-coordinator-query-info-pruned-probe` сейчас может после
 accepted `coordinator_query_info` source contract с
@@ -145,13 +146,18 @@ browser/report output.
 
 `query-doctor-diagnose-trino-compact` и isolated local
 `/trino/compact-diagnosis` page читают только уже raw-free
-`engine_fact_boundary_v1` payload или selected package sample boundary.
-Single-boundary Trino import commands могут записать тот же diagnosis через
+`engine_fact_boundary_v1` payload или selected package sample boundary,
+excluding local metadata summary boundaries, потому что aggregate
+`trino_metadata_*` facts являются metadata-coverage evidence, а не compact
+diagnosis input. Single-boundary Trino import commands могут записать тот же
+diagnosis через
 `--diagnosis-out` после построения accepted boundary. Путь diagnosis output
 должен отличаться от input или source-contract path, а при использовании
 auth-header file — и от этого пути. Diagnosis может выдавать deterministic
 attention areas, change directions, verification prompts, limitations, parser
-coverage, lifecycle и fact-state counts, но не читает raw Trino payloads, не
+coverage, lifecycle, fact-state counts и raw-free `diagnostic_lane` summary с
+source granularity, evidence readiness, verification scope,
+supported-attention count и required audit gates, но не читает raw Trino payloads, не
 копирует input summaries или string metric values, не делает root-cause claims,
 не submit-ит SQL, не добавляет Details/trusted report output, optimizer
 behavior, Recent workflows или live Query ID diagnosis. Web page не echo-ит
@@ -214,22 +220,34 @@ non-negative и bounded by summarized records; это не one-query lifecycle,
 не root-cause evidence и не live Trino support.
 Strict one-query promotion gates должны запускать
 `scripts/audit_trino_compact_readiness.py --require-one-query-boundary` или
-эквивалентный invariant. Boundary с `query_list_*` aggregate facts должен
-reject-иться до того, как его можно считать one-query Trino diagnosis
-readiness.
+эквивалентный invariant. Boundary с `query_list_*` aggregate facts или
+`trino_metadata_*` aggregate summary facts должен reject-иться до того, как
+его можно считать one-query Trino diagnosis readiness. Local compact diagnosis
+также должен reject-ить metadata-summary boundaries, чтобы aggregate
+metadata-coverage facts не рендерились как diagnosis.
+Compact diagnosis artifacts должны публиковать
+`diagnostic_lane.schema_version=trino_compact_diagnostic_lane_v1`,
+`lane=trino_compact_preview`, `promotion_status=preview_only`, source
+granularity, evidence readiness, verification scope, supported-attention
+counts, fact-state counts и readiness/surface audit gates. Readiness audit
+пересчитывает эти поля из boundary evidence и fail-closed на lane drift.
 Для one-query coordinator import dry runs, которые пишут и `--boundary-out`, и
 `--diagnosis-out`, тот же audit должен получать
-`--require-source-version trino_coordinator_query_info_target_v1` и
-`--diagnosis-json <raw-free-trino-diagnosis.json>`, чтобы проверить, что
-boundary пришла из accepted coordinator QueryInfo source contract, а
-сохраненный compact diagnosis artifact совпадает с deterministic diagnosis из
-boundary и остается raw-free.
+`--require-source-version trino_coordinator_query_info_target_v1`,
+`--diagnosis-json <raw-free-trino-diagnosis.json>` и safe version-family gates
+вроде `--require-min-trino-version-families 1`, чтобы проверить, что boundary
+пришла из accepted coordinator QueryInfo source contract, несет non-unknown
+safe Trino version-family evidence, а сохраненный compact diagnosis artifact
+совпадает с deterministic diagnosis из boundary и остается raw-free.
 Если handoff включает executed dev-only Kerberos/SPNEGO smoke summary, audit
 также должен получать
 `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke`, чтобы
 dry-run smoke plan не проходил release-facing evidence gate. В этом strict mode
 каждый smoke check должен иметь известный status `ok`; planned, failed или
 unknown statuses не считаются executed evidence.
+Retained suite manifests должны использовать safe relative `*.json` artifact
+references и reject-ить duplicate boundary/diagnosis references, чтобы
+suite-width gates не считали один artifact несколько раз.
 Accepted query-detail stage-skew evidence может поддерживать только checked
 aggregate candidate flag и ratio; он не должен раскрывать stage IDs, task IDs,
 worker identifiers, split identifiers или raw per-task payloads.

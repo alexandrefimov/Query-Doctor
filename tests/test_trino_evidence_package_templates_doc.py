@@ -68,6 +68,7 @@ def test_trino_evidence_package_templates_stay_bounded_to_offline_import():
         "does not contact Trino, crawl /v1/query, fetch query-detail payloads, diagnose one selected query, submit SQL",
         "does not contact Trino, call /v1/statement, submit SQL, crawl query history",
         "GET /v1/query/{queryId}?pruned=true",
+        "safe trino_version_family",
         "scripts/audit_trino_compact_readiness.py <raw-free-trino-boundary.json> --require-one-query-boundary",
         "--diagnosis-json <raw-free-trino-diagnosis.json>",
         "stored diagnosis artifact is checked against the deterministic boundary-derived diagnosis",
@@ -80,7 +81,8 @@ def test_trino_evidence_package_templates_stay_bounded_to_offline_import():
         "maps only allowlisted lifecycle, timing, row/byte, memory/spill, blocked, and task-count fields",
         "claim root causes, submit SQL, crawl query history, collect live Query ID diagnosis, or add browser/report or optimizer output",
         "reads only one already raw-free engine_fact_boundary_v1 payload",
-        "Planning-heavy timing can become an attention area only from supported planning_time_ms and trino_elapsed_time_ms facts; high peak memory can become an attention area only from supported one-query trino_peak_memory_bytes at or above 100 GiB.",
+        "rejects non-Trino boundaries and local metadata summary boundaries",
+        "Planning-heavy timing can become an attention area only from supported planning_time_ms and trino_elapsed_time_ms facts; high peak memory can become an attention area only from supported one-query trino_peak_memory_bytes at or above 100 GiB; queue or resource-group delay can become an attention area only from supported one-query trino_queued_time_ms, trino_resource_group_queue_time_ms, or trino_blocked_signal facts; task retry/failure attention can become an attention area only from supported one-query trino_retried_task_count or trino_failed_task_count facts; and connector-metric attention can become an attention area only from supported one-query trino_connector_metric_signal facts.",
         "For single-boundary local query-detail, local query-list aggregate, local statement-stats, local pruned QueryInfo, HTTP query-detail archive, and pruned coordinator query-info imports",
         "does not ingest raw Trino payloads, copy input summaries or string metric values, claim root causes",
         (
@@ -145,6 +147,7 @@ def test_trino_evidence_redaction_note_template_pins_boundary_assertions():
         "no_catalog_schema_table_column_partition_or_object_names: true",
         "no_credentials_tokens_cookies_keys_or_tls_material: true",
         "no_raw_companion_archive: true",
+        "raw_companion_archive: none",
     ):
         assert required in text
 
@@ -158,8 +161,11 @@ def test_trino_evidence_package_acceptance_gate_stays_offline_only():
         "every supported fact is query-specific or explicitly aggregate and source-contract scoped",
         "represented as unknown or as an explicit omission",
         "synthetic padding or sentinel values only",
+        "python3 scripts/audit_trino_evidence_handoff.py <sanitized-package.json> --summary-json <raw-free-trino-package-handoff-summary.json>",
+        "converts accepted samples to raw-free boundary payloads in memory",
+        "Full packages keep supported-attention and known-parser-coverage requirements off by default",
         "requires no live reader, Details route, trusted report behavior",
-        "separate isolated compact-diagnosis page accepts only already raw-free direct boundary JSON or one selected sample boundary from a package boundary export",
+        "separate isolated compact-diagnosis page accepts only already raw-free direct boundary JSON excluding local metadata summary boundaries or one selected sample boundary from a package boundary export",
         "wire only raw-free normalized facts into future consumers",
     ):
         assert required in text
@@ -191,6 +197,10 @@ def test_trino_evidence_package_templates_have_russian_companion():
         "Manifest Template",
         "Redaction Note Template",
         "Acceptance Checklist",
+        "python3 scripts/audit_trino_evidence_handoff.py",
+        "raw-free-trino-package-handoff-summary.json",
+        "task retry/failure attention может стать attention area только из supported one-query trino_retried_task_count или trino_failed_task_count facts",
+        "connector-metric attention может стать attention area только из supported one-query trino_connector_metric_signal facts",
     ):
         assert required in text
 

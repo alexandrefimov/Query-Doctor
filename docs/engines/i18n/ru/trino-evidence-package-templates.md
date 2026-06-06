@@ -14,14 +14,14 @@ sanitized Trino offline/local import.
 Это не live collector, не live engine selector, не Details/trusted-report
 surface, не optimizer workflow и не разрешение выполнять Trino SQL через Query
 Doctor. Separate isolated compact-diagnosis page принимает только already
-raw-free direct boundary JSON или selected sample boundary из package boundary
-export.
+raw-free direct boundary JSON excluding local metadata summary boundaries или
+selected sample boundary из package boundary export.
 Шаблоны описывают уже sanitized пакет для offline evidence import, bounded
 local event-store/query-detail/query-list/statement-stats import, bounded
 operator HTTP archive import, dry-run coordinator query-info target checking и
 one-query pruned coordinator query-info probing/import, plus local compact
-diagnosis over raw-free direct boundary JSON или selected package sample
-boundaries.
+diagnosis over raw-free direct boundary JSON excluding metadata summary
+boundaries или selected package sample boundaries.
 Probe остается проверкой endpoint shape без fact mapping; pruned import мапит
 только allowlisted lifecycle и `queryStats` fields в raw-free boundary JSON и
 не добавляет live diagnosis.
@@ -117,12 +117,20 @@ query-doctor-diagnose-trino-compact \
 
 Diagnosis command читает только один уже raw-free `engine_fact_boundary_v1`
 payload или один selected sample boundary из package boundary export, reject-ит
-non-Trino boundaries и пишет deterministic attention areas, change directions,
-verification prompts, limitations, parser coverage, lifecycle и state counts.
+non-Trino boundaries и local metadata summary boundaries, и пишет deterministic
+attention areas, change directions, verification prompts, limitations, parser
+coverage, lifecycle и state counts.
 Planning-heavy timing может стать attention area только из supported
 `planning_time_ms` и `trino_elapsed_time_ms` facts; high peak memory может стать
 attention area только из supported one-query `trino_peak_memory_bytes` при 100
-GiB или выше. Он не ingest-ит raw Trino payloads, не копирует input summaries
+GiB или выше; queue или resource-group delay может стать attention area только
+из supported one-query `trino_queued_time_ms`,
+`trino_resource_group_queue_time_ms` или `trino_blocked_signal` facts; task
+retry/failure attention может стать attention area только из supported
+one-query `trino_retried_task_count` или `trino_failed_task_count` facts; и
+connector-metric attention может стать attention area только из supported
+one-query `trino_connector_metric_signal` facts. Он не
+ingest-ит raw Trino payloads, не копирует input summaries
 или string metric values, не делает root-cause claims, не submit-ит SQL, не
 crawl-ит query history, не collect-ит live Query ID diagnosis и не добавляет
 browser/report/optimizer output.
@@ -226,10 +234,11 @@ query-doctor-trino-coordinator-query-info-target-check \
 ```
 
 Target check валидирует только compact source contract, auth-reference label,
-one-query bound, coordinator base-URL shape, Query ID shape, bounds и
-redaction/storage policy. Он не печатает URL или Query ID, не контактирует с
-Trino, не вызывает `/v1/query`, не fetch-ит raw query-info JSON, не submit-ит
-SQL, не crawl-ит query history и не добавляет browser/report/optimizer output.
+one-query bound, safe `trino_version_family`, coordinator base-URL shape, Query
+ID shape, bounds и redaction/storage policy. Он не печатает URL или Query ID, не
+контактирует с Trino, не вызывает `/v1/query`, не fetch-ит raw query-info JSON,
+не submit-ит SQL, не crawl-ит query history и не добавляет
+browser/report/optimizer output.
 
 Если operator хочет проверить, что тот же future query-info endpoint возвращает
 bounded pruned JSON object, используйте pruned probe command:
@@ -244,7 +253,7 @@ query-doctor-trino-coordinator-query-info-pruned-probe \
 ```
 
 Pruned probe требует тот же compact `coordinator_query_info` source contract с
-operator-managed auth reference, делает ровно один bounded
+operator-managed auth reference и safe `trino_version_family`, делает ровно один bounded
 `GET /v1/query/{queryId}?pruned=true`, проверяет только bounded JSON object и
 печатает только safe summary. Optional `--auth-header-file` может содержать
 только одну operator-managed `Authorization` header line. Команда не следует
@@ -309,7 +318,7 @@ diagnosis artifact сверялся с deterministic diagnosis из boundary. К
 печатает output boundary path.
 
 Pruned import требует тот же compact `coordinator_query_info` source contract с
-operator-managed auth reference, делает ровно один bounded
+operator-managed auth reference и safe `trino_version_family`, делает ровно один bounded
 `GET /v1/query/{queryId}?pruned=true` и выводит только safe summary или
 raw-free boundary JSON. Он мапит только allowlisted lifecycle, timing,
 row/byte, memory/spill, blocked и task-count fields. Он не печатает URL, Query
@@ -535,6 +544,7 @@ boundary_assertions:
   no_stack_traces_exception_messages_warnings_or_connector_internals: true
   no_credentials_tokens_cookies_keys_or_tls_material: true
   no_raw_companion_archive: true
+raw_companion_archive: "none"
 ```
 
 Если любой boundary assertion равен false, package rejected и должен быть
@@ -553,10 +563,19 @@ boundary_assertions:
 - каждый synthetic rejection sample использует только synthetic padding или
   sentinel values;
 - package не содержит raw companion archive и ссылку на такой archive;
+- перед fixture promotion или broader handoff package проходит
+  `python3 scripts/audit_trino_evidence_handoff.py <sanitized-package.json>
+  --summary-json <raw-free-trino-package-handoff-summary.json>`. Это валидирует
+  package, converts accepted samples to raw-free boundary payloads in memory,
+  запускает compact readiness suite и пишет только raw-free machine evidence.
+  Full packages держат supported-attention и known-parser-coverage
+  requirements выключенными по умолчанию, потому что unknown и unsupported
+  samples остаются частью package contract;
 - package не требует live reader, engine adapter, Details route, trusted report
   behavior, optimizer behavior, public README claim или engine registration.
   Separate isolated compact-diagnosis page принимает только already raw-free
-  direct boundary JSON или selected sample boundary из package boundary export.
+  direct boundary JSON excluding local metadata summary boundaries или selected
+  sample boundary из package boundary export.
 
 Следующий шаг после accepted package - привести samples к sanitized committed
 fixtures и mapper tests. Broader Trino coordinator readers остаются более

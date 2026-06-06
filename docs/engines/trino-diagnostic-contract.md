@@ -9,9 +9,11 @@ query-detail archive import, bounded local query-detail import, and bounded
 local query-list aggregate import, plus bounded local statement-stats import
 and bounded local pruned QueryInfo import; Query Doctor also has raw-free
 event-source contract checking and dry-run coordinator query-info target
-checking, plus one-query pruned coordinator query-info probing, one-query
-pruned coordinator fact import, local compact diagnosis over raw-free direct
-boundary JSON or selected package sample boundaries, and the isolated local
+checking, metadata source-contract checking, bounded local metadata summary
+import, plus one-query pruned coordinator query-info probing, one-query pruned
+coordinator fact import, local compact diagnosis over raw-free direct boundary
+JSON excluding local metadata summary boundaries or selected package sample
+boundaries, and the isolated local
 `/trino/compact-diagnosis` page over the same already raw-free inputs.
 Query Doctor production triage remains Apache Impala until the live support gates in
 [engine-expansion-plan.md](../engine-expansion-plan.md) and
@@ -43,7 +45,8 @@ resource-group, and connector-driven engine.
   parser, redaction, source-bound, and browser/report safety tests exist. The
   only current browser exception is the isolated local
   `/trino/compact-diagnosis` page, which consumes already raw-free direct
-  boundary JSON or one selected package sample boundary and stays outside
+  boundary JSON excluding local metadata summary boundaries or one selected
+  package sample boundary and stays outside
   Details, trusted reports, live Recent, Query ID diagnosis, and optimizer
   workflows.
 
@@ -65,7 +68,8 @@ live support.
 | OpenTelemetry traces | context by default; medium only after query linkage and span mapping are proven | Trino can emit coordinator and worker traces, including planner, optimizer, connector, and plugin spans. Sampling and external trace availability must be explicit limitations. |
 | OpenMetrics and JMX | context only unless a future mapper proves query linkage | Useful for cluster saturation, node health, memory pressure, exchange manager, and connector context. Not standalone root-cause proof. |
 | Trino `EXPLAIN ANALYZE` | unsafe to run; unsupported as a collector | A future user-provided, already-captured, redacted import could be researched separately, but Query Doctor must not execute it. |
-| Metadata statements | no accepted allowlist yet | Draft candidates require separate safety review, connector bounds, identifier provenance, redaction, and tests. |
+| Metadata source allowlist | dry-run source-contract gate only | Validates one explicit relation/column allowlist shape and redaction rules without metadata reads, metadata SQL execution, identifier output, browser/report output, or support claims. |
+| Metadata statements | no accepted statement allowlist yet | Draft candidates require separate safety review, connector bounds, identifier provenance, redaction, and tests. |
 
 ## Evidence Tiers
 
@@ -175,9 +179,15 @@ Trino diagnosis must be connector-aware from the first live design:
 
 ## Metadata Allowlist Draft Rules
 
-There is no accepted Trino metadata allowlist yet.
+There is an accepted Trino metadata source-contract gate for one explicit
+relation/column allowlist shape. It validates the local contract and emits only
+path-free, identifier-free summaries. It does not read Trino metadata, execute
+metadata SQL, store raw metadata, or add metadata facts. A separate local
+metadata summary import can read one operator-prepared compact aggregate JSON
+after that source contract and emit only relation/column coverage and
+stats-completeness counts as raw-free facts.
 
-Before adding one, prove all of the following:
+Before adding a metadata reader or statement allowlist, prove all of the following:
 
 - the statement is read-only for the target connector and Trino version;
 - identifiers come from a validated, redacted, bounded source, not directly
@@ -190,8 +200,9 @@ Before adding one, prove all of the following:
 - tests cover accepted, rejected, partial, timeout, oversized, and redaction
   cases.
 
-Potential future candidates are `DESCRIBE`, `SHOW COLUMNS`, and `SHOW STATS`
-for one explicit allowlisted object. They are not approved by this document.
+Potential future statement candidates are `DESCRIBE`, `SHOW COLUMNS`, and
+`SHOW STATS` for one explicit allowlisted object. They are not approved by this
+document.
 
 Do not include `ANALYZE`, `EXPLAIN ANALYZE`, arbitrary `SELECT`, connector
 procedures, broad `system` table sweeps, or raw `SHOW CREATE` output in the
@@ -201,28 +212,34 @@ default allowlist.
 
 The current mapper, package validator, local event-store validator, HTTP event
 archive reader, HTTP query-detail archive reader, and local query-detail,
-query-list, and statement-stats validators are the contract floor for Trino
+query-list, statement-stats, and local metadata summary validators are the
+contract floor for Trino
 offline/bounded evidence import. The local pruned QueryInfo importer is the
 current compact local QueryInfo fact-import floor: it accepts only allowlisted
 `state` and `queryStats` fields after a source contract and rejects raw
 QueryInfo fields before mapping. The pruned coordinator query-info importer is
 the current narrow coordinator fact-import floor: it maps only allowlisted
 lifecycle and `queryStats` fields from one bounded pruned QueryInfo response.
-The event-source contract checker, coordinator query-info target checker, and
-pruned coordinator probe remain the contract floor for source configuration.
+The event-source contract checker, coordinator query-info target checker,
+metadata source-contract checker, and pruned coordinator probe remain the
+contract floor for source configuration.
 Any broader Trino coordinator source can move past probe-only status only after
 its parser emits a raw-free `EngineFactBundle` and every browser/report-facing
 consumer uses `engine_fact_boundary_payload()` or a stricter successor.
 The local compact diagnosis command and isolated local compact-diagnosis page
 consume only an already raw-free `engine_fact_boundary_v1` payload or one
-selected package sample boundary; single-boundary Trino import commands may
-write the same diagnosis through `--diagnosis-out` after their accepted boundary
-is built. The diagnosis output path must differ from the input or
+selected package sample boundary, excluding local metadata summary boundaries
+because aggregate `trino_metadata_*` facts are metadata-coverage evidence, not
+compact diagnosis inputs; single-boundary Trino import commands may write the
+same diagnosis through `--diagnosis-out` after their accepted boundary is built.
+The diagnosis output path must differ from the input or
 source-contract path, and from the auth-header file path when one is used. It
 may produce deterministic attention
 areas, change
-directions, verification prompts, limitations, parser coverage, lifecycle, and
-fact-state counts, but it must not read raw Trino payloads, copy input
+directions, verification prompts, limitations, parser coverage, lifecycle,
+fact-state counts, and a raw-free `diagnostic_lane` summary with source
+granularity, evidence readiness, verification scope, supported-attention count,
+and required audit gates. It must not read raw Trino payloads, copy input
 summaries or string metric values, claim root causes, submit SQL, add
 Details/trusted report output, add optimizer behavior, run Recent workflows, or
 become live Query ID diagnosis. The web page must not echo submitted boundary
@@ -296,6 +313,13 @@ Required boundary shape:
   payload-byte, and depth limits before mapping. It must not contact Trino,
   call `/v1/statement`, submit SQL, crawl query history, fetch query-detail
   payloads, or become live Recent scan evidence.
+- the Trino source-contract registry is the preview source-type index for these
+  lanes. It records each accepted `source_type` surface class, raw-storage
+  policy, required bounds, network-access class, and promotion gate. The
+  support-gap audit must fail if a new source type appears without registry
+  coverage or if any registered type enables product surfaces, Details/trusted
+  reports, Recent scans, optimizer behavior, SQL execution, raw storage,
+  browser/report output, or metadata identifier output.
 - event-source contract checking may read only one explicit compact local JSON
   contract. It must require redaction-review confirmation, accept only an
   allowlisted source type, safe auth-reference label, accepted event schema,
@@ -307,13 +331,35 @@ Required boundary shape:
   local source contract and validate one coordinator base URL shape plus one
   Query ID shape. It must require redaction-review confirmation, accept only
   `coordinator_query_info`, a safe auth-reference label, one-query bound,
-  bounded byte/depth/timeout limits, `raw_payload_storage: forbidden`,
-  `normalized_fact_storage: allowed`, and `browser_report_output: blocked`. It
-  must reject URL credentials, URL queries/fragments, unsafe URL paths, unsafe
-  Query IDs, raw SQL, raw query-info JSON, extra source config fields, and URL
-  or Query ID echoing. It must not contact Trino, issue `/v1/query`, fetch
+  safe `trino_version_family`, bounded byte/depth/timeout limits,
+  `raw_payload_storage: forbidden`, `normalized_fact_storage: allowed`, and
+  `browser_report_output: blocked`. It must reject URL credentials, URL
+  queries/fragments, unsafe URL paths, unsafe Query IDs, unsafe version-family
+  values, raw SQL, raw query-info JSON, extra source config fields, and URL or
+  Query ID echoing. It must not contact Trino, issue `/v1/query`, fetch
   query-info, crawl query history, submit SQL, become live Query ID diagnosis,
   or expose browser/report output.
+- metadata source-contract checking may read only one explicit compact local
+  source contract and validate a future metadata allowlist shape. It must
+  require redaction-review confirmation, accept only `metadata_allowlist`, a
+  safe auth-reference label, explicit relation/column allowlist entries,
+  bounded relation/column/identifier/byte/time limits,
+  `raw_metadata_storage: forbidden`, `normalized_fact_storage: allowed`,
+  `browser_report_output: blocked`, and `identifier_output: blocked`. It must
+  reject credentials, endpoint URLs, raw SQL fields, raw metadata storage,
+  identifier output, arbitrary source config fields, and object identifier
+  echoing. It must not contact Trino, read metadata, execute metadata SQL,
+  crawl objects, collect metadata facts, become metadata collection support, or
+  expose browser/report output.
+- local metadata summary import may read one explicit compact sanitized local
+  aggregate JSON object after an accepted `metadata_allowlist` source contract.
+  It may map only relation and column coverage counts plus stats-completeness
+  counts to a raw-free `EngineFactBundle`. It must require redaction-review
+  confirmation, require object identifiers and raw metadata values to be
+  omitted, and enforce source-contract relation/column counts before mapping.
+  It must not contact Trino, execute metadata SQL, crawl objects, expose raw
+  catalog/schema/table/column identifiers, expose metadata values, become live
+  metadata collection support, or expose browser/report output.
 - pruned coordinator query-info probing may issue only one bounded
   `GET /v1/query/{queryId}?pruned=true` request after the same accepted
   `coordinator_query_info` contract passes with `operator_managed_reference`.
@@ -372,8 +418,17 @@ Minimum accepted fixture facts:
 - strict one-query promotion gates must run
   `scripts/audit_trino_compact_readiness.py --require-one-query-boundary` or an
   equivalent check. That gate must reject any boundary containing
-  `query_list_*` aggregate facts before it can be counted as one-query Trino
-  diagnosis readiness;
+  `query_list_*` aggregate facts or `trino_metadata_*` aggregate summary facts
+  before it can be counted as one-query Trino diagnosis readiness. Local compact
+  diagnosis must also reject metadata-summary boundaries so aggregate
+  metadata-coverage facts cannot be rendered as diagnosis;
+- compact diagnosis artifacts must publish
+  `diagnostic_lane.schema_version=trino_compact_diagnostic_lane_v1`,
+  `lane=trino_compact_preview`, `promotion_status=preview_only`, source
+  granularity, evidence readiness, verification scope, supported-attention
+  counts, fact-state counts, and readiness/surface audit gates. The readiness
+  audit and product-surface boundary audit recompute those fields from boundary
+  evidence and fail closed on lane drift;
 - one-query coordinator import dry runs that write both `--boundary-out` and
   `--diagnosis-out` must pass
   `--diagnosis-json <raw-free-trino-diagnosis.json>` to the same audit, so the
@@ -519,10 +574,12 @@ local event-store import, bounded HTTP event archive import, bounded HTTP
 query-detail archive import, bounded local query-detail import, and bounded
 local query-list aggregate import, bounded local statement-stats import,
 bounded local pruned QueryInfo import, and event-source contract checking and
-dry-run coordinator query-info target checking, plus one-query pruned
+dry-run coordinator query-info target checking, metadata source-contract
+checking, bounded local metadata summary import, plus one-query pruned
 coordinator query-info probing and one-query pruned coordinator fact import,
-plus local compact diagnosis over already raw-free direct boundary JSON or
-selected package sample boundaries and the isolated local
+plus local compact diagnosis over already raw-free direct boundary JSON
+excluding local metadata summary boundaries or selected package sample
+boundaries and the isolated local
 `/trino/compact-diagnosis` page, until the following are true:
 
 1. Source contracts define which event/query fields are accepted, bounded, and
@@ -532,9 +589,9 @@ selected package sample boundaries and the isolated local
 3. Redaction tests prove public facts contain no SQL, object names, identities,
    hosts, URLs, paths, stack traces, credentials, or raw connector details.
 4. One-query readiness checks distinguish query-specific boundaries from
-   aggregate query-list boundaries; aggregate `query_list_*` facts remain
-   source-shape and attention evidence, not one-query diagnosis promotion
-   evidence.
+   aggregate query-list and metadata-summary boundaries; aggregate
+   `query_list_*` and `trino_metadata_*` facts remain source-shape and
+   metadata-coverage evidence, not one-query diagnosis promotion evidence.
 5. Evidence tiers and limitations are represented in the engine fact contract.
 6. Metadata allowlists are engine-specific, read-only, bounded, explicit, and
    tested.
@@ -543,15 +600,20 @@ selected package sample boundaries and the isolated local
    fail-closed parser-coverage cases. For one-query coordinator import dry runs
    that write both `--boundary-out` and `--diagnosis-out`, the audit also uses
    `--require-source-version trino_coordinator_query_info_target_v1` and
-   `--diagnosis-json` to check that the boundary came from the accepted
-   coordinator QueryInfo source contract and that the stored compact diagnosis
-   artifact matches the deterministic boundary-derived diagnosis and stays
-   raw-free. When an executed dev-only Kerberos/SPNEGO smoke summary is part of
-   the handoff, the audit also uses
+   `--diagnosis-json` plus safe version-family gates such as
+   `--require-min-trino-version-families 1` to check that the boundary came from
+   the accepted coordinator QueryInfo source contract, carries non-unknown safe
+   Trino version-family evidence, and that the stored compact diagnosis artifact
+   matches the deterministic boundary-derived diagnosis and stays raw-free.
+   When an executed dev-only Kerberos/SPNEGO smoke summary is part of the
+   handoff, the audit also uses
    `--smoke-summary <trino_smoke_summary.json> --require-executed-smoke` so a
    dry-run smoke plan cannot satisfy the release-facing evidence gate. In that
    strict mode, every smoke check must carry the known `ok` status; planned,
-   failed, or unknown statuses do not count as executed evidence.
+   failed, or unknown statuses do not count as executed evidence. Retained
+   suite manifests must use safe relative `*.json` artifact references and must
+   reject duplicate boundary or diagnosis references, so suite-width gates do
+   not count one artifact more than once.
 8. Browser and trusted-report safety tests exist before any Trino facts render
    outside the isolated compact-diagnosis page.
 9. The support gap matrix records unsupported Trino sources, connector gaps,
