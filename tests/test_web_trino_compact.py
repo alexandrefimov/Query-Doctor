@@ -10,6 +10,10 @@ from query_doctor.safety.browser_display import redact_browser_display_text
 from query_doctor.web.jobs import WebJobStore
 from query_doctor.web.models import WebSettings
 from query_doctor.web.routes import post_route_is_allowed, route_get_request, route_post_request
+from trino_metadata_summary_boundary import (
+    metadata_summary_boundary,
+    metadata_summary_forbidden_tokens,
+)
 
 
 def web_settings() -> WebSettings:
@@ -48,6 +52,10 @@ def test_trino_compact_post_route_renders_attention_areas_without_echoing_input(
     assert "Trino spill observed" in response.body
     assert "Trino stage skew candidate" in response.body
     assert "Trino task retries" in response.body
+    assert "Diagnostic lane" in response.body
+    assert "one_query_attention_ready" in response.body
+    assert "one_query_boundary" in response.body
+    assert "comparable_one_query_rerun" in response.body
     assert "Root cause" in response.body
     assert "not_claimed" in response.body
     assert "Trino SQL execution" in response.body
@@ -191,6 +199,26 @@ def test_trino_compact_post_rejects_non_trino_boundary_without_echoing_input():
     assert "rejected input is hidden" in response.body
     assert boundary_text not in response.body
     assert "trino_query_detail_fixture" not in response.body
+
+
+def test_trino_compact_post_rejects_metadata_summary_boundary_without_echoing_input():
+    boundary_text = json.dumps(metadata_summary_boundary(), ensure_ascii=True, sort_keys=True)
+
+    response = route_post_request(
+        "/trino/compact-diagnosis",
+        {"boundary_json": [boundary_text]},
+        web_settings(),
+        WebJobStore(),
+    )
+
+    assert response is not None
+    assert response.status == 400
+    assert "Safe Trino compact state" in response.body
+    assert "does not accept aggregate metadata summary boundaries" in response.body
+    assert "rejected input is hidden" in response.body
+    assert boundary_text not in response.body
+    for token in metadata_summary_forbidden_tokens():
+        assert token not in response.body
 
 
 def test_trino_compact_post_rejects_oversized_payload_without_echoing_input():

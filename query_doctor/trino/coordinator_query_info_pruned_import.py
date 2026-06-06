@@ -22,6 +22,7 @@ from query_doctor.trino.coordinator_query_info_target import (
     TRINO_COORDINATOR_QUERY_INFO_PRUNED_ENDPOINT_TEMPLATE,
     TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_MAX_BYTES,
     TRINO_COORDINATOR_QUERY_INFO_SOURCE_CONTRACT_MAX_DEPTH,
+    TRINO_COORDINATOR_QUERY_INFO_VERSION_FAMILY_RE,
     CoordinatorQueryInfoFetcher,
     TrinoCoordinatorQueryInfoSourceContract,
     TrinoCoordinatorQueryInfoTargetCheck,
@@ -175,6 +176,7 @@ def import_trino_local_query_info_pruned(
     bundle = build_trino_coordinator_query_info_pruned_engine_facts(
         payload,
         source_version=source_contract.query_info_contract_version,
+        trino_version_family=source_contract.trino_version_family,
         source=TRINO_LOCAL_QUERY_INFO_PRUNED_IMPORT_SOURCE,
     )
     engine_fact_boundary_payload(bundle)
@@ -222,6 +224,7 @@ def import_trino_coordinator_query_info_pruned(
     bundle = build_trino_coordinator_query_info_pruned_engine_facts(
         payload,
         source_version=source_contract.query_info_contract_version,
+        trino_version_family=source_contract.trino_version_family,
     )
     engine_fact_boundary_payload(bundle)
     return TrinoCoordinatorQueryInfoPrunedImportResult(
@@ -245,6 +248,7 @@ def build_trino_coordinator_query_info_pruned_engine_facts(
     payload: Mapping[str, Any],
     *,
     source_version: str | None = None,
+    trino_version_family: str | None = None,
     source: str = TRINO_COORDINATOR_QUERY_INFO_PRUNED_IMPORT_SOURCE,
 ) -> EngineFactBundle:
     """Build facts from allowlisted QueryInfo fields only."""
@@ -277,6 +281,7 @@ def build_trino_coordinator_query_info_pruned_engine_facts(
             _data_size_fact("trino_input_bytes", stats.get("processedInputDataSize")),
             _count_fact("trino_output_rows", stats.get("outputPositions"), unit="rows"),
             _data_size_fact("trino_output_bytes", stats.get("outputDataSize")),
+            _trino_version_family_fact(trino_version_family),
             _data_size_fact(
                 "trino_peak_memory_bytes",
                 _first_present(
@@ -354,6 +359,7 @@ def trino_coordinator_query_info_pruned_import_summary_payload(
             "source_type": target_payload["source_type"],
             "source_contract_version": target_payload["source_contract_version"],
             "query_info_contract_version": target_payload["query_info_contract_version"],
+            "trino_version_family": target_payload["trino_version_family"],
             "auth_reference": target_payload["auth_reference"],
             "query_bound": target_payload["query_bound"],
             "endpoint_template": result.target_check.endpoint_template,
@@ -680,6 +686,20 @@ def _trino_query_info_pruned_limitations() -> tuple[LimitationFact, ...]:
             summary="Fragment lifecycle facts are outside Trino QueryInfo.",
         ),
     )
+
+
+def _trino_version_family_fact(value: str | None) -> MetricFact:
+    if (
+        value is None
+        or value == "unknown"
+        or not TRINO_COORDINATOR_QUERY_INFO_VERSION_FAMILY_RE.fullmatch(value)
+    ):
+        return MetricFact(
+            fact_id="trino_version_family",
+            state="unknown",
+            summary="Trino version family was not provided by the source contract.",
+        )
+    return MetricFact(fact_id="trino_version_family", state="supported", value=value)
 
 
 def _read_local_pruned_query_info_payload(

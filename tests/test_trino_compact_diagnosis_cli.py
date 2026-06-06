@@ -9,6 +9,10 @@ from engine_fact_contract_harness import (
 )
 from query_doctor.analyzer.engine_facts import engine_fact_boundary_payload
 from query_doctor.cli import diagnose_trino_compact
+from trino_metadata_summary_boundary import (
+    metadata_summary_boundary,
+    metadata_summary_forbidden_tokens,
+)
 
 
 def test_trino_compact_diagnosis_cli_writes_diagnosis_output(tmp_path: Path):
@@ -241,6 +245,34 @@ def test_trino_compact_diagnosis_cli_rejects_non_trino_boundary_without_path_lea
     assert rc == 3
     assert "requires a Trino engine fact boundary" in captured.err
     assert str(tmp_path) not in captured.err
+    assert captured.out == ""
+
+
+def test_trino_compact_diagnosis_cli_rejects_metadata_summary_boundary_without_leaks(
+    tmp_path: Path,
+    capsys,
+):
+    boundary = tmp_path / "operator-metadata-summary-boundary.json"
+    diagnosis_out = tmp_path / "diagnosis.json"
+    boundary.write_text(json.dumps(metadata_summary_boundary()), encoding="utf-8")
+
+    rc = diagnose_trino_compact.main(
+        [
+            "--boundary-json",
+            str(boundary),
+            "--diagnosis-out",
+            str(diagnosis_out),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "does not accept aggregate metadata summary boundaries" in captured.err
+    assert str(tmp_path) not in captured.err
+    assert "operator-metadata-summary-boundary.json" not in captured.err
+    assert not diagnosis_out.exists()
+    for token in metadata_summary_forbidden_tokens():
+        assert token not in captured.err
     assert captured.out == ""
 
 

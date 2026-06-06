@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from query_doctor.safety.handoff_artifacts import same_path
+from query_doctor.safety.handoff_artifacts import write_ascii_json_artifact
 from query_doctor.trino.diagnosis import build_trino_compact_diagnosis_from_boundary
 
 
@@ -40,11 +41,7 @@ def write_trino_boundary_out(
     """Write raw-free Trino boundary JSON without echoing source inputs."""
 
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(boundary_payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        write_ascii_json_artifact(path, boundary_payload)
     except OSError as exc:
         raise OSError("could not write Trino boundary output") from exc
 
@@ -57,17 +54,6 @@ def write_trino_compact_diagnosis_out(
 
     diagnosis = build_trino_compact_diagnosis_from_boundary(boundary_payload)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(diagnosis, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        write_ascii_json_artifact(path, diagnosis)
     except OSError as exc:
         raise OSError("could not write Trino compact diagnosis output") from exc
-
-
-def same_path(left: Path, right: Path) -> bool:
-    try:
-        return left.resolve() == right.resolve()
-    except OSError:
-        return left.absolute() == right.absolute()

@@ -36,11 +36,15 @@ from query_doctor.trino.source_contract_utils import (
     validate_contract_tree,
     validate_exact_keys,
 )
+from query_doctor.trino.source_contract_registry import trino_source_type_for_contract_family
 
 
 TRINO_HTTP_QUERY_DETAIL_ARCHIVE_IMPORT_SCHEMA_VERSION = "trino_http_query_detail_archive_import_v1"
 TRINO_QUERY_DETAIL_ARCHIVE_SOURCE_CONTRACT_VERSION = "trino_query_detail_archive_source_contract_v1"
-TRINO_HTTP_QUERY_DETAIL_ARCHIVE_SOURCE_TYPE = "http_query_detail_archive"
+TRINO_HTTP_QUERY_DETAIL_ARCHIVE_SOURCE_TYPE = trino_source_type_for_contract_family(
+    "query_detail_archive_source_contract",
+    surface_class="contract_gated_http_archive",
+)
 TRINO_HTTP_QUERY_DETAIL_ARCHIVE_AUTH_KIND = "operator_managed_reference"
 urlopen = configured_diagnostic_urlopen
 TRINO_QUERY_DETAIL_ARCHIVE_SOURCE_CONTRACT_MAX_BYTES = 16 * 1024

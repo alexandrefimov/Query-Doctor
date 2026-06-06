@@ -102,6 +102,7 @@ def render_trino_compact_result(result: Mapping[str, Any]) -> str:
         '<div class="section-kicker">Deterministic compact-fact checks only. Root cause is not claimed.</div>'
         "</div></div>"
         f"{render_trino_compact_status(result)}"
+        f"{render_trino_diagnostic_lane(result.get('diagnostic_lane'))}"
         f"{render_trino_attention_areas(result.get('attention_areas'))}"
         f"{render_trino_limitations(result.get('limitations'))}"
         f"{render_trino_boundary(result.get('diagnosis_boundary'))}"
@@ -121,6 +122,28 @@ def render_trino_compact_status(result: Mapping[str, Any]) -> str:
         f'<li><strong>Mode</strong> <span class="badge amber">{html.escape(support_status)}</span></li>'
         f'<li><strong>Coverage</strong> <span class="badge {badge_for_state(parser_coverage)}">{html.escape(parser_coverage)}</span></li>'
         f'<li><strong>Lifecycle</strong> <span class="badge gray">{html.escape(lifecycle)}</span></li>'
+        "</ul>"
+        "</div>"
+    )
+
+
+def render_trino_diagnostic_lane(value: object) -> str:
+    if not isinstance(value, Mapping):
+        return ""
+    readiness = safe_status_label(value.get("evidence_readiness"))
+    granularity = safe_status_label(value.get("source_granularity"))
+    verification_scope = safe_status_label(value.get("verification_scope"))
+    supported_count = value.get("supported_attention_area_count")
+    if isinstance(supported_count, bool) or not isinstance(supported_count, int):
+        supported_count = 0
+    return (
+        '<div class="optimizer-block trino-diagnostic-lane">'
+        "<h3>Diagnostic lane</h3>"
+        '<ul class="optimizer-table-list trino-compact-status-list">'
+        f'<li><strong>Readiness</strong> <span class="badge {badge_for_lane_readiness(readiness)}">{html.escape(readiness)}</span></li>'
+        f'<li><strong>Granularity</strong> <span class="badge gray">{html.escape(granularity)}</span></li>'
+        f'<li><strong>Verification scope</strong> <span class="badge blue">{html.escape(verification_scope)}</span></li>'
+        f"<li><strong>Supported attention areas</strong> {supported_count}</li>"
         "</ul>"
         "</div>"
     )
@@ -284,6 +307,16 @@ def badge_for_state(value: str) -> str:
         return "gray"
     if value in {"unknown", "not_wired", "not_performed"}:
         return "amber"
+    return "blue"
+
+
+def badge_for_lane_readiness(value: str) -> str:
+    if value == "one_query_attention_ready":
+        return "green"
+    if value in {"aggregate_selection_only", "source_coverage_unknown"}:
+        return "amber"
+    if value == "one_query_limited_no_supported_attention":
+        return "gray"
     return "blue"
 
 
