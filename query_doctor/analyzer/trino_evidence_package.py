@@ -7,7 +7,6 @@ expose report/browser output.
 
 from __future__ import annotations
 
-import json
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -20,6 +19,21 @@ from query_doctor.analyzer.engine_facts import (
     engine_fact_boundary_payload,
     validate_engine_fact_bundle_raw_free,
 )
+from query_doctor.analyzer.engine_intake_primitives import (
+    format_safe_labels,
+    json_size as _shared_json_size,
+    max_json_depth as _shared_max_json_depth,
+    non_negative_int,
+    required_mapping,
+    required_sequence,
+    required_text,
+    safe_class_label,
+    safe_label_list,
+    safe_package_label,
+    utc_date,
+    version_text,
+)
+from query_doctor.analyzer.engine_redaction_note import validate_redaction_note_v1
 from query_doctor.analyzer.trino_fixture_facts import (
     TRINO_EVENT_FIXTURE_MAX_DEPTH,
     TRINO_EVENT_FIXTURE_MAX_JSON_BYTES,
@@ -142,10 +156,7 @@ TRINO_EVIDENCE_CONTACT_SURFACES = frozenset(
 )
 TRINO_EVIDENCE_PACKAGE_IMPORT_SCHEMA_VERSION = "trino_evidence_package_import_v1"
 
-_SAFE_PACKAGE_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{2,80}$")
-_SAFE_CLASS_LABEL_RE = re.compile(r"^[a-z][a-z0-9_]{1,120}$")
 _TRINO_VERSION_FAMILY_RE = re.compile(r"^(unknown|[0-9]{3,4}(?:\.[0-9]{1,3})?)$")
-_UTC_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _UTC_HOUR_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:00:00Z$")
 
 
@@ -434,45 +445,15 @@ def _validate_manifest(
 
 
 def _validate_redaction_note(redaction_note: Mapping[str, Any], *, package_id: str) -> None:
-    if _safe_package_label(redaction_note, "package_id") != package_id:
-        raise EngineFactContractError("Trino evidence package id mismatch")
-    if _version_text(redaction_note, "redaction_note_version") != "1":
-        raise EngineFactContractError(
-            "Trino evidence package redaction note version is unsupported"
-        )
-    _safe_class_label(redaction_note, "prepared_by_role")
-    _utc_date(redaction_note, "prepared_date_utc")
-    _safe_class_label(redaction_note, "manual_reviewer_role")
-    if _safe_class_label(redaction_note, "redaction_status") != "checked":
-        raise EngineFactContractError("Trino evidence package redaction note is not checked")
-
-    removed_classes = set(
-        _safe_label_list(redaction_note, "removed_field_classes", allow_empty=False)
+    validate_redaction_note_v1(
+        redaction_note,
+        package_id=package_id,
+        required_classes=TRINO_EVIDENCE_REQUIRED_REDACTION_CLASSES,
+        required_sentinel_tests=TRINO_EVIDENCE_REQUIRED_SENTINEL_TESTS,
+        required_assertions=TRINO_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS,
+        required_rejection_reasons=TRINO_EVIDENCE_REQUIRED_REJECTION_REASONS,
+        engine_label="Trino",
     )
-    missing_classes = TRINO_EVIDENCE_REQUIRED_REDACTION_CLASSES - removed_classes
-    if missing_classes:
-        raise EngineFactContractError("Trino evidence package redaction classes are incomplete")
-
-    counts = _required_mapping(redaction_note, "rejected_record_counts_by_reason")
-    for reason in TRINO_EVIDENCE_REQUIRED_REJECTION_REASONS:
-        _non_negative_int(counts, reason)
-
-    sentinel_tests = _required_mapping(redaction_note, "synthetic_sentinel_tests")
-    for test_name in TRINO_EVIDENCE_REQUIRED_SENTINEL_TESTS:
-        if _safe_class_label(sentinel_tests, test_name) != "yes":
-            raise EngineFactContractError("Trino evidence package sentinel tests are incomplete")
-
-    assertions = _required_mapping(redaction_note, "boundary_assertions")
-    for assertion_name in TRINO_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS:
-        if assertions.get(assertion_name) is not True:
-            raise EngineFactContractError("Trino evidence package boundary assertion failed")
-    for assertion_name, value in assertions.items():
-        if not isinstance(assertion_name, str):
-            raise EngineFactContractError(
-                "Trino evidence package boundary assertion name is invalid"
-            )
-        if value is not True:
-            raise EngineFactContractError("Trino evidence package boundary assertion failed")
 
 
 def _validate_sample_entry(entry: Any, *, index: int) -> dict[str, Any]:
@@ -587,45 +568,54 @@ def _validate_export_window(window: Mapping[str, Any]) -> tuple[str, str]:
 
 
 def _required_mapping(payload: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:
-    value = payload.get(field_name)
-    if not isinstance(value, Mapping):
-        raise EngineFactContractError(f"Trino evidence package missing {field_name}")
-    return value
+    return required_mapping(
+        payload,
+        field_name,
+        missing_message=f"Trino evidence package missing {field_name}",
+    )
 
 
 def _required_sequence(payload: Mapping[str, Any], field_name: str) -> Sequence[Any]:
-    value = payload.get(field_name)
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
-        raise EngineFactContractError(f"Trino evidence package missing {field_name}")
-    return value
+    return required_sequence(
+        payload,
+        field_name,
+        missing_message=f"Trino evidence package missing {field_name}",
+    )
 
 
 def _required_text(payload: Mapping[str, Any], field_name: str) -> str:
-    value = payload.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise EngineFactContractError(f"Trino evidence package missing {field_name}")
-    return value.strip()
+    return required_text(
+        payload,
+        field_name,
+        missing_message=f"Trino evidence package missing {field_name}",
+    )
 
 
 def _safe_package_label(payload: Mapping[str, Any], field_name: str) -> str:
-    value = _required_text(payload, field_name)
-    if not _SAFE_PACKAGE_LABEL_RE.fullmatch(value):
-        raise EngineFactContractError("Trino evidence package label is not safe")
-    return value
+    return safe_package_label(
+        payload,
+        field_name,
+        missing_message=f"Trino evidence package missing {field_name}",
+        unsafe_message="Trino evidence package label is not safe",
+    )
 
 
 def _safe_class_label(payload: Mapping[str, Any], field_name: str) -> str:
-    value = _required_text(payload, field_name)
-    if not _SAFE_CLASS_LABEL_RE.fullmatch(value):
-        raise EngineFactContractError(f"Trino evidence package {field_name} is not a safe label")
-    return value
+    return safe_class_label(
+        payload,
+        field_name,
+        missing_message=f"Trino evidence package missing {field_name}",
+        unsafe_message=f"Trino evidence package {field_name} is not a safe label",
+    )
 
 
 def _version_text(payload: Mapping[str, Any], field_name: str) -> str:
-    value = _required_text(payload, field_name)
-    if not re.fullmatch(r"[0-9]{1,3}", value):
-        raise EngineFactContractError(f"Trino evidence package {field_name} is unsupported")
-    return value
+    return version_text(
+        payload,
+        field_name,
+        missing_message=f"Trino evidence package missing {field_name}",
+        unsupported_message=f"Trino evidence package {field_name} is unsupported",
+    )
 
 
 def _safe_source_contract_label(payload: Mapping[str, Any], field_name: str) -> str:
@@ -643,61 +633,51 @@ def _safe_label_list(
     *,
     allow_empty: bool,
 ) -> tuple[str, ...]:
-    value = payload.get(field_name)
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
-        raise EngineFactContractError(f"Trino evidence package missing {field_name}")
-    labels: list[str] = []
-    for item in value:
-        if not isinstance(item, str) or not _SAFE_CLASS_LABEL_RE.fullmatch(item):
-            raise EngineFactContractError(
-                f"Trino evidence package {field_name} contains unsafe label"
-            )
-        labels.append(item)
-    if not allow_empty and not labels:
-        raise EngineFactContractError(f"Trino evidence package {field_name} must not be empty")
-    return tuple(labels)
+    return safe_label_list(
+        payload,
+        field_name,
+        missing_message=f"Trino evidence package missing {field_name}",
+        unsafe_message=f"Trino evidence package {field_name} contains unsafe label",
+        empty_message=f"Trino evidence package {field_name} must not be empty",
+        allow_empty=allow_empty,
+    )
 
 
 def _utc_date(payload: Mapping[str, Any], field_name: str) -> str:
-    value = _required_text(payload, field_name)
-    if not _UTC_DATE_RE.fullmatch(value):
-        raise EngineFactContractError(f"Trino evidence package {field_name} is not a UTC date")
-    return value
+    return utc_date(
+        payload,
+        field_name,
+        missing_message=f"Trino evidence package missing {field_name}",
+        invalid_message=f"Trino evidence package {field_name} is not a UTC date",
+    )
 
 
 def _non_negative_int(payload: Mapping[str, Any], field_name: str) -> int:
-    value = payload.get(field_name)
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise EngineFactContractError(f"Trino evidence package {field_name} must be non-negative")
-    return value
+    return non_negative_int(
+        payload,
+        field_name,
+        invalid_message=f"Trino evidence package {field_name} must be non-negative",
+    )
 
 
 def _json_size(payload: Mapping[str, Any], *, payload_label: str) -> int:
-    try:
-        return len(
-            json.dumps(
-                payload,
-                allow_nan=False,
-                ensure_ascii=True,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        )
-    except (TypeError, ValueError) as exc:
-        raise EngineFactContractError(f"{payload_label} must be JSON serializable") from exc
+    return _shared_json_size(
+        payload,
+        payload_label=payload_label,
+        compact=True,
+        ensure_ascii=True,
+        sort_keys=True,
+    )
 
 
 def _max_json_depth(value: Any, depth: int = 0) -> int:
-    if isinstance(value, Mapping):
-        if not value:
-            return depth
-        return max(_max_json_depth(nested, depth + 1) for nested in value.values())
-    if isinstance(value, list):
-        if not value:
-            return depth
-        return max(_max_json_depth(nested, depth + 1) for nested in value)
-    return depth
+    return _shared_max_json_depth(
+        value,
+        depth=depth,
+        count_scalar=False,
+        sequence_types=(list,),
+    )
 
 
 def _format_safe_labels(labels: Sequence[str]) -> str:
-    return ", ".join(labels) if labels else "none"
+    return format_safe_labels(labels)
