@@ -25,6 +25,7 @@ from query_doctor.analyzer.case_bottleneck import (  # noqa: E402
     top_finding_id,
 )
 from query_doctor.analyzer.data_movement import data_movement_facts_from_analysis  # noqa: E402
+from query_doctor.analyzer.memory_pressure import memory_pressure_facts_from_analysis  # noqa: E402
 from query_doctor.analyzer.profile_evidence import (  # noqa: E402
     profile_storage_supported,
 )
@@ -39,6 +40,7 @@ PROFILE_PRIMARY_LABELS = {
     "client_fetch_tail",
     "runtime_admission",
     "runtime_data_movement",
+    "runtime_memory",
     "runtime_skew",
     "runtime_storage",
 }
@@ -76,6 +78,7 @@ class EvidenceGateAuditResult:
     runtime_filter_counts: Counter[str] = field(default_factory=Counter)
     storage_context_counts: Counter[str] = field(default_factory=Counter)
     resource_trace_counts: Counter[str] = field(default_factory=Counter)
+    primary_classifier_drift_counts: Counter[str] = field(default_factory=Counter)
     issue_counts: Counter[str] = field(default_factory=Counter)
     issues: list[EvidenceGateIssue] = field(default_factory=list)
 
@@ -547,6 +550,19 @@ def audit_primary_consistency(
                 "data_movement_primary_without_gate",
                 "runtime_data_movement primary label is not backed by data-movement primary support",
             )
+    elif primary_label == "runtime_memory":
+        facts = memory_pressure_facts_from_analysis(analysis)
+        if not (
+            facts.finding_supported
+            and facts.evidence_tier == "strong"
+            and facts.spill_or_scratch_evidence_count > 0
+        ):
+            add_issue(
+                result,
+                case,
+                "memory_primary_without_gate",
+                "runtime_memory primary label is not backed by selected-query spill/scratch support",
+            )
     elif primary_label == "runtime_storage":
         if not (
             profile_storage_supported(analysis) or runtime_diagnosis_supports_storage(analysis)
@@ -569,7 +585,16 @@ def audit_primary_classifier_parity(
     if primary_label not in PROFILE_PRIMARY_LABELS:
         return
     classified = classify_case_primary_bottleneck(analysis)
+    analysis_primary = analysis.get("case_primary_bottleneck")
+    analysis_primary = analysis_primary if isinstance(analysis_primary, dict) else {}
+    analysis_label = text_value(analysis_primary.get("label"), "")
+    analysis_confidence = text_value(analysis_primary.get("confidence"), "")
     if classified.label != primary_label:
+        if analysis_label == primary_label:
+            result.primary_classifier_drift_counts[
+                counter_bucket(primary_label, classified.label)
+            ] += 1
+            return
         add_issue(
             result,
             case,
@@ -578,6 +603,11 @@ def audit_primary_classifier_parity(
         )
         return
     if confidence_rank(primary_confidence) > confidence_rank(classified.confidence):
+        if analysis_label == primary_label and analysis_confidence == primary_confidence:
+            result.primary_classifier_drift_counts[
+                counter_bucket(primary_label, primary_confidence, classified.confidence)
+            ] += 1
+            return
         add_issue(
             result,
             case,
@@ -628,6 +658,12 @@ def print_result(
     print_counter("Runtime filter gate", result.runtime_filter_counts, out=out, limit=limit)
     print_counter("Storage context", result.storage_context_counts, out=out, limit=limit)
     print_counter("Resource trace", result.resource_trace_counts, out=out, limit=limit)
+    print_counter(
+        "Primary classifier artifact drift",
+        result.primary_classifier_drift_counts,
+        out=out,
+        limit=limit,
+    )
     if result.issues:
         print_counter("Issues", result.issue_counts, out=out, limit=limit)
         print("Issue examples:", file=out)

@@ -454,6 +454,75 @@ def test_profile_evidence_gate_audit_flags_data_movement_primary_without_exchang
     }
 
 
+def test_profile_evidence_gate_audit_accepts_memory_pressure_primary(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        memory_pressure={
+            "status": "supported",
+            "evidence_tier": "strong",
+            "finding_supported": True,
+            "spill_or_scratch_evidence_count": 2,
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "high",
+                "case_primary_bottleneck": {
+                    "label": "runtime_memory",
+                    "confidence": "medium",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert result.ok
+    assert result.primary_counts == {"runtime_memory": 1}
+    assert result.memory_pressure_counts == {"supported/strong/finding=True/spill=True": 1}
+
+
+def test_profile_evidence_gate_audit_flags_memory_primary_without_spill(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        memory_pressure={
+            "status": "context_only",
+            "evidence_tier": "context_only",
+            "finding_supported": False,
+            "spill_or_scratch_evidence_count": 0,
+            "memory_estimate_anomaly_count": 2,
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "high",
+                "case_primary_bottleneck": {
+                    "label": "runtime_memory",
+                    "confidence": "medium",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert not result.ok
+    assert result.issue_counts == {
+        "memory_primary_without_gate": 1,
+        "profile_primary_classifier_mismatch": 1,
+    }
+
+
 def test_profile_evidence_gate_audit_flags_primary_confidence_overclaim(
     tmp_path: Path,
 ) -> None:
@@ -495,6 +564,62 @@ def test_profile_evidence_gate_audit_flags_primary_confidence_overclaim(
     print_result(result, out=output)
     text = output.getvalue()
     assert "profile_primary_confidence_overclaim" in text
+    assert "large_intermediate_or_exchange_traffic" not in text
+    assert str(tmp_path) not in text
+
+
+def test_profile_evidence_gate_audit_tracks_persisted_classifier_drift(
+    tmp_path: Path,
+) -> None:
+    analysis = base_analysis(
+        cardinality_anomalies=[{"operator_id": "1"}],
+        stats_metadata_quality={
+            "status": "limited",
+            "stats_primary_bottleneck": "mixed_candidate",
+            "non_stats_bottleneck_categories": "exchange_or_data_movement",
+        },
+        data_movement={
+            "status": "supported",
+            "evidence_tier": "strong",
+            "finding_supported": True,
+            "primary_supported": True,
+            "exchange_operator_count": 2,
+        },
+        findings=[
+            {
+                "id": "large_intermediate_or_exchange_traffic",
+                "operators": [{"time_ms": 90_000}],
+            }
+        ],
+        case_primary_bottleneck={
+            "label": "runtime_data_movement",
+            "confidence": "medium",
+        },
+    )
+    summary_path = write_summary(
+        tmp_path,
+        [
+            {
+                "case_index": 1,
+                "case_dir": write_case(tmp_path, 1, analysis),
+                "score_severity": "suspicious",
+                "case_primary_bottleneck": {
+                    "label": "runtime_data_movement",
+                    "confidence": "medium",
+                },
+            }
+        ],
+    )
+
+    result = audit_summary(summary_path)
+
+    assert result.ok
+    assert result.primary_classifier_drift_counts == {"runtime_data_movement/mixed": 1}
+    output = io.StringIO()
+    print_result(result, out=output)
+    text = output.getvalue()
+    assert "Primary classifier artifact drift" in text
+    assert "runtime_data_movement/mixed: 1" in text
     assert "large_intermediate_or_exchange_traffic" not in text
     assert str(tmp_path) not in text
 

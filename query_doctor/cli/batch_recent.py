@@ -812,11 +812,13 @@ def filter_impala_summaries_for_window(
     summaries: list[cm_profiles.CMQuerySummary],
 ) -> list[cm_profiles.CMQuerySummary]:
     if config.only_running:
-        return summaries
+        return [summary for summary in summaries if is_running_query_summary(summary)]
     start, end = discovery_window_bounds(config)
     filtered: list[cm_profiles.CMQuerySummary] = []
     for summary in summaries:
         if is_running_query_summary(summary):
+            if config.include_running:
+                filtered.append(summary)
             continue
         timestamp = summary.end_time or summary.start_time
         if not timestamp:

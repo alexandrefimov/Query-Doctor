@@ -28,6 +28,7 @@ PRIMARY_BOTTLENECK_LABELS = {
     "runtime_admission",
     "runtime_skew",
     "runtime_data_movement",
+    "runtime_memory",
     "runtime_storage",
     "client_fetch_tail",
     "mixed",
@@ -926,7 +927,27 @@ def attach_workload_fingerprint_fields(
 ) -> None:
     summary["workload_fingerprint"] = workload.fingerprint
     summary["group_fingerprint"] = workload.fingerprint
-    summary["workload_fingerprint_incomplete"] = bool(workload.shape.get("incomplete"))
+    summary["workload_shape"] = workload_group_shape(workload)
+    incomplete = bool(workload.shape.get("incomplete"))
+    summary["workload_fingerprint_incomplete"] = incomplete
+    summary["workload_fingerprint_incomplete_fields"] = (
+        workload_fingerprint_incomplete_fields(workload) if incomplete else []
+    )
+
+
+def workload_fingerprint_incomplete_fields(workload: WorkloadFingerprint) -> list[str]:
+    raw_fields = workload.shape.get("incomplete_fields")
+    if not isinstance(raw_fields, (list, tuple)):
+        return []
+    fields = {field for item in raw_fields if (field := safe_workload_shape_field(item))}
+    return sorted(fields)
+
+
+def safe_workload_shape_field(value: object) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    return text if all(character.isalnum() or character == "_" for character in text) else ""
 
 
 def build_workload_groups(
