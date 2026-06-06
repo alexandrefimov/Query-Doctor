@@ -1,0 +1,41 @@
+{
+  "current": {
+    "analyzed_cases": 11,
+    "gate_passed": true,
+    "medium_or_better_primary_cases": 9,
+    "medium_or_better_primary_rate_percent": 81.8182,
+    "total_cases": 11,
+    "unknown_primary_cases": 2,
+    "unknown_primary_rate_percent": 18.1818
+  },
+  "schema_version": "impala_synthetic_coverage_gate_aggregate_v1",
+  "source_fixture": "synthetic_demo_pack_0_5_0_primary_coverage_gate",
+  "thresholds": {
+    "max_unknown_primary_rate_percent": 20.0,
+    "min_medium_primary_rate_percent": 70.0
+  },
+  "trend": [
+    {
+      "label": "initial_synthetic_demo_gate",
+      "medium_or_better_primary_cases": 8,
+      "medium_or_better_primary_rate_percent": 72.7273,
+      "total_cases": 11,
+      "unknown_primary_cases": 3,
+      "unknown_primary_rate_percent": 27.2727
+    },
+    {
+      "label": "client_fetch_tail_evidence_gate",
+      "medium_or_better_primary_cases": 9,
+      "medium_or_better_primary_rate_percent": 81.8182,
+      "total_cases": 11,
+      "unknown_primary_cases": 2,
+      "unknown_primary_rate_percent": 18.1818
+    }
+  ],
+  "unknown_primary_reason_counts": {
+    "no_primary_branch_supported": 2
+  },
+  "unknown_primary_resolution_counts": {
+    "clean_short_no_action_boundary": 2
+  }
+}

@@ -582,6 +582,12 @@ def build_cm_metrics_facts(context: dict[str, Any]) -> dict[str, Any]:
         if max_bytes is not None:
             parts.append(f"max_response_bytes={max_bytes}")
         limitations.append(f"{source_label} collection limits: " + ", ".join(parts) + ".")
+    if source_label == "Prometheus metrics":
+        limitations.append(
+            "Prometheus host-level metrics can cover multiple Impala deployments on the same hosts; "
+            "treat them as shared runtime context until selected-query profile evidence correlates "
+            "the signal."
+        )
     if truncated_metrics:
         limitations.append(
             f"{source_label} were truncated for: " + ", ".join(truncated_metrics) + "."

@@ -80,6 +80,15 @@ def test_profile_docs_context_overrides_bundled_stability_for_known_counters():
     assert scratch.stability_label == "UNKNOWN"
     assert scratch.source == "profile_docs"
     assert context["missing_counter_count"] > 0
+    assert "ScratchBytesWritten" in context["missing_counter_names"]
+    assert any(
+        entry["canonical_name"] == "ClientFetchWaitTimer" and entry["matched"] is True
+        for entry in context["entries"]
+    )
+    assert any(
+        entry["canonical_name"] == "ScratchBytesWritten" and entry["matched"] is False
+        for entry in context["entries"]
+    )
 
 
 def test_profile_docs_context_summary_does_not_expose_counter_dump():
@@ -93,6 +102,7 @@ def test_profile_docs_context_summary_does_not_expose_counter_dump():
     assert summary["status"] == "available"
     assert summary["source"] == "profile_docs"
     assert summary["source_counter_count"] == 100
+    assert "ScratchBytesWritten" in summary["missing_counter_names"]
     assert "entries" not in summary
 
 

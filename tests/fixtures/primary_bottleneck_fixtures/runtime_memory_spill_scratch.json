@@ -1,0 +1,36 @@
+{
+  "analysis": {
+    "query_wall_clock": {
+      "duration_ms": 90000,
+      "confidence": "high"
+    },
+    "memory_pressure": {
+      "status": "supported",
+      "evidence_tier": "strong",
+      "finding_supported": true,
+      "spill_or_scratch_evidence_count": 2,
+      "memory_estimate_anomaly_count": 1,
+      "zero_memory_estimate_gap_count": 0
+    },
+    "cardinality_anomalies": [],
+    "findings": [
+      {
+        "id": "spill_or_scratch_io",
+        "operators": []
+      }
+    ],
+    "stats_metadata_quality": {
+      "status": "available",
+      "stats_primary_bottleneck": "not_supported",
+      "non_stats_bottleneck_categories": "spill_or_scratch"
+    }
+  },
+  "expected": {
+    "label": "runtime_memory",
+    "confidence": "medium",
+    "reasons": [
+      "memory_pressure_spill_scratch_supported",
+      "spill_scratch_counters_2"
+    ]
+  }
+}

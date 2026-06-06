@@ -2311,6 +2311,10 @@ def test_analyzer_accepts_prometheus_runtime_metrics_context(tmp_path):
         "Prometheus metrics collection limits: max_points_per_query=10, max_response_bytes=12345."
         in text
     )
+    assert (
+        "Prometheus host-level metrics can cover multiple Impala deployments on the same hosts"
+        in text
+    )
     assert "Prometheus metrics returned no_data for: host_cpu_system." in text
     assert "host-a.example.net" not in text
 

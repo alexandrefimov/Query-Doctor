@@ -10,6 +10,7 @@ from query_doctor.analyzer.runtime_admission import (
     runtime_admission_uses_non_profile_evidence,
 )
 from query_doctor.analyzer.data_movement import data_movement_facts_from_analysis
+from query_doctor.analyzer.memory_pressure import memory_pressure_facts_from_analysis
 from query_doctor.analyzer.profile_evidence import (
     DATA_MOVEMENT_FINDING_ID,
     STORAGE_FINDING_ID,
@@ -23,19 +24,16 @@ CARDINALITY_ANOMALY_HIGH_COUNT = 3
 EXECUTION_TAIL_MIN_CANDIDATES = 1
 CLIENT_FETCH_FINDING_ID = "client_fetch_tail"
 CODEGEN_FINDING_ID = "codegen_bottleneck"
+MEMORY_ESTIMATE_FINDING_ID = "memory_estimate_errors"
 UNKNOWN_REASON_WALL_CLOCK_MIN_SEC = 10.0
 UNKNOWN_REASON_MAPPED_OPERATOR_LOW_SHARE = 0.25
-QUERY_SHAPE_FINDING_IDS = {
-    "analytic_bottleneck",
-    "join_bottleneck",
-    "sort_bottleneck",
-}
 
 CONFIDENCE_ORDER = {"low": 1, "medium": 2, "high": 3}
 COMPETING_CATEGORY_TO_PRIMARY = {
     "backend_data_skew": "runtime_skew",
     "backend_execution_tail": "runtime_skew",
     "exchange_or_data_movement": "runtime_data_movement",
+    "spill_or_scratch": "runtime_memory",
     "query_shape": "sql_shape",
     "storage_or_hdfs": "runtime_storage",
 }
@@ -44,6 +42,7 @@ COMPETING_PRIMARY_ORDER = (
     "sql_shape",
     "runtime_skew",
     "runtime_data_movement",
+    "runtime_memory",
     "runtime_storage",
     "client_fetch_tail",
 )
@@ -118,9 +117,11 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
     is_data_movement_top = elapsed_top_finding == DATA_MOVEMENT_FINDING_ID
     is_storage_top = elapsed_top_finding == STORAGE_FINDING_ID
     is_client_fetch_top = elapsed_top_finding == CLIENT_FETCH_FINDING_ID
-    is_query_shape_top = elapsed_top_finding in QUERY_SHAPE_FINDING_IDS
+    query_shape_reason = query_shape_top_reason(analysis)
+    is_query_shape_top = bool(query_shape_reason)
     storage_runtime_diagnosis_supported = runtime_diagnosis_supports_storage(analysis)
     data_movement = data_movement_facts_from_analysis(analysis)
+    memory_pressure = memory_pressure_facts_from_analysis(analysis)
     profile_derived_primary_allowed = profile_policy == "supported"
     row_count_primary_allowed = (
         profile_derived_primary_allowed and row_count_conclusions_support_profile_claims(analysis)
@@ -183,6 +184,13 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
         and not sql_supports_primary
         and not stats_competing_signal
     )
+    runtime_memory_supports_primary = (
+        profile_derived_primary_allowed
+        and memory_pressure.finding_supported
+        and memory_pressure.evidence_tier == "strong"
+        and memory_pressure.spill_or_scratch_evidence_count > 0
+        and not stats_competing_signal
+    )
     client_fetch_supports_primary = (
         profile_derived_primary_allowed
         and is_client_fetch_top
@@ -197,6 +205,7 @@ def classify_case_primary_bottleneck(analysis: dict[str, Any]) -> CasePrimaryBot
             ("sql_shape", sql_supports_primary or query_shape_supports_primary),
             ("runtime_skew", backend_data_skew_supports_primary),
             ("runtime_data_movement", data_movement_supports_primary),
+            ("runtime_memory", runtime_memory_supports_primary),
             ("runtime_storage", runtime_storage_supports_primary),
             ("client_fetch_tail", client_fetch_supports_primary),
         )
@@ -425,11 +434,15 @@ def primary_confidence(primary: str, analysis: dict[str, Any], wall_clock_confid
             and cardinality_count >= CARDINALITY_ANOMALY_HIGH_COUNT
         ):
             level = "high"
+        elif query_shape_top_reason(analysis):
+            level = "medium"
         elif metadata_status in {"collected", "ok"}:
             level = "medium"
         else:
             level = "low"
     elif primary == "runtime_data_movement":
+        level = "medium"
+    elif primary == "runtime_memory":
         level = "medium"
     elif primary == "runtime_storage":
         level = "medium"
@@ -445,12 +458,17 @@ def primary_reasons(primary: str, analysis: dict[str, Any]) -> tuple[str, ...]:
     if primary == "stats":
         return ("stats_candidate_supported", f"cardinality_anomalies_{cardinality_count}")
     if primary == "sql_shape":
-        query_shape_reason = query_shape_top_reason(analysis)
-        if query_shape_reason:
-            return (query_shape_reason,)
+        if reason := query_shape_top_reason(analysis):
+            return (reason,)
         return ("stats_not_primary", f"cardinality_anomalies_{cardinality_count}")
     if primary == "runtime_data_movement":
         return ("large_intermediate_or_exchange_top_finding",)
+    if primary == "runtime_memory":
+        memory_pressure = memory_pressure_facts_from_analysis(analysis)
+        return (
+            "memory_pressure_spill_scratch_supported",
+            f"spill_scratch_counters_{memory_pressure.spill_or_scratch_evidence_count}",
+        )
     if primary == "runtime_skew":
         scan_skew = scan_skew_facts_from_analysis(analysis)
         if scan_skew.primary_supported and scan_skew.skew_metric:
@@ -490,6 +508,17 @@ def unknown_primary_reasons(analysis: dict[str, Any]) -> tuple[str, ...]:
         and not scan_skew.primary_supported
     ):
         reasons.append("scan_skew_medium_supporting_only")
+
+    memory_pressure = memory_pressure_facts_from_analysis(analysis)
+    if (
+        memory_pressure.status == "context_only"
+        and not memory_pressure.finding_supported
+        and (
+            memory_pressure.memory_estimate_anomaly_count > 0
+            or memory_pressure.zero_memory_estimate_gap_count > 0
+        )
+    ):
+        reasons.append("memory_estimate_context_only")
 
     data_movement = data_movement_facts_from_analysis(analysis)
     if data_movement.status == "context_only" and data_movement.exchange_operator_count > 0:
@@ -574,7 +603,20 @@ def query_shape_top_reason(analysis: dict[str, Any]) -> str:
         return "sort_top_finding"
     if finding_id == "analytic_bottleneck":
         return "analytic_top_finding"
+    if finding_id == MEMORY_ESTIMATE_FINDING_ID and aggregate_memory_estimate_finding(analysis):
+        return "aggregate_memory_estimate_top_finding"
     return ""
+
+
+def aggregate_memory_estimate_finding(analysis: dict[str, Any]) -> bool:
+    anomalies = [
+        item
+        for item in analysis.get("memory_anomalies") or []
+        if isinstance(item, dict) and str(item.get("operator_name") or "").strip()
+    ]
+    if not anomalies:
+        return False
+    return all("AGGREGATE" in str(item.get("operator_name") or "").upper() for item in anomalies)
 
 
 def category_set(value: Any) -> set[str]:
@@ -597,6 +639,14 @@ def supported_non_stats_categories(analysis: dict[str, Any], categories: set[str
         kept.discard("backend_data_skew")
     if "exchange_or_data_movement" in kept and not data_movement.finding_supported:
         kept.discard("exchange_or_data_movement")
+    if "spill_or_scratch" in kept:
+        memory_pressure = memory_pressure_facts_from_analysis(analysis)
+        if not (
+            memory_pressure.finding_supported
+            and memory_pressure.evidence_tier == "strong"
+            and memory_pressure.spill_or_scratch_evidence_count > 0
+        ):
+            kept.discard("spill_or_scratch")
     if "storage_or_hdfs" in kept and not (
         profile_storage_supported(analysis) or runtime_diagnosis_supports_storage(analysis)
     ):

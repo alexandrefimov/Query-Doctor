@@ -961,6 +961,78 @@ def test_sql_shape_confidence_is_low_without_metadata():
     assert result.confidence == "low"
 
 
+def test_query_shape_top_finding_has_medium_confidence_without_metadata():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            findings=[
+                {
+                    "id": "join_bottleneck",
+                    "operators": [{"time_ms": 8_000}],
+                }
+            ],
+            stats_metadata_quality={
+                "status": "unavailable",
+                "stats_primary_bottleneck": "unknown",
+                "non_stats_bottleneck_categories": "query_shape",
+            },
+        )
+    )
+
+    assert result.label == "sql_shape"
+    assert result.confidence == "medium"
+    assert result.reasons == ("join_top_finding",)
+
+
+def test_aggregate_memory_estimate_top_finding_routes_to_sql_shape_without_metadata():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            findings=[
+                {
+                    "id": "memory_estimate_errors",
+                    "operators": [{"operator_name": "AGGREGATE", "time_ms": 8_000}],
+                }
+            ],
+            memory_anomalies=[
+                {"operator_name": "AGGREGATE", "time_ms": 8_000},
+                {"operator_name": "AGGREGATE", "time_ms": 7_500},
+            ],
+            stats_metadata_quality={
+                "status": "unavailable",
+                "stats_primary_bottleneck": "unknown",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "sql_shape"
+    assert result.confidence == "medium"
+    assert result.reasons == ("aggregate_memory_estimate_top_finding",)
+
+
+def test_non_aggregate_memory_estimate_finding_stays_unknown_without_spill_or_stats():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            findings=[
+                {
+                    "id": "memory_estimate_errors",
+                    "operators": [{"operator_name": "HASH JOIN", "time_ms": 8_000}],
+                }
+            ],
+            memory_anomalies=[
+                {"operator_name": "HASH JOIN", "time_ms": 8_000},
+            ],
+            stats_metadata_quality={
+                "status": "unavailable",
+                "stats_primary_bottleneck": "unknown",
+                "non_stats_bottleneck_categories": "none",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("memory_estimate_context_only",)
+
+
 def test_join_top_finding_routes_to_sql_shape_without_stats_signal():
     result = classify_case_primary_bottleneck(
         analysis_fixture(
@@ -1027,6 +1099,98 @@ def test_data_movement_is_fallback_after_stats_and_sql_shape_do_not_match():
 
     assert result.label == "runtime_data_movement"
     assert result.confidence == "medium"
+
+
+def test_memory_pressure_spill_scratch_can_route_medium_primary():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            memory_pressure={
+                "status": "supported",
+                "evidence_tier": "strong",
+                "finding_supported": True,
+                "spill_or_scratch_evidence_count": 2,
+                "memory_estimate_anomaly_count": 1,
+            },
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "spill_or_scratch",
+            },
+        )
+    )
+
+    assert result.label == "runtime_memory"
+    assert result.confidence == "medium"
+    assert result.reasons == (
+        "memory_pressure_spill_scratch_supported",
+        "spill_scratch_counters_2",
+    )
+
+
+def test_memory_pressure_context_only_does_not_route_primary():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            memory_pressure={
+                "status": "context_only",
+                "evidence_tier": "context_only",
+                "finding_supported": False,
+                "spill_or_scratch_evidence_count": 0,
+                "memory_estimate_anomaly_count": 3,
+                "zero_memory_estimate_gap_count": 2,
+            },
+            stats_metadata_quality={
+                "status": "available",
+                "stats_primary_bottleneck": "not_supported",
+                "non_stats_bottleneck_categories": "spill_or_scratch",
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("memory_estimate_context_only",)
+
+
+def test_memory_pressure_primary_is_blocked_for_partial_profile_policy():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            profile_format={
+                "profile_dialect": "experimental_profile_v2",
+                "primary_bottleneck_policy": "non_profile_only",
+            },
+            memory_pressure={
+                "status": "supported",
+                "evidence_tier": "strong",
+                "finding_supported": True,
+                "spill_or_scratch_evidence_count": 1,
+            },
+        )
+    )
+
+    assert result.label == "unknown"
+    assert result.reasons == ("no_primary_branch_supported",)
+
+
+def test_memory_pressure_and_stats_signal_become_mixed_primary():
+    result = classify_case_primary_bottleneck(
+        analysis_fixture(
+            cardinality_anomalies=anomaly(4),
+            memory_pressure={
+                "status": "supported",
+                "evidence_tier": "strong",
+                "finding_supported": True,
+                "spill_or_scratch_evidence_count": 1,
+            },
+            stats_metadata_quality={
+                "status": "limited",
+                "stats_primary_bottleneck": "candidate_supported",
+                "non_stats_bottleneck_categories": "spill_or_scratch",
+            },
+        )
+    )
+
+    assert result.label == "mixed"
+    assert result.confidence == "medium"
+    assert result.reasons == ("competing_stats", "competing_runtime_memory")
 
 
 def test_storage_or_hdfs_is_fallback_after_stats_and_sql_shape_do_not_match():

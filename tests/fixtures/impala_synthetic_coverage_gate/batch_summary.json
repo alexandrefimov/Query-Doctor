@@ -1,0 +1,1002 @@
+{
+  "candidate_exclusion_count": 0,
+  "candidate_reason_counts": {
+    "synthetic demo case": 11
+  },
+  "candidate_reason_sql_verb_counts": {
+    "synthetic demo case": {
+      "SELECT": 11
+    }
+  },
+  "cases": [
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 1,
+      "cardinality_anomaly_count": 4,
+      "case_dir": "cases/case-001",
+      "case_index": 1,
+      "case_primary_bottleneck": {
+        "confidence": "high",
+        "label": "sql_shape",
+        "reasons": [
+          "join_top_finding",
+          "cardinality_anomalies_4"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 315,
+      "execution_tail_candidate_count": 1,
+      "failure_category": null,
+      "group_fingerprint": "wf_a1a1a1a1a1a1a1a1a1a1a1a1",
+      "host_tail_candidate_count": 1,
+      "memory_anomaly_count": 3,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": {
+        "cte_count": 1,
+        "cte_graph_shape": "linear_chain",
+        "cte_predicate_origin_status": "final_select_filter",
+        "label": "Guidance only",
+        "reason": "Synthetic demo case requires manual review",
+        "rewriteability_bucket": "recipe_adjacent_shape",
+        "rewriteability_label": "Recipe-adjacent shape",
+        "status": "guidance_only"
+      },
+      "pool": "demo_pool",
+      "query_id": "demo-optimizer-0001",
+      "query_optimization_candidate": {
+        "confidence": "medium",
+        "counter_signals": [
+          "metadata was not collected, so stats-vs-query-shape split is unconfirmed"
+        ],
+        "impact": "high",
+        "reasons": [
+          "join row expansion or cardinality mismatch with join evidence",
+          "large exchange volume before downstream processing",
+          "memory pressure around join and aggregation operators"
+        ],
+        "score": 82,
+        "suggested_review_areas": [
+          "join keys and join cardinality",
+          "pre-aggregation before high-volume joins",
+          "filter pushdown opportunities"
+        ],
+        "tier": "high"
+      },
+      "query_optimization_rank": 1,
+      "query_type": "QUERY",
+      "referenced_table_count": 2,
+      "report_generated": true,
+      "report_seconds": 0,
+      "report_validation_status": "validated",
+      "score": 36,
+      "score_reasons": [
+        "cardinality estimate anomalies: 4",
+        "memory estimate anomalies: 3",
+        "zero/unknown row estimate gaps: 2",
+        "host-tail candidates: 1"
+      ],
+      "score_severity": "high",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": {
+        "query_optimization": [
+          {
+            "coordinate": "line 9",
+            "detail": "predicate near final SELECT",
+            "id": "sql_final_select_filter"
+          },
+          {
+            "detail": "node 03 HASH JOIN (inner join, partitioned)",
+            "id": "plan_cardinality_anomaly"
+          }
+        ]
+      },
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 1,
+      "user": "demo_data_engineer",
+      "workload_baseline_sample_count": 0,
+      "workload_fingerprint": "wf_a1a1a1a1a1a1a1a1a1a1a1a1",
+      "workload_group_duration_sec_p95": 315.0,
+      "workload_group_member_count": 1,
+      "workload_regression": "unknown",
+      "zero_memory_estimate_gap_count": 1,
+      "zero_row_estimate_gap_count": 2
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 2,
+      "cardinality_anomaly_count": 3,
+      "case_dir": "cases/case-002",
+      "case_index": 2,
+      "case_primary_bottleneck": {
+        "confidence": "medium",
+        "label": "stats",
+        "reasons": [
+          "stats_candidate_supported",
+          "cardinality_anomalies_3"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 2,
+      "collection_status": "ok",
+      "duration_sec": 96,
+      "execution_tail_candidate_count": 0,
+      "failure_category": null,
+      "group_fingerprint": "wf_b2b2b2b2b2b2b2b2b2b2b2b2",
+      "host_tail_candidate_count": 0,
+      "memory_anomaly_count": 1,
+      "metadata_refreshed": true,
+      "metadata_status": "collected",
+      "optimizer_rewrite_support": null,
+      "pool": "demo_pool",
+      "query_id": "demo-stats-0002",
+      "query_optimization_candidate": null,
+      "query_optimization_rank": null,
+      "query_type": "QUERY",
+      "referenced_table_count": 2,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 25,
+      "score_reasons": [
+        "cardinality estimate anomalies: 3",
+        "zero/unknown row estimate gaps: 3",
+        "table stats row-count completeness missing/unknown",
+        "column stats completeness incomplete/unknown"
+      ],
+      "score_severity": "suspicious",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": {
+        "stats_refresh": [
+          {
+            "detail": "one referenced table has missing row-count statistics",
+            "id": "metadata_table_stats"
+          },
+          {
+            "detail": "estimate mismatch aligns with missing stats evidence",
+            "id": "plan_cardinality_anomaly"
+          }
+        ]
+      },
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": {
+        "confidence": "medium",
+        "counter_signals": [
+          "requires EXPLAIN and comparable rerun confirmation"
+        ],
+        "impact": "high",
+        "need_type": "table_and_column_stats",
+        "reasons": [
+          "missing table stats before expensive join",
+          "incomplete column stats with estimate mismatch",
+          "planning-sensitive runtime symptoms"
+        ],
+        "required_confirmation": [
+          "compare EXPLAIN before and after stats collection",
+          "rerun under comparable load before claiming speed benefit"
+        ],
+        "score": 76,
+        "speed_benefit": "high",
+        "suggested_review_areas": [
+          "table/partition row counts",
+          "join and filter column coverage"
+        ],
+        "tier": "high"
+      },
+      "stats_optimization_rank": 1,
+      "table_stats_status": "missing_or_incomplete",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 2,
+      "user": "demo_platform_ops",
+      "workload_baseline_sample_count": 0,
+      "workload_fingerprint": "wf_b2b2b2b2b2b2b2b2b2b2b2b2",
+      "workload_group_duration_sec_p95": 96.0,
+      "workload_group_member_count": 1,
+      "workload_regression": "unknown",
+      "zero_memory_estimate_gap_count": 1,
+      "zero_row_estimate_gap_count": 3
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": true,
+      "candidate_rank": 3,
+      "cardinality_anomaly_count": 2,
+      "case_dir": "cases/case-003",
+      "case_index": 3,
+      "case_primary_bottleneck": {
+        "confidence": "medium",
+        "label": "runtime_data_movement",
+        "reasons": [
+          "large_intermediate_or_exchange_top_finding",
+          "backend_data_skew_detected"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 188,
+      "execution_tail_candidate_count": 1,
+      "failure_category": null,
+      "host_tail_candidate_count": 1,
+      "memory_anomaly_count": 2,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": {
+        "label": "Guidance only",
+        "reason": "Synthetic demo draft failed deterministic validation",
+        "rewriteability_bucket": "human_review_only",
+        "rewriteability_label": "Human review only",
+        "risk_mode": "validation_rejected",
+        "risk_reasons": [
+          "unsafe_shape_change"
+        ],
+        "status": "guidance_only"
+      },
+      "pool": "demo_pool",
+      "query_id": "demo-validator-0003",
+      "query_optimization_candidate": {
+        "confidence": "medium",
+        "counter_signals": [
+          "draft validation rejected unsafe shape change"
+        ],
+        "impact": "high",
+        "reasons": [
+          "query shape is worth review",
+          "large exchange volume before downstream processing"
+        ],
+        "score": 68,
+        "suggested_review_areas": [
+          "join predicates",
+          "filter scope preservation",
+          "result-shape validation"
+        ],
+        "tier": "medium"
+      },
+      "query_optimization_rank": 3,
+      "query_type": "QUERY",
+      "referenced_table_count": 3,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 31,
+      "score_reasons": [
+        "cardinality estimate anomalies: 2",
+        "memory estimate anomalies: 2",
+        "backend data skew evidence",
+        "host-tail candidates: 1"
+      ],
+      "score_severity": "high",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": {
+        "query_optimization": [
+          {
+            "detail": "exchange-heavy runtime context needs review",
+            "id": "plan_data_movement_operator"
+          },
+          {
+            "detail": "join/filter preservation must be checked before rewrite",
+            "id": "sql_join_filter_review"
+          }
+        ]
+      },
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 3,
+      "user": "demo_analytics",
+      "zero_memory_estimate_gap_count": 1,
+      "zero_row_estimate_gap_count": 1
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 4,
+      "cardinality_anomaly_count": 0,
+      "case_dir": "cases/case-004",
+      "case_index": 4,
+      "case_primary_bottleneck": {
+        "confidence": "high",
+        "label": "runtime_admission",
+        "reasons": [
+          "admission_wait_explicit",
+          "admission_wait_share_69pct",
+          "admission_wait_source_cm_query_context"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 128,
+      "execution_tail_candidate_count": 0,
+      "failure_category": null,
+      "group_fingerprint": "wf_adadadadadadadadadadadad",
+      "host_tail_candidate_count": 0,
+      "memory_anomaly_count": 0,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": null,
+      "pool": "demo_pool",
+      "query_id": "demo-admission-0004",
+      "query_optimization_candidate": null,
+      "query_optimization_rank": null,
+      "query_type": "QUERY",
+      "referenced_table_count": 1,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 33,
+      "score_reasons": [
+        "primary bottleneck is runtime admission",
+        "admission wait dominates wall clock",
+        "workload baseline regression is strong"
+      ],
+      "score_severity": "high",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": {
+        "runtime_admission": [
+          {
+            "detail": "admission wait dominated the synthetic runtime window",
+            "id": "runtime_admission_window"
+          }
+        ]
+      },
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 4,
+      "user": "demo_platform_ops",
+      "workload_baseline_duration_sec_p95": 38.0,
+      "workload_baseline_sample_count": 6,
+      "workload_fingerprint": "wf_adadadadadadadadadadadad",
+      "workload_group_duration_sec_p95": 128.0,
+      "workload_group_member_count": 2,
+      "workload_regression": "strong",
+      "zero_memory_estimate_gap_count": 0,
+      "zero_row_estimate_gap_count": 0
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 5,
+      "cardinality_anomaly_count": 0,
+      "case_dir": "cases/case-005",
+      "case_index": 5,
+      "case_primary_bottleneck": {
+        "confidence": "medium",
+        "label": "runtime_admission",
+        "reasons": [
+          "admission_wait_explicit",
+          "admission_wait_share_61pct",
+          "admission_wait_source_cm_query_context"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 104,
+      "execution_tail_candidate_count": 0,
+      "failure_category": null,
+      "group_fingerprint": "wf_adadadadadadadadadadadad",
+      "host_tail_candidate_count": 0,
+      "memory_anomaly_count": 0,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": null,
+      "pool": "demo_pool",
+      "query_id": "demo-admission-0005",
+      "query_optimization_candidate": null,
+      "query_optimization_rank": null,
+      "query_type": "QUERY",
+      "referenced_table_count": 1,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 29,
+      "score_reasons": [
+        "primary bottleneck is runtime admission",
+        "same workload fingerprint as another admitted-slow case"
+      ],
+      "score_severity": "high",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": null,
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 5,
+      "user": "demo_platform_ops",
+      "workload_baseline_duration_sec_p95": 38.0,
+      "workload_baseline_sample_count": 6,
+      "workload_fingerprint": "wf_adadadadadadadadadadadad",
+      "workload_group_duration_sec_p95": 128.0,
+      "workload_group_member_count": 2,
+      "workload_regression": "strong",
+      "zero_memory_estimate_gap_count": 0,
+      "zero_row_estimate_gap_count": 0
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 6,
+      "cardinality_anomaly_count": 0,
+      "case_dir": "cases/case-006",
+      "case_index": 6,
+      "case_primary_bottleneck": {
+        "confidence": "medium",
+        "label": "runtime_storage",
+        "reasons": [
+          "storage_or_hdfs_runtime_diagnosis",
+          "scan_skew_bytes_read",
+          "tail_candidates_1"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 242,
+      "execution_tail_candidate_count": 1,
+      "failure_category": null,
+      "host_tail_candidate_count": 1,
+      "memory_anomaly_count": 0,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": null,
+      "pool": "demo_pool",
+      "query_id": "demo-storage-0006",
+      "query_optimization_candidate": null,
+      "query_optimization_rank": null,
+      "query_type": "QUERY",
+      "referenced_table_count": 1,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 27,
+      "score_reasons": [
+        "storage/HDFS runtime diagnosis is the strongest follow-up",
+        "scan/storage operator context is present",
+        "large read footprint needs comparable rerun verification"
+      ],
+      "score_severity": "suspicious",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": null,
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 6,
+      "user": "demo_data_engineer",
+      "zero_memory_estimate_gap_count": 0,
+      "zero_row_estimate_gap_count": 0
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 7,
+      "cardinality_anomaly_count": 0,
+      "case_dir": "cases/case-007",
+      "case_index": 7,
+      "case_primary_bottleneck": {
+        "confidence": "low",
+        "label": "unknown",
+        "reasons": [
+          "very_short_query_or_unknown_wall_clock"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 9,
+      "execution_tail_candidate_count": 0,
+      "failure_category": null,
+      "group_fingerprint": "wf_cdcdcdcdcdcdcdcdcdcdcdcd",
+      "host_tail_candidate_count": 0,
+      "memory_anomaly_count": 0,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": null,
+      "pool": "demo_pool",
+      "query_id": "demo-short-0007",
+      "query_optimization_candidate": null,
+      "query_optimization_rank": null,
+      "query_type": "QUERY",
+      "referenced_table_count": 1,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 4,
+      "score_reasons": [
+        "frequent short workload candidate"
+      ],
+      "score_severity": "clean",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": null,
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 7,
+      "user": "demo_service",
+      "workload_baseline_duration_sec_p95": 10.0,
+      "workload_baseline_sample_count": 12,
+      "workload_fingerprint": "wf_cdcdcdcdcdcdcdcdcdcdcdcd",
+      "workload_group_duration_sec_p95": 12.0,
+      "workload_group_member_count": 2,
+      "workload_regression": "none",
+      "zero_memory_estimate_gap_count": 0,
+      "zero_row_estimate_gap_count": 0
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 8,
+      "cardinality_anomaly_count": 0,
+      "case_dir": "cases/case-008",
+      "case_index": 8,
+      "case_primary_bottleneck": {
+        "confidence": "low",
+        "label": "unknown",
+        "reasons": [
+          "very_short_query_or_unknown_wall_clock"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 12,
+      "execution_tail_candidate_count": 0,
+      "failure_category": null,
+      "group_fingerprint": "wf_cdcdcdcdcdcdcdcdcdcdcdcd",
+      "host_tail_candidate_count": 0,
+      "memory_anomaly_count": 0,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": null,
+      "pool": "demo_pool",
+      "query_id": "demo-short-0008",
+      "query_optimization_candidate": null,
+      "query_optimization_rank": null,
+      "query_type": "QUERY",
+      "referenced_table_count": 1,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 5,
+      "score_reasons": [
+        "frequent short workload candidate"
+      ],
+      "score_severity": "clean",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": null,
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 8,
+      "user": "demo_service",
+      "workload_baseline_duration_sec_p95": 10.0,
+      "workload_baseline_sample_count": 12,
+      "workload_fingerprint": "wf_cdcdcdcdcdcdcdcdcdcdcdcd",
+      "workload_group_duration_sec_p95": 12.0,
+      "workload_group_member_count": 2,
+      "workload_regression": "none",
+      "zero_memory_estimate_gap_count": 0,
+      "zero_row_estimate_gap_count": 0
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": true,
+      "candidate_rank": 9,
+      "cardinality_anomaly_count": 2,
+      "case_dir": "cases/case-009",
+      "case_index": 9,
+      "case_primary_bottleneck": {
+        "confidence": "medium",
+        "label": "mixed",
+        "reasons": [
+          "competing_stats",
+          "competing_sql_shape",
+          "competing_runtime_data_movement"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 3,
+      "collection_status": "ok",
+      "duration_sec": 176,
+      "execution_tail_candidate_count": 1,
+      "failure_category": null,
+      "group_fingerprint": "wf_e9e9e9e9e9e9e9e9e9e9e9e9",
+      "host_tail_candidate_count": 1,
+      "memory_anomaly_count": 1,
+      "metadata_refreshed": true,
+      "metadata_status": "collected",
+      "optimizer_rewrite_support": {
+        "label": "Guidance only",
+        "reason": "Synthetic mixed-signal case needs staged confirmation",
+        "rewriteability_bucket": "human_review_only",
+        "rewriteability_label": "Human review only",
+        "status": "guidance_only"
+      },
+      "pool": "demo_pool",
+      "query_id": "demo-mixed-0009",
+      "query_optimization_candidate": {
+        "confidence": "medium",
+        "counter_signals": [
+          "metadata gaps also support a stats-maintenance hypothesis"
+        ],
+        "impact": "medium",
+        "reasons": [
+          "query shape is worth review",
+          "join row expansion or cardinality mismatch with join evidence",
+          "large exchange volume before downstream processing"
+        ],
+        "score": 64,
+        "suggested_review_areas": [
+          "join cardinality",
+          "filter placement",
+          "exchange-heavy plan segments"
+        ],
+        "tier": "medium"
+      },
+      "query_optimization_rank": 9,
+      "query_type": "QUERY",
+      "referenced_table_count": 3,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 32,
+      "score_reasons": [
+        "cardinality estimate anomalies: 2",
+        "memory estimate anomalies: 1",
+        "table stats row-count completeness missing/unknown",
+        "backend data skew evidence",
+        "host-tail candidates: 1"
+      ],
+      "score_severity": "high",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": {
+        "query_optimization": [
+          {
+            "detail": "join and filter placement both need bounded review",
+            "id": "sql_join_filter_review"
+          },
+          {
+            "detail": "exchange-heavy segment overlaps with estimate mismatch",
+            "id": "plan_data_movement_operator"
+          }
+        ],
+        "stats_refresh": [
+          {
+            "detail": "one table has incomplete row-count coverage",
+            "id": "metadata_table_stats"
+          },
+          {
+            "detail": "estimate mismatch is present but not exclusive to stats",
+            "id": "plan_cardinality_anomaly"
+          }
+        ]
+      },
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": {
+        "confidence": "medium",
+        "counter_signals": [
+          "runtime data movement also needs review"
+        ],
+        "impact": "medium",
+        "need_type": "table_and_column_stats",
+        "reasons": [
+          "incomplete column stats with estimate mismatch",
+          "metadata gap overlaps with query-shape evidence"
+        ],
+        "required_confirmation": [
+          "compare EXPLAIN before and after stats collection",
+          "rerun under comparable load before treating stats as the fix"
+        ],
+        "score": 62,
+        "speed_benefit": "medium",
+        "suggested_review_areas": [
+          "join/filter column stats",
+          "table row-count coverage"
+        ],
+        "tier": "medium"
+      },
+      "stats_optimization_rank": 1,
+      "table_stats_status": "missing_or_incomplete",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 9,
+      "user": "demo_data_engineer",
+      "workload_baseline_sample_count": 0,
+      "workload_fingerprint": "wf_e9e9e9e9e9e9e9e9e9e9e9e9",
+      "workload_group_duration_sec_p95": 176.0,
+      "workload_group_member_count": 1,
+      "workload_regression": "unknown",
+      "zero_memory_estimate_gap_count": 1,
+      "zero_row_estimate_gap_count": 2
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 10,
+      "cardinality_anomaly_count": 0,
+      "case_dir": "cases/case-010",
+      "case_index": 10,
+      "case_primary_bottleneck": {
+        "confidence": "high",
+        "label": "client_fetch_tail",
+        "reasons": [
+          "client_fetch_wait_top_finding",
+          "client_fetch_wait_share_63pct"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 71,
+      "execution_tail_candidate_count": 0,
+      "failure_category": null,
+      "host_tail_candidate_count": 0,
+      "memory_anomaly_count": 0,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": null,
+      "pool": "demo_pool",
+      "query_id": "demo-client-fetch-0010",
+      "query_optimization_candidate": null,
+      "query_optimization_rank": null,
+      "query_type": "QUERY",
+      "referenced_table_count": 1,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 16,
+      "score_reasons": [
+        "client fetch wait is the strongest selected-query tail signal",
+        "mapped operators explain only a small share of wall clock",
+        "compare a rerun before changing SQL or stats"
+      ],
+      "score_severity": "suspicious",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": null,
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 10,
+      "user": "demo_analytics",
+      "zero_memory_estimate_gap_count": 0,
+      "zero_row_estimate_gap_count": 0
+    },
+    {
+      "analysis_seconds": 0,
+      "analysis_status": "ok",
+      "backend_data_skew": false,
+      "candidate_rank": 11,
+      "cardinality_anomaly_count": 0,
+      "case_dir": "cases/case-011",
+      "case_index": 11,
+      "case_primary_bottleneck": {
+        "confidence": "medium",
+        "label": "runtime_admission",
+        "reasons": [
+          "admission_wait_explicit",
+          "admission_wait_source_profile_resource_facts",
+          "admission_wait_source_profile_timing_facts"
+        ]
+      },
+      "cm_collect_seconds": 0,
+      "collected_metadata_table_count": 0,
+      "collection_status": "ok",
+      "duration_sec": 142,
+      "execution_tail_candidate_count": 0,
+      "failure_category": null,
+      "host_tail_candidate_count": 0,
+      "memory_anomaly_count": 0,
+      "metadata_refreshed": false,
+      "metadata_status": "not_requested",
+      "optimizer_rewrite_support": null,
+      "pool": "demo_pool",
+      "query_id": "demo-direct-0011",
+      "query_optimization_candidate": null,
+      "query_optimization_rank": null,
+      "query_type": "QUERY",
+      "referenced_table_count": 1,
+      "report_generated": false,
+      "report_seconds": 0,
+      "report_validation_status": "not_run",
+      "score": 28,
+      "score_reasons": [
+        "direct Impala profile resource facts support admission/runtime follow-up",
+        "optional daemon compatibility endpoints are not required for diagnosis",
+        "missing old-cluster compatibility probes are non-fatal"
+      ],
+      "score_severity": "high",
+      "skipped_due_to_max_table_limit": 0,
+      "source_locators": {
+        "runtime_admission": [
+          {
+            "detail": "profile resource and timing facts both show admission wait",
+            "id": "runtime_admission_window"
+          }
+        ]
+      },
+      "sql_verb": "SELECT",
+      "stats_optimization_candidate": null,
+      "stats_optimization_rank": null,
+      "table_stats_status": "not_checked",
+      "too_large_count": 0,
+      "total_seconds": 0,
+      "triage_rank": 11,
+      "user": "demo_platform_ops",
+      "zero_memory_estimate_gap_count": 0,
+      "zero_row_estimate_gap_count": 0
+    }
+  ],
+  "cm_inspect_limit": 11,
+  "cm_jobs": 0,
+  "cm_summary_page_size": 11,
+  "cm_summary_raw_scan_cap": 11,
+  "cm_summary_safety_cap": 11,
+  "cm_summary_safety_cap_hit": false,
+  "demo_mode": true,
+  "description": "Synthetic local Query Doctor demo pack. No CM, Impala, LLM, or network calls were used.",
+  "discovery_failed": false,
+  "discovery_seconds": 0,
+  "duration_filter": "synthetic mixed duration",
+  "duration_filter_mode": "synthetic",
+  "from_time": "synthetic",
+  "include_failed": false,
+  "include_running": false,
+  "jobs": 0,
+  "metadata_jobs": 0,
+  "metadata_top_limit": 1,
+  "min_duration_sec": null,
+  "mode": "synthetic-demo",
+  "only_running": false,
+  "order": "status-priority",
+  "out": "tests/fixtures/impala_synthetic_coverage_gate",
+  "pool_filter_present": false,
+  "query_type_filter": "QUERY",
+  "recent_window_minutes": 60,
+  "scan_too_broad": false,
+  "selected_count": 11,
+  "server_filter_expression_present": false,
+  "summaries_inspected": 11,
+  "to_time": "synthetic",
+  "top_reports": 0,
+  "total_seconds": 0,
+  "triage_profile_limit": 11,
+  "user_filter_present": false,
+  "warnings": [
+    "Synthetic demo data only. Do not use as performance evidence."
+  ],
+  "workload_groups": {
+    "groups": [
+      {
+        "aggregates": {
+          "count": 2,
+          "duration_sec_p50": 104.0,
+          "duration_sec_p95": 128.0,
+          "duration_sec_total": 232.0,
+          "member_count": 2,
+          "pool_top": "demo_pool",
+          "primary_bottleneck_top": "runtime_admission",
+          "score_top": "high"
+        },
+        "baseline": {
+          "duration_sec_p95": 38.0,
+          "regression": "strong",
+          "sample_count": 6,
+          "schema_version": 1
+        },
+        "fingerprint": "wf_adadadadadadadadadadadad",
+        "member_case_ids": [
+          "case-004",
+          "case-005"
+        ],
+        "member_count": 2,
+        "shape": {
+          "aggregate_present": true,
+          "cte_count": 0,
+          "exchange_count": 1,
+          "join_count": 0,
+          "query_type": "query",
+          "referenced_tables": [
+            "demo.service_requests"
+          ],
+          "scan_count": 1,
+          "set_operation_count": 0,
+          "sql_verb": "select",
+          "window_present": false
+        }
+      },
+      {
+        "aggregates": {
+          "count": 2,
+          "duration_sec_p50": 9.0,
+          "duration_sec_p95": 12.0,
+          "duration_sec_total": 21.0,
+          "member_count": 2,
+          "pool_top": "demo_pool",
+          "primary_bottleneck_top": "unknown",
+          "score_top": "clean"
+        },
+        "baseline": {
+          "duration_sec_p95": 10.0,
+          "regression": "none",
+          "sample_count": 12,
+          "schema_version": 1
+        },
+        "fingerprint": "wf_cdcdcdcdcdcdcdcdcdcdcdcd",
+        "member_case_ids": [
+          "case-007",
+          "case-008"
+        ],
+        "member_count": 2,
+        "shape": {
+          "aggregate_present": true,
+          "cte_count": 0,
+          "exchange_count": 0,
+          "join_count": 0,
+          "query_type": "query",
+          "referenced_tables": [
+            "demo.small_feature_events"
+          ],
+          "scan_count": 1,
+          "set_operation_count": 0,
+          "sql_verb": "select",
+          "window_present": false
+        }
+      }
+    ],
+    "schema_version": 1
+  },
+  "workload_history": {
+    "append_status": "ok",
+    "appended_record_count": 4,
+    "enabled": true,
+    "loaded_record_count": 18,
+    "regression_counts": {
+      "mild": 0,
+      "none": 1,
+      "strong": 1,
+      "unknown": 0
+    },
+    "schema_version": 1
+  }
+}
