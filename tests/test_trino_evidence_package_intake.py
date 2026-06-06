@@ -65,7 +65,11 @@ def test_trino_evidence_package_accepts_sanitized_samples_without_live_workflow_
     assert dict(result.sample_count_by_case)["query_detail_stage_task_summary"] == 2
     assert dict(result.sample_count_by_case)["unsafe_raw_field_rejection_synthetic"] == 1
     assert all(bundle.identity.engine == "trino" for bundle in result.bundles)
-    assert [adapter.engine_name for adapter in list_engine_adapters()] == ["impala", "trino"]
+    assert [adapter.engine_name for adapter in list_engine_adapters()] == [
+        "impala",
+        "spark",
+        "trino",
+    ]
     adapter = get_engine_adapter("trino")
     assert adapter.supports_offline_evidence_import is True
     assert adapter.supports_recent_scan is False
@@ -178,6 +182,14 @@ def test_trino_evidence_package_rejects_incomplete_sentinel_tests():
     package["redaction_note"]["synthetic_sentinel_tests"]["raw_text_rejection"] = "no"
 
     with pytest.raises(EngineFactContractError, match="sentinel tests are incomplete"):
+        validate_trino_evidence_package_payload(package)
+
+
+def test_trino_evidence_package_rejects_raw_companion_archive():
+    package = _package_payload()
+    package["redaction_note"]["raw_companion_archive"] = "retained"
+
+    with pytest.raises(EngineFactContractError, match="raw companion archive is not allowed"):
         validate_trino_evidence_package_payload(package)
 
 
@@ -627,6 +639,7 @@ def _package_payload() -> dict:
             "boundary_assertions": {
                 assertion: True for assertion in TRINO_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS
             },
+            "raw_companion_archive": "none",
         },
         "samples": samples,
     }

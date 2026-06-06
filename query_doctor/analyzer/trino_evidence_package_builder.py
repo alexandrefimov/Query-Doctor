@@ -7,13 +7,16 @@ local evidence-package wrapper validated by `trino_evidence_package`.
 
 from __future__ import annotations
 
-import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from query_doctor.analyzer.engine_facts import EngineFactContractError
+from query_doctor.analyzer.engine_intake_primitives import (
+    json_size as _shared_json_size,
+    max_json_depth as _shared_max_json_depth,
+)
 from query_doctor.analyzer.trino_evidence_package import (
     TRINO_EVIDENCE_ACCEPTED_SAMPLE_CASES,
     TRINO_EVIDENCE_PACKAGE_CASES,
@@ -145,6 +148,7 @@ def build_trino_evidence_package_payload(
             "boundary_assertions": {
                 assertion: True for assertion in TRINO_EVIDENCE_REQUIRED_BOUNDARY_ASSERTIONS
             },
+            "raw_companion_archive": "none",
         },
         "samples": sample_entries,
     }
@@ -158,29 +162,20 @@ def _validate_sample_spec_labels(sample: TrinoEvidencePackageSampleSpec) -> None
 
 
 def _json_size(payload: Mapping[str, Any]) -> int:
-    try:
-        return len(
-            json.dumps(
-                payload,
-                allow_nan=False,
-                ensure_ascii=True,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        )
-    except (TypeError, ValueError) as exc:
-        raise EngineFactContractError(
-            "Trino evidence package sample must be JSON serializable"
-        ) from exc
+    return _shared_json_size(
+        payload,
+        payload_label="Trino evidence package sample",
+        error_message="Trino evidence package sample must be JSON serializable",
+        compact=True,
+        ensure_ascii=True,
+        sort_keys=True,
+    )
 
 
 def _max_json_depth(value: Any, depth: int = 0) -> int:
-    if isinstance(value, Mapping):
-        if not value:
-            return depth
-        return max(_max_json_depth(nested, depth + 1) for nested in value.values())
-    if isinstance(value, list):
-        if not value:
-            return depth
-        return max(_max_json_depth(nested, depth + 1) for nested in value)
-    return depth
+    return _shared_max_json_depth(
+        value,
+        depth=depth,
+        count_scalar=False,
+        sequence_types=(list,),
+    )
