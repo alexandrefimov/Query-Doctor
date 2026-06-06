@@ -64,6 +64,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Explicit Spark application id. Used only as a request selector and not written out.",
     )
     parser.add_argument(
+        "--application-attempt-id",
+        help=(
+            "Optional Spark application attempt id selector. Used only for bounded collection "
+            "and not written out."
+        ),
+    )
+    parser.add_argument(
         "--sql-execution-id",
         help="Optional Spark SQL execution id selector. Used only for bounded collection.",
     )
@@ -168,6 +175,7 @@ def main(
         kwargs = {
             "history_server_url": args.history_server_url,
             "application_id": args.application_id,
+            "application_attempt_id": args.application_attempt_id,
             "sql_execution_id": args.sql_execution_id,
             "timeout_sec": args.timeout_sec,
             "max_response_bytes": args.max_response_bytes,

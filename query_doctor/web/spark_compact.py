@@ -63,7 +63,11 @@ SAFE_SPARK_HISTORY_WEB_ERROR_MESSAGES = frozenset(
         "Spark History Server path segment must not contain controls.",
         "Spark History Server path segment must not traverse paths.",
         "Spark application id is required.",
+        "Spark application attempt id is required.",
         "Spark application id must not traverse paths.",
+        "Spark application id must not include an attempt path when attempt id is provided.",
+        "Spark application attempt id must not contain controls.",
+        "Spark application attempt id must not traverse paths.",
         "Spark History Server collection bounds must be positive.",
         "Spark History Server response byte bound exceeds the compact cap.",
         "Spark History Server compact collection did not find a readable JSON endpoint.",
@@ -100,6 +104,7 @@ def collect_spark_history_diagnosis(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     history_server_url = first_form_value(form, "history_server_url")
     application_id = first_form_value(form, "application_id")
+    application_attempt_id = first_form_value(form, "application_attempt_id") or None
     sql_execution_id = first_form_value(form, "sql_execution_id") or None
     if not history_server_url:
         raise WebError("Spark History Server URL is required.")
@@ -108,6 +113,7 @@ def collect_spark_history_diagnosis(
     result = collect_spark_history_server_compact_summary(
         history_server_url=history_server_url,
         application_id=application_id,
+        application_attempt_id=application_attempt_id,
         sql_execution_id=sql_execution_id,
         timeout_sec=parse_positive_form_int(
             form,

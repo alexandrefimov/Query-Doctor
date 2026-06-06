@@ -43,6 +43,7 @@ def render_spark_history_panel() -> str:
         '<input type="hidden" name="spark_compact_action" value="history_server">'
         f"{render_text_input('history_server_url', 'History Server base URL', required=True)}"
         f"{render_text_input('application_id', 'Application id', required=True)}"
+        f"{render_text_input('application_attempt_id', 'Application attempt id', required=False)}"
         f"{render_text_input('sql_execution_id', 'SQL execution id', required=False)}"
         f"{render_spark_history_bounds()}"
         '<div class="optimizer-actions-row">'
@@ -198,6 +199,7 @@ def render_spark_compact_result(
         "</div></div>"
         f"{render_spark_collection_status(collection_status)}"
         f"{render_spark_compact_status(result)}"
+        f"{render_spark_diagnostic_lane(result.get('diagnostic_lane'))}"
         f"{render_spark_runtime_context(result.get('runtime_context'))}"
         f"{render_spark_attention_areas(result.get('attention_areas'))}"
         f"{render_spark_limitations(result.get('limitations'))}"
@@ -238,6 +240,31 @@ def render_spark_compact_status(result: Mapping[str, Any]) -> str:
         f'<li><strong>Mode</strong> <span class="badge amber">{html.escape(support_status)}</span></li>'
         f'<li><strong>Coverage</strong> <span class="badge {badge_for_state(parser_coverage)}">{html.escape(parser_coverage)}</span></li>'
         f'<li><strong>Lifecycle</strong> <span class="badge gray">{html.escape(lifecycle)}</span></li>'
+        "</ul>"
+        "</div>"
+    )
+
+
+def render_spark_diagnostic_lane(value: object) -> str:
+    if not isinstance(value, Mapping):
+        return ""
+    readiness = safe_status_label(value.get("evidence_readiness"))
+    granularity = safe_status_label(value.get("source_granularity"))
+    verification_scope = safe_status_label(value.get("verification_scope"))
+    supported_count = int_value(value.get("supported_attention_area_count"))
+    source_warning_count = int_value(value.get("source_warning_count"))
+    return (
+        '<div class="optimizer-block spark-diagnostic-lane">'
+        "<h3>Diagnostic lane</h3>"
+        '<p class="helper">'
+        "Preview lane contract for this compact evidence. It is not a Spark support claim."
+        "</p>"
+        '<ul class="optimizer-table-list spark-compact-status-list">'
+        f'<li><strong>Readiness</strong> <span class="badge {badge_for_lane_readiness(readiness)}">{html.escape(readiness)}</span></li>'
+        f'<li><strong>Granularity</strong> <span class="badge gray">{html.escape(granularity)}</span></li>'
+        f'<li><strong>Verification scope</strong> <span class="badge blue">{html.escape(verification_scope)}</span></li>'
+        f"<li><strong>Supported attention areas</strong> {supported_count}</li>"
+        f"<li><strong>Source warnings</strong> {source_warning_count}</li>"
         "</ul>"
         "</div>"
     )
@@ -486,3 +513,12 @@ def badge_for_state(state: str) -> str:
         "not_performed": "gray",
         "experimental_compact_intake": "amber",
     }.get(state, "gray")
+
+
+def badge_for_lane_readiness(value: str) -> str:
+    return {
+        "compact_attention_ready": "green",
+        "compact_limited_no_supported_attention": "amber",
+        "compact_source_warnings_present": "amber",
+        "source_coverage_unknown": "amber",
+    }.get(value, "gray")

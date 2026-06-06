@@ -29,6 +29,7 @@ def test_spark_compact_get_route_renders_safe_form_without_support_claim():
     assert 'name="spark_compact_action" value="history_server"' in response.body
     assert 'name="history_server_url"' in response.body
     assert 'name="application_id"' in response.body
+    assert 'name="application_attempt_id"' in response.body
     assert 'name="allow_local_history_server_target"' in response.body
     assert 'name="max_response_bytes"' in response.body
     assert 'name="max_application_attempts"' in response.body
@@ -62,6 +63,7 @@ def test_spark_history_web_post_collects_and_renders_without_echoing_selectors(m
             "spark_compact_action": ["history_server"],
             "history_server_url": ["http://spark-history.example.invalid:18080"],
             "application_id": ["application_secret_selector"],
+            "application_attempt_id": ["attempt_secret_selector"],
             "sql_execution_id": ["99"],
             "timeout_sec": ["7"],
             "max_response_bytes": ["8192"],
@@ -81,6 +83,7 @@ def test_spark_history_web_post_collects_and_renders_without_echoing_selectors(m
     assert captured == {
         "history_server_url": "http://spark-history.example.invalid:18080",
         "application_id": "application_secret_selector",
+        "application_attempt_id": "attempt_secret_selector",
         "sql_execution_id": "99",
         "timeout_sec": 7,
         "max_response_bytes": 8192,
@@ -95,15 +98,22 @@ def test_spark_history_web_post_collects_and_renders_without_echoing_selectors(m
     assert "Collection result" in response.body
     assert "Summary endpoints accepted: 4/5" in response.body
     assert "spark_history_stages_unavailable" in response.body
+    assert "Diagnostic lane" in response.body
+    assert "compact_source_warnings_present" in response.body
+    assert "source_coverage_review" in response.body
     assert "Spark shuffle spill" in response.body
     assert "Spark stage skew candidate" in response.body
     assert "not full Spark product support" in response.body
     for fragment in (
         "spark-history.example.invalid",
         "application_secret_selector",
+        "attempt_secret_selector",
         "99",
         "sourceContract",
         "spark_history_server_compact_v1",
+        "spark_compact_diagnostic_lane_v1",
+        "spark_compact_preview",
+        "diagnostic_lane",
         "fixtureVersion",
         "sqlText",
     ):
@@ -371,6 +381,13 @@ def test_spark_compact_post_route_renders_attention_areas_without_echoing_input(
     assert "181000 ms" in response.body
     assert "Runtime context" in response.body
     assert "Aggregate Spark compact values only" in response.body
+    assert "Diagnostic lane" in response.body
+    assert "Preview lane contract for this compact evidence" in response.body
+    assert "compact_attention_ready" in response.body
+    assert "fixture_compact" in response.body
+    assert "fixture_contract_review" in response.body
+    assert "Supported attention areas" in response.body
+    assert "Source warnings" in response.body
     assert "Spark version family" in response.body
     assert "spark_4_1" in response.body
     assert "Query linkage" in response.body
@@ -393,6 +410,9 @@ def test_spark_compact_post_route_renders_attention_areas_without_echoing_input(
     assert "not_claimed" in response.body
     assert "sourceContract" not in response.body
     assert "spark_history_eventlog_compact_v1" not in response.body
+    assert "spark_compact_diagnostic_lane_v1" not in response.body
+    assert "spark_compact_preview" not in response.body
+    assert "diagnostic_lane" not in response.body
     assert "fixtureVersion" not in response.body
     assert "spark_input_rows" not in response.body
     assert "inputRows" not in response.body
