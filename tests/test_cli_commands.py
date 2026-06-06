@@ -94,6 +94,16 @@ def test_command_specs_cover_module_and_console_backends():
             "query_doctor.cli.trino_query_info_pruned_import",
             "query-doctor-trino-query-info-pruned-import",
         ),
+        (
+            "trino_metadata_source_contract_check",
+            "query_doctor.cli.trino_metadata_source_contract_check",
+            "query-doctor-trino-metadata-source-contract-check",
+        ),
+        (
+            "trino_metadata_summary_import",
+            "query_doctor.cli.trino_metadata_summary_import",
+            "query-doctor-trino-metadata-summary-import",
+        ),
     ),
 )
 def test_compact_cli_roles_cover_module_and_console_backends(role, module, script):
@@ -214,6 +224,7 @@ def test_spark_history_cli_help_documents_local_target_opt_in(capsys):
 
     assert exc.value.code == 0
     assert "--allow-local-history-server-target" in output
+    assert "--application-attempt-id" in output
     assert "--max-task-summaries" in output
     assert (
         "Metadata, link-local, reserved, documentation, multicast, and unspecified targets remain blocked"

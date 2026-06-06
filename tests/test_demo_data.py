@@ -59,7 +59,7 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
         "demo-short-0007",
         "demo-short-0008",
         "demo-mixed-0009",
-        "demo-unknown-0010",
+        "demo-client-fetch-0010",
         "demo-direct-0011",
     ]
     assert summary["selected_count"] == 11
@@ -117,17 +117,19 @@ def test_generates_synthetic_demo_pack_with_trusted_artifacts(tmp_path):
     assert mixed_case["case_primary_bottleneck"]["label"] == "mixed"
     assert mixed_case["query_optimization_candidate"]["tier"] == "medium"
     assert mixed_case["stats_optimization_candidate"]["tier"] == "medium"
-    unknown_case = cases[9]
-    assert unknown_case["case_primary_bottleneck"]["label"] == "unknown"
-    assert unknown_case["query_optimization_candidate"] is None
-    assert unknown_case["stats_optimization_candidate"] is None
+    client_fetch_case = cases[9]
+    assert client_fetch_case["case_primary_bottleneck"]["label"] == "client_fetch_tail"
+    assert client_fetch_case["case_primary_bottleneck"]["confidence"] == "high"
+    assert client_fetch_case["query_optimization_candidate"] is None
+    assert client_fetch_case["stats_optimization_candidate"] is None
+    assert "client fetch wait" in client_fetch_case["score_reasons"][0]
     direct_case = cases[10]
     assert direct_case["case_primary_bottleneck"]["label"] == "runtime_admission"
     assert "direct Impala profile resource facts" in direct_case["score_reasons"][0]
 
     outcome_path = out_dir / "action_outcomes.jsonl"
     records = load_action_outcomes(path=outcome_path)
-    assert len(records) == 5
+    assert len(records) == 8
     assert {record.recommendation_id for record in records} == {
         "query_optimization_review.v1",
         "stats_refresh_review.v1",
@@ -232,13 +234,15 @@ def test_generated_demo_runtime_and_workload_cases_render_safely(tmp_path):
     assert str(out_dir) not in mixed_html
     assert "SELECT c.channel" not in mixed_html
 
-    unknown_view = present_recent_scan_case_detail("case-010", summary["cases"][9])
-    unknown_html = render_recent_scan_case_detail_view(unknown_view)
-    unknown_action_html = render_action_candidate_findings(unknown_view)
-    assert "Supported analyzer signals need review" in unknown_html
-    assert "Diagnostic follow-up" in unknown_action_html
-    assert "comparable rerun" in unknown_action_html
-    assert str(out_dir) not in unknown_html
+    client_fetch_view = present_recent_scan_case_detail("case-010", summary["cases"][9])
+    client_fetch_html = render_recent_scan_case_detail_view(client_fetch_view)
+    client_fetch_action_html = render_action_candidate_findings(client_fetch_view)
+    assert "Client fetch wait may be stretching the tail" in client_fetch_html
+    assert "client fetch wait share 63%" in client_fetch_html
+    assert "Diagnostic follow-up" in client_fetch_action_html
+    assert "Client fetch wait evidence" in client_fetch_action_html
+    assert "comparable rerun" in client_fetch_action_html
+    assert str(out_dir) not in client_fetch_html
 
     direct_case = summary["cases"][10]
     direct_query_context = load_case_analysis_query_context_facts(Path(direct_case["case_dir"]))
@@ -294,7 +298,7 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
     workloads_html = render_batch_summary(
         summary,
         query_group="workloads",
-        action_outcomes_recorded=5,
+        action_outcomes_recorded=8,
         workload_outcome_metrics=outcome_metrics,
     )
     frequent_short_html = render_batch_summary(summary, query_group="frequent_short")
@@ -309,10 +313,10 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
     assert "strong; baseline p95 38.0s; n=6" in workloads_html
     assert "Action outcomes" in workloads_html
     assert (
-        "2 recorded; 2 applied; improved 1, no change 1; "
+        "5 recorded; 5 applied; 5 comparable reruns; improved 3, no change 2; "
         "last applied action Admission/runtime check: no change; "
-        "family signal Admission/runtime check: improved 1/2 applied, no change 1; "
-        "feedback sample below threshold (2/5 applied); "
+        "family signal Admission/runtime check: improved 3/5 comparable reruns, no change 2; "
+        "feedback sample threshold met (5/5 comparable reruns); "
         "next check admission/runtime signal count and group p95"
     ) in workloads_html
     assert "demo-short-0008" in frequent_short_html

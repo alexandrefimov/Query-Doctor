@@ -110,6 +110,14 @@ COMMAND_SPECS = MappingProxyType(
             module="query_doctor.cli.trino_import",
             console_script="query-doctor-trino-import",
         ),
+        "trino_metadata_source_contract_check": CommandSpec(
+            module="query_doctor.cli.trino_metadata_source_contract_check",
+            console_script="query-doctor-trino-metadata-source-contract-check",
+        ),
+        "trino_metadata_summary_import": CommandSpec(
+            module="query_doctor.cli.trino_metadata_summary_import",
+            console_script="query-doctor-trino-metadata-summary-import",
+        ),
         "trino_query_detail_import": CommandSpec(
             module="query_doctor.cli.trino_query_detail_import",
             console_script="query-doctor-trino-query-detail-import",
