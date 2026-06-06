@@ -1,6 +1,6 @@
 # Agent Quickstart
 
-Last updated: 2026-06-03
+Last updated: 2026-06-05
 
 Use this file as the short entry point before reading larger agent docs. It
 does not replace `AGENTS.md` or the safety contract.
@@ -71,6 +71,61 @@ does not replace `AGENTS.md` or the safety contract.
   and delete merged local branches in the same turn when they are no longer
   needed. Remove the worktree before deleting a branch that is checked out there,
   and do not force cleanup when unmerged or user changes are present.
+
+## Trino/Spark Parallel Restart Gate
+
+Before resuming active parallel Trino and Spark development, start each new
+task branch from the current local `main` after the shared
+`redaction_note_v1` alignment. Do not continue older Trino or Spark task
+worktrees as-is; merge current `main` into them first, resolve conflicts, and
+validate in that worktree before editing.
+
+For Trino/Spark package-style intake, handoff, readiness, or evidence-package
+work, read these sources before changing behavior:
+
+- [engine-redaction-note-v1.md](engine-redaction-note-v1.md).
+- [engine-support-gap-matrix.md](engine-support-gap-matrix.md).
+- [code-map.md](code-map.md).
+- [../AGENTS.md](../AGENTS.md).
+
+Run `python3 scripts/agent_preflight.py --paths <changed-paths>` before editing
+or reviewing Trino/Spark surfaces. Trino and Spark have dedicated preflight
+rules because their bounded preview/compact surfaces must not be treated as
+generic analyzer or CLI changes.
+
+Run this stale-schema grep before closing a Trino/Spark package-style slice:
+
+```bash
+rg -n 'manual_review_status|"sentinel_tests_passed"|"boundary_assertions": \[' tests query_doctor scripts
+```
+
+`sentinel_tests_passed` remains valid as a CLI or builder confirmation flag,
+but not as a JSON `redaction_note` field. Package-style notes must use
+`redaction_note_version`, provenance fields, mapping-style
+`synthetic_sentinel_tests`, mapping-style `boundary_assertions`, and
+`raw_companion_archive: "none"`. Every grep hit should be an intentional
+negative/regression test or CLI confirmation flag, not accepted package data or
+a live validator path.
+
+Minimum validation for Trino/Spark package-style shared-contract changes:
+
+```bash
+python3 -m pytest tests/*trino*.py tests/*spark*.py tests/test_engine_redaction_note.py tests/test_engine_intake_primitives.py tests/test_manifest_references.py
+git diff --check
+```
+
+Keep engine ownership separated. A Trino feature branch should not silently
+change the Spark evidence schema, and a Spark feature branch should not silently
+change the Trino evidence schema. Shared helper, schema, or manifest-reference
+changes belong in a separate synchronization slice.
+
+Keep adapter flags, second-engine CLI roles, isolated compact web routes, and
+Trino/Spark dev-only scripts aligned with
+`query_doctor/engines/capabilities.py`. Isolated compact browser routes are
+registered in `query_doctor/web/preview_surfaces.py` and must match the
+capability manifest. New shared facts or second-engine surfaces should update
+the capability manifest, preview route registry when applicable, and focused
+capability tests in the same slice.
 
 ## Read Path
 
