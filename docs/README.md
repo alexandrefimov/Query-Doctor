@@ -42,6 +42,14 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
   truth for current engine support status, fixture/research boundaries, and
   second-engine promotion gates.
+- [customer-readiness-priorities.md](customer-readiness-priorities.md):
+  near-term Impala-first customer-readiness backlog for demo, config, docs,
+  UI, and validation focus.
+- [cloudera-test-cluster-request.md](cloudera-test-cluster-request.md):
+  public-safe read-only Cloudera Manager plus Impala test-cluster outreach
+  template.
+- [repository-simplification-audit.md](repository-simplification-audit.md):
+  conservative docs, scripts, and tests classification before cleanup.
 
 Use the status index below for task-specific reference docs such as engine
 expansion, upstream research loops, Trino contracts, demo paths, hardening, and
@@ -109,6 +117,9 @@ Status legend:
 | [impala-profile-counter-caveats.md](impala-profile-counter-caveats.md) | active | Impala profile dialect and counter evidence-tier caveats. |
 | [engine-expansion-plan.md](engine-expansion-plan.md) | active | Future source-provider, engine, metrics, and storage expansion order. |
 | [engine-support-gap-matrix.md](engine-support-gap-matrix.md) | active | Current engine support status, normalized fact coverage, fixture/research boundaries, and second-engine support gaps. |
+| [customer-readiness-priorities.md](customer-readiness-priorities.md) | active | Near-term Impala-first customer-readiness backlog for demo, config, docs, UI, and validation focus. |
+| [cloudera-test-cluster-request.md](cloudera-test-cluster-request.md) | reference | Public-safe read-only Cloudera Manager plus Impala test-cluster outreach template. |
+| [repository-simplification-audit.md](repository-simplification-audit.md) | active | Conservative docs, scripts, and tests classification before cleanup. |
 | [research/upstream-watch.md](research/upstream-watch.md) | reference | Upstream and adjacent-market watch loop for diagnostic signals across the query stack. |
 | [research/diagnostic-gap-log.md](research/diagnostic-gap-log.md) | reference | Safe template for recording production diagnostic gaps and backlog implications. |
 | [engines/trino-diagnostic-contract.md](engines/trino-diagnostic-contract.md) | reference | Trino evidence-source, safety, metadata, and readiness contract for future work. |

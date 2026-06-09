@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-06
+Last updated: 2026-06-09
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -21,6 +21,18 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
+- Recent results now use more analyst-facing labels: secondary filters are
+  under `More filters`, post-table context is `Scan details`, scan notices are
+  `Scan notes` or `Scan warnings`, repeated workload tables avoid generic
+  group wording, and Details recommendation feedback is labeled
+  `Record rerun outcome`. README screenshots were refreshed from the synthetic
+  demo pack for the same UI wording.
+- Added a public-safe Cloudera test-cluster outreach template plus an initial
+  repository simplification audit for docs, scripts, tests, changelog
+  readability, and Russian-doc maintenance.
+- Added an Impala-first customer-readiness priority note and a minimal
+  Cloudera Manager config example so first-run setup can stay separate from
+  advanced direct-Impala, Prometheus, metadata, and LLM routing options.
 - `query-doctor-web --public-demo` now supports a one-command read-only public
   synthetic demo mode. It generates the synthetic pack itself, forces
   Python-only mode, ignores default local config discovery and owner-source

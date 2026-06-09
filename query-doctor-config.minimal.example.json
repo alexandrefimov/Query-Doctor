@@ -1,0 +1,14 @@
+{
+  "clusters": [
+    {
+      "id": "cm-impala",
+      "label": "Impala via Cloudera Manager",
+      "cluster_type": "cm",
+      "cm_url": "https://cm.example.com:7183/",
+      "cluster": "example_cluster",
+      "service": "impala"
+    }
+  ],
+  "language": "en",
+  "recent_scan_timezone": "UTC"
+}

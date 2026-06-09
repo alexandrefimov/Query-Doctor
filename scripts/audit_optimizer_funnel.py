@@ -1082,6 +1082,7 @@ def optimizer_verification_has_comparison_and_rerun(value: str) -> bool:
             "rerun",
             "re-run",
             "next scan",
+            "repeated workload",
             "repeated group",
             "repeated-group",
         )
@@ -1096,7 +1097,9 @@ def optimizer_workload_metric_has_comparable_group_signal(value: str) -> bool:
         term in text
         for term in (
             "repeated-group",
+            "repeated workload",
             "repeated group",
+            "workload p95",
             "group p95",
             "comparable rerun",
             "comparable re-run",

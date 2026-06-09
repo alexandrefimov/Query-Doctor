@@ -265,10 +265,10 @@ def test_workload_diagnostics_audit_passes_ready_workload_summary(tmp_path: Path
 
 
 def test_workload_comparable_verification_requires_rerun_or_scan_context() -> None:
-    assert has_comparable_verification("compare group p95 on the next scan")
+    assert has_comparable_verification("compare workload p95 on the next scan")
     assert has_comparable_verification("rerun under comparable load and compare elapsed time")
     assert has_comparable_verification("compare after the next comparable scan")
-    assert not has_comparable_verification("compare current group p95")
+    assert not has_comparable_verification("compare current workload p95")
     assert not has_comparable_verification("rerun the workload")
     assert not has_comparable_verification("review comparable workload baseline")
 

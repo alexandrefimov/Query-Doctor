@@ -667,7 +667,7 @@ def test_repeated_no_recipe_guidance_readiness_requires_safe_guidance_contract()
         "Compare EXPLAIN before and after the change."
     )
     assert optimizer_workload_metric_has_comparable_group_signal(
-        "Scan rows, projected-column width, and repeated-group p95."
+        "Scan rows, projected-column width, and repeated workload p95."
     )
     assert not optimizer_workload_metric_has_comparable_group_signal(
         "Scan rows and projected-column width."

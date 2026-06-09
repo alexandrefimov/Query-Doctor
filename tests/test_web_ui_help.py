@@ -103,7 +103,7 @@ def test_web_help_page_renders_curated_static_help():
         in compact_styles
     )
     assert "Metadata" in body
-    assert "Metadata allowlist" in body
+    assert "Allowed metadata summaries" in body
     assert "Validated reports" in body
     assert "Common questions" in body
     assert "Future scope" in body
@@ -115,7 +115,7 @@ def test_web_help_page_renders_curated_static_help():
     assert "Evidence count" not in body
     assert "Needs attention" in body
     assert "Worth reviewing" in body
-    assert "More groups" in body
+    assert "More filters" in body
     assert "Rewrite opportunities" in body
     assert "Stats to check" in body
     assert "Good queries" not in body
@@ -123,9 +123,9 @@ def test_web_help_page_renders_curated_static_help():
     assert "Cases without triage severity" in body
     assert "partial content stays untrusted and hidden" in body
     assert "Metadata collection is explicit, bounded, read-only, and allowlisted." in body
-    assert "SHOW CREATE TABLE" in body
-    assert "SHOW TABLE STATS" in body
-    assert "SHOW COLUMN STATS" in body
+    assert "Table definition summary" in body
+    assert "Table statistics summary" in body
+    assert "Column statistics summary" in body
     assert "StarRocks, Doris, ClickHouse, Dremio" in body
     assert "actively developed Big Data SQL, MPP analytical, and lakehouse runtimes" in body
     assert "Does the storage backend matter?" in body

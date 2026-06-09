@@ -267,12 +267,12 @@ def render_action_outcome_controls(
     metric_note = render_action_outcome_metric_note(outcome_metric)
     return (
         '<details class="action-outcome-control" data-action-outcome-card>'
-        f"<summary>{html.escape(ui_text(language, 'Mark result', 'Отметить результат'))}</summary>"
+        f"<summary>{html.escape(ui_text(language, 'Record rerun outcome', 'Записать результат повтора'))}</summary>"
         '<div class="action-outcome-body">'
         f'<span class="action-outcome-label">{html.escape(ui_text(language, "Outcome", "Результат"))}: {label}</span>'
         f"{metric_note}"
         f'<form method="post" action="{action_url}" class="action-outcome-form">'
-        f'<button type="button" class="button" data-action-outcome-show-result>{html.escape(ui_text(language, "Mark applied", "Применено"))}</button>'
+        f'<button type="button" class="button" data-action-outcome-show-result>{html.escape(ui_text(language, "Applied", "Применено"))}</button>'
         f'<button type="submit" class="button" name="applied" value="no">{html.escape(ui_text(language, "Not applied", "Не применено"))}</button>'
         f'<button type="submit" class="button" name="applied" value="skip">{html.escape(ui_text(language, "Skip", "Пропустить"))}</button>'
         "</form>"

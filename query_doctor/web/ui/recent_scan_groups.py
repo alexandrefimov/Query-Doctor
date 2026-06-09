@@ -317,7 +317,7 @@ def render_query_group_switcher(
     secondary_open = " open" if active_group in SECONDARY_QUERY_GROUPS else ""
     secondary_group_html = (
         f'<details class="batch-filter-more"{secondary_open}>'
-        "<summary>More groups</summary>"
+        "<summary>More filters</summary>"
         f'<nav class="batch-filter-tabs batch-filter-tabs--secondary" aria-label="Secondary query result filter">{"".join(secondary_links)}</nav>'
         "</details>"
         if secondary_links
@@ -388,7 +388,7 @@ def render_result_filters(
     return (
         '<div class="batch-result-filters batch-result-filters--query-toolbar">'
         '<div class="batch-result-filter-row">'
-        '<span class="batch-result-filter-label">Show</span>'
+        '<span class="batch-result-filter-label">View</span>'
         f"{switcher}"
         "</div>"
         '<div class="batch-result-filter-row batch-result-filter-row--secondary">'
@@ -452,9 +452,7 @@ def render_workload_groups(
         for group in groups
     )
     if not rows:
-        rows = (
-            '<tr><td colspan="10" class="empty-cell">No workload groups match this focus.</td></tr>'
-        )
+        rows = '<tr><td colspan="10" class="empty-cell">No repeated workloads match this focus.</td></tr>'
     focus_filters = render_workload_group_focus_filters(
         focus,
         signal=focus_signal,
@@ -464,9 +462,9 @@ def render_workload_groups(
         workload_admin_signal=workload_admin_signal,
     )
     summary = (
-        f"Workload groups ({len(groups)} of {len(view.groups)})"
+        f"Repeated workload details ({len(groups)} of {len(view.groups)})"
         if focus is not None
-        else f"Workload groups ({len(view.groups)})"
+        else f"Repeated workload details ({len(view.groups)})"
     )
     return (
         '<details id="workload-groups" class="batch-note workload-groups">'
@@ -474,7 +472,7 @@ def render_workload_groups(
         f"{focus_filters}"
         '<div class="batch-table-wrap"><table class="batch-table workload-group-table">'
         "<thead><tr>"
-        "<th>Group</th><th>Cases</th><th>p95 duration</th><th>Total duration</th>"
+        "<th>Workload</th><th>Cases</th><th>p95 duration</th><th>Total duration</th>"
         "<th>Baseline</th><th>Pool</th><th>Primary</th><th>Severity</th><th>Shape</th><th>Members</th>"
         "</tr></thead>"
         f"<tbody>{rows}</tbody>"
@@ -547,10 +545,10 @@ def render_workload_group_focus_filters(
     return (
         '<div class="batch-result-filters">'
         '<div class="batch-result-filter-row">'
-        '<span class="batch-result-filter-label">Group focus</span>'
-        '<nav class="batch-filter-tabs" aria-label="Workload group focus">'
+        '<span class="batch-result-filter-label">Workload focus</span>'
+        '<nav class="batch-filter-tabs" aria-label="Repeated workload focus">'
         f'<span class="batch-filter-link batch-filter-link--active">{escape_value(focus_label)}</span>'
-        f'<a class="batch-filter-link" href="{html.escape(clear_href, quote=True)}">All workload groups</a>'
+        f'<a class="batch-filter-link" href="{html.escape(clear_href, quote=True)}">All repeated workloads</a>'
         "</nav></div></div>"
     )
 
@@ -585,10 +583,10 @@ def render_workload_digest(
 ) -> str:
     sections = (
         ("Top regressions", view.regressions),
-        ("Admission/runtime groups", view.admission_runtime),
-        ("Stats-gap groups", view.stats),
-        ("Spill-heavy groups", view.spill),
-        ("Failed/cancelled groups", view.status_issues),
+        ("Admission/runtime workloads", view.admission_runtime),
+        ("Stats-gap workloads", view.stats),
+        ("Spill-heavy workloads", view.spill),
+        ("Failed/cancelled workloads", view.status_issues),
         ("Low-value noise", view.low_value),
     )
     rows = "".join(
@@ -612,7 +610,7 @@ def render_workload_digest(
         return ""
     workload_rows_table = (
         '<div class="batch-table-wrap"><table class="batch-table workload-digest-table">'
-        "<thead><tr><th>Scope</th><th>Group</th><th>Priority</th><th>Runs</th>"
+        "<thead><tr><th>Scope</th><th>Workload</th><th>Priority</th><th>Runs</th>"
         "<th>Total duration</th><th>p95 duration</th><th>Pool / owner</th>"
         "<th>Evidence</th><th>Outcomes</th><th>Open</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
@@ -640,7 +638,7 @@ def render_workload_digest_links(
         ("Regressed workloads", "?query_group=regressions#recent-results"),
         ("Repeated workloads", "?query_group=workloads#recent-results"),
         ("Frequent short", "?query_group=frequent_short#recent-results"),
-        ("Workload groups", "#workload-groups"),
+        ("Repeated workload details", "#workload-groups"),
     ]
     if has_action_queue:
         links.append(("Action queue", "#workload-action-queue"))
@@ -673,7 +671,7 @@ def render_workload_action_queue(
     return (
         '<div id="workload-action-queue" class="batch-table-wrap workload-action-queue">'
         '<table class="batch-table workload-action-queue-table">'
-        "<thead><tr><th>Priority</th><th>Group</th><th>Signal / evidence</th><th>Impact</th>"
+        "<thead><tr><th>Priority</th><th>Workload</th><th>Signal / evidence</th><th>Impact</th>"
         "<th>Pool / owner</th><th>Open next</th><th>Outcomes</th><th>Open</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
@@ -782,8 +780,8 @@ def render_workload_admin_digest(
         f"{filters}"
         '<div class="batch-table-wrap">'
         '<table class="batch-table workload-admin-digest-table">'
-        "<thead><tr><th>Scope</th><th>Pool / owner</th><th>Groups</th><th>Runs</th>"
-        "<th>Total impact</th><th>Top group</th><th>Top impact</th>"
+        "<thead><tr><th>Scope</th><th>Pool / owner</th><th>Repeated workloads</th><th>Runs</th>"
+        "<th>Total impact</th><th>Top workload</th><th>Top impact</th>"
         "<th>Signals</th><th>Evidence</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div></div>"

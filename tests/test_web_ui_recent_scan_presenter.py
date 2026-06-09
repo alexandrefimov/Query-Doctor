@@ -3134,13 +3134,13 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         workload_outcome_metrics=workload_outcome_metrics,
     )
 
-    assert "Workload groups (3)" in html
+    assert "Repeated workload details (3)" in html
     assert "Workload digest" in html
     assert "Top regressions" in html
-    assert "Admission/runtime groups" in html
-    assert "Stats-gap groups" in html
-    assert "Spill-heavy groups" in html
-    assert "Failed/cancelled groups" in html
+    assert "Admission/runtime workloads" in html
+    assert "Stats-gap workloads" in html
+    assert "Spill-heavy workloads" in html
+    assert "Failed/cancelled workloads" in html
     assert "Low-value noise" in html
     assert "Digest shortcuts" in html
     assert 'href="#workload-action-queue">Action queue</a>' in html
@@ -3159,7 +3159,7 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     assert "Workload details: representative cases and local baseline block." not in html
     assert "Workload p95 versus baseline p95 under comparable scan scope." not in html
     assert "Representative Details: pool, admission wait, and runtime context facts." not in html
-    assert "Admission/runtime signal count and group p95 under comparable load." not in html
+    assert "Admission/runtime signal count and workload p95 under comparable load." not in html
     assert "Workload details and representative cases before planning one change." in html
     assert (
         "Rerun a comparable scan after the change and confirm p95 moves toward the baseline."
@@ -3189,7 +3189,7 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     assert (
         'workload_group_scope=owner&amp;workload_group_name=platform#workload-groups">1</a>' in html
     )
-    assert "top group impact 90s." in html
+    assert "top workload impact 90s." in html
     assert "admission/runtime 1" in html
     assert "admission/runtime 1; status issues 1" in html
     assert "regressions 1; stats 1; spill 1" in html
@@ -3203,14 +3203,14 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         "last applied action Stats refresh review: no change; "
         "family signal Stats refresh review: improved 1/2 comparable reruns, no change 1; "
         "feedback sample below threshold (2/5 comparable reruns); "
-        "next check stats signal count and group p95"
+        "next check stats signal count and workload p95"
     ) in html
     assert (
         "1 recorded; 0 applied; 0 comparable reruns; no verified rerun outcomes; "
         "last applied action none yet; "
         "family signal Admission/runtime check: no verified rerun records yet; "
         "feedback sample below threshold (0/5 comparable reruns); "
-        "next check admission/runtime signal count and group p95" in html
+        "next check admission/runtime signal count and workload p95" in html
     )
     assert "<th>Open</th>" in html
     assert "strong regression; current p95 20s; baseline p95 12.5s; history samples 3." in html
@@ -3281,14 +3281,14 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         workload_group_signal="status_issues",
         workload_outcome_metrics=workload_outcome_metrics,
     )
-    assert "Workload groups (1 of 3)" in focused_groups_html
-    assert "Group focus" in focused_groups_html
+    assert "Repeated workload details (1 of 3)" in focused_groups_html
+    assert "Workload focus" in focused_groups_html
     assert "Owner: platform; Failed/cancelled" in focused_groups_html
     assert "case-005, case-006" in focused_groups_html
     assert "case-001, case-002" not in focused_groups_html
     assert (
         'href="?query_group=bad&amp;workload_admin_signal=status_issues#workload-groups">'
-        "All workload groups</a>"
+        "All repeated workloads</a>"
     ) in focused_groups_html
     assert_no_forbidden_fragments(focused_groups_html)
 
@@ -3304,7 +3304,7 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     )
     assert "case_dir" not in invalid_filter_html
     assert "raw/profile.txt" not in invalid_filter_html
-    assert "Workload groups (3)" in invalid_filter_html
+    assert "Repeated workload details (3)" in invalid_filter_html
     assert_no_forbidden_fragments(invalid_filter_html)
 
 
@@ -3392,14 +3392,14 @@ def test_recent_scan_summary_derives_workload_groups_from_repeated_safe_rows():
     detail = present_workload_detail(summary, "wf_aaaaaaaaaaaaaaaaaaaaaaaa")
     assert detail is not None
     assert detail.frequent_short_summary == (
-        "Fits Frequent short: 2 runs and group p95 25s within the 60s threshold."
+        "Fits Frequent short: 2 runs and workload p95 25s within the 60s threshold."
     )
     assert "No local baseline is available for this fingerprint." in detail.limitations
     assert [case.case_id for case in detail.representatives] == ["case-001", "case-002"]
 
     html = render_batch_summary(summary, query_group="bad")
 
-    assert "Workload groups (1)" in html
+    assert "Repeated workload details (1)" in html
     assert "Stats review" in html
     assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa"' in html
     assert "wf_bbbbbbbb" not in html
@@ -3632,7 +3632,7 @@ def test_recent_scan_workload_detail_presents_representative_cases_safely():
     assert "Workload details" in html
     assert "3 similar queries" in html
     assert "Workload triage" in html
-    assert "Outside Frequent short: group p95 90s exceeds the 60s threshold." in html
+    assert "Outside Frequent short: workload p95 90s exceeds the 60s threshold." in html
     assert "observed total 130s; p95 impact about 270s" in html
     assert "Pool: root.analytics" in html
     assert "owner: alice (1/3)" in html
@@ -3650,7 +3650,7 @@ def test_recent_scan_workload_detail_presents_representative_cases_safely():
         "last applied action Query optimization review: worsened; "
         "family signal Query optimization review: improved 0/1 comparable reruns, worsened 1; "
         "feedback sample below threshold (1/5 comparable reruns); "
-        "next check query-shape signal count and group p95"
+        "next check query-shape signal count and workload p95"
     ) in html
     assert "Baseline slowdown" in html
     assert "Admission/runtime review" in html
@@ -3998,7 +3998,7 @@ def test_recent_scan_workload_detail_explains_frequent_short_drilldown_safely():
 
     html = render_workload_detail_view(view)
 
-    assert "Fits Frequent short: 2 runs and group p95 30s within the 60s threshold." in html
+    assert "Fits Frequent short: 2 runs and workload p95 30s within the 60s threshold." in html
     assert "observed total 55s; p95 impact about 60s" in html
     assert "Pool: root.small; owner: svc (2/2)" in html
     assert "Admission/runtime 2/2" in html
@@ -4202,7 +4202,7 @@ def test_recent_scan_summary_filters_query_groups():
     assert "suspicious:id" in workloads_html
     assert "good:id" not in workloads_html
     assert "Repeated workload: 2 similar queries" in workloads_html
-    assert "group p95 30s; baseline p95 10s; regression strong; n=5" in workloads_html
+    assert "workload p95 30s; baseline p95 10s; regression strong; n=5" in workloads_html
     assert "Frequent short workload: 2 similar queries" in frequent_short_html
     assert "current scan impact about 60s" in frequent_short_html
     assert "suspicious:id" in frequent_short_html
@@ -4250,8 +4250,8 @@ def test_recent_scan_summary_filters_query_groups():
     assert "Review: exchange payload" in optimization_html
     assert "Needs attention <span>1</span>" in stats_html
     assert "Worth reviewing <span>1</span>" in stats_html
-    assert "Show" in stats_html
-    assert "<summary>More groups</summary>" in stats_html
+    assert "View" in stats_html
+    assert "<summary>More filters</summary>" in stats_html
     assert '<details class="batch-filter-more" open>' in stats_html
     assert "Spill filter" in stats_html
     assert "Optimizer-ready" not in stats_html
@@ -4265,13 +4265,13 @@ def test_recent_scan_summary_filters_query_groups():
     assert stats_html.index('class="batch-table-wrap"') < stats_html.index(
         'class="batch-results-context"'
     )
-    assert '<details class="batch-results-context" aria-label="Result context">' in stats_html
-    assert "<summary>Result context</summary>" in stats_html
+    assert '<details class="batch-results-context" aria-label="Scan details">' in stats_html
+    assert "<summary>Scan details</summary>" in stats_html
     assert 'class="batch-context-block batch-context-scan-details"' in stats_html
-    assert '<div class="batch-context-title">Scan details</div>' in stats_html
+    assert '<div class="batch-context-title">Scan metrics</div>' in stats_html
     assert 'class="batch-context-block batch-context-notes"' in stats_html
-    assert '<details class="batch-notices" aria-label="Results notes" open>' not in stats_html
-    assert '<div class="batch-context-title">Results notes</div>' in stats_html
+    assert '<details class="batch-notices" aria-label="Scan notes" open>' not in stats_html
+    assert '<div class="batch-context-title">Scan notes</div>' in stats_html
     assert "<strong>Rewrite guidance</strong>" in stats_html
     assert (
         "Open Details for the supported next step, verification anchor, and rewrite scope."
@@ -5256,7 +5256,7 @@ def test_recent_scan_action_candidate_renderer_includes_outcome_controls(tmp_pat
     html = render_action_candidate_findings(view)
 
     assert "/batch/case/case-001/outcome/query_optimization_review.v1" in html
-    assert "<summary>Mark result</summary>" in html
+    assert "<summary>Record rerun outcome</summary>" in html
     assert "Outcome after comparable rerun" in html
     assert "Local history: improved in 3 of 5 comparable reruns (60%)" in html
     assert "detail:id" not in html
