@@ -89,6 +89,23 @@ def test_browser_display_redaction_preserves_first_party_static_chrome():
     assert "Coordinator: host_01" in redacted
 
 
+def test_browser_display_redaction_preserves_public_project_links_only():
+    text = (
+        "https://github.com/alexandrefimov/Query-Doctor "
+        "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md "
+        "https://pypi.org/project/query-doctor/ "
+        "https://cm.example.org:7183/api"
+    )
+
+    redacted = redact_browser_display_text(text, redact_infrastructure=True)
+
+    assert "https://github.com/alexandrefimov/Query-Doctor" in redacted
+    assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" in redacted
+    assert "https://pypi.org/project/query-doctor/" in redacted
+    assert "cm.example.org" not in redacted
+    assert "https://host_01:7183/api" in redacted
+
+
 def test_browser_display_redaction_preserves_public_svg_namespace_host():
     svg_namespace = "http%3A%2F%2F" + ".".join(("www", "w3", "org")) + "%2F2000%2Fsvg"
     redacted = redact_browser_display_text(

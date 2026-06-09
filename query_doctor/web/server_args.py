@@ -108,6 +108,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--public-demo",
+        action="store_true",
+        help=(
+            "Generate and run the read-only public synthetic demo. "
+            "No config, credentials, --batch-summary, or --no-llm flag is required."
+        ),
+    )
+    parser.add_argument(
         "--metadata-coordinator", help="Impala coordinator HOST:PORT for web metadata collection."
     )
     parser.add_argument(

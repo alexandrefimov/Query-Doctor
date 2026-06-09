@@ -78,6 +78,11 @@ SAFE_FAVICON_LINK_RE = re.compile(
     r'<link rel="icon" type="image/svg\+xml" '
     r'href="data:image/svg\+xml;base64,[A-Za-z0-9+/=]{1,2048}">'
 )
+SAFE_PUBLIC_PROJECT_URL_RE = re.compile(
+    r"https://github\.com/alexandrefimov/Query-Doctor"
+    r"(?:/(?:blob/main/)?[A-Za-z0-9_./#%-]+)?"
+    r"|https://pypi\.org/project/query-doctor/"
+)
 
 
 def redact_browser_display_text(
@@ -154,6 +159,7 @@ def protect_first_party_browser_chrome(text: str) -> tuple[str, dict[str, str]]:
         return token
 
     text = SAFE_FAVICON_LINK_RE.sub(lambda match: protect(match.group(0)), text)
+    text = SAFE_PUBLIC_PROJECT_URL_RE.sub(lambda match: protect(match.group(0)), text)
     for token in SVG_NAMESPACE_TOKENS:
         text = text.replace(token, protect(token))
     text = STATIC_ASSET_PATH_RE.sub(lambda match: protect(match.group(0)), text)

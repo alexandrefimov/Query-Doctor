@@ -471,6 +471,8 @@ def route_post_request(
     runner: Runner = subprocess.run,
 ) -> WebRouteResponse | None:
     parsed = urlparse(path)
+    if settings.public_demo:
+        return public_demo_post_blocked_response(settings)
     cancel_match = JOB_CANCEL_POST_RE.fullmatch(parsed.path)
     if cancel_match:
         job_id = cancel_match.group("job_id")
@@ -509,6 +511,17 @@ def route_post_request(
     else:
         return None
     return WebRouteResponse.redirect(body) if status == 303 else WebRouteResponse.html(status, body)
+
+
+def public_demo_post_blocked_response(settings: WebSettings) -> WebRouteResponse:
+    error = WebError(
+        "Public demo is read-only. Collection, report generation, optimizer actions, "
+        "uploads, cancellations, and feedback writes are disabled for the hosted synthetic demo."
+    )
+    return WebRouteResponse.html(
+        403,
+        render_page(settings, active_nav="batch", show_run_panel=False, error=error),
+    )
 
 
 def route_action_outcome_post(
