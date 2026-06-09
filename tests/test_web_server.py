@@ -116,6 +116,7 @@ def test_web_parse_args_defaults_to_localhost():
     assert args.allow_nonlocal_web_bind is False
     assert args.optimizer_model is None
     assert args.batch_summary is None
+    assert args.public_demo is False
     assert args.metadata_coordinator is None
     assert args.metadata_protocol is None
 
@@ -131,7 +132,12 @@ SERVER_REEXPORTS = [
     ),
     (
         "query_doctor.web.config",
-        ("build_web_settings", "validate_bind_host", "metadata_configured"),
+        (
+            "build_web_settings",
+            "validate_bind_host",
+            "validate_public_demo_settings",
+            "metadata_configured",
+        ),
     ),
     ("query_doctor.web.server_args", ("parse_args",)),
     (
@@ -848,6 +854,16 @@ def test_web_parse_args_accepts_legacy_demo_nonlocal_bind_alias():
     assert args.allow_nonlocal_web_bind is True
 
 
+def test_web_parse_args_accepts_public_demo():
+    module = load_web_module()
+
+    args = module.parse_args(["--public-demo"])
+
+    assert args.batch_summary is None
+    assert args.public_demo is True
+    assert args.no_llm is False
+
+
 def write_web_startup_config(tmp_path, **overrides):
     config = {
         "cm_url": "https://cm.example.com:7183/",
@@ -952,6 +968,101 @@ def test_web_startup_validation_can_skip_cm_for_read_only_batch_summary(tmp_path
     path = tmp_path / "missing-cm-config.json"
 
     assert module.validate_web_startup_config(path, cwd=tmp_path, env={}, require_cm=False) == []
+
+
+def test_public_demo_validation_requires_batch_summary_and_no_llm(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "missing-cm-config.json"
+    summary = tmp_path / "batch_summary.json"
+
+    with pytest.raises(module.WebError) as exc:
+        module.validate_public_demo_settings(
+            module.WebSettings(config=config, public_demo=True, no_llm=True)
+        )
+    assert "--batch-summary" in str(exc.value)
+
+    with pytest.raises(module.WebError) as exc:
+        module.validate_public_demo_settings(
+            module.WebSettings(config=config, batch_summary=summary, public_demo=True)
+        )
+    assert "--no-llm" in str(exc.value)
+
+    module.validate_public_demo_settings(
+        module.WebSettings(config=config, batch_summary=summary, public_demo=True, no_llm=True)
+    )
+
+
+def test_public_demo_validation_rejects_external_source_settings(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "missing-cm-config.json"
+    summary = tmp_path / "batch_summary.json"
+
+    with pytest.raises(module.WebError) as exc:
+        module.validate_public_demo_settings(
+            module.WebSettings(
+                config=config,
+                batch_summary=summary,
+                public_demo=True,
+                no_llm=True,
+                metadata_coordinator="impala.example.com:21000",
+            )
+        )
+
+    assert "must not load" in str(exc.value)
+
+
+def test_public_demo_settings_ignore_default_local_config_discovery(tmp_path):
+    module = load_web_module()
+    default_config = tmp_path / module.cm_collector.DEFAULT_LOCAL_CONFIG_NAME
+    default_config.write_text(
+        json.dumps(
+            {
+                "cm_url": "https://cm.example.com:7183/",
+                "username": "example_cm_user",
+                "cluster": "example_cluster",
+                "service": "impala",
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = module.parse_args(["--public-demo"])
+
+    settings = module.build_web_settings(args, cwd=tmp_path)
+
+    assert settings.public_demo is True
+    assert settings.no_llm is True
+    assert settings.batch_summary == module.default_public_demo_summary_path()
+    assert settings.cm_url is None
+    assert settings.clusters == ()
+    module.validate_public_demo_settings(settings)
+
+
+def test_public_demo_settings_ignore_owner_source_env(tmp_path, monkeypatch):
+    module = load_web_module()
+    monkeypatch.setenv("QD_SOURCE_OWNER_USER", "private_user")
+
+    settings = module.build_web_settings(module.parse_args(["--public-demo"]), cwd=tmp_path)
+
+    assert settings.source_owner_user is None
+    assert settings.source_owner_user_options == ()
+
+
+def test_public_demo_runtime_generates_pack_and_action_outcome_env(tmp_path):
+    module = load_web_module()
+    settings = module.build_web_settings(module.parse_args(["--public-demo"]), cwd=tmp_path)
+    env: dict[str, str] = {}
+    out_dir = tmp_path / "query-doctor-public-demo-pack"
+
+    runtime = module.prepare_public_demo_runtime(settings, out_dir=out_dir, env=env)
+
+    assert runtime is not None
+    assert runtime.generated is True
+    assert runtime.settings.no_llm is True
+    assert runtime.settings.batch_summary == out_dir / "batch_summary.json"
+    assert runtime.summary_path.is_file()
+    assert runtime.action_outcomes_path.is_file()
+    assert env["QUERY_DOCTOR_ACTION_OUTCOMES_PATH"] == str(runtime.action_outcomes_path)
+    module.validate_public_demo_settings(runtime.settings)
 
 
 def test_web_startup_validation_accepts_direct_impala_profile_source_without_cm(tmp_path):

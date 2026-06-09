@@ -195,6 +195,47 @@ def test_post_route_allowed_predicate_matches_static_and_action_routes():
     assert not post_route_is_allowed("/batch/case/case-001")
 
 
+def test_route_post_public_demo_blocks_all_allowed_actions(tmp_path, monkeypatch):
+    outcome_path = tmp_path / "action_outcomes.jsonl"
+    monkeypatch.setenv("QUERY_DOCTOR_ACTION_OUTCOMES_PATH", str(outcome_path))
+    settings = WebSettings(
+        config=Path(".query-doctor-cm.local.json"),
+        batch_summary=tmp_path / "batch_summary.json",
+        public_demo=True,
+        no_llm=True,
+    )
+
+    def forbidden_runner(*args, **kwargs):
+        raise AssertionError("public demo must not run subprocesses")
+
+    for path in (
+        "/batch/run",
+        "/running/run",
+        "/optimizer",
+        "/query-optimizer",
+        "/analyze",
+        "/batch/case/case-001/report",
+        "/batch/case/case-001/optimized-query",
+        "/batch/case/case-001/outcome/stats_refresh_review.v1",
+        "/running/case/case-001/case-actions",
+        "/query/details/abc%3Adef/llm-actions",
+    ):
+        response = route_post_request(
+            path,
+            {"query_id": ["abc:def"]},
+            settings,
+            WebJobStore(),
+            runner=forbidden_runner,
+        )
+
+        assert response is not None
+        assert response.status == 403
+        assert "Public demo is read-only" in response.body
+        assert "subprocess" not in response.body
+
+    assert not outcome_path.exists()
+
+
 def test_route_post_batch_case_action_outcome_records_local_jsonl(tmp_path, monkeypatch):
     summary_path = tmp_path / "batch_summary.json"
     summary_path.write_text(

@@ -115,7 +115,13 @@ from query_doctor.web.config import (
     positive_int,
     resolve_web_config_path,
     validate_bind_host,
+    validate_public_demo_settings,
     validate_web_startup_config,
+)
+from query_doctor.web.public_demo import (
+    PublicDemoRuntime,
+    default_public_demo_summary_path,
+    prepare_public_demo_runtime,
 )
 from query_doctor.web.case_files import (
     COLLECTED_CASE_FILES,
@@ -439,7 +445,16 @@ _FACADE_EXPORT_GROUPS = (
             "positive_int",
             "resolve_web_config_path",
             "validate_bind_host",
+            "validate_public_demo_settings",
             "validate_web_startup_config",
+        ),
+    ),
+    (
+        "public_demo",
+        (
+            "PublicDemoRuntime",
+            "default_public_demo_summary_path",
+            "prepare_public_demo_runtime",
         ),
     ),
     (

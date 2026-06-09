@@ -1,6 +1,6 @@
 # Synthetic Demo Mode
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-06
 
 Language: English | [Russian](i18n/ru/demo-mode.md)
 
@@ -59,6 +59,28 @@ safe for demos because it does not contain real profiles, real metadata, real
 query text, local corpus paths from another environment, model names, or raw
 runtime output. It is still demo data only and must not be used as performance
 evidence.
+
+## Read-Only Public Demo
+
+For the public-style read-only demo, run one command:
+
+```bash
+query-doctor-web --public-demo
+```
+
+`--public-demo` generates a fresh synthetic pack under the system temp
+directory, points the web UI at its `batch_summary.json` and synthetic
+`action_outcomes.jsonl`, forces Python-only mode, ignores default local config
+discovery and owner-source environment hints, rejects explicitly loaded CM,
+direct Impala, Prometheus, metadata, or owner-source settings, and blocks every
+POST route with a safe read-only response. The published GET UI remains the
+same synthetic demo, but external users cannot start collection, generate
+reports, run optimizer actions, submit uploads, cancel jobs, or write
+action-outcome feedback.
+
+The default bind remains `127.0.0.1:8765`. Do not use ordinary local mode with
+real local config, Kerberos material, cluster credentials, or generated cases
+from real environments for public demos.
 
 ## README Screenshot Refresh
 

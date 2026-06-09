@@ -238,6 +238,12 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
   query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
+For a read-only click-through demo that matches the public synthetic UI, use
+the one-command mode documented in [docs/demo-mode.md](docs/demo-mode.md):
+`query-doctor-web --public-demo`. It generates the synthetic demo pack in a
+dedicated temp directory, forces Python-only mode, ignores default local config,
+and blocks all POST actions.
+
 Open the localhost URL printed by `query-doctor-web`. Start with
 `/?query_group=workloads#workload-action-queue` to show the workload action
 queue and local synthetic action outcomes before opening workload Details.
@@ -298,9 +304,10 @@ launchers have been removed; use `query-doctor-*` commands or
 Query Doctor is supported as a single-user, local-first tool run by an operator
 with their own local Cloudera Manager, Kerberos, Impala, Prometheus, and LLM
 credentials. Use localhost or a tightly controlled local bind for the web UI.
-Do not deploy the current web UI as a shared service without a separate design
+Do not deploy ordinary local mode as a shared service without a separate design
 for authentication, authorization, tenant/job isolation, audit logging,
-TLS/reverse-proxy trust, and resource limits.
+TLS/reverse-proxy trust, and resource limits. Shared public demos should use
+the read-only `query-doctor-web --public-demo` mode.
 
 ## Safety Model
 

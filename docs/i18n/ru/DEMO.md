@@ -1,6 +1,6 @@
 # Локальный UI demo Query Doctor
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-06
 
 Язык: [English](../../DEMO.md) | Русский
 
@@ -40,6 +40,17 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
 
 Synthetic pack не вызывает Cloudera Manager, Impala, Prometheus, local
 generation backend или network и не является performance evidence.
+
+## Read-only public demo
+
+Для public-style read-only demo запускайте одну команду:
+
+```bash
+query-doctor-web --public-demo
+```
+
+Не передавайте real local config, Kerberos material, cluster credentials или
+cases из real environments в public demo.
 
 ## Запуск
 
@@ -123,7 +134,8 @@ surface для одного safe `SELECT` / `WITH ... SELECT`; pasted SQL не �
 
 - Сервер по умолчанию слушает только `127.0.0.1`.
 - Non-local bind требует explicit `--allow-nonlocal-web-bind`.
-- Не публикуйте этот сервер наружу.
+- Не публикуйте ordinary local mode наружу. Для public synthetic demo
+  используйте `query-doctor-web --public-demo`.
 - Web forms не принимают CM URLs, credentials или local config contents.
 - Credentials остаются только в environment процесса web server.
 - Known Query ID collection explicit и redacted. Direct Impala Known Query ID

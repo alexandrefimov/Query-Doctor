@@ -1,6 +1,6 @@
 # Demo Mode
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-06
 
 Язык: [English](../../demo-mode.md) | Русский
 
@@ -36,6 +36,22 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
 остается на workload Details: why, where, supported change direction, rerun
 verification и local outcome history. Representative cases ведут к case Action
 card, где безопасно записывать rerun feedback для выбранного case.
+
+## Read-only public demo
+
+Для public-style read-only demo запускайте одну команду:
+
+```bash
+query-doctor-web --public-demo
+```
+
+`--public-demo` сам генерирует fresh synthetic pack в system temp directory,
+подключает `batch_summary.json` и synthetic `action_outcomes.jsonl`, включает
+Python-only mode, игнорирует default local config discovery и owner-source env,
+отклоняет explicitly loaded CM/Impala/Prometheus/metadata/source-owner settings
+и блокирует все POST routes. Снаружи остается click-through GET UI по synthetic
+pack, без collection, report generation, optimizer actions, uploads, job
+cancellation и feedback writes.
 
 ## Safety
 

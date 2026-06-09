@@ -12,9 +12,11 @@ from query_doctor.web.config import (
     LOCAL_BIND_HOSTS,
     build_web_settings,
     validate_bind_host,
+    validate_public_demo_settings,
     validate_web_startup_config,
 )
 from query_doctor.web.models import WebError
+from query_doctor.web.public_demo import prepare_public_demo_runtime
 from query_doctor.web.server_args import parse_args
 
 
@@ -22,7 +24,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         settings = build_web_settings(args, cwd=Path.cwd())
+        public_demo_runtime = prepare_public_demo_runtime(settings)
+        if public_demo_runtime is not None:
+            settings = public_demo_runtime.settings
         validate_bind_host(settings.host, allow_nonlocal_web_bind=settings.allow_nonlocal_web_bind)
+        validate_public_demo_settings(settings)
         startup_warnings = validate_web_startup_config(
             settings.config,
             cwd=Path.cwd(),
@@ -48,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "[Query Doctor web] credentials and CM config are read only by local subprocesses; they are not shown in the UI."
     )
+    if settings.public_demo:
+        print("[Query Doctor web] public demo mode: POST actions are disabled.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

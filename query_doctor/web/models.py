@@ -128,6 +128,7 @@ class WebSettings:
     repo_dir: Path = _REPO_ROOT
     corpus_dir: Path = DEFAULT_CORPUS_DIR
     batch_summary: Path | None = None
+    public_demo: bool = False
     query_profile_source: str = DEFAULT_QUERY_PROFILE_SOURCE
     impala_profile_hosts: tuple[str, ...] = ()
     impala_profile_port: int = DEFAULT_IMPALA_PROFILE_PORT

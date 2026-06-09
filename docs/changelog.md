@@ -21,10 +21,16 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
+- `query-doctor-web --public-demo` now supports a one-command read-only public
+  synthetic demo mode. It generates the synthetic pack itself, forces
+  Python-only mode, ignores default local config discovery and owner-source
+  environment hints, rejects explicitly loaded external source settings, and
+  blocks every POST route so public browsers cannot start scans, reports,
+  optimizer actions, uploads, cancellations, or feedback writes.
 - The local web UI now includes a restrained project footer linking to GitHub,
   PyPI, documentation, and the public security model without exposing local
   state.
-- The public security model now states hosted/public demo constraints:
+- The public security model now states public demo constraints:
   synthetic data only, read-only demo surfaces, no arbitrary uploads, no
   collector actions, no SQL execution, no raw artifact rendering, and
   compatibility feedback limited to redacted aggregate behavior.

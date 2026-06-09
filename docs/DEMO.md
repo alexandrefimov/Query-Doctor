@@ -1,6 +1,6 @@
 # Query Doctor Local UI Demo
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-06-06
 
 Language: English | [Russian](i18n/ru/DEMO.md)
 
@@ -40,6 +40,22 @@ outside the repository. Useful demo filters:
 The synthetic pack does not call Cloudera Manager, Impala, Prometheus, a local
 generation backend, or the network. It contains only generated demo data and is
 not performance evidence.
+
+## Read-Only Public Demo
+
+For the public-style read-only demo, run one command:
+
+```bash
+query-doctor-web --public-demo
+```
+
+`--public-demo` generates a fresh synthetic pack under the system temp
+directory, points the web UI at that pack, forces Python-only mode, ignores
+default local config and owner-source environment hints, rejects explicitly
+loaded external source settings, and blocks all POST routes. The page remains
+useful for click-through inspection of the generated synthetic workflow, while
+collection, report generation, optimizer actions, uploads, job cancellation,
+and feedback writes are disabled.
 
 ## Real Local Startup
 
@@ -127,7 +143,8 @@ you intentionally need to explain pre-profile SQL review.
 - Non-local bind is rejected unless `--allow-nonlocal-web-bind` is explicitly
   passed. Legacy alias `--allow-nonlocal-demo-bind` is still accepted for older
   scripts.
-- Do not publish this server externally.
+- Do not publish ordinary local mode externally. Use
+  `query-doctor-web --public-demo` for public synthetic demos.
 - Web forms do not accept CM URLs, credentials or local config contents.
 - Credentials stay only in the web server process environment.
 - Recent queries scans perform bounded selected-profile collection; standalone

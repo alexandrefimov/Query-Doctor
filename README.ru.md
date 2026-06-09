@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-03
+Last reviewed: 2026-06-06
 
 Язык: [English](README.md) | Русский
 
@@ -238,6 +238,12 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
   query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
+Для read-only click-through demo, которое совпадает с public synthetic UI,
+используйте one-command mode из [docs/demo-mode.md](docs/demo-mode.md):
+`query-doctor-web --public-demo`. Он сам генерирует synthetic demo pack в
+dedicated temp directory, включает Python-only mode, игнорирует default local
+config и блокирует все POST actions.
+
 Откройте localhost URL, который напечатает `query-doctor-web`. Начните с
 `/?query_group=workloads#workload-action-queue`, чтобы показать Workloads /
 Action Queue и local synthetic action outcomes перед открытием workload
@@ -294,9 +300,10 @@ launchers удалены; используйте `query-doctor-*` commands ил�
 Query Doctor поддержан как single-user, local-first tool, запускаемый
 оператором со своими local Cloudera Manager, Kerberos, Impala, Prometheus и LLM
 credentials. Для web UI используйте localhost или tightly controlled local
-bind. Не разворачивайте текущий web UI как shared service без отдельного
+bind. Не разворачивайте ordinary local mode как shared service без отдельного
 дизайна authentication, authorization, tenant/job isolation, audit logging,
-TLS/reverse-proxy trust и resource limits.
+TLS/reverse-proxy trust и resource limits. Shared public demos должны
+использовать read-only режим `query-doctor-web --public-demo`.
 
 ## Safety model
 

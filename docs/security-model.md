@@ -21,7 +21,7 @@ outcome.
 ## Local-First Operation
 
 Query Doctor is designed to run on the operator's machine or controlled
-environment. It does not require a hosted backend for current workflows.
+environment. It does not require a remote backend for current workflows.
 
 External collection paths must be:
 
@@ -54,10 +54,12 @@ inspect the workflow and decision shape without granting access to real
 clusters, real query text, real profiles, real metadata, local paths, or
 credentials.
 
-A hosted or static public demo must stay read-only:
+A public demo must stay read-only:
 
 - no collector actions against external clusters;
 - no SQL execution;
+- no report generation, optimizer action, job cancellation, upload, or feedback
+  write from a public browser session;
 - no arbitrary artifact upload or raw artifact rendering;
 - no raw SQL, raw profile, raw metadata, provider JSON, local path, or runtime
   internals in browser output;
@@ -65,6 +67,12 @@ A hosted or static public demo must stay read-only:
   secrets;
 - no implication that synthetic cases prove compatibility with a real CDP,
   Cloudera Manager, or Impala version.
+
+The public synthetic demo path is `query-doctor-web --public-demo`. That mode
+generates the synthetic demo pack itself, forces Python-only mode, ignores
+default local config discovery and owner-source environment hints, rejects
+explicitly loaded external source settings, and blocks every POST route at
+runtime.
 
 Compatibility feedback should be requested as redacted aggregate behavior, such
 as product versions, endpoint availability, safe status categories, and
