@@ -389,7 +389,8 @@ def test_e2e_help_page_shortcuts_and_topics_are_interactive(tmp_path, page):
         page.goto(f"{base_url}/help")
 
         assert page.locator(".help-card-grid .help-card").count() == 5
-        assert page.get_by_role("link", name="Trino compact").is_visible()
+        assert page.get_by_role("link", name="Workloads").is_visible()
+        assert page.get_by_role("link", name="Trino compact").count() == 0
         assert page.locator("#workflows[open]").count() == 1
         assert page.locator("#safety .help-topic-body").is_visible() is False
 
@@ -452,7 +453,10 @@ def test_e2e_batch_detail_renders_owner_coordinate_action_card(tmp_path, page):
 
         action_plan = page.locator("#action-plan")
         assert action_plan.get_by_role("heading", name="Recommended change").is_visible()
-        assert action_plan.get_by_text("Where to inspect").is_visible()
+        assert action_plan.locator(
+            ".action-candidate-section--locations > span",
+            has_text="Where to inspect",
+        ).is_visible()
         safe_review_locations = action_plan.locator('[aria-label="Safe review locations"]')
         assert safe_review_locations.get_by_text(
             "SQL: final SELECT filter (line 18): predicate near final SELECT", exact=True
