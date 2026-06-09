@@ -29,9 +29,11 @@ knowing the internal analyzer pipeline.
 3. Minimal config: keep a copy-pasteable Cloudera Manager starter config
    separate from advanced direct-Impala, Prometheus, metadata, and LLM settings.
 4. UI/UX polish: prioritize Recent results and Details. Browser labels should
-   use analyst workflow language such as `Scan details`, `Scan notes`,
-   `More filters`, repeated workload details, and `Record rerun outcome`
-   instead of internal analyzer concepts.
+   use analyst workflow language such as `Scan context`, `Scan notes`,
+   `Scan warnings`, repeated workload details, `Workload p95`, `Open Details`,
+   and `Record rerun outcome` instead of internal analyzer concepts. Results
+   should keep available views in one visible toolbar, and Details should lead
+   with what to change and how to verify before collapsed evidence.
 5. Documentation hygiene: keep README, demo, config, safety, roadmap, and
    support boundaries easy to find. Move deep contracts and historical material
    behind the documentation index, and avoid sending new users through the full
@@ -63,9 +65,12 @@ knowing the internal analyzer pipeline.
 - Repeated workload, regressed workload, and action queue labels are preferred
   over generic group language. Stable HTML anchors such as `workload-groups`
   can remain as compatibility details.
-- `Scan details` is the collapsed analyst-facing container after result rows.
-  Critical warnings stay visible above the table as `Scan warnings`, and
-  secondary notes/metrics stay inside the collapsed details area.
+- Recommendation cards should lead with `What to change` and `How to verify`;
+  supporting rationale remains available as collapsed deterministic evidence.
+- `Scan context` is the visible analyst-facing context block after result rows.
+  Critical warnings stay visible above the table as `Scan warnings`; secondary
+  notes, coverage, and workload context live below the table without competing
+  with the result rows.
 
 ## Non-Goals For This Cleanup
 

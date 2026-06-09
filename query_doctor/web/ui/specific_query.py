@@ -123,8 +123,8 @@ def render_specific_query_detail_view(
     title = ui_text(language, "Known Query ID details", "Детали Known Query ID")
     intro = ui_text(
         language,
-        "Start with the verdict and recommended changes, then expand evidence only when needed.",
-        "Начните с вердикта и рекомендуемых изменений; раскрывайте доказательства только когда они нужны.",
+        "Use the verdict to decide priority, then read the recommended change and verification path before opening diagnostics.",
+        "Используйте вердикт для приоритета, затем смотрите рекомендуемое изменение и способ проверки до раскрытия диагностики.",
     )
     return (
         '<section class="panel batch-panel case-detail-panel" aria-label="Known Query ID details">'

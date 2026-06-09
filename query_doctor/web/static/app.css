@@ -1076,36 +1076,6 @@ html[data-theme=dark] select.input {
   gap:10px
 }
 
-.batch-scan-options {
-  margin-top:2px;
-  border:1px solid var(--border);
-  border-radius:var(--radius-sm);
-  background:var(--panel-muted);
-  overflow:hidden
-}
-
-.batch-scan-options>summary {
-  cursor:pointer;
-  padding:8px 10px;
-  color:var(--strong);
-  font-size:14px;
-  font-weight:600;
-  list-style:none
-}
-
-.batch-scan-options>summary::-webkit-details-marker {
-  display:none
-}
-
-.batch-scan-options[open]>summary {
-  border-bottom:1px solid var(--border)
-}
-
-.batch-scan-options-body {
-  padding:10px;
-  background:var(--control)
-}
-
 .batch-form[data-active-scan-target=running] .batch-run-controls {
   grid-template-columns:minmax(120px,148px)
 }
@@ -1517,36 +1487,6 @@ html[data-theme=dark] select.input {
   justify-content:flex-start
 }
 
-.batch-metrics {
-  display:grid;
-  grid-template-columns:repeat(3,minmax(120px,1fr));
-  gap:8px;
-  margin-bottom:12px
-}
-
-.batch-metric {
-  display:grid;
-  gap:4px;
-  padding:8px 10px;
-  border:1px solid var(--border);
-  border-radius:4px;
-  background:var(--panel-muted);
-  min-width:0
-}
-
-.batch-metric span {
-  color:var(--muted);
-  font-size:12px;
-  font-weight:700;
-  text-transform:uppercase
-}
-
-.batch-metric strong {
-  font-family:var(--mono);
-  font-size:13px;
-  overflow-wrap:anywhere
-}
-
 .batch-note {
   margin-bottom:12px;
   padding:9px 10px;
@@ -1628,22 +1568,25 @@ html[data-theme=dark] select.input {
   overflow:hidden
 }
 
-.batch-results-context>summary {
-  cursor:pointer;
-  padding:8px 10px;
+.batch-results-context-head {
+  display:grid;
+  gap:3px;
+  padding:9px 10px;
   background:var(--panel-muted);
+  border-bottom:1px solid var(--border)
+}
+
+.batch-results-context-head h2 {
+  margin:0;
   color:var(--strong);
   font-size:14px;
-  font-weight:600;
-  list-style:none
+  font-weight:700
 }
 
-.batch-results-context>summary::-webkit-details-marker {
-  display:none
-}
-
-.batch-results-context[open]>summary {
-  border-bottom:1px solid var(--border)
+.batch-results-context-head p {
+  margin:0;
+  color:var(--muted);
+  font-size:13px
 }
 
 .batch-results-context-body {
@@ -1770,49 +1713,21 @@ html[data-theme=dark] select.input {
   min-width:0
 }
 
-.batch-filter-more {
-  display:block;
-  min-width:0
-}
-
-.batch-filter-more>summary {
-  display:inline-flex;
-  align-items:center;
-  min-height:34px;
-  padding:0 11px;
-  border:1px solid var(--border);
-  border-radius:var(--radius-sm);
-  background:var(--panel-muted);
-  color:var(--muted);
-  cursor:pointer;
-  font-size:13px;
-  font-weight:600;
-  list-style:none
-}
-
-.batch-filter-more>summary::-webkit-details-marker {
-  display:none
-}
-
-.batch-filter-more[open]>summary {
-  color:var(--strong)
-}
-
-.batch-result-filters--query-toolbar .batch-filter-more[open] {
-  display:inline-flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:6px
-}
-
-.batch-filter-tabs--secondary {
-  padding-left:0
-}
-
 .batch-result-filter-label {
   flex:0 0 auto;
   font-size:11px;
   line-height:32px
+}
+
+.batch-result-summary {
+  display:inline-flex;
+  align-items:center;
+  min-height:36px;
+  padding:0 8px;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:600;
+  white-space:nowrap
 }
 
 .batch-table-legend {
@@ -2373,17 +2288,24 @@ html[data-theme=dark] select.input {
   color:var(--text)
 }
 
+.action-candidate-section--change,.action-candidate-section--verify {
+  padding:10px 11px;
+  border:1px solid var(--border);
+  border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg);
+  background:var(--surface)
+}
+
+.action-candidate-section--verify {
+  border-left-color:var(--amber)
+}
+
 .action-plan-panel .action-candidate-section p,.action-plan-panel .action-plan-intro,.action-plan-panel .action-candidate-card .helper {
   margin:0
 }
 
-.action-candidate-section--why,.action-candidate-section--locations,.action-candidate-reason {
+.action-candidate-section--locations,.action-candidate-reason {
   grid-column:1/-1
-}
-
-.action-candidate-section--why {
-  padding-bottom:12px;
-  border-bottom:1px solid var(--border)
 }
 
 .action-candidate-section--locations {
@@ -2397,14 +2319,14 @@ html[data-theme=dark] select.input {
 
 .action-candidate-reason {
   margin-top:0;
-  padding-top:12px;
-  border-top:1px solid var(--border);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
   color:var(--muted);
   font-size:13px
 }
 
 .action-candidate-reason .helper {
-  margin-top:0
+  margin:8px 10px 10px
 }
 
 .action-candidate-meta {
@@ -3377,11 +3299,11 @@ html[data-theme=dark] select.input {
   list-style:none
 }
 
-.help-topic>summary::-webkit-details-marker,.help-topic-body>details>summary::-webkit-details-marker {
+.help-topic>summary::-webkit-details-marker {
   display:none
 }
 
-.help-topic>summary::after,.help-topic-body>details>summary::after {
+.help-topic>summary::after {
   content:"";
   width:8px;
   height:8px;
@@ -3393,7 +3315,7 @@ html[data-theme=dark] select.input {
   filter:brightness(0.82)
 }
 
-.help-topic[open]>summary::after,.help-topic-body>details[open]>summary::after {
+.help-topic[open]>summary::after {
   transform:rotate(225deg);
   filter:brightness(1)
 }
@@ -3420,41 +3342,6 @@ html[data-theme=dark] select.input {
 .help-topic-body p {
   margin:0;
   line-height:1.55
-}
-
-.help-topic-body>details {
-  margin:0;
-  border:1px solid var(--border);
-  border-radius:var(--radius-sm);
-  background:var(--panel);
-  overflow:hidden
-}
-
-.help-topic-body>details>summary {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding:10px 12px;
-  color:var(--strong);
-  font-weight:700;
-  cursor:pointer;
-  list-style:none
-}
-
-.help-topic-body>details[open]>summary {
-  border-bottom:1px solid var(--border);
-  background:var(--panel-muted)
-}
-
-.help-topic-body>details>*:not(summary) {
-  margin-left:12px;
-  margin-right:12px
-}
-
-.help-topic-body>details>p,.help-topic-body>details>ul,.help-topic-body>details>ol {
-  margin-top:10px;
-  margin-bottom:10px
 }
 
 .help-link-list {
@@ -3625,7 +3512,7 @@ html[data-theme=dark] select.input {
   text-transform:uppercase
 }
 
-.batch-notices>summary,.batch-results-context>summary,.batch-scan-details>summary,.batch-advanced>summary,.compact-details summary,.action-outcome-control summary {
+.batch-notices>summary,.batch-scan-details>summary,.batch-advanced>summary,.compact-details summary,.action-outcome-control summary {
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -3637,7 +3524,7 @@ html[data-theme=dark] select.input {
   display:none
 }
 
-.batch-results-disclosure>.batch-head::after,.batch-notices>summary::after,.batch-results-context>summary::after,.batch-scan-details>summary::after,.batch-advanced>summary::after,.docs-panel>summary::after,.analysis-subdetails>summary::after,.report-card>summary::after,.report-body>details>summary::after,.help-topic>summary::after,.help-topic-body>details>summary::after,.llm-actions-status-details>summary::after {
+.batch-results-disclosure>.batch-head::after,.batch-notices>summary::after,.batch-scan-details>summary::after,.batch-advanced>summary::after,.docs-panel>summary::after,.analysis-subdetails>summary::after,.report-card>summary::after,.report-body>details>summary::after,.help-topic>summary::after,.llm-actions-status-details>summary::after {
   content:"";
   display:inline-block;
   width:30px;
@@ -3654,7 +3541,7 @@ html[data-theme=dark] select.input {
   transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease
 }
 
-.batch-results-disclosure[open]>.batch-head::after,.batch-notices[open]>summary::after,.batch-results-context[open]>summary::after,.batch-scan-details[open]>summary::after,.batch-advanced[open]>summary::after,.docs-panel[open]>summary::after,.analysis-subdetails[open]>summary::after,.report-card[open]>summary::after,.report-body>details[open]>summary::after,.help-topic[open]>summary::after,.help-topic-body>details[open]>summary::after,.llm-actions-status-details[open]>summary::after {
+.batch-results-disclosure[open]>.batch-head::after,.batch-notices[open]>summary::after,.batch-scan-details[open]>summary::after,.batch-advanced[open]>summary::after,.docs-panel[open]>summary::after,.analysis-subdetails[open]>summary::after,.report-card[open]>summary::after,.report-body>details[open]>summary::after,.help-topic[open]>summary::after,.llm-actions-status-details[open]>summary::after {
   border-color:var(--border-strong);
   background-color:var(--panel-muted);
   background-image:var(--disclosure-chevron-up);
@@ -3662,13 +3549,13 @@ html[data-theme=dark] select.input {
   transform:none
 }
 
-.batch-results-disclosure>.batch-head:hover::after,.batch-results-disclosure>.batch-head:focus-visible::after,.batch-notices>summary:hover::after,.batch-notices>summary:focus-visible::after,.batch-results-context>summary:hover::after,.batch-results-context>summary:focus-visible::after,.batch-scan-details>summary:hover::after,.batch-scan-details>summary:focus-visible::after,.batch-advanced>summary:hover::after,.batch-advanced>summary:focus-visible::after,.docs-panel>summary:hover::after,.docs-panel>summary:focus-visible::after,.analysis-subdetails>summary:hover::after,.analysis-subdetails>summary:focus-visible::after,.report-card>summary:hover::after,.report-card>summary:focus-visible::after,.report-body>details>summary:hover::after,.report-body>details>summary:focus-visible::after,.help-topic>summary:hover::after,.help-topic>summary:focus-visible::after,.help-topic-body>details>summary:hover::after,.help-topic-body>details>summary:focus-visible::after,.llm-actions-status-details>summary:hover::after,.llm-actions-status-details>summary:focus-visible::after {
+.batch-results-disclosure>.batch-head:hover::after,.batch-results-disclosure>.batch-head:focus-visible::after,.batch-notices>summary:hover::after,.batch-notices>summary:focus-visible::after,.batch-scan-details>summary:hover::after,.batch-scan-details>summary:focus-visible::after,.batch-advanced>summary:hover::after,.batch-advanced>summary:focus-visible::after,.docs-panel>summary:hover::after,.docs-panel>summary:focus-visible::after,.analysis-subdetails>summary:hover::after,.analysis-subdetails>summary:focus-visible::after,.report-card>summary:hover::after,.report-card>summary:focus-visible::after,.report-body>details>summary:hover::after,.report-body>details>summary:focus-visible::after,.help-topic>summary:hover::after,.help-topic>summary:focus-visible::after,.llm-actions-status-details>summary:hover::after,.llm-actions-status-details>summary:focus-visible::after {
   border-color:rgba(15,111,131,.36);
   background-color:var(--accent-soft);
   box-shadow:0 0 0 3px var(--focus-ring)
 }
 
-.batch-filter-more>summary::after,.compact-details summary::after,.action-outcome-control summary::after {
+.compact-details summary::after,.action-outcome-control summary::after {
   content:"";
   display:inline-block;
   width:24px;
@@ -3680,7 +3567,7 @@ html[data-theme=dark] select.input {
   transition:background-image .15s ease,border-color .15s ease
 }
 
-.batch-filter-more[open]>summary::after,.compact-details[open] summary::after,.action-outcome-control[open] summary::after {
+.compact-details[open] summary::after,.action-outcome-control[open] summary::after {
   border-left-color:var(--border-strong);
   background-image:var(--disclosure-chevron-up)
 }
@@ -3993,7 +3880,7 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
   position:static
 }
 
-.batch-metrics,.case-summary-grid,.case-overview-grid,.case-verdict-grid,.case-verdict-meta {
+.case-summary-grid,.case-overview-grid,.case-verdict-grid,.case-verdict-meta {
   grid-template-columns:repeat(2,minmax(0,1fr))
 }
 
@@ -4195,28 +4082,6 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
   grid-template-columns:1fr
 }
 
-.batch-metrics {
-  display:flex;
-  gap:6px;
-  margin-bottom:8px;
-  padding-bottom:2px;
-  overflow-x:auto;
-  overscroll-behavior-x:contain
-}
-
-.batch-metric {
-  min-width:98px;
-  padding:7px 8px
-}
-
-.batch-metric span {
-  font-size:10px
-}
-
-.batch-metric strong {
-  font-size:12px
-}
-
 .batch-notices,.batch-scan-details,.batch-result-filters {
   margin-bottom:8px
 }
@@ -4404,7 +4269,7 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
 }
 
 .batch-results-table--workloads td:nth-child(7)::before,.batch-results-table--regressions td:nth-child(7)::before,.batch-results-table--frequent_short td:nth-child(7)::before {
-  content:"Group p95"
+  content:"Workload p95"
 }
 
 .batch-results-table--workloads td:nth-child(8)::before,.batch-results-table--regressions td:nth-child(8)::before {

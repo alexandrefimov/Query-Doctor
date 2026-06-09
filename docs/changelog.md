@@ -21,12 +21,19 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
-- Recent results now use more analyst-facing labels: secondary filters are
-  under `More filters`, post-table context is `Scan details`, scan notices are
-  `Scan notes` or `Scan warnings`, repeated workload tables avoid generic
-  group wording, and Details recommendation feedback is labeled
-  `Record rerun outcome`. README screenshots were refreshed from the synthetic
-  demo pack for the same UI wording.
+- Details now leads recommendation cards with `What to change` and
+  `How to verify`, keeps `Where to look` next, and collapses supporting
+  `Why this deserves attention` evidence. Repeated-workload Results wording now
+  uses `Workload p95`, `Workload impact`, `Next`, and `Open Details`, and the
+  UX audit records the regression checklist for the Recent scan -> Results ->
+  Details -> verification path.
+- Recent scan and Results now keep the default path flatter: an empty
+  `Minimum duration` includes long-query and repeated-short workload patterns,
+  setting a duration narrows to longer-running queries, secondary result views
+  stay in one visible toolbar instead of `More filters`, post-table context is
+  visible as `Scan context` with `Coverage`, and Help collapses only large
+  topics. README screenshots were refreshed from the synthetic demo pack for
+  the same UI wording.
 - Added a public-safe Cloudera test-cluster outreach template plus an initial
   repository simplification audit for docs, scripts, tests, changelog
   readability, and Russian-doc maintenance.

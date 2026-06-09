@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-06
+Last reviewed: 2026-06-09
 
 Language: English | [Russian](README.ru.md)
 
@@ -69,6 +69,9 @@ Query Doctor is not:
   Impala workflows and bounded read-only Impala metadata through `impala-shell`.
 - Ranks suspicious cases and action candidates from deterministic analyzer
   facts, not LLM scoring.
+- Presents Details as an analyst decision page: verdict first, then the
+  recommended change, comparable-rerun verification path, safe inspection
+  location, and collapsed deterministic evidence.
 - Generates trusted reports only after deterministic normalization,
   sanitization, and validation.
 - Provides a separate read-only Query Optimizer workflow for pasted SQL review,

@@ -32,10 +32,9 @@ def open_recent_results(page) -> None:
         page.locator("#recent-results > summary").click()
 
 
-def open_more_query_groups(page) -> None:
-    more_groups = page.locator(".batch-filter-more")
-    if more_groups.get_attribute("open") is None:
-        more_groups.locator("summary").click()
+def ensure_query_groups_visible(page) -> None:
+    assert page.locator(".batch-query-groups").is_visible()
+    assert page.get_by_text("Stats to check").is_visible()
 
 
 def synthetic_batch_summary(*, cases_root: Path | None = None) -> dict[str, object]:
@@ -424,7 +423,7 @@ def test_e2e_result_filters_preserve_group_and_open_details(tmp_path, page):
         assert page.locator("#recent-results .batch-head h1").inner_text() == "Finished Queries"
 
         open_recent_results(page)
-        open_more_query_groups(page)
+        ensure_query_groups_visible(page)
         page.locator('a.batch-filter-link[href="?query_group=stats#recent-results"]').click()
         page.wait_for_url("**/?query_group=stats#recent-results")
         active_filter = page.locator(

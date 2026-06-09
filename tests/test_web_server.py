@@ -2393,7 +2393,9 @@ def test_web_specific_query_details_route_renders_safe_deterministic_details(tmp
 
     assert captured["status"] == 200
     assert "Known Query ID details" in captured["body"]
-    assert "Start with the verdict and recommended changes" in captured["body"]
+    assert (
+        "Use the verdict to decide priority, then read the recommended change" in captured["body"]
+    )
     assert "Read-only" not in captured["body"]
     assert "abc:def" in captured["body"]
     assert "Jump to section" not in captured["body"]
@@ -2803,14 +2805,16 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert 'class="batch-table-legend"' in body
     assert body.index('class="batch-table-wrap"') < body.index('class="batch-table-legend"')
     assert body.index('class="batch-table-wrap"') < body.index('class="batch-results-context"')
-    assert '<details class="batch-results-context" aria-label="Scan details">' in body
-    assert "<summary>Scan details</summary>" in body
+    assert '<section class="batch-results-context" aria-label="Scan context">' in body
+    assert "<h2>Scan context</h2>" in body
+    assert "Source coverage, scan notes, and workload signals for this result set." in body
     assert 'class="batch-result-filters batch-result-filters--query-toolbar"' in body
     assert_css_contains(styles, ".batch-table-wrap{margin-top:14px;")
     assert_css_contains(styles, ".batch-table-legend{display:flex;flex-wrap:wrap;")
     assert ".batch-table-legend{display:grid;grid-template-columns:auto" not in compact_css(styles)
     assert_css_contains(styles, ".batch-results-context{margin-top:12px;")
-    assert_css_contains(styles, ".batch-results-context>summary{cursor:pointer;")
+    assert_css_contains(styles, ".batch-results-context-head{display:grid;")
+    assert_css_contains(styles, ".batch-result-summary{display:inline-flex;")
     assert_css_contains(styles, ".batch-results-context-body{display:grid;gap:8px;")
     assert_css_contains(
         styles,
@@ -2821,12 +2825,7 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     )
     assert_css_contains(styles, ".batch-query-groups{display:flex;flex-wrap:wrap;")
     assert_css_contains(styles, ".batch-result-filters--query-toolbar{align-items:flex-start;")
-    assert_css_contains(styles, ".batch-filter-more>summary{display:inline-flex;")
-    assert_css_contains(
-        styles,
-        ".batch-result-filters--query-toolbar .batch-filter-more[open]{display:inline-flex;",
-    )
-    assert "batch-filter-more[open]{flex-basis:100%" not in compact_css(styles)
+    assert "batch-filter-more" not in styles
     assert_css_contains(
         styles,
         ".batch-cell--duration{color:var(--strong);font-variant-numeric:tabular-nums;",
@@ -2838,20 +2837,18 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert_css_contains(
         styles,
         ".batch-results-disclosure>.batch-head::after,.batch-notices>summary::after,"
-        ".batch-results-context>summary::after",
+        ".batch-scan-details>summary::after",
     )
     assert_css_contains(styles, "width:30px;height:30px;margin-left:auto;")
     assert_css_contains(
         styles,
-        ".batch-filter-more>summary::after,.compact-details summary::after,"
-        ".action-outcome-control summary::after",
+        ".compact-details summary::after,.action-outcome-control summary::after",
     )
     assert_css_contains(styles, "border-left:1px solid var(--border);")
     assert_css_contains(styles, ".batch-results-disclosure>.batch-head{cursor:pointer;")
     assert_css_contains(styles, ".batch-head .badge{max-width:min(360px,45vw);overflow:hidden;")
-    assert_css_contains(
-        styles, ".batch-metrics{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));"
-    )
+    assert "batch-metrics" not in styles
+    assert "batch-metric" not in styles
     assert_css_contains(styles, "@media(max-width:760px){.page{padding:12px 12px 14px;")
     assert_css_contains(
         styles,
@@ -2862,7 +2859,6 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
         ".top-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;",
     )
     assert_css_contains(styles, ".brand-subtitle{display:none}")
-    assert_css_contains(styles, ".batch-metrics{display:flex;gap:6px;margin-bottom:8px;")
     assert_css_contains(styles, ".batch-result-filter-label{display:none}")
     assert_css_contains(styles, ".batch-notices{display:block;")
     assert_css_contains(styles, ".batch-notices>summary{cursor:pointer;")
@@ -2890,9 +2886,10 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert_css_contains(styles, ".batch-cell--summary{width:100%;min-width:320px;")
     assert 'class="batch-cell--compact"' in body
     assert 'class="batch-cell--query-id"' in body
-    assert "<span>Scanned</span>" in body
-    assert "<span>Needs attention</span>" in body
-    assert "<span>Worth reviewing</span>" in body
+    assert '<span class="batch-result-summary">Scanned 3</span>' in body
+    assert "<span>Scanned</span>" not in body
+    assert "<span>Needs attention</span>" not in body
+    assert "<span>Worth reviewing</span>" not in body
     assert "<span>Rewrite</span>" not in body
     assert "<span>Stats</span>" not in body
     assert '<details class="batch-notices" aria-label="Scan warnings" open>' in body
@@ -2901,7 +2898,7 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "scan warning &lt;script&gt;" in body
     assert "scan warning <script>" not in body
     assert 'class="batch-context-block batch-context-scan-details"' in body
-    assert '<div class="batch-context-title">Scan metrics</div>' in body
+    assert '<div class="batch-context-title">Coverage</div>' in body
     assert "Result rows:" in body
     assert "Analyzed: 2" in body
     assert "total" not in body
@@ -3046,7 +3043,7 @@ def test_web_batch_case_detail_renders_known_case_safely(tmp_path):
     assert "Finished Queries details" in body
     assert 'href="/#recent-results"' in body
     assert "case-001" in body
-    assert "Start with the verdict and recommended changes" in body
+    assert "Use the verdict to decide priority, then read the recommended change" in body
     assert "Jump to section" not in body
     assert 'class="detail-toc"' not in body
     assert '<section id="case-overview" class="case-verdict"' in body
@@ -6612,7 +6609,10 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
         "Maximum top-ranked analyzed queries enriched with bounded read-only table metadata. Set to 0 to skip metadata collection."
         not in body
     )
-    assert "Only include queries at least this long. Empty means no duration filter." in body
+    assert (
+        "Leave empty to include long queries and repeated short workload patterns. Set a value to narrow the scan to longer-running queries only."
+        in body
+    )
     assert 'id="only_with_spills" name="only_with_spills"' not in body
     assert (
         "After analysis, show only result rows with detected non-zero spill or scratch I/O evidence."
@@ -6672,7 +6672,7 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     assert_css_contains(
         styles, ".workflow-segmented span{align-content:center;justify-items:start;"
     )
-    assert_css_contains(styles, ".batch-scan-options>summary{cursor:pointer;")
+    assert ".batch-scan-options" not in styles
     assert_css_contains(
         styles,
         ".batch-form[data-active-scan-target=running] .batch-form-grid--simple{"
@@ -6705,10 +6705,9 @@ def test_web_batch_form_defaults_and_navigation_are_safe(tmp_path, monkeypatch):
     assert body.index("Minimum duration (sec)") < body.index(
         '<button class="run-button" type="submit">Run scan</button>'
     )
-    assert body.index('<button class="run-button" type="submit">Run scan</button>') < body.index(
-        "More scan options"
-    )
-    assert body.index("More scan options") < body.index("Scan preset")
+    assert "More scan options" not in body
+    assert "Scan preset" not in body
+    assert 'name="scan_preset"' not in body
     assert body.index("Minimum duration") < body.index(
         '<button class="run-button" type="submit">Run scan</button>'
     )
@@ -6869,6 +6868,7 @@ def test_web_batch_form_uses_local_recent_config_defaults(tmp_path):
     settings = module.WebSettings(config=config)
 
     body = module.render_batch_page(settings)
+    running_body = module.render_running_queries_page(settings)
     batch_config = module.parse_batch_run_config({"metadata_top_limit": ["0"]}, settings=settings)
     running_config = module.parse_running_run_config(
         {"metadata_top_limit": ["0"]}, settings=settings
@@ -6881,12 +6881,14 @@ def test_web_batch_form_uses_local_recent_config_defaults(tmp_path):
     assert 'name="triage_profile_limit"' not in body
     assert 'name="metadata_jobs"' not in body
     assert 'name="metadata_top_limit"' not in body
-    assert 'name="min_duration_sec" type="number" min="0" step="0.001" value="1.5"' in body
+    assert 'name="min_duration_sec" type="number" min="0" step="0.001" value=""' in body
+    assert 'name="min_duration_sec" type="number" min="0" step="0.001" value=""' in running_body
     assert 'name="order"' not in body
     assert 'name="user"' not in body
     assert 'name="pool"' not in body
     assert 'name="include_failed"' not in body
     assert 'name="include_running"' not in body
+    assert batch_config.min_duration_sec is None
     assert batch_config.parallelism == 12
     assert batch_config.metadata_jobs == 3
     assert batch_config.user == "impala_user"
@@ -6897,33 +6899,57 @@ def test_web_batch_form_uses_local_recent_config_defaults(tmp_path):
     assert running_config.pool == "root.analytics"
 
 
-def test_web_batch_frequent_short_preset_uses_existing_bounded_scan_flags(tmp_path):
+def test_web_batch_empty_min_duration_includes_all_patterns_by_default(tmp_path):
     module = load_web_module()
     config = tmp_path / "cm-config.json"
     config.write_text(json.dumps({"recent_min_duration_sec": 60}), encoding="utf-8")
     settings = module.WebSettings(config=config, repo_dir=REPO_DIR)
 
-    body = module.render_batch_page(settings, form_values={"scan_preset": "frequent_short"})
+    body = module.render_batch_page(settings)
     batch_config = module.parse_batch_run_config(
         {
-            "scan_preset": ["frequent_short"],
-            "min_duration_sec": ["60"],
+            "min_duration_sec": [""],
             "metadata_top_limit": ["0"],
         },
         settings=settings,
     )
     cmd, _out_dir = module.build_batch_command("f" * 32, batch_config, settings)
 
-    assert 'name="scan_preset" value="frequent_short" checked' in body
     assert 'name="min_duration_sec" type="number" min="0" step="0.001" value=""' in body
-    assert "Frequent short removes the minimum-duration default" in body
-    assert batch_config.scan_preset == "frequent_short"
+    assert "More scan options" not in body
+    assert "Scan preset" not in body
+    assert 'name="scan_preset"' not in body
+    assert "Frequent short removes the minimum-duration default" not in body
+    assert batch_config.scan_preset == "standard"
     assert batch_config.min_duration_sec is None
-    assert batch_config.order == "recent"
-    assert cmd[cmd.index("--order") + 1] == "recent"
+    assert batch_config.order == "duration-desc"
+    assert cmd[cmd.index("--order") + 1] == "duration-desc"
     assert "--no-min-duration-filter" in cmd
     assert "--min-duration-sec" not in cmd
     assert cmd[cmd.index("--cm-inspect-limit") + 1] == "5000"
+
+
+def test_web_batch_explicit_min_duration_keeps_long_query_filter(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text(json.dumps({"recent_min_duration_sec": 60}), encoding="utf-8")
+    settings = module.WebSettings(config=config, repo_dir=REPO_DIR)
+
+    batch_config = module.parse_batch_run_config(
+        {
+            "min_duration_sec": ["60"],
+            "metadata_top_limit": ["0"],
+        },
+        settings=settings,
+    )
+    cmd, _out_dir = module.build_batch_command("e" * 32, batch_config, settings)
+
+    assert batch_config.scan_preset == "standard"
+    assert batch_config.min_duration_sec == 60
+    assert batch_config.order == "duration-desc"
+    assert cmd[cmd.index("--order") + 1] == "duration-desc"
+    assert cmd[cmd.index("--min-duration-sec") + 1] == "60"
+    assert "--no-min-duration-filter" not in cmd
 
 
 def test_web_batch_form_hides_advanced_filters_when_only_window_depth_is_configured(tmp_path):

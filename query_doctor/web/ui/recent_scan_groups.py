@@ -100,8 +100,8 @@ def batch_table_columns(query_group: str) -> tuple[str, ...]:
             "User",
             "Runs",
             "Duration",
-            "Group p95",
-            "Group impact" if normalized == "frequent_short" else "Regression",
+            "Workload p95",
+            "Workload impact" if normalized == "frequent_short" else "Regression",
             "Primary",
         )
     return (
@@ -302,31 +302,15 @@ def render_query_group_switcher(
         key: query_group_count(rows_for_counts, key, severities)
         for key, (_label, severities) in QUERY_GROUPS.items()
     }
-    primary_links = query_group_links(
-        PRIMARY_QUERY_GROUPS,
+    links = query_group_links(
+        PRIMARY_QUERY_GROUPS + SECONDARY_QUERY_GROUPS,
         active_group,
         counts,
         only_with_spills=only_with_spills,
-    )
-    secondary_links = query_group_links(
-        SECONDARY_QUERY_GROUPS,
-        active_group,
-        counts,
-        only_with_spills=only_with_spills,
-    )
-    secondary_open = " open" if active_group in SECONDARY_QUERY_GROUPS else ""
-    secondary_group_html = (
-        f'<details class="batch-filter-more"{secondary_open}>'
-        "<summary>More filters</summary>"
-        f'<nav class="batch-filter-tabs batch-filter-tabs--secondary" aria-label="Secondary query result filter">{"".join(secondary_links)}</nav>'
-        "</details>"
-        if secondary_links
-        else ""
     )
     return (
         '<div class="batch-query-groups">'
-        f'<nav class="batch-filter-tabs" aria-label="Primary query result filter">{"".join(primary_links)}</nav>'
-        f"{secondary_group_html}"
+        f'<nav class="batch-filter-tabs" aria-label="Query result filters">{"".join(links)}</nav>'
         "</div>"
     )
 
@@ -382,14 +366,21 @@ def render_result_filters(
     active_group: str,
     *,
     only_with_spills: bool = False,
+    summary_text: str = "",
 ) -> str:
     switcher = render_query_group_switcher(rows, active_group, only_with_spills=only_with_spills)
     spill_toggle = render_spill_filter_toggle(active_group, only_with_spills=only_with_spills)
+    summary_html = (
+        f'<span class="batch-result-summary">{html.escape(summary_text)}</span>'
+        if summary_text
+        else ""
+    )
     return (
         '<div class="batch-result-filters batch-result-filters--query-toolbar">'
         '<div class="batch-result-filter-row">'
         '<span class="batch-result-filter-label">View</span>'
         f"{switcher}"
+        f"{summary_html}"
         "</div>"
         '<div class="batch-result-filter-row batch-result-filter-row--secondary">'
         '<span class="batch-result-filter-label">Spill filter</span>'
@@ -612,7 +603,7 @@ def render_workload_digest(
         '<div class="batch-table-wrap"><table class="batch-table workload-digest-table">'
         "<thead><tr><th>Scope</th><th>Workload</th><th>Priority</th><th>Runs</th>"
         "<th>Total duration</th><th>p95 duration</th><th>Pool / owner</th>"
-        "<th>Evidence</th><th>Outcomes</th><th>Open</th></tr></thead>"
+        "<th>Evidence</th><th>Outcomes</th><th>Next</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
         if rows
@@ -672,7 +663,7 @@ def render_workload_action_queue(
         '<div id="workload-action-queue" class="batch-table-wrap workload-action-queue">'
         '<table class="batch-table workload-action-queue-table">'
         "<thead><tr><th>Priority</th><th>Workload</th><th>Signal / evidence</th><th>Impact</th>"
-        "<th>Pool / owner</th><th>Open next</th><th>Outcomes</th><th>Open</th></tr></thead>"
+        "<th>Pool / owner</th><th>Open next</th><th>Outcomes</th><th>Next</th></tr></thead>"
         f"<tbody>{rows}</tbody>"
         "</table></div>"
     )
@@ -731,7 +722,7 @@ def workload_action_queue_detail_link(
     workload_base_path: str,
 ) -> str:
     href = f"{html.escape(workload_base_path.rstrip('/'), quote=True)}/{html.escape(entry.fingerprint, quote=True)}"
-    return f'<a href="{href}">Details</a>'
+    return f'<a href="{href}">Open Details</a>'
 
 
 def render_workload_admin_digest(

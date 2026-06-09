@@ -1580,14 +1580,14 @@ def test_recent_scan_case_verdict_keeps_clean_low_confidence_primary_cautious():
         html,
         [
             "No supported change direction",
-            "Why this deserves attention",
-            "This query is not currently prioritized for analyst action",
-            "Where to look",
-            "Score evidence and source coverage",
             "What to change",
             "No supported change is recommended for this selected case",
             "How to verify",
             "On the next comparable scan or rerun",
+            "Where to look",
+            "Score evidence and source coverage",
+            "Why this deserves attention",
+            "This query is not currently prioritized for analyst action",
         ],
     )
     assert "Query shape is worth a rewrite review" not in html
@@ -2206,7 +2206,7 @@ def test_recent_scan_detail_html_renders_storage_fixture_guidance():
     assert "Storage or HDFS signals need follow-up" in html
     assert "storage/HDFS evidence is the strongest runtime follow-up" in html
     assert "Start with the recommendation below" not in html
-    assert "expand evidence only when needed" in html
+    assert "read the recommended change and verification path" in html
     assert_no_forbidden_fragments(html)
 
 
@@ -3212,7 +3212,7 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         "feedback sample below threshold (0/5 comparable reruns); "
         "next check admission/runtime signal count and workload p95" in html
     )
-    assert "<th>Open</th>" in html
+    assert "<th>Next</th>" in html
     assert "strong regression; current p95 20s; baseline p95 12.5s; history samples 3." in html
     assert "Stats gaps: group primary aggregate; 2 member rows." in html
     assert "Spill-heavy: 1 of 2 member rows." in html
@@ -4217,14 +4217,14 @@ def test_recent_scan_summary_filters_query_groups():
     assert_no_forbidden_fragments(frequent_short_html)
     assert (
         "<th>Rank</th><th>Finding</th><th>Query ID</th><th>User</th><th>Runs</th>"
-        "<th>Duration</th><th>Group p95</th><th>Group impact</th><th>Primary</th>"
+        "<th>Duration</th><th>Workload p95</th><th>Workload impact</th><th>Primary</th>"
     ) in frequent_short_html
     assert "Regressed workload: Strong" in regressions_html
     assert "bad:id" in regressions_html
     assert "suspicious:id" not in regressions_html
     assert (
         "<th>Rank</th><th>Finding</th><th>Query ID</th><th>User</th><th>Runs</th>"
-        "<th>Duration</th><th>Group p95</th><th>Regression</th><th>Primary</th>"
+        "<th>Duration</th><th>Workload p95</th><th>Regression</th><th>Primary</th>"
     ) in workloads_html
     assert "bad:id" in optimization_html
     assert "ready:id" in optimization_html
@@ -4251,8 +4251,8 @@ def test_recent_scan_summary_filters_query_groups():
     assert "Needs attention <span>1</span>" in stats_html
     assert "Worth reviewing <span>1</span>" in stats_html
     assert "View" in stats_html
-    assert "<summary>More filters</summary>" in stats_html
-    assert '<details class="batch-filter-more" open>' in stats_html
+    assert "<summary>More filters</summary>" not in stats_html
+    assert "batch-filter-more" not in stats_html
     assert "Spill filter" in stats_html
     assert "Optimizer-ready" not in stats_html
     assert "Rewrite opportunities <span>2</span>" in stats_html
@@ -4265,10 +4265,11 @@ def test_recent_scan_summary_filters_query_groups():
     assert stats_html.index('class="batch-table-wrap"') < stats_html.index(
         'class="batch-results-context"'
     )
-    assert '<details class="batch-results-context" aria-label="Scan details">' in stats_html
-    assert "<summary>Scan details</summary>" in stats_html
+    assert '<section class="batch-results-context" aria-label="Scan context">' in stats_html
+    assert "<h2>Scan context</h2>" in stats_html
+    assert "Source coverage, scan notes, and workload signals for this result set." in stats_html
     assert 'class="batch-context-block batch-context-scan-details"' in stats_html
-    assert '<div class="batch-context-title">Scan metrics</div>' in stats_html
+    assert '<div class="batch-context-title">Coverage</div>' in stats_html
     assert 'class="batch-context-block batch-context-notes"' in stats_html
     assert '<details class="batch-notices" aria-label="Scan notes" open>' not in stats_html
     assert '<div class="batch-context-title">Scan notes</div>' in stats_html
@@ -5182,18 +5183,18 @@ def test_recent_scan_action_candidate_card_renders_owner_coordinate_guidance():
         html,
         [
             "Query-shape recommendation",
-            "Why this deserves attention",
-            "Deterministic analysis found",
-            "join row expansion or cardinality mismatch with join evidence",
-            "Start where the late SQL filter meets the flagged plan operator",
-            "Where to look",
-            "SQL: final SELECT filter (line 18): predicate near final SELECT",
-            "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)",
             "What to change",
             "Try to reduce rows earlier: move the final SELECT filter closer",
             "after the change, check whether fewer rows or better estimates feed that operator",
             "How to verify",
             "Compare EXPLAIN before and after the change",
+            "Where to look",
+            "SQL: final SELECT filter (line 18): predicate near final SELECT",
+            "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)",
+            "Why this deserves attention",
+            "Deterministic analysis found",
+            "join row expansion or cardinality mismatch with join evidence",
+            "Start where the late SQL filter meets the flagged plan operator",
             "Evidence behind this recommendation",
             "resource footprint",
             "read 42.00 GiB; peak memory 18.00 GiB",

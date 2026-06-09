@@ -138,18 +138,22 @@ def render_action_candidate_sections(
     card: RecentScanActionCandidateCardView, *, language: str = "en"
 ) -> str:
     sections = (
-        render_action_candidate_reason_section(card.why, language=language),
+        render_action_candidate_section(
+            ui_text(language, "What to change", "Что изменить"),
+            card.change_direction,
+            modifier_class="action-candidate-section--change",
+        ),
+        render_action_candidate_section(
+            ui_text(language, "How to verify", "Как проверить"),
+            card.verification,
+            modifier_class="action-candidate-section--verify",
+        ),
         render_action_candidate_location_section(
             card.source_locators,
             card.supporting_facts,
             language=language,
         ),
-        render_action_candidate_section(
-            ui_text(language, "What to change", "Что изменить"), card.change_direction
-        ),
-        render_action_candidate_section(
-            ui_text(language, "How to verify", "Как проверить"), card.verification
-        ),
+        render_action_candidate_reason_section(card.why, language=language),
     )
     rendered = "".join(section for section in sections if section)
     if not rendered:
@@ -184,10 +188,14 @@ def render_action_candidate_section(label: str, text: str, *, modifier_class: st
 
 
 def render_action_candidate_reason_section(text: str, *, language: str = "en") -> str:
-    return render_action_candidate_section(
-        ui_text(language, "Why this deserves attention", "Почему это требует внимания"),
-        text,
-        modifier_class="action-candidate-section--why",
+    if not text:
+        return ""
+    return (
+        '<details class="analysis-subdetails action-candidate-reason" '
+        'aria-label="Why this deserves attention">'
+        f"<summary>{html.escape(ui_text(language, 'Why this deserves attention', 'Почему это требует внимания'))}</summary>"
+        f'<p class="helper">{escape_value(text)}</p>'
+        "</details>"
     )
 
 

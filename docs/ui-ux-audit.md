@@ -1,6 +1,6 @@
 # Query Doctor UI/UX Audit Notes
 
-Last updated: 2026-06-03
+Last updated: 2026-06-09
 
 This note records the accepted product takeaways from the May 2026 UI/UX audit.
 The goal is to make Query Doctor usable by an analyst who needs to understand
@@ -71,13 +71,66 @@ without weakening the safety contract or exposing raw artifacts.
 - Make the Recent results table read from the analyst signal first: `Finding`
   is the first content column after rank, while Query ID, user, priority, and
   collection statuses stay available as context.
-- Replace the dense Results metric grid with a compact summary strip:
-  `Scanned`, `Needs attention`, `Worth reviewing`, `Rewrite`, and `Stats`.
-  Move secondary counters such as result rows, metadata contexts, and rewrite
-  funnel counts into collapsed Scan details.
+- Replace the dense Results metric grid with one visible result-view toolbar
+  plus a compact `Scanned N` note. Keep `Needs attention`, `Worth reviewing`,
+  repeated workloads, rewrite opportunities, and stats candidates in the same
+  toolbar instead of hiding secondary views behind another disclosure.
+- Move secondary counters such as result rows, metadata contexts, and rewrite
+  funnel counts into visible post-table `Scan context` so the first row list is
+  not duplicated by top cards.
 - Combine Results notices such as rewrite guidance, action-outcome count,
   empty-state notes, and scan warnings into one compact notes block so they do
   not compete as separate first-screen cards.
+
+## Accepted For Recent Scan Cleanup Slice
+
+- Remove the `More scan options` disclosure from New scan. The everyday path is
+  Source cluster, workflow, finished-query date/hour, optional Minimum duration,
+  and Run.
+- Treat an empty `Minimum duration (sec)` field as an explicit request to keep
+  all default Recent patterns available, including long queries and repeated
+  short workload patterns. A user-entered duration narrows the scan to
+  longer-running queries.
+- Keep all available Results views in one toolbar. There are not enough result
+  groups to justify a separate `More filters` disclosure.
+- Render `Scan context` below the result rows as a visible explanation of
+  coverage, scan notes, and workload signals. Do not make analysts expand
+  several similar blocks just to understand what context exists.
+- On Help, collapse only large topic sections. Small two-line explanations
+  should stay visible inside their parent topic.
+
+## Accepted For Details Decision-Flow Slice
+
+- Keep the primary customer path focused on Recent scan -> Results -> Details
+  -> recommendation -> verification. Secondary diagnostics, source coverage,
+  and pipeline mechanics should remain below the decision path or inside
+  collapsed sections.
+- Details recommendation cards should read in analyst order: `What to change`,
+  `How to verify`, `Where to look`, then collapsed supporting `Why this
+  deserves attention` evidence. This keeps the first screen oriented around the
+  next decision while preserving deterministic support.
+- Results should route the analyst with explicit next-action labels. Repeated
+  workload surfaces should use `Workload p95`, `Workload impact`, `Next`, and
+  `Open Details` instead of generic group/open wording.
+- Known Query ID Details can share the same decision-page intro copy, but it
+  remains a secondary one-query workflow. Do not make it look broader than the
+  primary Recent scan path.
+
+## UX Regression Checklist
+
+- No visible UI copy should reintroduce raw/internal terms such as generic
+  group wording, pipeline mechanics, result context, result notes, or mark
+  result labels when an analyst-facing label exists.
+- Results should make the next action clear without requiring docs: what needs
+  attention, why it ranked high enough, which Details page to open, and whether
+  a repeated workload pattern exists.
+- Details first screen should preserve verdict, recommended change,
+  verification path, and safe inspection location before expanded diagnostics.
+- Important scan warnings must stay visible; secondary scan notes, source
+  coverage, and workload context can sit below the table in `Scan context`
+  without competing with the main result rows.
+- Feedback recording should explain outcome and comparable-rerun intent, not
+  expose implementation storage details.
 
 ## Accepted For Diagnose Form Follow-Up Slice
 
@@ -103,8 +156,8 @@ without weakening the safety contract or exposing raw artifacts.
   results behind a previous-results disclosure so the one-query form remains the
   primary task.
 - Compact the mobile header and Recent results pre-table area: keep navigation
-  on one short row, make the metrics strip horizontal, and move the table legend
-  after the table.
+  on one short row, keep the result-view toolbar usable, and move the table
+  legend after the table.
 
 ## Kept As Follow-Up
 

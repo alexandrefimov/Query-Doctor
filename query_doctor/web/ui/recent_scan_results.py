@@ -129,7 +129,6 @@ def render_batch_summary(
     rows_for_group = sort_rows_for_query_group(rows_for_group, active_group)
     rows_for_group = filter_rows_by_spills(rows_for_group, only_with_spills=only_with_spills)
     workload_base_path = workload_base_path_for_details_base_path(details_base_path)
-    header = render_batch_summary_strip(view.header_items)
     broad_scan_message = recent_scan_too_broad_message(summary)
     rows = "\n".join(
         render_batch_case_row(
@@ -176,7 +175,12 @@ def render_batch_summary(
         summary,
         active_group,
     )
-    switcher = render_result_filters(view.rows, active_group, only_with_spills=only_with_spills)
+    switcher = render_result_filters(
+        view.rows,
+        active_group,
+        only_with_spills=only_with_spills,
+        summary_text=scan_volume_summary(view.header_items),
+    )
     workload_groups = render_workload_groups(
         view.workload_groups,
         workload_base_path=workload_base_path,
@@ -218,7 +222,6 @@ def render_batch_summary(
         f"<div><h1>{escaped_title}</h1></div>"
         "</summary>"
         '<div class="batch-results-body">'
-        f"{header}"
         f"{switcher}"
         f"{critical_results_notices}"
         f'<div class="batch-table-wrap"><table class="{table_class}">'
@@ -372,10 +375,13 @@ def render_results_context_details(*sections: str) -> str:
     if not content:
         return ""
     return (
-        '<details class="batch-results-context" aria-label="Scan details">'
-        "<summary>Scan details</summary>"
+        '<section class="batch-results-context" aria-label="Scan context">'
+        '<div class="batch-results-context-head">'
+        "<h2>Scan context</h2>"
+        "<p>Source coverage, scan notes, and workload signals for this result set.</p>"
+        "</div>"
         f'<div class="batch-results-context-body">{content}</div>'
-        "</details>"
+        "</section>"
     )
 
 
@@ -405,22 +411,11 @@ def results_notice_rows(
     return rows
 
 
-def render_batch_summary_strip(header_items: tuple[tuple[str, Any], ...]) -> str:
+def scan_volume_summary(header_items: tuple[tuple[str, Any], ...]) -> str:
     metrics = header_metric_map(header_items)
     scanned = metrics.get("CM inspected") or metrics.get("total") or ""
-    items = (
-        ("Scanned", scanned),
-        ("Needs attention", metrics.get("bad", "")),
-        ("Worth reviewing", metrics.get("suspicious", "")),
-    )
-    cards = "".join(
-        '<div class="batch-metric">'
-        f"<span>{html.escape(label)}</span>"
-        f"<strong>{escape_value(value)}</strong>"
-        "</div>"
-        for label, value in items
-    )
-    return f'<div class="batch-metrics" aria-label="Results summary">{cards}</div>'
+    value = "" if scanned is None else str(scanned).strip()
+    return f"Scanned {value}" if value else ""
 
 
 def header_metric_map(header_items: tuple[tuple[str, Any], ...]) -> dict[str, Any]:
@@ -444,15 +439,15 @@ def render_batch_scan_details(
     items = "".join(f"<span>{html.escape(part)}</span>" for part in parts)
     if compact:
         return (
-            '<div class="batch-context-block batch-context-scan-details" aria-label="Scan metrics">'
-            '<div class="batch-context-title">Scan metrics</div>'
-            f'<div class="batch-detail-grid" aria-label="Scan metrics">{items}</div>'
+            '<div class="batch-context-block batch-context-scan-details" aria-label="Coverage">'
+            '<div class="batch-context-title">Coverage</div>'
+            f'<div class="batch-detail-grid" aria-label="Coverage">{items}</div>'
             "</div>"
         )
     return (
         '<details class="batch-scan-details">'
-        "<summary>Scan metrics</summary>"
-        f'<div class="batch-detail-grid" aria-label="Scan metrics">{items}</div>'
+        "<summary>Coverage</summary>"
+        f'<div class="batch-detail-grid" aria-label="Coverage">{items}</div>'
         "</details>"
     )
 
@@ -577,7 +572,7 @@ def render_results_table_legend(active_group: str) -> str:
         items = (
             ("Finding", "Workload signal"),
             ("Runs", "Similar queries"),
-            ("Group p95", "Current latency"),
+            ("Workload p95", "Current latency"),
             ("Regression", "History signal"),
         )
     else:
