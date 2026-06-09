@@ -1,6 +1,6 @@
 # Security Model
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-06-06
 
 This document is the public security and privacy overview for Query Doctor. The
 mandatory implementation contract lives in [safety-contract.md](safety-contract.md).
@@ -46,6 +46,31 @@ Current external collection support is Impala-only:
 
 Future source providers must keep the same safety properties before they become
 supported product behavior.
+
+## Public Demo And Sharing
+
+Public Query Doctor demos must use synthetic data only. They should let users
+inspect the workflow and decision shape without granting access to real
+clusters, real query text, real profiles, real metadata, local paths, or
+credentials.
+
+A hosted or static public demo must stay read-only:
+
+- no collector actions against external clusters;
+- no SQL execution;
+- no arbitrary artifact upload or raw artifact rendering;
+- no raw SQL, raw profile, raw metadata, provider JSON, local path, or runtime
+  internals in browser output;
+- no credentials, tokens, Kerberos material, Authorization headers, or endpoint
+  secrets;
+- no implication that synthetic cases prove compatibility with a real CDP,
+  Cloudera Manager, or Impala version.
+
+Compatibility feedback should be requested as redacted aggregate behavior, such
+as product versions, endpoint availability, safe status categories, and
+pass/fail capability summaries. Public issues and community replies must not
+include raw SQL, raw profiles, raw metadata, hostnames, users, local paths,
+command output, credentials, or raw provider payloads.
 
 ## Data That Must Not Be Exposed
 

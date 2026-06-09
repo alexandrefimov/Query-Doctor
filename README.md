@@ -1,6 +1,6 @@
 # Query Doctor
 
-Last reviewed: 2026-06-03
+Last reviewed: 2026-06-06
 
 Language: English | [Russian](README.ru.md)
 
@@ -337,6 +337,8 @@ High-value next reads:
 - [docs/local-smoke.md](docs/local-smoke.md): local validation and smoke checks.
 - [docs/credentials.md](docs/credentials.md): local credentials layout.
 - [docs/roadmap.md](docs/roadmap.md): implemented scope and planned seams.
+- [docs/security-model.md](docs/security-model.md): public security, privacy,
+  and demo-sharing overview.
 - [docs/query-optimizer-contract.md](docs/query-optimizer-contract.md):
   optimizer trust boundary.
 - [docs/release-checklist.md](docs/release-checklist.md): final tag,

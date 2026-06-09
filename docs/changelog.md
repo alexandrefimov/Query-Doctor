@@ -19,6 +19,16 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ## Unreleased
 
+### Web UI And Documentation
+
+- The local web UI now includes a restrained project footer linking to GitHub,
+  PyPI, documentation, and the public security model without exposing local
+  state.
+- The public security model now states hosted/public demo constraints:
+  synthetic data only, read-only demo surfaces, no arbitrary uploads, no
+  collector actions, no SQL execution, no raw artifact rendering, and
+  compatibility feedback limited to redacted aggregate behavior.
+
 ## 0.6.0 - 2026-06-06
 
 ### Safety

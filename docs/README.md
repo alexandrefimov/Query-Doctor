@@ -35,6 +35,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
   committed public docs from ignored local agent notes.
 - [safety-contract.md](safety-contract.md): canonical trust and redaction
   contract.
+- [security-model.md](security-model.md): public security, privacy, and
+  demo-sharing overview for users and external reviewers.
 - [engine-redaction-note-v1.md](engine-redaction-note-v1.md): shared raw-free
   evidence-package redaction note schema for package-style engine intake.
 - [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of

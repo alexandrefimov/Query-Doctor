@@ -220,6 +220,7 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <ul class="help-link-list">
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/README.md" target="_blank" rel="noopener noreferrer">Project README</a> - install, commands, workflow overview, and current public status.</li>
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" target="_blank" rel="noopener noreferrer">Documentation index</a> - the maintained map of current docs.</li>
+<li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/security-model.md" target="_blank" rel="noopener noreferrer">Security model</a> - public security, privacy, and demo-sharing overview.</li>
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/safety-contract.md" target="_blank" rel="noopener noreferrer">Safety contract</a> - browser/report trust and redaction rules.</li>
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/roadmap.md" target="_blank" rel="noopener noreferrer">Roadmap</a> - implemented scope, near-term work, and future seams.</li>
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/DEMO.md" target="_blank" rel="noopener noreferrer">Synthetic demo docs</a> - maintained demo talk track outside the product UI.</li>
@@ -422,6 +423,7 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <ul class="help-link-list">
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/README.md" target="_blank" rel="noopener noreferrer">Project README</a></li>
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" target="_blank" rel="noopener noreferrer">Documentation index</a></li>
+<li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/security-model.md" target="_blank" rel="noopener noreferrer">Security model</a></li>
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/safety-contract.md" target="_blank" rel="noopener noreferrer">Safety contract</a></li>
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/roadmap.md" target="_blank" rel="noopener noreferrer">Roadmap</a></li>
 <li><a href="https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/DEMO.md" target="_blank" rel="noopener noreferrer">Synthetic demo docs</a></li>

@@ -78,8 +78,11 @@ def test_web_help_page_renders_curated_static_help():
     assert "GitHub documentation" in body
     assert "Project README" in body
     assert "Documentation index" in body
+    assert "Security model" in body
+    assert "public security, privacy, and demo-sharing overview" in body
     assert "Safety contract" in body
     assert "Roadmap" in body
+    assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/security-model.md" in body
     assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" in body
     assert 'target="_blank" rel="noopener noreferrer"' in body
     compact_styles = compact_css(styles)
@@ -167,6 +170,7 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Таблица результатов" in body
     assert "Граница безопасности" in body
     assert "Документация GitHub" in body
+    assert "Security model" in body
     assert "Big Data query diagnostics tool" in body
     assert "сфокусированный сегодня на Apache Impala production triage" in body
     assert "validated raw-free reports" in body
