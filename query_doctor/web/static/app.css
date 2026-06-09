@@ -107,9 +107,13 @@ fieldset {
 }
 
 .page {
+  display:flex;
+  flex-direction:column;
   max-width:1240px;
+  min-height:100vh;
   margin:0 auto;
-  padding:20px 28px 48px
+  padding:20px 28px 16px;
+  width:100%
 }
 
 .app-header {
@@ -205,6 +209,42 @@ fieldset {
   color:var(--text);
   background:var(--control);
   box-shadow:var(--active-shadow)
+}
+
+.app-footer {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:auto;
+  padding:18px 0 0;
+  color:var(--muted);
+  font-size:13px;
+  text-align:center
+}
+
+.footer-links {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:6px 10px;
+  min-width:0
+}
+
+.footer-links a {
+  color:var(--muted);
+  font-weight:600
+}
+
+.footer-separator {
+  color:var(--muted-2);
+  font-weight:400
+}
+
+.footer-links a:hover,.footer-links a:focus {
+  color:var(--accent);
+  outline:none;
+  text-decoration:underline
 }
 
 .language-indicator {
@@ -3854,7 +3894,7 @@ html[data-design=command] body {
 
 html[data-design=command] .page {
   max-width:1240px;
-  padding:20px 28px 48px
+  padding:20px 28px 16px
 }
 
 html[data-design=command] .app-header {
@@ -4001,7 +4041,7 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
 
 @media(max-width:760px) {
   .page {
-  padding:12px 12px 36px;
+  padding:12px 12px 14px;
   width:100%;
   max-width:100%;
   overflow-x:hidden
@@ -4073,6 +4113,10 @@ html[data-design=command] .badge,html[data-design=command] .batch-mini-badge {
   padding:8px 10px;
   text-align:center;
   white-space:nowrap
+}
+
+.footer-links {
+  justify-content:center
 }
 
 .run-main-row,.batch-primary-row {

@@ -8,6 +8,7 @@ from typing import Any
 from query_doctor.web.display_safety import sanitize_browser_error_text
 from query_doctor.web.ui.home import render_no_reports_note, render_run_panel, render_trust_strip
 from query_doctor.web.ui.layout import (
+    render_app_footer,
     render_app_header,
     render_favicon_link,
     render_script_link,
@@ -68,7 +69,7 @@ def render_page(
         body.extend(render_query_output(result))
     if extra_sections:
         body.extend(extra_sections)
-    body.extend(["</main>", "</body>", "</html>"])
+    body.extend([render_app_footer(settings), "</main>", "</body>", "</html>"])
     return "\n".join(body)
 
 

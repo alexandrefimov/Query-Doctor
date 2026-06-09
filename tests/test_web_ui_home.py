@@ -20,6 +20,7 @@ def test_package_layout_renderers_are_available():
     assert callable(layout.render_favicon_link)
     assert callable(layout.render_shared_styles)
     assert callable(layout.render_app_header)
+    assert callable(layout.render_app_footer)
     assert callable(layout.render_client_script)
     assert callable(layout.render_static_stylesheet_link)
     assert callable(layout.render_script_link)
@@ -96,6 +97,19 @@ def test_web_render_page_contains_reference_local_ui_shell():
 
     assert "Query Doctor" in body
     assert "Big Data query diagnostics" in body
+    assert 'class="app-footer"' in body
+    assert "footer-copy" not in body
+    assert 'https://github.com/alexandrefimov/Query-Doctor"' in body
+    assert "https://pypi.org/project/query-doctor/" in body
+    assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" in body
+    assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/security-model.md" in body
+    assert 'href="https://github.com/alexandrefimov/Query-Doctor/issues"' not in body
+    assert 'href="https://github.com/alexandrefimov"' not in body
+    assert body.count('class="footer-separator" aria-hidden="true">|</span>') == 3
+    assert body.index(">GitHub</a>") < body.index(">PyPI</a>")
+    assert body.index(">PyPI</a>") < body.index(">Docs</a>")
+    assert body.index(">Docs</a>") < body.index(">Trust</a>")
+    assert 'target="_blank" rel="noopener noreferrer"' in body
     assert "impala-query-doctor" not in body
     assert "Impala Doctor" not in body
     assert "demo-watermark" not in body
@@ -126,10 +140,24 @@ def test_web_render_page_contains_reference_local_ui_shell():
     assert "--bg:#0f1419" in styles
     assert "--surface:#fff" in styles
     assert "--surface:#151b22" in styles
+    assert_css_contains(
+        styles, ".page{display:flex;flex-direction:column;max-width:1240px;min-height:100vh;"
+    )
+    assert_css_contains(
+        styles, ".app-footer{display:flex;align-items:center;justify-content:center;"
+    )
+    assert_css_contains(
+        styles,
+        ".app-footer{display:flex;align-items:center;justify-content:center;margin-top:auto;",
+    )
+    assert_css_contains(
+        styles, ".footer-links{display:flex;align-items:center;justify-content:center;"
+    )
+    assert_css_contains(styles, ".footer-separator{color:var(--muted-2);font-weight:400")
     assert_css_contains(styles, "html[data-design=command]{--bg:#eef4f1")
     assert_css_contains(styles, "html[data-theme=dark][data-design=command]{--bg:#101314")
     assert_css_contains(
-        styles, "html[data-design=command] .page{max-width:1240px;padding:20px 28px 48px}"
+        styles, "html[data-design=command] .page{max-width:1240px;padding:20px 28px 16px}"
     )
     assert "html[data-design=classic]" not in styles
     assert "html[data-design=review]" not in styles

@@ -10,6 +10,11 @@ from typing import Any
 from query_doctor.web.ui.i18n import language_label, normalize_ui_language, text
 
 
+PROJECT_URL = "https://github.com/alexandrefimov/Query-Doctor"
+PYPI_URL = "https://pypi.org/project/query-doctor/"
+DOCS_URL = f"{PROJECT_URL}/blob/main/docs/README.md"
+TRUST_URL = f"{PROJECT_URL}/blob/main/docs/security-model.md"
+
 BRAND_MARK_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
     'stroke="#0f5268" stroke-width="1.8" stroke-linecap="round" '
@@ -67,6 +72,38 @@ def render_top_nav(active: str) -> str:
         f'<a class="{batch_class}" href="/">Diagnose</a>'
         f'<a class="{help_class}" href="/help">Help</a>'
         "</nav>"
+    )
+
+
+def render_app_footer(settings: Any | None = None) -> str:
+    language = normalize_ui_language(getattr(settings, "language", "en"))
+    aria_label = text(
+        language,
+        "Project links",
+        "Ссылки проекта",
+    )
+    links = (
+        ("GitHub", PROJECT_URL),
+        ("PyPI", PYPI_URL),
+        ("Docs", DOCS_URL),
+        ("Trust", TRUST_URL),
+    )
+    link_parts = []
+    for index, (label, href) in enumerate(links):
+        if index:
+            link_parts.append('<span class="footer-separator" aria-hidden="true">|</span>')
+        link_parts.append(
+            '<a href="{href}" target="_blank" rel="noopener noreferrer">{label}</a>'.format(
+                href=html.escape(href, quote=True),
+                label=html.escape(label),
+            )
+        )
+    link_html = "".join(link_parts)
+    return (
+        '<footer class="app-footer" aria-label="Query Doctor project links">'
+        f'<nav class="footer-links" aria-label="{html.escape(aria_label, quote=True)}">'
+        f"{link_html}</nav>"
+        "</footer>"
     )
 
 

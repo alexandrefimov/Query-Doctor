@@ -2741,7 +2741,7 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert_css_contains(
         styles, ".batch-metrics{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));"
     )
-    assert_css_contains(styles, "@media(max-width:760px){.page{padding:12px 12px 36px;")
+    assert_css_contains(styles, "@media(max-width:760px){.page{padding:12px 12px 14px;")
     assert_css_contains(
         styles,
         ".header-actions{display:grid;grid-template-columns:minmax(0,1fr) auto 44px;",
