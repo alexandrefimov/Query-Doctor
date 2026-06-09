@@ -31,11 +31,12 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
   query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary "$DEMO_PACK/batch_summary.json"
 ```
 
-Основной public-demo вход: `/?query_group=workloads#workload-action-queue`.
-Он показывает, какую repeated group открыть следующей; полный action plan
-остается на workload Details: why, where, supported change direction, rerun
-verification и local outcome history. Representative cases ведут к case Action
-card, где безопасно записывать rerun feedback для выбранного case.
+Основной public-demo вход: `/?query_group=workloads#scan-context`.
+Он показывает Scan context и какую repeated pattern открыть следующей;
+полный decision path остается на Workload Details: why, where, supported
+change direction, rerun verification и local outcome history. Representative
+cases ведут к case Action card, где безопасно записывать rerun feedback для
+выбранного case.
 
 ## Read-only public demo
 

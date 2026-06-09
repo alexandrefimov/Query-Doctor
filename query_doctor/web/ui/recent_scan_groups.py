@@ -4,17 +4,11 @@ from __future__ import annotations
 
 import html
 from typing import Any
-from urllib.parse import urlencode
 
 from query_doctor.web.presenters.recent_scan import RecentScanCaseRowView, numeric_value
 from query_doctor.web.presenters.recent_scan_models import (
-    RecentScanWorkloadAdminDigestEntryView,
     RecentScanWorkloadActionQueueEntryView,
-    RecentScanWorkloadDigestEntryView,
-    RecentScanWorkloadDigestView,
     RecentScanWorkloadHistoryView,
-    RecentScanWorkloadGroupView,
-    RecentScanWorkloadGroupsView,
 )
 from query_doctor.web.ui.html_helpers import escape_value
 from query_doctor.web.trusted_artifacts import OPTIMIZER_STATUS_ORDER
@@ -42,28 +36,6 @@ DEFAULT_QUERY_GROUP = "bad"
 PRIMARY_QUERY_GROUPS = ("bad", "suspicious")
 SECONDARY_QUERY_GROUPS = tuple(key for key in QUERY_GROUPS if key not in PRIMARY_QUERY_GROUPS)
 FREQUENT_SHORT_WORKLOAD_P95_MAX_SEC = 60.0
-WORKLOAD_ADMIN_SCOPES = {
-    "all": "All scopes",
-    "pool": "Pools",
-    "owner": "Owners",
-}
-WORKLOAD_ADMIN_SIGNALS = {
-    "all": "All signals",
-    "regressions": "Regressions",
-    "admission_runtime": "Admission/runtime",
-    "stats": "Stats",
-    "spill": "Spill",
-    "status_issues": "Failed/cancelled",
-    "low_value": "Low-value",
-}
-WORKLOAD_ADMIN_SIGNAL_LABEL_KEYS = {
-    "regressions": "regressions",
-    "admission/runtime": "admission_runtime",
-    "stats": "stats",
-    "spill": "spill",
-    "status issues": "status_issues",
-    "low-value": "low_value",
-}
 
 
 def batch_table_columns(query_group: str) -> tuple[str, ...]:
@@ -404,728 +376,75 @@ def render_spill_filter_toggle(active_group: str, *, only_with_spills: bool = Fa
     )
 
 
-def render_workload_groups(
-    view: RecentScanWorkloadGroupsView,
-    *,
-    workload_base_path: str = "/batch/workload",
-    admin_entries: tuple[RecentScanWorkloadAdminDigestEntryView, ...] = (),
-    query_group: str = DEFAULT_QUERY_GROUP,
-    only_with_spills: bool = False,
-    workload_admin_scope: str = "all",
-    workload_admin_signal: str = "all",
-    workload_group_scope: str = "",
-    workload_group_name: str = "",
-    workload_group_signal: str = "all",
-) -> str:
-    if not view.groups:
-        return ""
-    focus = workload_group_focus(
-        admin_entries,
-        scope=workload_group_scope,
-        name=workload_group_name,
-        signal=workload_group_signal,
-    )
-    focus_signal = normalize_workload_admin_signal(workload_group_signal)
-    groups = filter_workload_groups_for_focus(view.groups, focus, signal=focus_signal)
-    rows = "\n".join(
-        "<tr>"
-        f"<td>{workload_group_link(group, workload_base_path=workload_base_path)}</td>"
-        f"<td>{escape_value(group.member_count)}</td>"
-        f"<td>{escape_value(group.duration_sec_p95)}</td>"
-        f"<td>{escape_value(group.duration_sec_total)}</td>"
-        f"<td>{escape_value(workload_baseline_cell(group))}</td>"
-        f"<td>{escape_value(group.pool_top)}</td>"
-        f"<td>{escape_value(group.primary_bottleneck_top)}</td>"
-        f"<td>{escape_value(group.score_top)}</td>"
-        f"<td>{escape_value(group.shape_summary)}<span>{escape_value(group.table_summary)}</span></td>"
-        f"<td>{escape_value(', '.join(group.member_case_ids))}</td>"
-        "</tr>"
-        for group in groups
-    )
-    if not rows:
-        rows = '<tr><td colspan="10" class="empty-cell">No repeated workloads match this focus.</td></tr>'
-    focus_filters = render_workload_group_focus_filters(
-        focus,
-        signal=focus_signal,
-        query_group=query_group,
-        only_with_spills=only_with_spills,
-        workload_admin_scope=workload_admin_scope,
-        workload_admin_signal=workload_admin_signal,
-    )
-    summary = (
-        f"Repeated workload details ({len(groups)} of {len(view.groups)})"
-        if focus is not None
-        else f"Repeated workload details ({len(view.groups)})"
-    )
-    return (
-        '<details id="workload-groups" class="batch-note workload-groups">'
-        f"<summary>{html.escape(summary)}</summary>"
-        f"{focus_filters}"
-        '<div class="batch-table-wrap"><table class="batch-table workload-group-table">'
-        "<thead><tr>"
-        "<th>Workload</th><th>Cases</th><th>p95 duration</th><th>Total duration</th>"
-        "<th>Baseline</th><th>Pool</th><th>Primary</th><th>Severity</th><th>Shape</th><th>Members</th>"
-        "</tr></thead>"
-        f"<tbody>{rows}</tbody>"
-        "</table></div>"
-        "</details>"
-    )
-
-
-def workload_group_focus(
-    entries: tuple[RecentScanWorkloadAdminDigestEntryView, ...],
-    *,
-    scope: Any,
-    name: Any,
-    signal: Any,
-) -> RecentScanWorkloadAdminDigestEntryView | None:
-    normalized_scope = normalize_workload_group_focus_scope(scope)
-    if not normalized_scope:
-        return None
-    safe_name = str(name or "").strip()
-    if not safe_name:
-        return None
-    normalized_signal = normalize_workload_admin_signal(signal)
-    for entry in entries:
-        if (
-            str(entry.scope or "").strip().lower() == normalized_scope
-            and entry.name == safe_name
-            and workload_admin_entry_matches_signal(entry, normalized_signal)
-        ):
-            return entry
-    return None
-
-
-def normalize_workload_group_focus_scope(value: Any) -> str:
-    normalized = str(value or "").strip().lower()
-    return normalized if normalized in {"pool", "owner"} else ""
-
-
-def filter_workload_groups_for_focus(
-    groups: tuple[RecentScanWorkloadGroupView, ...],
-    focus: RecentScanWorkloadAdminDigestEntryView | None,
-    *,
-    signal: str,
-) -> tuple[RecentScanWorkloadGroupView, ...]:
-    if focus is None:
-        return groups
-    fingerprints = set(workload_admin_entry_signal_fingerprints(focus, signal))
-    return tuple(group for group in groups if group.fingerprint in fingerprints)
-
-
-def render_workload_group_focus_filters(
-    focus: RecentScanWorkloadAdminDigestEntryView | None,
-    *,
-    signal: str,
-    query_group: str,
-    only_with_spills: bool,
-    workload_admin_scope: str,
-    workload_admin_signal: str,
-) -> str:
-    if focus is None:
-        return ""
-    clear_href = workload_group_clear_focus_href(
-        query_group=query_group,
-        only_with_spills=only_with_spills,
-        workload_admin_scope=workload_admin_scope,
-        workload_admin_signal=workload_admin_signal,
-    )
-    focus_label = f"{focus.scope}: {focus.name}"
-    if signal != "all":
-        focus_label = f"{focus_label}; {WORKLOAD_ADMIN_SIGNALS[signal]}"
-    return (
-        '<div class="batch-result-filters">'
-        '<div class="batch-result-filter-row">'
-        '<span class="batch-result-filter-label">Workload focus</span>'
-        '<nav class="batch-filter-tabs" aria-label="Repeated workload focus">'
-        f'<span class="batch-filter-link batch-filter-link--active">{escape_value(focus_label)}</span>'
-        f'<a class="batch-filter-link" href="{html.escape(clear_href, quote=True)}">All repeated workloads</a>'
-        "</nav></div></div>"
-    )
-
-
-def workload_group_clear_focus_href(
-    *,
-    query_group: str,
-    only_with_spills: bool,
-    workload_admin_scope: str,
-    workload_admin_signal: str,
-) -> str:
-    params = [("query_group", normalize_query_group(query_group))]
-    if only_with_spills:
-        params.append(("only_with_spills", "on"))
-    normalized_scope = normalize_workload_admin_scope(workload_admin_scope)
-    normalized_signal = normalize_workload_admin_signal(workload_admin_signal)
-    if normalized_scope != "all":
-        params.append(("workload_admin_scope", normalized_scope))
-    if normalized_signal != "all":
-        params.append(("workload_admin_signal", normalized_signal))
-    return f"?{urlencode(params)}#workload-groups"
-
-
-def render_workload_digest(
-    view: RecentScanWorkloadDigestView,
-    *,
-    workload_base_path: str = "/batch/workload",
-    query_group: str = DEFAULT_QUERY_GROUP,
-    only_with_spills: bool = False,
-    workload_admin_scope: str = "all",
-    workload_admin_signal: str = "all",
-) -> str:
-    sections = (
-        ("Top regressions", view.regressions),
-        ("Admission/runtime workloads", view.admission_runtime),
-        ("Stats-gap workloads", view.stats),
-        ("Spill-heavy workloads", view.spill),
-        ("Failed/cancelled workloads", view.status_issues),
-        ("Low-value noise", view.low_value),
-    )
-    rows = "".join(
-        render_workload_digest_row(label, entry, workload_base_path=workload_base_path)
-        for label, entries in sections
-        for entry in entries
-    )
-    admin_digest = render_workload_admin_digest(
-        view.admin,
-        workload_base_path=workload_base_path,
-        query_group=query_group,
-        only_with_spills=only_with_spills,
-        active_scope=workload_admin_scope,
-        active_signal=workload_admin_signal,
-    )
-    action_queue = render_workload_action_queue(
-        view.action_queue,
-        workload_base_path=workload_base_path,
-    )
-    if not rows and not admin_digest and not action_queue:
-        return ""
-    workload_rows_table = (
-        '<div class="batch-table-wrap"><table class="batch-table workload-digest-table">'
-        "<thead><tr><th>Scope</th><th>Workload</th><th>Priority</th><th>Runs</th>"
-        "<th>Total duration</th><th>p95 duration</th><th>Pool / owner</th>"
-        "<th>Evidence</th><th>Outcomes</th><th>Next</th></tr></thead>"
-        f"<tbody>{rows}</tbody>"
-        "</table></div>"
-        if rows
-        else ""
-    )
-    return (
-        '<details id="workload-digest" class="batch-note workload-digest" open>'
-        "<summary>Workload digest</summary>"
-        f"{render_workload_digest_links(has_admin=bool(view.admin), has_action_queue=bool(view.action_queue))}"
-        f"{action_queue}"
-        f"{admin_digest}"
-        f"{workload_rows_table}"
-        "</details>"
-    )
-
-
-def render_workload_digest_links(
-    *,
-    has_admin: bool = False,
-    has_action_queue: bool = False,
-) -> str:
-    links = [
-        ("Regressed workloads", "?query_group=regressions#recent-results"),
-        ("Repeated workloads", "?query_group=workloads#recent-results"),
-        ("Frequent short", "?query_group=frequent_short#recent-results"),
-        ("Repeated workload details", "#workload-groups"),
-    ]
-    if has_action_queue:
-        links.append(("Action queue", "#workload-action-queue"))
-    if has_admin:
-        links.append(("Admin digest", "#workload-admin-digest"))
-    rendered = "".join(
-        f'<a class="batch-filter-link" href="{html.escape(href, quote=True)}">{html.escape(label)}</a>'
-        for label, href in links
-    )
-    return (
-        '<div class="batch-result-filters">'
-        '<div class="batch-result-filter-row">'
-        '<span class="batch-result-filter-label">Digest shortcuts</span>'
-        f'<nav class="batch-filter-tabs" aria-label="Workload digest shortcuts">{rendered}</nav>'
-        "</div></div>"
-    )
-
-
-def render_workload_action_queue(
+def render_workload_followup_shortlist(
     entries: tuple[RecentScanWorkloadActionQueueEntryView, ...],
     *,
-    workload_base_path: str,
+    workload_base_path: str = "/batch/workload",
+    limit: int = 3,
 ) -> str:
-    if not entries:
+    selected = entries[: max(0, limit)]
+    if not selected:
         return ""
     rows = "".join(
-        render_workload_action_queue_row(entry, workload_base_path=workload_base_path)
-        for entry in entries
-    )
-    return (
-        '<div id="workload-action-queue" class="batch-table-wrap workload-action-queue">'
-        '<table class="batch-table workload-action-queue-table">'
-        "<thead><tr><th>Priority</th><th>Workload</th><th>Signal / evidence</th><th>Impact</th>"
-        "<th>Pool / owner</th><th>Open next</th><th>Outcomes</th><th>Next</th></tr></thead>"
-        f"<tbody>{rows}</tbody>"
-        "</table></div>"
-    )
-
-
-def render_workload_action_queue_row(
-    entry: RecentScanWorkloadActionQueueEntryView,
-    *,
-    workload_base_path: str,
-) -> str:
-    return (
-        "<tr>"
-        f"<td>{workload_digest_priority(entry.priority)}</td>"
-        f"<td>{workload_action_queue_link(entry, workload_base_path=workload_base_path)}</td>"
-        f"{workload_action_signal_cell(entry)}"
-        f"<td>{escape_value(entry.group_impact)}</td>"
-        f"<td>Pool: {escape_value(entry.pool_top)}<span>Owner: {escape_value(entry.owner_top)}</span></td>"
-        f"{workload_action_plan_cell(entry)}"
-        f"<td>{escape_value(entry.outcome_summary)}</td>"
-        f"<td>{workload_action_queue_detail_link(entry, workload_base_path=workload_base_path)}</td>"
-        "</tr>"
-    )
-
-
-def workload_action_signal_cell(entry: RecentScanWorkloadActionQueueEntryView) -> str:
-    return (
-        '<td class="workload-action-signal">'
-        f"<strong>{escape_value(entry.signal)}</strong>"
-        f"<span>{escape_value(entry.evidence)}</span>"
-        "</td>"
-    )
-
-
-def workload_action_plan_cell(entry: RecentScanWorkloadActionQueueEntryView) -> str:
-    return (
-        '<td class="workload-action-plan">'
-        "<span><strong>Open</strong> "
-        f"{escape_value(entry.next_step)}</span>"
-        "<span><strong>Details gives</strong> why, where, what to change, and how to verify the comparable rerun.</span>"
-        "</td>"
-    )
-
-
-def workload_action_queue_link(
-    entry: RecentScanWorkloadActionQueueEntryView,
-    *,
-    workload_base_path: str,
-) -> str:
-    href = f"{html.escape(workload_base_path.rstrip('/'), quote=True)}/{html.escape(entry.fingerprint, quote=True)}"
-    return f'<a href="{href}">{escape_value(entry.fingerprint_short)}</a>'
-
-
-def workload_action_queue_detail_link(
-    entry: RecentScanWorkloadActionQueueEntryView,
-    *,
-    workload_base_path: str,
-) -> str:
-    href = f"{html.escape(workload_base_path.rstrip('/'), quote=True)}/{html.escape(entry.fingerprint, quote=True)}"
-    return f'<a href="{href}">Open Details</a>'
-
-
-def render_workload_admin_digest(
-    entries: tuple[RecentScanWorkloadAdminDigestEntryView, ...],
-    *,
-    workload_base_path: str,
-    query_group: str = DEFAULT_QUERY_GROUP,
-    only_with_spills: bool = False,
-    active_scope: str = "all",
-    active_signal: str = "all",
-) -> str:
-    if not entries:
-        return ""
-    normalized_scope = normalize_workload_admin_scope(active_scope)
-    normalized_signal = normalize_workload_admin_signal(active_signal)
-    filtered_entries = filter_workload_admin_entries(
-        entries,
-        scope=normalized_scope,
-        signal=normalized_signal,
-    )
-    rows = "".join(
-        render_workload_admin_digest_row(
+        render_workload_followup_shortlist_item(
             entry,
             workload_base_path=workload_base_path,
-            query_group=query_group,
-            only_with_spills=only_with_spills,
-            active_scope=normalized_scope,
-            active_signal=normalized_signal,
         )
-        for entry in filtered_entries
-    )
-    if not rows:
-        rows = (
-            '<tr><td colspan="9" class="empty-cell">'
-            "No admin digest rows match this filter.</td></tr>"
-        )
-    filters = render_workload_admin_filters(
-        entries,
-        query_group=query_group,
-        only_with_spills=only_with_spills,
-        active_scope=normalized_scope,
-        active_signal=normalized_signal,
+        for entry in selected
     )
     return (
-        '<div id="workload-admin-digest" class="workload-admin-digest">'
-        f"{filters}"
-        '<div class="batch-table-wrap">'
-        '<table class="batch-table workload-admin-digest-table">'
-        "<thead><tr><th>Scope</th><th>Pool / owner</th><th>Repeated workloads</th><th>Runs</th>"
-        "<th>Total impact</th><th>Top workload</th><th>Top impact</th>"
-        "<th>Signals</th><th>Evidence</th></tr></thead>"
-        f"<tbody>{rows}</tbody>"
-        "</table></div></div>"
-    )
-
-
-def normalize_workload_admin_scope(value: Any) -> str:
-    normalized = str(value or "").strip().lower()
-    return normalized if normalized in WORKLOAD_ADMIN_SCOPES else "all"
-
-
-def normalize_workload_admin_signal(value: Any) -> str:
-    normalized = str(value or "").strip().lower()
-    return normalized if normalized in WORKLOAD_ADMIN_SIGNALS else "all"
-
-
-def filter_workload_admin_entries(
-    entries: tuple[RecentScanWorkloadAdminDigestEntryView, ...],
-    *,
-    scope: str,
-    signal: str,
-) -> tuple[RecentScanWorkloadAdminDigestEntryView, ...]:
-    return tuple(
-        entry
-        for entry in entries
-        if workload_admin_entry_matches_scope(entry, scope)
-        and workload_admin_entry_matches_signal(entry, signal)
-    )
-
-
-def workload_admin_entry_matches_scope(
-    entry: RecentScanWorkloadAdminDigestEntryView,
-    scope: str,
-) -> bool:
-    return scope == "all" or str(entry.scope or "").strip().lower() == scope
-
-
-def workload_admin_entry_matches_signal(
-    entry: RecentScanWorkloadAdminDigestEntryView,
-    signal: str,
-) -> bool:
-    if signal == "all":
-        return True
-    return signal in {
-        workload_admin_signal_key(label) for label, count in entry.signal_counts if count
-    }
-
-
-def workload_admin_entry_signal_fingerprints(
-    entry: RecentScanWorkloadAdminDigestEntryView,
-    signal: str,
-) -> tuple[str, ...]:
-    if signal == "all":
-        return entry.group_fingerprints
-    for label, fingerprints in entry.signal_group_fingerprints:
-        if workload_admin_signal_key(label) == signal:
-            return fingerprints
-    return ()
-
-
-def render_workload_admin_filters(
-    entries: tuple[RecentScanWorkloadAdminDigestEntryView, ...],
-    *,
-    query_group: str,
-    only_with_spills: bool,
-    active_scope: str,
-    active_signal: str,
-) -> str:
-    scope_links = render_workload_admin_filter_links(
-        WORKLOAD_ADMIN_SCOPES.items(),
-        active_value=active_scope,
-        query_group=query_group,
-        only_with_spills=only_with_spills,
-        scope_value=None,
-        signal_value=active_signal,
-    )
-    available_signals = workload_admin_available_signals(entries)
-    signal_links = render_workload_admin_filter_links(
-        (
-            (key, label)
-            for key, label in WORKLOAD_ADMIN_SIGNALS.items()
-            if key == "all" or key == active_signal or key in available_signals
-        ),
-        active_value=active_signal,
-        query_group=query_group,
-        only_with_spills=only_with_spills,
-        scope_value=active_scope,
-        signal_value=None,
-    )
-    return (
-        '<div class="batch-result-filters">'
-        '<div class="batch-result-filter-row">'
-        '<span class="batch-result-filter-label">Admin scope</span>'
-        f'<nav class="batch-filter-tabs" aria-label="Workload admin scope filter">{scope_links}</nav>'
+        '<div class="batch-context-block workload-followup" aria-label="Workload follow-up">'
+        '<div class="batch-context-title">Workload follow-up</div>'
+        '<div class="workload-followup-list">'
+        "<p>Open repeated patterns when one query row is not enough.</p>"
+        f"<ul>{rows}</ul>"
+        '<nav class="workload-followup-links" aria-label="Workload result views">'
+        '<a href="?query_group=workloads#recent-results">Repeated workloads</a>'
+        '<a href="?query_group=regressions#recent-results">Regressed workloads</a>'
+        "</nav>"
         "</div>"
-        '<div class="batch-result-filter-row batch-result-filter-row--secondary">'
-        '<span class="batch-result-filter-label">Admin signal</span>'
-        f'<nav class="batch-filter-tabs" aria-label="Workload admin signal filter">{signal_links}</nav>'
-        "</div></div>"
+        "</div>"
     )
 
 
-def render_workload_admin_filter_links(
-    items: Any,
-    *,
-    active_value: str,
-    query_group: str,
-    only_with_spills: bool,
-    scope_value: str | None,
-    signal_value: str | None,
-) -> str:
-    links = []
-    for key, label in items:
-        scope = key if scope_value is None else scope_value
-        signal = key if signal_value is None else signal_value
-        css_class = (
-            "batch-filter-link batch-filter-link--active"
-            if key == active_value
-            else "batch-filter-link"
-        )
-        href = workload_admin_filter_href(
-            query_group=query_group,
-            only_with_spills=only_with_spills,
-            scope=scope,
-            signal=signal,
-        )
-        links.append(
-            f'<a class="{css_class}" href="{html.escape(href, quote=True)}">'
-            f"{html.escape(label)}</a>"
-        )
-    return "".join(links)
-
-
-def workload_admin_available_signals(
-    entries: tuple[RecentScanWorkloadAdminDigestEntryView, ...],
-) -> set[str]:
-    signals: set[str] = set()
-    for entry in entries:
-        signals.update(
-            workload_admin_signal_key(label) for label, count in entry.signal_counts if count
-        )
-    return signals
-
-
-def workload_admin_filter_href(
-    *,
-    query_group: str,
-    only_with_spills: bool,
-    scope: str,
-    signal: str,
-) -> str:
-    params = [("query_group", normalize_query_group(query_group))]
-    if only_with_spills:
-        params.append(("only_with_spills", "on"))
-    normalized_scope = normalize_workload_admin_scope(scope)
-    normalized_signal = normalize_workload_admin_signal(signal)
-    if normalized_scope != "all":
-        params.append(("workload_admin_scope", normalized_scope))
-    if normalized_signal != "all":
-        params.append(("workload_admin_signal", normalized_signal))
-    return f"?{urlencode(params)}#workload-admin-digest"
-
-
-def workload_admin_signal_key(label: Any) -> str:
-    normalized = str(label or "").strip().lower()
-    return WORKLOAD_ADMIN_SIGNAL_LABEL_KEYS.get(normalized, "")
-
-
-def render_workload_admin_digest_row(
-    entry: RecentScanWorkloadAdminDigestEntryView,
+def render_workload_followup_shortlist_item(
+    entry: RecentScanWorkloadActionQueueEntryView,
     *,
     workload_base_path: str,
-    query_group: str,
-    only_with_spills: bool,
-    active_scope: str,
-    active_signal: str,
 ) -> str:
+    href = workload_href(entry.fingerprint, workload_base_path=workload_base_path)
     return (
-        "<tr>"
-        f"<td>{escape_value(entry.scope)}</td>"
-        f"<td>{escape_value(entry.name)}</td>"
-        f"<td>{workload_admin_groups_link(entry, query_group=query_group, only_with_spills=only_with_spills, active_scope=active_scope, active_signal=active_signal)}</td>"
-        f"<td>{escape_value(entry.run_count)}</td>"
-        f"<td>{escape_value(entry.duration_sec_total)}</td>"
-        f"<td>{workload_admin_digest_link(entry, workload_base_path=workload_base_path)}</td>"
-        f"<td>{escape_value(entry.top_group_impact)}</td>"
-        f"<td>{escape_value(entry.signals)}</td>"
-        f"<td>{escape_value(entry.evidence)}</td>"
-        "</tr>"
+        "<li>"
+        f'<a href="{href}">{escape_value(entry.signal)}</a>'
+        f"<span>{escape_value(entry.priority)} priority; impact {escape_value(entry.group_impact)}; "
+        f"{escape_value(entry.evidence)}</span>"
+        f"<small>Open Workload Details; {escape_value(entry.outcome_summary)}</small>"
+        "</li>"
     )
 
 
-def workload_admin_groups_link(
-    entry: RecentScanWorkloadAdminDigestEntryView,
-    *,
-    query_group: str,
-    only_with_spills: bool,
-    active_scope: str,
-    active_signal: str,
-) -> str:
-    group_count = len(workload_admin_entry_signal_fingerprints(entry, active_signal))
-    href = workload_admin_groups_href(
-        entry,
-        query_group=query_group,
-        only_with_spills=only_with_spills,
-        active_scope=active_scope,
-        active_signal=active_signal,
-    )
-    return f'<a href="{html.escape(href, quote=True)}">{escape_value(group_count)}</a>'
-
-
-def workload_admin_groups_href(
-    entry: RecentScanWorkloadAdminDigestEntryView,
-    *,
-    query_group: str,
-    only_with_spills: bool,
-    active_scope: str,
-    active_signal: str,
-) -> str:
-    params = [("query_group", normalize_query_group(query_group))]
-    if only_with_spills:
-        params.append(("only_with_spills", "on"))
-    normalized_scope = normalize_workload_admin_scope(active_scope)
-    normalized_signal = normalize_workload_admin_signal(active_signal)
-    if normalized_scope != "all":
-        params.append(("workload_admin_scope", normalized_scope))
-    if normalized_signal != "all":
-        params.append(("workload_admin_signal", normalized_signal))
-    params.extend(
-        (
-            ("workload_group_scope", str(entry.scope or "").strip().lower()),
-            ("workload_group_name", entry.name),
-        )
-    )
-    if normalized_signal != "all":
-        params.append(("workload_group_signal", normalized_signal))
-    return f"?{urlencode(params)}#workload-groups"
-
-
-def workload_admin_digest_link(
-    entry: RecentScanWorkloadAdminDigestEntryView,
-    *,
-    workload_base_path: str,
-) -> str:
-    href = f"{html.escape(workload_base_path.rstrip('/'), quote=True)}/{html.escape(entry.top_fingerprint, quote=True)}"
-    return f'<a href="{href}">{escape_value(entry.top_fingerprint_short)}</a>'
-
-
-def render_workload_digest_row(
-    label: str,
-    entry: RecentScanWorkloadDigestEntryView,
-    *,
-    workload_base_path: str,
-) -> str:
+def workload_href(fingerprint: str, *, workload_base_path: str) -> str:
     return (
-        "<tr>"
-        f"<td>{escape_value(label)}</td>"
-        f"<td>{workload_digest_link(entry, workload_base_path=workload_base_path)}</td>"
-        f"<td>{workload_digest_priority(entry.priority)}</td>"
-        f"<td>{escape_value(entry.member_count)}</td>"
-        f"<td>{escape_value(entry.duration_sec_total)}</td>"
-        f"<td>{escape_value(entry.duration_sec_p95)}</td>"
-        f"<td>{workload_digest_owner_cell(entry)}</td>"
-        f"<td>{escape_value(entry.evidence)}</td>"
-        f"<td>{escape_value(entry.outcome_summary)}</td>"
-        f"<td>{workload_digest_detail_link(entry, workload_base_path=workload_base_path)}</td>"
-        "</tr>"
+        f"{html.escape(workload_base_path.rstrip('/'), quote=True)}/"
+        f"{html.escape(fingerprint, quote=True)}"
     )
 
 
-def workload_digest_owner_cell(entry: RecentScanWorkloadDigestEntryView) -> str:
-    return (
-        f"Pool: {escape_value(entry.pool_top)}<span>Owner: {escape_value(entry.owner_top)}</span>"
-    )
-
-
-def workload_digest_link(
-    entry: RecentScanWorkloadDigestEntryView,
-    *,
-    workload_base_path: str,
-) -> str:
-    href = f"{html.escape(workload_base_path.rstrip('/'), quote=True)}/{html.escape(entry.fingerprint, quote=True)}"
-    return f'<a href="{href}">{escape_value(entry.fingerprint_short)}</a>'
-
-
-def workload_digest_detail_link(
-    entry: RecentScanWorkloadDigestEntryView,
-    *,
-    workload_base_path: str,
-) -> str:
-    href = f"{html.escape(workload_base_path.rstrip('/'), quote=True)}/{html.escape(entry.fingerprint, quote=True)}"
-    return f'<a href="{href}">Detail</a>'
-
-
-def workload_digest_priority(priority: str) -> str:
-    class_name = {
-        "high": "batch-severity--high",
-        "medium": "batch-severity--suspicious",
-        "low": "batch-status--neutral",
-    }.get(priority.strip().lower(), "batch-status--neutral")
-    return f'<span class="batch-mini-badge {class_name}">{escape_value(priority)}</span>'
-
-
-def render_workload_history_status(view: RecentScanWorkloadHistoryView | None) -> str:
+def workload_history_context_text(view: RecentScanWorkloadHistoryView | None) -> str:
     if view is None:
         return ""
+    parts = ["enabled" if view.enabled else "disabled"]
+    if view.loaded_record_count:
+        parts.append(f"loaded {view.loaded_record_count}")
+    if view.appended_record_count:
+        parts.append(f"appended {view.appended_record_count}")
     regression_text = workload_history_regression_counts_text(view)
-    rows = (
-        ("History", "enabled" if view.enabled else "disabled"),
-        ("Loaded records", view.loaded_record_count),
-        ("Appended records", view.appended_record_count),
-        ("Append status", workload_history_append_status_label(view.append_status)),
-        ("Regressions", regression_text),
-    )
-    items = "".join(
-        f"<span><strong>{html.escape(label)}:</strong> {escape_value(value)}</span>"
-        for label, value in rows
-    )
-    return (
-        '<details class="batch-note workload-history">'
-        "<summary>Workload history</summary>"
-        f'<div class="batch-detail-grid" aria-label="Workload history status">{items}</div>'
-        "</details>"
-    )
+    if regression_text != "none":
+        parts.append(f"regressions {regression_text}")
+    return f"Workload history: {'; '.join(parts)}"
 
 
 def workload_history_regression_counts_text(view: RecentScanWorkloadHistoryView) -> str:
     if not view.regression_counts:
         return "none"
     return ", ".join(f"{label}={count}" for label, count in view.regression_counts)
-
-
-def workload_history_append_status_label(value: str) -> str:
-    return {
-        "ok": "ok",
-        "empty": "empty",
-        "failed": "failed",
-        "unknown": "unknown",
-    }.get(value, "unknown")
-
-
-def workload_group_link(
-    group: RecentScanWorkloadGroupView,
-    *,
-    workload_base_path: str,
-) -> str:
-    href = f"{html.escape(workload_base_path.rstrip('/'), quote=True)}/{html.escape(group.fingerprint, quote=True)}"
-    return f'<a href="{href}">{escape_value(group.fingerprint_short)}</a>'
-
-
-def workload_baseline_cell(group: RecentScanWorkloadGroupView) -> str:
-    if group.baseline_sample_count <= 0:
-        return "unknown"
-    p95 = group.baseline_duration_sec_p95
-    p95_text = f"p95 {p95}s" if str(p95 or "").strip() else "p95 unknown"
-    return f"{group.regression}; baseline {p95_text}; n={group.baseline_sample_count}"

@@ -38,7 +38,7 @@ Query Doctor has three separate surfaces:
 
 The demo should make this order clear:
 
-1. Workloads / Action Queue answers what to inspect, change, and verify first.
+1. Workload patterns answers what to inspect, change, and verify first.
 2. Cloudera Manager (CM) summaries or configured direct Impala daemon query
    lists identify bounded query candidates.
 3. Selected profiles are collected and redacted from Cloudera Manager or direct

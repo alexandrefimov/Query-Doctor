@@ -37,6 +37,21 @@ def render_action_candidate_findings(
     )
 
 
+def render_action_candidate_decision_findings(
+    view: RecentScanCaseDetailView,
+    *,
+    detail_base_path: str = "/batch/case",
+    language: str = "en",
+) -> str:
+    return render_action_candidate_decision_findings_view(
+        present_recent_scan_action_candidates(view),
+        case_id=view.case_id,
+        workload_fingerprint=view.workload_fingerprint,
+        detail_base_path=detail_base_path,
+        language=language,
+    )
+
+
 def render_action_candidate_findings_view(
     view: RecentScanActionCandidatesView,
     *,
@@ -64,6 +79,81 @@ def render_action_candidate_findings_view(
     return f'<ul class="reason-list action-candidate-list">{cards}</ul>'
 
 
+def render_action_candidate_decision_findings_view(
+    view: RecentScanActionCandidatesView,
+    *,
+    case_id: str = "",
+    workload_fingerprint: str = "",
+    detail_base_path: str = "/batch/case",
+    language: str = "en",
+) -> str:
+    if not view.cards:
+        return ""
+    outcome_metrics = (
+        action_outcome_metrics_by_recommendation() if case_id and workload_fingerprint else {}
+    )
+    primary = render_action_candidate_card_view(
+        view.cards[0],
+        case_id=case_id,
+        workload_fingerprint=workload_fingerprint,
+        detail_base_path=detail_base_path,
+        outcome_metric=outcome_metrics.get(view.cards[0].recommendation_id),
+        language=language,
+        primary=True,
+    )
+    additional = render_additional_action_candidates(
+        view.cards[1:],
+        case_id=case_id,
+        workload_fingerprint=workload_fingerprint,
+        detail_base_path=detail_base_path,
+        outcome_metrics=outcome_metrics,
+        language=language,
+    )
+    return f'<ul class="reason-list action-candidate-list action-candidate-list--primary">{primary}</ul>{additional}'
+
+
+def render_additional_action_candidates(
+    cards: tuple[RecentScanActionCandidateCardView, ...],
+    *,
+    case_id: str,
+    workload_fingerprint: str,
+    detail_base_path: str,
+    outcome_metrics: dict[str, RecommendationOutcomeMetric],
+    language: str,
+) -> str:
+    if not cards:
+        return ""
+    rendered = "".join(
+        render_action_candidate_card_view(
+            card,
+            case_id=case_id,
+            workload_fingerprint=workload_fingerprint,
+            detail_base_path=detail_base_path,
+            outcome_metric=outcome_metrics.get(card.recommendation_id),
+            language=language,
+        )
+        for card in cards
+    )
+    count = len(cards)
+    summary = ui_text(
+        language,
+        f"Additional supported actions ({count})",
+        f"Дополнительные поддержанные действия ({count})",
+    )
+    note = ui_text(
+        language,
+        "Use these only after reviewing the primary recommendation above.",
+        "Используйте это только после проверки основной рекомендации выше.",
+    )
+    return (
+        '<details class="analysis-subdetails additional-action-candidates">'
+        f"<summary>{html.escape(summary)}</summary>"
+        f'<p class="helper">{html.escape(note)}</p>'
+        f'<ul class="reason-list action-candidate-list">{rendered}</ul>'
+        "</details>"
+    )
+
+
 def render_action_candidate_card_view(
     card: RecentScanActionCandidateCardView,
     *,
@@ -72,11 +162,15 @@ def render_action_candidate_card_view(
     detail_base_path: str = "/batch/case",
     outcome_metric: RecommendationOutcomeMetric | None = None,
     language: str = "en",
+    primary: bool = False,
 ) -> str:
+    css_class = "reason-card action-candidate-card"
+    if primary:
+        css_class += " action-candidate-card--primary"
     return (
-        '<li class="reason-card action-candidate-card">'
+        f'<li class="{css_class}">'
         f"<strong>{html.escape(card.title)}</strong>"
-        f"{render_action_candidate_sections(card, language=language)}"
+        f"{render_action_candidate_sections(card, language=language, primary=primary)}"
         f"{render_supporting_facts(card.supporting_facts, language=language)}"
         f"{render_action_candidate_guardrails(card.guardrails, language=language)}"
         f"{render_action_candidate_meta(card.body, language=language)}"
@@ -135,26 +229,50 @@ def render_source_locator(locator: RecentScanSourceLocatorView) -> str:
 
 
 def render_action_candidate_sections(
-    card: RecentScanActionCandidateCardView, *, language: str = "en"
+    card: RecentScanActionCandidateCardView, *, language: str = "en", primary: bool = False
 ) -> str:
-    sections = (
-        render_action_candidate_section(
-            ui_text(language, "What to change", "Что изменить"),
-            card.change_direction,
-            modifier_class="action-candidate-section--change",
-        ),
-        render_action_candidate_section(
-            ui_text(language, "How to verify", "Как проверить"),
-            card.verification,
-            modifier_class="action-candidate-section--verify",
-        ),
-        render_action_candidate_location_section(
-            card.source_locators,
-            card.supporting_facts,
-            language=language,
-        ),
-        render_action_candidate_reason_section(card.why, language=language),
-    )
+    if primary:
+        sections = (
+            render_action_candidate_section(
+                ui_text(language, "Why this query matters", "Почему запрос важен"),
+                card.why,
+                modifier_class="action-candidate-section--why",
+            ),
+            render_action_candidate_location_section(
+                card.source_locators,
+                card.supporting_facts,
+                language=language,
+            ),
+            render_action_candidate_section(
+                ui_text(language, "What to try", "Что попробовать"),
+                card.change_direction,
+                modifier_class="action-candidate-section--change",
+            ),
+            render_action_candidate_section(
+                ui_text(language, "How to verify", "Как проверить"),
+                card.verification,
+                modifier_class="action-candidate-section--verify",
+            ),
+        )
+    else:
+        sections = (
+            render_action_candidate_section(
+                ui_text(language, "What to change", "Что изменить"),
+                card.change_direction,
+                modifier_class="action-candidate-section--change",
+            ),
+            render_action_candidate_section(
+                ui_text(language, "How to verify", "Как проверить"),
+                card.verification,
+                modifier_class="action-candidate-section--verify",
+            ),
+            render_action_candidate_location_section(
+                card.source_locators,
+                card.supporting_facts,
+                language=language,
+            ),
+            render_action_candidate_reason_section(card.why, language=language),
+        )
     rendered = "".join(section for section in sections if section)
     if not rendered:
         return ""
@@ -212,7 +330,7 @@ def render_action_candidate_location_section(
         return ""
     return (
         '<section class="action-candidate-section action-candidate-section--locations">'
-        f"<span>{html.escape(ui_text(language, 'Where to look', 'Где смотреть'))}</span>"
+        f"<span>{html.escape(ui_text(language, 'Where to inspect', 'Где проверить'))}</span>"
         f"{locator_html}"
         "</section>"
     )
@@ -277,15 +395,16 @@ def render_action_outcome_controls(
         '<details class="action-outcome-control" data-action-outcome-card>'
         f"<summary>{html.escape(ui_text(language, 'Record rerun outcome', 'Записать результат повтора'))}</summary>"
         '<div class="action-outcome-body">'
-        f'<span class="action-outcome-label">{html.escape(ui_text(language, "Outcome", "Результат"))}: {label}</span>'
+        f'<p class="action-outcome-help">{html.escape(ui_text(language, "Record whether this recommendation was applied and what happened on a comparable rerun. This feeds workload confidence and next checks.", "Запишите, применялась ли рекомендация и что произошло на сопоставимом повторном запуске. Это повышает уверенность по workload и помогает выбрать следующие проверки."))}</p>'
+        f'<span class="action-outcome-label">{html.escape(ui_text(language, "Recommendation", "Рекомендация"))}: {label}</span>'
         f"{metric_note}"
         f'<form method="post" action="{action_url}" class="action-outcome-form">'
-        f'<button type="button" class="button" data-action-outcome-show-result>{html.escape(ui_text(language, "Applied", "Применено"))}</button>'
+        f'<button type="button" class="button" data-action-outcome-show-result>{html.escape(ui_text(language, "Applied and rerun", "Применено и повторено"))}</button>'
         f'<button type="submit" class="button" name="applied" value="no">{html.escape(ui_text(language, "Not applied", "Не применено"))}</button>'
-        f'<button type="submit" class="button" name="applied" value="skip">{html.escape(ui_text(language, "Skip", "Пропустить"))}</button>'
+        f'<button type="submit" class="button" name="applied" value="skip">{html.escape(ui_text(language, "Not comparable / skip", "Не сопоставимо / пропустить"))}</button>'
         "</form>"
         '<div class="action-outcome-result" data-action-outcome-result-panel hidden>'
-        f'<span class="action-outcome-label">{html.escape(ui_text(language, "Outcome after comparable rerun", "Результат после сопоставимого повторного запуска"))}</span>'
+        f'<span class="action-outcome-label">{html.escape(ui_text(language, "Comparable rerun result", "Результат сопоставимого повтора"))}</span>'
         f'<form method="post" action="{action_url}" class="action-outcome-form">'
         '<input type="hidden" name="applied" value="yes">'
         '<input type="hidden" name="verification_status" value="comparable_rerun">'
@@ -305,7 +424,7 @@ def render_action_outcome_metric_note(metric: RecommendationOutcomeMetric | None
         return ""
     percent = round(metric.improvement_rate * 100)
     text = (
-        f"Local history: improved in {metric.improved_count} of "
+        f"Local feedback so far: improved in {metric.improved_count} of "
         f"{metric.comparable_rerun_count} comparable reruns ({percent}%)"
     )
     return f'<span class="action-outcome-label">{html.escape(text)}</span>'

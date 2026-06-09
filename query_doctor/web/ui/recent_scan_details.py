@@ -39,7 +39,7 @@ from query_doctor.web.ui.html_helpers import (
 )
 from query_doctor.web.ui.i18n import text as ui_text
 from query_doctor.web.ui.action_candidates import (
-    render_action_candidate_findings,
+    render_action_candidate_decision_findings,
 )
 from query_doctor.web.ui.llm_actions import (
     OptimizedQueryActionView,
@@ -510,7 +510,7 @@ def render_case_action_plan(
     detail_base_path: str = "/batch/case",
     language: str = "en",
 ) -> str:
-    action_cards = render_action_candidate_findings(
+    action_cards = render_action_candidate_decision_findings(
         view, detail_base_path=detail_base_path, language=language
     )
     if not action_cards:
@@ -523,37 +523,36 @@ def render_case_action_plan(
         )
         action_cards = (
             '<ul class="reason-list action-candidate-list">'
-            '<li class="reason-card action-candidate-card">'
+            '<li class="reason-card action-candidate-card action-candidate-card--primary">'
             f"<strong>{html.escape(ui_text(language, 'No supported change direction', 'Нет поддержанного направления изменения'))}</strong>"
             '<div class="action-candidate-sections">'
+            '<section class="action-candidate-section action-candidate-section--why">'
+            f"<span>{html.escape(ui_text(language, 'Why this query matters', 'Почему запрос важен'))}</span>"
+            f"<p>{no_action_why}</p>"
+            "</section>"
+            '<section class="action-candidate-section action-candidate-section--locations">'
+            f"<span>{html.escape(ui_text(language, 'Where to inspect', 'Где проверить'))}</span>"
+            f"<p>{html.escape(ui_text(language, 'Use Diagnostics only to review source coverage and limitations.', 'Используйте Диагностику только для проверки покрытия источников и ограничений.'))}</p>"
+            "</section>"
             '<section class="action-candidate-section action-candidate-section--change">'
-            f"<span>{html.escape(ui_text(language, 'What to change', 'Что изменить'))}</span>"
+            f"<span>{html.escape(ui_text(language, 'What to try', 'Что попробовать'))}</span>"
             f"<p>{html.escape(ui_text(language, 'Do not change SQL, stats, or runtime settings based on this case alone.', 'Не меняйте SQL, статистику или runtime-настройки только на основании этого кейса.'))}</p>"
             "</section>"
             '<section class="action-candidate-section action-candidate-section--verify">'
             f"<span>{html.escape(ui_text(language, 'How to verify', 'Как проверить'))}</span>"
             f"<p>{html.escape(ui_text(language, 'Confirm the next comparable rerun remains below suspicious thresholds.', 'Подтвердите, что следующий сопоставимый повторный запуск остается ниже подозрительных порогов.'))}</p>"
             "</section>"
-            '<section class="action-candidate-section action-candidate-section--locations">'
-            f"<span>{html.escape(ui_text(language, 'Where to look', 'Где смотреть'))}</span>"
-            f"<p>{html.escape(ui_text(language, 'Use Diagnostics only to review source coverage and limitations.', 'Используйте Диагностику только для проверки покрытия источников и ограничений.'))}</p>"
-            "</section>"
-            '<details class="analysis-subdetails action-candidate-reason" '
-            'aria-label="Why this deserves attention">'
-            f"<summary>{html.escape(ui_text(language, 'Why this deserves attention', 'Почему это требует внимания'))}</summary>"
-            f'<p class="helper">{no_action_why}</p>'
-            "</details>"
             "</div>"
             "</li>"
             "</ul>"
         )
     return (
         '<section id="action-plan" class="panel docs-panel action-plan-panel" '
-        'aria-label="Recommended changes">'
-        f'<h2 class="section-title">{html.escape(ui_text(language, "Recommended changes", "Рекомендуемые изменения"))}</h2>'
+        'aria-label="Recommended change">'
+        f'<h2 class="section-title">{html.escape(ui_text(language, "Recommended change", "Рекомендуемое изменение"))}</h2>'
         '<div class="report-body">'
         '<p class="action-plan-intro">'
-        f"{html.escape(ui_text(language, 'Read each card as what to try, how to verify it, where to inspect, and why the deterministic facts support that path.', 'Читайте каждую карточку как что попробовать, как проверить, где смотреть и почему детерминированные факты поддерживают этот путь.'))}"
+        f"{html.escape(ui_text(language, 'Start with the primary path: why this query matters, where to inspect, what to try, and how to verify a comparable rerun.', 'Начните с основного пути: почему запрос важен, где проверить, что попробовать и как проверить сопоставимый повторный запуск.'))}"
         "</p>"
         f"{action_cards}"
         "</div>"

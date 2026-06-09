@@ -31,7 +31,7 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
 репозитория. Полезные фильтры:
 
 ```text
-/?query_group=workloads#workload-action-queue
+/?query_group=workloads#scan-context
 /?query_group=workloads#recent-results
 /?query_group=optimization#recent-results
 /?query_group=stats#recent-results
@@ -153,7 +153,7 @@ screenshots from real clusters или credentials.
 
 Показывайте Query Doctor как engineering diagnostic and validation tool:
 
-1. Workloads / Action Queue как первый экран ценности;
+1. Scan context workload follow-up как первый экран ценности;
 2. deterministic candidate ranking from generated profile/analyzer facts;
 3. Details page before any report or optimizer action;
 4. explicit trusted report, который формулирует Python-owned facts;

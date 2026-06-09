@@ -451,8 +451,8 @@ def test_e2e_batch_detail_renders_owner_coordinate_action_card(tmp_path, page):
         page.goto(f"{base_url}/batch/case/case-004")
 
         action_plan = page.locator("#action-plan")
-        assert action_plan.get_by_role("heading", name="Recommended changes").is_visible()
-        assert action_plan.get_by_text("Where to look").is_visible()
+        assert action_plan.get_by_role("heading", name="Recommended change").is_visible()
+        assert action_plan.get_by_text("Where to inspect").is_visible()
         safe_review_locations = action_plan.locator('[aria-label="Safe review locations"]')
         assert safe_review_locations.get_by_text(
             "SQL: final SELECT filter (line 18): predicate near final SELECT", exact=True

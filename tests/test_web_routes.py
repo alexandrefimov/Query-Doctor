@@ -140,7 +140,8 @@ def test_route_get_batch_workload_detail_renders_safe_group(tmp_path, monkeypatc
 
     assert response is not None
     assert response.status == 200
-    assert "Workload details" in response.body
+    assert "Repeated workload: Stats review" in response.body
+    assert "Workload decision" in response.body
     assert "Outcomes" in response.body
     assert (
         "1 recorded; 1 applied; 1 comparable reruns; improved 1; "
@@ -149,9 +150,10 @@ def test_route_get_batch_workload_detail_renders_safe_group(tmp_path, monkeypatc
         "feedback sample below threshold (1/5 comparable reruns); "
         "next check stats signal count and workload p95"
     ) in response.body
-    assert "Details action plan" in response.body
+    assert "What to try next" in response.body
+    assert "Recommended next checks" not in response.body
     assert "Stats review" in response.body
-    assert "Representative cases" in response.body
+    assert "Representative queries" in response.body
     assert 'href="/batch/case/case-002"' in response.body
     assert "local path hidden" in response.body
     assert "/tmp/raw" not in response.body

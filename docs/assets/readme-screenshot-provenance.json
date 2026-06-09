@@ -17,8 +17,8 @@
       "path": "docs/assets/demo_finished_queries.png",
       "alt_text": "Synthetic Query Doctor finished queries results",
       "readme_files": ["README.md", "README.ru.md"],
-      "capture_target": "Finished Queries results with workload action queue",
-      "route": "/?query_group=workloads#workload-action-queue",
+      "capture_target": "Finished Queries results with Scan context workload follow-up",
+      "route": "/?query_group=workloads#scan-context",
       "viewport": {"width": 1280, "height": 1024}
     }
   ]

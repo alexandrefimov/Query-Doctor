@@ -21,12 +21,26 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
-- Details now leads recommendation cards with `What to change` and
-  `How to verify`, keeps `Where to look` next, and collapses supporting
-  `Why this deserves attention` evidence. Repeated-workload Results wording now
-  uses `Workload p95`, `Workload impact`, `Next`, and `Open Details`, and the
-  UX audit records the regression checklist for the Recent scan -> Results ->
-  Details -> verification path.
+- Results `Scan context` now stays compact: coverage, important scan notes,
+  table key, action outcome count, and top workload follow-up links remain
+  visible, while the full workload digest, pool/owner breakdown, repeated group
+  table, and rewrite funnel metrics no longer compete with the result rows.
+  Demo links and README screenshot provenance now target `#scan-context`
+  instead of the retired `#workload-digest` entry point.
+- Workload triage now reads as an analyst flow. Results point to repeated
+  patterns through compact workload follow-up links, while Workload Details
+  starts with why the repeated pattern matters, where to inspect, what to try,
+  and how to verify before representative queries, collapsed additional checks,
+  coverage, and limitations. The retired full workload digest, action queue,
+  pool/owner breakdown, and repeated-group dashboard renderers and CSS were
+  removed after the Results page moved to the compact follow-up path.
+- Details now leads the first recommendation card in analyst decision order:
+  `Why this query matters`, `Where to inspect`, `What to try`, and
+  `How to verify`. Additional supported actions are collapsed below the primary
+  recommendation, and `Record rerun outcome` now explains comparable-rerun
+  feedback and local workload-confidence use before showing the outcome
+  buttons. Help documents the current Details and workload path instead of
+  exposing compact future-engine surfaces in the main shortcut set.
 - Recent scan and Results now keep the default path flatter: an empty
   `Minimum duration` includes long-query and repeated-short workload patterns,
   setting a duration narrows to longer-running queries, secondary result views

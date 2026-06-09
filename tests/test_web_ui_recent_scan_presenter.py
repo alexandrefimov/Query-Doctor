@@ -365,7 +365,7 @@ def assert_problematic_detail_contract(name: str, case_id: str, case: dict[str, 
     assert score_view.reasons, name
     assert "No prioritized rewrite or stats action" not in html, name
     assert "No positive deterministic score reasons" not in html, name
-    assert "Where to look" in html, name
+    assert "Where to inspect" in html, name
     if view.score_severity == "failed":
         assert (
             '<h2 class="case-verdict-title">Processing did not finish - '
@@ -863,7 +863,7 @@ def test_recent_scan_case_detail_view_renderer_uses_typed_view_model():
     assert "Verdict" in view_html
     assert "Start with the recommendation below" not in view_html
     assert '<section id="action-plan"' in view_html
-    assert "Recommended changes" in view_html
+    assert "Recommended change" in view_html
     assert "cardinality estimate anomalies" in view_html
     assert_no_forbidden_fragments(view_html)
 
@@ -884,7 +884,7 @@ def test_recent_scan_case_detail_view_uses_russian_static_labels():
     assert "Детали завершенного запроса" in view_html
     assert "Завершенные запросы детали" not in view_html
     assert "Вердикт" in view_html
-    assert "Рекомендуемые изменения" in view_html
+    assert "Рекомендуемое изменение" in view_html
     assert "Диагностика и доказательства" in view_html
     assert "Отчеты и оптимизатор" in view_html
     assert "cardinality estimate anomalies" in view_html
@@ -1580,14 +1580,14 @@ def test_recent_scan_case_verdict_keeps_clean_low_confidence_primary_cautious():
         html,
         [
             "No supported change direction",
-            "What to change",
+            "Why this query matters",
+            "This query is not currently prioritized for analyst action",
+            "Where to inspect",
+            "Score evidence and source coverage",
+            "What to try",
             "No supported change is recommended for this selected case",
             "How to verify",
             "On the next comparable scan or rerun",
-            "Where to look",
-            "Score evidence and source coverage",
-            "Why this deserves attention",
-            "This query is not currently prioritized for analyst action",
         ],
     )
     assert "Query shape is worth a rewrite review" not in html
@@ -3134,70 +3134,52 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         workload_outcome_metrics=workload_outcome_metrics,
     )
 
-    assert "Repeated workload details (3)" in html
-    assert "Workload digest" in html
-    assert "Top regressions" in html
-    assert "Admission/runtime workloads" in html
-    assert "Stats-gap workloads" in html
-    assert "Spill-heavy workloads" in html
-    assert "Failed/cancelled workloads" in html
-    assert "Low-value noise" in html
-    assert "Digest shortcuts" in html
-    assert 'href="#workload-action-queue">Action queue</a>' in html
-    assert 'id="workload-action-queue"' in html
-    assert "<th>Signal / evidence</th>" in html
-    assert "<th>Open next</th>" in html
+    assert 'id="scan-context"' in html
+    assert "Coverage, scan notes, and compact follow-up links for this result set." in html
+    assert "Workload history: enabled; loaded 7; appended 1; regressions strong=1, none=2" in html
+    assert "Workload follow-up" in html
+    assert "Open repeated patterns when one query row is not enough." in html
     assert "Baseline slowdown" in html
     assert "Admission/runtime review" in html
     assert "Low-value repeat" in html
-    assert '<td class="workload-action-signal"><strong>Baseline slowdown</strong>' in html
-    assert "<span><strong>Open</strong>" in html
-    assert "<span><strong>Details gives</strong> why, where, what to change" in html
-    assert "<span><strong>Review</strong>" not in html
-    assert "<span><strong>Compare</strong>" not in html
-    assert "<span><strong>Confirm</strong>" not in html
+    assert "Open Workload Details;" in html
+    assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa"' in html
+    assert 'href="/batch/workload/wf_dddddddddddddddddddddddd"' in html
+    assert 'href="/batch/workload/wf_eeeeeeeeeeeeeeeeeeeeeeee"' in html
+    assert 'href="?query_group=workloads#recent-results">Repeated workloads</a>' in html
+    assert 'href="?query_group=regressions#recent-results">Regressed workloads</a>' in html
+    assert "Repeated workload details" not in html
+    assert "Workload patterns" not in html
+    assert "Top workload to review" not in html
+    assert "Workloads to review" not in html
+    assert "Pattern categories" not in html
+    assert "Top regressions" not in html
+    assert "Admission/runtime workloads" not in html
+    assert "Stats-gap workloads" not in html
+    assert "Spill-heavy workloads" not in html
+    assert "Failed/cancelled workloads" not in html
+    assert "Low-value noise" not in html
+    assert "Workload views" not in html
+    assert 'href="#workload-action-queue">Workloads to review</a>' not in html
+    assert 'id="workload-action-queue"' not in html
+    assert 'id="workload-admin-digest"' not in html
+    assert 'id="workload-groups"' not in html
+    assert "<th>Signal / evidence</th>" not in html
+    assert "<th>Open next</th>" not in html
+    assert "<th>Pattern</th>" not in html
     assert "Workload details: representative cases and local baseline block." not in html
     assert "Workload p95 versus baseline p95 under comparable scan scope." not in html
     assert "Representative Details: pool, admission wait, and runtime context facts." not in html
     assert "Admission/runtime signal count and workload p95 under comparable load." not in html
-    assert "Workload details and representative cases before planning one change." in html
+    assert "Workload details and representative cases before planning one change." not in html
     assert (
         "Rerun a comparable scan after the change and confirm p95 moves toward the baseline."
         not in html
     )
-    assert 'href="#workload-admin-digest">Admin digest</a>' in html
-    assert 'id="workload-admin-digest"' in html
-    assert "Admin scope" in html
-    assert "Admin signal" in html
-    assert (
-        'href="?query_group=bad&amp;workload_admin_scope=owner#workload-admin-digest">Owners</a>'
-    ) in html
-    assert (
-        'href="?query_group=bad&amp;workload_admin_signal=status_issues#workload-admin-digest">'
-        "Failed/cancelled</a>"
-    ) in html
-    assert "Pool / owner" in html
-    assert "Owner: alice (2/2)" in html
-    assert "Owner: platform (2/2)" in html
-    assert "Owner: svc (2/2)" in html
-    assert "Pool</td><td>root.analytics</td>" in html
-    assert (
-        'workload_group_scope=pool&amp;workload_group_name=root.analytics#workload-groups">1</a>'
-        in html
-    )
-    assert "Owner</td><td>platform</td>" in html
-    assert (
-        'workload_group_scope=owner&amp;workload_group_name=platform#workload-groups">1</a>' in html
-    )
-    assert "top workload impact 90s." in html
-    assert "admission/runtime 1" in html
-    assert "admission/runtime 1; status issues 1" in html
-    assert "regressions 1; stats 1; spill 1" in html
-    assert "low-value 1" in html
-    assert 'href="?query_group=regressions#recent-results"' in html
-    assert 'href="?query_group=workloads#recent-results"' in html
-    assert 'href="#workload-groups"' in html
-    assert "<th>Outcomes</th>" in html
+    assert "top workload impact 90s." not in html
+    assert "admission/runtime 1" not in html
+    assert "admission/runtime 1; status issues 1" not in html
+    assert "<th>Outcomes</th>" not in html
     assert (
         "2 recorded; 2 applied; 2 comparable reruns; improved 1, no change 1; "
         "last applied action Stats refresh review: no change; "
@@ -3212,34 +3194,28 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         "feedback sample below threshold (0/5 comparable reruns); "
         "next check admission/runtime signal count and workload p95" in html
     )
-    assert "<th>Next</th>" in html
-    assert "strong regression; current p95 20s; baseline p95 12.5s; history samples 3." in html
-    assert "Stats gaps: group primary aggregate; 2 member rows." in html
-    assert "Spill-heavy: 1 of 2 member rows." in html
-    assert "Admission/runtime: 2 of 2 member rows." in html
-    assert "Status issues: 1 of 2 member rows." in html
+    assert "<th>Next</th>" not in html
+    assert "strong regression; current p95 20s; baseline p95 12.5s; history samples 3." not in html
+    assert "Stats gaps: group primary aggregate; 2 member rows." not in html
+    assert "Spill-heavy: 1 of 2 member rows." not in html
+    assert "Admission/runtime: 2 of 2 member rows." not in html
+    assert "Status issues: 1 of 2 member rows." not in html
     assert (
         "No regression, no failed/high/suspicious rows, no spill, "
         "and no stats/admission/runtime or rewrite-review hints."
-    ) in html
-    assert "Workload history" in html
-    assert "<strong>Loaded records:</strong> 7" in html
-    assert "<strong>Appended records:</strong> 1" in html
-    assert "<strong>Append status:</strong> ok" in html
-    assert "<strong>Regressions:</strong> strong=1, none=2" in html
+    ) not in html
+    assert "<strong>Loaded records:</strong> 7" not in html
+    assert "<strong>Appended records:</strong> 1" not in html
+    assert "<strong>Append status:</strong> ok" not in html
+    assert "<strong>Regressions:</strong> strong=1, none=2" not in html
     assert "raw-history" not in html
-    assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa"' in html
-    assert 'href="/batch/workload/wf_dddddddddddddddddddddddd"' in html
-    assert 'href="/batch/workload/wf_eeeeeeeeeeeeeeeeeeeeeeee"' in html
-    assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa">Detail</a>' in html
-    assert "Baseline" in html
-    assert "strong; baseline p95 12.5s; n=3" in html
+    assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa">Detail</a>' not in html
+    assert "strong; baseline p95 12.5s; n=3" not in html
     assert "wf_aaaaaaaa" in html
-    assert "case-001, case-002" in html
+    assert "case-001, case-002" not in html
     assert "case-999" not in html
-    assert "example_warehouse.fact_sales" in html
+    assert "example_warehouse.fact_sales" not in html
     assert "profile.txt" not in html
-    assert "local path hidden" in html
     assert "wf_bbbbbbbb" not in html
     assert 'href="/batch/workload/wf_cccccccccccccccccccccccc"' not in html
     assert_no_forbidden_fragments(html)
@@ -3250,15 +3226,11 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         workload_admin_signal="status_issues",
         workload_outcome_metrics=workload_outcome_metrics,
     )
-    assert "admission/runtime 1; status issues 1" in status_filtered_html
-    assert "Owner</td><td>platform</td>" in status_filtered_html
-    assert (
-        "workload_admin_signal=status_issues&amp;workload_group_scope=owner"
-        "&amp;workload_group_name=platform&amp;workload_group_signal=status_issues"
-        '#workload-groups">1</a>'
-    ) in status_filtered_html
-    assert "regressions 1; stats 1; spill 1" not in status_filtered_html
-    assert "low-value 1" not in status_filtered_html
+    assert "admission/runtime 1; status issues 1" not in status_filtered_html
+    assert "Owner</td><td>platform</td>" not in status_filtered_html
+    assert "workload_group_scope" not in status_filtered_html
+    assert "workload_group_name" not in status_filtered_html
+    assert "Pool and owner breakdown" not in status_filtered_html
     assert_no_forbidden_fragments(status_filtered_html)
 
     owner_status_html = render_batch_summary(
@@ -3268,7 +3240,7 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         workload_admin_signal="status_issues",
         workload_outcome_metrics=workload_outcome_metrics,
     )
-    assert "Owner</td><td>platform</td>" in owner_status_html
+    assert "Owner</td><td>platform</td>" not in owner_status_html
     assert "Pool</td><td>root.analytics</td>" not in owner_status_html
     assert_no_forbidden_fragments(owner_status_html)
 
@@ -3281,15 +3253,12 @@ def test_recent_scan_summary_renders_workload_groups_safely():
         workload_group_signal="status_issues",
         workload_outcome_metrics=workload_outcome_metrics,
     )
-    assert "Repeated workload details (1 of 3)" in focused_groups_html
-    assert "Workload focus" in focused_groups_html
-    assert "Owner: platform; Failed/cancelled" in focused_groups_html
-    assert "case-005, case-006" in focused_groups_html
+    assert "Repeated workload details" not in focused_groups_html
+    assert "Workload focus" not in focused_groups_html
+    assert "Owner: platform; Failed/cancelled" not in focused_groups_html
+    assert "case-005, case-006" not in focused_groups_html
     assert "case-001, case-002" not in focused_groups_html
-    assert (
-        'href="?query_group=bad&amp;workload_admin_signal=status_issues#workload-groups">'
-        "All repeated workloads</a>"
-    ) in focused_groups_html
+    assert "All repeated workloads</a>" not in focused_groups_html
     assert_no_forbidden_fragments(focused_groups_html)
 
     invalid_filter_html = render_batch_summary(
@@ -3304,7 +3273,8 @@ def test_recent_scan_summary_renders_workload_groups_safely():
     )
     assert "case_dir" not in invalid_filter_html
     assert "raw/profile.txt" not in invalid_filter_html
-    assert "Repeated workload details (3)" in invalid_filter_html
+    assert "Repeated workload details" not in invalid_filter_html
+    assert "Workload follow-up" in invalid_filter_html
     assert_no_forbidden_fragments(invalid_filter_html)
 
 
@@ -3399,8 +3369,9 @@ def test_recent_scan_summary_derives_workload_groups_from_repeated_safe_rows():
 
     html = render_batch_summary(summary, query_group="bad")
 
-    assert "Repeated workload details (1)" in html
+    assert "Workload follow-up" in html
     assert "Stats review" in html
+    assert "Open Workload Details;" in html
     assert 'href="/batch/workload/wf_aaaaaaaaaaaaaaaaaaaaaaaa"' in html
     assert "wf_bbbbbbbb" not in html
     assert "/tmp/raw" not in html
@@ -3622,27 +3593,31 @@ def test_recent_scan_workload_detail_presents_representative_cases_safely():
     assert first_detail_action.verification_metric == queue_entry.verification_metric
     assert first_detail_action.verification == queue_entry.verification
     assert [case.role for case in view.representatives] == [
-        "Top ranked",
+        "Best Details case",
         "Slowest",
         "Strongest signal",
     ]
 
     html = render_workload_detail_view(view)
 
-    assert "Workload details" in html
+    assert "Repeated workload: Baseline slowdown" in html
+    assert "Workload decision" in html
     assert "3 similar queries" in html
-    assert "Workload triage" in html
+    assert "Workload snapshot" in html
+    assert "Coverage and shape" in html
     assert "Outside Frequent short: workload p95 90s exceeds the 60s threshold." in html
     assert "observed total 130s; p95 impact about 270s" in html
-    assert "Pool: root.analytics" in html
-    assert "owner: alice (1/3)" in html
+    assert "root.analytics" in html
+    assert "alice (1/3)" in html
     assert "Admission/runtime 1/3; SQL shape 1/3; Stats 1/3" in html
     assert "Some rows failed collection or analysis, so inspect row status first." in html
-    assert "Representative cases" in html
-    assert "Details action plan" in html
+    assert "Representative queries" in html
+    assert "Additional workload checks" in html
+    assert "Why this pattern matters" in html
     assert "Why" in html
-    assert "Where" in html
-    assert "What to change" in html
+    assert "Where to inspect" in html
+    assert "What to try" in html
+    assert "What to try next" in html
     assert "How to verify" in html
     assert "Outcomes" in html
     assert (
@@ -3666,18 +3641,19 @@ def test_recent_scan_workload_detail_presents_representative_cases_safely():
         in html
     )
     assert (
-        "Use a representative case Action card to record the rerun outcome after a comparable rerun"
+        "Record rerun outcomes from a representative Details recommendation after a comparable rerun"
         in html
     )
-    assert "Record outcome" in html
-    assert 'href="/batch/case/case-001#action-plan">Action card</a>' in html
+    assert "<th>Open</th>" in html
+    assert 'href="/batch/case/case-001#action-plan">Recommendation</a>' in html
     assert "1 of 3 selected rows have stats candidate or primary-signal facts." in html
-    assert "Top ranked" in html
+    assert "Best Details case" in html
     assert "Slowest" in html
     assert "Strongest signal" in html
     assert 'href="/batch/case/case-003"' in html
     assert "case-three:id" in html
-    assert "runtime_admission" in html
+    assert "Admission/runtime" in html
+    assert "runtime_admission" not in html
     assert "local path hidden" in html
     assert "/tmp/raw" not in html
     assert_no_forbidden_fragments(html)
@@ -3798,7 +3774,8 @@ def test_recent_scan_workload_action_queue_uses_optimizer_review_track():
     html = render_batch_summary(summary, query_group="bad")
     assert "Query-shape review" in html
     assert "top review track grouped aggregate (2)" in html
-    assert "Workload details for grouped aggregate review." in html
+    assert "Open Workload Details;" in html
+    assert "Workload details for grouped aggregate review." not in html
     assert "Review grouped aggregate grain first" not in html
     assert "Grouped-aggregate input rows, grouping-grain estimates" not in html
     assert_no_forbidden_fragments(view)
@@ -3920,7 +3897,8 @@ def test_recent_scan_workload_action_queue_uses_mixed_optimizer_review_track():
     assert detail_action.verification == entry.verification
     html = render_batch_summary(summary, query_group="bad")
     assert "top review track mixed query-shape (2)" in html
-    assert "Workload details for mixed query-shape review." in html
+    assert "Open Workload Details;" in html
+    assert "Workload details for mixed query-shape review." not in html
     assert "Review selected cases by their listed query-shape tracks first" not in html
     assert_no_forbidden_fragments(view)
     assert_no_forbidden_fragments(html)
@@ -4000,7 +3978,7 @@ def test_recent_scan_workload_detail_explains_frequent_short_drilldown_safely():
 
     assert "Fits Frequent short: 2 runs and workload p95 30s within the 60s threshold." in html
     assert "observed total 55s; p95 impact about 60s" in html
-    assert "Pool: root.small; owner: svc (2/2)" in html
+    assert "root.small; svc (2/2)" in html
     assert "Admission/runtime 2/2" in html
     assert "No local baseline is available for this fingerprint." in html
     assert_no_forbidden_fragments(html)
@@ -4259,24 +4237,27 @@ def test_recent_scan_summary_filters_query_groups():
     assert "Repeated workloads <span>2</span>" in stats_html
     assert "Frequent short <span>1</span>" in stats_html
     assert "Regressed workloads <span>1</span>" in stats_html
-    assert "<span>Rewrite draft-ready: 1</span>" in stats_html
-    assert "<span>Rewrite recipe backlog: 0</span>" in stats_html
-    assert "<span>Rewrite review-only: 1</span>" in stats_html
+    assert "<span>Rewrite draft-ready: 1</span>" not in stats_html
+    assert "<span>Rewrite recipe backlog: 0</span>" not in stats_html
+    assert "<span>Rewrite review-only: 1</span>" not in stats_html
     assert stats_html.index('class="batch-table-wrap"') < stats_html.index(
         'class="batch-results-context"'
     )
-    assert '<section class="batch-results-context" aria-label="Scan context">' in stats_html
+    assert (
+        '<section id="scan-context" class="batch-results-context" aria-label="Scan context">'
+        in (stats_html)
+    )
     assert "<h2>Scan context</h2>" in stats_html
-    assert "Source coverage, scan notes, and workload signals for this result set." in stats_html
+    assert "Coverage, scan notes, and compact follow-up links for this result set." in stats_html
     assert 'class="batch-context-block batch-context-scan-details"' in stats_html
     assert '<div class="batch-context-title">Coverage</div>' in stats_html
-    assert 'class="batch-context-block batch-context-notes"' in stats_html
+    assert 'class="batch-context-block batch-context-notes"' not in stats_html
     assert '<details class="batch-notices" aria-label="Scan notes" open>' not in stats_html
-    assert '<div class="batch-context-title">Scan notes</div>' in stats_html
-    assert "<strong>Rewrite guidance</strong>" in stats_html
+    assert '<div class="batch-context-title">Scan notes</div>' not in stats_html
+    assert "<strong>Rewrite guidance</strong>" not in stats_html
     assert (
         "Open Details for the supported next step, verification anchor, and rewrite scope."
-        in stats_html
+        not in stats_html
     )
     assert "<strong>Action outcomes</strong>" not in zero_outcomes_html
     assert '<strong>Action outcomes</strong><span><a href="/outcomes">2</a> recorded</span>' in (
@@ -4359,7 +4340,7 @@ def test_recent_scan_optimization_group_includes_low_tier_review_guidance():
     assert "review:id" in html
     assert "skip:id" not in html
     assert "Rewrite opportunities <span>1</span>" in html
-    assert "<span>Rewrite review-only: 1</span>" in html
+    assert "<span>Rewrite review-only: 1</span>" not in html
     assert "Review guidance only" in html
     assert_no_forbidden_fragments(html)
 
@@ -4731,7 +4712,7 @@ def test_recent_scan_optimization_candidate_explains_review_guidance_only():
     assert "Review guidance only" in summary_html
     assert "No trusted SQL draft shape detected" in summary_html
     assert "Verdict" in detail_html
-    assert "Recommended changes" in detail_html
+    assert "Recommended change" in detail_html
     assert "Start with the recommendation below" not in detail_html
     assert (
         "No trusted SQL draft will be generated for this case by the current deterministic optimizer"
@@ -4887,7 +4868,7 @@ def test_recent_scan_detail_shows_candidate_context_safely():
     assert "join row expansion or cardinality mismatch with join evidence" in html
     assert "Need: table/partition stats" in html
     assert "Keep in mind: some cardinality mismatch may also require statistics update" in html
-    assert "Where to look" in html
+    assert "Where to inspect" in html
     assert "Why this deserves attention" in html
     assert "What to change" in html
     assert "How to verify" in html
@@ -5188,7 +5169,7 @@ def test_recent_scan_action_candidate_card_renders_owner_coordinate_guidance():
             "after the change, check whether fewer rows or better estimates feed that operator",
             "How to verify",
             "Compare EXPLAIN before and after the change",
-            "Where to look",
+            "Where to inspect",
             "SQL: final SELECT filter (line 18): predicate near final SELECT",
             "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)",
             "Why this deserves attention",
@@ -5258,8 +5239,8 @@ def test_recent_scan_action_candidate_renderer_includes_outcome_controls(tmp_pat
 
     assert "/batch/case/case-001/outcome/query_optimization_review.v1" in html
     assert "<summary>Record rerun outcome</summary>" in html
-    assert "Outcome after comparable rerun" in html
-    assert "Local history: improved in 3 of 5 comparable reruns (60%)" in html
+    assert "Comparable rerun result" in html
+    assert "Local feedback so far: improved in 3 of 5 comparable reruns (60%)" in html
     assert "detail:id" not in html
     assert str(outcome_path) not in html
     assert_no_forbidden_fragments(html)

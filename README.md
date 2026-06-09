@@ -69,9 +69,9 @@ Query Doctor is not:
   Impala workflows and bounded read-only Impala metadata through `impala-shell`.
 - Ranks suspicious cases and action candidates from deterministic analyzer
   facts, not LLM scoring.
-- Presents Details as an analyst decision page: verdict first, then the
-  recommended change, comparable-rerun verification path, safe inspection
-  location, and collapsed deterministic evidence.
+- Presents Details as an analyst decision page: verdict first, then why the
+  query matters, where to inspect, what to try, how to verify a comparable
+  rerun, and collapsed deterministic evidence.
 - Generates trusted reports only after deterministic normalization,
   sanitization, and validation.
 - Provides a separate read-only Query Optimizer workflow for pasted SQL review,
@@ -251,8 +251,9 @@ dedicated temp directory, forces Python-only mode, ignores default local config,
 and blocks all POST actions.
 
 Open the localhost URL printed by `query-doctor-web`. Start with
-`/?query_group=workloads#workload-action-queue` to show the workload action
-queue and local synthetic action outcomes before opening workload Details.
+`/?query_group=workloads#scan-context` to show the compact Scan context
+workload follow-up links and local synthetic action outcomes before opening
+Workload Details.
 When a Recent summary has repeated safe row-level workload fingerprints but no
 materialized workload payload, the UI derives bounded repeated workload details
 from the sanitized rows; those details have no baseline or regression claim
@@ -266,9 +267,10 @@ Finished Queries results for review:
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
 The `0.5.0` synthetic demo pack contains eleven sanitized cases covering
-Workloads/Action Queue, trusted optimizer recommendations, stats maintenance,
-storage/HDFS follow-up, frequent-short workloads, mixed signals, unknown but
-useful limited evidence, and direct-Impala compatibility. See
+workload follow-up, repeated patterns, trusted optimizer recommendations,
+stats maintenance, storage/HDFS follow-up, frequent-short workloads, mixed
+signals, unknown but useful limited evidence, and direct-Impala compatibility.
+See
 [docs/demo-cases.md](docs/demo-cases.md) for the full scenario list and talk
 track.
 

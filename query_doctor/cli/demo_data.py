@@ -495,7 +495,7 @@ def render_success_message(out_dir: Path) -> str:
             f"  {demo_launch_command(summary_path, outcomes_path)}",
             "",
             "Open:",
-            "  http://127.0.0.1:8766/?query_group=workloads#workload-action-queue",
+            "  http://127.0.0.1:8766/?query_group=workloads#scan-context",
             "  http://127.0.0.1:8766/?query_group=workloads#recent-results",
             "  http://127.0.0.1:8766/?query_group=optimization#recent-results",
             "  http://127.0.0.1:8766/?query_group=stats#recent-results",

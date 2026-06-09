@@ -27,7 +27,7 @@ QUERY_DOCTOR_ACTION_OUTCOMES_PATH="$DEMO_PACK/action_outcomes.jsonl" \
 Open:
 
 ```text
-http://127.0.0.1:8766/?query_group=workloads#workload-action-queue
+http://127.0.0.1:8766/?query_group=workloads#scan-context
 http://127.0.0.1:8766/?query_group=workloads#recent-results
 http://127.0.0.1:8766/?query_group=optimization#recent-results
 http://127.0.0.1:8766/?query_group=stats#recent-results
@@ -103,15 +103,15 @@ Open the printed localhost URL and capture:
 - the main bounded search form for `docs/assets/demo_search.png`;
 - the Finished Queries results view for `docs/assets/demo_finished_queries.png`.
 
-For the results view, the Workloads action queue is the useful default because
-it dispatches the analyst to the repeated group that should be opened next.
-Workload Details then shows the full action plan: why the group deserves
-attention, where to inspect representative cases, what supported change
-direction to try, how to verify a comparable rerun, and local synthetic outcome
-history.
+For the results view, Scan context is the useful default because its compact
+workload follow-up links dispatch the analyst to the repeated pattern that
+should be opened next. Workload Details then shows the decision path: why the
+pattern deserves attention, where to inspect representative cases, what
+supported change direction to try, how to verify a comparable rerun, and local
+synthetic outcome history.
 
 ```text
-http://127.0.0.1:8766/?query_group=workloads#workload-action-queue
+http://127.0.0.1:8766/?query_group=workloads#scan-context
 ```
 
 Capture browser viewports and replace only the public synthetic screenshots.
