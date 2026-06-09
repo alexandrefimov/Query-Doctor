@@ -36,6 +36,8 @@ ACTIVE_DOCS = (
     "docs/engine-support-gap-matrix.md",
     "docs/query-optimizer-contract.md",
     "docs/roadmap.md",
+    "docs/customer-readiness-priorities.md",
+    "docs/repository-simplification-audit.md",
     "docs/development-practices.md",
     "docs/analyzer-audit.md",
     "docs/changelog.md",

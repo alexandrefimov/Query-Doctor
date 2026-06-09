@@ -1,17 +1,19 @@
 # Configuration Reference
 
-Last reviewed: 2026-05-22
+Last reviewed: 2026-06-09
 
 Query Doctor reads non-secret local settings from a JSON config file. Keep
 passwords, tokens, keytabs, ticket contents, Authorization headers, and API keys
 out of this file. Put those values in environment variables or local env files
 described in [credentials.md](credentials.md).
 
-The committed [query-doctor-config.example.json](../query-doctor-config.example.json)
-is a starter template, not a dump of every supported field. It keeps only the
-settings that are normally environment-specific or useful to make routing
-explicit. Add optional fields from the reference below only when you need to
-override a built-in default.
+The committed
+[query-doctor-config.minimal.example.json](../query-doctor-config.minimal.example.json)
+is the first-copy Cloudera Manager starter. The fuller
+[query-doctor-config.example.json](../query-doctor-config.example.json) shows
+CM, direct Impala, Prometheus, metadata, and LLM routing fields in one
+advanced template. Add optional fields from the reference below only when you
+need to override a built-in default.
 
 ## Config Location
 
@@ -19,7 +21,7 @@ Preferred local path:
 
 ```bash
 mkdir -p ~/.qdcreds
-cp query-doctor-config.example.json ~/.qdcreds/query-doctor-config.json
+cp query-doctor-config.minimal.example.json ~/.qdcreds/query-doctor-config.json
 chmod 600 ~/.qdcreds/query-doctor-config.json
 ```
 
@@ -52,14 +54,24 @@ Credential environment variables such as `CM_PASSWORD`, `CM_TOKEN`, and
 
 ## Minimal Cloudera Manager Config
 
-Use this shape for the normal Cloudera Manager workflow:
+Use this shape, also available in
+[`query-doctor-config.minimal.example.json`](../query-doctor-config.minimal.example.json),
+for the normal Cloudera Manager workflow:
 
 ```json
 {
-  "cm_url": "https://cm.example.com:7183/",
-  "cluster": "example_cluster",
-  "service": "impala",
-  "ca_bundle": "~/.qdcreds/cm-chain.pem"
+  "clusters": [
+    {
+      "id": "cm-impala",
+      "label": "Impala via Cloudera Manager",
+      "cluster_type": "cm",
+      "cm_url": "https://cm.example.com:7183/",
+      "cluster": "example_cluster",
+      "service": "impala"
+    }
+  ],
+  "language": "en",
+  "recent_scan_timezone": "UTC"
 }
 ```
 
@@ -67,6 +79,10 @@ Provide `CM_USERNAME` plus `CM_PASSWORD` or `CM_TOKEN` through the shell
 environment, for example from `~/.qdcreds/cm-ro.env`. The `username` config
 field remains supported as a non-secret fallback, but keeping the CM auth user
 with the CM auth secret avoids drift between files.
+
+Add `ca_bundle` only when your Cloudera Manager endpoint uses a private CA,
+and add metadata or direct-Impala fields only after the basic Recent scan path
+is working.
 
 Direct `query_doctor.cli.batch_recent` runs also read the local Cloudera
 Manager env file before preflight. Discovery order is:

@@ -2803,8 +2803,8 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert 'class="batch-table-legend"' in body
     assert body.index('class="batch-table-wrap"') < body.index('class="batch-table-legend"')
     assert body.index('class="batch-table-wrap"') < body.index('class="batch-results-context"')
-    assert '<details class="batch-results-context" aria-label="Result context">' in body
-    assert "<summary>Result context</summary>" in body
+    assert '<details class="batch-results-context" aria-label="Scan details">' in body
+    assert "<summary>Scan details</summary>" in body
     assert 'class="batch-result-filters batch-result-filters--query-toolbar"' in body
     assert_css_contains(styles, ".batch-table-wrap{margin-top:14px;")
     assert_css_contains(styles, ".batch-table-legend{display:flex;flex-wrap:wrap;")
@@ -2895,13 +2895,13 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "<span>Worth reviewing</span>" in body
     assert "<span>Rewrite</span>" not in body
     assert "<span>Stats</span>" not in body
-    assert '<details class="batch-notices" aria-label="Results notes" open>' in body
-    assert "<summary>Results notes</summary>" in body
+    assert '<details class="batch-notices" aria-label="Scan warnings" open>' in body
+    assert "<summary>Scan warnings</summary>" in body
     assert "<strong>Scan warnings</strong>" in body
     assert "scan warning &lt;script&gt;" in body
     assert "scan warning <script>" not in body
     assert 'class="batch-context-block batch-context-scan-details"' in body
-    assert '<div class="batch-context-title">Scan details</div>' in body
+    assert '<div class="batch-context-title">Scan metrics</div>' in body
     assert "Result rows:" in body
     assert "Analyzed: 2" in body
     assert "total" not in body
@@ -2946,8 +2946,8 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "Worth reviewing <span>1</span>" in body
     assert "Rewrite opportunities <span>0</span>" not in body
     assert "Stats to check <span>0</span>" not in body
-    assert "Show" in body
-    assert "<summary>More groups</summary>" not in body
+    assert "View" in body
+    assert "<summary>More filters</summary>" not in body
     assert '<details class="batch-filter-more">' not in body
     assert "Result group" not in body
     assert "Spill filter" in body
@@ -8728,8 +8728,8 @@ def test_web_batch_summary_shows_cm_safety_cap_truncation(tmp_path):
     assert "Query match limit hit: 5000" in body
     assert "Duration filter: &gt;= 5 sec" in body
     assert "Analyzer limit: 100" in body
-    assert '<details class="batch-notices" aria-label="Results notes" open>' in body
-    assert "<summary>Results notes</summary>" in body
+    assert '<details class="batch-notices" aria-label="Scan notes" open>' in body
+    assert "<summary>Scan notes</summary>" in body
     assert "<strong>Scan stopped</strong>" in body
     assert "This hour has more matching queries than the scan limit." in body
     assert "Scan stopped because this hour has more than 5000 matching CM summaries." in body

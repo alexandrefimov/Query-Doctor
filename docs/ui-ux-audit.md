@@ -222,8 +222,8 @@ without weakening the safety contract or exposing raw artifacts.
 - Keep the low-level Diagnostics and evidence block collapsed by default.
 - Use one page `h1`; make Recommended changes and Details action controls
   section headings instead of nested page titles.
-- Collapse action-outcome buttons behind one "Mark result" disclosure so the
-  recommendation text remains the primary reading path.
+- Collapse action-outcome buttons behind one "Record rerun outcome" disclosure
+  so the recommendation text remains the primary reading path.
 - Rename Query Doctor pipeline timings so they are not confused with query
   runtime timings.
 - Keep generated report and optimizer outputs available on Details, but collapse

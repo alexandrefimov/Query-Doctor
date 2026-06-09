@@ -241,7 +241,7 @@ def test_workload_action_outcome_metrics_group_safe_workload_rollups():
         "last applied action Stats refresh review: no change; "
         "family signal Stats refresh review: improved 1/2 comparable reruns, no change 1; "
         "feedback sample below threshold (2/5 comparable reruns); "
-        "next check stats signal count and group p95"
+        "next check stats signal count and workload p95"
     )
     calibrated_metric = summarize_workload_action_outcomes(
         [
@@ -260,7 +260,7 @@ def test_workload_action_outcome_metrics_group_safe_workload_rollups():
     assert (
         "family signal Admission/runtime check: no verified rerun records yet; "
         "feedback sample below threshold (0/2 comparable reruns); "
-        "next check admission/runtime signal count and group p95"
+        "next check admission/runtime signal count and workload p95"
     ) in workload_outcome_summary_text(
         calibrated_metric,
         recommendation_id="runtime_admission_check.v1",

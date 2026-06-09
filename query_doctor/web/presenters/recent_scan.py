@@ -643,8 +643,8 @@ def workload_admin_digest_entry(
         signal_counts=signal_counts,
         signals=workload_admin_signal_summary(signal_counts),
         evidence=(
-            f"{len(groups)} repeated groups; {run_count} selected runs; "
-            f"top group impact {display_seconds(workload_group_impact(top_group))}."
+            f"{len(groups)} repeated workloads; {run_count} selected runs; "
+            f"top workload impact {display_seconds(workload_group_impact(top_group))}."
         ),
     )
 
@@ -698,7 +698,7 @@ def workload_admin_signal_counts(
 
 def workload_admin_signal_summary(signal_counts: tuple[tuple[str, int], ...]) -> str:
     visible = [f"{label} {count}" for label, count in signal_counts]
-    return "; ".join(visible) if visible else "no high-signal repeated groups"
+    return "; ".join(visible) if visible else "no high-signal repeated workloads"
 
 
 def top_workload_signal_entries(

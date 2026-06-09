@@ -1,6 +1,6 @@
 # Query Doctor Roadmap
 
-Last updated: 2026-06-03
+Last updated: 2026-06-09
 
 Required reading before any PR: hard rules in `AGENTS.md`,
 `docs/agent-quickstart.md`, Product Direction, and the Near-Term Priorities
@@ -82,6 +82,20 @@ is not a historical audit log. For engineering risks, use
   workflows. Prepared event/log sources remain future optional context.
 - Synthetic Demo Mode is local-only and must not contact Cloudera Manager,
   Impala, Ollama, or the network.
+
+## Customer Readiness Focus
+
+The near-term product priority is to make the existing Impala workflow easier
+to run, trust, and show before broadening Trino or Spark product surfaces. Use
+[customer-readiness-priorities.md](customer-readiness-priorities.md) as the
+working backlog for demo site planning, Cloudera/test-cluster outreach,
+minimal configuration, documentation hygiene, Russian-doc review, UI/UX polish,
+and script/test role audit.
+
+This focus does not remove bounded Trino or Spark contract work from the
+repository, but it keeps that work below product support and out of the main
+customer path until the Impala Recent and Details experience is strong enough
+for design-partner review.
 
 ## Product Direction
 

@@ -147,7 +147,7 @@ def test_route_get_batch_workload_detail_renders_safe_group(tmp_path, monkeypatc
         "last applied action Stats refresh review: improved; "
         "family signal Stats refresh review: improved 1/1 comparable reruns; "
         "feedback sample below threshold (1/5 comparable reruns); "
-        "next check stats signal count and group p95"
+        "next check stats signal count and workload p95"
     ) in response.body
     assert "Details action plan" in response.body
     assert "Stats review" in response.body

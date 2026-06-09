@@ -222,7 +222,10 @@ pre-commit install
 
 Local JSON configuration is documented in [docs/configuration.md](docs/configuration.md).
 The preferred workstation path is `~/.qdcreds/query-doctor-config.json`;
-secrets stay in environment variables or local env files.
+secrets stay in environment variables or local env files. Start from
+`query-doctor-config.minimal.example.json` for a Cloudera Manager Impala
+workflow, then use `query-doctor-config.example.json` only when you need the
+advanced direct-Impala, Prometheus, metadata, or LLM routing fields.
 
 ## Run The Demo
 
@@ -248,9 +251,9 @@ Open the localhost URL printed by `query-doctor-web`. Start with
 `/?query_group=workloads#workload-action-queue` to show the workload action
 queue and local synthetic action outcomes before opening workload Details.
 When a Recent summary has repeated safe row-level workload fingerprints but no
-materialized group payload, the UI derives bounded repeated groups from the
-sanitized rows; those groups have no baseline or regression claim until local
-history evidence is available.
+materialized workload payload, the UI derives bounded repeated workload details
+from the sanitized rows; those details have no baseline or regression claim
+until local history evidence is available.
 
 The local web UI starts with a bounded search form and renders synthetic
 Finished Queries results for review:

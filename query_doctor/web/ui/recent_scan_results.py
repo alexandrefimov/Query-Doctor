@@ -345,17 +345,19 @@ def render_results_notices(
         "</div>"
         for label, body in rows
     )
+    row_labels = {label for label, _body in rows}
+    notice_title = "Scan warnings" if row_labels == {"Scan warnings"} else "Scan notes"
     if compact:
         return (
-            '<div class="batch-context-block batch-context-notes" aria-label="Results notes">'
-            '<div class="batch-context-title">Results notes</div>'
+            f'<div class="batch-context-block batch-context-notes" aria-label="{notice_title}">'
+            f'<div class="batch-context-title">{notice_title}</div>'
             f'<div class="batch-notices-body">{rendered_rows}</div>'
             "</div>"
         )
     open_attr = " open" if results_notices_open_by_default(summary) else ""
     return (
-        f'<details class="batch-notices" aria-label="Results notes"{open_attr}>'
-        "<summary>Results notes</summary>"
+        f'<details class="batch-notices" aria-label="{notice_title}"{open_attr}>'
+        f"<summary>{notice_title}</summary>"
         f'<div class="batch-notices-body">{rendered_rows}</div>'
         "</details>"
     )
@@ -370,8 +372,8 @@ def render_results_context_details(*sections: str) -> str:
     if not content:
         return ""
     return (
-        '<details class="batch-results-context" aria-label="Result context">'
-        "<summary>Result context</summary>"
+        '<details class="batch-results-context" aria-label="Scan details">'
+        "<summary>Scan details</summary>"
         f'<div class="batch-results-context-body">{content}</div>'
         "</details>"
     )
@@ -442,15 +444,15 @@ def render_batch_scan_details(
     items = "".join(f"<span>{html.escape(part)}</span>" for part in parts)
     if compact:
         return (
-            '<div class="batch-context-block batch-context-scan-details" aria-label="Scan details">'
-            '<div class="batch-context-title">Scan details</div>'
-            f'<div class="batch-detail-grid" aria-label="Scan details">{items}</div>'
+            '<div class="batch-context-block batch-context-scan-details" aria-label="Scan metrics">'
+            '<div class="batch-context-title">Scan metrics</div>'
+            f'<div class="batch-detail-grid" aria-label="Scan metrics">{items}</div>'
             "</div>"
         )
     return (
         '<details class="batch-scan-details">'
-        "<summary>Scan details</summary>"
-        f'<div class="batch-detail-grid" aria-label="Scan details">{items}</div>'
+        "<summary>Scan metrics</summary>"
+        f'<div class="batch-detail-grid" aria-label="Scan metrics">{items}</div>'
         "</details>"
     )
 
@@ -852,7 +854,7 @@ def summary_cell(view: RecentScanCaseRowView, *, query_group: str = DEFAULT_QUER
         group_p95 = str(view.workload_group_duration_sec_p95 or "").strip()
         details = [
             f"{runs} similar queries",
-            f"group p95 {group_p95}s" if group_p95 else "group p95 unknown",
+            f"workload p95 {group_p95}s" if group_p95 else "workload p95 unknown",
         ]
         if normalized == "frequent_short":
             impact = workload_group_impact(view)

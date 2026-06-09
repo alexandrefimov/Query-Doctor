@@ -126,15 +126,17 @@ def frequent_short_summary(group: RecentScanWorkloadGroupView) -> str:
     if group.member_count <= 1:
         return "Not a repeated workload in this scan."
     if p95 <= 0:
-        return "Repeated workload; group p95 is unknown, so Frequent short membership is unknown."
+        return (
+            "Repeated workload; workload p95 is unknown, so Frequent short membership is unknown."
+        )
     threshold = display_seconds(FREQUENT_SHORT_WORKLOAD_P95_MAX_SEC)
     if p95 <= FREQUENT_SHORT_WORKLOAD_P95_MAX_SEC:
         return (
-            f"Fits Frequent short: {group.member_count} runs and group p95 "
+            f"Fits Frequent short: {group.member_count} runs and workload p95 "
             f"{display_seconds(p95)} within the {threshold} threshold."
         )
     return (
-        f"Outside Frequent short: group p95 {display_seconds(p95)} exceeds "
+        f"Outside Frequent short: workload p95 {display_seconds(p95)} exceeds "
         f"the {threshold} threshold."
     )
 

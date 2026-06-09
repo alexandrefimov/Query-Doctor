@@ -62,7 +62,7 @@ def test_workload_action_contract_feeds_queue_and_detail_hints():
     assert (
         "family signal Stats refresh review: improved 1/2 comparable reruns, no change 1; "
         "feedback sample below threshold (2/5 comparable reruns); "
-        "next check stats signal count and group p95"
+        "next check stats signal count and workload p95"
     ) in entry.outcome_summary
 
 
@@ -97,7 +97,7 @@ def test_workload_action_contract_uses_matching_outcome_family():
     assert (
         "family signal Stats refresh review: no verified rerun records yet; "
         "feedback sample below threshold (0/2 comparable reruns); "
-        "next check stats signal count and group p95"
+        "next check stats signal count and workload p95"
     ) in entry.outcome_summary
 
 
@@ -110,7 +110,7 @@ def test_workload_query_shape_review_verification_requires_comparable_rerun():
             optimizer_review_track_label="Review track: single-relation filter",
             optimizer_review_area="partition pruning and projected columns",
             optimizer_review_direction="Test one bounded filter or projection change.",
-            optimizer_review_workload_metric="Partition-pruning evidence and repeated-group p95.",
+            optimizer_review_workload_metric="Partition-pruning evidence and repeated workload p95.",
         ),
         case_row(
             rank=2,
@@ -118,7 +118,7 @@ def test_workload_query_shape_review_verification_requires_comparable_rerun():
             optimizer_review_track_label="Review track: single-relation filter",
             optimizer_review_area="partition pruning and projected columns",
             optimizer_review_direction="Test one bounded filter or projection change.",
-            optimizer_review_workload_metric="Partition-pruning evidence and repeated-group p95.",
+            optimizer_review_workload_metric="Partition-pruning evidence and repeated workload p95.",
         ),
     )
 

@@ -581,10 +581,10 @@ def workload_outcome_family_sample_text(signal: WorkloadOutcomeFamilySignal) -> 
 
 def workload_outcome_family_next_check(recommendation_id: str) -> str:
     return {
-        "query_optimization_review.v1": "query-shape signal count and group p95",
-        "stats_refresh_review.v1": "stats signal count and group p95",
-        "runtime_admission_check.v1": "admission/runtime signal count and group p95",
-    }.get(recommendation_id, "signal count and group p95")
+        "query_optimization_review.v1": "query-shape signal count and workload p95",
+        "stats_refresh_review.v1": "stats signal count and workload p95",
+        "runtime_admission_check.v1": "admission/runtime signal count and workload p95",
+    }.get(recommendation_id, "signal count and workload p95")
 
 
 def parse_action_outcome_line(line: str) -> ActionOutcomeRecord | None:

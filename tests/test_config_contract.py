@@ -533,6 +533,31 @@ def test_template_parses_is_accepted_and_has_no_secret_fields():
     )
 
 
+def test_minimal_template_parses_is_accepted_and_has_no_secret_fields():
+    template_path = REPO_DIR / "query-doctor-config.minimal.example.json"
+    template = json.loads(template_path.read_text(encoding="utf-8"))
+
+    loaded = config_contract.load_local_config(template_path, cwd=REPO_DIR)
+
+    assert loaded["language"] == "en"
+    assert loaded["recent_scan_timezone"] == "UTC"
+    assert set(template) == {"clusters", "language", "recent_scan_timezone"}
+    assert len(loaded["clusters"]) == 1
+    cm_cluster = loaded["clusters"][0]
+    assert cm_cluster["id"] == "cm-impala"
+    assert cm_cluster["query_profile_source"] == "cm"
+    assert cm_cluster["cm_url"] == "https://cm.example.com:7183/"
+    assert cm_cluster["cluster"] == "example_cluster"
+    assert cm_cluster["service"] == "impala"
+    assert "username" not in cm_cluster
+    assert "ca_bundle" not in cm_cluster
+    assert not any(
+        secret in key.lower()
+        for key in template
+        for secret in ("password", "passwd", "token", "cookie", "authorization", "keytab")
+    )
+
+
 def test_kerberos_env_override_and_config_env_merge():
     with_env = config_contract.merge_kerberos_cache_env(
         {"KRB5CCNAME": "FILE:/tmp/env_cache"},

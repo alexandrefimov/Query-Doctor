@@ -179,8 +179,8 @@ def workload_action_signals(
                     "Check pool saturation and admission wait around representative case windows "
                     "before changing SQL or stats."
                 ),
-                verification_metric="Admission/runtime signal count and group p95 under comparable load.",
-                verification="Rerun under comparable load and confirm admission/runtime no longer dominates the group.",
+                verification_metric="Admission/runtime signal count and workload p95 under comparable load.",
+                verification="Rerun under comparable load and confirm admission/runtime no longer dominates the workload.",
                 recommendation_id="runtime_admission_check.v1",
             ),
         )
@@ -199,7 +199,7 @@ def workload_action_signals(
                     "Fix or confirm table and partition stats for the top stats case before "
                     "planning query-shape work."
                 ),
-                verification_metric="Stats signal count plus group p95 after stats are fixed or confirmed.",
+                verification_metric="Stats signal count plus workload p95 after stats are fixed or confirmed.",
                 verification="After stats are fixed or confirmed, rerun and compare stats signal count plus p95.",
                 recommendation_id="stats_refresh_review.v1",
             ),
@@ -240,8 +240,8 @@ def workload_action_signals(
                     "Use representative memory and spill evidence to choose one supported "
                     "follow-up before treating the group as stats-only or SQL-only."
                 ),
-                verification_metric="Spill evidence count and group p95 in the next scan.",
-                verification="After one change, compare spill evidence and group p95 in the next scan.",
+                verification_metric="Spill evidence count and workload p95 in the next scan.",
+                verification="After one change, compare spill evidence and workload p95 in the next scan.",
             ),
         )
     rewrite_count = rewrite_review_row_count(rows)
@@ -266,7 +266,7 @@ def workload_action_signals(
                         review_context.verification_metric
                         or (
                             f"{review_context.name} review count, selected-case validation, "
-                            "then repeated-group p95."
+                            "then repeated workload p95."
                         )
                     ),
                     verification=(
@@ -290,7 +290,7 @@ def workload_action_signals(
                         "Use per-case Details for the supported rewrite or manual review boundary; "
                         "do not generalize from the fingerprint alone."
                     ),
-                    verification_metric="Validated selected-case change, then repeated-group p95 and signal count.",
+                    verification_metric="Validated selected-case change, then repeated workload p95 and signal count.",
                     verification=(
                         "Validate any accepted change on a selected case, then rerun the repeated "
                         "group under comparable load."
@@ -347,7 +347,7 @@ def workload_query_shape_review_context(
             count=total_count,
             review_area=(
                 "per-case query-shape review tracks, row-reduction boundaries, "
-                "and repeated-group impact"
+                "and repeated workload impact"
             ),
             direction=(
                 "Review selected cases by their listed query-shape tracks first; do not apply "
@@ -356,7 +356,7 @@ def workload_query_shape_review_context(
             ),
             verification_metric=(
                 "Per-case query-shape review count, boundary-specific validation, "
-                "and repeated-group p95."
+                "and repeated workload p95."
             ),
         )
     label, (count, review_area, direction, verification_metric) = sorted(

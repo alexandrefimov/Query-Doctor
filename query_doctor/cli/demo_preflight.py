@@ -53,6 +53,7 @@ METADATA_COLLECTOR_FILES = (
 )
 CONFIG_PATHS = (
     "query_doctor/config/",
+    "query-doctor-config.minimal.example.json",
     "query-doctor-config.example.json",
 )
 

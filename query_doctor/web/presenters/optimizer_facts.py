@@ -234,7 +234,7 @@ OPTIMIZER_NO_RECIPE_REVIEW_AREA_LABELS = {
         "set-operation duplicate semantics, branch grain, and branch output shape"
     ),
     "mixed_query_shape_review": (
-        "per-case query-shape review tracks, row-reduction boundaries, and repeated-group impact"
+        "per-case query-shape review tracks, row-reduction boundaries, and repeated workload impact"
     ),
     "nested_query_boundary": "nested-query boundary and upstream row reduction",
     "unfiltered_join_review": "join cardinality, join keys, and many-to-many amplification",
@@ -394,7 +394,7 @@ OPTIMIZER_NO_RECIPE_CHANGE_DIRECTION_LABELS = {
 OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     "filtered_scalar_aggregate_review": (
         "Compare EXPLAIN scan pruning, aggregate input rows, and estimate quality before and "
-        "after one bounded change; then rerun under comparable load and confirm group p95 improves."
+        "after one bounded change; then rerun under comparable load and confirm workload p95 improves."
     ),
     "grouped_aggregate_review": (
         "Compare grouping-grain estimates, aggregate input rows, and projected columns in EXPLAIN; "
@@ -466,7 +466,7 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "unfiltered_join_review": (
         "Compare join key cardinality, build/probe input rows, and estimated join output before "
-        "and after one bounded change; then rerun and check repeated-group p95."
+        "and after one bounded change; then rerun and check repeated workload p95."
     ),
     "filtered_join_review": (
         "Compare filtered-side input rows, filter scope, join input rows, and estimated join output "
@@ -478,7 +478,7 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
     ),
     "single_relation_filter_review": (
         "Compare partition pruning, scan rows, filter selectivity, and projected columns in EXPLAIN; "
-        "then rerun under comparable load and confirm scan cost or group p95 improves."
+        "then rerun under comparable load and confirm scan cost or workload p95 improves."
     ),
     "simple_scan_or_projection_review": (
         "Compare scan rows, partition pruning if present, and projected columns in EXPLAIN before "
@@ -528,100 +528,100 @@ OPTIMIZER_NO_RECIPE_VERIFICATION_LABELS = {
 
 OPTIMIZER_NO_RECIPE_WORKLOAD_METRIC_LABELS = {
     "filtered_scalar_aggregate_review": (
-        "Aggregate input rows, partition-pruning evidence, and repeated-group p95."
+        "Aggregate input rows, partition-pruning evidence, and repeated workload p95."
     ),
     "grouped_aggregate_review": (
-        "Grouped-aggregate input rows, grouping-grain estimates, and repeated-group p95."
+        "Grouped-aggregate input rows, grouping-grain estimates, and repeated workload p95."
     ),
     "distinct_aggregate_review": (
-        "DISTINCT input rows, duplicate-semantics check, grouping grain, and repeated-group p95."
+        "DISTINCT input rows, duplicate-semantics check, grouping grain, and repeated workload p95."
     ),
     "scalar_multi_aggregate_review": (
-        "Aggregate input rows, filter selectivity, projected columns, and repeated-group p95."
+        "Aggregate input rows, filter selectivity, projected columns, and repeated workload p95."
     ),
     "scalar_aggregate_review": (
-        "Aggregate input rows, filter selectivity, partition-pruning evidence, and repeated-group p95."
+        "Aggregate input rows, filter selectivity, partition-pruning evidence, and repeated workload p95."
     ),
     "aggregate_or_distinct_review": (
-        "Aggregate/DISTINCT input rows, grouping grain, projection width, and repeated-group p95."
+        "Aggregate/DISTINCT input rows, grouping grain, projection width, and repeated workload p95."
     ),
     "set_operation_research": (
-        "Set-operation branch rows, projection symmetry, duplicate-semantics check, and repeated-group p95."
+        "Set-operation branch rows, projection symmetry, duplicate-semantics check, and repeated workload p95."
     ),
     "branch_projection_unknown_boundary": (
-        "UNION ALL projection-lineage review count, branch input rows, and repeated-group p95."
+        "UNION ALL projection-lineage review count, branch input rows, and repeated workload p95."
     ),
     "branch_projection_mismatch_boundary": (
-        "UNION ALL projection-count check, branch output-shape stability, and repeated-group p95."
+        "UNION ALL projection-count check, branch output-shape stability, and repeated workload p95."
     ),
     "nested_branch_boundary": (
-        "Nested UNION ALL branch input/output rows, branch shape stability, and repeated-group p95."
+        "Nested UNION ALL branch input/output rows, branch shape stability, and repeated workload p95."
     ),
     "aggregate_branch_boundary": (
-        "UNION ALL branch aggregate input rows, branch grain, duplicate-semantics check, and repeated-group p95."
+        "UNION ALL branch aggregate input rows, branch grain, duplicate-semantics check, and repeated workload p95."
     ),
     "outer_or_mixed_join_branch_review": (
-        "UNION ALL branch join cardinality, branch output rows, and repeated-group p95."
+        "UNION ALL branch join cardinality, branch output rows, and repeated workload p95."
     ),
     "filtered_union_all_branch_review": (
-        "UNION ALL branch filter selectivity, projection width, branch output rows, and repeated-group p95."
+        "UNION ALL branch filter selectivity, projection width, branch output rows, and repeated workload p95."
     ),
     "unfiltered_union_all_branch_review": (
-        "UNION ALL branch row-reduction check, output-column stability, and repeated-group p95."
+        "UNION ALL branch row-reduction check, output-column stability, and repeated workload p95."
     ),
     "mixed_filter_union_all_branch_review": (
-        "Filtered/unfiltered branch contribution, predicate-scope check, and repeated-group p95."
+        "Filtered/unfiltered branch contribution, predicate-scope check, and repeated workload p95."
     ),
     "mixed_or_distinct_set_boundary": (
-        "Set-operation duplicate-semantics check, branch grain, output shape, and repeated-group p95."
+        "Set-operation duplicate-semantics check, branch grain, output shape, and repeated workload p95."
     ),
     "mixed_query_shape_review": (
-        "Per-case query-shape review count, boundary-specific validation, and repeated-group p95."
+        "Per-case query-shape review count, boundary-specific validation, and repeated workload p95."
     ),
     "nested_query_boundary": (
-        "Nested-boundary input and output rows, shape-stability check, and repeated-group p95."
+        "Nested-boundary input and output rows, shape-stability check, and repeated workload p95."
     ),
     "unfiltered_join_review": (
-        "Join input rows, estimated join output, cardinality amplification, and repeated-group p95."
+        "Join input rows, estimated join output, cardinality amplification, and repeated workload p95."
     ),
     "filtered_join_review": (
-        "Filtered-side input rows, join filter scope, estimated join output, and repeated-group p95."
+        "Filtered-side input rows, join filter scope, estimated join output, and repeated workload p95."
     ),
     "outer_join_review": (
-        "Outer-join row-preservation check, filter side, join output estimates, and repeated-group p95."
+        "Outer-join row-preservation check, filter side, join output estimates, and repeated workload p95."
     ),
     "single_relation_filter_review": (
-        "Partition-pruning evidence, scan rows, projected columns, and repeated-group p95."
+        "Partition-pruning evidence, scan rows, projected columns, and repeated workload p95."
     ),
     "simple_scan_or_projection_review": (
-        "Scan rows, projected-column width, partition-pruning evidence, and repeated-group p95."
+        "Scan rows, projected-column width, partition-pruning evidence, and repeated workload p95."
     ),
     "cte_predicate_pushdown_review": (
-        "CTE filter-placement check, boundary rows, output-column mapping, and repeated-group p95."
+        "CTE filter-placement check, boundary rows, output-column mapping, and repeated workload p95."
     ),
     "cte_simplification_review": (
-        "CTE dependency-path stability, candidate-layer rows, output columns, and repeated-group p95."
+        "CTE dependency-path stability, candidate-layer rows, output columns, and repeated workload p95."
     ),
     "cte_no_downstream_filter_review": (
-        "CTE body filter coverage, projection width, join or aggregate grain, and repeated-group p95."
+        "CTE body filter coverage, projection width, join or aggregate grain, and repeated workload p95."
     ),
     "cte_complex_graph_review": (
-        "CTE boundary review count, changed-boundary rows, output columns, and repeated-group p95."
+        "CTE boundary review count, changed-boundary rows, output columns, and repeated workload p95."
     ),
     "cte_boundary_review": (
-        "CTE boundary rows, dependency-path stability, output columns, and repeated-group p95."
+        "CTE boundary rows, dependency-path stability, output columns, and repeated workload p95."
     ),
     "derived_predicate_pushdown_review": (
-        "Derived filter-mapping check, boundary rows, output-shape stability, and repeated-group p95."
+        "Derived filter-mapping check, boundary rows, output-shape stability, and repeated workload p95."
     ),
     "derived_no_downstream_filter_review": (
-        "Derived-body filters, grouping grain, projection width, and repeated-group p95."
+        "Derived-body filters, grouping grain, projection width, and repeated workload p95."
     ),
     "derived_unsupported_boundary_review": (
-        "Derived-boundary input/output rows, boundary-stability check, and repeated-group p95."
+        "Derived-boundary input/output rows, boundary-stability check, and repeated workload p95."
     ),
     "derived_boundary_review": (
-        "Derived-boundary input/output rows, output-shape stability, and repeated-group p95."
+        "Derived-boundary input/output rows, output-shape stability, and repeated workload p95."
     ),
     "source_unavailable": (
         "Source-availability count, selected-case source resolution status, and optimizer rerun status."

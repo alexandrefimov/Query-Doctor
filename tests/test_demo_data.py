@@ -307,7 +307,7 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
     assert "demo-mixed-0009" in optimization_html
     assert "demo-stats-0002" in stats_html
     assert "demo-mixed-0009" in stats_html
-    assert "Workload groups (2)" in workloads_html
+    assert "Repeated workload details (2)" in workloads_html
     assert "demo-admission-0004" in workloads_html
     assert "demo-admission-0005" in workloads_html
     assert "strong; baseline p95 38.0s; n=6" in workloads_html
@@ -317,7 +317,7 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
         "last applied action Admission/runtime check: no change; "
         "family signal Admission/runtime check: improved 3/5 comparable reruns, no change 2; "
         "feedback sample threshold met (5/5 comparable reruns); "
-        "next check admission/runtime signal count and group p95"
+        "next check admission/runtime signal count and workload p95"
     ) in workloads_html
     assert "demo-short-0008" in frequent_short_html
     assert "Low-value repeat" in frequent_short_html
