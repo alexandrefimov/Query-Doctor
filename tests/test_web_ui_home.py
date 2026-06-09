@@ -379,7 +379,8 @@ def test_recent_scan_optimizer_ready_group_is_removed():
 
     assert "Optimizer-ready" not in body
     assert "No queries requiring attention were found." in body
-    assert "<summary>More filters</summary>" in body
+    assert "<summary>More filters</summary>" not in body
+    assert "batch-filter-more" not in body
     assert "Rewrite opportunities <span>1</span>" in body
 
 

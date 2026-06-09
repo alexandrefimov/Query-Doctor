@@ -25,9 +25,6 @@ WEB_RECENT_SCAN_DEFAULTS = {
     "parallelism": "50",
     "metadata_jobs": "5",
 }
-SCAN_PRESET_STANDARD = "standard"
-SCAN_PRESET_FREQUENT_SHORT = "frequent_short"
-SCAN_PRESET_VALUES = {SCAN_PRESET_STANDARD, SCAN_PRESET_FREQUENT_SHORT}
 WEB_ADVANCED_FILTER_CHOICES = ("user", "pool")
 WEB_ADVANCED_FILTER_DEFAULTS = ("user", "pool")
 RUNNING_SCAN_FRAMING_TEXT = (
@@ -65,12 +62,6 @@ def render_batch_run_panel(
             config_values=local_config,
             fallback="finished",
         ),
-        "scan_preset": form_or_config_value(
-            form_values,
-            "scan_preset",
-            config_values={},
-            fallback=SCAN_PRESET_STANDARD,
-        ),
         "scan_date": form_or_config_value(
             form_values,
             "scan_date",
@@ -86,8 +77,8 @@ def render_batch_run_panel(
         "min_duration_sec": form_or_config_value(
             form_values,
             "min_duration_sec",
-            config_values=local_config,
-            config_key="recent_min_duration_sec",
+            config_values={},
+            fallback="",
         ),
         "max_duration_sec": "",
         "parallelism": form_or_config_value(
@@ -136,8 +127,6 @@ def render_batch_run_panel(
     if scan_target not in {"finished", "running"}:
         scan_target = "finished"
     values["scan_target"] = scan_target
-    scan_preset = normalize_scan_preset(values.get("scan_preset"))
-    values["scan_preset"] = scan_preset
     owner_required = getattr(selected_settings, "source_visibility", "") == "owner_raw"
     owner_missing = owner_required and not user_options
 
@@ -155,9 +144,7 @@ def render_batch_run_panel(
     form_action = "/running/run" if scan_target == "running" else "/batch/run"
     finished_scope_class = "" if scan_target == "finished" else " manual-inputs-hidden"
     finished_window_class = "" if scan_target == "finished" else " manual-inputs-hidden"
-    min_duration_value = (
-        "" if scan_preset == SCAN_PRESET_FREQUENT_SHORT else value("min_duration_sec")
-    )
+    min_duration_value = value("min_duration_sec")
     running_scope_class = "" if scan_target == "running" else " manual-inputs-hidden"
     recent_form_class = "" if selected_diagnosis_target == "recent" else " manual-inputs-hidden"
     query_form_class = "" if selected_diagnosis_target == "query" else " manual-inputs-hidden"
@@ -223,13 +210,12 @@ def render_batch_run_panel(
         f'<div class="batch-form-grid batch-form-grid--simple{owner_grid_class}" aria-label="Basic scan window">'
         f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_scan_date_select(value("scan_date"), scan_timezone=scan_timezone)}</div>'
         f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_scan_hour_select(value("scan_hour"), scan_date=value("scan_date"), scan_timezone=scan_timezone)}</div>'
-        f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_batch_number_field("min_duration_sec", "Minimum duration (sec)", min_duration_value, step="0.001", required=False, help_text="Only include queries at least this long. Empty means no duration filter. The Frequent short preset ignores this field and removes the minimum-duration default.")}</div>'
+        f'<div class="batch-target-field{finished_window_class}" data-scan-target-field="finished">{render_batch_number_field("min_duration_sec", "Minimum duration (sec)", min_duration_value, step="0.001", required=False, help_text="Leave empty to include long queries and repeated short workload patterns. Set a value to narrow the scan to longer-running queries only.")}</div>'
         f"{primary_owner_field}"
         '<div class="batch-run-action">'
         f'<button class="run-button" type="submit"{button_disabled}>{button_label}</button>'
         "</div>"
         "</div>"
-        f"{render_scan_options_details(value('scan_preset'), extra_class=finished_window_class)}"
         "</fieldset>"
         "</div>"
         f"{advanced_panel_html}"
@@ -239,11 +225,6 @@ def render_batch_run_panel(
         "</div>"
         f"</{panel_tag}>"
     )
-
-
-def normalize_scan_preset(value: object) -> str:
-    text = str(value or "").strip().lower()
-    return text if text in SCAN_PRESET_VALUES else SCAN_PRESET_STANDARD
 
 
 def configured_web_advanced_filters(config_values: dict[str, object]) -> tuple[str, ...]:
@@ -303,50 +284,6 @@ def render_configured_advanced_settings(
         "</div>"
         "</div>"
         "</fieldset>"
-        "</div>"
-        "</details>"
-    )
-
-
-def render_scan_preset_control(selected_value: str) -> str:
-    selected = normalize_scan_preset(html.unescape(str(selected_value or "")))
-
-    def option(value: str, label: str) -> str:
-        checked = " checked" if value == selected else ""
-        safe_value = html.escape(value, quote=True)
-        safe_label = html.escape(label)
-        return (
-            "<label>"
-            f'<input type="radio" name="scan_preset" value="{safe_value}"{checked}>'
-            f"<span>{safe_label}</span>"
-            "</label>"
-        )
-
-    return (
-        '<div class="field scan-preset-field">'
-        '<div class="label-row">'
-        '<label id="scan_preset_label">Scan preset</label>'
-        '<details class="info-popover">'
-        '<summary aria-label="Scan preset help">i</summary>'
-        '<div class="info-body">Standard triage keeps normal recent-scan ranking. '
-        "Frequent short removes the minimum-duration default and uses recent ordering so repeated short workloads can be reviewed from the results filter. "
-        "Both modes keep the same bounded scan caps and do not auto-run LLM actions.</div>"
-        "</details></div>"
-        '<div class="segmented scan-preset-segmented" role="radiogroup" aria-labelledby="scan_preset_label">'
-        f"{option(SCAN_PRESET_STANDARD, 'Standard')}"
-        f"{option(SCAN_PRESET_FREQUENT_SHORT, 'Frequent short')}"
-        "</div>"
-        "</div>"
-    )
-
-
-def render_scan_options_details(selected_value: str, *, extra_class: str = "") -> str:
-    open_attr = " open" if normalize_scan_preset(selected_value) != SCAN_PRESET_STANDARD else ""
-    return (
-        f'<details class="batch-scan-options batch-target-field{extra_class}" data-scan-target-field="finished"{open_attr}>'
-        "<summary>More scan options</summary>"
-        '<div class="batch-scan-options-body">'
-        f"{render_scan_preset_control(selected_value)}"
         "</div>"
         "</details>"
     )

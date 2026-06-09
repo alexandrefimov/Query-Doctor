@@ -105,8 +105,8 @@ def render_running_queries_run_panel(
         "min_duration_sec": form_or_config_value(
             form_values,
             "min_duration_sec",
-            config_values=local_config,
-            config_key="recent_min_duration_sec",
+            config_values={},
+            fallback="",
         ),
         "user": form_or_config_value(
             form_values, "user", config_values=local_config, config_key="recent_user"

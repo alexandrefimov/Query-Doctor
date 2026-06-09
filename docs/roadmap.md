@@ -697,10 +697,12 @@ Current workload-level diagnostics baseline and follow-ups:
   frequent-short, and regressed workload fingerprints, plus workload detail
   pages, admin pool/owner digest, analyst action queue, and action outcome
   rollups.
-- Frequent short is now a scan preset and result group. It removes the
-  minimum-duration default for that preset and ranks repeated fingerprints by
-  current-scan impact, while keeping bounded scan caps and raw-free
-  limitations visible.
+- Frequent short is now a default Recent-result group when the web scan has no
+  explicit minimum-duration filter. An empty Minimum duration keeps long-query
+  and repeated-short workload patterns available; setting a duration narrows
+  the scan to longer-running queries. The group ranks repeated fingerprints by
+  current-scan impact while keeping bounded scan caps and raw-free limitations
+  visible.
 - Local workload history and action outcomes remain local, raw-free, and
   explicit. Do not expose local history paths, raw SQL, raw profiles, raw
   metadata, optimizer source SQL, column lists, predicates, literals, aliases,

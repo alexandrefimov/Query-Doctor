@@ -305,6 +305,12 @@ supported shared-service deployment model.
 | `workload_history_path` / `recent_workload_history_path` | string path | Optional local JSONL path for workload history. Defaults to `~/.query-doctor/workload_history.jsonl`. |
 | `workload_history_max_bytes` / `recent_workload_history_max_bytes` | positive integer | Rotate the local workload history file before appending when it exceeds this size. |
 
+In the web Diagnose flow, `Minimum duration (sec)` is intentionally blank by
+default even when `recent_min_duration_sec` exists in local config. An empty web
+field sends no lower-duration filter so long-query and repeated-short workload
+patterns remain available; enter a value in the field when you want the web scan
+to narrow to longer-running queries.
+
 Recent and Running web workflows do not auto-run LLM reports or optimizer jobs.
 The default Diagnose form keeps source, scan target, time window, duration, and
 required owner filters in the browser. Optional `recent_user` and `recent_pool`

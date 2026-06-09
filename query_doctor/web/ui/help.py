@@ -112,33 +112,26 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <div class="help-topic-body">
 <p>Most demos and investigations start from <strong>Recent queries</strong>, the flagship production triage workflow. Use <strong>Known Query ID</strong> only when you already have one query ID and want to skip batch discovery.</p>
 
-<details>
-<summary>Recent queries</summary>
+<h3>Recent queries</h3>
 <p>Recent queries is the primary operator workflow. It reads query summaries from the selected source, applies filters, collects bounded profiles for selected queries, runs deterministic analysis, and shows action-oriented result filters. {web_scan_boundary}</p>
 <ul>
 <li>Verify <strong>Source cluster</strong> first. Credentials and endpoints stay in local config; the browser only selects among configured sources.</li>
 <li>The first workflow control selects <strong>Finished queries</strong>, <strong>Running now</strong>, or <strong>One Query ID</strong>. Finished queries remain the default triage path.</li>
-<li>For <strong>Finished queries</strong>, choose <strong>Scan date</strong> and <strong>Scan Hour</strong>, set <strong>Minimum duration</strong> when needed, then run the scan.</li>
-<li><strong>More scan options</strong> contains secondary presets such as Frequent short, so the default path stays focused on the scan window and Run action.</li>
+<li>For <strong>Finished queries</strong>, choose <strong>Scan date</strong> and <strong>Scan Hour</strong>, leave <strong>Minimum duration</strong> empty to include long queries and repeated short workload patterns, or set it to narrow the scan to longer-running queries.</li>
 <li>Owner-gated sources keep the required <strong>Username</strong> visible in Basic scan. Optional user and resource-pool filters stay config-owned unless <code>web_advanced_settings_enabled</code> makes them editable in Advanced settings.</li>
 <li>Collection concurrency uses bounded defaults and optional local config keys such as <code>recent_parallelism</code> and <code>recent_metadata_jobs</code>; normal browser scans do not require tuning worker counts.</li>
 <li>Runtime context is collected automatically when the selected source supports it. Cloudera Manager clusters add bounded event and metric summaries; direct Impala Recent and Running scans use profile evidence and skip Cloudera Manager-only context.</li>
-<li>The main Results filter shows <strong>Needs attention</strong> and <strong>Worth reviewing</strong>. Secondary workload, rewrite, and stats views are under <strong>More filters</strong>.</li>
+<li>The Results filter shows all available views in one toolbar: <strong>Needs attention</strong>, <strong>Worth reviewing</strong>, repeated workloads, rewrite opportunities, and stats candidates.</li>
 <li><strong>Rewrite opportunities</strong> are deterministic query-shape review opportunities. They do not promise speedup and do not execute SQL.</li>
 <li><strong>Stats to check</strong> rows require metadata evidence, estimate mismatch, and planning-sensitive runtime symptoms. They still require EXPLAIN comparison and a comparable rerun.</li>
 <li><strong>Only queries with spills</strong> is a display filter over analyzed results; it does not change scan parameters.</li>
 </ul>
-</details>
 
-<details>
-<summary>Running now</summary>
+<h3>Running now</h3>
 <p>Running now uses the same result and details shape as Finished queries, but scans only queries that are running at scan time. It has no Scan date or Scan Hour filter. Profiles can be incomplete until a query finishes, so findings can be lower-confidence than completed-query analysis. Runtime context is collected automatically when the selected source supports it.</p>
-</details>
 
-<details>
-<summary>Known Query ID</summary>
+<h3>Known Query ID</h3>
 <p>Known Query ID is for one explicit query ID. Use the shared Cluster selector above What to analyze, then enter the Query ID and run analysis. {known_query_boundary}</p>
-</details>
 </div>
 </details>
 
@@ -147,10 +140,10 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <div class="help-topic-body">
 <p>The table is a triage surface. Open a row for Details before making production changes.</p>
 
-<details>
-<summary>Columns and filters</summary>
+<h3>Columns and filters</h3>
 <ul>
-<li>The top summary strip shows scanned volume plus the two main triage counts. Table key, scan notes, scan metrics, and workload context live under <strong>Scan details</strong> after the result rows. Critical scan warnings still open above the table.</li>
+<li>The filter toolbar shows counts for available result views, and a compact scanned-volume note shows how many summaries were inspected.</li>
+<li><strong>Scan context</strong> after the table explains coverage, notes, and workload signals for the result set. Critical scan warnings still open above the table.</li>
 <li><strong>Rank</strong> is ordering within the current group, not a root-cause verdict.</li>
 <li><strong>Query ID</strong> opens the details page for the selected case.</li>
 <li><strong>User</strong> shows the sanitized query user when available.</li>
@@ -158,33 +151,27 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <li><strong>Duration</strong> comes from query summary data when available.</li>
 <li><strong>Table stats</strong> summarizes table or partition statistics availability.</li>
 <li><strong>Metadata</strong> summarizes read-only metadata collection status.</li>
-<li><strong>More filters</strong> keeps secondary views available without making them part of the main triage path.</li>
 <li><strong>Rewrite opportunities</strong> use Finding, Candidate, Impact, Confidence, and Rewrite support columns.</li>
 <li><strong>Stats to check</strong> uses Finding, Candidate, Need, Speed benefit, and Confidence columns.</li>
 <li>Cases without triage severity and without Medium/High optimization or statistics update candidacy are intentionally hidden from separate result filters.</li>
 <li><strong>Finding</strong> explains deterministic signals without raw evidence.</li>
 </ul>
-</details>
 </div>
 </details>
 
 <details id="details-actions" class="help-topic">
 <summary><span>{actions_label}</span><small>Recommended changes, diagnostics, reports, optimizer</small></summary>
 <div class="help-topic-body">
-<p>Details shows a browser-safe summary for one analyzed query. <strong>Recommended changes</strong> leads with why it deserves attention, where to inspect, what supported change direction to try, and how to verify the result. <strong>Diagnostics and evidence</strong> keeps pipeline state, supporting findings, runtime, metadata, runtime metrics, and technical signals available without turning the first screen into a low-level evidence dump.</p>
+<p>Details shows a browser-safe summary for one analyzed query. <strong>Recommended changes</strong> leads with what to change and how to verify it, then shows where to inspect and why deterministic facts support the path. <strong>Diagnostics and evidence</strong> keeps pipeline state, supporting findings, runtime, metadata, runtime metrics, and technical signals available without turning the first screen into a low-level evidence dump.</p>
 {action_copy}
 
-<details>
-<summary>Validated reports</summary>
+<h3>Validated reports</h3>
 {report_copy}
 <p>The report writer reads deterministic facts, Python-owned report contract digest, case differentiators, and Python-owned recommendation candidates. It must not infer from raw profile text or raw SQL.</p>
-</details>
 
-<details>
-<summary>Details-page {optimizer_label}</summary>
+<h3>Details-page {optimizer_label}</h3>
 <p>{optimizer_copy}</p>
 <p>If validation fails, Query Doctor can show trusted recommendations-only or no-rewrite guidance instead of an unsafe draft.</p>
-</details>
 </div>
 </details>
 
@@ -192,16 +179,13 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <summary><span>Metadata</span><small>Bounded read-only table facts</small></summary>
 <div class="help-topic-body">
 <p>Metadata collection is explicit, bounded, read-only, and allowlisted. Metadata can be unavailable or partial; that is a normal degraded state.</p>
-
-<details>
-<summary>Allowed metadata summaries</summary>
+<h3>Allowed metadata summaries</h3>
 <ul>
 <li>Table definition summary</li>
 <li>Table statistics summary</li>
 <li>Column statistics summary</li>
 </ul>
 <p>Query Doctor does not run user queries, maintenance statements, metadata cache updates, schema changes, or data-changing statements for metadata collection.</p>
-</details>
 </div>
 </details>
 
@@ -231,42 +215,25 @@ def render_help_content(*, llm_enabled: bool = True, language: str = "en") -> st
 <details id="common-questions" class="help-topic">
 <summary><span>Common questions</span><small>Safety, metadata, reports, and future scope</small></summary>
 <div class="help-topic-body">
-<details>
-<summary>Why can I not see the query SQL?</summary>
+<h3>Why can I not see the query SQL?</h3>
 <p>Raw query text can contain sensitive business logic, table names, and literals. Query Doctor shows safe summaries and deterministic findings instead.</p>
-</details>
-<details>
-<summary>Why can I not see the full profile?</summary>
+<h3>Why can I not see the full profile?</h3>
 <p>Full profiles can be large and sensitive. The UI shows analyzer-owned facts and bounded status summaries.</p>
-</details>
-<details>
-<summary>Why is metadata partial or skipped?</summary>
+<h3>Why is metadata partial or skipped?</h3>
 <p>Metadata collection is bounded. It can be disabled, unavailable, limited to top cases, or stopped by safety limits. Profile-based findings still remain usable.</p>
-</details>
-<details>
-<summary>Why does Recent queries not generate reports automatically?</summary>
+<h3>Why does Recent queries not generate reports automatically?</h3>
 <p>{auto_report_answer}</p>
-</details>
-<details>
-<summary>Can Query Doctor execute optimized SQL?</summary>
+<h3>Can Query Doctor execute optimized SQL?</h3>
 <p>No. Details-page optimizer actions can produce trusted drafts or recommendations, but Query Doctor never executes generated SQL. Benchmarks must be separate explicit read-only checks outside the UI workflow.</p>
-</details>
-<details>
-<summary>Does a stats gap mean stats caused the slowdown?</summary>
+<h3>Does a stats gap mean stats caused the slowdown?</h3>
 <p>No. Treat it as a statistics update candidate only when metadata gaps, estimate mismatch, and planning-sensitive runtime symptoms line up. Confirmation requires EXPLAIN comparison and a comparable rerun.</p>
-</details>
-<details>
-<summary>Does runtime metrics context prove root cause?</summary>
+<h3>Does runtime metrics context prove root cause?</h3>
 <p>Usually no. Runtime metrics are bounded context. They become stronger only when correlated with deterministic profile evidence.</p>
-</details>
-
-<details>
-<summary>Future scope</summary>
+<h3>Future scope</h3>
 <h3>Can Query Doctor support Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio, or another Big Data SQL engine?</h3>
 <p>Not yet. Future engine work is scoped to actively developed Big Data SQL, MPP analytical, and lakehouse runtimes, not generic OLTP databases. Each engine needs a safe read-only collection contract, metadata allowlist, parser/profile support, browser safety tests, and report validator coverage before it becomes supported behavior.</p>
 <h3>Does the storage backend matter?</h3>
 <p>Yes, but it is a separate dimension from the query engine. Query Doctor can keep bounded storage-family context such as HDFS or object-store when metadata exposes a safe location scheme. It does not expose table locations or object URIs, and object-store remote reads are not treated as HDFS locality failures. Future table-layout context may support candidates such as small-file risk or planning pressure, but storage context cannot prove root cause by itself.</p>
-</details>
 </div>
 </details>
 </div>
@@ -354,23 +321,20 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <summary><span>Рабочие режимы</span><small>Recent queries, Running now, Known Query ID</small></summary>
 <div class="help-topic-body">
 <p>Flagship workflow для operator triage - <strong>Recent queries</strong>. <strong>Known Query ID</strong> нужен, когда уже известен один query ID и batch discovery не требуется.</p>
-<details><summary>Recent queries</summary>
+<h3>Recent queries</h3>
 <p>Recent queries читает summaries из выбранного источника, применяет фильтры, собирает bounded profiles, запускает детерминированный analysis и показывает action-oriented result filters. {web_scan_boundary}</p>
 <ul>
 <li>Сначала проверьте <strong>Source cluster</strong>. Credentials и endpoints остаются в local config.</li>
 <li>Первый переключатель выбирает <strong>Finished queries</strong>, <strong>Running now</strong> или <strong>One Query ID</strong>. Finished queries остается основным triage path.</li>
-<li>Для <strong>Finished queries</strong> задайте <strong>Scan date</strong>, <strong>Scan Hour</strong> и при необходимости minimum duration.</li>
-<li><strong>More scan options</strong> содержит вторичные preset'ы, например Frequent short.</li>
+<li>Для <strong>Finished queries</strong> задайте <strong>Scan date</strong> и <strong>Scan Hour</strong>. Оставьте <strong>Minimum duration</strong> пустым, чтобы включить длинные запросы и repeated short workload patterns; задайте значение, чтобы сузить скан до долгих запросов.</li>
 <li>Runtime context собирается автоматически, когда выбранный source это поддерживает.</li>
-<li>Основной фильтр Results показывает <strong>Needs attention</strong> и <strong>Worth reviewing</strong>. Вторичные workload, rewrite и stats-срезы доступны в <strong>More filters</strong>.</li>
+<li>Фильтр Results показывает все доступные срезы в одной панели: <strong>Needs attention</strong>, <strong>Worth reviewing</strong>, repeated workloads, rewrite opportunities и stats candidates.</li>
 <li><strong>Only queries with spills</strong> - display filter по уже проанализированным результатам.</li>
-</ul></details>
-<details><summary>Running now</summary>
+</ul>
+<h3>Running now</h3>
 <p>Running now использует такую же форму результатов и Details, но сканирует только running queries на момент запуска. Профили могут быть неполными, поэтому уверенность ниже, чем для completed-query analysis.</p>
-</details>
-<details><summary>Known Query ID</summary>
+<h3>Known Query ID</h3>
 <p>Known Query ID анализирует один явный query ID. Используйте общий Cluster selector, введите Query ID и запустите analysis. {known_query_boundary}</p>
-</details>
 </div>
 </details>
 
@@ -378,11 +342,13 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <summary><span>Таблица результатов</span><small>Фильтры, колонки и triage wording</small></summary>
 <div class="help-topic-body">
 <p>Таблица - triage surface. Перед production changes открывайте строку в Details.</p>
+<h3>Колонки и фильтры</h3>
 <ul>
+<li>Панель фильтров показывает counts для доступных result views, а компактная пометка <strong>Scanned</strong> показывает объем просмотренных summaries.</li>
+<li><strong>Scan context</strong> после таблицы объясняет coverage, notes и workload signals для текущего result set. Critical scan warnings остаются видимыми над таблицей.</li>
 <li><strong>Rank</strong> - порядок внутри текущей группы, не root-cause verdict.</li>
 <li><strong>Query ID</strong> открывает details page выбранного кейса.</li>
 <li><strong>Priority</strong> объединяет word label и deterministic analyzer score.</li>
-<li><strong>More filters</strong> хранит вторичные срезы, чтобы основной triage не выглядел как набор равнозначных классификаторов.</li>
 <li><strong>Rewrite opportunities</strong> и <strong>Stats to check</strong> показывают только поддержанные кандидаты для проверки.</li>
 </ul>
 </div>
@@ -391,10 +357,13 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <details id="details-actions" class="help-topic">
 <summary><span>{actions_label}</span><small>Рекомендации, диагностика, отчеты, optimizer</small></summary>
 <div class="help-topic-body">
-<p>Details - browser-safe summary для одного analyzed query. <strong>Recommended changes</strong> показывает, почему query заслуживает внимания, где смотреть, какое направление изменения поддержано фактами и как подтвердить результат. <strong>Diagnostics and evidence</strong> держит pipeline state, findings, runtime, metadata и technical signals в collapsed виде.</p>
+<p>Details - browser-safe summary для одного analyzed query. <strong>Recommended changes</strong> сначала показывает, что изменить и как проверить результат, затем где смотреть и почему deterministic facts поддерживают этот путь. <strong>Diagnostics and evidence</strong> держит pipeline state, findings, runtime, metadata и technical signals в collapsed виде.</p>
 {action_copy}
-<details><summary>Validated reports</summary>{report_copy}<p>Report writer читает deterministic facts, Python-owned report contract digest, differentiators и recommendation candidates. Он не должен выводить из raw profile text или raw SQL.</p></details>
-<details><summary>Details-page {optimizer_label}</summary><p>{optimizer_copy}</p><p>Если validation fails, Query Doctor может показать trusted recommendations-only или no-rewrite guidance вместо unsafe draft.</p></details>
+<h3>Validated reports</h3>
+{report_copy}
+<p>Report writer читает deterministic facts, Python-owned report contract digest, differentiators и recommendation candidates. Он не должен выводить из raw profile text или raw SQL.</p>
+<h3>Details-page {optimizer_label}</h3>
+<p>{optimizer_copy}</p><p>Если validation fails, Query Doctor может показать trusted recommendations-only или no-rewrite guidance вместо unsafe draft.</p>
 </div>
 </details>
 
@@ -402,9 +371,9 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <summary><span>Метаданные</span><small>Bounded read-only table facts</small></summary>
 <div class="help-topic-body">
 <p>Metadata collection явная, bounded, read-only и allowlisted. Partial или unavailable metadata - нормальное degraded state.</p>
-<details><summary>Allowed metadata summaries</summary>
+<h3>Allowed metadata summaries</h3>
 <ul><li>Table definition summary</li><li>Table statistics summary</li><li>Column statistics summary</li></ul>
-<p>Query Doctor не запускает user queries, maintenance statements, metadata cache updates, schema changes или data-changing statements для metadata collection.</p></details>
+<p>Query Doctor не запускает user queries, maintenance statements, metadata cache updates, schema changes или data-changing statements для metadata collection.</p>
 </div>
 </details>
 
@@ -434,19 +403,18 @@ def render_help_content_ru(*, llm_enabled: bool = True) -> str:
 <details id="common-questions" class="help-topic">
 <summary><span>Частые вопросы</span><small>Безопасность, metadata, reports и scope</small></summary>
 <div class="help-topic-body">
-<details><summary>Почему не видно query SQL?</summary><p>Raw query text может содержать sensitive business logic, table names и literals. Query Doctor показывает safe summaries и deterministic findings.</p></details>
-<details><summary>Почему не видно полный profile?</summary><p>Full profiles могут быть большими и sensitive. UI показывает analyzer-owned facts и bounded status summaries.</p></details>
-<details><summary>Почему metadata partial или skipped?</summary><p>Metadata collection bounded. Ее можно отключить, источник может быть недоступен, сбор может ограничиться top cases или остановиться по safety limits. Profile-based findings остаются usable.</p></details>
-<details><summary>Почему Recent queries не генерирует reports автоматически?</summary><p>{auto_report_answer}</p></details>
-<details><summary>Может ли Query Doctor выполнить optimized SQL?</summary><p>Нет. Optimizer actions могут создать trusted drafts или recommendations, но Query Doctor никогда не выполняет generated SQL.</p></details>
-<details><summary>Означает ли stats gap, что stats вызвали slowdown?</summary><p>Нет. Это statistics update candidate только когда metadata gaps, estimate mismatch и planning-sensitive runtime symptoms сходятся. Подтверждение требует EXPLAIN comparison и comparable rerun.</p></details>
-<details><summary>Доказывает ли runtime metrics context root cause?</summary><p>Обычно нет. Runtime metrics - bounded context. Они становятся сильнее только при correlation с deterministic profile evidence.</p></details>
-<details><summary>Future scope</summary>
+<h3>Почему не видно query SQL?</h3><p>Raw query text может содержать sensitive business logic, table names и literals. Query Doctor показывает safe summaries и deterministic findings.</p>
+<h3>Почему не видно полный profile?</h3><p>Full profiles могут быть большими и sensitive. UI показывает analyzer-owned facts и bounded status summaries.</p>
+<h3>Почему metadata partial или skipped?</h3><p>Metadata collection bounded. Ее можно отключить, источник может быть недоступен, сбор может ограничиться top cases или остановиться по safety limits. Profile-based findings остаются usable.</p>
+<h3>Почему Recent queries не генерирует reports автоматически?</h3><p>{auto_report_answer}</p>
+<h3>Может ли Query Doctor выполнить optimized SQL?</h3><p>Нет. Optimizer actions могут создать trusted drafts или recommendations, но Query Doctor никогда не выполняет generated SQL.</p>
+<h3>Означает ли stats gap, что stats вызвали slowdown?</h3><p>Нет. Это statistics update candidate только когда metadata gaps, estimate mismatch и planning-sensitive runtime symptoms сходятся. Подтверждение требует EXPLAIN comparison и comparable rerun.</p>
+<h3>Доказывает ли runtime metrics context root cause?</h3><p>Обычно нет. Runtime metrics - bounded context. Они становятся сильнее только при correlation с deterministic profile evidence.</p>
+<h3>Future scope</h3>
 <h3>Может ли Query Doctor поддерживать Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio или другой Big Data SQL engine?</h3>
 <p>Пока нет. Future engine work ограничен actively developed Big Data SQL, MPP analytical и lakehouse runtimes, а не generic OLTP databases. Каждый engine требует safe read-only collection contract, metadata allowlist, parser/profile support, browser safety tests и report validator coverage.</p>
 <h3>Имеет ли значение storage backend?</h3>
 <p>Да, но это отдельное измерение от query engine. Query Doctor может сохранять bounded storage-family context, например HDFS или object-store, когда metadata дает безопасную location scheme. Он не показывает table locations или object URIs, а object-store remote reads не трактуются как HDFS locality failures. Future table-layout context может поддерживать candidates вроде small-file risk или planning pressure, но storage context сам по себе не доказывает root cause.</p>
-</details>
 </div>
 </details>
 </div>

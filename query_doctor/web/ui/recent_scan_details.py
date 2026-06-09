@@ -121,7 +121,7 @@ def render_recent_scan_case_detail_view(
         f'<div class="breadcrumb"><a href="{safe_list_href}">{safe_workflow_title}</a><span>/</span>'
         f"<span>{html.escape(view.case_id)}</span></div>"
         f'<div class="batch-head"><div><h1>{safe_details_title}</h1>'
-        f"<p>{html.escape(ui_text(language, 'Start with the verdict and recommended changes, then expand evidence only when needed.', 'Начните с вердикта и рекомендуемых изменений; раскрывайте доказательства только когда они нужны.'))}</p></div>"
+        f"<p>{html.escape(ui_text(language, 'Use the verdict to decide priority, then read the recommended change and verification path before opening diagnostics.', 'Используйте вердикт для приоритета, затем смотрите рекомендуемое изменение и способ проверки до раскрытия диагностики.'))}</p></div>"
         '<div class="batch-head-actions">'
         f'<a class="button primary" href="/#new-scan" data-open-new-scan>{html.escape(ui_text(language, "New scan", "Новый скан"))}</a>'
         f'<span class="badge blue">{html.escape(view.case_id)}</span></div></div>'
@@ -514,27 +514,35 @@ def render_case_action_plan(
         view, detail_base_path=detail_base_path, language=language
     )
     if not action_cards:
+        no_action_why = html.escape(
+            ui_text(
+                language,
+                "No selected action candidate is available from deterministic facts for this case.",
+                "Для этого кейса нет выбранного кандидата действия из детерминированных фактов.",
+            )
+        )
         action_cards = (
             '<ul class="reason-list action-candidate-list">'
             '<li class="reason-card action-candidate-card">'
             f"<strong>{html.escape(ui_text(language, 'No supported change direction', 'Нет поддержанного направления изменения'))}</strong>"
             '<div class="action-candidate-sections">'
-            '<section class="action-candidate-section action-candidate-section--why">'
-            f"<span>{html.escape(ui_text(language, 'Why this deserves attention', 'Почему это требует внимания'))}</span>"
-            f"<p>{html.escape(ui_text(language, 'No selected action candidate is available from deterministic facts for this case.', 'Для этого кейса нет выбранного кандидата действия из детерминированных фактов.'))}</p>"
+            '<section class="action-candidate-section action-candidate-section--change">'
+            f"<span>{html.escape(ui_text(language, 'What to change', 'Что изменить'))}</span>"
+            f"<p>{html.escape(ui_text(language, 'Do not change SQL, stats, or runtime settings based on this case alone.', 'Не меняйте SQL, статистику или runtime-настройки только на основании этого кейса.'))}</p>"
+            "</section>"
+            '<section class="action-candidate-section action-candidate-section--verify">'
+            f"<span>{html.escape(ui_text(language, 'How to verify', 'Как проверить'))}</span>"
+            f"<p>{html.escape(ui_text(language, 'Confirm the next comparable rerun remains below suspicious thresholds.', 'Подтвердите, что следующий сопоставимый повторный запуск остается ниже подозрительных порогов.'))}</p>"
             "</section>"
             '<section class="action-candidate-section action-candidate-section--locations">'
             f"<span>{html.escape(ui_text(language, 'Where to look', 'Где смотреть'))}</span>"
             f"<p>{html.escape(ui_text(language, 'Use Diagnostics only to review source coverage and limitations.', 'Используйте Диагностику только для проверки покрытия источников и ограничений.'))}</p>"
             "</section>"
-            '<section class="action-candidate-section">'
-            f"<span>{html.escape(ui_text(language, 'What to change', 'Что изменить'))}</span>"
-            f"<p>{html.escape(ui_text(language, 'Do not change SQL, stats, or runtime settings based on this case alone.', 'Не меняйте SQL, статистику или runtime-настройки только на основании этого кейса.'))}</p>"
-            "</section>"
-            '<section class="action-candidate-section">'
-            f"<span>{html.escape(ui_text(language, 'How to verify', 'Как проверить'))}</span>"
-            f"<p>{html.escape(ui_text(language, 'Confirm the next comparable rerun remains below suspicious thresholds.', 'Подтвердите, что следующий сопоставимый повторный запуск остается ниже подозрительных порогов.'))}</p>"
-            "</section>"
+            '<details class="analysis-subdetails action-candidate-reason" '
+            'aria-label="Why this deserves attention">'
+            f"<summary>{html.escape(ui_text(language, 'Why this deserves attention', 'Почему это требует внимания'))}</summary>"
+            f'<p class="helper">{no_action_why}</p>'
+            "</details>"
             "</div>"
             "</li>"
             "</ul>"
@@ -545,7 +553,7 @@ def render_case_action_plan(
         f'<h2 class="section-title">{html.escape(ui_text(language, "Recommended changes", "Рекомендуемые изменения"))}</h2>'
         '<div class="report-body">'
         '<p class="action-plan-intro">'
-        f"{html.escape(ui_text(language, 'Inspect the named query area, apply only the supported change direction, then verify with a comparable rerun.', 'Проверьте указанную область запроса, применяйте только поддержанное направление изменения и подтверждайте результат сопоставимым повторным запуском.'))}"
+        f"{html.escape(ui_text(language, 'Read each card as what to try, how to verify it, where to inspect, and why the deterministic facts support that path.', 'Читайте каждую карточку как что попробовать, как проверить, где смотреть и почему детерминированные факты поддерживают этот путь.'))}"
         "</p>"
         f"{action_cards}"
         "</div>"

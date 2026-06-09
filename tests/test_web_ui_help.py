@@ -98,10 +98,8 @@ def test_web_help_page_renders_curated_static_help():
     )
     assert compact_css(".help-card-grid{display:grid;") in compact_styles
     assert compact_css(".help-topic>summary{display:flex;") in compact_styles
-    assert (
-        compact_css(".help-topic>summary::after,.help-topic-body>details>summary::after")
-        in compact_styles
-    )
+    assert compact_css(".help-topic>summary::after{") in compact_styles
+    assert ".help-topic-body>details" not in styles
     assert "Metadata" in body
     assert "Allowed metadata summaries" in body
     assert "Validated reports" in body
@@ -115,7 +113,10 @@ def test_web_help_page_renders_curated_static_help():
     assert "Evidence count" not in body
     assert "Needs attention" in body
     assert "Worth reviewing" in body
-    assert "More filters" in body
+    assert "More filters" not in body
+    assert "More scan options" not in body
+    assert "Scan context" in body
+    assert "repeated short workload patterns" in body
     assert "Rewrite opportunities" in body
     assert "Stats to check" in body
     assert "Good queries" not in body
