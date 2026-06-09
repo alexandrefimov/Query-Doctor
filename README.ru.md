@@ -70,6 +70,9 @@ Query Doctor это не:
   `impala-shell`.
 - Ранжирует подозрительные cases и action candidates по детерминированным
   analyzer facts, а не по LLM scoring.
+- Показывает Details как analyst decision page: сначала verdict, затем почему
+  запрос важен, где проверить, что попробовать, как проверить comparable rerun
+  и только потом collapsed deterministic evidence.
 - Генерирует доверенные отчеты только после детерминированной нормализации,
   очистки и проверки.
 - Дает отдельный read-only Query Optimizer workflow для разбора вставленного
@@ -245,9 +248,9 @@ dedicated temp directory, включает Python-only mode, игнорируе�
 config и блокирует все POST actions.
 
 Откройте localhost URL, который напечатает `query-doctor-web`. Начните с
-`/?query_group=workloads#workload-action-queue`, чтобы показать Workloads /
-Action Queue и local synthetic action outcomes перед открытием workload
-Details.
+`/?query_group=workloads#scan-context`, чтобы показать компактный Scan context,
+workload follow-up links и local synthetic action outcomes перед открытием
+Workload Details.
 
 Локальный web UI начинается с ограниченной формы поиска и показывает synthetic
 Finished Queries results:
@@ -256,10 +259,11 @@ Finished Queries results:
 
 ![Synthetic Query Doctor finished queries results](docs/assets/demo_finished_queries.png)
 
-Synthetic demo pack `0.5.0` содержит eleven sanitized cases: Workloads / Action
-Queue, trusted optimizer recommendations, stats maintenance, storage/HDFS
-follow-up, frequent-short workloads, mixed signals, unknown-but-useful limited
-evidence и direct-Impala compatibility. Полный список scenarios:
+Synthetic demo pack `0.5.0` содержит eleven sanitized cases: workload
+follow-up, repeated patterns, trusted optimizer recommendations, stats
+maintenance, storage/HDFS follow-up, frequent-short workloads, mixed signals,
+unknown-but-useful limited evidence и direct-Impala compatibility. Полный
+список scenarios:
 [docs/demo-cases.md](docs/demo-cases.md).
 
 ## Product scope

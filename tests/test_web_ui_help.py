@@ -64,12 +64,16 @@ def test_web_help_page_renders_curated_static_help():
     assert "Python Report" in body
     assert "LLM narrative" in body
     assert "Query LLM optimizer" in body
-    assert "Recommended changes" in body
+    assert "Recommended change" in body
     assert "Diagnostics and evidence" in body
     assert 'href="/"' in body
-    assert 'href="/trino/compact-diagnosis"' in body
-    assert "Trino compact" in body
-    assert "Render direct or packaged raw-free boundary JSON, not product support." in body
+    assert 'href="#workload-patterns"' in body
+    assert "Workload patterns" in body
+    assert "Workload follow-up" in body
+    assert "Best Details case" in body
+    assert "repeated fingerprint is not a root-cause claim by itself" in body
+    assert 'href="/trino/compact-diagnosis"' not in body
+    assert "Render direct or packaged raw-free boundary JSON, not product support." not in body
     assert 'href="#quick-start"' in body
     assert 'href="#results-table"' in body
     assert 'id="details-actions"' in body
@@ -80,8 +84,8 @@ def test_web_help_page_renders_curated_static_help():
     assert "Documentation index" in body
     assert "Security model" in body
     assert "public security, privacy, and demo-sharing overview" in body
-    assert "Safety contract" in body
-    assert "Roadmap" in body
+    assert "Safety contract" not in body
+    assert "Roadmap" not in body
     assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/security-model.md" in body
     assert "https://github.com/alexandrefimov/Query-Doctor/blob/main/docs/README.md" in body
     assert 'target="_blank" rel="noopener noreferrer"' in body
@@ -104,7 +108,7 @@ def test_web_help_page_renders_curated_static_help():
     assert "Allowed metadata summaries" in body
     assert "Validated reports" in body
     assert "Common questions" in body
-    assert "Future scope" in body
+    assert "Where is future engine scope documented?" in body
     assert "Web scans do not auto-run reports, LLM narratives, or optimizer drafts." in body
     assert "draft workflow placeholder" not in body
     assert "Metadata top cases" not in body
@@ -122,15 +126,15 @@ def test_web_help_page_renders_curated_static_help():
     assert "Good queries" not in body
     assert "Only queries with spills" in body
     assert "Cases without triage severity" in body
-    assert "partial content stays untrusted and hidden" in body
+    assert "rejected partial content stays hidden" in body
     assert "Metadata collection is explicit, bounded, read-only, and allowlisted." in body
     assert "Table definition summary" in body
     assert "Table statistics summary" in body
     assert "Column statistics summary" in body
-    assert "StarRocks, Doris, ClickHouse, Dremio" in body
-    assert "actively developed Big Data SQL, MPP analytical, and lakehouse runtimes" in body
-    assert "Does the storage backend matter?" in body
-    assert "small-file risk or planning pressure" in body
+    assert "Future engine and storage scope lives in the public roadmap and support matrix" in body
+    assert "StarRocks, Doris, ClickHouse, Dremio" not in body
+    assert "Does the storage backend matter?" not in body
+    assert "small-file risk or planning pressure" not in body
     assert not any("А" <= ch <= "я" or ch == "ё" or ch == "Ё" for ch in body)
     for forbidden in FORBIDDEN_HELP_STRINGS:
         assert forbidden not in body
@@ -178,15 +182,21 @@ def test_web_help_page_uses_configured_russian_language():
     assert "Детали Known Query ID" not in body
     assert "Python-отчет" in body
     assert "LLM narrative" in body
-    assert 'href="/trino/compact-diagnosis"' in body
-    assert "Рендерит direct или packaged raw-free boundary JSON, не product support." in body
+    assert 'href="#workload-patterns"' in body
+    assert "Workload patterns" in body
+    assert "Workload follow-up" in body
+    assert "Best Details case" in body
+    assert 'href="/trino/compact-diagnosis"' not in body
+    assert "Рендерит direct или packaged raw-free boundary JSON, не product support." not in body
     assert "Реализованный production engine сейчас Apache Impala." in body
     assert "Browser UI намеренно скрывает raw query text" in body
     assert "Synthetic demo docs" in body
     assert "Почему metadata partial или skipped?" in body
     assert "Доказывает ли runtime metrics context root cause?" in body
-    assert "Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio" in body
-    assert "small-file risk или planning pressure" in body
+    assert "Где описан future engine scope?" in body
+    assert "Future engine и storage scope живут в roadmap и support matrix" in body
+    assert "Trino, Spark SQL, StarRocks, Doris, ClickHouse, Dremio" not in body
+    assert "small-file risk или planning pressure" not in body
     assert "query-doctor-config" not in body
     for forbidden in FORBIDDEN_HELP_STRINGS:
         assert forbidden not in body

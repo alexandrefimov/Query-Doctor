@@ -12,8 +12,8 @@ without weakening the safety contract or exposing raw artifacts.
 - Keep the root README as a demo-first public entry point, not a complete
   command reference or implementation guide.
 - Preserve the first user path: install, generate the synthetic demo pack,
-  launch the local web UI, inspect Workloads/Action Queue, then follow Details
-  for why/where/change/verify guidance.
+  launch the local web UI, inspect Scan context workload follow-up links, then
+  follow Details for why/where/change/verify guidance.
 - Keep support boundaries short and unambiguous in root README. Apache Impala is
   the only production engine support; Trino private preview and Spark compact
   intake stay below public support and link to the engine support matrix for the
@@ -35,7 +35,7 @@ without weakening the safety contract or exposing raw artifacts.
   contract instead of the legacy generic report marker, so demo Details pages
   exercise the same selected-case report baseline as production web flows.
 - Make Details read as one continuous case page by removing the visual frame
-  from the outer Details container. The verdict, Recommended changes,
+  from the outer Details container. The verdict, Recommended change,
   Diagnostics, and action controls remain sibling sections with stable anchors
   and safe server-rendered content.
 - Keep repeat scan entry points visible. Results pages now render an open
@@ -94,10 +94,26 @@ without weakening the safety contract or exposing raw artifacts.
 - Keep all available Results views in one toolbar. There are not enough result
   groups to justify a separate `More filters` disclosure.
 - Render `Scan context` below the result rows as a visible explanation of
-  coverage, scan notes, and workload signals. Do not make analysts expand
-  several similar blocks just to understand what context exists.
+  coverage, scan notes, and compact workload follow-up links. Do not make
+  analysts expand several similar blocks just to understand what context
+  exists.
 - On Help, collapse only large topic sections. Small two-line explanations
   should stay visible inside their parent topic.
+
+## Accepted For Workload And Help Slice
+
+- Results should show only compact repeated-workload follow-up links after the
+  table, with the full repeated-pattern decision path on Workload Details.
+- Keep result filters for repeated workloads, regressions, and frequent-short
+  patterns visible in the toolbar instead of exposing a second workload
+  analytics panel below the table.
+- Make Workload Details an analyst decision page for one repeated pattern:
+  `Why this pattern matters`, `Where to inspect`, `What to try next`, and
+  `How to verify` come before representative queries, the snapshot, collapsed
+  additional checks, coverage/shape, all selected cases, and limitations.
+- Simplify Help around current product workflows. The main Help shortcuts
+  should include the repeated workload path and omit bounded future-engine
+  compact pages; future engine scope belongs in roadmap/support-matrix docs.
 
 ## Accepted For Details Decision-Flow Slice
 
@@ -105,10 +121,11 @@ without weakening the safety contract or exposing raw artifacts.
   -> recommendation -> verification. Secondary diagnostics, source coverage,
   and pipeline mechanics should remain below the decision path or inside
   collapsed sections.
-- Details recommendation cards should read in analyst order: `What to change`,
-  `How to verify`, `Where to look`, then collapsed supporting `Why this
-  deserves attention` evidence. This keeps the first screen oriented around the
-  next decision while preserving deterministic support.
+- Details recommendation cards should read in analyst decision order:
+  `Why this query matters`, `Where to inspect`, `What to try`, and
+  `How to verify`. The primary recommendation stays visible; additional
+  supported actions, candidate details, and diagnostics stay collapsed below
+  that first decision path.
 - Results should route the analyst with explicit next-action labels. Repeated
   workload surfaces should use `Workload p95`, `Workload impact`, `Next`, and
   `Open Details` instead of generic group/open wording.
@@ -131,6 +148,22 @@ without weakening the safety contract or exposing raw artifacts.
   without competing with the main result rows.
 - Feedback recording should explain outcome and comparable-rerun intent, not
   expose implementation storage details.
+- Outcome controls should ask whether the recommendation was applied and what
+  happened on a comparable rerun. Local feedback summaries can mention workload
+  confidence and next checks, but should not expose storage paths or raw
+  outcome records.
+
+## Accepted For Scan Context Trim Slice
+
+- Keep `Scan context` as a light post-table strip: compact coverage, important
+  scan warnings or notes, optional action outcome count, table key, and top
+  workload follow-up links.
+- Do not render the full workload digest, action queue, pool/owner breakdown,
+  repeated workload group table, or rewrite funnel metrics in Results context.
+  Those details belong in result filters and Workload Details.
+- Preserve important scan trust signals such as safety-cap hit, running-only
+  scope, and safe cluster event context without returning to the old
+  duration/user/pool/parallelism checklist.
 
 ## Accepted For Diagnose Form Follow-Up Slice
 
@@ -264,7 +297,7 @@ without weakening the safety contract or exposing raw artifacts.
 - Make the verdict title read as a supported analyst review signal rather than
   an engine label: query-shape rewrite review, stats gaps, runtime queueing,
   skew, data movement, storage follow-up, or competing signals.
-- Keep "what to do next" only in Recommended changes so the page does not repeat
+- Keep "what to do next" only in Recommended change so the page does not repeat
   action guidance in multiple formats.
 - Promote existing baseline/regression, cluster-runtime, spill, table-stat, and
   review-anchor facts as secondary chips rather than equal-weight overview
@@ -273,7 +306,7 @@ without weakening the safety contract or exposing raw artifacts.
   action candidate exists, make the verdict say that a query-shape or stats
   review candidate was found instead of showing `Not classified`.
 - Keep the low-level Diagnostics and evidence block collapsed by default.
-- Use one page `h1`; make Recommended changes and Details action controls
+- Use one page `h1`; make Recommended change and Details action controls
   section headings instead of nested page titles.
 - Collapse action-outcome buttons behind one "Record rerun outcome" disclosure
   so the recommendation text remains the primary reading path.
@@ -283,7 +316,7 @@ without weakening the safety contract or exposing raw artifacts.
   the bulky trusted result bodies by default so action controls do not dominate
   the page after a report or optimizer run.
 - Make Details read as one continuous case page instead of nested cards inside
-  a large card. The verdict, Recommended changes, Diagnostics, and action
+  a large card. The verdict, Recommended change, Diagnostics, and action
   controls should be sibling sections; repeated recommendation/evidence items
   can remain card-like for scanning.
 
@@ -335,9 +368,9 @@ without weakening the safety contract or exposing raw artifacts.
   decision flow before it is an engineering evidence dump. It should answer
   why this query deserves attention, where to inspect the query or plan, what
   supported change direction to try, and how to verify the result.
-- Treat the visible Details path as a three-step analyst story: why this query
-  deserves attention, where to inspect the query or plan, and what supported
-  change direction to try next.
+- Treat the visible Details path as a four-step analyst story: why this query
+  deserves attention, where to inspect the query or plan, what supported
+  change direction to try next, and how to verify a comparable rerun.
 - Keep collector-source organization out of the first screen. Pipeline status,
   profile sections, metric-provider details, and broad fact tables stay in the
   collapsed Diagnostics layer unless they directly support the verdict,
@@ -346,17 +379,17 @@ without weakening the safety contract or exposing raw artifacts.
   owns the "what is wrong" answer; KPI cards should add context such as
   priority, duration, confidence, baseline, or resource footprint.
 - Keep verdict chips for context that helps triage the case, not for action
-  facts already shown in Recommended changes. Review anchors and candidate
-  ranks belong in the recommendation card.
-- Keep Recommended changes action cards focused on the action: where to look,
-  what to change, how to verify, and only non-duplicated supporting facts.
-  Candidate score/rank and guardrails should stay secondary.
-- Render each Recommended changes card in analyst decision order: lead with the
-  visible change direction and verification step, keep safe review anchors
-  visible, and collapse the longer "why" text behind a compact disclosure.
-  Supporting facts, technical guardrails, and candidate score/rank details stay
-  below that flow.
-- Make the `Why` and `What to change` copy explain the decision, not the
+  facts already shown in Recommended change. Review anchors and candidate ranks
+  belong in the recommendation card.
+- Keep Recommended change action cards focused on the decision: why the query
+  matters, where to inspect, what to try, how to verify, and only
+  non-duplicated supporting facts. Candidate score/rank and guardrails should
+  stay secondary.
+- Render the primary Recommended change card in analyst decision order:
+  `Why this query matters`, `Where to inspect`, `What to try`, and
+  `How to verify`. Additional supported actions, technical guardrails, and
+  candidate score/rank details stay below that flow.
+- Make the `Why` and `What to try` copy explain the decision, not the
   internal scoring model. Use language like "deterministic analysis found...",
   "start with this SQL/plan location...", and "try to reduce rows earlier..."
   while preserving guardrails that the recommendation is not a proven root
@@ -367,7 +400,7 @@ without weakening the safety contract or exposing raw artifacts.
   context.
 - Keep unavailable Details report/optimizer actions compact. When no action can
   run for the selected case, show a single collapsed status row instead of
-  giving unavailable notes the same weight as Recommended changes.
+  giving unavailable notes the same weight as Recommended change.
 - Distinguish case priority from candidate strength in labels. A High stats or
   query-shape candidate can still live on a Medium-priority case; the UI should
   not make that look contradictory.

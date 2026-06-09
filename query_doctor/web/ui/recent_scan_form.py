@@ -452,7 +452,7 @@ def render_scan_target_control(selected_value: str) -> str:
         '<details class="info-popover">'
         '<summary aria-label="Scan target help">i</summary>'
         '<div class="info-body">Choose Finished queries or Running now, then run the scan and open rows marked High or Failed. '
-        "Details starts with Recommended changes. Finished queries have complete profile evidence. Running queries are useful "
+        "Details starts with the recommended change path. Finished queries have complete profile evidence. Running queries are useful "
         "for live inspection but may have incomplete analyzer facts until execution finishes.</div>"
         "</details></div>"
         '<div class="segmented scan-target-segmented" role="radiogroup" aria-labelledby="scan_target_label">'

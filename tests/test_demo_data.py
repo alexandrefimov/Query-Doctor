@@ -147,7 +147,7 @@ def test_generated_demo_optimizer_case_renders_safe_review_locations(tmp_path):
     view = present_recent_scan_case_detail("case-001", summary["cases"][0])
     html = render_action_candidate_findings(view)
 
-    assert "Where to look" in html
+    assert "Where to inspect" in html
     assert "SQL: final SELECT filter (line 9): predicate near final SELECT" in html
     assert "Plan: estimate-mismatch operator: node 03 HASH JOIN (inner join, partitioned)" in html
     assert "What to change" in html
@@ -275,7 +275,7 @@ def test_demo_pack_launch_instructions_use_console_script(tmp_path, capsys):
     assert "QUERY_DOCTOR_ACTION_OUTCOMES_PATH" in readme_text
     assert "query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary" in stdout
     assert "query-doctor-web --host 127.0.0.1 --port 8766 --batch-summary" in readme_text
-    assert stdout.index("query_group=workloads#workload-action-queue") < stdout.index(
+    assert stdout.index("query_group=workloads#scan-context") < stdout.index(
         "query_group=optimization#recent-results"
     )
     assert "query_group=workloads#recent-results" in stdout
@@ -307,10 +307,12 @@ def test_generated_summary_renders_demo_groups_without_paths_or_raw_files(tmp_pa
     assert "demo-mixed-0009" in optimization_html
     assert "demo-stats-0002" in stats_html
     assert "demo-mixed-0009" in stats_html
-    assert "Repeated workload details (2)" in workloads_html
+    assert "Workload follow-up" in workloads_html
+    assert "Open Workload Details;" in workloads_html
+    assert "Repeated workload details" not in workloads_html
     assert "demo-admission-0004" in workloads_html
     assert "demo-admission-0005" in workloads_html
-    assert "strong; baseline p95 38.0s; n=6" in workloads_html
+    assert "strong; baseline p95 38.0s; n=6" not in workloads_html
     assert "Action outcomes" in workloads_html
     assert (
         "5 recorded; 5 applied; 5 comparable reruns; improved 3, no change 2; "

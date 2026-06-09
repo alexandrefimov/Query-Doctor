@@ -36,11 +36,10 @@ from query_doctor.web.ui.recent_scan_groups import (
     filter_rows_by_spills,
     normalize_query_group,
     render_result_filters,
-    render_workload_digest,
-    render_workload_history_status,
+    render_workload_followup_shortlist,
     sort_rows_for_query_group,
     workload_group_impact,
-    render_workload_groups,
+    workload_history_context_text,
 )
 from query_doctor.web.ui.recent_scan_progress import (
     batch_progress_percent,
@@ -163,6 +162,7 @@ def render_batch_summary(
         view.header_items,
         action_outcomes_recorded=action_outcomes_recorded,
         compact=True,
+        include_guidance=False,
         include_empty=False,
         include_warnings=False,
     )
@@ -170,6 +170,7 @@ def render_batch_summary(
         summary,
         view.header_items,
         compact=True,
+        workload_history=view.workload_history,
     )
     frequent_short_limitations = render_frequent_short_limitations_note(
         summary,
@@ -181,36 +182,17 @@ def render_batch_summary(
         only_with_spills=only_with_spills,
         summary_text=scan_volume_summary(view.header_items),
     )
-    workload_groups = render_workload_groups(
-        view.workload_groups,
+    workload_followup = render_workload_followup_shortlist(
+        view.workload_digest.action_queue,
         workload_base_path=workload_base_path,
-        admin_entries=view.workload_digest.admin,
-        query_group=active_group,
-        only_with_spills=only_with_spills,
-        workload_admin_scope=workload_admin_scope,
-        workload_admin_signal=workload_admin_signal,
-        workload_group_scope=workload_group_scope,
-        workload_group_name=workload_group_name,
-        workload_group_signal=workload_group_signal,
-    )
-    workload_history = render_workload_history_status(view.workload_history)
-    workload_digest = render_workload_digest(
-        view.workload_digest,
-        workload_base_path=workload_base_path,
-        query_group=active_group,
-        only_with_spills=only_with_spills,
-        workload_admin_scope=workload_admin_scope,
-        workload_admin_signal=workload_admin_signal,
     )
     table_legend = render_results_table_legend(active_group)
     result_context = render_results_context_details(
-        table_legend,
+        scan_details,
         secondary_results_notices,
         frequent_short_limitations,
-        scan_details,
-        workload_history,
-        workload_digest,
-        workload_groups,
+        workload_followup,
+        table_legend,
     )
     escaped_title = html.escape(title)
     aria_label = html.escape(title.lower())
@@ -375,10 +357,10 @@ def render_results_context_details(*sections: str) -> str:
     if not content:
         return ""
     return (
-        '<section class="batch-results-context" aria-label="Scan context">'
+        '<section id="scan-context" class="batch-results-context" aria-label="Scan context">'
         '<div class="batch-results-context-head">'
         "<h2>Scan context</h2>"
-        "<p>Source coverage, scan notes, and workload signals for this result set.</p>"
+        "<p>Coverage, scan notes, and compact follow-up links for this result set.</p>"
         "</div>"
         f'<div class="batch-results-context-body">{content}</div>'
         "</section>"
@@ -431,9 +413,17 @@ def render_batch_scan_details(
     header_items: tuple[tuple[str, Any], ...] = (),
     *,
     compact: bool = False,
+    workload_history: Any = None,
 ) -> str:
-    parts = list(present_recent_scan_summary(summary).scope_parts)
-    parts.extend(scan_detail_metric_parts(header_items))
+    if compact:
+        parts = scan_context_coverage_parts(
+            summary,
+            header_items,
+            workload_history=workload_history,
+        )
+    else:
+        parts = list(present_recent_scan_summary(summary).scope_parts)
+        parts.extend(scan_detail_metric_parts(header_items))
     if not parts:
         return ""
     items = "".join(f"<span>{html.escape(part)}</span>" for part in parts)
@@ -459,9 +449,6 @@ def scan_detail_metric_parts(header_items: tuple[tuple[str, Any], ...]) -> list[
         ("analyzed", "Analyzed"),
         ("CM inspected", "Scanned summaries"),
         ("metadata", "Metadata contexts"),
-        ("draft-ready", "Rewrite draft-ready"),
-        ("recipe backlog", "Rewrite recipe backlog"),
-        ("review-only", "Rewrite review-only"),
     )
     parts: list[str] = []
     for key, label in labels:
@@ -470,6 +457,77 @@ def scan_detail_metric_parts(header_items: tuple[tuple[str, Any], ...]) -> list[
         if value:
             parts.append(f"{label}: {value}")
     return parts
+
+
+def scan_context_coverage_parts(
+    summary: dict[str, Any],
+    header_items: tuple[tuple[str, Any], ...],
+    *,
+    workload_history: Any = None,
+) -> list[str]:
+    metrics = header_metric_map(header_items)
+    scanned = coverage_metric_text(
+        metrics.get("CM inspected") or summary.get("summaries_inspected")
+    )
+    analyzed = coverage_metric_text(metrics.get("analyzed") or summary.get("selected_count"))
+    rows = coverage_metric_text(metrics.get("total"))
+    parts: list[str] = []
+    if scanned and analyzed:
+        coverage = f"Scanned {scanned} summaries -> Analyzed {analyzed} cases"
+        if rows:
+            coverage = f"{coverage} ({rows} rows)"
+        parts.append(coverage)
+    elif scanned:
+        parts.append(f"Scanned {scanned} summaries")
+    elif analyzed:
+        parts.append(f"Analyzed {analyzed} cases")
+    elif rows:
+        parts.append(f"Result rows: {rows}")
+    metadata = coverage_metric_text(metrics.get("metadata"))
+    if metadata:
+        parts.append(f"Metadata contexts: {metadata}")
+    parts.extend(compact_scan_context_scope_parts(summary))
+    history = workload_history_context_text(workload_history)
+    if history:
+        parts.append(history)
+    return parts
+
+
+def compact_scan_context_scope_parts(summary: dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    summaries = coverage_metric_text(summary.get("summaries_inspected"))
+    if summary.get("cm_summary_safety_cap_hit"):
+        cap = coverage_metric_text(summary.get("cm_summary_safety_cap")) or summaries
+        if cap:
+            parts.append(f"Query match limit hit: {cap}")
+    if summary.get("only_running"):
+        parts.append("Status: running only")
+    cluster_context = compact_cluster_event_context(summary)
+    if cluster_context:
+        parts.append(cluster_context)
+    return parts
+
+
+def compact_cluster_event_context(summary: dict[str, Any]) -> str:
+    if not summary.get("collect_cm_events"):
+        return ""
+    context = summary.get("cluster_context")
+    if not isinstance(context, dict):
+        return "Cluster event context: unavailable"
+    status = coverage_metric_text(context.get("status")) or "inconclusive"
+    signal_counts = context.get("signal_counts")
+    signal_total = 0
+    if isinstance(signal_counts, dict):
+        for value in signal_counts.values():
+            signal_total += numeric_count(value)
+    if signal_total:
+        return f"Cluster event context: {status}, signals {signal_total}"
+    return f"Cluster event context: {status}"
+
+
+def coverage_metric_text(value: Any) -> str:
+    text = str(value if value is not None else "").strip()
+    return "" if text.lower() in {"", "none", "unknown"} else text
 
 
 def render_optimizer_funnel_note(header_items: tuple[tuple[str, Any], ...]) -> str:
@@ -587,10 +645,11 @@ def render_results_table_legend(active_group: str) -> str:
         for label, description in items
     )
     return (
-        '<div class="batch-table-legend" aria-label="Results table legend">'
-        '<span class="batch-table-legend-title">Table key</span>'
+        '<details class="batch-scan-details batch-table-key" aria-label="Results table legend">'
+        "<summary>Table key</summary>"
+        '<div class="batch-table-legend">'
         f'<ul class="batch-table-legend-list">{rendered_items}</ul>'
-        "</div>"
+        "</div></details>"
     )
 
 

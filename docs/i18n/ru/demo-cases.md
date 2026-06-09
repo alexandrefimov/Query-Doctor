@@ -26,11 +26,11 @@ metadata, hostnames, users, query IDs, account names или credentials.
 - unknown-but-useful bounded follow-up;
 - direct Impala compatibility with missing optional endpoints.
 
-Рекомендуемый public-demo вход теперь начинается с Workloads /
-Action Queue: `/?query_group=workloads#workload-action-queue`, чтобы сразу
-показать prioritization, next checks, verification и local synthetic action
-outcomes. Затем откройте Workload Details и покажите representative case
-Action card как безопасное место для rerun feedback.
+Рекомендуемый public-demo вход теперь начинается с Scan context:
+`/?query_group=workloads#scan-context`, чтобы сразу показать compact workload
+follow-up links, verification и local synthetic action outcomes.
+Затем откройте Workload Details и покажите representative case Action card как
+безопасное место для rerun feedback.
 
 ## Safety
 

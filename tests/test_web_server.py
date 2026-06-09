@@ -2805,9 +2805,12 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert 'class="batch-table-legend"' in body
     assert body.index('class="batch-table-wrap"') < body.index('class="batch-table-legend"')
     assert body.index('class="batch-table-wrap"') < body.index('class="batch-results-context"')
-    assert '<section class="batch-results-context" aria-label="Scan context">' in body
+    assert (
+        '<section id="scan-context" class="batch-results-context" aria-label="Scan context">'
+        in (body)
+    )
     assert "<h2>Scan context</h2>" in body
-    assert "Source coverage, scan notes, and workload signals for this result set." in body
+    assert "Coverage, scan notes, and compact follow-up links for this result set." in body
     assert 'class="batch-result-filters batch-result-filters--query-toolbar"' in body
     assert_css_contains(styles, ".batch-table-wrap{margin-top:14px;")
     assert_css_contains(styles, ".batch-table-legend{display:flex;flex-wrap:wrap;")
@@ -2832,8 +2835,9 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     )
     assert_css_contains(styles, ".batch-cell--badge{font-family:var(--sans);")
     assert_css_contains(styles, ".batch-mini-badge--status{justify-content:center;")
-    assert_css_contains(styles, ".workload-action-signal,.workload-action-plan{min-width:220px;")
-    assert_css_contains(styles, ".workload-action-plan{display:grid;gap:7px}")
+    assert_css_contains(styles, ".action-candidate-card--primary{border:1px solid var(--border);")
+    assert ".workload-action-signal" not in styles
+    assert ".workload-action-plan" not in styles
     assert_css_contains(
         styles,
         ".batch-results-disclosure>.batch-head::after,.batch-notices>summary::after,"
@@ -2899,11 +2903,11 @@ def test_web_batch_route_renders_configured_summary_safely(tmp_path):
     assert "scan warning <script>" not in body
     assert 'class="batch-context-block batch-context-scan-details"' in body
     assert '<div class="batch-context-title">Coverage</div>' in body
-    assert "Result rows:" in body
-    assert "Analyzed: 2" in body
+    assert "Analyzed 2 cases" in body
+    assert "Analyzed: 2" not in body
     assert "total" not in body
     assert "CM inspected" not in body
-    assert "server-side&lt;script&gt;" in body
+    assert "server-side&lt;script&gt;" not in body
     assert "server-side<script>" not in body
     assert "cardinality <script>alert(1)</script>" not in body
     assert "cardinality &lt;script&gt;alert(1)&lt;/script&gt;" in body
@@ -3076,7 +3080,7 @@ def test_web_batch_case_detail_renders_known_case_safely(tmp_path):
     assert "LLM narrative" in body
     assert "Diagnostics" in body
     assert "Verdict" in body
-    assert "Recommended changes" in body
+    assert "Recommended change" in body
     assert "confidence" in body
     assert "Score" in body
     assert body.index("Diagnostics") < body.index("Python Report")
@@ -3218,16 +3222,16 @@ def test_web_batch_case_detail_renders_owner_coordinate_guidance(tmp_path):
     assert "Finished Queries details" in body
     assert '<a class="button primary" href="/#new-scan" data-open-new-scan>New scan</a>' in body
     assert 'class="batch-head-actions"' in body
-    assert "Recommended changes" in action_plan_html
-    assert "Where to look" in action_plan_html
+    assert "Recommended change" in action_plan_html
+    assert "Where to inspect" in action_plan_html
     assert "SQL: final SELECT filter (line 18): predicate near final SELECT" in action_plan_html
     assert (
         "Plan: estimate-mismatch operator: node 02 HASH JOIN (inner join, partitioned)"
         in action_plan_html
     )
-    assert "Why this deserves attention" in action_plan_html
+    assert "Why this query matters" in action_plan_html
     assert "join row expansion or cardinality mismatch with join evidence" in action_plan_html
-    assert "What to change" in action_plan_html
+    assert "What to try" in action_plan_html
     assert "Try to reduce rows earlier: move the final SELECT filter closer" in action_plan_html
     assert (
         "after the change, check whether fewer rows or better estimates feed that operator"
@@ -8706,9 +8710,9 @@ def test_web_batch_empty_advanced_fields_use_backend_defaults_without_form_backf
     assert "--min-duration-sec" not in cmd
     assert cmd[cmd.index("--top-reports") + 1] == "0"
     payload = json.loads(module.render_job_status_json(snapshot))
-    assert "Query summaries inspected: 2810" in payload["result_html"]
-    assert "Duration filter: none" in payload["result_html"]
-    assert "Analyzer limit: 5000" in payload["result_html"]
+    assert "Scanned 2810 summaries" in payload["result_html"]
+    assert "Duration filter: none" not in payload["result_html"]
+    assert "Analyzer limit: 5000" not in payload["result_html"]
 
     handler = module.make_handler(
         settings, analysis_func=lambda *args, **kwargs: None, job_store=store, runner=fake_runner
@@ -8752,8 +8756,8 @@ def test_web_batch_summary_shows_cm_safety_cap_truncation(tmp_path):
     )
 
     assert "Query match limit hit: 5000" in body
-    assert "Duration filter: &gt;= 5 sec" in body
-    assert "Analyzer limit: 100" in body
+    assert "Duration filter: &gt;= 5 sec" not in body
+    assert "Analyzer limit: 100" not in body
     assert '<details class="batch-notices" aria-label="Scan notes" open>' in body
     assert "<summary>Scan notes</summary>" in body
     assert "<strong>Scan stopped</strong>" in body
@@ -8825,11 +8829,11 @@ def test_web_batch_summary_renders_empty_scan_as_non_failed_state(tmp_path):
         "No matching queries found for this hour bucket. Try another hour or changing filters."
         in body
     )
-    assert "Query summaries inspected: 0" in body
-    assert "Duration filter: none" in body
-    assert "Scan time window: 2026-05-02T21:00:00Z -&gt; 2026-05-02T22:00:00Z" in body
+    assert "Scanned 0 summaries -&gt; Analyzed 0 cases" in body
+    assert "Duration filter: none" not in body
+    assert "Scan time window: 2026-05-02T21:00:00Z -&gt; 2026-05-02T22:00:00Z" not in body
     assert "Search depth: 120 minutes" not in body
-    assert "Query type: QUERY" in body
+    assert "Query type: QUERY" not in body
     assert "Include failed:" not in body
     assert "Include running:" not in body
     assert "generic_collector_user" not in body

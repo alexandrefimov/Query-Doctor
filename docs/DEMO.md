@@ -30,7 +30,7 @@ requires a dedicated `query-doctor-*` temp output path; keep the generated pack
 outside the repository. Useful demo filters:
 
 ```text
-/?query_group=workloads#workload-action-queue
+/?query_group=workloads#scan-context
 /?query_group=workloads#recent-results
 /?query_group=optimization#recent-results
 /?query_group=stats#recent-results
@@ -187,7 +187,7 @@ Use [demo-cases.md](demo-cases.md) for the current synthetic scenario list and
 [demo-data-engineer-brief.md](demo-data-engineer-brief.md) for the detailed
 talk track. The useful public demo arc is:
 
-1. workload action queue that shows what to inspect, change, and verify first;
+1. Scan context workload follow-up that shows which repeated pattern to open;
 2. deterministic candidate ranking from generated profile/analyzer facts;
 3. Details page before any report or optimizer action;
 4. explicit trusted report that phrases Python-owned facts;
@@ -201,10 +201,10 @@ talk track. The useful public demo arc is:
 
 Recommended synthetic path:
 
-1. Open Workloads at `#workload-action-queue`.
-2. Show the Admission/runtime workload pair, verification metric, and local
-   synthetic action outcomes, then open Workload Details and follow a
-   representative case Action card to show where rerun feedback is recorded.
+1. Open Scan context at `#scan-context`.
+2. Show the Admission/runtime workload follow-up, local synthetic action
+   outcomes, then open Workload Details and follow a representative case Action
+   card to show where rerun feedback is recorded.
 3. Open the synthetic optimization recommendations case.
 4. Show deterministic ranking, Details findings, and safe review locations.
 5. Open the trusted report and optimizer outcome.

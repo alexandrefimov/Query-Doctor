@@ -177,8 +177,8 @@ def representative_cases(
 ) -> tuple[RecentScanWorkloadRepresentativeCaseView, ...]:
     candidates = (
         (
-            "Top ranked",
-            "Highest ranked row from the current scan.",
+            "Best Details case",
+            "Highest ranked row from the current scan; open this first.",
             min(rows, key=lambda row: row.rank),
         ),
         (

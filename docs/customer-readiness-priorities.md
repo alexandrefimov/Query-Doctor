@@ -30,10 +30,11 @@ knowing the internal analyzer pipeline.
    separate from advanced direct-Impala, Prometheus, metadata, and LLM settings.
 4. UI/UX polish: prioritize Recent results and Details. Browser labels should
    use analyst workflow language such as `Scan context`, `Scan notes`,
-   `Scan warnings`, repeated workload details, `Workload p95`, `Open Details`,
-   and `Record rerun outcome` instead of internal analyzer concepts. Results
-   should keep available views in one visible toolbar, and Details should lead
-   with what to change and how to verify before collapsed evidence.
+   `Scan warnings`, `Workload follow-up`, `Workload p95`, `Open Details`, and
+   `Record rerun outcome` instead of
+   internal analyzer concepts. Results should keep available views in one
+   visible toolbar, and Details should lead with why the query matters, where
+   to inspect, what to try, and how to verify before collapsed evidence.
 5. Documentation hygiene: keep README, demo, config, safety, roadmap, and
    support boundaries easy to find. Move deep contracts and historical material
    behind the documentation index, and avoid sending new users through the full
@@ -62,15 +63,20 @@ knowing the internal analyzer pipeline.
 
 - `Record rerun outcome` records whether a recommendation was applied and
   whether a comparable rerun improved, regressed, or stayed unchanged.
-- Repeated workload, regressed workload, and action queue labels are preferred
-  over generic group language. Stable HTML anchors such as `workload-groups`
-  can remain as compatibility details.
-- Recommendation cards should lead with `What to change` and `How to verify`;
-  supporting rationale remains available as collapsed deterministic evidence.
+- Results should expose repeated patterns as compact `Workload follow-up`
+  links inside `Scan context`, not as a second analytics dashboard. Full
+  repeated-pattern decisions belong on Workload Details and in the existing
+  result filters.
+- Workload Details should read as a repeated-pattern decision page: why it
+  matters, where to inspect, what to try next, and how to verify come before
+  the snapshot, coverage, selected-case lists, and limitations.
+- Recommendation cards should lead with `Why this query matters`,
+  `Where to inspect`, `What to try`, and `How to verify`. Additional supported
+  actions and technical diagnostics remain available below the primary path.
 - `Scan context` is the visible analyst-facing context block after result rows.
   Critical warnings stay visible above the table as `Scan warnings`; secondary
-  notes, coverage, and workload context live below the table without competing
-  with the result rows.
+  notes, coverage, and compact workload follow-up links live below the table
+  without competing with the result rows.
 
 ## Non-Goals For This Cleanup
 
