@@ -149,10 +149,10 @@ High-priority Impala architecture backlog:
   until the migration is complete.
 - Add scoring characterization over representative fixtures before replacing a
   parser or score source, so behavior changes are deliberate and reviewable.
-- Add a full-pipeline leak-canary regression test before broad refactors: one
-  synthetic salted case should exercise analysis, scoring, report prompt
-  assembly, trusted report output, and browser rendering, with every public or
-  local sink checked for forbidden raw markers.
+- Keep the full-pipeline leak-canary regression baseline passing while this
+  migration proceeds. It exercises manual-profile intake, analysis, scoring,
+  report prompt assembly, trusted report output, and browser rendering; any new
+  generated sink in that path must be classified before marker checks run.
 
 ### 3. Optimizer prompt-injection guard coverage must stay explicit
 

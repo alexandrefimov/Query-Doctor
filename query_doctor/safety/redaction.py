@@ -39,8 +39,18 @@ USER_FIELD_RE = re.compile(
     r"(?im)^([ \t]*(?:User|Username|Effective User|Connected User|Delegated User)"
     r"[ \t]*[:=][ \t]*)([^ \t\r\n]+)"
 )
+POOL_FIELD_RE = re.compile(
+    r"(?im)^([ \t]*(?:Pool|Request Pool|Resource Pool|Admission Pool)"
+    r"[ \t]*[:=][ \t]*)([^ \t\r\n]+)"
+)
 USER_KV_RE = re.compile(
     r"\b(user|username)([ \t]*=[ \t]*)([A-Za-z][A-Za-z0-9_.-]*)\b", re.IGNORECASE
+)
+LOCAL_PATH_RE = re.compile(
+    r"(?<![\w/])(?:/private)?/tmp/[^\s<>'\"]+|"
+    r"(?<![\w/])/Users/[^\s<>'\"]+|"
+    r"(?<![\w/])/var/folders/[^\s<>'\"]+|"
+    r"(?<![\w/])[A-Za-z]:\\[^\s<>'\"]+"
 )
 HOST_FIELD_RE = re.compile(
     r"(?im)^([ \t]*(?:Host|Hostname|Coordinator|Coordinator Host|Daemon|Impala Daemon|"
@@ -185,6 +195,10 @@ def sanitize_text_for_log(text: object, *, secrets: Iterable[str] = ()) -> str:
 def redact_secret_value_match_preserving_marker(match: re.Match[str]) -> str:
     marker = "<secret>" if match.group(4) == "<secret>" else "<redacted>"
     return f"{match.group(1)}{match.group(2)}{match.group(3)}{marker}{match.group(5)}"
+
+
+def redact_local_paths(text: str) -> str:
+    return LOCAL_PATH_RE.sub("<local_path>", text)
 
 
 def sanitize_http_error_message(text: object, config: SupportsSecretValues) -> str:
@@ -468,7 +482,9 @@ def redact_profile_text(
     redacted = BEARER_BASIC_RE.sub(r"\1 <redacted>", redacted)
     redacted = SECRET_VALUE_RE.sub(r"\1\2\3<redacted>\5", redacted)
     redacted = USER_FIELD_RE.sub(r"\1<user>", redacted)
+    redacted = POOL_FIELD_RE.sub(r"\1<pool>", redacted)
     redacted = USER_KV_RE.sub(r"\1\2<user>", redacted)
+    redacted = redact_local_paths(redacted)
     if redact_hosts:
         redacted = redact_host_identifiers(redacted, host_redactor)
 

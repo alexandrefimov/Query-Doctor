@@ -155,7 +155,8 @@ def test_analyzer_profile_text_stages_redacted_case_and_analysis_json(tmp_path):
     assert f"Output case directory: {case_dir}" in result.stdout
     staged_profile = (case_dir / "profile_digest.md").read_text(encoding="utf-8")
     assert "alice" not in staged_profile
-    assert "pool_a" in staged_profile
+    assert "pool_a" not in staged_profile
+    assert "Request Pool: <pool>" in staged_profile
     assert "impalad-01.example.invalid.example.com" not in staged_profile
     assert "Coordinator: host_01:22000" in staged_profile
     metadata = json.loads((case_dir / "query_metadata.json").read_text(encoding="utf-8"))

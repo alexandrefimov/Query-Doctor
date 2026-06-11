@@ -244,10 +244,11 @@ Optimizer-specific metrics:
 
 ## Near-Term Trust Architecture Backlog
 
-- Add a full-pipeline leak-canary regression test before broad refactors: a
-  synthetic salted case should flow through collection or fixture intake,
-  analysis, scoring, report prompt assembly, trusted report output, and browser
-  rendering, with every public or local sink checked for forbidden raw markers.
+- Keep the full-pipeline leak-canary regression baseline active and expand it
+  when new public or local sinks are added. The baseline synthetic salted case
+  flows through manual-profile intake, analysis, scoring, report prompt
+  assembly, trusted report output, and browser rendering, with generated sinks
+  classified fail-closed before marker checks run.
 - Move load-bearing analyzer consumers away from rendered
   `analysis_facts.md`. `analysis.json` or a typed loader over the same
   deterministic facts should become the consumed contract for scoring, prompt

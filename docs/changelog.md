@@ -21,6 +21,11 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
+- Added a full-pipeline leak-canary regression baseline for manual-profile
+  intake, deterministic analysis, scoring, report prompt assembly, trusted
+  Python report output, and browser Details/report rendering. The test uses
+  salted synthetic markers, classifies generated case sinks fail-closed, and
+  includes negative controls for unclassified sinks and disabled host redaction.
 - The public README now starts new users with three explicit first paths:
   one exported Impala text profile, the synthetic public demo, or a minimal
   read-only Cloudera Manager Recent scan. Detailed Trino and Spark preview

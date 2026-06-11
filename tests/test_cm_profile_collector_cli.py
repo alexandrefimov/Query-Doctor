@@ -4141,6 +4141,27 @@ Authorization: Bearer secret-token
     assert "Host: 10.20.30.40" in redacted
 
 
+def test_redact_profile_text_redacts_pool_fields_and_local_paths():
+    module = load_collector_module()
+    text = """
+Request Pool: root.analytics
+Admission Pool: root.batch
+Scratch path: /Users/example/query-doctor/scratch
+Temporary file: /private/tmp/query-doctor-profile.tmp
+"""
+
+    redacted = module.redact_profile_text(text)
+
+    assert "root.analytics" not in redacted
+    assert "root.batch" not in redacted
+    assert "/Users/example" not in redacted
+    assert "/private/tmp/query-doctor-profile.tmp" not in redacted
+    assert "Request Pool: <pool>" in redacted
+    assert "Admission Pool: <pool>" in redacted
+    assert "Scratch path: <local_path>" in redacted
+    assert "Temporary file: <local_path>" in redacted
+
+
 def test_redact_profile_text_redacts_ipv6_without_touching_timestamps():
     module = load_collector_module()
     text = """
