@@ -145,7 +145,11 @@ High-priority Impala architecture backlog:
   by failing at a typed boundary.
 - Move those consumers toward `analysis.json` or a typed loader over the same
   deterministic facts, keeping Markdown as a render-only view.
-- Add renderer-to-parser contract tests for every remaining Markdown consumer
+- The Recent batch scoring path now has a renderer-to-parser characterization
+  test that renders structured analyzer facts through
+  `query_doctor.analyzer.facts_renderer.render_md`, then asserts the current
+  parsed scoring components, score reasons, and structured primary-bottleneck
+  caps. Add equivalent contract tests for every remaining Markdown consumer
   until the migration is complete.
 - Add scoring characterization over representative fixtures before replacing a
   parser or score source, so behavior changes are deliberate and reviewable.

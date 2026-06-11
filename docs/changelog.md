@@ -26,6 +26,10 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   Python report output, and browser Details/report rendering. The test uses
   salted synthetic markers, classifies generated case sinks fail-closed, and
   includes negative controls for unclassified sinks and disabled host redaction.
+- Added a renderer-to-parser characterization guard for Recent batch scoring:
+  structured analyzer facts are rendered through the production markdown
+  renderer, then parsed and scored to pin the current markdown contract before
+  the scoring path moves to typed analyzer facts.
 - The public README now starts new users with three explicit first paths:
   one exported Impala text profile, the synthetic public demo, or a minimal
   read-only Cloudera Manager Recent scan. Detailed Trino and Spark preview
