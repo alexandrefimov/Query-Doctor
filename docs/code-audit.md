@@ -1,6 +1,6 @@
 # Query Doctor Code Audit
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 This public audit tracks current engineering and safety risk areas at a level
 that is useful to contributors without publishing local calibration history.
@@ -140,19 +140,20 @@ Remaining architecture backlog before broad parallel Trino/Spark feature work:
 High-priority Impala architecture backlog:
 
 - Rendered `analysis_facts.md` still acts as a load-bearing interchange format
-  for some analyzer, scoring, report, and web consumers. Label or heading
-  changes can therefore degrade a consumer by parsing less evidence rather than
-  by failing at a typed boundary.
+  for some analyzer, report, web, and optimization-candidate consumers. Label
+  or heading changes can therefore degrade a consumer by parsing less evidence
+  rather than by failing at a typed boundary.
 - Move those consumers toward `analysis.json` or a typed loader over the same
   deterministic facts, keeping Markdown as a render-only view.
-- The Recent batch scoring path now has a renderer-to-parser characterization
-  test that renders structured analyzer facts through
-  `query_doctor.analyzer.facts_renderer.render_md`, then asserts the current
-  parsed scoring components, score reasons, and structured primary-bottleneck
-  caps. Add equivalent contract tests for every remaining Markdown consumer
-  until the migration is complete.
-- Add scoring characterization over representative fixtures before replacing a
-  parser or score source, so behavior changes are deliberate and reviewable.
+- The Recent batch scoring path now prefers typed `analysis.json` for core
+  scoring components and score reasons, records markdown fallback source and
+  reason in batch summaries, and keeps renderer-to-parser characterization
+  coverage so the fallback remains deliberate. Query and stats optimization
+  candidate scoring still read rendered facts and need equivalent typed
+  migration work before the Markdown coupling is closed.
+- Add characterization over representative fixtures before replacing any
+  remaining Markdown parser or score source, so behavior changes are deliberate
+  and reviewable.
 - Keep the full-pipeline leak-canary regression baseline passing while this
   migration proceeds. It exercises manual-profile intake, analysis, scoring,
   report prompt assembly, trusted report output, and browser rendering; any new

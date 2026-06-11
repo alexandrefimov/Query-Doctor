@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -30,6 +30,11 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   structured analyzer facts are rendered through the production markdown
   renderer, then parsed and scored to pin the current markdown contract before
   the scoring path moves to typed analyzer facts.
+- Recent batch scoring now prefers typed `analysis.json` analyzer facts for
+  core scoring components and score reasons, with a recorded markdown fallback
+  source and fallback reason in batch JSON and Markdown summaries. Query and
+  stats optimization candidate scoring still read the existing rendered facts
+  while their typed migrations are staged separately.
 - The public README now starts new users with three explicit first paths:
   one exported Impala text profile, the synthetic public demo, or a minimal
   read-only Cloudera Manager Recent scan. Detailed Trino and Spark preview

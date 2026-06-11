@@ -174,6 +174,8 @@ def test_score_case_characterizes_rendered_markdown_and_structured_primary(tmp_p
     score_case(case)
 
     assert case.score == 46
+    assert case.scoring_evidence_source == "analysis_json"
+    assert case.scoring_fallback_reason is None
     assert case.cardinality_anomaly_count == 2
     assert case.memory_anomaly_count == 1
     assert case.zero_row_estimate_gap_count == 1
@@ -192,3 +194,127 @@ def test_score_case_characterizes_rendered_markdown_and_structured_primary(tmp_p
     assert case.stats_optimization_candidate is not None
     assert case.stats_optimization_candidate.tier == "low"
     assert "primary_bottleneck_is_runtime_skew" in case.stats_optimization_candidate.counter_signals
+
+
+def test_score_case_uses_analysis_json_when_markdown_labels_change(tmp_path):
+    analysis = _rendered_scoring_analysis()
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "analysis.json").write_text(json.dumps(analysis), encoding="utf-8")
+    (case_dir / "analysis_facts.md").write_text(
+        "\n".join(
+            [
+                "# Query Doctor Analysis Facts",
+                "",
+                "## Summary",
+                "- Cardinality issue count: 0",
+                "- Memory issue count: 0",
+                "- Zero row estimate issue count: 0",
+                "- Zero memory estimate issue count: 0",
+                "",
+                "## Runtime Context",
+                "- elapsed: 1.00h",
+                "",
+                "## Host Tail",
+                "- tail hosts: 0",
+                "- data distribution: no",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    case = CaseResult(
+        index=1,
+        query_id="aaaaaaaaaaaaaaaa:0000000000000001",
+        duration_sec=3600,
+        user=None,
+        pool=None,
+        query_type="QUERY",
+        sql_verb="SELECT",
+        wrapper_dir=case_dir,
+        actual_case_dir=case_dir,
+        collection_status="ok",
+        analysis_status="ok",
+        metadata_status="collected",
+    )
+
+    score_case(case)
+
+    assert case.score == 46
+    assert case.score_reasons == [
+        "cardinality estimate anomalies: 2",
+        "memory estimate anomalies: 1",
+        "zero/unknown row estimate gaps: 1",
+        "zero/unknown memory estimate gaps: 1",
+        "spill/scratch evidence: non-zero metrics",
+        "host-tail candidates: 1",
+        "long-running query with host tail: 60.0m",
+        "backend data skew evidence",
+        "severe backend data skew ratio: 12.0x",
+        "Runtime metrics correlated signals: 2",
+    ]
+    assert case.scoring_evidence_source == "analysis_json"
+    assert case.scoring_fallback_reason is None
+
+
+def test_score_case_records_markdown_fallback_when_analysis_json_missing(tmp_path):
+    analysis = _rendered_scoring_analysis()
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "analysis_facts.md").write_text(
+        render_md(analysis, case_dir / "profile_digest.md"),
+        encoding="utf-8",
+    )
+    case = CaseResult(
+        index=1,
+        query_id="aaaaaaaaaaaaaaaa:0000000000000001",
+        duration_sec=3600,
+        user=None,
+        pool=None,
+        query_type="QUERY",
+        sql_verb="SELECT",
+        wrapper_dir=case_dir,
+        actual_case_dir=case_dir,
+        collection_status="ok",
+        analysis_status="ok",
+        metadata_status="collected",
+    )
+
+    score_case(case)
+
+    assert case.score == 46
+    assert case.scoring_evidence_source == "markdown_fallback"
+    assert case.scoring_fallback_reason == "analysis_json_missing"
+
+
+def test_score_case_records_markdown_fallback_when_analysis_json_incomplete(tmp_path):
+    analysis = _rendered_scoring_analysis()
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "analysis.json").write_text(
+        json.dumps({"cardinality_anomalies": []}),
+        encoding="utf-8",
+    )
+    (case_dir / "analysis_facts.md").write_text(
+        render_md(analysis, case_dir / "profile_digest.md"),
+        encoding="utf-8",
+    )
+    case = CaseResult(
+        index=1,
+        query_id="aaaaaaaaaaaaaaaa:0000000000000001",
+        duration_sec=3600,
+        user=None,
+        pool=None,
+        query_type="QUERY",
+        sql_verb="SELECT",
+        wrapper_dir=case_dir,
+        actual_case_dir=case_dir,
+        collection_status="ok",
+        analysis_status="ok",
+        metadata_status="collected",
+    )
+
+    score_case(case)
+
+    assert case.score == 46
+    assert case.scoring_evidence_source == "markdown_fallback"
+    assert case.scoring_fallback_reason == "analysis_json_incomplete"

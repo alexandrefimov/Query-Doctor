@@ -130,6 +130,8 @@ class CaseResult:
     too_large_count: int = 0
     score: int = 0
     score_reasons: list[str] = field(default_factory=list)
+    scoring_evidence_source: str = "not_scored"
+    scoring_fallback_reason: str | None = None
     query_optimization_candidate: QueryOptimizationCandidateScore | None = None
     optimizer_rewrite_support: OptimizerRewriteSupport | None = None
     query_optimization_rank: int | None = None
