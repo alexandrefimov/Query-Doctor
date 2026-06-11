@@ -3,8 +3,8 @@
 Last reviewed: 2026-06-11
 
 This note records the near-term product-readiness backlog for making Query
-Doctor easier to show to design partners and potential customers. It is public
-planning material, not a private handoff or a support promise.
+Doctor easier to show to external reviewers and design partners. It is public
+planning material, not a private handoff, outreach script, or support promise.
 
 ## Decision
 
@@ -31,10 +31,9 @@ knowing the internal analyzer pipeline.
 2. Demo site: use the existing `query-doctor-web --public-demo` mode as the
    first read-only click-through demo surface. Do not build a separate demo app
    until the public-demo path proves insufficient.
-3. Test-cluster outreach: prepare a concise Cloudera/design-partner request for
-   read-only Cloudera Manager plus Impala access. The request should ask for
-   bounded Recent-scan validation, not broad data access, SQL execution, or raw
-   artifact sharing.
+3. Real-cluster validation: seek read-only Cloudera Manager plus Impala access
+   for bounded Recent-scan validation. Keep outreach emails, contacts,
+   endpoints, and partner-specific details outside the public repository.
 4. Minimal config: keep a copy-pasteable Cloudera Manager starter config
    separate from advanced direct-Impala, Prometheus, metadata, and LLM settings.
 5. UI/UX polish: prioritize Recent results and Details. Browser labels should
@@ -55,12 +54,12 @@ knowing the internal analyzer pipeline.
 | --- | --- | --- |
 | One-profile first value | Keep a one-profile diagnosis path visible before full Recent setup | It is the lowest-friction way for a design partner to see value without giving broad cluster access. |
 | Demo site | Build from `--public-demo` first | Existing synthetic demo is read-only, local-safe, and already blocks writes. |
-| Cloudera test cluster request | Use [cloudera-test-cluster-request.md](cloudera-test-cluster-request.md) as the outreach template | Real Impala/CM validation is the highest-leverage way to improve the primary product. |
+| Read-only Impala validation access | Keep partner-specific outreach outside public docs; public docs should record only the generic validation need and safety boundaries | Real Impala/CM validation is the highest-leverage way to improve the primary product, but outreach copy is not product documentation. |
 | Minimal config | Keep `query-doctor-config.minimal.example.json` as the first-copy example | The current full example is useful, but too broad for first launch. |
 | Documentation size | Use [repository-simplification-audit.md](repository-simplification-audit.md) before pruning | The docs are now a knowledge base; the entry path needs curation. |
 | Russian docs | Treat English as canonical and keep only important Russian user paths fresh | Full mirrored deep contracts can drift faster than they help. |
 | UI/UX | Keep refining Recent-results and Details polish | The UI should answer analyst questions before exposing diagnostics mechanics. |
-| Demo brief | Keep or shorten as outreach reference | Useful for demos, but should not be required reading. |
+| Demo brief | Keep or shorten as external-review demo reference | Useful for demos, but should not be required reading. |
 | Synthetic Demo Mode | Keep | It is a real public-safe product/demo workflow. |
 | Demo Preflight | Keep | It protects public sharing and release safety boundaries. |
 | Cluster Doctor Contract | Keep as reference, de-emphasize in entry paths | It is a future seam, not a current product. |

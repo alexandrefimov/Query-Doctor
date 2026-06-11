@@ -53,9 +53,10 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   visible as `Scan context` with `Coverage`, and Help collapses only large
   topics. README screenshots were refreshed from the synthetic demo pack for
   the same UI wording.
-- Added a public-safe Cloudera test-cluster outreach template plus an initial
-  repository simplification audit for docs, scripts, tests, changelog
-  readability, and Russian-doc maintenance.
+- Recorded the need for read-only Impala/Cloudera Manager validation access and
+  added an initial repository simplification audit for docs, scripts, tests,
+  changelog readability, and Russian-doc maintenance. Partner-specific outreach
+  copy stays outside public documentation.
 - Added an Impala-first customer-readiness priority note and a minimal
   Cloudera Manager config example so first-run setup can stay separate from
   advanced direct-Impala, Prometheus, metadata, and LLM routing options.

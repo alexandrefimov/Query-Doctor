@@ -88,7 +88,7 @@ is not a historical audit log. For engineering risks, use
 The near-term product priority is to make the existing Impala workflow easier
 to run, trust, and show before broadening Trino or Spark product surfaces. Use
 [customer-readiness-priorities.md](customer-readiness-priorities.md) as the
-working backlog for demo site planning, Cloudera/test-cluster outreach,
+working backlog for demo site planning, read-only Impala validation access,
 minimal configuration, documentation hygiene, Russian-doc review, UI/UX polish,
 and script/test role audit.
 

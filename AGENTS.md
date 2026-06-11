@@ -215,6 +215,11 @@ and completed-worktree cleanup. Keep these invariants here:
   secrets, or temporary outputs.
 - Run all `gh` commands only with tool escalation, including read-only
   CI/status checks.
+- When the user explicitly asks to finalize a remote PR, prefer GitHub Rebase
+  and merge (`gh pr merge --rebase`) after required checks pass so remote
+  `main` does not receive a merge commit. Use a regular merge commit, squash
+  merge, amend, rebase, force-push, or direct remote-main push only when the
+  user explicitly asks for that operation.
 - After a successful local `main` merge, clean up completed clean task
   worktrees and merged local branches when they are no longer needed.
 - Do not push, amend, rebase, force-push, or run broad destructive git commands
