@@ -26,6 +26,18 @@ def test_analyzer_cli_module_owns_cli_helpers():
     from query_doctor.cli import analyze_profile
 
     assert analyze_profile.parse_args(["case-dir"]).input == "case-dir"
+    manual_args = analyze_profile.parse_args(
+        [
+            "--profile-text",
+            "exported-profile.txt",
+            "--query-id",
+            "aaaaaaaaaaaaaaaa:0000000000000001",
+            "--out",
+            "cases/cm-corpus",
+        ]
+    )
+    assert manual_args.input is None
+    assert str(manual_args.profile_text) == "exported-profile.txt"
     assert (
         analyze_profile.resolve_paths(REPO_DIR / "tests" / "fixtures" / "minimal_case", None)[
             0
@@ -70,6 +82,30 @@ def write_case(tmp_path, digest_text: str) -> Path:
     return case_dir
 
 
+def raw_exported_profile_text() -> str:
+    return """Query Runtime Profile
+Query ID: aaaaaaaaaaaaaaaa:0000000000000001
+User: alice
+Request Pool: pool_a
+Start Time: 2026-06-11 10:00:00.000000000
+End Time: 2026-06-11 10:05:00.000000000
+Coordinator: impalad-01.example.invalid.example.com:22000
+
+ExecSummary:
+Operator              #Hosts   Avg Time   Max Time    #Rows  Est. #Rows  Peak Mem  Est. Peak Mem  Detail
+01:SCAN HDFS               1       1s000ms  2s000ms   1.00M      10.00K  128.00 MB      64.00 MB  table=analytics_demo.fact_events
+02:HASH JOIN               1       2s000ms  4s000ms   1.00M      10.00K  256.00 MB      64.00 MB  INNER JOIN, PARTITIONED
+
+Query Timeline:
+   Query submitted: 0ns
+   Query finished: 5m
+
+TotalTime: 5m
+TotalBytesRead: 12.00 GiB
+TotalBytesSent: 2.00 GiB
+"""
+
+
 def test_analyzer_facts_omit_source_digest_path_and_raw_digest_name(tmp_path):
     case_dir = copy_minimal_case(tmp_path)
 
@@ -89,6 +125,82 @@ def test_analyzer_cli_runs_with_python_m(tmp_path):
 
     assert result.returncode == 0, result.stderr + result.stdout
     assert (case_dir / "analysis_facts.md").is_file()
+
+
+def test_analyzer_profile_text_stages_redacted_case_and_analysis_json(tmp_path):
+    profile = tmp_path / "raw-exported-profile.txt"
+    profile.write_text(raw_exported_profile_text(), encoding="utf-8")
+    out_dir = tmp_path / "cm-corpus"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "query_doctor.cli.analyze_profile",
+            "--profile-text",
+            str(profile),
+            "--query-id",
+            "aaaaaaaaaaaaaaaa:0000000000000001",
+            "--out",
+            str(out_dir),
+        ],
+        cwd=str(REPO_DIR),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    case_dir = out_dir / "aaaaaaaaaaaaaaaa_0000000000000001"
+    assert f"Output case directory: {case_dir}" in result.stdout
+    staged_profile = (case_dir / "profile_digest.md").read_text(encoding="utf-8")
+    assert "alice" not in staged_profile
+    assert "pool_a" in staged_profile
+    assert "impalad-01.example.invalid.example.com" not in staged_profile
+    assert "Coordinator: host_01:22000" in staged_profile
+    metadata = json.loads((case_dir / "query_metadata.json").read_text(encoding="utf-8"))
+    assert metadata["query_id"] == "aaaaaaaaaaaaaaaa:0000000000000001"
+    assert metadata["profile_source"] == "manual_profile_text"
+    assert metadata["profile_response_format"] == "text"
+    assert metadata["profile_fetch_attempt_count"] == 0
+    assert metadata["user"] == "<user>"
+    assert metadata["pool"] == "<pool>"
+    warnings = (case_dir / "collection_warnings.txt").read_text(encoding="utf-8")
+    assert "without network collection" in warnings
+    facts_text = (case_dir / "analysis_facts.md").read_text(encoding="utf-8")
+    assert "Local exported Impala text profile" in facts_text
+    assert "profile_digest.md" not in facts_text
+    analysis_json = json.loads((case_dir / "analysis.json").read_text(encoding="utf-8"))
+    assert analysis_json["query_context"]["profile_source"] == "manual_profile_text"
+    assert len(analysis_json["operators"]) >= 1
+
+
+def test_analyzer_profile_text_rejects_json_payload_without_writing_case(tmp_path):
+    profile = tmp_path / "profile.json"
+    profile.write_text('{"profile": "raw json"}\n', encoding="utf-8")
+    out_dir = tmp_path / "cm-corpus"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "query_doctor.cli.analyze_profile",
+            "--profile-text",
+            str(profile),
+            "--query-id",
+            "aaaaaaaaaaaaaaaa:0000000000000001",
+            "--out",
+            str(out_dir),
+        ],
+        cwd=str(REPO_DIR),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 2
+    assert "exported text profiles only" in result.stderr
+    assert not out_dir.exists()
 
 
 def test_analyzer_maps_classic_json_profile_counters_without_primary_promotion(tmp_path):

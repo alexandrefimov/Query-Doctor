@@ -42,6 +42,12 @@ COLUMN_STATS_JOIN_FILTER_STATUSES = (
 )
 IMPALA_DAEMON_PROFILE_SOURCE = "impala_daemon"
 IMPALA_DAEMON_PROFILE_SOURCE_LABEL = "Impala daemon profile endpoint"
+MANUAL_PROFILE_TEXT_SOURCE = "manual_profile_text"
+MANUAL_PROFILE_TEXT_SOURCE_LABEL = "Local exported Impala text profile"
+SAFE_PROFILE_SOURCE_LABELS = {
+    IMPALA_DAEMON_PROFILE_SOURCE: IMPALA_DAEMON_PROFILE_SOURCE_LABEL,
+    MANUAL_PROFILE_TEXT_SOURCE: MANUAL_PROFILE_TEXT_SOURCE_LABEL,
+}
 
 
 def build_query_wall_clock(
@@ -52,8 +58,9 @@ def build_query_wall_clock(
     cm_duration_ms = numeric_context_value(cm_query_context or {}, "duration_ms")
     if cm_duration_ms is not None and cm_duration_ms > 0:
         source = "CM Query Context"
-        if (cm_query_context or {}).get("profile_source") == IMPALA_DAEMON_PROFILE_SOURCE:
-            source = IMPALA_DAEMON_PROFILE_SOURCE_LABEL
+        profile_source = (cm_query_context or {}).get("profile_source")
+        if profile_source in SAFE_PROFILE_SOURCE_LABELS:
+            source = SAFE_PROFILE_SOURCE_LABELS[profile_source]
         return {
             "duration_ms": cm_duration_ms,
             "duration_human": fmt_duration(cm_duration_ms),
@@ -318,9 +325,10 @@ def collect_cm_query_context(case_dir: Path) -> dict[str, Any] | None:
     context = {
         field: raw.get(field) for field in CM_QUERY_CONTEXT_FIELDS if raw.get(field) is not None
     }
-    if raw.get("profile_source") == IMPALA_DAEMON_PROFILE_SOURCE:
-        context["profile_source"] = IMPALA_DAEMON_PROFILE_SOURCE
-        context["source_label"] = IMPALA_DAEMON_PROFILE_SOURCE_LABEL
+    profile_source = raw.get("profile_source")
+    if profile_source in SAFE_PROFILE_SOURCE_LABELS:
+        context["profile_source"] = profile_source
+        context["source_label"] = SAFE_PROFILE_SOURCE_LABELS[profile_source]
     context["available"] = bool(context)
     return context
 

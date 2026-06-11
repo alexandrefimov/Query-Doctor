@@ -9719,6 +9719,62 @@ def test_web_query_id_analysis_does_not_generate_llm_report(monkeypatch, tmp_pat
     assert progress_stages == [0, 1, 2, 3, 4]
 
 
+def test_web_query_id_analysis_reuses_manual_profile_case_without_collector(tmp_path):
+    module = load_web_module()
+    config = tmp_path / "cm-config.json"
+    config.write_text("{}", encoding="utf-8")
+    case_dir = tmp_path / "cm-corpus" / "abc_def"
+    write_complete_collected_case(case_dir)
+    (case_dir / "cm_metadata.json").write_text(
+        json.dumps({"profile_source": "manual_profile_text"}),
+        encoding="utf-8",
+    )
+    settings = module.WebSettings(
+        config=config,
+        repo_dir=tmp_path,
+        corpus_dir=tmp_path / "cm-corpus",
+        timeout_sec=99,
+    )
+    calls = []
+    progress_stages = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        if command_uses_role(cmd, "collect_cm") or command_uses_role(cmd, "collect_impala_profile"):
+            raise AssertionError("collector must not run for a complete existing case")
+        if command_uses_role(cmd, "pipeline"):
+            command_case_dir = Path(command_args(cmd, "pipeline")[0])
+            assert command_case_dir == case_dir
+            (command_case_dir / "analysis_facts.md").write_text(
+                "\n".join(
+                    [
+                        "- Parsed operators: 3",
+                        "- Cardinality anomalies: 1",
+                        "- Memory anomalies: 0",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    result = module.run_query_id_analysis(
+        "abc:def",
+        "analysis",
+        False,
+        settings,
+        runner=fake_runner,
+        progress=progress_stages.append,
+    )
+
+    assert result.query_id == "abc:def"
+    assert result.case["query_id"] == "abc:def"
+    assert result.case["score"] > 0
+    assert len(calls) == 1
+    assert command_uses_role(calls[0], "pipeline")
+    assert progress_stages == [0, 1, 2, 3, 4]
+
+
 def test_web_query_id_analysis_can_collect_direct_impala_profile_without_cm_credentials(
     monkeypatch, tmp_path
 ):

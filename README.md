@@ -230,6 +230,32 @@ secrets stay in environment variables or local env files. Start from
 workflow, then use `query-doctor-config.example.json` only when you need the
 advanced direct-Impala, Prometheus, metadata, or LLM routing fields.
 
+## Analyze One Exported Profile
+
+The lowest-setup path is one exported Apache Impala text profile to one local
+diagnosis. This does not contact Cloudera Manager or impalad, does not require
+Kerberos, metadata collection, Prometheus, or an LLM provider, and does not
+upload the raw profile through the browser.
+
+```bash
+QUERY_ID="aaaaaaaaaaaaaaaa:0000000000000001"
+query-doctor-analyze \
+  --profile-text ./exported-impala-profile.txt \
+  --query-id "$QUERY_ID" \
+  --out cases/cm-corpus
+```
+
+The command stages a collector-shaped local case under `cases/cm-corpus`,
+redacts users, hosts, credentials, and common secret forms by default, writes
+`analysis_facts.md` plus `analysis.json`, and prints the output case directory.
+Use `--redact-identifiers` when the staged local artifacts may be shared. The
+manual profile intake accepts exported text profiles only; JSON, Thrift, and
+profile-v2 payloads remain outside this entry path.
+
+To inspect the same staged case in the local UI, start `query-doctor-web`,
+choose `One Query ID`, and enter the same Query ID. Known Query ID analysis
+reuses complete manual-profile staged cases instead of recollecting them.
+
 ## Run The Demo
 
 The synthetic demo is the fastest way to see the product. It is deterministic,
@@ -300,7 +326,7 @@ for the current engine support, fixture-only, and research boundary.
 - `query-doctor-batch-recent --help`: headless Recent scan workflow for bounded
   local collection and ranking.
 - `query-doctor-analyze --help`: deterministic analyzer over collected local
-  case files.
+  case files, or over one staged local exported Impala text profile.
 - `query-doctor-report --help`: validated report generation from Python-owned
   facts.
 - `query-doctor-optimize-query --help`: read-only pasted-SQL optimizer review.

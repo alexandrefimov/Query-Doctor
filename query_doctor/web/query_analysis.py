@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
+from query_doctor.analyzer.context_collection import MANUAL_PROFILE_TEXT_SOURCE
 from query_doctor.cli import collect_cm_profiles as cm_collector
 from query_doctor.cli.commands import command_prefix
 from query_doctor.impala.metadata_workflow import METADATA_SOURCE_TABLES_ENV
@@ -19,6 +20,7 @@ from query_doctor.web.case_files import (
     expected_case_dir_for_query,
     parse_facts_summary,
     parse_output_case_dir,
+    read_case_metadata,
     remove_path,
     replace_case_dir_after_success,
     resolve_under_repo,
@@ -187,16 +189,28 @@ def run_query_id_analysis(
 
     update_progress(progress, 1)
     expected_case_dir = expected_case_dir_for_query(validated_query_id, settings)
-    case_dir = collect_analyze_and_replace_query_case(
-        validated_query_id,
-        expected_case_dir,
-        redact_identifiers,
-        settings,
-        runner,
-        subprocess_env,
-        progress=progress,
-        cancel_check=cancel_check,
-    )
+    if expected_case_dir.exists():
+        ensure_complete_existing_case(expected_case_dir)
+    if expected_case_dir.exists() and case_uses_manual_profile_text(expected_case_dir):
+        case_dir = analyze_existing_query_case(
+            expected_case_dir,
+            settings,
+            runner,
+            subprocess_env,
+            progress=progress,
+            cancel_check=cancel_check,
+        )
+    else:
+        case_dir = collect_analyze_and_replace_query_case(
+            validated_query_id,
+            expected_case_dir,
+            redact_identifiers,
+            settings,
+            runner,
+            subprocess_env,
+            progress=progress,
+            cancel_check=cancel_check,
+        )
     if cancel_check is not None and cancel_check():
         raise WebError("Analysis was stopped by the user.")
     collection_status = "ok"
@@ -216,6 +230,34 @@ def run_query_id_analysis(
 def update_progress(progress: ProgressFunc | None, stage_index: int) -> None:
     if progress is not None:
         progress(stage_index)
+
+
+def case_uses_manual_profile_text(case_dir: Path) -> bool:
+    return read_case_metadata(case_dir).get("profile_source") == MANUAL_PROFILE_TEXT_SOURCE
+
+
+def analyze_existing_query_case(
+    case_dir: Path,
+    settings: WebSettings,
+    runner: Runner,
+    subprocess_env: dict[str, str],
+    progress: ProgressFunc | None = None,
+    cancel_check: CancelCheck | None = None,
+) -> Path:
+    update_progress(progress, 2)
+    analyzed = run_subprocess(
+        build_query_id_analyzer_command(case_dir, settings),
+        cwd=settings.repo_dir,
+        timeout_sec=settings.timeout_sec,
+        runner=runner,
+        env=query_id_analyzer_env(subprocess_env, ()),
+        cancel_check=cancel_check,
+    )
+    if cancel_check is not None and cancel_check():
+        raise WebError("Analysis was stopped by the user.")
+    if analyzed.returncode != 0:
+        raise WebError(subprocess_failure_message("Query Doctor analyzer", analyzed))
+    return case_dir
 
 
 def collect_case(

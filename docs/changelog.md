@@ -21,6 +21,14 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
+- `query-doctor-analyze` now has an explicit one-profile entry path for local
+  exported Apache Impala text profiles: `--profile-text`, `--query-id`, and
+  `--out` stage a redacted collector-shaped case, write `analysis_facts.md`
+  plus `analysis.json`, and print the case directory without any network
+  collection. Known Query ID analysis now reuses complete manual-profile staged
+  cases in the web corpus instead of forcing recollection, so those staged cases
+  can be opened from the local UI by entering the same Query ID. Browser profile
+  upload remains out of scope for this trust-boundary slice.
 - Roadmap and customer-readiness docs now make the near-term adoption gate
   explicit: five external or design-partner Impala diagnostic runs with useful
   feedback, a visible one-profile first-value path before full Recent setup,

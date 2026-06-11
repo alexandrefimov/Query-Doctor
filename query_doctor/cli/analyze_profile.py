@@ -12,6 +12,7 @@ from query_doctor.analyzer.case_bottleneck import classify_case_primary_bottlene
 from query_doctor.analyzer.cm_metrics import build_cm_metrics_correlation, build_cm_metrics_facts
 from query_doctor.analyzer.cluster_runtime_context import build_cluster_runtime_context
 from query_doctor.analyzer.context_collection import (
+    MANUAL_PROFILE_TEXT_SOURCE,
     collect_admission_context,
     collect_cluster_context,
     collect_cm_query_context,
@@ -40,10 +41,37 @@ from query_doctor.analyzer.service import analyze
 from query_doctor.analyzer.source_provenance import build_source_provenance
 from query_doctor.analyzer.storage_context import build_storage_context
 from query_doctor.analyzer.sql_sources import extract_default_database
+from query_doctor.cm.client import DEFAULT_MAX_PROFILE_BYTES, validate_cm_query_id_path_segment
+from query_doctor.cm.models import CMAdapterError, CMQuerySummary, OutputError
+from query_doctor.cm.profile_collection import write_collected_case
+from query_doctor.cm.profile_parsing import (
+    extract_statement_from_profile_text,
+    merge_profile_summary_metadata,
+)
 from query_doctor.impala.table_metadata_facts import collect_table_metadata_context
 
 
-__all__ = ["main", "parse_args", "resolve_paths"]
+__all__ = [
+    "ManualProfileIntakeError",
+    "main",
+    "parse_args",
+    "resolve_paths",
+    "stage_manual_profile_case",
+]
+
+
+class ManualProfileIntakeError(RuntimeError):
+    """Safe CLI error for local exported-profile staging failures."""
+
+
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def resolve_paths(input_path: Path, output_arg: str | None) -> tuple[Path, Path]:
@@ -57,13 +85,119 @@ def resolve_paths(input_path: Path, output_arg: str | None) -> tuple[Path, Path]
     return digest_path, output_path
 
 
+def read_manual_profile_text(profile_path: Path, *, max_bytes: int) -> str:
+    path = profile_path.expanduser()
+    try:
+        if not path.is_file():
+            raise ManualProfileIntakeError("Profile text file was not found.")
+        if path.stat().st_size > max_bytes:
+            raise ManualProfileIntakeError(
+                f"Profile text exceeds --max-profile-bytes ({max_bytes})."
+            )
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise ManualProfileIntakeError("Profile text file could not be read.") from exc
+    if not text.strip():
+        raise ManualProfileIntakeError("Profile text file is empty.")
+    if text.lstrip().startswith(("{", "[")):
+        raise ManualProfileIntakeError(
+            "Manual profile intake accepts exported text profiles only; JSON, "
+            "Thrift, and profile-v2 payloads are not supported by this command."
+        )
+    return text
+
+
+def stage_manual_profile_case(
+    *,
+    profile_text_path: Path,
+    query_id: str,
+    out_dir: Path,
+    redact_identifiers: bool = False,
+    redact_hosts: bool = True,
+    max_profile_bytes: int = DEFAULT_MAX_PROFILE_BYTES,
+) -> Path:
+    """Stage one local exported Impala text profile as a collector-shaped case."""
+    validated_query_id = validate_cm_query_id_path_segment(query_id)
+    profile_text = read_manual_profile_text(profile_text_path, max_bytes=max_profile_bytes)
+    statement = extract_statement_from_profile_text(profile_text)
+    summary = CMQuerySummary(query_id=validated_query_id, statement=statement)
+    summary, profile_warnings = merge_profile_summary_metadata(summary, profile_text)
+    warnings = [
+        "Local exported Impala text profile staged without network collection",
+        "Cloudera Manager discovery, metrics, events, and live metadata were not collected for this manual-profile case",
+        *profile_warnings,
+    ]
+    return write_collected_case(
+        out_dir,
+        summary,
+        profile_digest_text=profile_text,
+        extra_metadata={
+            "profile_source": MANUAL_PROFILE_TEXT_SOURCE,
+            "profile_response_format": "text",
+            "profile_fetch_attempt_count": 0,
+            "profile_json_probe_enabled": False,
+            "profile_docs_probe_enabled": False,
+            "profile_docs_fetch_attempt_count": 0,
+        },
+        warnings=warnings,
+        redact=True,
+        redact_identifiers=redact_identifiers,
+        redact_hosts=redact_hosts,
+    )
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Deterministically analyze an Impala profile_digest.md and write analysis_facts.md."
+        description=(
+            "Deterministically analyze an Impala profile_digest.md, or stage one "
+            "local exported text profile into a case and analyze it."
+        )
     )
     parser.add_argument(
         "input",
+        nargs="?",
         help="Case directory containing profile_digest.md, or path to profile_digest.md",
+    )
+    parser.add_argument(
+        "--profile-text",
+        type=Path,
+        help=(
+            "Local exported Impala text profile to stage before analysis. "
+            "This path performs no network collection."
+        ),
+    )
+    parser.add_argument(
+        "--query-id",
+        help="Explicit Impala Query ID for --profile-text staging.",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help=(
+            "Output corpus directory for --profile-text staging. The case is written "
+            "under this directory using the Query ID slug."
+        ),
+    )
+    parser.add_argument(
+        "--redact-identifiers",
+        action="store_true",
+        help="For --profile-text, redact SQL table identifiers in the staged local profile.",
+    )
+    parser.add_argument(
+        "--no-redact-hosts",
+        action="store_false",
+        default=True,
+        dest="redact_hosts",
+        help="For --profile-text, preserve hostnames in local artifacts. Do not use for shared outputs.",
+    )
+    parser.add_argument(
+        "--max-profile-bytes",
+        type=positive_int,
+        default=DEFAULT_MAX_PROFILE_BYTES,
+        help=(
+            "Maximum local profile text bytes accepted by --profile-text. "
+            f"Default: {DEFAULT_MAX_PROFILE_BYTES}."
+        ),
     )
     parser.add_argument(
         "-o",
@@ -97,12 +231,38 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Exit with non-zero status if no operators were parsed",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.profile_text:
+        if args.input:
+            parser.error("positional input cannot be combined with --profile-text")
+        if not args.query_id:
+            parser.error("--profile-text requires --query-id")
+        if args.out is None:
+            parser.error("--profile-text requires --out")
+    elif not args.input:
+        parser.error("input is required unless --profile-text is used")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    input_path = Path(args.input).expanduser()
+    if args.profile_text:
+        try:
+            input_path = stage_manual_profile_case(
+                profile_text_path=args.profile_text,
+                query_id=args.query_id,
+                out_dir=args.out,
+                redact_identifiers=args.redact_identifiers,
+                redact_hosts=args.redact_hosts,
+                max_profile_bytes=args.max_profile_bytes,
+            )
+        except (ManualProfileIntakeError, CMAdapterError, OutputError, OSError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        if args.json is None:
+            args.json = str(input_path / "analysis.json")
+    else:
+        input_path = Path(args.input).expanduser()
     digest_path, output_path = resolve_paths(input_path, args.output)
 
     if not digest_path.exists():
@@ -185,6 +345,8 @@ def main(argv: list[str] | None = None) -> int:
         json_path = None
 
     status_stream = sys.stderr if args.json == "-" else sys.stdout
+    if args.profile_text:
+        print(f"Output case directory: {input_path}", file=status_stream)
     print(f"Wrote: {output_path}", file=status_stream)
     if json_path:
         print(f"Wrote JSON: {json_path}", file=status_stream)
