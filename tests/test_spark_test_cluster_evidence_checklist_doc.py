@@ -76,27 +76,37 @@ def test_spark_test_cluster_evidence_checklist_pins_cases_and_redaction() -> Non
         assert required in text
 
 
-def test_spark_test_cluster_evidence_checklist_records_current_live_checkpoint() -> None:
+def test_spark_test_cluster_evidence_checklist_records_readiness_boundary() -> None:
     text = _normalized_doc_text()
 
     for required in (
+        "Readiness Evidence Boundary",
+        "bounded one-application History Server intake can stay raw-free and warning-free",
+        "evidence for the compact intake contract only",
+        "not readiness for Spark production support",
+        "Recent scans",
+        "Details/trusted reports",
+        "optimizer behavior",
+        "broad live collection",
+        "raw event-log reads",
+        "fixture promotion",
+        "same_application handoff without a selected SQL execution can summarize readable application-level jobs",
+        "without raw selectors in compact output",
+        "SQL-execution specific timing, failure category, and exact query linkage still require accepted SQL execution evidence",
+        "Keep live validation notes, private endpoints, selectors, ports, event-log locations, output paths, and one-run checkpoint details out of committed docs",
+        "Public docs should record only durable source-coverage behavior, support boundaries, and sanitization requirements",
+    ):
+        assert required in text
+
+    for obsolete in (
         "Current Live Checkpoint",
         "2026-06-05 Spark 4.1 live checkpoint",
         "all six top-level endpoints readable",
         "zero source warnings",
-        "spark_history_server_compact_v1",
-        "spark_4_1",
         "supported_attention_areas=0",
         "stock cluster History Server can be reachable yet return no applications",
-        "infrastructure/source-coverage gap",
-        "not a reason for Query Doctor to read raw event logs",
-        "application-only Spark 4.1 linkage",
-        "same_application handoff without a selected SQL execution",
-        "summarizing readable application-level jobs, stages, scheduler delay, spill, and task-duration context",
-        "without raw selectors in compact output",
-        "SQL-execution-specific timing, failure category, and exact query linkage still require accepted SQL execution evidence",
     ):
-        assert required in text
+        assert obsolete not in text
 
 
 def test_spark_test_cluster_evidence_checklist_pins_readiness_audit() -> None:

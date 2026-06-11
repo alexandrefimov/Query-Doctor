@@ -57,6 +57,9 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
   added an initial repository simplification audit for docs, scripts, tests,
   changelog readability, and Russian-doc maintenance. Partner-specific outreach
   copy stays outside public documentation.
+- Spark readiness docs now record durable compact-intake boundaries instead of
+  one-run live checkpoint details; private endpoints, selectors, output paths,
+  and validation notes stay in local exclude-only notes.
 - Added an Impala-first customer-readiness priority note and a minimal
   Cloudera Manager config example so first-run setup can stay separate from
   advanced direct-Impala, Prometheus, metadata, and LLM routing options.

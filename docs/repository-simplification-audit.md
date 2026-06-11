@@ -56,7 +56,8 @@ are part of a current public demo or user setup path.
 
 - Summarize or archive older changelog detail after the next curated release
   notes update.
-- Shorten outreach/demo-only docs that are not part of the first-run path.
+- Shorten external-review or demo-only docs that are not part of the
+  first-run path.
 - De-emphasize future Cluster Doctor and second-engine references in entry
   paths while keeping their safety contracts indexed as reference material.
 - Review Russian deep engine companion docs for drift after the English entry

@@ -186,13 +186,14 @@ continuation plans belong in local exclude-only notes.
   workflow, Details/trusted report surface, optimizer behavior, broad live
   collector, raw event-log path, Spark job-execution path, or production Spark
   support claim.
-  The public-safe 2026-06-05 Spark 4.1 live checkpoint is recorded in
-  [engines/spark-test-cluster-evidence-checklist.md](engines/spark-test-cluster-evidence-checklist.md):
-  bounded one-application intake can be warning-free and raw-free, and
-  application-only `same_application` evidence can summarize readable
-  application-level jobs, stages, scheduler delay, spill, and task-duration
-  context without selected SQL execution linkage. SQL-execution-specific
-  timing/failure facts still require accepted SQL execution evidence.
+  [engines/spark-test-cluster-evidence-checklist.md](engines/spark-test-cluster-evidence-checklist.md)
+  records the durable Spark readiness boundary: bounded one-application intake
+  can stay raw-free for compact summaries, and application-only
+  `same_application` evidence can summarize readable application-level jobs,
+  stages, scheduler delay, spill, and task-duration context without selected
+  SQL execution linkage. SQL-execution-specific timing/failure facts still
+  require accepted SQL execution evidence. Live validation notes and one-run
+  checkpoints stay out of committed docs.
 - Do not add public support claims, broad live collection, engine registration
   beyond adapters explicitly listed in the support matrix, browser workflows
   beyond isolated compact pages, Details/trusted report output, optimizer
