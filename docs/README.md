@@ -1,6 +1,6 @@
 # Query Doctor Documentation
 
-Last reviewed: 2026-06-06
+Last reviewed: 2026-06-11
 
 Language: English | [Russian](i18n/ru/README.md)
 
@@ -42,6 +42,8 @@ See [../AGENTS.md](../AGENTS.md) for the full agent hard-rules list.
 - [engine-support-gap-matrix.md](engine-support-gap-matrix.md): source of
   truth for current engine support status, fixture/research boundaries, and
   second-engine promotion gates.
+- [engines/README.md](engines/README.md): index for detailed Trino and Spark
+  preview/research docs and command catalogs.
 - [customer-readiness-priorities.md](customer-readiness-priorities.md):
   near-term Impala-first customer-readiness backlog for demo, config, docs,
   UI, and validation focus.
@@ -108,6 +110,7 @@ Status legend:
 | [public-documentation-boundary.md](public-documentation-boundary.md) | active | Public vs ignored local documentation boundary and audit path. |
 | [safety-contract.md](safety-contract.md) | active | Canonical trust and redaction contract. |
 | [engine-redaction-note-v1.md](engine-redaction-note-v1.md) | active | Shared raw-free evidence-package redaction note schema for package-style engine intake. |
+| [engines/README.md](engines/README.md) | reference | Index for detailed Trino and Spark preview/research docs and command catalogs. |
 | [brand-voice.md](brand-voice.md) | active | Voice and humor policy for safe outer surfaces. |
 | [architecture.md](architecture.md) | active | Current component boundaries and data flow. |
 | [upstream-impala-ai-analyzer.md](upstream-impala-ai-analyzer.md) | active | Upstream Impala AI analyzer alignment and Query Doctor differentiation. |
