@@ -1,6 +1,6 @@
 # Customer Readiness Priorities
 
-Last reviewed: 2026-06-09
+Last reviewed: 2026-06-11
 
 This note records the near-term product-readiness backlog for making Query
 Doctor easier to show to design partners and potential customers. It is public
@@ -11,6 +11,11 @@ planning material, not a private handoff or a support promise.
 Impala customer readiness comes before broadening Trino or Spark product
 surfaces.
 
+The working adoption gate is five external or design-partner Impala diagnostic
+runs with useful feedback. Those runs may start from one manually exported
+profile or from a bounded Recent scan; both paths must stay safe, raw-free on
+public surfaces, and no-LLM-capable.
+
 Trino and Spark work remains useful for bounded raw-free contracts, fixture
 shape, and future engine seams. It should not distract from the current
 customer path: Apache Impala Recent scans, Details, safe recommendations,
@@ -19,23 +24,27 @@ knowing the internal analyzer pipeline.
 
 ## Near-Term Product Slice
 
-1. Demo site: use the existing `query-doctor-web --public-demo` mode as the
+1. One-profile first value: keep the shortest entry path focused on one
+   exported Impala profile to one useful diagnosis without requiring Cloudera
+   Manager discovery, Kerberos setup, metadata collection, Prometheus, or an
+   LLM provider.
+2. Demo site: use the existing `query-doctor-web --public-demo` mode as the
    first read-only click-through demo surface. Do not build a separate demo app
    until the public-demo path proves insufficient.
-2. Test-cluster outreach: prepare a concise Cloudera/design-partner request for
+3. Test-cluster outreach: prepare a concise Cloudera/design-partner request for
    read-only Cloudera Manager plus Impala access. The request should ask for
    bounded Recent-scan validation, not broad data access, SQL execution, or raw
    artifact sharing.
-3. Minimal config: keep a copy-pasteable Cloudera Manager starter config
+4. Minimal config: keep a copy-pasteable Cloudera Manager starter config
    separate from advanced direct-Impala, Prometheus, metadata, and LLM settings.
-4. UI/UX polish: prioritize Recent results and Details. Browser labels should
+5. UI/UX polish: prioritize Recent results and Details. Browser labels should
    use analyst workflow language such as `Scan context`, `Scan notes`,
    `Scan warnings`, `Workload follow-up`, `Workload p95`, `Open Details`, and
    `Record rerun outcome` instead of
    internal analyzer concepts. Results should keep available views in one
    visible toolbar, and Details should lead with why the query matters, where
    to inspect, what to try, and how to verify before collapsed evidence.
-5. Documentation hygiene: keep README, demo, config, safety, roadmap, and
+6. Documentation hygiene: keep README, demo, config, safety, roadmap, and
    support boundaries easy to find. Move deep contracts and historical material
    behind the documentation index, and avoid sending new users through the full
    knowledge base.
@@ -44,6 +53,7 @@ knowing the internal analyzer pipeline.
 
 | Item | Proposed action | Rationale |
 | --- | --- | --- |
+| One-profile first value | Keep a one-profile diagnosis path visible before full Recent setup | It is the lowest-friction way for a design partner to see value without giving broad cluster access. |
 | Demo site | Build from `--public-demo` first | Existing synthetic demo is read-only, local-safe, and already blocks writes. |
 | Cloudera test cluster request | Use [cloudera-test-cluster-request.md](cloudera-test-cluster-request.md) as the outreach template | Real Impala/CM validation is the highest-leverage way to improve the primary product. |
 | Minimal config | Keep `query-doctor-config.minimal.example.json` as the first-copy example | The current full example is useful, but too broad for first launch. |
@@ -67,6 +77,8 @@ knowing the internal analyzer pipeline.
   links inside `Scan context`, not as a second analytics dashboard. Full
   repeated-pattern decisions belong on Workload Details and in the existing
   result filters.
+- Results pages should route operators to the next object to inspect. Details
+  and Workload Details should carry the deeper decision story.
 - Workload Details should read as a repeated-pattern decision page: why it
   matters, where to inspect, what to try next, and how to verify come before
   the snapshot, coverage, selected-case lists, and limitations.

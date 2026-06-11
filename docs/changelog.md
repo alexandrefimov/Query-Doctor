@@ -1,6 +1,6 @@
 # Changelog
 
-Last updated: 2026-06-09
+Last updated: 2026-06-11
 
 This changelog records significant product, safety, workflow, and trust-boundary
 changes only. It is not a commit-by-commit history.
@@ -21,6 +21,11 @@ handoff, see [release-notes-0.6.0.md](release-notes-0.6.0.md). Historical
 
 ### Web UI And Documentation
 
+- Roadmap and customer-readiness docs now make the near-term adoption gate
+  explicit: five external or design-partner Impala diagnostic runs with useful
+  feedback, a visible one-profile first-value path before full Recent setup,
+  and a trust-architecture backlog for leak-canary coverage plus migrating
+  load-bearing consumers away from rendered `analysis_facts.md`.
 - Results `Scan context` now stays compact: coverage, important scan notes,
   table key, action outcome count, and top workload follow-up links remain
   visible, while the full workload digest, pool/owner breakdown, repeated group
